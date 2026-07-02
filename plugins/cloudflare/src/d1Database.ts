@@ -407,160 +407,147 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
     }
 
     return {
-      async getUpdateInfo(args, context) {
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
+      bundles: {
+        async getUpdateInfo(args, context) {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
 
-        if (args._updateStrategy === "appVersion") {
-          const targetAppVersions = await getTargetAppVersionsForUpdateInfo({
+          if (args._updateStrategy === "appVersion") {
+            const targetAppVersions = await getTargetAppVersionsForUpdateInfo({
+              platform: args.platform,
+              channel,
+              minBundleId,
+            });
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
+            );
+            const bundles =
+              compatibleAppVersions.length > 0
+                ? await queryBundlesForUpdateInfo({
+                    enabled: true,
+                    platform: args.platform,
+                    channel,
+                    id: {
+                      gte: minBundleId,
+                    },
+                    targetAppVersionIn: compatibleAppVersions,
+                  })
+                : [];
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles,
+              context,
+            });
+          }
+
+          const bundles = await queryBundlesForUpdateInfo({
+            enabled: true,
             platform: args.platform,
             channel,
-            minBundleId,
+            id: {
+              gte: minBundleId,
+            },
+            fingerprintHash: args.fingerprintHash,
           });
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
-          const bundles =
-            compatibleAppVersions.length > 0
-              ? await queryBundlesForUpdateInfo({
-                  enabled: true,
-                  platform: args.platform,
-                  channel,
-                  id: {
-                    gte: minBundleId,
-                  },
-                  targetAppVersionIn: compatibleAppVersions,
-                })
-              : [];
 
           return resolveUpdateInfoFromBundles({
             args: { ...args, channel, minBundleId },
             bundles,
             context,
           });
-        }
+        },
 
-        const bundles = await queryBundlesForUpdateInfo({
-          enabled: true,
-          platform: args.platform,
-          channel,
-          id: {
-            gte: minBundleId,
-          },
-          fingerprintHash: args.fingerprintHash,
-        });
-
-        return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles,
-          context,
-        });
-      },
-
-      async getBundleById(bundleId) {
-        const sql = minify(/* sql */ `
+        async getBundleById(bundleId) {
+          const sql = minify(/* sql */ `
           SELECT * FROM bundles WHERE id = ? LIMIT 1`);
-        const [singlePage, patchMap] = await Promise.all([
-          cf.d1.database.query(config.databaseId, {
-            account_id: config.accountId,
-            sql,
-            params: [bundleId],
-          }),
-          getPatchMap([bundleId]),
-        ]);
+          const [singlePage, patchMap] = await Promise.all([
+            cf.d1.database.query(config.databaseId, {
+              account_id: config.accountId,
+              sql,
+              params: [bundleId],
+            }),
+            getPatchMap([bundleId]),
+          ]);
 
-        const rows = await resolvePage<D1BundleRow>(singlePage);
+          const rows = await resolvePage<D1BundleRow>(singlePage);
 
-        if (rows.length === 0) {
-          return null;
-        }
+          if (rows.length === 0) {
+            return null;
+          }
 
-        return transformRowToBundle(rows[0], patchMap.get(bundleId));
-      },
+          return transformRowToBundle(rows[0], patchMap.get(bundleId));
+        },
 
-      async getBundles(options) {
-        const { where = {}, limit, orderBy } = options;
-        const offset =
-          (("offset" in options ? options.offset : undefined) as
-            | number
-            | undefined) ?? 0;
+        async getBundles(options) {
+          const { where = {}, limit, orderBy } = options;
+          const offset =
+            (("offset" in options ? options.offset : undefined) as
+              | number
+              | undefined) ?? 0;
 
-        // 1. Get total count for pagination
-        const totalCount = await getTotalCount(where);
+          // 1. Get total count for pagination
+          const totalCount = await getTotalCount(where);
 
-        // 2. Get paginated bundles
-        const bundles = await getPaginatedBundles(
-          where,
-          limit,
-          offset,
-          orderBy,
-        );
+          // 2. Get paginated bundles
+          const bundles = await getPaginatedBundles(
+            where,
+            limit,
+            offset,
+            orderBy,
+          );
 
-        // 3. Calculate pagination metadata
-        const paginationOptions: PaginationOptions = { limit, offset };
-        const pagination = calculatePagination(totalCount, paginationOptions);
+          // 3. Calculate pagination metadata
+          const paginationOptions: PaginationOptions = { limit, offset };
+          const pagination = calculatePagination(totalCount, paginationOptions);
 
-        return {
-          data: bundles,
-          pagination,
-        };
-      },
+          return {
+            data: bundles,
+            pagination,
+          };
+        },
 
-      async getChannels() {
-        const sql = minify(/* sql */ `
-          SELECT channel FROM bundles GROUP BY channel
-        `);
-        const singlePage = await cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql,
-          params: [],
-        });
+        async commitBundle({ changedSets }) {
+          if (changedSets.length === 0) {
+            return;
+          }
 
-        const rows = await resolvePage<{ channel: string }>(singlePage);
-        return rows.map((row) => row.channel);
-      },
-
-      async commitBundle({ changedSets }) {
-        if (changedSets.length === 0) {
-          return;
-        }
-
-        // Process each operation sequentially
-        for (const op of changedSets) {
-          if (op.operation === "delete") {
-            // Handle delete operation
-            const deleteSql = minify(/* sql */ `
+          // Process each operation sequentially
+          for (const op of changedSets) {
+            if (op.operation === "delete") {
+              // Handle delete operation
+              const deleteSql = minify(/* sql */ `
               DELETE FROM bundles WHERE id = ?
             `);
 
-            const deletePatchSql = minify(/* sql */ `
+              const deletePatchSql = minify(/* sql */ `
               DELETE FROM bundle_patches WHERE bundle_id = ?
             `);
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: deletePatchSql,
-              params: [op.data.id],
-            });
+              await cf.d1.database.query(config.databaseId, {
+                account_id: config.accountId,
+                sql: deletePatchSql,
+                params: [op.data.id],
+              });
 
-            const deleteBasePatchSql = minify(/* sql */ `
+              const deleteBasePatchSql = minify(/* sql */ `
               DELETE FROM bundle_patches WHERE base_bundle_id = ?
             `);
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: deleteBasePatchSql,
-              params: [op.data.id],
-            });
+              await cf.d1.database.query(config.databaseId, {
+                account_id: config.accountId,
+                sql: deleteBasePatchSql,
+                params: [op.data.id],
+              });
 
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: deleteSql,
-              params: [op.data.id],
-            });
-          } else if (op.operation === "insert" || op.operation === "update") {
-            // Handle insert and update operations
-            const bundle = op.data;
-            const upsertSql = minify(/* sql */ `
+              await cf.d1.database.query(config.databaseId, {
+                account_id: config.accountId,
+                sql: deleteSql,
+                params: [op.data.id],
+              });
+            } else if (op.operation === "insert" || op.operation === "update") {
+              // Handle insert and update operations
+              const bundle = op.data;
+              const upsertSql = minify(/* sql */ `
               INSERT OR REPLACE INTO bundles (
                 id,
                 channel,
@@ -583,47 +570,47 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
-            const params = [
-              bundle.id,
-              bundle.channel,
-              bundle.enabled ? 1 : 0,
-              bundle.shouldForceUpdate ? 1 : 0,
-              bundle.fileHash,
-              bundle.gitCommitHash || null,
-              bundle.message || null,
-              bundle.platform,
-              bundle.targetAppVersion,
-              bundle.storageUri,
-              bundle.fingerprintHash,
-              JSON.stringify(
-                stripBundleArtifactMetadata(bundle.metadata) ?? {},
-              ),
-              getManifestStorageUri(bundle),
-              getManifestFileHash(bundle),
-              getAssetBaseStorageUri(bundle),
-              bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-              bundle.targetCohorts
-                ? JSON.stringify(bundle.targetCohorts)
-                : null,
-            ];
+              const params = [
+                bundle.id,
+                bundle.channel,
+                bundle.enabled ? 1 : 0,
+                bundle.shouldForceUpdate ? 1 : 0,
+                bundle.fileHash,
+                bundle.gitCommitHash || null,
+                bundle.message || null,
+                bundle.platform,
+                bundle.targetAppVersion,
+                bundle.storageUri,
+                bundle.fingerprintHash,
+                JSON.stringify(
+                  stripBundleArtifactMetadata(bundle.metadata) ?? {},
+                ),
+                getManifestStorageUri(bundle),
+                getManifestFileHash(bundle),
+                getAssetBaseStorageUri(bundle),
+                bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+                bundle.targetCohorts
+                  ? JSON.stringify(bundle.targetCohorts)
+                  : null,
+              ];
 
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: upsertSql,
-              params: params as string[],
-            });
+              await cf.d1.database.query(config.databaseId, {
+                account_id: config.accountId,
+                sql: upsertSql,
+                params: params as string[],
+              });
 
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: minify(`
+              await cf.d1.database.query(config.databaseId, {
+                account_id: config.accountId,
+                sql: minify(`
                 DELETE FROM bundle_patches WHERE bundle_id = ?
               `),
-              params: [bundle.id],
-            });
+                params: [bundle.id],
+              });
 
-            const patchRows = bundleToPatchRows(bundle);
-            if (patchRows.length > 0) {
-              const patchInsertSql = minify(`
+              const patchRows = bundleToPatchRows(bundle);
+              if (patchRows.length > 0) {
+                const patchInsertSql = minify(`
                 INSERT OR REPLACE INTO bundle_patches (
                   id,
                   bundle_id,
@@ -636,24 +623,40 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
                 VALUES (?, ?, ?, ?, ?, ?, ?)
               `);
 
-              for (const patchRow of patchRows) {
-                await cf.d1.database.query(config.databaseId, {
-                  account_id: config.accountId,
-                  sql: patchInsertSql,
-                  params: [
-                    patchRow.id,
-                    patchRow.bundle_id,
-                    patchRow.base_bundle_id,
-                    patchRow.base_file_hash,
-                    patchRow.patch_file_hash,
-                    patchRow.patch_storage_uri,
-                    String(patchRow.order_index ?? 0),
-                  ],
-                });
+                for (const patchRow of patchRows) {
+                  await cf.d1.database.query(config.databaseId, {
+                    account_id: config.accountId,
+                    sql: patchInsertSql,
+                    params: [
+                      patchRow.id,
+                      patchRow.bundle_id,
+                      patchRow.base_bundle_id,
+                      patchRow.base_file_hash,
+                      patchRow.patch_file_hash,
+                      patchRow.patch_storage_uri,
+                      String(patchRow.order_index ?? 0),
+                    ],
+                  });
+                }
               }
             }
           }
-        }
+        },
+      },
+      channels: {
+        async getChannels() {
+          const sql = minify(/* sql */ `
+            SELECT channel FROM bundles GROUP BY channel
+          `);
+          const singlePage = await cf.d1.database.query(config.databaseId, {
+            account_id: config.accountId,
+            sql,
+            params: [],
+          });
+
+          const rows = await resolvePage<{ channel: string }>(singlePage);
+          return rows.map((row) => row.channel);
+        },
       },
     };
   },

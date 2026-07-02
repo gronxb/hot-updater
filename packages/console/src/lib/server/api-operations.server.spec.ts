@@ -41,24 +41,28 @@ function createDatabasePlugin(
 ): DatabasePlugin {
   return {
     name,
-    getBundleById: vi.fn(async (bundleId) => {
-      return bundles.find((bundle) => bundle.id === bundleId) ?? null;
-    }),
-    getBundles: vi.fn(async () => ({
-      data: [...bundles],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: bundles.length,
-        totalPages: 1,
-      },
-    })),
-    getChannels: vi.fn(async () => ["production"]),
-    updateBundle: vi.fn(),
-    appendBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    commitBundle: vi.fn(),
+    bundles: {
+      getBundleById: vi.fn(async (bundleId) => {
+        return bundles.find((bundle) => bundle.id === bundleId) ?? null;
+      }),
+      getBundles: vi.fn(async () => ({
+        data: [...bundles],
+        pagination: {
+          currentPage: 1,
+          hasNextPage: false,
+          hasPreviousPage: false,
+          total: bundles.length,
+          totalPages: 1,
+        },
+      })),
+      updateBundle: vi.fn(),
+      appendBundle: vi.fn(),
+      deleteBundle: vi.fn(),
+      commitBundle: vi.fn(),
+    },
+    channels: {
+      getChannels: vi.fn(async () => ["production"]),
+    },
   };
 }
 
@@ -123,8 +127,8 @@ describe("console api operations", () => {
     );
 
     expect(loadConfigMock).not.toHaveBeenCalled();
-    expect(firstDatabase.getBundles).toHaveBeenCalledOnce();
-    expect(secondDatabase.getBundles).toHaveBeenCalledOnce();
+    expect(firstDatabase.bundles.getBundles).toHaveBeenCalledOnce();
+    expect(secondDatabase.bundles.getBundles).toHaveBeenCalledOnce();
     expect(firstResult.data).toEqual([baseBundle]);
     expect(secondResult.data).toEqual([secondBundle]);
   });
@@ -133,25 +137,27 @@ describe("console api operations", () => {
     const unsupportedDatabase = createDatabasePlugin("unsupported-db", []);
     const supportedDatabase = {
       ...createDatabasePlugin("supported-db", []),
-      authenticateTelemetryKey: vi.fn(async () => true),
-      getTelemetryKeyState: vi.fn(async () => ({
-        telemetryKeySuffix: "abcd1234",
-      })),
-      issueTelemetryKey: vi.fn(async () => ({
-        telemetryKey: "hutk_issued",
-        telemetryKeySuffix: "issued",
-      })),
-      recordLifecycleEvent: vi.fn(
-        async () =>
-          ({
-            accepted: true,
-            deduped: false,
-          }) as const,
-      ),
-      rotateTelemetryKey: vi.fn(async () => ({
-        telemetryKey: "hutk_rotated",
-        telemetryKeySuffix: "rotated",
-      })),
+      analytics: {
+        authenticateTelemetryKey: vi.fn(async () => true),
+        getTelemetryKeyState: vi.fn(async () => ({
+          telemetryKeySuffix: "abcd1234",
+        })),
+        issueTelemetryKey: vi.fn(async () => ({
+          telemetryKey: "hutk_issued",
+          telemetryKeySuffix: "issued",
+        })),
+        recordLifecycleEvent: vi.fn(
+          async () =>
+            ({
+              accepted: true,
+              deduped: false,
+            }) as const,
+        ),
+        rotateTelemetryKey: vi.fn(async () => ({
+          telemetryKey: "hutk_rotated",
+          telemetryKeySuffix: "rotated",
+        })),
+      },
     } satisfies DatabasePlugin;
     const storagePlugin = createStoragePlugin(async () => ({
       fileUrl: "https://assets.example.com/bundle.zip",
@@ -186,14 +192,16 @@ describe("console api operations", () => {
   it("does not report telemetry key capability for runtime-only telemetry", async () => {
     const runtimeOnlyDatabase = {
       ...createDatabasePlugin("runtime-only-db", []),
-      authenticateTelemetryKey: vi.fn(async () => true),
-      recordLifecycleEvent: vi.fn(
-        async () =>
-          ({
-            accepted: true,
-            deduped: false,
-          }) as const,
-      ),
+      analytics: {
+        authenticateTelemetryKey: vi.fn(async () => true),
+        recordLifecycleEvent: vi.fn(
+          async () =>
+            ({
+              accepted: true,
+              deduped: false,
+            }) as const,
+        ),
+      },
     } satisfies DatabasePlugin;
     const storagePlugin = createStoragePlugin(async () => ({
       fileUrl: "https://assets.example.com/bundle.zip",
@@ -225,17 +233,19 @@ describe("console api operations", () => {
   it("uses provider telemetry key operations", async () => {
     const databasePlugin = {
       ...createDatabasePlugin("telemetry-db", []),
-      getTelemetryKeyState: vi.fn(async () => ({
-        telemetryKeySuffix: "abcd1234",
-      })),
-      issueTelemetryKey: vi.fn(async () => ({
-        telemetryKey: "hutk_issued",
-        telemetryKeySuffix: "issued",
-      })),
-      rotateTelemetryKey: vi.fn(async () => ({
-        telemetryKey: "hutk_rotated",
-        telemetryKeySuffix: "rotated",
-      })),
+      analytics: {
+        getTelemetryKeyState: vi.fn(async () => ({
+          telemetryKeySuffix: "abcd1234",
+        })),
+        issueTelemetryKey: vi.fn(async () => ({
+          telemetryKey: "hutk_issued",
+          telemetryKeySuffix: "issued",
+        })),
+        rotateTelemetryKey: vi.fn(async () => ({
+          telemetryKey: "hutk_rotated",
+          telemetryKeySuffix: "rotated",
+        })),
+      },
     } satisfies DatabasePlugin;
     const storagePlugin = createStoragePlugin(async () => ({
       fileUrl: "https://assets.example.com/bundle.zip",
@@ -269,9 +279,11 @@ describe("console api operations", () => {
         telemetryKeySuffix: "rotated",
       },
     });
-    expect(databasePlugin.getTelemetryKeyState).toHaveBeenCalledOnce();
-    expect(databasePlugin.issueTelemetryKey).toHaveBeenCalledOnce();
-    expect(databasePlugin.rotateTelemetryKey).toHaveBeenCalledOnce();
+    expect(
+      databasePlugin.analytics.getTelemetryKeyState,
+    ).toHaveBeenCalledOnce();
+    expect(databasePlugin.analytics.issueTelemetryKey).toHaveBeenCalledOnce();
+    expect(databasePlugin.analytics.rotateTelemetryKey).toHaveBeenCalledOnce();
   });
 
   it("resolves runtime download URLs through the hosted storage profile", async () => {

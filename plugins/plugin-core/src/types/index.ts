@@ -144,7 +144,7 @@ export type TelemetryLifecycleMetrics = {
   };
 };
 
-export interface DatabaseTelemetryCapabilities<TContext = unknown> {
+export interface DatabaseAnalytics<TContext = unknown> {
   authenticateTelemetryKey?: (
     telemetryKey: string,
     context?: HotUpdaterContext<TContext>,
@@ -171,10 +171,8 @@ export interface BuildPluginConfig {
   outDir?: string;
 }
 
-export interface DatabasePlugin<
-  TContext = unknown,
-> extends DatabaseTelemetryCapabilities<TContext> {
-  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+export interface DatabaseBundleOperations<TContext = unknown> {
+  supportsCursorPagination?: boolean;
   getBundleById: (
     bundleId: string,
     context?: HotUpdaterContext<TContext>,
@@ -197,12 +195,22 @@ export interface DatabasePlugin<
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   commitBundle: (context?: HotUpdaterContext<TContext>) => Promise<void>;
-  onUnmount?: () => Promise<void>;
-  name: string;
   deleteBundle: (
     deleteBundle: Bundle,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
+}
+
+export interface DatabaseChannelOperations<TContext = unknown> {
+  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+}
+
+export interface DatabasePlugin<TContext = unknown> {
+  analytics?: DatabaseAnalytics<TContext>;
+  bundles: DatabaseBundleOperations<TContext>;
+  channels: DatabaseChannelOperations<TContext>;
+  onUnmount?: () => Promise<void>;
+  name: string;
 }
 
 export interface DatabasePluginHooks {

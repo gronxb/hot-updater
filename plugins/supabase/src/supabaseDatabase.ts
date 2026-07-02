@@ -107,37 +107,59 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
     };
 
     return {
-      async getUpdateInfo(args: GetBundlesArgs) {
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
+      bundles: {
+        async getUpdateInfo(args: GetBundlesArgs) {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
 
-        if (args._updateStrategy === "appVersion") {
-          const { data: targetAppVersionRows, error: targetAppVersionError } =
-            await supabase.rpc("get_target_app_version_list", {
-              app_platform: args.platform,
-              min_bundle_id: minBundleId,
-            });
+          if (args._updateStrategy === "appVersion") {
+            const { data: targetAppVersionRows, error: targetAppVersionError } =
+              await supabase.rpc("get_target_app_version_list", {
+                app_platform: args.platform,
+                min_bundle_id: minBundleId,
+              });
 
-          if (targetAppVersionError) {
-            throw createSupabaseError(targetAppVersionError);
+            if (targetAppVersionError) {
+              throw createSupabaseError(targetAppVersionError);
+            }
+
+            const targetAppVersionList = filterCompatibleAppVersions(
+              ((targetAppVersionRows ?? []) as SupabaseTargetAppVersionRow[])
+                .map((row) => row.target_app_version)
+                .filter((version): version is string => Boolean(version)),
+              args.appVersion,
+            );
+
+            const { data, error } = await supabase.rpc(
+              "get_update_info_by_app_version",
+              {
+                app_platform: args.platform,
+                app_version: args.appVersion,
+                bundle_id: args.bundleId,
+                min_bundle_id: minBundleId,
+                target_channel: channel,
+                target_app_version_list: targetAppVersionList,
+                cohort: args.cohort ?? null,
+              },
+            );
+
+            if (error) {
+              throw createSupabaseError(error);
+            }
+
+            const updateInfo = (data?.[0] ??
+              null) as SupabaseUpdateInfoRow | null;
+            return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
           }
 
-          const targetAppVersionList = filterCompatibleAppVersions(
-            ((targetAppVersionRows ?? []) as SupabaseTargetAppVersionRow[])
-              .map((row) => row.target_app_version)
-              .filter((version): version is string => Boolean(version)),
-            args.appVersion,
-          );
-
           const { data, error } = await supabase.rpc(
-            "get_update_info_by_app_version",
+            "get_update_info_by_fingerprint_hash",
             {
               app_platform: args.platform,
-              app_version: args.appVersion,
               bundle_id: args.bundleId,
               min_bundle_id: minBundleId,
               target_channel: channel,
-              target_app_version_list: targetAppVersionList,
+              target_fingerprint_hash: args.fingerprintHash,
               cohort: args.cohort ?? null,
             },
           );
@@ -149,273 +171,255 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
           const updateInfo = (data?.[0] ??
             null) as SupabaseUpdateInfoRow | null;
           return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
-        }
+        },
 
-        const { data, error } = await supabase.rpc(
-          "get_update_info_by_fingerprint_hash",
-          {
-            app_platform: args.platform,
-            bundle_id: args.bundleId,
-            min_bundle_id: minBundleId,
-            target_channel: channel,
-            target_fingerprint_hash: args.fingerprintHash,
-            cohort: args.cohort ?? null,
-          },
-        );
+        async getBundleById(bundleId) {
+          const [{ data, error }, patchMap] = await Promise.all([
+            supabase
+              .from("bundles")
+              .select(BUNDLE_SELECT_COLUMNS)
+              .eq("id", bundleId)
+              .single(),
+            fetchPatchMap([bundleId]),
+          ]);
 
-        if (error) {
-          throw createSupabaseError(error);
-        }
+          if (!data || error) {
+            return null;
+          }
+          return mapRowToBundle(data, patchMap.get(bundleId) ?? []);
+        },
 
-        const updateInfo = (data?.[0] ?? null) as SupabaseUpdateInfoRow | null;
-        return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
-      },
+        async getBundles(options) {
+          const { where, limit, orderBy } = options ?? {};
+          const offset =
+            ((options && "offset" in options ? options.offset : undefined) as
+              | number
+              | undefined) ?? 0;
 
-      async getBundleById(bundleId) {
-        const [{ data, error }, patchMap] = await Promise.all([
-          supabase
+          if (
+            (where?.targetAppVersionIn &&
+              where.targetAppVersionIn.length === 0) ||
+            (where?.id?.in && where.id.in.length === 0)
+          ) {
+            return {
+              data: [],
+              pagination: calculatePagination(0, { limit, offset }),
+            };
+          }
+
+          let countQuery = supabase
+            .from("bundles")
+            .select("*", { count: "exact", head: true });
+
+          if (where?.channel) {
+            countQuery = countQuery.eq("channel", where.channel);
+          }
+          if (where?.platform) {
+            countQuery = countQuery.eq("platform", where.platform as Platform);
+          }
+          if (where?.enabled !== undefined) {
+            countQuery = countQuery.eq("enabled", where.enabled);
+          }
+          if (where?.fingerprintHash !== undefined) {
+            countQuery =
+              where.fingerprintHash === null
+                ? countQuery.is("fingerprint_hash", null)
+                : countQuery.eq("fingerprint_hash", where.fingerprintHash);
+          }
+          if (where?.targetAppVersion !== undefined) {
+            countQuery =
+              where.targetAppVersion === null
+                ? countQuery.is("target_app_version", null)
+                : countQuery.eq("target_app_version", where.targetAppVersion);
+          }
+          if (where?.targetAppVersionIn) {
+            countQuery = countQuery.in(
+              "target_app_version",
+              where.targetAppVersionIn,
+            );
+          }
+          if (where?.targetAppVersionNotNull) {
+            countQuery = countQuery.not("target_app_version", "is", null);
+          }
+          if (where?.id?.eq) {
+            countQuery = countQuery.eq("id", where.id.eq);
+          }
+          if (where?.id?.gt) {
+            countQuery = countQuery.gt("id", where.id.gt);
+          }
+          if (where?.id?.gte) {
+            countQuery = countQuery.gte("id", where.id.gte);
+          }
+          if (where?.id?.lt) {
+            countQuery = countQuery.lt("id", where.id.lt);
+          }
+          if (where?.id?.lte) {
+            countQuery = countQuery.lte("id", where.id.lte);
+          }
+          if (where?.id?.in) {
+            countQuery = countQuery.in("id", where.id.in);
+          }
+
+          const { count: total = 0 } = await countQuery;
+
+          let query = supabase
             .from("bundles")
             .select(BUNDLE_SELECT_COLUMNS)
-            .eq("id", bundleId)
-            .single(),
-          fetchPatchMap([bundleId]),
-        ]);
+            .order("id", { ascending: orderBy?.direction === "asc" });
 
-        if (!data || error) {
-          return null;
-        }
-        return mapRowToBundle(data, patchMap.get(bundleId) ?? []);
-      },
+          if (where?.channel) {
+            query = query.eq("channel", where.channel);
+          }
 
-      async getBundles(options) {
-        const { where, limit, orderBy } = options ?? {};
-        const offset =
-          ((options && "offset" in options ? options.offset : undefined) as
-            | number
-            | undefined) ?? 0;
+          if (where?.platform) {
+            query = query.eq("platform", where.platform as Platform);
+          }
+          if (where?.enabled !== undefined) {
+            query = query.eq("enabled", where.enabled);
+          }
+          if (where?.fingerprintHash !== undefined) {
+            query =
+              where.fingerprintHash === null
+                ? query.is("fingerprint_hash", null)
+                : query.eq("fingerprint_hash", where.fingerprintHash);
+          }
+          if (where?.targetAppVersion !== undefined) {
+            query =
+              where.targetAppVersion === null
+                ? query.is("target_app_version", null)
+                : query.eq("target_app_version", where.targetAppVersion);
+          }
+          if (where?.targetAppVersionIn) {
+            query = query.in("target_app_version", where.targetAppVersionIn);
+          }
+          if (where?.targetAppVersionNotNull) {
+            query = query.not("target_app_version", "is", null);
+          }
+          if (where?.id?.eq) {
+            query = query.eq("id", where.id.eq);
+          }
+          if (where?.id?.gt) {
+            query = query.gt("id", where.id.gt);
+          }
+          if (where?.id?.gte) {
+            query = query.gte("id", where.id.gte);
+          }
+          if (where?.id?.lt) {
+            query = query.lt("id", where.id.lt);
+          }
+          if (where?.id?.lte) {
+            query = query.lte("id", where.id.lte);
+          }
+          if (where?.id?.in) {
+            query = query.in("id", where.id.in);
+          }
 
-        if (
-          (where?.targetAppVersionIn &&
-            where.targetAppVersionIn.length === 0) ||
-          (where?.id?.in && where.id.in.length === 0)
-        ) {
-          return {
-            data: [],
-            pagination: calculatePagination(0, { limit, offset }),
-          };
-        }
+          if (limit) {
+            query = query.limit(limit);
+          }
 
-        let countQuery = supabase
-          .from("bundles")
-          .select("*", { count: "exact", head: true });
+          if (offset) {
+            query = query.range(offset, offset + (limit || 20) - 1);
+          }
 
-        if (where?.channel) {
-          countQuery = countQuery.eq("channel", where.channel);
-        }
-        if (where?.platform) {
-          countQuery = countQuery.eq("platform", where.platform as Platform);
-        }
-        if (where?.enabled !== undefined) {
-          countQuery = countQuery.eq("enabled", where.enabled);
-        }
-        if (where?.fingerprintHash !== undefined) {
-          countQuery =
-            where.fingerprintHash === null
-              ? countQuery.is("fingerprint_hash", null)
-              : countQuery.eq("fingerprint_hash", where.fingerprintHash);
-        }
-        if (where?.targetAppVersion !== undefined) {
-          countQuery =
-            where.targetAppVersion === null
-              ? countQuery.is("target_app_version", null)
-              : countQuery.eq("target_app_version", where.targetAppVersion);
-        }
-        if (where?.targetAppVersionIn) {
-          countQuery = countQuery.in(
-            "target_app_version",
-            where.targetAppVersionIn,
+          const { data } = await query;
+
+          const patchMap = await fetchPatchMap(
+            (data ?? []).map((bundle) => bundle.id),
           );
-        }
-        if (where?.targetAppVersionNotNull) {
-          countQuery = countQuery.not("target_app_version", "is", null);
-        }
-        if (where?.id?.eq) {
-          countQuery = countQuery.eq("id", where.id.eq);
-        }
-        if (where?.id?.gt) {
-          countQuery = countQuery.gt("id", where.id.gt);
-        }
-        if (where?.id?.gte) {
-          countQuery = countQuery.gte("id", where.id.gte);
-        }
-        if (where?.id?.lt) {
-          countQuery = countQuery.lt("id", where.id.lt);
-        }
-        if (where?.id?.lte) {
-          countQuery = countQuery.lte("id", where.id.lte);
-        }
-        if (where?.id?.in) {
-          countQuery = countQuery.in("id", where.id.in);
-        }
+          const bundles = (data ?? []).map((bundle) =>
+            mapRowToBundle(bundle, patchMap.get(bundle.id) ?? []),
+          );
 
-        const { count: total = 0 } = await countQuery;
+          const pagination = calculatePagination(total ?? 0, { limit, offset });
 
-        let query = supabase
-          .from("bundles")
-          .select(BUNDLE_SELECT_COLUMNS)
-          .order("id", { ascending: orderBy?.direction === "asc" });
+          return {
+            data: bundles,
+            pagination,
+          };
+        },
 
-        if (where?.channel) {
-          query = query.eq("channel", where.channel);
-        }
+        async commitBundle({ changedSets }) {
+          if (changedSets.length === 0) {
+            return;
+          }
 
-        if (where?.platform) {
-          query = query.eq("platform", where.platform as Platform);
-        }
-        if (where?.enabled !== undefined) {
-          query = query.eq("enabled", where.enabled);
-        }
-        if (where?.fingerprintHash !== undefined) {
-          query =
-            where.fingerprintHash === null
-              ? query.is("fingerprint_hash", null)
-              : query.eq("fingerprint_hash", where.fingerprintHash);
-        }
-        if (where?.targetAppVersion !== undefined) {
-          query =
-            where.targetAppVersion === null
-              ? query.is("target_app_version", null)
-              : query.eq("target_app_version", where.targetAppVersion);
-        }
-        if (where?.targetAppVersionIn) {
-          query = query.in("target_app_version", where.targetAppVersionIn);
-        }
-        if (where?.targetAppVersionNotNull) {
-          query = query.not("target_app_version", "is", null);
-        }
-        if (where?.id?.eq) {
-          query = query.eq("id", where.id.eq);
-        }
-        if (where?.id?.gt) {
-          query = query.gt("id", where.id.gt);
-        }
-        if (where?.id?.gte) {
-          query = query.gte("id", where.id.gte);
-        }
-        if (where?.id?.lt) {
-          query = query.lt("id", where.id.lt);
-        }
-        if (where?.id?.lte) {
-          query = query.lte("id", where.id.lte);
-        }
-        if (where?.id?.in) {
-          query = query.in("id", where.id.in);
-        }
-
-        if (limit) {
-          query = query.limit(limit);
-        }
-
-        if (offset) {
-          query = query.range(offset, offset + (limit || 20) - 1);
-        }
-
-        const { data } = await query;
-
-        const patchMap = await fetchPatchMap(
-          (data ?? []).map((bundle) => bundle.id),
-        );
-        const bundles = (data ?? []).map((bundle) =>
-          mapRowToBundle(bundle, patchMap.get(bundle.id) ?? []),
-        );
-
-        const pagination = calculatePagination(total ?? 0, { limit, offset });
-
-        return {
-          data: bundles,
-          pagination,
-        };
-      },
-
-      async getChannels() {
-        const { data, error } = await supabase.rpc("get_channels");
-        if (error) {
-          throw error;
-        }
-        return data.map((bundle: { channel: string }) => bundle.channel);
-      },
-
-      async commitBundle({ changedSets }) {
-        if (changedSets.length === 0) {
-          return;
-        }
-
-        // Process each operation sequentially
-        for (const op of changedSets) {
-          if (op.operation === "delete") {
-            // Handle delete operation
-            const { error: patchDeleteError } = await supabase
-              .from("bundle_patches")
-              .delete()
-              .eq("bundle_id", op.data.id);
-
-            if (patchDeleteError) {
-              throw new Error(
-                `Failed to delete bundle patches: ${patchDeleteError.message}`,
-              );
-            }
-
-            const { error: basePatchDeleteError } = await supabase
-              .from("bundle_patches")
-              .delete()
-              .eq("base_bundle_id", op.data.id);
-
-            if (basePatchDeleteError) {
-              throw new Error(
-                `Failed to delete base bundle patches: ${basePatchDeleteError.message}`,
-              );
-            }
-
-            const { error } = await supabase
-              .from("bundles")
-              .delete()
-              .eq("id", op.data.id);
-
-            if (error) {
-              throw new Error(`Failed to delete bundle: ${error.message}`);
-            }
-          } else if (op.operation === "insert" || op.operation === "update") {
-            // Handle insert and update operations
-            const bundle = op.data;
-            const patchRows = bundleToPatchRows(bundle);
-            const { error } = await supabase
-              .from("bundles")
-              .upsert(bundleToRow(bundle), { onConflict: "id" });
-
-            if (error) {
-              throw error;
-            }
-
-            const { error: patchDeleteError } = await supabase
-              .from("bundle_patches")
-              .delete()
-              .eq("bundle_id", bundle.id);
-
-            if (patchDeleteError) {
-              throw patchDeleteError;
-            }
-
-            if (patchRows.length > 0) {
-              const { error: patchInsertError } = await supabase
+          // Process each operation sequentially
+          for (const op of changedSets) {
+            if (op.operation === "delete") {
+              // Handle delete operation
+              const { error: patchDeleteError } = await supabase
                 .from("bundle_patches")
-                .upsert(patchRows, { onConflict: "id" });
+                .delete()
+                .eq("bundle_id", op.data.id);
 
-              if (patchInsertError) {
-                throw patchInsertError;
+              if (patchDeleteError) {
+                throw new Error(
+                  `Failed to delete bundle patches: ${patchDeleteError.message}`,
+                );
+              }
+
+              const { error: basePatchDeleteError } = await supabase
+                .from("bundle_patches")
+                .delete()
+                .eq("base_bundle_id", op.data.id);
+
+              if (basePatchDeleteError) {
+                throw new Error(
+                  `Failed to delete base bundle patches: ${basePatchDeleteError.message}`,
+                );
+              }
+
+              const { error } = await supabase
+                .from("bundles")
+                .delete()
+                .eq("id", op.data.id);
+
+              if (error) {
+                throw new Error(`Failed to delete bundle: ${error.message}`);
+              }
+            } else if (op.operation === "insert" || op.operation === "update") {
+              // Handle insert and update operations
+              const bundle = op.data;
+              const patchRows = bundleToPatchRows(bundle);
+              const { error } = await supabase
+                .from("bundles")
+                .upsert(bundleToRow(bundle), { onConflict: "id" });
+
+              if (error) {
+                throw error;
+              }
+
+              const { error: patchDeleteError } = await supabase
+                .from("bundle_patches")
+                .delete()
+                .eq("bundle_id", bundle.id);
+
+              if (patchDeleteError) {
+                throw patchDeleteError;
+              }
+
+              if (patchRows.length > 0) {
+                const { error: patchInsertError } = await supabase
+                  .from("bundle_patches")
+                  .upsert(patchRows, { onConflict: "id" });
+
+                if (patchInsertError) {
+                  throw patchInsertError;
+                }
               }
             }
           }
-        }
+        },
+      },
+      channels: {
+        async getChannels() {
+          const { data, error } = await supabase.rpc("get_channels");
+          if (error) {
+            throw error;
+          }
+          return data.map((bundle: { channel: string }) => bundle.channel);
+        },
       },
     };
   },

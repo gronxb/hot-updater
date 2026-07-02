@@ -167,10 +167,10 @@ const getPatchBaseBundles = async ({
     enabled: true,
     id: { lt: bundleId },
     platform,
-  } satisfies Parameters<DatabasePlugin["getBundles"]>[0]["where"];
+  } satisfies Parameters<DatabasePlugin["bundles"]["getBundles"]>[0]["where"];
 
   if (target.fingerprintHash) {
-    const { data } = await databasePlugin.getBundles({
+    const { data } = await databasePlugin.bundles.getBundles({
       limit: maxBaseBundles,
       orderBy: {
         direction: "desc",
@@ -196,7 +196,7 @@ const getPatchBaseBundles = async ({
   let cursorAfter: string | undefined;
 
   while (compatibleBundles.length < maxBaseBundles) {
-    const { data, pagination } = await databasePlugin.getBundles({
+    const { data, pagination } = await databasePlugin.bundles.getBundles({
       ...(cursorAfter ? { cursor: { after: cursorAfter } } : {}),
       limit: pageSize,
       orderBy: {
@@ -1012,7 +1012,7 @@ const deployPlatform = async ({
           const appVersion = await getNativeAppVersion(platform);
 
           try {
-            await databasePlugin.appendBundle({
+            await databasePlugin.bundles.appendBundle({
               shouldForceUpdate: options.forceUpdate,
               platform,
               fileHash,
@@ -1030,7 +1030,7 @@ const deployPlatform = async ({
               manifestStorageUri: taskRef.manifestStorageUri,
               rolloutCohortCount,
             });
-            await databasePlugin.commitBundle();
+            await databasePlugin.bundles.commitBundle();
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);

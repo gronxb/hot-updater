@@ -68,7 +68,9 @@ export const handleRollback = async (
 
     if (options.target) {
       // Scoped retry path: roll back exactly the named bundle.
-      const targetBundle = await databasePlugin.getBundleById(options.target);
+      const targetBundle = await databasePlugin.bundles.getBundleById(
+        options.target,
+      );
       if (!targetBundle) {
         p.log.error(`No bundle with id ${options.target}.`);
         process.exit(1);
@@ -89,7 +91,7 @@ export const handleRollback = async (
         p.log.info(`Bundle ${options.target} is already disabled. No changes.`);
         return;
       }
-      const fallbackResult = await databasePlugin.getBundles({
+      const fallbackResult = await databasePlugin.bundles.getBundles({
         where: {
           channel,
           platform: targetBundle.platform,
@@ -107,7 +109,7 @@ export const handleRollback = async (
       });
     } else {
       for (const platform of platforms) {
-        const result = await databasePlugin.getBundles({
+        const result = await databasePlugin.bundles.getBundles({
           where: { channel, platform, enabled: true },
           limit: 2,
         });
@@ -167,9 +169,11 @@ export const handleRollback = async (
     let commitError: unknown = null;
     try {
       for (const t of targets) {
-        await databasePlugin.updateBundle(t.bundle.id, { enabled: false });
+        await databasePlugin.bundles.updateBundle(t.bundle.id, {
+          enabled: false,
+        });
       }
-      await databasePlugin.commitBundle();
+      await databasePlugin.bundles.commitBundle();
     } catch (err) {
       commitError = err;
       p.log.error(
@@ -183,7 +187,7 @@ export const handleRollback = async (
     // deleted bundle satisfies the rollback intent).
     const failures: RollbackTarget[] = [];
     for (const t of targets) {
-      const refetched = await databasePlugin.getBundleById(t.bundle.id);
+      const refetched = await databasePlugin.bundles.getBundleById(t.bundle.id);
       if (!refetched) {
         p.log.warn(
           `${t.platform} ${t.bundle.id} was deleted between commit and verify; treating as rolled back.`,

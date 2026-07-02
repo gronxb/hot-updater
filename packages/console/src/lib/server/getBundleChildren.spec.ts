@@ -27,24 +27,28 @@ function createDatabasePlugin(bundles: Bundle[]) {
 
   return {
     name: "mockDatabase",
-    getChannels: vi.fn(),
-    getBundleById: vi.fn(
-      async (bundleId: string) => bundleMap.get(bundleId) ?? null,
-    ),
-    getBundles: vi.fn(async () => ({
-      data: bundles,
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: bundles.length,
-        totalPages: 1,
-      },
-    })),
-    updateBundle: vi.fn(),
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
+    bundles: {
+      getBundleById: vi.fn(
+        async (bundleId: string) => bundleMap.get(bundleId) ?? null,
+      ),
+      getBundles: vi.fn(async () => ({
+        data: bundles,
+        pagination: {
+          currentPage: 1,
+          hasNextPage: false,
+          hasPreviousPage: false,
+          total: bundles.length,
+          totalPages: 1,
+        },
+      })),
+      updateBundle: vi.fn(),
+      appendBundle: vi.fn(),
+      commitBundle: vi.fn(),
+      deleteBundle: vi.fn(),
+    },
+    channels: {
+      getChannels: vi.fn(),
+    },
   } satisfies DatabasePlugin;
 }
 

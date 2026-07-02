@@ -186,190 +186,198 @@ export const standaloneRepository =
       });
 
       return {
-        supportsCursorPagination: true,
-        async getBundleById(bundleId: string): Promise<Bundle | null> {
-          try {
-            const { path, headers: routeHeaders } = routes.retrieve(bundleId);
+        bundles: {
+          supportsCursorPagination: true,
+          async getBundleById(bundleId: string): Promise<Bundle | null> {
+            try {
+              const { path, headers: routeHeaders } = routes.retrieve(bundleId);
+              const response = await fetch(buildUrl(path), {
+                method: "GET",
+                headers: getHeaders(routeHeaders),
+              });
+
+              if (!response.ok) {
+                return null;
+              }
+
+              return (await response.json()) as Bundle;
+            } catch {
+              return null;
+            }
+          },
+          async getBundles(options) {
+            const { where, limit, cursor, page } = options ?? {};
+            const internalOffset =
+              options &&
+              typeof options === "object" &&
+              "offset" in options &&
+              typeof options.offset === "number"
+                ? options.offset
+                : undefined;
+            const { path, headers: routeHeaders } = routes.list();
+            const url = new URL(buildUrl(path));
+            const resolvedPage =
+              page ??
+              (internalOffset !== undefined && limit > 0
+                ? Math.floor(internalOffset / limit) + 1
+                : undefined);
+
+            if (where?.channel !== undefined) {
+              url.searchParams.set("channel", where.channel);
+            }
+
+            if (where?.platform !== undefined) {
+              url.searchParams.set("platform", where.platform);
+            }
+
+            setBooleanSearchParam(url, "enabled", where?.enabled);
+            setBundleIdFilterSearchParams(url, where?.id);
+            setNullableStringSearchParam(
+              url,
+              "targetAppVersion",
+              where?.targetAppVersion,
+            );
+            appendStringArraySearchParams(
+              url,
+              "targetAppVersionIn",
+              where?.targetAppVersionIn,
+            );
+            setBooleanSearchParam(
+              url,
+              "targetAppVersionNotNull",
+              where?.targetAppVersionNotNull,
+            );
+            setNullableStringSearchParam(
+              url,
+              "fingerprintHash",
+              where?.fingerprintHash,
+            );
+
+            if (limit !== undefined) {
+              url.searchParams.set("limit", String(limit));
+            }
+
+            if (resolvedPage !== undefined) {
+              url.searchParams.set("page", String(resolvedPage));
+            }
+
+            if (cursor?.after !== undefined) {
+              url.searchParams.set("after", cursor.after);
+            }
+
+            if (cursor?.before !== undefined) {
+              url.searchParams.set("before", cursor.before);
+            }
+
+            const response = await fetch(url.toString(), {
+              method: "GET",
+              headers: getHeaders(routeHeaders),
+            });
+            if (!response.ok) {
+              throw new Error(`API Error: ${response.statusText}`);
+            }
+
+            const result = (await response.json()) as unknown;
+
+            if (isPaginatedResult(result)) {
+              return result;
+            }
+
+            throw new Error("API Error: Invalid bundle list response");
+          },
+          async commitBundle({ changedSets }) {
+            if (changedSets.length === 0) {
+              return;
+            }
+
+            for (const op of changedSets) {
+              if (op.operation === "delete") {
+                const { path, headers: routeHeaders } = routes.delete(
+                  op.data.id,
+                );
+                const response = await fetch(buildUrl(path), {
+                  method: "DELETE",
+                  headers: getHeaders(routeHeaders),
+                });
+
+                if (!response.ok) {
+                  if (response.status === 404) {
+                    throw new Error(`Bundle with id ${op.data.id} not found`);
+                  }
+                  throw new Error(
+                    `API Error: ${response.status} ${response.statusText}`,
+                  );
+                }
+
+                const contentType = response.headers.get("content-type");
+                if (contentType?.includes("application/json")) {
+                  try {
+                    await response.json();
+                  } catch {
+                    if (!response.ok) {
+                      throw new Error("Failed to parse response");
+                    }
+                  }
+                }
+              } else if (op.operation === "insert") {
+                const { path, headers: routeHeaders } = routes.create();
+                const response = await fetch(buildUrl(path), {
+                  method: "POST",
+                  headers: getHeaders(routeHeaders),
+                  body: JSON.stringify([op.data]),
+                });
+
+                if (!response.ok) {
+                  throw new Error(`API Error: ${response.statusText}`);
+                }
+
+                const result = (await response.json()) as { success: boolean };
+                if (!result.success) {
+                  throw new Error("Failed to commit bundle");
+                }
+              } else if (op.operation === "update") {
+                const { path, headers: routeHeaders } = routes.update(
+                  op.data.id,
+                );
+                const response = await fetch(buildUrl(path), {
+                  method: "PATCH",
+                  headers: getHeaders(routeHeaders),
+                  body: JSON.stringify(op.data),
+                });
+
+                if (!response.ok) {
+                  throw new Error(`API Error: ${response.statusText}`);
+                }
+
+                const result = (await response.json()) as { success: boolean };
+                if (!result.success) {
+                  throw new Error("Failed to commit bundle");
+                }
+              }
+            }
+          },
+        },
+        channels: {
+          async getChannels(): Promise<string[]> {
+            const { path, headers: routeHeaders } = routes.channels();
+
             const response = await fetch(buildUrl(path), {
               method: "GET",
               headers: getHeaders(routeHeaders),
             });
 
             if (!response.ok) {
-              return null;
+              throw new Error(`API Error: ${response.statusText}`);
             }
 
-            return (await response.json()) as Bundle;
-          } catch {
-            return null;
-          }
-        },
-        async getBundles(options) {
-          const { where, limit, cursor, page } = options ?? {};
-          const internalOffset =
-            options &&
-            typeof options === "object" &&
-            "offset" in options &&
-            typeof options.offset === "number"
-              ? options.offset
-              : undefined;
-          const { path, headers: routeHeaders } = routes.list();
-          const url = new URL(buildUrl(path));
-          const resolvedPage =
-            page ??
-            (internalOffset !== undefined && limit > 0
-              ? Math.floor(internalOffset / limit) + 1
-              : undefined);
+            const result = (await response.json()) as unknown;
 
-          if (where?.channel !== undefined) {
-            url.searchParams.set("channel", where.channel);
-          }
-
-          if (where?.platform !== undefined) {
-            url.searchParams.set("platform", where.platform);
-          }
-
-          setBooleanSearchParam(url, "enabled", where?.enabled);
-          setBundleIdFilterSearchParams(url, where?.id);
-          setNullableStringSearchParam(
-            url,
-            "targetAppVersion",
-            where?.targetAppVersion,
-          );
-          appendStringArraySearchParams(
-            url,
-            "targetAppVersionIn",
-            where?.targetAppVersionIn,
-          );
-          setBooleanSearchParam(
-            url,
-            "targetAppVersionNotNull",
-            where?.targetAppVersionNotNull,
-          );
-          setNullableStringSearchParam(
-            url,
-            "fingerprintHash",
-            where?.fingerprintHash,
-          );
-
-          if (limit !== undefined) {
-            url.searchParams.set("limit", String(limit));
-          }
-
-          if (resolvedPage !== undefined) {
-            url.searchParams.set("page", String(resolvedPage));
-          }
-
-          if (cursor?.after !== undefined) {
-            url.searchParams.set("after", cursor.after);
-          }
-
-          if (cursor?.before !== undefined) {
-            url.searchParams.set("before", cursor.before);
-          }
-
-          const response = await fetch(url.toString(), {
-            method: "GET",
-            headers: getHeaders(routeHeaders),
-          });
-          if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
-          }
-
-          const result = (await response.json()) as unknown;
-
-          if (isPaginatedResult(result)) {
-            return result;
-          }
-
-          throw new Error("API Error: Invalid bundle list response");
-        },
-        async getChannels(): Promise<string[]> {
-          const { path, headers: routeHeaders } = routes.channels();
-
-          const response = await fetch(buildUrl(path), {
-            method: "GET",
-            headers: getHeaders(routeHeaders),
-          });
-
-          if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
-          }
-
-          const result = (await response.json()) as unknown;
-
-          if (hasDataChannels(result)) {
-            return result.data.channels;
-          }
-
-          throw new Error("API Error: Invalid channels response");
-        },
-        async commitBundle({ changedSets }) {
-          if (changedSets.length === 0) {
-            return;
-          }
-
-          for (const op of changedSets) {
-            if (op.operation === "delete") {
-              const { path, headers: routeHeaders } = routes.delete(op.data.id);
-              const response = await fetch(buildUrl(path), {
-                method: "DELETE",
-                headers: getHeaders(routeHeaders),
-              });
-
-              if (!response.ok) {
-                if (response.status === 404) {
-                  throw new Error(`Bundle with id ${op.data.id} not found`);
-                }
-                throw new Error(
-                  `API Error: ${response.status} ${response.statusText}`,
-                );
-              }
-
-              const contentType = response.headers.get("content-type");
-              if (contentType?.includes("application/json")) {
-                try {
-                  await response.json();
-                } catch {
-                  if (!response.ok) {
-                    throw new Error("Failed to parse response");
-                  }
-                }
-              }
-            } else if (op.operation === "insert") {
-              const { path, headers: routeHeaders } = routes.create();
-              const response = await fetch(buildUrl(path), {
-                method: "POST",
-                headers: getHeaders(routeHeaders),
-                body: JSON.stringify([op.data]),
-              });
-
-              if (!response.ok) {
-                throw new Error(`API Error: ${response.statusText}`);
-              }
-
-              const result = (await response.json()) as { success: boolean };
-              if (!result.success) {
-                throw new Error("Failed to commit bundle");
-              }
-            } else if (op.operation === "update") {
-              const { path, headers: routeHeaders } = routes.update(op.data.id);
-              const response = await fetch(buildUrl(path), {
-                method: "PATCH",
-                headers: getHeaders(routeHeaders),
-                body: JSON.stringify(op.data),
-              });
-
-              if (!response.ok) {
-                throw new Error(`API Error: ${response.statusText}`);
-              }
-
-              const result = (await response.json()) as { success: boolean };
-              if (!result.success) {
-                throw new Error("Failed to commit bundle");
-              }
+            if (hasDataChannels(result)) {
+              return result.data.channels;
             }
-          }
+
+            throw new Error("API Error: Invalid channels response");
+          },
         },
       };
     },

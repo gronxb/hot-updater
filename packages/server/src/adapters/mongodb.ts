@@ -159,38 +159,91 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
       await collection.deleteMany({ [field]: bundleId }, { session });
     };
     return {
-      async getBundleById(bundleId) {
-        const row = await bundles.findOne({ id: bundleId });
-        if (!row) return null;
-        const patchMap = await fetchPatchMap([bundleId]);
-        return rowToBundle(row, patchMap.get(bundleId) ?? []);
-      },
-      async getBundles(
-        options: DatabaseBundleQueryOptions & { offset?: number },
-      ) {
-        const offset = options.offset ?? 0;
-        const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
-        const where = mongoWhere(options.where);
-        const [total, rows] = await Promise.all([
-          bundles.countDocuments(where),
-          bundles
-            .find(where)
-            .sort({ id: orderBy.direction === "asc" ? 1 : -1 })
-            .skip(offset)
-            .limit(options.limit)
-            .toArray(),
-        ]);
-        const patchMap = await fetchPatchMap(rows.map((row) => row.id));
-        return {
-          data: rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? [])),
-          pagination: calculatePagination(total, {
-            limit: options.limit,
-            offset,
-          }),
-        };
-      },
-      async getUpdateInfo(args, context) {
-        if (args._updateStrategy === "appVersion") {
+      bundles: {
+        async getBundleById(bundleId) {
+          const row = await bundles.findOne({ id: bundleId });
+          if (!row) return null;
+          const patchMap = await fetchPatchMap([bundleId]);
+          return rowToBundle(row, patchMap.get(bundleId) ?? []);
+        },
+        async getBundles(
+          options: DatabaseBundleQueryOptions & { offset?: number },
+        ) {
+          const offset = options.offset ?? 0;
+          const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
+          const where = mongoWhere(options.where);
+          const [total, rows] = await Promise.all([
+            bundles.countDocuments(where),
+            bundles
+              .find(where)
+              .sort({ id: orderBy.direction === "asc" ? 1 : -1 })
+              .skip(offset)
+              .limit(options.limit)
+              .toArray(),
+          ]);
+          const patchMap = await fetchPatchMap(rows.map((row) => row.id));
+          return {
+            data: rows.map((row) =>
+              rowToBundle(row, patchMap.get(row.id) ?? []),
+            ),
+            pagination: calculatePagination(total, {
+              limit: options.limit,
+              offset,
+            }),
+          };
+        },
+        async getUpdateInfo(args, context) {
+          if (args._updateStrategy === "appVersion") {
+            const channel = args.channel ?? "production";
+            const minBundleId = args.minBundleId ?? NIL_UUID;
+            const rows = await bundles
+              .find({
+                enabled: true,
+                platform: args.platform,
+                channel,
+                id: { $gte: minBundleId },
+                target_app_version: { $exists: true, $nin: [null, ""] },
+              })
+              .project<{ target_app_version?: string | null }>({
+                target_app_version: 1,
+              })
+              .toArray();
+
+            const targetAppVersions = Array.from(
+              new Set(
+                rows
+                  .map((row) => row.target_app_version)
+                  .filter(
+                    (value): value is string =>
+                      typeof value === "string" && value.length > 0,
+                  ),
+              ),
+            );
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
+            );
+            const updateRows =
+              compatibleAppVersions.length > 0
+                ? await bundles
+                    .find({
+                      enabled: true,
+                      platform: args.platform,
+                      channel,
+                      id: { $gte: minBundleId },
+                      target_app_version: { $in: compatibleAppVersions },
+                    })
+                    .sort({ id: -1 })
+                    .toArray()
+                : [];
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles: await mapRowsToBundles(updateRows),
+              context,
+            });
+          }
+
           const channel = args.channel ?? "production";
           const minBundleId = args.minBundleId ?? NIL_UUID;
           const rows = await bundles
@@ -199,95 +252,48 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
               platform: args.platform,
               channel,
               id: { $gte: minBundleId },
-              target_app_version: { $exists: true, $nin: [null, ""] },
+              fingerprint_hash: args.fingerprintHash,
             })
-            .project<{ target_app_version?: string | null }>({
-              target_app_version: 1,
-            })
+            .sort({ id: -1 })
             .toArray();
-
-          const targetAppVersions = Array.from(
-            new Set(
-              rows
-                .map((row) => row.target_app_version)
-                .filter(
-                  (value): value is string =>
-                    typeof value === "string" && value.length > 0,
-                ),
-            ),
-          );
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
-          const updateRows =
-            compatibleAppVersions.length > 0
-              ? await bundles
-                  .find({
-                    enabled: true,
-                    platform: args.platform,
-                    channel,
-                    id: { $gte: minBundleId },
-                    target_app_version: { $in: compatibleAppVersions },
-                  })
-                  .sort({ id: -1 })
-                  .toArray()
-              : [];
 
           return resolveUpdateInfoFromBundles({
             args: { ...args, channel, minBundleId },
-            bundles: await mapRowsToBundles(updateRows),
+            bundles: await mapRowsToBundles(rows),
             context,
           });
-        }
-
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
-        const rows = await bundles
-          .find({
-            enabled: true,
-            platform: args.platform,
-            channel,
-            id: { $gte: minBundleId },
-            fingerprint_hash: args.fingerprintHash,
-          })
-          .sort({ id: -1 })
-          .toArray();
-
-        return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles: await mapRowsToBundles(rows),
-          context,
-        });
-      },
-      async getChannels() {
-        const channels = await bundles.distinct("channel");
-        return channels
-          .filter((channel): channel is string => typeof channel === "string")
-          .sort((left, right) => left.localeCompare(right));
-      },
-      async commitBundle({ changedSets }) {
-        await runInTransaction(async (session) => {
-          for (const change of changedSets) {
-            if (change.operation === "delete") {
-              await deleteByBundleId(
-                patches,
-                "bundle_id",
-                change.data.id,
-                session,
-              );
-              await deleteByBundleId(
-                patches,
-                "base_bundle_id",
-                change.data.id,
-                session,
-              );
-              await bundles.deleteMany({ id: change.data.id }, { session });
-              continue;
+        },
+        async commitBundle({ changedSets }) {
+          await runInTransaction(async (session) => {
+            for (const change of changedSets) {
+              if (change.operation === "delete") {
+                await deleteByBundleId(
+                  patches,
+                  "bundle_id",
+                  change.data.id,
+                  session,
+                );
+                await deleteByBundleId(
+                  patches,
+                  "base_bundle_id",
+                  change.data.id,
+                  session,
+                );
+                await bundles.deleteMany({ id: change.data.id }, { session });
+                continue;
+              }
+              await replaceBundle(change.data, session);
             }
-            await replaceBundle(change.data, session);
-          }
-        });
+          });
+        },
+      },
+      channels: {
+        async getChannels() {
+          const channels = await bundles.distinct("channel");
+          return channels
+            .filter((channel): channel is string => typeof channel === "string")
+            .sort((left, right) => left.localeCompare(right));
+        },
       },
     };
   },

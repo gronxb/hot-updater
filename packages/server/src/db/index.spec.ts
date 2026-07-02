@@ -183,28 +183,32 @@ function createSchemaOnlyAdapter({
 }): DatabasePluginFactory {
   const factory: DatabasePluginFactory = () => ({
     name,
-    async getBundleById() {
-      return null;
+    bundles: {
+      async getBundleById() {
+        return null;
+      },
+      async getBundles() {
+        return {
+          data: [],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 0,
+            totalPages: 0,
+          },
+        };
+      },
+      async appendBundle() {},
+      async updateBundle() {},
+      async deleteBundle() {},
+      async commitBundle() {},
     },
-    async getBundles() {
-      return {
-        data: [],
-        pagination: {
-          currentPage: 1,
-          hasNextPage: false,
-          hasPreviousPage: false,
-          total: 0,
-          totalPages: 0,
-        },
-      };
+    channels: {
+      async getChannels() {
+        return [];
+      },
     },
-    async getChannels() {
-      return [];
-    },
-    async appendBundle() {},
-    async updateBundle() {},
-    async deleteBundle() {},
-    async commitBundle() {},
   });
   factory.adapterName = name;
   factory.provider = provider;
@@ -881,7 +885,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       })();
 
-      await plugin.getBundles({
+      await plugin.bundles.getBundles({
         limit: 10,
         where: {
           targetAppVersion: "1.0.x",
@@ -927,7 +931,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       } as unknown as MongoClient;
       const plugin = mongoAdapter({ client })();
 
-      await plugin.getBundles({
+      await plugin.bundles.getBundles({
         limit: 10,
         where: {
           targetAppVersion: "1.0.x",
@@ -976,7 +980,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       })();
 
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.bundles.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -987,7 +991,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.bundles.getUpdateInfo?.({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1081,7 +1085,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       })();
 
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.bundles.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1092,7 +1096,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.bundles.getUpdateInfo?.({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1171,7 +1175,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const plugin = mongoAdapter({ client })();
 
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.bundles.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1182,7 +1186,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.bundles.getUpdateInfo?.({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1258,8 +1262,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       })();
 
-      await plugin.appendBundle(transactionBundle);
-      await plugin.commitBundle();
+      await plugin.bundles.appendBundle(transactionBundle);
+      await plugin.bundles.commitBundle();
 
       expect($transaction).toHaveBeenCalledTimes(1);
       expect(txBundles.upsert).toHaveBeenCalledTimes(1);
@@ -1320,8 +1324,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       })();
 
-      await plugin.appendBundle(transactionBundle);
-      await plugin.commitBundle();
+      await plugin.bundles.appendBundle(transactionBundle);
+      await plugin.bundles.commitBundle();
 
       expect(transaction).toHaveBeenCalledTimes(1);
       expect(txInsert).toHaveBeenCalledTimes(1);
@@ -1357,8 +1361,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       } as unknown as MongoClient;
       const plugin = mongoAdapter({ client })();
 
-      await plugin.appendBundle(transactionBundle);
-      await plugin.commitBundle();
+      await plugin.bundles.appendBundle(transactionBundle);
+      await plugin.bundles.commitBundle();
 
       expect(client.startSession).toHaveBeenCalledTimes(1);
       expect(session.withTransaction).toHaveBeenCalledTimes(1);
@@ -1832,25 +1836,29 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   describe("database plugin factories", () => {
     it("keeps optional maintenance capabilities lazy", () => {
       const factory = vi.fn(() => ({
-        async getBundleById() {
-          return null;
+        bundles: {
+          async getBundleById() {
+            return null;
+          },
+          async getBundles() {
+            return {
+              data: [],
+              pagination: {
+                hasNextPage: false,
+                hasPreviousPage: false,
+                currentPage: 1,
+                totalPages: 1,
+                total: 0,
+              },
+            };
+          },
+          async commitBundle() {},
         },
-        async getBundles() {
-          return {
-            data: [],
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: 0,
-            },
-          };
+        channels: {
+          async getChannels() {
+            return [];
+          },
         },
-        async getChannels() {
-          return [];
-        },
-        async commitBundle() {},
       }));
       createHotUpdater({
         database: createDatabasePlugin({
@@ -1879,35 +1887,39 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         database: createDatabasePlugin({
           name: "isolatedPlugin",
           factory: () => ({
-            async getBundleById() {
-              return null;
-            },
-            async getBundles() {
-              return {
-                data: [],
-                pagination: {
-                  hasNextPage: false,
-                  hasPreviousPage: false,
-                  currentPage: 1,
-                  totalPages: 1,
-                  total: 0,
-                },
-              };
-            },
-            async getChannels() {
-              return [];
+            bundles: {
+              async getBundleById() {
+                return null;
+              },
+              async getBundles() {
+                return {
+                  data: [],
+                  pagination: {
+                    hasNextPage: false,
+                    hasPreviousPage: false,
+                    currentPage: 1,
+                    totalPages: 1,
+                    total: 0,
+                  },
+                };
+              },
+              async commitBundle({ changedSets }) {
+                commitCount += 1;
+                committedBundleIds.push(
+                  changedSets.map((change) => change.data.id),
+                );
+
+                if (commitCount === 1) {
+                  notifyFirstCommitStarted();
+                  await firstCommitGate;
+                }
+              },
             },
             onUnmount,
-            async commitBundle({ changedSets }) {
-              commitCount += 1;
-              committedBundleIds.push(
-                changedSets.map((change) => change.data.id),
-              );
-
-              if (commitCount === 1) {
-                notifyFirstCommitStarted();
-                await firstCommitGate;
-              }
+            channels: {
+              async getChannels() {
+                return [];
+              },
             },
           }),
         })({}),

@@ -28,24 +28,24 @@ describe("firebaseDatabase plugin", () => {
   });
 
   setupBundleMethodsTestSuite({
-    getBundleById: (id) => plugin.getBundleById(id),
-    getChannels: () => plugin.getChannels(),
+    getBundleById: (id) => plugin.bundles.getBundleById(id),
+    getChannels: () => plugin.channels.getChannels(),
     insertBundle: async (bundle) => {
-      await plugin.appendBundle(bundle);
-      await plugin.commitBundle();
+      await plugin.bundles.appendBundle(bundle);
+      await plugin.bundles.commitBundle();
     },
-    getBundles: (options) => plugin.getBundles(options),
+    getBundles: (options) => plugin.bundles.getBundles(options),
     updateBundleById: async (bundleId, newBundle) => {
-      await plugin.updateBundle(bundleId, newBundle);
-      await plugin.commitBundle();
+      await plugin.bundles.updateBundle(bundleId, newBundle);
+      await plugin.bundles.commitBundle();
     },
     deleteBundleById: async (bundleId) => {
-      const bundle = await plugin.getBundleById(bundleId);
+      const bundle = await plugin.bundles.getBundleById(bundleId);
       if (!bundle) {
         return;
       }
-      await plugin.deleteBundle(bundle);
-      await plugin.commitBundle();
+      await plugin.bundles.deleteBundle(bundle);
+      await plugin.bundles.commitBundle();
     },
   });
 
@@ -54,16 +54,16 @@ describe("firebaseDatabase plugin", () => {
       await clearCollections();
 
       for (const bundle of bundles) {
-        await plugin.appendBundle(bundle);
+        await plugin.bundles.appendBundle(bundle);
       }
-      await plugin.commitBundle();
+      await plugin.bundles.commitBundle();
 
-      return plugin.getUpdateInfo?.(args) ?? null;
+      return plugin.bundles.getUpdateInfo?.(args) ?? null;
     },
   });
 
   it("should return null for a non-existent bundle id", async () => {
-    const bundle = await plugin.getBundleById("nonexistent");
+    const bundle = await plugin.bundles.getBundleById("nonexistent");
     expect(bundle).toBeNull();
   });
 
@@ -81,10 +81,10 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     } as const;
-    await plugin.appendBundle(snakeBundle);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(snakeBundle);
+    await plugin.bundles.commitBundle();
 
-    const bundle = await plugin.getBundleById("bundle123");
+    const bundle = await plugin.bundles.getBundleById("bundle123");
     expect(bundle).toEqual({
       id: "bundle123",
       channel: "staging",
@@ -154,12 +154,12 @@ describe("firebaseDatabase plugin", () => {
       fingerprintHash: null,
     } as const;
 
-    await plugin.appendBundle(bundle1);
-    await plugin.appendBundle(bundle2);
-    await plugin.appendBundle(bundle3);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundle1);
+    await plugin.bundles.appendBundle(bundle2);
+    await plugin.bundles.appendBundle(bundle3);
+    await plugin.bundles.commitBundle();
 
-    const bundles = await plugin.getBundles({
+    const bundles = await plugin.bundles.getBundles({
       where: { channel: "production" },
       limit: 20,
     });
@@ -195,18 +195,18 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     } as const;
-    await plugin.appendBundle(bundle1);
-    await plugin.appendBundle(bundle2);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundle1);
+    await plugin.bundles.appendBundle(bundle2);
+    await plugin.bundles.commitBundle();
 
-    const channels = await plugin.getChannels();
+    const channels = await plugin.channels.getChannels();
     expect(channels.sort()).toEqual(["production", "staging"].sort());
   });
 
   it("refreshes bundle data before merging an update after a previous list request", async () => {
     const bundleId = "firebase-stale-cache";
 
-    await plugin.appendBundle({
+    await plugin.bundles.appendBundle({
       id: bundleId,
       channel: "production",
       enabled: true,
@@ -220,9 +220,9 @@ describe("firebaseDatabase plugin", () => {
       fingerprintHash: null,
       metadata: { app_version: "initial" },
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
-    await plugin.getBundles({ limit: 20 });
+    await plugin.bundles.getBundles({ limit: 20 });
 
     await bundlesCollection.doc(bundleId).set(
       {
@@ -232,8 +232,8 @@ describe("firebaseDatabase plugin", () => {
       { merge: true },
     );
 
-    await plugin.updateBundle(bundleId, { enabled: false });
-    await plugin.commitBundle();
+    await plugin.bundles.updateBundle(bundleId, { enabled: false });
+    await plugin.bundles.commitBundle();
 
     const bundleDoc = await bundlesCollection.doc(bundleId).get();
     expect(bundleDoc.data()).toEqual(
@@ -246,7 +246,7 @@ describe("firebaseDatabase plugin", () => {
   });
 
   it("should commit bundle changes and remove unused target_app_versions", async () => {
-    await plugin.appendBundle({
+    await plugin.bundles.appendBundle({
       id: "bundle1",
       channel: "production",
       enabled: true,
@@ -260,7 +260,7 @@ describe("firebaseDatabase plugin", () => {
       fingerprintHash: null,
     });
 
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     const bundleDoc = await bundlesCollection.doc("bundle1").get();
     expect(bundleDoc.exists).toBeTruthy();
@@ -275,7 +275,7 @@ describe("firebaseDatabase plugin", () => {
     expect(targetDoc.exists).toBeTruthy();
     expect(targetDoc.data()?.channel).toBe("production");
 
-    await plugin.updateBundle("bundle1", {
+    await plugin.bundles.updateBundle("bundle1", {
       id: "bundle1",
       channel: "production",
       enabled: true,
@@ -289,7 +289,7 @@ describe("firebaseDatabase plugin", () => {
       fingerprintHash: null,
     });
 
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
     const updatedBundleDoc = await bundlesCollection.doc("bundle1").get();
     expect(updatedBundleDoc.exists).toBeTruthy();
     const updatedData = updatedBundleDoc.data();
@@ -352,12 +352,12 @@ describe("firebaseDatabase plugin", () => {
       fingerprintHash: null,
     } as const;
 
-    await plugin.appendBundle(bundleA);
-    await plugin.appendBundle(bundleB);
-    await plugin.appendBundle(bundleC);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundleA);
+    await plugin.bundles.appendBundle(bundleB);
+    await plugin.bundles.appendBundle(bundleC);
+    await plugin.bundles.commitBundle();
 
-    const bundles = await plugin.getBundles({ limit: 20 });
+    const bundles = await plugin.bundles.getBundles({ limit: 20 });
     expect(bundles.data).toHaveLength(3);
     expect(bundles.data[0].id).toBe("bundleC");
     expect(bundles.data[1].id).toBe("bundleB");
@@ -406,12 +406,12 @@ describe("firebaseDatabase plugin", () => {
       fingerprintHash: null,
     } as const;
 
-    await plugin.appendBundle(bundle1);
-    await plugin.appendBundle(bundle2);
-    await plugin.appendBundle(bundle3);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundle1);
+    await plugin.bundles.appendBundle(bundle2);
+    await plugin.bundles.appendBundle(bundle3);
+    await plugin.bundles.commitBundle();
 
-    const result = await plugin.getBundles({
+    const result = await plugin.bundles.getBundles({
       where: { channel: "production" },
       limit: 20,
     });
@@ -472,12 +472,12 @@ describe("firebaseDatabase plugin", () => {
       fingerprintHash: null,
     } as const;
 
-    await plugin.appendBundle(bundle1);
-    await plugin.appendBundle(bundle2);
-    await plugin.appendBundle(bundle3);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundle1);
+    await plugin.bundles.appendBundle(bundle2);
+    await plugin.bundles.appendBundle(bundle3);
+    await plugin.bundles.commitBundle();
 
-    const firstPage = await plugin.getBundles({
+    const firstPage = await plugin.bundles.getBundles({
       where: { channel: "production" },
       limit: 2,
     });
@@ -492,7 +492,7 @@ describe("firebaseDatabase plugin", () => {
       nextCursor: "bundle2",
     });
 
-    const secondPage = await plugin.getBundles({
+    const secondPage = await plugin.bundles.getBundles({
       where: { channel: "production" },
       limit: 2,
       cursor: {
@@ -555,11 +555,11 @@ describe("firebaseDatabase plugin", () => {
     ] as const;
 
     for (const bundle of bundlesData) {
-      await plugin.appendBundle(bundle);
+      await plugin.bundles.appendBundle(bundle);
     }
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
-    const filteredBundles = await plugin.getBundles({
+    const filteredBundles = await plugin.bundles.getBundles({
       where: { channel: "production", platform: "ios" },
       limit: 20,
     });
@@ -568,13 +568,13 @@ describe("firebaseDatabase plugin", () => {
   });
 
   it("should not modify data when commitBundle is called with no pending changes", async () => {
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
     const snapshot = await bundlesCollection.get();
     expect(snapshot.empty).toBe(true);
   });
 
   it("should handle bundles without targetAppVersion by deleting the field", async () => {
-    await plugin.appendBundle({
+    await plugin.bundles.appendBundle({
       id: "bundleNoVersion",
       channel: "staging",
       enabled: false,
@@ -587,7 +587,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     const bundleDoc = await bundlesCollection.doc("bundleNoVersion").get();
     expect(bundleDoc.exists).toBeTruthy();
@@ -609,22 +609,22 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     } as const;
-    await plugin.appendBundle(bundleDirect);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundleDirect);
+    await plugin.bundles.commitBundle();
 
-    const fetched1 = await plugin.getBundleById("bundleDirect");
+    const fetched1 = await plugin.bundles.getBundleById("bundleDirect");
     expect(fetched1).toBeTruthy();
     expect(fetched1?.id).toBe("bundleDirect");
 
     await bundlesCollection
       .doc(bundleDirect.id)
       .update({ channel: "updatedDirect" });
-    const fetched2 = await plugin.getBundleById("bundleDirect");
+    const fetched2 = await plugin.bundles.getBundleById("bundleDirect");
     expect(fetched2?.channel).toBe("updatedDirect");
   });
 
   it("should create a target_app_versions doc on bundle insertion", async () => {
-    await plugin.appendBundle({
+    await plugin.bundles.appendBundle({
       id: "bundleTV1",
       channel: "release",
       enabled: true,
@@ -637,7 +637,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     const tvDoc = await firestore
       .collection("target_app_versions")
@@ -651,7 +651,7 @@ describe("firebaseDatabase plugin", () => {
   });
 
   it("should maintain target_app_versions doc if multiple bundles reference the same version", async () => {
-    await plugin.appendBundle({
+    await plugin.bundles.appendBundle({
       id: "bundleTV2",
       channel: "release",
       enabled: true,
@@ -664,7 +664,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.appendBundle({
+    await plugin.bundles.appendBundle({
       id: "bundleTV3",
       channel: "release",
       enabled: true,
@@ -677,7 +677,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     const tvDoc = await firestore
       .collection("target_app_versions")
@@ -686,7 +686,7 @@ describe("firebaseDatabase plugin", () => {
     expect(tvDoc.exists).toBeTruthy();
     expect(tvDoc.data()?.channel).toBe("release");
 
-    await plugin.updateBundle("bundleTV2", {
+    await plugin.bundles.updateBundle("bundleTV2", {
       id: "bundleTV2",
       channel: "release",
       enabled: true,
@@ -699,7 +699,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     const tvDocOld = await firestore
       .collection("target_app_versions")
@@ -715,7 +715,7 @@ describe("firebaseDatabase plugin", () => {
     expect(tvDocNew.exists).toBeTruthy();
     expect(tvDocNew.data()?.channel).toBe("release");
 
-    await plugin.updateBundle("bundleTV3", {
+    await plugin.bundles.updateBundle("bundleTV3", {
       id: "bundleTV3",
       channel: "beta",
       enabled: true,
@@ -728,7 +728,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     const tvDocOldAfter = await firestore
       .collection("target_app_versions")
@@ -751,7 +751,7 @@ describe("firebaseDatabase plugin", () => {
   });
 
   it("should delete target_app_versions doc when no bundles reference them", async () => {
-    await plugin.appendBundle({
+    await plugin.bundles.appendBundle({
       id: "bundleTV4",
       channel: "beta",
       enabled: true,
@@ -764,7 +764,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
     const tvDoc = await firestore
       .collection("target_app_versions")
       .doc("android_beta_2.0.0")
@@ -772,7 +772,7 @@ describe("firebaseDatabase plugin", () => {
     expect(tvDoc.exists).toBeTruthy();
     expect(tvDoc.data()?.channel).toBe("beta");
 
-    await plugin.updateBundle("bundleTV4", {
+    await plugin.bundles.updateBundle("bundleTV4", {
       id: "bundleTV4",
       channel: "beta",
       enabled: true,
@@ -785,7 +785,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     const tvDocAfter = await firestore
       .collection("target_app_versions")
@@ -796,7 +796,7 @@ describe("firebaseDatabase plugin", () => {
 
   it("should add channel to channels collection when bundle is added and remove old channel when updated", async () => {
     // Add initial bundle
-    await plugin.appendBundle({
+    await plugin.bundles.appendBundle({
       id: "bundle1",
       channel: "production",
       enabled: true,
@@ -809,7 +809,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     // Verify channel was added
     const channelDoc = await channelsCollection.doc("production").get();
@@ -817,7 +817,7 @@ describe("firebaseDatabase plugin", () => {
     expect(channelDoc.data()?.name).toBe("production");
 
     // Update bundle with new channel
-    await plugin.updateBundle("bundle1", {
+    await plugin.bundles.updateBundle("bundle1", {
       id: "bundle1",
       channel: "staging",
       enabled: true,
@@ -830,7 +830,7 @@ describe("firebaseDatabase plugin", () => {
       storageUri: "gs://test-bucket/test-key",
       fingerprintHash: null,
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     // Verify old channel was removed and new channel was added
     const oldChannelDoc = await channelsCollection.doc("production").get();
@@ -887,69 +887,69 @@ describe("firebaseDatabase plugin", () => {
   ];
   it("should delete a single bundle successfully", async () => {
     // Setup: Create bundleX
-    await plugin.appendBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Verify bundle exists
-    const bundleBefore = await plugin.getBundleById("bundleX");
+    const bundleBefore = await plugin.bundles.getBundleById("bundleX");
     expect(bundleBefore).toBeTruthy();
     expect(bundleBefore?.message).toBe("Bundle X");
 
     // Delete bundle
-    await plugin.deleteBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Verify bundle is deleted
-    const bundleAfter = await plugin.getBundleById("bundleX");
+    const bundleAfter = await plugin.bundles.getBundleById("bundleX");
     expect(bundleAfter).toBeNull();
   });
 
   it("should delete orphaned channels when last bundle in channel is deleted", async () => {
     // Setup: Create only bundleZ (staging channel)
-    await plugin.appendBundle(bundlesData[2]);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundlesData[2]);
+    await plugin.bundles.commitBundle();
 
     // Verify staging channel exists
-    const channelsBefore = await plugin.getChannels();
+    const channelsBefore = await plugin.channels.getChannels();
     expect(channelsBefore).toContain("staging");
 
     // Delete the only bundle in staging channel
-    await plugin.deleteBundle(bundlesData[2]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[2]);
+    await plugin.bundles.commitBundle();
 
     // Verify staging channel is deleted
-    const channelsAfter = await plugin.getChannels();
+    const channelsAfter = await plugin.channels.getChannels();
     expect(channelsAfter).not.toContain("staging");
   });
 
   it("should not delete channels when other bundles still use them", async () => {
     // Setup: Create bundleX and bundleY (both in production channel)
-    await plugin.appendBundle(bundlesData[0]);
-    await plugin.appendBundle(bundlesData[1]);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundlesData[0]);
+    await plugin.bundles.appendBundle(bundlesData[1]);
+    await plugin.bundles.commitBundle();
 
     // Verify production channel exists
-    const channelsBefore = await plugin.getChannels();
+    const channelsBefore = await plugin.channels.getChannels();
     expect(channelsBefore).toContain("production");
 
     // Delete bundleX
-    await plugin.deleteBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Verify production channel still exists (used by bundleY)
-    const channelsAfter = await plugin.getChannels();
+    const channelsAfter = await plugin.channels.getChannels();
     expect(channelsAfter).toContain("production");
 
     // Verify bundleY still exists
-    const remainingBundle = await plugin.getBundleById("bundleY");
+    const remainingBundle = await plugin.bundles.getBundleById("bundleY");
     expect(remainingBundle).toBeTruthy();
     expect(remainingBundle?.message).toBe("Bundle Y");
   });
 
   it("should delete orphaned target app versions when no bundles use them", async () => {
     // Setup: Create bundleX (ios production 1.1.1)
-    await plugin.appendBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Verify target app version document exists
     const targetVersionDoc = await firestore
@@ -959,8 +959,8 @@ describe("firebaseDatabase plugin", () => {
     expect(targetVersionDoc.exists).toBe(true);
 
     // Delete bundle
-    await plugin.deleteBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Verify target app version document is deleted
     const targetVersionDocAfter = await firestore
@@ -972,9 +972,9 @@ describe("firebaseDatabase plugin", () => {
 
   it("should not delete target app versions when other bundles still use them", async () => {
     // Setup: Create bundleX and bundleZ (both ios 1.1.1 but different channels)
-    await plugin.appendBundle(bundlesData[0]); // ios production 1.1.1
-    await plugin.appendBundle(bundlesData[2]); // ios staging 1.1.1
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundlesData[0]); // ios production 1.1.1
+    await plugin.bundles.appendBundle(bundlesData[2]); // ios staging 1.1.1
+    await plugin.bundles.commitBundle();
 
     // Verify both target app version documents exist
     const prodTargetDoc = await firestore
@@ -989,8 +989,8 @@ describe("firebaseDatabase plugin", () => {
     expect(stagingTargetDoc.exists).toBe(true);
 
     // Delete bundleX (production)
-    await plugin.deleteBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Verify production target version is deleted
     const prodTargetDocAfter = await firestore
@@ -1009,35 +1009,35 @@ describe("firebaseDatabase plugin", () => {
 
   it("should handle bundles with null fingerprintHash", async () => {
     // Setup: All test bundles have null fingerprintHash
-    await plugin.appendBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Delete bundle should work without errors
-    await plugin.deleteBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Verify bundle is deleted
-    const bundle = await plugin.getBundleById("bundleX");
+    const bundle = await plugin.bundles.getBundleById("bundleX");
     expect(bundle).toBeNull();
   });
 
   it("should update local cache after deletion", async () => {
     // Setup: Create all bundles
     for (const bundle of bundlesData) {
-      await plugin.appendBundle(bundle);
+      await plugin.bundles.appendBundle(bundle);
     }
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     // Get bundles to populate cache
-    const bundlesBefore = await plugin.getBundles({ limit: 10 });
+    const bundlesBefore = await plugin.bundles.getBundles({ limit: 10 });
     expect(bundlesBefore.data).toHaveLength(3);
 
     // Delete bundleY
-    await plugin.deleteBundle(bundlesData[1]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[1]);
+    await plugin.bundles.commitBundle();
 
     // Verify cache is updated
-    const bundlesAfter = await plugin.getBundles({ limit: 10 });
+    const bundlesAfter = await plugin.bundles.getBundles({ limit: 10 });
     expect(bundlesAfter.data).toHaveLength(2);
 
     const remainingIds = bundlesAfter.data.map((b) => b.id);
@@ -1048,27 +1048,27 @@ describe("firebaseDatabase plugin", () => {
 
   it("should work with updateBundle workflow", async () => {
     // Setup: Create bundleX
-    await plugin.appendBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Update bundle message and target version
-    await plugin.updateBundle("bundleX", {
+    await plugin.bundles.updateBundle("bundleX", {
       message: "Updated Bundle X",
       targetAppVersion: "1.2.0",
     });
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     // Verify update worked
-    const updatedBundle = await plugin.getBundleById("bundleX");
+    const updatedBundle = await plugin.bundles.getBundleById("bundleX");
     expect(updatedBundle?.message).toBe("Updated Bundle X");
     expect(updatedBundle?.targetAppVersion).toBe("1.2.0");
 
     // Delete updated bundle
-    await plugin.deleteBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Verify bundle is deleted
-    const deletedBundle = await plugin.getBundleById("bundleX");
+    const deletedBundle = await plugin.bundles.getBundleById("bundleX");
     expect(deletedBundle).toBeNull();
 
     // Verify new target version document is also deleted
@@ -1081,9 +1081,9 @@ describe("firebaseDatabase plugin", () => {
 
   it("should handle platform-specific deletions correctly", async () => {
     // Setup: Create bundleX (ios) and bundleY (android), both production 1.1.1
-    await plugin.appendBundle(bundlesData[0]); // ios production
-    await plugin.appendBundle(bundlesData[1]); // android production
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(bundlesData[0]); // ios production
+    await plugin.bundles.appendBundle(bundlesData[1]); // android production
+    await plugin.bundles.commitBundle();
 
     // Verify both platform target versions exist
     const iosTargetDoc = await firestore
@@ -1098,8 +1098,8 @@ describe("firebaseDatabase plugin", () => {
     expect(androidTargetDoc.exists).toBe(true);
 
     // Delete iOS bundle
-    await plugin.deleteBundle(bundlesData[0]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[0]);
+    await plugin.bundles.commitBundle();
 
     // Verify iOS target version is deleted
     const iosTargetDocAfter = await firestore
@@ -1116,22 +1116,22 @@ describe("firebaseDatabase plugin", () => {
     expect(androidTargetDocAfter.exists).toBe(true);
 
     // Verify production channel still exists (android bundle remains)
-    const channels = await plugin.getChannels();
+    const channels = await plugin.channels.getChannels();
     expect(channels).toContain("production");
   });
 
   it("should handle complex scenario with all test bundles", async () => {
     // Setup: Create all bundles
     for (const bundle of bundlesData) {
-      await plugin.appendBundle(bundle);
+      await plugin.bundles.appendBundle(bundle);
     }
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     // Verify initial state
-    const bundlesBefore = await plugin.getBundles({ limit: 10 });
+    const bundlesBefore = await plugin.bundles.getBundles({ limit: 10 });
     expect(bundlesBefore.data).toHaveLength(3);
 
-    const channelsBefore = await plugin.getChannels();
+    const channelsBefore = await plugin.channels.getChannels();
     expect(channelsBefore).toContain("production");
     expect(channelsBefore).toContain("staging");
 
@@ -1151,15 +1151,15 @@ describe("firebaseDatabase plugin", () => {
     }
 
     // Delete bundleY (android production)
-    await plugin.deleteBundle(bundlesData[1]);
-    await plugin.commitBundle();
+    await plugin.bundles.deleteBundle(bundlesData[1]);
+    await plugin.bundles.commitBundle();
 
     // Verify selective deletion
-    const bundlesAfter = await plugin.getBundles({ limit: 10 });
+    const bundlesAfter = await plugin.bundles.getBundles({ limit: 10 });
     expect(bundlesAfter.data).toHaveLength(2);
 
     // Verify channels still exist (other bundles use them)
-    const channelsAfter = await plugin.getChannels();
+    const channelsAfter = await plugin.channels.getChannels();
     expect(channelsAfter).toContain("production"); // bundleX still there
     expect(channelsAfter).toContain("staging"); // bundleZ still there
 
@@ -1186,22 +1186,22 @@ describe("firebaseDatabase plugin", () => {
   it("should handle deletion of all bundles and cleanup all resources", async () => {
     // Setup: Create all bundles
     for (const bundle of bundlesData) {
-      await plugin.appendBundle(bundle);
+      await plugin.bundles.appendBundle(bundle);
     }
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     // Delete all bundles one by one
     for (const bundle of bundlesData) {
-      await plugin.deleteBundle(bundle);
+      await plugin.bundles.deleteBundle(bundle);
     }
-    await plugin.commitBundle();
+    await plugin.bundles.commitBundle();
 
     // Verify all bundles are deleted
-    const finalBundles = await plugin.getBundles({ limit: 10 });
+    const finalBundles = await plugin.bundles.getBundles({ limit: 10 });
     expect(finalBundles.data).toHaveLength(0);
 
     // Verify all channels are deleted
-    const finalChannels = await plugin.getChannels();
+    const finalChannels = await plugin.channels.getChannels();
     expect(finalChannels).toHaveLength(0);
 
     // Verify all target app versions are deleted

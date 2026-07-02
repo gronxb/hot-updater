@@ -9,6 +9,7 @@ import type {
 } from "@hot-updater/core";
 import { isCohortEligibleForUpdate, NIL_UUID } from "@hot-updater/core";
 import {
+  type DatabaseAnalytics,
   type DatabaseBundleQueryOptions,
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
@@ -143,8 +144,10 @@ export function createPluginDatabaseCore<TContext = unknown>(
   const getSortedBundlePage = async (
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
-  ): Promise<Awaited<ReturnType<DatabasePlugin<TContext>["getBundles"]>>> => {
-    const result = await getPlugin().getBundles(
+  ): Promise<
+    Awaited<ReturnType<DatabasePlugin<TContext>["bundles"]["getBundles"]>>
+  > => {
+    const result = await getPlugin().bundles.getBundles(
       {
         ...options,
         orderBy: options.orderBy ?? DESC_ORDER,
@@ -281,7 +284,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       context?: HotUpdaterContext<TContext>,
     ): Promise<Bundle | null> {
       await coreOptions?.beforeOperation?.();
-      return getPlugin().getBundleById(id, context);
+      return getPlugin().bundles.getBundleById(id, context);
     },
 
     async getUpdateInfo(
@@ -290,7 +293,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
     ): Promise<UpdateInfo | null> {
       await coreOptions?.beforeOperation?.();
       const plugin = getPlugin();
-      const directGetUpdateInfo = plugin.getUpdateInfo;
+      const directGetUpdateInfo = plugin.bundles.getUpdateInfo;
       if (directGetUpdateInfo) {
         return context === undefined
           ? await directGetUpdateInfo(args)
@@ -373,13 +376,13 @@ export function createPluginDatabaseCore<TContext = unknown>(
         }
 
         return requestBundles.getById(args.bundleId, () =>
-          getPlugin().getBundleById(args.bundleId, context),
+          getPlugin().bundles.getBundleById(args.bundleId, context),
         );
       };
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
         resolveFileUrl(storageUri ?? null, context),
         requestBundles.getById(info.id, () =>
-          getPlugin().getBundleById(info.id, context),
+          getPlugin().bundles.getBundleById(info.id, context),
         ),
         getCurrentBundle(),
       ]);
@@ -405,12 +408,12 @@ export function createPluginDatabaseCore<TContext = unknown>(
       context?: HotUpdaterContext<TContext>,
     ): Promise<string[]> {
       await coreOptions?.beforeOperation?.();
-      return getPlugin().getChannels(context);
+      return getPlugin().channels.getChannels(context);
     },
 
     async getBundles(options, context?: HotUpdaterContext<TContext>) {
       await coreOptions?.beforeOperation?.();
-      return getPlugin().getBundles(options, context);
+      return getPlugin().bundles.getBundles(options, context);
     },
 
     async insertBundle(
@@ -420,8 +423,8 @@ export function createPluginDatabaseCore<TContext = unknown>(
       await coreOptions?.beforeOperation?.();
       assertBundlePersistenceConstraints(bundle);
       await runWithMutationPlugin(async (plugin) => {
-        await plugin.appendBundle(bundle, context);
-        await plugin.commitBundle(context);
+        await plugin.bundles.appendBundle(bundle, context);
+        await plugin.bundles.commitBundle(context);
       });
     },
 
@@ -432,13 +435,13 @@ export function createPluginDatabaseCore<TContext = unknown>(
     ): Promise<void> {
       await coreOptions?.beforeOperation?.();
       await runWithMutationPlugin(async (plugin) => {
-        const current = await plugin.getBundleById(bundleId, context);
+        const current = await plugin.bundles.getBundleById(bundleId, context);
         if (!current) {
           throw new Error("targetBundleId not found");
         }
         assertBundlePersistenceConstraints({ ...current, ...newBundle });
-        await plugin.updateBundle(bundleId, newBundle, context);
-        await plugin.commitBundle(context);
+        await plugin.bundles.updateBundle(bundleId, newBundle, context);
+        await plugin.bundles.commitBundle(context);
       });
     },
 
@@ -448,59 +451,85 @@ export function createPluginDatabaseCore<TContext = unknown>(
     ): Promise<void> {
       await coreOptions?.beforeOperation?.();
       await runWithMutationPlugin(async (plugin) => {
-        const bundle = await plugin.getBundleById(bundleId, context);
+        const bundle = await plugin.bundles.getBundleById(bundleId, context);
         if (!bundle) {
           return;
         }
-        await plugin.deleteBundle(bundle, context);
-        await plugin.commitBundle(context);
+        await plugin.bundles.deleteBundle(bundle, context);
+        await plugin.bundles.commitBundle(context);
       });
     },
   };
 
-  const plugin = getPlugin();
-  const authenticateTelemetryKey = plugin.authenticateTelemetryKey;
-  if (authenticateTelemetryKey) {
-    api.authenticateTelemetryKey = async (telemetryKey, context) => {
-      await coreOptions?.beforeOperation?.();
-      return authenticateTelemetryKey(telemetryKey, context);
-    };
-  }
-  const getTelemetryKeyState = plugin.getTelemetryKeyState;
-  if (getTelemetryKeyState) {
-    api.getTelemetryKeyState = async (context) => {
-      await coreOptions?.beforeOperation?.();
-      return getTelemetryKeyState(context);
-    };
-  }
-  const issueTelemetryKey = plugin.issueTelemetryKey;
-  if (issueTelemetryKey) {
-    api.issueTelemetryKey = async (context) => {
-      await coreOptions?.beforeOperation?.();
-      return issueTelemetryKey(context);
-    };
-  }
-  const readLifecycleMetrics = plugin.readLifecycleMetrics;
-  if (readLifecycleMetrics) {
-    api.readLifecycleMetrics = async (context) => {
-      await coreOptions?.beforeOperation?.();
-      return readLifecycleMetrics(context);
-    };
-  }
-  const recordLifecycleEvent = plugin.recordLifecycleEvent;
-  if (recordLifecycleEvent) {
-    api.recordLifecycleEvent = async (payload, context) => {
-      await coreOptions?.beforeOperation?.();
-      return recordLifecycleEvent(payload, context);
-    };
-  }
-  const rotateTelemetryKey = plugin.rotateTelemetryKey;
-  if (rotateTelemetryKey) {
-    api.rotateTelemetryKey = async (context) => {
-      await coreOptions?.beforeOperation?.();
-      return rotateTelemetryKey(context);
-    };
-  }
+  Object.defineProperty(api, "analytics", {
+    configurable: true,
+    enumerable: true,
+    get(): DatabaseAnalytics<TContext> | undefined {
+      const analytics = getPlugin().analytics;
+      if (!analytics) {
+        Object.defineProperty(api, "analytics", {
+          configurable: true,
+          enumerable: true,
+          value: undefined,
+        });
+        return undefined;
+      }
+
+      const forwardedAnalytics: DatabaseAnalytics<TContext> = {};
+      const authenticateTelemetryKey = analytics.authenticateTelemetryKey;
+      if (authenticateTelemetryKey) {
+        forwardedAnalytics.authenticateTelemetryKey = async (
+          telemetryKey,
+          context,
+        ) => {
+          await coreOptions?.beforeOperation?.();
+          return authenticateTelemetryKey(telemetryKey, context);
+        };
+      }
+      const getTelemetryKeyState = analytics.getTelemetryKeyState;
+      if (getTelemetryKeyState) {
+        forwardedAnalytics.getTelemetryKeyState = async (context) => {
+          await coreOptions?.beforeOperation?.();
+          return getTelemetryKeyState(context);
+        };
+      }
+      const issueTelemetryKey = analytics.issueTelemetryKey;
+      if (issueTelemetryKey) {
+        forwardedAnalytics.issueTelemetryKey = async (context) => {
+          await coreOptions?.beforeOperation?.();
+          return issueTelemetryKey(context);
+        };
+      }
+      const readLifecycleMetrics = analytics.readLifecycleMetrics;
+      if (readLifecycleMetrics) {
+        forwardedAnalytics.readLifecycleMetrics = async (context) => {
+          await coreOptions?.beforeOperation?.();
+          return readLifecycleMetrics(context);
+        };
+      }
+      const recordLifecycleEvent = analytics.recordLifecycleEvent;
+      if (recordLifecycleEvent) {
+        forwardedAnalytics.recordLifecycleEvent = async (payload, context) => {
+          await coreOptions?.beforeOperation?.();
+          return recordLifecycleEvent(payload, context);
+        };
+      }
+      const rotateTelemetryKey = analytics.rotateTelemetryKey;
+      if (rotateTelemetryKey) {
+        forwardedAnalytics.rotateTelemetryKey = async (context) => {
+          await coreOptions?.beforeOperation?.();
+          return rotateTelemetryKey(context);
+        };
+      }
+
+      Object.defineProperty(api, "analytics", {
+        configurable: true,
+        enumerable: true,
+        value: forwardedAnalytics,
+      });
+      return forwardedAnalytics;
+    },
+  });
 
   return {
     api,

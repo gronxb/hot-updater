@@ -511,15 +511,19 @@ describe("createCopiedBundleArchive", () => {
     };
     const databasePlugin = {
       name: "mockDatabase",
-      appendBundle: vi.fn(async () => {
-        throw new Error("append failed");
-      }),
-      commitBundle: vi.fn(),
-      deleteBundle: vi.fn(),
-      getBundleById: vi.fn(async () => baseBundle),
-      getBundles: vi.fn(),
-      getChannels: vi.fn(),
-      updateBundle: vi.fn(),
+      bundles: {
+        appendBundle: vi.fn(async () => {
+          throw new Error("append failed");
+        }),
+        commitBundle: vi.fn(),
+        deleteBundle: vi.fn(),
+        getBundleById: vi.fn(async () => baseBundle),
+        getBundles: vi.fn(),
+        updateBundle: vi.fn(),
+      },
+      channels: {
+        getChannels: vi.fn(),
+      },
     } satisfies DatabasePlugin;
 
     vi.stubGlobal(

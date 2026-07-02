@@ -69,7 +69,7 @@ const emptyBundleList = {
     currentPage: 1,
     totalPages: 0,
   },
-} satisfies Awaited<ReturnType<DatabasePlugin["getBundles"]>>;
+} satisfies Awaited<ReturnType<DatabasePlugin["bundles"]["getBundles"]>>;
 
 const assertRemoteDownloadUrl = (fileUrl: string) => {
   try {
@@ -89,9 +89,9 @@ const assertRemoteDownloadUrl = (fileUrl: string) => {
 };
 
 const getTelemetryKeyCapabilities = (databasePlugin: DatabasePlugin) => {
-  const getTelemetryKeyState = databasePlugin.getTelemetryKeyState;
-  const issueTelemetryKey = databasePlugin.issueTelemetryKey;
-  const rotateTelemetryKey = databasePlugin.rotateTelemetryKey;
+  const getTelemetryKeyState = databasePlugin.analytics?.getTelemetryKeyState;
+  const issueTelemetryKey = databasePlugin.analytics?.issueTelemetryKey;
+  const rotateTelemetryKey = databasePlugin.analytics?.rotateTelemetryKey;
 
   if (!getTelemetryKeyState || !issueTelemetryKey || !rotateTelemetryKey) {
     return null;
@@ -147,11 +147,12 @@ const toBundleQueryOptions = (
 
 export const getConfigOperation = async () => {
   const { config, databasePlugin } = await prepareConfig();
+  const analytics = databasePlugin.analytics;
   return {
     capabilities: {
       telemetry:
-        typeof databasePlugin.authenticateTelemetryKey === "function" &&
-        typeof databasePlugin.recordLifecycleEvent === "function",
+        typeof analytics?.authenticateTelemetryKey === "function" &&
+        typeof analytics?.recordLifecycleEvent === "function",
       telemetryKey: Boolean(getTelemetryKeyCapabilities(databasePlugin)),
     },
     console: config.console,
@@ -161,7 +162,7 @@ export const getConfigOperation = async () => {
 
 export const getChannelsOperation = async () => {
   const { databasePlugin } = await prepareConfig();
-  return (await databasePlugin.getChannels()) ?? [];
+  return (await databasePlugin.channels.getChannels()) ?? [];
 };
 
 export const getConfigLoadedOperation = async () => ({
@@ -191,14 +192,14 @@ export const rotateTelemetryKeyOperation = async () => {
 export const getBundlesOperation = async (input?: GetBundlesInput) => {
   const { databasePlugin } = await prepareConfig();
   return (
-    (await databasePlugin.getBundles(toBundleQueryOptions(input))) ??
+    (await databasePlugin.bundles.getBundles(toBundleQueryOptions(input))) ??
     emptyBundleList
   );
 };
 
 export const getBundleOperation = async ({ bundleId }: GetBundleInput) => {
   const { databasePlugin } = await prepareConfig();
-  return (await databasePlugin.getBundleById(bundleId)) ?? null;
+  return (await databasePlugin.bundles.getBundleById(bundleId)) ?? null;
 };
 
 export const getBundleChildrenOperation = async (
@@ -221,7 +222,7 @@ export const getBundleDownloadUrlOperation = async ({
   bundleId,
 }: GetBundleDownloadUrlInput) => {
   const { databasePlugin, storagePlugin } = await prepareConfig();
-  const bundle = await databasePlugin.getBundleById(bundleId);
+  const bundle = await databasePlugin.bundles.getBundleById(bundleId);
 
   if (!bundle) {
     throw new ConsoleOperationError("Bundle not found");
@@ -267,9 +268,9 @@ export const updateBundleOperation = async ({
   bundleId,
 }: UpdateBundleInput) => {
   const { databasePlugin } = await prepareConfig();
-  await databasePlugin.updateBundle(bundleId, bundle);
-  await databasePlugin.commitBundle();
-  const updatedBundle = await databasePlugin.getBundleById(bundleId);
+  await databasePlugin.bundles.updateBundle(bundleId, bundle);
+  await databasePlugin.bundles.commitBundle();
+  const updatedBundle = await databasePlugin.bundles.getBundleById(bundleId);
 
   if (!updatedBundle) {
     throw new ConsoleOperationError("Updated bundle not found");
@@ -291,8 +292,8 @@ export const promoteBundleOperation = async (input: PromoteBundleInput) => {
 
 export const createBundleOperation = async (bundle: Bundle) => {
   const { databasePlugin } = await prepareConfig();
-  await databasePlugin.appendBundle(bundle);
-  await databasePlugin.commitBundle();
+  await databasePlugin.bundles.appendBundle(bundle);
+  await databasePlugin.bundles.commitBundle();
   return { success: true, bundleId: bundle.id };
 };
 

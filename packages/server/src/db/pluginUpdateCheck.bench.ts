@@ -120,36 +120,40 @@ const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
 
   return {
     name: "bench-plugin",
-    async getBundleById(bundleId) {
-      return bundlesById.get(bundleId) ?? null;
-    },
-    async getBundles(options: DatabaseBundleQueryOptions) {
-      const { where, limit, cursor, orderBy } = options;
-      const source = sortByDirection(orderBy?.direction);
-      const matched = source.filter((bundle) =>
-        bundleMatchesWhere(bundle, where),
-      );
-      const paginated = paginateBundles({
-        bundles: matched.map(cloneBundle),
-        limit,
-        cursor,
-        orderBy,
-      });
+    bundles: {
+      async getBundleById(bundleId) {
+        return bundlesById.get(bundleId) ?? null;
+      },
+      async getBundles(options: DatabaseBundleQueryOptions) {
+        const { where, limit, cursor, orderBy } = options;
+        const source = sortByDirection(orderBy?.direction);
+        const matched = source.filter((bundle) =>
+          bundleMatchesWhere(bundle, where),
+        );
+        const paginated = paginateBundles({
+          bundles: matched.map(cloneBundle),
+          limit,
+          cursor,
+          orderBy,
+        });
 
-      return paginated;
+        return paginated;
+      },
+      async updateBundle() {
+        throw new Error("Not implemented for benchmark");
+      },
+      async appendBundle() {
+        throw new Error("Not implemented for benchmark");
+      },
+      async commitBundle() {},
+      async deleteBundle() {
+        throw new Error("Not implemented for benchmark");
+      },
     },
-    async getChannels() {
-      return [...new Set(bundles.map((bundle) => bundle.channel))];
-    },
-    async updateBundle() {
-      throw new Error("Not implemented for benchmark");
-    },
-    async appendBundle() {
-      throw new Error("Not implemented for benchmark");
-    },
-    async commitBundle() {},
-    async deleteBundle() {
-      throw new Error("Not implemented for benchmark");
+    channels: {
+      async getChannels() {
+        return [...new Set(bundles.map((bundle) => bundle.channel))];
+      },
     },
   };
 };
@@ -163,7 +167,7 @@ const oldPluginCoreGetUpdateInfo = async (
     platform: args.platform,
   };
 
-  const { pagination } = await plugin.getBundles({
+  const { pagination } = await plugin.bundles.getBundles({
     where,
     limit: 1,
   });
@@ -172,7 +176,7 @@ const oldPluginCoreGetUpdateInfo = async (
     return null;
   }
 
-  const { data } = await plugin.getBundles({
+  const { data } = await plugin.bundles.getBundles({
     where,
     limit: pagination.total,
   });

@@ -106,7 +106,7 @@ export async function deleteBundle(
     waitForStorageCleanup = true,
   }: DeleteBundleDependencies,
 ) {
-  const bundle = await databasePlugin.getBundleById(bundleId);
+  const bundle = await databasePlugin.bundles.getBundleById(bundleId);
   if (!bundle) {
     throw new Error("Bundle not found");
   }
@@ -123,8 +123,8 @@ export async function deleteBundle(
     resolveStorageUriForDeletion(candidate, storagePlugin);
   }
 
-  await databasePlugin.deleteBundle(bundle);
-  await databasePlugin.commitBundle();
+  await databasePlugin.bundles.deleteBundle(bundle);
+  await databasePlugin.bundles.commitBundle();
 
   const cleanupStorage = async () => {
     const cleanupUris = new Set<string>();

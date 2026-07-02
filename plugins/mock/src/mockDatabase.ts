@@ -174,38 +174,55 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
     const bundles: Bundle[] = config.initialBundles ?? [];
 
     return {
-      supportsCursorPagination: true,
-      async getUpdateInfo(args, context) {
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
+      bundles: {
+        supportsCursorPagination: true,
+        async getUpdateInfo(args, context) {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
 
-        if (args._updateStrategy === "appVersion") {
-          const targetAppVersions = Array.from(
-            new Set(
-              bundles
-                .filter(
-                  (bundle) =>
-                    bundle.enabled &&
-                    bundle.platform === args.platform &&
-                    bundle.channel === channel &&
-                    bundle.id.localeCompare(minBundleId) >= 0 &&
-                    bundle.targetAppVersion,
-                )
-                .map((bundle) => bundle.targetAppVersion)
-                .filter((version): version is string => Boolean(version)),
-            ),
-          );
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
+          if (args._updateStrategy === "appVersion") {
+            const targetAppVersions = Array.from(
+              new Set(
+                bundles
+                  .filter(
+                    (bundle) =>
+                      bundle.enabled &&
+                      bundle.platform === args.platform &&
+                      bundle.channel === channel &&
+                      bundle.id.localeCompare(minBundleId) >= 0 &&
+                      bundle.targetAppVersion,
+                  )
+                  .map((bundle) => bundle.targetAppVersion)
+                  .filter((version): version is string => Boolean(version)),
+              ),
+            );
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
+            );
+            const updateBundles = bundles.filter(
+              (bundle) =>
+                bundle.enabled &&
+                bundle.platform === args.platform &&
+                bundle.channel === channel &&
+                bundle.id.localeCompare(minBundleId) >= 0 &&
+                compatibleAppVersions.includes(bundle.targetAppVersion ?? ""),
+            );
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles: updateBundles,
+              context,
+            });
+          }
+
           const updateBundles = bundles.filter(
             (bundle) =>
               bundle.enabled &&
               bundle.platform === args.platform &&
               bundle.channel === channel &&
               bundle.id.localeCompare(minBundleId) >= 0 &&
-              compatibleAppVersions.includes(bundle.targetAppVersion ?? ""),
+              bundle.fingerprintHash === args.fingerprintHash,
           );
 
           return resolveUpdateInfoFromBundles({
@@ -213,80 +230,66 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
             bundles: updateBundles,
             context,
           });
-        }
+        },
 
-        const updateBundles = bundles.filter(
-          (bundle) =>
-            bundle.enabled &&
-            bundle.platform === args.platform &&
-            bundle.channel === channel &&
-            bundle.id.localeCompare(minBundleId) >= 0 &&
-            bundle.fingerprintHash === args.fingerprintHash,
-        );
+        async getBundleById(bundleId: string) {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          return bundles.find((b) => b.id === bundleId) ?? null;
+        },
 
-        return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles: updateBundles,
-          context,
-        });
-      },
+        async getBundles(options) {
+          const { where, limit, offset, cursor, orderBy } = options ?? {};
+          await sleep(minMax(config.latency.min, config.latency.max));
 
-      async getBundleById(bundleId: string) {
-        await sleep(minMax(config.latency.min, config.latency.max));
-        return bundles.find((b) => b.id === bundleId) ?? null;
-      },
-
-      async getBundles(options) {
-        const { where, limit, offset, cursor, orderBy } = options ?? {};
-        await sleep(minMax(config.latency.min, config.latency.max));
-
-        const filteredBundles = sortBundles(
-          bundles.filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
-          orderBy,
-        );
-
-        return {
-          ...paginateMockBundles({
-            bundles: filteredBundles,
-            limit,
-            offset,
-            cursor,
+          const filteredBundles = sortBundles(
+            bundles.filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
             orderBy,
-          }),
-        };
-      },
+          );
 
-      async getChannels() {
-        await sleep(minMax(config.latency.min, config.latency.max));
-        return bundles
-          .map((b) => b.channel)
-          .filter((c, i, self) => self.indexOf(c) === i);
-      },
+          return {
+            ...paginateMockBundles({
+              bundles: filteredBundles,
+              limit,
+              offset,
+              cursor,
+              orderBy,
+            }),
+          };
+        },
 
-      async commitBundle({ changedSets }) {
-        if (changedSets.length === 0) {
-          return;
-        }
-
-        await sleep(minMax(config.latency.min, config.latency.max));
-
-        for (const op of changedSets) {
-          if (op.operation === "delete") {
-            const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
-            if (targetIndex === -1) {
-              throw new Error(`Bundle with id ${op.data.id} not found`);
-            }
-            bundles.splice(targetIndex, 1);
-          } else if (op.operation === "insert") {
-            bundles.unshift(op.data);
-          } else if (op.operation === "update") {
-            const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
-            if (targetIndex === -1) {
-              throw new Error(`Bundle with id ${op.data.id} not found`);
-            }
-            Object.assign(bundles[targetIndex], op.data);
+        async commitBundle({ changedSets }) {
+          if (changedSets.length === 0) {
+            return;
           }
-        }
+
+          await sleep(minMax(config.latency.min, config.latency.max));
+
+          for (const op of changedSets) {
+            if (op.operation === "delete") {
+              const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
+              if (targetIndex === -1) {
+                throw new Error(`Bundle with id ${op.data.id} not found`);
+              }
+              bundles.splice(targetIndex, 1);
+            } else if (op.operation === "insert") {
+              bundles.unshift(op.data);
+            } else if (op.operation === "update") {
+              const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
+              if (targetIndex === -1) {
+                throw new Error(`Bundle with id ${op.data.id} not found`);
+              }
+              Object.assign(bundles[targetIndex], op.data);
+            }
+          }
+        },
+      },
+      channels: {
+        async getChannels() {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          return bundles
+            .map((b) => b.channel)
+            .filter((c, i, self) => self.indexOf(c) === i);
+        },
       },
     };
   },

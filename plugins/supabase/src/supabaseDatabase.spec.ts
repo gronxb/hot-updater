@@ -465,24 +465,24 @@ describe("supabaseDatabase plugin", () => {
   });
 
   setupBundleMethodsTestSuite({
-    getBundleById: (id) => plugin.getBundleById(id),
-    getChannels: () => plugin.getChannels(),
+    getBundleById: (id) => plugin.bundles.getBundleById(id),
+    getChannels: () => plugin.channels.getChannels(),
     insertBundle: async (bundle) => {
-      await plugin.appendBundle(bundle);
-      await plugin.commitBundle();
+      await plugin.bundles.appendBundle(bundle);
+      await plugin.bundles.commitBundle();
     },
-    getBundles: (options) => plugin.getBundles(options),
+    getBundles: (options) => plugin.bundles.getBundles(options),
     updateBundleById: async (bundleId, newBundle) => {
-      await plugin.updateBundle(bundleId, newBundle);
-      await plugin.commitBundle();
+      await plugin.bundles.updateBundle(bundleId, newBundle);
+      await plugin.bundles.commitBundle();
     },
     deleteBundleById: async (bundleId) => {
-      const bundle = await plugin.getBundleById(bundleId);
+      const bundle = await plugin.bundles.getBundleById(bundleId);
       if (!bundle) {
         return;
       }
-      await plugin.deleteBundle(bundle);
-      await plugin.commitBundle();
+      await plugin.bundles.deleteBundle(bundle);
+      await plugin.bundles.commitBundle();
     },
   });
 
@@ -492,11 +492,11 @@ describe("supabaseDatabase plugin", () => {
       bundlePatchRows.clear();
 
       for (const bundle of bundles) {
-        await plugin.appendBundle(bundle);
+        await plugin.bundles.appendBundle(bundle);
       }
-      await plugin.commitBundle();
+      await plugin.bundles.commitBundle();
 
-      return plugin.getUpdateInfo?.(args) ?? null;
+      return plugin.bundles.getUpdateInfo?.(args) ?? null;
     },
   });
 
@@ -524,9 +524,9 @@ describe("supabaseDatabase plugin", () => {
       storageUri: "storage://app/target.zip",
     };
 
-    await plugin.appendBundle(currentBundle);
-    await plugin.appendBundle(targetBundle);
-    await plugin.commitBundle();
+    await plugin.bundles.appendBundle(currentBundle);
+    await plugin.bundles.appendBundle(targetBundle);
+    await plugin.bundles.commitBundle();
 
     const args: GetBundlesArgs = {
       _updateStrategy: "fingerprint",
@@ -537,7 +537,7 @@ describe("supabaseDatabase plugin", () => {
       platform: "ios",
     };
 
-    const updateInfo = await plugin.getUpdateInfo?.(args);
+    const updateInfo = await plugin.bundles.getUpdateInfo?.(args);
 
     expect(updateInfo).toEqual({
       fileHash: "target-file-hash",

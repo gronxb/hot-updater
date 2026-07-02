@@ -535,277 +535,287 @@ export const createBlobDatabasePlugin = <TConfig>({
     const createPlugin = createDatabasePlugin({
       name,
       factory: () => ({
-        supportsCursorPagination: true,
-        async getBundleById(bundleId: string) {
-          if (locallyDeletedBundleIds.has(bundleId)) {
-            return null;
-          }
-
-          const pendingBundle = pendingBundlesMap.get(bundleId);
-          if (pendingBundle) {
-            return removeBundleInternalKeys(pendingBundle);
-          }
-          const bundle = bundlesMap.get(bundleId);
-          if (bundle) {
-            return removeBundleInternalKeys(bundle);
-          }
-
-          const bundles = await reloadBundles();
-          const matchedBundle = bundles.find((item) => item.id === bundleId);
-          if (!matchedBundle) {
-            return null;
-          }
-
-          return removeBundleInternalKeys(matchedBundle);
-        },
-
-        async getUpdateInfo(args: GetBundlesArgs, context?: HotUpdaterContext) {
-          if (args._updateStrategy === "appVersion") {
-            return getAppVersionUpdateInfo(args, context);
-          }
-
-          return getFingerprintUpdateInfo(args, context);
-        },
-
-        async getBundles(options) {
-          const { where, limit, offset, orderBy, cursor } = options;
-          let allBundles = await loadAllBundlesForManagementFallback(where);
-          if (where) {
-            allBundles = allBundles.filter((bundle) =>
-              bundleMatchesQueryWhere(bundle, where),
-            );
-          }
-
-          return paginateBundles({
-            bundles: allBundles,
-            limit,
-            offset,
-            cursor,
-            orderBy,
-          });
-        },
-
-        async getChannels() {
-          return [
-            ...new Set(
-              (await loadAllBundlesForManagementFallback()).map(
-                (bundle) => bundle.channel,
-              ),
-            ),
-          ].sort();
-        },
-
-        async commitBundle({ changedSets }) {
-          if (changedSets.length === 0) return;
-
-          const changedBundlesByKey: Record<string, Bundle[]> = {};
-          const removalsByKey: Record<string, string[]> = {};
-          const targetVersionRemovalsByKey: Record<
-            string,
-            BundleWithUpdateJsonKey[]
-          > = {};
-          const pathsToInvalidate: Set<string> = new Set();
-          const targetVersionMutations = new Map<
-            string,
-            TargetVersionMutation
-          >();
-
-          for (const { operation, data } of changedSets) {
-            // Insert operation.
-            if (operation === "insert") {
-              const target = resolveStorageTarget(data);
-              const key = `${data.channel}/${data.platform}/${target}/update.json`;
-              const bundleWithKey: BundleWithUpdateJsonKey = {
-                ...data,
-                _updateJsonKey: key,
-              };
-
-              locallyDeletedBundleIds.delete(data.id);
-              bundlesMap.set(data.id, bundleWithKey);
-              pendingBundlesMap.set(data.id, bundleWithKey);
-
-              changedBundlesByKey[key] = changedBundlesByKey[key] || [];
-              changedBundlesByKey[key].push(
-                removeBundleInternalKeys(bundleWithKey),
-              );
-
-              addTargetVersionAddition(targetVersionMutations, data);
-              addLookupInvalidationPaths(pathsToInvalidate, data);
-              continue;
+        bundles: {
+          supportsCursorPagination: true,
+          async getBundleById(bundleId: string) {
+            if (locallyDeletedBundleIds.has(bundleId)) {
+              return null;
             }
 
-            // Delete operation.
-            if (operation === "delete") {
+            const pendingBundle = pendingBundlesMap.get(bundleId);
+            if (pendingBundle) {
+              return removeBundleInternalKeys(pendingBundle);
+            }
+            const bundle = bundlesMap.get(bundleId);
+            if (bundle) {
+              return removeBundleInternalKeys(bundle);
+            }
+
+            const bundles = await reloadBundles();
+            const matchedBundle = bundles.find((item) => item.id === bundleId);
+            if (!matchedBundle) {
+              return null;
+            }
+
+            return removeBundleInternalKeys(matchedBundle);
+          },
+
+          async getUpdateInfo(
+            args: GetBundlesArgs,
+            context?: HotUpdaterContext,
+          ) {
+            if (args._updateStrategy === "appVersion") {
+              return getAppVersionUpdateInfo(args, context);
+            }
+
+            return getFingerprintUpdateInfo(args, context);
+          },
+
+          async getBundles(options) {
+            const { where, limit, offset, orderBy, cursor } = options;
+            let allBundles = await loadAllBundlesForManagementFallback(where);
+            if (where) {
+              allBundles = allBundles.filter((bundle) =>
+                bundleMatchesQueryWhere(bundle, where),
+              );
+            }
+
+            return paginateBundles({
+              bundles: allBundles,
+              limit,
+              offset,
+              cursor,
+              orderBy,
+            });
+          },
+
+          async commitBundle({ changedSets }) {
+            if (changedSets.length === 0) return;
+
+            const changedBundlesByKey: Record<string, Bundle[]> = {};
+            const removalsByKey: Record<string, string[]> = {};
+            const targetVersionRemovalsByKey: Record<
+              string,
+              BundleWithUpdateJsonKey[]
+            > = {};
+            const pathsToInvalidate: Set<string> = new Set();
+            const targetVersionMutations = new Map<
+              string,
+              TargetVersionMutation
+            >();
+
+            for (const { operation, data } of changedSets) {
+              // Insert operation.
+              if (operation === "insert") {
+                const target = resolveStorageTarget(data);
+                const key = `${data.channel}/${data.platform}/${target}/update.json`;
+                const bundleWithKey: BundleWithUpdateJsonKey = {
+                  ...data,
+                  _updateJsonKey: key,
+                };
+
+                locallyDeletedBundleIds.delete(data.id);
+                bundlesMap.set(data.id, bundleWithKey);
+                pendingBundlesMap.set(data.id, bundleWithKey);
+
+                changedBundlesByKey[key] = changedBundlesByKey[key] || [];
+                changedBundlesByKey[key].push(
+                  removeBundleInternalKeys(bundleWithKey),
+                );
+
+                addTargetVersionAddition(targetVersionMutations, data);
+                addLookupInvalidationPaths(pathsToInvalidate, data);
+                continue;
+              }
+
+              // Delete operation.
+              if (operation === "delete") {
+                let bundle = pendingBundlesMap.get(data.id);
+                if (!bundle) {
+                  bundle = bundlesMap.get(data.id);
+                }
+                if (!bundle) {
+                  throw new Error("Bundle to delete not found");
+                }
+
+                // Remove from memory maps
+                bundlesMap.delete(data.id);
+                pendingBundlesMap.delete(data.id);
+                locallyDeletedBundleIds.add(data.id);
+
+                // Mark for removal from update.json
+                const key = bundle._updateJsonKey;
+                removalsByKey[key] = removalsByKey[key] || [];
+                removalsByKey[key].push(bundle.id);
+                targetVersionRemovalsByKey[key] =
+                  targetVersionRemovalsByKey[key] || [];
+                targetVersionRemovalsByKey[key].push(bundle);
+
+                addLookupInvalidationPaths(pathsToInvalidate, bundle);
+                continue;
+              }
+
+              // For update operations, retrieve the current bundle.
               let bundle = pendingBundlesMap.get(data.id);
               if (!bundle) {
                 bundle = bundlesMap.get(data.id);
               }
               if (!bundle) {
-                throw new Error("Bundle to delete not found");
+                throw new Error("targetBundleId not found");
               }
 
-              // Remove from memory maps
-              bundlesMap.delete(data.id);
-              pendingBundlesMap.delete(data.id);
-              locallyDeletedBundleIds.add(data.id);
+              if (operation === "update") {
+                const updatedBundle = { ...bundle, ...data };
+                const newKey = `${updatedBundle.channel}/${updatedBundle.platform}/${resolveStorageTarget(updatedBundle)}/update.json`;
 
-              // Mark for removal from update.json
-              const key = bundle._updateJsonKey;
-              removalsByKey[key] = removalsByKey[key] || [];
-              removalsByKey[key].push(bundle.id);
-              targetVersionRemovalsByKey[key] =
-                targetVersionRemovalsByKey[key] || [];
-              targetVersionRemovalsByKey[key].push(bundle);
+                if (newKey !== bundle._updateJsonKey) {
+                  // If the key has changed (e.g., channel or targetAppVersion update), remove from old location.
+                  const oldKey = bundle._updateJsonKey;
+                  removalsByKey[oldKey] = removalsByKey[oldKey] || [];
+                  removalsByKey[oldKey].push(bundle.id);
+                  targetVersionRemovalsByKey[oldKey] =
+                    targetVersionRemovalsByKey[oldKey] || [];
+                  targetVersionRemovalsByKey[oldKey].push(bundle);
 
-              addLookupInvalidationPaths(pathsToInvalidate, bundle);
-              continue;
-            }
+                  changedBundlesByKey[newKey] =
+                    changedBundlesByKey[newKey] || [];
 
-            // For update operations, retrieve the current bundle.
-            let bundle = pendingBundlesMap.get(data.id);
-            if (!bundle) {
-              bundle = bundlesMap.get(data.id);
-            }
-            if (!bundle) {
-              throw new Error("targetBundleId not found");
-            }
+                  updatedBundle._oldUpdateJsonKey = oldKey;
+                  updatedBundle._updateJsonKey = newKey;
 
-            if (operation === "update") {
-              const updatedBundle = { ...bundle, ...data };
-              const newKey = `${updatedBundle.channel}/${updatedBundle.platform}/${resolveStorageTarget(updatedBundle)}/update.json`;
+                  bundlesMap.set(data.id, updatedBundle);
+                  pendingBundlesMap.set(data.id, updatedBundle);
+                  locallyDeletedBundleIds.delete(data.id);
 
-              if (newKey !== bundle._updateJsonKey) {
-                // If the key has changed (e.g., channel or targetAppVersion update), remove from old location.
-                const oldKey = bundle._updateJsonKey;
-                removalsByKey[oldKey] = removalsByKey[oldKey] || [];
-                removalsByKey[oldKey].push(bundle.id);
-                targetVersionRemovalsByKey[oldKey] =
-                  targetVersionRemovalsByKey[oldKey] || [];
-                targetVersionRemovalsByKey[oldKey].push(bundle);
+                  changedBundlesByKey[newKey].push(
+                    removeBundleInternalKeys(updatedBundle),
+                  );
 
-                changedBundlesByKey[newKey] = changedBundlesByKey[newKey] || [];
+                  const oldChannel = bundle.channel;
+                  const nextChannel = updatedBundle.channel;
+                  if (oldChannel !== nextChannel) {
+                    addLookupInvalidationPaths(pathsToInvalidate, bundle);
+                    if (bundle.targetAppVersion && !bundle.fingerprintHash) {
+                      addLookupInvalidationPaths(pathsToInvalidate, {
+                        ...bundle,
+                        channel: nextChannel,
+                      });
+                    }
+                  }
 
-                updatedBundle._oldUpdateJsonKey = oldKey;
-                updatedBundle._updateJsonKey = newKey;
+                  addTargetVersionAddition(
+                    targetVersionMutations,
+                    updatedBundle,
+                  );
+                  addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
+                  if (
+                    bundle.targetAppVersion &&
+                    bundle.targetAppVersion !== updatedBundle.targetAppVersion
+                  ) {
+                    addLookupInvalidationPaths(pathsToInvalidate, bundle);
+                  }
+                  continue;
+                }
 
+                // No key change: update the bundle normally.
+                const currentKey = bundle._updateJsonKey;
                 bundlesMap.set(data.id, updatedBundle);
                 pendingBundlesMap.set(data.id, updatedBundle);
                 locallyDeletedBundleIds.delete(data.id);
-
-                changedBundlesByKey[newKey].push(
+                changedBundlesByKey[currentKey] =
+                  changedBundlesByKey[currentKey] || [];
+                changedBundlesByKey[currentKey].push(
                   removeBundleInternalKeys(updatedBundle),
                 );
 
-                const oldChannel = bundle.channel;
-                const nextChannel = updatedBundle.channel;
-                if (oldChannel !== nextChannel) {
-                  addLookupInvalidationPaths(pathsToInvalidate, bundle);
-                  if (bundle.targetAppVersion && !bundle.fingerprintHash) {
-                    addLookupInvalidationPaths(pathsToInvalidate, {
-                      ...bundle,
-                      channel: nextChannel,
-                    });
-                  }
-                }
-
-                addTargetVersionAddition(targetVersionMutations, updatedBundle);
                 addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
+                addTargetVersionAddition(targetVersionMutations, updatedBundle);
                 if (
                   bundle.targetAppVersion &&
                   bundle.targetAppVersion !== updatedBundle.targetAppVersion
                 ) {
                   addLookupInvalidationPaths(pathsToInvalidate, bundle);
                 }
-                continue;
-              }
-
-              // No key change: update the bundle normally.
-              const currentKey = bundle._updateJsonKey;
-              bundlesMap.set(data.id, updatedBundle);
-              pendingBundlesMap.set(data.id, updatedBundle);
-              locallyDeletedBundleIds.delete(data.id);
-              changedBundlesByKey[currentKey] =
-                changedBundlesByKey[currentKey] || [];
-              changedBundlesByKey[currentKey].push(
-                removeBundleInternalKeys(updatedBundle),
-              );
-
-              addLookupInvalidationPaths(pathsToInvalidate, updatedBundle);
-              addTargetVersionAddition(targetVersionMutations, updatedBundle);
-              if (
-                bundle.targetAppVersion &&
-                bundle.targetAppVersion !== updatedBundle.targetAppVersion
-              ) {
-                addLookupInvalidationPaths(pathsToInvalidate, bundle);
               }
             }
-          }
 
-          // Remove bundles from their old keys.
-          await forEachWithConcurrency(
-            Object.keys(removalsByKey),
-            STORAGE_OPERATION_CONCURRENCY,
-            async (oldKey) => {
-              const currentBundles =
-                (await loadOptionalObject<Bundle[]>(oldKey)) ?? [];
-              const updatedBundles = currentBundles.filter(
-                (b) => !removalsByKey[oldKey].includes(b.id),
-              );
-              updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
-              if (updatedBundles.length === 0) {
-                await deleteObject(oldKey);
-                for (const removedBundle of targetVersionRemovalsByKey[
-                  oldKey
-                ] ?? []) {
-                  addTargetVersionRemoval(
-                    targetVersionMutations,
-                    removedBundle,
-                  );
-                }
-              } else {
-                await uploadObject(oldKey, updatedBundles);
-              }
-            },
-          );
-
-          // Add or update bundles in their new keys.
-          await forEachWithConcurrency(
-            Object.keys(changedBundlesByKey),
-            STORAGE_OPERATION_CONCURRENCY,
-            async (key) => {
-              const currentBundles =
-                (await loadOptionalObject<Bundle[]>(key)) ?? [];
-              const pureBundles = changedBundlesByKey[key].map(
-                (bundle) => bundle,
-              );
-              for (const changedBundle of pureBundles) {
-                const index = currentBundles.findIndex(
-                  (b) => b.id === changedBundle.id,
+            // Remove bundles from their old keys.
+            await forEachWithConcurrency(
+              Object.keys(removalsByKey),
+              STORAGE_OPERATION_CONCURRENCY,
+              async (oldKey) => {
+                const currentBundles =
+                  (await loadOptionalObject<Bundle[]>(oldKey)) ?? [];
+                const updatedBundles = currentBundles.filter(
+                  (b) => !removalsByKey[oldKey].includes(b.id),
                 );
-                if (index >= 0) {
-                  currentBundles[index] = changedBundle;
+                updatedBundles.sort((a, b) => b.id.localeCompare(a.id));
+                if (updatedBundles.length === 0) {
+                  await deleteObject(oldKey);
+                  for (const removedBundle of targetVersionRemovalsByKey[
+                    oldKey
+                  ] ?? []) {
+                    addTargetVersionRemoval(
+                      targetVersionMutations,
+                      removedBundle,
+                    );
+                  }
                 } else {
-                  currentBundles.push(changedBundle);
+                  await uploadObject(oldKey, updatedBundles);
                 }
-              }
-              currentBundles.sort((a, b) => b.id.localeCompare(a.id));
-              await uploadObject(key, currentBundles);
-            },
-          );
+              },
+            );
 
-          if (targetVersionMutations.size > 0) {
-            await applyTargetVersionMutations(targetVersionMutations);
-          }
+            // Add or update bundles in their new keys.
+            await forEachWithConcurrency(
+              Object.keys(changedBundlesByKey),
+              STORAGE_OPERATION_CONCURRENCY,
+              async (key) => {
+                const currentBundles =
+                  (await loadOptionalObject<Bundle[]>(key)) ?? [];
+                const pureBundles = changedBundlesByKey[key].map(
+                  (bundle) => bundle,
+                );
+                for (const changedBundle of pureBundles) {
+                  const index = currentBundles.findIndex(
+                    (b) => b.id === changedBundle.id,
+                  );
+                  if (index >= 0) {
+                    currentBundles[index] = changedBundle;
+                  } else {
+                    currentBundles.push(changedBundle);
+                  }
+                }
+                currentBundles.sort((a, b) => b.id.localeCompare(a.id));
+                await uploadObject(key, currentBundles);
+              },
+            );
 
-          // Enconded paths for invalidation (in case of special characters)
-          const encondedPaths = new Set<string>();
-          for (const path of pathsToInvalidate) {
-            encondedPaths.add(encodeURI(path));
-          }
+            if (targetVersionMutations.size > 0) {
+              await applyTargetVersionMutations(targetVersionMutations);
+            }
 
-          await invalidatePaths(Array.from(encondedPaths));
+            // Enconded paths for invalidation (in case of special characters)
+            const encondedPaths = new Set<string>();
+            for (const path of pathsToInvalidate) {
+              encondedPaths.add(encodeURI(path));
+            }
 
-          pendingBundlesMap.clear();
+            await invalidatePaths(Array.from(encondedPaths));
+
+            pendingBundlesMap.clear();
+          },
+        },
+        channels: {
+          async getChannels() {
+            return [
+              ...new Set(
+                (await loadAllBundlesForManagementFallback()).map(
+                  (bundle) => bundle.channel,
+                ),
+              ),
+            ].sort();
+          },
         },
       }),
     })({}, hooks);

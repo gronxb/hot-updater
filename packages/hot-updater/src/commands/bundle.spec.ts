@@ -3,15 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
   const mockDatabasePlugin = {
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
+    bundles: {
+      appendBundle: vi.fn(),
+      commitBundle: vi.fn(),
+      deleteBundle: vi.fn(),
+      getBundleById: vi.fn(),
+      getBundles: vi.fn(),
+      updateBundle: vi.fn(),
+    },
+    channels: {
+      getChannels: vi.fn(),
+    },
     name: "mock-database",
     onUnmount: vi.fn(),
-    updateBundle: vi.fn(),
   };
   const mockCli = {
     loadConfig: vi.fn(),
@@ -86,7 +90,7 @@ describe("handleBundleList", () => {
 
   it("prints a tabulated row per bundle from getBundles result data", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundles.mockResolvedValue({
+    mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
       data: [buildBundle({ id: "B1" }), buildBundle({ id: "B2" })],
       pagination: { total: 2 },
     });
@@ -94,7 +98,7 @@ describe("handleBundleList", () => {
     const { handleBundleList } = await import("./bundle");
     await handleBundleList({});
 
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledWith({
+    expect(mockDatabasePlugin.bundles.getBundles).toHaveBeenCalledWith({
       where: { channel: undefined, platform: undefined },
       limit: 20,
     });
@@ -109,7 +113,7 @@ describe("handleBundleList", () => {
 
   it("prints empty-state marker when no bundles exist", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundles.mockResolvedValue({
+    mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
       data: [],
       pagination: { total: 0 },
     });
@@ -126,7 +130,7 @@ describe("handleBundleList", () => {
       data: [buildBundle({ id: "B1" })],
       pagination: { total: 1 },
     };
-    mockDatabasePlugin.getBundles.mockResolvedValue(result);
+    mockDatabasePlugin.bundles.getBundles.mockResolvedValue(result);
 
     const { handleBundleList } = await import("./bundle");
     await handleBundleList({ json: true });
@@ -137,13 +141,13 @@ describe("handleBundleList", () => {
 
   it("forwards channel/platform/limit options to getBundles", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundles.mockResolvedValue({
+    mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
       data: [],
       pagination: { total: 0 },
     });
     const { handleBundleList } = await import("./bundle");
     await handleBundleList({ channel: "beta", platform: "android", limit: 5 });
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledWith({
+    expect(mockDatabasePlugin.bundles.getBundles).toHaveBeenCalledWith({
       where: { channel: "beta", platform: "android" },
       limit: 5,
     });
@@ -151,7 +155,9 @@ describe("handleBundleList", () => {
 
   it("calls onUnmount even when getBundles throws", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundles.mockRejectedValue(new Error("DB down"));
+    mockDatabasePlugin.bundles.getBundles.mockRejectedValue(
+      new Error("DB down"),
+    );
     const { handleBundleList } = await import("./bundle");
     await expect(handleBundleList({})).rejects.toThrow("DB down");
     expect(mockDatabasePlugin.onUnmount).toHaveBeenCalled();
@@ -169,17 +175,17 @@ describe("handleBundleSetEnabled", () => {
 
   it("disables an enabled bundle when -y is passed and verifies the result", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundleById
+    mockDatabasePlugin.bundles.getBundleById
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }))
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: false }));
 
     const { handleBundleSetEnabled } = await import("./bundle");
     await handleBundleSetEnabled("B1", false, { yes: true });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("B1", {
+    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith("B1", {
       enabled: false,
     });
-    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.commitBundle).toHaveBeenCalled();
     expect(mockCli.p.log.message).toHaveBeenCalledWith(
       expect.stringContaining("Status:"),
     );
@@ -191,12 +197,12 @@ describe("handleBundleSetEnabled", () => {
 
   it("enables a disabled bundle when -y is passed", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundleById
+    mockDatabasePlugin.bundles.getBundleById
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: false }))
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }));
     const { handleBundleSetEnabled } = await import("./bundle");
     await handleBundleSetEnabled("B1", true, { yes: true });
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("B1", {
+    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith("B1", {
       enabled: true,
     });
     expect(mockCli.p.log.success).toHaveBeenCalledWith("Enabled bundle.");
@@ -204,13 +210,13 @@ describe("handleBundleSetEnabled", () => {
 
   it("short-circuits with info log when bundle is already in target state", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundleById.mockResolvedValueOnce(
+    mockDatabasePlugin.bundles.getBundleById.mockResolvedValueOnce(
       buildBundle({ id: "B1", enabled: false }),
     );
     const { handleBundleSetEnabled } = await import("./bundle");
     await handleBundleSetEnabled("B1", false, { yes: true });
-    expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalled();
-    expect(mockDatabasePlugin.commitBundle).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.updateBundle).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.commitBundle).not.toHaveBeenCalled();
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("already disable"),
     );
@@ -218,7 +224,7 @@ describe("handleBundleSetEnabled", () => {
 
   it("exits 1 when bundle id does not exist", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundleById.mockResolvedValueOnce(null);
+    mockDatabasePlugin.bundles.getBundleById.mockResolvedValueOnce(null);
     const { exitSpy } = expectExit(1);
     const { handleBundleSetEnabled } = await import("./bundle");
     await expect(
@@ -238,7 +244,7 @@ describe("handleBundleSetEnabled", () => {
       value: false,
     });
 
-    mockDatabasePlugin.getBundleById.mockResolvedValueOnce(
+    mockDatabasePlugin.bundles.getBundleById.mockResolvedValueOnce(
       buildBundle({ id: "B1", enabled: true }),
     );
     const { exitSpy } = expectExit(1);
@@ -264,7 +270,7 @@ describe("handleBundleSetEnabled", () => {
       value: true,
     });
 
-    mockDatabasePlugin.getBundleById.mockResolvedValueOnce(
+    mockDatabasePlugin.bundles.getBundleById.mockResolvedValueOnce(
       buildBundle({ id: "B1", enabled: true }),
     );
     mockCli.p.confirm.mockResolvedValueOnce(false);
@@ -275,7 +281,7 @@ describe("handleBundleSetEnabled", () => {
       "process.exit(2)",
     );
     expect(exitSpy).toHaveBeenCalledWith(2);
-    expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.updateBundle).not.toHaveBeenCalled();
 
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
@@ -284,7 +290,7 @@ describe("handleBundleSetEnabled", () => {
 
   it("exits 1 when verification reads a state mismatch after commit", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundleById
+    mockDatabasePlugin.bundles.getBundleById
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }))
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }));
 
@@ -301,7 +307,9 @@ describe("handleBundleSetEnabled", () => {
 
   it("calls onUnmount even when getBundleById throws", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    mockDatabasePlugin.getBundleById.mockRejectedValue(new Error("DB error"));
+    mockDatabasePlugin.bundles.getBundleById.mockRejectedValue(
+      new Error("DB error"),
+    );
     const { handleBundleSetEnabled } = await import("./bundle");
     await expect(
       handleBundleSetEnabled("B1", false, { yes: true }),
@@ -322,13 +330,13 @@ describe("handleBundleShow", () => {
   it("prints raw bundle JSON and skips the banner when --json is passed", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const bundle = buildBundle({ id: "B1" });
-    mockDatabasePlugin.getBundleById.mockResolvedValueOnce(bundle);
+    mockDatabasePlugin.bundles.getBundleById.mockResolvedValueOnce(bundle);
 
     const { handleBundleShow } = await import("./bundle");
     await handleBundleShow("B1", { json: true });
 
     expect(mockPrintBanner).not.toHaveBeenCalled();
-    expect(mockDatabasePlugin.getBundleById).toHaveBeenCalledWith("B1");
+    expect(mockDatabasePlugin.bundles.getBundleById).toHaveBeenCalledWith("B1");
     expect(logSpy).toHaveBeenCalledWith(JSON.stringify(bundle, null, 2));
   });
 });
@@ -349,7 +357,7 @@ describe("handleBundleUpdate", () => {
       rolloutCohortCount: 500,
       targetCohorts: ["qa"],
     });
-    mockDatabasePlugin.getBundleById
+    mockDatabasePlugin.bundles.getBundleById
       .mockResolvedValueOnce(buildBundle({ id: "B1" }))
       .mockResolvedValueOnce(updated);
 
@@ -361,11 +369,11 @@ describe("handleBundleUpdate", () => {
       yes: true,
     });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("B1", {
+    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith("B1", {
       rolloutCohortCount: 500,
       targetCohorts: ["qa"],
     });
-    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.commitBundle).toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledWith(JSON.stringify(updated, null, 2));
   });
 
@@ -378,7 +386,7 @@ describe("handleBundleUpdate", () => {
       "process.exit(1)",
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.updateBundle).not.toHaveBeenCalled();
   });
 });
 
@@ -394,15 +402,17 @@ describe("handleBundleDelete", () => {
   it("deletes an existing bundle record with -y and verifies it is gone", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const bundle = buildBundle({ id: "B1" });
-    mockDatabasePlugin.getBundleById
+    mockDatabasePlugin.bundles.getBundleById
       .mockResolvedValueOnce(bundle)
       .mockResolvedValueOnce(null);
 
     const { handleBundleDelete } = await import("./bundle");
     await handleBundleDelete("B1", { yes: true });
 
-    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(bundle);
-    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.deleteBundle).toHaveBeenCalledWith(
+      bundle,
+    );
+    expect(mockDatabasePlugin.bundles.commitBundle).toHaveBeenCalled();
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "Deleted bundle record.",
     );
@@ -412,7 +422,7 @@ describe("handleBundleDelete", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "log").mockImplementation(() => {});
     const bundle = buildBundle({ id: "B1" });
-    mockDatabasePlugin.getBundleById
+    mockDatabasePlugin.bundles.getBundleById
       .mockResolvedValueOnce(bundle)
       .mockResolvedValueOnce(bundle)
       .mockResolvedValueOnce(null);
@@ -423,8 +433,10 @@ describe("handleBundleDelete", () => {
       await vi.advanceTimersByTimeAsync(1000);
       await deletePromise;
 
-      expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(bundle);
-      expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
+      expect(mockDatabasePlugin.bundles.deleteBundle).toHaveBeenCalledWith(
+        bundle,
+      );
+      expect(mockDatabasePlugin.bundles.commitBundle).toHaveBeenCalled();
       expect(mockCli.p.log.success).toHaveBeenCalledWith(
         "Deleted bundle record.",
       );

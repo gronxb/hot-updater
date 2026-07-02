@@ -257,8 +257,10 @@ export async function createBundleDiff(
     throw new Error("Base bundle must be different from the target bundle");
   }
 
-  const baseBundle = await deps.databasePlugin.getBundleById(baseBundleId);
-  const targetBundle = await deps.databasePlugin.getBundleById(bundleId);
+  const baseBundle =
+    await deps.databasePlugin.bundles.getBundleById(baseBundleId);
+  const targetBundle =
+    await deps.databasePlugin.bundles.getBundleById(bundleId);
 
   if (!baseBundle || !targetBundle) {
     throw new Error("Bundle not found");
@@ -347,14 +349,14 @@ export async function createBundleDiff(
       makePrimary: options.makePrimary ?? true,
     });
 
-    await deps.databasePlugin.updateBundle(targetBundle.id, {
+    await deps.databasePlugin.bundles.updateBundle(targetBundle.id, {
       patches: nextState.patches,
       patchBaseBundleId: nextState.primaryPatch.baseBundleId,
       patchBaseFileHash: nextState.primaryPatch.baseFileHash,
       patchFileHash: nextState.primaryPatch.patchFileHash,
       patchStorageUri: nextState.primaryPatch.patchStorageUri,
     });
-    await deps.databasePlugin.commitBundle();
+    await deps.databasePlugin.bundles.commitBundle();
 
     if (
       previousPatch?.patchStorageUri &&
@@ -367,7 +369,7 @@ export async function createBundleDiff(
         });
     }
 
-    const updatedBundle = await deps.databasePlugin.getBundleById(
+    const updatedBundle = await deps.databasePlugin.bundles.getBundleById(
       targetBundle.id,
     );
     if (!updatedBundle) {

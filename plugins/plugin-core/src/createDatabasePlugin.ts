@@ -5,46 +5,49 @@ import { BundleUnitOfWork } from "./bundleUnitOfWork";
 import { getRequestBundleUnitOfWork } from "./bundleUnitOfWorkStore";
 import { calculatePagination } from "./calculatePagination";
 import type {
+  DatabaseAnalytics,
   DatabaseBundleCursor,
   DatabaseBundleIdFilter,
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
   DatabasePlugin,
-  DatabaseTelemetryCapabilities,
   DatabasePluginHooks,
   HotUpdaterContext,
   PaginationInfo,
   Paginated,
 } from "./types";
 
-export interface AbstractDatabasePlugin<
-  TContext = unknown,
-> extends DatabaseTelemetryCapabilities<TContext> {
-  supportsCursorPagination?: boolean;
-  getBundleById: (
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Bundle | null>;
-  getUpdateInfo?: (
-    args: GetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<UpdateInfo | null>;
-  getBundles: (
-    options: DatabaseBundleQueryOptions & { offset?: number },
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Paginated<Bundle[]>>;
-  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+export interface AbstractDatabasePlugin<TContext = unknown> {
+  analytics?: DatabaseAnalytics<TContext>;
+  bundles: {
+    supportsCursorPagination?: boolean;
+    getBundleById: (
+      bundleId: string,
+      context?: HotUpdaterContext<TContext>,
+    ) => Promise<Bundle | null>;
+    getUpdateInfo?: (
+      args: GetBundlesArgs,
+      context?: HotUpdaterContext<TContext>,
+    ) => Promise<UpdateInfo | null>;
+    getBundles: (
+      options: DatabaseBundleQueryOptions & { offset?: number },
+      context?: HotUpdaterContext<TContext>,
+    ) => Promise<Paginated<Bundle[]>>;
+    commitBundle: (
+      params: {
+        changedSets: {
+          operation: "insert" | "update" | "delete";
+          data: Bundle;
+        }[];
+      },
+      context?: HotUpdaterContext<TContext>,
+    ) => Promise<void>;
+  };
+  channels: {
+    getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+  };
   onUnmount?: () => Promise<void>;
-  commitBundle: (
-    params: {
-      changedSets: {
-        operation: "insert" | "update" | "delete";
-        data: Bundle;
-      }[];
-    },
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
 }
 
 /**
@@ -61,11 +64,6 @@ type DatabasePluginMethods<TContext = unknown> = Omit<
 type DatabasePluginFactory<TConfig, TContext = unknown> = (
   config: TConfig,
 ) => DatabasePluginMethods<TContext>;
-
-type TelemetryDatabasePluginFactory<TConfig, TContext = unknown> = (
-  config: TConfig,
-) => DatabasePluginMethods<TContext> &
-  Required<DatabaseTelemetryCapabilities<TContext>>;
 
 const REPLACE_ON_UPDATE_KEYS = ["patches", "targetCohorts"] as const;
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
@@ -235,17 +233,11 @@ function adjustPaginationTotal(
 /**
  * Configuration options for creating a database plugin
  */
-export type CreateDatabasePluginOptions<TConfig, TContext = unknown> =
-  | {
-      name: string;
-      telemetry?: false;
-      factory: DatabasePluginFactory<TConfig, TContext>;
-    }
-  | {
-      name: string;
-      telemetry: true;
-      factory: TelemetryDatabasePluginFactory<TConfig, TContext>;
-    };
+export type CreateDatabasePluginOptions<TConfig, TContext = unknown> = {
+  analytics?: boolean;
+  name: string;
+  factory: DatabasePluginFactory<TConfig, TContext>;
+};
 
 /**
  * Creates a database plugin with lazy initialization and automatic hook execution.
@@ -264,10 +256,14 @@ export type CreateDatabasePluginOptions<TConfig, TContext = unknown> =
  *   factory: (config) => {
  *     const db = new Kysely(config);
  *     return {
- *       async getBundleById(bundleId) { ... },
- *       async getBundles(options) { ... },
- *       async getChannels() { ... },
- *       async commitBundle({ changedSets }) { ... }
+ *       bundles: {
+ *         async getBundleById(bundleId) { ... },
+ *         async getBundles(options) { ... },
+ *         async commitBundle({ changedSets }) { ... }
+ *       },
+ *       channels: {
+ *         async getChannels() { ... }
+ *       }
  *     };
  *   }
  * });
@@ -304,10 +300,10 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         context?: HotUpdaterContext<TContext>,
       ) => {
         if (context === undefined) {
-          return getMethods().getBundles(options);
+          return getMethods().bundles.getBundles(options);
         }
 
-        return getMethods().getBundles(options, context);
+        return getMethods().bundles.getBundles(options, context);
       };
 
       const getBundlesWithLegacyCursorFallback = async (
@@ -401,133 +397,185 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
       const plugin: DatabasePlugin<TContext> = {
         name: options.name,
 
-        async getBundleById(bundleId: string, context) {
-          const requestUnitOfWork = getRequestUnitOfWork(context);
-          if (requestUnitOfWork) {
-            return requestUnitOfWork.getById(bundleId, () =>
-              getMethods().getBundleById(bundleId, context),
-            );
-          }
+        bundles: {
+          get supportsCursorPagination() {
+            return getMethods().bundles.supportsCursorPagination;
+          },
 
-          const pendingMutation =
-            instanceMutationUnitOfWork.peekChanged(bundleId);
-          if (pendingMutation.found) {
-            return pendingMutation.value;
-          }
-
-          return getMethods().getBundleById(bundleId);
-        },
-
-        async getBundles(options, context) {
-          if (
-            typeof options === "object" &&
-            options !== null &&
-            "offset" in options &&
-            options.offset !== undefined
-          ) {
-            throw new Error(
-              "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
-            );
-          }
-
-          const methods = getMethods();
-          const requestUnitOfWork = getRequestUnitOfWork(context);
-          const unitOfWork = requestUnitOfWork ?? instanceMutationUnitOfWork;
-          const shouldOverlay =
-            requestUnitOfWork !== null ||
-            instanceMutationUnitOfWork.hasChanges();
-          const normalizedOptions = {
-            ...options,
-            page: normalizePage(options.page),
-            orderBy: options.orderBy ?? DEFAULT_DESC_ORDER,
-          };
-          const overlayResult = <TData extends Paginated<Bundle[]>>(
-            result: TData,
-          ): TData => ({
-            ...result,
-            data: unitOfWork.overlayList(result.data, {
-              limit: normalizedOptions.limit,
-              orderBy: normalizedOptions.orderBy,
-              where: normalizedOptions.where,
-            }),
-            pagination: adjustPaginationTotal(result.pagination, {
-              limit: normalizedOptions.limit,
-              totalDelta: unitOfWork.totalDelta(normalizedOptions.where),
-            }),
-          });
-
-          if (normalizedOptions.page !== undefined) {
-            const { page, ...pageOptions } = normalizedOptions;
-            const requestedOffset = (page - 1) * normalizedOptions.limit;
-            const fetchPageOptions = expandLimitForUnitOfWork(
-              pageOptions,
-              unitOfWork,
-            );
-            let pageResult = await runGetBundles(
-              {
-                ...fetchPageOptions,
-                offset: requestedOffset,
-              },
-              context,
-            );
-
-            const total = pageResult.pagination.total;
-            const totalPages =
-              total === 0 ? 0 : Math.ceil(total / normalizedOptions.limit);
-            const maxOffset =
-              totalPages === 0
-                ? 0
-                : (Math.max(1, totalPages) - 1) * normalizedOptions.limit;
-            const resolvedOffset = Math.min(requestedOffset, maxOffset);
-
-            if (resolvedOffset !== requestedOffset) {
-              pageResult = await runGetBundles(
-                {
-                  ...fetchPageOptions,
-                  offset: resolvedOffset,
-                },
-                context,
+          async getBundleById(bundleId: string, context) {
+            const requestUnitOfWork = getRequestUnitOfWork(context);
+            if (requestUnitOfWork) {
+              return requestUnitOfWork.getById(bundleId, () =>
+                getMethods().bundles.getBundleById(bundleId, context),
               );
             }
 
-            const result = {
-              ...createPaginatedResult(
-                total,
-                normalizedOptions.limit,
-                resolvedOffset,
-                pageResult.data,
-              ),
+            const pendingMutation =
+              instanceMutationUnitOfWork.peekChanged(bundleId);
+            if (pendingMutation.found) {
+              return pendingMutation.value;
+            }
+
+            return getMethods().bundles.getBundleById(bundleId);
+          },
+
+          async getBundles(options, context) {
+            if (
+              typeof options === "object" &&
+              options !== null &&
+              "offset" in options &&
+              options.offset !== undefined
+            ) {
+              throw new Error(
+                "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
+              );
+            }
+
+            const methods = getMethods().bundles;
+            const requestUnitOfWork = getRequestUnitOfWork(context);
+            const unitOfWork = requestUnitOfWork ?? instanceMutationUnitOfWork;
+            const shouldOverlay =
+              requestUnitOfWork !== null ||
+              instanceMutationUnitOfWork.hasChanges();
+            const normalizedOptions = {
+              ...options,
+              page: normalizePage(options.page),
+              orderBy: options.orderBy ?? DEFAULT_DESC_ORDER,
             };
-            return shouldOverlay ? overlayResult(result) : result;
-          }
+            const overlayResult = <TData extends Paginated<Bundle[]>>(
+              result: TData,
+            ): TData => ({
+              ...result,
+              data: unitOfWork.overlayList(result.data, {
+                limit: normalizedOptions.limit,
+                orderBy: normalizedOptions.orderBy,
+                where: normalizedOptions.where,
+              }),
+              pagination: adjustPaginationTotal(result.pagination, {
+                limit: normalizedOptions.limit,
+                totalDelta: unitOfWork.totalDelta(normalizedOptions.where),
+              }),
+            });
 
-          if (methods.supportsCursorPagination) {
-            const fetchOptions = expandLimitForUnitOfWork(
-              normalizedOptions,
-              unitOfWork,
+            if (normalizedOptions.page !== undefined) {
+              const { page, ...pageOptions } = normalizedOptions;
+              const requestedOffset = (page - 1) * normalizedOptions.limit;
+              const fetchPageOptions = expandLimitForUnitOfWork(
+                pageOptions,
+                unitOfWork,
+              );
+              let pageResult = await runGetBundles(
+                {
+                  ...fetchPageOptions,
+                  offset: requestedOffset,
+                },
+                context,
+              );
+
+              const total = pageResult.pagination.total;
+              const totalPages =
+                total === 0 ? 0 : Math.ceil(total / normalizedOptions.limit);
+              const maxOffset =
+                totalPages === 0
+                  ? 0
+                  : (Math.max(1, totalPages) - 1) * normalizedOptions.limit;
+              const resolvedOffset = Math.min(requestedOffset, maxOffset);
+
+              if (resolvedOffset !== requestedOffset) {
+                pageResult = await runGetBundles(
+                  {
+                    ...fetchPageOptions,
+                    offset: resolvedOffset,
+                  },
+                  context,
+                );
+              }
+
+              const result = {
+                ...createPaginatedResult(
+                  total,
+                  normalizedOptions.limit,
+                  resolvedOffset,
+                  pageResult.data,
+                ),
+              };
+              return shouldOverlay ? overlayResult(result) : result;
+            }
+
+            if (methods.supportsCursorPagination) {
+              const fetchOptions = expandLimitForUnitOfWork(
+                normalizedOptions,
+                unitOfWork,
+              );
+              const result =
+                context === undefined
+                  ? await methods.getBundles(fetchOptions)
+                  : await methods.getBundles(fetchOptions, context);
+              return shouldOverlay ? overlayResult(result) : result;
+            }
+
+            const result = await getBundlesWithLegacyCursorFallback(
+              shouldOverlay
+                ? expandLimitForUnitOfWork(normalizedOptions, unitOfWork)
+                : normalizedOptions,
+              context,
             );
-            const result =
-              context === undefined
-                ? await methods.getBundles(fetchOptions)
-                : await methods.getBundles(fetchOptions, context);
             return shouldOverlay ? overlayResult(result) : result;
-          }
+          },
 
-          const result = await getBundlesWithLegacyCursorFallback(
-            shouldOverlay
-              ? expandLimitForUnitOfWork(normalizedOptions, unitOfWork)
-              : normalizedOptions,
+          async commitBundle(context) {
+            const methods = getMethods().bundles;
+            const unitOfWork = getMutationUnitOfWork(context);
+            const params = {
+              changedSets: unitOfWork.changedSets(),
+            };
+
+            if (context === undefined) {
+              await methods.commitBundle(params);
+            } else {
+              await methods.commitBundle(params, context);
+            }
+
+            unitOfWork.clear();
+            await hooks?.onDatabaseUpdated?.();
+          },
+
+          async updateBundle(
+            targetBundleId: string,
+            newBundle: Partial<Bundle>,
             context,
-          );
-          return shouldOverlay ? overlayResult(result) : result;
+          ) {
+            const unitOfWork = getMutationUnitOfWork(context);
+            const currentBundle = await unitOfWork.getById(targetBundleId, () =>
+              context === undefined
+                ? getMethods().bundles.getBundleById(targetBundleId)
+                : getMethods().bundles.getBundleById(targetBundleId, context),
+            );
+            if (!currentBundle) {
+              throw new Error("targetBundleId not found");
+            }
+
+            const updatedBundle = mergeBundleUpdate(currentBundle, newBundle);
+            unitOfWork.markUpdate(updatedBundle);
+          },
+
+          async appendBundle(inputBundle: Bundle, context) {
+            getMutationUnitOfWork(context).markInsert(inputBundle);
+          },
+
+          async deleteBundle(deleteBundle: Bundle, context): Promise<void> {
+            getMutationUnitOfWork(context).markDelete(deleteBundle);
+          },
         },
 
-        async getChannels(context) {
-          if (context === undefined) {
-            return getMethods().getChannels();
-          }
+        channels: {
+          async getChannels(context) {
+            if (context === undefined) {
+              return getMethods().channels.getChannels();
+            }
 
-          return getMethods().getChannels(context);
+            return getMethods().channels.getChannels(context);
+          },
         },
 
         async onUnmount() {
@@ -536,61 +584,17 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             return methods.onUnmount();
           }
         },
-
-        async commitBundle(context) {
-          const methods = getMethods();
-          const unitOfWork = getMutationUnitOfWork(context);
-          const params = {
-            changedSets: unitOfWork.changedSets(),
-          };
-
-          if (context === undefined) {
-            await methods.commitBundle(params);
-          } else {
-            await methods.commitBundle(params, context);
-          }
-
-          unitOfWork.clear();
-          await hooks?.onDatabaseUpdated?.();
-        },
-
-        async updateBundle(
-          targetBundleId: string,
-          newBundle: Partial<Bundle>,
-          context,
-        ) {
-          const unitOfWork = getMutationUnitOfWork(context);
-          const currentBundle = await unitOfWork.getById(targetBundleId, () =>
-            context === undefined
-              ? getMethods().getBundleById(targetBundleId)
-              : getMethods().getBundleById(targetBundleId, context),
-          );
-          if (!currentBundle) {
-            throw new Error("targetBundleId not found");
-          }
-
-          const updatedBundle = mergeBundleUpdate(currentBundle, newBundle);
-          unitOfWork.markUpdate(updatedBundle);
-        },
-
-        async appendBundle(inputBundle: Bundle, context) {
-          getMutationUnitOfWork(context).markInsert(inputBundle);
-        },
-
-        async deleteBundle(deleteBundle: Bundle, context): Promise<void> {
-          getMutationUnitOfWork(context).markDelete(deleteBundle);
-        },
       };
 
-      Object.defineProperty(plugin, "getUpdateInfo", {
+      Object.defineProperty(plugin.bundles, "getUpdateInfo", {
         configurable: true,
         enumerable: true,
         get() {
-          const methods = getMethods();
+          const methods = getMethods().bundles;
           const directGetUpdateInfo = methods.getUpdateInfo;
 
           if (!directGetUpdateInfo) {
-            Object.defineProperty(plugin, "getUpdateInfo", {
+            Object.defineProperty(plugin.bundles, "getUpdateInfo", {
               configurable: true,
               enumerable: true,
               value: undefined,
@@ -599,7 +603,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           }
 
           const wrappedGetUpdateInfo: NonNullable<
-            DatabasePlugin<TContext>["getUpdateInfo"]
+            DatabasePlugin<TContext>["bundles"]["getUpdateInfo"]
           > = async (args, context) => {
             if (context === undefined) {
               return directGetUpdateInfo(args);
@@ -608,7 +612,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             return directGetUpdateInfo(args, context);
           };
 
-          Object.defineProperty(plugin, "getUpdateInfo", {
+          Object.defineProperty(plugin.bundles, "getUpdateInfo", {
             configurable: true,
             enumerable: true,
             value: wrappedGetUpdateInfo,
@@ -617,43 +621,20 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         },
       });
 
-      if (options.telemetry) {
-        plugin.authenticateTelemetryKey = async (telemetryKey, context) => {
-          const method = getMethods().authenticateTelemetryKey;
-          if (!method)
-            throw new Error("authenticateTelemetryKey is unavailable");
-          return method(telemetryKey, context);
-        };
-
-        plugin.getTelemetryKeyState = async (context) => {
-          const method = getMethods().getTelemetryKeyState;
-          if (!method) throw new Error("getTelemetryKeyState is unavailable");
-          return method(context);
-        };
-
-        plugin.issueTelemetryKey = async (context) => {
-          const method = getMethods().issueTelemetryKey;
-          if (!method) throw new Error("issueTelemetryKey is unavailable");
-          return method(context);
-        };
-
-        plugin.readLifecycleMetrics = async (context) => {
-          const method = getMethods().readLifecycleMetrics;
-          if (!method) throw new Error("readLifecycleMetrics is unavailable");
-          return method(context);
-        };
-
-        plugin.recordLifecycleEvent = async (payload, context) => {
-          const method = getMethods().recordLifecycleEvent;
-          if (!method) throw new Error("recordLifecycleEvent is unavailable");
-          return method(payload, context);
-        };
-
-        plugin.rotateTelemetryKey = async (context) => {
-          const method = getMethods().rotateTelemetryKey;
-          if (!method) throw new Error("rotateTelemetryKey is unavailable");
-          return method(context);
-        };
+      if (options.analytics === true) {
+        Object.defineProperty(plugin, "analytics", {
+          configurable: true,
+          enumerable: true,
+          get() {
+            const analytics = getMethods().analytics;
+            Object.defineProperty(plugin, "analytics", {
+              configurable: true,
+              enumerable: true,
+              value: analytics,
+            });
+            return analytics;
+          },
+        });
       }
 
       return plugin;

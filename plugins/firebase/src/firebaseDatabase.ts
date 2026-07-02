@@ -221,48 +221,69 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
     const targetAppVersionsCollection = db.collection("target_app_versions");
 
     return {
-      async getUpdateInfo(args, context) {
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
+      bundles: {
+        async getUpdateInfo(args, context) {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
 
-        if (args._updateStrategy === "appVersion") {
-          const querySnapshot = await targetAppVersionsCollection
+          if (args._updateStrategy === "appVersion") {
+            const querySnapshot = await targetAppVersionsCollection
+              .where("platform", "==", args.platform)
+              .where("channel", "==", channel)
+              .select("target_app_version")
+              .get();
+
+            const targetAppVersions = Array.from(
+              new Set(
+                querySnapshot.docs
+                  .map(
+                    (doc) =>
+                      doc.data().target_app_version as string | undefined,
+                  )
+                  .filter((version): version is string => Boolean(version)),
+              ),
+            );
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
+            );
+            const results =
+              compatibleAppVersions.length > 0
+                ? await Promise.all(
+                    chunkValues(compatibleAppVersions, 10).map((versions) =>
+                      bundlesCollection
+                        .where("platform", "==", args.platform)
+                        .where("channel", "==", channel)
+                        .where("enabled", "==", true)
+                        .where("id", ">=", minBundleId)
+                        .where("target_app_version", "in", versions)
+                        .get(),
+                    ),
+                  )
+                : [];
+            const bundles = results.flatMap((snapshot) =>
+              snapshot.docs.map((doc) =>
+                convertToBundle(doc.data() as SnakeCaseBundle),
+              ),
+            );
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles,
+              context,
+            });
+          }
+
+          const querySnapshot = await bundlesCollection
             .where("platform", "==", args.platform)
             .where("channel", "==", channel)
-            .select("target_app_version")
+            .where("enabled", "==", true)
+            .where("id", ">=", minBundleId)
+            .where("fingerprint_hash", "==", args.fingerprintHash)
             .get();
 
-          const targetAppVersions = Array.from(
-            new Set(
-              querySnapshot.docs
-                .map(
-                  (doc) => doc.data().target_app_version as string | undefined,
-                )
-                .filter((version): version is string => Boolean(version)),
-            ),
-          );
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
-          const results =
-            compatibleAppVersions.length > 0
-              ? await Promise.all(
-                  chunkValues(compatibleAppVersions, 10).map((versions) =>
-                    bundlesCollection
-                      .where("platform", "==", args.platform)
-                      .where("channel", "==", channel)
-                      .where("enabled", "==", true)
-                      .where("id", ">=", minBundleId)
-                      .where("target_app_version", "in", versions)
-                      .get(),
-                  ),
-                )
-              : [];
-          const bundles = results.flatMap((snapshot) =>
-            snapshot.docs.map((doc) =>
-              convertToBundle(doc.data() as SnakeCaseBundle),
-            ),
+          const bundles = querySnapshot.docs.map((doc) =>
+            convertToBundle(doc.data() as SnakeCaseBundle),
           );
 
           return resolveUpdateInfoFromBundles({
@@ -270,63 +291,72 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
             bundles,
             context,
           });
-        }
+        },
 
-        const querySnapshot = await bundlesCollection
-          .where("platform", "==", args.platform)
-          .where("channel", "==", channel)
-          .where("enabled", "==", true)
-          .where("id", ">=", minBundleId)
-          .where("fingerprint_hash", "==", args.fingerprintHash)
-          .get();
+        async getBundleById(bundleId) {
+          const bundleRef = bundlesCollection.doc(bundleId);
+          const bundleSnap = await bundleRef.get();
 
-        const bundles = querySnapshot.docs.map((doc) =>
-          convertToBundle(doc.data() as SnakeCaseBundle),
-        );
+          if (!bundleSnap.exists) {
+            return null;
+          }
 
-        return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles,
-          context,
-        });
-      },
+          const firestoreData = bundleSnap.data() as SnakeCaseBundle;
+          return convertToBundle(firestoreData);
+        },
 
-      async getBundleById(bundleId) {
-        const bundleRef = bundlesCollection.doc(bundleId);
-        const bundleSnap = await bundleRef.get();
+        async getBundles(options) {
+          const { where, limit, orderBy } = options;
+          const offset =
+            (("offset" in options ? options.offset : undefined) as
+              | number
+              | undefined) ?? 0;
 
-        if (!bundleSnap.exists) {
-          return null;
-        }
+          let query = applyFirestoreQueryableFilters(bundlesCollection, where);
 
-        const firestoreData = bundleSnap.data() as SnakeCaseBundle;
-        return convertToBundle(firestoreData);
-      },
+          query = query.orderBy(
+            "id",
+            orderBy?.direction === "asc" ? "asc" : "desc",
+          );
 
-      async getBundles(options) {
-        const { where, limit, orderBy } = options;
-        const offset =
-          (("offset" in options ? options.offset : undefined) as
-            | number
-            | undefined) ?? 0;
+          if (requiresInMemoryFiltering(where)) {
+            const querySnapshot = await query.get();
+            const filteredBundles = sortBundles(
+              querySnapshot.docs
+                .map((doc) => convertToBundle(doc.data() as SnakeCaseBundle))
+                .filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
+              orderBy,
+            );
+            const total = filteredBundles.length;
+            const data = filteredBundles.slice(offset, offset + limit);
 
-        let query = applyFirestoreQueryableFilters(bundlesCollection, where);
+            return {
+              data,
+              pagination: calculatePagination(total, {
+                limit,
+                offset,
+              }),
+            };
+          }
 
-        query = query.orderBy(
-          "id",
-          orderBy?.direction === "asc" ? "asc" : "desc",
-        );
+          const totalSnapshot = await query.get();
+          const total = totalSnapshot.size;
 
-        if (requiresInMemoryFiltering(where)) {
+          if (offset > 0) {
+            query = query.offset(offset);
+          }
+          if (limit) {
+            query = query.limit(limit);
+          }
+
           const querySnapshot = await query.get();
-          const filteredBundles = sortBundles(
-            querySnapshot.docs
-              .map((doc) => convertToBundle(doc.data() as SnakeCaseBundle))
-              .filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
+
+          const data = sortBundles(
+            querySnapshot.docs.map((doc) =>
+              convertToBundle(doc.data() as SnakeCaseBundle),
+            ),
             orderBy,
           );
-          const total = filteredBundles.length;
-          const data = filteredBundles.slice(offset, offset + limit);
 
           return {
             data,
@@ -335,149 +365,37 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
               offset,
             }),
           };
-        }
+        },
 
-        const totalSnapshot = await query.get();
-        const total = totalSnapshot.size;
-
-        if (offset > 0) {
-          query = query.offset(offset);
-        }
-        if (limit) {
-          query = query.limit(limit);
-        }
-
-        const querySnapshot = await query.get();
-
-        const data = sortBundles(
-          querySnapshot.docs.map((doc) =>
-            convertToBundle(doc.data() as SnakeCaseBundle),
-          ),
-          orderBy,
-        );
-
-        return {
-          data,
-          pagination: calculatePagination(total, {
-            limit,
-            offset,
-          }),
-        };
-      },
-
-      async getChannels() {
-        const channelsCollection = db.collection("channels");
-        const querySnapshot = await channelsCollection.get();
-
-        if (querySnapshot.empty) {
-          return [];
-        }
-
-        const channels = new Set<string>();
-        for (const doc of querySnapshot.docs) {
-          const data = doc.data();
-          if (data.name) {
-            channels.add(data.name as string);
-          }
-        }
-
-        return Array.from(channels);
-      },
-
-      async commitBundle({ changedSets }) {
-        if (changedSets.length === 0) {
-          return;
-        }
-
-        let isTargetAppVersionChanged = false;
-
-        await db.runTransaction(async (transaction) => {
-          const bundlesSnapshot = await transaction.get(bundlesCollection);
-          const targetVersionsSnapshot = await transaction.get(
-            db.collection("target_app_versions"),
-          );
-          const channelsSnapshot = await transaction.get(
-            db.collection("channels"),
-          );
-
-          const bundlesMap: { [id: string]: any } = {};
-          for (const doc of bundlesSnapshot.docs) {
-            bundlesMap[doc.id] = doc.data();
+        async commitBundle({ changedSets }) {
+          if (changedSets.length === 0) {
+            return;
           }
 
-          // Process all operations
-          for (const { operation, data } of changedSets) {
-            if (data.targetAppVersion) {
-              isTargetAppVersionChanged = true;
+          let isTargetAppVersionChanged = false;
+
+          await db.runTransaction(async (transaction) => {
+            const bundlesSnapshot = await transaction.get(bundlesCollection);
+            const targetVersionsSnapshot = await transaction.get(
+              db.collection("target_app_versions"),
+            );
+            const channelsSnapshot = await transaction.get(
+              db.collection("channels"),
+            );
+
+            const bundlesMap: { [id: string]: any } = {};
+            for (const doc of bundlesSnapshot.docs) {
+              bundlesMap[doc.id] = doc.data();
             }
 
-            if (operation === "insert" || operation === "update") {
-              bundlesMap[data.id] = {
-                id: data.id,
-                channel: data.channel,
-                enabled: data.enabled,
-                should_force_update: data.shouldForceUpdate,
-                file_hash: data.fileHash,
-                git_commit_hash: data.gitCommitHash || null,
-                message: data.message || null,
-                platform: data.platform,
-                target_app_version: data.targetAppVersion,
-                storage_uri: data.storageUri,
-                fingerprint_hash: data.fingerprintHash,
-                metadata: stripBundleArtifactMetadata(data.metadata) ?? {},
-                manifest_storage_uri: getManifestStorageUri(data),
-                manifest_file_hash: getManifestFileHash(data),
-                asset_base_storage_uri: getAssetBaseStorageUri(data),
-                patches: data.patches ?? null,
-                patch_base_bundle_id: getPatchBaseBundleId(data),
-                patch_base_file_hash: getPatchBaseFileHash(data),
-                patch_file_hash: getPatchFileHash(data),
-                patch_storage_uri: getPatchStorageUri(data),
-                rollout_cohort_count:
-                  data.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-                target_cohorts: data.targetCohorts ?? null,
-              } as SnakeCaseBundle;
-
-              // Add channel to channels collection
-              const channelRef = db.collection("channels").doc(data.channel);
-              transaction.set(
-                channelRef,
-                {
-                  name: data.channel,
-                },
-                { merge: true },
-              );
-            } else if (operation === "delete") {
-              // Check if bundle exists
-              if (!bundlesMap[data.id]) {
-                throw new Error(`Bundle with id ${data.id} not found`);
+            // Process all operations
+            for (const { operation, data } of changedSets) {
+              if (data.targetAppVersion) {
+                isTargetAppVersionChanged = true;
               }
 
-              // Remove from bundlesMap
-              delete bundlesMap[data.id];
-              isTargetAppVersionChanged = true;
-            }
-          }
-
-          // Calculate required target app versions and channels from remaining bundles
-          const requiredTargetVersionKeys = new Set<string>();
-          const requiredChannels = new Set<string>();
-          for (const bundle of Object.values(bundlesMap)) {
-            if (bundle.target_app_version) {
-              const key = `${bundle.platform}_${bundle.channel}_${bundle.target_app_version}`;
-              requiredTargetVersionKeys.add(key);
-            }
-            requiredChannels.add(bundle.channel);
-          }
-
-          // Execute database operations
-          for (const { operation, data } of changedSets) {
-            const bundleRef = bundlesCollection.doc(data.id);
-
-            if (operation === "insert" || operation === "update") {
-              transaction.set(
-                bundleRef,
-                {
+              if (operation === "insert" || operation === "update") {
+                bundlesMap[data.id] = {
                   id: data.id,
                   channel: data.channel,
                   enabled: data.enabled,
@@ -486,7 +404,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                   git_commit_hash: data.gitCommitHash || null,
                   message: data.message || null,
                   platform: data.platform,
-                  target_app_version: data.targetAppVersion || null,
+                  target_app_version: data.targetAppVersion,
                   storage_uri: data.storageUri,
                   fingerprint_hash: data.fingerprintHash,
                   metadata: stripBundleArtifactMetadata(data.metadata) ?? {},
@@ -501,47 +419,133 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
                   rollout_cohort_count:
                     data.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
                   target_cohorts: data.targetCohorts ?? null,
-                } as SnakeCaseBundle,
-                { merge: true },
-              );
+                } as SnakeCaseBundle;
 
-              if (data.targetAppVersion) {
-                const versionDocId = `${data.platform}_${data.channel}_${data.targetAppVersion}`;
-                const targetAppVersionsRef = db
-                  .collection("target_app_versions")
-                  .doc(versionDocId);
+                // Add channel to channels collection
+                const channelRef = db.collection("channels").doc(data.channel);
                 transaction.set(
-                  targetAppVersionsRef,
+                  channelRef,
                   {
-                    channel: data.channel,
-                    platform: data.platform,
-                    target_app_version: data.targetAppVersion,
+                    name: data.channel,
                   },
                   { merge: true },
                 );
+              } else if (operation === "delete") {
+                // Check if bundle exists
+                if (!bundlesMap[data.id]) {
+                  throw new Error(`Bundle with id ${data.id} not found`);
+                }
+
+                // Remove from bundlesMap
+                delete bundlesMap[data.id];
+                isTargetAppVersionChanged = true;
               }
-            } else if (operation === "delete") {
-              // Delete the bundle document
-              transaction.delete(bundleRef);
+            }
+
+            // Calculate required target app versions and channels from remaining bundles
+            const requiredTargetVersionKeys = new Set<string>();
+            const requiredChannels = new Set<string>();
+            for (const bundle of Object.values(bundlesMap)) {
+              if (bundle.target_app_version) {
+                const key = `${bundle.platform}_${bundle.channel}_${bundle.target_app_version}`;
+                requiredTargetVersionKeys.add(key);
+              }
+              requiredChannels.add(bundle.channel);
+            }
+
+            // Execute database operations
+            for (const { operation, data } of changedSets) {
+              const bundleRef = bundlesCollection.doc(data.id);
+
+              if (operation === "insert" || operation === "update") {
+                transaction.set(
+                  bundleRef,
+                  {
+                    id: data.id,
+                    channel: data.channel,
+                    enabled: data.enabled,
+                    should_force_update: data.shouldForceUpdate,
+                    file_hash: data.fileHash,
+                    git_commit_hash: data.gitCommitHash || null,
+                    message: data.message || null,
+                    platform: data.platform,
+                    target_app_version: data.targetAppVersion || null,
+                    storage_uri: data.storageUri,
+                    fingerprint_hash: data.fingerprintHash,
+                    metadata: stripBundleArtifactMetadata(data.metadata) ?? {},
+                    manifest_storage_uri: getManifestStorageUri(data),
+                    manifest_file_hash: getManifestFileHash(data),
+                    asset_base_storage_uri: getAssetBaseStorageUri(data),
+                    patches: data.patches ?? null,
+                    patch_base_bundle_id: getPatchBaseBundleId(data),
+                    patch_base_file_hash: getPatchBaseFileHash(data),
+                    patch_file_hash: getPatchFileHash(data),
+                    patch_storage_uri: getPatchStorageUri(data),
+                    rollout_cohort_count:
+                      data.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+                    target_cohorts: data.targetCohorts ?? null,
+                  } as SnakeCaseBundle,
+                  { merge: true },
+                );
+
+                if (data.targetAppVersion) {
+                  const versionDocId = `${data.platform}_${data.channel}_${data.targetAppVersion}`;
+                  const targetAppVersionsRef = db
+                    .collection("target_app_versions")
+                    .doc(versionDocId);
+                  transaction.set(
+                    targetAppVersionsRef,
+                    {
+                      channel: data.channel,
+                      platform: data.platform,
+                      target_app_version: data.targetAppVersion,
+                    },
+                    { merge: true },
+                  );
+                }
+              } else if (operation === "delete") {
+                // Delete the bundle document
+                transaction.delete(bundleRef);
+              }
+            }
+
+            // Clean up orphaned target app versions
+            if (isTargetAppVersionChanged) {
+              for (const targetDoc of targetVersionsSnapshot.docs) {
+                if (!requiredTargetVersionKeys.has(targetDoc.id)) {
+                  transaction.delete(targetDoc.ref);
+                }
+              }
+            }
+
+            // Clean up orphaned channels
+            for (const channelDoc of channelsSnapshot.docs) {
+              if (!requiredChannels.has(channelDoc.id)) {
+                transaction.delete(channelDoc.ref);
+              }
+            }
+          });
+        },
+      },
+      channels: {
+        async getChannels() {
+          const channelsCollection = db.collection("channels");
+          const querySnapshot = await channelsCollection.get();
+
+          if (querySnapshot.empty) {
+            return [];
+          }
+
+          const channels = new Set<string>();
+          for (const doc of querySnapshot.docs) {
+            const data = doc.data();
+            if (data.name) {
+              channels.add(data.name as string);
             }
           }
 
-          // Clean up orphaned target app versions
-          if (isTargetAppVersionChanged) {
-            for (const targetDoc of targetVersionsSnapshot.docs) {
-              if (!requiredTargetVersionKeys.has(targetDoc.id)) {
-                transaction.delete(targetDoc.ref);
-              }
-            }
-          }
-
-          // Clean up orphaned channels
-          for (const channelDoc of channelsSnapshot.docs) {
-            if (!requiredChannels.has(channelDoc.id)) {
-              transaction.delete(channelDoc.ref);
-            }
-          }
-        });
+          return Array.from(channels);
+        },
       },
     };
   },

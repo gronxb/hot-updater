@@ -134,7 +134,7 @@ export declare const rotateTelemetryKeyOperation: () => Promise<TelemetryKeyResu
 
 export declare const getBundlesOperation: (
   input?: GetBundlesInput,
-) => ReturnType<DatabasePlugin["getBundles"]>;
+) => ReturnType<DatabasePlugin["bundles"]["getBundles"]>;
 
 export declare const getBundleOperation: (
   input: GetBundleInput,

@@ -179,144 +179,148 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
       }
     };
     return {
-      async getBundleById(bundleId) {
-        const bundles = getDelegate(prisma, "bundles");
-        const row = await bundles.findFirst({ where: { id: bundleId } });
-        if (!row) return null;
-        const patchMap = await fetchPatchMap([bundleId]);
-        return rowToBundle(row as BundleRow, patchMap.get(bundleId) ?? []);
-      },
-      async getBundles(
-        options: DatabaseBundleQueryOptions & { offset?: number },
-      ) {
-        const bundles = getDelegate(prisma, "bundles");
-        const offset = options.offset ?? 0;
-        const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
-        const where = prismaWhere(options.where);
-        const [total, rows] = await Promise.all([
-          bundles.count({ where }),
-          bundles.findMany({
-            where,
-            orderBy: { id: orderBy.direction },
-            skip: offset,
-            take: options.limit,
-          }),
-        ]);
-        const patchMap = await fetchPatchMap(
-          rows.map((row) => String(row["id"])),
-        );
-        return {
-          data: rows.map((row) =>
-            rowToBundle(
-              row as BundleRow,
-              patchMap.get(String(row["id"])) ?? [],
+      bundles: {
+        async getBundleById(bundleId) {
+          const bundles = getDelegate(prisma, "bundles");
+          const row = await bundles.findFirst({ where: { id: bundleId } });
+          if (!row) return null;
+          const patchMap = await fetchPatchMap([bundleId]);
+          return rowToBundle(row as BundleRow, patchMap.get(bundleId) ?? []);
+        },
+        async getBundles(
+          options: DatabaseBundleQueryOptions & { offset?: number },
+        ) {
+          const bundles = getDelegate(prisma, "bundles");
+          const offset = options.offset ?? 0;
+          const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
+          const where = prismaWhere(options.where);
+          const [total, rows] = await Promise.all([
+            bundles.count({ where }),
+            bundles.findMany({
+              where,
+              orderBy: { id: orderBy.direction },
+              skip: offset,
+              take: options.limit,
+            }),
+          ]);
+          const patchMap = await fetchPatchMap(
+            rows.map((row) => String(row["id"])),
+          );
+          return {
+            data: rows.map((row) =>
+              rowToBundle(
+                row as BundleRow,
+                patchMap.get(String(row["id"])) ?? [],
+              ),
             ),
-          ),
-          pagination: calculatePagination(total, {
-            limit: options.limit,
-            offset,
-          }),
-        };
-      },
-      async getUpdateInfo(args, context) {
-        const bundles = getDelegate(prisma, "bundles");
+            pagination: calculatePagination(total, {
+              limit: options.limit,
+              offset,
+            }),
+          };
+        },
+        async getUpdateInfo(args, context) {
+          const bundles = getDelegate(prisma, "bundles");
 
-        if (args._updateStrategy === "appVersion") {
+          if (args._updateStrategy === "appVersion") {
+            const channel = args.channel ?? "production";
+            const minBundleId = args.minBundleId ?? NIL_UUID;
+            const rows = await bundles.findMany({
+              select: { target_app_version: true },
+              where: {
+                enabled: true,
+                platform: args.platform,
+                channel,
+                id: { gte: minBundleId },
+                target_app_version: { not: null },
+              },
+            });
+
+            const targetAppVersions = Array.from(
+              new Set(
+                rows
+                  .map((row) => row["target_app_version"])
+                  .filter(
+                    (value): value is string =>
+                      typeof value === "string" && value.length > 0,
+                  ),
+              ),
+            );
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
+            );
+            const updateBundles =
+              compatibleAppVersions.length > 0
+                ? await bundles
+                    .findMany({
+                      where: {
+                        enabled: true,
+                        platform: args.platform,
+                        channel,
+                        id: { gte: minBundleId },
+                        target_app_version: { in: compatibleAppVersions },
+                      },
+                      orderBy: { id: "desc" },
+                    })
+                    .then(mapRowsToBundles)
+                : [];
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles: updateBundles,
+              context,
+            });
+          }
+
           const channel = args.channel ?? "production";
           const minBundleId = args.minBundleId ?? NIL_UUID;
           const rows = await bundles.findMany({
-            select: { target_app_version: true },
             where: {
               enabled: true,
               platform: args.platform,
               channel,
               id: { gte: minBundleId },
-              target_app_version: { not: null },
+              fingerprint_hash: args.fingerprintHash,
             },
+            orderBy: { id: "desc" },
           });
-
-          const targetAppVersions = Array.from(
-            new Set(
-              rows
-                .map((row) => row["target_app_version"])
-                .filter(
-                  (value): value is string =>
-                    typeof value === "string" && value.length > 0,
-                ),
-            ),
-          );
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
-          const updateBundles =
-            compatibleAppVersions.length > 0
-              ? await bundles
-                  .findMany({
-                    where: {
-                      enabled: true,
-                      platform: args.platform,
-                      channel,
-                      id: { gte: minBundleId },
-                      target_app_version: { in: compatibleAppVersions },
-                    },
-                    orderBy: { id: "desc" },
-                  })
-                  .then(mapRowsToBundles)
-              : [];
 
           return resolveUpdateInfoFromBundles({
             args: { ...args, channel, minBundleId },
-            bundles: updateBundles,
+            bundles: await mapRowsToBundles(rows),
             context,
           });
-        }
-
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
-        const rows = await bundles.findMany({
-          where: {
-            enabled: true,
-            platform: args.platform,
-            channel,
-            id: { gte: minBundleId },
-            fingerprint_hash: args.fingerprintHash,
-          },
-          orderBy: { id: "desc" },
-        });
-
-        return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles: await mapRowsToBundles(rows),
-          context,
-        });
-      },
-      async getChannels() {
-        const bundles = getDelegate(prisma, "bundles");
-        const rows = await bundles.findMany({
-          select: { channel: true },
-          orderBy: { channel: "asc" },
-        });
-        return Array.from(new Set(rows.map((row) => String(row["channel"]))));
-      },
-      async commitBundle({ changedSets }) {
-        await runInTransaction(async (client) => {
-          const bundles = getDelegate(client, "bundles");
-          const patches = getDelegate(client, "bundle_patches");
-          for (const change of changedSets) {
-            if (change.operation === "delete") {
-              await patches.deleteMany({
-                where: { bundle_id: change.data.id },
-              });
-              await patches.deleteMany({
-                where: { base_bundle_id: change.data.id },
-              });
-              await bundles.deleteMany({ where: { id: change.data.id } });
-              continue;
+        },
+        async commitBundle({ changedSets }) {
+          await runInTransaction(async (client) => {
+            const bundles = getDelegate(client, "bundles");
+            const patches = getDelegate(client, "bundle_patches");
+            for (const change of changedSets) {
+              if (change.operation === "delete") {
+                await patches.deleteMany({
+                  where: { bundle_id: change.data.id },
+                });
+                await patches.deleteMany({
+                  where: { base_bundle_id: change.data.id },
+                });
+                await bundles.deleteMany({ where: { id: change.data.id } });
+                continue;
+              }
+              await upsertBundle(client, change.data);
             }
-            await upsertBundle(client, change.data);
-          }
-        });
+          });
+        },
+      },
+      channels: {
+        async getChannels() {
+          const bundles = getDelegate(prisma, "bundles");
+          const rows = await bundles.findMany({
+            select: { channel: true },
+            orderBy: { channel: "asc" },
+          });
+          return Array.from(new Set(rows.map((row) => String(row["channel"]))));
+        },
       },
     };
   },

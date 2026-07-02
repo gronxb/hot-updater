@@ -24,15 +24,19 @@ const {
     },
   };
   const mockDatabasePlugin = {
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
+    bundles: {
+      appendBundle: vi.fn(),
+      commitBundle: vi.fn(),
+      deleteBundle: vi.fn(),
+      getBundleById: vi.fn(),
+      getBundles: vi.fn(),
+      updateBundle: vi.fn(),
+    },
+    channels: {
+      getChannels: vi.fn(),
+    },
     name: "mock-database",
     onUnmount: vi.fn(),
-    updateBundle: vi.fn(),
   };
   const mockServer = {
     createBundleDiff: vi.fn(),
@@ -232,7 +236,7 @@ import {
 } from "./deploy";
 
 type BundleFixture = Pick<Bundle, "id"> & Partial<Bundle>;
-type GetBundlesOptions = Parameters<DatabasePlugin["getBundles"]>[0];
+type GetBundlesOptions = Parameters<DatabasePlugin["bundles"]["getBundles"]>[0];
 
 const compareBundleIds = (a: string, b: string): number => a.localeCompare(b);
 
@@ -259,7 +263,7 @@ const matchesIdFilter = (
 };
 
 const mockGetBundlesWithFixtures = (fixtures: BundleFixture[]) => {
-  mockDatabasePlugin.getBundles.mockImplementation(
+  mockDatabasePlugin.bundles.getBundles.mockImplementation(
     async (options: GetBundlesOptions) => {
       const { cursor, limit, orderBy, where = {} } = options;
       const sortedBundles = fixtures
@@ -420,9 +424,9 @@ describe("deploy rollout wiring", () => {
       storageUri: "s3://bundles/bundle-123/bundle.tar.br",
     });
     mockStoragePlugin.profiles.node.exists.mockResolvedValue(false);
-    mockDatabasePlugin.appendBundle.mockResolvedValue(undefined);
-    mockDatabasePlugin.commitBundle.mockResolvedValue(undefined);
-    mockDatabasePlugin.getBundles.mockResolvedValue({
+    mockDatabasePlugin.bundles.appendBundle.mockResolvedValue(undefined);
+    mockDatabasePlugin.bundles.commitBundle.mockResolvedValue(undefined);
+    mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
       data: [],
       pagination: {
         currentPage: 1,
@@ -516,7 +520,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         rolloutCohortCount: 1000,
       }),
@@ -533,7 +537,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         rolloutCohortCount: 0,
       }),
@@ -550,7 +554,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         rolloutCohortCount: 550,
       }),
@@ -673,7 +677,7 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         assetBaseStorageUri: "s3://bundles/assets",
         manifestFileHash: "file-hash",
@@ -1010,7 +1014,7 @@ describe("deploy rollout wiring", () => {
       storage: async () => mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockDatabasePlugin.getBundles.mockResolvedValue({
+    mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
       data: [
         {
           id: "bundle-122",
@@ -1145,7 +1149,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.1",
     });
 
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
+    expect(mockDatabasePlugin.bundles.getBundles).toHaveBeenCalledTimes(2);
     expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
       {
         baseBundleId: "bundle-112",
@@ -1175,7 +1179,7 @@ describe("deploy rollout wiring", () => {
       storage: async () => mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockDatabasePlugin.getBundles.mockResolvedValue({
+    mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
       data: [
         {
           id: "bundle-122",
@@ -1220,7 +1224,7 @@ describe("deploy rollout wiring", () => {
       platform: "ios",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         targetAppVersion: "1.5.0",
       }),
@@ -1240,7 +1244,7 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.log.error).toHaveBeenCalledWith(
       expect.stringContaining("Target app version not found in native files"),
     );
-    expect(mockDatabasePlugin.appendBundle).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.appendBundle).not.toHaveBeenCalled();
   });
 
   it("uses the explicit -t value over the auto-detected default", async () => {
@@ -1254,7 +1258,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.2.0",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         targetAppVersion: "1.2.0",
       }),
@@ -1279,7 +1283,7 @@ describe("deploy rollout wiring", () => {
         initialValue: "1.5.0",
       }),
     );
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         targetAppVersion: "1.7.0",
       }),

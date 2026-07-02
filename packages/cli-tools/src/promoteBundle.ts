@@ -471,7 +471,7 @@ export async function promoteBundle(
     throw new Error("Target channel is required");
   }
 
-  const bundle = await deps.databasePlugin.getBundleById(bundleId);
+  const bundle = await deps.databasePlugin.bundles.getBundleById(bundleId);
   if (!bundle) {
     throw new Error("Bundle not found");
   }
@@ -483,12 +483,13 @@ export async function promoteBundle(
   }
 
   if (action === "move") {
-    await deps.databasePlugin.updateBundle(bundleId, {
+    await deps.databasePlugin.bundles.updateBundle(bundleId, {
       channel: normalizedTargetChannel,
     });
-    await deps.databasePlugin.commitBundle();
+    await deps.databasePlugin.bundles.commitBundle();
 
-    const updatedBundle = await deps.databasePlugin.getBundleById(bundleId);
+    const updatedBundle =
+      await deps.databasePlugin.bundles.getBundleById(bundleId);
     if (!updatedBundle) {
       throw new Error("Promoted bundle not found");
     }
@@ -512,8 +513,8 @@ export async function promoteBundle(
   let shouldCleanupUploadedCopy = true;
 
   try {
-    await deps.databasePlugin.appendBundle(copiedBundle);
-    await deps.databasePlugin.commitBundle();
+    await deps.databasePlugin.bundles.appendBundle(copiedBundle);
+    await deps.databasePlugin.bundles.commitBundle();
     shouldCleanupUploadedCopy = false;
     return copiedBundle;
   } catch (error) {

@@ -17,13 +17,17 @@ vi.mock("@hot-updater/cli-tools", () => ({
 function createDatabasePlugin(name: string): DatabasePlugin {
   return {
     name,
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
-    updateBundle: vi.fn(),
-    appendBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    commitBundle: vi.fn(),
+    bundles: {
+      getBundleById: vi.fn(),
+      getBundles: vi.fn(),
+      updateBundle: vi.fn(),
+      appendBundle: vi.fn(),
+      deleteBundle: vi.fn(),
+      commitBundle: vi.fn(),
+    },
+    channels: {
+      getChannels: vi.fn(),
+    },
   };
 }
 

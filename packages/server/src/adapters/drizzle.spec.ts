@@ -54,7 +54,9 @@ describe("drizzleAdapter", () => {
 
     expect(getDB).not.toHaveBeenCalled();
 
-    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+    await expect(plugin.channels.getChannels()).resolves.toEqual([
+      "production",
+    ]);
     expect(getDB).toHaveBeenCalledOnce();
   });
 
@@ -68,7 +70,7 @@ describe("drizzleAdapter", () => {
       provider: "postgresql",
     })();
 
-    await expect(plugin.getChannels()).rejects.toThrow(
+    await expect(plugin.channels.getChannels()).rejects.toThrow(
       "[hot-updater] Drizzle adapter requires schema when db is lazy.",
     );
     expect(getDB).not.toHaveBeenCalled();

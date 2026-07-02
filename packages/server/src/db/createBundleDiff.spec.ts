@@ -37,42 +37,46 @@ const createDatabasePlugin = (
   bundles: Map<string, Bundle>,
 ): DatabasePlugin => ({
   name: "mockDatabase",
-  async appendBundle() {},
-  async commitBundle() {},
-  async deleteBundle() {},
-  async getBundleById(bundleId) {
-    return bundles.get(bundleId) ?? null;
+  bundles: {
+    async appendBundle() {},
+    async commitBundle() {},
+    async deleteBundle() {},
+    async getBundleById(bundleId) {
+      return bundles.get(bundleId) ?? null;
+    },
+    async getBundles() {
+      return {
+        data: Array.from(bundles.values()),
+        pagination: {
+          currentPage: 1,
+          hasNextPage: false,
+          hasPreviousPage: false,
+          total: bundles.size,
+          totalPages: 1,
+        },
+      };
+    },
+    async updateBundle(bundleId, nextBundle) {
+      const currentBundle = bundles.get(bundleId);
+      if (!currentBundle) {
+        return;
+      }
+      bundles.set(bundleId, {
+        ...currentBundle,
+        ...nextBundle,
+        metadata: {
+          ...currentBundle.metadata,
+          ...nextBundle.metadata,
+        },
+      });
+    },
   },
-  async getBundles() {
-    return {
-      data: Array.from(bundles.values()),
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: bundles.size,
-        totalPages: 1,
-      },
-    };
-  },
-  async getChannels() {
-    return ["production"];
+  channels: {
+    async getChannels() {
+      return ["production"];
+    },
   },
   async onUnmount() {},
-  async updateBundle(bundleId, nextBundle) {
-    const currentBundle = bundles.get(bundleId);
-    if (!currentBundle) {
-      return;
-    }
-    bundles.set(bundleId, {
-      ...currentBundle,
-      ...nextBundle,
-      metadata: {
-        ...currentBundle.metadata,
-        ...nextBundle.metadata,
-      },
-    });
-  },
 });
 
 const createStoragePlugin = (

@@ -3,6 +3,7 @@ import { readFile } from "fs/promises";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
+  AbstractDatabasePlugin,
   DatabasePlugin,
   RequestEnvContext,
   RuntimeStoragePlugin,
@@ -36,6 +37,47 @@ type TestEnv = {
 
 type TestContext = RequestEnvContext<TestEnv>;
 
+type FlatTestDatabasePlugin<TContext = unknown> =
+  DatabasePlugin<TContext>["bundles"] & {
+    analytics?: DatabasePlugin<TContext>["analytics"];
+    getChannels: DatabasePlugin<TContext>["channels"]["getChannels"];
+    name: string;
+    onUnmount?: DatabasePlugin<TContext>["onUnmount"];
+  };
+
+const createNestedDatabasePlugin = <TContext = unknown>({
+  analytics,
+  getChannels,
+  name,
+  onUnmount,
+  ...bundles
+}: FlatTestDatabasePlugin<TContext>): DatabasePlugin<TContext> => ({
+  ...(analytics ? { analytics } : {}),
+  bundles,
+  channels: { getChannels },
+  name,
+  ...(onUnmount ? { onUnmount } : {}),
+});
+
+type FlatFactoryResult<TContext = unknown> =
+  AbstractDatabasePlugin<TContext>["bundles"] & {
+    analytics?: AbstractDatabasePlugin<TContext>["analytics"];
+    getChannels: AbstractDatabasePlugin<TContext>["channels"]["getChannels"];
+    onUnmount?: AbstractDatabasePlugin<TContext>["onUnmount"];
+  };
+
+const createNestedDatabaseFactoryResult = <TContext = unknown>({
+  analytics,
+  getChannels,
+  onUnmount,
+  ...bundles
+}: FlatFactoryResult<TContext>): AbstractDatabasePlugin<TContext> => ({
+  ...(analytics ? { analytics } : {}),
+  bundles,
+  channels: { getChannels },
+  ...(onUnmount ? { onUnmount } : {}),
+});
+
 const createRuntimeStorage = (
   getDownloadUrl: RuntimeStorageProfile<TestContext>["getDownloadUrl"],
   readText: RuntimeStorageProfile<TestContext>["readText"] = async () => null,
@@ -53,51 +95,56 @@ const createRuntimeStorage = (
 const createSchemaManagedDatabase = (
   adapterName: string,
   version: string | undefined,
-): DatabasePlugin<TestContext> & DatabaseAdapterCapabilities => ({
-  name: `${adapterName}Database`,
-  adapterName,
-  createMigrator: () =>
-    ({
-      async getVersion() {
-        return version;
+): DatabasePlugin<TestContext> & DatabaseAdapterCapabilities =>
+  Object.assign(
+    createNestedDatabasePlugin<TestContext>({
+      name: `${adapterName}Database`,
+      async appendBundle() {},
+      async commitBundle() {},
+      async deleteBundle() {},
+      async getBundleById() {
+        throw new Error("runtime database should not be queried");
       },
-      async getNameVariants() {
-        return {};
+      async getBundles() {
+        throw new Error("runtime database should not be queried");
       },
-      async next() {
-        return undefined;
+      async getChannels() {
+        throw new Error("runtime database should not be queried");
       },
-      async previous() {
-        return undefined;
-      },
-      async up() {
-        throw new Error("not implemented");
-      },
-      async down() {
-        throw new Error("not implemented");
-      },
-      async migrateTo() {
-        throw new Error("not implemented");
-      },
-      async migrateToLatest() {
-        throw new Error("not implemented");
-      },
-      async migrate() {},
-    }) as Migrator,
-  async appendBundle() {},
-  async commitBundle() {},
-  async deleteBundle() {},
-  async getBundleById() {
-    throw new Error("runtime database should not be queried");
-  },
-  async getBundles() {
-    throw new Error("runtime database should not be queried");
-  },
-  async getChannels() {
-    throw new Error("runtime database should not be queried");
-  },
-  async updateBundle() {},
-});
+      async updateBundle() {},
+    }),
+    {
+      adapterName,
+      createMigrator: () =>
+        ({
+          async getVersion() {
+            return version;
+          },
+          async getNameVariants() {
+            return {};
+          },
+          async next() {
+            return undefined;
+          },
+          async previous() {
+            return undefined;
+          },
+          async up() {
+            throw new Error("not implemented");
+          },
+          async down() {
+            throw new Error("not implemented");
+          },
+          async migrateTo() {
+            throw new Error("not implemented");
+          },
+          async migrateToLatest() {
+            throw new Error("not implemented");
+          },
+          async migrate() {},
+        }) as Migrator,
+    },
+  );
 
 describe("runtime createHotUpdater", () => {
   it("publishes db tooling subpath and removes the runtime subpath", async () => {
@@ -117,12 +164,12 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
       updateCheck: boolean;
       bundles: boolean;
-      telemetry?: boolean;
+      analytics?: boolean;
     }>();
   });
 
   it("exports the root runtime API without database capabilities", () => {
-    const database: DatabasePlugin<TestContext> = {
+    const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
       async commitBundle() {},
@@ -146,7 +193,7 @@ describe("runtime createHotUpdater", () => {
         return [];
       },
       async updateBundle() {},
-    };
+    });
 
     const hotUpdater = createHotUpdater({ database });
 
@@ -160,7 +207,7 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("requires storages to implement the runtime profile", () => {
-    const database: DatabasePlugin<TestContext> = {
+    const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
       async commitBundle() {},
@@ -184,7 +231,7 @@ describe("runtime createHotUpdater", () => {
         return [];
       },
       async updateBundle() {},
-    };
+    });
     const nodeOnlyStorage = {
       name: "nodeOnlyStorage",
       supportedProtocol: "s3",
@@ -235,9 +282,10 @@ describe("runtime createHotUpdater", () => {
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${NIL_UUID}`,
     );
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>();
+    const getBundles =
+      vi.fn<DatabasePlugin<TestContext>["bundles"]["getBundles"]>();
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
+      NonNullable<DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]>
     >(async () => ({
       fileHash: bundle.fileHash,
       id: bundle.id,
@@ -254,7 +302,7 @@ describe("runtime createHotUpdater", () => {
       };
     });
 
-    const database: DatabasePlugin<TestContext> = {
+    const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
       async commitBundle() {},
@@ -269,7 +317,7 @@ describe("runtime createHotUpdater", () => {
       },
       async onUnmount() {},
       async updateBundle() {},
-    };
+    });
     const storage = createRuntimeStorage(getDownloadUrl);
 
     const hotUpdater = createHotUpdater({
@@ -332,20 +380,20 @@ describe("runtime createHotUpdater", () => {
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${NIL_UUID}`,
     );
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
-      async () => {
-        return {
-          data: [bundle],
-          pagination: {
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-            total: 1,
-          },
-        };
-      },
-    );
+    const getBundles = vi.fn<
+      DatabasePlugin<TestContext>["bundles"]["getBundles"]
+    >(async () => {
+      return {
+        data: [bundle],
+        pagination: {
+          hasNextPage: false,
+          hasPreviousPage: false,
+          currentPage: 1,
+          totalPages: 1,
+          total: 1,
+        },
+      };
+    });
     const getDownloadUrl = vi.fn<
       RuntimeStorageProfile<TestContext>["getDownloadUrl"]
     >(async (_storageUri, context) => {
@@ -354,7 +402,7 @@ describe("runtime createHotUpdater", () => {
       };
     });
 
-    const database: DatabasePlugin<TestContext> = {
+    const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
       async commitBundle() {},
@@ -368,7 +416,7 @@ describe("runtime createHotUpdater", () => {
       },
       async onUnmount() {},
       async updateBundle() {},
-    };
+    });
     const storage = createRuntimeStorage(getDownloadUrl);
 
     const hotUpdater = createHotUpdater({
@@ -459,18 +507,18 @@ describe("runtime createHotUpdater", () => {
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${currentBundle.id}`,
     );
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
-      async () => ({
-        data: [nextBundle],
-        pagination: {
-          hasNextPage: false,
-          hasPreviousPage: false,
-          currentPage: 1,
-          totalPages: 1,
-          total: 1,
-        },
-      }),
-    );
+    const getBundles = vi.fn<
+      DatabasePlugin<TestContext>["bundles"]["getBundles"]
+    >(async () => ({
+      data: [nextBundle],
+      pagination: {
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 1,
+        total: 1,
+      },
+    }));
     const getDownloadUrl = vi.fn<
       RuntimeStorageProfile<TestContext>["getDownloadUrl"]
     >(async (storageUri, context) => {
@@ -526,7 +574,7 @@ describe("runtime createHotUpdater", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const database: DatabasePlugin<TestContext> = {
+    const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
       async commitBundle() {},
@@ -546,7 +594,7 @@ describe("runtime createHotUpdater", () => {
       },
       async onUnmount() {},
       async updateBundle() {},
-    };
+    });
     const storage = createRuntimeStorage(getDownloadUrl, readText);
 
     try {
@@ -621,22 +669,22 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("does not inject the request into context unless explicitly provided", async () => {
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
-      async () => {
-        return {
-          data: [bundle],
-          pagination: {
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-            total: 1,
-          },
-        };
-      },
-    );
+    const getBundles = vi.fn<
+      DatabasePlugin<TestContext>["bundles"]["getBundles"]
+    >(async () => {
+      return {
+        data: [bundle],
+        pagination: {
+          hasNextPage: false,
+          hasPreviousPage: false,
+          currentPage: 1,
+          totalPages: 1,
+          total: 1,
+        },
+      };
+    });
 
-    const database: DatabasePlugin<TestContext> = {
+    const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
       async commitBundle() {},
@@ -650,7 +698,7 @@ describe("runtime createHotUpdater", () => {
       },
       async onUnmount() {},
       async updateBundle() {},
-    };
+    });
     const storage = createRuntimeStorage(async () => {
       return { fileUrl: "https://assets.example.com/bundle.zip" };
     });
@@ -686,22 +734,22 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("supports stripped base-path requests and ignores extra framework args", async () => {
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
-      async () => {
-        return {
-          data: [bundle],
-          pagination: {
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-            total: 1,
-          },
-        };
-      },
-    );
+    const getBundles = vi.fn<
+      DatabasePlugin<TestContext>["bundles"]["getBundles"]
+    >(async () => {
+      return {
+        data: [bundle],
+        pagination: {
+          hasNextPage: false,
+          hasPreviousPage: false,
+          currentPage: 1,
+          totalPages: 1,
+          total: 1,
+        },
+      };
+    });
 
-    const database: DatabasePlugin<TestContext> = {
+    const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
       async commitBundle() {},
@@ -715,7 +763,7 @@ describe("runtime createHotUpdater", () => {
       },
       async onUnmount() {},
       async updateBundle() {},
-    };
+    });
     const storage = createRuntimeStorage(async () => {
       return { fileUrl: "https://assets.example.com/bundle.zip" };
     });
@@ -751,27 +799,28 @@ describe("runtime createHotUpdater", () => {
   it("keeps the version route mounted when bundle routes are disabled", async () => {
     const database = createDatabasePlugin({
       name: "version-enabled-plugin",
-      factory: () => ({
-        async getBundleById() {
-          return null;
-        },
-        async getBundles() {
-          return {
-            data: [],
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: 0,
-            },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        async commitBundle() {},
-      }),
+      factory: () =>
+        createNestedDatabaseFactoryResult({
+          async getBundleById() {
+            return null;
+          },
+          async getBundles() {
+            return {
+              data: [],
+              pagination: {
+                hasNextPage: false,
+                hasPreviousPage: false,
+                currentPage: 1,
+                totalPages: 1,
+                total: 0,
+              },
+            };
+          },
+          async getChannels() {
+            return [];
+          },
+          async commitBundle() {},
+        }),
     })({});
 
     const hotUpdater = createHotUpdater({
@@ -796,27 +845,28 @@ describe("runtime createHotUpdater", () => {
   it("keeps the version route mounted when update-check routes are disabled", async () => {
     const database = createDatabasePlugin({
       name: "version-disabled-plugin",
-      factory: () => ({
-        async getBundleById() {
-          return null;
-        },
-        async getBundles() {
-          return {
-            data: [],
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: 0,
-            },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        async commitBundle() {},
-      }),
+      factory: () =>
+        createNestedDatabaseFactoryResult({
+          async getBundleById() {
+            return null;
+          },
+          async getBundles() {
+            return {
+              data: [],
+              pagination: {
+                hasNextPage: false,
+                hasPreviousPage: false,
+                currentPage: 1,
+                totalPages: 1,
+                total: 0,
+              },
+            };
+          },
+          async getChannels() {
+            return [];
+          },
+          async commitBundle() {},
+        }),
     })({});
 
     const hotUpdater = createHotUpdater({
@@ -839,27 +889,29 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("does not initialize the database plugin for optional capability discovery", () => {
-    const factory = vi.fn(() => ({
-      async getBundleById() {
-        return null;
-      },
-      async getBundles() {
-        return {
-          data: [],
-          pagination: {
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-            total: 0,
-          },
-        };
-      },
-      async getChannels() {
-        return [];
-      },
-      async commitBundle() {},
-    }));
+    const factory = vi.fn(() =>
+      createNestedDatabaseFactoryResult({
+        async getBundleById() {
+          return null;
+        },
+        async getBundles() {
+          return {
+            data: [],
+            pagination: {
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+              total: 0,
+            },
+          };
+        },
+        async getChannels() {
+          return [];
+        },
+        async commitBundle() {},
+      }),
+    );
     const database = createDatabasePlugin({
       name: "lazyRuntimePlugin",
       factory,
@@ -873,28 +925,30 @@ describe("runtime createHotUpdater", () => {
     expect(factory).not.toHaveBeenCalled();
   });
 
-  it("keeps notify-app-ready unmounted for lazy plugins without telemetry", async () => {
-    const factory = vi.fn(() => ({
-      async getBundleById() {
-        return null;
-      },
-      async getBundles() {
-        return {
-          data: [],
-          pagination: {
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-            total: 0,
-          },
-        };
-      },
-      async getChannels() {
-        return [];
-      },
-      async commitBundle() {},
-    }));
+  it("keeps notify-app-ready unmounted for lazy plugins without analytics", async () => {
+    const factory = vi.fn(() =>
+      createNestedDatabaseFactoryResult({
+        async getBundleById() {
+          return null;
+        },
+        async getBundles() {
+          return {
+            data: [],
+            pagination: {
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+              total: 0,
+            },
+          };
+        },
+        async getChannels() {
+          return [];
+        },
+        async commitBundle() {},
+      }),
+    );
     const database = createDatabasePlugin({
       name: "lazyNoTelemetryPlugin",
       factory,
@@ -922,7 +976,7 @@ describe("runtime createHotUpdater", () => {
     expect(factory).not.toHaveBeenCalled();
   });
 
-  it("mounts telemetry route for getter-backed database plugin methods", async () => {
+  it("mounts analytics route for getter-backed database plugin methods", async () => {
     const authenticateTelemetryKey = vi.fn(async () => true);
     const recordLifecycleEvent = vi.fn(
       async () =>
@@ -932,58 +986,61 @@ describe("runtime createHotUpdater", () => {
         }) as const,
     );
     const database = createDatabasePlugin({
-      name: "telemetryRuntimePlugin",
-      telemetry: true,
-      factory: () => ({
-        authenticateTelemetryKey,
-        async getBundleById() {
-          return null;
-        },
-        async getBundles() {
-          return {
-            data: [],
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: 0,
+      analytics: true,
+      name: "analyticsRuntimePlugin",
+      factory: () =>
+        createNestedDatabaseFactoryResult({
+          analytics: {
+            authenticateTelemetryKey,
+            async getTelemetryKeyState() {
+              return {
+                telemetryKeySuffix: "k_test",
+              };
             },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        async getTelemetryKeyState() {
-          return {
-            telemetryKeySuffix: "k_test",
-          };
-        },
-        async issueTelemetryKey() {
-          return {
-            telemetryKey: "hutk_test",
-            telemetryKeySuffix: "k_test",
-          };
-        },
-        async readLifecycleMetrics() {
-          return {
-            bundles: [],
-            series: [],
-            totals: {
-              active: 0,
-              recovered: 0,
+            async issueTelemetryKey() {
+              return {
+                telemetryKey: "hutk_test",
+                telemetryKeySuffix: "k_test",
+              };
             },
-          };
-        },
-        async commitBundle() {},
-        recordLifecycleEvent,
-        async rotateTelemetryKey() {
-          return {
-            telemetryKey: "hutk_rotated",
-            telemetryKeySuffix: "rotated",
-          };
-        },
-      }),
+            async readLifecycleMetrics() {
+              return {
+                bundles: [],
+                series: [],
+                totals: {
+                  active: 0,
+                  recovered: 0,
+                },
+              };
+            },
+            recordLifecycleEvent,
+            async rotateTelemetryKey() {
+              return {
+                telemetryKey: "hutk_rotated",
+                telemetryKeySuffix: "rotated",
+              };
+            },
+          },
+          async getBundleById() {
+            return null;
+          },
+          async getBundles() {
+            return {
+              data: [],
+              pagination: {
+                hasNextPage: false,
+                hasPreviousPage: false,
+                currentPage: 1,
+                totalPages: 1,
+                total: 0,
+              },
+            };
+          },
+          async getChannels() {
+            return [];
+          },
+          async commitBundle() {},
+        }),
     })({});
     const hotUpdater = createHotUpdater({
       database,
@@ -1026,42 +1083,43 @@ describe("runtime createHotUpdater", () => {
 
     const database = createDatabasePlugin({
       name: "failingPlugin",
-      factory: () => ({
-        async getBundleById(bundleId) {
-          return committedBundles.get(bundleId) ?? null;
-        },
-        async getBundles() {
-          return {
-            data: Array.from(committedBundles.values()),
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: committedBundles.size,
-            },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        async commitBundle({ changedSets }) {
-          commitAttempt += 1;
+      factory: () =>
+        createNestedDatabaseFactoryResult({
+          async getBundleById(bundleId) {
+            return committedBundles.get(bundleId) ?? null;
+          },
+          async getBundles() {
+            return {
+              data: Array.from(committedBundles.values()),
+              pagination: {
+                hasNextPage: false,
+                hasPreviousPage: false,
+                currentPage: 1,
+                totalPages: 1,
+                total: committedBundles.size,
+              },
+            };
+          },
+          async getChannels() {
+            return [];
+          },
+          async commitBundle({ changedSets }) {
+            commitAttempt += 1;
 
-          if (commitAttempt === 1) {
-            throw new Error("commit failed");
-          }
-
-          for (const change of changedSets) {
-            if (change.operation === "delete") {
-              committedBundles.delete(change.data.id);
-              continue;
+            if (commitAttempt === 1) {
+              throw new Error("commit failed");
             }
 
-            committedBundles.set(change.data.id, change.data);
-          }
-        },
-      }),
+            for (const change of changedSets) {
+              if (change.operation === "delete") {
+                committedBundles.delete(change.data.id);
+                continue;
+              }
+
+              committedBundles.set(change.data.id, change.data);
+            }
+          },
+        }),
     })({});
 
     const hotUpdater = createHotUpdater({
@@ -1110,36 +1168,39 @@ describe("runtime createHotUpdater", () => {
 
     const database = createDatabasePlugin({
       name: "isolatedPlugin",
-      factory: () => ({
-        async getBundleById() {
-          return null;
-        },
-        async getBundles() {
-          return {
-            data: [],
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: 0,
-            },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        onUnmount,
-        async commitBundle({ changedSets }) {
-          commitCount += 1;
-          committedBundleIds.push(changedSets.map((change) => change.data.id));
+      factory: () =>
+        createNestedDatabaseFactoryResult({
+          async getBundleById() {
+            return null;
+          },
+          async getBundles() {
+            return {
+              data: [],
+              pagination: {
+                hasNextPage: false,
+                hasPreviousPage: false,
+                currentPage: 1,
+                totalPages: 1,
+                total: 0,
+              },
+            };
+          },
+          async getChannels() {
+            return [];
+          },
+          onUnmount,
+          async commitBundle({ changedSets }) {
+            commitCount += 1;
+            committedBundleIds.push(
+              changedSets.map((change) => change.data.id),
+            );
 
-          if (commitCount === 1) {
-            notifyFirstCommitStarted();
-            await firstCommitGate;
-          }
-        },
-      }),
+            if (commitCount === 1) {
+              notifyFirstCommitStarted();
+              await firstCommitGate;
+            }
+          },
+        }),
     })({});
 
     const hotUpdater = createHotUpdater({

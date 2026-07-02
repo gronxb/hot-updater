@@ -5,8 +5,8 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import type {
+  DatabaseAnalytics,
   DatabaseBundleQueryOptions,
-  DatabaseTelemetryCapabilities,
   DatabasePlugin,
   HotUpdaterContext,
   RuntimeStoragePlugin,
@@ -104,9 +104,8 @@ export function isDatabasePlugin<TContext = unknown>(
   return (
     typeof adapter === "object" &&
     adapter !== null &&
-    "getBundleById" in adapter &&
-    "getBundles" in adapter &&
-    "getChannels" in adapter
+    "bundles" in adapter &&
+    "channels" in adapter
   );
 }
 
@@ -122,9 +121,8 @@ export function getSQLProvider(
     : undefined;
 }
 
-export interface DatabaseAPI<
-  TContext = unknown,
-> extends DatabaseTelemetryCapabilities<TContext> {
+export interface DatabaseAPI<TContext = unknown> {
+  analytics?: DatabaseAnalytics<TContext>;
   getBundleById(
     id: string,
     context?: HotUpdaterContext<TContext>,

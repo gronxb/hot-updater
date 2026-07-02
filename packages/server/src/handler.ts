@@ -7,6 +7,7 @@ import type {
   Platform,
 } from "@hot-updater/core";
 import type {
+  DatabaseAnalytics,
   DatabaseBundleQueryOptions,
   TelemetryLifecyclePayload,
   HotUpdaterContext,
@@ -45,14 +46,10 @@ export interface HandlerAPI<TContext = unknown> {
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
-  authenticateTelemetryKey?: (
-    telemetryKey: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<boolean>;
-  recordLifecycleEvent?: (
-    payload: TelemetryLifecyclePayload,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<{ readonly accepted: true; readonly deduped: boolean }>;
+  analytics?: Pick<
+    DatabaseAnalytics<TContext>,
+    "authenticateTelemetryKey" | "recordLifecycleEvent"
+  >;
 }
 
 export interface HandlerOptions {
@@ -64,7 +61,7 @@ export interface HandlerOptions {
   /**
    * Route groups to mount. Omit this option to use the default route groups.
    * When provided, update-check and bundle route groups must be specified
-   * explicitly. Telemetry still mounts only when supported by the database.
+   * explicitly. Analytics still mounts only when supported by the database.
    * The `/version` endpoint is always mounted for diagnostics.
    */
   routes?: HandlerRoutes;
@@ -83,7 +80,7 @@ export interface HandlerRoutes {
    * Defaults to `false` only when `routes` is omitted.
    */
   bundles: boolean;
-  telemetry?: boolean;
+  analytics?: boolean;
 }
 
 type RouteHandler<TContext = unknown> = (
@@ -309,18 +306,24 @@ const hasTelemetryCredentialInQuery = (url: URL): boolean =>
   url.searchParams.has("telemetry_key") ||
   url.searchParams.has("x-hot-updater-telemetry-key");
 
-const hasTelemetryRoutes = <TContext>(
+const hasAnalyticsRoutes = <TContext>(
   api: HandlerAPI<TContext>,
 ): api is HandlerAPI<TContext> & {
-  readonly authenticateTelemetryKey: NonNullable<
-    HandlerAPI<TContext>["authenticateTelemetryKey"]
-  >;
-  readonly recordLifecycleEvent: NonNullable<
-    HandlerAPI<TContext>["recordLifecycleEvent"]
-  >;
-} =>
-  typeof api.authenticateTelemetryKey === "function" &&
-  typeof api.recordLifecycleEvent === "function";
+  readonly analytics: {
+    readonly authenticateTelemetryKey: NonNullable<
+      DatabaseAnalytics<TContext>["authenticateTelemetryKey"]
+    >;
+    readonly recordLifecycleEvent: NonNullable<
+      DatabaseAnalytics<TContext>["recordLifecycleEvent"]
+    >;
+  };
+} => {
+  const analytics = api.analytics;
+  return (
+    typeof analytics?.authenticateTelemetryKey === "function" &&
+    typeof analytics?.recordLifecycleEvent === "function"
+  );
+};
 
 type BundlePatchPayload = Partial<Bundle> & {
   id?: string;
@@ -615,7 +618,7 @@ const handleNotifyAppReady: RouteHandler = async (
   api,
   context,
 ) => {
-  if (!hasTelemetryRoutes(api)) {
+  if (!hasAnalyticsRoutes(api)) {
     return new Response(JSON.stringify({ error: "Not found" }), {
       status: 404,
       headers: { "Content-Type": "application/json" },
@@ -647,7 +650,7 @@ const handleNotifyAppReady: RouteHandler = async (
     });
   }
 
-  if (!(await api.authenticateTelemetryKey(telemetryKey, context))) {
+  if (!(await api.analytics.authenticateTelemetryKey(telemetryKey, context))) {
     return new Response(JSON.stringify({ error: "Telemetry key rejected" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -673,7 +676,7 @@ const handleNotifyAppReady: RouteHandler = async (
     );
   }
 
-  const result = await api.recordLifecycleEvent(payload, context);
+  const result = await api.analytics.recordLifecycleEvent(payload, context);
   return new Response(JSON.stringify(result), {
     status: 202,
     headers: { "Content-Type": "application/json" },
@@ -710,7 +713,7 @@ export function createHandler<TContext = unknown>(
   const routeOptions = {
     updateCheck: options.routes?.updateCheck ?? true,
     bundles: options.routes?.bundles ?? false,
-    telemetry: (options.routes?.telemetry ?? true) && hasTelemetryRoutes(api),
+    analytics: options.routes?.analytics ?? true,
   };
 
   // Create and configure router
@@ -755,7 +758,7 @@ export function createHandler<TContext = unknown>(
     addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
   }
 
-  if (routeOptions.telemetry) {
+  if (routeOptions.analytics) {
     addRoute(router, "POST", "/api/notify-app-ready", "notifyAppReady");
   }
 

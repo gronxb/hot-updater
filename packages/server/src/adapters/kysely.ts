@@ -183,152 +183,158 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
     };
 
     return {
-      async getBundleById(bundleId) {
-        const row = await db
-          .selectFrom("bundles")
-          .selectAll()
-          .where("id", "=", bundleId)
-          .executeTakeFirst();
-        if (!row) return null;
-        const patchMap = await fetchPatchMap([bundleId]);
-        return rowToBundle(row, patchMap.get(bundleId) ?? []);
-      },
-      async getBundles(
-        options: DatabaseBundleQueryOptions & { offset?: number },
-      ) {
-        const offset = options.offset ?? 0;
-        if (hasEmptySetFilter(options.where)) {
+      bundles: {
+        async getBundleById(bundleId) {
+          const row = await db
+            .selectFrom("bundles")
+            .selectAll()
+            .where("id", "=", bundleId)
+            .executeTakeFirst();
+          if (!row) return null;
+          const patchMap = await fetchPatchMap([bundleId]);
+          return rowToBundle(row, patchMap.get(bundleId) ?? []);
+        },
+        async getBundles(
+          options: DatabaseBundleQueryOptions & { offset?: number },
+        ) {
+          const offset = options.offset ?? 0;
+          if (hasEmptySetFilter(options.where)) {
+            return {
+              data: [],
+              pagination: calculatePagination(0, {
+                limit: options.limit,
+                offset,
+              }),
+            };
+          }
+          const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
+          const countRow = await applyWhere(
+            db.selectFrom("bundles"),
+            options.where,
+          )
+            .select(db.fn.count<number>("id").as("total"))
+            .executeTakeFirst();
+          const total = Number(countRow?.total ?? 0);
+          const rows = await applyWhere(
+            db.selectFrom("bundles").selectAll(),
+            options.where,
+          )
+            .orderBy("id", orderBy.direction)
+            .limit(options.limit)
+            .offset(offset)
+            .execute();
+          const patchMap = await fetchPatchMap(rows.map((row) => row.id));
           return {
-            data: [],
-            pagination: calculatePagination(0, {
+            data: rows.map((row) =>
+              rowToBundle(row, patchMap.get(row.id) ?? []),
+            ),
+            pagination: calculatePagination(total, {
               limit: options.limit,
               offset,
             }),
           };
-        }
-        const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
-        const countRow = await applyWhere(
-          db.selectFrom("bundles"),
-          options.where,
-        )
-          .select(db.fn.count<number>("id").as("total"))
-          .executeTakeFirst();
-        const total = Number(countRow?.total ?? 0);
-        const rows = await applyWhere(
-          db.selectFrom("bundles").selectAll(),
-          options.where,
-        )
-          .orderBy("id", orderBy.direction)
-          .limit(options.limit)
-          .offset(offset)
-          .execute();
-        const patchMap = await fetchPatchMap(rows.map((row) => row.id));
-        return {
-          data: rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? [])),
-          pagination: calculatePagination(total, {
-            limit: options.limit,
-            offset,
-          }),
-        };
-      },
-      async getUpdateInfo(args, context) {
-        if (args._updateStrategy === "appVersion") {
+        },
+        async getUpdateInfo(args, context) {
+          if (args._updateStrategy === "appVersion") {
+            const channel = args.channel ?? "production";
+            const minBundleId = args.minBundleId ?? NIL_UUID;
+            const rows = await db
+              .selectFrom("bundles")
+              .select("target_app_version")
+              .where("enabled", "=", true)
+              .where("platform", "=", args.platform)
+              .where("channel", "=", channel)
+              .where("id", ">=", minBundleId)
+              .where("target_app_version", "is not", null)
+              .execute();
+
+            const targetAppVersions = Array.from(
+              new Set(
+                rows
+                  .map((row) => row.target_app_version)
+                  .filter(
+                    (value): value is string =>
+                      typeof value === "string" && value.length > 0,
+                  ),
+              ),
+            );
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
+            );
+            const bundles =
+              compatibleAppVersions.length > 0
+                ? await db
+                    .selectFrom("bundles")
+                    .selectAll()
+                    .where("enabled", "=", true)
+                    .where("platform", "=", args.platform)
+                    .where("channel", "=", channel)
+                    .where("id", ">=", minBundleId)
+                    .where("target_app_version", "in", compatibleAppVersions)
+                    .orderBy("id", "desc")
+                    .execute()
+                    .then(mapRowsToBundles)
+                : [];
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles,
+              context,
+            });
+          }
+
           const channel = args.channel ?? "production";
           const minBundleId = args.minBundleId ?? NIL_UUID;
           const rows = await db
             .selectFrom("bundles")
-            .select("target_app_version")
+            .selectAll()
             .where("enabled", "=", true)
             .where("platform", "=", args.platform)
             .where("channel", "=", channel)
             .where("id", ">=", minBundleId)
-            .where("target_app_version", "is not", null)
+            .where("fingerprint_hash", "=", args.fingerprintHash)
+            .orderBy("id", "desc")
             .execute();
-
-          const targetAppVersions = Array.from(
-            new Set(
-              rows
-                .map((row) => row.target_app_version)
-                .filter(
-                  (value): value is string =>
-                    typeof value === "string" && value.length > 0,
-                ),
-            ),
-          );
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
-          const bundles =
-            compatibleAppVersions.length > 0
-              ? await db
-                  .selectFrom("bundles")
-                  .selectAll()
-                  .where("enabled", "=", true)
-                  .where("platform", "=", args.platform)
-                  .where("channel", "=", channel)
-                  .where("id", ">=", minBundleId)
-                  .where("target_app_version", "in", compatibleAppVersions)
-                  .orderBy("id", "desc")
-                  .execute()
-                  .then(mapRowsToBundles)
-              : [];
 
           return resolveUpdateInfoFromBundles({
             args: { ...args, channel, minBundleId },
-            bundles,
+            bundles: await mapRowsToBundles(rows),
             context,
           });
-        }
-
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
-        const rows = await db
-          .selectFrom("bundles")
-          .selectAll()
-          .where("enabled", "=", true)
-          .where("platform", "=", args.platform)
-          .where("channel", "=", channel)
-          .where("id", ">=", minBundleId)
-          .where("fingerprint_hash", "=", args.fingerprintHash)
-          .orderBy("id", "desc")
-          .execute();
-
-        return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles: await mapRowsToBundles(rows),
-          context,
-        });
-      },
-      async getChannels() {
-        const rows = await db
-          .selectFrom("bundles")
-          .select("channel")
-          .orderBy("channel", "asc")
-          .execute();
-        return Array.from(new Set(rows.map((row) => row.channel)));
-      },
-      async commitBundle({ changedSets }) {
-        await db.transaction().execute(async (tx) => {
-          for (const change of changedSets) {
-            if (change.operation === "delete") {
-              await tx
-                .deleteFrom("bundle_patches")
-                .where("bundle_id", "=", change.data.id)
-                .execute();
-              await tx
-                .deleteFrom("bundle_patches")
-                .where("base_bundle_id", "=", change.data.id)
-                .execute();
-              await tx
-                .deleteFrom("bundles")
-                .where("id", "=", change.data.id)
-                .execute();
-              continue;
+        },
+        async commitBundle({ changedSets }) {
+          await db.transaction().execute(async (tx) => {
+            for (const change of changedSets) {
+              if (change.operation === "delete") {
+                await tx
+                  .deleteFrom("bundle_patches")
+                  .where("bundle_id", "=", change.data.id)
+                  .execute();
+                await tx
+                  .deleteFrom("bundle_patches")
+                  .where("base_bundle_id", "=", change.data.id)
+                  .execute();
+                await tx
+                  .deleteFrom("bundles")
+                  .where("id", "=", change.data.id)
+                  .execute();
+                continue;
+              }
+              await upsertBundle(tx, change.data);
             }
-            await upsertBundle(tx, change.data);
-          }
-        });
+          });
+        },
+      },
+      channels: {
+        async getChannels() {
+          const rows = await db
+            .selectFrom("bundles")
+            .select("channel")
+            .orderBy("channel", "asc")
+            .execute();
+          return Array.from(new Set(rows.map((row) => row.channel)));
+        },
       },
     };
   },

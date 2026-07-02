@@ -262,20 +262,22 @@ describe("createHandler", () => {
     expect(updateResponse.status).toBe(200);
   });
 
-  it("mounts telemetry routes only when lifecycle methods are supported", async () => {
+  it("mounts analytics routes only when lifecycle methods are supported", async () => {
     const unsupportedHandler = createHandler(createApi(), {
       basePath: "/hot-updater",
     });
     const supportedApi = {
       ...createApi(),
-      authenticateTelemetryKey: vi.fn(async () => true),
-      recordLifecycleEvent: vi.fn(
-        async () =>
-          ({
-            accepted: true,
-            deduped: false,
-          }) as const,
-      ),
+      analytics: {
+        authenticateTelemetryKey: vi.fn(async () => true),
+        recordLifecycleEvent: vi.fn(
+          async () =>
+            ({
+              accepted: true,
+              deduped: false,
+            }) as const,
+        ),
+      },
     } satisfies HandlerAPI<TestContext>;
     const supportedHandler = createHandler(supportedApi, {
       basePath: "/hot-updater",
@@ -304,15 +306,14 @@ describe("createHandler", () => {
 
     expect(unsupportedResponse.status).toBe(404);
     expect(supportedResponse.status).toBe(202);
-    expect(supportedApi.authenticateTelemetryKey).toHaveBeenCalledWith(
-      "hutk_test",
-      {
-        env: {
-          tenantId: "tenant-a",
-        },
+    expect(
+      supportedApi.analytics.authenticateTelemetryKey,
+    ).toHaveBeenCalledWith("hutk_test", {
+      env: {
+        tenantId: "tenant-a",
       },
-    );
-    expect(supportedApi.recordLifecycleEvent).toHaveBeenCalledWith(
+    });
+    expect(supportedApi.analytics.recordLifecycleEvent).toHaveBeenCalledWith(
       notifyAppReadyPayload,
       {
         env: {
@@ -322,24 +323,26 @@ describe("createHandler", () => {
     );
   });
 
-  it("keeps telemetry routes disabled when explicitly disabled", async () => {
+  it("keeps analytics routes disabled when explicitly disabled", async () => {
     const api = {
       ...createApi(),
-      authenticateTelemetryKey: vi.fn(async () => true),
-      recordLifecycleEvent: vi.fn(
-        async () =>
-          ({
-            accepted: true,
-            deduped: false,
-          }) as const,
-      ),
+      analytics: {
+        authenticateTelemetryKey: vi.fn(async () => true),
+        recordLifecycleEvent: vi.fn(
+          async () =>
+            ({
+              accepted: true,
+              deduped: false,
+            }) as const,
+        ),
+      },
     } satisfies HandlerAPI<TestContext>;
     const handler = createHandler(api, {
       basePath: "/hot-updater",
       routes: {
         updateCheck: true,
         bundles: false,
-        telemetry: false,
+        analytics: false,
       },
     });
 
@@ -350,7 +353,7 @@ describe("createHandler", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(api.authenticateTelemetryKey).not.toHaveBeenCalled();
+    expect(api.analytics.authenticateTelemetryKey).not.toHaveBeenCalled();
   });
 
   it("mounts bundle routes when explicitly enabled", async () => {
