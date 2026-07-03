@@ -101,7 +101,7 @@ describe("createDatabasePlugin", () => {
     await expect(plugin.channels.getChannels()).resolves.toEqual([
       "production",
     ]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(commitBundle).toHaveBeenCalledWith({
       changedSets: [
@@ -143,7 +143,7 @@ describe("createDatabasePlugin", () => {
     await plugin.bundles.updateBundle(baseBundle.id, {
       targetCohorts: ["device-2"],
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(commitBundle).toHaveBeenCalledWith({
       changedSets: [
@@ -184,7 +184,7 @@ describe("createDatabasePlugin", () => {
 
     await plugin.bundles.updateBundle(baseBundle.id, { enabled: false });
     await plugin.bundles.updateBundle(baseBundle.id, { targetCohorts: null });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(commitBundle).toHaveBeenCalledWith({
       changedSets: [
@@ -232,10 +232,10 @@ describe("createDatabasePlugin", () => {
     await plugin.bundles.updateBundle(baseBundle.id, {
       enabled: false,
     });
-    await expect(plugin.bundles.commitBundle()).rejects.toThrow(
+    await expect(plugin.commit()).rejects.toThrow(
       "commit failed",
     );
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(getBundleById).toHaveBeenCalledTimes(1);
     expect(commitBundle).toHaveBeenNthCalledWith(1, {
@@ -294,7 +294,7 @@ describe("createDatabasePlugin", () => {
     await plugin.bundles.updateBundle(baseBundle.id, {
       enabled: false,
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(getBundleById).toHaveBeenCalledTimes(2);
     expect(commitBundle).toHaveBeenCalledWith({
@@ -337,7 +337,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -385,7 +385,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -426,7 +426,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -473,7 +473,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -529,7 +529,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -587,7 +587,7 @@ describe("createDatabasePlugin", () => {
             bundles.find((bundle) => bundle.id === bundleId) ?? null,
           getBundles,
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -637,7 +637,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -682,7 +682,7 @@ describe("createDatabasePlugin", () => {
     })({})();
 
     await plugin.bundles.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await expect(plugin.bundles.getBundleById(baseBundle.id)).resolves.toEqual(
       persistedBundle,
@@ -723,7 +723,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -786,7 +786,7 @@ describe("createDatabasePlugin", () => {
           }),
           getChannels: async () => ["production"],
           getUpdateInfo,
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -813,7 +813,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => [],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -870,7 +870,7 @@ describe("createDatabasePlugin", () => {
             };
           },
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
@@ -926,7 +926,7 @@ describe("createDatabasePlugin", () => {
             bundles.find((bundle) => bundle.id === bundleId) ?? null,
           getBundles,
           getChannels: async () => ["production"],
-          commitBundle: async () => undefined,
+          commit: async () => undefined,
         }),
     })({})();
 
