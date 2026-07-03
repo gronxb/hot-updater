@@ -44,10 +44,6 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
   channels: {
     getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   };
-  commit: (
-    context: HotUpdaterContext<TContext> | undefined,
-    input: { readonly changes: DatabaseChanges },
-  ) => Promise<void>;
   onUnmount?: () => Promise<void>;
 }
 
@@ -68,7 +64,6 @@ type DatabasePluginFactory<TConfig, TContext = unknown> = (
 
 const REPLACE_ON_UPDATE_KEYS = ["patches", "targetCohorts"] as const;
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
-
 class DatabasePaginationInvariantError extends Error {
   constructor() {
     super("Expected at least one bundle after a non-empty pagination query.");
@@ -579,6 +574,23 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           async deleteBundle(deleteBundle: Bundle, context): Promise<void> {
             getMutationUnitOfWork(context).markDelete(deleteBundle);
           },
+        },
+
+        async commit(context) {
+          const methods = getMethods();
+          const unitOfWork = getMutationUnitOfWork(context);
+          const params = {
+            changedSets: unitOfWork.changedSets(),
+          };
+
+          if (context === undefined) {
+            await methods.commit(params);
+          } else {
+            await methods.commit(params, context);
+          }
+
+          unitOfWork.clear();
+          await hooks?.onDatabaseUpdated?.();
         },
 
         channels: {
