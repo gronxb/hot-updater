@@ -371,7 +371,7 @@ describe("blobDatabase plugin", () => {
     seedUpdateManifests([baseBundle]);
 
     await plugin.bundles.appendBundle(nextBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const patchBaseCandidates = await plugin.bundles.getBundles({
       limit: 10,
@@ -483,7 +483,7 @@ describe("blobDatabase plugin", () => {
     ).resolves.toBeNull();
 
     await plugin.bundles.updateBundle(currentBundle.id, { enabled: false });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await expect(
       plugin.bundles.getUpdateInfo?.({
@@ -528,7 +528,7 @@ describe("blobDatabase plugin", () => {
 
     // Add bundle and commit
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify bundle was properly added to update.json file
     const storedBundles = JSON.parse(fakeStore[bundleKey]);
@@ -564,7 +564,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify changes were reflected in update.json file
     const updatedBundles = JSON.parse(fakeStore[bundleKey]);
@@ -639,7 +639,7 @@ describe("blobDatabase plugin", () => {
       targetAppVersion: "1.0.2",
     });
     // Commit changes to S3
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // ios/1.0.2/update.json should have 3 bundles: 2 existing + 1 moved
     const newFileBundles = JSON.parse(fakeStore[keyNew]);
@@ -745,7 +745,7 @@ describe("blobDatabase plugin", () => {
       targetAppVersion: "1.x.x",
     });
     // Commit changes to S3
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // ios/1.0.2/update.json file should not exist
     expect(fakeStore[keyNew]).toBeUndefined();
@@ -933,7 +933,7 @@ describe("blobDatabase plugin", () => {
       enabled: false,
       message: "Disabled in beta channel",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify only the beta channel bundle was updated
     const updatedBetaIosBundles = JSON.parse(
@@ -969,7 +969,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.updateBundle("channel-move-test", {
       channel: "production",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert: Bundle should be moved to production channel
     const productionBundles = JSON.parse(
@@ -1006,8 +1006,8 @@ describe("blobDatabase plugin", () => {
     const targetKey = "production/ios/target-app-versions.json";
     fakeStore[targetKey] = JSON.stringify(["1.0.0"]);
 
-    // Call commitBundle but update.json should remain unchanged as no bundles were modified
-    await plugin.bundles.commitBundle();
+    // Call commit but update.json should remain unchanged as no bundles were modified
+    await plugin.commit();
 
     expect(fakeStore[updateKey]).toBe(JSON.stringify([iosBundle]));
     expect(JSON.parse(fakeStore[targetKey])).toEqual(["1.0.0"]);
@@ -1030,7 +1030,7 @@ describe("blobDatabase plugin", () => {
     })({}, { onDatabaseUpdated })();
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.bundles.appendBundle(bundle);
-    await pluginWithHook.bundles.commitBundle();
+    await pluginWithHook.commit();
     expect(onDatabaseUpdated).toHaveBeenCalled();
   });
 
@@ -1114,14 +1114,14 @@ describe("blobDatabase plugin", () => {
 
     await plugin.bundles.appendBundle(targetBundle);
     await plugin.bundles.appendBundle(siblingBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await plugin.bundles.updateBundle(targetBundle.id, {
       channel: "production",
       enabled: false,
       message: "Updated from console",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     plugin = createPlugin();
 
@@ -1186,10 +1186,10 @@ describe("blobDatabase plugin", () => {
 
     await plugin.bundles.appendBundle(deletedBundle);
     await plugin.bundles.appendBundle(survivingBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await plugin.bundles.deleteBundle(deletedBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     plugin = createPlugin();
 
@@ -1228,7 +1228,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.appendBundle(bundles[0]);
     await plugin.bundles.appendBundle(bundles[1]);
     await plugin.bundles.appendBundle(bundles[2]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const firstPage = await plugin.bundles.getBundles({
       where: { channel: "production", platform: "ios" },
@@ -1311,7 +1311,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.appendBundle(bundle);
     // Change only enabled property → path should remain the same
     await plugin.bundles.updateBundle("same-key-test", { enabled: false });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const updateKey = "production/android/2.0.0/update.json";
     const storedBundles = JSON.parse(fakeStore[updateKey]);
@@ -1349,7 +1349,7 @@ describe("blobDatabase plugin", () => {
 
     await plugin.bundles.appendBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const iosUpdateKey = "production/ios/1.0.0/update.json";
     const androidUpdateKey = "production/android/2.0.0/update.json";
@@ -1361,7 +1361,7 @@ describe("blobDatabase plugin", () => {
     expect(androidBundles).toEqual([bundle2]);
   });
 
-  it("should not update S3 until commitBundle is called", async () => {
+  it("should not update S3 until commit is called", async () => {
     const bundleKey = "production/ios/1.0.0/update.json";
     const newBundle = createBundleJson(
       "production",
@@ -1376,11 +1376,11 @@ describe("blobDatabase plugin", () => {
     // Call appendBundle: at this point, should only be stored in memory cache, not in S3 (fakeStore)
     await plugin.bundles.appendBundle(newBundle);
 
-    // S3 should remain unchanged until commitBundle is called
+    // S3 should remain unchanged until commit is called
     expect(Object.keys(fakeStore)).toHaveLength(0);
 
-    // Now after calling commitBundle, update.json file should be created in S3 (fakeStore)
-    await plugin.bundles.commitBundle();
+    // Now after calling commit, update.json file should be created in S3 (fakeStore)
+    await plugin.commit();
     expect(Object.keys(fakeStore)).toContain(bundleKey);
   });
 
@@ -1462,7 +1462,7 @@ describe("blobDatabase plugin", () => {
     );
     await plugin.bundles.appendBundle(newBundle);
 
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
@@ -1489,14 +1489,14 @@ describe("blobDatabase plugin", () => {
       "cloudfront-update-test",
     );
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     cloudfrontInvalidations = [];
 
     await plugin.bundles.updateBundle("cloudfront-update-test", {
       enabled: false,
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -1514,10 +1514,10 @@ describe("blobDatabase plugin", () => {
     );
   });
 
-  it("should not trigger CloudFront invalidation when commitBundle is called with no pending changes", async () => {
+  it("should not trigger CloudFront invalidation when commit is called with no pending changes", async () => {
     cloudfrontInvalidations = [];
 
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(cloudfrontInvalidations.length).toBe(0);
   });
@@ -1526,7 +1526,7 @@ describe("blobDatabase plugin", () => {
     // Setup
     await plugin.bundles.appendBundle(bundlesData[0]);
     await plugin.bundles.appendBundle(bundlesData[1]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify bundle exists
     const bundleBeforeDeletion = await plugin.bundles.getBundleById("bundleX");
@@ -1534,7 +1534,7 @@ describe("blobDatabase plugin", () => {
 
     // Execute
     await plugin.bundles.deleteBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     const bundleAfterDeletion = await plugin.bundles.getBundleById("bundleX");
@@ -1574,10 +1574,10 @@ describe("blobDatabase plugin", () => {
 
   it("should not reload storage when reading a bundle deleted by the same plugin instance", async () => {
     await plugin.bundles.appendBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await plugin.bundles.deleteBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     listObjectCalls = [];
 
@@ -1588,7 +1588,7 @@ describe("blobDatabase plugin", () => {
   it("should delete entire update.json file when no bundles remain", async () => {
     // Setup
     await plugin.bundles.appendBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Find the actual update.json key
     const updateJsonKeys = Object.keys(fakeStore).filter((key) =>
@@ -1599,7 +1599,7 @@ describe("blobDatabase plugin", () => {
 
     // Execute
     await plugin.bundles.deleteBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     expect(fakeStore[updateJsonKey]).toBeUndefined();
@@ -1612,7 +1612,7 @@ describe("blobDatabase plugin", () => {
 
     await plugin.bundles.appendBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Find the actual update.json key
     const updateJsonKeys = Object.keys(fakeStore).filter((key) =>
@@ -1623,7 +1623,7 @@ describe("blobDatabase plugin", () => {
 
     // Execute
     await plugin.bundles.deleteBundle(bundle1);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     expect(fakeStore[updateJsonKey]).toBeDefined();
@@ -1638,11 +1638,11 @@ describe("blobDatabase plugin", () => {
       fingerprintHash: "fingerprint123",
     };
     await plugin.bundles.appendBundle(bundleWithFingerprint);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Execute
     await plugin.bundles.deleteBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     const invalidationPaths = cloudfrontInvalidations.flatMap(
@@ -1663,11 +1663,11 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.appendBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
     await plugin.bundles.appendBundle(bundle3);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Execute
     await plugin.bundles.deleteBundle(bundle2);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     // Find the actual update.json key
@@ -1691,11 +1691,11 @@ describe("blobDatabase plugin", () => {
       targetAppVersion: "2.0.0",
     };
     await plugin.bundles.appendBundle(bundleToDelete);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Execute
     await plugin.bundles.deleteBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     const invalidationPaths = cloudfrontInvalidations.flatMap(
@@ -1710,11 +1710,11 @@ describe("blobDatabase plugin", () => {
   it("should invalidate multiple path types correctly", async () => {
     // Setup
     await plugin.bundles.appendBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Execute
     await plugin.bundles.deleteBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     const invalidationPaths = cloudfrontInvalidations.flatMap(
@@ -1739,11 +1739,11 @@ describe("blobDatabase plugin", () => {
     // Setup
     await plugin.bundles.appendBundle(bundlesData[0]); // ios
     await plugin.bundles.appendBundle(bundlesData[1]); // android
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Execute - delete ios bundle
     await plugin.bundles.deleteBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert - android bundle should remain unaffected
     const androidBundle = await plugin.bundles.getBundleById("bundleY");
@@ -1755,11 +1755,11 @@ describe("blobDatabase plugin", () => {
     // Setup
     await plugin.bundles.appendBundle(bundlesData[0]); // production
     await plugin.bundles.appendBundle(bundlesData[2]); // staging
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Execute - delete production bundle
     await plugin.bundles.deleteBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert - staging bundle should remain unaffected
     const stagingBundle = await plugin.bundles.getBundleById("bundleZ");
@@ -1776,7 +1776,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.appendBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
     await plugin.bundles.appendBundle(bundle3);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify all bundles exist
     const bundlesBeforeDeletion = await plugin.bundles.getBundles({
@@ -1787,7 +1787,7 @@ describe("blobDatabase plugin", () => {
 
     // Execute
     await plugin.bundles.deleteBundle(bundle2);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     const bundlesAfterDeletion = await plugin.bundles.getBundles({
@@ -1803,14 +1803,14 @@ describe("blobDatabase plugin", () => {
   it("should trigger cache invalidation for all relevant paths", async () => {
     // Setup
     await plugin.bundles.appendBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear previous invalidations
     cloudfrontInvalidations.length = 0;
 
     // Execute
     await plugin.bundles.deleteBundle(bundlesData[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
@@ -1834,7 +1834,7 @@ describe("blobDatabase plugin", () => {
       "channel-update-test",
     );
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear previous invalidations
     cloudfrontInvalidations.length = 0;
@@ -1843,7 +1843,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.updateBundle("channel-update-test", {
       channel: "production",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
@@ -1872,7 +1872,7 @@ describe("blobDatabase plugin", () => {
     bundle.fingerprintHash = "fingerprint-hash-123";
     bundle.targetAppVersion = null;
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear previous invalidations
     cloudfrontInvalidations.length = 0;
@@ -1881,7 +1881,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.updateBundle("fingerprint-channel-update-test", {
       channel: "production",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
@@ -1905,7 +1905,7 @@ describe("blobDatabase plugin", () => {
     bundle.fingerprintHash = null;
     bundle.targetAppVersion = "1.0.0";
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear previous invalidations
     cloudfrontInvalidations.length = 0;
@@ -1914,7 +1914,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.updateBundle("app-version-channel-update-test", {
       channel: "production",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
@@ -1939,7 +1939,7 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.length = 0;
 
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -1959,7 +1959,7 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.length = 0;
 
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -1981,7 +1981,7 @@ describe("blobDatabase plugin", () => {
     // Clear previous invalidations and seed initial state
     cloudfrontInvalidations.length = 0;
     await plugin.bundles.appendBundle(initialBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear invalidations for the update scenario
     cloudfrontInvalidations.length = 0;
@@ -1990,7 +1990,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.updateBundle("cloudfront-new-test", {
       targetAppVersion: "3.0.1",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2012,7 +2012,7 @@ describe("blobDatabase plugin", () => {
     // Clear previous invalidations and seed initial state
     cloudfrontInvalidations.length = 0;
     await plugin.bundles.appendBundle(initialBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear invalidations for the update scenario
     cloudfrontInvalidations.length = 0;
@@ -2021,7 +2021,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.updateBundle("cloudfront-new-test", {
       targetAppVersion: "3.0.x",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2041,7 +2041,7 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.length = 0;
 
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2063,7 +2063,7 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.length = 0;
 
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2085,7 +2085,7 @@ describe("blobDatabase plugin", () => {
     // Clear previous invalidations and seed initial state
     cloudfrontInvalidations.length = 0;
     await plugin.bundles.appendBundle(initialBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear invalidations for the update scenario
     cloudfrontInvalidations.length = 0;
@@ -2094,7 +2094,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.updateBundle("cloudfront-new-test", {
       targetAppVersion: "3.0.1",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2116,7 +2116,7 @@ describe("blobDatabase plugin", () => {
     // Clear previous invalidations and seed initial state
     cloudfrontInvalidations.length = 0;
     await plugin.bundles.appendBundle(initialBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear invalidations for the update scenario
     cloudfrontInvalidations.length = 0;
@@ -2125,7 +2125,7 @@ describe("blobDatabase plugin", () => {
     await plugin.bundles.updateBundle("cloudfront-new-test", {
       targetAppVersion: "3.0.x",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2145,14 +2145,14 @@ describe("blobDatabase plugin", () => {
 
     // Add bundle first
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear previous invalidations
     cloudfrontInvalidations.length = 0;
 
     // Delete the bundle
     await plugin.bundles.deleteBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2170,14 +2170,14 @@ describe("blobDatabase plugin", () => {
 
     // Add bundle first
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear previous invalidations
     cloudfrontInvalidations.length = 0;
 
     // Delete the bundle
     await plugin.bundles.deleteBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2197,14 +2197,14 @@ describe("blobDatabase plugin", () => {
 
     // Add bundle first
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear previous invalidations
     cloudfrontInvalidations.length = 0;
 
     // Delete the bundle
     await plugin.bundles.deleteBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2224,14 +2224,14 @@ describe("blobDatabase plugin", () => {
 
     // Add bundle first
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Clear previous invalidations
     cloudfrontInvalidations.length = 0;
 
     // Delete the bundle
     await plugin.bundles.deleteBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2254,7 +2254,7 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.length = 0;
 
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2288,7 +2288,7 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.length = 0;
 
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2323,7 +2323,7 @@ describe("blobDatabase plugin", () => {
     cloudfrontInvalidations.length = 0;
 
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -2354,7 +2354,7 @@ describe("blobDatabase plugin", () => {
       );
 
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Assert: Key should be created without spaces
       const normalizedKey = "production/ios/>=10.7.0/update.json";
@@ -2376,7 +2376,7 @@ describe("blobDatabase plugin", () => {
       );
 
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Assert: Spaces within comparators should be removed, but space between
       // different comparators must be preserved for valid semver syntax
@@ -2395,7 +2395,7 @@ describe("blobDatabase plugin", () => {
       cloudfrontInvalidations.length = 0;
 
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       const invalidatedPaths = cloudfrontInvalidations.flatMap(
         (inv) => inv.paths,
@@ -2417,7 +2417,7 @@ describe("blobDatabase plugin", () => {
       );
 
       await plugin.bundles.appendBundle(initialBundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       cloudfrontInvalidations.length = 0;
 
@@ -2425,7 +2425,7 @@ describe("blobDatabase plugin", () => {
       await plugin.bundles.updateBundle("update-space-test", {
         targetAppVersion: "> 2.0.0",
       });
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Assert: Should move to normalized path
       const oldKey = "production/ios/1.0.0/update.json";
@@ -2448,7 +2448,7 @@ describe("blobDatabase plugin", () => {
       );
 
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       const bundleKey = "production/android/<=5.0.0/update.json";
       expect(fakeStore[bundleKey]).toBeDefined();
@@ -2457,7 +2457,7 @@ describe("blobDatabase plugin", () => {
 
       // Delete the bundle
       await plugin.bundles.deleteBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Assert: Bundle should be deleted
       expect(fakeStore[bundleKey]).toBeUndefined();
@@ -2494,7 +2494,7 @@ describe("blobDatabase plugin", () => {
         await plugin.bundles.appendBundle(bundle);
       }
 
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Verify all bundles were stored with normalized keys
       for (const { normalized } of testCases) {
@@ -2512,7 +2512,7 @@ describe("blobDatabase plugin", () => {
       );
 
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Should be able to retrieve the bundle by ID
       const fetchedBundle =
@@ -2537,7 +2537,7 @@ describe("blobDatabase plugin", () => {
 
       await plugin.bundles.appendBundle(bundle1);
       await plugin.bundles.appendBundle(bundle2);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       const result = await plugin.bundles.getBundles({
         where: { platform: "ios", channel: "production" },
@@ -2559,7 +2559,7 @@ describe("blobDatabase plugin", () => {
       );
 
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Check target-app-versions.json
       const targetVersionsKey = "production/ios/target-app-versions.json";
@@ -2578,7 +2578,7 @@ describe("blobDatabase plugin", () => {
       );
 
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       cloudfrontInvalidations.length = 0;
 
@@ -2586,7 +2586,7 @@ describe("blobDatabase plugin", () => {
       await plugin.bundles.updateBundle("channel-migration-space-test", {
         channel: "production",
       });
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Assert: Bundle should be in new channel with normalized path
       const newKey = "production/ios/>=5.0.0/update.json";
@@ -2626,7 +2626,7 @@ describe("blobDatabase plugin", () => {
 
       await plugin.bundles.appendBundle(bundle1);
       await plugin.bundles.appendBundle(bundle2);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Both should be stored in their respective keys
       expect(fakeStore["production/ios/1.0.0/update.json"]).toBeDefined();
@@ -2655,7 +2655,7 @@ describe("blobDatabase plugin", () => {
       cloudfrontInvalidations.length = 0;
 
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       const invalidatedPaths = cloudfrontInvalidations.flatMap(
         (inv) => inv.paths,
@@ -2687,7 +2687,7 @@ describe("blobDatabase plugin", () => {
         );
       }
 
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       expect(maxActiveUploadObjectCount).toBeLessThanOrEqual(8);
     });
@@ -2708,7 +2708,7 @@ describe("blobDatabase plugin", () => {
       bundle.enabled = false;
 
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       // Clear initial deployment invalidations; we only want promotion invalidation.
       cloudfrontInvalidations.length = 0;
@@ -2716,7 +2716,7 @@ describe("blobDatabase plugin", () => {
       await plugin.bundles.updateBundle("issue-745-promote-bundle", {
         channel: "prod",
       });
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       const invalidatedPaths = cloudfrontInvalidations.flatMap(
         (inv) => inv.paths,
