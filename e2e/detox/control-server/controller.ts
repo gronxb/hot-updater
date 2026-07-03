@@ -1447,15 +1447,22 @@ async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
   const patchKeys = Object.keys(definedPatch);
   if (patchKeys.length > 0) {
     await withDatabasePlugin(async (databasePlugin) => {
-      const bundle = await databasePlugin.bundles.getBundleById(bundleId);
+      const bundle = await databasePlugin.bundles.get(undefined, {
+        id: bundleId,
+      });
       if (!bundle) {
         throw new Error(`No bundle with id ${bundleId}.`);
       }
 
-      await databasePlugin.bundles.updateBundle(bundleId, definedPatch);
-      await databasePlugin.commit();
+      await databasePlugin.bundles.update(undefined, {
+        id: bundleId,
+        data: definedPatch,
+      });
+      await databasePlugin.commit(undefined, {});
 
-      const refetched = await databasePlugin.bundles.getBundleById(bundleId);
+      const refetched = await databasePlugin.bundles.get(undefined, {
+        id: bundleId,
+      });
       if (!refetched) {
         throw new Error(
           `Verification failed: ${bundleId} is missing after patch.`,
@@ -1736,14 +1743,20 @@ async function clearProviderBundles({
           nextBatch,
           REMOTE_RESET_DATABASE_CONCURRENCY,
           (bundle) =>
-            databasePlugin.bundles.updateBundle(bundle.id, { enabled: false }),
+            databasePlugin.bundles.update(undefined, {
+              id: bundle.id,
+              data: { enabled: false },
+            }),
         );
-        await databasePlugin.commit();
+        await databasePlugin.commit(undefined, {});
 
         const refetched = await mapWithConcurrency(
           nextBatch,
           REMOTE_RESET_DATABASE_CONCURRENCY,
-          (bundle) => databasePlugin.bundles.getBundleById(bundle.id),
+          (bundle) =>
+            databasePlugin.bundles.get(undefined, {
+              id: bundle.id,
+            }),
         );
         const stillEnabled = refetched.find(
           (bundle) => bundle?.enabled !== false,

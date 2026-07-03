@@ -480,6 +480,26 @@ describe("Detox scenario contract", () => {
     );
   });
 
+  it("uses database plugin table verbs for direct provider bundle patches", async () => {
+    // Given: direct E2E provider mutations run through DatabasePlugin.
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+
+    // When: the control server updates or refetches bundles directly.
+    // Then: it must use the table-verb plugin API, not removed legacy methods.
+    expect(controllerSource).not.toContain(".bundles.getBundleById");
+    expect(controllerSource).not.toContain(".bundles.updateBundle");
+    expect(controllerSource).not.toContain("databasePlugin.commit();");
+    expect(controllerSource).toMatch(
+      /databasePlugin\.bundles\.get\(\s*undefined,\s*\{\s*id:\s*bundleId,\s*\}\s*\)/,
+    );
+    expect(controllerSource).toMatch(
+      /databasePlugin\.commit\(undefined, \{\}\)/,
+    );
+  });
+
   it("seeds Detox scenario values from the bootstrap contract", async () => {
     // Given: Maestro exposes bootstrap outputs like output.initialMarker to every
     // scenario step.
