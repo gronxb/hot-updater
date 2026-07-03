@@ -261,9 +261,9 @@ export type CreateDatabasePluginOptions<TConfig, TContext = unknown> = {
  *     return {
  *       bundles: {
  *         async getBundleById(bundleId) { ... },
- *         async getBundles(options) { ... },
+ *         async getBundles(options) { ... }
  *       },
- *       async commit(context, { changes }) { ... },
+ *       async commit({ changedSets }) { ... },
  *       channels: {
  *         async getChannels() { ... },
  *       },
