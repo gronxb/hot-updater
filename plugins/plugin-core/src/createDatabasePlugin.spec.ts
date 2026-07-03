@@ -50,10 +50,13 @@ type _AnalyticsOperationsExposeOnlyStorageKeys = Expect<
   Equal<AnalyticsOperationKeys, ExpectedAnalyticsOperationKeys>
 >;
 type _DatabasePluginExposesRootCommit = Expect<
-  Equal<DatabasePlugin["commit"], DatabasePlugin["commit"]>
+  Equal<Extract<DatabaseOperationKeys, "commit">, "commit">
 >;
 type _DatabasePluginCommitInputIsRootOnly = Expect<
-  Equal<Parameters<DatabasePlugin["commit"]>[1], Record<string, never> | undefined>
+  Equal<
+    Parameters<DatabasePlugin["commit"]>[1],
+    Record<string, never> | undefined
+  >
 >;
 type _BundleOperationsExcludeTableCommit = Expect<
   Equal<BundleOperationKeys, ExpectedBundleOperationKeys>
@@ -285,9 +288,7 @@ describe("createDatabasePlugin", () => {
     await plugin.bundles.updateBundle(baseBundle.id, {
       enabled: false,
     });
-    await expect(plugin.commit()).rejects.toThrow(
-      "commit failed",
-    );
+    await expect(plugin.commit()).rejects.toThrow("commit failed");
     await plugin.commit();
 
     expect(getBundleById).toHaveBeenCalledTimes(1);
