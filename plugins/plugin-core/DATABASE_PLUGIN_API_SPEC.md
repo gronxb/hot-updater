@@ -68,6 +68,94 @@ verbs.
 
 ## Explicit Non-Goals
 
-- No public `begin` API. Core owns UoW staging.
-- No table-local commit verbs on public runtime tables.
-- No patch metadata writes through `bundles.updateBundle`.
+Allowed table verbs are:
+
+- `get`
+- `list`
+- `append`
+- `update`
+
+`commit` is not a table verb. Deletion is not a generic table verb in this spec;
+shared domain deletion helpers stage the required table changes internally.
+
+## Bundle deletion
+
+Bundle deletion is a shared core/server domain workflow, not a provider table
+method. The helper stages the affected `bundles` and `bundlePatches` changes and
+then the caller performs one root `database.commit(context, {})` with any other
+same-operation changes.
+
+## Analytics and ingest keys
+
+`analyticsEvents` is a generic event table. Metrics are derived by core/server
+from bounded reads rather than written as metrics rows through bundle mutation
+APIs.
+
+`ingestKeys` is separate from analytics so key lifecycle state can be staged and
+committed independently from event ingestion.
+
+## Updates check fast path
+
+`updates.check` is the only planned non-table exception. It may read optimized
+provider state directly for runtime update checks and must not become a general
+mutation surface.
+
+## Unit-of-Work scope requirements
+
+Core must provide an internal Unit-of-Work scope helper that:
+
+1. creates a fresh staging scope for each logical operation;
+2. overlays staged changes onto reads within the scope;
+3. clears staged changes after successful root commit;
+4. clears staged changes after failed operations; and
+5. prevents reused context objects from leaking staged changes into later
+   operations.
+
+## Compatibility
+
+This amendment is a deliberate breaking change for provider-facing database
+plugin APIs. No compatibility shim is required unless implementation discovers a
+small internal migration aid is cheaper than direct call-site updates.
+
+## Current implementation review notes
+
+As of this documentation update, the repository still contains the legacy
+bundle-only Unit-of-Work surface in `plugins/plugin-core/src/types/index.ts` and
+`plugins/plugin-core/src/createDatabasePlugin.ts`:
+
+- `bundles.commitBundle(context?)` is still table-local.
+- bundle mutation staging is bundle-only (`BundleUnitOfWork`).
+- current bundle commit cleanup is success-only, so failed provider commits can
+  leave staged changes attached to a reused context until the root scope helper
+  adds terminal cleanup.
+- public callers still invoke `databasePlugin.bundles.commitBundle(...)`.
+- `plugins/plugin-core/DATABASE_PLUGIN_API_SPEC.md` did not previously exist.
+
+Those notes are implementation review findings, not an alternate contract. The
+target contract above is the root-UoW contract approved by the RAL plan.
+
+## Migration checklist
+
+- Remove table-local `commitBundle` from public database table operations.
+- Add root `database.commit(context, {})` to core-assembled database plugins.
+- Add provider root `commit(context, { changes })`.
+- Generalize bundle-only staging into `DatabaseChanges`.
+- Move bundle patch, analytics event, and ingest-key mutations through root
+  staging.
+- Replace direct bundle deletion table calls with the shared domain deletion
+  helper.
+- Preserve `updates.check` as the isolated non-table fast path.
+- Document provider atomicity levels in each provider package when the provider
+  cannot guarantee cross-table transactions.
+
+## Verification checklist
+
+Implementation of this spec should prove:
+
+- no table-local commit method remains in provider-facing table APIs;
+- root commit receives grouped changes across all staged tables;
+- a failed operation clears staged changes before context reuse;
+- bundle deletion stages bundle and bundle-patch changes before one root commit;
+- `updates.check` remains available without creating new non-table mutation
+  exceptions; and
+- provider type tests cover every supported database provider package.
