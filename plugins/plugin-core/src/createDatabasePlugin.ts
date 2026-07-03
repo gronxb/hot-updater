@@ -530,23 +530,6 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             return shouldOverlay ? overlayResult(result) : result;
           },
 
-          async commitBundle(context) {
-            const methods = getMethods().bundles;
-            const unitOfWork = getMutationUnitOfWork(context);
-            const params = {
-              changedSets: unitOfWork.changedSets(),
-            };
-
-            if (context === undefined) {
-              await methods.commitBundle(params);
-            } else {
-              await methods.commitBundle(params, context);
-            }
-
-            unitOfWork.clear();
-            await hooks?.onDatabaseUpdated?.();
-          },
-
           async updateBundle(
             targetBundleId: string,
             newBundle: Partial<Bundle>,
@@ -583,6 +566,18 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
 
             return getMethods().channels.getChannels(context);
           },
+        },
+
+        async commit(context) {
+          const unitOfWork = getMutationUnitOfWork(context);
+          await getMethods().commit(context, {
+            changes: {
+              bundles: unitOfWork.changedSets(),
+            },
+          });
+
+          unitOfWork.clear();
+          await hooks?.onDatabaseUpdated?.();
         },
 
         async onUnmount() {
