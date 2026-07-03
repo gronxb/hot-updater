@@ -294,17 +294,12 @@ export type CreateDatabasePluginOptions<TConfig, TContext = unknown> = {
  *         async getBundleById(bundleId) { ... },
  *         async getBundles(options) { ... },
  *       },
- *       async commit(context, { changes }) { ... }
+ *       async commit(context, { changes }) { ... },
+ *       channels: {
+ *         async getChannels() { ... },
  *       },
- *       commit?: (
-    context: HotUpdaterContext<TContext> | undefined,
-    input: { readonly changes: DatabaseChanges },
-  ) => Promise<void>;
-  channels: {
- *         async getChannels() { ... }
- *       }
  *     };
- *   }
+ *   },
  * });
  * ```
  */
@@ -584,7 +579,6 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             return shouldOverlay ? overlayResult(result) : result;
           },
 
-
           async updateBundle(
             targetBundleId: string,
             newBundle: Partial<Bundle>,
@@ -613,11 +607,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           },
         },
 
-        commit?: (
-    context: HotUpdaterContext<TContext> | undefined,
-    input: { readonly changes: DatabaseChanges },
-  ) => Promise<void>;
-  channels: {
+        channels: {
           async getChannels(context) {
             if (context === undefined) {
               return getMethods().channels.getChannels();
