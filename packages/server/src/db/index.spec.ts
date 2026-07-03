@@ -202,8 +202,8 @@ function createSchemaOnlyAdapter({
       async appendBundle() {},
       async updateBundle() {},
       async deleteBundle() {},
-      async commit() {},
     },
+    async commit() {},
     channels: {
       async getChannels() {
         return [];
@@ -1852,8 +1852,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
               },
             };
           },
-          async commit() {},
         },
+        async commit() {},
         channels: {
           async getChannels() {
             return [];
@@ -1903,17 +1903,18 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
                   },
                 };
               },
-              async commit({ changedSets }) {
-                commitCount += 1;
-                committedBundleIds.push(
-                  changedSets.map((change) => change.data.id),
-                );
+            },
+            async commit({ changes }) {
+              const changedSets = changes.bundles;
+              commitCount += 1;
+              committedBundleIds.push(
+                changedSets.map((change) => change.data.id),
+              );
 
-                if (commitCount === 1) {
-                  notifyFirstCommitStarted();
-                  await firstCommitGate;
-                }
-              },
+              if (commitCount === 1) {
+                notifyFirstCommitStarted();
+                await firstCommitGate;
+              }
             },
             onUnmount,
             channels: {

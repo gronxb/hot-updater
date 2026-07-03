@@ -40,6 +40,7 @@ type TestContext = RequestEnvContext<{
 type FlatTestDatabasePlugin<TContext = unknown> =
   DatabasePlugin<TContext>["bundles"] & {
     analytics?: DatabasePlugin<TContext>["analytics"];
+    commit: DatabasePlugin<TContext>["commit"];
     getChannels: DatabasePlugin<TContext>["channels"]["getChannels"];
     name: string;
     onUnmount?: DatabasePlugin<TContext>["onUnmount"];
@@ -47,6 +48,7 @@ type FlatTestDatabasePlugin<TContext = unknown> =
 
 const createNestedDatabasePlugin = <TContext = unknown>({
   analytics,
+  commit,
   getChannels,
   name,
   onUnmount,
@@ -54,6 +56,7 @@ const createNestedDatabasePlugin = <TContext = unknown>({
 }: FlatTestDatabasePlugin<TContext>): DatabasePlugin<TContext> => ({
   ...(analytics ? { analytics } : {}),
   bundles,
+  commit,
   channels: { getChannels },
   name,
   ...(onUnmount ? { onUnmount } : {}),

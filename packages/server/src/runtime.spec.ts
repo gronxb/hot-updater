@@ -40,6 +40,7 @@ type TestContext = RequestEnvContext<TestEnv>;
 type FlatTestDatabasePlugin<TContext = unknown> =
   DatabasePlugin<TContext>["bundles"] & {
     analytics?: DatabasePlugin<TContext>["analytics"];
+    commit: DatabasePlugin<TContext>["commit"];
     getChannels: DatabasePlugin<TContext>["channels"]["getChannels"];
     name: string;
     onUnmount?: DatabasePlugin<TContext>["onUnmount"];
@@ -47,6 +48,7 @@ type FlatTestDatabasePlugin<TContext = unknown> =
 
 const createNestedDatabasePlugin = <TContext = unknown>({
   analytics,
+  commit,
   getChannels,
   name,
   onUnmount,
@@ -54,6 +56,7 @@ const createNestedDatabasePlugin = <TContext = unknown>({
 }: FlatTestDatabasePlugin<TContext>): DatabasePlugin<TContext> => ({
   ...(analytics ? { analytics } : {}),
   bundles,
+  commit,
   channels: { getChannels },
   name,
   ...(onUnmount ? { onUnmount } : {}),
@@ -62,18 +65,21 @@ const createNestedDatabasePlugin = <TContext = unknown>({
 type FlatFactoryResult<TContext = unknown> =
   AbstractDatabasePlugin<TContext>["bundles"] & {
     analytics?: AbstractDatabasePlugin<TContext>["analytics"];
+    commit: AbstractDatabasePlugin<TContext>["commit"];
     getChannels: AbstractDatabasePlugin<TContext>["channels"]["getChannels"];
     onUnmount?: AbstractDatabasePlugin<TContext>["onUnmount"];
   };
 
 const createNestedDatabaseFactoryResult = <TContext = unknown>({
   analytics,
+  commit,
   getChannels,
   onUnmount,
   ...bundles
 }: FlatFactoryResult<TContext>): AbstractDatabasePlugin<TContext> => ({
   ...(analytics ? { analytics } : {}),
   bundles,
+  commit,
   channels: { getChannels },
   ...(onUnmount ? { onUnmount } : {}),
 });
@@ -1088,7 +1094,8 @@ describe("runtime createHotUpdater", () => {
           async getChannels() {
             return [];
           },
-          async commit({ changedSets }) {
+          async commit({ changes }) {
+            const changedSets = changes.bundles;
             commitAttempt += 1;
 
             if (commitAttempt === 1) {
@@ -1174,7 +1181,8 @@ describe("runtime createHotUpdater", () => {
             return [];
           },
           onUnmount,
-          async commit({ changedSets }) {
+          async commit({ changes }) {
+            const changedSets = changes.bundles;
             commitCount += 1;
             committedBundleIds.push(
               changedSets.map((change) => change.data.id),

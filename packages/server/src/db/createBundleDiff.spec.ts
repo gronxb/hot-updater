@@ -39,7 +39,6 @@ const createDatabasePlugin = (
   name: "mockDatabase",
   bundles: {
     async appendBundle() {},
-    async commit() {},
     async deleteBundle() {},
     async getBundleById(bundleId) {
       return bundles.get(bundleId) ?? null;

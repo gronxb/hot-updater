@@ -150,6 +150,7 @@ const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
         throw new Error("Not implemented for benchmark");
       },
     },
+    async commit() {},
     channels: {
       async getChannels() {
         return [...new Set(bundles.map((bundle) => bundle.channel))];
