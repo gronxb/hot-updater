@@ -6,6 +6,7 @@ import {
 } from "./createDatabasePlugin";
 import type {
   Bundle,
+  DatabaseBundleChange,
   DatabaseAnalyticsOperations,
   DatabaseChanges,
   DatabasePlugin,
@@ -104,6 +105,16 @@ const nested = ({
   ...(onUnmount ? { onUnmount } : {}),
 });
 
+const expectedCommitCall = (bundles: readonly DatabaseBundleChange[]) =>
+  [
+    undefined,
+    {
+      changes: {
+        bundles,
+      },
+    },
+  ] as const;
+
 describe("createDatabasePlugin", () => {
   it("groups database methods by concern", async () => {
     const commit = vi.fn();
@@ -124,6 +135,7 @@ describe("createDatabasePlugin", () => {
               totalPages: 1,
             },
           }),
+          commit: commitBundle,
         },
         commit,
         channels: {
@@ -138,8 +150,8 @@ describe("createDatabasePlugin", () => {
     ]);
     await plugin.commit();
 
-    expect(commit).toHaveBeenCalledWith({
-      changedSets: [
+    expect(commitBundle).toHaveBeenCalledWith(
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -147,9 +159,8 @@ describe("createDatabasePlugin", () => {
             enabled: false,
           },
         },
-      ],
-      },
-    });
+      ]),
+    );
   });
 
   it("replaces targetCohorts instead of merging array items", async () => {
@@ -172,7 +183,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit,
+          commit: commitBundle,
         }),
     })({})();
 
@@ -181,8 +192,8 @@ describe("createDatabasePlugin", () => {
     });
     await plugin.commit();
 
-    expect(commit).toHaveBeenCalledWith({
-      changedSets: [
+    expect(commitBundle).toHaveBeenCalledWith(
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -190,9 +201,8 @@ describe("createDatabasePlugin", () => {
             targetCohorts: ["device-2"],
           },
         },
-      ],
-      },
-    });
+      ]),
+    );
   });
 
   it("preserves pending updates while allowing targetCohorts to be cleared", async () => {
@@ -215,7 +225,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit,
+          commit: commitBundle,
         }),
     })({})();
 
@@ -223,8 +233,8 @@ describe("createDatabasePlugin", () => {
     await plugin.bundles.updateBundle(baseBundle.id, { targetCohorts: null });
     await plugin.commit();
 
-    expect(commit).toHaveBeenCalledWith({
-      changedSets: [
+    expect(commitBundle).toHaveBeenCalledWith(
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -233,9 +243,8 @@ describe("createDatabasePlugin", () => {
             targetCohorts: null,
           },
         },
-      ],
-      },
-    });
+      ]),
+    );
   });
 
   it("preserves pending changes after a failed commit", async () => {
@@ -263,7 +272,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit,
+          commit: commitBundle,
         }),
     })({})();
 
@@ -276,8 +285,9 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(getBundleById).toHaveBeenCalledTimes(1);
-    expect(commit).toHaveBeenNthCalledWith(1, {
-      changedSets: [
+    expect(commitBundle).toHaveBeenNthCalledWith(
+      1,
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -285,11 +295,11 @@ describe("createDatabasePlugin", () => {
             enabled: false,
           },
         },
-      ],
-      },
-    });
-    expect(commit).toHaveBeenNthCalledWith(2, {
-      changedSets: [
+      ]),
+    );
+    expect(commitBundle).toHaveBeenNthCalledWith(
+      2,
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -297,9 +307,8 @@ describe("createDatabasePlugin", () => {
             enabled: false,
           },
         },
-      ],
-      },
-    });
+      ]),
+    );
   });
 
   it("stages no-context updates without keeping read-only cache entries", async () => {
@@ -324,7 +333,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit,
+          commit: commitBundle,
         }),
     })({})();
 
@@ -337,8 +346,8 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(getBundleById).toHaveBeenCalledTimes(2);
-    expect(commit).toHaveBeenCalledWith({
-      changedSets: [
+    expect(commitBundle).toHaveBeenCalledWith(
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -346,9 +355,8 @@ describe("createDatabasePlugin", () => {
             enabled: false,
           },
         },
-      ],
-      },
-    });
+      ]),
+    );
   });
 
   it("reads pending updates before commit in the same request context", async () => {
@@ -719,7 +727,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit,
+          commit: commitBundle,
         }),
     })({})();
 

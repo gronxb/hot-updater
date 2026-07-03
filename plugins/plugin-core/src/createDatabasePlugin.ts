@@ -44,6 +44,10 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
   channels: {
     getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   };
+  commit: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: { readonly changes: DatabaseChanges },
+  ) => Promise<void>;
   onUnmount?: () => Promise<void>;
 }
 
