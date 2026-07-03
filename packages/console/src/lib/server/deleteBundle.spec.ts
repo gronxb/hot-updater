@@ -9,9 +9,22 @@ import type {
   NodeStorageProfile,
   RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { deleteBundle } from "./deleteBundle";
+
+const { mockDeleteBundleById } = vi.hoisted(() => ({
+  mockDeleteBundleById: vi.fn(),
+}));
+
+vi.mock("@hot-updater/plugin-core", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@hot-updater/plugin-core")>();
+  return {
+    ...actual,
+    deleteBundleById: mockDeleteBundleById,
+  };
+});
 
 const baseBundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
@@ -30,21 +43,21 @@ const baseBundle: Bundle = {
 };
 
 function createDatabasePlugin(bundle: Bundle | null = baseBundle) {
-  return {
+  const databasePlugin = {
     name: "mockDatabase",
     commit: vi.fn(),
     bundles: {
-      getBundleById: vi.fn(async () => bundle),
-      getBundles: vi.fn(),
-      updateBundle: vi.fn(),
-      appendBundle: vi.fn(),
-      commit: vi.fn(),
-      deleteBundle: vi.fn(),
+      get: vi.fn(async () => bundle),
+      list: vi.fn(),
+      update: vi.fn(),
+      append: vi.fn(),
     },
     channels: {
       getChannels: vi.fn(),
     },
   } satisfies DatabasePlugin;
+
+  return databasePlugin;
 }
 
 function createStoragePlugin(
@@ -88,6 +101,13 @@ function createStoragePlugin(
   return storagePlugin satisfies NodeStoragePlugin;
 }
 
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockDeleteBundleById.mockImplementation(
+    async (_database, _context, input) => input.bundle ?? null,
+  );
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -105,23 +125,26 @@ describe("deleteBundle", () => {
       { databasePlugin, storagePlugin },
     );
 
-    expect(databasePlugin.bundles.getBundleById).toHaveBeenCalledWith(
-      baseBundle.id,
+    expect(databasePlugin.bundles.get).toHaveBeenCalledWith(undefined, {
+      id: baseBundle.id,
+    });
+    expect(mockDeleteBundleById).toHaveBeenCalledWith(
+      databasePlugin,
+      undefined,
+      {
+        bundle: baseBundle,
+        id: baseBundle.id,
+      },
     );
-    expect(databasePlugin.bundles.deleteBundle).toHaveBeenCalledWith(
-      baseBundle,
-    );
-    expect(databasePlugin.bundles.commit).toHaveBeenCalledOnce();
+    expect(databasePlugin.commit).toHaveBeenCalledWith(undefined, {});
     expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
 
-    expect(
-      databasePlugin.bundles.deleteBundle.mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      databasePlugin.bundles.commit.mock.invocationCallOrder[0],
+    expect(mockDeleteBundleById.mock.invocationCallOrder[0]).toBeLessThan(
+      databasePlugin.commit.mock.invocationCallOrder[0],
     );
-    expect(
-      databasePlugin.bundles.commit.mock.invocationCallOrder[0],
-    ).toBeLessThan(deleteFromStorage.mock.invocationCallOrder[0]);
+    expect(databasePlugin.commit.mock.invocationCallOrder[0]).toBeLessThan(
+      deleteFromStorage.mock.invocationCallOrder[0],
+    );
   });
 
   it("skips storage deletion for http urls", async () => {
@@ -139,8 +162,8 @@ describe("deleteBundle", () => {
       { databasePlugin, storagePlugin },
     );
 
-    expect(databasePlugin.bundles.deleteBundle).toHaveBeenCalledOnce();
-    expect(databasePlugin.bundles.commit).toHaveBeenCalledOnce();
+    expect(mockDeleteBundleById).toHaveBeenCalledOnce();
+    expect(databasePlugin.commit).toHaveBeenCalledWith(undefined, {});
     expect(deleteFromStorage).not.toHaveBeenCalled();
   });
 
@@ -158,8 +181,8 @@ describe("deleteBundle", () => {
       ),
     ).rejects.toThrow("No storage plugin for protocol: r2");
 
-    expect(databasePlugin.bundles.deleteBundle).not.toHaveBeenCalled();
-    expect(databasePlugin.bundles.commit).not.toHaveBeenCalled();
+    expect(mockDeleteBundleById).not.toHaveBeenCalled();
+    expect(databasePlugin.commit).not.toHaveBeenCalled();
     expect(storagePlugin.profiles.node.delete).not.toHaveBeenCalled();
   });
 
@@ -182,8 +205,8 @@ describe("deleteBundle", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(databasePlugin.bundles.deleteBundle).toHaveBeenCalledOnce();
-    expect(databasePlugin.bundles.commit).toHaveBeenCalledOnce();
+    expect(mockDeleteBundleById).toHaveBeenCalledOnce();
+    expect(databasePlugin.commit).toHaveBeenCalledWith(undefined, {});
     expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "Failed to delete bundle from storage:",
@@ -205,8 +228,8 @@ describe("deleteBundle", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(databasePlugin.bundles.deleteBundle).toHaveBeenCalledOnce();
-    expect(databasePlugin.bundles.commit).toHaveBeenCalledOnce();
+    expect(mockDeleteBundleById).toHaveBeenCalledOnce();
+    expect(databasePlugin.commit).toHaveBeenCalledWith(undefined, {});
     expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
   });
 
@@ -284,7 +307,7 @@ describe("deleteBundle", () => {
       { databasePlugin, storagePlugin },
     );
 
-    expect(databasePlugin.bundles.getBundles).not.toHaveBeenCalled();
+    expect(databasePlugin.bundles.list).not.toHaveBeenCalled();
     expect(fetchManifest).not.toHaveBeenCalled();
     expect(deleteFromStorage).toHaveBeenCalledTimes(2);
     expect(deleteFromStorage).toHaveBeenCalledWith(
@@ -367,7 +390,7 @@ describe("deleteBundle", () => {
       ),
     ).rejects.toThrow("No storage plugin for protocol: r2");
 
-    expect(databasePlugin.bundles.deleteBundle).not.toHaveBeenCalled();
-    expect(databasePlugin.bundles.commit).not.toHaveBeenCalled();
+    expect(mockDeleteBundleById).not.toHaveBeenCalled();
+    expect(databasePlugin.commit).not.toHaveBeenCalled();
   });
 });

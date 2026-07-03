@@ -1,7 +1,6 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
 } from "@hot-updater/plugin-core";
 import {
@@ -170,7 +169,7 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
     };
     return {
       bundles: {
-        async getBundleById(bundleId) {
+        async get(_context, { id: bundleId }) {
           const row = await db.query["bundles"]?.findFirst({
             where: eq(column(bundles, "id"), bundleId),
           });
@@ -178,9 +177,7 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
           const patchMap = await fetchPatchMap([bundleId]);
           return rowToBundle(row as BundleRow, patchMap.get(bundleId) ?? []);
         },
-        async getBundles(
-          options: DatabaseBundleQueryOptions & { offset?: number },
-        ) {
+        async list(_context, options) {
           const offset = options.offset ?? 0;
           const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
           const where = buildWhere(bundles, options.where);
@@ -212,7 +209,9 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
             }),
           };
         },
-        async getUpdateInfo(args, context) {
+      },
+      updates: {
+        async check(context, args) {
           if (args._updateStrategy === "appVersion") {
             const channel = args.channel ?? "production";
             const minBundleId = args.minBundleId ?? NIL_UUID;
@@ -282,8 +281,8 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
           });
         },
       },
-      async commit({ changes }) {
-        const changedSets = changes.bundles;
+      async commit(_context, { changes }) {
+        const changedSets = changes.bundles ?? [];
         await runInTransaction(async (activeDB) => {
           for (const change of changedSets) {
             if (change.operation === "delete") {

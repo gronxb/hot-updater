@@ -59,6 +59,7 @@ function createConsoleApi(
     getConfig: vi.fn(async () => supportedConfig),
     getConfigLoaded: vi.fn(),
     promoteBundle: vi.fn(),
+    setTelemetryKeyActive: vi.fn(),
     updateBundle: vi.fn(),
     ...overrides,
   };
@@ -105,26 +106,27 @@ describe("SettingsPage", () => {
     cleanup();
   });
 
-  it("hides Telemetry key controls when the provider is unsupported", async () => {
+  it("hides Ingest key controls when the provider is unsupported", async () => {
     renderSettingsPage(
       createConsoleApi({
         getConfig: vi.fn(async () => unsupportedConfig),
       }),
     );
 
-    expect(await screen.findByText("Telemetry key not available")).toBeTruthy();
+    expect(await screen.findByText("Ingest key not available")).toBeTruthy();
     expect(
-      screen.queryByRole("button", { name: "Issue Telemetry key" }),
+      screen.queryByRole("button", { name: "Issue Ingest key" }),
     ).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "Rotate Telemetry key" }),
+      screen.queryByRole("button", { name: "Rotate Ingest key" }),
     ).toBeNull();
   });
 
-  it("shows only the Telemetry key suffix when plaintext is absent", async () => {
+  it("shows only the Ingest key suffix when plaintext is absent", async () => {
     renderSettingsPage(
       createConsoleApi({
         getTelemetryKeyState: vi.fn(async () => ({
+          active: true,
           telemetryKeySuffix: "abcd1234",
         })),
         issueTelemetryKey: vi.fn(),
@@ -133,10 +135,11 @@ describe("SettingsPage", () => {
     );
 
     expect(await screen.findByText("...abcd1234")).toBeTruthy();
+    expect(screen.getByText("Enabled")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
   });
 
-  it("copies plaintext only for a freshly issued Telemetry key", async () => {
+  it("copies plaintext only for a freshly issued Ingest key", async () => {
     const api = createConsoleApi({
       getTelemetryKeyState: vi.fn(async () => null),
       issueTelemetryKey: vi.fn(async () => ({
@@ -150,7 +153,7 @@ describe("SettingsPage", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Issue Telemetry key",
+        name: "Issue Ingest key",
       }),
     );
 
@@ -166,6 +169,7 @@ describe("SettingsPage", () => {
     renderSettingsPage(
       createConsoleApi({
         getTelemetryKeyState: vi.fn(async () => ({
+          active: true,
           telemetryKeySuffix: "aintext",
         })),
         issueTelemetryKey: vi.fn(),
@@ -178,13 +182,15 @@ describe("SettingsPage", () => {
     expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
   });
 
-  it("clears freshly issued plaintext after Telemetry key state refreshes", async () => {
-    let telemetryKeyState: { readonly telemetryKeySuffix: string } | null =
-      null;
+  it("clears freshly issued plaintext after Ingest key state refreshes", async () => {
+    let telemetryKeyState: {
+      readonly active: boolean;
+      readonly telemetryKeySuffix: string;
+    } | null = null;
     const api = createConsoleApi({
       getTelemetryKeyState: vi.fn(async () => telemetryKeyState),
       issueTelemetryKey: vi.fn(async () => {
-        telemetryKeyState = { telemetryKeySuffix: "aintext" };
+        telemetryKeyState = { active: true, telemetryKeySuffix: "aintext" };
         return {
           telemetryKey: "hutk_plaintext",
           telemetryKeySuffix: "aintext",
@@ -197,7 +203,7 @@ describe("SettingsPage", () => {
 
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "Issue Telemetry key",
+        name: "Issue Ingest key",
       }),
     );
 
@@ -212,5 +218,43 @@ describe("SettingsPage", () => {
     });
     expect(screen.getByText("...aintext")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+  });
+
+  it("toggles an issued Ingest key between enabled and disabled", async () => {
+    let telemetryKeyState = {
+      active: true,
+      telemetryKeySuffix: "abcd1234",
+    };
+    const api = {
+      ...createConsoleApi({
+        getTelemetryKeyState: vi.fn(async () => telemetryKeyState),
+        issueTelemetryKey: vi.fn(),
+        rotateTelemetryKey: vi.fn(),
+      }),
+      setTelemetryKeyActive: vi.fn(async ({ active }: { active: boolean }) => {
+        telemetryKeyState = { ...telemetryKeyState, active };
+        return { active };
+      }),
+    };
+
+    renderSettingsPage(api);
+
+    expect(await screen.findByText("Enabled")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Disable" }));
+
+    await waitFor(() => {
+      expect(api.setTelemetryKeyActive).toHaveBeenCalledWith({
+        active: false,
+      });
+    });
+    expect(await screen.findByText("Disabled")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Enable" }));
+
+    await waitFor(() => {
+      expect(api.setTelemetryKeyActive).toHaveBeenCalledWith({
+        active: true,
+      });
+    });
   });
 });

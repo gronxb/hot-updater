@@ -71,3 +71,31 @@ describe("bundlePatchesV031", () => {
     );
   });
 });
+
+describe("v0_31_0 analytics tables", () => {
+  it("defines canonical ingest key and analytics event tables", () => {
+    const tables = new Map(
+      v0_31_0.tables.map((table) => [table.ormName, table.columns]),
+    );
+
+    expect(tables.get("ingest_keys")).toEqual([
+      { ormName: "id", type: "varchar(255)", primaryKey: true },
+      { ormName: "key_hash", type: "string" },
+      { ormName: "key_suffix", type: "string" },
+      {
+        ormName: "active",
+        type: "bool",
+        default: { type: "literal", value: true },
+      },
+      { ormName: "created_at", type: "string" },
+      { ormName: "updated_at", type: "string" },
+    ]);
+    expect(tables.get("analytics_events")).toEqual([
+      { ormName: "id", type: "varchar(255)", primaryKey: true },
+      { ormName: "event_type", type: "string" },
+      { ormName: "payload", type: "json" },
+      { ormName: "observed_at", type: "string" },
+      { ormName: "received_at", type: "string" },
+    ]);
+  });
+});

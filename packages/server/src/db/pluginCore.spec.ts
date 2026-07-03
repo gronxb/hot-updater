@@ -44,6 +44,7 @@ type FlatTestDatabasePlugin<TContext = unknown> =
     getChannels: DatabasePlugin<TContext>["channels"]["getChannels"];
     name: string;
     onUnmount?: DatabasePlugin<TContext>["onUnmount"];
+    updates?: DatabasePlugin<TContext>["updates"];
   };
 
 const createNestedDatabasePlugin = <TContext = unknown>({
@@ -52,6 +53,7 @@ const createNestedDatabasePlugin = <TContext = unknown>({
   getChannels,
   name,
   onUnmount,
+  updates,
   ...bundles
 }: FlatTestDatabasePlugin<TContext>): DatabasePlugin<TContext> => ({
   ...(analytics ? { analytics } : {}),
@@ -60,11 +62,13 @@ const createNestedDatabasePlugin = <TContext = unknown>({
   channels: { getChannels },
   name,
   ...(onUnmount ? { onUnmount } : {}),
+  ...(updates ? { updates } : {}),
 });
 
 describe("createPluginDatabaseCore", () => {
   it("forwards analytics methods from getter-backed database plugins", async () => {
     const getTelemetryKeyCredential = vi.fn(async () => ({
+      active: true,
       keyHash:
         "1721fec3b8042903822cb190ac47f755b6ca00b153d03e087200297f9299b92e",
       telemetryKeySuffix: "12345678",
@@ -91,13 +95,14 @@ describe("createPluginDatabaseCore", () => {
           },
           getTelemetryKeyCredential,
           insertLifecycleEvent,
+          async setTelemetryKeyActive() {},
           upsertTelemetryKeyCredential,
         },
         bundles: {
-          async getBundleById() {
+          async get() {
             return null;
           },
-          async getBundles() {
+          async list() {
             return {
               data: [],
               pagination: {
@@ -156,6 +161,7 @@ describe("createPluginDatabaseCore", () => {
     expect(issued?.telemetryKeySuffix).toHaveLength(8);
     expect(upsertTelemetryKeyCredential).toHaveBeenCalledWith(
       {
+        active: true,
         keyHash: expect.any(String),
         telemetryKeySuffix: issued?.telemetryKeySuffix,
       },
@@ -164,8 +170,7 @@ describe("createPluginDatabaseCore", () => {
   });
 
   it("prefers plugin getUpdateInfo fast-path when provided", async () => {
-    const getBundles =
-      vi.fn<DatabasePlugin<TestContext>["bundles"]["getBundles"]>();
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["bundles"]["list"]>();
     const expected: UpdateInfo = {
       fileHash: baseBundle.fileHash,
       id: baseBundle.id,
@@ -175,23 +180,22 @@ describe("createPluginDatabaseCore", () => {
       storageUri: baseBundle.storageUri,
     };
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]>
+      NonNullable<NonNullable<DatabasePlugin<TestContext>["updates"]>["check"]>
     >(async () => expected);
 
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "fast-path-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById() {
+      async get() {
         return null;
       },
-      getBundles,
-      getUpdateInfo,
+      list: async (_context, input) => getBundles(_context, input),
+      updates: { check: getUpdateInfo },
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -208,7 +212,7 @@ describe("createPluginDatabaseCore", () => {
     await expect(core.api.getUpdateInfo(updateArgs, context)).resolves.toEqual(
       expected,
     );
-    expect(getUpdateInfo).toHaveBeenCalledWith(updateArgs, context);
+    expect(getUpdateInfo).toHaveBeenCalledWith(context, updateArgs);
     expect(getBundles).not.toHaveBeenCalled();
   });
 
@@ -253,7 +257,7 @@ describe("createPluginDatabaseCore", () => {
       ],
     ]);
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]>
+      NonNullable<NonNullable<DatabasePlugin<TestContext>["updates"]>["check"]>
     >(async () => ({
       fileHash: targetBundle.fileHash,
       id: targetBundle.id,
@@ -265,16 +269,15 @@ describe("createPluginDatabaseCore", () => {
 
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "manifest-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(bundleId) {
+      async get(_context, { id: bundleId }) {
         if (bundleId === currentBundle.id) return currentBundle;
         if (bundleId === targetBundle.id) return targetBundle;
         return null;
       },
-      getUpdateInfo,
-      async getBundles() {
+      updates: { check: getUpdateInfo },
+      async list() {
         return {
           data: [targetBundle],
           pagination: {
@@ -289,7 +292,7 @@ describe("createPluginDatabaseCore", () => {
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -371,15 +374,15 @@ describe("createPluginDatabaseCore", () => {
         }),
       ],
     ]);
-    const getBundleById = vi.fn<
-      DatabasePlugin<TestContext>["bundles"]["getBundleById"]
-    >(async (bundleId) => {
-      if (bundleId === currentBundle.id) return currentBundle;
-      if (bundleId === targetBundle.id) return targetBundle;
-      return null;
-    });
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["bundles"]["get"]>(
+      async (_context, { id }) => {
+        if (id === currentBundle.id) return currentBundle;
+        if (id === targetBundle.id) return targetBundle;
+        return null;
+      },
+    );
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]>
+      NonNullable<NonNullable<DatabasePlugin<TestContext>["updates"]>["check"]>
     >(async () => ({
       fileHash: targetBundle.fileHash,
       id: targetBundle.id,
@@ -391,12 +394,11 @@ describe("createPluginDatabaseCore", () => {
 
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "identity-map-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      getBundleById,
-      getUpdateInfo,
-      async getBundles() {
+      get: async (_context, { id }) => getBundleById(_context, { id }),
+      updates: { check: getUpdateInfo },
+      async list() {
         return {
           data: [targetBundle],
           pagination: {
@@ -411,7 +413,7 @@ describe("createPluginDatabaseCore", () => {
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -452,8 +454,12 @@ describe("createPluginDatabaseCore", () => {
     expect(updateInfo.changedAssets).not.toHaveProperty("shared.png");
     expect(getUpdateInfo).toHaveBeenCalledOnce();
     expect(getBundleById).toHaveBeenCalledTimes(2);
-    expect(getBundleById).toHaveBeenCalledWith(targetBundle.id, undefined);
-    expect(getBundleById).toHaveBeenCalledWith(currentBundle.id, undefined);
+    expect(getBundleById).toHaveBeenCalledWith(undefined, {
+      id: targetBundle.id,
+    });
+    expect(getBundleById).toHaveBeenCalledWith(undefined, {
+      id: currentBundle.id,
+    });
     expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterBundle");
     expect(Object.keys(updateInfo)).not.toContain("__hotUpdaterCurrentBundle");
     expect(JSON.stringify(updateInfo)).not.toContain("__hotUpdaterBundle");
@@ -484,11 +490,12 @@ describe("createPluginDatabaseCore", () => {
         }),
       ],
     ]);
-    const getBundleById = vi.fn<
-      DatabasePlugin<TestContext>["bundles"]["getBundleById"]
-    >(async (bundleId) => (bundleId === targetBundle.id ? targetBundle : null));
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["bundles"]["get"]>(
+      async (_context, { id }) =>
+        id === targetBundle.id ? targetBundle : null,
+    );
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]>
+      NonNullable<NonNullable<DatabasePlugin<TestContext>["updates"]>["check"]>
     >(async () => ({
       fileHash: targetBundle.fileHash,
       id: targetBundle.id,
@@ -500,12 +507,11 @@ describe("createPluginDatabaseCore", () => {
 
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "undefined-context-identity-map-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      getBundleById,
-      getUpdateInfo,
-      async getBundles() {
+      get: async (_context, { id }) => getBundleById(_context, { id }),
+      updates: { check: getUpdateInfo },
+      async list() {
         return {
           data: [targetBundle],
           pagination: {
@@ -520,7 +526,7 @@ describe("createPluginDatabaseCore", () => {
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -548,7 +554,9 @@ describe("createPluginDatabaseCore", () => {
       manifestUrl: "https://assets.example.com/bucket/target/manifest.json",
     });
     expect(getBundleById).toHaveBeenCalledOnce();
-    expect(getBundleById).toHaveBeenCalledWith(targetBundle.id, undefined);
+    expect(getBundleById).toHaveBeenCalledWith(undefined, {
+      id: targetBundle.id,
+    });
   });
 
   it("seeds request bundle identity map from provider update lookups", async () => {
@@ -573,14 +581,14 @@ describe("createPluginDatabaseCore", () => {
         }),
       ],
     ]);
-    const getBundleById = vi.fn<
-      DatabasePlugin<TestContext>["bundles"]["getBundleById"]
-    >(async () => {
-      throw new Error("unexpected provider bundle reread");
-    });
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["bundles"]["get"]>(
+      async () => {
+        throw new Error("unexpected provider bundle reread");
+      },
+    );
     const getUpdateInfo: NonNullable<
-      DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]
-    > = async (args, context) =>
+      NonNullable<DatabasePlugin<TestContext>["updates"]>["check"]
+    > = async (context, args) =>
       resolveUpdateInfoFromBundles({
         args,
         bundles: [targetBundle],
@@ -588,11 +596,10 @@ describe("createPluginDatabaseCore", () => {
       });
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "seeded-fast-path-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      getBundleById,
-      async getBundles() {
+      get: async (_context, { id }) => getBundleById(_context, { id }),
+      async list() {
         return {
           data: [targetBundle],
           pagination: {
@@ -604,11 +611,11 @@ describe("createPluginDatabaseCore", () => {
           },
         };
       },
-      getUpdateInfo,
+      updates: { check: getUpdateInfo },
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -674,14 +681,14 @@ describe("createPluginDatabaseCore", () => {
         }),
       ],
     ]);
-    const getBundleById = vi.fn<
-      DatabasePlugin<TestContext>["bundles"]["getBundleById"]
-    >(async () => {
-      throw new Error("unexpected provider current bundle reread");
-    });
+    const getBundleById = vi.fn<DatabasePlugin<TestContext>["bundles"]["get"]>(
+      async () => {
+        throw new Error("unexpected provider current bundle reread");
+      },
+    );
     const getUpdateInfo: NonNullable<
-      DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]
-    > = async (args, context) =>
+      NonNullable<DatabasePlugin<TestContext>["updates"]>["check"]
+    > = async (context, args) =>
       resolveUpdateInfoFromBundles({
         args,
         bundles: [targetBundle],
@@ -689,18 +696,17 @@ describe("createPluginDatabaseCore", () => {
       });
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "seeded-current-miss-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      getBundleById,
-      async getBundles() {
+      get: async (_context, { id }) => getBundleById(_context, { id }),
+      async list() {
         throw new Error("unexpected provider scan");
       },
-      getUpdateInfo,
+      updates: { check: getUpdateInfo },
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -795,25 +801,26 @@ describe("createPluginDatabaseCore", () => {
     ]);
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "content-addressed-manifest-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(bundleId) {
+      async get(_context, { id: bundleId }) {
         if (bundleId === currentBundle.id) return currentBundle;
         if (bundleId === targetBundle.id) return targetBundle;
         return null;
       },
-      async getUpdateInfo() {
-        return {
-          fileHash: targetBundle.fileHash,
-          id: targetBundle.id,
-          message: targetBundle.message,
-          shouldForceUpdate: targetBundle.shouldForceUpdate,
-          status: "UPDATE",
-          storageUri: targetBundle.storageUri,
-        };
+      updates: {
+        async check() {
+          return {
+            fileHash: targetBundle.fileHash,
+            id: targetBundle.id,
+            message: targetBundle.message,
+            shouldForceUpdate: targetBundle.shouldForceUpdate,
+            status: "UPDATE",
+            storageUri: targetBundle.storageUri,
+          };
+        },
       },
-      async getBundles() {
+      async list() {
         return {
           data: [targetBundle],
           pagination: {
@@ -828,7 +835,7 @@ describe("createPluginDatabaseCore", () => {
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -903,7 +910,7 @@ describe("createPluginDatabaseCore", () => {
       ],
     ]);
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]>
+      NonNullable<NonNullable<DatabasePlugin<TestContext>["updates"]>["check"]>
     >(async () => ({
       fileHash: targetBundle.fileHash,
       id: targetBundle.id,
@@ -915,16 +922,15 @@ describe("createPluginDatabaseCore", () => {
 
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "manifest-unresolved-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(bundleId) {
+      async get(_context, { id: bundleId }) {
         if (bundleId === currentBundle.id) return currentBundle;
         if (bundleId === targetBundle.id) return targetBundle;
         return null;
       },
-      getUpdateInfo,
-      async getBundles() {
+      updates: { check: getUpdateInfo },
+      async list() {
         return {
           data: [targetBundle],
           pagination: {
@@ -939,7 +945,7 @@ describe("createPluginDatabaseCore", () => {
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -985,7 +991,7 @@ describe("createPluginDatabaseCore", () => {
     };
     const storageError = new Error("storage read failed");
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]>
+      NonNullable<NonNullable<DatabasePlugin<TestContext>["updates"]>["check"]>
     >(async () => ({
       fileHash: targetBundle.fileHash,
       id: targetBundle.id,
@@ -997,14 +1003,13 @@ describe("createPluginDatabaseCore", () => {
 
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "manifest-error-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(bundleId) {
+      async get(_context, { id: bundleId }) {
         return bundleId === targetBundle.id ? targetBundle : null;
       },
-      getUpdateInfo,
-      async getBundles() {
+      updates: { check: getUpdateInfo },
+      async list() {
         return {
           data: [targetBundle],
           pagination: {
@@ -1019,7 +1024,7 @@ describe("createPluginDatabaseCore", () => {
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -1042,36 +1047,33 @@ describe("createPluginDatabaseCore", () => {
   });
 
   it("does not fall back to scanning when plugin getUpdateInfo returns null", async () => {
-    const getBundles = vi.fn<DatabasePlugin["bundles"]["getBundles"]>(
-      async () => ({
-        data: [baseBundle],
-        pagination: {
-          currentPage: 1,
-          hasNextPage: false,
-          hasPreviousPage: false,
-          total: 1,
-          totalPages: 1,
-        },
-      }),
-    );
+    const getBundles = vi.fn<DatabasePlugin["bundles"]["list"]>(async () => ({
+      data: [baseBundle],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 1,
+        totalPages: 1,
+      },
+    }));
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin["bundles"]["getUpdateInfo"]>
+      NonNullable<NonNullable<DatabasePlugin["updates"]>["check"]>
     >(async () => null);
 
     const plugin = createNestedDatabasePlugin({
       name: "null-fast-path-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById() {
+      async get() {
         return null;
       },
-      getBundles,
-      getUpdateInfo,
+      list: async (_context, input) => getBundles(_context, input),
+      updates: { check: getUpdateInfo },
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -1080,7 +1082,7 @@ describe("createPluginDatabaseCore", () => {
     );
 
     await expect(core.api.getUpdateInfo(updateArgs)).resolves.toBeNull();
-    expect(getUpdateInfo).toHaveBeenCalledWith(updateArgs);
+    expect(getUpdateInfo).toHaveBeenCalledWith(undefined, updateArgs);
     expect(getBundles).not.toHaveBeenCalled();
   });
 
@@ -1089,32 +1091,29 @@ describe("createPluginDatabaseCore", () => {
       ...baseBundle,
       id: "00000000-0000-0000-0000-000000000002",
     };
-    const getBundles = vi.fn<DatabasePlugin["bundles"]["getBundles"]>(
-      async () => ({
-        data: [latestBundle],
-        pagination: {
-          currentPage: 1,
-          hasNextPage: false,
-          hasPreviousPage: false,
-          total: 1,
-          totalPages: 1,
-        },
-      }),
-    );
+    const getBundles = vi.fn<DatabasePlugin["bundles"]["list"]>(async () => ({
+      data: [latestBundle],
+      pagination: {
+        currentPage: 1,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        total: 1,
+        totalPages: 1,
+      },
+    }));
 
     const plugin = createNestedDatabasePlugin({
       name: "scan-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById() {
+      async get() {
         return null;
       },
-      getBundles,
+      list: async (_context, input) => getBundles(_context, input),
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -1134,18 +1133,17 @@ describe("createPluginDatabaseCore", () => {
   });
 
   it("rejects invalid bundles before appendBundle is called", async () => {
-    const appendBundle = vi.fn<DatabasePlugin["bundles"]["appendBundle"]>();
+    const appendBundle = vi.fn<DatabasePlugin["bundles"]["append"]>();
     const commit = vi.fn<DatabasePlugin["commit"]>();
 
     const plugin = createNestedDatabasePlugin({
       name: "validation-plugin",
-      appendBundle,
+      append: async (_context, input) => appendBundle(_context, input),
       commit,
-      async deleteBundle() {},
-      async getBundleById() {
+      async get() {
         return null;
       },
-      async getBundles() {
+      async list() {
         return {
           data: [],
           pagination: {
@@ -1160,7 +1158,7 @@ describe("createPluginDatabaseCore", () => {
       async getChannels() {
         return ["production"];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const core = createPluginDatabaseCore(
@@ -1182,17 +1180,16 @@ describe("createPluginDatabaseCore", () => {
   });
 
   it("rejects invalid updates before plugin.updateBundle is called", async () => {
-    const updateBundle = vi.fn<DatabasePlugin["bundles"]["updateBundle"]>();
+    const updateBundle = vi.fn<DatabasePlugin["bundles"]["update"]>();
 
     const plugin = createNestedDatabasePlugin({
       name: "update-validation-plugin",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(bundleId) {
+      async get(_context, { id: bundleId }) {
         return bundleId === baseBundle.id ? baseBundle : null;
       },
-      async getBundles() {
+      async list() {
         return {
           data: [],
           pagination: {
@@ -1207,7 +1204,7 @@ describe("createPluginDatabaseCore", () => {
       async getChannels() {
         return ["production"];
       },
-      updateBundle,
+      update: async (_context, input) => updateBundle(_context, input),
     });
 
     const core = createPluginDatabaseCore(
@@ -1224,5 +1221,58 @@ describe("createPluginDatabaseCore", () => {
       "Bundle must define either targetAppVersion or fingerprintHash.",
     );
     expect(updateBundle).not.toHaveBeenCalled();
+  });
+
+  it("stages updateBundleById changes in the request commit scope", async () => {
+    const updateBundle =
+      vi.fn<DatabasePlugin<TestContext>["bundles"]["update"]>();
+    const commit = vi.fn<DatabasePlugin<TestContext>["commit"]>();
+    const context: TestContext = {
+      env: { assetHost: "https://assets.example.com" },
+    };
+
+    const plugin = createNestedDatabasePlugin<TestContext>({
+      name: "request-scoped-update-plugin",
+      async append() {},
+      commit: async (_context, input) => commit(_context, input),
+      async get(_context, { id: bundleId }) {
+        return bundleId === baseBundle.id ? baseBundle : null;
+      },
+      async list() {
+        return {
+          data: [],
+          pagination: {
+            currentPage: 1,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            total: 0,
+            totalPages: 1,
+          },
+        };
+      },
+      async getChannels() {
+        return ["production"];
+      },
+      update: async (_context, input) => updateBundle(_context, input),
+    });
+
+    const core = createPluginDatabaseCore(
+      () => plugin,
+      async () => null,
+    );
+
+    await core.api.updateBundleById(
+      baseBundle.id,
+      {
+        message: "updated",
+      },
+      context,
+    );
+
+    expect(updateBundle).toHaveBeenCalledWith(context, {
+      id: baseBundle.id,
+      data: { message: "updated" },
+    });
+    expect(commit).toHaveBeenCalledWith(context, {});
   });
 });

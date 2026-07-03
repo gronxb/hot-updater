@@ -8,9 +8,18 @@ import {
 } from "./index";
 
 describe("Cloudflare telemetry init seed", () => {
-  it("generates a hutk key and stores only hash plus suffix", async () => {
+  it("generates an active hutk ingest key and stores only hash plus suffix", async () => {
     // Given
-    const query = vi.fn(async () => ({}));
+    const query = vi.fn(
+      async (
+        _databaseId: string,
+        _input: {
+          readonly account_id: string;
+          readonly params?: readonly string[];
+          readonly sql: string;
+        },
+      ) => ({}),
+    );
     const cf = { d1: { database: { query } } };
 
     // When
@@ -27,9 +36,11 @@ describe("Cloudflare telemetry init seed", () => {
       "database-id",
       expect.objectContaining({
         account_id: "account-id",
+        sql: expect.stringContaining("INSERT INTO ingest_keys"),
         params: expect.arrayContaining(["default", issued.telemetryKeySuffix]),
       }),
     );
+    expect(query.mock.calls[0]?.[1].sql).toContain("active");
     expect(JSON.stringify(query.mock.calls)).not.toContain(issued.telemetryKey);
   });
 

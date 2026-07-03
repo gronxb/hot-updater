@@ -23,6 +23,7 @@ describe("Supabase telemetry init seed", () => {
     expect(issued.telemetryKey.endsWith(issued.telemetryKeySuffix)).toBe(true);
     expect(upsertTelemetryKeyCredential).toHaveBeenCalledWith(
       {
+        active: true,
         keyHash: expect.stringMatching(/^[a-f0-9]{64}$/),
         telemetryKeySuffix: issued.telemetryKeySuffix,
       },

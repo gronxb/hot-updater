@@ -1,4 +1,7 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  deleteBundleById,
+  type DatabasePlugin,
+} from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -350,24 +353,27 @@ describe("d1Database plugin", () => {
   });
 
   setupBundleMethodsTestSuite({
-    getBundleById: (id) => plugin.bundles.getBundleById(id),
+    getBundleById: (id) => plugin.bundles.get(undefined, { id: id }),
     getChannels: () => plugin.channels.getChannels(),
     insertBundle: async (bundle) => {
-      await plugin.bundles.appendBundle(bundle);
-      await plugin.commit();
+      await plugin.bundles.append(undefined, { data: bundle });
+      await plugin.commit(undefined, {});
     },
-    getBundles: (options) => plugin.bundles.getBundles(options),
+    getBundles: (options) => plugin.bundles.list(undefined, options),
     updateBundleById: async (bundleId, newBundle) => {
-      await plugin.bundles.updateBundle(bundleId, newBundle);
-      await plugin.commit();
+      await plugin.bundles.update(undefined, { id: bundleId, data: newBundle });
+      await plugin.commit(undefined, {});
     },
     deleteBundleById: async (bundleId) => {
-      const bundle = await plugin.bundles.getBundleById(bundleId);
+      const bundle = await plugin.bundles.get(undefined, { id: bundleId });
       if (!bundle) {
         return;
       }
-      await plugin.bundles.deleteBundle(bundle);
-      await plugin.commit();
+      await deleteBundleById(plugin, undefined, {
+        id: bundle.id,
+        bundle: bundle,
+      });
+      await plugin.commit(undefined, {});
     },
   });
 
@@ -377,11 +383,11 @@ describe("d1Database plugin", () => {
       patchRows.clear();
 
       for (const bundle of bundles) {
-        await plugin.bundles.appendBundle(bundle);
+        await plugin.bundles.append(undefined, { data: bundle });
       }
-      await plugin.commit();
+      await plugin.commit(undefined, {});
 
-      return plugin.bundles.getUpdateInfo?.(args) ?? null;
+      return plugin.updates?.check(undefined, args) ?? null;
     },
   });
 
@@ -405,7 +411,7 @@ describe("d1Database plugin", () => {
     };
     rows.set(bundleId, initialRow);
 
-    await plugin.bundles.getBundles({ limit: 20 });
+    await plugin.bundles.list(undefined, { limit: 20 });
 
     rows.set(bundleId, {
       ...initialRow,
@@ -413,8 +419,11 @@ describe("d1Database plugin", () => {
       metadata: JSON.stringify({ source: "fresh" }),
     });
 
-    await plugin.bundles.updateBundle(bundleId, { enabled: false });
-    await plugin.commit();
+    await plugin.bundles.update(undefined, {
+      id: bundleId,
+      data: { enabled: false },
+    });
+    await plugin.commit(undefined, {});
 
     expect(rows.get(bundleId)).toEqual(
       expect.objectContaining({

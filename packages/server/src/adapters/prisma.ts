@@ -1,7 +1,6 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
 } from "@hot-updater/plugin-core";
 import {
@@ -180,16 +179,14 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
     };
     return {
       bundles: {
-        async getBundleById(bundleId) {
+        async get(_context, { id: bundleId }) {
           const bundles = getDelegate(prisma, "bundles");
           const row = await bundles.findFirst({ where: { id: bundleId } });
           if (!row) return null;
           const patchMap = await fetchPatchMap([bundleId]);
           return rowToBundle(row as BundleRow, patchMap.get(bundleId) ?? []);
         },
-        async getBundles(
-          options: DatabaseBundleQueryOptions & { offset?: number },
-        ) {
+        async list(_context, options) {
           const bundles = getDelegate(prisma, "bundles");
           const offset = options.offset ?? 0;
           const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
@@ -219,7 +216,9 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
             }),
           };
         },
-        async getUpdateInfo(args, context) {
+      },
+      updates: {
+        async check(context, args) {
           const bundles = getDelegate(prisma, "bundles");
 
           if (args._updateStrategy === "appVersion") {
@@ -293,8 +292,8 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
           });
         },
       },
-      async commit({ changes }) {
-        const changedSets = changes.bundles;
+      async commit(_context, { changes }) {
+        const changedSets = changes.bundles ?? [];
         await runInTransaction(async (client) => {
           const bundles = getDelegate(client, "bundles");
           const patches = getDelegate(client, "bundle_patches");

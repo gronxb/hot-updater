@@ -1,7 +1,6 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
 } from "@hot-updater/plugin-core";
 import {
@@ -184,7 +183,7 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
 
     return {
       bundles: {
-        async getBundleById(bundleId) {
+        async get(_context, { id: bundleId }) {
           const row = await db
             .selectFrom("bundles")
             .selectAll()
@@ -194,9 +193,7 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
           const patchMap = await fetchPatchMap([bundleId]);
           return rowToBundle(row, patchMap.get(bundleId) ?? []);
         },
-        async getBundles(
-          options: DatabaseBundleQueryOptions & { offset?: number },
-        ) {
+        async list(_context, options) {
           const offset = options.offset ?? 0;
           if (hasEmptySetFilter(options.where)) {
             return {
@@ -234,7 +231,9 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
             }),
           };
         },
-        async getUpdateInfo(args, context) {
+      },
+      updates: {
+        async check(context, args) {
           if (args._updateStrategy === "appVersion") {
             const channel = args.channel ?? "production";
             const minBundleId = args.minBundleId ?? NIL_UUID;
@@ -304,8 +303,8 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
           });
         },
       },
-      async commit({ changes }) {
-        const changedSets = changes.bundles;
+      async commit(_context, { changes }) {
+        const changedSets = changes.bundles ?? [];
         await db.transaction().execute(async (tx) => {
           for (const change of changedSets) {
             if (change.operation === "delete") {

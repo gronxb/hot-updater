@@ -85,10 +85,8 @@ const createNotifyRequest = (
 
 describe("firebase telemetry", () => {
   beforeEach(async () => {
-    await clearCollection("telemetry_keys");
-    await clearCollection("bundle_lifecycle_events");
-    await clearCollection("bundle_lifecycle_metrics");
-    await clearCollection("bundle_lifecycle_metric_buckets");
+    await clearCollection("ingest_keys");
+    await clearCollection("analytics_events");
   });
 
   it("writes only telemetry key hash and suffix when issuing and rotating", async () => {
@@ -97,15 +95,16 @@ describe("firebase telemetry", () => {
 
     const issued = await analytics.issueTelemetryKey();
     const issuedDocument = await firestore
-      .collection("telemetry_keys")
-      .doc("current")
+      .collection("ingest_keys")
+      .doc("default")
       .get();
 
     expect(issued.telemetryKey.startsWith("hutk_")).toBe(true);
     expect(issued.telemetryKeySuffix).toBe(issued.telemetryKey.slice(-8));
-    expect(issuedDocument.data()).toEqual({
-      telemetry_key_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
-      telemetry_key_suffix: issued.telemetryKeySuffix,
+    expect(issuedDocument.data()).toMatchObject({
+      active: true,
+      key_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      key_suffix: issued.telemetryKeySuffix,
     });
     expect(Object.values(issuedDocument.data() ?? {})).not.toContain(
       issued.telemetryKey,
@@ -113,14 +112,15 @@ describe("firebase telemetry", () => {
 
     const rotated = await analytics.rotateTelemetryKey();
     const rotatedDocument = await firestore
-      .collection("telemetry_keys")
-      .doc("current")
+      .collection("ingest_keys")
+      .doc("default")
       .get();
 
     expect(rotated.telemetryKey).not.toBe(issued.telemetryKey);
-    expect(rotatedDocument.data()).toEqual({
-      telemetry_key_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
-      telemetry_key_suffix: rotated.telemetryKeySuffix,
+    expect(rotatedDocument.data()).toMatchObject({
+      active: true,
+      key_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      key_suffix: rotated.telemetryKeySuffix,
     });
     expect(Object.values(rotatedDocument.data() ?? {})).not.toContain(
       rotated.telemetryKey,
@@ -225,6 +225,7 @@ describe("firebase telemetry", () => {
     const analytics = createRequiredAnalytics(telemetry);
     const issued = await analytics.issueTelemetryKey();
     const bundleId = `bundle-${randomUUID()}`;
+    const recoveredBundleId = `bundle-${randomUUID()}`;
 
     await createNotifyAppReadyResult({
       operations: telemetry,
@@ -238,8 +239,8 @@ describe("firebase telemetry", () => {
       request: createNotifyRequest(
         issued.telemetryKey,
         createLifecyclePayload({
-          bundleId,
-          crashedBundleId: `crashed-${randomUUID()}`,
+          bundleId: recoveredBundleId,
+          crashedBundleId: bundleId,
           status: "RECOVERED",
         }),
       ),
@@ -255,24 +256,36 @@ describe("firebase telemetry", () => {
     const metrics = await analytics.readLifecycleMetrics();
 
     expect(rejectedRecovered.status).toBe(400);
-    expect(metrics.totals).toEqual({ active: 1, recovered: 1 });
-    expect(metrics.bundles).toEqual([
-      {
-        active: 1,
-        bundleId,
-        channel: "production",
-        lastSeenAt: "2026-06-29T00:00:00.000Z",
-        platform: "ios",
-        recovered: 1,
-      },
-    ]);
-    expect(metrics.series).toEqual([
-      {
-        active: 1,
-        bucketStart: "2026-06-29T00:00:00.000Z",
-        bundleId,
-        recovered: 1,
-      },
-    ]);
+    expect(metrics.totals).toEqual({ active: 2, recovered: 1 });
+    expect(metrics.bundles).toEqual(
+      expect.arrayContaining([
+        {
+          active: 1,
+          bundleId: recoveredBundleId,
+          channel: "production",
+          lastSeenAt: "2026-06-29T00:00:00.000Z",
+          platform: "ios",
+          recovered: 0,
+        },
+        {
+          active: 1,
+          bundleId,
+          channel: "production",
+          lastSeenAt: "2026-06-29T00:00:00.000Z",
+          platform: "ios",
+          recovered: 1,
+        },
+      ]),
+    );
+    expect(metrics.series).toEqual(
+      expect.arrayContaining([
+        {
+          active: 1,
+          bucketStart: "2026-06-29T00:00:00.000Z",
+          bundleId,
+          recovered: 1,
+        },
+      ]),
+    );
   });
 });

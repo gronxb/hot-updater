@@ -1,5 +1,5 @@
 import type { TelemetryKeyResult } from "@hot-updater/plugin-core";
-import { Copy, KeyRound, RotateCw } from "lucide-react";
+import { Copy, KeyRound, Power, PowerOff, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -17,6 +17,7 @@ import {
   useConfigQuery,
   useIssueTelemetryKeyMutation,
   useRotateTelemetryKeyMutation,
+  useSetTelemetryKeyActiveMutation,
   useTelemetryKeyQuery,
 } from "@/lib/api";
 
@@ -28,9 +29,11 @@ export function SettingsPage() {
   const telemetryKeyQuery = useTelemetryKeyQuery(providerSupportsTelemetryKey);
   const issueTelemetryKeyMutation = useIssueTelemetryKeyMutation();
   const rotateTelemetryKeyMutation = useRotateTelemetryKeyMutation();
+  const setTelemetryKeyActiveMutation = useSetTelemetryKeyActiveMutation();
   const isSupported =
     providerSupportsTelemetryKey && telemetryKeyQuery.isSupported;
   const storedSuffix = telemetryKeyQuery.data?.telemetryKeySuffix ?? null;
+  const isActive = telemetryKeyQuery.data?.active ?? false;
   const displayValue = freshKey
     ? freshKey.telemetryKey
     : storedSuffix
@@ -38,7 +41,9 @@ export function SettingsPage() {
       : null;
   const hasKey = Boolean(displayValue);
   const isMutating =
-    issueTelemetryKeyMutation.isPending || rotateTelemetryKeyMutation.isPending;
+    issueTelemetryKeyMutation.isPending ||
+    rotateTelemetryKeyMutation.isPending ||
+    setTelemetryKeyActiveMutation.isPending;
   const isBusy = isMutating || telemetryKeyQuery.isLoading;
 
   useEffect(() => {
@@ -51,7 +56,7 @@ export function SettingsPage() {
     try {
       setFreshKey(await issueTelemetryKeyMutation.mutateAsync());
     } catch (error) {
-      toast.error("Failed to issue Telemetry key", {
+      toast.error("Failed to issue Ingest key", {
         description: error instanceof Error ? error.message : undefined,
       });
     }
@@ -61,7 +66,7 @@ export function SettingsPage() {
     try {
       setFreshKey(await rotateTelemetryKeyMutation.mutateAsync());
     } catch (error) {
-      toast.error("Failed to rotate Telemetry key", {
+      toast.error("Failed to rotate Ingest key", {
         description: error instanceof Error ? error.message : undefined,
       });
     }
@@ -72,11 +77,24 @@ export function SettingsPage() {
 
     try {
       await navigator.clipboard.writeText(freshKey.telemetryKey);
-      toast.success("Telemetry key copied");
+      toast.success("Ingest key copied");
     } catch (error) {
-      toast.error("Failed to copy Telemetry key", {
+      toast.error("Failed to copy Ingest key", {
         description: error instanceof Error ? error.message : undefined,
       });
+    }
+  };
+
+  const setKeyActive = async (active: boolean) => {
+    try {
+      await setTelemetryKeyActiveMutation.mutateAsync({ active });
+    } catch (error) {
+      toast.error(
+        active ? "Failed to enable Ingest key" : "Failed to disable Ingest key",
+        {
+          description: error instanceof Error ? error.message : undefined,
+        },
+      );
     }
   };
 
@@ -90,10 +108,10 @@ export function SettingsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-sm">
               <KeyRound className="size-4" />
-              Telemetry key
+              Ingest key
             </CardTitle>
             <CardDescription>
-              Runtime credential for lifecycle telemetry.
+              Runtime credential for lifecycle event ingestion.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -101,7 +119,7 @@ export function SettingsPage() {
               <Skeleton className="h-16 w-full" />
             ) : configQuery.isError ? (
               <Alert variant="destructive">
-                <AlertTitle>Telemetry key failed to load</AlertTitle>
+                <AlertTitle>Ingest key failed to load</AlertTitle>
                 <AlertDescription>
                   {configQuery.error instanceof Error
                     ? configQuery.error.message
@@ -110,34 +128,59 @@ export function SettingsPage() {
               </Alert>
             ) : !isSupported ? (
               <Alert>
-                <AlertTitle>Telemetry key not available</AlertTitle>
+                <AlertTitle>Ingest key not available</AlertTitle>
                 <AlertDescription>
-                  This provider does not support Telemetry key management.
+                  This provider does not support Ingest key management.
                 </AlertDescription>
               </Alert>
             ) : (
               <>
-                <div className="flex min-w-0 flex-col gap-2 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <code className="min-w-0 break-all font-mono text-xs">
-                    {telemetryKeyQuery.isLoading
-                      ? "Loading Telemetry key..."
-                      : (displayValue ?? "No Telemetry key issued")}
-                  </code>
-                  {freshKey ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void copyFreshKey()}
-                    >
-                      <Copy data-icon="inline-start" />
-                      Copy
-                    </Button>
-                  ) : null}
+                <div className="flex min-w-0 flex-col gap-3 rounded-md border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="grid min-w-0 gap-1">
+                    <code className="min-w-0 break-all font-mono text-xs">
+                      {telemetryKeyQuery.isLoading
+                        ? "Loading Ingest key..."
+                        : (displayValue ?? "No Ingest key issued")}
+                    </code>
+                    {storedSuffix ? (
+                      <span className="text-xs text-muted-foreground">
+                        {isActive ? "Enabled" : "Disabled"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex gap-2">
+                    {storedSuffix ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isBusy}
+                        onClick={() => void setKeyActive(!isActive)}
+                      >
+                        {isActive ? (
+                          <PowerOff data-icon="inline-start" />
+                        ) : (
+                          <Power data-icon="inline-start" />
+                        )}
+                        {isActive ? "Disable" : "Enable"}
+                      </Button>
+                    ) : null}
+                    {freshKey ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void copyFreshKey()}
+                      >
+                        <Copy data-icon="inline-start" />
+                        Copy
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 {telemetryKeyQuery.isError ? (
                   <Alert variant="destructive">
-                    <AlertTitle>Telemetry key failed to load</AlertTitle>
+                    <AlertTitle>Ingest key failed to load</AlertTitle>
                     <AlertDescription>
                       {telemetryKeyQuery.error instanceof Error
                         ? telemetryKeyQuery.error.message
@@ -160,8 +203,8 @@ export function SettingsPage() {
                           ? "Rotating..."
                           : "Issuing..."
                         : hasKey
-                          ? "Rotate Telemetry key"
-                          : "Issue Telemetry key"}
+                          ? "Rotate Ingest key"
+                          : "Issue Ingest key"}
                   </Button>
                 </div>
               </>

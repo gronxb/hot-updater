@@ -26,12 +26,10 @@ const {
   const mockDatabasePlugin = {
     commit: vi.fn(),
     bundles: {
-      appendBundle: vi.fn(),
-      commit: vi.fn(),
-      deleteBundle: vi.fn(),
-      getBundleById: vi.fn(),
-      getBundles: vi.fn(),
-      updateBundle: vi.fn(),
+      append: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn(),
+      update: vi.fn(),
     },
     channels: {
       getChannels: vi.fn(),
@@ -237,7 +235,7 @@ import {
 } from "./deploy";
 
 type BundleFixture = Pick<Bundle, "id"> & Partial<Bundle>;
-type GetBundlesOptions = Parameters<DatabasePlugin["bundles"]["getBundles"]>[0];
+type GetBundlesOptions = Parameters<DatabasePlugin["bundles"]["list"]>[1];
 
 const compareBundleIds = (a: string, b: string): number => a.localeCompare(b);
 
@@ -264,8 +262,8 @@ const matchesIdFilter = (
 };
 
 const mockGetBundlesWithFixtures = (fixtures: BundleFixture[]) => {
-  mockDatabasePlugin.bundles.getBundles.mockImplementation(
-    async (options: GetBundlesOptions) => {
+  mockDatabasePlugin.bundles.list.mockImplementation(
+    async (_context: undefined, options: GetBundlesOptions) => {
       const { cursor, limit, orderBy, where = {} } = options;
       const sortedBundles = fixtures
         .map((fixture) => ({
@@ -425,9 +423,9 @@ describe("deploy rollout wiring", () => {
       storageUri: "s3://bundles/bundle-123/bundle.tar.br",
     });
     mockStoragePlugin.profiles.node.exists.mockResolvedValue(false);
-    mockDatabasePlugin.bundles.appendBundle.mockResolvedValue(undefined);
-    mockDatabasePlugin.bundles.commit.mockResolvedValue(undefined);
-    mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
+    mockDatabasePlugin.bundles.append.mockResolvedValue(undefined);
+    mockDatabasePlugin.commit.mockResolvedValue(undefined);
+    mockDatabasePlugin.bundles.list.mockResolvedValue({
       data: [],
       pagination: {
         currentPage: 1,
@@ -521,9 +519,12 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.append).toHaveBeenCalledWith(
+      undefined,
       expect.objectContaining({
-        rolloutCohortCount: 1000,
+        data: expect.objectContaining({
+          rolloutCohortCount: 1000,
+        }),
       }),
     );
   });
@@ -538,9 +539,12 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.append).toHaveBeenCalledWith(
+      undefined,
       expect.objectContaining({
-        rolloutCohortCount: 0,
+        data: expect.objectContaining({
+          rolloutCohortCount: 0,
+        }),
       }),
     );
   });
@@ -555,9 +559,12 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.append).toHaveBeenCalledWith(
+      undefined,
       expect.objectContaining({
-        rolloutCohortCount: 550,
+        data: expect.objectContaining({
+          rolloutCohortCount: 550,
+        }),
       }),
     );
   });
@@ -678,13 +685,16 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
-    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.append).toHaveBeenCalledWith(
+      undefined,
       expect.objectContaining({
-        assetBaseStorageUri: "s3://bundles/assets",
-        manifestFileHash: "file-hash",
-        manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
-        metadata: expect.objectContaining({
-          app_version: "1.0",
+        data: expect.objectContaining({
+          assetBaseStorageUri: "s3://bundles/assets",
+          manifestFileHash: "file-hash",
+          manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
+          metadata: expect.objectContaining({
+            app_version: "1.0",
+          }),
         }),
       }),
     );
@@ -1015,7 +1025,7 @@ describe("deploy rollout wiring", () => {
       storage: async () => mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
+    mockDatabasePlugin.bundles.list.mockResolvedValue({
       data: [
         {
           id: "bundle-122",
@@ -1150,7 +1160,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.1",
     });
 
-    expect(mockDatabasePlugin.bundles.getBundles).toHaveBeenCalledTimes(2);
+    expect(mockDatabasePlugin.bundles.list).toHaveBeenCalledTimes(2);
     expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
       {
         baseBundleId: "bundle-112",
@@ -1180,7 +1190,7 @@ describe("deploy rollout wiring", () => {
       storage: async () => mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
+    mockDatabasePlugin.bundles.list.mockResolvedValue({
       data: [
         {
           id: "bundle-122",
@@ -1225,9 +1235,12 @@ describe("deploy rollout wiring", () => {
       platform: "ios",
     });
 
-    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.append).toHaveBeenCalledWith(
+      undefined,
       expect.objectContaining({
-        targetAppVersion: "1.5.0",
+        data: expect.objectContaining({
+          targetAppVersion: "1.5.0",
+        }),
       }),
     );
   });
@@ -1245,7 +1258,7 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.log.error).toHaveBeenCalledWith(
       expect.stringContaining("Target app version not found in native files"),
     );
-    expect(mockDatabasePlugin.bundles.appendBundle).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.append).not.toHaveBeenCalled();
   });
 
   it("uses the explicit -t value over the auto-detected default", async () => {
@@ -1259,9 +1272,12 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.2.0",
     });
 
-    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.append).toHaveBeenCalledWith(
+      undefined,
       expect.objectContaining({
-        targetAppVersion: "1.2.0",
+        data: expect.objectContaining({
+          targetAppVersion: "1.2.0",
+        }),
       }),
     );
   });
@@ -1284,9 +1300,12 @@ describe("deploy rollout wiring", () => {
         initialValue: "1.5.0",
       }),
     );
-    expect(mockDatabasePlugin.bundles.appendBundle).toHaveBeenCalledWith(
+    expect(mockDatabasePlugin.bundles.append).toHaveBeenCalledWith(
+      undefined,
       expect.objectContaining({
-        targetAppVersion: "1.7.0",
+        data: expect.objectContaining({
+          targetAppVersion: "1.7.0",
+        }),
       }),
     );
   });

@@ -167,10 +167,10 @@ const getPatchBaseBundles = async ({
     enabled: true,
     id: { lt: bundleId },
     platform,
-  } satisfies Parameters<DatabasePlugin["bundles"]["getBundles"]>[0]["where"];
+  } satisfies Parameters<DatabasePlugin["bundles"]["list"]>[1]["where"];
 
   if (target.fingerprintHash) {
-    const { data } = await databasePlugin.bundles.getBundles({
+    const { data } = await databasePlugin.bundles.list(undefined, {
       limit: maxBaseBundles,
       orderBy: {
         direction: "desc",
@@ -196,7 +196,7 @@ const getPatchBaseBundles = async ({
   let cursorAfter: string | undefined;
 
   while (compatibleBundles.length < maxBaseBundles) {
-    const { data, pagination } = await databasePlugin.bundles.getBundles({
+    const { data, pagination } = await databasePlugin.bundles.list(undefined, {
       ...(cursorAfter ? { cursor: { after: cursorAfter } } : {}),
       limit: pageSize,
       orderBy: {
@@ -1012,25 +1012,27 @@ const deployPlatform = async ({
           const appVersion = await getNativeAppVersion(platform);
 
           try {
-            await databasePlugin.bundles.appendBundle({
-              shouldForceUpdate: options.forceUpdate,
-              platform,
-              fileHash,
-              gitCommitHash,
-              message: options?.message ?? gitMessage,
-              id: bundleId,
-              enabled: !options.disabled,
-              channel,
-              targetAppVersion: target.appVersion,
-              fingerprintHash: target.fingerprintHash,
-              storageUri: taskRef.storageUri,
-              metadata: appVersion ? { app_version: appVersion } : {},
-              assetBaseStorageUri: taskRef.assetBaseStorageUri,
-              manifestFileHash,
-              manifestStorageUri: taskRef.manifestStorageUri,
-              rolloutCohortCount,
+            await databasePlugin.bundles.append(undefined, {
+              data: {
+                shouldForceUpdate: options.forceUpdate,
+                platform,
+                fileHash,
+                gitCommitHash,
+                message: options?.message ?? gitMessage,
+                id: bundleId,
+                enabled: !options.disabled,
+                channel,
+                targetAppVersion: target.appVersion,
+                fingerprintHash: target.fingerprintHash,
+                storageUri: taskRef.storageUri,
+                metadata: appVersion ? { app_version: appVersion } : {},
+                assetBaseStorageUri: taskRef.assetBaseStorageUri,
+                manifestFileHash,
+                manifestStorageUri: taskRef.manifestStorageUri,
+                rolloutCohortCount,
+              },
             });
-            await databasePlugin.commit();
+            await databasePlugin.commit(undefined, {});
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);

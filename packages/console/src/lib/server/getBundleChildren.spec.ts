@@ -29,10 +29,8 @@ function createDatabasePlugin(bundles: Bundle[]) {
     name: "mockDatabase",
     commit: vi.fn(),
     bundles: {
-      getBundleById: vi.fn(
-        async (bundleId: string) => bundleMap.get(bundleId) ?? null,
-      ),
-      getBundles: vi.fn(async () => ({
+      get: vi.fn(async (_context, { id }) => bundleMap.get(id) ?? null),
+      list: vi.fn(async () => ({
         data: bundles,
         pagination: {
           currentPage: 1,
@@ -42,10 +40,8 @@ function createDatabasePlugin(bundles: Bundle[]) {
           totalPages: 1,
         },
       })),
-      updateBundle: vi.fn(),
-      appendBundle: vi.fn(),
-      commit: vi.fn(),
-      deleteBundle: vi.fn(),
+      update: vi.fn(),
+      append: vi.fn(),
     },
     channels: {
       getChannels: vi.fn(),

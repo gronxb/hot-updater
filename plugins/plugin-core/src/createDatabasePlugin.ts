@@ -1,12 +1,15 @@
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/core";
 import { mergeWith } from "es-toolkit";
 
 import { BundleUnitOfWork } from "./bundleUnitOfWork";
-import { getRequestBundleUnitOfWork } from "./bundleUnitOfWorkStore";
+import { getRequestDatabaseUnitOfWork } from "./bundleUnitOfWorkStore";
 import { calculatePagination } from "./calculatePagination";
+import { DatabaseUnitOfWork } from "./databaseUnitOfWork";
+import { databaseDeleteInternals } from "./deleteBundleById";
 import type {
   DatabaseAnalyticsOperations,
-  type DatabaseChanges,
+  DatabaseBundlePatch,
+  DatabaseChangeBucket,
   DatabaseBundleCursor,
   DatabaseBundleIdFilter,
   DatabaseBundleQueryOptions,
@@ -15,32 +18,28 @@ import type {
   DatabaseChanges,
   DatabasePlugin,
   DatabasePluginHooks,
+  DatabaseUpdateInput,
+  DatabaseUpdatesOperations,
   HotUpdaterContext,
   PaginationInfo,
   Paginated,
+  TelemetryKeyCredential,
+  TelemetryLifecyclePayload,
 } from "./types";
 
 export interface AbstractDatabasePlugin<TContext = unknown> {
   analytics?: DatabaseAnalyticsOperations<TContext>;
+  supportedChangeBuckets?: readonly DatabaseChangeBucket[];
   bundles: {
-    supportsCursorPagination?: boolean;
-    getBundleById: (
-      bundleId: string,
-      context?: HotUpdaterContext<TContext>,
+    get: (
+      context: HotUpdaterContext<TContext> | undefined,
+      input: { readonly id: string },
     ) => Promise<Bundle | null>;
-    getUpdateInfo?: (
-      args: GetBundlesArgs,
-      context?: HotUpdaterContext<TContext>,
-    ) => Promise<UpdateInfo | null>;
-    getBundles: (
-      options: DatabaseBundleQueryOptions & { offset?: number },
-      context?: HotUpdaterContext<TContext>,
+    list: (
+      context: HotUpdaterContext<TContext> | undefined,
+      input: DatabaseBundleQueryOptions & { offset?: number },
     ) => Promise<Paginated<Bundle[]>>;
   };
-  commit?: (
-    context: HotUpdaterContext<TContext> | undefined,
-    input: { readonly changes: DatabaseChanges },
-  ) => Promise<void>;
   channels: {
     getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   };
@@ -49,6 +48,7 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
     input: { readonly changes: DatabaseChanges },
   ) => Promise<void>;
   onUnmount?: () => Promise<void>;
+  updates?: DatabaseUpdatesOperations<TContext>;
 }
 
 /**
@@ -68,6 +68,16 @@ type DatabasePluginFactory<TConfig, TContext = unknown> = (
 
 const REPLACE_ON_UPDATE_KEYS = ["patches", "targetCohorts"] as const;
 const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
+const CHANGE_BUCKETS = [
+  "analyticsEvents",
+  "bundlePatches",
+  "bundles",
+  "ingestKeys",
+] as const satisfies readonly DatabaseChangeBucket[];
+const DEFAULT_SUPPORTED_CHANGE_BUCKETS = [
+  "bundles",
+] as const satisfies readonly DatabaseChangeBucket[];
+
 class DatabasePaginationInvariantError extends Error {
   constructor() {
     super("Expected at least one bundle after a non-empty pagination query.");
@@ -98,6 +108,36 @@ function mergeBundleUpdate(baseBundle: Bundle, patch: Partial<Bundle>): Bundle {
 
       return undefined;
     },
+  );
+}
+
+function supportedChangeBuckets<TContext>(
+  methods: DatabasePluginMethods<TContext>,
+): ReadonlySet<DatabaseChangeBucket> {
+  return new Set([
+    ...DEFAULT_SUPPORTED_CHANGE_BUCKETS,
+    ...(methods.supportedChangeBuckets ?? []),
+  ]);
+}
+
+function assertSupportedChangeBuckets(
+  providerName: string,
+  changes: DatabaseChanges,
+  supportedBuckets: ReadonlySet<DatabaseChangeBucket>,
+): void {
+  const unsupportedBuckets = CHANGE_BUCKETS.filter(
+    (bucket) =>
+      !supportedBuckets.has(bucket) && (changes[bucket]?.length ?? 0) > 0,
+  );
+
+  if (unsupportedBuckets.length === 0) {
+    return;
+  }
+
+  throw new Error(
+    `Database provider "${providerName}" does not support committing ${unsupportedBuckets.join(
+      ", ",
+    )} changes.`,
   );
 }
 
@@ -264,10 +304,10 @@ export type CreateDatabasePluginOptions<TConfig, TContext = unknown> = {
  *     const db = new Kysely(config);
  *     return {
  *       bundles: {
- *         async getBundleById(bundleId) { ... },
- *         async getBundles(options) { ... }
+ *         async get(context, { id }) { ... },
+ *         async list(context, input) { ... }
  *       },
- *       async commit({ changedSets }) { ... },
+ *       async commit(context, { changes }) { ... },
  *       channels: {
  *         async getChannels() { ... },
  *       },
@@ -294,32 +334,49 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
     };
 
     return (): DatabasePlugin<TContext> => {
-      const instanceMutationUnitOfWork = new BundleUnitOfWork();
+      const instanceMutationUnitOfWork = new DatabaseUnitOfWork();
       const getRequestUnitOfWork = (context?: HotUpdaterContext<TContext>) => {
-        return getRequestBundleUnitOfWork(context);
+        return getRequestDatabaseUnitOfWork(context);
       };
       const getMutationUnitOfWork = (context?: HotUpdaterContext<TContext>) => {
         return getRequestUnitOfWork(context) ?? instanceMutationUnitOfWork;
       };
+      const methodsSupportBucket = (bucket: DatabaseChangeBucket) =>
+        supportedChangeBuckets(getMethods()).has(bucket);
 
-      const runGetBundles = async (
+      const runBundleList = async (
         options: DatabaseBundleQueryOptions & { offset?: number },
         context?: HotUpdaterContext<TContext>,
       ) => {
-        if (context === undefined) {
-          return getMethods().bundles.getBundles(options);
-        }
-
-        return getMethods().bundles.getBundles(options, context);
+        return getMethods().bundles.list(context, options);
       };
 
-      const getBundlesWithLegacyCursorFallback = async (
+      const listBundlesWithCursorFallback = async (
         options: DatabaseBundleQueryOptions,
         context?: HotUpdaterContext<TContext>,
       ) => {
         const orderBy = options.orderBy ?? DEFAULT_DESC_ORDER;
         const baseWhere = options.where;
-        const totalResult = await runGetBundles(
+        if (!options.cursor?.after && !options.cursor?.before) {
+          const firstPage = await runBundleList(
+            {
+              where: baseWhere,
+              limit: options.limit,
+              offset: 0,
+              orderBy,
+            },
+            context,
+          );
+
+          return createPaginatedResult(
+            firstPage.pagination.total,
+            options.limit,
+            0,
+            firstPage.data,
+          );
+        }
+
+        const totalResult = await runBundleList(
           {
             where: baseWhere,
             limit: 1,
@@ -330,27 +387,13 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         );
         const total = totalResult.pagination.total;
 
-        if (!options.cursor?.after && !options.cursor?.before) {
-          const firstPage = await runGetBundles(
-            {
-              where: baseWhere,
-              limit: options.limit,
-              offset: 0,
-              orderBy,
-            },
-            context,
-          );
-
-          return createPaginatedResult(total, options.limit, 0, firstPage.data);
-        }
-
         const {
           where,
           orderBy: queryOrderBy,
           reverseData,
         } = buildCursorPageQuery(baseWhere, options.cursor, orderBy);
 
-        const cursorPage = await runGetBundles(
+        const cursorPage = await runBundleList(
           {
             where,
             limit: options.limit,
@@ -387,7 +430,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           throw new DatabasePaginationInvariantError();
         }
         const firstBundleId = firstBundle.id;
-        const countBeforeResult = await runGetBundles(
+        const countBeforeResult = await runBundleList(
           {
             where: buildCountBeforeWhere(baseWhere, firstBundleId, orderBy),
             limit: 1,
@@ -408,68 +451,47 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
       const plugin: DatabasePlugin<TContext> = {
         name: options.name,
 
-        async commit(context) {
-          const methods = getMethods();
-          const unitOfWork = getMutationUnitOfWork(context);
-          const changes = { bundles: unitOfWork.changedSets() };
-
-          if (methods.commit) {
-            await methods.commit(context, { changes });
-          } else {
-            await methods.bundles.commitBundle?.(
-              { changedSets: changes.bundles },
-              context,
-            );
-          }
-
-          unitOfWork.clear();
-          await hooks?.onDatabaseUpdated?.();
-        },
-
         bundles: {
-          get supportsCursorPagination() {
-            return getMethods().bundles.supportsCursorPagination;
-          },
-
-          async getBundleById(bundleId: string, context) {
+          async get(context, { id }) {
             const requestUnitOfWork = getRequestUnitOfWork(context);
             if (requestUnitOfWork) {
-              return requestUnitOfWork.getById(bundleId, () =>
-                getMethods().bundles.getBundleById(bundleId, context),
+              return requestUnitOfWork.bundles.getById(id, () =>
+                getMethods().bundles.get(context, { id }),
               );
             }
 
             const pendingMutation =
-              instanceMutationUnitOfWork.peekChanged(bundleId);
+              instanceMutationUnitOfWork.bundles.peekChanged(id);
             if (pendingMutation.found) {
               return pendingMutation.value;
             }
 
-            return getMethods().bundles.getBundleById(bundleId);
+            return getMethods().bundles.get(undefined, { id });
           },
 
-          async getBundles(options, context) {
+          async list(context, input) {
             if (
-              typeof options === "object" &&
-              options !== null &&
-              "offset" in options &&
-              options.offset !== undefined
+              typeof input === "object" &&
+              input !== null &&
+              "offset" in input &&
+              input.offset !== undefined
             ) {
               throw new Error(
                 "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
               );
             }
 
-            const methods = getMethods().bundles;
             const requestUnitOfWork = getRequestUnitOfWork(context);
-            const unitOfWork = requestUnitOfWork ?? instanceMutationUnitOfWork;
+            const databaseUnitOfWork =
+              requestUnitOfWork ?? instanceMutationUnitOfWork;
+            const unitOfWork = databaseUnitOfWork.bundles;
             const shouldOverlay =
               requestUnitOfWork !== null ||
-              instanceMutationUnitOfWork.hasChanges();
+              instanceMutationUnitOfWork.bundles.hasChanges();
             const normalizedOptions = {
-              ...options,
-              page: normalizePage(options.page),
-              orderBy: options.orderBy ?? DEFAULT_DESC_ORDER,
+              ...input,
+              page: normalizePage(input.page),
+              orderBy: input.orderBy ?? DEFAULT_DESC_ORDER,
             };
             const overlayResult = <TData extends Paginated<Bundle[]>>(
               result: TData,
@@ -493,7 +515,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
                 pageOptions,
                 unitOfWork,
               );
-              let pageResult = await runGetBundles(
+              let pageResult = await runBundleList(
                 {
                   ...fetchPageOptions,
                   offset: requestedOffset,
@@ -511,7 +533,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
               const resolvedOffset = Math.min(requestedOffset, maxOffset);
 
               if (resolvedOffset !== requestedOffset) {
-                pageResult = await runGetBundles(
+                pageResult = await runBundleList(
                   {
                     ...fetchPageOptions,
                     offset: resolvedOffset,
@@ -531,19 +553,7 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
               return shouldOverlay ? overlayResult(result) : result;
             }
 
-            if (methods.supportsCursorPagination) {
-              const fetchOptions = expandLimitForUnitOfWork(
-                normalizedOptions,
-                unitOfWork,
-              );
-              const result =
-                context === undefined
-                  ? await methods.getBundles(fetchOptions)
-                  : await methods.getBundles(fetchOptions, context);
-              return shouldOverlay ? overlayResult(result) : result;
-            }
-
-            const result = await getBundlesWithLegacyCursorFallback(
+            const result = await listBundlesWithCursorFallback(
               shouldOverlay
                 ? expandLimitForUnitOfWork(normalizedOptions, unitOfWork)
                 : normalizedOptions,
@@ -552,49 +562,22 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             return shouldOverlay ? overlayResult(result) : result;
           },
 
-          async updateBundle(
-            targetBundleId: string,
-            newBundle: Partial<Bundle>,
-            context,
-          ) {
+          async update(context, { id, data }) {
             const unitOfWork = getMutationUnitOfWork(context);
-            const currentBundle = await unitOfWork.getById(targetBundleId, () =>
-              context === undefined
-                ? getMethods().bundles.getBundleById(targetBundleId)
-                : getMethods().bundles.getBundleById(targetBundleId, context),
+            const currentBundle = await unitOfWork.bundles.getById(id, () =>
+              getMethods().bundles.get(context, { id }),
             );
             if (!currentBundle) {
               throw new Error("targetBundleId not found");
             }
 
-            const updatedBundle = mergeBundleUpdate(currentBundle, newBundle);
-            unitOfWork.markUpdate(updatedBundle);
+            const updatedBundle = mergeBundleUpdate(currentBundle, data);
+            unitOfWork.bundles.markUpdate(updatedBundle);
           },
 
-          async appendBundle(inputBundle: Bundle, context) {
-            getMutationUnitOfWork(context).markInsert(inputBundle);
+          async append(context, input) {
+            getMutationUnitOfWork(context).bundles.markInsert(input.data);
           },
-
-          async deleteBundle(deleteBundle: Bundle, context): Promise<void> {
-            getMutationUnitOfWork(context).markDelete(deleteBundle);
-          },
-        },
-
-        async commit(context) {
-          const methods = getMethods();
-          const unitOfWork = getMutationUnitOfWork(context);
-          const params = {
-            changedSets: unitOfWork.changedSets(),
-          };
-
-          if (context === undefined) {
-            await methods.commit(params);
-          } else {
-            await methods.commit(params, context);
-          }
-
-          unitOfWork.clear();
-          await hooks?.onDatabaseUpdated?.();
         },
 
         channels: {
@@ -607,12 +590,17 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           },
         },
 
-        async commit(context) {
+        async commit(context, _input) {
           const unitOfWork = getMutationUnitOfWork(context);
-          await getMethods().commit(context, {
-            changes: {
-              bundles: unitOfWork.changedSets(),
-            },
+          const methods = getMethods();
+          const changes = unitOfWork.changedSets();
+          assertSupportedChangeBuckets(
+            options.name,
+            changes,
+            supportedChangeBuckets(methods),
+          );
+          await methods.commit(context, {
+            changes,
           });
 
           unitOfWork.clear();
@@ -627,38 +615,109 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         },
       };
 
-      Object.defineProperty(plugin.bundles, "getUpdateInfo", {
-        configurable: true,
-        enumerable: true,
-        get() {
-          const methods = getMethods().bundles;
-          const directGetUpdateInfo = methods.getUpdateInfo;
-
-          if (!directGetUpdateInfo) {
-            Object.defineProperty(plugin.bundles, "getUpdateInfo", {
-              configurable: true,
-              enumerable: true,
-              value: undefined,
-            });
-            return undefined;
-          }
-
-          const wrappedGetUpdateInfo: NonNullable<
-            DatabasePlugin<TContext>["bundles"]["getUpdateInfo"]
-          > = async (args, context) => {
-            if (context === undefined) {
-              return directGetUpdateInfo(args);
+      Object.defineProperty(plugin, databaseDeleteInternals, {
+        configurable: false,
+        enumerable: false,
+        value: {
+          stageBundleDelete(
+            context: HotUpdaterContext<TContext> | undefined,
+            bundle: Bundle,
+          ) {
+            getMutationUnitOfWork(context).bundles.markDelete(bundle);
+          },
+          stageBundlePatchDelete(
+            context: HotUpdaterContext<TContext> | undefined,
+            patch: DatabaseBundlePatch,
+          ) {
+            if (!methodsSupportBucket("bundlePatches")) {
+              return;
             }
+            getMutationUnitOfWork(context).bundlePatches.markDelete(patch);
+          },
+        },
+      });
 
-            return directGetUpdateInfo(args, context);
-          };
-
-          Object.defineProperty(plugin.bundles, "getUpdateInfo", {
+      Object.defineProperty(plugin, "bundlePatches", {
+        configurable: true,
+        enumerable: false,
+        get() {
+          const table = methodsSupportBucket("bundlePatches")
+            ? {
+                append: async (
+                  context: HotUpdaterContext<TContext> | undefined,
+                  input: { readonly data: DatabaseBundlePatch },
+                ) => {
+                  getMutationUnitOfWork(context).bundlePatches.markInsert(
+                    input.data,
+                  );
+                },
+              }
+            : undefined;
+          Object.defineProperty(plugin, "bundlePatches", {
             configurable: true,
-            enumerable: true,
-            value: wrappedGetUpdateInfo,
+            enumerable: table !== undefined,
+            value: table,
           });
-          return wrappedGetUpdateInfo;
+          return table;
+        },
+      });
+
+      Object.defineProperty(plugin, "analyticsEvents", {
+        configurable: true,
+        enumerable: false,
+        get() {
+          const table = methodsSupportBucket("analyticsEvents")
+            ? {
+                append: async (
+                  context: HotUpdaterContext<TContext> | undefined,
+                  input: { readonly data: TelemetryLifecyclePayload },
+                ) => {
+                  getMutationUnitOfWork(context).analyticsEvents.markInsert(
+                    input.data,
+                  );
+                },
+              }
+            : undefined;
+          Object.defineProperty(plugin, "analyticsEvents", {
+            configurable: true,
+            enumerable: table !== undefined,
+            value: table,
+          });
+          return table;
+        },
+      });
+
+      Object.defineProperty(plugin, "ingestKeys", {
+        configurable: true,
+        enumerable: false,
+        get() {
+          const table = methodsSupportBucket("ingestKeys")
+            ? {
+                append: async (
+                  context: HotUpdaterContext<TContext> | undefined,
+                  input: { readonly data: TelemetryKeyCredential },
+                ) => {
+                  getMutationUnitOfWork(context).ingestKeys.markInsert(
+                    input.data,
+                  );
+                },
+                update: async (
+                  context: HotUpdaterContext<TContext> | undefined,
+                  input: DatabaseUpdateInput<
+                    string,
+                    Partial<TelemetryKeyCredential>
+                  >,
+                ) => {
+                  getMutationUnitOfWork(context).ingestKeys.markUpdate(input);
+                },
+              }
+            : undefined;
+          Object.defineProperty(plugin, "ingestKeys", {
+            configurable: true,
+            enumerable: table !== undefined,
+            value: table,
+          });
+          return table;
         },
       });
 
@@ -677,6 +736,21 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           },
         });
       }
+
+      Object.defineProperty(plugin, "updates", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          const updates = getMethods().updates;
+
+          Object.defineProperty(plugin, "updates", {
+            configurable: true,
+            enumerable: true,
+            value: updates,
+          });
+          return updates;
+        },
+      });
 
       return plugin;
     };

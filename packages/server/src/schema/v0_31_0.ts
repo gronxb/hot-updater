@@ -113,8 +113,52 @@ export const bundlePatchesV031 = table(
   },
 );
 
+export const ingestKeysV031 = table(
+  "ingest_keys",
+  {
+    id: idColumn("id", varchar(255)),
+    key_hash: stringColumn("key_hash"),
+    key_suffix: stringColumn("key_suffix"),
+    active: bool("active").defaultTo(true),
+    created_at: stringColumn("created_at"),
+    updated_at: stringColumn("updated_at"),
+  },
+  {
+    checks: [
+      check({
+        name: "ingest_keys_singleton_check",
+        expression: "id = 'default'",
+        sqliteInline: true,
+      }),
+    ],
+  },
+);
+
+export const analyticsEventsV031 = table(
+  "analytics_events",
+  {
+    id: idColumn("id", varchar(255)),
+    event_type: stringColumn("event_type"),
+    payload: json("payload"),
+    observed_at: stringColumn("observed_at"),
+    received_at: stringColumn("received_at"),
+  },
+  {
+    indexes: [
+      index("analytics_events_event_type_idx", ["event_type"]),
+      index("analytics_events_observed_at_idx", ["observed_at"]),
+    ],
+  },
+);
+
 export const v0_31_0 = schema({
   version: "0.31.0",
   settingsTable: HOT_UPDATER_SETTINGS_TABLE,
-  tables: [bundlesV031, bundlePatchesV031, createSettingsTable("0.31.0")],
+  tables: [
+    bundlesV031,
+    bundlePatchesV031,
+    ingestKeysV031,
+    analyticsEventsV031,
+    createSettingsTable("0.31.0"),
+  ],
 });

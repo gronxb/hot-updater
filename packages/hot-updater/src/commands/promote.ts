@@ -74,7 +74,9 @@ export const handlePromote = async (
   }
 
   try {
-    const bundle = await databasePlugin.bundles.getBundleById(bundleId);
+    const bundle = await databasePlugin.bundles.get(undefined, {
+      id: bundleId,
+    });
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);

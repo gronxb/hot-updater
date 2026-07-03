@@ -2,9 +2,14 @@ import { NIL_UUID } from "@hot-updater/core";
 import {
   type Bundle,
   calculatePagination,
+  createTelemetryAnalyticsEvent,
+  deriveTelemetryLifecycleMetrics,
   createDatabasePlugin,
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
+  type TelemetryAnalyticsEventRow,
+  type TelemetryKeyCredential,
+  type TelemetryLifecyclePayload,
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
@@ -163,6 +168,52 @@ const paginateMockBundles = ({
   };
 };
 
+const MOCK_INGEST_KEY_CREDENTIAL = {
+  active: true,
+  keyHash: "64fb1a535afe989701f1c21309df5022bf734fc93730711fb8e25c64bce7e0ea",
+  telemetryKeySuffix: "00000000",
+} satisfies TelemetryKeyCredential;
+
+const createMockLifecycleEvents = (
+  bundles: readonly Bundle[],
+): TelemetryAnalyticsEventRow[] =>
+  bundles.slice(0, 12).flatMap((bundle, bundleIndex) => {
+    const activeCount = Math.max(
+      1,
+      Math.min(5, Math.ceil((bundle.rolloutCohortCount ?? 1000) / 250)),
+    );
+    const observedHour = String(8 + (bundleIndex % 8)).padStart(2, "0");
+    const activeEvents = Array.from({ length: activeCount }, (_, index) =>
+      createTelemetryAnalyticsEvent({
+        bundleId: bundle.id,
+        channel: bundle.channel,
+        eventId: `mock-active-${bundle.id}-${index}`,
+        installId: `mock-install-${bundle.id}-${index}`,
+        observedAt: `2026-06-28T${observedHour}:00:00.000Z`,
+        platform: bundle.platform,
+        status: "ACTIVE",
+      } satisfies TelemetryLifecyclePayload),
+    );
+
+    if (bundleIndex % 3 !== 0) {
+      return activeEvents;
+    }
+
+    return [
+      ...activeEvents,
+      createTelemetryAnalyticsEvent({
+        bundleId: bundle.id,
+        channel: bundle.channel,
+        crashedBundleId: bundle.id,
+        eventId: `mock-recovered-${bundle.id}`,
+        installId: `mock-recovery-install-${bundle.id}`,
+        observedAt: `2026-06-28T${observedHour}:30:00.000Z`,
+        platform: bundle.platform,
+        status: "RECOVERED",
+      } satisfies TelemetryLifecyclePayload),
+    ];
+  });
+
 export interface MockDatabaseConfig {
   latency: { min: number; max: number };
   initialBundles?: Bundle[];
@@ -170,13 +221,75 @@ export interface MockDatabaseConfig {
 
 export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
   name: "mockDatabase",
+  analytics: true,
   factory: (config) => {
     const bundles: Bundle[] = config.initialBundles ?? [];
+    let ingestKeyCredential: TelemetryKeyCredential | null = {
+      ...MOCK_INGEST_KEY_CREDENTIAL,
+    };
+    const analyticsEvents = createMockLifecycleEvents(bundles);
 
     return {
+      analytics: {
+        async getTelemetryKeyCredential() {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          return ingestKeyCredential;
+        },
+        async upsertTelemetryKeyCredential(credential) {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          ingestKeyCredential = credential;
+        },
+        async setTelemetryKeyActive(active) {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          if (!ingestKeyCredential) {
+            return;
+          }
+          ingestKeyCredential = {
+            ...ingestKeyCredential,
+            active,
+          };
+        },
+        async insertLifecycleEvent(payload) {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          if (analyticsEvents.some((event) => event.id === payload.eventId)) {
+            return { accepted: true, deduped: true };
+          }
+          analyticsEvents.push(createTelemetryAnalyticsEvent(payload));
+          return { accepted: true, deduped: false };
+        },
+        async getLifecycleMetrics() {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          return deriveTelemetryLifecycleMetrics(analyticsEvents);
+        },
+      },
       bundles: {
-        supportsCursorPagination: true,
-        async getUpdateInfo(args, context) {
+        async get(_context, { id: bundleId }) {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          return bundles.find((b) => b.id === bundleId) ?? null;
+        },
+
+        async list(_context, options) {
+          const { where, limit, offset, cursor, orderBy } = options ?? {};
+          await sleep(minMax(config.latency.min, config.latency.max));
+
+          const filteredBundles = sortBundles(
+            bundles.filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
+            orderBy,
+          );
+
+          return {
+            ...paginateMockBundles({
+              bundles: filteredBundles,
+              limit,
+              offset,
+              cursor,
+              orderBy,
+            }),
+          };
+        },
+      },
+      updates: {
+        async check(context, args) {
           const channel = args.channel ?? "production";
           const minBundleId = args.minBundleId ?? NIL_UUID;
 
@@ -231,34 +344,9 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
             context,
           });
         },
-
-        async getBundleById(bundleId: string) {
-          await sleep(minMax(config.latency.min, config.latency.max));
-          return bundles.find((b) => b.id === bundleId) ?? null;
-        },
-
-        async getBundles(options) {
-          const { where, limit, offset, cursor, orderBy } = options ?? {};
-          await sleep(minMax(config.latency.min, config.latency.max));
-
-          const filteredBundles = sortBundles(
-            bundles.filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
-            orderBy,
-          );
-
-          return {
-            ...paginateMockBundles({
-              bundles: filteredBundles,
-              limit,
-              offset,
-              cursor,
-              orderBy,
-            }),
-          };
-        },
       },
-      async commit({ changes }) {
-        const changedSets = changes.bundles;
+      async commit(_context, { changes }) {
+        const changedSets = changes.bundles ?? [];
         if (changedSets.length === 0) {
           return;
         }

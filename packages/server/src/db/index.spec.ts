@@ -184,10 +184,10 @@ function createSchemaOnlyAdapter({
   const factory: DatabasePluginFactory = () => ({
     name,
     bundles: {
-      async getBundleById() {
+      async get() {
         return null;
       },
-      async getBundles() {
+      async list() {
         return {
           data: [],
           pagination: {
@@ -199,9 +199,8 @@ function createSchemaOnlyAdapter({
           },
         };
       },
-      async appendBundle() {},
-      async updateBundle() {},
-      async deleteBundle() {},
+      async append() {},
+      async update() {},
     },
     async commit() {},
     channels: {
@@ -885,7 +884,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       })();
 
-      await plugin.bundles.getBundles({
+      await plugin.bundles.list(undefined, {
         limit: 10,
         where: {
           targetAppVersion: "1.0.x",
@@ -931,7 +930,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       } as unknown as MongoClient;
       const plugin = mongoAdapter({ client })();
 
-      await plugin.bundles.getBundles({
+      await plugin.bundles.list(undefined, {
         limit: 10,
         where: {
           targetAppVersion: "1.0.x",
@@ -980,7 +979,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       })();
 
       await expect(
-        plugin.bundles.getUpdateInfo?.({
+        plugin.updates?.check(undefined, {
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -991,7 +990,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.bundles.getUpdateInfo?.({
+        plugin.updates?.check(undefined, {
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1085,7 +1084,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       })();
 
       await expect(
-        plugin.bundles.getUpdateInfo?.({
+        plugin.updates?.check(undefined, {
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1096,7 +1095,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.bundles.getUpdateInfo?.({
+        plugin.updates?.check(undefined, {
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1175,7 +1174,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const plugin = mongoAdapter({ client })();
 
       await expect(
-        plugin.bundles.getUpdateInfo?.({
+        plugin.updates?.check(undefined, {
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1186,7 +1185,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.bundles.getUpdateInfo?.({
+        plugin.updates?.check(undefined, {
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1262,8 +1261,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       })();
 
-      await plugin.bundles.appendBundle(transactionBundle);
-      await plugin.commit();
+      await plugin.bundles.append(undefined, { data: transactionBundle });
+      await plugin.commit(undefined, {});
 
       expect($transaction).toHaveBeenCalledTimes(1);
       expect(txBundles.upsert).toHaveBeenCalledTimes(1);
@@ -1324,8 +1323,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       })();
 
-      await plugin.bundles.appendBundle(transactionBundle);
-      await plugin.commit();
+      await plugin.bundles.append(undefined, { data: transactionBundle });
+      await plugin.commit(undefined, {});
 
       expect(transaction).toHaveBeenCalledTimes(1);
       expect(txInsert).toHaveBeenCalledTimes(1);
@@ -1361,8 +1360,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       } as unknown as MongoClient;
       const plugin = mongoAdapter({ client })();
 
-      await plugin.bundles.appendBundle(transactionBundle);
-      await plugin.commit();
+      await plugin.bundles.append(undefined, { data: transactionBundle });
+      await plugin.commit(undefined, {});
 
       expect(client.startSession).toHaveBeenCalledTimes(1);
       expect(session.withTransaction).toHaveBeenCalledTimes(1);
@@ -1837,10 +1836,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     it("keeps optional maintenance capabilities lazy", () => {
       const factory = vi.fn(() => ({
         bundles: {
-          async getBundleById() {
+          async get() {
             return null;
           },
-          async getBundles() {
+          async list() {
             return {
               data: [],
               pagination: {
@@ -1888,10 +1887,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           name: "isolatedPlugin",
           factory: () => ({
             bundles: {
-              async getBundleById() {
+              async get() {
                 return null;
               },
-              async getBundles() {
+              async list() {
                 return {
                   data: [],
                   pagination: {
@@ -1904,8 +1903,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
                 };
               },
             },
-            async commit({ changes }) {
-              const changedSets = changes.bundles;
+            async commit(_context, { changes }) {
+              const changedSets = changes.bundles ?? [];
               commitCount += 1;
               committedBundleIds.push(
                 changedSets.map((change) => change.data.id),

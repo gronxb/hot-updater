@@ -4,10 +4,13 @@ import {
   type AbstractDatabasePlugin,
   createDatabasePlugin,
 } from "./createDatabasePlugin";
+import { deleteBundleById } from "./deleteBundleById";
 import type {
   Bundle,
   DatabaseBundleChange,
+  DatabaseChangeBucket,
   DatabaseAnalyticsOperations,
+  DatabaseCommitInput,
   DatabaseChanges,
   DatabasePlugin,
   GetBundlesArgs,
@@ -25,21 +28,41 @@ type Equal<Left, Right> =
 type Expect<T extends true> = T;
 
 type AnalyticsOperationKeys = keyof NonNullable<DatabasePlugin["analytics"]>;
+type AnalyticsEventOperationKeys = keyof NonNullable<
+  DatabasePlugin["analyticsEvents"]
+>;
+type BundlePatchOperationKeys = keyof NonNullable<
+  DatabasePlugin["bundlePatches"]
+>;
 type BundleOperationKeys = keyof DatabasePlugin["bundles"];
 type DatabaseOperationKeys = keyof DatabasePlugin;
+type DatabaseChangeKeys = keyof DatabaseChanges;
+type IngestKeyOperationKeys = keyof NonNullable<DatabasePlugin["ingestKeys"]>;
+type UpdatesOperationKeys = keyof NonNullable<DatabasePlugin["updates"]>;
 type ExpectedAnalyticsOperationKeys =
   | "getLifecycleMetrics"
   | "getTelemetryKeyCredential"
   | "insertLifecycleEvent"
+  | "setTelemetryKeyActive"
   | "upsertTelemetryKeyCredential";
-type ExpectedBundleOperationKeys =
-  | "supportsCursorPagination"
-  | "getBundleById"
-  | "getUpdateInfo"
-  | "getBundles"
-  | "updateBundle"
-  | "appendBundle"
-  | "deleteBundle";
+type ExpectedAppendOnlyOperationKeys = "append";
+type ExpectedBundleOperationKeys = "append" | "get" | "list" | "update";
+type ExpectedDatabaseOperationKeys =
+  | "analytics"
+  | "analyticsEvents"
+  | "bundlePatches"
+  | "bundles"
+  | "channels"
+  | "commit"
+  | "ingestKeys"
+  | "name"
+  | "onUnmount"
+  | "updates";
+type ExpectedDatabaseChangeKeys =
+  | "analyticsEvents"
+  | "bundlePatches"
+  | "bundles"
+  | "ingestKeys";
 
 type _AnalyticsOperationsMatchDatabasePlugin = Expect<
   Equal<
@@ -50,14 +73,38 @@ type _AnalyticsOperationsMatchDatabasePlugin = Expect<
 type _AnalyticsOperationsExposeOnlyStorageKeys = Expect<
   Equal<AnalyticsOperationKeys, ExpectedAnalyticsOperationKeys>
 >;
+type _AnalyticsEventOperationsExposeOnlyAppend = Expect<
+  Equal<AnalyticsEventOperationKeys, ExpectedAppendOnlyOperationKeys>
+>;
+type _BundlePatchOperationsExposeOnlyAppend = Expect<
+  Equal<BundlePatchOperationKeys, ExpectedAppendOnlyOperationKeys>
+>;
+type _BundleOperationsExposeOnlyTableVerbs = Expect<
+  Equal<BundleOperationKeys, ExpectedBundleOperationKeys>
+>;
+type _IngestKeyOperationsExposeOnlyAppendAndUpdate = Expect<
+  Equal<IngestKeyOperationKeys, "append" | "update">
+>;
+type _UpdatesOperationsExposeOnlyCheck = Expect<
+  Equal<UpdatesOperationKeys, "check">
+>;
+type _DatabasePluginExposesOnlyRootCommit = Expect<
+  Equal<DatabaseOperationKeys, ExpectedDatabaseOperationKeys>
+>;
 type _DatabasePluginExposesRootCommit = Expect<
-  Equal<Parameters<DatabasePlugin["commit"]>, [HotUpdaterContext?]>
+  Equal<
+    Parameters<DatabasePlugin["commit"]>,
+    [HotUpdaterContext | undefined, DatabaseCommitInput]
+  >
 >;
 type _DatabasePluginCommitInputIsRootOnly = Expect<
   Equal<
     Parameters<AbstractDatabasePlugin["commit"]>,
-    [DatabaseChanges, HotUpdaterContext?]
+    [HotUpdaterContext | undefined, { readonly changes: DatabaseChanges }]
   >
+>;
+type _DatabaseChangesExposeGroupedTablePayload = Expect<
+  Equal<DatabaseChangeKeys, ExpectedDatabaseChangeKeys>
 >;
 
 const baseBundle: Bundle = {
@@ -80,19 +127,24 @@ type TestFactoryMethods = AbstractDatabasePlugin["bundles"] & {
   commit: AbstractDatabasePlugin["commit"];
   getChannels: AbstractDatabasePlugin["channels"]["getChannels"];
   onUnmount?: AbstractDatabasePlugin["onUnmount"];
+  supportedChangeBuckets?: AbstractDatabasePlugin["supportedChangeBuckets"];
+  updates?: AbstractDatabasePlugin["updates"];
 };
 
 const nested = ({
   commit,
   getChannels,
   onUnmount,
+  supportedChangeBuckets,
+  updates,
   ...bundles
 }: TestFactoryMethods): AbstractDatabasePlugin => ({
   bundles,
   commit,
   channels: { getChannels },
-  commit,
   ...(onUnmount ? { onUnmount } : {}),
+  ...(supportedChangeBuckets ? { supportedChangeBuckets } : {}),
+  ...(updates ? { updates } : {}),
 });
 
 const expectedCommitCall = (bundles: readonly DatabaseBundleChange[]) =>
@@ -100,7 +152,10 @@ const expectedCommitCall = (bundles: readonly DatabaseBundleChange[]) =>
     undefined,
     {
       changes: {
+        analyticsEvents: [],
+        bundlePatches: [],
         bundles,
+        ingestKeys: [],
       },
     },
   ] as const;
@@ -113,9 +168,9 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () => ({
         bundles: {
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundleId === baseBundle.id ? baseBundle : null,
-          getBundles: async () => ({
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -125,7 +180,6 @@ describe("createDatabasePlugin", () => {
               totalPages: 1,
             },
           }),
-          commit: commitBundle,
         },
         commit,
         channels: {
@@ -134,26 +188,270 @@ describe("createDatabasePlugin", () => {
       }),
     })({})();
 
-    await plugin.bundles.updateBundle(baseBundle.id, { enabled: false });
+    await plugin.bundles.update(undefined, {
+      id: baseBundle.id,
+      data: { enabled: false },
+    });
     await expect(plugin.channels.getChannels()).resolves.toEqual([
       "production",
     ]);
-    await plugin.commit();
+    await plugin.commit(undefined, {});
 
-    expect(commitBundle).toHaveBeenCalledWith(
-      {
-        changedSets: [
+    expect(commit).toHaveBeenCalledWith(
+      ...expectedCommitCall([
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
+          },
+        },
+      ]),
+    );
+  });
+
+  it("commits grouped table changes through the root database commit", async () => {
+    const commit = vi.fn();
+    const context = {
+      request: new Request("https://updates.example.com/check"),
+    };
+    const bundlePatch = {
+      bundleId: baseBundle.id,
+      baseBundleId: "0195a408-8f13-7d9b-8df4-base00000001",
+      baseFileHash: "base-hash",
+      patchFileHash: "patch-hash",
+      patchStorageUri: "s3://bucket/patches/patch-1.zip",
+    };
+    const analyticsEvent = {
+      bundleId: baseBundle.id,
+      channel: "production",
+      eventId: "event-1",
+      installId: "install-1",
+      observedAt: "2026-07-04T00:00:00.000Z",
+      platform: "ios",
+      status: "ACTIVE",
+    } as const;
+    const ingestKey = {
+      active: true,
+      keyHash: "sha256:telemetry-key",
+      telemetryKeySuffix: "key",
+    };
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () =>
+        nested({
+          get: async (_context, { id: bundleId }) =>
+            bundleId === baseBundle.id ? baseBundle : null,
+          list: async () => ({
+            data: [baseBundle],
+            pagination: {
+              total: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+            },
+          }),
+          getChannels: async () => ["production"],
+          supportedChangeBuckets: [
+            "bundles",
+            "bundlePatches",
+            "analyticsEvents",
+            "ingestKeys",
+          ],
+          commit,
+        }),
+    })({})();
+
+    await plugin.bundles.append(context, { data: baseBundle });
+    await plugin.bundlePatches?.append(context, { data: bundlePatch });
+    await plugin.analyticsEvents?.append(context, { data: analyticsEvent });
+    await plugin.ingestKeys?.append(context, { data: ingestKey });
+    await plugin.ingestKeys?.update(context, {
+      id: "default",
+      data: { telemetryKeySuffix: "rotated" },
+    });
+    await plugin.commit(context, {});
+    await plugin.commit(context, {});
+
+    expect(commit).toHaveBeenNthCalledWith(1, context, {
+      changes: {
+        analyticsEvents: [
+          {
+            operation: "insert",
+            data: analyticsEvent,
+          },
+        ],
+        bundlePatches: [
+          {
+            operation: "insert",
+            data: bundlePatch,
+          },
+        ],
+        bundles: [
+          {
+            operation: "insert",
+            data: baseBundle,
+          },
+        ],
+        ingestKeys: [
+          {
+            operation: "insert",
+            data: ingestKey,
+          },
           {
             operation: "update",
             data: {
-              ...baseBundle,
-              enabled: false,
+              id: "default",
+              data: { telemetryKeySuffix: "rotated" },
             },
           },
         ],
       },
-      undefined,
+    });
+    expect(commit).toHaveBeenNthCalledWith(2, context, {
+      changes: {
+        analyticsEvents: [],
+        bundlePatches: [],
+        bundles: [],
+        ingestKeys: [],
+      },
+    });
+  });
+
+  it("hides optional change tables unless the provider declares their buckets", async () => {
+    const commit = vi.fn();
+    const patch = {
+      baseBundleId: "0195a408-8f13-7d9b-8df4-123456789aaa",
+      baseFileHash: "base-hash",
+      patchFileHash: "patch-hash",
+      patchStorageUri: "s3://bucket/patches/patch-1.zip",
+    };
+    const bundleWithPatch = {
+      ...baseBundle,
+      patches: [patch],
+    };
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () =>
+        nested({
+          get: async (_context, { id: bundleId }) =>
+            bundleId === bundleWithPatch.id ? bundleWithPatch : null,
+          list: async () => ({
+            data: [bundleWithPatch],
+            pagination: {
+              total: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+            },
+          }),
+          getChannels: async () => ["production"],
+          commit,
+        }),
+    })({})();
+
+    expect(Object.keys(plugin)).not.toContain("bundlePatches");
+    expect(Object.keys(plugin)).not.toContain("analyticsEvents");
+    expect(Object.keys(plugin)).not.toContain("ingestKeys");
+    expect(plugin.bundlePatches).toBeUndefined();
+    expect(plugin.analyticsEvents).toBeUndefined();
+    expect(plugin.ingestKeys).toBeUndefined();
+
+    await deleteBundleById(plugin, undefined, {
+      id: bundleWithPatch.id,
+      bundle: bundleWithPatch,
+    });
+    await plugin.commit(undefined, {});
+
+    expect(commit).toHaveBeenCalledWith(undefined, {
+      changes: {
+        analyticsEvents: [],
+        bundlePatches: [],
+        bundles: [
+          {
+            operation: "delete",
+            data: bundleWithPatch,
+          },
+        ],
+        ingestKeys: [],
+      },
+    });
+  });
+
+  it("rejects unsupported staged buckets without clearing the unit of work", async () => {
+    const commit = vi.fn();
+    const context = {
+      request: new Request("https://updates.example.com/check"),
+    };
+    const analyticsEvent = {
+      bundleId: baseBundle.id,
+      channel: "production",
+      eventId: "event-1",
+      installId: "install-1",
+      observedAt: "2026-07-04T00:00:00.000Z",
+      platform: "ios",
+      status: "ACTIVE",
+    } as const;
+    let supportedBuckets: readonly DatabaseChangeBucket[] = [
+      "bundles",
+      "analyticsEvents",
+    ];
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () => ({
+        get supportedChangeBuckets() {
+          return supportedBuckets;
+        },
+        bundles: {
+          get: async (_context, { id: bundleId }) =>
+            bundleId === baseBundle.id ? baseBundle : null,
+          list: async () => ({
+            data: [baseBundle],
+            pagination: {
+              total: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+            },
+          }),
+        },
+        channels: {
+          getChannels: async () => ["production"],
+        },
+        commit,
+      }),
+    })({})();
+
+    await plugin.analyticsEvents?.append(context, { data: analyticsEvent });
+    supportedBuckets = ["bundles"];
+
+    await expect(plugin.commit(context, {})).rejects.toThrow(
+      'Database provider "test-plugin" does not support committing analyticsEvents changes.',
     );
+    expect(commit).not.toHaveBeenCalled();
+
+    supportedBuckets = ["bundles", "analyticsEvents"];
+    await plugin.commit(context, {});
+
+    expect(commit).toHaveBeenCalledWith(context, {
+      changes: {
+        analyticsEvents: [
+          {
+            operation: "insert",
+            data: analyticsEvent,
+          },
+        ],
+        bundlePatches: [],
+        bundles: [],
+        ingestKeys: [],
+      },
+    });
   });
 
   it("replaces targetCohorts instead of merging array items", async () => {
@@ -163,9 +461,9 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundleId === baseBundle.id ? baseBundle : null,
-          getBundles: async () => ({
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -176,28 +474,29 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit: commitBundle,
+          supportedChangeBuckets: ["bundles", "bundlePatches"],
+          commit,
         }),
     })({})();
 
-    await plugin.bundles.updateBundle(baseBundle.id, {
-      targetCohorts: ["device-2"],
-    });
-    await plugin.commit();
-
-    expect(commitBundle).toHaveBeenCalledWith(
-      {
-        changedSets: [
-          {
-            operation: "update",
-            data: {
-              ...baseBundle,
-              targetCohorts: ["device-2"],
-            },
-          },
-        ],
+    await plugin.bundles.update(undefined, {
+      id: baseBundle.id,
+      data: {
+        targetCohorts: ["device-2"],
       },
-      undefined,
+    });
+    await plugin.commit(undefined, {});
+
+    expect(commit).toHaveBeenCalledWith(
+      ...expectedCommitCall([
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            targetCohorts: ["device-2"],
+          },
+        },
+      ]),
     );
   });
 
@@ -208,9 +507,9 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundleId === baseBundle.id ? baseBundle : null,
-          getBundles: async () => ({
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -221,28 +520,32 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit: commitBundle,
+          supportedChangeBuckets: ["bundles", "bundlePatches"],
+          commit,
         }),
     })({})();
 
-    await plugin.bundles.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.bundles.updateBundle(baseBundle.id, { targetCohorts: null });
-    await plugin.commit();
+    await plugin.bundles.update(undefined, {
+      id: baseBundle.id,
+      data: { enabled: false },
+    });
+    await plugin.bundles.update(undefined, {
+      id: baseBundle.id,
+      data: { targetCohorts: null },
+    });
+    await plugin.commit(undefined, {});
 
-    expect(commitBundle).toHaveBeenCalledWith(
-      {
-        changedSets: [
-          {
-            operation: "update",
-            data: {
-              ...baseBundle,
-              enabled: false,
-              targetCohorts: null,
-            },
+    expect(commit).toHaveBeenCalledWith(
+      ...expectedCommitCall([
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
+            targetCohorts: null,
           },
-        ],
-      },
-      undefined,
+        },
+      ]),
     );
   });
 
@@ -259,8 +562,8 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById,
-          getBundles: async () => ({
+          get: async (_context, { id }) => getBundleById(id),
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -271,46 +574,43 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit: commitBundle,
+          commit,
         }),
     })({})();
 
-    await plugin.bundles.updateBundle(baseBundle.id, {
-      enabled: false,
+    await plugin.bundles.update(undefined, {
+      id: baseBundle.id,
+      data: {
+        enabled: false,
+      },
     });
-    await expect(plugin.commit()).rejects.toThrow("commit failed");
-    await plugin.commit();
+    await expect(plugin.commit(undefined, {})).rejects.toThrow("commit failed");
+    await plugin.commit(undefined, {});
 
     expect(getBundleById).toHaveBeenCalledTimes(1);
-    expect(commitBundle).toHaveBeenNthCalledWith(
+    expect(commit).toHaveBeenNthCalledWith(
       1,
-      {
-        changedSets: [
-          {
-            operation: "update",
-            data: {
-              ...baseBundle,
-              enabled: false,
-            },
+      ...expectedCommitCall([
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
           },
-        ],
-      },
-      undefined,
+        },
+      ]),
     );
-    expect(commitBundle).toHaveBeenNthCalledWith(
+    expect(commit).toHaveBeenNthCalledWith(
       2,
-      {
-        changedSets: [
-          {
-            operation: "update",
-            data: {
-              ...baseBundle,
-              enabled: false,
-            },
+      ...expectedCommitCall([
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
           },
-        ],
-      },
-      undefined,
+        },
+      ]),
     );
   });
 
@@ -324,8 +624,8 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById,
-          getBundles: async () => ({
+          get: async (_context, { id }) => getBundleById(id),
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -336,32 +636,32 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit: commitBundle,
+          commit,
         }),
     })({})();
 
     await expect(
-      plugin.bundles.getBundleById(baseBundle.id),
+      plugin.bundles.get(undefined, { id: baseBundle.id }),
     ).resolves.toStrictEqual(baseBundle);
-    await plugin.bundles.updateBundle(baseBundle.id, {
-      enabled: false,
+    await plugin.bundles.update(undefined, {
+      id: baseBundle.id,
+      data: {
+        enabled: false,
+      },
     });
-    await plugin.commit();
+    await plugin.commit(undefined, {});
 
     expect(getBundleById).toHaveBeenCalledTimes(2);
-    expect(commitBundle).toHaveBeenCalledWith(
-      {
-        changedSets: [
-          {
-            operation: "update",
-            data: {
-              ...baseBundle,
-              enabled: false,
-            },
+    expect(commit).toHaveBeenCalledWith(
+      ...expectedCommitCall([
+        {
+          operation: "update",
+          data: {
+            ...baseBundle,
+            enabled: false,
           },
-        ],
-      },
-      undefined,
+        },
+      ]),
     );
   });
 
@@ -380,8 +680,8 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById,
-          getBundles: async () => ({
+          get: async (_context, { id }) => getBundleById(id),
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -397,16 +697,15 @@ describe("createDatabasePlugin", () => {
     })({})();
 
     await expect(
-      plugin.bundles.getBundleById(baseBundle.id, context),
+      plugin.bundles.get(context, { id: baseBundle.id }),
     ).resolves.toEqual(baseBundle);
-    await plugin.bundles.updateBundle(
-      baseBundle.id,
-      { enabled: false },
-      context,
-    );
+    await plugin.bundles.update(context, {
+      id: baseBundle.id,
+      data: { enabled: false },
+    });
 
     await expect(
-      plugin.bundles.getBundleById(baseBundle.id, context),
+      plugin.bundles.get(context, { id: baseBundle.id }),
     ).resolves.toEqual({
       ...baseBundle,
       enabled: false,
@@ -428,8 +727,8 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById,
-          getBundles: async () => ({
+          get: async (_context, { id }) => getBundleById(id),
+          list: async () => ({
             data: [nextBundle],
             pagination: {
               total: 1,
@@ -444,12 +743,12 @@ describe("createDatabasePlugin", () => {
         }),
     })({})();
 
-    await expect(plugin.bundles.getBundleById(baseBundle.id)).resolves.toEqual(
-      baseBundle,
-    );
-    await expect(plugin.bundles.getBundleById(baseBundle.id)).resolves.toEqual(
-      nextBundle,
-    );
+    await expect(
+      plugin.bundles.get(undefined, { id: baseBundle.id }),
+    ).resolves.toEqual(baseBundle);
+    await expect(
+      plugin.bundles.get(undefined, { id: baseBundle.id }),
+    ).resolves.toEqual(nextBundle);
     expect(getBundleById).toHaveBeenCalledTimes(2);
   });
 
@@ -469,8 +768,8 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById,
-          getBundles: async () => ({
+          get: async (_context, { id }) => getBundleById(id),
+          list: async () => ({
             data: [baseBundle, deleteBundle],
             pagination: {
               total: 2,
@@ -485,11 +784,17 @@ describe("createDatabasePlugin", () => {
         }),
     })({})();
 
-    await plugin.bundles.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.bundles.deleteBundle(deleteBundle);
+    await plugin.bundles.update(undefined, {
+      id: baseBundle.id,
+      data: { enabled: false },
+    });
+    await deleteBundleById(plugin, undefined, {
+      id: deleteBundle.id,
+      bundle: deleteBundle,
+    });
 
     await expect(
-      plugin.bundles.getBundles({
+      plugin.bundles.list(undefined, {
         limit: 10,
         orderBy: { field: "id", direction: "asc" },
       }),
@@ -500,6 +805,80 @@ describe("createDatabasePlugin", () => {
           enabled: false,
         },
       ],
+    });
+  });
+
+  it("stages bundle and bundle patch deletes through the shared deletion helper", async () => {
+    const commit = vi.fn();
+    const context: RequestEnvContext<{ assetHost: string }> = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com/delete"),
+    };
+    const patch = {
+      baseBundleId: "0195a408-8f13-7d9b-8df4-123456789aaa",
+      baseFileHash: "base-hash",
+      patchFileHash: "patch-hash",
+      patchStorageUri: "s3://bucket/patches/patch-1.zip",
+    };
+    const bundleWithPatch = {
+      ...baseBundle,
+      patches: [patch],
+    };
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () =>
+        nested({
+          get: async (_context, { id: bundleId }) =>
+            bundleId === bundleWithPatch.id ? bundleWithPatch : null,
+          list: async () => ({
+            data: [bundleWithPatch],
+            pagination: {
+              total: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+            },
+          }),
+          getChannels: async () => ["production"],
+          supportedChangeBuckets: ["bundles", "bundlePatches"],
+          commit,
+        }),
+    })({})();
+
+    await expect(
+      deleteBundleById(plugin, context, { id: bundleWithPatch.id }),
+    ).resolves.toEqual(bundleWithPatch);
+    await expect(
+      plugin.bundles.get(context, { id: bundleWithPatch.id }),
+    ).resolves.toBeNull();
+    await plugin.commit(context, {});
+
+    expect(commit).toHaveBeenCalledWith(context, {
+      changes: {
+        analyticsEvents: [],
+        bundlePatches: [
+          {
+            operation: "delete",
+            data: {
+              ...patch,
+              bundleId: bundleWithPatch.id,
+              id: `${bundleWithPatch.id}:${patch.baseBundleId}`,
+              index: 0,
+            },
+          },
+        ],
+        bundles: [
+          {
+            operation: "delete",
+            data: bundleWithPatch,
+          },
+        ],
+        ingestKeys: [],
+      },
     });
   });
 
@@ -515,9 +894,9 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundleId === baseBundle.id ? baseBundle : null,
-          getBundles: async () => ({
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -532,20 +911,16 @@ describe("createDatabasePlugin", () => {
         }),
     })({})();
 
-    await plugin.bundles.updateBundle(
-      baseBundle.id,
-      { enabled: false },
-      context,
-    );
+    await plugin.bundles.update(context, {
+      id: baseBundle.id,
+      data: { enabled: false },
+    });
 
     await expect(
-      plugin.bundles.getBundles(
-        {
-          limit: 10,
-          where: { enabled: true },
-        },
-        context,
-      ),
+      plugin.bundles.list(context, {
+        limit: 10,
+        where: { enabled: true },
+      }),
     ).resolves.toMatchObject({
       data: [],
       pagination: {
@@ -571,9 +946,9 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundleId === disabledBundle.id ? disabledBundle : null,
-          getBundles: async () => ({
+          list: async () => ({
             data: [],
             pagination: {
               total: 0,
@@ -588,20 +963,16 @@ describe("createDatabasePlugin", () => {
         }),
     })({})();
 
-    await plugin.bundles.updateBundle(
-      disabledBundle.id,
-      { enabled: true },
-      context,
-    );
+    await plugin.bundles.update(context, {
+      id: disabledBundle.id,
+      data: { enabled: true },
+    });
 
     await expect(
-      plugin.bundles.getBundles(
-        {
-          limit: 10,
-          where: { enabled: true },
-        },
-        context,
-      ),
+      plugin.bundles.list(context, {
+        limit: 10,
+        where: { enabled: true },
+      }),
     ).resolves.toMatchObject({
       data: [baseBundle],
       pagination: {
@@ -638,18 +1009,21 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundles.find((bundle) => bundle.id === bundleId) ?? null,
-          getBundles,
+          list: async (_context, input) => getBundles(input),
           getChannels: async () => ["production"],
           commit: async () => undefined,
         }),
     })({})();
 
-    await plugin.bundles.deleteBundle(deletedBundle);
+    await deleteBundleById(plugin, undefined, {
+      id: deletedBundle.id,
+      bundle: deletedBundle,
+    });
 
     await expect(
-      plugin.bundles.getBundles({
+      plugin.bundles.list(undefined, {
         limit: 2,
         orderBy: { field: "id", direction: "asc" },
       }),
@@ -679,9 +1053,9 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundleId === baseBundle.id ? baseBundle : null,
-          getBundles: async () => ({
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -696,13 +1070,13 @@ describe("createDatabasePlugin", () => {
         }),
     })({})();
 
-    await plugin.bundles.appendBundle(insertBundle);
+    await plugin.bundles.append(undefined, { data: insertBundle });
 
     await expect(
-      plugin.bundles.getBundleById(insertBundle.id),
+      plugin.bundles.get(undefined, { id: insertBundle.id }),
     ).resolves.toEqual(insertBundle);
     await expect(
-      plugin.bundles.getBundles({ limit: 10 }),
+      plugin.bundles.list(undefined, { limit: 10 }),
     ).resolves.toMatchObject({
       data: [baseBundle],
     });
@@ -720,8 +1094,8 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById,
-          getBundles: async () => ({
+          get: async (_context, { id }) => getBundleById(id),
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -732,17 +1106,96 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commit: commitBundle,
+          commit,
         }),
     })({})();
 
-    await plugin.bundles.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.commit();
+    await plugin.bundles.update(undefined, {
+      id: baseBundle.id,
+      data: { enabled: false },
+    });
+    await plugin.commit(undefined, {});
 
-    await expect(plugin.bundles.getBundleById(baseBundle.id)).resolves.toEqual(
-      persistedBundle,
-    );
+    await expect(
+      plugin.bundles.get(undefined, { id: baseBundle.id }),
+    ).resolves.toEqual(persistedBundle);
     expect(getBundleById).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears request-scoped unit-of-work state after a successful commit", async () => {
+    const context: RequestEnvContext<{ assetHost: string }> = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com"),
+    };
+    const stagedBundle = { ...baseBundle, enabled: false };
+    const persistedBundle = {
+      ...stagedBundle,
+      message: "Persisted provider state",
+    };
+    const pagination = {
+      total: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      currentPage: 1,
+      totalPages: 1,
+    };
+    const getBundleById = vi
+      .fn()
+      .mockResolvedValueOnce(baseBundle)
+      .mockResolvedValueOnce(persistedBundle);
+    const getBundles = vi
+      .fn()
+      .mockResolvedValueOnce({ data: [baseBundle], pagination })
+      .mockResolvedValueOnce({ data: [persistedBundle], pagination });
+    const commit = vi.fn(async () => undefined);
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () =>
+        nested({
+          get: async (_context, { id }) => getBundleById(id),
+          list: async (_context, input) => getBundles(input),
+          getChannels: async () => [baseBundle.channel],
+          commit,
+        }),
+    })({})();
+
+    await plugin.bundles.update(context, {
+      id: baseBundle.id,
+      data: { enabled: false },
+    });
+
+    await expect(
+      plugin.bundles.get(context, { id: baseBundle.id }),
+    ).resolves.toEqual(stagedBundle);
+    await expect(
+      plugin.bundles.list(context, { limit: 10 }),
+    ).resolves.toMatchObject({
+      data: [stagedBundle],
+    });
+
+    await plugin.commit(context, {});
+
+    await expect(
+      plugin.bundles.get(context, { id: baseBundle.id }),
+    ).resolves.toEqual(persistedBundle);
+    await expect(
+      plugin.bundles.list(context, { limit: 10 }),
+    ).resolves.toMatchObject({
+      data: [persistedBundle],
+    });
+    expect(getBundleById).toHaveBeenCalledTimes(2);
+    expect(getBundles).toHaveBeenCalledTimes(2);
+    expect(commit).toHaveBeenCalledWith(context, {
+      changes: {
+        analyticsEvents: [],
+        bundlePatches: [],
+        bundles: [{ operation: "update", data: stagedBundle }],
+        ingestKeys: [],
+      },
+    });
   });
 
   it("keeps unit-of-work state isolated between request contexts", async () => {
@@ -766,8 +1219,8 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById,
-          getBundles: async () => ({
+          get: async (_context, { id }) => getBundleById(id),
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -782,25 +1235,24 @@ describe("createDatabasePlugin", () => {
         }),
     })({})();
 
-    await plugin.bundles.updateBundle(
-      baseBundle.id,
-      { enabled: false },
-      contextA,
-    );
+    await plugin.bundles.update(contextA, {
+      id: baseBundle.id,
+      data: { enabled: false },
+    });
 
     await expect(
-      plugin.bundles.getBundleById(baseBundle.id, contextA),
+      plugin.bundles.get(contextA, { id: baseBundle.id }),
     ).resolves.toEqual({
       ...baseBundle,
       enabled: false,
     });
     await expect(
-      plugin.bundles.getBundleById(baseBundle.id, contextB),
+      plugin.bundles.get(contextB, { id: baseBundle.id }),
     ).resolves.toEqual(baseBundle);
     expect(getBundleById).toHaveBeenCalledTimes(2);
   });
 
-  it("forwards getUpdateInfo fast-path calls with context when provided", async () => {
+  it("forwards updates.check fast-path calls with context when provided", async () => {
     const expected = {
       fileHash: baseBundle.fileHash,
       id: baseBundle.id,
@@ -827,9 +1279,9 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundleId === baseBundle.id ? baseBundle : null,
-          getBundles: async () => ({
+          list: async () => ({
             data: [baseBundle],
             pagination: {
               total: 1,
@@ -840,15 +1292,66 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          getUpdateInfo,
+          updates: { check: getUpdateInfo },
           commit: async () => undefined,
         }),
     })({})();
 
-    await expect(
-      plugin.bundles.getUpdateInfo?.(args, context),
-    ).resolves.toEqual(expected);
-    expect(getUpdateInfo).toHaveBeenCalledWith(args, context);
+    await expect(plugin.updates?.check(context, args)).resolves.toEqual(
+      expected,
+    );
+    expect(getUpdateInfo).toHaveBeenCalledWith(context, args);
+  });
+
+  it("exposes update checks as the isolated updates.check fast path", async () => {
+    const expected = {
+      id: baseBundle.id,
+      message: null,
+      shouldForceUpdate: false,
+      status: "UPDATE" as const,
+      storageUri: baseBundle.storageUri,
+      fileHash: baseBundle.fileHash,
+    };
+    const getUpdateInfo = vi.fn(async () => expected);
+    const args: GetBundlesArgs = {
+      _updateStrategy: "appVersion",
+      appVersion: "1.0.0",
+      bundleId: baseBundle.id,
+      platform: "ios",
+    };
+    const context: RequestEnvContext<{ assetHost: string }> = {
+      env: {
+        assetHost: "https://assets.example.com",
+      },
+      request: new Request("https://updates.example.com"),
+    };
+
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      factory: () =>
+        nested({
+          get: async (_context, { id: bundleId }) =>
+            bundleId === baseBundle.id ? baseBundle : null,
+          list: async () => ({
+            data: [baseBundle],
+            pagination: {
+              total: 1,
+              hasNextPage: false,
+              hasPreviousPage: false,
+              currentPage: 1,
+              totalPages: 1,
+            },
+          }),
+          getChannels: async () => ["production"],
+          updates: { check: getUpdateInfo },
+          commit: async () => undefined,
+        }),
+    })({})();
+
+    await expect(plugin.updates?.check(context, args)).resolves.toEqual(
+      expected,
+    );
+    expect(getUpdateInfo).toHaveBeenCalledWith(context, args);
   });
 
   it("rejects removed offset pagination on the public plugin API", async () => {
@@ -856,8 +1359,8 @@ describe("createDatabasePlugin", () => {
       name: "test-plugin",
       factory: () =>
         nested({
-          getBundleById: async () => null,
-          getBundles: async () => ({
+          get: async () => null,
+          list: async () => ({
             data: [],
             pagination: {
               total: 0,
@@ -873,7 +1376,7 @@ describe("createDatabasePlugin", () => {
     })({})();
 
     await expect(
-      plugin.bundles.getBundles({ limit: 20, offset: 10 } as never),
+      plugin.bundles.list(undefined, { limit: 20, offset: 10 } as never),
     ).rejects.toThrow(
       "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
     );
@@ -890,9 +1393,9 @@ describe("createDatabasePlugin", () => {
       name: "legacy-plugin",
       factory: () =>
         nested({
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundles.find((bundle) => bundle.id === bundleId) ?? null,
-          getBundles: async (options) => {
+          list: async (_context, options) => {
             const offset = options.offset ?? 0;
             const filtered = bundles
               .filter((bundle) => {
@@ -929,8 +1432,8 @@ describe("createDatabasePlugin", () => {
         }),
     })({})();
 
-    const firstPage = await plugin.bundles.getBundles({ limit: 2 });
-    const secondPage = await plugin.bundles.getBundles({
+    const firstPage = await plugin.bundles.list(undefined, { limit: 2 });
+    const secondPage = await plugin.bundles.list(undefined, {
       limit: 2,
       cursor: {
         after: firstPage.pagination.nextCursor ?? undefined,
@@ -976,16 +1479,15 @@ describe("createDatabasePlugin", () => {
       name: "page-aware-plugin",
       factory: () =>
         nested({
-          supportsCursorPagination: true,
-          getBundleById: async (bundleId) =>
+          get: async (_context, { id: bundleId }) =>
             bundles.find((bundle) => bundle.id === bundleId) ?? null,
-          getBundles,
+          list: async (_context, input) => getBundles(input),
           getChannels: async () => ["production"],
           commit: async () => undefined,
         }),
     })({})();
 
-    const pageTwo = await plugin.bundles.getBundles({
+    const pageTwo = await plugin.bundles.list(undefined, {
       limit: 20,
       page: 2,
       cursor: {

@@ -33,6 +33,10 @@ export interface DatabaseAnalyticsRuntime<TContext = unknown> {
   rotateTelemetryKey?: (
     context?: HotUpdaterContext<TContext>,
   ) => Promise<TelemetryKeyResult>;
+  setTelemetryKeyActive?: (
+    active: boolean,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
 }
 
 const createTelemetryKey = (): string => {
@@ -82,6 +86,7 @@ const issueTelemetryKey = async <TContext>(
   const suffix = telemetryKeySuffix(telemetryKey);
   await upsertTelemetryKeyCredential(
     {
+      active: true,
       keyHash: await hashTelemetryKey(telemetryKey),
       telemetryKeySuffix: suffix,
     },
@@ -107,6 +112,7 @@ export const createDatabaseAnalyticsRuntime = <TContext = unknown>(
       const credential = await getTelemetryKeyCredential(context);
       if (
         !credential ||
+        !credential.active ||
         telemetryKeySuffix(telemetryKey) !== credential.telemetryKeySuffix
       ) {
         return false;
@@ -121,9 +127,18 @@ export const createDatabaseAnalyticsRuntime = <TContext = unknown>(
     runtime.getTelemetryKeyState = async (context) => {
       const credential = await getTelemetryKeyCredential(context);
       return credential
-        ? { telemetryKeySuffix: credential.telemetryKeySuffix }
+        ? {
+            active: credential.active,
+            telemetryKeySuffix: credential.telemetryKeySuffix,
+          }
         : null;
     };
+  }
+
+  const setTelemetryKeyActive = analytics.setTelemetryKeyActive;
+  if (setTelemetryKeyActive) {
+    runtime.setTelemetryKeyActive = (active, context) =>
+      setTelemetryKeyActive(active, context);
   }
 
   const upsertTelemetryKeyCredential = analytics.upsertTelemetryKeyCredential;

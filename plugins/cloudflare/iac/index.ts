@@ -179,15 +179,17 @@ export const seedCloudflareTelemetryKey = async ({
       "default",
       seed.telemetryKeyHash,
       seed.telemetryKeySuffix,
+      "1",
       now,
       now,
     ],
     sql: `
-      INSERT INTO telemetry_keys (id, key_hash, key_suffix, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO ingest_keys (id, key_hash, key_suffix, active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         key_hash = excluded.key_hash,
         key_suffix = excluded.key_suffix,
+        active = excluded.active,
         updated_at = excluded.updated_at
     `,
   });

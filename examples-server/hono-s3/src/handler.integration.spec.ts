@@ -169,26 +169,31 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
 
     const bundleId = "hono-s3-update-target-app-version";
 
-    await repo.bundles.appendBundle({
-      id: bundleId,
-      platform: "ios",
-      shouldForceUpdate: false,
-      enabled: true,
-      fileHash: "hono-s3-update-target-app-version-hash",
-      gitCommitHash: null,
-      message: null,
-      channel: "production",
-      targetAppVersion: "1.x.x",
-      storageUri: "s3://bundles/hono-s3-update-target-app-version.zip",
-      fingerprintHash: null,
-      rolloutCohortCount: 1000,
+    await repo.bundles.append(undefined, {
+      data: {
+        id: bundleId,
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: "hono-s3-update-target-app-version-hash",
+        gitCommitHash: null,
+        message: null,
+        channel: "production",
+        targetAppVersion: "1.x.x",
+        storageUri: "s3://bundles/hono-s3-update-target-app-version.zip",
+        fingerprintHash: null,
+        rolloutCohortCount: 1000,
+      },
     });
-    await repo.commit();
+    await repo.commit(undefined, {});
 
-    await repo.bundles.updateBundle(bundleId, {
-      targetAppVersion: "1.0.2",
+    await repo.bundles.update(undefined, {
+      id: bundleId,
+      data: {
+        targetAppVersion: "1.0.2",
+      },
     });
-    await repo.commit();
+    await repo.commit(undefined, {});
 
     expect(await hotUpdater.getBundleById(bundleId)).toMatchObject({
       id: bundleId,

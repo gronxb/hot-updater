@@ -513,14 +513,12 @@ describe("createCopiedBundleArchive", () => {
       name: "mockDatabase",
       commit: vi.fn(),
       bundles: {
-        appendBundle: vi.fn(async () => {
+        append: vi.fn(async () => {
           throw new Error("append failed");
         }),
-        commit: vi.fn(),
-        deleteBundle: vi.fn(),
-        getBundleById: vi.fn(async () => baseBundle),
-        getBundles: vi.fn(),
-        updateBundle: vi.fn(),
+        get: vi.fn(async () => baseBundle),
+        list: vi.fn(),
+        update: vi.fn(),
       },
       channels: {
         getChannels: vi.fn(),

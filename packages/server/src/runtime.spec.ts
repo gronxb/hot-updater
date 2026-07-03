@@ -44,6 +44,7 @@ type FlatTestDatabasePlugin<TContext = unknown> =
     getChannels: DatabasePlugin<TContext>["channels"]["getChannels"];
     name: string;
     onUnmount?: DatabasePlugin<TContext>["onUnmount"];
+    updates?: DatabasePlugin<TContext>["updates"];
   };
 
 const createNestedDatabasePlugin = <TContext = unknown>({
@@ -52,6 +53,7 @@ const createNestedDatabasePlugin = <TContext = unknown>({
   getChannels,
   name,
   onUnmount,
+  updates,
   ...bundles
 }: FlatTestDatabasePlugin<TContext>): DatabasePlugin<TContext> => ({
   ...(analytics ? { analytics } : {}),
@@ -60,6 +62,7 @@ const createNestedDatabasePlugin = <TContext = unknown>({
   channels: { getChannels },
   name,
   ...(onUnmount ? { onUnmount } : {}),
+  ...(updates ? { updates } : {}),
 });
 
 type FlatFactoryResult<TContext = unknown> =
@@ -68,6 +71,7 @@ type FlatFactoryResult<TContext = unknown> =
     commit: AbstractDatabasePlugin<TContext>["commit"];
     getChannels: AbstractDatabasePlugin<TContext>["channels"]["getChannels"];
     onUnmount?: AbstractDatabasePlugin<TContext>["onUnmount"];
+    updates?: AbstractDatabasePlugin<TContext>["updates"];
   };
 
 const createNestedDatabaseFactoryResult = <TContext = unknown>({
@@ -75,6 +79,7 @@ const createNestedDatabaseFactoryResult = <TContext = unknown>({
   commit,
   getChannels,
   onUnmount,
+  updates,
   ...bundles
 }: FlatFactoryResult<TContext>): AbstractDatabasePlugin<TContext> => ({
   ...(analytics ? { analytics } : {}),
@@ -82,6 +87,7 @@ const createNestedDatabaseFactoryResult = <TContext = unknown>({
   commit,
   channels: { getChannels },
   ...(onUnmount ? { onUnmount } : {}),
+  ...(updates ? { updates } : {}),
 });
 
 const createRuntimeStorage = (
@@ -105,19 +111,18 @@ const createSchemaManagedDatabase = (
   Object.assign(
     createNestedDatabasePlugin<TestContext>({
       name: `${adapterName}Database`,
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById() {
+      async get() {
         throw new Error("runtime database should not be queried");
       },
-      async getBundles() {
+      async list() {
         throw new Error("runtime database should not be queried");
       },
       async getChannels() {
         throw new Error("runtime database should not be queried");
       },
-      async updateBundle() {},
+      async update() {},
     }),
     {
       adapterName,
@@ -177,13 +182,12 @@ describe("runtime createHotUpdater", () => {
   it("exports the root runtime API without database capabilities", () => {
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById() {
+      async get() {
         return null;
       },
-      async getBundles() {
+      async list() {
         return {
           data: [],
           pagination: {
@@ -198,7 +202,7 @@ describe("runtime createHotUpdater", () => {
       async getChannels() {
         return [];
       },
-      async updateBundle() {},
+      async update() {},
     });
 
     const hotUpdater = createHotUpdater({ database });
@@ -215,13 +219,12 @@ describe("runtime createHotUpdater", () => {
   it("requires storages to implement the runtime profile", () => {
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById() {
+      async get() {
         return null;
       },
-      async getBundles() {
+      async list() {
         return {
           data: [],
           pagination: {
@@ -236,7 +239,7 @@ describe("runtime createHotUpdater", () => {
       async getChannels() {
         return [];
       },
-      async updateBundle() {},
+      async update() {},
     });
     const nodeOnlyStorage = {
       name: "nodeOnlyStorage",
@@ -288,10 +291,9 @@ describe("runtime createHotUpdater", () => {
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${NIL_UUID}`,
     );
-    const getBundles =
-      vi.fn<DatabasePlugin<TestContext>["bundles"]["getBundles"]>();
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["bundles"]["list"]>();
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["bundles"]["getUpdateInfo"]>
+      NonNullable<NonNullable<DatabasePlugin<TestContext>["updates"]>["check"]>
     >(async () => ({
       fileHash: bundle.fileHash,
       id: bundle.id,
@@ -310,19 +312,18 @@ describe("runtime createHotUpdater", () => {
 
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
+      async get(_context, { id }) {
         return id === bundle.id ? bundle : null;
       },
-      getBundles,
-      getUpdateInfo,
+      list: async (_context, input) => getBundles(_context, input),
+      updates: { check: getUpdateInfo },
       async getChannels() {
         return ["production"];
       },
       async onUnmount() {},
-      async updateBundle() {},
+      async update() {},
     });
     const storage = createRuntimeStorage(getDownloadUrl);
 
@@ -353,6 +354,12 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE",
     });
     expect(getUpdateInfo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: {
+          assetHost: "https://assets.example.com",
+        },
+        request: expect.any(Request),
+      }),
       {
         _updateStrategy: "appVersion",
         appVersion: "1.0.0",
@@ -362,12 +369,6 @@ describe("runtime createHotUpdater", () => {
         minBundleId: NIL_UUID,
         platform: "ios",
       },
-      expect.objectContaining({
-        env: {
-          assetHost: "https://assets.example.com",
-        },
-        request: expect.any(Request),
-      }),
     );
     expect(getBundles).not.toHaveBeenCalled();
     expect(getDownloadUrl).toHaveBeenCalledWith(
@@ -386,20 +387,20 @@ describe("runtime createHotUpdater", () => {
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${NIL_UUID}`,
     );
-    const getBundles = vi.fn<
-      DatabasePlugin<TestContext>["bundles"]["getBundles"]
-    >(async () => {
-      return {
-        data: [bundle],
-        pagination: {
-          hasNextPage: false,
-          hasPreviousPage: false,
-          currentPage: 1,
-          totalPages: 1,
-          total: 1,
-        },
-      };
-    });
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["bundles"]["list"]>(
+      async () => {
+        return {
+          data: [bundle],
+          pagination: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+            total: 1,
+          },
+        };
+      },
+    );
     const getDownloadUrl = vi.fn<
       RuntimeStorageProfile<TestContext>["getDownloadUrl"]
     >(async (_storageUri, context) => {
@@ -410,18 +411,17 @@ describe("runtime createHotUpdater", () => {
 
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
+      async get(_context, { id }) {
         return id === bundle.id ? bundle : null;
       },
-      getBundles,
+      list: async (_context, input) => getBundles(_context, input),
       async getChannels() {
         return ["production"];
       },
       async onUnmount() {},
-      async updateBundle() {},
+      async update() {},
     });
     const storage = createRuntimeStorage(getDownloadUrl);
 
@@ -456,12 +456,16 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE",
     });
     expect(getBundles).toHaveBeenCalledWith(
-      expect.any(Object),
       expect.objectContaining({
         env: {
           assetHost: "https://assets.example.com",
         },
         request: expect.any(Request),
+      }),
+      expect.objectContaining({
+        where: expect.objectContaining({
+          platform: "ios",
+        }),
       }),
     );
     expect(getDownloadUrl).toHaveBeenCalledWith(
@@ -513,18 +517,18 @@ describe("runtime createHotUpdater", () => {
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${currentBundle.id}`,
     );
-    const getBundles = vi.fn<
-      DatabasePlugin<TestContext>["bundles"]["getBundles"]
-    >(async () => ({
-      data: [nextBundle],
-      pagination: {
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-        total: 1,
-      },
-    }));
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["bundles"]["list"]>(
+      async () => ({
+        data: [nextBundle],
+        pagination: {
+          hasNextPage: false,
+          hasPreviousPage: false,
+          currentPage: 1,
+          totalPages: 1,
+          total: 1,
+        },
+      }),
+    );
     const getDownloadUrl = vi.fn<
       RuntimeStorageProfile<TestContext>["getDownloadUrl"]
     >(async (storageUri, context) => {
@@ -582,10 +586,9 @@ describe("runtime createHotUpdater", () => {
 
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
+      async get(_context, { id }) {
         if (id === currentBundle.id) {
           return currentBundle;
         }
@@ -594,12 +597,12 @@ describe("runtime createHotUpdater", () => {
         }
         return null;
       },
-      getBundles,
+      list: async (_context, input) => getBundles(_context, input),
       async getChannels() {
         return ["production"];
       },
       async onUnmount() {},
-      async updateBundle() {},
+      async update() {},
     });
     const storage = createRuntimeStorage(getDownloadUrl, readText);
 
@@ -675,35 +678,34 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("does not inject the request into context unless explicitly provided", async () => {
-    const getBundles = vi.fn<
-      DatabasePlugin<TestContext>["bundles"]["getBundles"]
-    >(async () => {
-      return {
-        data: [bundle],
-        pagination: {
-          hasNextPage: false,
-          hasPreviousPage: false,
-          currentPage: 1,
-          totalPages: 1,
-          total: 1,
-        },
-      };
-    });
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["bundles"]["list"]>(
+      async () => {
+        return {
+          data: [bundle],
+          pagination: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+            total: 1,
+          },
+        };
+      },
+    );
 
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
+      async get(_context, { id }) {
         return id === bundle.id ? bundle : null;
       },
-      getBundles,
+      list: async (_context, input) => getBundles(_context, input),
       async getChannels() {
         return ["production"];
       },
       async onUnmount() {},
-      async updateBundle() {},
+      async update() {},
     });
     const storage = createRuntimeStorage(async () => {
       return { fileUrl: "https://assets.example.com/bundle.zip" };
@@ -732,43 +734,49 @@ describe("runtime createHotUpdater", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(getBundles).toHaveBeenCalledWith(expect.any(Object), {
-      env: {
-        assetHost: "https://assets.example.com",
+    expect(getBundles).toHaveBeenCalledWith(
+      {
+        env: {
+          assetHost: "https://assets.example.com",
+        },
       },
-    });
+      expect.objectContaining({
+        where: expect.objectContaining({
+          platform: "ios",
+        }),
+      }),
+    );
   });
 
   it("supports stripped base-path requests and ignores extra framework args", async () => {
-    const getBundles = vi.fn<
-      DatabasePlugin<TestContext>["bundles"]["getBundles"]
-    >(async () => {
-      return {
-        data: [bundle],
-        pagination: {
-          hasNextPage: false,
-          hasPreviousPage: false,
-          currentPage: 1,
-          totalPages: 1,
-          total: 1,
-        },
-      };
-    });
+    const getBundles = vi.fn<DatabasePlugin<TestContext>["bundles"]["list"]>(
+      async () => {
+        return {
+          data: [bundle],
+          pagination: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+            total: 1,
+          },
+        };
+      },
+    );
 
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
-      async appendBundle() {},
+      async append() {},
       async commit() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
+      async get(_context, { id }) {
         return id === bundle.id ? bundle : null;
       },
-      getBundles,
+      list: async (_context, input) => getBundles(_context, input),
       async getChannels() {
         return ["production"];
       },
       async onUnmount() {},
-      async updateBundle() {},
+      async update() {},
     });
     const storage = createRuntimeStorage(async () => {
       return { fileUrl: "https://assets.example.com/bundle.zip" };
@@ -799,7 +807,14 @@ describe("runtime createHotUpdater", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(getBundles).toHaveBeenCalledWith(expect.any(Object), undefined);
+    expect(getBundles).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          platform: "ios",
+        }),
+      }),
+    );
   });
 
   it("keeps the version route mounted when bundle routes are disabled", async () => {
@@ -807,10 +822,10 @@ describe("runtime createHotUpdater", () => {
       name: "version-enabled-plugin",
       factory: () =>
         createNestedDatabaseFactoryResult({
-          async getBundleById() {
+          async get() {
             return null;
           },
-          async getBundles() {
+          async list() {
             return {
               data: [],
               pagination: {
@@ -853,10 +868,10 @@ describe("runtime createHotUpdater", () => {
       name: "version-disabled-plugin",
       factory: () =>
         createNestedDatabaseFactoryResult({
-          async getBundleById() {
+          async get() {
             return null;
           },
-          async getBundles() {
+          async list() {
             return {
               data: [],
               pagination: {
@@ -897,10 +912,10 @@ describe("runtime createHotUpdater", () => {
   it("does not initialize the database plugin for optional capability discovery", () => {
     const factory = vi.fn(() =>
       createNestedDatabaseFactoryResult({
-        async getBundleById() {
+        async get() {
           return null;
         },
-        async getBundles() {
+        async list() {
           return {
             data: [],
             pagination: {
@@ -934,10 +949,10 @@ describe("runtime createHotUpdater", () => {
   it("keeps notify-app-ready unmounted for lazy plugins without analytics", async () => {
     const factory = vi.fn(() =>
       createNestedDatabaseFactoryResult({
-        async getBundleById() {
+        async get() {
           return null;
         },
-        async getBundles() {
+        async list() {
           return {
             data: [],
             pagination: {
@@ -984,6 +999,7 @@ describe("runtime createHotUpdater", () => {
 
   it("mounts analytics route for getter-backed database plugin methods", async () => {
     const getTelemetryKeyCredential = vi.fn(async () => ({
+      active: true,
       keyHash:
         "1721fec3b8042903822cb190ac47f755b6ca00b153d03e087200297f9299b92e",
       telemetryKeySuffix: "12345678",
@@ -1013,12 +1029,13 @@ describe("runtime createHotUpdater", () => {
             },
             getTelemetryKeyCredential,
             insertLifecycleEvent,
+            async setTelemetryKeyActive() {},
             async upsertTelemetryKeyCredential() {},
           },
-          async getBundleById() {
+          async get() {
             return null;
           },
-          async getBundles() {
+          async list() {
             return {
               data: [],
               pagination: {
@@ -1076,10 +1093,10 @@ describe("runtime createHotUpdater", () => {
       name: "failingPlugin",
       factory: () =>
         createNestedDatabaseFactoryResult({
-          async getBundleById(bundleId) {
+          async get(_context, { id: bundleId }) {
             return committedBundles.get(bundleId) ?? null;
           },
-          async getBundles() {
+          async list() {
             return {
               data: Array.from(committedBundles.values()),
               pagination: {
@@ -1094,8 +1111,8 @@ describe("runtime createHotUpdater", () => {
           async getChannels() {
             return [];
           },
-          async commit({ changes }) {
-            const changedSets = changes.bundles;
+          async commit(_context, { changes }) {
+            const changedSets = changes.bundles ?? [];
             commitAttempt += 1;
 
             if (commitAttempt === 1) {
@@ -1162,10 +1179,10 @@ describe("runtime createHotUpdater", () => {
       name: "isolatedPlugin",
       factory: () =>
         createNestedDatabaseFactoryResult({
-          async getBundleById() {
+          async get() {
             return null;
           },
-          async getBundles() {
+          async list() {
             return {
               data: [],
               pagination: {
@@ -1181,8 +1198,8 @@ describe("runtime createHotUpdater", () => {
             return [];
           },
           onUnmount,
-          async commit({ changes }) {
-            const changedSets = changes.bundles;
+          async commit(_context, { changes }) {
+            const changedSets = changes.bundles ?? [];
             commitCount += 1;
             committedBundleIds.push(
               changedSets.map((change) => change.data.id),

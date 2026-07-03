@@ -108,72 +108,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
 
     return {
       bundles: {
-        async getUpdateInfo(args: GetBundlesArgs) {
-          const channel = args.channel ?? "production";
-          const minBundleId = args.minBundleId ?? NIL_UUID;
-
-          if (args._updateStrategy === "appVersion") {
-            const { data: targetAppVersionRows, error: targetAppVersionError } =
-              await supabase.rpc("get_target_app_version_list", {
-                app_platform: args.platform,
-                min_bundle_id: minBundleId,
-              });
-
-            if (targetAppVersionError) {
-              throw createSupabaseError(targetAppVersionError);
-            }
-
-            const targetAppVersionList = filterCompatibleAppVersions(
-              ((targetAppVersionRows ?? []) as SupabaseTargetAppVersionRow[])
-                .map((row) => row.target_app_version)
-                .filter((version): version is string => Boolean(version)),
-              args.appVersion,
-            );
-
-            const { data, error } = await supabase.rpc(
-              "get_update_info_by_app_version",
-              {
-                app_platform: args.platform,
-                app_version: args.appVersion,
-                bundle_id: args.bundleId,
-                min_bundle_id: minBundleId,
-                target_channel: channel,
-                target_app_version_list: targetAppVersionList,
-                cohort: args.cohort ?? null,
-              },
-            );
-
-            if (error) {
-              throw createSupabaseError(error);
-            }
-
-            const updateInfo = (data?.[0] ??
-              null) as SupabaseUpdateInfoRow | null;
-            return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
-          }
-
-          const { data, error } = await supabase.rpc(
-            "get_update_info_by_fingerprint_hash",
-            {
-              app_platform: args.platform,
-              bundle_id: args.bundleId,
-              min_bundle_id: minBundleId,
-              target_channel: channel,
-              target_fingerprint_hash: args.fingerprintHash,
-              cohort: args.cohort ?? null,
-            },
-          );
-
-          if (error) {
-            throw createSupabaseError(error);
-          }
-
-          const updateInfo = (data?.[0] ??
-            null) as SupabaseUpdateInfoRow | null;
-          return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
-        },
-
-        async getBundleById(bundleId) {
+        async get(_context, { id: bundleId }) {
           const [{ data, error }, patchMap] = await Promise.all([
             supabase
               .from("bundles")
@@ -189,7 +124,7 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
           return mapRowToBundle(data, patchMap.get(bundleId) ?? []);
         },
 
-        async getBundles(options) {
+        async list(_context, options) {
           const { where, limit, orderBy } = options ?? {};
           const offset =
             ((options && "offset" in options ? options.offset : undefined) as
@@ -339,8 +274,74 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
           };
         },
       },
-      async commit({ changes }) {
-        const changedSets = changes.bundles;
+      updates: {
+        async check(_context, args: GetBundlesArgs) {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
+
+          if (args._updateStrategy === "appVersion") {
+            const { data: targetAppVersionRows, error: targetAppVersionError } =
+              await supabase.rpc("get_target_app_version_list", {
+                app_platform: args.platform,
+                min_bundle_id: minBundleId,
+              });
+
+            if (targetAppVersionError) {
+              throw createSupabaseError(targetAppVersionError);
+            }
+
+            const targetAppVersionList = filterCompatibleAppVersions(
+              ((targetAppVersionRows ?? []) as SupabaseTargetAppVersionRow[])
+                .map((row) => row.target_app_version)
+                .filter((version): version is string => Boolean(version)),
+              args.appVersion,
+            );
+
+            const { data, error } = await supabase.rpc(
+              "get_update_info_by_app_version",
+              {
+                app_platform: args.platform,
+                app_version: args.appVersion,
+                bundle_id: args.bundleId,
+                min_bundle_id: minBundleId,
+                target_channel: channel,
+                target_app_version_list: targetAppVersionList,
+                cohort: args.cohort ?? null,
+              },
+            );
+
+            if (error) {
+              throw createSupabaseError(error);
+            }
+
+            const updateInfo = (data?.[0] ??
+              null) as SupabaseUpdateInfoRow | null;
+            return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
+          }
+
+          const { data, error } = await supabase.rpc(
+            "get_update_info_by_fingerprint_hash",
+            {
+              app_platform: args.platform,
+              bundle_id: args.bundleId,
+              min_bundle_id: minBundleId,
+              target_channel: channel,
+              target_fingerprint_hash: args.fingerprintHash,
+              cohort: args.cohort ?? null,
+            },
+          );
+
+          if (error) {
+            throw createSupabaseError(error);
+          }
+
+          const updateInfo = (data?.[0] ??
+            null) as SupabaseUpdateInfoRow | null;
+          return updateInfo ? mapUpdateInfoRow(updateInfo) : null;
+        },
+      },
+      async commit(_context, { changes }) {
+        const changedSets = changes.bundles ?? [];
         if (changedSets.length === 0) {
           return;
         }

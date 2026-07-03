@@ -6,6 +6,7 @@ import type {
   DatabasePlugin,
   Platform,
 } from "@hot-updater/plugin-core";
+import { deleteBundleById } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -158,7 +159,7 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
       Number.isInteger(options.limit) && options.limit! > 0
         ? options.limit!
         : DEFAULT_LIMIT;
-    const result = await databasePlugin.bundles.getBundles({
+    const result = await databasePlugin.bundles.list(undefined, {
       where: {
         channel: options.channel,
         platform: options.platform,
@@ -184,7 +185,9 @@ export const handleBundleShow = async (
   const config = await loadConfig(null);
   const databasePlugin: DatabasePlugin = await config.database();
   try {
-    const bundle = await databasePlugin.bundles.getBundleById(bundleId);
+    const bundle = await databasePlugin.bundles.get(undefined, {
+      id: bundleId,
+    });
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -213,7 +216,9 @@ export const handleBundleSetEnabled = async (
 
   const databasePlugin: DatabasePlugin = await config.database();
   try {
-    const bundle = await databasePlugin.bundles.getBundleById(bundleId);
+    const bundle = await databasePlugin.bundles.get(undefined, {
+      id: bundleId,
+    });
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -240,12 +245,17 @@ export const handleBundleSetEnabled = async (
       }
     }
 
-    await databasePlugin.bundles.updateBundle(bundleId, {
-      enabled: nextEnabled,
+    await databasePlugin.bundles.update(undefined, {
+      id: bundleId,
+      data: {
+        enabled: nextEnabled,
+      },
     });
-    await databasePlugin.commit();
+    await databasePlugin.commit(undefined, {});
 
-    const refetched = await databasePlugin.bundles.getBundleById(bundleId);
+    const refetched = await databasePlugin.bundles.get(undefined, {
+      id: bundleId,
+    });
     if (!refetched) {
       p.log.warn(
         `${bundleId} was deleted between commit and verify; treating as ${action}d.`,
@@ -295,7 +305,9 @@ export const handleBundleUpdate = async (
   const config = await loadConfig(null);
   const databasePlugin: DatabasePlugin = await config.database();
   try {
-    const bundle = await databasePlugin.bundles.getBundleById(bundleId);
+    const bundle = await databasePlugin.bundles.get(undefined, {
+      id: bundleId,
+    });
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -319,10 +331,15 @@ export const handleBundleUpdate = async (
       }
     }
 
-    await databasePlugin.bundles.updateBundle(bundleId, patch);
-    await databasePlugin.commit();
+    await databasePlugin.bundles.update(undefined, {
+      id: bundleId,
+      data: patch,
+    });
+    await databasePlugin.commit(undefined, {});
 
-    const refetched = await databasePlugin.bundles.getBundleById(bundleId);
+    const refetched = await databasePlugin.bundles.get(undefined, {
+      id: bundleId,
+    });
     if (!refetched) {
       p.log.error(`Verification failed: ${bundleId} is missing after update.`);
       process.exit(1);
@@ -349,7 +366,9 @@ export const handleBundleDelete = async (
   const config = await loadConfig(null);
   const databasePlugin: DatabasePlugin = await config.database();
   try {
-    const bundle = await databasePlugin.bundles.getBundleById(bundleId);
+    const bundle = await databasePlugin.bundles.get(undefined, {
+      id: bundleId,
+    });
     if (!bundle) {
       p.log.info(`No bundle with id ${bundleId}. No changes.`);
       return;
@@ -371,8 +390,11 @@ export const handleBundleDelete = async (
       }
     }
 
-    await databasePlugin.bundles.deleteBundle(bundle);
-    await databasePlugin.commit();
+    await deleteBundleById(databasePlugin, undefined, {
+      bundle,
+      id: bundleId,
+    });
+    await databasePlugin.commit(undefined, {});
 
     const deleted = await waitForDeletedBundle(databasePlugin, bundleId);
     if (!deleted) {
@@ -392,7 +414,9 @@ async function waitForDeletedBundle(
   bundleId: string,
 ) {
   for (let attempt = 0; attempt < DELETE_VERIFY_ATTEMPTS; attempt += 1) {
-    const refetched = await databasePlugin.bundles.getBundleById(bundleId);
+    const refetched = await databasePlugin.bundles.get(undefined, {
+      id: bundleId,
+    });
     if (!refetched) {
       return true;
     }

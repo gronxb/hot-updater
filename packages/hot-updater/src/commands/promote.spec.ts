@@ -11,12 +11,10 @@ const {
   const mockDatabasePlugin = {
     commit: vi.fn(),
     bundles: {
-      appendBundle: vi.fn(),
-      commit: vi.fn(),
-      deleteBundle: vi.fn(),
-      getBundleById: vi.fn(),
-      getBundles: vi.fn(),
-      updateBundle: vi.fn(),
+      append: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn(),
+      update: vi.fn(),
     },
     channels: {
       getChannels: vi.fn(),
@@ -124,7 +122,7 @@ describe("handlePromote", () => {
   it("copies the named bundle to the target channel", async () => {
     const bundle = buildBundle({ id: "src-1", channel: "internal" });
     const promoted = buildBundle({ id: "new-1", channel: "beta" });
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(bundle);
+    mockDatabasePlugin.bundles.get.mockResolvedValue(bundle);
     mockPromoteBundle.mockResolvedValue(promoted);
 
     const { handlePromote } = await import("./promote");
@@ -134,9 +132,9 @@ describe("handlePromote", () => {
       yes: true,
     });
 
-    expect(mockDatabasePlugin.bundles.getBundleById).toHaveBeenCalledWith(
-      "src-1",
-    );
+    expect(mockDatabasePlugin.bundles.get).toHaveBeenCalledWith(undefined, {
+      id: "src-1",
+    });
     expect(mockPromoteBundle).toHaveBeenCalledWith(
       {
         action: "copy",
@@ -155,7 +153,7 @@ describe("handlePromote", () => {
 
   it("moves the named bundle to the target channel", async () => {
     const bundle = buildBundle({ id: "src-1", channel: "internal" });
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(bundle);
+    mockDatabasePlugin.bundles.get.mockResolvedValue(bundle);
     mockPromoteBundle.mockResolvedValue({ ...bundle, channel: "beta" });
 
     const { handlePromote } = await import("./promote");
@@ -176,7 +174,7 @@ describe("handlePromote", () => {
 
   it("defaults --action to copy when omitted", async () => {
     const bundle = buildBundle({ id: "src-1" });
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(bundle);
+    mockDatabasePlugin.bundles.get.mockResolvedValue(bundle);
     mockPromoteBundle.mockResolvedValue({
       ...bundle,
       id: "new-1",
@@ -193,7 +191,7 @@ describe("handlePromote", () => {
   });
 
   it("rejects when the bundle's channel equals --target", async () => {
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(
+    mockDatabasePlugin.bundles.get.mockResolvedValue(
       buildBundle({ id: "src-1", channel: "beta" }),
     );
     const { exitSpy } = expectExit(1);
@@ -209,7 +207,7 @@ describe("handlePromote", () => {
   });
 
   it("exits 1 when the bundle id does not exist", async () => {
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(null);
+    mockDatabasePlugin.bundles.get.mockResolvedValue(null);
     const { exitSpy } = expectExit(1);
     const { handlePromote } = await import("./promote");
     await expect(
@@ -226,7 +224,7 @@ describe("handlePromote", () => {
       handlePromote("src-1", { target: "  ", yes: true }),
     ).rejects.toThrow("process.exit(1)");
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockDatabasePlugin.bundles.getBundleById).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.get).not.toHaveBeenCalled();
     expect(mockPromoteBundle).not.toHaveBeenCalled();
   });
 
@@ -239,7 +237,7 @@ describe("handlePromote", () => {
       configurable: true,
       value: true,
     });
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(
+    mockDatabasePlugin.bundles.get.mockResolvedValue(
       buildBundle({ id: "src-1" }),
     );
     mockCli.p.confirm.mockResolvedValueOnce(false);
@@ -266,7 +264,7 @@ describe("handlePromote", () => {
       configurable: true,
       value: false,
     });
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(
+    mockDatabasePlugin.bundles.get.mockResolvedValue(
       buildBundle({ id: "src-1" }),
     );
 
@@ -283,7 +281,7 @@ describe("handlePromote", () => {
   });
 
   it("propagates promoteBundle errors and calls onUnmount", async () => {
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(
+    mockDatabasePlugin.bundles.get.mockResolvedValue(
       buildBundle({ id: "src-1" }),
     );
     mockPromoteBundle.mockRejectedValue(new Error("storage plugin failed"));

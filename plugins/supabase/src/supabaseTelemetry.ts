@@ -1,16 +1,16 @@
-import { createDatabaseAnalyticsRuntime } from "@hot-updater/plugin-core";
+import {
+  createDatabaseAnalyticsRuntime,
+  createTelemetryAnalyticsEvent,
+} from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
 import { resolveSupabaseServiceRoleKey } from "./supabaseConfig";
 import {
   getTelemetryKeyCredential,
+  setTelemetryKeyActive,
   upsertTelemetryKeyCredential,
 } from "./supabaseTelemetryKey";
-import {
-  getLifecycleMetrics,
-  normalizeObservedAt,
-  recordMetricDelta,
-} from "./supabaseTelemetryMetrics";
+import { getLifecycleMetrics } from "./supabaseTelemetryMetrics";
 import {
   parseNotifyAppReadyPayload,
   readJsonBody,
@@ -35,6 +35,13 @@ export type {
   TelemetryKeyState,
 } from "./supabaseTelemetryTypes";
 
+const toJsonRecord = (value: unknown): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TypeError("Analytics event payload must be a JSON object.");
+  }
+  return value as Record<string, unknown>;
+};
+
 export const createSupabaseTelemetryOperations = (
   config: SupabaseTelemetryConfig,
 ): SupabaseTelemetryOperations => {
@@ -45,6 +52,7 @@ export const createSupabaseTelemetryOperations = (
 
   return {
     getTelemetryKeyCredential: () => getTelemetryKeyCredential(supabase),
+    setTelemetryKeyActive: (active) => setTelemetryKeyActive(supabase, active),
     upsertTelemetryKeyCredential: (credential) =>
       upsertTelemetryKeyCredential(supabase, credential),
 
@@ -59,18 +67,13 @@ export const createSupabaseTelemetryOperations = (
         );
       }
 
-      const observedAt = normalizeObservedAt(payload.observedAt);
-      const receivedAt = new Date().toISOString();
-      const { error } = await supabase.from("bundle_lifecycle_events").insert({
-        bundle_id: payload.bundleId,
-        channel: payload.channel,
-        crashed_bundle_id: recoveredBundleId ?? null,
-        event_id: payload.eventId,
-        install_id: payload.installId,
-        observed_at: observedAt,
-        platform: payload.platform,
-        received_at: receivedAt,
-        status: payload.status,
+      const event = createTelemetryAnalyticsEvent(payload);
+      const { error } = await supabase.from("analytics_events").insert({
+        event_type: event.eventType,
+        id: event.id,
+        observed_at: event.observedAt,
+        payload: toJsonRecord(event.payload),
+        received_at: event.receivedAt,
       });
 
       if (isDuplicateError(error)) {
@@ -78,26 +81,6 @@ export const createSupabaseTelemetryOperations = (
       }
       if (error) {
         throw createSupabaseError("Failed to store lifecycle event", error);
-      }
-
-      await recordMetricDelta(supabase, {
-        active: 1,
-        bundleId: payload.bundleId,
-        channel: payload.channel,
-        observedAt,
-        platform: payload.platform,
-        recovered: 0,
-      });
-
-      if (recoveredBundleId !== null) {
-        await recordMetricDelta(supabase, {
-          active: 0,
-          bundleId: recoveredBundleId,
-          channel: payload.channel,
-          observedAt,
-          platform: payload.platform,
-          recovered: 1,
-        });
       }
 
       return { accepted: true, deduped: false };

@@ -1,7 +1,6 @@
-import {
-  type CloudflareTelemetryD1Database,
-  runD1,
-} from "./cloudflareTelemetryD1";
+import { createTelemetryAnalyticsEvent } from "@hot-updater/plugin-core";
+
+import type { CloudflareTelemetryD1Database } from "./cloudflareTelemetryD1";
 
 export type CloudflareLifecycleStatus = "ACTIVE" | "RECOVERED";
 export type CloudflareLifecycleEventType = "active" | "recovered";
@@ -143,33 +142,27 @@ export const recordCloudflareLifecycleEvent = async (
   db: CloudflareTelemetryD1Database,
   event: ParsedCloudflareLifecycleRecord,
 ): Promise<CloudflareNotifyAppReadyResponse> => {
+  const analyticsEvent = createTelemetryAnalyticsEvent(
+    event,
+    new Date().toISOString(),
+  );
   const insertResult = await db
     .prepare(`
-      INSERT INTO bundle_lifecycle_events (
+      INSERT INTO analytics_events (
         id,
-        bundle_id,
-        install_id,
         event_type,
-        platform,
-        channel,
-        crashed_bundle_id,
+        payload,
         observed_at,
-        created_at,
-        dedupe_key
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(dedupe_key) DO NOTHING
+        received_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO NOTHING
     `)
     .bind(
-      crypto.randomUUID(),
-      event.bundleId,
-      event.installId,
-      event.eventType,
-      event.platform,
-      event.channel,
-      event.crashedBundleId ?? null,
-      event.observedAt,
-      new Date().toISOString(),
-      event.eventId,
+      analyticsEvent.id,
+      analyticsEvent.eventType,
+      JSON.stringify(analyticsEvent.payload),
+      analyticsEvent.observedAt,
+      analyticsEvent.receivedAt,
     )
     .run();
   const insertMeta = readRecordValue(insertResult, "meta");
@@ -184,41 +177,6 @@ export const recordCloudflareLifecycleEvent = async (
   if (!inserted) {
     return { accepted: true, deduped: true };
   }
-
-  await runD1(
-    db,
-    `
-      INSERT INTO bundle_install_state (
-        install_id,
-        bundle_id,
-        platform,
-        channel,
-        first_seen_at,
-        last_seen_at,
-        recovered_count,
-        last_event_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(install_id) DO UPDATE SET
-        bundle_id = excluded.bundle_id,
-        platform = excluded.platform,
-        channel = excluded.channel,
-        last_seen_at = excluded.last_seen_at,
-        recovered_count = bundle_install_state.recovered_count + ?,
-        last_event_id = excluded.last_event_id
-      WHERE excluded.last_seen_at >= bundle_install_state.last_seen_at
-    `,
-    [
-      event.installId,
-      event.bundleId,
-      event.platform,
-      event.channel,
-      event.observedAt,
-      event.observedAt,
-      event.eventType === "recovered" ? 1 : 0,
-      event.eventId,
-      event.eventType === "recovered" ? 1 : 0,
-    ],
-  );
 
   return { accepted: true, deduped: false };
 };

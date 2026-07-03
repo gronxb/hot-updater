@@ -3,6 +3,7 @@
 import type {
   Bundle,
   DatabasePlugin,
+  TelemetryLifecycleMetrics,
   NodeStoragePlugin,
   RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
@@ -43,10 +44,10 @@ function createDatabasePlugin(
     name,
     commit: vi.fn(),
     bundles: {
-      getBundleById: vi.fn(async (bundleId) => {
-        return bundles.find((bundle) => bundle.id === bundleId) ?? null;
+      get: vi.fn(async (_context, { id }) => {
+        return bundles.find((bundle) => bundle.id === id) ?? null;
       }),
-      getBundles: vi.fn(async () => ({
+      list: vi.fn(async () => ({
         data: [...bundles],
         pagination: {
           currentPage: 1,
@@ -56,10 +57,8 @@ function createDatabasePlugin(
           totalPages: 1,
         },
       })),
-      updateBundle: vi.fn(),
-      appendBundle: vi.fn(),
-      deleteBundle: vi.fn(),
-      commit: vi.fn(),
+      update: vi.fn(),
+      append: vi.fn(),
     },
     channels: {
       getChannels: vi.fn(async () => ["production"]),
@@ -128,8 +127,8 @@ describe("console api operations", () => {
     );
 
     expect(loadConfigMock).not.toHaveBeenCalled();
-    expect(firstDatabase.bundles.getBundles).toHaveBeenCalledOnce();
-    expect(secondDatabase.bundles.getBundles).toHaveBeenCalledOnce();
+    expect(firstDatabase.bundles.list).toHaveBeenCalledOnce();
+    expect(secondDatabase.bundles.list).toHaveBeenCalledOnce();
     expect(firstResult.data).toEqual([baseBundle]);
     expect(secondResult.data).toEqual([secondBundle]);
   });
@@ -140,6 +139,7 @@ describe("console api operations", () => {
       ...createDatabasePlugin("supported-db", []),
       analytics: {
         getTelemetryKeyCredential: vi.fn(async () => ({
+          active: true,
           keyHash: "hash",
           telemetryKeySuffix: "abcd1234",
         })),
@@ -150,6 +150,7 @@ describe("console api operations", () => {
               deduped: false,
             }) as const,
         ),
+        setTelemetryKeyActive: vi.fn(async () => {}),
         upsertTelemetryKeyCredential: vi.fn(async () => {}),
       },
     } satisfies DatabasePlugin;
@@ -188,6 +189,7 @@ describe("console api operations", () => {
       ...createDatabasePlugin("runtime-only-db", []),
       analytics: {
         getTelemetryKeyCredential: vi.fn(async () => ({
+          active: true,
           keyHash: "hash",
           telemetryKeySuffix: "abcd1234",
         })),
@@ -232,9 +234,11 @@ describe("console api operations", () => {
       ...createDatabasePlugin("telemetry-db", []),
       analytics: {
         getTelemetryKeyCredential: vi.fn(async () => ({
+          active: true,
           keyHash: "hash",
           telemetryKeySuffix: "abcd1234",
         })),
+        setTelemetryKeyActive: vi.fn(async () => {}),
         upsertTelemetryKeyCredential: vi.fn(async () => {}),
       },
     } satisfies DatabasePlugin;
@@ -262,7 +266,10 @@ describe("console api operations", () => {
       }),
     );
 
-    expect(result.state).toEqual({ telemetryKeySuffix: "abcd1234" });
+    expect(result.state).toEqual({
+      active: true,
+      telemetryKeySuffix: "abcd1234",
+    });
     expect(result.issued.telemetryKey).toMatch(/^hutk_/);
     expect(result.issued.telemetryKeySuffix).toHaveLength(8);
     expect(result.rotated.telemetryKey).toMatch(/^hutk_/);
@@ -273,6 +280,171 @@ describe("console api operations", () => {
     expect(
       databasePlugin.analytics.upsertTelemetryKeyCredential,
     ).toHaveBeenCalledTimes(2);
+  });
+
+  it("enables and disables provider ingest keys", async () => {
+    const setTelemetryKeyActive = vi.fn(async () => {});
+    const databasePlugin = {
+      ...createDatabasePlugin("ingest-key-db", []),
+      analytics: {
+        getTelemetryKeyCredential: vi.fn(async () => ({
+          active: true,
+          keyHash: "hash",
+          telemetryKeySuffix: "abcd1234",
+        })),
+        setTelemetryKeyActive,
+        upsertTelemetryKeyCredential: vi.fn(async () => {}),
+      },
+    } satisfies DatabasePlugin & {
+      readonly analytics: NonNullable<DatabasePlugin["analytics"]> & {
+        readonly setTelemetryKeyActive: (active: boolean) => Promise<void>;
+      };
+    };
+    const storagePlugin = createStoragePlugin(async () => ({
+      fileUrl: "https://assets.example.com/bundle.zip",
+    }));
+    const { runWithHostedConsoleContext } =
+      await import("./hosted-context.server");
+    const apiOperations =
+      (await import("./api-operations.server")) as typeof import("./api-operations.server") & {
+        readonly setTelemetryKeyActiveOperation: (input: {
+          readonly active: boolean;
+        }) => Promise<{ readonly active: boolean }>;
+      };
+
+    const result = await runWithHostedConsoleContext(
+      {
+        project: { id: "project-001", workspaceId: "workspace-001" },
+        database: () => databasePlugin,
+        storage: () => storagePlugin,
+      },
+      async () => ({
+        disabled: await apiOperations.setTelemetryKeyActiveOperation({
+          active: false,
+        }),
+        enabled: await apiOperations.setTelemetryKeyActiveOperation({
+          active: true,
+        }),
+      }),
+    );
+
+    expect(result).toEqual({
+      disabled: { active: false },
+      enabled: { active: true },
+    });
+    expect(setTelemetryKeyActive).toHaveBeenNthCalledWith(1, false, undefined);
+    expect(setTelemetryKeyActive).toHaveBeenNthCalledWith(2, true, undefined);
+  });
+
+  it("returns event-sourced bundle metrics from the database analytics runtime", async () => {
+    const lifecycleMetrics = {
+      bundles: [
+        {
+          active: 7,
+          bundleId: baseBundle.id,
+          channel: "production",
+          lastSeenAt: "2026-06-28T12:00:00.000Z",
+          platform: "ios",
+          recovered: 2,
+        },
+      ],
+      series: [
+        {
+          active: 7,
+          bucketStart: "2026-06-28T12:00:00.000Z",
+          bundleId: baseBundle.id,
+          recovered: 2,
+        },
+        {
+          active: 4,
+          bucketStart: "2026-06-28T13:00:00.000Z",
+          bundleId: "other-bundle",
+          recovered: 0,
+        },
+      ],
+      totals: { active: 7, recovered: 2 },
+    } satisfies TelemetryLifecycleMetrics;
+    const databasePlugin = {
+      ...createDatabasePlugin("metrics-db", [baseBundle]),
+      analytics: {
+        getLifecycleMetrics: vi.fn(async () => lifecycleMetrics),
+      },
+    } satisfies DatabasePlugin;
+    const storagePlugin = createStoragePlugin(async () => ({
+      fileUrl: "https://assets.example.com/bundle.zip",
+    }));
+    const { runWithHostedConsoleContext } =
+      await import("./hosted-context.server");
+    const apiOperations =
+      (await import("./api-operations.server")) as typeof import("./api-operations.server") & {
+        readonly getBundleMetricsOperation: (input: {
+          readonly bundleId: string;
+        }) => Promise<unknown>;
+      };
+
+    const result = await runWithHostedConsoleContext(
+      {
+        project: { id: "project-001", workspaceId: "workspace-001" },
+        database: () => databasePlugin,
+        storage: () => storagePlugin,
+      },
+      () =>
+        apiOperations.getBundleMetricsOperation({ bundleId: baseBundle.id }),
+    );
+
+    expect(result).toEqual({
+      active: 7,
+      lastSeenAt: "2026-06-28T12:00:00.000Z",
+      recovered: 2,
+      series: [
+        {
+          active: 7,
+          bucketStart: "2026-06-28T12:00:00.000Z",
+          recovered: 2,
+        },
+      ],
+    });
+  });
+
+  it("returns zero bundle metrics when analytics has no events for the bundle", async () => {
+    const databasePlugin = {
+      ...createDatabasePlugin("metrics-db", [baseBundle]),
+      analytics: {
+        getLifecycleMetrics: vi.fn(async () => ({
+          bundles: [],
+          series: [],
+          totals: { active: 0, recovered: 0 },
+        })),
+      },
+    } satisfies DatabasePlugin;
+    const storagePlugin = createStoragePlugin(async () => ({
+      fileUrl: "https://assets.example.com/bundle.zip",
+    }));
+    const { runWithHostedConsoleContext } =
+      await import("./hosted-context.server");
+    const apiOperations =
+      (await import("./api-operations.server")) as typeof import("./api-operations.server") & {
+        readonly getBundleMetricsOperation: (input: {
+          readonly bundleId: string;
+        }) => Promise<unknown>;
+      };
+
+    const result = await runWithHostedConsoleContext(
+      {
+        project: { id: "project-001", workspaceId: "workspace-001" },
+        database: () => databasePlugin,
+        storage: () => storagePlugin,
+      },
+      () =>
+        apiOperations.getBundleMetricsOperation({ bundleId: baseBundle.id }),
+    );
+
+    expect(result).toEqual({
+      active: 0,
+      lastSeenAt: null,
+      recovered: 0,
+      series: [],
+    });
   });
 
   it("resolves runtime download URLs through the hosted storage profile", async () => {

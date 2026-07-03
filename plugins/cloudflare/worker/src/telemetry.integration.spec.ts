@@ -83,9 +83,8 @@ describe.sequential("cloudflare telemetry runtime", () => {
   });
 
   beforeEach(async () => {
-    await env.DB.prepare("DELETE FROM bundle_lifecycle_events").run();
-    await env.DB.prepare("DELETE FROM bundle_install_state").run();
-    await env.DB.prepare("DELETE FROM telemetry_keys").run();
+    await env.DB.prepare("DELETE FROM analytics_events").run();
+    await env.DB.prepare("DELETE FROM ingest_keys").run();
   });
 
   it("accepts notifyAppReady with a freshly issued telemetry key", async () => {
@@ -212,10 +211,7 @@ describe.sequential("cloudflare telemetry runtime", () => {
     const bodies = await Promise.all(responses.map(readJsonObject));
     const metrics = await getCloudflareLifecycleMetrics(env.DB);
     const lifecycleEventCount = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM bundle_lifecycle_events",
-    ).first<{ readonly count: number }>();
-    const installState = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM bundle_install_state",
+      "SELECT COUNT(*) AS count FROM analytics_events",
     ).first<{ readonly count: number }>();
 
     expect(responses.map((response) => response.status)).toEqual([202, 202]);
@@ -226,14 +222,16 @@ describe.sequential("cloudflare telemetry runtime", () => {
       ]),
     );
     expect(lifecycleEventCount).toEqual({ count: 1 });
-    expect(installState).toEqual({ count: 1 });
     expect(metrics.totals).toEqual({ active: 1, recovered: 0 });
   });
 
   it("stores telemetry key hash and suffix only in D1 schema", () => {
     for (const source of [telemetryMigration, preparedTelemetrySql]) {
+      expect(source).toContain("ingest_keys");
+      expect(source).toContain("analytics_events");
       expect(source).toContain("key_hash");
       expect(source).toContain("key_suffix");
+      expect(source).toContain("active");
       expect(source).not.toMatch(/\btelemetry_key\s+TEXT\b/i);
       expect(source).not.toMatch(/\bkey\s+TEXT\b/i);
       expect(source).not.toMatch(/plain|secret|token/i);

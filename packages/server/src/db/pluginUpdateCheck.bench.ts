@@ -1,7 +1,6 @@
 import { bench, describe } from "vitest";
 
 import type {
-  DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
   DatabasePlugin,
 } from "../../../../plugins/plugin-core/src";
@@ -121,10 +120,10 @@ const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
   return {
     name: "bench-plugin",
     bundles: {
-      async getBundleById(bundleId) {
+      async get(_context, { id: bundleId }) {
         return bundlesById.get(bundleId) ?? null;
       },
-      async getBundles(options: DatabaseBundleQueryOptions) {
+      async list(_context, options) {
         const { where, limit, cursor, orderBy } = options;
         const source = sortByDirection(orderBy?.direction);
         const matched = source.filter((bundle) =>
@@ -139,13 +138,10 @@ const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
 
         return paginated;
       },
-      async updateBundle() {
+      async update() {
         throw new Error("Not implemented for benchmark");
       },
-      async appendBundle() {
-        throw new Error("Not implemented for benchmark");
-      },
-      async deleteBundle() {
+      async append() {
         throw new Error("Not implemented for benchmark");
       },
     },
@@ -167,7 +163,7 @@ const oldPluginCoreGetUpdateInfo = async (
     platform: args.platform,
   };
 
-  const { pagination } = await plugin.bundles.getBundles({
+  const { pagination } = await plugin.bundles.list(undefined, {
     where,
     limit: 1,
   });
@@ -176,7 +172,7 @@ const oldPluginCoreGetUpdateInfo = async (
     return null;
   }
 
-  const { data } = await plugin.bundles.getBundles({
+  const { data } = await plugin.bundles.list(undefined, {
     where,
     limit: pagination.total,
   });

@@ -471,7 +471,9 @@ export async function promoteBundle(
     throw new Error("Target channel is required");
   }
 
-  const bundle = await deps.databasePlugin.bundles.getBundleById(bundleId);
+  const bundle = await deps.databasePlugin.bundles.get(undefined, {
+    id: bundleId,
+  });
   if (!bundle) {
     throw new Error("Bundle not found");
   }
@@ -483,13 +485,17 @@ export async function promoteBundle(
   }
 
   if (action === "move") {
-    await deps.databasePlugin.bundles.updateBundle(bundleId, {
-      channel: normalizedTargetChannel,
+    await deps.databasePlugin.bundles.update(undefined, {
+      id: bundleId,
+      data: {
+        channel: normalizedTargetChannel,
+      },
     });
-    await deps.databasePlugin.commit();
+    await deps.databasePlugin.commit(undefined, {});
 
-    const updatedBundle =
-      await deps.databasePlugin.bundles.getBundleById(bundleId);
+    const updatedBundle = await deps.databasePlugin.bundles.get(undefined, {
+      id: bundleId,
+    });
     if (!updatedBundle) {
       throw new Error("Promoted bundle not found");
     }
@@ -513,8 +519,8 @@ export async function promoteBundle(
   let shouldCleanupUploadedCopy = true;
 
   try {
-    await deps.databasePlugin.bundles.appendBundle(copiedBundle);
-    await deps.databasePlugin.commit();
+    await deps.databasePlugin.bundles.append(undefined, { data: copiedBundle });
+    await deps.databasePlugin.commit(undefined, {});
     shouldCleanupUploadedCopy = false;
     return copiedBundle;
   } catch (error) {

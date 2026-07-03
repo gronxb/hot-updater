@@ -15,6 +15,7 @@ import {
 import type {
   Bundle,
   DatabasePlugin,
+  HotUpdaterContext,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import { resolveManifestAssetStorageUri } from "@hot-updater/plugin-core";
@@ -29,12 +30,13 @@ export interface CreateBundleDiffInput {
   bundleId: string;
 }
 
-export interface CreateBundleDiffDependencies {
-  databasePlugin: DatabasePlugin;
+export interface CreateBundleDiffDependencies<TContext = unknown> {
+  databasePlugin: DatabasePlugin<TContext>;
   storagePlugin: NodeStoragePlugin | null;
 }
 
-export interface CreateBundleDiffOptions {
+export interface CreateBundleDiffOptions<TContext = unknown> {
+  context?: HotUpdaterContext<TContext>;
   makePrimary?: boolean;
 }
 
@@ -244,10 +246,10 @@ function buildNextPatchState({
   };
 }
 
-export async function createBundleDiff(
+export async function createBundleDiff<TContext = unknown>(
   { baseBundleId, bundleId }: CreateBundleDiffInput,
-  deps: CreateBundleDiffDependencies,
-  options: CreateBundleDiffOptions = {},
+  deps: CreateBundleDiffDependencies<TContext>,
+  options: CreateBundleDiffOptions<TContext> = {},
 ) {
   if (!deps.storagePlugin) {
     throw new Error("Storage plugin is not configured");
@@ -257,10 +259,22 @@ export async function createBundleDiff(
     throw new Error("Base bundle must be different from the target bundle");
   }
 
-  const baseBundle =
-    await deps.databasePlugin.bundles.getBundleById(baseBundleId);
-  const targetBundle =
-    await deps.databasePlugin.bundles.getBundleById(bundleId);
+  const context = options.context;
+  const getBundleById = (id: string) =>
+    context === undefined
+      ? deps.databasePlugin.bundles.get(undefined, { id: id })
+      : deps.databasePlugin.bundles.get(context, { id: id });
+  const updateBundle = (id: string, bundle: Partial<Bundle>) =>
+    context === undefined
+      ? deps.databasePlugin.bundles.update(undefined, { id: id, data: bundle })
+      : deps.databasePlugin.bundles.update(context, { id: id, data: bundle });
+  const commitDatabase = () =>
+    context === undefined
+      ? deps.databasePlugin.commit(undefined, {})
+      : deps.databasePlugin.commit(context, {});
+
+  const baseBundle = await getBundleById(baseBundleId);
+  const targetBundle = await getBundleById(bundleId);
 
   if (!baseBundle || !targetBundle) {
     throw new Error("Bundle not found");
@@ -349,14 +363,14 @@ export async function createBundleDiff(
       makePrimary: options.makePrimary ?? true,
     });
 
-    await deps.databasePlugin.bundles.updateBundle(targetBundle.id, {
+    await updateBundle(targetBundle.id, {
       patches: nextState.patches,
       patchBaseBundleId: nextState.primaryPatch.baseBundleId,
       patchBaseFileHash: nextState.primaryPatch.baseFileHash,
       patchFileHash: nextState.primaryPatch.patchFileHash,
       patchStorageUri: nextState.primaryPatch.patchStorageUri,
     });
-    await deps.databasePlugin.commit();
+    await commitDatabase();
 
     if (
       previousPatch?.patchStorageUri &&
@@ -369,9 +383,7 @@ export async function createBundleDiff(
         });
     }
 
-    const updatedBundle = await deps.databasePlugin.bundles.getBundleById(
-      targetBundle.id,
-    );
+    const updatedBundle = await getBundleById(targetBundle.id);
     if (!updatedBundle) {
       throw new Error("Updated bundle not found");
     }

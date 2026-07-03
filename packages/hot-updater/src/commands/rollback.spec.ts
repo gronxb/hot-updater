@@ -5,12 +5,10 @@ const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
   const mockDatabasePlugin = {
     commit: vi.fn(),
     bundles: {
-      appendBundle: vi.fn(),
-      commit: vi.fn(),
-      deleteBundle: vi.fn(),
-      getBundleById: vi.fn(),
-      getBundles: vi.fn(),
-      updateBundle: vi.fn(),
+      append: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn(),
+      update: vi.fn(),
     },
     channels: {
       getChannels: vi.fn(),
@@ -87,7 +85,7 @@ const setupConsoleSpies = () => {
 const stubGetBundlesByPlatform = (
   byPlatform: Partial<Record<Platform, Bundle[]>>,
 ) => {
-  mockDatabasePlugin.bundles.getBundles.mockImplementation((options) => {
+  mockDatabasePlugin.bundles.list.mockImplementation((_context, options) => {
     const platform = options.where?.platform as Platform | undefined;
     const bundles = (platform && byPlatform[platform]) ?? [];
     return Promise.resolve({
@@ -118,26 +116,22 @@ describe("handleRollback", () => {
         buildBundle({ id: "and-1", platform: "android" }),
       ],
     });
-    mockDatabasePlugin.bundles.getBundleById.mockImplementation((id: string) =>
+    mockDatabasePlugin.bundles.get.mockImplementation((_context, { id }) =>
       Promise.resolve(buildBundle({ id, enabled: false })),
     );
 
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { yes: true });
 
-    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith(
-      "ios-2",
-      {
-        enabled: false,
-      },
-    );
-    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith(
-      "and-2",
-      {
-        enabled: false,
-      },
-    );
-    expect(mockDatabasePlugin.bundles.commit).toHaveBeenCalledTimes(1);
+    expect(mockDatabasePlugin.bundles.update).toHaveBeenCalledWith(undefined, {
+      data: { enabled: false },
+      id: "ios-2",
+    });
+    expect(mockDatabasePlugin.bundles.update).toHaveBeenCalledWith(undefined, {
+      data: { enabled: false },
+      id: "and-2",
+    });
+    expect(mockDatabasePlugin.commit).toHaveBeenCalledWith(undefined, {});
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       expect.stringContaining("ios-2"),
     );
@@ -162,22 +156,22 @@ describe("handleRollback", () => {
         buildBundle({ id: "ios-1", platform: "ios" }),
       ],
     });
-    mockDatabasePlugin.bundles.getBundleById.mockImplementation((id: string) =>
+    mockDatabasePlugin.bundles.get.mockImplementation((_context, { id }) =>
       Promise.resolve(buildBundle({ id, enabled: false })),
     );
 
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { platform: "ios", yes: true });
 
-    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith(
-      "ios-2",
-      {
-        enabled: false,
-      },
-    );
-    expect(mockDatabasePlugin.bundles.updateBundle).not.toHaveBeenCalledWith(
-      expect.stringMatching(/^and-/),
-      expect.anything(),
+    expect(mockDatabasePlugin.bundles.update).toHaveBeenCalledWith(undefined, {
+      data: { enabled: false },
+      id: "ios-2",
+    });
+    expect(mockDatabasePlugin.bundles.update).not.toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({
+        id: expect.stringMatching(/^and-/),
+      }),
     );
   });
 
@@ -189,25 +183,21 @@ describe("handleRollback", () => {
         buildBundle({ id: "and-1", platform: "android" }),
       ],
     });
-    mockDatabasePlugin.bundles.getBundleById.mockImplementation((id: string) =>
+    mockDatabasePlugin.bundles.get.mockImplementation((_context, { id }) =>
       Promise.resolve(buildBundle({ id, enabled: false })),
     );
 
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { yes: true });
 
-    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith(
-      "ios-1",
-      {
-        enabled: false,
-      },
-    );
-    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith(
-      "and-2",
-      {
-        enabled: false,
-      },
-    );
+    expect(mockDatabasePlugin.bundles.update).toHaveBeenCalledWith(undefined, {
+      data: { enabled: false },
+      id: "ios-1",
+    });
+    expect(mockDatabasePlugin.bundles.update).toHaveBeenCalledWith(undefined, {
+      data: { enabled: false },
+      id: "and-2",
+    });
     expect(mockCli.p.log.message).toHaveBeenCalledWith(
       expect.stringContaining("binary-shipped JS"),
     );
@@ -217,7 +207,7 @@ describe("handleRollback", () => {
     stubGetBundlesByPlatform({
       ios: [buildBundle({ id: "ios-1", platform: "ios" })],
     });
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(
+    mockDatabasePlugin.bundles.get.mockResolvedValue(
       buildBundle({ id: "ios-1", enabled: false }),
     );
     const { handleRollback } = await import("./rollback");
@@ -225,12 +215,10 @@ describe("handleRollback", () => {
       platform: "ios",
       yes: true,
     });
-    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith(
-      "ios-1",
-      {
-        enabled: false,
-      },
-    );
+    expect(mockDatabasePlugin.bundles.update).toHaveBeenCalledWith(undefined, {
+      data: { enabled: false },
+      id: "ios-1",
+    });
     expect(mockCli.p.log.success).toHaveBeenCalled();
   });
 
@@ -242,19 +230,17 @@ describe("handleRollback", () => {
       ],
       android: [],
     });
-    mockDatabasePlugin.bundles.getBundleById.mockResolvedValue(
+    mockDatabasePlugin.bundles.get.mockResolvedValue(
       buildBundle({ id: "ios-2", enabled: false }),
     );
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { yes: true });
 
-    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledTimes(1);
-    expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith(
-      "ios-2",
-      {
-        enabled: false,
-      },
-    );
+    expect(mockDatabasePlugin.bundles.update).toHaveBeenCalledTimes(1);
+    expect(mockDatabasePlugin.bundles.update).toHaveBeenCalledWith(undefined, {
+      data: { enabled: false },
+      id: "ios-2",
+    });
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("No enabled bundle on dev/android"),
     );
@@ -301,7 +287,7 @@ describe("handleRollback", () => {
       message: "Apply this rollback plan to dev?",
       initialValue: false,
     });
-    expect(mockDatabasePlugin.bundles.updateBundle).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.update).not.toHaveBeenCalled();
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
     }
@@ -330,7 +316,7 @@ describe("handleRollback", () => {
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", {})).rejects.toThrow("process.exit(1)");
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockDatabasePlugin.bundles.updateBundle).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.update).not.toHaveBeenCalled();
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
     }
@@ -349,15 +335,13 @@ describe("handleRollback", () => {
     });
     // ios commit "succeeds" (returns disabled), android commit appears to
     // have not taken effect (still enabled).
-    mockDatabasePlugin.bundles.getBundleById.mockImplementation(
-      (id: string) => {
-        if (id === "ios-2")
-          return Promise.resolve(buildBundle({ id, enabled: false }));
-        if (id === "and-2")
-          return Promise.resolve(buildBundle({ id, enabled: true }));
-        return Promise.resolve(null);
-      },
-    );
+    mockDatabasePlugin.bundles.get.mockImplementation((_context, { id }) => {
+      if (id === "ios-2")
+        return Promise.resolve(buildBundle({ id, enabled: false }));
+      if (id === "and-2")
+        return Promise.resolve(buildBundle({ id, enabled: true }));
+      return Promise.resolve(null);
+    });
     const { exitSpy } = expectExit(1);
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
@@ -369,10 +353,8 @@ describe("handleRollback", () => {
     );
   });
 
-  it("calls onUnmount even when getBundles throws", async () => {
-    mockDatabasePlugin.bundles.getBundles.mockRejectedValue(
-      new Error("DB down"),
-    );
+  it("calls onUnmount even when list throws", async () => {
+    mockDatabasePlugin.bundles.list.mockRejectedValue(new Error("DB down"));
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
       "DB down",

@@ -27,6 +27,7 @@ const createRequiredAnalytics = (
 describe("supabase telemetry lifecycle metrics", () => {
   beforeEach(() => {
     tables.telemetryKeys.clear();
+    tables.analyticsEvents.clear();
     tables.lifecycleEvents.clear();
     tables.lifecycleMetrics.clear();
   });

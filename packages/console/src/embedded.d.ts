@@ -34,6 +34,7 @@ export type ConsoleBundleMetrics = {
 };
 
 export type ConsoleTelemetryKeyState = {
+  readonly active: boolean;
   readonly telemetryKeySuffix: string;
 };
 
@@ -88,6 +89,9 @@ export type ConsoleApiClient = {
     readonly targetChannel: string;
   }) => Promise<{ readonly bundle: ConsoleBundle; readonly success: boolean }>;
   readonly rotateTelemetryKey?: () => Promise<ConsoleTelemetryKeyResult>;
+  readonly setTelemetryKeyActive?: (params: {
+    readonly active: boolean;
+  }) => Promise<{ readonly active: boolean }>;
   readonly updateBundle: (params: {
     readonly bundle: Partial<ConsoleBundle>;
     readonly bundleId: string;

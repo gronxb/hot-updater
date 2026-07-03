@@ -12,7 +12,10 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { isContentAddressedAssetBaseStorageUri } from "@hot-updater/plugin-core";
+import {
+  deleteBundleById,
+  isContentAddressedAssetBaseStorageUri,
+} from "@hot-updater/plugin-core";
 
 import { getLegacyBundleAssetCleanupUris } from "./legacyBundleAssetCleanup";
 
@@ -106,7 +109,7 @@ export async function deleteBundle(
     waitForStorageCleanup = true,
   }: DeleteBundleDependencies,
 ) {
-  const bundle = await databasePlugin.bundles.getBundleById(bundleId);
+  const bundle = await databasePlugin.bundles.get(undefined, { id: bundleId });
   if (!bundle) {
     throw new Error("Bundle not found");
   }
@@ -123,8 +126,11 @@ export async function deleteBundle(
     resolveStorageUriForDeletion(candidate, storagePlugin);
   }
 
-  await databasePlugin.bundles.deleteBundle(bundle);
-  await databasePlugin.commit();
+  await deleteBundleById(databasePlugin, undefined, {
+    bundle,
+    id: bundleId,
+  });
+  await databasePlugin.commit(undefined, {});
 
   const cleanupStorage = async () => {
     const cleanupUris = new Set<string>();

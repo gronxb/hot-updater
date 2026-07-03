@@ -222,7 +222,82 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
 
     return {
       bundles: {
-        async getUpdateInfo(args, context) {
+        async get(_context, { id: bundleId }) {
+          const bundleRef = bundlesCollection.doc(bundleId);
+          const bundleSnap = await bundleRef.get();
+
+          if (!bundleSnap.exists) {
+            return null;
+          }
+
+          const firestoreData = bundleSnap.data() as SnakeCaseBundle;
+          return convertToBundle(firestoreData);
+        },
+
+        async list(_context, options) {
+          const { where, limit, orderBy } = options;
+          const offset =
+            (("offset" in options ? options.offset : undefined) as
+              | number
+              | undefined) ?? 0;
+
+          let query = applyFirestoreQueryableFilters(bundlesCollection, where);
+
+          query = query.orderBy(
+            "id",
+            orderBy?.direction === "asc" ? "asc" : "desc",
+          );
+
+          if (requiresInMemoryFiltering(where)) {
+            const querySnapshot = await query.get();
+            const filteredBundles = sortBundles(
+              querySnapshot.docs
+                .map((doc) => convertToBundle(doc.data() as SnakeCaseBundle))
+                .filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
+              orderBy,
+            );
+            const total = filteredBundles.length;
+            const data = filteredBundles.slice(offset, offset + limit);
+
+            return {
+              data,
+              pagination: calculatePagination(total, {
+                limit,
+                offset,
+              }),
+            };
+          }
+
+          const totalSnapshot = await query.get();
+          const total = totalSnapshot.size;
+
+          if (offset > 0) {
+            query = query.offset(offset);
+          }
+          if (limit) {
+            query = query.limit(limit);
+          }
+
+          const querySnapshot = await query.get();
+
+          const data = sortBundles(
+            querySnapshot.docs.map((doc) =>
+              convertToBundle(doc.data() as SnakeCaseBundle),
+            ),
+            orderBy,
+          );
+
+          return {
+            data,
+            pagination: calculatePagination(total, {
+              limit,
+              offset,
+            }),
+          };
+        },
+      },
+      updates: {
+        async check(context, args) {
           const channel = args.channel ?? "production";
           const minBundleId = args.minBundleId ?? NIL_UUID;
 
@@ -292,83 +367,9 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
             context,
           });
         },
-
-        async getBundleById(bundleId) {
-          const bundleRef = bundlesCollection.doc(bundleId);
-          const bundleSnap = await bundleRef.get();
-
-          if (!bundleSnap.exists) {
-            return null;
-          }
-
-          const firestoreData = bundleSnap.data() as SnakeCaseBundle;
-          return convertToBundle(firestoreData);
-        },
-
-        async getBundles(options) {
-          const { where, limit, orderBy } = options;
-          const offset =
-            (("offset" in options ? options.offset : undefined) as
-              | number
-              | undefined) ?? 0;
-
-          let query = applyFirestoreQueryableFilters(bundlesCollection, where);
-
-          query = query.orderBy(
-            "id",
-            orderBy?.direction === "asc" ? "asc" : "desc",
-          );
-
-          if (requiresInMemoryFiltering(where)) {
-            const querySnapshot = await query.get();
-            const filteredBundles = sortBundles(
-              querySnapshot.docs
-                .map((doc) => convertToBundle(doc.data() as SnakeCaseBundle))
-                .filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
-              orderBy,
-            );
-            const total = filteredBundles.length;
-            const data = filteredBundles.slice(offset, offset + limit);
-
-            return {
-              data,
-              pagination: calculatePagination(total, {
-                limit,
-                offset,
-              }),
-            };
-          }
-
-          const totalSnapshot = await query.get();
-          const total = totalSnapshot.size;
-
-          if (offset > 0) {
-            query = query.offset(offset);
-          }
-          if (limit) {
-            query = query.limit(limit);
-          }
-
-          const querySnapshot = await query.get();
-
-          const data = sortBundles(
-            querySnapshot.docs.map((doc) =>
-              convertToBundle(doc.data() as SnakeCaseBundle),
-            ),
-            orderBy,
-          );
-
-          return {
-            data,
-            pagination: calculatePagination(total, {
-              limit,
-              offset,
-            }),
-          };
-        },
       },
-      async commit({ changes }) {
-        const changedSets = changes.bundles;
+      async commit(_context, { changes }) {
+        const changedSets = changes.bundles ?? [];
         if (changedSets.length === 0) {
           return;
         }

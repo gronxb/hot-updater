@@ -1,5 +1,6 @@
 import type {
   Bundle,
+  BundlePatchArtifact,
   GetBundlesArgs,
   Platform,
   UpdateInfo,
@@ -8,6 +9,7 @@ import type {
 export type {
   AppVersionGetBundlesArgs,
   Bundle,
+  BundlePatchArtifact,
   FingerprintGetBundlesArgs,
   GetBundlesArgs,
   Platform,
@@ -116,10 +118,12 @@ export type TelemetryKeyResult = {
 };
 
 export type TelemetryKeyState = {
+  readonly active: boolean;
   readonly telemetryKeySuffix: string;
 };
 
 export type TelemetryKeyCredential = {
+  readonly active: boolean;
   readonly keyHash: string;
   readonly telemetryKeySuffix: string;
 };
@@ -160,6 +164,10 @@ export interface DatabaseAnalyticsOperations<TContext = unknown> {
     payload: TelemetryLifecyclePayload,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<TelemetryLifecycleRecordResult>;
+  setTelemetryKeyActive?: (
+    active: boolean,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
   upsertTelemetryKeyCredential?: (
     credential: TelemetryKeyCredential,
     context?: HotUpdaterContext<TContext>,
@@ -170,76 +178,132 @@ export interface BuildPluginConfig {
   outDir?: string;
 }
 
-export type BundleChangeOperation = "insert" | "update" | "delete";
+export type DatabaseChangeOperation = "insert" | "update" | "delete";
 
-export interface BundleChange {
-  readonly operation: BundleChangeOperation;
-  readonly data: Bundle;
-}
+export type DatabaseGetInput<TId extends string = string> = {
+  readonly id: TId;
+};
 
-export interface DatabaseChanges {
-  readonly bundles: readonly BundleChange[];
-}
+export type DatabaseAppendInput<TData> = {
+  readonly data: TData;
+};
+
+export type DatabaseUpdateInput<TId extends string, TPatch> = {
+  readonly id: TId;
+  readonly data: TPatch;
+};
+
+export type DatabaseTableChange<TData> = {
+  readonly operation: DatabaseChangeOperation;
+  readonly data: TData;
+};
+
+export type DatabaseBundleChange = DatabaseTableChange<Bundle>;
+
+export type BundleChange = DatabaseBundleChange;
+
+export type DatabaseBundlePatch = BundlePatchArtifact & {
+  readonly bundleId: string;
+  readonly id?: string;
+  readonly index?: number;
+};
+
+export type DatabaseBundlePatchChange =
+  DatabaseTableChange<DatabaseBundlePatch>;
+
+export type DatabaseAnalyticsEventChange =
+  DatabaseTableChange<TelemetryLifecyclePayload>;
+
+export type DatabaseIngestKeyChange = DatabaseTableChange<
+  | TelemetryKeyCredential
+  | DatabaseUpdateInput<string, Partial<TelemetryKeyCredential>>
+>;
+
+export type DatabaseChanges = {
+  readonly analyticsEvents?: readonly DatabaseAnalyticsEventChange[];
+  readonly bundlePatches?: readonly DatabaseBundlePatchChange[];
+  readonly bundles?: readonly DatabaseBundleChange[];
+  readonly ingestKeys?: readonly DatabaseIngestKeyChange[];
+};
+
+export type DatabaseChangeBucket = keyof DatabaseChanges;
 
 export type DatabaseCommitInput = Record<string, never>;
 
-export interface DatabaseBundleOperations<TContext = unknown> {
-  supportsCursorPagination?: boolean;
-  getBundleById: (
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
+export interface DatabaseBundleOperations<TContext = unknown>
+  extends
+    DatabaseAppendTableOperations<TContext, Bundle>,
+    DatabaseUpdateTableOperations<TContext, string, Partial<Bundle>> {
+  get: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: DatabaseGetInput<string>,
   ) => Promise<Bundle | null>;
-  getUpdateInfo?: (
-    args: GetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<UpdateInfo | null>;
-  getBundles: (
-    options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TContext>,
+  list: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: DatabaseBundleQueryOptions,
   ) => Promise<Paginated<Bundle[]>>;
-  updateBundle: (
-    targetBundleId: string,
-    newBundle: Partial<Bundle>,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  appendBundle: (
-    insertBundle: Bundle,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  deleteBundle: (
-    deleteBundle: Bundle,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
 }
-
-export type DatabaseBundleChange = {
-  readonly operation: "insert" | "update" | "delete";
-  readonly data: Bundle;
-};
-
-export type DatabaseChanges = {
-  readonly bundles: readonly DatabaseBundleChange[];
-};
 
 export interface DatabaseChannelOperations<TContext = unknown> {
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
 }
 
+export interface DatabaseUpdatesOperations<TContext = unknown> {
+  check: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: GetBundlesArgs,
+  ) => Promise<UpdateInfo | null>;
+}
+
+export interface DatabaseAppendTableOperations<TContext, TData> {
+  append: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: DatabaseAppendInput<TData>,
+  ) => Promise<void>;
+}
+
+export interface DatabaseUpdateTableOperations<
+  TContext,
+  TId extends string,
+  TPatch,
+> {
+  update: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: DatabaseUpdateInput<TId, TPatch>,
+  ) => Promise<void>;
+}
+
+export interface DatabaseBundlePatchOperations<
+  TContext = unknown,
+> extends DatabaseAppendTableOperations<TContext, DatabaseBundlePatch> {}
+
+export interface DatabaseAnalyticsEventOperations<
+  TContext = unknown,
+> extends DatabaseAppendTableOperations<TContext, TelemetryLifecyclePayload> {}
+
+export interface DatabaseIngestKeyOperations<TContext = unknown>
+  extends
+    DatabaseAppendTableOperations<TContext, TelemetryKeyCredential>,
+    DatabaseUpdateTableOperations<
+      TContext,
+      string,
+      Partial<TelemetryKeyCredential>
+    > {}
+
 export interface DatabasePlugin<TContext = unknown> {
   commit: (
-    context?: HotUpdaterContext<TContext>,
-    input?: DatabaseCommitInput,
+    context: HotUpdaterContext<TContext> | undefined,
+    input: DatabaseCommitInput,
   ) => Promise<void>;
   analytics?: DatabaseAnalyticsOperations<TContext>;
+  analyticsEvents?: DatabaseAnalyticsEventOperations<TContext>;
+  bundlePatches?: DatabaseBundlePatchOperations<TContext>;
   bundles: DatabaseBundleOperations<TContext>;
-  commit: (context?: HotUpdaterContext<TContext>) => Promise<void>;
   channels: DatabaseChannelOperations<TContext>;
-  commit: (
-    context?: HotUpdaterContext<TContext>,
-    input?: Record<string, never>,
-  ) => Promise<void>;
+  ingestKeys?: DatabaseIngestKeyOperations<TContext>;
   onUnmount?: () => Promise<void>;
   name: string;
+  updates?: DatabaseUpdatesOperations<TContext>;
 }
 
 export interface DatabasePluginHooks {

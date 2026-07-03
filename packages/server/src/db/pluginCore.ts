@@ -15,6 +15,7 @@ import {
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
   type DatabasePlugin,
+  deleteBundleById,
   createRequestUpdateBundleResolver,
   type HotUpdaterContext,
   semverSatisfies,
@@ -146,15 +147,12 @@ export function createPluginDatabaseCore<TContext = unknown>(
     options: DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
   ): Promise<
-    Awaited<ReturnType<DatabasePlugin<TContext>["bundles"]["getBundles"]>>
+    Awaited<ReturnType<DatabasePlugin<TContext>["bundles"]["list"]>>
   > => {
-    const result = await getPlugin().bundles.getBundles(
-      {
-        ...options,
-        orderBy: options.orderBy ?? DESC_ORDER,
-      },
-      context,
-    );
+    const result = await getPlugin().bundles.list(context, {
+      ...options,
+      orderBy: options.orderBy ?? DESC_ORDER,
+    });
 
     return {
       ...result,
@@ -285,7 +283,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       context?: HotUpdaterContext<TContext>,
     ): Promise<Bundle | null> {
       await coreOptions?.beforeOperation?.();
-      return getPlugin().bundles.getBundleById(id, context);
+      return getPlugin().bundles.get(context, { id: id });
     },
 
     async getUpdateInfo(
@@ -294,11 +292,9 @@ export function createPluginDatabaseCore<TContext = unknown>(
     ): Promise<UpdateInfo | null> {
       await coreOptions?.beforeOperation?.();
       const plugin = getPlugin();
-      const directGetUpdateInfo = plugin.bundles.getUpdateInfo;
-      if (directGetUpdateInfo) {
-        return context === undefined
-          ? await directGetUpdateInfo(args)
-          : await directGetUpdateInfo(args, context);
+      const directUpdateCheck = plugin.updates?.check;
+      if (directUpdateCheck) {
+        return await directUpdateCheck(context, args);
       }
 
       const channel = args.channel ?? "production";
@@ -377,13 +373,13 @@ export function createPluginDatabaseCore<TContext = unknown>(
         }
 
         return requestBundles.getById(args.bundleId, () =>
-          getPlugin().bundles.getBundleById(args.bundleId, context),
+          getPlugin().bundles.get(context, { id: args.bundleId }),
         );
       };
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
         resolveFileUrl(storageUri ?? null, context),
         requestBundles.getById(info.id, () =>
-          getPlugin().bundles.getBundleById(info.id, context),
+          getPlugin().bundles.get(context, { id: info.id }),
         ),
         getCurrentBundle(),
       ]);
@@ -414,7 +410,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
 
     async getBundles(options, context?: HotUpdaterContext<TContext>) {
       await coreOptions?.beforeOperation?.();
-      return getPlugin().bundles.getBundles(options, context);
+      return getPlugin().bundles.list(context, options);
     },
 
     async insertBundle(
@@ -424,8 +420,8 @@ export function createPluginDatabaseCore<TContext = unknown>(
       await coreOptions?.beforeOperation?.();
       assertBundlePersistenceConstraints(bundle);
       await runWithMutationPlugin(async (plugin) => {
-        await plugin.bundles.appendBundle(bundle, context);
-        await plugin.commit(context);
+        await plugin.bundles.append(context, { data: bundle });
+        await plugin.commit(context, {});
       });
     },
 
@@ -436,13 +432,16 @@ export function createPluginDatabaseCore<TContext = unknown>(
     ): Promise<void> {
       await coreOptions?.beforeOperation?.();
       await runWithMutationPlugin(async (plugin) => {
-        const current = await plugin.bundles.getBundleById(bundleId, context);
+        const current = await plugin.bundles.get(context, { id: bundleId });
         if (!current) {
           throw new Error("targetBundleId not found");
         }
         assertBundlePersistenceConstraints({ ...current, ...newBundle });
-        await plugin.bundles.updateBundle(bundleId, newBundle, context);
-        await plugin.commit(context);
+        await plugin.bundles.update(context, {
+          id: bundleId,
+          data: newBundle,
+        });
+        await plugin.commit(context, {});
       });
     },
 
@@ -452,12 +451,13 @@ export function createPluginDatabaseCore<TContext = unknown>(
     ): Promise<void> {
       await coreOptions?.beforeOperation?.();
       await runWithMutationPlugin(async (plugin) => {
-        const bundle = await plugin.bundles.getBundleById(bundleId, context);
-        if (!bundle) {
+        const deletedBundle = await deleteBundleById(plugin, context, {
+          id: bundleId,
+        });
+        if (!deletedBundle) {
           return;
         }
-        await plugin.bundles.deleteBundle(bundle, context);
-        await plugin.commit(context);
+        await plugin.commit(context, {});
       });
     },
   };

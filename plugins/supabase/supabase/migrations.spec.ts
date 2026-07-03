@@ -71,46 +71,26 @@ describe("Supabase RLS migration", () => {
     expect(sql).not.toContain("GRANT EXECUTE");
   });
 
-  it("creates telemetry key and lifecycle storage without raw keys", async () => {
+  it("creates ingest key and analytics event storage without raw keys", async () => {
     const sql = await fs.readFile(telemetryMigrationPath, "utf8");
 
-    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.telemetry_keys");
-    expect(sql).toContain(
-      "CREATE TABLE IF NOT EXISTS public.bundle_lifecycle_events",
-    );
-    expect(sql).toContain(
-      "CREATE TABLE IF NOT EXISTS public.bundle_lifecycle_metrics",
-    );
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.ingest_keys");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.analytics_events");
     expect(sql).toContain("key_hash text NOT NULL");
     expect(sql).toContain("key_suffix text NOT NULL");
+    expect(sql).toContain("active boolean NOT NULL DEFAULT true");
+    expect(sql).toContain("event_type text NOT NULL");
+    expect(sql).toContain("payload jsonb NOT NULL");
     expect(sql).toContain(
-      "ALTER TABLE public.telemetry_keys ENABLE ROW LEVEL SECURITY;",
+      "ALTER TABLE public.ingest_keys ENABLE ROW LEVEL SECURITY;",
     );
     expect(sql).toContain(
-      "ALTER TABLE public.bundle_lifecycle_events ENABLE ROW LEVEL SECURITY;",
+      "ALTER TABLE public.analytics_events ENABLE ROW LEVEL SECURITY;",
     );
-    expect(sql).toContain(
-      "ALTER TABLE public.bundle_lifecycle_metrics ENABLE ROW LEVEL SECURITY;",
-    );
+    expect(sql).not.toContain("public.telemetry_keys");
+    expect(sql).not.toContain("public.bundle_lifecycle_events");
+    expect(sql).not.toContain("public.bundle_lifecycle_metrics");
     expect(sql).not.toMatch(/\btelemetry_key\s+text\b/i);
     expect(sql).not.toMatch(/\bkey\s+text\b/i);
-  });
-
-  it("creates an atomic lifecycle metric increment function", async () => {
-    const sql = await fs.readFile(telemetryMigrationPath, "utf8");
-
-    expect(sql).toContain(
-      "CREATE OR REPLACE FUNCTION public.increment_bundle_lifecycle_metric",
-    );
-    expect(sql).toContain("ON CONFLICT (bundle_id, bucket_start) DO UPDATE");
-    expect(sql).toContain(
-      "active_count = metrics.active_count + EXCLUDED.active_count",
-    );
-    expect(sql).toContain(
-      "recovered_count = metrics.recovered_count + EXCLUDED.recovered_count",
-    );
-    expect(sql).toContain(
-      "last_seen_at = GREATEST(metrics.last_seen_at, EXCLUDED.last_seen_at)",
-    );
   });
 });

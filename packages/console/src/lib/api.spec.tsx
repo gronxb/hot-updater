@@ -11,6 +11,7 @@ import {
   useDeleteBundleMutation,
   useIssueTelemetryKeyMutation,
   useRotateTelemetryKeyMutation,
+  useSetTelemetryKeyActiveMutation,
   useUpdateBundleMutation,
   type ConsoleApiClient,
 } from "./api";
@@ -27,6 +28,7 @@ vi.mock("./api-rpc", () => ({
   getBundleChildCounts: vi.fn(),
   getBundleChildren: vi.fn(),
   getBundleDownloadUrl: vi.fn(),
+  getBundleMetrics: vi.fn(),
   getBundles: vi.fn(),
   getChannels: vi.fn(),
   getConfig: vi.fn(),
@@ -35,6 +37,7 @@ vi.mock("./api-rpc", () => ({
   issueTelemetryKey: vi.fn(),
   promoteBundle: vi.fn(),
   rotateTelemetryKey: vi.fn(),
+  setTelemetryKeyActive: vi.fn(),
   updateBundle: vi.fn(),
 }));
 
@@ -93,7 +96,10 @@ describe("useBundleMetricsQuery", () => {
   });
 
   it("stays disabled when the provider does not support bundle metrics", () => {
-    const wrapper = createWrapper(queryClient);
+    const wrapper = createWrapper(queryClient, {
+      ...createDefaultConsoleApiClient(),
+      getBundleMetrics: undefined,
+    });
     const { result } = renderHook(() => useBundleMetricsQuery("bundle-001"), {
       wrapper,
     });
@@ -259,6 +265,7 @@ describe("telemetry key mutations", () => {
 
     expect(issueTelemetryKey).toHaveBeenCalledOnce();
     expect(queryClient.getQueryData(queryKeys.telemetryKey)).toEqual({
+      active: true,
       telemetryKeySuffix: "aintext",
     });
   });
@@ -285,10 +292,36 @@ describe("telemetry key mutations", () => {
 
     expect(rotateTelemetryKey).toHaveBeenCalledOnce();
     expect(queryClient.getQueryData(queryKeys.telemetryKey)).toEqual({
+      active: true,
       telemetryKeySuffix: "rotated",
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: queryKeys.telemetryKey,
+    });
+  });
+
+  it("updates telemetry key active state in the query cache", async () => {
+    const setTelemetryKeyActive = vi.fn(async () => ({ active: false }));
+    queryClient.setQueryData(queryKeys.telemetryKey, {
+      active: true,
+      telemetryKeySuffix: "aintext",
+    });
+    const wrapper = createWrapper(queryClient, {
+      ...createDefaultConsoleApiClient(),
+      setTelemetryKeyActive,
+    });
+    const { result } = renderHook(() => useSetTelemetryKeyActiveMutation(), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ active: false });
+    });
+
+    expect(setTelemetryKeyActive).toHaveBeenCalledWith({ active: false });
+    expect(queryClient.getQueryData(queryKeys.telemetryKey)).toEqual({
+      active: false,
+      telemetryKeySuffix: "aintext",
     });
   });
 });

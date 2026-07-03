@@ -26,6 +26,7 @@ const createRequiredAnalytics = (
 describe("supabase telemetry key auth", () => {
   beforeEach(() => {
     tables.telemetryKeys.clear();
+    tables.analyticsEvents.clear();
     tables.lifecycleEvents.clear();
     tables.lifecycleMetrics.clear();
   });
@@ -87,6 +88,40 @@ describe("supabase telemetry key auth", () => {
     });
     expect(stale.status).toBe(401);
     expect(current.status).toBe(202);
+  });
+
+  it("stores lifecycle notifications as generic analytics events", async () => {
+    const operations = createOperations();
+    const analytics = createRequiredAnalytics(operations);
+    const issued = await analytics.issueTelemetryKey();
+    const analyticsEvents = (
+      tables as typeof tables & {
+        readonly analyticsEvents: Map<
+          string,
+          {
+            readonly event_type: string;
+            readonly id: string;
+            readonly payload: typeof notifyPayload;
+          }
+        >;
+      }
+    ).analyticsEvents;
+
+    await createSupabaseNotifyAppReadyResult({
+      operations,
+      request: createNotifyRequest(issued.telemetryKey),
+    });
+
+    expect(analyticsEvents.get(notifyPayload.eventId)).toMatchObject({
+      event_type: "app.ready",
+      id: notifyPayload.eventId,
+      payload: expect.objectContaining({
+        bundleId: notifyPayload.bundleId,
+        installId: notifyPayload.installId,
+        status: "ACTIVE",
+      }),
+    });
+    expect(tables.lifecycleEvents.size).toBe(0);
   });
 
   it("rejects malformed telemetry keys and credential channels", async () => {

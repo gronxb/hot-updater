@@ -13,10 +13,13 @@ import type {
   HotUpdaterContext,
   PaginationOptions,
   RequestEnvContext,
+  TelemetryLifecyclePayload,
 } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
+  createTelemetryAnalyticsEvent,
+  deriveTelemetryLifecycleMetrics,
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
@@ -96,6 +99,20 @@ interface D1WorkerBundlePatchRow {
   patch_storage_uri: string;
   order_index: number | null;
 }
+
+type D1WorkerTelemetryKeyRow = {
+  active: number | boolean;
+  key_hash: string;
+  key_suffix: string;
+};
+
+type D1WorkerAnalyticsEventRow = {
+  event_type: string;
+  id: string;
+  observed_at: string;
+  payload: string;
+  received_at: string;
+};
 
 function buildWhereClause(
   conditions: QueryConditions | undefined,
@@ -416,8 +433,189 @@ export const d1WorkerDatabase = <
       };
 
       return {
+        analytics: {
+          async getTelemetryKeyCredential(context) {
+            const row = await queryFirst<D1WorkerTelemetryKeyRow>(
+              `
+                SELECT active, key_hash, key_suffix
+                FROM ingest_keys
+                WHERE id = ?
+                LIMIT 1
+              `,
+              ["default"],
+              context,
+            );
+            return row
+              ? {
+                  active: row.active === true || row.active === 1,
+                  keyHash: row.key_hash,
+                  telemetryKeySuffix: row.key_suffix,
+                }
+              : null;
+          },
+          async setTelemetryKeyActive(active, context) {
+            await config
+              .getDb(context)
+              .prepare(
+                `
+                  UPDATE ingest_keys
+                  SET active = ?, updated_at = ?
+                  WHERE id = ?
+                `,
+              )
+              .bind(active ? 1 : 0, new Date().toISOString(), "default")
+              .run();
+          },
+          async upsertTelemetryKeyCredential(credential, context) {
+            const now = new Date().toISOString();
+            await config
+              .getDb(context)
+              .prepare(
+                `
+                  INSERT INTO ingest_keys (
+                    id,
+                    key_hash,
+                    key_suffix,
+                    active,
+                    created_at,
+                    updated_at
+                  )
+                  VALUES (?, ?, ?, ?, ?, ?)
+                  ON CONFLICT(id) DO UPDATE SET
+                    key_hash = excluded.key_hash,
+                    key_suffix = excluded.key_suffix,
+                    active = excluded.active,
+                    updated_at = excluded.updated_at
+                `,
+              )
+              .bind(
+                "default",
+                credential.keyHash,
+                credential.telemetryKeySuffix,
+                credential.active ? 1 : 0,
+                now,
+                now,
+              )
+              .run();
+          },
+          async insertLifecycleEvent(
+            payload: TelemetryLifecyclePayload,
+            context,
+          ) {
+            const existing = await queryFirst<{ id: string }>(
+              "SELECT id FROM analytics_events WHERE id = ? LIMIT 1",
+              [payload.eventId],
+              context,
+            );
+            if (existing) {
+              return { accepted: true, deduped: true };
+            }
+
+            const event = createTelemetryAnalyticsEvent(payload);
+            await config
+              .getDb(context)
+              .prepare(
+                `
+                  INSERT INTO analytics_events (
+                    id,
+                    event_type,
+                    payload,
+                    observed_at,
+                    received_at
+                  )
+                  VALUES (?, ?, ?, ?, ?)
+                `,
+              )
+              .bind(
+                event.id,
+                event.eventType,
+                JSON.stringify(event.payload),
+                event.observedAt,
+                event.receivedAt,
+              )
+              .run();
+
+            return { accepted: true, deduped: false };
+          },
+          async getLifecycleMetrics(context) {
+            const rows = await queryAll<D1WorkerAnalyticsEventRow>(
+              `
+                SELECT id, event_type, payload, observed_at, received_at
+                FROM analytics_events
+                ORDER BY observed_at ASC, received_at ASC
+              `,
+              [],
+              context,
+            );
+            return deriveTelemetryLifecycleMetrics(
+              rows.map((row) => ({
+                eventType: row.event_type,
+                id: row.id,
+                observedAt: row.observed_at,
+                payload: row.payload,
+                receivedAt: row.received_at,
+              })),
+            );
+          },
+        },
         bundles: {
-          async getUpdateInfo(args, context) {
+          async get(context, { id: bundleId }) {
+            const [row, patchMap] = await Promise.all([
+              queryFirst<D1WorkerBundleRow>(
+                "SELECT * FROM bundles WHERE id = ? LIMIT 1",
+                [bundleId],
+                context,
+              ),
+              getPatchMap([bundleId], context),
+            ]);
+
+            return row
+              ? transformRowToBundle(row, patchMap.get(bundleId))
+              : null;
+          },
+
+          async list(context, options) {
+            const { where, limit, orderBy } = options;
+            const offset =
+              (("offset" in options ? options.offset : undefined) as
+                | number
+                | undefined) ?? 0;
+            const { sql: whereClause, params } = buildWhereClause(where);
+            const orderSql =
+              orderBy?.direction === "asc"
+                ? "ORDER BY id ASC"
+                : "ORDER BY id DESC";
+
+            const countRows = await queryAll<{ total: number }>(
+              `SELECT COUNT(*) as total FROM bundles${whereClause}`,
+              params,
+              context,
+            );
+            const total = countRows[0]?.total ?? 0;
+
+            const rows = await queryAll<D1WorkerBundleRow>(
+              `SELECT * FROM bundles${whereClause} ${orderSql} LIMIT ? OFFSET ?`,
+              [...params, limit, offset],
+              context,
+            );
+
+            const patchMap = await getPatchMap(
+              rows.map((row) => row.id),
+              context,
+            );
+            const bundles = rows.map((row) =>
+              transformRowToBundle(row, patchMap.get(row.id)),
+            );
+
+            const paginationOptions: PaginationOptions = { limit, offset };
+            return {
+              data: bundles,
+              pagination: calculatePagination(total, paginationOptions),
+            };
+          },
+        },
+        updates: {
+          async check(context, args) {
             const channel = args.channel ?? "production";
             const minBundleId = args.minBundleId ?? NIL_UUID;
 
@@ -476,64 +674,9 @@ export const d1WorkerDatabase = <
               context,
             });
           },
-
-          async getBundleById(bundleId, context) {
-            const [row, patchMap] = await Promise.all([
-              queryFirst<D1WorkerBundleRow>(
-                "SELECT * FROM bundles WHERE id = ? LIMIT 1",
-                [bundleId],
-                context,
-              ),
-              getPatchMap([bundleId], context),
-            ]);
-
-            return row
-              ? transformRowToBundle(row, patchMap.get(bundleId))
-              : null;
-          },
-
-          async getBundles(options, context) {
-            const { where, limit, orderBy } = options;
-            const offset =
-              (("offset" in options ? options.offset : undefined) as
-                | number
-                | undefined) ?? 0;
-            const { sql: whereClause, params } = buildWhereClause(where);
-            const orderSql =
-              orderBy?.direction === "asc"
-                ? "ORDER BY id ASC"
-                : "ORDER BY id DESC";
-
-            const countRows = await queryAll<{ total: number }>(
-              `SELECT COUNT(*) as total FROM bundles${whereClause}`,
-              params,
-              context,
-            );
-            const total = countRows[0]?.total ?? 0;
-
-            const rows = await queryAll<D1WorkerBundleRow>(
-              `SELECT * FROM bundles${whereClause} ${orderSql} LIMIT ? OFFSET ?`,
-              [...params, limit, offset],
-              context,
-            );
-
-            const patchMap = await getPatchMap(
-              rows.map((row) => row.id),
-              context,
-            );
-            const bundles = rows.map((row) =>
-              transformRowToBundle(row, patchMap.get(row.id)),
-            );
-
-            const paginationOptions: PaginationOptions = { limit, offset };
-            return {
-              data: bundles,
-              pagination: calculatePagination(total, paginationOptions),
-            };
-          },
         },
-        async commit({ changes }, context) {
-          const changedSets = changes.bundles;
+        async commit(context, { changes }) {
+          const changedSets = changes.bundles ?? [];
           if (changedSets.length === 0) {
             return;
           }

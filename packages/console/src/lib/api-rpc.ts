@@ -7,8 +7,10 @@ import type {
   GetBundleChildrenInput,
   GetBundleDownloadUrlInput,
   GetBundleInput,
+  GetBundleMetricsInput,
   GetBundlesInput,
   PromoteBundleInput,
+  SetTelemetryKeyActiveInput,
   UpdateBundleInput,
 } from "./server/api-operations.server";
 
@@ -86,6 +88,32 @@ export const rotateTelemetryKey = createServerFn({ method: "POST" }).handler(
     }
   },
 );
+
+export const setTelemetryKeyActive = createServerFn({ method: "POST" })
+  .inputValidator((input: SetTelemetryKeyActiveInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { setTelemetryKeyActiveOperation } =
+        await import("./server/api-operations.server");
+      return await setTelemetryKeyActiveOperation(data);
+    } catch (error) {
+      console.error("Error during telemetry key state update:", error);
+      throw error;
+    }
+  });
+
+export const getBundleMetrics = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundleMetricsInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { getBundleMetricsOperation } =
+        await import("./server/api-operations.server");
+      return await getBundleMetricsOperation(data);
+    } catch (error) {
+      console.error("Error during bundle metrics retrieval:", error);
+      throw error;
+    }
+  });
 
 // GET /api/bundles
 export const getBundles = createServerFn({ method: "GET" })

@@ -231,17 +231,14 @@ describe("cloudflare worker d1Database", () => {
       rows.set(row.id, row);
     }
 
-    const result = await plugin.bundles.getUpdateInfo?.(
-      {
-        appVersion: "1.0.0",
-        bundleId: "00000000-0000-0000-0000-000000000000",
-        platform: "ios",
-        channel: "production",
-        minBundleId: "00000000-0000-0000-0000-000000000000",
-        _updateStrategy: "appVersion",
-      },
-      context,
-    );
+    const result = await plugin.updates?.check(context, {
+      appVersion: "1.0.0",
+      bundleId: "00000000-0000-0000-0000-000000000000",
+      platform: "ios",
+      channel: "production",
+      minBundleId: "00000000-0000-0000-0000-000000000000",
+      _updateStrategy: "appVersion",
+    });
 
     expect(result).not.toBeNull();
   });
@@ -252,7 +249,7 @@ describe("cloudflare worker d1Database", () => {
       rows.set(row.id, row);
     }
 
-    const result = await plugin.bundles.getBundles({ limit: 200 }, context);
+    const result = await plugin.bundles.list(context, { limit: 200 });
 
     expect(result.data).toHaveLength(200);
     expect(result.pagination.total).toBe(200);

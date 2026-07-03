@@ -88,6 +88,7 @@ export type SupabaseTelemetryOperations = Required<
     | "getLifecycleMetrics"
     | "getTelemetryKeyCredential"
     | "insertLifecycleEvent"
+    | "setTelemetryKeyActive"
     | "upsertTelemetryKeyCredential"
   >
 >;

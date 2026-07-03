@@ -187,8 +187,7 @@ export const standaloneRepository =
 
       return {
         bundles: {
-          supportsCursorPagination: true,
-          async getBundleById(bundleId: string): Promise<Bundle | null> {
+          async get(_context, { id: bundleId }): Promise<Bundle | null> {
             try {
               const { path, headers: routeHeaders } = routes.retrieve(bundleId);
               const response = await fetch(buildUrl(path), {
@@ -205,7 +204,7 @@ export const standaloneRepository =
               return null;
             }
           },
-          async getBundles(options) {
+          async list(_context, options) {
             const { where, limit, cursor, page } = options ?? {};
             const internalOffset =
               options &&
@@ -286,8 +285,8 @@ export const standaloneRepository =
             throw new Error("API Error: Invalid bundle list response");
           },
         },
-        async commit({ changes }) {
-          const changedSets = changes.bundles;
+        async commit(_context, { changes }) {
+          const changedSets = changes.bundles ?? [];
           if (changedSets.length === 0) {
             return;
           }

@@ -21,6 +21,7 @@ export {
   readCloudflareTelemetryCredential,
   recordCloudflareLifecycleEvent,
   rotateCloudflareTelemetryKey,
+  setCloudflareTelemetryKeyActiveState,
 } from "../cloudflareTelemetry";
 export type { CloudflareWorkerDatabaseEnv, CloudflareWorkerStorageEnv };
 

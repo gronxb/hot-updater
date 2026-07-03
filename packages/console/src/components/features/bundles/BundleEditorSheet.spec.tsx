@@ -199,6 +199,24 @@ describe("BundleEditorSheet", () => {
     expect(screen.getByText("Recovery pressure")).toBeTruthy();
   });
 
+  it("renders zero event-sourced metrics for bundles with no app-ready signals", async () => {
+    renderBundleEditorSheet({
+      api: createConsoleApi({
+        getBundleMetrics: vi.fn(async () => ({
+          active: 0,
+          lastSeenAt: null,
+          recovered: 0,
+          series: [],
+        })),
+      }),
+    });
+
+    expect(await screen.findByText("Bundle metrics")).toBeTruthy();
+    expect(screen.getByText("0 active")).toBeTruthy();
+    expect(screen.getByText("0 recovered")).toBeTruthy();
+    expect(screen.getByText("No app-ready signals yet")).toBeTruthy();
+  });
+
   it("hides bundle metrics when the provider does not support them", () => {
     renderBundleEditorSheet();
 

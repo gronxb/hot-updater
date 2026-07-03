@@ -536,23 +536,22 @@ export const createBlobDatabasePlugin = <TConfig>({
       name,
       factory: () => ({
         bundles: {
-          supportsCursorPagination: true,
-          async getBundleById(bundleId: string) {
-            if (locallyDeletedBundleIds.has(bundleId)) {
+          async get(_context, { id }) {
+            if (locallyDeletedBundleIds.has(id)) {
               return null;
             }
 
-            const pendingBundle = pendingBundlesMap.get(bundleId);
+            const pendingBundle = pendingBundlesMap.get(id);
             if (pendingBundle) {
               return removeBundleInternalKeys(pendingBundle);
             }
-            const bundle = bundlesMap.get(bundleId);
+            const bundle = bundlesMap.get(id);
             if (bundle) {
               return removeBundleInternalKeys(bundle);
             }
 
             const bundles = await reloadBundles();
-            const matchedBundle = bundles.find((item) => item.id === bundleId);
+            const matchedBundle = bundles.find((item) => item.id === id);
             if (!matchedBundle) {
               return null;
             }
@@ -560,19 +559,8 @@ export const createBlobDatabasePlugin = <TConfig>({
             return removeBundleInternalKeys(matchedBundle);
           },
 
-          async getUpdateInfo(
-            args: GetBundlesArgs,
-            context?: HotUpdaterContext,
-          ) {
-            if (args._updateStrategy === "appVersion") {
-              return getAppVersionUpdateInfo(args, context);
-            }
-
-            return getFingerprintUpdateInfo(args, context);
-          },
-
-          async getBundles(options) {
-            const { where, limit, offset, orderBy, cursor } = options;
+          async list(_context, input) {
+            const { where, limit, offset, orderBy, cursor } = input;
             let allBundles = await loadAllBundlesForManagementFallback(where);
             if (where) {
               allBundles = allBundles.filter((bundle) =>
@@ -589,11 +577,20 @@ export const createBlobDatabasePlugin = <TConfig>({
             });
           },
         },
-        async commit({ changes }) {
-          const changedSets = changes.bundles;
-          if (changedSets.length === 0) return;
+        updates: {
+          async check(
+            context: HotUpdaterContext | undefined,
+            args: GetBundlesArgs,
+          ) {
+            if (args._updateStrategy === "appVersion") {
+              return getAppVersionUpdateInfo(args, context);
+            }
 
-        async commit({ changedSets }) {
+            return getFingerprintUpdateInfo(args, context);
+          },
+        },
+        async commit(_context, { changes }) {
+          const changedSets = changes.bundles ?? [];
           if (changedSets.length === 0) return;
 
           const changedBundlesByKey: Record<string, Bundle[]> = {};

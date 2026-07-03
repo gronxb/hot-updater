@@ -1,6 +1,9 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  deleteBundleById,
+  type DatabasePlugin,
+} from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -465,24 +468,27 @@ describe("supabaseDatabase plugin", () => {
   });
 
   setupBundleMethodsTestSuite({
-    getBundleById: (id) => plugin.bundles.getBundleById(id),
+    getBundleById: (id) => plugin.bundles.get(undefined, { id: id }),
     getChannels: () => plugin.channels.getChannels(),
     insertBundle: async (bundle) => {
-      await plugin.bundles.appendBundle(bundle);
-      await plugin.commit();
+      await plugin.bundles.append(undefined, { data: bundle });
+      await plugin.commit(undefined, {});
     },
-    getBundles: (options) => plugin.bundles.getBundles(options),
+    getBundles: (options) => plugin.bundles.list(undefined, options),
     updateBundleById: async (bundleId, newBundle) => {
-      await plugin.bundles.updateBundle(bundleId, newBundle);
-      await plugin.commit();
+      await plugin.bundles.update(undefined, { id: bundleId, data: newBundle });
+      await plugin.commit(undefined, {});
     },
     deleteBundleById: async (bundleId) => {
-      const bundle = await plugin.bundles.getBundleById(bundleId);
+      const bundle = await plugin.bundles.get(undefined, { id: bundleId });
       if (!bundle) {
         return;
       }
-      await plugin.bundles.deleteBundle(bundle);
-      await plugin.commit();
+      await deleteBundleById(plugin, undefined, {
+        id: bundle.id,
+        bundle: bundle,
+      });
+      await plugin.commit(undefined, {});
     },
   });
 
@@ -492,11 +498,11 @@ describe("supabaseDatabase plugin", () => {
       bundlePatchRows.clear();
 
       for (const bundle of bundles) {
-        await plugin.bundles.appendBundle(bundle);
+        await plugin.bundles.append(undefined, { data: bundle });
       }
-      await plugin.commit();
+      await plugin.commit(undefined, {});
 
-      return plugin.bundles.getUpdateInfo?.(args) ?? null;
+      return plugin.updates?.check(undefined, args) ?? null;
     },
   });
 
@@ -524,9 +530,9 @@ describe("supabaseDatabase plugin", () => {
       storageUri: "storage://app/target.zip",
     };
 
-    await plugin.bundles.appendBundle(currentBundle);
-    await plugin.bundles.appendBundle(targetBundle);
-    await plugin.commit();
+    await plugin.bundles.append(undefined, { data: currentBundle });
+    await plugin.bundles.append(undefined, { data: targetBundle });
+    await plugin.commit(undefined, {});
 
     const args: GetBundlesArgs = {
       _updateStrategy: "fingerprint",
@@ -537,7 +543,7 @@ describe("supabaseDatabase plugin", () => {
       platform: "ios",
     };
 
-    const updateInfo = await plugin.bundles.getUpdateInfo?.(args);
+    const updateInfo = await plugin.updates?.check(undefined, args);
 
     expect(updateInfo).toEqual({
       fileHash: "target-file-hash",

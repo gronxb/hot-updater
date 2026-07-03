@@ -19,12 +19,10 @@ function createDatabasePlugin(name: string): DatabasePlugin {
     name,
     commit: vi.fn(),
     bundles: {
-      getBundleById: vi.fn(),
-      getBundles: vi.fn(),
-      updateBundle: vi.fn(),
-      appendBundle: vi.fn(),
-      deleteBundle: vi.fn(),
-      commit: vi.fn(),
+      get: vi.fn(),
+      list: vi.fn(),
+      update: vi.fn(),
+      append: vi.fn(),
     },
     channels: {
       getChannels: vi.fn(),

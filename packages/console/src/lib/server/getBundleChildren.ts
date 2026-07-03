@@ -28,7 +28,7 @@ async function collectBundleChildrenByBaseIds(
   const baseBundles = (
     await Promise.all(
       uniqueBaseBundleIds.map((bundleId) =>
-        deps.databasePlugin.bundles.getBundleById(bundleId),
+        deps.databasePlugin.bundles.get(undefined, { id: bundleId }),
       ),
     )
   ).filter((bundle): bundle is Bundle => Boolean(bundle));
@@ -60,14 +60,14 @@ async function collectBundleChildrenByBaseIds(
     let after: string | undefined;
 
     while (true) {
-      const page = await deps.databasePlugin.bundles.getBundles({
+      const page = await deps.databasePlugin.bundles.list(undefined, {
         where: {
           channel: group.channel,
           platform: group.platform,
         },
         limit: CHILDREN_QUERY_LIMIT,
         cursor: after ? { after } : undefined,
-      } as Parameters<DatabasePlugin["bundles"]["getBundles"]>[0]);
+      } as Parameters<DatabasePlugin["bundles"]["list"]>[1]);
 
       for (const bundle of page.data) {
         const parentBundleIds = getBundlePatches(bundle).map(

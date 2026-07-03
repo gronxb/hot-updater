@@ -6,11 +6,11 @@ import type {
 export const TELEMETRY_KEY_PREFIX = "hutk_";
 export const TELEMETRY_KEY_SUFFIX_LENGTH = 8;
 export const TELEMETRY_KEY_BYTES = 32;
-export const TELEMETRY_KEY_DOC_ID = "current";
-export const TELEMETRY_KEYS_COLLECTION = "telemetry_keys";
-export const LIFECYCLE_EVENTS_COLLECTION = "bundle_lifecycle_events";
-export const LIFECYCLE_METRICS_COLLECTION = "bundle_lifecycle_metrics";
-export const LIFECYCLE_BUCKETS_COLLECTION = "bundle_lifecycle_metric_buckets";
+export const TELEMETRY_KEY_DOC_ID = "default";
+export const INGEST_KEYS_COLLECTION = "ingest_keys";
+export const ANALYTICS_EVENTS_COLLECTION = "analytics_events";
+export const TELEMETRY_KEYS_COLLECTION = INGEST_KEYS_COLLECTION;
+export const LIFECYCLE_EVENTS_COLLECTION = ANALYTICS_EVENTS_COLLECTION;
 
 export const LifecycleStatus = {
   Active: "ACTIVE",
@@ -71,6 +71,7 @@ export type FirebaseTelemetryOperations = Required<
     | "getLifecycleMetrics"
     | "getTelemetryKeyCredential"
     | "insertLifecycleEvent"
+    | "setTelemetryKeyActive"
     | "upsertTelemetryKeyCredential"
   >
 >;

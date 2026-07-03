@@ -1,4 +1,8 @@
 import type { Bundle } from "@hot-updater/core";
+import {
+  createDatabaseAnalyticsRuntime,
+  deleteBundleById,
+} from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setupGetUpdateInfoTestSuite } from "../../../../packages/test-utils/src/index";
@@ -60,22 +64,75 @@ describe("mockDatabase", () => {
         initialBundles: JSON.parse(JSON.stringify(bundles)),
       })();
 
-      return plugin.bundles.getUpdateInfo?.(args) ?? null;
+      return plugin.updates?.check(undefined, args) ?? null;
     },
   });
 
   it("should return a database plugin", async () => {
-    const bundles = await plugin.bundles.getBundles({ limit: 20 });
+    const bundles = await plugin.bundles.list(undefined, { limit: 20 });
 
     expect(bundles.data).toEqual([]);
   });
 
   it("should return a database plugin with initial bundles", async () => {
-    const bundles = await pluginWithBundles.bundles.getBundles({
+    const bundles = await pluginWithBundles.bundles.list(undefined, {
       limit: 20,
     });
 
     expect(bundles.data).toEqual(DEFAULT_BUNDLES_MOCK);
+  });
+
+  it("supports mock ingest key lifecycle operations", async () => {
+    if (!pluginWithBundles.analytics) {
+      throw new Error("mock analytics operations are required");
+    }
+    const analytics = createDatabaseAnalyticsRuntime(
+      pluginWithBundles.analytics,
+    );
+
+    await expect(analytics.getTelemetryKeyState?.()).resolves.toEqual({
+      active: true,
+      telemetryKeySuffix: "00000000",
+    });
+
+    const issued = await analytics.issueTelemetryKey?.();
+    if (!issued) {
+      throw new Error("mock analytics should issue ingest keys");
+    }
+    expect(issued?.telemetryKey).toMatch(/^hutk_/);
+    await expect(
+      analytics.authenticateTelemetryKey?.(issued.telemetryKey),
+    ).resolves.toBe(true);
+
+    await analytics.setTelemetryKeyActive?.(false);
+    await expect(
+      analytics.authenticateTelemetryKey?.(issued.telemetryKey),
+    ).resolves.toBe(false);
+
+    await analytics.setTelemetryKeyActive?.(true);
+    const rotated = await analytics.rotateTelemetryKey?.();
+    if (!rotated) {
+      throw new Error("mock analytics should rotate ingest keys");
+    }
+    await expect(
+      analytics.authenticateTelemetryKey?.(issued.telemetryKey),
+    ).resolves.toBe(false);
+    await expect(
+      analytics.authenticateTelemetryKey?.(rotated.telemetryKey),
+    ).resolves.toBe(true);
+  });
+
+  it("returns event-sourced mock lifecycle metrics", async () => {
+    const metrics = await pluginWithBundles.analytics?.getLifecycleMetrics?.();
+
+    expect(metrics?.totals.active).toBeGreaterThan(0);
+    expect(metrics?.totals.recovered).toBeGreaterThan(0);
+    expect(metrics?.bundles).toContainEqual(
+      expect.objectContaining({
+        active: expect.any(Number),
+        bundleId: DEFAULT_BUNDLES_MOCK[0].id,
+      }),
+    );
   });
 
   it("should return correct pagination info for single page", async () => {
@@ -124,12 +181,12 @@ describe("mockDatabase", () => {
       metadata: {},
     };
 
-    await plugin.bundles.appendBundle(bundle1);
-    await plugin.bundles.appendBundle(bundle2);
-    await plugin.bundles.appendBundle(bundle3);
-    await plugin.commit();
+    await plugin.bundles.append(undefined, { data: bundle1 });
+    await plugin.bundles.append(undefined, { data: bundle2 });
+    await plugin.bundles.append(undefined, { data: bundle3 });
+    await plugin.commit(undefined, {});
 
-    const result = await plugin.bundles.getBundles({
+    const result = await plugin.bundles.list(undefined, {
       where: { channel: "production" },
       limit: 20,
     });
@@ -193,12 +250,12 @@ describe("mockDatabase", () => {
       metadata: {},
     };
 
-    await plugin.bundles.appendBundle(bundle1);
-    await plugin.bundles.appendBundle(bundle2);
-    await plugin.bundles.appendBundle(bundle3);
-    await plugin.commit();
+    await plugin.bundles.append(undefined, { data: bundle1 });
+    await plugin.bundles.append(undefined, { data: bundle2 });
+    await plugin.bundles.append(undefined, { data: bundle3 });
+    await plugin.commit(undefined, {});
 
-    const firstPage = await plugin.bundles.getBundles({
+    const firstPage = await plugin.bundles.list(undefined, {
       where: { channel: "production" },
       limit: 2,
     });
@@ -213,7 +270,7 @@ describe("mockDatabase", () => {
       nextCursor: "bundle2",
     });
 
-    const secondPage = await plugin.bundles.getBundles({
+    const secondPage = await plugin.bundles.list(undefined, {
       where: { channel: "production" },
       limit: 2,
       cursor: {
@@ -233,10 +290,10 @@ describe("mockDatabase", () => {
   });
 
   it("should append a bundle", async () => {
-    await plugin.bundles.appendBundle(DEFAULT_BUNDLES_MOCK[0]);
-    await plugin.commit();
+    await plugin.bundles.append(undefined, { data: DEFAULT_BUNDLES_MOCK[0] });
+    await plugin.commit(undefined, {});
 
-    const bundles = await plugin.bundles.getBundles({ limit: 20 });
+    const bundles = await plugin.bundles.list(undefined, { limit: 20 });
 
     expect(bundles.data).toEqual([DEFAULT_BUNDLES_MOCK[0]]);
   });
@@ -247,12 +304,15 @@ describe("mockDatabase", () => {
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
     })();
 
-    await singleBundlePlugin.bundles.updateBundle(DEFAULT_BUNDLES_MOCK[0].id, {
-      enabled: false,
+    await singleBundlePlugin.bundles.update(undefined, {
+      id: DEFAULT_BUNDLES_MOCK[0].id,
+      data: {
+        enabled: false,
+      },
     });
-    await singleBundlePlugin.commit();
+    await singleBundlePlugin.commit(undefined, {});
 
-    const bundles = await singleBundlePlugin.bundles.getBundles({
+    const bundles = await singleBundlePlugin.bundles.list(undefined, {
       limit: 20,
     });
 
@@ -265,9 +325,9 @@ describe("mockDatabase", () => {
   });
 
   it("should get bundle by id", async () => {
-    const bundle = await pluginWithBundles.bundles.getBundleById(
-      DEFAULT_BUNDLES_MOCK[0].id,
-    );
+    const bundle = await pluginWithBundles.bundles.get(undefined, {
+      id: DEFAULT_BUNDLES_MOCK[0].id,
+    });
 
     expect(bundle).toEqual(DEFAULT_BUNDLES_MOCK[0]);
   });
@@ -279,17 +339,17 @@ describe("mockDatabase", () => {
     })();
 
     await expect(
-      singleBundlePlugin.bundles.updateBundle(
-        "00000000-0000-0000-0000-000000000001",
-        {
+      singleBundlePlugin.bundles.update(undefined, {
+        id: "00000000-0000-0000-0000-000000000001",
+        data: {
           enabled: false,
         },
-      ),
+      }),
     ).rejects.toThrowError("targetBundleId not found");
   });
 
   it("should sort bundles by id", async () => {
-    const bundles = await pluginWithBundles.bundles.getBundles({
+    const bundles = await pluginWithBundles.bundles.list(undefined, {
       limit: 20,
     });
 
@@ -298,7 +358,7 @@ describe("mockDatabase", () => {
 
   it("should delete a bundle successfully", async () => {
     // Get initial bundles and verify count
-    const bundlesBefore = await pluginWithBundles.bundles.getBundles({
+    const bundlesBefore = await pluginWithBundles.bundles.list(undefined, {
       limit: 20,
     });
     expect(bundlesBefore.data).toHaveLength(2);
@@ -308,11 +368,14 @@ describe("mockDatabase", () => {
     const secondBundleId = bundlesBefore.data[1].id;
 
     // Delete first bundle
-    await pluginWithBundles.bundles.deleteBundle(bundlesBefore.data[0]);
-    await pluginWithBundles.commit();
+    await deleteBundleById(pluginWithBundles, undefined, {
+      id: bundlesBefore.data[0].id,
+      bundle: bundlesBefore.data[0],
+    });
+    await pluginWithBundles.commit(undefined, {});
 
     // Verify deletion
-    const bundlesAfter = await pluginWithBundles.bundles.getBundles({
+    const bundlesAfter = await pluginWithBundles.bundles.list(undefined, {
       limit: 20,
     });
     expect(bundlesAfter.data).toHaveLength(1);
@@ -330,15 +393,21 @@ describe("mockDatabase", () => {
       id: "non-existent-bundle",
     };
 
-    await plugin.bundles.deleteBundle(nonExistentBundle);
-    await expect(plugin.commit()).rejects.toThrow(
+    await deleteBundleById(plugin, undefined, {
+      id: nonExistentBundle.id,
+      bundle: nonExistentBundle,
+    });
+    await expect(plugin.commit(undefined, {})).rejects.toThrow(
       "Bundle with id non-existent-bundle not found",
     );
   });
 
   it("should throw error when deleting from empty plugin", async () => {
-    await plugin.bundles.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
-    await expect(plugin.commit()).rejects.toThrow(
+    await deleteBundleById(plugin, undefined, {
+      id: DEFAULT_BUNDLES_MOCK[0].id,
+      bundle: DEFAULT_BUNDLES_MOCK[0],
+    });
+    await expect(plugin.commit(undefined, {})).rejects.toThrow(
       `Bundle with id ${DEFAULT_BUNDLES_MOCK[0].id} not found`,
     );
   });
@@ -355,34 +424,40 @@ describe("mockDatabase", () => {
       },
     )();
 
-    await pluginWithHook.bundles.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
-    await pluginWithHook.commit();
+    await deleteBundleById(pluginWithHook, undefined, {
+      id: DEFAULT_BUNDLES_MOCK[0].id,
+      bundle: DEFAULT_BUNDLES_MOCK[0],
+    });
+    await pluginWithHook.commit(undefined, {});
 
     // Hook should be called only once from commit
     expect(mockHook).toHaveBeenCalledTimes(1);
   });
 
   it("should delete bundles and update getBundleById results", async () => {
-    const initialBundles = await pluginWithBundles.bundles.getBundles({
+    const initialBundles = await pluginWithBundles.bundles.list(undefined, {
       limit: 20,
     });
 
     const bundleToDelete = initialBundles.data[0];
 
     // Verify bundle exists before deletion
-    const bundleBefore = await pluginWithBundles.bundles.getBundleById(
-      bundleToDelete.id,
-    );
+    const bundleBefore = await pluginWithBundles.bundles.get(undefined, {
+      id: bundleToDelete.id,
+    });
     expect(bundleBefore).not.toBeNull();
 
     // Delete bundle
-    await pluginWithBundles.bundles.deleteBundle(bundleToDelete);
-    await pluginWithBundles.commit();
+    await deleteBundleById(pluginWithBundles, undefined, {
+      id: bundleToDelete.id,
+      bundle: bundleToDelete,
+    });
+    await pluginWithBundles.commit(undefined, {});
 
     // Verify bundle no longer exists
-    const bundleAfter = await pluginWithBundles.bundles.getBundleById(
-      bundleToDelete.id,
-    );
+    const bundleAfter = await pluginWithBundles.bundles.get(undefined, {
+      id: bundleToDelete.id,
+    });
     expect(bundleAfter).toBeNull();
   });
 
@@ -412,8 +487,11 @@ describe("mockDatabase", () => {
 
     // Delete staging bundle
     const stagingBundle = testBundles.find((b) => b.id === "bundle-staging")!;
-    await testPlugin.bundles.deleteBundle(stagingBundle);
-    await testPlugin.commit();
+    await deleteBundleById(testPlugin, undefined, {
+      id: stagingBundle.id,
+      bundle: stagingBundle,
+    });
+    await testPlugin.commit(undefined, {});
 
     // Verify only production channel remains
     const channelsAfter = await testPlugin.channels.getChannels();
@@ -446,11 +524,14 @@ describe("mockDatabase", () => {
 
     // Delete middle bundle
     const bundleToDelete = testBundles.find((b) => b.id === "bundle-2")!;
-    await testPlugin.bundles.deleteBundle(bundleToDelete);
-    await testPlugin.commit();
+    await deleteBundleById(testPlugin, undefined, {
+      id: bundleToDelete.id,
+      bundle: bundleToDelete,
+    });
+    await testPlugin.commit(undefined, {});
 
     // Get first page with limit 2
-    const firstPage = await testPlugin.bundles.getBundles({
+    const firstPage = await testPlugin.bundles.list(undefined, {
       limit: 2,
     });
 
@@ -468,8 +549,11 @@ describe("mockDatabase", () => {
     })();
 
     try {
-      await latencyPlugin.bundles.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
-      const commitPromise = latencyPlugin.commit();
+      await deleteBundleById(latencyPlugin, undefined, {
+        id: DEFAULT_BUNDLES_MOCK[0].id,
+        bundle: DEFAULT_BUNDLES_MOCK[0],
+      });
+      const commitPromise = latencyPlugin.commit(undefined, {});
       let committed = false;
       void commitPromise.then(() => {
         committed = true;
@@ -503,23 +587,30 @@ describe("mockDatabase", () => {
     };
 
     // Add bundle
-    await plugin.bundles.appendBundle(newBundle);
-    await plugin.commit();
+    await plugin.bundles.append(undefined, { data: newBundle });
+    await plugin.commit(undefined, {});
 
     // Verify bundle exists
-    const bundleExists = await plugin.bundles.getBundleById("new-bundle");
+    const bundleExists = await plugin.bundles.get(undefined, {
+      id: "new-bundle",
+    });
     expect(bundleExists).toEqual(newBundle);
 
     // Delete bundle
-    await plugin.bundles.deleteBundle(newBundle);
-    await plugin.commit();
+    await deleteBundleById(plugin, undefined, {
+      id: newBundle.id,
+      bundle: newBundle,
+    });
+    await plugin.commit(undefined, {});
 
     // Verify bundle is deleted
-    const bundleAfterDelete = await plugin.bundles.getBundleById("new-bundle");
+    const bundleAfterDelete = await plugin.bundles.get(undefined, {
+      id: "new-bundle",
+    });
     expect(bundleAfterDelete).toBeNull();
 
     // Verify empty list
-    const allBundles = await plugin.bundles.getBundles({ limit: 20 });
+    const allBundles = await plugin.bundles.list(undefined, { limit: 20 });
     expect(allBundles.data).toHaveLength(0);
   });
 
@@ -555,15 +646,18 @@ describe("mockDatabase", () => {
     };
 
     // Add first bundle, commit it, then delete it, then add second bundle
-    await plugin.bundles.appendBundle(bundle1);
-    await plugin.commit();
+    await plugin.bundles.append(undefined, { data: bundle1 });
+    await plugin.commit(undefined, {});
 
-    await plugin.bundles.deleteBundle(bundle1);
-    await plugin.bundles.appendBundle(bundle2);
-    await plugin.commit();
+    await deleteBundleById(plugin, undefined, {
+      id: bundle1.id,
+      bundle: bundle1,
+    });
+    await plugin.bundles.append(undefined, { data: bundle2 });
+    await plugin.commit(undefined, {});
 
     // Should only have bundle2
-    const bundles = await plugin.bundles.getBundles({ limit: 20 });
+    const bundles = await plugin.bundles.list(undefined, { limit: 20 });
     expect(bundles.data).toHaveLength(1);
     expect(bundles.data[0].id).toBe("bundle2");
   });

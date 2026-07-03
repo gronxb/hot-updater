@@ -38,12 +38,11 @@ const createDatabasePlugin = (
 ): DatabasePlugin => ({
   name: "mockDatabase",
   bundles: {
-    async appendBundle() {},
-    async deleteBundle() {},
-    async getBundleById(bundleId) {
+    async append() {},
+    async get(_context, { id: bundleId }) {
       return bundles.get(bundleId) ?? null;
     },
-    async getBundles() {
+    async list() {
       return {
         data: Array.from(bundles.values()),
         pagination: {
@@ -55,7 +54,7 @@ const createDatabasePlugin = (
         },
       };
     },
-    async updateBundle(bundleId, nextBundle) {
+    async update(_context, { id: bundleId, data: nextBundle }) {
       const currentBundle = bundles.get(bundleId);
       if (!currentBundle) {
         return;
@@ -126,6 +125,11 @@ describe("createBundleDiff", () => {
         storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
       }),
     );
+    const databasePlugin = createDatabasePlugin(bundles);
+    const getBundleById = vi.spyOn(databasePlugin.bundles, "get");
+    const updateBundle = vi.spyOn(databasePlugin.bundles, "update");
+    const commit = vi.spyOn(databasePlugin, "commit");
+    const context = { requestId: "patch-request" };
 
     vi.stubGlobal(
       "fetch",
@@ -185,12 +189,28 @@ describe("createBundleDiff", () => {
           bundleId: targetBundle.id,
         },
         {
-          databasePlugin: createDatabasePlugin(bundles),
+          databasePlugin,
           storagePlugin: createStoragePlugin(upload),
+        },
+        {
+          context,
         },
       );
 
       expect(upload).toHaveBeenCalledOnce();
+      expect(getBundleById).toHaveBeenCalledWith(context, {
+        id: baseBundle.id,
+      });
+      expect(getBundleById).toHaveBeenCalledWith(context, {
+        id: targetBundle.id,
+      });
+      expect(updateBundle).toHaveBeenCalledWith(context, {
+        data: expect.objectContaining({
+          patchBaseBundleId: baseBundle.id,
+        }),
+        id: targetBundle.id,
+      });
+      expect(commit).toHaveBeenCalledWith(context, {});
       expect(updatedBundle).toMatchObject({
         patchBaseBundleId: baseBundle.id,
         patchBaseFileHash: "hash-old",

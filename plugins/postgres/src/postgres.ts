@@ -159,10 +159,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
         await pool.end();
       },
       bundles: {
-        async getUpdateInfo(args) {
-          return getUpdateInfo(pool, args);
-        },
-        async getBundleById(bundleId) {
+        async get(_context, { id: bundleId }) {
           const [data, patchMap] = await Promise.all([
             db
               .selectFrom("bundles")
@@ -178,7 +175,7 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
           return mapRowToBundle(data, patchMap.get(bundleId) ?? []);
         },
 
-        async getBundles(options) {
+        async list(_context, options) {
           const { where, limit, orderBy } = options ?? {};
           const offset =
             ((options && "offset" in options ? options.offset : undefined) as
@@ -334,8 +331,13 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
           };
         },
       },
-      async commit({ changes }) {
-        const changedSets = changes.bundles;
+      updates: {
+        async check(_context, args) {
+          return getUpdateInfo(pool, args);
+        },
+      },
+      async commit(_context, { changes }) {
+        const changedSets = changes.bundles ?? [];
         if (changedSets.length === 0) {
           return;
         }

@@ -77,6 +77,14 @@ export type GetBundleDownloadUrlInput = {
   readonly bundleId: string;
 };
 
+export type GetBundleMetricsInput = {
+  readonly bundleId: string;
+};
+
+export type SetTelemetryKeyActiveInput = {
+  readonly active: boolean;
+};
+
 export type UpdateBundleInput = {
   readonly bundleId: string;
   readonly bundle: Partial<Bundle>;
@@ -132,9 +140,13 @@ export declare const issueTelemetryKeyOperation: () => Promise<TelemetryKeyResul
 
 export declare const rotateTelemetryKeyOperation: () => Promise<TelemetryKeyResult>;
 
+export declare const setTelemetryKeyActiveOperation: (input: {
+  readonly active: boolean;
+}) => Promise<{ readonly active: boolean }>;
+
 export declare const getBundlesOperation: (
   input?: GetBundlesInput,
-) => ReturnType<DatabasePlugin["bundles"]["getBundles"]>;
+) => ReturnType<DatabasePlugin["bundles"]["list"]>;
 
 export declare const getBundleOperation: (
   input: GetBundleInput,
@@ -151,6 +163,10 @@ export declare const getBundleChildCountsOperation: (
 export declare const getBundleDownloadUrlOperation: (
   input: GetBundleDownloadUrlInput,
 ) => Promise<{ readonly fileUrl: string }>;
+
+export declare const getBundleMetricsOperation: (
+  input: GetBundleMetricsInput,
+) => Promise<HostedConsoleBundleMetrics | null>;
 
 export declare const updateBundleOperation: (
   input: UpdateBundleInput,

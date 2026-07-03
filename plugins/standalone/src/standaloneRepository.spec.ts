@@ -2,6 +2,7 @@ import {
   type Bundle,
   calculatePagination,
   type DatabasePlugin,
+  deleteBundleById,
 } from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -136,7 +137,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    const bundles = await repo.bundles.getBundles({ limit: 20 });
+    const bundles = await repo.bundles.list(undefined, { limit: 20 });
     expect(bundles.data).toEqual(testBundles);
     expect(callCount).toBe(1);
   });
@@ -152,8 +153,8 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.bundles.getBundles({ limit: 20 });
-    const refreshed = await repo.bundles.getBundles({ limit: 20 });
+    await repo.bundles.list(undefined, { limit: 20 });
+    const refreshed = await repo.bundles.list(undefined, { limit: 20 });
     expect(refreshed.data).toEqual(testBundles);
     expect(callCount).toBe(2);
   });
@@ -188,7 +189,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.bundles.getBundles({
+    await repo.bundles.list(undefined, {
       where: {
         channel: "production",
         platform: "ios",
@@ -213,15 +214,15 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(requestedFingerprintHash).toBe("null");
   });
 
-  it("getBundles: forwards cursor query params without offset", async () => {
-    let requestedAfter: string | null = null;
+  it("getBundles: translates cursor requests to provider id filters", async () => {
+    const requestedIdLtValues: Array<string | null> = [];
     let requestedBefore: string | null = null;
     let requestedPage: string | null = null;
 
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);
-        requestedAfter = url.searchParams.get("after");
+        requestedIdLtValues.push(url.searchParams.get("idLt"));
         requestedBefore = url.searchParams.get("before");
         requestedPage = url.searchParams.get("page");
 
@@ -231,16 +232,16 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    const result = await repo.bundles.getBundles({
+    const result = await repo.bundles.list(undefined, {
       limit: 1,
       cursor: {
         after: "bundle1",
       },
     });
 
-    expect(requestedAfter).toBe("bundle1");
+    expect(requestedIdLtValues).toContain("bundle1");
     expect(requestedBefore).toBeNull();
-    expect(requestedPage).toBeNull();
+    expect(requestedPage).toBe("1");
     expect(result.data).toEqual([TEST_BUNDLE_1]);
   });
 
@@ -264,7 +265,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.bundles.getBundles({
+    await repo.bundles.list(undefined, {
       limit: 20,
       page: 2,
       cursor: {
@@ -278,7 +279,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
   it("getBundles: rejects removed offset pagination", async () => {
     await expect(
-      repo.bundles.getBundles({ limit: 20, offset: 1 } as never),
+      repo.bundles.list(undefined, { limit: 20, offset: 1 } as never),
     ).rejects.toThrow(
       "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
     );
@@ -297,10 +298,10 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.bundles.appendBundle(TEST_BUNDLE_1);
-    await repo.bundles.appendBundle(TEST_BUNDLE_2);
-    await repo.bundles.appendBundle(TEST_BUNDLE_3);
-    await repo.commit();
+    await repo.bundles.append(undefined, { data: TEST_BUNDLE_1 });
+    await repo.bundles.append(undefined, { data: TEST_BUNDLE_2 });
+    await repo.bundles.append(undefined, { data: TEST_BUNDLE_3 });
+    await repo.commit(undefined, {});
 
     // Mock filtered bundles response
     const productionBundles = [TEST_BUNDLE_1, TEST_BUNDLE_2];
@@ -325,7 +326,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    const result = await repo.bundles.getBundles({
+    const result = await repo.bundles.list(undefined, {
       where: { channel: "production" },
       limit: 20,
     });
@@ -350,7 +351,8 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);
         const after = url.searchParams.get("after");
-        if (after === TEST_BUNDLE_2.id) {
+        const idLt = url.searchParams.get("idLt");
+        if (after === TEST_BUNDLE_2.id || idLt === TEST_BUNDLE_2.id) {
           return HttpResponse.json({
             data: [TEST_BUNDLE_3],
             pagination: {
@@ -381,12 +383,12 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.bundles.appendBundle(TEST_BUNDLE_1);
-    await repo.bundles.appendBundle(TEST_BUNDLE_2);
-    await repo.bundles.appendBundle(TEST_BUNDLE_3);
-    await repo.commit();
+    await repo.bundles.append(undefined, { data: TEST_BUNDLE_1 });
+    await repo.bundles.append(undefined, { data: TEST_BUNDLE_2 });
+    await repo.bundles.append(undefined, { data: TEST_BUNDLE_3 });
+    await repo.commit(undefined, {});
 
-    const firstPage = await repo.bundles.getBundles({
+    const firstPage = await repo.bundles.list(undefined, {
       limit: 2,
     });
 
@@ -400,7 +402,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       nextCursor: TEST_BUNDLE_2.id,
     });
 
-    const secondPage = await repo.bundles.getBundles({
+    const secondPage = await repo.bundles.list(undefined, {
       limit: 2,
       cursor: {
         after: firstPage.pagination.nextCursor!,
@@ -457,9 +459,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       ),
     );
 
-    const bundle = await repo.bundles.getBundleById(
-      "00000000-0000-0000-0000-000000000001",
-    );
+    const bundle = await repo.bundles.get(undefined, {
+      id: "00000000-0000-0000-0000-000000000001",
+    });
     expect(bundle).toEqual(testBundles[0]);
   });
 
@@ -470,7 +472,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    const bundle = await repo.bundles.getBundleById("non-existent");
+    const bundle = await repo.bundles.get(undefined, { id: "non-existent" });
     expect(bundle).toBeNull();
   });
 
@@ -481,9 +483,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    const bundle = await repo.bundles.getBundleById(
-      "00000000-0000-0000-0000-000000000001",
-    );
+    const bundle = await repo.bundles.get(undefined, {
+      id: "00000000-0000-0000-0000-000000000001",
+    });
     expect(bundle).toBeNull();
   });
 
@@ -497,7 +499,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await expect(repo.bundles.getBundles({ limit: 20 })).rejects.toThrow(
+    await expect(repo.bundles.list(undefined, { limit: 20 })).rejects.toThrow(
       "API Error: Internal Server Error",
     );
   });
@@ -536,10 +538,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       ),
     );
 
-    await repo.bundles.updateBundle("00000000-0000-0000-0000-000000000001", {
-      enabled: false,
+    await repo.bundles.update(undefined, {
+      id: "00000000-0000-0000-0000-000000000001",
+      data: {
+        enabled: false,
+      },
     });
-    await repo.commit();
+    await repo.commit(undefined, {});
     expect(postCalled).toBe(true);
     expect(onDatabaseUpdated).toHaveBeenCalled();
   });
@@ -554,7 +559,10 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
 
     await expect(
-      repo.bundles.updateBundle("non-existent-id", { enabled: false }),
+      repo.bundles.update(undefined, {
+        id: "non-existent-id",
+        data: { enabled: false },
+      }),
     ).rejects.toThrow("targetBundleId not found");
   });
 
@@ -578,7 +586,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       fingerprintHash: null,
     };
 
-    await repo.bundles.appendBundle(newBundle);
+    await repo.bundles.append(undefined, { data: newBundle });
 
     let postCalled = false;
     server.use(
@@ -593,13 +601,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       ),
     );
 
-    await repo.commit();
+    await repo.commit(undefined, {});
     expect(postCalled).toBe(true);
   });
 
   it("commit: does nothing if there are no changes", async () => {
     const spy = vi.spyOn(global, "fetch");
-    await repo.commit();
+    await repo.commit(undefined, {});
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
@@ -622,11 +630,14 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.bundles.updateBundle("00000000-0000-0000-0000-000000000001", {
-      enabled: false,
+    await repo.bundles.update(undefined, {
+      id: "00000000-0000-0000-0000-000000000001",
+      data: {
+        enabled: false,
+      },
     });
 
-    await expect(repo.commit()).rejects.toStrictEqual(
+    await expect(repo.commit(undefined, {})).rejects.toStrictEqual(
       new Error("API Error: Internal Server Error"),
     );
   });
@@ -646,8 +657,11 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       ),
     );
 
-    await repo.bundles.deleteBundle(testBundles[0]);
-    await repo.commit();
+    await deleteBundleById(repo, undefined, {
+      id: testBundles[0].id,
+      bundle: testBundles[0],
+    });
+    await repo.commit(undefined, {});
 
     expect(deleteCalled).toBe(true);
     expect(onDatabaseUpdated).toHaveBeenCalled();
@@ -663,8 +677,11 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.bundles.deleteBundle(testBundles[0]);
-    await expect(repo.commit()).rejects.toThrow(
+    await deleteBundleById(repo, undefined, {
+      id: testBundles[0].id,
+      bundle: testBundles[0],
+    });
+    await expect(repo.commit(undefined, {})).rejects.toThrow(
       `Bundle with id ${testBundles[0].id} not found`,
     );
   });
@@ -679,8 +696,11 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       }),
     );
 
-    await repo.bundles.deleteBundle(testBundles[0]);
-    await expect(repo.commit()).rejects.toThrow(
+    await deleteBundleById(repo, undefined, {
+      id: testBundles[0].id,
+      bundle: testBundles[0],
+    });
+    await expect(repo.commit(undefined, {})).rejects.toThrow(
       "API Error: 500 Internal Server Error",
     );
   });
@@ -730,7 +750,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         }),
       );
 
-      const bundles = await customRepo.bundles.getBundles({ limit: 20 });
+      const bundles = await customRepo.bundles.list(undefined, { limit: 20 });
       expect(bundles.data).toEqual(testBundles);
     });
 
@@ -754,9 +774,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         ),
       );
 
-      const bundle = await customRepo.bundles.getBundleById(
-        "00000000-0000-0000-0000-000000000001",
-      );
+      const bundle = await customRepo.bundles.get(undefined, {
+        id: "00000000-0000-0000-0000-000000000001",
+      });
       expect(bundle).toEqual(testBundles[0]);
     });
 
@@ -776,8 +796,11 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         ),
       );
 
-      await customRepo.bundles.deleteBundle(testBundles[0]);
-      await customRepo.commit();
+      await deleteBundleById(customRepo, undefined, {
+        id: testBundles[0].id,
+        bundle: testBundles[0],
+      });
+      await customRepo.commit(undefined, {});
     });
 
     it("commit: INSERT operations use custom create route and headers", async () => {
@@ -797,8 +820,8 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         ),
       );
 
-      await customRepo.bundles.appendBundle(testBundles[0]);
-      await customRepo.commit();
+      await customRepo.bundles.append(undefined, { data: testBundles[0] });
+      await customRepo.commit(undefined, {});
     });
 
     it("commit: UPDATE operations use custom update route and headers", async () => {
@@ -833,10 +856,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
         ),
       );
 
-      await customRepo.bundles.updateBundle(testBundles[0].id, {
-        enabled: false,
+      await customRepo.bundles.update(undefined, {
+        id: testBundles[0].id,
+        data: {
+          enabled: false,
+        },
       });
-      await customRepo.commit();
+      await customRepo.commit(undefined, {});
     });
 
     it("getChannels", async () => {

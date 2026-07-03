@@ -97,6 +97,9 @@ export type ConsoleApiClient = {
     targetChannel: string;
   }) => Promise<{ bundle: BundleWithMetrics; success: boolean }>;
   readonly rotateTelemetryKey?: () => Promise<TelemetryKeyResult>;
+  readonly setTelemetryKeyActive?: (params: {
+    readonly active: boolean;
+  }) => Promise<{ readonly active: boolean }>;
   readonly updateBundle: (params: {
     bundleId: string;
     bundle: Partial<Bundle>;
@@ -258,7 +261,8 @@ export function useTelemetryKeyQuery(enabled = true) {
   const isSupported =
     typeof api.getTelemetryKeyState === "function" &&
     typeof api.issueTelemetryKey === "function" &&
-    typeof api.rotateTelemetryKey === "function";
+    typeof api.rotateTelemetryKey === "function" &&
+    typeof api.setTelemetryKeyActive === "function";
   const query = useQuery({
     queryKey: queryKeys.telemetryKey,
     queryFn: () =>
@@ -322,6 +326,7 @@ export function useIssueTelemetryKeyMutation() {
     },
     onSuccess: (result) => {
       queryClient.setQueryData(queryKeys.telemetryKey, {
+        active: true,
         telemetryKeySuffix: result.telemetryKeySuffix,
       } satisfies TelemetryKeyState);
       invalidateInBackground(queryClient, queryKeys.telemetryKey);
@@ -343,8 +348,32 @@ export function useRotateTelemetryKeyMutation() {
     },
     onSuccess: (result) => {
       queryClient.setQueryData(queryKeys.telemetryKey, {
+        active: true,
         telemetryKeySuffix: result.telemetryKeySuffix,
       } satisfies TelemetryKeyState);
+      invalidateInBackground(queryClient, queryKeys.telemetryKey);
+    },
+  });
+}
+
+export function useSetTelemetryKeyActiveMutation() {
+  const api = useConsoleApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { readonly active: boolean }) => {
+      if (!api.setTelemetryKeyActive) {
+        throw new Error("Ingest key is not supported by this provider.");
+      }
+
+      return api.setTelemetryKeyActive(params);
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(
+        queryKeys.telemetryKey,
+        (current: TelemetryKeyState | null | undefined) =>
+          current ? { ...current, active: result.active } : current,
+      );
       invalidateInBackground(queryClient, queryKeys.telemetryKey);
     },
   });

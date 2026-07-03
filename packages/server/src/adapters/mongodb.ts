@@ -1,7 +1,6 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
 } from "@hot-updater/plugin-core";
 import {
@@ -160,15 +159,13 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
     };
     return {
       bundles: {
-        async getBundleById(bundleId) {
+        async get(_context, { id: bundleId }) {
           const row = await bundles.findOne({ id: bundleId });
           if (!row) return null;
           const patchMap = await fetchPatchMap([bundleId]);
           return rowToBundle(row, patchMap.get(bundleId) ?? []);
         },
-        async getBundles(
-          options: DatabaseBundleQueryOptions & { offset?: number },
-        ) {
+        async list(_context, options) {
           const offset = options.offset ?? 0;
           const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
           const where = mongoWhere(options.where);
@@ -192,7 +189,9 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
             }),
           };
         },
-        async getUpdateInfo(args, context) {
+      },
+      updates: {
+        async check(context, args) {
           if (args._updateStrategy === "appVersion") {
             const channel = args.channel ?? "production";
             const minBundleId = args.minBundleId ?? NIL_UUID;
@@ -264,8 +263,8 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
           });
         },
       },
-      async commit({ changes }) {
-        const changedSets = changes.bundles;
+      async commit(_context, { changes }) {
+        const changedSets = changes.bundles ?? [];
         await runInTransaction(async (session) => {
           for (const change of changedSets) {
             if (change.operation === "delete") {

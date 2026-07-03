@@ -30,6 +30,7 @@ export type CloudflareTelemetryCredentialResult =
     };
 
 type TelemetryKeyRow = {
+  readonly active: number;
   readonly key_hash: string;
   readonly key_suffix: string;
 };
@@ -78,11 +79,12 @@ export const getCloudflareTelemetryKeyCredential = async (
 ): Promise<TelemetryKeyCredential | null> => {
   const row = await queryFirst<TelemetryKeyRow>(
     db,
-    "SELECT key_hash, key_suffix FROM telemetry_keys WHERE id = ? LIMIT 1",
+    "SELECT active, key_hash, key_suffix FROM ingest_keys WHERE id = ? LIMIT 1",
     [TELEMETRY_KEY_ROW_ID],
   );
   return row
     ? {
+        active: row.active === 1,
         keyHash: row.key_hash,
         telemetryKeySuffix: row.key_suffix,
       }
@@ -97,26 +99,52 @@ export const upsertCloudflareTelemetryKeyCredential = async (
   await runD1(
     db,
     `
-      INSERT INTO telemetry_keys (id, key_hash, key_suffix, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO ingest_keys (
+        id,
+        key_hash,
+        key_suffix,
+        active,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         key_hash = excluded.key_hash,
         key_suffix = excluded.key_suffix,
+        active = excluded.active,
         updated_at = excluded.updated_at
     `,
     [
       TELEMETRY_KEY_ROW_ID,
       credential.keyHash,
       credential.telemetryKeySuffix,
+      credential.active ? 1 : 0,
       now,
       now,
     ],
   );
 };
 
+export const setCloudflareTelemetryKeyActive = async (
+  db: CloudflareTelemetryD1Database,
+  active: boolean,
+): Promise<void> => {
+  await runD1(
+    db,
+    `
+      UPDATE ingest_keys
+      SET active = ?, updated_at = ?
+      WHERE id = ?
+    `,
+    [active ? 1 : 0, new Date().toISOString(), TELEMETRY_KEY_ROW_ID],
+  );
+};
+
 const createCloudflareTelemetryRuntime = (db: CloudflareTelemetryD1Database) =>
   createDatabaseAnalyticsRuntime({
     getTelemetryKeyCredential: () => getCloudflareTelemetryKeyCredential(db),
+    setTelemetryKeyActive: (active) =>
+      setCloudflareTelemetryKeyActive(db, active),
     upsertTelemetryKeyCredential: (credential) =>
       upsertCloudflareTelemetryKeyCredential(db, credential),
   });
@@ -152,6 +180,18 @@ export const getCloudflareTelemetryKeyState = async (
   }
 
   return runtime.getTelemetryKeyState();
+};
+
+export const setCloudflareTelemetryKeyActiveState = async (
+  db: CloudflareTelemetryD1Database,
+  active: boolean,
+): Promise<void> => {
+  const runtime = createCloudflareTelemetryRuntime(db);
+  if (!runtime.setTelemetryKeyActive) {
+    throw new CloudflareTelemetryRuntimeConfigurationError("writes");
+  }
+
+  await runtime.setTelemetryKeyActive(active);
 };
 
 export const authenticateCloudflareTelemetryKey = async (

@@ -57,6 +57,14 @@ export type DeleteBundleInput = {
   readonly bundleId: string;
 };
 
+export type GetBundleMetricsInput = {
+  readonly bundleId: string;
+};
+
+export type SetTelemetryKeyActiveInput = {
+  readonly active: boolean;
+};
+
 class ConsoleOperationError extends Error {
   readonly name = "ConsoleOperationError";
 }
@@ -70,7 +78,7 @@ const emptyBundleList = {
     currentPage: 1,
     totalPages: 0,
   },
-} satisfies Awaited<ReturnType<DatabasePlugin["bundles"]["getBundles"]>>;
+} satisfies Awaited<ReturnType<DatabasePlugin["bundles"]["list"]>>;
 
 const assertRemoteDownloadUrl = (fileUrl: string) => {
   try {
@@ -96,8 +104,14 @@ const getTelemetryKeyCapabilities = (databasePlugin: DatabasePlugin) => {
   const getTelemetryKeyState = analytics?.getTelemetryKeyState;
   const issueTelemetryKey = analytics?.issueTelemetryKey;
   const rotateTelemetryKey = analytics?.rotateTelemetryKey;
+  const setTelemetryKeyActive = analytics?.setTelemetryKeyActive;
 
-  if (!getTelemetryKeyState || !issueTelemetryKey || !rotateTelemetryKey) {
+  if (
+    !getTelemetryKeyState ||
+    !issueTelemetryKey ||
+    !rotateTelemetryKey ||
+    !setTelemetryKeyActive
+  ) {
     return null;
   }
 
@@ -105,6 +119,7 @@ const getTelemetryKeyCapabilities = (databasePlugin: DatabasePlugin) => {
     getTelemetryKeyState,
     issueTelemetryKey,
     rotateTelemetryKey,
+    setTelemetryKeyActive,
   };
 };
 
@@ -195,17 +210,60 @@ export const rotateTelemetryKeyOperation = async () => {
   return await rotateTelemetryKey();
 };
 
+export const setTelemetryKeyActiveOperation = async ({
+  active,
+}: SetTelemetryKeyActiveInput) => {
+  const { databasePlugin } = await prepareConfig();
+  const { setTelemetryKeyActive } =
+    requireTelemetryKeyCapabilities(databasePlugin);
+  await setTelemetryKeyActive(active);
+  return { active };
+};
+
+export const getBundleMetricsOperation = async ({
+  bundleId,
+}: GetBundleMetricsInput) => {
+  const { databasePlugin } = await prepareConfig();
+  const analytics = databasePlugin.analytics
+    ? createDatabaseAnalyticsRuntime(databasePlugin.analytics)
+    : undefined;
+  const metrics = await analytics?.readLifecycleMetrics?.();
+  if (!metrics) {
+    return null;
+  }
+
+  const bundleMetrics = metrics.bundles.find(
+    (bundle) => bundle.bundleId === bundleId,
+  );
+  return {
+    active: bundleMetrics?.active ?? 0,
+    lastSeenAt: bundleMetrics?.lastSeenAt ?? null,
+    recovered: bundleMetrics?.recovered ?? 0,
+    series: metrics.series
+      .filter((point) => point.bundleId === bundleId)
+      .map((point) => ({
+        active: point.active,
+        bucketStart: point.bucketStart,
+        recovered: point.recovered,
+      })),
+  };
+};
+
 export const getBundlesOperation = async (input?: GetBundlesInput) => {
   const { databasePlugin } = await prepareConfig();
   return (
-    (await databasePlugin.bundles.getBundles(toBundleQueryOptions(input))) ??
-    emptyBundleList
+    (await databasePlugin.bundles.list(
+      undefined,
+      toBundleQueryOptions(input),
+    )) ?? emptyBundleList
   );
 };
 
 export const getBundleOperation = async ({ bundleId }: GetBundleInput) => {
   const { databasePlugin } = await prepareConfig();
-  return (await databasePlugin.bundles.getBundleById(bundleId)) ?? null;
+  return (
+    (await databasePlugin.bundles.get(undefined, { id: bundleId })) ?? null
+  );
 };
 
 export const getBundleChildrenOperation = async (
@@ -228,7 +286,7 @@ export const getBundleDownloadUrlOperation = async ({
   bundleId,
 }: GetBundleDownloadUrlInput) => {
   const { databasePlugin, storagePlugin } = await prepareConfig();
-  const bundle = await databasePlugin.bundles.getBundleById(bundleId);
+  const bundle = await databasePlugin.bundles.get(undefined, { id: bundleId });
 
   if (!bundle) {
     throw new ConsoleOperationError("Bundle not found");
@@ -274,9 +332,14 @@ export const updateBundleOperation = async ({
   bundleId,
 }: UpdateBundleInput) => {
   const { databasePlugin } = await prepareConfig();
-  await databasePlugin.bundles.updateBundle(bundleId, bundle);
-  await databasePlugin.commit();
-  const updatedBundle = await databasePlugin.bundles.getBundleById(bundleId);
+  await databasePlugin.bundles.update(undefined, {
+    id: bundleId,
+    data: bundle,
+  });
+  await databasePlugin.commit(undefined, {});
+  const updatedBundle = await databasePlugin.bundles.get(undefined, {
+    id: bundleId,
+  });
 
   if (!updatedBundle) {
     throw new ConsoleOperationError("Updated bundle not found");
@@ -298,8 +361,8 @@ export const promoteBundleOperation = async (input: PromoteBundleInput) => {
 
 export const createBundleOperation = async (bundle: Bundle) => {
   const { databasePlugin } = await prepareConfig();
-  await databasePlugin.bundles.appendBundle(bundle);
-  await databasePlugin.commit();
+  await databasePlugin.bundles.append(undefined, { data: bundle });
+  await databasePlugin.commit(undefined, {});
   return { success: true, bundleId: bundle.id };
 };
 

@@ -13,6 +13,8 @@ export const createDefaultConsoleApiClient = (): ConsoleApiClient => ({
     (await import("./api-rpc")).getBundleChildren({ data: params }),
   getBundleDownloadUrl: async (params) =>
     (await import("./api-rpc")).getBundleDownloadUrl({ data: params }),
+  getBundleMetrics: async (params) =>
+    (await import("./api-rpc")).getBundleMetrics({ data: params }),
   getBundles: async (filters) =>
     (await import("./api-rpc")).getBundles({ data: filters }),
   getChannels: async () => (await import("./api-rpc")).getChannels(),
@@ -26,6 +28,8 @@ export const createDefaultConsoleApiClient = (): ConsoleApiClient => ({
     (await import("./api-rpc")).promoteBundle({ data: params }),
   rotateTelemetryKey: async () =>
     (await import("./api-rpc")).rotateTelemetryKey(),
+  setTelemetryKeyActive: async (params) =>
+    (await import("./api-rpc")).setTelemetryKeyActive({ data: params }),
   updateBundle: async (params) =>
     (await import("./api-rpc")).updateBundle({ data: params }),
 });

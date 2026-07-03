@@ -12,10 +12,13 @@ import type {
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
   PaginationOptions,
+  TelemetryLifecyclePayload,
 } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
+  createTelemetryAnalyticsEvent,
+  deriveTelemetryLifecycleMetrics,
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
@@ -78,6 +81,20 @@ interface D1BundlePatchRow {
   patch_storage_uri: string;
   order_index: number | null;
 }
+
+type D1TelemetryKeyRow = {
+  active: number | boolean;
+  key_hash: string;
+  key_suffix: string;
+};
+
+type D1AnalyticsEventRow = {
+  event_type: string;
+  id: string;
+  observed_at: string;
+  payload: string;
+  received_at: string;
+};
 
 async function resolvePage<T>(singlePage: any): Promise<T[]> {
   const results: T[] = [];
@@ -407,8 +424,180 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
     }
 
     return {
+      analytics: {
+        async getTelemetryKeyCredential() {
+          const result = await cf.d1.database.query(config.databaseId, {
+            account_id: config.accountId,
+            sql: minify(`
+              SELECT active, key_hash, key_suffix
+              FROM ingest_keys
+              WHERE id = ?
+              LIMIT 1
+            `),
+            params: ["default"],
+          });
+          const rows = await resolvePage<D1TelemetryKeyRow>(result);
+          const row = rows[0];
+          return row
+            ? {
+                active: row.active === true || row.active === 1,
+                keyHash: row.key_hash,
+                telemetryKeySuffix: row.key_suffix,
+              }
+            : null;
+        },
+        async setTelemetryKeyActive(active) {
+          await cf.d1.database.query(config.databaseId, {
+            account_id: config.accountId,
+            sql: minify(`
+              UPDATE ingest_keys
+              SET active = ?, updated_at = ?
+              WHERE id = ?
+            `),
+            params: [active ? "1" : "0", new Date().toISOString(), "default"],
+          });
+        },
+        async upsertTelemetryKeyCredential(credential) {
+          const now = new Date().toISOString();
+          await cf.d1.database.query(config.databaseId, {
+            account_id: config.accountId,
+            sql: minify(`
+              INSERT INTO ingest_keys (
+                id,
+                key_hash,
+                key_suffix,
+                active,
+                created_at,
+                updated_at
+              )
+              VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                key_hash = excluded.key_hash,
+                key_suffix = excluded.key_suffix,
+                active = excluded.active,
+                updated_at = excluded.updated_at
+            `),
+            params: [
+              "default",
+              credential.keyHash,
+              credential.telemetryKeySuffix,
+              credential.active ? "1" : "0",
+              now,
+              now,
+            ],
+          });
+        },
+        async insertLifecycleEvent(payload: TelemetryLifecyclePayload) {
+          const existing = await cf.d1.database.query(config.databaseId, {
+            account_id: config.accountId,
+            sql: minify(`
+              SELECT id FROM analytics_events WHERE id = ? LIMIT 1
+            `),
+            params: [payload.eventId],
+          });
+          const existingRows = await resolvePage<{ id: string }>(existing);
+          if (existingRows.length > 0) {
+            return { accepted: true, deduped: true };
+          }
+
+          const event = createTelemetryAnalyticsEvent(payload);
+          await cf.d1.database.query(config.databaseId, {
+            account_id: config.accountId,
+            sql: minify(`
+              INSERT INTO analytics_events (
+                id,
+                event_type,
+                payload,
+                observed_at,
+                received_at
+              )
+              VALUES (?, ?, ?, ?, ?)
+            `),
+            params: [
+              event.id,
+              event.eventType,
+              JSON.stringify(event.payload),
+              event.observedAt,
+              event.receivedAt,
+            ],
+          });
+
+          return { accepted: true, deduped: false };
+        },
+        async getLifecycleMetrics() {
+          const result = await cf.d1.database.query(config.databaseId, {
+            account_id: config.accountId,
+            sql: minify(`
+              SELECT id, event_type, payload, observed_at, received_at
+              FROM analytics_events
+              ORDER BY observed_at ASC, received_at ASC
+            `),
+            params: [],
+          });
+          const rows = await resolvePage<D1AnalyticsEventRow>(result);
+          return deriveTelemetryLifecycleMetrics(
+            rows.map((row) => ({
+              eventType: row.event_type,
+              id: row.id,
+              observedAt: row.observed_at,
+              payload: row.payload,
+              receivedAt: row.received_at,
+            })),
+          );
+        },
+      },
       bundles: {
-        async getUpdateInfo(args, context) {
+        async get(_context, { id: bundleId }) {
+          const sql = minify(/* sql */ `
+          SELECT * FROM bundles WHERE id = ? LIMIT 1`);
+          const [singlePage, patchMap] = await Promise.all([
+            cf.d1.database.query(config.databaseId, {
+              account_id: config.accountId,
+              sql,
+              params: [bundleId],
+            }),
+            getPatchMap([bundleId]),
+          ]);
+
+          const rows = await resolvePage<D1BundleRow>(singlePage);
+
+          if (rows.length === 0) {
+            return null;
+          }
+
+          return transformRowToBundle(rows[0], patchMap.get(bundleId));
+        },
+
+        async list(_context, options) {
+          const { where = {}, limit, orderBy } = options;
+          const offset =
+            (("offset" in options ? options.offset : undefined) as
+              | number
+              | undefined) ?? 0;
+
+          // 1. Get total count for pagination
+          const totalCount = await getTotalCount(where);
+
+          // 2. Get paginated bundles
+          const bundles = await getPaginatedBundles(
+            where,
+            limit,
+            offset,
+            orderBy,
+          );
+
+          // 3. Calculate pagination metadata
+          const paginationOptions: PaginationOptions = { limit, offset };
+          const pagination = calculatePagination(totalCount, paginationOptions);
+
+          return {
+            data: bundles,
+            pagination,
+          };
+        },
+      },
+      updates: {
+        async check(context, args) {
           const channel = args.channel ?? "production";
           const minBundleId = args.minBundleId ?? NIL_UUID;
 
@@ -458,58 +647,9 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
             context,
           });
         },
-
-        async getBundleById(bundleId) {
-          const sql = minify(/* sql */ `
-          SELECT * FROM bundles WHERE id = ? LIMIT 1`);
-          const [singlePage, patchMap] = await Promise.all([
-            cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql,
-              params: [bundleId],
-            }),
-            getPatchMap([bundleId]),
-          ]);
-
-          const rows = await resolvePage<D1BundleRow>(singlePage);
-
-          if (rows.length === 0) {
-            return null;
-          }
-
-          return transformRowToBundle(rows[0], patchMap.get(bundleId));
-        },
-
-        async getBundles(options) {
-          const { where = {}, limit, orderBy } = options;
-          const offset =
-            (("offset" in options ? options.offset : undefined) as
-              | number
-              | undefined) ?? 0;
-
-          // 1. Get total count for pagination
-          const totalCount = await getTotalCount(where);
-
-          // 2. Get paginated bundles
-          const bundles = await getPaginatedBundles(
-            where,
-            limit,
-            offset,
-            orderBy,
-          );
-
-          // 3. Calculate pagination metadata
-          const paginationOptions: PaginationOptions = { limit, offset };
-          const pagination = calculatePagination(totalCount, paginationOptions);
-
-          return {
-            data: bundles,
-            pagination,
-          };
-        },
       },
-      async commit({ changes }) {
-        const changedSets = changes.bundles;
+      async commit(_context, { changes }) {
+        const changedSets = changes.bundles ?? [];
         if (changedSets.length === 0) {
           return;
         }

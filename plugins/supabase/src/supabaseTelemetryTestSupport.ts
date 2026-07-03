@@ -3,48 +3,23 @@ import { vi } from "vitest";
 import { createSupabaseTelemetryOperations } from "./supabaseTelemetry";
 
 type TelemetryKeyRow = {
+  active: boolean;
+  created_at: string;
   id: string;
   key_hash: string;
   key_suffix: string;
   updated_at: string;
 };
 
-type LifecycleEventRow = {
-  bundle_id: string;
-  channel: string;
-  crashed_bundle_id: string | null;
-  event_id: string;
-  install_id: string;
+type AnalyticsEventRow = {
+  event_type: string;
+  id: string;
   observed_at: string;
-  platform: "ios" | "android";
+  payload: Record<string, unknown>;
   received_at: string;
-  status: "ACTIVE" | "RECOVERED";
 };
 
-type LifecycleMetricRow = {
-  active_count: number;
-  bucket_start: string;
-  bundle_id: string;
-  channel: string;
-  last_seen_at: string;
-  platform: "ios" | "android";
-  recovered_count: number;
-};
-
-type IncrementLifecycleMetricArgs = {
-  readonly p_active_delta: number;
-  readonly p_bucket_start: string;
-  readonly p_bundle_id: string;
-  readonly p_channel: string;
-  readonly p_observed_at: string;
-  readonly p_platform: "ios" | "android";
-  readonly p_recovered_delta: number;
-};
-
-type TableName =
-  | "bundle_lifecycle_events"
-  | "bundle_lifecycle_metrics"
-  | "telemetry_keys";
+type TableName = "analytics_events" | "ingest_keys";
 
 type QueryFilter = {
   readonly column: string;
@@ -56,11 +31,13 @@ type QueryResult = {
   readonly error: { readonly code?: string; readonly message: string } | null;
 };
 
-const isLifecycleEventRow = (value: unknown): value is LifecycleEventRow =>
+const isAnalyticsEventRow = (value: unknown): value is AnalyticsEventRow =>
   typeof value === "object" &&
   value !== null &&
-  "event_id" in value &&
-  typeof value.event_id === "string";
+  "id" in value &&
+  typeof value.id === "string" &&
+  "payload" in value &&
+  typeof value.payload === "object";
 
 const isTelemetryKeyRow = (value: unknown): value is TelemetryKeyRow =>
   typeof value === "object" &&
@@ -68,40 +45,26 @@ const isTelemetryKeyRow = (value: unknown): value is TelemetryKeyRow =>
   "key_hash" in value &&
   typeof value.key_hash === "string";
 
+const isTelemetryKeyPatch = (
+  value: unknown,
+): value is Partial<TelemetryKeyRow> =>
+  typeof value === "object" && value !== null && !("event_type" in value);
+
 const supabaseMock = vi.hoisted(() => {
   const tables = {
     telemetryKeys: new Map<string, TelemetryKeyRow>(),
-    lifecycleEvents: new Map<string, LifecycleEventRow>(),
-    lifecycleMetrics: new Map<string, LifecycleMetricRow>(),
+    lifecycleEvents: new Map<string, never>(),
+    lifecycleMetrics: new Map<string, never>(),
+    analyticsEvents: new Map<string, AnalyticsEventRow>(),
   };
 
   const getRows = (table: TableName) => {
     switch (table) {
-      case "telemetry_keys":
+      case "ingest_keys":
         return Array.from(tables.telemetryKeys.values());
-      case "bundle_lifecycle_events":
-        return Array.from(tables.lifecycleEvents.values());
-      case "bundle_lifecycle_metrics":
-        return Array.from(tables.lifecycleMetrics.values());
+      case "analytics_events":
+        return Array.from(tables.analyticsEvents.values());
     }
-  };
-
-  const incrementMetric = (params: IncrementLifecycleMetricArgs) => {
-    const metricKey = `${params.p_bundle_id}:${params.p_bucket_start}`;
-    const current = tables.lifecycleMetrics.get(metricKey);
-    tables.lifecycleMetrics.set(metricKey, {
-      active_count: (current?.active_count ?? 0) + params.p_active_delta,
-      bucket_start: params.p_bucket_start,
-      bundle_id: params.p_bundle_id,
-      channel: params.p_channel,
-      last_seen_at:
-        current?.last_seen_at && current.last_seen_at > params.p_observed_at
-          ? current.last_seen_at
-          : params.p_observed_at,
-      platform: params.p_platform,
-      recovered_count:
-        (current?.recovered_count ?? 0) + params.p_recovered_delta,
-    });
   };
 
   class QueryBuilder {
@@ -110,10 +73,10 @@ const supabaseMock = vi.hoisted(() => {
 
     constructor(
       private readonly table: TableName,
-      private readonly mode: "select" | "insert" | "upsert",
+      private readonly mode: "select" | "insert" | "update" | "upsert",
       private readonly payload?:
-        | LifecycleEventRow
-        | LifecycleMetricRow
+        | AnalyticsEventRow
+        | Partial<TelemetryKeyRow>
         | TelemetryKeyRow,
     ) {}
 
@@ -144,6 +107,7 @@ const supabaseMock = vi.hoisted(() => {
 
     private async execute(): Promise<QueryResult> {
       if (this.mode === "insert") return this.insertRow();
+      if (this.mode === "update") return this.updateRow();
       if (this.mode === "upsert") return this.upsertRow();
 
       const rows = getRows(this.table).filter((row) =>
@@ -161,26 +125,53 @@ const supabaseMock = vi.hoisted(() => {
     }
 
     private async insertRow() {
-      if (this.table !== "bundle_lifecycle_events") {
+      if (this.table !== "analytics_events") {
         return { error: { message: `Unsupported insert: ${this.table}` } };
       }
 
-      if (!isLifecycleEventRow(this.payload)) {
-        return { error: { message: "Invalid lifecycle event payload" } };
+      if (!isAnalyticsEventRow(this.payload)) {
+        return { error: { message: "Invalid analytics event payload" } };
       }
 
       const row = this.payload;
-      if (tables.lifecycleEvents.has(row.event_id)) {
+      if (tables.analyticsEvents.has(row.id)) {
         return { error: { code: "23505", message: "duplicate event" } };
       }
 
-      tables.lifecycleEvents.set(row.event_id, row);
+      tables.analyticsEvents.set(row.id, row);
+      return { error: null };
+    }
+
+    private async updateRow() {
+      if (this.table !== "ingest_keys") {
+        return { error: { message: `Unsupported update: ${this.table}` } };
+      }
+
+      if (!isTelemetryKeyPatch(this.payload)) {
+        return { error: { message: "Invalid ingest_keys update payload" } };
+      }
+
+      for (const row of tables.telemetryKeys.values()) {
+        const matches = this.filters.every((filter) => {
+          const entry = Object.entries(row).find(
+            ([column]) => column === filter.column,
+          );
+          return entry?.[1] === filter.value;
+        });
+        if (matches) {
+          tables.telemetryKeys.set(row.id, {
+            ...row,
+            ...this.payload,
+          });
+        }
+      }
+
       return { error: null };
     }
 
     private async upsertRow() {
       switch (this.table) {
-        case "telemetry_keys": {
+        case "ingest_keys": {
           if (!isTelemetryKeyRow(this.payload)) {
             return { error: { message: "Invalid telemetry key payload" } };
           }
@@ -188,11 +179,9 @@ const supabaseMock = vi.hoisted(() => {
           tables.telemetryKeys.set(row.id, row);
           return { error: null };
         }
-        case "bundle_lifecycle_metrics":
-          return { error: { message: "Use rpc for bundle_lifecycle_metrics" } };
-        case "bundle_lifecycle_events":
+        case "analytics_events":
           return {
-            error: { message: "Use insert for bundle_lifecycle_events" },
+            error: { message: "Use insert for analytics_events" },
           };
       }
     }
@@ -201,27 +190,19 @@ const supabaseMock = vi.hoisted(() => {
   const createClientMock = () => ({
     from(table: TableName) {
       return {
-        insert(payload: LifecycleEventRow) {
+        insert(payload: AnalyticsEventRow) {
           return new QueryBuilder(table, "insert", payload);
         },
         select(_columns = "*") {
           return new QueryBuilder(table, "select");
         },
-        upsert(payload: LifecycleMetricRow | TelemetryKeyRow) {
+        update(payload: Partial<TelemetryKeyRow>) {
+          return new QueryBuilder(table, "update", payload);
+        },
+        upsert(payload: TelemetryKeyRow) {
           return new QueryBuilder(table, "upsert", payload);
         },
       };
-    },
-    async rpc(
-      name: "increment_bundle_lifecycle_metric",
-      params: IncrementLifecycleMetricArgs,
-    ) {
-      if (name !== "increment_bundle_lifecycle_metric") {
-        return { error: { message: `Unsupported rpc: ${name}` } };
-      }
-
-      incrementMetric(params);
-      return { error: null };
     },
   });
 
