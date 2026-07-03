@@ -12,6 +12,7 @@ import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
+  DatabaseChanges,
   DatabasePlugin,
   DatabasePluginHooks,
   HotUpdaterContext,
@@ -35,13 +36,34 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
       options: DatabaseBundleQueryOptions & { offset?: number },
       context?: HotUpdaterContext<TContext>,
     ) => Promise<Paginated<Bundle[]>>;
-    /**
-     * @deprecated Provider compatibility bridge. New providers should implement root commit.
-     */
-    commitBundle?: (
-      params: {
-        readonly changedSets: DatabaseChanges["bundles"];
-      },
+  };
+  commit: (
+    params: DatabaseChanges,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
+  channels: {
+    getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
+  };
+  onUnmount?: () => Promise<void>;
+}
+
+/**
+ * Database plugin methods without name
+ */
+type DatabasePluginMethods<TContext = unknown> = Omit<
+  AbstractDatabasePlugin<TContext>,
+  never
+>;
+
+/**
+ * Factory function that creates database plugin methods
+ */
+type DatabasePluginFactory<TConfig, TContext = unknown> = (
+  config: TConfig,
+) => DatabasePluginMethods<TContext>;
+
+const REPLACE_ON_UPDATE_KEYS = ["patches", "targetCohorts"] as const;
+const DEFAULT_DESC_ORDER = { field: "id", direction: "desc" } as const;
       context?: HotUpdaterContext<TContext>,
     ) => Promise<void>;
   };
