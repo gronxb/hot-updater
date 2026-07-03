@@ -213,12 +213,12 @@ export interface DatabaseBundleOperations<TContext = unknown> {
 }
 
 export type DatabaseBundleChange = {
-  readonly operation: "delete" | "insert" | "update";
+  readonly operation: "insert" | "update" | "delete";
   readonly data: Bundle;
 };
 
 export type DatabaseChanges = {
-  readonly changedSets: readonly DatabaseBundleChange[];
+  readonly bundles: readonly DatabaseBundleChange[];
 };
 
 export interface DatabaseChannelOperations<TContext = unknown> {
@@ -234,7 +234,10 @@ export interface DatabasePlugin<TContext = unknown> {
   bundles: DatabaseBundleOperations<TContext>;
   commit: (context?: HotUpdaterContext<TContext>) => Promise<void>;
   channels: DatabaseChannelOperations<TContext>;
-  commit: (context?: HotUpdaterContext<TContext>) => Promise<void>;
+  commit: (
+    context?: HotUpdaterContext<TContext>,
+    input?: Record<string, never>,
+  ) => Promise<void>;
   onUnmount?: () => Promise<void>;
   name: string;
 }
