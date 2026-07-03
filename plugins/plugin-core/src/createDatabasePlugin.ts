@@ -603,6 +603,18 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           },
         },
 
+        async commit(context) {
+          const unitOfWork = getMutationUnitOfWork(context);
+          await getMethods().commit(context, {
+            changes: {
+              bundles: unitOfWork.changedSets(),
+            },
+          });
+
+          unitOfWork.clear();
+          await hooks?.onDatabaseUpdated?.();
+        },
+
         async onUnmount() {
           const methods = getMethods();
           if (methods.onUnmount) {
