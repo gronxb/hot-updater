@@ -42,7 +42,7 @@ function createDatabasePlugin(
   return {
     name,
     commit: vi.fn(),
-  bundles: {
+    bundles: {
       getBundleById: vi.fn(async (bundleId) => {
         return bundles.find((bundle) => bundle.id === bundleId) ?? null;
       }),

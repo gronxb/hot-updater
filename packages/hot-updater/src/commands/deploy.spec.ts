@@ -25,7 +25,7 @@ const {
   };
   const mockDatabasePlugin = {
     commit: vi.fn(),
-  bundles: {
+    bundles: {
       appendBundle: vi.fn(),
       deleteBundle: vi.fn(),
       getBundleById: vi.fn(),

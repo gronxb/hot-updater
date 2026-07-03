@@ -33,7 +33,7 @@ function createDatabasePlugin(bundle: Bundle | null = baseBundle) {
   return {
     name: "mockDatabase",
     commit: vi.fn(),
-  bundles: {
+    bundles: {
       getBundleById: vi.fn(async () => bundle),
       getBundles: vi.fn(),
       updateBundle: vi.fn(),
@@ -115,12 +115,10 @@ describe("deleteBundle", () => {
 
     expect(
       databasePlugin.bundles.deleteBundle.mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      databasePlugin.commit.mock.invocationCallOrder[0],
+    ).toBeLessThan(databasePlugin.commit.mock.invocationCallOrder[0]);
+    expect(databasePlugin.commit.mock.invocationCallOrder[0]).toBeLessThan(
+      deleteFromStorage.mock.invocationCallOrder[0],
     );
-    expect(
-      databasePlugin.commit.mock.invocationCallOrder[0],
-    ).toBeLessThan(deleteFromStorage.mock.invocationCallOrder[0]);
   });
 
   it("skips storage deletion for http urls", async () => {

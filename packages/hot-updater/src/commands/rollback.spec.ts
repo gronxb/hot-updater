@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
   const mockDatabasePlugin = {
     commit: vi.fn(),
-  bundles: {
+    bundles: {
       appendBundle: vi.fn(),
       deleteBundle: vi.fn(),
       getBundleById: vi.fn(),

@@ -18,7 +18,7 @@ function createDatabasePlugin(name: string): DatabasePlugin {
   return {
     name,
     commit: vi.fn(),
-  bundles: {
+    bundles: {
       getBundleById: vi.fn(),
       getBundles: vi.fn(),
       updateBundle: vi.fn(),
