@@ -92,6 +92,7 @@ describe("createDatabasePlugin", () => {
               totalPages: 1,
             },
           }),
+          commit,
         },
         commit,
         channels: {
@@ -107,8 +108,7 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(commit).toHaveBeenCalledWith({
-      changes: {
-        bundles: [
+      changedSets: [
         {
           operation: "update",
           data: {
@@ -151,8 +151,7 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(commit).toHaveBeenCalledWith({
-      changes: {
-        bundles: [
+      changedSets: [
         {
           operation: "update",
           data: {
@@ -194,8 +193,7 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(commit).toHaveBeenCalledWith({
-      changes: {
-        bundles: [
+      changedSets: [
         {
           operation: "update",
           data: {
@@ -248,8 +246,7 @@ describe("createDatabasePlugin", () => {
 
     expect(getBundleById).toHaveBeenCalledTimes(1);
     expect(commit).toHaveBeenNthCalledWith(1, {
-      changes: {
-        bundles: [
+      changedSets: [
         {
           operation: "update",
           data: {
@@ -261,8 +258,7 @@ describe("createDatabasePlugin", () => {
       },
     });
     expect(commit).toHaveBeenNthCalledWith(2, {
-      changes: {
-        bundles: [
+      changedSets: [
         {
           operation: "update",
           data: {
@@ -311,8 +307,7 @@ describe("createDatabasePlugin", () => {
 
     expect(getBundleById).toHaveBeenCalledTimes(2);
     expect(commit).toHaveBeenCalledWith({
-      changes: {
-        bundles: [
+      changedSets: [
         {
           operation: "update",
           data: {
