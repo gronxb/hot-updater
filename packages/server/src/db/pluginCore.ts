@@ -425,7 +425,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
       assertBundlePersistenceConstraints(bundle);
       await runWithMutationPlugin(async (plugin) => {
         await plugin.bundles.appendBundle(bundle, context);
-        await plugin.commit(context, {});
+        await plugin.commit(context);
       });
     },
 
@@ -442,7 +442,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
         }
         assertBundlePersistenceConstraints({ ...current, ...newBundle });
         await plugin.bundles.updateBundle(bundleId, newBundle, context);
-        await plugin.commit(context, {});
+        await plugin.commit(context);
       });
     },
 
@@ -457,7 +457,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
           return;
         }
         await plugin.bundles.deleteBundle(bundle, context);
-        await plugin.commit(context, {});
+        await plugin.commit(context);
       });
     },
   };

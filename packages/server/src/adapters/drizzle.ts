@@ -281,25 +281,26 @@ const createDrizzlePlugin = createDatabasePlugin<DrizzleConfig>({
             context,
           });
         },
-        async commitBundle({ changedSets }) {
-          await runInTransaction(async (activeDB) => {
-            for (const change of changedSets) {
-              if (change.operation === "delete") {
-                await activeDB
-                  .delete(patches)
-                  .where(eq(column(patches, "bundle_id"), change.data.id));
-                await activeDB
-                  .delete(patches)
-                  .where(eq(column(patches, "base_bundle_id"), change.data.id));
-                await activeDB
-                  .delete(bundles)
-                  .where(eq(column(bundles, "id"), change.data.id));
-                continue;
-              }
-              await upsertBundle(activeDB, change.data);
+      },
+      async commit({ changes }) {
+        const changedSets = changes.bundles;
+        await runInTransaction(async (activeDB) => {
+          for (const change of changedSets) {
+            if (change.operation === "delete") {
+              await activeDB
+                .delete(patches)
+                .where(eq(column(patches, "bundle_id"), change.data.id));
+              await activeDB
+                .delete(patches)
+                .where(eq(column(patches, "base_bundle_id"), change.data.id));
+              await activeDB
+                .delete(bundles)
+                .where(eq(column(bundles, "id"), change.data.id));
+              continue;
             }
-          });
-        },
+            await upsertBundle(activeDB, change.data);
+          }
+        });
       },
       channels: {
         async getChannels() {

@@ -100,7 +100,7 @@ const createSchemaManagedDatabase = (
     createNestedDatabasePlugin<TestContext>({
       name: `${adapterName}Database`,
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById() {
         throw new Error("runtime database should not be queried");
@@ -172,7 +172,7 @@ describe("runtime createHotUpdater", () => {
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById() {
         return null;
@@ -210,7 +210,7 @@ describe("runtime createHotUpdater", () => {
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById() {
         return null;
@@ -305,7 +305,7 @@ describe("runtime createHotUpdater", () => {
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(id) {
         return id === bundle.id ? bundle : null;
@@ -405,7 +405,7 @@ describe("runtime createHotUpdater", () => {
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(id) {
         return id === bundle.id ? bundle : null;
@@ -577,7 +577,7 @@ describe("runtime createHotUpdater", () => {
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(id) {
         if (id === currentBundle.id) {
@@ -687,7 +687,7 @@ describe("runtime createHotUpdater", () => {
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(id) {
         return id === bundle.id ? bundle : null;
@@ -752,7 +752,7 @@ describe("runtime createHotUpdater", () => {
     const database = createNestedDatabasePlugin<TestContext>({
       name: "testDatabase",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(id) {
         return id === bundle.id ? bundle : null;
@@ -819,7 +819,7 @@ describe("runtime createHotUpdater", () => {
           async getChannels() {
             return [];
           },
-          async commitBundle() {},
+          async commit() {},
         }),
     })({});
 
@@ -865,7 +865,7 @@ describe("runtime createHotUpdater", () => {
           async getChannels() {
             return [];
           },
-          async commitBundle() {},
+          async commit() {},
         }),
     })({});
 
@@ -909,7 +909,7 @@ describe("runtime createHotUpdater", () => {
         async getChannels() {
           return [];
         },
-        async commitBundle() {},
+        async commit() {},
       }),
     );
     const database = createDatabasePlugin({
@@ -946,7 +946,7 @@ describe("runtime createHotUpdater", () => {
         async getChannels() {
           return [];
         },
-        async commitBundle() {},
+        async commit() {},
       }),
     );
     const database = createDatabasePlugin({
@@ -1027,7 +1027,7 @@ describe("runtime createHotUpdater", () => {
           async getChannels() {
             return [];
           },
-          async commitBundle() {},
+          async commit() {},
         }),
     })({});
     const hotUpdater = createHotUpdater({
@@ -1088,7 +1088,7 @@ describe("runtime createHotUpdater", () => {
           async getChannels() {
             return [];
           },
-          async commitBundle({ changedSets }) {
+          async commit({ changedSets }) {
             commitAttempt += 1;
 
             if (commitAttempt === 1) {
@@ -1174,7 +1174,7 @@ describe("runtime createHotUpdater", () => {
             return [];
           },
           onUnmount,
-          async commitBundle({ changedSets }) {
+          async commit({ changedSets }) {
             commitCount += 1;
             committedBundleIds.push(
               changedSets.map((change) => change.data.id),

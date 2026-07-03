@@ -531,36 +531,35 @@ export const d1WorkerDatabase = <
               pagination: calculatePagination(total, paginationOptions),
             };
           },
+        },
+        async commit({ changes }, context) {
+          const changedSets = changes.bundles;
+          if (changedSets.length === 0) {
+            return;
+          }
 
-          async commitBundle({ changedSets }, context) {
-            if (changedSets.length === 0) {
-              return;
+          const db = config.getDb(context);
+
+          for (const operation of changedSets) {
+            if (operation.operation === "delete") {
+              await db
+                .prepare("DELETE FROM bundle_patches WHERE bundle_id = ?")
+                .bind(operation.data.id)
+                .run();
+              await db
+                .prepare("DELETE FROM bundle_patches WHERE base_bundle_id = ?")
+                .bind(operation.data.id)
+                .run();
+              await db
+                .prepare("DELETE FROM bundles WHERE id = ?")
+                .bind(operation.data.id)
+                .run();
+              continue;
             }
 
-            const db = config.getDb(context);
-
-            for (const operation of changedSets) {
-              if (operation.operation === "delete") {
-                await db
-                  .prepare("DELETE FROM bundle_patches WHERE bundle_id = ?")
-                  .bind(operation.data.id)
-                  .run();
-                await db
-                  .prepare(
-                    "DELETE FROM bundle_patches WHERE base_bundle_id = ?",
-                  )
-                  .bind(operation.data.id)
-                  .run();
-                await db
-                  .prepare("DELETE FROM bundles WHERE id = ?")
-                  .bind(operation.data.id)
-                  .run();
-                continue;
-              }
-
-              const bundle = operation.data;
-              await db
-                .prepare(`
+            const bundle = operation.data;
+            await db
+              .prepare(`
                 INSERT OR REPLACE INTO bundles (
                   id,
                   channel,
@@ -582,40 +581,40 @@ export const d1WorkerDatabase = <
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `)
-                .bind(
-                  bundle.id,
-                  bundle.channel,
-                  bundle.enabled ? 1 : 0,
-                  bundle.shouldForceUpdate ? 1 : 0,
-                  bundle.fileHash,
-                  bundle.gitCommitHash || null,
-                  bundle.message || null,
-                  bundle.platform,
-                  bundle.targetAppVersion,
-                  bundle.storageUri,
-                  bundle.fingerprintHash,
-                  JSON.stringify(
-                    stripBundleArtifactMetadata(bundle.metadata) ?? {},
-                  ),
-                  getManifestStorageUri(bundle),
-                  getManifestFileHash(bundle),
-                  getAssetBaseStorageUri(bundle),
-                  bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-                  bundle.targetCohorts
-                    ? JSON.stringify(bundle.targetCohorts)
-                    : null,
-                )
-                .run();
+              .bind(
+                bundle.id,
+                bundle.channel,
+                bundle.enabled ? 1 : 0,
+                bundle.shouldForceUpdate ? 1 : 0,
+                bundle.fileHash,
+                bundle.gitCommitHash || null,
+                bundle.message || null,
+                bundle.platform,
+                bundle.targetAppVersion,
+                bundle.storageUri,
+                bundle.fingerprintHash,
+                JSON.stringify(
+                  stripBundleArtifactMetadata(bundle.metadata) ?? {},
+                ),
+                getManifestStorageUri(bundle),
+                getManifestFileHash(bundle),
+                getAssetBaseStorageUri(bundle),
+                bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+                bundle.targetCohorts
+                  ? JSON.stringify(bundle.targetCohorts)
+                  : null,
+              )
+              .run();
 
+            await db
+              .prepare("DELETE FROM bundle_patches WHERE bundle_id = ?")
+              .bind(bundle.id)
+              .run();
+
+            const patchRows = bundleToPatchRows(bundle);
+            for (const patchRow of patchRows) {
               await db
-                .prepare("DELETE FROM bundle_patches WHERE bundle_id = ?")
-                .bind(bundle.id)
-                .run();
-
-              const patchRows = bundleToPatchRows(bundle);
-              for (const patchRow of patchRows) {
-                await db
-                  .prepare(`
+                .prepare(`
                   INSERT OR REPLACE INTO bundle_patches (
                     id,
                     bundle_id,
@@ -627,19 +626,18 @@ export const d1WorkerDatabase = <
                   )
                   VALUES (?, ?, ?, ?, ?, ?, ?)
                 `)
-                  .bind(
-                    patchRow.id,
-                    patchRow.bundle_id,
-                    patchRow.base_bundle_id,
-                    patchRow.base_file_hash,
-                    patchRow.patch_file_hash,
-                    patchRow.patch_storage_uri,
-                    patchRow.order_index ?? 0,
-                  )
-                  .run();
-              }
+                .bind(
+                  patchRow.id,
+                  patchRow.bundle_id,
+                  patchRow.base_bundle_id,
+                  patchRow.base_file_hash,
+                  patchRow.patch_file_hash,
+                  patchRow.patch_storage_uri,
+                  patchRow.order_index ?? 0,
+                )
+                .run();
             }
-          },
+          }
         },
         channels: {
           async getChannels(context) {

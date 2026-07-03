@@ -292,25 +292,26 @@ const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
             context,
           });
         },
-        async commitBundle({ changedSets }) {
-          await runInTransaction(async (client) => {
-            const bundles = getDelegate(client, "bundles");
-            const patches = getDelegate(client, "bundle_patches");
-            for (const change of changedSets) {
-              if (change.operation === "delete") {
-                await patches.deleteMany({
-                  where: { bundle_id: change.data.id },
-                });
-                await patches.deleteMany({
-                  where: { base_bundle_id: change.data.id },
-                });
-                await bundles.deleteMany({ where: { id: change.data.id } });
-                continue;
-              }
-              await upsertBundle(client, change.data);
+      },
+      async commit({ changes }) {
+        const changedSets = changes.bundles;
+        await runInTransaction(async (client) => {
+          const bundles = getDelegate(client, "bundles");
+          const patches = getDelegate(client, "bundle_patches");
+          for (const change of changedSets) {
+            if (change.operation === "delete") {
+              await patches.deleteMany({
+                where: { bundle_id: change.data.id },
+              });
+              await patches.deleteMany({
+                where: { base_bundle_id: change.data.id },
+              });
+              await bundles.deleteMany({ where: { id: change.data.id } });
+              continue;
             }
-          });
-        },
+            await upsertBundle(client, change.data);
+          }
+        });
       },
       channels: {
         async getChannels() {

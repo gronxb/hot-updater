@@ -162,8 +162,8 @@ export const handleRollback = async (
       }
     }
 
-    // Mutate phase: queue updates, then flush via a single commitBundle.
-    // commitBundle is sequential in the underlying provider; if it throws
+    // Mutate phase: queue updates, then flush via a single commit.
+    // commit is sequential in the underlying provider; if it throws
     // partway, we still run the verify phase below to surface per-platform
     // state rather than hiding it behind the raw error.
     let commitError: unknown = null;
@@ -176,9 +176,7 @@ export const handleRollback = async (
       await databasePlugin.commit();
     } catch (err) {
       commitError = err;
-      p.log.error(
-        `commitBundle threw: ${(err as Error)?.message ?? String(err)}`,
-      );
+      p.log.error(`commit threw: ${(err as Error)?.message ?? String(err)}`);
       p.log.info("Running verify phase to surface per-platform state...");
     }
 

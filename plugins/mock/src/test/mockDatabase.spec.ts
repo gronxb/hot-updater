@@ -358,7 +358,7 @@ describe("mockDatabase", () => {
     await pluginWithHook.bundles.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
     await pluginWithHook.commit();
 
-    // Hook should be called only once from commitBundle
+    // Hook should be called only once from commit
     expect(mockHook).toHaveBeenCalledTimes(1);
   });
 

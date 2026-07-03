@@ -24,6 +24,7 @@ function createDatabasePlugin(name: string): DatabasePlugin {
       updateBundle: vi.fn(),
       appendBundle: vi.fn(),
       deleteBundle: vi.fn(),
+      commit: vi.fn(),
     },
     channels: {
       getChannels: vi.fn(),

@@ -12,6 +12,7 @@ const {
     commit: vi.fn(),
     bundles: {
       appendBundle: vi.fn(),
+      commit: vi.fn(),
       deleteBundle: vi.fn(),
       getBundleById: vi.fn(),
       getBundles: vi.fn(),

@@ -333,62 +333,59 @@ export const postgres = createDatabasePlugin<PostgresConfig>({
             pagination,
           };
         },
+      },
+      async commit({ changes }) {
+        const changedSets = changes.bundles;
+        if (changedSets.length === 0) {
+          return;
+        }
 
-        async commitBundle({ changedSets }) {
-          if (changedSets.length === 0) {
-            return;
-          }
+        await db.transaction().execute(async (tx) => {
+          // Process each operation sequentially
+          for (const op of changedSets) {
+            if (op.operation === "delete") {
+              // Handle delete operation
+              await tx
+                .deleteFrom("bundle_patches")
+                .where("bundle_id", "=", op.data.id)
+                .execute();
+              await tx
+                .deleteFrom("bundle_patches")
+                .where("base_bundle_id", "=", op.data.id)
+                .execute();
+              const result = await tx
+                .deleteFrom("bundles")
+                .where("id", "=", op.data.id)
+                .executeTakeFirst();
 
-          await db.transaction().execute(async (tx) => {
-            // Process each operation sequentially
-            for (const op of changedSets) {
-              if (op.operation === "delete") {
-                // Handle delete operation
+              // Verify deletion was successful
+              if (result.numDeletedRows === 0n) {
+                throw new Error(`Bundle with id ${op.data.id} not found`);
+              }
+            } else if (op.operation === "insert" || op.operation === "update") {
+              // Handle insert and update operations
+              const bundle = op.data;
+              const values = bundleToRowValues(bundle);
+              const patchRows = bundleToPatchRows(bundle);
+              const { id: _id, ...updateValues } = values;
+              await tx
+                .insertInto("bundles")
+                .values(values)
+                .onConflict((oc) => oc.column("id").doUpdateSet(updateValues))
+                .execute();
+              await tx
+                .deleteFrom("bundle_patches")
+                .where("bundle_id", "=", bundle.id)
+                .execute();
+              if (patchRows.length > 0) {
                 await tx
-                  .deleteFrom("bundle_patches")
-                  .where("bundle_id", "=", op.data.id)
+                  .insertInto("bundle_patches")
+                  .values(patchRows)
                   .execute();
-                await tx
-                  .deleteFrom("bundle_patches")
-                  .where("base_bundle_id", "=", op.data.id)
-                  .execute();
-                const result = await tx
-                  .deleteFrom("bundles")
-                  .where("id", "=", op.data.id)
-                  .executeTakeFirst();
-
-                // Verify deletion was successful
-                if (result.numDeletedRows === 0n) {
-                  throw new Error(`Bundle with id ${op.data.id} not found`);
-                }
-              } else if (
-                op.operation === "insert" ||
-                op.operation === "update"
-              ) {
-                // Handle insert and update operations
-                const bundle = op.data;
-                const values = bundleToRowValues(bundle);
-                const patchRows = bundleToPatchRows(bundle);
-                const { id: _id, ...updateValues } = values;
-                await tx
-                  .insertInto("bundles")
-                  .values(values)
-                  .onConflict((oc) => oc.column("id").doUpdateSet(updateValues))
-                  .execute();
-                await tx
-                  .deleteFrom("bundle_patches")
-                  .where("bundle_id", "=", bundle.id)
-                  .execute();
-                if (patchRows.length > 0) {
-                  await tx
-                    .insertInto("bundle_patches")
-                    .values(patchRows)
-                    .execute();
-                }
               }
             }
-          });
-        },
+          }
+        });
       },
       channels: {
         async getChannels() {

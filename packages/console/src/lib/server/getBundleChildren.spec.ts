@@ -44,6 +44,7 @@ function createDatabasePlugin(bundles: Bundle[]) {
       })),
       updateBundle: vi.fn(),
       appendBundle: vi.fn(),
+      commit: vi.fn(),
       deleteBundle: vi.fn(),
     },
     channels: {

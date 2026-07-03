@@ -263,29 +263,30 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
             context,
           });
         },
-        async commitBundle({ changedSets }) {
-          await runInTransaction(async (session) => {
-            for (const change of changedSets) {
-              if (change.operation === "delete") {
-                await deleteByBundleId(
-                  patches,
-                  "bundle_id",
-                  change.data.id,
-                  session,
-                );
-                await deleteByBundleId(
-                  patches,
-                  "base_bundle_id",
-                  change.data.id,
-                  session,
-                );
-                await bundles.deleteMany({ id: change.data.id }, { session });
-                continue;
-              }
-              await replaceBundle(change.data, session);
+      },
+      async commit({ changes }) {
+        const changedSets = changes.bundles;
+        await runInTransaction(async (session) => {
+          for (const change of changedSets) {
+            if (change.operation === "delete") {
+              await deleteByBundleId(
+                patches,
+                "bundle_id",
+                change.data.id,
+                session,
+              );
+              await deleteByBundleId(
+                patches,
+                "base_bundle_id",
+                change.data.id,
+                session,
+              );
+              await bundles.deleteMany({ id: change.data.id }, { session });
+              continue;
             }
-          });
-        },
+            await replaceBundle(change.data, session);
+          }
+        });
       },
       channels: {
         async getChannels() {

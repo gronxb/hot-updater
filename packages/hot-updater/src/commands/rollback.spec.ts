@@ -6,6 +6,7 @@ const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
     commit: vi.fn(),
     bundles: {
       appendBundle: vi.fn(),
+      commit: vi.fn(),
       deleteBundle: vi.fn(),
       getBundleById: vi.fn(),
       getBundles: vi.fn(),
@@ -136,7 +137,7 @@ describe("handleRollback", () => {
         enabled: false,
       },
     );
-    expect(mockDatabasePlugin.commit).toHaveBeenCalledTimes(1);
+    expect(mockDatabasePlugin.bundles.commit).toHaveBeenCalledTimes(1);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       expect.stringContaining("ios-2"),
     );

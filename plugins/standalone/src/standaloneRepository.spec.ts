@@ -502,7 +502,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
   });
 
-  it("updateBundle & commitBundle: updates an existing bundle and commits", async () => {
+  it("updateBundle & commit: updates an existing bundle and commits", async () => {
     let postCalled = false;
 
     server.use(
@@ -558,7 +558,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     ).rejects.toThrow("targetBundleId not found");
   });
 
-  it("appendBundle & commitBundle: appends a new bundle and commits", async () => {
+  it("appendBundle & commit: appends a new bundle and commits", async () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", () => {
         return HttpResponse.json(
@@ -597,14 +597,14 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(postCalled).toBe(true);
   });
 
-  it("commitBundle: does nothing if there are no changes", async () => {
+  it("commit: does nothing if there are no changes", async () => {
     const spy = vi.spyOn(global, "fetch");
     await repo.commit();
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 
-  it("commitBundle: throws exception on API error", async () => {
+  it("commit: throws exception on API error", async () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", () => {
         return HttpResponse.json(
@@ -631,7 +631,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
   });
 
-  it("commitBundle: DELETE operation successfully deletes a bundle", async () => {
+  it("commit: DELETE operation successfully deletes a bundle", async () => {
     let deleteCalled = false;
 
     server.use(
@@ -653,7 +653,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(onDatabaseUpdated).toHaveBeenCalled();
   });
 
-  it("commitBundle: DELETE operation throws error when API returns 404", async () => {
+  it("commit: DELETE operation throws error when API returns 404", async () => {
     server.use(
       http.delete("http://localhost/hot-updater/api/bundles/:bundleId", () => {
         return new HttpResponse(null, {
@@ -669,7 +669,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
   });
 
-  it("commitBundle: DELETE operation throws error when API returns server error", async () => {
+  it("commit: DELETE operation throws error when API returns server error", async () => {
     server.use(
       http.delete("http://localhost/hot-updater/api/bundles/:bundleId", () => {
         return new HttpResponse(null, {
@@ -760,7 +760,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       expect(bundle).toEqual(testBundles[0]);
     });
 
-    it("commitBundle: DELETE operation uses custom delete route and headers", async () => {
+    it("commit: DELETE operation uses custom delete route and headers", async () => {
       server.use(
         http.delete(
           "http://localhost/api/custom/bundles/:bundleId",
@@ -780,7 +780,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       await customRepo.commit();
     });
 
-    it("commitBundle: INSERT operations use custom create route and headers", async () => {
+    it("commit: INSERT operations use custom create route and headers", async () => {
       server.use(
         http.post(
           "http://localhost/api/custom/bundles",
@@ -801,7 +801,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       await customRepo.commit();
     });
 
-    it("commitBundle: UPDATE operations use custom update route and headers", async () => {
+    it("commit: UPDATE operations use custom update route and headers", async () => {
       server.use(
         http.get("http://localhost/api/custom/bundles", () => {
           return HttpResponse.json(

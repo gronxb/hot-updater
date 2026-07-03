@@ -285,77 +285,74 @@ export const standaloneRepository =
 
             throw new Error("API Error: Invalid bundle list response");
           },
-          async commitBundle({ changedSets }) {
-            if (changedSets.length === 0) {
-              return;
-            }
+        },
+        async commit({ changes }) {
+          const changedSets = changes.bundles;
+          if (changedSets.length === 0) {
+            return;
+          }
 
-            for (const op of changedSets) {
-              if (op.operation === "delete") {
-                const { path, headers: routeHeaders } = routes.delete(
-                  op.data.id,
+          for (const op of changedSets) {
+            if (op.operation === "delete") {
+              const { path, headers: routeHeaders } = routes.delete(op.data.id);
+              const response = await fetch(buildUrl(path), {
+                method: "DELETE",
+                headers: getHeaders(routeHeaders),
+              });
+
+              if (!response.ok) {
+                if (response.status === 404) {
+                  throw new Error(`Bundle with id ${op.data.id} not found`);
+                }
+                throw new Error(
+                  `API Error: ${response.status} ${response.statusText}`,
                 );
-                const response = await fetch(buildUrl(path), {
-                  method: "DELETE",
-                  headers: getHeaders(routeHeaders),
-                });
+              }
 
-                if (!response.ok) {
-                  if (response.status === 404) {
-                    throw new Error(`Bundle with id ${op.data.id} not found`);
+              const contentType = response.headers.get("content-type");
+              if (contentType?.includes("application/json")) {
+                try {
+                  await response.json();
+                } catch {
+                  if (!response.ok) {
+                    throw new Error("Failed to parse response");
                   }
-                  throw new Error(
-                    `API Error: ${response.status} ${response.statusText}`,
-                  );
-                }
-
-                const contentType = response.headers.get("content-type");
-                if (contentType?.includes("application/json")) {
-                  try {
-                    await response.json();
-                  } catch {
-                    if (!response.ok) {
-                      throw new Error("Failed to parse response");
-                    }
-                  }
-                }
-              } else if (op.operation === "insert") {
-                const { path, headers: routeHeaders } = routes.create();
-                const response = await fetch(buildUrl(path), {
-                  method: "POST",
-                  headers: getHeaders(routeHeaders),
-                  body: JSON.stringify([op.data]),
-                });
-
-                if (!response.ok) {
-                  throw new Error(`API Error: ${response.statusText}`);
-                }
-
-                const result = (await response.json()) as { success: boolean };
-                if (!result.success) {
-                  throw new Error("Failed to commit bundle");
-                }
-              } else if (op.operation === "update") {
-                const { path, headers: routeHeaders } = routes.update(
-                  op.data.id,
-                );
-                const response = await fetch(buildUrl(path), {
-                  method: "PATCH",
-                  headers: getHeaders(routeHeaders),
-                  body: JSON.stringify(op.data),
-                });
-
-                if (!response.ok) {
-                  throw new Error(`API Error: ${response.statusText}`);
-                }
-
-                const result = (await response.json()) as { success: boolean };
-                if (!result.success) {
-                  throw new Error("Failed to commit bundle");
                 }
               }
+            } else if (op.operation === "insert") {
+              const { path, headers: routeHeaders } = routes.create();
+              const response = await fetch(buildUrl(path), {
+                method: "POST",
+                headers: getHeaders(routeHeaders),
+                body: JSON.stringify([op.data]),
+              });
+
+              if (!response.ok) {
+                throw new Error(`API Error: ${response.statusText}`);
+              }
+
+              const result = (await response.json()) as { success: boolean };
+              if (!result.success) {
+                throw new Error("Failed to commit bundle");
+              }
+            } else if (op.operation === "update") {
+              const { path, headers: routeHeaders } = routes.update(op.data.id);
+              const response = await fetch(buildUrl(path), {
+                method: "PATCH",
+                headers: getHeaders(routeHeaders),
+                body: JSON.stringify(op.data),
+              });
+
+              if (!response.ok) {
+                throw new Error(`API Error: ${response.statusText}`);
+              }
+
+              const result = (await response.json()) as { success: boolean };
+              if (!result.success) {
+                throw new Error("Failed to commit bundle");
+              }
             }
-          },
+          }
         },
         channels: {
           async getChannels(): Promise<string[]> {

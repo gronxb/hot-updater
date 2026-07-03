@@ -6,6 +6,7 @@ const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
     commit: vi.fn(),
     bundles: {
       appendBundle: vi.fn(),
+      commit: vi.fn(),
       deleteBundle: vi.fn(),
       getBundleById: vi.fn(),
       getBundles: vi.fn(),
@@ -185,7 +186,7 @@ describe("handleBundleSetEnabled", () => {
     expect(mockDatabasePlugin.bundles.updateBundle).toHaveBeenCalledWith("B1", {
       enabled: false,
     });
-    expect(mockDatabasePlugin.commit).toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.commit).toHaveBeenCalled();
     expect(mockCli.p.log.message).toHaveBeenCalledWith(
       expect.stringContaining("Status:"),
     );
@@ -216,7 +217,7 @@ describe("handleBundleSetEnabled", () => {
     const { handleBundleSetEnabled } = await import("./bundle");
     await handleBundleSetEnabled("B1", false, { yes: true });
     expect(mockDatabasePlugin.bundles.updateBundle).not.toHaveBeenCalled();
-    expect(mockDatabasePlugin.commit).not.toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.commit).not.toHaveBeenCalled();
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("already disable"),
     );
@@ -373,7 +374,7 @@ describe("handleBundleUpdate", () => {
       rolloutCohortCount: 500,
       targetCohorts: ["qa"],
     });
-    expect(mockDatabasePlugin.commit).toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.commit).toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledWith(JSON.stringify(updated, null, 2));
   });
 
@@ -412,7 +413,7 @@ describe("handleBundleDelete", () => {
     expect(mockDatabasePlugin.bundles.deleteBundle).toHaveBeenCalledWith(
       bundle,
     );
-    expect(mockDatabasePlugin.commit).toHaveBeenCalled();
+    expect(mockDatabasePlugin.bundles.commit).toHaveBeenCalled();
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "Deleted bundle record.",
     );
@@ -436,7 +437,7 @@ describe("handleBundleDelete", () => {
       expect(mockDatabasePlugin.bundles.deleteBundle).toHaveBeenCalledWith(
         bundle,
       );
-      expect(mockDatabasePlugin.commit).toHaveBeenCalled();
+      expect(mockDatabasePlugin.bundles.commit).toHaveBeenCalled();
       expect(mockCli.p.log.success).toHaveBeenCalledWith(
         "Deleted bundle record.",
       );

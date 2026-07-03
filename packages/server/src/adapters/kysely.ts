@@ -303,28 +303,29 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
             context,
           });
         },
-        async commitBundle({ changedSets }) {
-          await db.transaction().execute(async (tx) => {
-            for (const change of changedSets) {
-              if (change.operation === "delete") {
-                await tx
-                  .deleteFrom("bundle_patches")
-                  .where("bundle_id", "=", change.data.id)
-                  .execute();
-                await tx
-                  .deleteFrom("bundle_patches")
-                  .where("base_bundle_id", "=", change.data.id)
-                  .execute();
-                await tx
-                  .deleteFrom("bundles")
-                  .where("id", "=", change.data.id)
-                  .execute();
-                continue;
-              }
-              await upsertBundle(tx, change.data);
+      },
+      async commit({ changes }) {
+        const changedSets = changes.bundles;
+        await db.transaction().execute(async (tx) => {
+          for (const change of changedSets) {
+            if (change.operation === "delete") {
+              await tx
+                .deleteFrom("bundle_patches")
+                .where("bundle_id", "=", change.data.id)
+                .execute();
+              await tx
+                .deleteFrom("bundle_patches")
+                .where("base_bundle_id", "=", change.data.id)
+                .execute();
+              await tx
+                .deleteFrom("bundles")
+                .where("id", "=", change.data.id)
+                .execute();
+              continue;
             }
-          });
-        },
+            await upsertBundle(tx, change.data);
+          }
+        });
       },
       channels: {
         async getChannels() {

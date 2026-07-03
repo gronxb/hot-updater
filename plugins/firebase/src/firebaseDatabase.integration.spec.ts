@@ -567,7 +567,7 @@ describe("firebaseDatabase plugin", () => {
     expect(filteredBundles.data[0].id).toBe("bundleX");
   });
 
-  it("should not modify data when commitBundle is called with no pending changes", async () => {
+  it("should not modify data when commit is called with no pending changes", async () => {
     await plugin.commit();
     const snapshot = await bundlesCollection.get();
     expect(snapshot.empty).toBe(true);

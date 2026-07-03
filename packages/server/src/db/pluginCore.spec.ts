@@ -91,7 +91,7 @@ describe("createPluginDatabaseCore", () => {
           upsertTelemetryKeyCredential,
         },
         bundles: {
-          async commitBundle() {},
+          async commit() {},
           async getBundleById() {
             return null;
           },
@@ -178,7 +178,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "fast-path-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById() {
         return null;
@@ -263,7 +263,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "manifest-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(bundleId) {
         if (bundleId === currentBundle.id) return currentBundle;
@@ -389,7 +389,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "identity-map-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       getBundleById,
       getUpdateInfo,
@@ -498,7 +498,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "undefined-context-identity-map-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       getBundleById,
       getUpdateInfo,
@@ -586,7 +586,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "seeded-fast-path-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       getBundleById,
       async getBundles() {
@@ -687,7 +687,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "seeded-current-miss-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       getBundleById,
       async getBundles() {
@@ -793,7 +793,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "content-addressed-manifest-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(bundleId) {
         if (bundleId === currentBundle.id) return currentBundle;
@@ -913,7 +913,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "manifest-unresolved-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(bundleId) {
         if (bundleId === currentBundle.id) return currentBundle;
@@ -995,7 +995,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin<TestContext>({
       name: "manifest-error-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(bundleId) {
         return bundleId === targetBundle.id ? targetBundle : null;
@@ -1058,7 +1058,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin({
       name: "null-fast-path-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById() {
         return null;
@@ -1102,7 +1102,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin({
       name: "scan-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById() {
         return null;
@@ -1132,12 +1132,12 @@ describe("createPluginDatabaseCore", () => {
 
   it("rejects invalid bundles before appendBundle is called", async () => {
     const appendBundle = vi.fn<DatabasePlugin["bundles"]["appendBundle"]>();
-    const commitBundle = vi.fn<DatabasePlugin["commit"]>();
+    const commit = vi.fn<DatabasePlugin["bundles"]["commit"]>();
 
     const plugin = createNestedDatabasePlugin({
       name: "validation-plugin",
       appendBundle,
-      commitBundle,
+      commit,
       async deleteBundle() {},
       async getBundleById() {
         return null;
@@ -1175,7 +1175,7 @@ describe("createPluginDatabaseCore", () => {
       "Bundle must define either targetAppVersion or fingerprintHash.",
     );
     expect(appendBundle).not.toHaveBeenCalled();
-    expect(commitBundle).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
   });
 
   it("rejects invalid updates before plugin.updateBundle is called", async () => {
@@ -1184,7 +1184,7 @@ describe("createPluginDatabaseCore", () => {
     const plugin = createNestedDatabasePlugin({
       name: "update-validation-plugin",
       async appendBundle() {},
-      async commitBundle() {},
+      async commit() {},
       async deleteBundle() {},
       async getBundleById(bundleId) {
         return bundleId === baseBundle.id ? baseBundle : null;

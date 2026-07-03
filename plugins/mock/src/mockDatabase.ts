@@ -256,32 +256,32 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
             }),
           };
         },
+      },
+      async commit({ changes }) {
+        const changedSets = changes.bundles;
+        if (changedSets.length === 0) {
+          return;
+        }
 
-        async commitBundle({ changedSets }) {
-          if (changedSets.length === 0) {
-            return;
-          }
+        await sleep(minMax(config.latency.min, config.latency.max));
 
-          await sleep(minMax(config.latency.min, config.latency.max));
-
-          for (const op of changedSets) {
-            if (op.operation === "delete") {
-              const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
-              if (targetIndex === -1) {
-                throw new Error(`Bundle with id ${op.data.id} not found`);
-              }
-              bundles.splice(targetIndex, 1);
-            } else if (op.operation === "insert") {
-              bundles.unshift(op.data);
-            } else if (op.operation === "update") {
-              const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
-              if (targetIndex === -1) {
-                throw new Error(`Bundle with id ${op.data.id} not found`);
-              }
-              Object.assign(bundles[targetIndex], op.data);
+        for (const op of changedSets) {
+          if (op.operation === "delete") {
+            const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
+            if (targetIndex === -1) {
+              throw new Error(`Bundle with id ${op.data.id} not found`);
             }
+            bundles.splice(targetIndex, 1);
+          } else if (op.operation === "insert") {
+            bundles.unshift(op.data);
+          } else if (op.operation === "update") {
+            const targetIndex = bundles.findIndex((b) => b.id === op.data.id);
+            if (targetIndex === -1) {
+              throw new Error(`Bundle with id ${op.data.id} not found`);
+            }
+            Object.assign(bundles[targetIndex], op.data);
           }
-        },
+        }
       },
       channels: {
         async getChannels() {

@@ -338,79 +338,79 @@ export const supabaseDatabase = createDatabasePlugin<SupabaseDatabaseConfig>({
             pagination,
           };
         },
+      },
+      async commit({ changes }) {
+        const changedSets = changes.bundles;
+        if (changedSets.length === 0) {
+          return;
+        }
 
-        async commitBundle({ changedSets }) {
-          if (changedSets.length === 0) {
-            return;
-          }
+        // Process each operation sequentially
+        for (const op of changedSets) {
+          if (op.operation === "delete") {
+            // Handle delete operation
+            const { error: patchDeleteError } = await supabase
+              .from("bundle_patches")
+              .delete()
+              .eq("bundle_id", op.data.id);
 
-          // Process each operation sequentially
-          for (const op of changedSets) {
-            if (op.operation === "delete") {
-              // Handle delete operation
-              const { error: patchDeleteError } = await supabase
+            if (patchDeleteError) {
+              throw new Error(
+                `Failed to delete bundle patches: ${patchDeleteError.message}`,
+              );
+            }
+
+            const { error: basePatchDeleteError } = await supabase
+              .from("bundle_patches")
+              .delete()
+              .eq("base_bundle_id", op.data.id);
+
+            if (basePatchDeleteError) {
+              throw new Error(
+                `Failed to delete base bundle patches: ${basePatchDeleteError.message}`,
+              );
+            }
+
+            const { error } = await supabase
+              .from("bundles")
+              .delete()
+              .eq("id", op.data.id);
+
+            if (error) {
+              throw new Error(`Failed to delete bundle: ${error.message}`);
+            }
+          } else if (op.operation === "insert" || op.operation === "update") {
+            // Handle insert and update operations
+            const bundle = op.data;
+            const patchRows = bundleToPatchRows(bundle);
+            const { error } = await supabase
+              .from("bundles")
+              .upsert(bundleToRow(bundle), { onConflict: "id" });
+
+            if (error) {
+              throw error;
+            }
+
+            const { error: patchDeleteError } = await supabase
+              .from("bundle_patches")
+              .delete()
+              .eq("bundle_id", bundle.id);
+
+            if (patchDeleteError) {
+              throw patchDeleteError;
+            }
+
+            if (patchRows.length > 0) {
+              const { error: patchInsertError } = await supabase
                 .from("bundle_patches")
-                .delete()
-                .eq("bundle_id", op.data.id);
+                .upsert(patchRows, { onConflict: "id" });
 
-              if (patchDeleteError) {
-                throw new Error(
-                  `Failed to delete bundle patches: ${patchDeleteError.message}`,
-                );
-              }
-
-              const { error: basePatchDeleteError } = await supabase
-                .from("bundle_patches")
-                .delete()
-                .eq("base_bundle_id", op.data.id);
-
-              if (basePatchDeleteError) {
-                throw new Error(
-                  `Failed to delete base bundle patches: ${basePatchDeleteError.message}`,
-                );
-              }
-
-              const { error } = await supabase
-                .from("bundles")
-                .delete()
-                .eq("id", op.data.id);
-
-              if (error) {
-                throw new Error(`Failed to delete bundle: ${error.message}`);
-              }
-            } else if (op.operation === "insert" || op.operation === "update") {
-              // Handle insert and update operations
-              const bundle = op.data;
-              const patchRows = bundleToPatchRows(bundle);
-              const { error } = await supabase
-                .from("bundles")
-                .upsert(bundleToRow(bundle), { onConflict: "id" });
-
-              if (error) {
-                throw error;
-              }
-
-              const { error: patchDeleteError } = await supabase
-                .from("bundle_patches")
-                .delete()
-                .eq("bundle_id", bundle.id);
-
-              if (patchDeleteError) {
-                throw patchDeleteError;
-              }
-
-              if (patchRows.length > 0) {
-                const { error: patchInsertError } = await supabase
-                  .from("bundle_patches")
-                  .upsert(patchRows, { onConflict: "id" });
-
-                if (patchInsertError) {
-                  throw patchInsertError;
-                }
+              if (patchInsertError) {
+                throw patchInsertError;
               }
             }
           }
-        },
+        }
       },
       channels: {
         async getChannels() {

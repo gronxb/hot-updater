@@ -139,7 +139,7 @@ const createInMemoryBlobDatabase = (store: Record<string, string>) =>
   })({});
 
 describe("Handler <-> Standalone Repository Integration", () => {
-  it("Real integration: appendBundle + commitBundle → handler POST /bundles", async () => {
+  it("Real integration: appendBundle + commit → handler POST /bundles", async () => {
     // Create standalone repository pointing to our test server
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
@@ -194,7 +194,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     expect(retrieved?.fileHash).toBe("get-hash-1");
   });
 
-  it("Real integration: deleteBundle + commitBundle → handler DELETE /bundles/:id", async () => {
+  it("Real integration: deleteBundle + commit → handler DELETE /bundles/:id", async () => {
     // Create a bundle via handler
     const bundleId = uuidv7();
     const bundle = createTestBundle({
