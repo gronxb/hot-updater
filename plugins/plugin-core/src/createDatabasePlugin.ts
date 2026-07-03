@@ -6,6 +6,7 @@ import { getRequestBundleUnitOfWork } from "./bundleUnitOfWorkStore";
 import { calculatePagination } from "./calculatePagination";
 import type {
   DatabaseAnalyticsOperations,
+  type DatabaseChanges,
   DatabaseBundleCursor,
   DatabaseBundleIdFilter,
   DatabaseBundleQueryOptions,
@@ -34,19 +35,14 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
       options: DatabaseBundleQueryOptions & { offset?: number },
       context?: HotUpdaterContext<TContext>,
     ) => Promise<Paginated<Bundle[]>>;
-    commitBundle: (
-      params: {
-        changedSets: {
-          operation: "insert" | "update" | "delete";
-          data: Bundle;
-        }[];
-      },
-      context?: HotUpdaterContext<TContext>,
-    ) => Promise<void>;
   };
   channels: {
     getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   };
+  commit: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: { readonly changes: DatabaseChanges },
+  ) => Promise<void>;
   onUnmount?: () => Promise<void>;
 }
 
