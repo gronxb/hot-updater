@@ -511,6 +511,7 @@ describe("createCopiedBundleArchive", () => {
     };
     const databasePlugin = {
       name: "mockDatabase",
+      commit: vi.fn(),
       bundles: {
         appendBundle: vi.fn(async () => {
           throw new Error("append failed");
