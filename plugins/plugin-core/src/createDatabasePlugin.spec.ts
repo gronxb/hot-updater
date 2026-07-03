@@ -285,7 +285,9 @@ describe("createDatabasePlugin", () => {
     await plugin.bundles.updateBundle(baseBundle.id, {
       enabled: false,
     });
-    await expect(plugin.commit()).rejects.toThrow("commit failed");
+    await expect(plugin.commit()).rejects.toThrow(
+      "commit failed",
+    );
     await plugin.commit();
 
     expect(getBundleById).toHaveBeenCalledTimes(1);
