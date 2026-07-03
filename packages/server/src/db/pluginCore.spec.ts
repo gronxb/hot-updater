@@ -94,7 +94,6 @@ describe("createPluginDatabaseCore", () => {
           upsertTelemetryKeyCredential,
         },
         bundles: {
-          async commit() {},
           async getBundleById() {
             return null;
           },
@@ -111,6 +110,7 @@ describe("createPluginDatabaseCore", () => {
             };
           },
         },
+        async commit() {},
         channels: {
           async getChannels() {
             return ["production"];
@@ -1135,7 +1135,7 @@ describe("createPluginDatabaseCore", () => {
 
   it("rejects invalid bundles before appendBundle is called", async () => {
     const appendBundle = vi.fn<DatabasePlugin["bundles"]["appendBundle"]>();
-    const commit = vi.fn<DatabasePlugin["bundles"]["commit"]>();
+    const commit = vi.fn<DatabasePlugin["commit"]>();
 
     const plugin = createNestedDatabasePlugin({
       name: "validation-plugin",

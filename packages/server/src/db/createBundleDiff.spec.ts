@@ -70,6 +70,7 @@ const createDatabasePlugin = (
       });
     },
   },
+  async commit() {},
   channels: {
     async getChannels() {
       return ["production"];

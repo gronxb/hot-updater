@@ -145,7 +145,6 @@ const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
       async appendBundle() {
         throw new Error("Not implemented for benchmark");
       },
-      async commit() {},
       async deleteBundle() {
         throw new Error("Not implemented for benchmark");
       },
