@@ -22,7 +22,7 @@ A configured `DatabasePlugin` exposes table operations for reads and staging:
 The only durable mutation boundary is root-level:
 
 ```ts
-database.commit(context);
+method(context, inputObject);
 ```
 
 `commit` receives the optional request context and flushes every staged change in
@@ -35,20 +35,16 @@ Provider factories return durable read methods grouped by table plus a root
 flush method:
 
 ```ts
-createDatabasePlugin({
-  name: "provider",
-  factory: () => ({
-    bundles: {
-      async getBundleById(bundleId, context) {},
-      async getBundles(options, context) {},
-      async getUpdateInfo(args, context) {},
-    },
-    async commit({ changedSets }, context) {},
-    channels: {
-      async getChannels(context) {},
-    },
-  }),
-});
+database.bundles.get(context, { id });
+database.bundles.list(context, options);
+database.bundles.append(context, { bundle });
+database.bundles.update(context, { id, patch });
+database.bundlePatches.append(context, { patch });
+database.bundlePatches.update(context, { id, patch });
+database.analyticsEvents.append(context, { event });
+database.ingestKeys.get(context, { keyHash });
+database.ingestKeys.update(context, { keyHash, state });
+database.commit(context, {});
 ```
 
 `changedSets` is a grouped `DatabaseChanges` payload derived by plugin-core from
@@ -59,7 +55,15 @@ all staged bundle-table operations in the current Unit of Work.
 `bundles.getUpdateInfo` remains an optional read-only fast path for update
 checks. It does not stage or commit changes.
 
-## Provider atomicity notes
+```ts
+providerDatabase.bundles.get(context, input);
+providerDatabase.bundles.list(context, input);
+providerDatabase.bundlePatches.get(context, input);
+providerDatabase.bundlePatches.list(context, input);
+providerDatabase.analyticsEvents.list(context, input);
+providerDatabase.ingestKeys.get(context, input);
+providerDatabase.commit(context, { changes });
+```
 
 Providers should flush `DatabaseChanges` with the strongest atomicity their
 backing store supports. Providers without a cross-table transaction primitive
