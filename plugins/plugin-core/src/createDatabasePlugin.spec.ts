@@ -117,8 +117,8 @@ describe("createDatabasePlugin", () => {
     ]);
     await plugin.commit();
 
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
+    expect(commitBundle).toHaveBeenCalledWith(
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -126,8 +126,8 @@ describe("createDatabasePlugin", () => {
             enabled: false,
           },
         },
-      ],
-    });
+      ]),
+    );
   });
 
   it("replaces targetCohorts instead of merging array items", async () => {
@@ -159,8 +159,8 @@ describe("createDatabasePlugin", () => {
     });
     await plugin.commit();
 
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
+    expect(commitBundle).toHaveBeenCalledWith(
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -168,8 +168,8 @@ describe("createDatabasePlugin", () => {
             targetCohorts: ["device-2"],
           },
         },
-      ],
-    });
+      ]),
+    );
   });
 
   it("preserves pending updates while allowing targetCohorts to be cleared", async () => {
@@ -200,8 +200,8 @@ describe("createDatabasePlugin", () => {
     await plugin.bundles.updateBundle(baseBundle.id, { targetCohorts: null });
     await plugin.commit();
 
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
+    expect(commitBundle).toHaveBeenCalledWith(
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -210,8 +210,8 @@ describe("createDatabasePlugin", () => {
             targetCohorts: null,
           },
         },
-      ],
-    });
+      ]),
+    );
   });
 
   it("preserves pending changes after a failed commit", async () => {
@@ -252,8 +252,9 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(getBundleById).toHaveBeenCalledTimes(1);
-    expect(commitBundle).toHaveBeenNthCalledWith(1, {
-      changedSets: [
+    expect(commitBundle).toHaveBeenNthCalledWith(
+      1,
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -261,10 +262,11 @@ describe("createDatabasePlugin", () => {
             enabled: false,
           },
         },
-      ],
-    });
-    expect(commitBundle).toHaveBeenNthCalledWith(2, {
-      changedSets: [
+      ]),
+    );
+    expect(commitBundle).toHaveBeenNthCalledWith(
+      2,
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -272,8 +274,8 @@ describe("createDatabasePlugin", () => {
             enabled: false,
           },
         },
-      ],
-    });
+      ]),
+    );
   });
 
   it("stages no-context updates without keeping read-only cache entries", async () => {
@@ -311,8 +313,8 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(getBundleById).toHaveBeenCalledTimes(2);
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
+    expect(commitBundle).toHaveBeenCalledWith(
+      ...expectedCommitCall([
         {
           operation: "update",
           data: {
@@ -320,8 +322,8 @@ describe("createDatabasePlugin", () => {
             enabled: false,
           },
         },
-      ],
-    });
+      ]),
+    );
   });
 
   it("reads pending updates before commit in the same request context", async () => {
