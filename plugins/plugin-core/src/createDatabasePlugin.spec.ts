@@ -6,6 +6,7 @@ import {
 } from "./createDatabasePlugin";
 import type {
   Bundle,
+  DatabaseBundleChange,
   DatabaseAnalyticsOperations,
   DatabasePlugin,
   GetBundlesArgs,
@@ -55,19 +56,32 @@ const baseBundle: Bundle = {
 };
 
 type TestFactoryMethods = AbstractDatabasePlugin["bundles"] & {
+  commit: AbstractDatabasePlugin["commit"];
   getChannels: AbstractDatabasePlugin["channels"]["getChannels"];
   onUnmount?: AbstractDatabasePlugin["onUnmount"];
 };
 
 const nested = ({
+  commit,
   getChannels,
   onUnmount,
   ...bundles
 }: TestFactoryMethods): AbstractDatabasePlugin => ({
   bundles,
   channels: { getChannels },
+  commit,
   ...(onUnmount ? { onUnmount } : {}),
 });
+
+const expectedCommitCall = (bundles: readonly DatabaseBundleChange[]) =>
+  [
+    undefined,
+    {
+      changes: {
+        bundles,
+      },
+    },
+  ] as const;
 
 describe("createDatabasePlugin", () => {
   it("groups database methods by concern", async () => {
@@ -89,7 +103,7 @@ describe("createDatabasePlugin", () => {
               totalPages: 1,
             },
           }),
-          commitBundle,
+          commit: commitBundle,
         },
         channels: {
           getChannels: async () => ["production"],
@@ -136,7 +150,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle,
+          commit: commitBundle,
         }),
     })({})();
 
@@ -178,7 +192,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle,
+          commit: commitBundle,
         }),
     })({})();
 
@@ -225,7 +239,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle,
+          commit: commitBundle,
         }),
     })({})();
 
@@ -284,7 +298,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle,
+          commit: commitBundle,
         }),
     })({})();
 
@@ -677,7 +691,7 @@ describe("createDatabasePlugin", () => {
             },
           }),
           getChannels: async () => ["production"],
-          commitBundle,
+          commit: commitBundle,
         }),
     })({})();
 
