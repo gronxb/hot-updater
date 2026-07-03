@@ -11,6 +11,7 @@ import type {
   DatabaseChanges,
   DatabasePlugin,
   GetBundlesArgs,
+  HotUpdaterContext,
   RequestEnvContext,
 } from "./types";
 
@@ -50,26 +51,12 @@ type _AnalyticsOperationsExposeOnlyStorageKeys = Expect<
   Equal<AnalyticsOperationKeys, ExpectedAnalyticsOperationKeys>
 >;
 type _DatabasePluginExposesRootCommit = Expect<
-  Equal<Extract<DatabaseOperationKeys, "commit">, "commit">
+  Equal<Parameters<DatabasePlugin["commit"]>, [HotUpdaterContext?]>
 >;
 type _DatabasePluginCommitInputIsRootOnly = Expect<
   Equal<
-    Parameters<DatabasePlugin["commit"]>[1],
-    Record<string, never> | undefined
-  >
->;
-type _BundleOperationsExcludeTableCommit = Expect<
-  Equal<BundleOperationKeys, ExpectedBundleOperationKeys>
->;
-type _DatabaseChangesGroupsBundleChangesAtRoot = Expect<
-  Equal<
-    DatabaseChanges,
-    {
-      readonly bundles: readonly {
-        readonly operation: "insert" | "update" | "delete";
-        readonly data: Bundle;
-      }[];
-    }
+    Parameters<AbstractDatabasePlugin["commit"]>,
+    [DatabaseChanges, HotUpdaterContext?]
   >
 >;
 

@@ -593,6 +593,9 @@ export const createBlobDatabasePlugin = <TConfig>({
           const changedSets = changes.bundles;
           if (changedSets.length === 0) return;
 
+        async commit({ changedSets }) {
+          if (changedSets.length === 0) return;
+
           const changedBundlesByKey: Record<string, Bundle[]> = {};
           const removalsByKey: Record<string, string[]> = {};
           const targetVersionRemovalsByKey: Record<
