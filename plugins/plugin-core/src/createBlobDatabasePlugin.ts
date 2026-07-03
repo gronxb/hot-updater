@@ -588,8 +588,9 @@ export const createBlobDatabasePlugin = <TConfig>({
               orderBy,
             });
           },
+        },
 
-          async commitBundle({ changedSets }) {
+        async commit({ changedSets }) {
             if (changedSets.length === 0) return;
 
             const changedBundlesByKey: Record<string, Bundle[]> = {};
@@ -805,7 +806,6 @@ export const createBlobDatabasePlugin = <TConfig>({
 
             pendingBundlesMap.clear();
           },
-        },
         channels: {
           async getChannels() {
             return [

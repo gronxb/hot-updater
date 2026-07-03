@@ -37,6 +37,23 @@ type _AnalyticsOperationsMatchDatabasePlugin = Expect<
 type _AnalyticsOperationsExposeOnlyStorageKeys = Expect<
   Equal<AnalyticsOperationKeys, ExpectedAnalyticsOperationKeys>
 >;
+type _DatabasePluginExposesRootCommit = Expect<
+  Equal<Parameters<DatabasePlugin["commit"]>, [RequestEnvContext?]>
+>;
+type _DatabaseBundleOperationsDoNotExposeCommit = Expect<
+  Equal<Extract<keyof DatabasePlugin["bundles"], "commit">, never>
+>;
+type _ProviderCommitReceivesChangedSets = Expect<
+  Equal<
+    Parameters<AbstractDatabasePlugin["commit"]>[0],
+    {
+      readonly changedSets: readonly {
+        readonly operation: "delete" | "insert" | "update";
+        readonly data: Bundle;
+      }[];
+    }
+  >
+>;
 
 const baseBundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
@@ -69,6 +86,7 @@ const nested = ({
   bundles,
   commit,
   channels: { getChannels },
+  commit,
   ...(onUnmount ? { onUnmount } : {}),
 });
 
@@ -92,7 +110,6 @@ describe("createDatabasePlugin", () => {
               totalPages: 1,
             },
           }),
-          commit,
         },
         commit,
         channels: {
