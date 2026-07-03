@@ -243,7 +243,7 @@ export const handleBundleSetEnabled = async (
     await databasePlugin.bundles.updateBundle(bundleId, {
       enabled: nextEnabled,
     });
-    await databasePlugin.bundles.commitBundle();
+    await databasePlugin.commit();
 
     const refetched = await databasePlugin.bundles.getBundleById(bundleId);
     if (!refetched) {
@@ -320,7 +320,7 @@ export const handleBundleUpdate = async (
     }
 
     await databasePlugin.bundles.updateBundle(bundleId, patch);
-    await databasePlugin.bundles.commitBundle();
+    await databasePlugin.commit();
 
     const refetched = await databasePlugin.bundles.getBundleById(bundleId);
     if (!refetched) {
@@ -372,7 +372,7 @@ export const handleBundleDelete = async (
     }
 
     await databasePlugin.bundles.deleteBundle(bundle);
-    await databasePlugin.bundles.commitBundle();
+    await databasePlugin.commit();
 
     const deleted = await waitForDeletedBundle(databasePlugin, bundleId);
     if (!deleted) {

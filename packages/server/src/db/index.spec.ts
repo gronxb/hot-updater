@@ -1263,7 +1263,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       })();
 
       await plugin.bundles.appendBundle(transactionBundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       expect($transaction).toHaveBeenCalledTimes(1);
       expect(txBundles.upsert).toHaveBeenCalledTimes(1);
@@ -1325,7 +1325,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       })();
 
       await plugin.bundles.appendBundle(transactionBundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       expect(transaction).toHaveBeenCalledTimes(1);
       expect(txInsert).toHaveBeenCalledTimes(1);
@@ -1362,7 +1362,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const plugin = mongoAdapter({ client })();
 
       await plugin.bundles.appendBundle(transactionBundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       expect(client.startSession).toHaveBeenCalledTimes(1);
       expect(session.withTransaction).toHaveBeenCalledTimes(1);

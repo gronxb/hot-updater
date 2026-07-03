@@ -300,7 +300,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     await repo.bundles.appendBundle(TEST_BUNDLE_1);
     await repo.bundles.appendBundle(TEST_BUNDLE_2);
     await repo.bundles.appendBundle(TEST_BUNDLE_3);
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     // Mock filtered bundles response
     const productionBundles = [TEST_BUNDLE_1, TEST_BUNDLE_2];
@@ -384,7 +384,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     await repo.bundles.appendBundle(TEST_BUNDLE_1);
     await repo.bundles.appendBundle(TEST_BUNDLE_2);
     await repo.bundles.appendBundle(TEST_BUNDLE_3);
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     const firstPage = await repo.bundles.getBundles({
       limit: 2,
@@ -539,7 +539,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     await repo.bundles.updateBundle("00000000-0000-0000-0000-000000000001", {
       enabled: false,
     });
-    await repo.bundles.commitBundle();
+    await repo.commit();
     expect(postCalled).toBe(true);
     expect(onDatabaseUpdated).toHaveBeenCalled();
   });
@@ -593,13 +593,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       ),
     );
 
-    await repo.bundles.commitBundle();
+    await repo.commit();
     expect(postCalled).toBe(true);
   });
 
   it("commitBundle: does nothing if there are no changes", async () => {
     const spy = vi.spyOn(global, "fetch");
-    await repo.bundles.commitBundle();
+    await repo.commit();
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
@@ -626,7 +626,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       enabled: false,
     });
 
-    await expect(repo.bundles.commitBundle()).rejects.toStrictEqual(
+    await expect(repo.commit()).rejects.toStrictEqual(
       new Error("API Error: Internal Server Error"),
     );
   });
@@ -647,7 +647,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
 
     await repo.bundles.deleteBundle(testBundles[0]);
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     expect(deleteCalled).toBe(true);
     expect(onDatabaseUpdated).toHaveBeenCalled();
@@ -664,7 +664,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
 
     await repo.bundles.deleteBundle(testBundles[0]);
-    await expect(repo.bundles.commitBundle()).rejects.toThrow(
+    await expect(repo.commit()).rejects.toThrow(
       `Bundle with id ${testBundles[0].id} not found`,
     );
   });
@@ -680,7 +680,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     );
 
     await repo.bundles.deleteBundle(testBundles[0]);
-    await expect(repo.bundles.commitBundle()).rejects.toThrow(
+    await expect(repo.commit()).rejects.toThrow(
       "API Error: 500 Internal Server Error",
     );
   });
@@ -777,7 +777,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       );
 
       await customRepo.bundles.deleteBundle(testBundles[0]);
-      await customRepo.bundles.commitBundle();
+      await customRepo.commit();
     });
 
     it("commitBundle: INSERT operations use custom create route and headers", async () => {
@@ -798,7 +798,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       );
 
       await customRepo.bundles.appendBundle(testBundles[0]);
-      await customRepo.bundles.commitBundle();
+      await customRepo.commit();
     });
 
     it("commitBundle: UPDATE operations use custom update route and headers", async () => {
@@ -836,7 +836,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       await customRepo.bundles.updateBundle(testBundles[0].id, {
         enabled: false,
       });
-      await customRepo.bundles.commitBundle();
+      await customRepo.commit();
     });
 
     it("getChannels", async () => {

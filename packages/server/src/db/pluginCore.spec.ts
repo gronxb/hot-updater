@@ -1132,7 +1132,7 @@ describe("createPluginDatabaseCore", () => {
 
   it("rejects invalid bundles before appendBundle is called", async () => {
     const appendBundle = vi.fn<DatabasePlugin["bundles"]["appendBundle"]>();
-    const commitBundle = vi.fn<DatabasePlugin["bundles"]["commitBundle"]>();
+    const commitBundle = vi.fn<DatabasePlugin["commit"]>();
 
     const plugin = createNestedDatabasePlugin({
       name: "validation-plugin",

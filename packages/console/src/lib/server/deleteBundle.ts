@@ -124,7 +124,7 @@ export async function deleteBundle(
   }
 
   await databasePlugin.bundles.deleteBundle(bundle);
-  await databasePlugin.bundles.commitBundle();
+  await databasePlugin.commit();
 
   const cleanupStorage = async () => {
     const cleanupUris = new Set<string>();

@@ -153,7 +153,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     // Standalone repository operations
     await repo.bundles.appendBundle(bundle);
-    await repo.bundles.commitBundle(); // Triggers actual commit
+    await repo.commit(); // Triggers actual commit
 
     // Verify via handler that bundle was created
     const request = new Request(
@@ -215,7 +215,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     // Delete via standalone repository
     await repo.bundles.deleteBundle(bundle);
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     // Verify it was deleted
     const afterDelete = await api.getBundleById(bundleId);
@@ -288,7 +288,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     });
 
     await repo.bundles.appendBundle(bundle);
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     // Step 2: Retrieve via standalone
     const retrieved = await repo.bundles.getBundleById(bundleId);
@@ -297,7 +297,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     // Step 3: Update via standalone
     await repo.bundles.updateBundle(bundleId, { enabled: false });
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     // Verify update
     const updated = await repo.bundles.getBundleById(bundleId);
@@ -305,7 +305,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     // Step 4: Delete via standalone
     await repo.bundles.deleteBundle(bundle);
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     // Verify deletion
     const deleted = await repo.bundles.getBundleById(bundleId);
@@ -326,7 +326,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await repo.bundles.appendBundle(createTestBundle({ id: bundleId3 }));
 
     // Commit all at once (standalone sends array in POST)
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     // Verify all were created
     const bundle1 = await api.getBundleById(bundleId1);
@@ -396,7 +396,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     });
 
     await repo.bundles.appendBundle(bundle);
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     const retrieved = await repo.bundles.getBundleById(bundleId);
     expect(retrieved).toBeTruthy();
@@ -468,10 +468,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
         storageUri: "s3://test-bucket/original.zip",
       }),
     );
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     await repo.bundles.updateBundle(bundleId, { targetAppVersion: "1.0.2" });
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     const updatedBundle = await repo.bundles.getBundleById(bundleId);
     expect(updatedBundle?.targetAppVersion).toBe("1.0.2");

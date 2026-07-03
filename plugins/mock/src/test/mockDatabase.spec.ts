@@ -127,7 +127,7 @@ describe("mockDatabase", () => {
     await plugin.bundles.appendBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
     await plugin.bundles.appendBundle(bundle3);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const result = await plugin.bundles.getBundles({
       where: { channel: "production" },
@@ -196,7 +196,7 @@ describe("mockDatabase", () => {
     await plugin.bundles.appendBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
     await plugin.bundles.appendBundle(bundle3);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const firstPage = await plugin.bundles.getBundles({
       where: { channel: "production" },
@@ -234,7 +234,7 @@ describe("mockDatabase", () => {
 
   it("should append a bundle", async () => {
     await plugin.bundles.appendBundle(DEFAULT_BUNDLES_MOCK[0]);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const bundles = await plugin.bundles.getBundles({ limit: 20 });
 
@@ -250,7 +250,7 @@ describe("mockDatabase", () => {
     await singleBundlePlugin.bundles.updateBundle(DEFAULT_BUNDLES_MOCK[0].id, {
       enabled: false,
     });
-    await singleBundlePlugin.bundles.commitBundle();
+    await singleBundlePlugin.commit();
 
     const bundles = await singleBundlePlugin.bundles.getBundles({
       limit: 20,
@@ -309,7 +309,7 @@ describe("mockDatabase", () => {
 
     // Delete first bundle
     await pluginWithBundles.bundles.deleteBundle(bundlesBefore.data[0]);
-    await pluginWithBundles.bundles.commitBundle();
+    await pluginWithBundles.commit();
 
     // Verify deletion
     const bundlesAfter = await pluginWithBundles.bundles.getBundles({
@@ -331,14 +331,14 @@ describe("mockDatabase", () => {
     };
 
     await plugin.bundles.deleteBundle(nonExistentBundle);
-    await expect(plugin.bundles.commitBundle()).rejects.toThrow(
+    await expect(plugin.commit()).rejects.toThrow(
       "Bundle with id non-existent-bundle not found",
     );
   });
 
   it("should throw error when deleting from empty plugin", async () => {
     await plugin.bundles.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
-    await expect(plugin.bundles.commitBundle()).rejects.toThrow(
+    await expect(plugin.commit()).rejects.toThrow(
       `Bundle with id ${DEFAULT_BUNDLES_MOCK[0].id} not found`,
     );
   });
@@ -356,7 +356,7 @@ describe("mockDatabase", () => {
     )();
 
     await pluginWithHook.bundles.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
-    await pluginWithHook.bundles.commitBundle();
+    await pluginWithHook.commit();
 
     // Hook should be called only once from commitBundle
     expect(mockHook).toHaveBeenCalledTimes(1);
@@ -377,7 +377,7 @@ describe("mockDatabase", () => {
 
     // Delete bundle
     await pluginWithBundles.bundles.deleteBundle(bundleToDelete);
-    await pluginWithBundles.bundles.commitBundle();
+    await pluginWithBundles.commit();
 
     // Verify bundle no longer exists
     const bundleAfter = await pluginWithBundles.bundles.getBundleById(
@@ -413,7 +413,7 @@ describe("mockDatabase", () => {
     // Delete staging bundle
     const stagingBundle = testBundles.find((b) => b.id === "bundle-staging")!;
     await testPlugin.bundles.deleteBundle(stagingBundle);
-    await testPlugin.bundles.commitBundle();
+    await testPlugin.commit();
 
     // Verify only production channel remains
     const channelsAfter = await testPlugin.channels.getChannels();
@@ -447,7 +447,7 @@ describe("mockDatabase", () => {
     // Delete middle bundle
     const bundleToDelete = testBundles.find((b) => b.id === "bundle-2")!;
     await testPlugin.bundles.deleteBundle(bundleToDelete);
-    await testPlugin.bundles.commitBundle();
+    await testPlugin.commit();
 
     // Get first page with limit 2
     const firstPage = await testPlugin.bundles.getBundles({
@@ -469,7 +469,7 @@ describe("mockDatabase", () => {
 
     try {
       await latencyPlugin.bundles.deleteBundle(DEFAULT_BUNDLES_MOCK[0]);
-      const commitPromise = latencyPlugin.bundles.commitBundle();
+      const commitPromise = latencyPlugin.commit();
       let committed = false;
       void commitPromise.then(() => {
         committed = true;
@@ -504,7 +504,7 @@ describe("mockDatabase", () => {
 
     // Add bundle
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify bundle exists
     const bundleExists = await plugin.bundles.getBundleById("new-bundle");
@@ -512,7 +512,7 @@ describe("mockDatabase", () => {
 
     // Delete bundle
     await plugin.bundles.deleteBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify bundle is deleted
     const bundleAfterDelete = await plugin.bundles.getBundleById("new-bundle");
@@ -556,11 +556,11 @@ describe("mockDatabase", () => {
 
     // Add first bundle, commit it, then delete it, then add second bundle
     await plugin.bundles.appendBundle(bundle1);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await plugin.bundles.deleteBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Should only have bundle2
     const bundles = await plugin.bundles.getBundles({ limit: 20 });

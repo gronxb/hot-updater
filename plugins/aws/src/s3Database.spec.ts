@@ -375,12 +375,12 @@ describe("s3Database plugin", () => {
     getChannels: () => plugin.channels.getChannels(),
     insertBundle: async (bundle) => {
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
     },
     getBundles: (options) => plugin.bundles.getBundles(options),
     updateBundleById: async (bundleId, newBundle) => {
       await plugin.bundles.updateBundle(bundleId, newBundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
     },
     deleteBundleById: async (bundleId) => {
       const bundle = await plugin.bundles.getBundleById(bundleId);
@@ -388,7 +388,7 @@ describe("s3Database plugin", () => {
         return;
       }
       await plugin.bundles.deleteBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
     },
   });
 
@@ -582,7 +582,7 @@ describe("s3Database plugin", () => {
     );
 
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(
       Object.keys(fakeStore).filter((key) =>
@@ -600,7 +600,7 @@ describe("s3Database plugin", () => {
     );
 
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(putObjectKeys).toEqual([
       "production/ios/1.0.0/update.json",
@@ -627,7 +627,7 @@ describe("s3Database plugin", () => {
     loadedObjectKeys = [];
 
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(listedObjectPrefixes).toEqual([]);
     expect(
@@ -656,7 +656,7 @@ describe("s3Database plugin", () => {
     await plugin.bundles.updateBundle(movedBundle.id, {
       channel: "production",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(listedObjectPrefixes).toEqual([]);
     expect(
@@ -686,7 +686,7 @@ describe("s3Database plugin", () => {
     loadedObjectKeys = [];
 
     await plugin.bundles.deleteBundle(removedBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(listedObjectPrefixes).toEqual([]);
     expect(
@@ -752,14 +752,14 @@ describe("s3Database plugin", () => {
 
     await plugin.bundles.appendBundle(targetBundle);
     await plugin.bundles.appendBundle(siblingBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await plugin.bundles.updateBundle(targetBundle.id, {
       channel: "production",
       enabled: false,
       message: "Updated from console",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     plugin = createPlugin();
 
@@ -826,10 +826,10 @@ describe("s3Database plugin", () => {
 
     await plugin.bundles.appendBundle(deletedBundle);
     await plugin.bundles.appendBundle(survivingBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await plugin.bundles.deleteBundle(deletedBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     plugin = createPlugin();
 
@@ -888,7 +888,7 @@ describe("s3Database plugin", () => {
 
     await plugin.bundles.appendBundle(targetBundle);
     await plugin.bundles.appendBundle(siblingBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await plugin.bundles.getBundles({
       where: { channel: "staging", platform: "ios" },
@@ -901,7 +901,7 @@ describe("s3Database plugin", () => {
       enabled: false,
       message: "Updated from another instance",
     });
-    await secondPlugin.bundles.commitBundle();
+    await secondPlugin.commit();
     expect(
       JSON.parse(fakeStore["staging/ios/1.0.0/update.json"] ?? "[]"),
     ).toEqual([
@@ -943,7 +943,7 @@ describe("s3Database plugin", () => {
     );
 
     await plugin.bundles.appendBundle(stagingBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     await expect(plugin.channels.getChannels()).resolves.toEqual(["staging"]);
 
@@ -954,7 +954,7 @@ describe("s3Database plugin", () => {
     );
     expect(bundleToDelete).toEqual(stagingBundle);
     await secondPlugin.bundles.deleteBundle(bundleToDelete!);
-    await secondPlugin.bundles.commitBundle();
+    await secondPlugin.commit();
 
     listedObjectPrefixes = [];
     loadedObjectKeys = [];
@@ -977,7 +977,7 @@ describe("s3Database plugin", () => {
 
     // Add bundle and commit
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify bundle was properly added to update.json file
     const storedBundles = JSON.parse(fakeStore[bundleKey]);
@@ -1006,7 +1006,7 @@ describe("s3Database plugin", () => {
     );
 
     await plugin.bundles.appendBundle(newBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(fakeStore[bundleKey]).toBeUndefined();
     expect(JSON.parse(fakeStore[namespacedBundleKey])).toStrictEqual([
@@ -1045,7 +1045,7 @@ describe("s3Database plugin", () => {
     await plugin.bundles.updateBundle("00000000-0000-0000-0000-000000000002", {
       enabled: false,
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify changes were reflected in update.json file
     const updatedBundles = JSON.parse(fakeStore[bundleKey]);
@@ -1120,7 +1120,7 @@ describe("s3Database plugin", () => {
       targetAppVersion: "1.0.2",
     });
     // Commit changes to S3
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // ios/1.0.2/update.json should have 3 bundles: 2 existing + 1 moved
     const newFileBundles = JSON.parse(fakeStore[keyNew]);
@@ -1226,7 +1226,7 @@ describe("s3Database plugin", () => {
       targetAppVersion: "1.x.x",
     });
     // Commit changes to S3
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // ios/1.0.2/update.json file should not exist
     expect(fakeStore[keyNew]).toBeUndefined();
@@ -1403,7 +1403,7 @@ describe("s3Database plugin", () => {
       enabled: false,
       message: "Disabled in beta channel",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Verify only the beta channel bundle was updated
     const updatedBetaIosBundles = JSON.parse(
@@ -1439,7 +1439,7 @@ describe("s3Database plugin", () => {
     await plugin.bundles.updateBundle("channel-move-test", {
       channel: "production",
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     // Assert: Bundle should be moved to production channel
     const productionBundles = JSON.parse(
@@ -1508,7 +1508,7 @@ describe("s3Database plugin", () => {
     await plugin.bundles.appendBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
     await plugin.bundles.appendBundle(bundle3);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const result = await plugin.bundles.getBundles({
       where: { channel: "production" },
@@ -1574,7 +1574,7 @@ describe("s3Database plugin", () => {
     await plugin.bundles.appendBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
     await plugin.bundles.appendBundle(bundle3);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const firstPage = await plugin.bundles.getBundles({
       where: { channel: "production" },
@@ -1625,7 +1625,7 @@ describe("s3Database plugin", () => {
     fakeStore[targetKey] = JSON.stringify(["1.0.0"]);
 
     // Call commitBundle but update.json should remain unchanged as no bundles were modified
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(fakeStore[updateKey]).toBe(JSON.stringify([iosBundle]));
     expect(JSON.parse(fakeStore[targetKey])).toEqual(["1.0.0"]);
@@ -1644,7 +1644,7 @@ describe("s3Database plugin", () => {
     )();
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.bundles.appendBundle(bundle);
-    await pluginWithHook.bundles.commitBundle();
+    await pluginWithHook.commit();
     expect(onDatabaseUpdated).toHaveBeenCalled();
   });
 
@@ -1787,7 +1787,7 @@ describe("s3Database plugin", () => {
     await plugin.bundles.appendBundle(bundle);
     // Change only enabled property → path should remain the same
     await plugin.bundles.updateBundle("same-key-test", { enabled: false });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const updateKey = "production/android/2.0.0/update.json";
     const storedBundles = JSON.parse(fakeStore[updateKey]);
@@ -1818,7 +1818,7 @@ describe("s3Database plugin", () => {
 
     await plugin.bundles.appendBundle(bundle1);
     await plugin.bundles.appendBundle(bundle2);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const iosUpdateKey = "production/ios/1.0.0/update.json";
     const androidUpdateKey = "production/android/2.0.0/update.json";
@@ -1849,7 +1849,7 @@ describe("s3Database plugin", () => {
     expect(Object.keys(fakeStore)).toHaveLength(0);
 
     // Now after calling commitBundle, update.json file should be created in S3 (fakeStore)
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
     expect(Object.keys(fakeStore)).toContain(bundleKey);
   });
 
@@ -1925,7 +1925,7 @@ describe("s3Database plugin", () => {
     );
     await plugin.bundles.appendBundle(newBundle);
 
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(cloudfrontInvalidations.length).toBeGreaterThan(0);
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
@@ -1952,14 +1952,14 @@ describe("s3Database plugin", () => {
       "cloudfront-update-test",
     );
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     cloudfrontInvalidations = [];
 
     await plugin.bundles.updateBundle("cloudfront-update-test", {
       enabled: false,
     });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,
@@ -1980,7 +1980,7 @@ describe("s3Database plugin", () => {
   it("should not trigger CloudFront invalidation when commitBundle is called with no pending changes", async () => {
     cloudfrontInvalidations = [];
 
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(cloudfrontInvalidations.length).toBe(0);
   });
@@ -1999,7 +1999,7 @@ describe("s3Database plugin", () => {
     cloudfrontInvalidationError = new Error("TooManyInvalidationsInProgress");
 
     await plugin.bundles.appendBundle(newBundle);
-    await expect(plugin.bundles.commitBundle()).resolves.toBeUndefined();
+    await expect(plugin.commit()).resolves.toBeUndefined();
 
     expect(JSON.parse(fakeStore[bundleKey])).toStrictEqual([newBundle]);
     expect(JSON.parse(fakeStore[targetVersionsKey])).toContain("1.0.0");
@@ -2027,7 +2027,7 @@ describe("s3Database plugin", () => {
     nextCloudfrontInvalidationStatuses = ["InProgress", "Completed"];
 
     await waitingPlugin.bundles.appendBundle(newBundle);
-    const commitPromise = waitingPlugin.bundles.commitBundle();
+    const commitPromise = waitingPlugin.commit();
     await vi.runAllTimersAsync();
     await expect(commitPromise).resolves.toBeUndefined();
     expect(cloudfrontGetInvalidationCalls).toContain("invalidation-1");
@@ -2051,7 +2051,7 @@ describe("s3Database plugin", () => {
     nextCloudfrontInvalidationStatuses = ["InProgress"];
 
     await waitingPlugin.bundles.appendBundle(newBundle);
-    const commitPromise = waitingPlugin.bundles.commitBundle();
+    const commitPromise = waitingPlugin.commit();
     const assertion = expect(commitPromise).rejects.toThrow(
       "Timed out waiting for CloudFront invalidation invalidation-1 to complete",
     );
@@ -2067,12 +2067,12 @@ describe("s3Database plugin", () => {
       "fingerprint-test",
     );
     await plugin.bundles.appendBundle(bundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     cloudfrontInvalidations = [];
 
     await plugin.bundles.updateBundle("fingerprint-test", { enabled: false });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const invalidatedPaths = cloudfrontInvalidations.flatMap(
       (inv) => inv.paths,

@@ -275,7 +275,7 @@ export const updateBundleOperation = async ({
 }: UpdateBundleInput) => {
   const { databasePlugin } = await prepareConfig();
   await databasePlugin.bundles.updateBundle(bundleId, bundle);
-  await databasePlugin.bundles.commitBundle();
+  await databasePlugin.commit();
   const updatedBundle = await databasePlugin.bundles.getBundleById(bundleId);
 
   if (!updatedBundle) {
@@ -299,7 +299,7 @@ export const promoteBundleOperation = async (input: PromoteBundleInput) => {
 export const createBundleOperation = async (bundle: Bundle) => {
   const { databasePlugin } = await prepareConfig();
   await databasePlugin.bundles.appendBundle(bundle);
-  await databasePlugin.bundles.commitBundle();
+  await databasePlugin.commit();
   return { success: true, bundleId: bundle.id };
 };
 

@@ -354,12 +354,12 @@ describe("d1Database plugin", () => {
     getChannels: () => plugin.channels.getChannels(),
     insertBundle: async (bundle) => {
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
     },
     getBundles: (options) => plugin.bundles.getBundles(options),
     updateBundleById: async (bundleId, newBundle) => {
       await plugin.bundles.updateBundle(bundleId, newBundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
     },
     deleteBundleById: async (bundleId) => {
       const bundle = await plugin.bundles.getBundleById(bundleId);
@@ -367,7 +367,7 @@ describe("d1Database plugin", () => {
         return;
       }
       await plugin.bundles.deleteBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
     },
   });
 
@@ -379,7 +379,7 @@ describe("d1Database plugin", () => {
       for (const bundle of bundles) {
         await plugin.bundles.appendBundle(bundle);
       }
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       return plugin.bundles.getUpdateInfo?.(args) ?? null;
     },
@@ -414,7 +414,7 @@ describe("d1Database plugin", () => {
     });
 
     await plugin.bundles.updateBundle(bundleId, { enabled: false });
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     expect(rows.get(bundleId)).toEqual(
       expect.objectContaining({

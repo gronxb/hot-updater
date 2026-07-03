@@ -170,16 +170,18 @@ export interface BuildPluginConfig {
   outDir?: string;
 }
 
-export type DatabaseChangeOperation = "insert" | "update" | "delete";
+export type BundleChangeOperation = "insert" | "update" | "delete";
 
-export type DatabaseBundleChange = {
-  readonly operation: DatabaseChangeOperation;
+export interface BundleChange {
+  readonly operation: BundleChangeOperation;
   readonly data: Bundle;
-};
+}
 
-export type DatabaseChanges = {
-  readonly bundles: readonly DatabaseBundleChange[];
-};
+export interface DatabaseChanges {
+  readonly bundles: readonly BundleChange[];
+}
+
+export type DatabaseCommitInput = Record<string, never>;
 
 export interface DatabaseBundleOperations<TContext = unknown> {
   supportsCursorPagination?: boolean;
@@ -224,6 +226,10 @@ export interface DatabaseChannelOperations<TContext = unknown> {
 }
 
 export interface DatabasePlugin<TContext = unknown> {
+  commit: (
+    context?: HotUpdaterContext<TContext>,
+    input?: DatabaseCommitInput,
+  ) => Promise<void>;
   analytics?: DatabaseAnalyticsOperations<TContext>;
   bundles: DatabaseBundleOperations<TContext>;
   commit: (context?: HotUpdaterContext<TContext>) => Promise<void>;

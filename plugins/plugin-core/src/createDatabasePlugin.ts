@@ -35,12 +35,19 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
       options: DatabaseBundleQueryOptions & { offset?: number },
       context?: HotUpdaterContext<TContext>,
     ) => Promise<Paginated<Bundle[]>>;
+    /**
+     * @deprecated Provider compatibility bridge. New providers should implement root commit.
+     */
+    commitBundle?: (
+      params: {
+        readonly changedSets: DatabaseChanges["bundles"];
+      },
+      context?: HotUpdaterContext<TContext>,
+    ) => Promise<void>;
   };
-  commit: (
-    params: {
-      readonly changes: DatabaseChanges;
-    },
-    context?: HotUpdaterContext<TContext>,
+  commit?: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: { readonly changes: DatabaseChanges },
   ) => Promise<void>;
   channels: {
     getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
@@ -265,8 +272,13 @@ export type CreateDatabasePluginOptions<TConfig, TContext = unknown> = {
  *         async getBundleById(bundleId) { ... },
  *         async getBundles(options) { ... },
  *       },
- *       async commit({ changes }) { ... },
- *       channels: {
+ *       async commit(context, { changes }) { ... }
+ *       },
+ *       commit?: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: { readonly changes: DatabaseChanges },
+  ) => Promise<void>;
+  channels: {
  *         async getChannels() { ... }
  *       }
  *     };
@@ -409,16 +421,15 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
         async commit(context) {
           const methods = getMethods();
           const unitOfWork = getMutationUnitOfWork(context);
-          const params = {
-            changes: {
-              bundles: unitOfWork.changedSets(),
-            },
-          };
+          const changes = { bundles: unitOfWork.changedSets() };
 
-          if (context === undefined) {
-            await methods.commit(params);
+          if (methods.commit) {
+            await methods.commit(context, { changes });
           } else {
-            await methods.commit(params, context);
+            await methods.bundles.commitBundle?.(
+              { changedSets: changes.bundles },
+              context,
+            );
           }
 
           unitOfWork.clear();
@@ -580,7 +591,11 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
           },
         },
 
-        channels: {
+        commit?: (
+    context: HotUpdaterContext<TContext> | undefined,
+    input: { readonly changes: DatabaseChanges },
+  ) => Promise<void>;
+  channels: {
           async getChannels(context) {
             if (context === undefined) {
               return getMethods().channels.getChannels();

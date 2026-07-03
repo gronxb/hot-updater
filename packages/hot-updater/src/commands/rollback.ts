@@ -173,7 +173,7 @@ export const handleRollback = async (
           enabled: false,
         });
       }
-      await databasePlugin.bundles.commitBundle();
+      await databasePlugin.commit();
     } catch (err) {
       commitError = err;
       p.log.error(

@@ -469,12 +469,12 @@ describe("supabaseDatabase plugin", () => {
     getChannels: () => plugin.channels.getChannels(),
     insertBundle: async (bundle) => {
       await plugin.bundles.appendBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
     },
     getBundles: (options) => plugin.bundles.getBundles(options),
     updateBundleById: async (bundleId, newBundle) => {
       await plugin.bundles.updateBundle(bundleId, newBundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
     },
     deleteBundleById: async (bundleId) => {
       const bundle = await plugin.bundles.getBundleById(bundleId);
@@ -482,7 +482,7 @@ describe("supabaseDatabase plugin", () => {
         return;
       }
       await plugin.bundles.deleteBundle(bundle);
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
     },
   });
 
@@ -494,7 +494,7 @@ describe("supabaseDatabase plugin", () => {
       for (const bundle of bundles) {
         await plugin.bundles.appendBundle(bundle);
       }
-      await plugin.bundles.commitBundle();
+      await plugin.commit();
 
       return plugin.bundles.getUpdateInfo?.(args) ?? null;
     },
@@ -526,7 +526,7 @@ describe("supabaseDatabase plugin", () => {
 
     await plugin.bundles.appendBundle(currentBundle);
     await plugin.bundles.appendBundle(targetBundle);
-    await plugin.bundles.commitBundle();
+    await plugin.commit();
 
     const args: GetBundlesArgs = {
       _updateStrategy: "fingerprint",

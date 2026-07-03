@@ -356,7 +356,7 @@ export async function createBundleDiff(
       patchFileHash: nextState.primaryPatch.patchFileHash,
       patchStorageUri: nextState.primaryPatch.patchStorageUri,
     });
-    await deps.databasePlugin.bundles.commitBundle();
+    await deps.databasePlugin.commit();
 
     if (
       previousPatch?.patchStorageUri &&

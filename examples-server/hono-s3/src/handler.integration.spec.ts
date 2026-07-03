@@ -183,12 +183,12 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
       fingerprintHash: null,
       rolloutCohortCount: 1000,
     });
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     await repo.bundles.updateBundle(bundleId, {
       targetAppVersion: "1.0.2",
     });
-    await repo.bundles.commitBundle();
+    await repo.commit();
 
     expect(await hotUpdater.getBundleById(bundleId)).toMatchObject({
       id: bundleId,

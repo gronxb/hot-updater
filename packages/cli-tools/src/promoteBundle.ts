@@ -486,7 +486,7 @@ export async function promoteBundle(
     await deps.databasePlugin.bundles.updateBundle(bundleId, {
       channel: normalizedTargetChannel,
     });
-    await deps.databasePlugin.bundles.commitBundle();
+    await deps.databasePlugin.commit();
 
     const updatedBundle =
       await deps.databasePlugin.bundles.getBundleById(bundleId);
@@ -514,7 +514,7 @@ export async function promoteBundle(
 
   try {
     await deps.databasePlugin.bundles.appendBundle(copiedBundle);
-    await deps.databasePlugin.bundles.commitBundle();
+    await deps.databasePlugin.commit();
     shouldCleanupUploadedCopy = false;
     return copiedBundle;
   } catch (error) {

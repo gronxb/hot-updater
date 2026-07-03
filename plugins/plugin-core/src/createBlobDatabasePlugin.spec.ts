@@ -1006,7 +1006,7 @@ describe("blobDatabase plugin", () => {
     const targetKey = "production/ios/target-app-versions.json";
     fakeStore[targetKey] = JSON.stringify(["1.0.0"]);
 
-    // Call commit but update.json should remain unchanged as no bundles were modified
+    // Call commitBundle but update.json should remain unchanged as no bundles were modified
     await plugin.commit();
 
     expect(fakeStore[updateKey]).toBe(JSON.stringify([iosBundle]));
@@ -1379,7 +1379,7 @@ describe("blobDatabase plugin", () => {
     // S3 should remain unchanged until commit is called
     expect(Object.keys(fakeStore)).toHaveLength(0);
 
-    // Now after calling commit, update.json file should be created in S3 (fakeStore)
+    // Now after calling commitBundle, update.json file should be created in S3 (fakeStore)
     await plugin.commit();
     expect(Object.keys(fakeStore)).toContain(bundleKey);
   });

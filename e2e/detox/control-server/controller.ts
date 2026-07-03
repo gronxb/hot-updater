@@ -1453,7 +1453,7 @@ async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
       }
 
       await databasePlugin.bundles.updateBundle(bundleId, definedPatch);
-      await databasePlugin.bundles.commitBundle();
+      await databasePlugin.commit();
 
       const refetched = await databasePlugin.bundles.getBundleById(bundleId);
       if (!refetched) {
@@ -1738,7 +1738,7 @@ async function clearProviderBundles({
           (bundle) =>
             databasePlugin.bundles.updateBundle(bundle.id, { enabled: false }),
         );
-        await databasePlugin.bundles.commitBundle();
+        await databasePlugin.commit();
 
         const refetched = await mapWithConcurrency(
           nextBatch,

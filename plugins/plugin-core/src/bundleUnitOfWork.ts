@@ -1,16 +1,10 @@
 import { bundleMatchesQueryWhere, sortBundles } from "./queryBundles";
 import type {
   Bundle,
+  BundleChange,
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
 } from "./types";
-
-export type BundleChangeOperation = "insert" | "update" | "delete";
-
-export interface BundleChange {
-  readonly operation: BundleChangeOperation;
-  readonly data: Bundle;
-}
 
 interface TrackedBundleChange extends BundleChange {
   readonly before: Bundle | null;

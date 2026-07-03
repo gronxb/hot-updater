@@ -1030,7 +1030,7 @@ const deployPlatform = async ({
               manifestStorageUri: taskRef.manifestStorageUri,
               rolloutCohortCount,
             });
-            await databasePlugin.bundles.commitBundle();
+            await databasePlugin.commit();
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
