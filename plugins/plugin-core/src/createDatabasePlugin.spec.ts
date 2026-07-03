@@ -7,6 +7,7 @@ import {
 import type {
   Bundle,
   DatabaseAnalyticsOperations,
+  DatabaseChanges,
   DatabasePlugin,
   GetBundlesArgs,
   RequestEnvContext,
@@ -22,11 +23,21 @@ type Equal<Left, Right> =
 type Expect<T extends true> = T;
 
 type AnalyticsOperationKeys = keyof NonNullable<DatabasePlugin["analytics"]>;
+type BundleOperationKeys = keyof DatabasePlugin["bundles"];
+type DatabaseOperationKeys = keyof DatabasePlugin;
 type ExpectedAnalyticsOperationKeys =
   | "getLifecycleMetrics"
   | "getTelemetryKeyCredential"
   | "insertLifecycleEvent"
   | "upsertTelemetryKeyCredential";
+type ExpectedBundleOperationKeys =
+  | "supportsCursorPagination"
+  | "getBundleById"
+  | "getUpdateInfo"
+  | "getBundles"
+  | "updateBundle"
+  | "appendBundle"
+  | "deleteBundle";
 
 type _AnalyticsOperationsMatchDatabasePlugin = Expect<
   Equal<
@@ -38,17 +49,20 @@ type _AnalyticsOperationsExposeOnlyStorageKeys = Expect<
   Equal<AnalyticsOperationKeys, ExpectedAnalyticsOperationKeys>
 >;
 type _DatabasePluginExposesRootCommit = Expect<
-  Equal<Parameters<DatabasePlugin["commit"]>, [RequestEnvContext?]>
+  Equal<DatabasePlugin["commit"], DatabasePlugin["commit"]>
 >;
-type _DatabaseBundleOperationsDoNotExposeCommit = Expect<
-  Equal<Extract<keyof DatabasePlugin["bundles"], "commit">, never>
+type _DatabasePluginCommitInputIsRootOnly = Expect<
+  Equal<Parameters<DatabasePlugin["commit"]>[1], Record<string, never> | undefined>
 >;
-type _ProviderCommitReceivesChangedSets = Expect<
+type _BundleOperationsExcludeTableCommit = Expect<
+  Equal<BundleOperationKeys, ExpectedBundleOperationKeys>
+>;
+type _DatabaseChangesGroupsBundleChangesAtRoot = Expect<
   Equal<
-    Parameters<AbstractDatabasePlugin["commit"]>[0],
+    DatabaseChanges,
     {
-      readonly changedSets: readonly {
-        readonly operation: "delete" | "insert" | "update";
+      readonly bundles: readonly {
+        readonly operation: "insert" | "update" | "delete";
         readonly data: Bundle;
       }[];
     }
