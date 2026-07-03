@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
   const mockDatabasePlugin = {
-    bundles: {
+    commit: vi.fn(),
+  bundles: {
       appendBundle: vi.fn(),
-      commitBundle: vi.fn(),
       deleteBundle: vi.fn(),
       getBundleById: vi.fn(),
       getBundles: vi.fn(),
@@ -136,7 +136,7 @@ describe("handleRollback", () => {
         enabled: false,
       },
     );
-    expect(mockDatabasePlugin.bundles.commitBundle).toHaveBeenCalledTimes(1);
+    expect(mockDatabasePlugin.commit).toHaveBeenCalledTimes(1);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       expect.stringContaining("ios-2"),
     );

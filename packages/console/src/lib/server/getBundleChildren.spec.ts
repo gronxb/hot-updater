@@ -27,7 +27,8 @@ function createDatabasePlugin(bundles: Bundle[]) {
 
   return {
     name: "mockDatabase",
-    bundles: {
+    commit: vi.fn(),
+  bundles: {
       getBundleById: vi.fn(
         async (bundleId: string) => bundleMap.get(bundleId) ?? null,
       ),
@@ -43,7 +44,6 @@ function createDatabasePlugin(bundles: Bundle[]) {
       })),
       updateBundle: vi.fn(),
       appendBundle: vi.fn(),
-      commitBundle: vi.fn(),
       deleteBundle: vi.fn(),
     },
     channels: {

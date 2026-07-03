@@ -41,7 +41,8 @@ function createDatabasePlugin(
 ): DatabasePlugin {
   return {
     name,
-    bundles: {
+    commit: vi.fn(),
+  bundles: {
       getBundleById: vi.fn(async (bundleId) => {
         return bundles.find((bundle) => bundle.id === bundleId) ?? null;
       }),
@@ -58,7 +59,6 @@ function createDatabasePlugin(
       updateBundle: vi.fn(),
       appendBundle: vi.fn(),
       deleteBundle: vi.fn(),
-      commitBundle: vi.fn(),
     },
     channels: {
       getChannels: vi.fn(async () => ["production"]),

@@ -9,9 +9,9 @@ const {
   mockPromoteBundle,
 } = vi.hoisted(() => {
   const mockDatabasePlugin = {
-    bundles: {
+    commit: vi.fn(),
+  bundles: {
       appendBundle: vi.fn(),
-      commitBundle: vi.fn(),
       deleteBundle: vi.fn(),
       getBundleById: vi.fn(),
       getBundles: vi.fn(),

@@ -24,9 +24,9 @@ const {
     },
   };
   const mockDatabasePlugin = {
-    bundles: {
+    commit: vi.fn(),
+  bundles: {
       appendBundle: vi.fn(),
-      commitBundle: vi.fn(),
       deleteBundle: vi.fn(),
       getBundleById: vi.fn(),
       getBundles: vi.fn(),
@@ -425,7 +425,7 @@ describe("deploy rollout wiring", () => {
     });
     mockStoragePlugin.profiles.node.exists.mockResolvedValue(false);
     mockDatabasePlugin.bundles.appendBundle.mockResolvedValue(undefined);
-    mockDatabasePlugin.bundles.commitBundle.mockResolvedValue(undefined);
+    mockDatabasePlugin.commit.mockResolvedValue(undefined);
     mockDatabasePlugin.bundles.getBundles.mockResolvedValue({
       data: [],
       pagination: {

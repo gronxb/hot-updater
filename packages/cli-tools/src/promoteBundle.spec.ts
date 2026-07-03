@@ -515,8 +515,7 @@ describe("createCopiedBundleArchive", () => {
         appendBundle: vi.fn(async () => {
           throw new Error("append failed");
         }),
-        commitBundle: vi.fn(),
-        deleteBundle: vi.fn(),
+          deleteBundle: vi.fn(),
         getBundleById: vi.fn(async () => baseBundle),
         getBundles: vi.fn(),
         updateBundle: vi.fn(),
