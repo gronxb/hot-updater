@@ -55,16 +55,19 @@ const baseBundle: Bundle = {
 };
 
 type TestFactoryMethods = AbstractDatabasePlugin["bundles"] & {
+  commit: AbstractDatabasePlugin["commit"];
   getChannels: AbstractDatabasePlugin["channels"]["getChannels"];
   onUnmount?: AbstractDatabasePlugin["onUnmount"];
 };
 
 const nested = ({
+  commit,
   getChannels,
   onUnmount,
   ...bundles
 }: TestFactoryMethods): AbstractDatabasePlugin => ({
   bundles,
+  commit,
   channels: { getChannels },
   ...(onUnmount ? { onUnmount } : {}),
 });
@@ -89,8 +92,8 @@ describe("createDatabasePlugin", () => {
               totalPages: 1,
             },
           }),
-          commit,
         },
+        commit,
         channels: {
           getChannels: async () => ["production"],
         },
@@ -104,7 +107,8 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(commit).toHaveBeenCalledWith({
-      changedSets: [
+      changes: {
+        bundles: [
         {
           operation: "update",
           data: {
@@ -113,6 +117,7 @@ describe("createDatabasePlugin", () => {
           },
         },
       ],
+      },
     });
   });
 
@@ -146,7 +151,8 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(commit).toHaveBeenCalledWith({
-      changedSets: [
+      changes: {
+        bundles: [
         {
           operation: "update",
           data: {
@@ -155,6 +161,7 @@ describe("createDatabasePlugin", () => {
           },
         },
       ],
+      },
     });
   });
 
@@ -187,7 +194,8 @@ describe("createDatabasePlugin", () => {
     await plugin.commit();
 
     expect(commit).toHaveBeenCalledWith({
-      changedSets: [
+      changes: {
+        bundles: [
         {
           operation: "update",
           data: {
@@ -197,6 +205,7 @@ describe("createDatabasePlugin", () => {
           },
         },
       ],
+      },
     });
   });
 
@@ -239,7 +248,8 @@ describe("createDatabasePlugin", () => {
 
     expect(getBundleById).toHaveBeenCalledTimes(1);
     expect(commit).toHaveBeenNthCalledWith(1, {
-      changedSets: [
+      changes: {
+        bundles: [
         {
           operation: "update",
           data: {
@@ -248,9 +258,11 @@ describe("createDatabasePlugin", () => {
           },
         },
       ],
+      },
     });
     expect(commit).toHaveBeenNthCalledWith(2, {
-      changedSets: [
+      changes: {
+        bundles: [
         {
           operation: "update",
           data: {
@@ -259,6 +271,7 @@ describe("createDatabasePlugin", () => {
           },
         },
       ],
+      },
     });
   });
 
@@ -298,7 +311,8 @@ describe("createDatabasePlugin", () => {
 
     expect(getBundleById).toHaveBeenCalledTimes(2);
     expect(commit).toHaveBeenCalledWith({
-      changedSets: [
+      changes: {
+        bundles: [
         {
           operation: "update",
           data: {
@@ -307,6 +321,7 @@ describe("createDatabasePlugin", () => {
           },
         },
       ],
+      },
     });
   });
 
@@ -445,6 +460,7 @@ describe("createDatabasePlugin", () => {
           enabled: false,
         },
       ],
+      },
     });
   });
 

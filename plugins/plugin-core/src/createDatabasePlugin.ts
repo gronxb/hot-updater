@@ -6,6 +6,7 @@ import { getRequestBundleUnitOfWork } from "./bundleUnitOfWorkStore";
 import { calculatePagination } from "./calculatePagination";
 import type {
   DatabaseAnalyticsOperations,
+  DatabaseChanges,
   DatabaseBundleCursor,
   DatabaseBundleIdFilter,
   DatabaseBundleQueryOptions,
@@ -34,16 +35,13 @@ export interface AbstractDatabasePlugin<TContext = unknown> {
       options: DatabaseBundleQueryOptions & { offset?: number },
       context?: HotUpdaterContext<TContext>,
     ) => Promise<Paginated<Bundle[]>>;
-    commitBundle: (
-      params: {
-        changedSets: {
-          operation: "insert" | "update" | "delete";
-          data: Bundle;
-        }[];
-      },
-      context?: HotUpdaterContext<TContext>,
-    ) => Promise<void>;
   };
+  commit: (
+    params: {
+      readonly changes: DatabaseChanges;
+    },
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
   channels: {
     getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
   };
@@ -266,8 +264,8 @@ export type CreateDatabasePluginOptions<TConfig, TContext = unknown> = {
  *       bundles: {
  *         async getBundleById(bundleId) { ... },
  *         async getBundles(options) { ... },
- *         async commitBundle({ changedSets }) { ... }
  *       },
+ *       async commit({ changes }) { ... },
  *       channels: {
  *         async getChannels() { ... }
  *       }
@@ -408,6 +406,25 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
       const plugin: DatabasePlugin<TContext> = {
         name: options.name,
 
+        async commit(context) {
+          const methods = getMethods();
+          const unitOfWork = getMutationUnitOfWork(context);
+          const params = {
+            changes: {
+              bundles: unitOfWork.changedSets(),
+            },
+          };
+
+          if (context === undefined) {
+            await methods.commit(params);
+          } else {
+            await methods.commit(params, context);
+          }
+
+          unitOfWork.clear();
+          await hooks?.onDatabaseUpdated?.();
+        },
+
         bundles: {
           get supportsCursorPagination() {
             return getMethods().bundles.supportsCursorPagination;
@@ -534,22 +551,6 @@ export function createDatabasePlugin<TConfig, TContext = unknown>(
             return shouldOverlay ? overlayResult(result) : result;
           },
 
-          async commitBundle(context) {
-            const methods = getMethods().bundles;
-            const unitOfWork = getMutationUnitOfWork(context);
-            const params = {
-              changedSets: unitOfWork.changedSets(),
-            };
-
-            if (context === undefined) {
-              await methods.commitBundle(params);
-            } else {
-              await methods.commitBundle(params, context);
-            }
-
-            unitOfWork.clear();
-            await hooks?.onDatabaseUpdated?.();
-          },
 
           async updateBundle(
             targetBundleId: string,

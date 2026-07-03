@@ -170,6 +170,17 @@ export interface BuildPluginConfig {
   outDir?: string;
 }
 
+export type DatabaseChangeOperation = "insert" | "update" | "delete";
+
+export type DatabaseBundleChange = {
+  readonly operation: DatabaseChangeOperation;
+  readonly data: Bundle;
+};
+
+export type DatabaseChanges = {
+  readonly bundles: readonly DatabaseBundleChange[];
+};
+
 export interface DatabaseBundleOperations<TContext = unknown> {
   supportsCursorPagination?: boolean;
   getBundleById: (
@@ -193,7 +204,6 @@ export interface DatabaseBundleOperations<TContext = unknown> {
     insertBundle: Bundle,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
-  commitBundle: (context?: HotUpdaterContext<TContext>) => Promise<void>;
   deleteBundle: (
     deleteBundle: Bundle,
     context?: HotUpdaterContext<TContext>,
@@ -207,6 +217,7 @@ export interface DatabaseChannelOperations<TContext = unknown> {
 export interface DatabasePlugin<TContext = unknown> {
   analytics?: DatabaseAnalyticsOperations<TContext>;
   bundles: DatabaseBundleOperations<TContext>;
+  commit: (context?: HotUpdaterContext<TContext>) => Promise<void>;
   channels: DatabaseChannelOperations<TContext>;
   onUnmount?: () => Promise<void>;
   name: string;
