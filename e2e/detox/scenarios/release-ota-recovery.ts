@@ -83,10 +83,14 @@ export const releaseOtaRecoveryScenario: DetoxScenarioDefinition = {
       },
     );
     await app.launch("launch crash bundle");
-    await app.control("wait crash recovery", "/e2e/wait-for-crash-recovery", {
-      crashedBundleId: "$crashBundleId",
-      stableBundleId: "$stableBundleId",
-    });
+    await app.control(
+      "wait crash recovery",
+      "/e2e/jobs/wait-for-crash-recovery",
+      {
+        crashedBundleId: "$crashBundleId",
+        stableBundleId: "$stableBundleId",
+      },
+    );
     await app.control(
       "assert recovery launch report",
       "/e2e/assert-launch-report",

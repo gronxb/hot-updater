@@ -223,7 +223,10 @@ class DetoxAppDriver {
 
   async reattachAfterExternalLaunch(pathName) {
     if (!isAndroidRun()) return;
-    if (pathName !== "/e2e/wait-for-crash-recovery") return;
+    const shouldReattachAfterRecovery =
+      pathName === "/e2e/wait-for-crash-recovery" ||
+      pathName === "/e2e/jobs/wait-for-crash-recovery";
+    if (!shouldReattachAfterRecovery) return;
     await launchApp({ newInstance: false });
   }
 

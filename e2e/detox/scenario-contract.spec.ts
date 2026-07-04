@@ -25,6 +25,10 @@ const detoxControlServerControllerPath = path.join(
   repoDir,
   "e2e/detox/control-server/controller.ts",
 );
+const detoxControlServerRoutesPath = path.join(
+  repoDir,
+  "e2e/detox/control-server/routes.ts",
+);
 const scenarioDir = path.join(repoDir, "e2e/detox/scenarios");
 const exampleAppPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
 const exampleE2eAppPatchSurfacePath = path.join(
@@ -1901,22 +1905,47 @@ describe("Detox scenario contract", () => {
 
   it("reattaches Android Detox after control-server crash recovery", async () => {
     // Given: the control server relaunches Android outside Detox while waiting
-    // for the native recovery marker.
+    // for the native recovery marker through a long-running job.
     const detoxRuntimeSource = await fs.readFile(
       detoxScenarioRuntimePath,
       "utf8",
     );
+    const routesSource = await fs.readFile(
+      detoxControlServerRoutesPath,
+      "utf8",
+    );
+    const controllerSource = await fs.readFile(
+      detoxControlServerControllerPath,
+      "utf8",
+    );
+    const recoveryCall = (await recordScenarioCalls("release-ota-recovery"))
+      .filter((call) => call.kind === "control")
+      .find((call) => call.stage === "wait crash recovery");
     const reattachBody = detoxRuntimeSource.slice(
       detoxRuntimeSource.indexOf("async reattachAfterExternalLaunch"),
       detoxRuntimeSource.indexOf("module.exports"),
     );
 
-    // When: the wait-for-crash-recovery control step completes.
-    // Then: Android reconnects through Detox without adding a scenario-level relaunch.
+    // When: the wait-for-crash-recovery job control step completes.
+    // Then: Android reconnects through Detox without adding a scenario-level
+    // relaunch.
+    expect(recoveryCall).toMatchObject({
+      pathName: "/e2e/jobs/wait-for-crash-recovery",
+    });
+    expect(routesSource).toContain(
+      'app.post("/e2e/jobs/wait-for-crash-recovery"',
+    );
+    expect(controllerSource).toContain(
+      "export function startWaitForCrashRecoveryJob",
+    );
     expect(reattachBody).toContain(
-      'pathName !== "/e2e/wait-for-crash-recovery"',
+      'pathName === "/e2e/wait-for-crash-recovery"',
+    );
+    expect(reattachBody).toContain(
+      'pathName === "/e2e/jobs/wait-for-crash-recovery"',
     );
     expect(reattachBody).toContain("if (!isAndroidRun()) return;");
+    expect(reattachBody).toContain("if (!shouldReattachAfterRecovery) return;");
     expect(reattachBody).toContain("await launchApp({ newInstance: false });");
     expect(reattachBody).not.toMatch(/\bretry\b/i);
     expect(await scenarioStages("release-ota-recovery")).not.toContain(

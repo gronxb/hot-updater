@@ -5897,6 +5897,17 @@ export function startWaitForMetadataJob(
   );
 }
 
+export function startWaitForCrashRecoveryJob(
+  stableBundleId: string,
+  crashedBundleId: string,
+) {
+  return createJob((context) =>
+    waitForCrashRecovery(stableBundleId, crashedBundleId, {
+      signal: context.signal,
+    }),
+  );
+}
+
 export function getJob(jobId: string) {
   return jobs.get(jobId) ?? null;
 }

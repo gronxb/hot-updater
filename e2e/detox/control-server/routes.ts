@@ -30,6 +30,7 @@ import {
   startDeployBundleJob,
   startPatchBundleJob,
   startResetRemoteBundlesJob,
+  startWaitForCrashRecoveryJob,
   startWaitForMetadataJob,
 } from "./controller.ts";
 import { handlePatchE2eScreenState } from "./screen-state.ts";
@@ -217,6 +218,26 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
         recoveredStableBundleId: payload.recoveredStableBundleId,
         relaunchLimit: payload.relaunchLimit,
       },
+    ),
+  });
+});
+
+app.post("/e2e/jobs/wait-for-crash-recovery", async (c) => {
+  const payload = (await c.req.json()) as {
+    crashedBundleId?: string;
+    stableBundleId?: string;
+  };
+  if (!payload.stableBundleId || !payload.crashedBundleId) {
+    return c.json(
+      { error: "stableBundleId and crashedBundleId are required" },
+      400,
+    );
+  }
+
+  return c.json({
+    jobId: startWaitForCrashRecoveryJob(
+      payload.stableBundleId,
+      payload.crashedBundleId,
     ),
   });
 });
