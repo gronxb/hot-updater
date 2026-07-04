@@ -173,4 +173,78 @@ describe("crash recovery wait", () => {
     expect(sleeps).toEqual([2000]);
     expect(reads).toEqual(["read", "read"]);
   });
+
+  it("does not relaunch Android again after metadata has recovered", async () => {
+    // Given: Android recovery updates metadata before launch-report IO is visible.
+    const reads: string[] = [];
+    const sleeps: number[] = [];
+    const launches: string[] = [];
+
+    // When: the second poll sees recovered metadata but not the launch report yet.
+    await waitForCrashRecoveryState({
+      androidLaunchSettleMs: 2000,
+      attempts: 4,
+      crashedBundleId: "crashed-1",
+      createTimeoutError: () => new Error("timed out"),
+      getLaunchReportState: (report): LaunchReportState => ({
+        crashedBundleId:
+          typeof report?.crashedBundleId === "string"
+            ? report.crashedBundleId
+            : null,
+        status: typeof report?.status === "string" ? report.status : null,
+      }),
+      getMetadataState: (metadata): MetadataState => ({
+        stagingBundleId:
+          typeof metadata?.stagingBundleId === "string"
+            ? metadata.stagingBundleId
+            : null,
+        verificationPending:
+          typeof metadata?.verificationPending === "boolean"
+            ? metadata.verificationPending
+            : null,
+      }),
+      launchAndroidApp: () => {
+        launches.push("launch");
+      },
+      platform: "android",
+      pollIntervalMs: 1000,
+      readDiagnostics: () => {
+        reads.push("read");
+        if (reads.length === 1) {
+          return pendingDiagnostics();
+        }
+        return {
+          ...pendingDiagnostics(),
+          launchReport: {
+            exists: reads.length === 3,
+            path: "report",
+            readError: null,
+            value:
+              reads.length === 3
+                ? { crashedBundleId: "crashed-1", status: "RECOVERED" }
+                : null,
+          },
+          metadata: {
+            exists: true,
+            path: "metadata",
+            readError: null,
+            value: {
+              stagingBundleId: "stable-1",
+              verificationPending: false,
+            },
+          },
+        };
+      },
+      sleepMs: (durationMs) => {
+        sleeps.push(durationMs);
+        return Promise.resolve();
+      },
+      stableBundleId: "stable-1",
+    });
+
+    // Then: a later relaunch cannot clear the just-written RECOVERED report.
+    expect(launches).toEqual(["launch"]);
+    expect(sleeps).toEqual([2000, 1000]);
+    expect(reads).toEqual(["read", "read", "read"]);
+  });
 });

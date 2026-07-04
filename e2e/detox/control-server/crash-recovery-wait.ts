@@ -117,6 +117,16 @@ function isRecovered(args: {
   );
 }
 
+function hasRecoveredMetadata(args: {
+  readonly metadataState: MetadataState;
+  readonly stableBundleId: string;
+}) {
+  return (
+    args.metadataState.stagingBundleId === args.stableBundleId &&
+    args.metadataState.verificationPending === false
+  );
+}
+
 export async function waitForCrashRecoveryState(
   options: CrashRecoveryWaitOptions,
 ) {
@@ -145,7 +155,14 @@ export async function waitForCrashRecoveryState(
       return {};
     }
 
-    if (options.platform === "android" && androidRelaunchAttempts < 3) {
+    if (
+      options.platform === "android" &&
+      androidRelaunchAttempts < 3 &&
+      !hasRecoveredMetadata({
+        metadataState,
+        stableBundleId: options.stableBundleId,
+      })
+    ) {
       options.launchAndroidApp();
       androidRelaunchAttempts += 1;
       await options.sleepMs(options.androidLaunchSettleMs, options.signal);
