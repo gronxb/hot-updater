@@ -9,11 +9,15 @@ The v2 contract treats these as baseline database features:
 
 - bundles
 - bundle patches
-- analytics events
+- bundle events as an append-only event sourcing log
 - cursor pagination for list queries
 
 Transaction support is not modeled as a capability flag. Providers that can
 open an explicit transaction expose `beginTransaction`.
+
+`bundle_events` is not a summary table. It is the source-of-truth event log for
+client telemetry reported by installed apps. Counts such as Active, Recovered,
+and bundle transitions are read models derived from this append-only log.
 
 ## Top-Level Plugin Spec
 
@@ -55,7 +59,7 @@ export interface DatabasePluginCore<TContext = unknown, TTx = unknown> {
 
   readonly bundles: BundleResource<TContext, TTx>;
   readonly bundlePatches: BundlePatchResource<TContext, TTx>;
-  readonly analyticsEvents: AnalyticsEventResource<TContext, TTx>;
+  readonly bundleEvents: BundleEventResource<TContext, TTx>;
   readonly updateInfo?: UpdateInfoRepository<TContext, TTx>;
 
   readonly close?: () => Promise<void>;
@@ -68,7 +72,7 @@ export interface DatabasePluginRuntime<TContext = unknown, TTx = unknown> {
 
   readonly bundles: RuntimeBundleRepository<TContext, TTx>;
   readonly bundlePatches: RuntimeBundlePatchRepository<TContext, TTx>;
-  readonly analyticsEvents: RuntimeAnalyticsEventRepository<TContext, TTx>;
+  readonly bundleEvents: RuntimeBundleEventRepository<TContext, TTx>;
   readonly updateInfo?: UpdateInfoRepository<TContext, TTx>;
 
   readonly commit: (
@@ -109,7 +113,7 @@ Pass checklist:
   wrapper.
 - Provider authors do not pass schema, version, setup, or mode fields.
 - The core object is organized by resources: `bundles`, `bundlePatches`,
-  `analyticsEvents`, and optional `updateInfo`.
+  `bundleEvents`, and optional `updateInfo`.
 - Basic features are required by shape, not described by `capabilities` flags.
 - Runtime writes enter through resource staging methods; `commit()` or
   `commit(batch)` is the public flush boundary.
@@ -131,7 +135,7 @@ Smells that the surface is drifting back to imperative:
 - Setup appears in the provider-facing runtime object.
 - Schema creation, migration, or validation happens implicitly inside `connect`
   or on every runtime request.
-- Bundle patches or analytics events are hidden behind bundle-only methods.
+- Bundle patches or bundle events are hidden behind bundle-only methods.
 - The public core object exposes provider operations such as raw SQL, SDK clients,
   upload steps, or CLI actions.
 - Cross-resource ordering rules are spread across repositories instead of being
@@ -230,7 +234,7 @@ await runtime.commit(); // or runtime.commit(batch)
 // 4. group mutations by resource
 // 5. call core.bundles.apply(bundleMutations, txContext)
 // 6. call core.bundlePatches.apply(bundlePatchMutations, txContext)
-// 7. call core.analyticsEvents.apply(eventMutations, txContext)
+// 7. call core.bundleEvents.apply(bundleEventMutations, txContext)
 // 8. call tx.commit() once, or tx.rollback() once on failure
 // 9. clear the applied staged mutations after success
 ```
@@ -293,18 +297,18 @@ connect({ pool }) {
       },
     },
 
-    analyticsEvents: {
+    bundleEvents: {
       async list(query, context) {
         const db = context?.transaction?.handle ?? pool;
-        return listAnalyticsEvents(db, query);
+        return listBundleEvents(db, query);
       },
 
       async apply(mutations, context) {
         const db = context?.transaction?.handle ?? pool;
 
         for (const mutation of mutations) {
-          // Run only analytics event SQL here.
-          await applyAnalyticsEventMutation(db, mutation);
+          // Run only bundle event SQL here.
+          await applyBundleEventMutation(db, mutation);
         }
       },
     },
@@ -499,70 +503,135 @@ export interface BundlePatchListQuery {
 }
 ```
 
-## Analytics Event Repository
+## Bundle Event Repository
 
-Analytics events are a required v2 resource. Providers must support inserting
-events through resource-local `apply`. Query and summary APIs are repository
-methods.
+Bundle events are a required v2 resource backed by the `bundle_events` table.
+Providers must support appending events through resource-local `apply`.
+
+The table is append-only. Providers should not update or delete bundle events as
+part of normal Hot Updater workflows. Event summaries are derived read models,
+not provider-authored source-of-truth APIs.
 
 ```ts
-export interface RuntimeAnalyticsEventRepository<
+export interface RuntimeBundleEventRepository<
   TContext = unknown,
   TTx = unknown,
-> extends AnalyticsEventRepository<TContext, TTx> {
-  readonly insert: (
-    event: DatabaseAnalyticsEvent,
+> extends BundleEventRepository<TContext, TTx> {
+  readonly append: (
+    event: DatabaseBundleEventInput,
     context?: DatabaseOperationContext<TContext, TTx>,
   ) => Promise<void>;
 }
 
-export interface AnalyticsEventResource<TContext = unknown, TTx = unknown>
-  extends AnalyticsEventRepository<TContext, TTx> {
+export interface BundleEventResource<TContext = unknown, TTx = unknown>
+  extends BundleEventRepository<TContext, TTx> {
   readonly apply: (
-    mutations: readonly AnalyticsEventMutation[],
+    mutations: readonly BundleEventMutation[],
     context?: DatabaseOperationContext<TContext, TTx>,
   ) => Promise<void>;
 }
 
-export interface AnalyticsEventRepository<TContext = unknown, TTx = unknown> {
+export interface BundleEventRepository<TContext = unknown, TTx = unknown> {
   readonly list: (
-    query: AnalyticsEventListQuery,
+    query: BundleEventListQuery,
     context?: DatabaseOperationContext<TContext, TTx>,
-  ) => Promise<CursorPage<DatabaseAnalyticsEvent>>;
-
-  readonly summarize?: (
-    query: AnalyticsEventSummaryQuery,
-    context?: DatabaseOperationContext<TContext, TTx>,
-  ) => Promise<DatabaseAnalyticsSummary>;
+  ) => Promise<CursorPage<DatabaseBundleEvent>>;
 }
 ```
 
-Suggested event shape:
+Table shape:
+
+| Column | Type | Required | Description | Source |
+|---|---:|---:|---|---|
+| `id` | `uuid` | yes | Event id. Generated as UUIDv7 by the server. Also represents server receive/order time. | Server |
+| `kind` | `text` | yes | Event kind. Initial value: `APP_READY`. | Server/client event type |
+| `install_id` | `text` | yes | Opaque app-installation id. Not a user id or raw device id. Stable for one app install, may change after reinstall. | `HotUpdater.getInstallId()` |
+| `active_bundle_id` | `uuid` | yes | Bundle currently running after `notifyAppReady`. Used for Active count. | `HotUpdater.getBundleId()` |
+| `previous_active_bundle_id` | `uuid` | no | Bundle that this `install_id` was running before the current event. Used to count transitions from old bundle to new bundle. | Server from previous event, or client cache |
+| `crashed_bundle_id` | `uuid` | no | Bundle that crashed and caused recovery. Present when status is `RECOVERED`. Used for Recovered count. | `HotUpdater.notifyAppReady().crashedBundleId` |
+| `platform` | `text` | yes | Client platform: `ios` or `android`. | Hot Updater runtime/constants |
+| `channel` | `text` | yes | Current update channel. | `HotUpdater.getChannel()` |
+| `app_version` | `text` | no | Native app version. | `HotUpdater.getAppVersion()` |
+| `fingerprint_hash` | `text` | no | Current native/build fingerprint hash. | `HotUpdater.getFingerprintHash()` |
+| `cohort` | `text` | no | Rollout cohort used for update eligibility. | `HotUpdater.getCohort()` |
+| `payload` | `json` | yes | Event-specific extra data. Do not put core query/group-by fields only in payload. | Client/server |
+
+Type shape:
 
 ```ts
-export interface DatabaseAnalyticsEvent {
-  readonly id: string;
-  readonly type:
-    | "update_check"
-    | "update_available"
-    | "up_to_date"
-    | "download_started"
-    | "download_succeeded"
-    | "install_succeeded"
-    | "rollback"
-    | "app_ready"
-    | "error";
-  readonly bundleId?: string | null;
-  readonly previousBundleId?: string | null;
-  readonly platform?: Platform | null;
-  readonly channel?: string | null;
+export type BundleEventKind = "APP_READY";
+
+export interface DatabaseBundleEventInput {
+  readonly kind: BundleEventKind;
+  readonly installId: string;
+  readonly activeBundleId: string;
+  readonly previousActiveBundleId?: string | null;
+  readonly crashedBundleId?: string | null;
+  readonly platform: Platform;
+  readonly channel: string;
   readonly appVersion?: string | null;
   readonly fingerprintHash?: string | null;
   readonly cohort?: string | null;
-  readonly sdkVersion?: string | null;
-  readonly anonymousDeviceIdHash?: string | null;
-  readonly metadata?: Record<string, unknown>;
-  readonly createdAt: string;
+  readonly payload: BundleEventPayload;
+}
+
+export interface DatabaseBundleEvent extends DatabaseBundleEventInput {
+  readonly id: string;
+}
+
+export type BundleEventPayload = AppReadyBundleEventPayload;
+
+export interface AppReadyBundleEventPayload {
+  readonly status: "STABLE" | "RECOVERED";
+  readonly sdkVersion: string;
+  readonly defaultChannel: string;
+  readonly isChannelSwitched: boolean;
+}
+
+export interface BundleEventListQuery {
+  readonly where?: {
+    readonly kind?: BundleEventKind;
+    readonly installId?: string;
+    readonly activeBundleId?: string;
+    readonly previousActiveBundleId?: string;
+    readonly crashedBundleId?: string;
+    readonly platform?: Platform;
+    readonly channel?: string;
+    readonly appVersion?: string;
+    readonly fingerprintHash?: string;
+    readonly cohort?: string;
+  };
+  readonly limit: number;
+  readonly cursor?: {
+    readonly after?: string;
+    readonly before?: string;
+  };
+  readonly orderBy?: {
+    readonly field: "id";
+    readonly direction: "asc" | "desc";
+  };
+}
+```
+
+`RuntimeBundleEventRepository.append` accepts `DatabaseBundleEventInput`.
+`createDatabasePlugin` generates the UUIDv7 `id` before staging the
+`bundleEvent.append` mutation. It may also fill `previousActiveBundleId` from
+the previous event for the same `installId` when the client did not provide it.
+
+Initial event kind:
+
+### `APP_READY`
+
+Reported after the app calls `HotUpdater.notifyAppReady()`.
+
+Expected payload:
+
+```json
+{
+  "status": "STABLE",
+  "sdkVersion": "0.x.x",
+  "defaultChannel": "production",
+  "isChannelSwitched": false
 }
 ```
 
@@ -594,7 +663,7 @@ export interface DatabaseCommitBatch {
 export type DatabaseMutation =
   | BundleMutation
   | BundlePatchMutation
-  | AnalyticsEventMutation;
+  | BundleEventMutation;
 
 export type BundleMutation =
   | { readonly kind: "bundle.insert"; readonly bundle: DatabaseBundleRecord }
@@ -617,9 +686,9 @@ export type BundlePatchMutation =
       readonly baseBundleId: string;
     };
 
-export type AnalyticsEventMutation = {
-  readonly kind: "analyticsEvent.insert";
-  readonly event: DatabaseAnalyticsEvent;
+export type BundleEventMutation = {
+  readonly kind: "bundleEvent.append";
+  readonly event: DatabaseBundleEvent;
 };
 ```
 
@@ -645,7 +714,10 @@ Commit semantics:
   bundle.
 - `bundlePatch.deleteForBaseBundle` deletes all patches that depend on a base
   bundle.
-- `analyticsEvent.insert` appends one analytics event.
+- `bundleEvents.append` accepts event input without an id; runtime generates a
+  UUIDv7 id before staging the mutation.
+- `bundleEvent.append` appends one server-enriched bundle event to the
+  append-only `bundle_events` log.
 
 ## Low-Level Schema
 
@@ -661,7 +733,7 @@ export interface DatabaseSchemaSpec {
   readonly resources: {
     readonly bundles: "bundles";
     readonly bundlePatches: "bundle_patches";
-    readonly analyticsEvents: "analytics_events";
+    readonly bundleEvents: "bundle_events";
   };
 }
 ```
@@ -670,7 +742,7 @@ Required storage resources:
 
 - `bundles`
 - `bundle_patches`
-- `analytics_events`
+- `bundle_events`
 
 ## `createDatabasePlugin` Helper
 
@@ -864,34 +936,39 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
         },
       },
 
-      analyticsEvents: {
+      bundleEvents: {
         async list(query) {
-          const page = toD1CursorQuery("analytics_events", query, {
-            defaultOrderBy: { field: "createdAt", direction: "desc" },
+          const page = toD1CursorQuery("bundle_events", query, {
+            defaultOrderBy: { field: "id", direction: "desc" },
           });
           const { results } = await database
             .prepare(page.sql)
             .bind(...page.params)
-            .all<AnalyticsEventRow>();
+            .all<BundleEventRow>();
 
-          return toCursorPage(results.map(toAnalyticsEvent), page);
+          return toCursorPage(results.map(toBundleEvent), page);
         },
 
         async apply(mutations) {
           const statements = mutations.map((mutation) =>
             database
               .prepare(
-                `INSERT INTO analytics_events (
+                `INSERT INTO bundle_events (
                         id,
-                        type,
-                        bundle_id,
+                        kind,
+                        install_id,
+                        active_bundle_id,
+                        previous_active_bundle_id,
+                        crashed_bundle_id,
                         platform,
                         channel,
-                        metadata,
-                        created_at
-                      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                        app_version,
+                        fingerprint_hash,
+                        cohort,
+                        payload
+                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               )
-              .bind(...toAnalyticsEventInsertValues(mutation.event)),
+              .bind(...toBundleEventInsertValues(mutation.event)),
           );
 
           await runBatch(statements);
@@ -919,7 +996,7 @@ const database = await d1Database(config);
 
 await database.bundles.insert(bundle);
 await database.bundlePatches.replaceForBundle(bundle.id, patches);
-await database.analyticsEvents.insert(event);
+await database.bundleEvents.append(event);
 
 // Reads from the instance identity map before provider apply runs.
 const stagedBundle = await database.bundles.getById(bundle.id);
@@ -947,7 +1024,9 @@ await database.close?.();
 - No `capabilities` block in the base spec.
 - Cursor pagination is mandatory.
 - Bundle patches are mandatory and separate from bundle writes.
-- Analytics events are mandatory as a resource.
+- Bundle events are mandatory as an append-only event sourcing resource.
+- `bundle_events` is the source-of-truth event log; Active, Recovered, and
+  transition counts are derived read models.
 - Transactions are expressed by `beginTransaction`, not by metadata.
 - `updateInfo` is optional because it is an optimization/fast path.
 - Deprecated inline bundle patch fields are not part of the v2 write model.
