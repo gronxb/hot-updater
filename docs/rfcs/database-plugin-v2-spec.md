@@ -19,6 +19,33 @@ open an explicit transaction expose `beginTransaction`.
 client telemetry reported by installed apps. Counts such as Active, Recovered,
 and bundle transitions are read models derived from this append-only log.
 
+## Migration Acceptance Criteria
+
+The implementation PR for this spec is complete only when all of these gates
+are satisfied:
+
+- Every `createDatabasePlugin` call site is migrated to the v2 surface.
+- Deploy, console, and `createHotUpdater` paths are updated for the new runtime
+  shape.
+- `bundle_patches` remains a first-class resource and is not hidden inside
+  bundle-only writes.
+- `bundle_events` is added as the append-only event sourcing resource for client
+  telemetry.
+- All standalone verification profiles pass through `hot-updater-agent`:
+  `standalone-s3`, `standalone-drizzle`, `standalone-prisma`,
+  `standalone-kysely`, and `standalone-mongodb`.
+- The migration lands as one coherent implementation commit.
+- The pushed PR has green CI.
+- No temporary patches, skipped paths, provider stubs, or TODO-only
+  compatibility shims are accepted as completion.
+
+Suggested verification command shape:
+
+```sh
+hot-updater-agent verify -platform full -profile <standalone-profile> \
+  -env-target examples/v0.85.0/.env.hotupdater
+```
+
 ## Top-Level Plugin Spec
 
 `factory` is not the right public word for v2. It describes an implementation
