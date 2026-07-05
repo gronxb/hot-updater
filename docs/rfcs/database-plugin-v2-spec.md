@@ -77,17 +77,16 @@ connection; it means "open a configured database plugin runtime".
 ```ts
 export type MaybePromise<T> = T | Promise<T>;
 
-export interface DatabasePluginSpec<
-  TConfig,
-  TContext = unknown,
-  TTx = unknown,
-> {
+export interface DatabasePluginSpec {
   readonly name: string;
-  readonly connect: (
-    config: TConfig,
-  ) => MaybePromise<DatabasePluginCore<TContext, TTx>>;
+  readonly connect: (config: unknown) => MaybePromise<DatabasePluginCore>;
 }
 ```
+
+Provider authors should not write generic parameters at the
+`createDatabasePlugin` call site. Type inference may exist in the TypeScript
+implementation, but the documented authoring surface is the object shape:
+`name` plus `connect(config)`.
 
 ## Plugin Core Contract
 
@@ -95,29 +94,24 @@ export interface DatabasePluginSpec<
 `adapter` wrapper and no setup lifecycle in the provider-facing runtime object.
 
 ```ts
-export interface DatabasePluginCore<TContext = unknown, TTx = unknown> {
-  readonly beginTransaction?: (
-    context: DatabaseOperationContext<TContext, TTx>,
-  ) => Promise<DatabaseTransaction<TTx>>;
+export interface DatabasePluginCore {
+  readonly beginTransaction?: () => Promise<DatabaseTransaction>;
 
-  readonly bundles: BundleResource<TContext, TTx>;
-  readonly bundlePatches: BundlePatchResource<TContext, TTx>;
-  readonly bundleEvents?: BundleEventResource<TContext, TTx>;
-  readonly updateInfo?: UpdateInfoRepository<TContext, TTx>;
+  readonly bundles: BundleResource;
+  readonly bundlePatches: BundlePatchResource;
+  readonly bundleEvents?: BundleEventResource;
+  readonly updateInfo?: UpdateInfoRepository;
 
   readonly close?: () => Promise<void>;
 }
 
-export interface DatabasePluginRuntime<TContext = unknown, TTx = unknown> {
-  readonly bundles: RuntimeBundleRepository<TContext, TTx>;
-  readonly bundlePatches: RuntimeBundlePatchRepository<TContext, TTx>;
-  readonly bundleEvents?: RuntimeBundleEventRepository<TContext, TTx>;
-  readonly updateInfo?: UpdateInfoRepository<TContext, TTx>;
+export interface DatabasePluginRuntime {
+  readonly bundles: RuntimeBundleRepository;
+  readonly bundlePatches: RuntimeBundlePatchRepository;
+  readonly bundleEvents?: RuntimeBundleEventRepository;
+  readonly updateInfo?: UpdateInfoRepository;
 
-  readonly commit: (
-    context: DatabaseOperationContext<TContext, TTx>,
-    params?: DatabaseCommitParams,
-  ) => Promise<void>;
+  readonly commit: (params?: DatabaseCommitParams) => Promise<void>;
 
   readonly close?: () => Promise<void>;
 }
@@ -139,10 +133,11 @@ Lifecycle semantics:
   the object returned from `beginTransaction`.
 - Normal Hot Updater callers do not call `beginTransaction`; the helper consumes
   the provider core's transaction hook while running runtime `commit`.
-- Repository and resource methods use a context-first calling convention:
-  `method(context, params)`.
-- Implementations should default `context` to `{}`. The second argument is always
-  an object-shaped params value when a method needs input.
+- Repository and resource methods use a params-only calling convention:
+  `method(params)`.
+- Methods without domain params, such as `beginTransaction` and `commit`, take no
+  required arguments.
+- Request metadata and platform bindings are not database method arguments.
 - Runtime paths should not implicitly create, migrate, or validate database
   resources on every request.
 - Database setup belongs to low-level schema tooling owned by
@@ -168,8 +163,8 @@ Pass checklist:
 - Basic features are required by shape, not described by `capabilities` flags.
 - Optional features are also declared by shape; if `bundleEvents` is omitted, the
   runtime omits the `bundleEvents` resource for that provider.
-- Runtime writes enter through resource staging methods; `commit(context)` or
-  `commit(context, { batch })` is the public flush boundary.
+- Runtime writes enter through resource staging methods; `commit()` or
+  `commit({ batch })` is the public flush boundary.
 - Provider write implementations are co-located with each resource repository.
 - Runtime resource write methods stage mutations into an instance identity map;
   provider resource primitive methods persist them.
@@ -238,7 +233,7 @@ Identity map rules:
 - `bundleEvents.list` overlays staged `append` events before returning when the
   provider exposes `bundleEvents`.
 - Staged write methods retain resource data only; they do not retain a
-  per-mutation `DatabaseOperationContext` or transaction handle.
+  per-mutation ambient state or transaction handle.
 - Successful runtime `commit` clears staged entries that were applied.
 - Failed runtime `commit` keeps staged entries so the caller can retry or surface
   the failure with the same in-memory view.
@@ -263,12 +258,12 @@ Example read-your-writes flow:
 ```ts
 const database = await d1Database(config);
 
-await database.bundles.insert({}, { bundle });
+await database.bundles.insert({ bundle });
 
 // Reads from the identity map even though provider writes have not run yet.
-const staged = await database.bundles.getById({}, { bundleId: bundle.id });
+const staged = await database.bundles.getById({ bundleId: bundle.id });
 
-await database.commit({});
+await database.commit();
 ```
 
 ## Transaction Boundary Decision
@@ -281,44 +276,44 @@ Use this decision rule when choosing where `begin`, provider writes, and
 - Provider resources declare concrete write primitives for their own resource.
 - Provider resources do not declare `commit` and do not call
   `transaction.commit()`.
-- `createDatabasePlugin` generates the public runtime
-  `commit(context, params?)` method.
+- `createDatabasePlugin` generates the public runtime `commit(params?)` method.
 - `DatabaseTransaction.commit` and `DatabaseTransaction.rollback` are declared on
   the object returned from `beginTransaction`.
 - Runtime `commit` is the transaction boundary over staged mutations.
 - For PostgreSQL, `BEGIN`, `COMMIT`, and `ROLLBACK` belong to
   `beginTransaction` and the `createDatabasePlugin` runtime commit wrapper.
-- Resource methods receive the transaction handle through
-  `DatabaseOperationContext` and execute only their own primitive write.
+- Transactional providers expose a transaction-bound `core` from
+  `beginTransaction`; resource methods close over the pool/client they should
+  use and execute only their own primitive write.
 - `createDatabasePlugin` owns staging, ordering, transaction finalization, and
   hook execution.
 
 Provider primitive write methods:
 
 ```ts
-core.bundles.insert(context, { bundle });
-core.bundles.update(context, { bundleId, patch });
-core.bundles.delete(context, { bundleId });
+core.bundles.insert({ bundle });
+core.bundles.update({ bundleId, patch });
+core.bundles.delete({ bundleId });
 
-core.bundlePatches.replaceForBundle(context, { bundleId, patches });
-core.bundlePatches.deleteForBundle(context, { bundleId });
-core.bundlePatches.deleteForBaseBundle(context, { baseBundleId });
+core.bundlePatches.replaceForBundle({ bundleId, patches });
+core.bundlePatches.deleteForBundle({ bundleId });
+core.bundlePatches.deleteForBaseBundle({ baseBundleId });
 
-core.bundleEvents?.append(context, { event });
+core.bundleEvents?.append({ event });
 ```
 
 Recommended runtime layering:
 
 ```ts
-await runtime.commit({}); // or runtime.commit(context, { batch })
+await runtime.commit(); // or runtime.commit({ batch })
 
 // createDatabasePlugin:
-// 1. validate commit(context, { batch }) against declared resources before staging
+// 1. validate commit({ batch }) against declared resources before staging
 // 2. reject bundleEvent mutations if core.bundleEvents is absent
-// 3. stage the provided batch if commit(context, { batch }) was called
+// 3. stage the provided batch if commit({ batch }) was called
 // 4. snapshot staged mutations from the identity map
-// 5. open transaction if the provider exposes one and context.transaction is absent
-// 6. call only the provider primitive writes needed by the staged mutations
+// 5. open transaction if the provider exposes one
+// 6. write through tx.core when a transaction is open, otherwise through core
 // 7. append bundle events only when core.bundleEvents exists
 // 8. call tx.commit() once, or tx.rollback() once on failure
 // 9. clear the applied staged mutations after success
@@ -328,13 +323,17 @@ PostgreSQL sketch:
 
 ```ts
 connect({ pool }) {
-  return {
-    async beginTransaction(context = {}) {
-      const client = await pool.connect();
+  const createCore = (db: PgPool | PgClient): DatabasePluginCore => ({
+    async beginTransaction() {
+      if (!("connect" in db)) {
+        throw new Error("Nested database transactions are not supported.");
+      }
+
+      const client = await db.connect();
       await client.query("BEGIN");
 
       return {
-        handle: client,
+        core: createCore(client),
         async commit() {
           await client.query("COMMIT");
           client.release();
@@ -347,8 +346,7 @@ connect({ pool }) {
     },
 
     bundles: {
-      async getById(context = {}, { bundleId }) {
-        const db = context?.transaction?.handle ?? pool;
+      async getById({ bundleId }) {
         const result = await db.query("SELECT * FROM bundles WHERE id = $1", [
           bundleId,
         ]);
@@ -356,31 +354,26 @@ connect({ pool }) {
         return result.rows[0] ? toBundleRecord(result.rows[0]) : null;
       },
 
-      async insert(context = {}, { bundle }) {
-        const db = context?.transaction?.handle ?? pool;
+      async insert({ bundle }) {
         await db.query(insertBundleSql, toBundleInsertValues(bundle));
       },
 
-      async update(context = {}, { bundleId, patch }) {
-        const db = context?.transaction?.handle ?? pool;
+      async update({ bundleId, patch }) {
         const update = toBundleUpdateStatement(bundleId, patch);
         await db.query(update.sql, update.params);
       },
 
-      async delete(context = {}, { bundleId }) {
-        const db = context?.transaction?.handle ?? pool;
+      async delete({ bundleId }) {
         await db.query("DELETE FROM bundles WHERE id = $1", [bundleId]);
       },
     },
 
     bundlePatches: {
-      async list(context = {}, query) {
-        const db = context?.transaction?.handle ?? pool;
+      async list(query) {
         return listBundlePatches(db, query);
       },
 
-      async replaceForBundle(context = {}, { bundleId, patches }) {
-        const db = context?.transaction?.handle ?? pool;
+      async replaceForBundle({ bundleId, patches }) {
         await db.query("DELETE FROM bundle_patches WHERE bundle_id = $1", [
           bundleId,
         ]);
@@ -390,15 +383,13 @@ connect({ pool }) {
         }
       },
 
-      async deleteForBundle(context = {}, { bundleId }) {
-        const db = context?.transaction?.handle ?? pool;
+      async deleteForBundle({ bundleId }) {
         await db.query("DELETE FROM bundle_patches WHERE bundle_id = $1", [
           bundleId,
         ]);
       },
 
-      async deleteForBaseBundle(context = {}, { baseBundleId }) {
-        const db = context?.transaction?.handle ?? pool;
+      async deleteForBaseBundle({ baseBundleId }) {
         await db.query(
           "DELETE FROM bundle_patches WHERE base_bundle_id = $1",
           [baseBundleId],
@@ -407,104 +398,101 @@ connect({ pool }) {
     },
 
     bundleEvents: {
-      async list(context = {}, query) {
-        const db = context?.transaction?.handle ?? pool;
+      async list(query) {
         return listBundleEvents(db, query);
       },
 
-      async append(context = {}, { event }) {
-        const db = context?.transaction?.handle ?? pool;
+      async append({ event }) {
         await db.query(insertBundleEventSql, toBundleEventValues(event));
       },
     },
-  };
+  });
+
+  return createCore(pool);
 }
 ```
 
 ## Transaction Model
 
 ```ts
-export interface DatabaseTransaction<TTx = unknown> {
-  readonly handle: TTx;
+export interface DatabaseTransaction {
+  readonly core: DatabasePluginCore;
   readonly commit: () => Promise<void>;
   readonly rollback: () => Promise<void>;
 }
-
-export type DatabaseOperationContext<
-  TContext = Record<string, never>,
-  TTx = unknown,
-> = HotUpdaterContext<TContext> & {
-  readonly transaction?: DatabaseTransaction<TTx>;
-};
 ```
 
 Method argument convention:
 
-- Repository and resource methods use `(context, params)`.
-- `context` is always the first argument and should default to `{}` in
-  implementations.
+- Repository and resource methods use `(params)`.
 - `params` is always an object when present. Scalar positional params such as
-  `(bundleId, context)` are not part of the v2 surface.
-- `context` is the caller's `HotUpdaterContext<TContext>` plus the reserved
-  database `transaction` field. Bundle ids, patches, events, query filters, and
-  commit batches belong in `params`.
-- Methods without domain params, such as `beginTransaction`, use
-  `(context = {})`.
-- `commit` uses `(context = {}, params = {})`.
+  `(bundleId)` are not part of the v2 surface.
+- Methods without domain params, such as `beginTransaction` and `commit`, take
+  no required arguments.
+- `commit` uses `(params = {})`.
 
-Context purpose:
+No ambient operation argument:
 
-- `TContext` carries Hot Updater request-scoped data such as platform runtime
-  context, tenant/project metadata, auth-derived state, logging correlation, or
-  provider-specific ambient request data.
-- `context.transaction` carries the transaction object that provider primitives
-  should use for the current commit.
-- `transaction` is reserved by the database runtime. Provider-specific context
-  types should not use `transaction` for another meaning.
-- Runtime staged writes must not store the context object. They store domain
-  mutation data only and receive execution context at `commit(context, params)`
-  time.
-- Context is not a provider options bag. Provider configuration belongs in
-  `connect(config)`.
-- Context is not a domain params bag. Query filters, ids, bundles, patches,
-  events, and commit batches belong in the second argument.
+- There is no first ambient argument in the database plugin v2 method surface.
+- Request metadata belongs to the HTTP/runtime layer, not to database resource
+  methods.
+- Provider configuration belongs in `connect(config)`.
+- Query filters, ids, bundles, patches, events, and commit batches belong in
+  params objects.
+- Transaction state is represented by a transaction-bound `core` returned from
+  `beginTransaction`, not by a field injected into every method call.
+- Cloudflare Worker bindings such as `env.DB`, `env.BUCKET`, and
+  `env.JWT_SECRET` should not be routed through every database method as
+  an operation argument. In supported Worker runtimes, import `env` from
+  `cloudflare:workers` in a Worker-only entry/subpath and pass the binding into
+  the provider config at construction time.
 
-Context construction flow:
+Cloudflare Worker binding flow:
+
+`cloudflare:workers` makes bindings importable from top-level code and deeply
+nested helpers in supported Worker runtimes. Worker-specific Hot Updater entries
+should use that import to bind D1/R2 resources once, then keep repository
+methods focused on params-only database operations.
 
 ```ts
-const requestContext: RequestEnvContext<CloudflareWorkerEnv> = {
-  request,
-  env,
+import { env } from "cloudflare:workers";
+import { createHotUpdater } from "@hot-updater/server";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker";
+
+const hotUpdater = createHotUpdater({
+  database: d1Database({
+    database: env.HOT_UPDATER_D1,
+  }),
+  storages: [
+    r2Storage({
+      bucket: env.HOT_UPDATER_BUCKET,
+      jwtSecret: env.JWT_SECRET,
+      publicBaseUrl: env.HOT_UPDATER_PUBLIC_BASE_URL,
+    }),
+  ],
+});
+
+export default {
+  fetch(request: Request) {
+    return hotUpdater.handler(request);
+  },
 };
-
-await database.bundles.getById(requestContext, { bundleId });
-
-await database.commit(requestContext);
 ```
 
-For a Cloudflare D1 provider, `env.DB` is available directly on the first
-argument:
+The `cloudflare:workers` import is Worker-runtime-specific. It must stay out of
+Node/CLI/database management entrypoints and should be isolated to worker-only
+exports such as `@hot-updater/cloudflare/worker` or generated Worker files. Do
+not call binding I/O at module initialization time; capture the binding object
+there and execute `prepare`, `run`, `get`, or `put` inside request-driven
+repository methods. If a resolver truly needs the incoming request, pass only
+request metadata through the HTTP/storage layer; do not use database resource
+methods to ferry Cloudflare bindings.
+
+For a Cloudflare D1 provider, `env.DB` should be captured in provider
+configuration, not read from a method argument:
 
 ```ts
-type CloudflareD1Context = RequestEnvContext<{ DB: D1Database }>;
-
-const context: DatabaseOperationContext<CloudflareD1Context> = {
-  request,
-  env,
-};
-
-await database.bundles.getById(context, { bundleId });
-
-const getById: BundleResource<CloudflareD1Context>["getById"] = async (
-  context = {},
-  { bundleId },
-) => {
-  const database = context.env?.DB;
-
-  if (!database) {
-    throw new Error("D1 database is missing from context.env.DB.");
-  }
-
+const getById: BundleResource["getById"] = async ({ bundleId }) => {
   const row = await database
     .prepare("SELECT * FROM bundles WHERE id = ? LIMIT 1")
     .bind(bundleId)
@@ -514,42 +502,34 @@ const getById: BundleResource<CloudflareD1Context>["getById"] = async (
 };
 ```
 
-During runtime commit, `createDatabasePlugin` enriches that context with a
-transaction only when the provider core declares `beginTransaction`:
+During runtime commit, `createDatabasePlugin` switches to the transaction-bound
+core only when the provider core declares `beginTransaction`:
 
 ```ts
-const transaction = await core.beginTransaction(context);
-const txContext = { ...context, transaction };
+const transaction = await core.beginTransaction();
+const writeCore = transaction.core;
 
-await core.bundles.insert(txContext, { bundle });
+await writeCore.bundles.insert({ bundle });
 await transaction.commit();
 ```
-
-Normal Hot Updater callers construct only the `TContext` side of the context.
-`transaction` is created by the runtime commit wrapper, except for advanced
-integrations that already own an external transaction and explicitly pass it to
-`commit(context, params)`.
 
 Transaction semantics:
 
 - `beginTransaction` is optional.
-- If a transaction is provided to repository methods or provider primitive write
-  methods, the core must execute inside that transaction.
+- If `beginTransaction` returns a transaction-bound core, runtime commit must use
+  that core for all provider primitive writes inside the transaction.
 - Provider resource methods never call `transaction.commit()` or
   `transaction.rollback()`.
 - If `createDatabasePlugin` opens a transaction for runtime `commit`, it owns
   `transaction.commit()` and `transaction.rollback()`.
-- If the caller passes an existing transaction into runtime `commit`,
-  `createDatabasePlugin` uses it but does not finalize it.
-- Normal Hot Updater paths do not need that escape hatch because the runtime does
-  not expose `beginTransaction`; it exists for integrations that already own a
-  transaction.
+- Normal Hot Updater paths do not expose `beginTransaction` or transaction
+  handles to callers.
 - Providers without explicit transactions run provider primitive writes as a
   best-effort ordered write sequence and surface any failure.
 - Best-effort commits are not atomic. If a provider write fails midway,
   previously executed primitive writes may already be durable.
-- Staged runtime writes do not capture `context.transaction`; transaction scope
-  is resolved only at `commit(context, params)` time.
+- Staged runtime writes store only domain mutation data. Transaction scope is
+  resolved only inside `commit(params)`.
 
 ## Bundle Records
 
@@ -610,15 +590,12 @@ export interface CursorPage<T> {
 ## Bundle Repository
 
 ```ts
-export interface RuntimeBundleRepository<TContext = unknown, TTx = unknown>
-  extends BundleRepository<TContext, TTx> {
+export interface RuntimeBundleRepository extends BundleRepository {
   readonly insert: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly bundle: DatabaseBundleRecord },
   ) => Promise<void>;
 
   readonly update: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: {
       readonly bundleId: string;
       readonly patch: Partial<DatabaseBundleRecord>;
@@ -626,20 +603,16 @@ export interface RuntimeBundleRepository<TContext = unknown, TTx = unknown>
   ) => Promise<void>;
 
   readonly delete: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly bundleId: string },
   ) => Promise<void>;
 }
 
-export interface BundleResource<TContext = unknown, TTx = unknown>
-  extends BundleRepository<TContext, TTx> {
+export interface BundleResource extends BundleRepository {
   readonly insert: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly bundle: DatabaseBundleRecord },
   ) => Promise<void>;
 
   readonly update: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: {
       readonly bundleId: string;
       readonly patch: Partial<DatabaseBundleRecord>;
@@ -647,19 +620,16 @@ export interface BundleResource<TContext = unknown, TTx = unknown>
   ) => Promise<void>;
 
   readonly delete: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly bundleId: string },
   ) => Promise<void>;
 }
 
-export interface BundleRepository<TContext = unknown, TTx = unknown> {
+export interface BundleRepository {
   readonly getById: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly bundleId: string },
   ) => Promise<DatabaseBundleRecord | null>;
 
   readonly list: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: BundleListQuery,
   ) => Promise<CursorPage<DatabaseBundleRecord>>;
 }
@@ -681,12 +651,8 @@ export interface BundleListQuery {
 ## Bundle Patch Repository
 
 ```ts
-export interface RuntimeBundlePatchRepository<
-  TContext = unknown,
-  TTx = unknown,
-> extends BundlePatchRepository<TContext, TTx> {
+export interface RuntimeBundlePatchRepository extends BundlePatchRepository {
   readonly replaceForBundle: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: {
       readonly bundleId: string;
       readonly patches: readonly DatabaseBundlePatch[];
@@ -694,20 +660,16 @@ export interface RuntimeBundlePatchRepository<
   ) => Promise<void>;
 
   readonly deleteForBundle: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly bundleId: string },
   ) => Promise<void>;
 
   readonly deleteForBaseBundle: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly baseBundleId: string },
   ) => Promise<void>;
 }
 
-export interface BundlePatchResource<TContext = unknown, TTx = unknown>
-  extends BundlePatchRepository<TContext, TTx> {
+export interface BundlePatchResource extends BundlePatchRepository {
   readonly replaceForBundle: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: {
       readonly bundleId: string;
       readonly patches: readonly DatabaseBundlePatch[];
@@ -715,19 +677,16 @@ export interface BundlePatchResource<TContext = unknown, TTx = unknown>
   ) => Promise<void>;
 
   readonly deleteForBundle: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly bundleId: string },
   ) => Promise<void>;
 
   readonly deleteForBaseBundle: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly baseBundleId: string },
   ) => Promise<void>;
 }
 
-export interface BundlePatchRepository<TContext = unknown, TTx = unknown> {
+export interface BundlePatchRepository {
   readonly list: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: BundlePatchListQuery,
   ) => Promise<CursorPage<DatabaseBundlePatch>>;
 }
@@ -765,27 +724,20 @@ part of normal Hot Updater workflows. Event summaries are derived read models,
 not provider-authored source-of-truth APIs.
 
 ```ts
-export interface RuntimeBundleEventRepository<
-  TContext = unknown,
-  TTx = unknown,
-> extends BundleEventRepository<TContext, TTx> {
+export interface RuntimeBundleEventRepository extends BundleEventRepository {
   readonly append: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly event: DatabaseBundleEventInput },
   ) => Promise<void>;
 }
 
-export interface BundleEventResource<TContext = unknown, TTx = unknown>
-  extends BundleEventRepository<TContext, TTx> {
+export interface BundleEventResource extends BundleEventRepository {
   readonly append: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: { readonly event: DatabaseBundleEvent },
   ) => Promise<void>;
 }
 
-export interface BundleEventRepository<TContext = unknown, TTx = unknown> {
+export interface BundleEventRepository {
   readonly list: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: BundleEventListQuery,
   ) => Promise<CursorPage<DatabaseBundleEvent>>;
 }
@@ -893,9 +845,8 @@ Expected payload:
 querying `bundles` and `bundlePatches`.
 
 ```ts
-export interface UpdateInfoRepository<TContext = unknown, TTx = unknown> {
+export interface UpdateInfoRepository {
   readonly get: (
-    context: DatabaseOperationContext<TContext, TTx>,
     params: GetBundlesArgs,
   ) => Promise<UpdateInfo | null>;
 }
@@ -905,8 +856,8 @@ export interface UpdateInfoRepository<TContext = unknown, TTx = unknown> {
 
 Runtime staged writes flush through one public `commit`. `DatabaseMutation` is
 the runtime wrapper's internal staging format and the optional
-`commit(context, { batch })` input shape. Provider resources do not receive
-these mutations and do not interpret mutation kinds.
+`commit({ batch })` input shape. Provider resources do not receive these
+mutations and do not interpret mutation kinds.
 
 During commit, `createDatabasePlugin` expands staged mutations into concrete
 provider primitive writes such as `core.bundles.insert`,
@@ -957,17 +908,16 @@ Commit semantics:
 
 - Runtime resource methods such as `bundles.insert` and
   `bundlePatches.replaceForBundle` stage mutations in the identity map.
-- `createDatabasePlugin` exposes one public `commit(context, params?)` method.
-- Calling `commit({})` applies the currently staged mutations.
-- Calling `commit(context, { batch })` validates the batch against declared
+- `createDatabasePlugin` exposes one public `commit(params?)` method.
+- Calling `commit()` applies the currently staged mutations.
+- Calling `commit({ batch })` validates the batch against declared
   resources first, stages the provided batch, then applies the staged mutations.
-- `commit(context, { batch })` must reject unsupported resource mutations before
+- `commit({ batch })` must reject unsupported resource mutations before
   opening a transaction or mutating the identity map.
 - `createDatabasePlugin` invokes only the provider primitive writes required by
   the current staged mutations.
 - Provider resources never receive `DatabaseMutation` objects.
-- Context passed to runtime write methods is not retained in staged mutations.
-  Provider write context is resolved from `commit(context)`.
+- Runtime write methods stage domain mutation data only.
 - `bundle.insert` inserts a bundle without patch metadata.
 - `bundle.update` updates only bundle columns.
 - `bundle.delete` deletes only the bundle row or document. Workflows that need
@@ -983,7 +933,7 @@ Commit semantics:
   `bundleEvents`.
 - `runtime.bundleEvents.append` accepts event input without an id; runtime
   generates a UUIDv7 id before staging the mutation.
-- `commit(context, { batch })` rejects `bundleEvent.append` mutations when the
+- `commit({ batch })` rejects `bundleEvent.append` mutations when the
   provider core omits `bundleEvents`.
 - `bundleEvent.append` appends one server-enriched bundle event to the
   append-only `bundle_events` log.
@@ -1046,10 +996,10 @@ Legacy-to-v2 mapping:
 
 | Legacy surface | v2 runtime/provider shape |
 |---|---|
-| `appendBundle(bundle)` | `runtime.bundles.insert({}, { bundle: bundleRecord })` plus `runtime.bundlePatches.replaceForBundle({}, { bundleId: bundle.id, patches })` when the bundle carries patch artifacts. |
-| `updateBundle(id, patch)` | `runtime.bundles.update({}, { bundleId: id, patch: bundlePatch })` and, when patch artifacts change, `runtime.bundlePatches.replaceForBundle({}, { bundleId: id, patches })`. |
+| `appendBundle(bundle)` | `runtime.bundles.insert({ bundle: bundleRecord })` plus `runtime.bundlePatches.replaceForBundle({ bundleId: bundle.id, patches })` when the bundle carries patch artifacts. |
+| `updateBundle(id, patch)` | `runtime.bundles.update({ bundleId: id, patch: bundlePatch })` and, when patch artifacts change, `runtime.bundlePatches.replaceForBundle({ bundleId: id, patches })`. |
 | `deleteBundle(id)` | Batch explicit `bundlePatch.deleteForBundle`, `bundlePatch.deleteForBaseBundle`, and `bundle.delete` mutations according to the workflow's cleanup intent. |
-| `commitBundle()` | `runtime.commit({})` or `runtime.commit(context, { batch })`. Provider code no longer owns the cross-resource workflow commit. |
+| `commitBundle()` | `runtime.commit()` or `runtime.commit({ batch })`. Provider code no longer owns the cross-resource workflow commit. |
 
 First migration wave expectations:
 
@@ -1077,26 +1027,20 @@ resource-local primitive write methods; the returned runtime has one public
 commit.
 
 ```ts
-export interface DatabasePluginCreator<
-  TConfig,
-  TContext = unknown,
-  TTx = unknown,
-> {
+export interface DatabasePluginCreator {
   readonly name: string;
 
-  (
-    config: TConfig,
-  ): MaybePromise<DatabasePluginRuntime<TContext, TTx>>;
+  (config: unknown): MaybePromise<DatabasePluginRuntime>;
 }
 
-export function createDatabasePlugin<
-  TConfig,
-  TContext = unknown,
-  TTx = unknown,
->(
-  spec: DatabasePluginSpec<TConfig, TContext, TTx>,
-): DatabasePluginCreator<TConfig, TContext, TTx>;
+export function createDatabasePlugin(
+  spec: DatabasePluginSpec,
+): DatabasePluginCreator;
 ```
+
+The TypeScript implementation can infer a concrete config type from
+`connect(config)`, but provider docs and examples must not require explicit
+generic arguments.
 
 Provider example:
 
@@ -1109,10 +1053,11 @@ export interface D1DatabaseConfig {
   readonly database: D1Database;
 }
 
-export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
+export const d1Database = createDatabasePlugin({
   name: "d1Database",
 
-  connect({ database }) {
+  connect(config: D1DatabaseConfig) {
+    const { database } = config;
     const runBatch = async (statements: readonly D1PreparedStatement[]) => {
       if (statements.length > 0) {
         await database.batch([...statements]);
@@ -1121,7 +1066,7 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
 
     return {
       bundles: {
-        async getById(context = {}, { bundleId }) {
+        async getById({ bundleId }) {
           const row = await database
             .prepare("SELECT * FROM bundles WHERE id = ? LIMIT 1")
             .bind(bundleId)
@@ -1130,7 +1075,7 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
           return row ? toBundleRecord(row) : null;
         },
 
-        async list(context = {}, params) {
+        async list(params) {
           const page = toD1CursorQuery("bundles", params, {
             defaultOrderBy: { field: "id", direction: "desc" },
           });
@@ -1142,7 +1087,7 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
           return toCursorPage(results.map(toBundleRecord), page);
         },
 
-        async insert(context = {}, { bundle }) {
+        async insert({ bundle }) {
           await database
             .prepare(
               `INSERT INTO bundles (
@@ -1162,12 +1107,12 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
             .run();
         },
 
-        async update(context = {}, { bundleId, patch }) {
+        async update({ bundleId, patch }) {
           const update = toBundleUpdateStatement(bundleId, patch);
           await database.prepare(update.sql).bind(...update.params).run();
         },
 
-        async delete(context = {}, { bundleId }) {
+        async delete({ bundleId }) {
           await database
             .prepare("DELETE FROM bundles WHERE id = ?")
             .bind(bundleId)
@@ -1176,7 +1121,7 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
       },
 
       bundlePatches: {
-        async list(context = {}, params) {
+        async list(params) {
           const page = toD1CursorQuery("bundle_patches", params, {
             defaultOrderBy: { field: "orderIndex", direction: "asc" },
           });
@@ -1188,7 +1133,7 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
           return toCursorPage(results.map(toBundlePatch), page);
         },
 
-        async replaceForBundle(context = {}, { bundleId, patches }) {
+        async replaceForBundle({ bundleId, patches }) {
           await runBatch([
             database
               .prepare("DELETE FROM bundle_patches WHERE bundle_id = ?")
@@ -1211,14 +1156,14 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
           ]);
         },
 
-        async deleteForBundle(context = {}, { bundleId }) {
+        async deleteForBundle({ bundleId }) {
           await database
             .prepare("DELETE FROM bundle_patches WHERE bundle_id = ?")
             .bind(bundleId)
             .run();
         },
 
-        async deleteForBaseBundle(context = {}, { baseBundleId }) {
+        async deleteForBaseBundle({ baseBundleId }) {
           await database
             .prepare("DELETE FROM bundle_patches WHERE base_bundle_id = ?")
             .bind(baseBundleId)
@@ -1227,7 +1172,7 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
       },
 
       bundleEvents: {
-        async list(context = {}, params) {
+        async list(params) {
           const page = toD1CursorQuery("bundle_events", params, {
             defaultOrderBy: { field: "id", direction: "desc" },
           });
@@ -1239,7 +1184,7 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
           return toCursorPage(results.map(toBundleEvent), page);
         },
 
-        async append(context = {}, { event }) {
+        async append({ event }) {
           await database
             .prepare(
               `INSERT INTO bundle_events (
@@ -1269,10 +1214,10 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
 Provider without `bundleEvents`:
 
 ```ts
-export const s3Database = createDatabasePlugin<S3DatabaseConfig>({
+export const s3Database = createDatabasePlugin({
   name: "s3Database",
 
-  connect(config) {
+  connect(config: S3DatabaseConfig) {
     return {
       bundles: createS3BundleResource(config),
       bundlePatches: createS3BundlePatchResource(config),
@@ -1287,6 +1232,8 @@ Because `bundleEvents` is omitted, the returned runtime type exposes no
 Config usage:
 
 ```ts
+import { env } from "cloudflare:workers";
+
 export default {
   database: d1Database({
     database: env.HOT_UPDATER_D1,
@@ -1294,27 +1241,28 @@ export default {
 };
 ```
 
+This usage belongs in a Worker-only module. Node-based deploy, console, and
+database setup flows must keep using explicit provider configuration instead of
+importing `cloudflare:workers`.
+
 ## Runtime Usage
 
 ```ts
 const database = await d1Database(config);
 
-await database.bundles.insert({}, { bundle });
-await database.bundlePatches.replaceForBundle(
-  {},
-  { bundleId: bundle.id, patches },
-);
+await database.bundles.insert({ bundle });
+await database.bundlePatches.replaceForBundle({
+  bundleId: bundle.id,
+  patches,
+});
 if (database.bundleEvents) {
-  await database.bundleEvents.append({}, { event });
+  await database.bundleEvents.append({ event });
 }
 
 // Reads from the instance identity map before provider writes run.
-const stagedBundle = await database.bundles.getById(
-  {},
-  { bundleId: bundle.id },
-);
+const stagedBundle = await database.bundles.getById({ bundleId: bundle.id });
 
-await database.commit({});
+await database.commit();
 
 await database.close?.();
 ```
