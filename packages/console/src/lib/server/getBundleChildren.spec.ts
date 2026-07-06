@@ -1,6 +1,15 @@
 // @vitest-environment node
 
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  BundleListQuery,
+  BundlePatchListQuery,
+  CursorPage,
+  DatabaseBundlePatch,
+  DatabaseBundleRecord,
+  DatabasePluginRuntime,
+} from "@hot-updater/plugin-core";
+import { splitDatabaseBundle } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { getBundleChildCounts, getBundleChildren } from "./getBundleChildren";
@@ -22,30 +31,89 @@ const createBundle = (overrides: Partial<Bundle>): Bundle => ({
   ...overrides,
 });
 
+const createCursorPage = <TData>(
+  data: readonly TData[],
+): CursorPage<TData> => ({
+  data,
+  pagination: {
+    currentPage: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    nextCursor: null,
+    previousCursor: null,
+    total: data.length,
+    totalPages: data.length === 0 ? 0 : 1,
+  },
+});
+
+const matchesBundleWhere = (
+  bundle: DatabaseBundleRecord,
+  where: BundleListQuery["where"],
+) => {
+  if (!where) return true;
+  return (
+    (where.channel === undefined || bundle.channel === where.channel) &&
+    (where.platform === undefined || bundle.platform === where.platform)
+  );
+};
+
+const matchesBundlePatchWhere = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
+) => {
+  if (!where) return true;
+  return (
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+    (where.baseBundleId === undefined ||
+      patch.baseBundleId === where.baseBundleId) &&
+    (where.bundleIdIn === undefined ||
+      where.bundleIdIn.includes(patch.bundleId)) &&
+    (where.baseBundleIdIn === undefined ||
+      where.baseBundleIdIn.includes(patch.baseBundleId))
+  );
+};
+
 function createDatabasePlugin(bundles: Bundle[]) {
-  const bundleMap = new Map(bundles.map((bundle) => [bundle.id, bundle]));
+  const bundleRecords = new Map<string, DatabaseBundleRecord>();
+  const bundlePatches: DatabaseBundlePatch[] = [];
+
+  for (const bundle of bundles) {
+    const split = splitDatabaseBundle(bundle);
+    bundleRecords.set(bundle.id, split.bundle);
+    bundlePatches.push(...split.patches);
+  }
 
   return {
     name: "mockDatabase",
-    getChannels: vi.fn(),
-    getBundleById: vi.fn(
-      async (bundleId: string) => bundleMap.get(bundleId) ?? null,
-    ),
-    getBundles: vi.fn(async () => ({
-      data: bundles,
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: bundles.length,
-        totalPages: 1,
-      },
-    })),
-    updateBundle: vi.fn(),
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-  } satisfies DatabasePlugin;
+    bundles: {
+      delete: vi.fn(),
+      getById: vi.fn(
+        async ({ bundleId }) => bundleRecords.get(bundleId) ?? null,
+      ),
+      insert: vi.fn(),
+      list: vi.fn(async ({ where }) =>
+        createCursorPage(
+          Array.from(bundleRecords.values()).filter((bundle) =>
+            matchesBundleWhere(bundle, where),
+          ),
+        ),
+      ),
+      update: vi.fn(),
+    },
+    bundlePatches: {
+      deleteForBaseBundle: vi.fn(),
+      deleteForBundle: vi.fn(),
+      list: vi.fn(async ({ where }) =>
+        createCursorPage(
+          bundlePatches.filter((patch) =>
+            matchesBundlePatchWhere(patch, where),
+          ),
+        ),
+      ),
+      replaceForBundle: vi.fn(),
+    },
+    commit: vi.fn(),
+  } satisfies DatabasePluginRuntime;
 }
 
 describe("getBundleChildren", () => {
@@ -93,7 +161,12 @@ describe("getBundleChildren", () => {
 
     await expect(
       getBundleChildren({ baseBundleId: baseBundle.id }, { databasePlugin }),
-    ).resolves.toEqual([patchedBundle]);
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: patchedBundle.id,
+        patches: patchedBundle.patches,
+      }),
+    ]);
   });
 
   it("counts one patched bundle for each base it can patch from", async () => {

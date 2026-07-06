@@ -1,4 +1,8 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { Bundle, DatabasePluginRuntime } from "@hot-updater/plugin-core";
+import {
+  splitDatabaseBundle,
+  toBundleReadModel,
+} from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -217,12 +221,33 @@ vi.mock("cloudflare", () => ({
             return createPage(result);
           }
 
+          if (
+            normalizedSql.startsWith(
+              "select * from bundle_patches order by order_index asc",
+            )
+          ) {
+            const result = Array.from(patchRows.values()).sort(
+              (a, b) =>
+                Number(a.order_index ?? 0) - Number(b.order_index ?? 0) ||
+                a.base_bundle_id.localeCompare(b.base_bundle_id),
+            );
+
+            return createPage(result);
+          }
+
           if (normalizedSql.startsWith("select * from bundles")) {
             const { filteredRows, index } = getFilteredRows(sql, params);
             const limit = Number(params[index] ?? filteredRows.length);
             const offset = Number(params[index + 1] ?? 0);
+            const direction = normalizedSql.includes("order by id asc")
+              ? "asc"
+              : "desc";
             const result = filteredRows
-              .sort((a, b) => b.id.localeCompare(a.id))
+              .sort((a, b) =>
+                direction === "asc"
+                  ? a.id.localeCompare(b.id)
+                  : b.id.localeCompare(a.id),
+              )
               .slice(offset, offset + limit);
 
             return createPage(result);
@@ -337,7 +362,45 @@ vi.mock("cloudflare", () => ({
 }));
 
 describe("d1Database plugin", () => {
-  let plugin: DatabasePlugin;
+  let plugin: DatabasePluginRuntime;
+
+  const readBundle = async (bundleId: string): Promise<Bundle | null> => {
+    const bundle = await plugin.bundles.getById({ bundleId });
+    if (!bundle) return null;
+    const patches = await plugin.bundlePatches.list({
+      where: { bundleId },
+      limit: 1000,
+    });
+    return toBundleReadModel(bundle, patches.data);
+  };
+
+  const writeBundle = async (bundle: Bundle): Promise<void> => {
+    const split = splitDatabaseBundle(bundle);
+    await plugin.bundles.insert({ bundle: split.bundle });
+    await plugin.bundlePatches.replaceForBundle({
+      bundleId: bundle.id,
+      patches: split.patches,
+    });
+    await plugin.commit();
+  };
+
+  const updateBundle = async (
+    bundleId: string,
+    newBundle: Partial<Bundle>,
+  ): Promise<void> => {
+    const current = await readBundle(bundleId);
+    if (!current) {
+      throw new Error("targetBundleId not found");
+    }
+    const updated = { ...current, ...newBundle };
+    const split = splitDatabaseBundle(updated);
+    await plugin.bundles.update({ bundleId, patch: split.bundle });
+    await plugin.bundlePatches.replaceForBundle({
+      bundleId,
+      patches: split.patches,
+    });
+    await plugin.commit();
+  };
 
   beforeEach(() => {
     rows.clear();
@@ -346,28 +409,55 @@ describe("d1Database plugin", () => {
       databaseId: "test-db-id",
       accountId: "test-account-id",
       cloudflareApiToken: "test-token",
-    })();
+    });
   });
 
   setupBundleMethodsTestSuite({
-    getBundleById: (id) => plugin.getBundleById(id),
-    getChannels: () => plugin.getChannels(),
-    insertBundle: async (bundle) => {
-      await plugin.appendBundle(bundle);
-      await plugin.commitBundle();
+    getBundleById: readBundle,
+    getChannels: async () => {
+      const result = await plugin.bundles.list({ limit: 1000 });
+      return Array.from(
+        new Set(result.data.map((bundle) => bundle.channel)),
+      ).sort();
     },
-    getBundles: (options) => plugin.getBundles(options),
-    updateBundleById: async (bundleId, newBundle) => {
-      await plugin.updateBundle(bundleId, newBundle);
-      await plugin.commitBundle();
+    insertBundle: writeBundle,
+    getBundles: async (options) => {
+      const result = await plugin.bundles.list(options);
+      const patches = await plugin.bundlePatches.list({
+        where: { bundleIdIn: result.data.map((bundle) => bundle.id) },
+        limit: 1000,
+      });
+      return {
+        ...result,
+        pagination: {
+          total: result.pagination.total ?? result.data.length,
+          currentPage: result.pagination.currentPage ?? 1,
+          totalPages:
+            result.pagination.totalPages ??
+            Math.ceil(
+              (result.pagination.total ?? result.data.length) / options.limit,
+            ),
+          hasNextPage: result.pagination.hasNextPage,
+          hasPreviousPage: result.pagination.hasPreviousPage,
+          nextCursor: result.pagination.nextCursor,
+          previousCursor: result.pagination.previousCursor,
+        },
+        data: result.data.map((bundle) =>
+          toBundleReadModel(
+            bundle,
+            patches.data.filter((patch) => patch.bundleId === bundle.id),
+          ),
+        ),
+      };
     },
+    updateBundleById: updateBundle,
     deleteBundleById: async (bundleId) => {
-      const bundle = await plugin.getBundleById(bundleId);
-      if (!bundle) {
-        return;
-      }
-      await plugin.deleteBundle(bundle);
-      await plugin.commitBundle();
+      await plugin.bundlePatches.deleteForBaseBundle({
+        baseBundleId: bundleId,
+      });
+      await plugin.bundlePatches.deleteForBundle({ bundleId });
+      await plugin.bundles.delete({ bundleId });
+      await plugin.commit();
     },
   });
 
@@ -377,11 +467,10 @@ describe("d1Database plugin", () => {
       patchRows.clear();
 
       for (const bundle of bundles) {
-        await plugin.appendBundle(bundle);
+        await writeBundle(bundle);
       }
-      await plugin.commitBundle();
 
-      return plugin.getUpdateInfo?.(args) ?? null;
+      return plugin.updateInfo?.get(args) ?? null;
     },
   });
 
@@ -405,7 +494,7 @@ describe("d1Database plugin", () => {
     };
     rows.set(bundleId, initialRow);
 
-    await plugin.getBundles({ limit: 20 });
+    await plugin.bundles.list({ limit: 20 });
 
     rows.set(bundleId, {
       ...initialRow,
@@ -413,8 +502,7 @@ describe("d1Database plugin", () => {
       metadata: JSON.stringify({ source: "fresh" }),
     });
 
-    await plugin.updateBundle(bundleId, { enabled: false });
-    await plugin.commitBundle();
+    await updateBundle(bundleId, { enabled: false });
 
     expect(rows.get(bundleId)).toEqual(
       expect.objectContaining({

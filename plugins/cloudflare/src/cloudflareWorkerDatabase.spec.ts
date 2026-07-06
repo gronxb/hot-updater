@@ -1,4 +1,4 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { d1Database, type RequestEnvContext } from "./worker";
@@ -207,13 +207,12 @@ function createD1Binding() {
 }
 
 describe("cloudflare worker d1Database", () => {
-  let plugin: DatabasePlugin<RequestEnvContext<TestEnv>>;
+  let plugin: DatabasePluginRuntime;
   let context: RequestEnvContext<TestEnv>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     rows.clear();
     patchRows.clear();
-    plugin = d1Database<RequestEnvContext<TestEnv>>()();
     context = {
       env: {
         DB: createD1Binding(),
@@ -223,6 +222,7 @@ describe("cloudflare worker d1Database", () => {
         },
       },
     };
+    plugin = await d1Database<RequestEnvContext<TestEnv>>()(context);
   });
 
   it("queries getUpdateInfo with 200 distinct target_app_versions without exceeding D1's 100-bind cap", async () => {
@@ -231,17 +231,14 @@ describe("cloudflare worker d1Database", () => {
       rows.set(row.id, row);
     }
 
-    const result = await plugin.getUpdateInfo?.(
-      {
-        appVersion: "1.0.0",
-        bundleId: "00000000-0000-0000-0000-000000000000",
-        platform: "ios",
-        channel: "production",
-        minBundleId: "00000000-0000-0000-0000-000000000000",
-        _updateStrategy: "appVersion",
-      },
-      context,
-    );
+    const result = await plugin.updateInfo?.get({
+      appVersion: "1.0.0",
+      bundleId: "00000000-0000-0000-0000-000000000000",
+      platform: "ios",
+      channel: "production",
+      minBundleId: "00000000-0000-0000-0000-000000000000",
+      _updateStrategy: "appVersion",
+    });
 
     expect(result).not.toBeNull();
   });
@@ -252,7 +249,7 @@ describe("cloudflare worker d1Database", () => {
       rows.set(row.id, row);
     }
 
-    const result = await plugin.getBundles({ limit: 200 }, context);
+    const result = await plugin.bundles.list({ limit: 200 });
 
     expect(result.data).toHaveLength(200);
     expect(result.pagination.total).toBe(200);

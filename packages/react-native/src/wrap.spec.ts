@@ -6,9 +6,29 @@ import type { HotUpdaterOptions } from "./wrap";
 const mocks = vi.hoisted(() => ({
   addListener: vi.fn(() => () => {}),
   checkForUpdate: vi.fn(),
+  getAppVersion: vi.fn(() => "1.0.0"),
   getBundleId: vi.fn(() => "bundle-id"),
+  getChannel: vi.fn(() => "production"),
+  getCohort: vi.fn(() => "730"),
+  getDefaultChannel: vi.fn(() => "production"),
+  getFingerprintHash: vi.fn(() => null),
+  isChannelSwitched: vi.fn(() => false),
   notifyAppReady: vi.fn(() => ({ status: "STABLE" })),
   reload: vi.fn(),
+}));
+
+vi.hoisted(() => {
+  (
+    globalThis as typeof globalThis & {
+      HotUpdater: { SDK_VERSION: string };
+    }
+  ).HotUpdater = { SDK_VERSION: "test-sdk-version" };
+});
+
+vi.mock("react-native", () => ({
+  Platform: {
+    OS: "ios",
+  },
 }));
 
 vi.mock("./checkForUpdate", () => ({
@@ -17,7 +37,13 @@ vi.mock("./checkForUpdate", () => ({
 
 vi.mock("./native", () => ({
   addListener: mocks.addListener,
+  getAppVersion: mocks.getAppVersion,
   getBundleId: mocks.getBundleId,
+  getChannel: mocks.getChannel,
+  getCohort: mocks.getCohort,
+  getDefaultChannel: mocks.getDefaultChannel,
+  getFingerprintHash: mocks.getFingerprintHash,
+  isChannelSwitched: mocks.isChannelSwitched,
   notifyAppReady: mocks.notifyAppReady,
   reload: mocks.reload,
 }));
@@ -34,7 +60,13 @@ describe("HotUpdater wrap initialization", () => {
 
     mocks.checkForUpdate.mockResolvedValue(null);
     mocks.addListener.mockReturnValue(() => {});
+    mocks.getAppVersion.mockReturnValue("1.0.0");
     mocks.getBundleId.mockReturnValue("bundle-id");
+    mocks.getChannel.mockReturnValue("production");
+    mocks.getCohort.mockReturnValue("730");
+    mocks.getDefaultChannel.mockReturnValue("production");
+    mocks.getFingerprintHash.mockReturnValue(null);
+    mocks.isChannelSwitched.mockReturnValue(false);
     mocks.notifyAppReady.mockReturnValue({ status: "STABLE" });
   });
 
@@ -73,8 +105,19 @@ describe("HotUpdater wrap initialization", () => {
 
     expect(mocks.notifyAppReady).toHaveBeenCalledWith();
     expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+      activeBundleId: "bundle-id",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "730",
       status: "STABLE",
-      crashedBundleId: undefined,
+      crashedBundleId: null,
+      defaultChannel: "production",
+      fingerprintHash: null,
+      installId: "730",
+      isChannelSwitched: false,
+      platform: "ios",
+      previousActiveBundleId: null,
+      sdkVersion: "test-sdk-version",
       requestHeaders: {
         Authorization: "Bearer token",
       },

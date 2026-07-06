@@ -1,18 +1,22 @@
 import type {
-  DatabasePlugin,
+  DatabasePluginRuntime,
   HotUpdaterContext,
+  MaybePromise,
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  assertRuntimeStoragePlugin,
+  isDatabaseRuntimeOpener,
+} from "@hot-updater/plugin-core";
 
-import { createPluginDatabaseCore } from "./db/pluginCore";
+import { createRuntimeDatabaseCore } from "./db/runtimeCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
   type DatabaseAdapter,
   type DatabaseAdapterCapabilities,
   type DatabaseAPI,
-  isDatabasePlugin,
-  isDatabasePluginFactory,
+  isDatabasePluginRuntime,
+  openDatabaseRuntime,
   type StoragePluginFactory,
 } from "./db/types";
 import { createHandler, type HandlerRoutes } from "./handler";
@@ -95,30 +99,53 @@ export function createHotUpdaterCore<TContext = unknown>(
   const { readStorageText, resolveFileUrl } =
     createStorageAccess(storagePlugins);
 
-  if (!isDatabasePluginFactory(database) && !isDatabasePlugin(database)) {
-    throw new Error("@hot-updater/server only supports database plugins.");
+  if (
+    !isDatabaseRuntimeOpener(database) &&
+    !isDatabasePluginRuntime(database)
+  ) {
+    throw new Error(
+      "@hot-updater/server only supports database plugin runtimes.",
+    );
   }
 
   const adapterCapabilities = database as DatabaseAdapterCapabilities;
-  const plugin: DatabasePlugin<TContext> = isDatabasePluginFactory(database)
-    ? database()
+  const openedDatabase = isDatabaseRuntimeOpener(database)
+    ? undefined
     : database;
-  const adapterName = adapterCapabilities.adapterName ?? plugin.name;
+  const isRuntimePromise = openedDatabase instanceof Promise;
+  const runtimeOpener:
+    | ((
+        context?: HotUpdaterContext<TContext>,
+      ) => MaybePromise<DatabasePluginRuntime>)
+    | undefined = isDatabaseRuntimeOpener<TContext>(database)
+    ? database
+    : isRuntimePromise ||
+        (openedDatabase !== undefined &&
+          isDatabasePluginRuntime(openedDatabase))
+      ? () =>
+          isRuntimePromise
+            ? openedDatabase
+            : openDatabaseRuntime(openedDatabase)
+      : undefined;
+  if (!runtimeOpener) {
+    throw new Error(
+      "@hot-updater/server only supports database plugin runtimes.",
+    );
+  }
+  const adapterName =
+    adapterCapabilities.adapterName ??
+    (isRuntimePromise ? "database" : (openedDatabase?.name ?? "database"));
   const assertSchemaReady = createSchemaReadinessChecker(
     adapterName,
     adapterCapabilities.createMigrator,
   );
-  const core = createPluginDatabaseCore<TContext>(
-    () => plugin,
-    resolveFileUrl,
-    isDatabasePluginFactory(database)
-      ? {
-          createMutationPlugin: () => database(),
-          beforeOperation: assertSchemaReady,
-          readStorageText,
-        }
-      : { beforeOperation: assertSchemaReady, readStorageText },
-  );
+  const core = (() => {
+    return createRuntimeDatabaseCore<TContext>(runtimeOpener, resolveFileUrl, {
+      adapterName,
+      beforeOperation: assertSchemaReady,
+      readStorageText,
+    });
+  })();
 
   const internalHandler = createHandler(core.api, {
     basePath,

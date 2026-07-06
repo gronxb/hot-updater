@@ -1,8 +1,13 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabasePluginRuntime,
   Platform,
+} from "@hot-updater/plugin-core";
+import {
+  listDatabaseRuntimeBundles,
+  readDatabaseRuntimeBundle,
+  stageDatabaseRuntimeBundleUpdate,
 } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
@@ -33,13 +38,14 @@ const summarizeTarget = (target: RollbackTarget): string =>
 const formatRetryHint = (channel: string, target: RollbackTarget): string =>
   `Re-run with: hot-updater rollback ${channel} -p ${target.platform} --target ${target.bundle.id}`;
 
-const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
+const safeCloseDatabase = async (
+  databasePlugin: DatabasePluginRuntime,
+): Promise<void> => {
   try {
-    await databasePlugin.onUnmount?.();
+    await databasePlugin.close?.();
   } catch (err) {
-    // Cleanup errors must never mask the originating mutation error.
     p.log.warn(
-      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
+      `Database plugin close failed (cleanup-only, original error preserved): ${
         (err as Error)?.message ?? String(err)
       }`,
     );
@@ -61,14 +67,17 @@ export const handleRollback = async (
 
   const platforms = options.platform ? [options.platform] : PLATFORMS;
 
-  const databasePlugin: DatabasePlugin = await config.database();
+  const databasePlugin = await config.database();
   try {
     const targets: RollbackTarget[] = [];
     const skippedPlatforms: Platform[] = [];
 
     if (options.target) {
       // Scoped retry path: roll back exactly the named bundle.
-      const targetBundle = await databasePlugin.getBundleById(options.target);
+      const targetBundle = await readDatabaseRuntimeBundle(
+        databasePlugin,
+        options.target,
+      );
       if (!targetBundle) {
         p.log.error(`No bundle with id ${options.target}.`);
         process.exit(1);
@@ -89,7 +98,7 @@ export const handleRollback = async (
         p.log.info(`Bundle ${options.target} is already disabled. No changes.`);
         return;
       }
-      const fallbackResult = await databasePlugin.getBundles({
+      const fallbackResult = await listDatabaseRuntimeBundles(databasePlugin, {
         where: {
           channel,
           platform: targetBundle.platform,
@@ -107,7 +116,7 @@ export const handleRollback = async (
       });
     } else {
       for (const platform of platforms) {
-        const result = await databasePlugin.getBundles({
+        const result = await listDatabaseRuntimeBundles(databasePlugin, {
           where: { channel, platform, enabled: true },
           limit: 2,
         });
@@ -160,21 +169,18 @@ export const handleRollback = async (
       }
     }
 
-    // Mutate phase: queue updates, then flush via a single commitBundle.
-    // commitBundle is sequential in the underlying provider; if it throws
-    // partway, we still run the verify phase below to surface per-platform
-    // state rather than hiding it behind the raw error.
     let commitError: unknown = null;
     try {
       for (const t of targets) {
-        await databasePlugin.updateBundle(t.bundle.id, { enabled: false });
+        await stageDatabaseRuntimeBundleUpdate(databasePlugin, {
+          bundleId: t.bundle.id,
+          patch: { enabled: false },
+        });
       }
-      await databasePlugin.commitBundle();
+      await databasePlugin.commit();
     } catch (err) {
       commitError = err;
-      p.log.error(
-        `commitBundle threw: ${(err as Error)?.message ?? String(err)}`,
-      );
+      p.log.error(`commit threw: ${(err as Error)?.message ?? String(err)}`);
       p.log.info("Running verify phase to surface per-platform state...");
     }
 
@@ -183,7 +189,10 @@ export const handleRollback = async (
     // deleted bundle satisfies the rollback intent).
     const failures: RollbackTarget[] = [];
     for (const t of targets) {
-      const refetched = await databasePlugin.getBundleById(t.bundle.id);
+      const refetched = await readDatabaseRuntimeBundle(
+        databasePlugin,
+        t.bundle.id,
+      );
       if (!refetched) {
         p.log.warn(
           `${t.platform} ${t.bundle.id} was deleted between commit and verify; treating as rolled back.`,
@@ -205,6 +214,6 @@ export const handleRollback = async (
       process.exit(1);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeCloseDatabase(databasePlugin);
   }
 };

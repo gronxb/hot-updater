@@ -59,8 +59,25 @@ model bundle_patches {
   @@index([bundle_id], map: "bundle_patches_bundle_id_idx")
   @@index([base_bundle_id], map: "bundle_patches_base_bundle_id_idx")
 }
+model bundle_events {
+  id String @id
+  kind String
+  install_id String
+  active_bundle_id String
+  previous_active_bundle_id String?
+  crashed_bundle_id String?
+  platform String
+  channel String
+  app_version String?
+  fingerprint_hash String?
+  cohort String?
+  payload Json
+  @@index([install_id], map: "bundle_events_install_id_idx")
+  @@index([active_bundle_id], map: "bundle_events_active_bundle_id_idx")
+  @@index([platform, channel], map: "bundle_events_platform_channel_idx")
+}
 model private_hot_updater_settings {
   key String @id
-  value String @default("0.31.0")
+  value String @default("0.32.0")
 }
 // --- END HOT-UPDATER MODELS ---

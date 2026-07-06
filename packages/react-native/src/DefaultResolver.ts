@@ -6,6 +6,7 @@ import type {
   HotUpdaterBaseURL,
   HotUpdaterResolver,
   ResolverCheckUpdateParams,
+  ResolverNotifyAppReadyParams,
 } from "./types";
 
 const resolveBaseURL = async (baseURL: HotUpdaterBaseURL): Promise<string> => {
@@ -58,6 +59,69 @@ export function createDefaultResolver(
         },
         requestTimeout: params.requestTimeout,
       });
+    },
+    notifyAppReady: async (
+      params: ResolverNotifyAppReadyParams,
+    ): Promise<{
+      status: "RECOVERED" | "STABLE";
+      crashedBundleId?: string;
+    }> => {
+      const resolvedBaseURL = (await resolveBaseURL(baseURL)).replace(
+        /\/+$/,
+        "",
+      );
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, params.requestTimeout ?? 5000);
+
+      try {
+        const response = await fetch(
+          `${resolvedBaseURL}/bundle-events/app-ready`,
+          {
+            method: "POST",
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "application/json",
+              ...params.requestHeaders,
+              "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+            },
+            body: JSON.stringify({
+              activeBundleId: params.activeBundleId,
+              previousActiveBundleId: params.previousActiveBundleId,
+              crashedBundleId: params.crashedBundleId,
+              platform: params.platform,
+              channel: params.channel,
+              appVersion: params.appVersion,
+              fingerprintHash: params.fingerprintHash,
+              cohort: params.cohort,
+              installId: params.installId,
+              sdkVersion: params.sdkVersion,
+              defaultChannel: params.defaultChannel,
+              isChannelSwitched: params.isChannelSwitched,
+              status: params.status,
+            }),
+          },
+        );
+
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(response.statusText);
+        }
+
+        return {
+          status: params.status,
+          ...(params.crashedBundleId
+            ? { crashedBundleId: params.crashedBundleId }
+            : {}),
+        };
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error("Request timed out");
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     },
   };
 }

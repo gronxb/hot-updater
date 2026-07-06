@@ -1,7 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core";
+import {
+  createBlobDatabasePlugin,
+  splitDatabaseBundle,
+  toBundleReadModel,
+} from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
@@ -120,7 +125,7 @@ const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
 const createInMemoryBlobDatabase = (store: Record<string, string>) =>
   createBlobDatabasePlugin({
     name: "blob-test",
-    factory: () => ({
+    connect: () => ({
       apiBasePath: "/api/check-update",
       listObjects: async (prefix: string) =>
         Object.keys(store).filter((key) => key.startsWith(prefix)),
@@ -138,12 +143,101 @@ const createInMemoryBlobDatabase = (store: Record<string, string>) =>
     }),
   })({});
 
+const readRuntimeBundle = async (
+  runtime: DatabasePluginRuntime,
+  bundleId: string,
+): Promise<Bundle | null> => {
+  const bundle = await runtime.bundles.getById({ bundleId });
+  if (!bundle) return null;
+  const patches = await runtime.bundlePatches.list({
+    where: { bundleId },
+    limit: 1000,
+  });
+  return toBundleReadModel(bundle, patches.data);
+};
+
+const stageRuntimeBundle = async (
+  runtime: DatabasePluginRuntime,
+  bundle: Bundle,
+): Promise<void> => {
+  const split = splitDatabaseBundle(bundle);
+  await runtime.bundles.insert({ bundle: split.bundle });
+  await runtime.bundlePatches.replaceForBundle({
+    bundleId: bundle.id,
+    patches: split.patches,
+  });
+};
+
+const writeRuntimeBundle = async (
+  runtime: DatabasePluginRuntime,
+  bundle: Bundle,
+): Promise<void> => {
+  await stageRuntimeBundle(runtime, bundle);
+  await runtime.commit();
+};
+
+const updateRuntimeBundle = async (
+  runtime: DatabasePluginRuntime,
+  bundleId: string,
+  patch: Partial<Bundle>,
+): Promise<void> => {
+  const current = await readRuntimeBundle(runtime, bundleId);
+  if (!current) throw new Error("targetBundleId not found");
+  const updated = { ...current, ...patch };
+  const split = splitDatabaseBundle(updated);
+  await runtime.bundles.update({ bundleId, patch: split.bundle });
+  await runtime.bundlePatches.replaceForBundle({
+    bundleId,
+    patches: split.patches,
+  });
+  await runtime.commit();
+};
+
+const deleteRuntimeBundle = async (
+  runtime: DatabasePluginRuntime,
+  bundleId: string,
+): Promise<void> => {
+  await runtime.bundlePatches.deleteForBaseBundle({ baseBundleId: bundleId });
+  await runtime.bundlePatches.deleteForBundle({ bundleId });
+  await runtime.bundles.delete({ bundleId });
+  await runtime.commit();
+};
+
+const listRuntimeBundles = async (
+  runtime: DatabasePluginRuntime,
+  options: Parameters<DatabasePluginRuntime["bundles"]["list"]>[0],
+) => {
+  const result = await runtime.bundles.list(options);
+  const patches = await runtime.bundlePatches.list({
+    where: { bundleIdIn: result.data.map((bundle) => bundle.id) },
+    limit: 1000,
+  });
+  return {
+    ...result,
+    data: result.data.map((bundle) =>
+      toBundleReadModel(
+        bundle,
+        patches.data.filter((patch) => patch.bundleId === bundle.id),
+      ),
+    ),
+  };
+};
+
+const getRuntimeChannels = async (
+  runtime: DatabasePluginRuntime,
+): Promise<string[]> => {
+  const result = await runtime.bundles.list({ limit: 1000 });
+  return Array.from(
+    new Set(result.data.map((bundle) => bundle.channel)),
+  ).sort();
+};
+
 describe("Handler <-> Standalone Repository Integration", () => {
   it("Real integration: appendBundle + commitBundle → handler POST /bundles", async () => {
     // Create standalone repository pointing to our test server
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })();
+    });
 
     const bundleId = uuidv7();
     const bundle = createTestBundle({
@@ -152,8 +246,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     });
 
     // Standalone repository operations
-    await repo.appendBundle(bundle);
-    await repo.commitBundle(); // Triggers actual commit
+    await writeRuntimeBundle(repo, bundle);
 
     // Verify via handler that bundle was created
     const request = new Request(
@@ -184,10 +277,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })();
+    });
 
     // Use standalone repository to retrieve
-    const retrieved = await repo.getBundleById(bundleId);
+    const retrieved = await readRuntimeBundle(repo, bundleId);
 
     expect(retrieved).toBeTruthy();
     expect(retrieved?.id).toBe(bundleId);
@@ -211,11 +304,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })();
+    });
 
     // Delete via standalone repository
-    await repo.deleteBundle(bundle);
-    await repo.commitBundle();
+    await deleteRuntimeBundle(repo, bundle.id);
 
     // Verify it was deleted
     const afterDelete = await api.getBundleById(bundleId);
@@ -237,16 +329,16 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })();
+    });
 
     // Get all bundles
-    const result = await repo.getBundles({ limit: 50 });
+    const result = await listRuntimeBundles(repo, { limit: 50 });
 
     expect(result.data).toHaveLength(3);
     expect(result.pagination.total).toBe(3);
 
     // Filter by channel
-    const prodResult = await repo.getBundles({
+    const prodResult = await listRuntimeBundles(repo, {
       where: { channel: "production" },
       limit: 50,
     });
@@ -265,9 +357,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })();
+    });
 
-    const channels = await repo.getChannels();
+    const channels = await getRuntimeChannels(repo);
 
     expect(channels).toHaveLength(2);
     expect(channels).toContain("production");
@@ -277,7 +369,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("Full E2E: create → retrieve → update → delete via standalone", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })();
+    });
 
     // Step 1: Create bundle via standalone
     const bundleId = uuidv7();
@@ -287,46 +379,43 @@ describe("Handler <-> Standalone Repository Integration", () => {
       enabled: true,
     });
 
-    await repo.appendBundle(bundle);
-    await repo.commitBundle();
+    await writeRuntimeBundle(repo, bundle);
 
     // Step 2: Retrieve via standalone
-    const retrieved = await repo.getBundleById(bundleId);
+    const retrieved = await readRuntimeBundle(repo, bundleId);
     expect(retrieved).toBeTruthy();
     expect(retrieved?.enabled).toBe(true);
 
     // Step 3: Update via standalone
-    await repo.updateBundle(bundleId, { enabled: false });
-    await repo.commitBundle();
+    await updateRuntimeBundle(repo, bundleId, { enabled: false });
 
     // Verify update
-    const updated = await repo.getBundleById(bundleId);
+    const updated = await readRuntimeBundle(repo, bundleId);
     expect(updated?.enabled).toBe(false);
 
     // Step 4: Delete via standalone
-    await repo.deleteBundle(bundle);
-    await repo.commitBundle();
+    await deleteRuntimeBundle(repo, bundle.id);
 
     // Verify deletion
-    const deleted = await repo.getBundleById(bundleId);
+    const deleted = await readRuntimeBundle(repo, bundleId);
     expect(deleted).toBeNull();
   });
 
   it("Multiple bundles in single commit (standalone sends array)", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })();
+    });
 
     // Append multiple bundles
     const bundleId1 = uuidv7();
     const bundleId2 = uuidv7();
     const bundleId3 = uuidv7();
-    await repo.appendBundle(createTestBundle({ id: bundleId1 }));
-    await repo.appendBundle(createTestBundle({ id: bundleId2 }));
-    await repo.appendBundle(createTestBundle({ id: bundleId3 }));
+    await stageRuntimeBundle(repo, createTestBundle({ id: bundleId1 }));
+    await stageRuntimeBundle(repo, createTestBundle({ id: bundleId2 }));
+    await stageRuntimeBundle(repo, createTestBundle({ id: bundleId3 }));
 
     // Commit all at once (standalone sends array in POST)
-    await repo.commitBundle();
+    await repo.commit();
 
     // Verify all were created
     const bundle1 = await api.getBundleById(bundleId1);
@@ -386,7 +475,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     // Create standalone repository with matching basePath
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/api/v2`,
-    })();
+    });
 
     // Test create and retrieve
     const bundleId = uuidv7();
@@ -395,10 +484,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
       fileHash: "custom-hash",
     });
 
-    await repo.appendBundle(bundle);
-    await repo.commitBundle();
+    await writeRuntimeBundle(repo, bundle);
 
-    const retrieved = await repo.getBundleById(bundleId);
+    const retrieved = await readRuntimeBundle(repo, bundleId);
     expect(retrieved).toBeTruthy();
     expect(retrieved?.fileHash).toBe("custom-hash");
   });
@@ -406,10 +494,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
   it("Handler returns 404 when bundle not found (standalone handles gracefully)", async () => {
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-    })();
+    });
 
     // Try to get non-existent bundle
-    const result = await repo.getBundleById("non-existent-bundle");
+    const result = await readRuntimeBundle(repo, "non-existent-bundle");
 
     // Standalone should return null gracefully
     expect(result).toBeNull();
@@ -457,10 +545,11 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     const repo = standaloneRepository({
       baseUrl: `${baseUrl}/blob-hot-updater`,
-    })();
+    });
 
     const bundleId = uuidv7();
-    await repo.appendBundle(
+    await writeRuntimeBundle(
+      repo,
       createTestBundle({
         id: bundleId,
         platform: "ios",
@@ -468,12 +557,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
         storageUri: "s3://test-bucket/original.zip",
       }),
     );
-    await repo.commitBundle();
 
-    await repo.updateBundle(bundleId, { targetAppVersion: "1.0.2" });
-    await repo.commitBundle();
+    await updateRuntimeBundle(repo, bundleId, { targetAppVersion: "1.0.2" });
 
-    const updatedBundle = await repo.getBundleById(bundleId);
+    const updatedBundle = await readRuntimeBundle(repo, bundleId);
     expect(updatedBundle?.targetAppVersion).toBe("1.0.2");
 
     expect(store["production/ios/1.x.x/update.json"]).toBeUndefined();

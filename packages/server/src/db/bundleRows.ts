@@ -7,6 +7,20 @@ import {
   getManifestStorageUri,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
+import type {
+  BundleEventListQuery,
+  BundleEventPayload,
+  BundlePatchListQuery,
+  CursorPage,
+  DatabaseBundleEvent,
+  DatabaseBundlePatch,
+  DatabaseBundleRecord,
+} from "@hot-updater/plugin-core";
+import {
+  calculatePagination,
+  toBundleReadModel,
+  toDatabaseBundleRecord,
+} from "@hot-updater/plugin-core";
 
 import { parseBundleMetadata } from "./updateArtifacts";
 
@@ -38,6 +52,21 @@ export type BundlePatchRow = {
   readonly patch_file_hash: string;
   readonly patch_storage_uri: string;
   readonly order_index?: number | null;
+};
+
+export type BundleEventRow = {
+  readonly id: string;
+  readonly kind: string;
+  readonly install_id: string;
+  readonly active_bundle_id: string;
+  readonly previous_active_bundle_id: string | null;
+  readonly crashed_bundle_id: string | null;
+  readonly platform: string;
+  readonly channel: string;
+  readonly app_version: string | null;
+  readonly fingerprint_hash: string | null;
+  readonly cohort: string | null;
+  readonly payload: unknown;
 };
 
 const parseTargetCohorts = (value: unknown): string[] | null => {
@@ -80,6 +109,9 @@ export const bundleToRow = (bundle: Bundle): BundleRow => ({
   target_cohorts: bundle.targetCohorts ?? null,
 });
 
+export const bundleRecordToRow = (bundle: DatabaseBundleRecord): BundleRow =>
+  bundleToRow(toBundleReadModel(bundle));
+
 export const bundleToPatchRows = (bundle: Bundle): BundlePatchRow[] =>
   getBundlePatches(bundle).map((patch, index) => ({
     id: buildBundlePatchId(bundle.id, patch.baseBundleId),
@@ -91,12 +123,117 @@ export const bundleToPatchRows = (bundle: Bundle): BundlePatchRow[] =>
     order_index: index,
   }));
 
+export const databaseBundlePatchToRow = (
+  patch: DatabaseBundlePatch,
+): BundlePatchRow => ({
+  id: patch.id ?? buildBundlePatchId(patch.bundleId, patch.baseBundleId),
+  bundle_id: patch.bundleId,
+  base_bundle_id: patch.baseBundleId,
+  base_file_hash: patch.baseFileHash,
+  patch_file_hash: patch.patchFileHash,
+  patch_storage_uri: patch.patchStorageUri,
+  order_index: patch.orderIndex,
+});
+
 const mapPatchRowToPatch = (record: BundlePatchRow): BundlePatchArtifact => ({
   baseBundleId: record.base_bundle_id,
   baseFileHash: record.base_file_hash,
   patchFileHash: record.patch_file_hash,
   patchStorageUri: record.patch_storage_uri,
 });
+
+export const rowToDatabaseBundlePatch = (
+  record: BundlePatchRow,
+): DatabaseBundlePatch => ({
+  id: record.id,
+  bundleId: record.bundle_id,
+  baseBundleId: record.base_bundle_id,
+  baseFileHash: record.base_file_hash,
+  patchFileHash: record.patch_file_hash,
+  patchStorageUri: record.patch_storage_uri,
+  orderIndex: record.order_index ?? 0,
+});
+
+const isAppReadyPayload = (value: unknown): value is BundleEventPayload => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const payload = value as Partial<Record<keyof BundleEventPayload, unknown>>;
+  return (
+    (payload.status === "STABLE" || payload.status === "RECOVERED") &&
+    typeof payload.sdkVersion === "string" &&
+    typeof payload.defaultChannel === "string" &&
+    typeof payload.isChannelSwitched === "boolean"
+  );
+};
+
+const parseEventPayload = (value: unknown): BundleEventPayload => {
+  const parsed =
+    typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  if (!isAppReadyPayload(parsed)) {
+    throw new Error("Invalid bundle event payload.");
+  }
+  return parsed;
+};
+
+export const rowToDatabaseBundleEvent = (
+  record: BundleEventRow,
+): DatabaseBundleEvent => {
+  if (record.kind !== "APP_READY") {
+    throw new Error(`Unsupported bundle event kind: ${record.kind}`);
+  }
+  return {
+    id: record.id,
+    kind: record.kind,
+    installId: record.install_id,
+    activeBundleId: record.active_bundle_id,
+    previousActiveBundleId: record.previous_active_bundle_id,
+    crashedBundleId: record.crashed_bundle_id,
+    platform: record.platform as Platform,
+    channel: record.channel,
+    appVersion: record.app_version,
+    fingerprintHash: record.fingerprint_hash,
+    cohort: record.cohort,
+    payload: parseEventPayload(record.payload),
+  };
+};
+
+export const databaseBundleEventToRow = (
+  event: DatabaseBundleEvent,
+): BundleEventRow => ({
+  id: event.id,
+  kind: event.kind,
+  install_id: event.installId,
+  active_bundle_id: event.activeBundleId,
+  previous_active_bundle_id: event.previousActiveBundleId ?? null,
+  crashed_bundle_id: event.crashedBundleId ?? null,
+  platform: event.platform,
+  channel: event.channel,
+  app_version: event.appVersion ?? null,
+  fingerprint_hash: event.fingerprintHash ?? null,
+  cohort: event.cohort ?? null,
+  payload: event.payload,
+});
+
+export const bundleEventMatchesWhere = (
+  event: DatabaseBundleEvent,
+  where: BundleEventListQuery["where"] | undefined,
+) =>
+  !where ||
+  ((where.kind === undefined || event.kind === where.kind) &&
+    (where.installId === undefined || event.installId === where.installId) &&
+    (where.activeBundleId === undefined ||
+      event.activeBundleId === where.activeBundleId) &&
+    (where.previousActiveBundleId === undefined ||
+      event.previousActiveBundleId === where.previousActiveBundleId) &&
+    (where.crashedBundleId === undefined ||
+      event.crashedBundleId === where.crashedBundleId) &&
+    (where.platform === undefined || event.platform === where.platform) &&
+    (where.channel === undefined || event.channel === where.channel) &&
+    (where.appVersion === undefined || event.appVersion === where.appVersion) &&
+    (where.fingerprintHash === undefined ||
+      event.fingerprintHash === where.fingerprintHash) &&
+    (where.cohort === undefined || event.cohort === where.cohort));
 
 export const rowToBundle = (
   record: BundleRow,
@@ -136,5 +273,64 @@ export const rowToBundle = (
     rolloutCohortCount:
       record.rollout_cohort_count ?? DEFAULT_ROLLOUT_COHORT_COUNT,
     targetCohorts: parseTargetCohorts(record.target_cohorts),
+  };
+};
+
+export const rowToDatabaseBundleRecord = (
+  record: BundleRow,
+): DatabaseBundleRecord => toDatabaseBundleRecord(rowToBundle(record, []));
+
+export const paginateCursorItems = <TItem>({
+  items,
+  limit,
+  cursor,
+  offset,
+  getCursor,
+}: {
+  readonly items: readonly TItem[];
+  readonly limit: number;
+  readonly cursor?: BundlePatchListQuery["cursor"];
+  readonly offset?: number;
+  readonly getCursor: (item: TItem) => string;
+}): CursorPage<TItem> => {
+  const total = items.length;
+  const normalizedOffset =
+    offset !== undefined
+      ? Math.max(0, Math.min(offset, Math.max(0, total - 1)))
+      : undefined;
+  let startIndex = normalizedOffset ?? 0;
+  let endIndex = limit > 0 ? startIndex + limit : total;
+
+  if (normalizedOffset === undefined && cursor?.after) {
+    const afterIndex = items.findIndex(
+      (item) => getCursor(item) === cursor.after,
+    );
+    startIndex = afterIndex >= 0 ? afterIndex + 1 : total;
+    endIndex = limit > 0 ? startIndex + limit : total;
+  } else if (normalizedOffset === undefined && cursor?.before) {
+    const beforeIndex = items.findIndex(
+      (item) => getCursor(item) === cursor.before,
+    );
+    endIndex = beforeIndex >= 0 ? beforeIndex : 0;
+    startIndex = limit > 0 ? Math.max(0, endIndex - limit) : 0;
+  }
+
+  const data = items.slice(startIndex, endIndex);
+  const pagination = calculatePagination(total, {
+    limit,
+    offset: startIndex,
+  });
+
+  return {
+    data,
+    pagination: {
+      ...pagination,
+      nextCursor:
+        data.length > 0 && startIndex + data.length < total
+          ? getCursor(data[data.length - 1]!)
+          : null,
+      previousCursor:
+        data.length > 0 && startIndex > 0 ? getCursor(data[0]!) : null,
+    },
   };
 };

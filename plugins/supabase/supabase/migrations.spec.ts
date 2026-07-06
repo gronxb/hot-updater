@@ -13,8 +13,11 @@ describe("Supabase RLS migration", () => {
     const migrations = (await fs.readdir(migrationsDir))
       .filter((file) => file.endsWith(".sql"))
       .sort();
+    const rlsMigration = path.basename(rlsMigrationPath);
 
-    expect(migrations.at(-1)).toBe(path.basename(rlsMigrationPath));
+    expect(migrations.indexOf(rlsMigration)).toBeGreaterThan(
+      migrations.indexOf("20260422000000_hot-updater_0.31.0.sql"),
+    );
   });
 
   it("enables RLS on Hot Updater tables", async () => {

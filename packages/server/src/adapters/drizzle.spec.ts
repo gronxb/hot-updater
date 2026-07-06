@@ -14,6 +14,7 @@ describe("drizzleAdapter", () => {
       database: drizzleAdapter({
         db: getDB,
         provider: "postgresql",
+        schema: { bundle_patches: {}, bundles: {} },
       }),
     });
 
@@ -50,11 +51,13 @@ describe("drizzleAdapter", () => {
       db: getDB,
       provider: "postgresql",
       schema: { bundle_patches: bundlePatches, bundles },
-    })();
+    });
 
     expect(getDB).not.toHaveBeenCalled();
 
-    await expect(plugin.getChannels()).resolves.toEqual(["production"]);
+    await expect(plugin.bundles.list({ limit: 10 })).resolves.toMatchObject({
+      data: expect.any(Array),
+    });
     expect(getDB).toHaveBeenCalledOnce();
   });
 
@@ -63,14 +66,12 @@ describe("drizzleAdapter", () => {
       throw new Error("runtime database should not be opened");
     });
 
-    const plugin = drizzleAdapter({
-      db: getDB,
-      provider: "postgresql",
-    })();
-
-    await expect(plugin.getChannels()).rejects.toThrow(
-      "[hot-updater] Drizzle adapter requires schema when db is lazy.",
-    );
+    expect(() =>
+      drizzleAdapter({
+        db: getDB,
+        provider: "postgresql",
+      }),
+    ).toThrow("[hot-updater] Drizzle adapter requires schema when db is lazy.");
     expect(getDB).not.toHaveBeenCalled();
   });
 });

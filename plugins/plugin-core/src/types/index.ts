@@ -37,6 +37,30 @@ export interface Paginated<TData> {
 
 export type PaginatedResult = Paginated<Bundle[]>;
 
+export type MaybePromise<T> = T | Promise<T>;
+
+type DeprecatedBundlePatchKeys =
+  | "patches"
+  | "patchBaseBundleId"
+  | "patchBaseFileHash"
+  | "patchFileHash"
+  | "patchStorageUri";
+
+export type DatabaseBundleRecord = Omit<Bundle, DeprecatedBundlePatchKeys>;
+
+export interface CursorPage<TData> {
+  readonly data: readonly TData[];
+  readonly pagination: {
+    readonly total?: number;
+    readonly hasNextPage: boolean;
+    readonly hasPreviousPage: boolean;
+    readonly currentPage?: number;
+    readonly totalPages?: number;
+    readonly nextCursor: string | null;
+    readonly previousCursor: string | null;
+  };
+}
+
 export interface DatabaseBundleIdFilter {
   eq?: string;
   gt?: string;
@@ -92,40 +116,220 @@ export interface DatabaseBundleQueryOptions {
   orderBy?: DatabaseBundleQueryOrder;
 }
 
-export interface BuildPluginConfig {
-  outDir?: string;
+export type BundleListQuery = DatabaseBundleQueryOptions;
+
+export interface DatabaseBundlePatch {
+  readonly id?: string;
+  readonly bundleId: string;
+  readonly baseBundleId: string;
+  readonly baseFileHash: string;
+  readonly patchFileHash: string;
+  readonly patchStorageUri: string;
+  readonly orderIndex: number;
 }
 
-export interface DatabasePlugin<TContext = unknown> {
-  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
-  getBundleById: (
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Bundle | null>;
-  getUpdateInfo?: (
-    args: GetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<UpdateInfo | null>;
-  getBundles: (
-    options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Paginated<Bundle[]>>;
-  updateBundle: (
-    targetBundleId: string,
-    newBundle: Partial<Bundle>,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  appendBundle: (
-    insertBundle: Bundle,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  commitBundle: (context?: HotUpdaterContext<TContext>) => Promise<void>;
-  onUnmount?: () => Promise<void>;
-  name: string;
-  deleteBundle: (
-    deleteBundle: Bundle,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
+export interface BundlePatchListQuery {
+  readonly where?: {
+    readonly bundleId?: string;
+    readonly baseBundleId?: string;
+    readonly bundleIdIn?: readonly string[];
+    readonly baseBundleIdIn?: readonly string[];
+  };
+  readonly limit: number;
+  readonly cursor?: {
+    readonly after?: string;
+    readonly before?: string;
+  };
+  readonly orderBy?: {
+    readonly field: "bundleId" | "baseBundleId" | "orderIndex";
+    readonly direction: "asc" | "desc";
+  };
+}
+
+export type BundleEventKind = "APP_READY";
+
+export interface AppReadyBundleEventPayload {
+  readonly status: "STABLE" | "RECOVERED";
+  readonly sdkVersion: string;
+  readonly defaultChannel: string;
+  readonly isChannelSwitched: boolean;
+}
+
+export type BundleEventPayload = AppReadyBundleEventPayload;
+
+export interface DatabaseBundleEventInput {
+  readonly kind: BundleEventKind;
+  readonly installId: string;
+  readonly activeBundleId: string;
+  readonly previousActiveBundleId?: string | null;
+  readonly crashedBundleId?: string | null;
+  readonly platform: Platform;
+  readonly channel: string;
+  readonly appVersion?: string | null;
+  readonly fingerprintHash?: string | null;
+  readonly cohort?: string | null;
+  readonly payload: BundleEventPayload;
+}
+
+export interface DatabaseBundleEvent extends DatabaseBundleEventInput {
+  readonly id: string;
+}
+
+export interface BundleEventListQuery {
+  readonly where?: {
+    readonly kind?: BundleEventKind;
+    readonly installId?: string;
+    readonly activeBundleId?: string;
+    readonly previousActiveBundleId?: string;
+    readonly crashedBundleId?: string;
+    readonly platform?: Platform;
+    readonly channel?: string;
+    readonly appVersion?: string;
+    readonly fingerprintHash?: string;
+    readonly cohort?: string;
+  };
+  readonly limit: number;
+  readonly cursor?: {
+    readonly after?: string;
+    readonly before?: string;
+  };
+  readonly orderBy?: {
+    readonly field: "id";
+    readonly direction: "asc" | "desc";
+  };
+}
+
+export interface BundleRepository {
+  readonly getById: (params: {
+    readonly bundleId: string;
+  }) => Promise<DatabaseBundleRecord | null>;
+  readonly list: (
+    params: BundleListQuery,
+  ) => Promise<CursorPage<DatabaseBundleRecord>>;
+}
+
+export interface RuntimeBundleRepository extends BundleRepository {
+  readonly insert: (params: {
+    readonly bundle: DatabaseBundleRecord;
+  }) => Promise<void>;
+  readonly update: (params: {
+    readonly bundleId: string;
+    readonly patch: Partial<DatabaseBundleRecord>;
+  }) => Promise<void>;
+  readonly delete: (params: { readonly bundleId: string }) => Promise<void>;
+}
+
+export type BundleResource = RuntimeBundleRepository;
+
+export interface BundlePatchRepository {
+  readonly list: (
+    params: BundlePatchListQuery,
+  ) => Promise<CursorPage<DatabaseBundlePatch>>;
+}
+
+export interface RuntimeBundlePatchRepository extends BundlePatchRepository {
+  readonly replaceForBundle: (params: {
+    readonly bundleId: string;
+    readonly patches: readonly DatabaseBundlePatch[];
+  }) => Promise<void>;
+  readonly deleteForBundle: (params: {
+    readonly bundleId: string;
+  }) => Promise<void>;
+  readonly deleteForBaseBundle: (params: {
+    readonly baseBundleId: string;
+  }) => Promise<void>;
+}
+
+export type BundlePatchResource = RuntimeBundlePatchRepository;
+
+export interface BundleEventRepository {
+  readonly list: (
+    params: BundleEventListQuery,
+  ) => Promise<CursorPage<DatabaseBundleEvent>>;
+}
+
+export interface RuntimeBundleEventRepository extends BundleEventRepository {
+  readonly append: (params: {
+    readonly event: DatabaseBundleEventInput;
+  }) => Promise<void>;
+}
+
+export interface BundleEventResource extends BundleEventRepository {
+  readonly append: (params: {
+    readonly event: DatabaseBundleEvent;
+  }) => Promise<void>;
+}
+
+export interface UpdateInfoRepository {
+  readonly get: (params: GetBundlesArgs) => Promise<UpdateInfo | null>;
+}
+
+export interface DatabaseTransaction {
+  readonly core: DatabasePluginCore;
+  readonly commit: () => Promise<void>;
+  readonly rollback: () => Promise<void>;
+}
+
+export interface DatabasePluginCore {
+  readonly beginTransaction?: () => Promise<DatabaseTransaction>;
+  readonly bundles: BundleResource;
+  readonly bundlePatches: BundlePatchResource;
+  readonly bundleEvents?: BundleEventResource;
+  readonly updateInfo?: UpdateInfoRepository;
+  readonly close?: () => Promise<void>;
+}
+
+export interface DatabaseCommitBatch {
+  readonly mutations: readonly DatabaseMutation[];
+}
+
+export interface DatabaseCommitParams {
+  readonly batch?: DatabaseCommitBatch;
+}
+
+export type BundleMutation =
+  | { readonly kind: "bundle.insert"; readonly bundle: DatabaseBundleRecord }
+  | {
+      readonly kind: "bundle.update";
+      readonly bundleId: string;
+      readonly patch: Partial<DatabaseBundleRecord>;
+    }
+  | { readonly kind: "bundle.delete"; readonly bundleId: string };
+
+export type BundlePatchMutation =
+  | {
+      readonly kind: "bundlePatch.replaceForBundle";
+      readonly bundleId: string;
+      readonly patches: readonly DatabaseBundlePatch[];
+    }
+  | { readonly kind: "bundlePatch.deleteForBundle"; readonly bundleId: string }
+  | {
+      readonly kind: "bundlePatch.deleteForBaseBundle";
+      readonly baseBundleId: string;
+    };
+
+export type BundleEventMutation = {
+  readonly kind: "bundleEvent.append";
+  readonly event: DatabaseBundleEvent;
+};
+
+export type DatabaseMutation =
+  | BundleMutation
+  | BundlePatchMutation
+  | BundleEventMutation;
+
+export interface DatabasePluginRuntime {
+  readonly name: string;
+  readonly bundles: RuntimeBundleRepository;
+  readonly bundlePatches: RuntimeBundlePatchRepository;
+  readonly bundleEvents?: RuntimeBundleEventRepository;
+  readonly updateInfo?: UpdateInfoRepository;
+  readonly commit: (params?: DatabaseCommitParams) => Promise<void>;
+  readonly close?: () => Promise<void>;
+}
+
+export interface BuildPluginConfig {
+  outDir?: string;
 }
 
 export interface DatabasePluginHooks {
@@ -611,7 +815,7 @@ export type ConfigInput = {
   signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
-  database: () => Promise<DatabasePlugin> | DatabasePlugin;
+  database: () => MaybePromise<DatabasePluginRuntime>;
 };
 
 export interface NativeBuildOptions {

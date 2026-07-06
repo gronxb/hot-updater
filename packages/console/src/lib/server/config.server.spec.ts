@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import type {
-  DatabasePlugin,
+  DatabasePluginRuntime,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -14,16 +14,23 @@ vi.mock("@hot-updater/cli-tools", () => ({
   loadConfig: loadConfigMock,
 }));
 
-function createDatabasePlugin(name: string): DatabasePlugin {
+function createDatabasePlugin(name: string): DatabasePluginRuntime {
   return {
     name,
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
-    updateBundle: vi.fn(),
-    appendBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    commitBundle: vi.fn(),
+    bundles: {
+      getById: vi.fn(),
+      list: vi.fn(),
+      insert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
+    bundlePatches: {
+      list: vi.fn(),
+      replaceForBundle: vi.fn(),
+      deleteForBundle: vi.fn(),
+      deleteForBaseBundle: vi.fn(),
+    },
+    commit: vi.fn(),
   };
 }
 

@@ -43,7 +43,7 @@ describe("createKyselyMigrator", () => {
     });
 
     expect(migration.getSQL?.()).toContain(
-      "insert into private_hot_updater_settings (key, value) values ('version', '0.31.0')",
+      "insert into private_hot_updater_settings (key, value) values ('version', '0.32.0')",
     );
     expect(migration.operations).not.toContainEqual(
       expect.objectContaining({

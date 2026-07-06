@@ -392,7 +392,7 @@ async function invalidateCloudFront(
 
 export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
   name: "s3Database",
-  factory: (config) => {
+  connect: (config) => {
     const {
       basePath,
       bucketName,

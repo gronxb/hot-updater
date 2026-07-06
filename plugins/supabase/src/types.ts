@@ -30,6 +30,21 @@ export interface SupabaseBundlePatchRow {
   order_index: number;
 }
 
+export interface SupabaseBundleEventRow {
+  id: string;
+  kind: string;
+  install_id: string;
+  active_bundle_id: string;
+  previous_active_bundle_id: string | null;
+  crashed_bundle_id: string | null;
+  platform: Bundle["platform"];
+  channel: string;
+  app_version: string | null;
+  fingerprint_hash: string | null;
+  cohort: string | null;
+  payload: unknown;
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -43,6 +58,12 @@ export type Database = {
         Row: SupabaseBundlePatchRow;
         Insert: SupabaseBundlePatchRow;
         Update: SupabaseBundlePatchRow;
+        Relationships: [];
+      };
+      bundle_events: {
+        Row: SupabaseBundleEventRow;
+        Insert: SupabaseBundleEventRow;
+        Update: SupabaseBundleEventRow;
         Relationships: [];
       };
     };

@@ -1,11 +1,13 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabaseBundleQueryOptions,
+  DatabaseBundlePatch,
   DatabaseBundleQueryWhere,
+  DatabaseBundleRecord,
+  DatabasePluginCore,
+  DatabasePluginRuntime,
 } from "@hot-updater/plugin-core";
 import {
-  calculatePagination,
   createDatabasePlugin,
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
@@ -13,15 +15,22 @@ import {
 import type { Kysely, Transaction } from "kysely";
 
 import {
-  bundleToPatchRows,
-  bundleToRow,
+  bundleEventMatchesWhere,
+  bundleRecordToRow,
+  type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
+  databaseBundleEventToRow,
+  databaseBundlePatchToRow,
+  paginateCursorItems,
+  rowToDatabaseBundleEvent,
+  rowToDatabaseBundlePatch,
+  rowToDatabaseBundleRecord,
   rowToBundle,
 } from "../db/bundleRows";
 import { createKyselyMigrator } from "../db/fixedMigrator";
 import type {
-  DatabasePluginFactory,
+  DatabaseAdapterCapabilities,
   ORMSQLProvider,
   RelationMode,
 } from "../db/types";
@@ -33,6 +42,7 @@ export type { RelationMode, KyselySQLProvider as SQLProvider };
 interface Database {
   readonly bundles: BundleRow;
   readonly bundle_patches: BundlePatchRow;
+  readonly bundle_events: BundleEventRow;
   readonly private_hot_updater_settings: {
     readonly key: string;
     readonly value: string;
@@ -127,9 +137,12 @@ const toProviderBundleRow = (
   };
 };
 
-const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
+const createKyselyPlugin = createDatabasePlugin({
   name: "kysely",
-  factory: ({ db, provider }) => {
+  connect: ({
+    db,
+    provider,
+  }: KyselyAdapterConfig<Database>): DatabasePluginCore => {
     const fetchPatchMap = async (bundleIds: readonly string[]) => {
       const patchMap = new Map<string, BundlePatchRow[]>();
       if (bundleIds.length === 0) return patchMap;
@@ -153,11 +166,11 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
       return rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? []));
     };
 
-    const upsertBundle = async (
+    const upsertBundleRecord = async (
       executor: Kysely<Database> | Transaction<Database>,
-      bundle: Bundle,
+      bundle: DatabaseBundleRecord,
     ) => {
-      const row = toProviderBundleRow(bundleToRow(bundle), provider);
+      const row = toProviderBundleRow(bundleRecordToRow(bundle), provider);
       const { id: _id, ...updateRow } = row;
       if (provider === "mysql") {
         await executor
@@ -172,163 +185,231 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
           .onConflict((oc) => oc.column("id").doUpdateSet(updateRow))
           .execute();
       }
+    };
+
+    const replacePatchesForBundle = async (
+      executor: Kysely<Database> | Transaction<Database>,
+      bundleId: string,
+      patches: readonly DatabaseBundlePatch[],
+    ) => {
       await executor
         .deleteFrom("bundle_patches")
-        .where("bundle_id", "=", bundle.id)
+        .where("bundle_id", "=", bundleId)
         .execute();
-      const patches = bundleToPatchRows(bundle);
-      if (patches.length > 0) {
-        await executor.insertInto("bundle_patches").values(patches).execute();
+      const patchRows = patches.map(databaseBundlePatchToRow);
+      if (patchRows.length > 0) {
+        await executor.insertInto("bundle_patches").values(patchRows).execute();
       }
     };
 
     return {
-      async getBundleById(bundleId) {
-        const row = await db
-          .selectFrom("bundles")
-          .selectAll()
-          .where("id", "=", bundleId)
-          .executeTakeFirst();
-        if (!row) return null;
-        const patchMap = await fetchPatchMap([bundleId]);
-        return rowToBundle(row, patchMap.get(bundleId) ?? []);
-      },
-      async getBundles(
-        options: DatabaseBundleQueryOptions & { offset?: number },
-      ) {
-        const offset = options.offset ?? 0;
-        if (hasEmptySetFilter(options.where)) {
-          return {
-            data: [],
-            pagination: calculatePagination(0, {
+      bundles: {
+        async getById({ bundleId }) {
+          const row = await db
+            .selectFrom("bundles")
+            .selectAll()
+            .where("id", "=", bundleId)
+            .executeTakeFirst();
+          return row ? rowToDatabaseBundleRecord(row) : null;
+        },
+        async list(options) {
+          if (hasEmptySetFilter(options.where)) {
+            return paginateCursorItems({
+              items: [] as DatabaseBundleRecord[],
               limit: options.limit,
-              offset,
-            }),
-          };
-        }
-        const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
-        const countRow = await applyWhere(
-          db.selectFrom("bundles"),
-          options.where,
-        )
-          .select(db.fn.count<number>("id").as("total"))
-          .executeTakeFirst();
-        const total = Number(countRow?.total ?? 0);
-        const rows = await applyWhere(
-          db.selectFrom("bundles").selectAll(),
-          options.where,
-        )
-          .orderBy("id", orderBy.direction)
-          .limit(options.limit)
-          .offset(offset)
-          .execute();
-        const patchMap = await fetchPatchMap(rows.map((row) => row.id));
-        return {
-          data: rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? [])),
-          pagination: calculatePagination(total, {
+              cursor: options.cursor,
+              getCursor: (bundle) => bundle.id,
+            });
+          }
+          const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
+          const rows = await applyWhere(
+            db.selectFrom("bundles").selectAll(),
+            options.where,
+          )
+            .orderBy("id", orderBy.direction)
+            .execute();
+          const page = paginateCursorItems({
+            items: rows,
             limit: options.limit,
-            offset,
-          }),
-        };
+            cursor: options.cursor,
+            offset: options.page
+              ? (Math.max(1, options.page) - 1) * options.limit
+              : undefined,
+            getCursor: (row) => row.id,
+          });
+          return {
+            ...page,
+            data: page.data.map(rowToDatabaseBundleRecord),
+          };
+        },
+        async insert({ bundle }) {
+          await upsertBundleRecord(db, bundle);
+        },
+        async update({ bundleId, patch }) {
+          const row = await db
+            .selectFrom("bundles")
+            .selectAll()
+            .where("id", "=", bundleId)
+            .executeTakeFirst();
+          if (!row) throw new Error("targetBundleId not found");
+          await upsertBundleRecord(db, {
+            ...rowToDatabaseBundleRecord(row),
+            ...patch,
+            id: bundleId,
+          });
+        },
+        async delete({ bundleId }) {
+          await db.deleteFrom("bundles").where("id", "=", bundleId).execute();
+        },
       },
-      async getUpdateInfo(args, context) {
-        if (args._updateStrategy === "appVersion") {
+      bundlePatches: {
+        async list(options) {
+          const rows = await db
+            .selectFrom("bundle_patches")
+            .selectAll()
+            .orderBy("order_index", "asc")
+            .execute();
+          const patches = rows
+            .map(rowToDatabaseBundlePatch)
+            .filter((patch) => {
+              const where = options.where;
+              return (
+                !where ||
+                ((where.bundleId === undefined ||
+                  patch.bundleId === where.bundleId) &&
+                  (where.baseBundleId === undefined ||
+                    patch.baseBundleId === where.baseBundleId) &&
+                  (where.bundleIdIn === undefined ||
+                    where.bundleIdIn.includes(patch.bundleId)) &&
+                  (where.baseBundleIdIn === undefined ||
+                    where.baseBundleIdIn.includes(patch.baseBundleId)))
+              );
+            })
+            .sort((left, right) => {
+              const direction = options.orderBy?.direction ?? "asc";
+              const field = options.orderBy?.field ?? "orderIndex";
+              const result =
+                field === "orderIndex"
+                  ? left.orderIndex - right.orderIndex
+                  : left[field].localeCompare(right[field]);
+              return direction === "asc" ? result : -result;
+            });
+          return paginateCursorItems({
+            items: patches,
+            limit: options.limit,
+            cursor: options.cursor,
+            getCursor: (patch) =>
+              patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+          });
+        },
+        async replaceForBundle({ bundleId, patches }) {
+          await replacePatchesForBundle(db, bundleId, patches);
+        },
+        async deleteForBundle({ bundleId }) {
+          await db
+            .deleteFrom("bundle_patches")
+            .where("bundle_id", "=", bundleId)
+            .execute();
+        },
+        async deleteForBaseBundle({ baseBundleId }) {
+          await db
+            .deleteFrom("bundle_patches")
+            .where("base_bundle_id", "=", baseBundleId)
+            .execute();
+        },
+      },
+      bundleEvents: {
+        async list(options) {
+          const rows = await db
+            .selectFrom("bundle_events")
+            .selectAll()
+            .orderBy("id", options.orderBy?.direction ?? "desc")
+            .execute();
+          const events = rows
+            .map(rowToDatabaseBundleEvent)
+            .filter((event) => bundleEventMatchesWhere(event, options.where));
+          return paginateCursorItems({
+            items: events,
+            limit: options.limit,
+            cursor: options.cursor,
+            getCursor: (event) => event.id,
+          });
+        },
+        async append({ event }) {
+          await db
+            .insertInto("bundle_events")
+            .values(databaseBundleEventToRow(event))
+            .execute();
+        },
+      },
+      updateInfo: {
+        async get(args) {
+          if (args._updateStrategy === "appVersion") {
+            const channel = args.channel ?? "production";
+            const minBundleId = args.minBundleId ?? NIL_UUID;
+            const rows = await db
+              .selectFrom("bundles")
+              .select("target_app_version")
+              .where("enabled", "=", true)
+              .where("platform", "=", args.platform)
+              .where("channel", "=", channel)
+              .where("id", ">=", minBundleId)
+              .where("target_app_version", "is not", null)
+              .execute();
+
+            const targetAppVersions = Array.from(
+              new Set(
+                rows
+                  .map((row) => row.target_app_version)
+                  .filter(
+                    (value): value is string =>
+                      typeof value === "string" && value.length > 0,
+                  ),
+              ),
+            );
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
+            );
+            const bundles =
+              compatibleAppVersions.length > 0
+                ? await db
+                    .selectFrom("bundles")
+                    .selectAll()
+                    .where("enabled", "=", true)
+                    .where("platform", "=", args.platform)
+                    .where("channel", "=", channel)
+                    .where("id", ">=", minBundleId)
+                    .where("target_app_version", "in", compatibleAppVersions)
+                    .orderBy("id", "desc")
+                    .execute()
+                    .then(mapRowsToBundles)
+                : [];
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles,
+            });
+          }
+
           const channel = args.channel ?? "production";
           const minBundleId = args.minBundleId ?? NIL_UUID;
           const rows = await db
             .selectFrom("bundles")
-            .select("target_app_version")
+            .selectAll()
             .where("enabled", "=", true)
             .where("platform", "=", args.platform)
             .where("channel", "=", channel)
             .where("id", ">=", minBundleId)
-            .where("target_app_version", "is not", null)
+            .where("fingerprint_hash", "=", args.fingerprintHash)
+            .orderBy("id", "desc")
             .execute();
-
-          const targetAppVersions = Array.from(
-            new Set(
-              rows
-                .map((row) => row.target_app_version)
-                .filter(
-                  (value): value is string =>
-                    typeof value === "string" && value.length > 0,
-                ),
-            ),
-          );
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
-          const bundles =
-            compatibleAppVersions.length > 0
-              ? await db
-                  .selectFrom("bundles")
-                  .selectAll()
-                  .where("enabled", "=", true)
-                  .where("platform", "=", args.platform)
-                  .where("channel", "=", channel)
-                  .where("id", ">=", minBundleId)
-                  .where("target_app_version", "in", compatibleAppVersions)
-                  .orderBy("id", "desc")
-                  .execute()
-                  .then(mapRowsToBundles)
-              : [];
 
           return resolveUpdateInfoFromBundles({
             args: { ...args, channel, minBundleId },
-            bundles,
-            context,
+            bundles: await mapRowsToBundles(rows),
           });
-        }
-
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
-        const rows = await db
-          .selectFrom("bundles")
-          .selectAll()
-          .where("enabled", "=", true)
-          .where("platform", "=", args.platform)
-          .where("channel", "=", channel)
-          .where("id", ">=", minBundleId)
-          .where("fingerprint_hash", "=", args.fingerprintHash)
-          .orderBy("id", "desc")
-          .execute();
-
-        return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles: await mapRowsToBundles(rows),
-          context,
-        });
-      },
-      async getChannels() {
-        const rows = await db
-          .selectFrom("bundles")
-          .select("channel")
-          .orderBy("channel", "asc")
-          .execute();
-        return Array.from(new Set(rows.map((row) => row.channel)));
-      },
-      async commitBundle({ changedSets }) {
-        await db.transaction().execute(async (tx) => {
-          for (const change of changedSets) {
-            if (change.operation === "delete") {
-              await tx
-                .deleteFrom("bundle_patches")
-                .where("bundle_id", "=", change.data.id)
-                .execute();
-              await tx
-                .deleteFrom("bundle_patches")
-                .where("base_bundle_id", "=", change.data.id)
-                .execute();
-              await tx
-                .deleteFrom("bundles")
-                .where("id", "=", change.data.id)
-                .execute();
-              continue;
-            }
-            await upsertBundle(tx, change.data);
-          }
-        });
+        },
       },
     };
   },
@@ -336,7 +417,7 @@ const createKyselyPlugin = createDatabasePlugin<KyselyAdapterConfig<Database>>({
 
 export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
-): DatabasePluginFactory => {
+): DatabaseAdapterCapabilities & DatabasePluginRuntime => {
   assertKyselySQLProvider(config.provider);
   return Object.assign(
     createKyselyPlugin(config as unknown as KyselyAdapterConfig<Database>),

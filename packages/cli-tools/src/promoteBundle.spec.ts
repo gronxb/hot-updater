@@ -7,8 +7,15 @@ import { brotliDecompressSync } from "node:zlib";
 
 import type {
   Bundle,
-  DatabasePlugin,
+  CursorPage,
+  DatabaseBundleRecord,
+  DatabasePluginCore,
+  DatabasePluginRuntime,
   NodeStoragePlugin,
+} from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin as createDatabaseRuntimePlugin,
+  splitDatabaseBundle,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
@@ -42,6 +49,61 @@ const config = {
     enabled: false,
   },
 } as ConfigResponse;
+
+const createCursorPage = <TData>(
+  data: readonly TData[],
+): CursorPage<TData> => ({
+  data,
+  pagination: {
+    currentPage: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    nextCursor: null,
+    previousCursor: null,
+    total: data.length,
+    totalPages: data.length === 0 ? 0 : 1,
+  },
+});
+
+const createInsertFailingDatabasePlugin = (
+  bundle: Bundle,
+): DatabasePluginRuntime => {
+  const split = splitDatabaseBundle(bundle);
+  const bundleRecords = new Map<string, DatabaseBundleRecord>([
+    [bundle.id, split.bundle],
+  ]);
+
+  return createDatabaseRuntimePlugin({
+    name: "mockDatabase",
+    connect: (): DatabasePluginCore => ({
+      bundles: {
+        async delete() {},
+        async getById({ bundleId }) {
+          return bundleRecords.get(bundleId) ?? null;
+        },
+        async insert() {
+          throw new Error("append failed");
+        },
+        async list() {
+          return createCursorPage(Array.from(bundleRecords.values()));
+        },
+        async update({ bundleId, patch }) {
+          const existing = bundleRecords.get(bundleId);
+          if (!existing) return;
+          bundleRecords.set(bundleId, { ...existing, ...patch });
+        },
+      },
+      bundlePatches: {
+        async deleteForBaseBundle() {},
+        async deleteForBundle() {},
+        async list() {
+          return createCursorPage(split.patches);
+        },
+        async replaceForBundle() {},
+      },
+    }),
+  })(undefined);
+};
 
 async function createZipArchive(
   archivePath: string,
@@ -509,18 +571,7 @@ describe("createCopiedBundleArchive", () => {
         },
       },
     };
-    const databasePlugin = {
-      name: "mockDatabase",
-      appendBundle: vi.fn(async () => {
-        throw new Error("append failed");
-      }),
-      commitBundle: vi.fn(),
-      deleteBundle: vi.fn(),
-      getBundleById: vi.fn(async () => baseBundle),
-      getBundles: vi.fn(),
-      getChannels: vi.fn(),
-      updateBundle: vi.fn(),
-    } satisfies DatabasePlugin;
+    const databasePlugin = createInsertFailingDatabasePlugin(baseBundle);
 
     vi.stubGlobal(
       "fetch",

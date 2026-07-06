@@ -11,7 +11,11 @@ import {
   schemaIndexAppliesToProvider,
 } from "./schema/registry";
 import { createTableSql } from "./schema/sql";
-import { createV029AlterSql, createV031AlterSql } from "./schema/sqlMigrations";
+import {
+  createV029AlterSql,
+  createV031AlterSql,
+  createV032AlterSql,
+} from "./schema/sqlMigrations";
 import {
   createSqlCreateOperations,
   getSettingsInsertSql,
@@ -88,7 +92,8 @@ const assertSupportedSchemaVersion = (
   if (
     currentVersion !== undefined &&
     currentVersion !== "0.21.0" &&
-    currentVersion !== "0.29.0"
+    currentVersion !== "0.29.0" &&
+    currentVersion !== "0.31.0"
   ) {
     throw new Error(
       `Unsupported Hot Updater schema version: ${currentVersion}`,
@@ -150,6 +155,7 @@ export const createKyselyMigrator = ({
             ...(currentVersion === "0.21.0" || currentVersion === "0.29.0"
               ? createV031AlterSql(provider, relationMode)
               : []),
+            ...createV032AlterSql(provider, relationMode),
             ...executableSettingsStatements,
           ];
     const operations =
@@ -163,6 +169,7 @@ export const createKyselyMigrator = ({
               ...(currentVersion === "0.21.0" || currentVersion === "0.29.0"
                 ? createV031AlterSql(provider, relationMode)
                 : []),
+              ...createV032AlterSql(provider, relationMode),
             ],
             settingsOperation,
           );

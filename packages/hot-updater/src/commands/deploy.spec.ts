@@ -7,6 +7,37 @@ const {
   mockServer,
   mockStoragePlugin,
 } = vi.hoisted(() => {
+  type Bundle = import("@hot-updater/plugin-core").Bundle;
+  type DatabaseBundlePatch =
+    import("@hot-updater/plugin-core").DatabaseBundlePatch;
+  type DatabaseBundleRecord =
+    import("@hot-updater/plugin-core").DatabaseBundleRecord;
+  type DatabasePluginRuntime =
+    import("@hot-updater/plugin-core").DatabasePluginRuntime;
+
+  const toPage = <TData>(data: readonly TData[] = []) => ({
+    data,
+    pagination: {
+      currentPage: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      nextCursor: null,
+      previousCursor: null,
+      total: data.length,
+      totalPages: data.length === 0 ? 0 : 1,
+    },
+  });
+  const toRecord = (bundle: Bundle): DatabaseBundleRecord => {
+    const {
+      patches: _patches,
+      patchBaseBundleId: _patchBaseBundleId,
+      patchBaseFileHash: _patchBaseFileHash,
+      patchFileHash: _patchFileHash,
+      patchStorageUri: _patchStorageUri,
+      ...record
+    } = bundle;
+    return record;
+  };
   const mockBuildPlugin = {
     build: vi.fn(),
     name: "mock-build",
@@ -33,7 +64,63 @@ const {
     name: "mock-database",
     onUnmount: vi.fn(),
     updateBundle: vi.fn(),
+    bundles: {
+      getById: vi.fn<DatabasePluginRuntime["bundles"]["getById"]>(),
+      list: vi.fn<DatabasePluginRuntime["bundles"]["list"]>(),
+      insert: vi.fn<DatabasePluginRuntime["bundles"]["insert"]>(),
+      update: vi.fn<DatabasePluginRuntime["bundles"]["update"]>(),
+      delete: vi.fn<DatabasePluginRuntime["bundles"]["delete"]>(),
+    },
+    bundlePatches: {
+      list: vi.fn<DatabasePluginRuntime["bundlePatches"]["list"]>(),
+      replaceForBundle:
+        vi.fn<DatabasePluginRuntime["bundlePatches"]["replaceForBundle"]>(),
+      deleteForBundle:
+        vi.fn<DatabasePluginRuntime["bundlePatches"]["deleteForBundle"]>(),
+      deleteForBaseBundle:
+        vi.fn<DatabasePluginRuntime["bundlePatches"]["deleteForBaseBundle"]>(),
+    },
+    commit: vi.fn<DatabasePluginRuntime["commit"]>(),
+    close: vi.fn<NonNullable<DatabasePluginRuntime["close"]>>(),
   };
+  mockDatabasePlugin.bundles.getById.mockImplementation(
+    async ({ bundleId }) => {
+      const bundle = await mockDatabasePlugin.getBundleById(bundleId);
+      return bundle ? toRecord(bundle as Bundle) : null;
+    },
+  );
+  mockDatabasePlugin.bundles.list.mockImplementation(async (options) => {
+    const result = await mockDatabasePlugin.getBundles(options);
+    return {
+      ...result,
+      data: result.data.map((bundle: Bundle) => toRecord(bundle)),
+      pagination: {
+        ...result.pagination,
+        nextCursor: result.pagination.nextCursor ?? null,
+        previousCursor: result.pagination.previousCursor ?? null,
+      },
+    };
+  });
+  mockDatabasePlugin.bundles.insert.mockImplementation(async ({ bundle }) => {
+    await mockDatabasePlugin.appendBundle(bundle as Bundle);
+  });
+  mockDatabasePlugin.bundles.update.mockImplementation(
+    async ({ bundleId, patch }) => {
+      await mockDatabasePlugin.updateBundle(bundleId, patch);
+    },
+  );
+  mockDatabasePlugin.bundles.delete.mockImplementation(async ({ bundleId }) => {
+    await mockDatabasePlugin.deleteBundle({ id: bundleId });
+  });
+  mockDatabasePlugin.bundlePatches.list.mockResolvedValue(
+    toPage<DatabaseBundlePatch>(),
+  );
+  mockDatabasePlugin.commit.mockImplementation(async (params) => {
+    await mockDatabasePlugin.commitBundle(params);
+  });
+  mockDatabasePlugin.close.mockImplementation(async () => {
+    await mockDatabasePlugin.onUnmount();
+  });
   const mockServer = {
     createBundleDiff: vi.fn(),
   };
@@ -211,7 +298,10 @@ vi.mock("./console", () => ({
 import fs from "fs";
 import path from "path";
 
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabaseBundleQueryOptions,
+} from "@hot-updater/plugin-core";
 
 import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
@@ -232,7 +322,7 @@ import {
 } from "./deploy";
 
 type BundleFixture = Pick<Bundle, "id"> & Partial<Bundle>;
-type GetBundlesOptions = Parameters<DatabasePlugin["getBundles"]>[0];
+type GetBundlesOptions = DatabaseBundleQueryOptions;
 
 const compareBundleIds = (a: string, b: string): number => a.localeCompare(b);
 

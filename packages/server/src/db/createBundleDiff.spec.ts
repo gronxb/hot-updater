@@ -2,10 +2,19 @@ import fs from "node:fs/promises";
 import { brotliCompressSync } from "node:zlib";
 
 import type {
+  BundlePatchListQuery,
   Bundle,
-  DatabasePlugin,
+  CursorPage,
+  DatabaseBundlePatch,
+  DatabaseBundleRecord,
+  DatabasePluginCore,
+  DatabasePluginRuntime,
   NodeStoragePlugin,
   NodeStorageProfile,
+} from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin as createDatabaseRuntimePlugin,
+  splitDatabaseBundle,
 } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -33,47 +42,112 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   ...overrides,
 });
 
-const createDatabasePlugin = (
-  bundles: Map<string, Bundle>,
-): DatabasePlugin => ({
-  name: "mockDatabase",
-  async appendBundle() {},
-  async commitBundle() {},
-  async deleteBundle() {},
-  async getBundleById(bundleId) {
-    return bundles.get(bundleId) ?? null;
-  },
-  async getBundles() {
-    return {
-      data: Array.from(bundles.values()),
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: bundles.size,
-        totalPages: 1,
-      },
-    };
-  },
-  async getChannels() {
-    return ["production"];
-  },
-  async onUnmount() {},
-  async updateBundle(bundleId, nextBundle) {
-    const currentBundle = bundles.get(bundleId);
-    if (!currentBundle) {
-      return;
-    }
-    bundles.set(bundleId, {
-      ...currentBundle,
-      ...nextBundle,
-      metadata: {
-        ...currentBundle.metadata,
-        ...nextBundle.metadata,
-      },
-    });
+const createCursorPage = <TData>(
+  data: readonly TData[],
+): CursorPage<TData> => ({
+  data,
+  pagination: {
+    currentPage: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    nextCursor: null,
+    previousCursor: null,
+    total: data.length,
+    totalPages: data.length === 0 ? 0 : 1,
   },
 });
+
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  `${patch.bundleId}:${patch.baseBundleId}`;
+
+const matchesBundlePatchWhere = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
+) => {
+  if (!where) return true;
+  return (
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+    (where.baseBundleId === undefined ||
+      patch.baseBundleId === where.baseBundleId) &&
+    (where.bundleIdIn === undefined ||
+      where.bundleIdIn.includes(patch.bundleId)) &&
+    (where.baseBundleIdIn === undefined ||
+      where.baseBundleIdIn.includes(patch.baseBundleId))
+  );
+};
+
+const createDatabaseRuntime = (
+  initialBundles: Map<string, Bundle>,
+): DatabasePluginRuntime => {
+  const bundleRecords = new Map<string, DatabaseBundleRecord>();
+  const bundlePatches = new Map<string, DatabaseBundlePatch>();
+
+  for (const bundle of initialBundles.values()) {
+    const split = splitDatabaseBundle(bundle);
+    bundleRecords.set(bundle.id, split.bundle);
+    for (const patch of split.patches) {
+      bundlePatches.set(getPatchId(patch), patch);
+    }
+  }
+
+  return createDatabaseRuntimePlugin({
+    name: "mockDatabase",
+    connect: (): DatabasePluginCore => ({
+      bundles: {
+        async delete({ bundleId }) {
+          bundleRecords.delete(bundleId);
+        },
+        async getById({ bundleId }) {
+          return bundleRecords.get(bundleId) ?? null;
+        },
+        async insert({ bundle }) {
+          bundleRecords.set(bundle.id, bundle);
+        },
+        async list() {
+          return createCursorPage(Array.from(bundleRecords.values()));
+        },
+        async update({ bundleId, patch }) {
+          const bundle = bundleRecords.get(bundleId);
+          if (!bundle) return;
+          bundleRecords.set(bundleId, { ...bundle, ...patch });
+        },
+      },
+      bundlePatches: {
+        async deleteForBaseBundle({ baseBundleId }) {
+          for (const patch of bundlePatches.values()) {
+            if (patch.baseBundleId === baseBundleId) {
+              bundlePatches.delete(getPatchId(patch));
+            }
+          }
+        },
+        async deleteForBundle({ bundleId }) {
+          for (const patch of bundlePatches.values()) {
+            if (patch.bundleId === bundleId) {
+              bundlePatches.delete(getPatchId(patch));
+            }
+          }
+        },
+        async list({ where }) {
+          return createCursorPage(
+            Array.from(bundlePatches.values()).filter((patch) =>
+              matchesBundlePatchWhere(patch, where),
+            ),
+          );
+        },
+        async replaceForBundle({ bundleId, patches }) {
+          for (const patch of bundlePatches.values()) {
+            if (patch.bundleId === bundleId) {
+              bundlePatches.delete(getPatchId(patch));
+            }
+          }
+          for (const patch of patches) {
+            bundlePatches.set(getPatchId(patch), patch);
+          }
+        },
+      },
+    }),
+  })(undefined);
+};
 
 const createStoragePlugin = (
   upload: NodeStorageProfile["upload"],
@@ -181,7 +255,7 @@ describe("createBundleDiff", () => {
           bundleId: targetBundle.id,
         },
         {
-          databasePlugin: createDatabasePlugin(bundles),
+          databasePlugin: createDatabaseRuntime(bundles),
           storagePlugin: createStoragePlugin(upload),
         },
       );
@@ -270,7 +344,7 @@ describe("createBundleDiff", () => {
             bundleId: targetBundle.id,
           },
           {
-            databasePlugin: createDatabasePlugin(bundles),
+            databasePlugin: createDatabaseRuntime(bundles),
             storagePlugin: createStoragePlugin(upload),
           },
         ),
@@ -373,7 +447,7 @@ describe("createBundleDiff", () => {
           bundleId: targetBundle.id,
         },
         {
-          databasePlugin: createDatabasePlugin(bundles),
+          databasePlugin: createDatabaseRuntime(bundles),
           storagePlugin: createStoragePlugin(upload),
         },
         {

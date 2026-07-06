@@ -63,6 +63,10 @@ export interface ResolverCheckUpdateParams {
  * Parameters passed to resolver.notifyAppReady method
  */
 export interface ResolverNotifyAppReadyParams {
+  activeBundleId: string;
+
+  previousActiveBundleId?: string | null;
+
   /**
    * The bundle state from native notifyAppReady
    * - "RECOVERED": App recovered from crash, rollback occurred
@@ -73,7 +77,25 @@ export interface ResolverNotifyAppReadyParams {
   /**
    * Present only when status is "RECOVERED"
    */
-  crashedBundleId?: string;
+  crashedBundleId?: string | null;
+
+  platform: "ios" | "android";
+
+  channel: string;
+
+  defaultChannel: string;
+
+  appVersion: string | null;
+
+  fingerprintHash: string | null;
+
+  cohort: string;
+
+  installId: string;
+
+  sdkVersion: string;
+
+  isChannelSwitched: boolean;
 
   /**
    * Request headers from global config (for optional use)

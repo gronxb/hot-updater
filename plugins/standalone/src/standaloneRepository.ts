@@ -1,9 +1,21 @@
 import type {
   Bundle,
+  BundleListQuery,
+  BundlePatchListQuery,
+  CursorPage,
   DatabaseBundleIdFilter,
+  DatabaseBundlePatch,
+  DatabaseBundleRecord,
+  DatabasePluginCore,
   PaginatedResult,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  calculatePagination,
+  createDatabasePlugin,
+  toBundleReadModel,
+  toDatabaseBundlePatches,
+  toDatabaseBundleRecord,
+} from "@hot-updater/plugin-core";
 
 export interface RouteConfig {
   path: string;
@@ -43,6 +55,8 @@ const defaultRoutes = {
   }),
 };
 
+const MAX_REMOTE_BUNDLE_LIST_LIMIT = 100;
+
 const createRoute = (
   defaultRoute: RouteConfig,
   customRoute?: Partial<RouteConfig>,
@@ -66,20 +80,8 @@ const appendPathSegment = (path: string, segment: string) =>
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-const isStringArray = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every((item) => typeof item === "string");
-
 const isPaginatedResult = (value: unknown): value is PaginatedResult =>
   isRecord(value) && Array.isArray(value.data) && isRecord(value.pagination);
-
-const hasDataChannels = (
-  value: unknown,
-): value is {
-  data: {
-    channels: string[];
-  };
-} =>
-  isRecord(value) && isRecord(value.data) && isStringArray(value.data.channels);
 
 const setBooleanSearchParam = (
   url: URL,
@@ -138,239 +140,505 @@ const setBundleIdFilterSearchParams = (
   appendStringArraySearchParams(url, "idIn", filter.in);
 };
 
-export const standaloneRepository =
-  createDatabasePlugin<StandaloneRepositoryConfig>({
-    name: "standalone-repository",
-    factory: (config) => {
-      const customListRoute = config.routes?.list?.();
-      const routes = {
-        list: () => createRoute(defaultRoutes.list(), customListRoute),
-        channels: () => {
-          const defaultChannelsRoute = customListRoute
-            ? {
-                path: appendPathSegment(customListRoute.path, "channels"),
-                headers: {
-                  ...defaultRoutes.channels().headers,
-                  ...customListRoute.headers,
-                },
-              }
-            : defaultRoutes.channels();
+const toRecordPage = (
+  result: PaginatedResult,
+): CursorPage<DatabaseBundleRecord> => ({
+  data: result.data.map(toDatabaseBundleRecord),
+  pagination: {
+    ...result.pagination,
+    nextCursor: result.pagination.nextCursor ?? null,
+    previousCursor: result.pagination.previousCursor ?? null,
+  },
+});
 
-          return createRoute(defaultChannelsRoute, config.routes?.channels?.());
-        },
-        create: () =>
-          createRoute(defaultRoutes.create(), config.routes?.create?.()),
-        update: (bundleId: string) =>
-          createRoute(
-            defaultRoutes.update(bundleId),
-            config.routes?.update?.(bundleId),
-          ),
-        retrieve: (bundleId: string) =>
-          createRoute(
-            defaultRoutes.retrieve(bundleId),
-            config.routes?.retrieve?.(bundleId),
-          ),
-        delete: (bundleId: string) =>
-          createRoute(
-            defaultRoutes.delete(bundleId),
-            config.routes?.delete?.(bundleId),
-          ),
-      };
+const patchMatches = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
+) =>
+  !where ||
+  ((where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+    (where.baseBundleId === undefined ||
+      patch.baseBundleId === where.baseBundleId) &&
+    (where.bundleIdIn === undefined ||
+      where.bundleIdIn.includes(patch.bundleId)) &&
+    (where.baseBundleIdIn === undefined ||
+      where.baseBundleIdIn.includes(patch.baseBundleId)));
 
-      const buildUrl = (path: string) => `${config.baseUrl}${path}`;
+const sortPatches = (
+  patches: readonly DatabaseBundlePatch[],
+  orderBy: BundlePatchListQuery["orderBy"],
+): DatabaseBundlePatch[] =>
+  patches.slice().sort((left, right) => {
+    const direction = orderBy?.direction ?? "asc";
+    const field = orderBy?.field ?? "orderIndex";
+    const result =
+      field === "orderIndex"
+        ? left.orderIndex - right.orderIndex
+        : left[field].localeCompare(right[field]);
+    return direction === "asc" ? result : -result;
+  });
 
-      const getHeaders = (routeHeaders?: Record<string, string>) => ({
-        "Content-Type": "application/json",
-        ...config.commonHeaders,
-        ...routeHeaders,
+const paginatePatches = (
+  patches: readonly DatabaseBundlePatch[],
+  query: BundlePatchListQuery,
+): CursorPage<DatabaseBundlePatch> => {
+  const cursor = query.cursor;
+  const offset = cursor?.after
+    ? patches.findIndex(
+        (patch) =>
+          (patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`) ===
+          cursor.after,
+      ) + 1
+    : 0;
+  const startOffset = Math.max(0, offset);
+  const data = patches.slice(startOffset, startOffset + query.limit);
+  const pagination = calculatePagination(patches.length, {
+    limit: query.limit,
+    offset: startOffset,
+  });
+
+  return {
+    data,
+    pagination: {
+      ...pagination,
+      nextCursor:
+        data.length > 0 && startOffset + data.length < patches.length
+          ? (data.at(-1)?.id ?? null)
+          : null,
+      previousCursor:
+        data.length > 0 && startOffset > 0 ? (data[0]?.id ?? null) : null,
+    },
+  };
+};
+
+export const standaloneRepository = createDatabasePlugin({
+  name: "standalone-repository",
+  connect: (config: StandaloneRepositoryConfig): DatabasePluginCore => {
+    const bundleCache = new Map<string, Bundle>();
+    const customListRoute = config.routes?.list?.();
+    const routes = {
+      list: () => createRoute(defaultRoutes.list(), customListRoute),
+      channels: () => {
+        const defaultChannelsRoute = customListRoute
+          ? {
+              path: appendPathSegment(customListRoute.path, "channels"),
+              headers: {
+                ...defaultRoutes.channels().headers,
+                ...customListRoute.headers,
+              },
+            }
+          : defaultRoutes.channels();
+
+        return createRoute(defaultChannelsRoute, config.routes?.channels?.());
+      },
+      create: () =>
+        createRoute(defaultRoutes.create(), config.routes?.create?.()),
+      update: (bundleId: string) =>
+        createRoute(
+          defaultRoutes.update(bundleId),
+          config.routes?.update?.(bundleId),
+        ),
+      retrieve: (bundleId: string) =>
+        createRoute(
+          defaultRoutes.retrieve(bundleId),
+          config.routes?.retrieve?.(bundleId),
+        ),
+      delete: (bundleId: string) =>
+        createRoute(
+          defaultRoutes.delete(bundleId),
+          config.routes?.delete?.(bundleId),
+        ),
+    };
+
+    const buildUrl = (path: string) => `${config.baseUrl}${path}`;
+
+    const getHeaders = (routeHeaders?: Record<string, string>) => ({
+      "Content-Type": "application/json",
+      ...config.commonHeaders,
+      ...routeHeaders,
+    });
+
+    const cacheBundles = (bundles: readonly Bundle[]) => {
+      for (const bundle of bundles) {
+        bundleCache.set(bundle.id, bundle);
+      }
+    };
+
+    const requestBundleById = async (
+      bundleId: string,
+    ): Promise<Bundle | null> => {
+      const cachedBundle = bundleCache.get(bundleId);
+      if (cachedBundle) {
+        return cachedBundle;
+      }
+
+      try {
+        const { path, headers: routeHeaders } = routes.retrieve(bundleId);
+        const response = await fetch(buildUrl(path), {
+          method: "GET",
+          headers: getHeaders(routeHeaders),
+        });
+
+        if (!response.ok) {
+          return null;
+        }
+
+        const bundle = (await response.json()) as Bundle;
+        bundleCache.set(bundle.id, bundle);
+        return bundle;
+      } catch (error) {
+        if (error instanceof Error) {
+          return null;
+        }
+        throw error;
+      }
+    };
+
+    const requestBundlePageFromApi = async (
+      options: BundleListQuery,
+      limit: number,
+    ): Promise<PaginatedResult> => {
+      const { where, cursor, page } = options;
+      const { path, headers: routeHeaders } = routes.list();
+      const url = new URL(buildUrl(path));
+
+      if (where?.channel !== undefined) {
+        url.searchParams.set("channel", where.channel);
+      }
+
+      if (where?.platform !== undefined) {
+        url.searchParams.set("platform", where.platform);
+      }
+
+      setBooleanSearchParam(url, "enabled", where?.enabled);
+      setBundleIdFilterSearchParams(url, where?.id);
+      setNullableStringSearchParam(
+        url,
+        "targetAppVersion",
+        where?.targetAppVersion,
+      );
+      appendStringArraySearchParams(
+        url,
+        "targetAppVersionIn",
+        where?.targetAppVersionIn,
+      );
+      setBooleanSearchParam(
+        url,
+        "targetAppVersionNotNull",
+        where?.targetAppVersionNotNull,
+      );
+      setNullableStringSearchParam(
+        url,
+        "fingerprintHash",
+        where?.fingerprintHash,
+      );
+
+      url.searchParams.set("limit", String(limit));
+
+      if (page !== undefined) {
+        url.searchParams.set("page", String(page));
+      }
+
+      if (cursor?.after !== undefined) {
+        url.searchParams.set("after", cursor.after);
+      }
+
+      if (cursor?.before !== undefined) {
+        url.searchParams.set("before", cursor.before);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: getHeaders(routeHeaders),
       });
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.statusText}`);
+      }
+
+      const result = (await response.json()) as unknown;
+
+      if (isPaginatedResult(result)) {
+        cacheBundles(result.data);
+        return result;
+      }
+
+      throw new Error("API Error: Invalid bundle list response");
+    };
+
+    const requestBundlePage = async (
+      options: BundleListQuery,
+    ): Promise<PaginatedResult> => {
+      if ("offset" in options) {
+        throw new Error(
+          "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
+        );
+      }
+
+      if (
+        options.limit <= MAX_REMOTE_BUNDLE_LIST_LIMIT ||
+        options.page !== undefined ||
+        options.cursor?.before !== undefined
+      ) {
+        return requestBundlePageFromApi(
+          options,
+          Math.min(options.limit, MAX_REMOTE_BUNDLE_LIST_LIMIT),
+        );
+      }
+
+      const data: Bundle[] = [];
+      let after = options.cursor?.after;
+      let firstPagination: PaginatedResult["pagination"] | null = null;
+      let lastPagination: PaginatedResult["pagination"] | null = null;
+
+      while (data.length < options.limit) {
+        const remainingLimit = options.limit - data.length;
+        const page = await requestBundlePageFromApi(
+          {
+            ...options,
+            limit: Math.min(remainingLimit, MAX_REMOTE_BUNDLE_LIST_LIMIT),
+            ...(after ? { cursor: { after } } : {}),
+          },
+          Math.min(remainingLimit, MAX_REMOTE_BUNDLE_LIST_LIMIT),
+        );
+
+        firstPagination ??= page.pagination;
+        lastPagination = page.pagination;
+        data.push(...page.data.slice(0, remainingLimit));
+
+        if (!page.pagination.hasNextPage) {
+          break;
+        }
+
+        const nextAfter = page.pagination.nextCursor ?? page.data.at(-1)?.id;
+        if (!nextAfter || nextAfter === after) {
+          break;
+        }
+        after = nextAfter;
+      }
+
+      const total = firstPagination?.total ?? data.length;
+      const hasNextPage = lastPagination?.hasNextPage ?? false;
+      const pagination: PaginatedResult["pagination"] = {
+        total,
+        hasNextPage,
+        hasPreviousPage: firstPagination?.hasPreviousPage ?? false,
+        currentPage: firstPagination?.currentPage ?? 1,
+        totalPages: options.limit > 0 ? Math.ceil(total / options.limit) : 0,
+      };
+      const nextCursor = hasNextPage ? data.at(-1)?.id : undefined;
+      if (nextCursor) {
+        pagination.nextCursor = nextCursor;
+      }
+      if (firstPagination?.previousCursor != null) {
+        pagination.previousCursor = firstPagination.previousCursor;
+      }
 
       return {
-        supportsCursorPagination: true,
-        async getBundleById(bundleId: string): Promise<Bundle | null> {
-          try {
-            const { path, headers: routeHeaders } = routes.retrieve(bundleId);
-            const response = await fetch(buildUrl(path), {
-              method: "GET",
-              headers: getHeaders(routeHeaders),
-            });
+        data,
+        pagination,
+      };
+    };
 
-            if (!response.ok) {
-              return null;
-            }
+    const requestBundlesByIds = async (
+      bundleIds: readonly string[],
+    ): Promise<Bundle[]> => {
+      const found: Bundle[] = [];
+      const missingIds: string[] = [];
 
-            return (await response.json()) as Bundle;
-          } catch {
-            return null;
-          }
-        },
-        async getBundles(options) {
-          const { where, limit, cursor, page } = options ?? {};
-          const internalOffset =
-            options &&
-            typeof options === "object" &&
-            "offset" in options &&
-            typeof options.offset === "number"
-              ? options.offset
-              : undefined;
-          const { path, headers: routeHeaders } = routes.list();
-          const url = new URL(buildUrl(path));
-          const resolvedPage =
-            page ??
-            (internalOffset !== undefined && limit > 0
-              ? Math.floor(internalOffset / limit) + 1
-              : undefined);
+      for (const bundleId of bundleIds) {
+        const cachedBundle = bundleCache.get(bundleId);
+        if (cachedBundle) {
+          found.push(cachedBundle);
+        } else {
+          missingIds.push(bundleId);
+        }
+      }
 
-          if (where?.channel !== undefined) {
-            url.searchParams.set("channel", where.channel);
-          }
+      if (missingIds.length === 0) {
+        return found;
+      }
 
-          if (where?.platform !== undefined) {
-            url.searchParams.set("platform", where.platform);
-          }
+      const missingPage = await requestBundlePage({
+        where: { id: { in: missingIds } },
+        limit: Math.max(missingIds.length, 1),
+      });
+      return [...found, ...missingPage.data];
+    };
 
-          setBooleanSearchParam(url, "enabled", where?.enabled);
-          setBundleIdFilterSearchParams(url, where?.id);
-          setNullableStringSearchParam(
-            url,
-            "targetAppVersion",
-            where?.targetAppVersion,
-          );
-          appendStringArraySearchParams(
-            url,
-            "targetAppVersionIn",
-            where?.targetAppVersionIn,
-          );
-          setBooleanSearchParam(
-            url,
-            "targetAppVersionNotNull",
-            where?.targetAppVersionNotNull,
-          );
-          setNullableStringSearchParam(
-            url,
-            "fingerprintHash",
-            where?.fingerprintHash,
-          );
+    const requestAllBundles = async (): Promise<Bundle[]> => {
+      const bundles: Bundle[] = [];
+      let after: string | undefined;
 
-          if (limit !== undefined) {
-            url.searchParams.set("limit", String(limit));
-          }
+      while (true) {
+        const page = await requestBundlePage({
+          limit: 100,
+          ...(after ? { cursor: { after } } : {}),
+        });
+        bundles.push(...page.data);
+        if (!page.pagination.hasNextPage) {
+          break;
+        }
+        after = page.pagination.nextCursor ?? page.data.at(-1)?.id;
+        if (!after) {
+          break;
+        }
+      }
 
-          if (resolvedPage !== undefined) {
-            url.searchParams.set("page", String(resolvedPage));
-          }
+      return bundles;
+    };
 
-          if (cursor?.after !== undefined) {
-            url.searchParams.set("after", cursor.after);
-          }
+    const postBundle = async (bundle: Bundle) => {
+      const { path, headers: routeHeaders } = routes.create();
+      const response = await fetch(buildUrl(path), {
+        method: "POST",
+        headers: getHeaders(routeHeaders),
+        body: JSON.stringify([bundle]),
+      });
 
-          if (cursor?.before !== undefined) {
-            url.searchParams.set("before", cursor.before);
-          }
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.statusText}`);
+      }
 
-          const response = await fetch(url.toString(), {
-            method: "GET",
-            headers: getHeaders(routeHeaders),
-          });
-          if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
-          }
+      const result = (await response.json()) as { success: boolean };
+      if (!result.success) {
+        throw new Error("Failed to commit bundle");
+      }
+      bundleCache.set(bundle.id, bundle);
+    };
 
-          const result = (await response.json()) as unknown;
+    const patchBundle = async (bundleId: string, patch: Partial<Bundle>) => {
+      const { path, headers: routeHeaders } = routes.update(bundleId);
+      const response = await fetch(buildUrl(path), {
+        method: "PATCH",
+        headers: getHeaders(routeHeaders),
+        body: JSON.stringify({ ...patch, id: bundleId }),
+      });
 
-          if (isPaginatedResult(result)) {
-            return result;
-          }
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.statusText}`);
+      }
 
-          throw new Error("API Error: Invalid bundle list response");
-        },
-        async getChannels(): Promise<string[]> {
-          const { path, headers: routeHeaders } = routes.channels();
+      const result = (await response.json()) as { success: boolean };
+      if (!result.success) {
+        throw new Error("Failed to commit bundle");
+      }
+      const current = bundleCache.get(bundleId);
+      if (current) {
+        bundleCache.set(bundleId, { ...current, ...patch });
+      } else {
+        bundleCache.delete(bundleId);
+      }
+    };
 
-          const response = await fetch(buildUrl(path), {
-            method: "GET",
-            headers: getHeaders(routeHeaders),
-          });
+    const deleteBundle = async (bundleId: string) => {
+      const { path, headers: routeHeaders } = routes.delete(bundleId);
+      const response = await fetch(buildUrl(path), {
+        method: "DELETE",
+        headers: getHeaders(routeHeaders),
+      });
 
-          if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
-          }
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error(`Bundle with id ${bundleId} not found`);
+        }
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
 
-          const result = (await response.json()) as unknown;
-
-          if (hasDataChannels(result)) {
-            return result.data.channels;
-          }
-
-          throw new Error("API Error: Invalid channels response");
-        },
-        async commitBundle({ changedSets }) {
-          if (changedSets.length === 0) {
+      const contentType = response.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        try {
+          await response.json();
+        } catch (error) {
+          if (error instanceof SyntaxError) {
             return;
           }
+          throw error;
+        }
+      }
+      bundleCache.delete(bundleId);
+    };
 
-          for (const op of changedSets) {
-            if (op.operation === "delete") {
-              const { path, headers: routeHeaders } = routes.delete(op.data.id);
-              const response = await fetch(buildUrl(path), {
-                method: "DELETE",
-                headers: getHeaders(routeHeaders),
-              });
+    const patchBundlePatches = async (
+      bundleId: string,
+      patches: readonly DatabaseBundlePatch[],
+    ) => {
+      const current = await requestBundleById(bundleId);
+      if (!current) {
+        throw new Error("targetBundleId not found");
+      }
+      if (
+        patches.length === 0 &&
+        toDatabaseBundlePatches(current).length === 0
+      ) {
+        return;
+      }
+      await patchBundle(
+        bundleId,
+        toBundleReadModel(toDatabaseBundleRecord(current), patches),
+      );
+    };
 
-              if (!response.ok) {
-                if (response.status === 404) {
-                  throw new Error(`Bundle with id ${op.data.id} not found`);
-                }
-                throw new Error(
-                  `API Error: ${response.status} ${response.statusText}`,
-                );
-              }
-
-              const contentType = response.headers.get("content-type");
-              if (contentType?.includes("application/json")) {
-                try {
-                  await response.json();
-                } catch {
-                  if (!response.ok) {
-                    throw new Error("Failed to parse response");
-                  }
-                }
-              }
-            } else if (op.operation === "insert") {
-              const { path, headers: routeHeaders } = routes.create();
-              const response = await fetch(buildUrl(path), {
-                method: "POST",
-                headers: getHeaders(routeHeaders),
-                body: JSON.stringify([op.data]),
-              });
-
-              if (!response.ok) {
-                throw new Error(`API Error: ${response.statusText}`);
-              }
-
-              const result = (await response.json()) as { success: boolean };
-              if (!result.success) {
-                throw new Error("Failed to commit bundle");
-              }
-            } else if (op.operation === "update") {
-              const { path, headers: routeHeaders } = routes.update(op.data.id);
-              const response = await fetch(buildUrl(path), {
-                method: "PATCH",
-                headers: getHeaders(routeHeaders),
-                body: JSON.stringify(op.data),
-              });
-
-              if (!response.ok) {
-                throw new Error(`API Error: ${response.statusText}`);
-              }
-
-              const result = (await response.json()) as { success: boolean };
-              if (!result.success) {
-                throw new Error("Failed to commit bundle");
-              }
+    return {
+      bundles: {
+        async getById({ bundleId }) {
+          const bundle = await requestBundleById(bundleId);
+          return bundle ? toDatabaseBundleRecord(bundle) : null;
+        },
+        async list(options) {
+          return toRecordPage(await requestBundlePage(options));
+        },
+        async insert({ bundle }) {
+          await postBundle(bundle);
+        },
+        async update({ bundleId, patch }) {
+          const current = await requestBundleById(bundleId);
+          if (!current) {
+            throw new Error("targetBundleId not found");
+          }
+          await patchBundle(bundleId, patch);
+        },
+        async delete({ bundleId }) {
+          await deleteBundle(bundleId);
+        },
+      },
+      bundlePatches: {
+        async list(options) {
+          const where = options.where;
+          const bundles =
+            where?.bundleId !== undefined
+              ? [await requestBundleById(where.bundleId)].filter(
+                  (bundle): bundle is Bundle => bundle !== null,
+                )
+              : where?.bundleIdIn !== undefined
+                ? await requestBundlesByIds(where.bundleIdIn)
+                : await requestAllBundles();
+          const patches = sortPatches(
+            bundles
+              .flatMap(toDatabaseBundlePatches)
+              .filter((patch) => patchMatches(patch, where)),
+            options.orderBy,
+          );
+          return paginatePatches(patches, options);
+        },
+        async replaceForBundle({ bundleId, patches }) {
+          await patchBundlePatches(bundleId, patches);
+        },
+        async deleteForBundle({ bundleId }) {
+          await patchBundlePatches(bundleId, []);
+        },
+        async deleteForBaseBundle({ baseBundleId }) {
+          const bundles = await requestAllBundles();
+          for (const bundle of bundles) {
+            const patches = toDatabaseBundlePatches(bundle);
+            if (patches.some((patch) => patch.baseBundleId === baseBundleId)) {
+              await patchBundlePatches(
+                bundle.id,
+                patches.filter((patch) => patch.baseBundleId !== baseBundleId),
+              );
             }
           }
         },
-      };
-    },
-  });
+      },
+    };
+  },
+});

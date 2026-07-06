@@ -30,7 +30,23 @@ export interface PostgresBundlePatchRow {
   order_index: number;
 }
 
+export interface PostgresBundleEventRow {
+  id: string;
+  kind: string;
+  install_id: string;
+  active_bundle_id: string;
+  previous_active_bundle_id: string | null;
+  crashed_bundle_id: string | null;
+  platform: Bundle["platform"];
+  channel: string;
+  app_version: string | null;
+  fingerprint_hash: string | null;
+  cohort: string | null;
+  payload: unknown;
+}
+
 export interface Database {
   bundles: PostgresBundleRow;
   bundle_patches: PostgresBundlePatchRow;
+  bundle_events: PostgresBundleEventRow;
 }

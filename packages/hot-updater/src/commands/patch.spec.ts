@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { mockCli, mockDatabasePlugin, mockServer, mockStoragePlugin } =
   vi.hoisted(() => {
     const mockDatabasePlugin = {
+      close: vi.fn(),
       onUnmount: vi.fn(),
     };
     const mockStoragePlugin = {
@@ -55,6 +56,7 @@ describe("createPatch", () => {
     vi.clearAllMocks();
 
     mockCli.p.isCancel.mockReturnValue(false);
+    mockDatabasePlugin.close.mockResolvedValue(undefined);
     mockDatabasePlugin.onUnmount.mockResolvedValue(undefined);
     mockServer.createBundleDiff.mockResolvedValue({
       id: "target-bundle",
@@ -98,6 +100,6 @@ describe("createPatch", () => {
     expect(mockCli.p.outro).toHaveBeenCalledWith(
       "⚡ Patch Ready (target-bundle)",
     );
-    expect(mockDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
+    expect(mockDatabasePlugin.close).toHaveBeenCalledOnce();
   });
 });

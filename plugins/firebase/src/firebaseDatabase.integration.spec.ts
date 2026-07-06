@@ -1,4 +1,15 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabaseBundleQueryOptions,
+  DatabasePluginRuntime,
+  GetBundlesArgs,
+  PaginatedResult,
+  UpdateInfo,
+} from "@hot-updater/plugin-core";
+import {
+  splitDatabaseBundle,
+  toBundleReadModel,
+} from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -13,14 +24,125 @@ const PROJECT_ID = "firebase-database-test";
 const { firestore, bundlesCollection, channelsCollection, clearCollections } =
   createFirestoreMock(PROJECT_ID);
 
+type LegacyDatabaseFixture = {
+  readonly name: string;
+  readonly getBundleById: (bundleId: string) => Promise<Bundle | null>;
+  readonly getBundles: (
+    options: DatabaseBundleQueryOptions,
+  ) => Promise<PaginatedResult>;
+  readonly getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
+  readonly getChannels: () => Promise<string[]>;
+  readonly appendBundle: (bundle: Bundle) => Promise<void>;
+  readonly updateBundle: (
+    bundleId: string,
+    patch: Partial<Bundle>,
+  ) => Promise<void>;
+  readonly deleteBundle: (bundle: Bundle) => Promise<void>;
+  readonly commitBundle: () => Promise<void>;
+  readonly onUnmount?: () => Promise<void>;
+};
+
+const toLegacyDatabasePlugin = (
+  runtime: DatabasePluginRuntime,
+): LegacyDatabaseFixture => {
+  const readBundle = async (bundleId: string): Promise<Bundle | null> => {
+    const record = await runtime.bundles.getById({ bundleId });
+    if (!record) {
+      return null;
+    }
+    const patches = await runtime.bundlePatches.list({
+      where: { bundleId },
+      orderBy: { field: "orderIndex", direction: "asc" },
+      limit: 1000,
+    });
+    return toBundleReadModel(record, patches.data);
+  };
+
+  const listBundles: LegacyDatabaseFixture["getBundles"] = async (options) => {
+    const result = await runtime.bundles.list(options);
+    const bundles = await Promise.all(
+      result.data.map((bundle) => readBundle(bundle.id)),
+    );
+    const pagination: PaginatedResult["pagination"] = {
+      total: result.pagination.total ?? result.data.length,
+      hasNextPage: result.pagination.hasNextPage,
+      hasPreviousPage: result.pagination.hasPreviousPage,
+      currentPage: result.pagination.currentPage ?? 1,
+      totalPages: result.pagination.totalPages ?? 1,
+    };
+    if (result.pagination.nextCursor != null) {
+      pagination.nextCursor = result.pagination.nextCursor;
+    }
+    if (result.pagination.previousCursor != null) {
+      pagination.previousCursor = result.pagination.previousCursor;
+    }
+
+    return {
+      ...result,
+      data: bundles.filter((bundle): bundle is Bundle => bundle !== null),
+      pagination,
+    };
+  };
+
+  return {
+    name: runtime.name,
+    async getBundleById(bundleId) {
+      return readBundle(bundleId);
+    },
+    getBundles: listBundles,
+    async getChannels() {
+      const result = await runtime.bundles.list({ limit: 1000 });
+      return Array.from(new Set(result.data.map((bundle) => bundle.channel)));
+    },
+    async appendBundle(bundle) {
+      const split = splitDatabaseBundle(bundle);
+      await runtime.bundles.insert({ bundle: split.bundle });
+      await runtime.bundlePatches.replaceForBundle({
+        bundleId: bundle.id,
+        patches: split.patches,
+      });
+    },
+    async updateBundle(bundleId, patch) {
+      const current = await readBundle(bundleId);
+      if (!current) {
+        throw new Error("targetBundleId not found");
+      }
+      const split = splitDatabaseBundle({ ...current, ...patch, id: bundleId });
+      await runtime.bundles.update({ bundleId, patch: split.bundle });
+      await runtime.bundlePatches.replaceForBundle({
+        bundleId,
+        patches: split.patches,
+      });
+    },
+    async deleteBundle(bundle) {
+      await runtime.bundlePatches.deleteForBaseBundle({
+        baseBundleId: bundle.id,
+      });
+      await runtime.bundlePatches.deleteForBundle({ bundleId: bundle.id });
+      await runtime.bundles.delete({ bundleId: bundle.id });
+    },
+    async commitBundle() {
+      await runtime.commit();
+    },
+    getUpdateInfo: runtime.updateInfo
+      ? (args) => runtime.updateInfo?.get(args) ?? Promise.resolve(null)
+      : undefined,
+    async onUnmount() {
+      await runtime.close?.();
+    },
+  };
+};
+
 describe("firebaseDatabase plugin", () => {
-  let plugin: DatabasePlugin;
+  let plugin: LegacyDatabaseFixture;
 
   beforeAll(() => {
-    plugin = firebaseDatabase({
-      projectId: PROJECT_ID,
-      storageBucket: `${PROJECT_ID}.appspot.com`,
-    })();
+    plugin = toLegacyDatabasePlugin(
+      firebaseDatabase({
+        projectId: PROJECT_ID,
+        storageBucket: `${PROJECT_ID}.appspot.com`,
+      }),
+    );
   });
 
   beforeEach(async () => {

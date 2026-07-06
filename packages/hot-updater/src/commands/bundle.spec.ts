@@ -1,18 +1,107 @@
-import type { Bundle } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  CursorPage,
+  DatabaseBundlePatch,
+  DatabaseBundleRecord,
+  DatabasePluginRuntime,
+} from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
-  const mockDatabasePlugin = {
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
-    name: "mock-database",
-    onUnmount: vi.fn(),
-    updateBundle: vi.fn(),
+  type LegacyBundlePage = {
+    readonly data: readonly Bundle[];
+    readonly pagination?: Partial<CursorPage<Bundle>["pagination"]>;
   };
+  type LegacyGetBundles = (
+    options: Parameters<DatabasePluginRuntime["bundles"]["list"]>[0],
+  ) => Promise<LegacyBundlePage>;
+  const createPage = <TData>(
+    data: readonly TData[] = [],
+    pagination: Partial<CursorPage<TData>["pagination"]> = {},
+  ): CursorPage<TData> => ({
+    data,
+    pagination: {
+      currentPage: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      nextCursor: null,
+      previousCursor: null,
+      total: data.length,
+      totalPages: data.length === 0 ? 0 : 1,
+      ...pagination,
+    },
+  });
+  const toRecord = (bundle: Bundle): DatabaseBundleRecord => {
+    const {
+      patches: _patches,
+      patchBaseBundleId: _patchBaseBundleId,
+      patchBaseFileHash: _patchBaseFileHash,
+      patchFileHash: _patchFileHash,
+      patchStorageUri: _patchStorageUri,
+      ...record
+    } = bundle;
+    return record;
+  };
+  const mockDatabasePlugin = {
+    appendBundle: vi.fn<(bundle: Bundle) => Promise<void>>(),
+    commitBundle: vi.fn<() => Promise<void>>(),
+    deleteBundle: vi.fn<(bundle: { readonly id: string }) => Promise<void>>(),
+    getBundleById: vi.fn<(bundleId: string) => Promise<Bundle | null>>(),
+    getBundles: vi.fn<LegacyGetBundles>(),
+    getChannels: vi.fn<() => Promise<string[]>>(),
+    name: "mock-database",
+    onUnmount: vi.fn<() => Promise<void>>(),
+    updateBundle:
+      vi.fn<(bundleId: string, patch: Partial<Bundle>) => Promise<void>>(),
+    bundles: {
+      getById: vi.fn<DatabasePluginRuntime["bundles"]["getById"]>(),
+      list: vi.fn<DatabasePluginRuntime["bundles"]["list"]>(),
+      update: vi.fn<DatabasePluginRuntime["bundles"]["update"]>(),
+      delete: vi.fn<DatabasePluginRuntime["bundles"]["delete"]>(),
+      insert: vi.fn<DatabasePluginRuntime["bundles"]["insert"]>(),
+    },
+    bundlePatches: {
+      list: vi.fn<DatabasePluginRuntime["bundlePatches"]["list"]>(),
+      replaceForBundle:
+        vi.fn<DatabasePluginRuntime["bundlePatches"]["replaceForBundle"]>(),
+      deleteForBundle:
+        vi.fn<DatabasePluginRuntime["bundlePatches"]["deleteForBundle"]>(),
+      deleteForBaseBundle:
+        vi.fn<DatabasePluginRuntime["bundlePatches"]["deleteForBaseBundle"]>(),
+    },
+    commit: vi.fn<DatabasePluginRuntime["commit"]>(),
+    close: vi.fn<NonNullable<DatabasePluginRuntime["close"]>>(),
+  };
+  mockDatabasePlugin.bundles.getById.mockImplementation(
+    async ({ bundleId }) => {
+      const bundle = await mockDatabasePlugin.getBundleById(bundleId);
+      return bundle ? toRecord(bundle) : null;
+    },
+  );
+  mockDatabasePlugin.bundles.list.mockImplementation(async (options) => {
+    const result = await mockDatabasePlugin.getBundles(options);
+    return createPage(result.data.map(toRecord), result.pagination);
+  });
+  mockDatabasePlugin.bundles.update.mockImplementation(
+    async ({ bundleId, patch }) => {
+      await mockDatabasePlugin.updateBundle(bundleId, patch);
+    },
+  );
+  mockDatabasePlugin.bundles.delete.mockImplementation(async ({ bundleId }) => {
+    await mockDatabasePlugin.deleteBundle({ id: bundleId });
+  });
+  mockDatabasePlugin.bundles.insert.mockImplementation(async ({ bundle }) => {
+    await mockDatabasePlugin.appendBundle(bundle as Bundle);
+  });
+  mockDatabasePlugin.bundlePatches.list.mockResolvedValue(
+    createPage<DatabaseBundlePatch>(),
+  );
+  mockDatabasePlugin.commit.mockImplementation(async () => {
+    await mockDatabasePlugin.commitBundle();
+  });
+  mockDatabasePlugin.close.mockImplementation(async () => {
+    await mockDatabasePlugin.onUnmount();
+  });
   const mockCli = {
     loadConfig: vi.fn(),
     p: {
@@ -75,9 +164,21 @@ const expectExit = (code: number) => {
   return { exitSpy, code };
 };
 
+const resetDatabaseMocks = () => {
+  mockDatabasePlugin.appendBundle.mockReset();
+  mockDatabasePlugin.commitBundle.mockReset();
+  mockDatabasePlugin.deleteBundle.mockReset();
+  mockDatabasePlugin.getBundleById.mockReset();
+  mockDatabasePlugin.getBundles.mockReset();
+  mockDatabasePlugin.getChannels.mockReset();
+  mockDatabasePlugin.onUnmount.mockReset();
+  mockDatabasePlugin.updateBundle.mockReset();
+};
+
 describe("handleBundleList", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDatabaseMocks();
     stubLoadedConfig();
   });
   afterEach(() => {
@@ -97,6 +198,7 @@ describe("handleBundleList", () => {
     expect(mockDatabasePlugin.getBundles).toHaveBeenCalledWith({
       where: { channel: undefined, platform: undefined },
       limit: 20,
+      orderBy: { direction: "desc", field: "id" },
     });
     const output = logSpy.mock.calls.map((c) => c[0]).join("\n");
     expect(output).toContain("B1");
@@ -132,7 +234,11 @@ describe("handleBundleList", () => {
     await handleBundleList({ json: true });
 
     expect(mockPrintBanner).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(JSON.stringify(result, null, 2));
+    const payload = JSON.parse(String(logSpy.mock.calls[0]?.[0]));
+    expect(payload.data).toHaveLength(1);
+    expect(payload.data[0]).toMatchObject(result.data.at(0)!);
+    expect(payload.data[0].patches).toEqual([]);
+    expect(payload.pagination).toMatchObject({ total: 1 });
   });
 
   it("forwards channel/platform/limit options to getBundles", async () => {
@@ -146,6 +252,7 @@ describe("handleBundleList", () => {
     expect(mockDatabasePlugin.getBundles).toHaveBeenCalledWith({
       where: { channel: "beta", platform: "android" },
       limit: 5,
+      orderBy: { direction: "desc", field: "id" },
     });
   });
 
@@ -161,6 +268,7 @@ describe("handleBundleList", () => {
 describe("handleBundleSetEnabled", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDatabaseMocks();
     stubLoadedConfig();
   });
   afterEach(() => {
@@ -171,14 +279,16 @@ describe("handleBundleSetEnabled", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     mockDatabasePlugin.getBundleById
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }))
+      .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }))
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: false }));
 
     const { handleBundleSetEnabled } = await import("./bundle");
     await handleBundleSetEnabled("B1", false, { yes: true });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("B1", {
-      enabled: false,
-    });
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "B1",
+      expect.objectContaining({ enabled: false }),
+    );
     expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
     expect(mockCli.p.log.message).toHaveBeenCalledWith(
       expect.stringContaining("Status:"),
@@ -193,12 +303,14 @@ describe("handleBundleSetEnabled", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     mockDatabasePlugin.getBundleById
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: false }))
+      .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: false }))
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }));
     const { handleBundleSetEnabled } = await import("./bundle");
     await handleBundleSetEnabled("B1", true, { yes: true });
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("B1", {
-      enabled: true,
-    });
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "B1",
+      expect.objectContaining({ enabled: true }),
+    );
     expect(mockCli.p.log.success).toHaveBeenCalledWith("Enabled bundle.");
   });
 
@@ -286,6 +398,7 @@ describe("handleBundleSetEnabled", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     mockDatabasePlugin.getBundleById
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }))
+      .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }))
       .mockResolvedValueOnce(buildBundle({ id: "B1", enabled: true }));
 
     const { exitSpy } = expectExit(1);
@@ -313,6 +426,7 @@ describe("handleBundleSetEnabled", () => {
 describe("handleBundleShow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDatabaseMocks();
     stubLoadedConfig();
   });
   afterEach(() => {
@@ -329,13 +443,16 @@ describe("handleBundleShow", () => {
 
     expect(mockPrintBanner).not.toHaveBeenCalled();
     expect(mockDatabasePlugin.getBundleById).toHaveBeenCalledWith("B1");
-    expect(logSpy).toHaveBeenCalledWith(JSON.stringify(bundle, null, 2));
+    const payload = JSON.parse(String(logSpy.mock.calls[0]?.[0]));
+    expect(payload).toMatchObject(bundle);
+    expect(payload.patches).toEqual([]);
   });
 });
 
 describe("handleBundleUpdate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDatabaseMocks();
     stubLoadedConfig();
   });
   afterEach(() => {
@@ -351,6 +468,7 @@ describe("handleBundleUpdate", () => {
     });
     mockDatabasePlugin.getBundleById
       .mockResolvedValueOnce(buildBundle({ id: "B1" }))
+      .mockResolvedValueOnce(buildBundle({ id: "B1" }))
       .mockResolvedValueOnce(updated);
 
     const { handleBundleUpdate } = await import("./bundle");
@@ -361,12 +479,17 @@ describe("handleBundleUpdate", () => {
       yes: true,
     });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("B1", {
-      rolloutCohortCount: 500,
-      targetCohorts: ["qa"],
-    });
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "B1",
+      expect.objectContaining({
+        rolloutCohortCount: 500,
+        targetCohorts: ["qa"],
+      }),
+    );
     expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(JSON.stringify(updated, null, 2));
+    const payload = JSON.parse(String(logSpy.mock.calls[0]?.[0]));
+    expect(payload).toMatchObject(updated);
+    expect(payload.patches).toEqual([]);
   });
 
   it("exits 1 when no update fields are provided", async () => {
@@ -385,6 +508,7 @@ describe("handleBundleUpdate", () => {
 describe("handleBundleDelete", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDatabaseMocks();
     stubLoadedConfig();
   });
   afterEach(() => {
@@ -401,7 +525,7 @@ describe("handleBundleDelete", () => {
     const { handleBundleDelete } = await import("./bundle");
     await handleBundleDelete("B1", { yes: true });
 
-    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(bundle);
+    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith({ id: "B1" });
     expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "Deleted bundle record.",
@@ -423,7 +547,9 @@ describe("handleBundleDelete", () => {
       await vi.advanceTimersByTimeAsync(1000);
       await deletePromise;
 
-      expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(bundle);
+      expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith({
+        id: "B1",
+      });
       expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
       expect(mockCli.p.log.success).toHaveBeenCalledWith(
         "Deleted bundle record.",

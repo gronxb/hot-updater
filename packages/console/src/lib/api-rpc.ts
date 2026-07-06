@@ -1,7 +1,18 @@
-import { isRuntimeStoragePlugin, type Bundle } from "@hot-updater/plugin-core";
+import {
+  isRuntimeStoragePlugin,
+  listDatabaseRuntimeBundles,
+  readDatabaseRuntimeBundle,
+  stageDatabaseRuntimeBundleInsert,
+  stageDatabaseRuntimeBundleUpdate,
+  type Bundle,
+  type DatabaseBundleQueryOptions,
+  type DatabasePluginRuntime,
+} from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
 import { DEFAULT_PAGE_LIMIT } from "./constants";
+
+const CHANNEL_QUERY_LIMIT = 100;
 
 type GetBundlesInput = {
   channel?: string;
@@ -59,6 +70,37 @@ const assertRemoteDownloadUrl = (fileUrl: string) => {
   );
 };
 
+const getRuntimeChannels = async (databasePlugin: DatabasePluginRuntime) => {
+  const channels = new Set<string>();
+  const seenCursors = new Set<string>();
+  let after: string | undefined;
+
+  while (true) {
+    const page = await listDatabaseRuntimeBundles(databasePlugin, {
+      limit: CHANNEL_QUERY_LIMIT,
+      cursor: after ? { after } : undefined,
+    });
+
+    for (const bundle of page.data) {
+      channels.add(bundle.channel);
+    }
+
+    const nextCursor = page.pagination.nextCursor ?? undefined;
+    if (
+      !page.pagination.hasNextPage ||
+      !nextCursor ||
+      seenCursors.has(nextCursor)
+    ) {
+      break;
+    }
+
+    seenCursors.add(nextCursor);
+    after = nextCursor;
+  }
+
+  return [...channels].sort((left, right) => left.localeCompare(right));
+};
+
 // GET /api/config
 export const getConfig = createServerFn().handler(async () => {
   try {
@@ -76,7 +118,7 @@ export const getChannels = createServerFn().handler(async () => {
   try {
     const { prepareConfig } = await import("./server/config.server");
     const { databasePlugin } = await prepareConfig();
-    const channels = await databasePlugin.getChannels();
+    const channels = await getRuntimeChannels(databasePlugin);
     return channels ?? [];
   } catch (error) {
     console.error("Error during channel retrieval:", error);
@@ -117,7 +159,7 @@ export const getBundles = createServerFn({ method: "GET" })
       };
 
       const { databasePlugin } = await prepareConfig();
-      const bundleQueryOptions = {
+      const bundleQueryOptions: DatabaseBundleQueryOptions = {
         where: {
           channel: query.channel,
           platform: query.platform,
@@ -131,8 +173,11 @@ export const getBundles = createServerFn({ method: "GET" })
                 before: query.before,
               }
             : undefined,
-      } as Parameters<typeof databasePlugin.getBundles>[0];
-      const bundles = await databasePlugin.getBundles(bundleQueryOptions);
+      };
+      const bundles = await listDatabaseRuntimeBundles(
+        databasePlugin,
+        bundleQueryOptions,
+      );
 
       return (
         bundles ?? {
@@ -159,7 +204,10 @@ export const getBundle = createServerFn({ method: "GET" })
     try {
       const { prepareConfig } = await import("./server/config.server");
       const { databasePlugin } = await prepareConfig();
-      const bundle = await databasePlugin.getBundleById(data.bundleId);
+      const bundle = await readDatabaseRuntimeBundle(
+        databasePlugin,
+        data.bundleId,
+      );
       return bundle ?? null;
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
@@ -209,7 +257,10 @@ export const getBundleDownloadUrl = createServerFn({ method: "GET" })
     try {
       const { prepareConfig } = await import("./server/config.server");
       const { databasePlugin, storagePlugin } = await prepareConfig();
-      const bundle = await databasePlugin.getBundleById(data.bundleId);
+      const bundle = await readDatabaseRuntimeBundle(
+        databasePlugin,
+        data.bundleId,
+      );
 
       if (!bundle) {
         throw new Error("Bundle not found");
@@ -263,9 +314,15 @@ export const updateBundle = createServerFn({ method: "POST" })
     try {
       const { prepareConfig } = await import("./server/config.server");
       const { databasePlugin } = await prepareConfig();
-      await databasePlugin.updateBundle(data.bundleId, data.bundle);
-      await databasePlugin.commitBundle();
-      const updatedBundle = await databasePlugin.getBundleById(data.bundleId);
+      await stageDatabaseRuntimeBundleUpdate(databasePlugin, {
+        bundleId: data.bundleId,
+        patch: data.bundle,
+      });
+      await databasePlugin.commit();
+      const updatedBundle = await readDatabaseRuntimeBundle(
+        databasePlugin,
+        data.bundleId,
+      );
 
       if (!updatedBundle) {
         throw new Error("Updated bundle not found");
@@ -306,8 +363,10 @@ export const createBundle = createServerFn({ method: "POST" })
     try {
       const { prepareConfig } = await import("./server/config.server");
       const { databasePlugin } = await prepareConfig();
-      await databasePlugin.appendBundle(data);
-      await databasePlugin.commitBundle();
+      await stageDatabaseRuntimeBundleInsert(databasePlugin, {
+        bundle: data,
+      });
+      await databasePlugin.commit();
       return { success: true, bundleId: data.id };
     } catch (error) {
       console.error("Error during bundle creation:", error);

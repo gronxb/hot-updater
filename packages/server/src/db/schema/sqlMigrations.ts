@@ -217,3 +217,9 @@ export const createV031AlterSql = (
   relationMode: RelationMode = "foreign-keys",
 ): readonly string[] =>
   createSchemaMigrationSql("0.29.0", "0.31.0", provider, relationMode);
+
+export const createV032AlterSql = (
+  provider: ORMSQLProvider,
+  relationMode: RelationMode = "foreign-keys",
+): readonly string[] =>
+  createSchemaMigrationSql("0.31.0", "0.32.0", provider, relationMode);

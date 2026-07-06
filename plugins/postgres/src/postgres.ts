@@ -1,21 +1,35 @@
 import {
   getAssetBaseStorageUri,
-  getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
-import type { Bundle, Platform } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  BundleEventListQuery,
+  BundleEventPayload,
+  BundlePatchListQuery,
+  CursorPage,
+  DatabasePluginCore,
+  DatabaseBundleEvent,
+  DatabaseBundlePatch,
+  DatabaseBundleQueryWhere,
+  DatabaseBundleRecord,
+  Platform,
+} from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
+  toBundleReadModel,
+  toDatabaseBundleRecord,
 } from "@hot-updater/plugin-core";
-import { Kysely, PostgresDialect } from "kysely";
+import { type ControlledTransaction, Kysely, PostgresDialect } from "kysely";
 import { Pool, type PoolConfig } from "pg";
 
 import { getUpdateInfo } from "./getUpdateInfo";
 import type {
   Database,
+  PostgresBundleEventRow,
   PostgresBundlePatchRow,
   PostgresBundleRow,
 } from "./types";
@@ -93,302 +107,490 @@ const mapRowToBundle = (
   };
 };
 
-const bundleToRowValues = (bundle: Bundle): Database["bundles"] => ({
-  id: bundle.id,
-  enabled: bundle.enabled,
-  should_force_update: bundle.shouldForceUpdate,
-  file_hash: bundle.fileHash,
-  git_commit_hash: bundle.gitCommitHash,
-  message: bundle.message,
-  platform: bundle.platform,
-  target_app_version: bundle.targetAppVersion,
-  channel: bundle.channel,
-  storage_uri: bundle.storageUri,
-  fingerprint_hash: bundle.fingerprintHash,
-  metadata: stripBundleArtifactMetadata(bundle.metadata) ?? {},
-  manifest_storage_uri: getManifestStorageUri(bundle),
-  manifest_file_hash: getManifestFileHash(bundle),
-  asset_base_storage_uri: getAssetBaseStorageUri(bundle),
-  rollout_cohort_count: bundle.rolloutCohortCount ?? null,
-  target_cohorts: bundle.targetCohorts ?? null,
+const bundleToRowValues = (
+  bundle: Bundle | DatabaseBundleRecord,
+): Database["bundles"] => {
+  const bundleReadModel =
+    "patches" in bundle ? bundle : toBundleReadModel(bundle);
+  return {
+    id: bundleReadModel.id,
+    enabled: bundleReadModel.enabled,
+    should_force_update: bundleReadModel.shouldForceUpdate,
+    file_hash: bundleReadModel.fileHash,
+    git_commit_hash: bundleReadModel.gitCommitHash,
+    message: bundleReadModel.message,
+    platform: bundleReadModel.platform,
+    target_app_version: bundleReadModel.targetAppVersion,
+    channel: bundleReadModel.channel,
+    storage_uri: bundleReadModel.storageUri,
+    fingerprint_hash: bundleReadModel.fingerprintHash,
+    metadata: stripBundleArtifactMetadata(bundleReadModel.metadata) ?? {},
+    manifest_storage_uri: getManifestStorageUri(bundleReadModel),
+    manifest_file_hash: getManifestFileHash(bundleReadModel),
+    asset_base_storage_uri: getAssetBaseStorageUri(bundleReadModel),
+    rollout_cohort_count: bundleReadModel.rolloutCohortCount ?? null,
+    target_cohorts: bundleReadModel.targetCohorts ?? null,
+  };
+};
+
+const rowToDatabaseBundleRecord = (row: PostgresBundleRow) =>
+  toDatabaseBundleRecord(mapRowToBundle(row));
+
+const rowToDatabaseBundlePatch = (
+  row: PostgresBundlePatchRow,
+): DatabaseBundlePatch => ({
+  id: row.id,
+  bundleId: row.bundle_id,
+  baseBundleId: row.base_bundle_id,
+  baseFileHash: row.base_file_hash,
+  patchFileHash: row.patch_file_hash,
+  patchStorageUri: row.patch_storage_uri,
+  orderIndex: row.order_index,
 });
 
-const bundleToPatchRows = (bundle: Bundle): Database["bundle_patches"][] =>
-  getBundlePatches(bundle).map((patch, index) => ({
-    id: buildBundlePatchId(bundle.id, patch.baseBundleId),
-    bundle_id: bundle.id,
-    base_bundle_id: patch.baseBundleId,
-    base_file_hash: patch.baseFileHash,
-    patch_file_hash: patch.patchFileHash,
-    patch_storage_uri: patch.patchStorageUri,
-    order_index: index,
-  }));
+const databaseBundlePatchToRow = (
+  patch: DatabaseBundlePatch,
+): Database["bundle_patches"] => ({
+  id: patch.id ?? buildBundlePatchId(patch.bundleId, patch.baseBundleId),
+  bundle_id: patch.bundleId,
+  base_bundle_id: patch.baseBundleId,
+  base_file_hash: patch.baseFileHash,
+  patch_file_hash: patch.patchFileHash,
+  patch_storage_uri: patch.patchStorageUri,
+  order_index: patch.orderIndex,
+});
 
-export const postgres = createDatabasePlugin<PostgresConfig>({
+const isAppReadyPayload = (value: unknown): value is BundleEventPayload => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const payload = value as Partial<Record<keyof BundleEventPayload, unknown>>;
+  return (
+    (payload.status === "STABLE" || payload.status === "RECOVERED") &&
+    typeof payload.sdkVersion === "string" &&
+    typeof payload.defaultChannel === "string" &&
+    typeof payload.isChannelSwitched === "boolean"
+  );
+};
+
+const parseEventPayload = (value: unknown): BundleEventPayload => {
+  const parsed =
+    typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  if (!isAppReadyPayload(parsed)) {
+    throw new Error("Invalid bundle event payload.");
+  }
+  return parsed;
+};
+
+const rowToDatabaseBundleEvent = (
+  row: PostgresBundleEventRow,
+): DatabaseBundleEvent => {
+  if (row.kind !== "APP_READY") {
+    throw new Error(`Unsupported bundle event kind: ${row.kind}`);
+  }
+  return {
+    id: row.id,
+    kind: row.kind,
+    installId: row.install_id,
+    activeBundleId: row.active_bundle_id,
+    previousActiveBundleId: row.previous_active_bundle_id,
+    crashedBundleId: row.crashed_bundle_id,
+    platform: row.platform,
+    channel: row.channel,
+    appVersion: row.app_version,
+    fingerprintHash: row.fingerprint_hash,
+    cohort: row.cohort,
+    payload: parseEventPayload(row.payload),
+  };
+};
+
+const databaseBundleEventToRow = (
+  event: DatabaseBundleEvent,
+): Database["bundle_events"] => ({
+  id: event.id,
+  kind: event.kind,
+  install_id: event.installId,
+  active_bundle_id: event.activeBundleId,
+  previous_active_bundle_id: event.previousActiveBundleId ?? null,
+  crashed_bundle_id: event.crashedBundleId ?? null,
+  platform: event.platform,
+  channel: event.channel,
+  app_version: event.appVersion ?? null,
+  fingerprint_hash: event.fingerprintHash ?? null,
+  cohort: event.cohort ?? null,
+  payload: event.payload,
+});
+
+const eventMatchesWhere = (
+  event: DatabaseBundleEvent,
+  where: BundleEventListQuery["where"] | undefined,
+) =>
+  !where ||
+  ((where.kind === undefined || event.kind === where.kind) &&
+    (where.installId === undefined || event.installId === where.installId) &&
+    (where.activeBundleId === undefined ||
+      event.activeBundleId === where.activeBundleId) &&
+    (where.previousActiveBundleId === undefined ||
+      event.previousActiveBundleId === where.previousActiveBundleId) &&
+    (where.crashedBundleId === undefined ||
+      event.crashedBundleId === where.crashedBundleId) &&
+    (where.platform === undefined || event.platform === where.platform) &&
+    (where.channel === undefined || event.channel === where.channel) &&
+    (where.appVersion === undefined || event.appVersion === where.appVersion) &&
+    (where.fingerprintHash === undefined ||
+      event.fingerprintHash === where.fingerprintHash) &&
+    (where.cohort === undefined || event.cohort === where.cohort));
+
+const paginateItems = <TItem>({
+  cursor,
+  getCursor,
+  items,
+  limit,
+  page,
+}: {
+  readonly cursor?: { readonly after?: string; readonly before?: string };
+  readonly getCursor: (item: TItem) => string;
+  readonly items: readonly TItem[];
+  readonly limit: number;
+  readonly page?: number;
+}): CursorPage<TItem> => {
+  const total = items.length;
+  const pageOffset = page ? (Math.max(1, page) - 1) * limit : undefined;
+  let startIndex =
+    pageOffset === undefined ? 0 : Math.min(pageOffset, Math.max(0, total));
+  let endIndex = limit > 0 ? startIndex + limit : total;
+
+  if (pageOffset === undefined && cursor?.after) {
+    const afterIndex = items.findIndex(
+      (item) => getCursor(item) === cursor.after,
+    );
+    startIndex = afterIndex >= 0 ? afterIndex + 1 : total;
+    endIndex = limit > 0 ? startIndex + limit : total;
+  } else if (pageOffset === undefined && cursor?.before) {
+    const beforeIndex = items.findIndex(
+      (item) => getCursor(item) === cursor.before,
+    );
+    endIndex = beforeIndex >= 0 ? beforeIndex : 0;
+    startIndex = limit > 0 ? Math.max(0, endIndex - limit) : 0;
+  }
+
+  const data = items.slice(startIndex, endIndex);
+  const pagination = calculatePagination(total, {
+    limit,
+    offset: startIndex,
+  });
+
+  return {
+    data,
+    pagination: {
+      ...pagination,
+      nextCursor:
+        data.length > 0 && startIndex + data.length < total
+          ? getCursor(data[data.length - 1]!)
+          : null,
+      previousCursor:
+        data.length > 0 && startIndex > 0 ? getCursor(data[0]!) : null,
+    },
+  };
+};
+
+const hasEmptySetFilter = (where: DatabaseBundleQueryWhere | undefined) =>
+  where?.targetAppVersionIn?.length === 0 || where?.id?.in?.length === 0;
+
+type PostgresExecutor = Kysely<Database> | ControlledTransaction<Database>;
+
+export const postgres = createDatabasePlugin({
   name: "postgres",
-  factory: (config) => {
+  connect: (config: PostgresConfig) => {
     const pool = new Pool(config);
     const dialect = new PostgresDialect({ pool });
     const db = new Kysely<Database>({ dialect });
-    const fetchPatchMap = async (bundleIds: string[]) => {
-      const patchMap = new Map<string, PostgresBundlePatchRow[]>();
 
-      if (bundleIds.length === 0) {
-        return patchMap;
-      }
-
-      const rows = await db
-        .selectFrom("bundle_patches")
-        .selectAll()
-        .where("bundle_id", "in", bundleIds)
-        .orderBy("order_index", "asc")
-        .execute();
-
-      for (const row of rows) {
-        const current = patchMap.get(row.bundle_id) ?? [];
-        current.push(row);
-        patchMap.set(row.bundle_id, current);
-      }
-
-      return patchMap;
-    };
-
-    return {
-      async onUnmount() {
-        await db.destroy();
-        await pool.end();
-      },
-      async getUpdateInfo(args) {
-        return getUpdateInfo(pool, args);
-      },
-      async getBundleById(bundleId) {
-        const [data, patchMap] = await Promise.all([
-          db
-            .selectFrom("bundles")
-            .selectAll()
-            .where("id", "=", bundleId)
-            .executeTakeFirst(),
-          fetchPatchMap([bundleId]),
-        ]);
-
-        if (!data) {
-          return null;
+    const createCore = (executor: PostgresExecutor): DatabasePluginCore => {
+      const applyBundleWhere = <TQuery extends object>(
+        query: TQuery,
+        where: DatabaseBundleQueryWhere | undefined,
+      ): TQuery => {
+        let next = query as {
+          where: (column: string, op: string, value?: unknown) => unknown;
+        };
+        if (where?.channel !== undefined) {
+          next = next.where("channel", "=", where.channel) as typeof next;
         }
-        return mapRowToBundle(data, patchMap.get(bundleId) ?? []);
-      },
-
-      async getBundles(options) {
-        const { where, limit, orderBy } = options ?? {};
-        const offset =
-          ((options && "offset" in options ? options.offset : undefined) as
-            | number
-            | undefined) ?? 0;
-
-        let countQuery = db.selectFrom("bundles");
-        if (where?.channel) {
-          countQuery = countQuery.where("channel", "=", where.channel);
-        }
-        if (where?.platform) {
-          countQuery = countQuery.where(
+        if (where?.platform !== undefined) {
+          next = next.where(
             "platform",
             "=",
             where.platform as Platform,
-          );
+          ) as typeof next;
         }
         if (where?.enabled !== undefined) {
-          countQuery = countQuery.where("enabled", "=", where.enabled);
+          next = next.where("enabled", "=", where.enabled) as typeof next;
         }
         if (where?.fingerprintHash !== undefined) {
-          countQuery =
+          next =
             where.fingerprintHash === null
-              ? countQuery.where("fingerprint_hash", "is", null)
-              : countQuery.where(
+              ? (next.where("fingerprint_hash", "is", null) as typeof next)
+              : (next.where(
                   "fingerprint_hash",
                   "=",
                   where.fingerprintHash,
-                );
+                ) as typeof next);
         }
         if (where?.targetAppVersion !== undefined) {
-          countQuery =
+          next =
             where.targetAppVersion === null
-              ? countQuery.where("target_app_version", "is", null)
-              : countQuery.where(
+              ? (next.where("target_app_version", "is", null) as typeof next)
+              : (next.where(
                   "target_app_version",
                   "=",
                   where.targetAppVersion,
+                ) as typeof next);
+        }
+        if (where?.targetAppVersionIn) {
+          next = next.where(
+            "target_app_version",
+            "in",
+            where.targetAppVersionIn,
+          ) as typeof next;
+        }
+        if (where?.targetAppVersionNotNull) {
+          next = next.where(
+            "target_app_version",
+            "is not",
+            null,
+          ) as typeof next;
+        }
+        if (where?.id?.eq) {
+          next = next.where("id", "=", where.id.eq) as typeof next;
+        }
+        if (where?.id?.gt) {
+          next = next.where("id", ">", where.id.gt) as typeof next;
+        }
+        if (where?.id?.gte) {
+          next = next.where("id", ">=", where.id.gte) as typeof next;
+        }
+        if (where?.id?.lt) {
+          next = next.where("id", "<", where.id.lt) as typeof next;
+        }
+        if (where?.id?.lte) {
+          next = next.where("id", "<=", where.id.lte) as typeof next;
+        }
+        if (where?.id?.in) {
+          next = next.where("id", "in", where.id.in) as typeof next;
+        }
+
+        return next as TQuery;
+      };
+
+      const upsertBundleRecord = async (bundle: DatabaseBundleRecord) => {
+        const values = bundleToRowValues(bundle);
+        const { id: _id, ...updateValues } = values;
+        await executor
+          .insertInto("bundles")
+          .values(values)
+          .onConflict((oc) => oc.column("id").doUpdateSet(updateValues))
+          .execute();
+      };
+
+      return {
+        bundles: {
+          async getById({ bundleId }) {
+            const data = await executor
+              .selectFrom("bundles")
+              .selectAll()
+              .where("id", "=", bundleId)
+              .executeTakeFirst();
+
+            return data ? rowToDatabaseBundleRecord(data) : null;
+          },
+
+          async list(options) {
+            if (hasEmptySetFilter(options.where)) {
+              return paginateItems({
+                items: [] as DatabaseBundleRecord[],
+                limit: options.limit,
+                cursor: options.cursor,
+                getCursor: (bundle) => bundle.id,
+              });
+            }
+
+            const orderBy = options.orderBy ?? {
+              field: "id",
+              direction: "desc",
+            };
+            const rows = await applyBundleWhere(
+              executor.selectFrom("bundles").selectAll(),
+              options.where,
+            )
+              .orderBy("id", orderBy.direction)
+              .execute();
+            const page = paginateItems({
+              items: rows,
+              limit: options.limit,
+              cursor: options.cursor,
+              page: options.page,
+              getCursor: (row) => row.id,
+            });
+
+            return {
+              ...page,
+              data: page.data.map(rowToDatabaseBundleRecord),
+            };
+          },
+
+          async insert({ bundle }) {
+            await upsertBundleRecord(bundle);
+          },
+
+          async update({ bundleId, patch }) {
+            const current = await executor
+              .selectFrom("bundles")
+              .selectAll()
+              .where("id", "=", bundleId)
+              .executeTakeFirst();
+            if (!current) {
+              throw new Error("targetBundleId not found");
+            }
+            await upsertBundleRecord({
+              ...rowToDatabaseBundleRecord(current),
+              ...patch,
+              id: bundleId,
+            });
+          },
+
+          async delete({ bundleId }) {
+            await executor
+              .deleteFrom("bundles")
+              .where("id", "=", bundleId)
+              .execute();
+          },
+        },
+
+        bundlePatches: {
+          async list(options: BundlePatchListQuery) {
+            const rows = await executor
+              .selectFrom("bundle_patches")
+              .selectAll()
+              .orderBy("order_index", "asc")
+              .execute();
+            const patches = rows
+              .map(rowToDatabaseBundlePatch)
+              .filter((patch) => {
+                const where = options.where;
+                return (
+                  !where ||
+                  ((where.bundleId === undefined ||
+                    patch.bundleId === where.bundleId) &&
+                    (where.baseBundleId === undefined ||
+                      patch.baseBundleId === where.baseBundleId) &&
+                    (where.bundleIdIn === undefined ||
+                      where.bundleIdIn.includes(patch.bundleId)) &&
+                    (where.baseBundleIdIn === undefined ||
+                      where.baseBundleIdIn.includes(patch.baseBundleId)))
                 );
-        }
-        if (where?.targetAppVersionIn) {
-          countQuery = countQuery.where(
-            "target_app_version",
-            "in",
-            where.targetAppVersionIn,
-          );
-        }
-        if (where?.targetAppVersionNotNull) {
-          countQuery = countQuery.where("target_app_version", "is not", null);
-        }
-        if (where?.id?.eq) {
-          countQuery = countQuery.where("id", "=", where.id.eq);
-        }
-        if (where?.id?.gt) {
-          countQuery = countQuery.where("id", ">", where.id.gt);
-        }
-        if (where?.id?.gte) {
-          countQuery = countQuery.where("id", ">=", where.id.gte);
-        }
-        if (where?.id?.lt) {
-          countQuery = countQuery.where("id", "<", where.id.lt);
-        }
-        if (where?.id?.lte) {
-          countQuery = countQuery.where("id", "<=", where.id.lte);
-        }
-        if (where?.id?.in) {
-          countQuery = countQuery.where("id", "in", where.id.in);
-        }
+              })
+              .sort((left, right) => {
+                const direction = options.orderBy?.direction ?? "asc";
+                const field = options.orderBy?.field ?? "orderIndex";
+                const result =
+                  field === "orderIndex"
+                    ? left.orderIndex - right.orderIndex
+                    : left[field].localeCompare(right[field]);
+                return direction === "asc" ? result : -result;
+              });
 
-        const countResult = await countQuery
-          .select(db.fn.count<number>("id").as("total"))
-          .executeTakeFirst();
-        const total = countResult?.total || 0;
+            return paginateItems({
+              items: patches,
+              limit: options.limit,
+              cursor: options.cursor,
+              getCursor: (patch) =>
+                patch.id ??
+                buildBundlePatchId(patch.bundleId, patch.baseBundleId),
+            });
+          },
 
-        let query = db
-          .selectFrom("bundles")
-          .orderBy("id", orderBy?.direction === "asc" ? "asc" : "desc");
-        if (where?.channel) {
-          query = query.where("channel", "=", where.channel);
-        }
+          async replaceForBundle({ bundleId, patches }) {
+            await executor
+              .deleteFrom("bundle_patches")
+              .where("bundle_id", "=", bundleId)
+              .execute();
+            const patchRows = patches.map(databaseBundlePatchToRow);
+            if (patchRows.length > 0) {
+              await executor
+                .insertInto("bundle_patches")
+                .values(patchRows)
+                .execute();
+            }
+          },
 
-        if (where?.platform) {
-          query = query.where("platform", "=", where.platform as Platform);
-        }
-        if (where?.enabled !== undefined) {
-          query = query.where("enabled", "=", where.enabled);
-        }
-        if (where?.fingerprintHash !== undefined) {
-          query =
-            where.fingerprintHash === null
-              ? query.where("fingerprint_hash", "is", null)
-              : query.where("fingerprint_hash", "=", where.fingerprintHash);
-        }
-        if (where?.targetAppVersion !== undefined) {
-          query =
-            where.targetAppVersion === null
-              ? query.where("target_app_version", "is", null)
-              : query.where("target_app_version", "=", where.targetAppVersion);
-        }
-        if (where?.targetAppVersionIn) {
-          query = query.where(
-            "target_app_version",
-            "in",
-            where.targetAppVersionIn,
-          );
-        }
-        if (where?.targetAppVersionNotNull) {
-          query = query.where("target_app_version", "is not", null);
-        }
-        if (where?.id?.eq) {
-          query = query.where("id", "=", where.id.eq);
-        }
-        if (where?.id?.gt) {
-          query = query.where("id", ">", where.id.gt);
-        }
-        if (where?.id?.gte) {
-          query = query.where("id", ">=", where.id.gte);
-        }
-        if (where?.id?.lt) {
-          query = query.where("id", "<", where.id.lt);
-        }
-        if (where?.id?.lte) {
-          query = query.where("id", "<=", where.id.lte);
-        }
-        if (where?.id?.in) {
-          query = query.where("id", "in", where.id.in);
-        }
+          async deleteForBundle({ bundleId }) {
+            await executor
+              .deleteFrom("bundle_patches")
+              .where("bundle_id", "=", bundleId)
+              .execute();
+          },
 
-        if (limit) {
-          query = query.limit(limit);
-        }
+          async deleteForBaseBundle({ baseBundleId }) {
+            await executor
+              .deleteFrom("bundle_patches")
+              .where("base_bundle_id", "=", baseBundleId)
+              .execute();
+          },
+        },
 
-        if (offset) {
-          query = query.offset(offset);
-        }
+        bundleEvents: {
+          async list(options: BundleEventListQuery) {
+            const rows = await executor
+              .selectFrom("bundle_events")
+              .selectAll()
+              .orderBy("id", options.orderBy?.direction ?? "desc")
+              .execute();
+            const events = rows
+              .map(rowToDatabaseBundleEvent)
+              .filter((event) => eventMatchesWhere(event, options.where));
 
-        const data = await query.selectAll().execute();
+            return paginateItems({
+              items: events,
+              limit: options.limit,
+              cursor: options.cursor,
+              getCursor: (event) => event.id,
+            });
+          },
 
-        const patchMap = await fetchPatchMap(data.map((bundle) => bundle.id));
-        const bundles = data.map((bundle) =>
-          mapRowToBundle(bundle, patchMap.get(bundle.id) ?? []),
-        );
+          async append({ event }) {
+            await executor
+              .insertInto("bundle_events")
+              .values(databaseBundleEventToRow(event))
+              .execute();
+          },
+        },
 
-        const pagination = calculatePagination(total, { limit, offset });
+        updateInfo: {
+          async get(args) {
+            return getUpdateInfo(pool, args);
+          },
+        },
+      };
+    };
 
+    return {
+      ...createCore(db),
+      async beginTransaction() {
+        const trx = await db.startTransaction().execute();
         return {
-          data: bundles,
-          pagination,
+          core: createCore(trx),
+          commit: async () => {
+            await trx.commit().execute();
+          },
+          rollback: async () => {
+            await trx.rollback().execute();
+          },
         };
       },
-
-      async getChannels() {
-        const data = await db
-          .selectFrom("bundles")
-          .select("channel")
-          .groupBy("channel")
-          .execute();
-        return data.map((bundle) => bundle.channel);
-      },
-
-      async commitBundle({ changedSets }) {
-        if (changedSets.length === 0) {
-          return;
-        }
-
-        await db.transaction().execute(async (tx) => {
-          // Process each operation sequentially
-          for (const op of changedSets) {
-            if (op.operation === "delete") {
-              // Handle delete operation
-              await tx
-                .deleteFrom("bundle_patches")
-                .where("bundle_id", "=", op.data.id)
-                .execute();
-              await tx
-                .deleteFrom("bundle_patches")
-                .where("base_bundle_id", "=", op.data.id)
-                .execute();
-              const result = await tx
-                .deleteFrom("bundles")
-                .where("id", "=", op.data.id)
-                .executeTakeFirst();
-
-              // Verify deletion was successful
-              if (result.numDeletedRows === 0n) {
-                throw new Error(`Bundle with id ${op.data.id} not found`);
-              }
-            } else if (op.operation === "insert" || op.operation === "update") {
-              // Handle insert and update operations
-              const bundle = op.data;
-              const values = bundleToRowValues(bundle);
-              const patchRows = bundleToPatchRows(bundle);
-              const { id: _id, ...updateValues } = values;
-              await tx
-                .insertInto("bundles")
-                .values(values)
-                .onConflict((oc) => oc.column("id").doUpdateSet(updateValues))
-                .execute();
-              await tx
-                .deleteFrom("bundle_patches")
-                .where("bundle_id", "=", bundle.id)
-                .execute();
-              if (patchRows.length > 0) {
-                await tx
-                  .insertInto("bundle_patches")
-                  .values(patchRows)
-                  .execute();
-              }
-            }
-          }
-        });
+      async close() {
+        await db.destroy();
+        await pool.end();
       },
     };
   },

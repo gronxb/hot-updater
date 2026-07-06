@@ -1,6 +1,10 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core";
+import {
+  splitDatabaseBundle,
+  toBundleReadModel,
+} from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -453,7 +457,51 @@ vi.mock("@supabase/supabase-js", () => ({
 }));
 
 describe("supabaseDatabase plugin", () => {
-  let plugin: DatabasePlugin;
+  let plugin: DatabasePluginRuntime;
+
+  const readBundle = async (bundleId: string) => {
+    const record = await plugin.bundles.getById({ bundleId });
+    if (!record) {
+      return null;
+    }
+    const patches = await plugin.bundlePatches.list({
+      where: { bundleId },
+      orderBy: { field: "orderIndex", direction: "asc" },
+      limit: 1000,
+    });
+    return toBundleReadModel(record, patches.data);
+  };
+
+  const writeBundle = async (bundle: Bundle) => {
+    const split = splitDatabaseBundle(bundle);
+    await plugin.bundles.insert({ bundle: split.bundle });
+    await plugin.bundlePatches.replaceForBundle({
+      bundleId: bundle.id,
+      patches: split.patches,
+    });
+    await plugin.commit();
+  };
+
+  const updateBundle = async (bundleId: string, patch: Partial<Bundle>) => {
+    const current = await readBundle(bundleId);
+    if (!current) {
+      throw new Error("targetBundleId not found");
+    }
+    const split = splitDatabaseBundle({ ...current, ...patch, id: bundleId });
+    await plugin.bundles.update({ bundleId, patch: split.bundle });
+    await plugin.bundlePatches.replaceForBundle({
+      bundleId,
+      patches: split.patches,
+    });
+    await plugin.commit();
+  };
+
+  const deleteBundle = async (bundleId: string) => {
+    await plugin.bundlePatches.deleteForBaseBundle({ baseBundleId: bundleId });
+    await plugin.bundlePatches.deleteForBundle({ bundleId });
+    await plugin.bundles.delete({ bundleId });
+    await plugin.commit();
+  };
 
   beforeEach(() => {
     bundleRows.clear();
@@ -461,28 +509,35 @@ describe("supabaseDatabase plugin", () => {
     plugin = supabaseDatabase({
       supabaseUrl: "https://test.supabase.invalid",
       supabaseAnonKey: "test-anon-key",
-    })();
+    });
   });
 
   setupBundleMethodsTestSuite({
-    getBundleById: (id) => plugin.getBundleById(id),
-    getChannels: () => plugin.getChannels(),
-    insertBundle: async (bundle) => {
-      await plugin.appendBundle(bundle);
-      await plugin.commitBundle();
+    getBundleById: readBundle,
+    getChannels: async () => {
+      const result = await plugin.bundles.list({ limit: 1000 });
+      return Array.from(new Set(result.data.map((bundle) => bundle.channel)));
     },
-    getBundles: (options) => plugin.getBundles(options),
-    updateBundleById: async (bundleId, newBundle) => {
-      await plugin.updateBundle(bundleId, newBundle);
-      await plugin.commitBundle();
+    insertBundle: writeBundle,
+    getBundles: async (options) => {
+      const result = await plugin.bundles.list(options);
+      const bundles = await Promise.all(
+        result.data.map((bundle) => readBundle(bundle.id)),
+      );
+      return {
+        ...result,
+        data: bundles.filter((bundle): bundle is Bundle => bundle !== null),
+        pagination: {
+          ...result.pagination,
+          total: result.pagination.total ?? result.data.length,
+          currentPage: result.pagination.currentPage ?? 1,
+          totalPages: result.pagination.totalPages ?? 1,
+        },
+      };
     },
+    updateBundleById: updateBundle,
     deleteBundleById: async (bundleId) => {
-      const bundle = await plugin.getBundleById(bundleId);
-      if (!bundle) {
-        return;
-      }
-      await plugin.deleteBundle(bundle);
-      await plugin.commitBundle();
+      await deleteBundle(bundleId);
     },
   });
 
@@ -492,11 +547,10 @@ describe("supabaseDatabase plugin", () => {
       bundlePatchRows.clear();
 
       for (const bundle of bundles) {
-        await plugin.appendBundle(bundle);
+        await writeBundle(bundle);
       }
-      await plugin.commitBundle();
 
-      return plugin.getUpdateInfo?.(args) ?? null;
+      return plugin.updateInfo?.get(args) ?? null;
     },
   });
 
@@ -524,9 +578,8 @@ describe("supabaseDatabase plugin", () => {
       storageUri: "storage://app/target.zip",
     };
 
-    await plugin.appendBundle(currentBundle);
-    await plugin.appendBundle(targetBundle);
-    await plugin.commitBundle();
+    await writeBundle(currentBundle);
+    await writeBundle(targetBundle);
 
     const args: GetBundlesArgs = {
       _updateStrategy: "fingerprint",
@@ -537,7 +590,7 @@ describe("supabaseDatabase plugin", () => {
       platform: "ios",
     };
 
-    const updateInfo = await plugin.getUpdateInfo?.(args);
+    const updateInfo = await plugin.updateInfo?.get(args);
 
     expect(updateInfo).toEqual({
       fileHash: "target-file-hash",

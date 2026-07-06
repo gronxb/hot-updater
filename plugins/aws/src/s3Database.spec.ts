@@ -12,7 +12,18 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import type { Bundle } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabaseBundleQueryOptions,
+  DatabasePluginRuntime,
+  GetBundlesArgs,
+  PaginatedResult,
+  UpdateInfo,
+} from "@hot-updater/plugin-core";
+import {
+  splitDatabaseBundle,
+  toBundleReadModel,
+} from "@hot-updater/plugin-core";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -59,6 +70,156 @@ const createBundleJsonFingerprint = (
   fingerprintHash,
   targetAppVersion: null,
 });
+
+const PATCH_KEYS = [
+  "patches",
+  "patchBaseBundleId",
+  "patchBaseFileHash",
+  "patchFileHash",
+  "patchStorageUri",
+] as const;
+
+const hasPatchChange = (bundle: Partial<Bundle>): boolean =>
+  PATCH_KEYS.some((key) => key in bundle);
+
+type LegacyDatabaseFixture = {
+  readonly name: string;
+  readonly getBundleById: (bundleId: string) => Promise<Bundle | null>;
+  readonly getBundles: (
+    options: DatabaseBundleQueryOptions,
+  ) => Promise<PaginatedResult>;
+  readonly getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
+  readonly getChannels: () => Promise<string[]>;
+  readonly appendBundle: (bundle: Bundle) => Promise<void>;
+  readonly updateBundle: (
+    bundleId: string,
+    patch: Partial<Bundle>,
+  ) => Promise<void>;
+  readonly deleteBundle: (bundle: Bundle) => Promise<void>;
+  readonly commitBundle: () => Promise<void>;
+};
+
+const stripEmptyPatchReadModel = (bundle: Bundle): Bundle => {
+  const {
+    patches,
+    patchBaseBundleId,
+    patchBaseFileHash,
+    patchFileHash,
+    patchStorageUri,
+    ...record
+  } = bundle;
+
+  if (
+    (patches === undefined || patches === null || patches.length === 0) &&
+    patchBaseBundleId == null &&
+    patchBaseFileHash == null &&
+    patchFileHash == null &&
+    patchStorageUri == null
+  ) {
+    return record;
+  }
+
+  return bundle;
+};
+
+const toLegacyDatabasePlugin = (
+  runtime: DatabasePluginRuntime,
+): LegacyDatabaseFixture => {
+  const getUpdateInfo = runtime.updateInfo;
+  const getBundleById = async (bundleId: string): Promise<Bundle | null> => {
+    const record = await runtime.bundles.getById({ bundleId });
+    if (!record) {
+      return null;
+    }
+    const patches = await runtime.bundlePatches.list({
+      where: { bundleId },
+      limit: 1000,
+    });
+    return stripEmptyPatchReadModel(toBundleReadModel(record, patches.data));
+  };
+  const getBundles: LegacyDatabaseFixture["getBundles"] = async (options) => {
+    const page = await runtime.bundles.list(options);
+    const patchPage = await runtime.bundlePatches.list({
+      where: { bundleIdIn: page.data.map((bundle) => bundle.id) },
+      limit: 1000,
+    });
+    const patchGroups = new Map(
+      page.data.map((bundle) => [
+        bundle.id,
+        patchPage.data.filter((patch) => patch.bundleId === bundle.id),
+      ]),
+    );
+    const data = page.data.map((bundle) =>
+      stripEmptyPatchReadModel(
+        toBundleReadModel(bundle, patchGroups.get(bundle.id) ?? []),
+      ),
+    );
+    const total = page.pagination.total ?? data.length;
+    const pagination: PaginatedResult["pagination"] = {
+      total,
+      hasNextPage: page.pagination.hasNextPage,
+      hasPreviousPage: page.pagination.hasPreviousPage,
+      currentPage: page.pagination.currentPage ?? 1,
+      totalPages:
+        page.pagination.totalPages ??
+        (options.limit > 0 ? Math.ceil(total / options.limit) : 0),
+    };
+    if (page.pagination.nextCursor != null) {
+      pagination.nextCursor = page.pagination.nextCursor;
+    }
+    if (page.pagination.previousCursor != null) {
+      pagination.previousCursor = page.pagination.previousCursor;
+    }
+    return { data, pagination };
+  };
+
+  return {
+    name: runtime.name,
+    getBundleById,
+    getBundles,
+    getUpdateInfo: getUpdateInfo
+      ? (args) => getUpdateInfo.get(args)
+      : undefined,
+    async getChannels() {
+      const result = await getBundles({ limit: 1000 });
+      return Array.from(
+        new Set(result.data.map((bundle) => bundle.channel)),
+      ).sort();
+    },
+    async appendBundle(bundle) {
+      const splitBundle = splitDatabaseBundle(bundle);
+      await runtime.bundles.insert({ bundle: splitBundle.bundle });
+      if (splitBundle.patches.length > 0) {
+        await runtime.bundlePatches.replaceForBundle({
+          bundleId: bundle.id,
+          patches: splitBundle.patches,
+        });
+      }
+    },
+    async updateBundle(bundleId, patch) {
+      const current = await getBundleById(bundleId);
+      if (!current) {
+        throw new Error("targetBundleId not found");
+      }
+      const nextBundle = { ...current, ...patch };
+      const splitBundle = splitDatabaseBundle(nextBundle);
+      await runtime.bundles.update({
+        bundleId,
+        patch: splitBundle.bundle,
+      });
+      if (hasPatchChange(patch)) {
+        await runtime.bundlePatches.replaceForBundle({
+          bundleId,
+          patches: splitBundle.patches,
+        });
+      }
+    },
+    async deleteBundle(bundle) {
+      await runtime.bundles.delete({ bundleId: bundle.id });
+    },
+    commitBundle: () => runtime.commit(),
+  };
+};
 
 const MANAGEMENT_INDEX_PREFIX = "_index";
 
@@ -294,12 +455,14 @@ describe("s3Database plugin", () => {
   const bucketName = "test-bucket";
   const s3Config = {};
   const createPlugin = (config: Partial<S3DatabaseConfig> = {}) =>
-    s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-      ...config,
-    })();
+    toLegacyDatabasePlugin(
+      s3Database({
+        bucketName,
+        ...s3Config,
+        cloudfrontDistributionId: "test-distribution-id",
+        ...config,
+      }),
+    );
 
   let plugin = createPlugin();
 
@@ -1622,14 +1785,16 @@ describe("s3Database plugin", () => {
   it("should call onDatabaseUpdated hook after commit", async () => {
     // Verify hooks.onDatabaseUpdated is called after commit
     const onDatabaseUpdated = vi.fn();
-    const pluginWithHook = s3Database(
-      {
-        bucketName,
-        ...s3Config,
-        cloudfrontDistributionId: "test-distribution-id",
-      },
-      { onDatabaseUpdated },
-    )();
+    const pluginWithHook = toLegacyDatabasePlugin(
+      s3Database(
+        {
+          bucketName,
+          ...s3Config,
+          cloudfrontDistributionId: "test-distribution-id",
+        },
+        { onDatabaseUpdated },
+      ),
+    );
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);
     await pluginWithHook.commitBundle();
@@ -1997,12 +2162,14 @@ describe("s3Database plugin", () => {
 
   it("should wait for CloudFront invalidation completion when enabled", async () => {
     vi.useFakeTimers();
-    const waitingPlugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-      shouldWaitForInvalidation: true,
-    })();
+    const waitingPlugin = toLegacyDatabasePlugin(
+      s3Database({
+        bucketName,
+        ...s3Config,
+        cloudfrontDistributionId: "test-distribution-id",
+        shouldWaitForInvalidation: true,
+      }),
+    );
     const newBundle = createBundleJson(
       "production",
       "ios",
@@ -2021,12 +2188,14 @@ describe("s3Database plugin", () => {
 
   it("should fail when waiting for CloudFront invalidation times out", async () => {
     vi.useFakeTimers();
-    const waitingPlugin = s3Database({
-      bucketName,
-      ...s3Config,
-      cloudfrontDistributionId: "test-distribution-id",
-      shouldWaitForInvalidation: true,
-    })();
+    const waitingPlugin = toLegacyDatabasePlugin(
+      s3Database({
+        bucketName,
+        ...s3Config,
+        cloudfrontDistributionId: "test-distribution-id",
+        shouldWaitForInvalidation: true,
+      }),
+    );
     const newBundle = createBundleJson(
       "production",
       "ios",

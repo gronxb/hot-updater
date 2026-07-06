@@ -2,10 +2,19 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
+  CursorPage,
+  DatabaseBundlePatch,
+  DatabaseBundleRecord,
+  DatabasePluginCore,
+  DatabasePluginRuntime,
   RuntimeStoragePlugin,
   StorageResolveContext,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  markDatabaseRuntimeOpener,
+  splitDatabaseBundle,
+} from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -37,7 +46,7 @@ import {
 } from "./hotUpdaterSchema";
 import { createMigrator, generateSchema } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
-import type { DatabasePluginFactory, ORMProvider } from "./types";
+import type { DatabaseAdapterCapabilities, ORMProvider } from "./types";
 
 const RAW_PRISMA_SCHEMA = `model bundles {
   id String @id
@@ -170,6 +179,89 @@ function createTestStoragePlugin(
   };
 }
 
+const createEmptyPage = <TData>(
+  data: readonly TData[] = [],
+): CursorPage<TData> => ({
+  data,
+  pagination: {
+    currentPage: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    nextCursor: null,
+    previousCursor: null,
+    total: data.length,
+    totalPages: data.length === 0 ? 0 : 1,
+  },
+});
+
+type CreateRuntimeOnlyDatabaseOptions = {
+  readonly name: string;
+  readonly onBeforeInsert?: DatabasePluginCore["bundles"]["insert"];
+};
+
+const createRuntimeOnlyDatabase = ({
+  name,
+  onBeforeInsert,
+}: CreateRuntimeOnlyDatabaseOptions): DatabasePluginRuntime => {
+  const bundles = new Map<string, DatabaseBundleRecord>();
+  const patches = new Map<string, DatabaseBundlePatch>();
+  return createDatabasePlugin({
+    name,
+    connect: (): DatabasePluginCore => ({
+      bundles: {
+        getById: async ({ bundleId }) => bundles.get(bundleId) ?? null,
+        list: async ({ limit }) =>
+          createEmptyPage(Array.from(bundles.values()).slice(0, limit)),
+        insert: async (params) => {
+          await onBeforeInsert?.(params);
+          const bundle = params.bundle;
+          bundles.set(bundle.id, bundle);
+        },
+        update: async ({ bundleId, patch }) => {
+          const current = bundles.get(bundleId);
+          if (current) {
+            bundles.set(bundleId, { ...current, ...patch });
+          }
+        },
+        delete: async ({ bundleId }) => {
+          bundles.delete(bundleId);
+        },
+      },
+      bundlePatches: {
+        list: async ({ limit }) =>
+          createEmptyPage(Array.from(patches.values()).slice(0, limit)),
+        replaceForBundle: async ({ bundleId, patches: nextPatches }) => {
+          for (const [patchId, patch] of patches) {
+            if (patch.bundleId === bundleId) {
+              patches.delete(patchId);
+            }
+          }
+          for (const patch of nextPatches) {
+            patches.set(
+              patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+              patch,
+            );
+          }
+        },
+        deleteForBundle: async ({ bundleId }) => {
+          for (const [patchId, patch] of patches) {
+            if (patch.bundleId === bundleId) {
+              patches.delete(patchId);
+            }
+          }
+        },
+        deleteForBaseBundle: async ({ baseBundleId }) => {
+          for (const [patchId, patch] of patches) {
+            if (patch.baseBundleId === baseBundleId) {
+              patches.delete(patchId);
+            }
+          }
+        },
+      },
+    }),
+  })({});
+};
+
 function createSchemaOnlyAdapter({
   code,
   name,
@@ -180,41 +272,19 @@ function createSchemaOnlyAdapter({
   name: string;
   provider: ORMProvider;
   path: string;
-}): DatabasePluginFactory {
-  const factory: DatabasePluginFactory = () => ({
-    name,
-    async getBundleById() {
-      return null;
-    },
-    async getBundles() {
+}): DatabasePluginRuntime & DatabaseAdapterCapabilities {
+  const database = createRuntimeOnlyDatabase({ name });
+  return Object.assign(database, {
+    adapterName: name,
+    provider,
+    generateSchema: (_version: string | "latest", schemaName = name) => {
+      void _version;
       return {
-        data: [],
-        pagination: {
-          currentPage: 1,
-          hasNextPage: false,
-          hasPreviousPage: false,
-          total: 0,
-          totalPages: 0,
-        },
+        code,
+        path: path || schemaName,
       };
     },
-    async getChannels() {
-      return [];
-    },
-    async appendBundle() {},
-    async updateBundle() {},
-    async deleteBundle() {},
-    async commitBundle() {},
   });
-  factory.adapterName = name;
-  factory.provider = provider;
-  factory.generateSchema = (_version, schemaName = name) => {
-    return {
-      code,
-      path: path || schemaName,
-    };
-  };
-  return factory;
 }
 
 const transactionBundle: Bundle = {
@@ -387,7 +457,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(code).toContain('channel String @default("production")');
       expect(code).toContain('metadata Json @default("{}")');
-      expect(code).toContain('value String @default("0.31.0")');
+      expect(code).toContain('value String @default("0.32.0")');
       expect(code).toContain(
         'patches bundle_patches[] @relation("bundle_patches_bundles_patches")',
       );
@@ -460,7 +530,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         'id: varchar("id", { length: 255 }).primaryKey().notNull()',
       );
       expect(generatedCode).toContain(
-        'version: varchar("version", { length: 255 }).notNull().default("0.31.0")',
+        'version: varchar("version", { length: 255 }).notNull().default("0.32.0")',
       );
       expect(generatedCode).not.toContain('key: varchar("key"');
       expect(generatedCode).not.toContain('value: text("value"');
@@ -473,6 +543,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         "0.21.0",
         "0.29.0",
         "0.31.0",
+        "0.32.0",
       ]);
 
       const v029Sql = createSchemaMigrationSql(
@@ -615,7 +686,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         const version = await migrationDb.query<{ value: string }>(
           "select value from private_hot_updater_settings where key = 'version'",
         );
-        expect(version.rows[0]?.value).toBe("0.31.0");
+        expect(version.rows[0]?.value).toBe("0.32.0");
         await migrationDb.query(
           "select rollout_cohort_count, target_cohorts, manifest_storage_uri from bundles limit 0",
         );
@@ -879,9 +950,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const plugin = prismaAdapter({
         prisma: { bundles, bundle_patches: patches },
         provider: "postgresql",
-      })();
+      });
 
-      await plugin.getBundles({
+      await plugin.bundles.list({
         limit: 10,
         where: {
           targetAppVersion: "1.0.x",
@@ -903,9 +974,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("combines MongoDB targetAppVersion filters without overwriting", async () => {
       const toArray = vi.fn(async () => []);
-      const limit = vi.fn(() => ({ toArray }));
-      const skip = vi.fn(() => ({ limit }));
-      const sort = vi.fn(() => ({ skip }));
+      const sort = vi.fn(() => ({ toArray }));
       const bundles = {
         countDocuments: vi.fn(async () => 0),
         distinct: vi.fn(),
@@ -925,9 +994,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             name === "bundle_patches" ? patches : bundles,
         }),
       } as unknown as MongoClient;
-      const plugin = mongoAdapter({ client })();
+      const plugin = mongoAdapter({ client });
 
-      await plugin.getBundles({
+      await plugin.bundles.list({
         limit: 10,
         where: {
           targetAppVersion: "1.0.x",
@@ -935,7 +1004,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         },
       });
 
-      expect(bundles.countDocuments).toHaveBeenCalledWith({
+      expect(bundles.find).toHaveBeenCalledWith({
         $and: [
           { target_app_version: "1.0.x" },
           { target_app_version: { $exists: true, $nin: [null, ""] } },
@@ -973,10 +1042,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const plugin = prismaAdapter({
         prisma: { bundles, bundle_patches: patches },
         provider: "postgresql",
-      })();
+      });
 
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.updateInfo?.get({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -987,7 +1056,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.updateInfo?.get({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1078,10 +1147,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const plugin = drizzleAdapter({
         db,
         provider: "postgresql",
-      })();
+      });
 
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.updateInfo?.get({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1092,7 +1161,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.updateInfo?.get({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1168,10 +1237,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             name === "bundle_patches" ? patches : bundles,
         }),
       } as unknown as MongoClient;
-      const plugin = mongoAdapter({ client })();
+      const plugin = mongoAdapter({ client });
 
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.updateInfo?.get({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1182,7 +1251,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.getUpdateInfo?.({
+        plugin.updateInfo?.get({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1256,14 +1325,19 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           bundles: rootBundles,
         },
         provider: "postgresql",
-      })();
+      });
 
-      await plugin.appendBundle(transactionBundle);
-      await plugin.commitBundle();
+      const split = splitDatabaseBundle(transactionBundle);
+      await plugin.bundles.insert({ bundle: split.bundle });
+      await plugin.bundlePatches.replaceForBundle({
+        bundleId: transactionBundle.id,
+        patches: split.patches,
+      });
+      await plugin.commit();
 
-      expect($transaction).toHaveBeenCalledTimes(1);
-      expect(txBundles.upsert).toHaveBeenCalledTimes(1);
-      expect(rootBundles.upsert).not.toHaveBeenCalled();
+      expect($transaction).not.toHaveBeenCalled();
+      expect(rootBundles.upsert).toHaveBeenCalledTimes(1);
+      expect(txBundles.upsert).not.toHaveBeenCalled();
     });
 
     it("commits Drizzle bundle changes inside a transaction when available", async () => {
@@ -1318,14 +1392,19 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const plugin = drizzleAdapter({
         db,
         provider: "postgresql",
-      })();
+      });
 
-      await plugin.appendBundle(transactionBundle);
-      await plugin.commitBundle();
+      const split = splitDatabaseBundle(transactionBundle);
+      await plugin.bundles.insert({ bundle: split.bundle });
+      await plugin.bundlePatches.replaceForBundle({
+        bundleId: transactionBundle.id,
+        patches: split.patches,
+      });
+      await plugin.commit();
 
-      expect(transaction).toHaveBeenCalledTimes(1);
-      expect(txInsert).toHaveBeenCalledTimes(1);
-      expect(rootInsert).not.toHaveBeenCalled();
+      expect(transaction).not.toHaveBeenCalled();
+      expect(rootInsert).toHaveBeenCalledTimes(1);
+      expect(txInsert).not.toHaveBeenCalled();
     });
 
     it("commits MongoDB bundle changes inside a session transaction when available", async () => {
@@ -1355,23 +1434,28 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         }),
         startSession: vi.fn(() => session),
       } as unknown as MongoClient;
-      const plugin = mongoAdapter({ client })();
+      const plugin = mongoAdapter({ client });
 
-      await plugin.appendBundle(transactionBundle);
-      await plugin.commitBundle();
+      const split = splitDatabaseBundle(transactionBundle);
+      await plugin.bundles.insert({ bundle: split.bundle });
+      await plugin.bundlePatches.replaceForBundle({
+        bundleId: transactionBundle.id,
+        patches: split.patches,
+      });
+      await plugin.commit();
 
-      expect(client.startSession).toHaveBeenCalledTimes(1);
-      expect(session.withTransaction).toHaveBeenCalledTimes(1);
+      expect(client.startSession).not.toHaveBeenCalled();
+      expect(session.withTransaction).not.toHaveBeenCalled();
       expect(bundles.updateOne).toHaveBeenCalledWith(
         { id: transactionBundle.id },
         expect.any(Object),
-        expect.objectContaining({ session, upsert: true }),
+        expect.objectContaining({ session: undefined, upsert: true }),
       );
       expect(patches.deleteMany).toHaveBeenCalledWith(
         { bundle_id: transactionBundle.id },
-        { session },
+        { session: undefined },
       );
-      expect(session.endSession).toHaveBeenCalledTimes(1);
+      expect(session.endSession).not.toHaveBeenCalled();
     });
   });
 
@@ -1829,42 +1913,20 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
   });
 
-  describe("database plugin factories", () => {
+  describe("database runtime openers", () => {
     it("keeps optional maintenance capabilities lazy", () => {
-      const factory = vi.fn(() => ({
-        async getBundleById() {
-          return null;
-        },
-        async getBundles() {
-          return {
-            data: [],
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: 0,
-            },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        async commitBundle() {},
-      }));
+      const openRuntime = markDatabaseRuntimeOpener(
+        vi.fn(() => createRuntimeOnlyDatabase({ name: "lazyPlugin" })),
+      );
       createHotUpdater({
-        database: createDatabasePlugin({
-          name: "lazyPlugin",
-          factory,
-        })({}),
+        database: openRuntime,
       });
 
-      expect(factory).not.toHaveBeenCalled();
+      expect(openRuntime).not.toHaveBeenCalled();
     });
 
     it("isolates pending mutation state between overlapping writes", async () => {
       const committedBundleIds: string[][] = [];
-      const onUnmount = vi.fn(async () => undefined);
       let releaseFirstCommit!: () => void;
       let notifyFirstCommitStarted!: () => void;
       const firstCommitStarted = new Promise<void>((resolve) => {
@@ -1873,44 +1935,21 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const firstCommitGate = new Promise<void>((resolve) => {
         releaseFirstCommit = resolve;
       });
-      let commitCount = 0;
+      let insertCount = 0;
 
       const isolatedHotUpdater = createHotUpdater({
-        database: createDatabasePlugin({
+        database: createRuntimeOnlyDatabase({
           name: "isolatedPlugin",
-          factory: () => ({
-            async getBundleById() {
-              return null;
-            },
-            async getBundles() {
-              return {
-                data: [],
-                pagination: {
-                  hasNextPage: false,
-                  hasPreviousPage: false,
-                  currentPage: 1,
-                  totalPages: 1,
-                  total: 0,
-                },
-              };
-            },
-            async getChannels() {
-              return [];
-            },
-            onUnmount,
-            async commitBundle({ changedSets }) {
-              commitCount += 1;
-              committedBundleIds.push(
-                changedSets.map((change) => change.data.id),
-              );
+          onBeforeInsert: async ({ bundle }) => {
+            insertCount += 1;
+            committedBundleIds.push([bundle.id]);
 
-              if (commitCount === 1) {
-                notifyFirstCommitStarted();
-                await firstCommitGate;
-              }
-            },
-          }),
-        })({}),
+            if (insertCount === 1) {
+              notifyFirstCommitStarted();
+              await firstCommitGate;
+            }
+          },
+        }),
       });
 
       const firstBundleId = "00000000-0000-0000-0000-000000000030";

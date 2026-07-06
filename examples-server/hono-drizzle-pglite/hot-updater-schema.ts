@@ -63,7 +63,26 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
   })
 }))
 
+export const bundle_events = pgTable("bundle_events", {
+  id: uuid("id").primaryKey().notNull(),
+  kind: text("kind").notNull(),
+  install_id: text("install_id").notNull(),
+  active_bundle_id: uuid("active_bundle_id").notNull(),
+  previous_active_bundle_id: uuid("previous_active_bundle_id"),
+  crashed_bundle_id: uuid("crashed_bundle_id"),
+  platform: text("platform").notNull(),
+  channel: text("channel").notNull(),
+  app_version: text("app_version"),
+  fingerprint_hash: text("fingerprint_hash"),
+  cohort: text("cohort"),
+  payload: json("payload").notNull()
+}, (table) => [
+  index("bundle_events_install_id_idx").on(table.install_id),
+  index("bundle_events_active_bundle_id_idx").on(table.active_bundle_id),
+  index("bundle_events_platform_channel_idx").on(table.platform, table.channel)
+])
+
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
-  version: varchar("version", { length: 255 }).notNull().default("0.31.0")
+  version: varchar("version", { length: 255 }).notNull().default("0.32.0")
 })

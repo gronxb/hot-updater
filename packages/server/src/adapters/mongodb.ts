@@ -1,11 +1,13 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabaseBundleQueryOptions,
+  DatabaseBundlePatch,
   DatabaseBundleQueryWhere,
+  DatabaseBundleRecord,
+  DatabasePluginCore,
+  DatabasePluginRuntime,
 } from "@hot-updater/plugin-core";
 import {
-  calculatePagination,
   createDatabasePlugin,
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
@@ -13,14 +15,17 @@ import {
 import type { ClientSession, Collection, Filter, MongoClient } from "mongodb";
 
 import {
-  bundleToPatchRows,
-  bundleToRow,
+  bundleRecordToRow,
   type BundlePatchRow,
   type BundleRow,
+  databaseBundlePatchToRow,
+  paginateCursorItems,
+  rowToDatabaseBundlePatch,
+  rowToDatabaseBundleRecord,
   rowToBundle,
 } from "../db/bundleRows";
 import { createMongoMigrator } from "../db/fixedMigrator";
-import type { DatabasePluginFactory } from "../db/types";
+import type { DatabaseAdapterCapabilities } from "../db/types";
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
@@ -79,9 +84,9 @@ const mongoWhere = (
   return { $and: filters };
 };
 
-const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
+const createMongoPlugin = createDatabasePlugin({
   name: "mongodb",
-  factory: ({ client }) => {
+  connect: ({ client }: MongoDBConfig): DatabasePluginCore => {
     const db = client.db();
     const bundles = db.collection<BundleRow>("bundles");
     const patches = db.collection<BundlePatchRow>("bundle_patches");
@@ -105,48 +110,24 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
       const patchMap = await fetchPatchMap(rows.map((row) => row.id));
       return rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? []));
     };
-    const isTransactionUnsupported = (error: unknown): boolean =>
-      error instanceof Error &&
-      /Transaction numbers are only allowed|replica set member or mongos|Transaction API error/i.test(
-        error.message,
-      );
-    const runInTransaction = async <T>(
-      operation: (session: ClientSession | undefined) => Promise<T>,
-    ) => {
-      if (typeof client.startSession !== "function") {
-        return operation(undefined);
-      }
-      const session = client.startSession();
-      try {
-        if (typeof session.withTransaction !== "function") {
-          return await operation(session);
-        }
-        let result: T | undefined;
-        await session.withTransaction(async () => {
-          result = await operation(session);
-        });
-        return result as T;
-      } catch (error) {
-        if (isTransactionUnsupported(error)) {
-          return operation(undefined);
-        }
-        throw error;
-      } finally {
-        await session.endSession();
-      }
-    };
-    const replaceBundle = async (
-      bundle: Bundle,
+    const replaceBundleRecord = async (
+      bundle: DatabaseBundleRecord,
       session: ClientSession | undefined,
     ) => {
-      const row = bundleToRow(bundle);
+      const row = bundleRecordToRow(bundle);
       await bundles.updateOne(
         { id: bundle.id },
         { $set: row },
         { session, upsert: true },
       );
-      await patches.deleteMany({ bundle_id: bundle.id }, { session });
-      const patchRows = bundleToPatchRows(bundle);
+    };
+    const replacePatchesForBundle = async (
+      bundleId: string,
+      newPatches: readonly DatabaseBundlePatch[],
+      session: ClientSession | undefined,
+    ) => {
+      await patches.deleteMany({ bundle_id: bundleId }, { session });
+      const patchRows = newPatches.map(databaseBundlePatchToRow);
       if (patchRows.length > 0)
         await patches.insertMany(patchRows, { session });
     };
@@ -159,38 +140,156 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
       await collection.deleteMany({ [field]: bundleId }, { session });
     };
     return {
-      async getBundleById(bundleId) {
-        const row = await bundles.findOne({ id: bundleId });
-        if (!row) return null;
-        const patchMap = await fetchPatchMap([bundleId]);
-        return rowToBundle(row, patchMap.get(bundleId) ?? []);
-      },
-      async getBundles(
-        options: DatabaseBundleQueryOptions & { offset?: number },
-      ) {
-        const offset = options.offset ?? 0;
-        const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
-        const where = mongoWhere(options.where);
-        const [total, rows] = await Promise.all([
-          bundles.countDocuments(where),
-          bundles
-            .find(where)
+      bundles: {
+        async getById({ bundleId }) {
+          const row = await bundles.findOne({ id: bundleId });
+          return row ? rowToDatabaseBundleRecord(row) : null;
+        },
+        async list(options) {
+          const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
+          const rows = await bundles
+            .find(mongoWhere(options.where))
             .sort({ id: orderBy.direction === "asc" ? 1 : -1 })
-            .skip(offset)
-            .limit(options.limit)
-            .toArray(),
-        ]);
-        const patchMap = await fetchPatchMap(rows.map((row) => row.id));
-        return {
-          data: rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? [])),
-          pagination: calculatePagination(total, {
+            .toArray();
+          const page = paginateCursorItems({
+            items: rows,
             limit: options.limit,
-            offset,
-          }),
-        };
+            cursor: options.cursor,
+            offset: options.page
+              ? (Math.max(1, options.page) - 1) * options.limit
+              : undefined,
+            getCursor: (row) => row.id,
+          });
+          return {
+            ...page,
+            data: page.data.map(rowToDatabaseBundleRecord),
+          };
+        },
+        async insert({ bundle }) {
+          await replaceBundleRecord(bundle, undefined);
+        },
+        async update({ bundleId, patch }) {
+          const row = await bundles.findOne({ id: bundleId });
+          if (!row) throw new Error("targetBundleId not found");
+          await replaceBundleRecord(
+            {
+              ...rowToDatabaseBundleRecord(row),
+              ...patch,
+              id: bundleId,
+            },
+            undefined,
+          );
+        },
+        async delete({ bundleId }) {
+          await bundles.deleteMany({ id: bundleId });
+        },
       },
-      async getUpdateInfo(args, context) {
-        if (args._updateStrategy === "appVersion") {
+      bundlePatches: {
+        async list(options) {
+          const rows = await patches
+            .find({})
+            .sort({ order_index: 1 })
+            .toArray();
+          const data = rows
+            .map(rowToDatabaseBundlePatch)
+            .filter((patch) => {
+              const where = options.where;
+              return (
+                !where ||
+                ((where.bundleId === undefined ||
+                  patch.bundleId === where.bundleId) &&
+                  (where.baseBundleId === undefined ||
+                    patch.baseBundleId === where.baseBundleId) &&
+                  (where.bundleIdIn === undefined ||
+                    where.bundleIdIn.includes(patch.bundleId)) &&
+                  (where.baseBundleIdIn === undefined ||
+                    where.baseBundleIdIn.includes(patch.baseBundleId)))
+              );
+            })
+            .sort((left, right) => {
+              const direction = options.orderBy?.direction ?? "asc";
+              const field = options.orderBy?.field ?? "orderIndex";
+              const result =
+                field === "orderIndex"
+                  ? left.orderIndex - right.orderIndex
+                  : left[field].localeCompare(right[field]);
+              return direction === "asc" ? result : -result;
+            });
+          return paginateCursorItems({
+            items: data,
+            limit: options.limit,
+            cursor: options.cursor,
+            getCursor: (patch) =>
+              patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+          });
+        },
+        async replaceForBundle({ bundleId, patches }) {
+          await replacePatchesForBundle(bundleId, patches, undefined);
+        },
+        async deleteForBundle({ bundleId }) {
+          await deleteByBundleId(patches, "bundle_id", bundleId, undefined);
+        },
+        async deleteForBaseBundle({ baseBundleId }) {
+          await deleteByBundleId(
+            patches,
+            "base_bundle_id",
+            baseBundleId,
+            undefined,
+          );
+        },
+      },
+      updateInfo: {
+        async get(args) {
+          if (args._updateStrategy === "appVersion") {
+            const channel = args.channel ?? "production";
+            const minBundleId = args.minBundleId ?? NIL_UUID;
+            const rows = await bundles
+              .find({
+                enabled: true,
+                platform: args.platform,
+                channel,
+                id: { $gte: minBundleId },
+                target_app_version: { $exists: true, $nin: [null, ""] },
+              })
+              .project<{ target_app_version?: string | null }>({
+                target_app_version: 1,
+              })
+              .toArray();
+
+            const targetAppVersions = Array.from(
+              new Set(
+                rows
+                  .map((row) => row.target_app_version)
+                  .filter(
+                    (value): value is string =>
+                      typeof value === "string" && value.length > 0,
+                  ),
+              ),
+            );
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
+            );
+            const updateRows =
+              compatibleAppVersions.length > 0
+                ? await bundles
+                    .find({
+                      enabled: true,
+                      platform: args.platform,
+                      channel,
+                      id: { $gte: minBundleId },
+                      target_app_version: { $in: compatibleAppVersions },
+                    })
+                    .sort({ id: -1 })
+                    .toArray()
+                : [];
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles: await mapRowsToBundles(updateRows),
+            });
+          }
+
           const channel = args.channel ?? "production";
           const minBundleId = args.minBundleId ?? NIL_UUID;
           const rows = await bundles
@@ -199,101 +298,24 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
               platform: args.platform,
               channel,
               id: { $gte: minBundleId },
-              target_app_version: { $exists: true, $nin: [null, ""] },
+              fingerprint_hash: args.fingerprintHash,
             })
-            .project<{ target_app_version?: string | null }>({
-              target_app_version: 1,
-            })
+            .sort({ id: -1 })
             .toArray();
-
-          const targetAppVersions = Array.from(
-            new Set(
-              rows
-                .map((row) => row.target_app_version)
-                .filter(
-                  (value): value is string =>
-                    typeof value === "string" && value.length > 0,
-                ),
-            ),
-          );
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
-          const updateRows =
-            compatibleAppVersions.length > 0
-              ? await bundles
-                  .find({
-                    enabled: true,
-                    platform: args.platform,
-                    channel,
-                    id: { $gte: minBundleId },
-                    target_app_version: { $in: compatibleAppVersions },
-                  })
-                  .sort({ id: -1 })
-                  .toArray()
-              : [];
 
           return resolveUpdateInfoFromBundles({
             args: { ...args, channel, minBundleId },
-            bundles: await mapRowsToBundles(updateRows),
-            context,
+            bundles: await mapRowsToBundles(rows),
           });
-        }
-
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
-        const rows = await bundles
-          .find({
-            enabled: true,
-            platform: args.platform,
-            channel,
-            id: { $gte: minBundleId },
-            fingerprint_hash: args.fingerprintHash,
-          })
-          .sort({ id: -1 })
-          .toArray();
-
-        return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles: await mapRowsToBundles(rows),
-          context,
-        });
-      },
-      async getChannels() {
-        const channels = await bundles.distinct("channel");
-        return channels
-          .filter((channel): channel is string => typeof channel === "string")
-          .sort((left, right) => left.localeCompare(right));
-      },
-      async commitBundle({ changedSets }) {
-        await runInTransaction(async (session) => {
-          for (const change of changedSets) {
-            if (change.operation === "delete") {
-              await deleteByBundleId(
-                patches,
-                "bundle_id",
-                change.data.id,
-                session,
-              );
-              await deleteByBundleId(
-                patches,
-                "base_bundle_id",
-                change.data.id,
-                session,
-              );
-              await bundles.deleteMany({ id: change.data.id }, { session });
-              continue;
-            }
-            await replaceBundle(change.data, session);
-          }
-        });
+        },
       },
     };
   },
 });
 
-export const mongoAdapter = (config: MongoDBConfig): DatabasePluginFactory => {
+export const mongoAdapter = (
+  config: MongoDBConfig,
+): DatabaseAdapterCapabilities & DatabasePluginRuntime => {
   return Object.assign(createMongoPlugin(config), {
     adapterName: "mongodb",
     provider: "mongodb" as const,

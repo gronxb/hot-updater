@@ -46,6 +46,8 @@ const createApi = () =>
     getChannels: vi
       .fn<HandlerAPI<TestContext>["getChannels"]>()
       .mockResolvedValue(["production"]),
+    appendBundleEvent:
+      vi.fn<NonNullable<HandlerAPI<TestContext>["appendBundleEvent"]>>(),
     insertBundle: vi.fn<HandlerAPI<TestContext>["insertBundle"]>(),
     updateBundleById: vi.fn<HandlerAPI<TestContext>["updateBundleById"]>(),
     deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),
@@ -302,6 +304,95 @@ describe("createHandler", () => {
     );
 
     expect(updateResponse.status).toBe(200);
+  });
+
+  it("persists app-ready bundle events on update-check routes", async () => {
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/api" });
+
+    const response = await handler(
+      new Request("http://localhost/api/bundle-events/app-ready", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          activeBundleId: "bundle-1",
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "730",
+          defaultChannel: "production",
+          fingerprintHash: "fingerprint-hash",
+          installId: "install-1",
+          isChannelSwitched: false,
+          platform: "ios",
+          sdkVersion: "0.31.0",
+          status: "STABLE",
+        }),
+      }),
+      {
+        env: {
+          tenantId: "tenant-a",
+        },
+      },
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toEqual({ success: true });
+    expect(api.appendBundleEvent).toHaveBeenCalledWith(
+      {
+        activeBundleId: "bundle-1",
+        appVersion: "1.0.0",
+        channel: "production",
+        cohort: "730",
+        crashedBundleId: null,
+        fingerprintHash: "fingerprint-hash",
+        installId: "install-1",
+        kind: "APP_READY",
+        platform: "ios",
+        previousActiveBundleId: null,
+        payload: {
+          defaultChannel: "production",
+          isChannelSwitched: false,
+          sdkVersion: "0.31.0",
+          status: "STABLE",
+        },
+      },
+      {
+        env: {
+          tenantId: "tenant-a",
+        },
+      },
+    );
+  });
+
+  it("returns unsupported when app-ready events are not implemented", async () => {
+    const { appendBundleEvent: _appendBundleEvent, ...api } = createApi();
+    const handler = createHandler(api, { basePath: "/api" });
+
+    const response = await handler(
+      new Request("http://localhost/api/bundle-events/app-ready", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          activeBundleId: "bundle-1",
+          channel: "production",
+          defaultChannel: "production",
+          installId: "install-1",
+          isChannelSwitched: false,
+          platform: "ios",
+          sdkVersion: "0.31.0",
+          status: "STABLE",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(501);
+    await expect(response.json()).resolves.toEqual({
+      error: "Bundle events are not supported by this database provider.",
+    });
   });
 
   it("keeps the version route mounted when update-check routes are disabled", async () => {

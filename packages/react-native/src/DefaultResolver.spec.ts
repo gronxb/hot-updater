@@ -6,7 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDefaultResolver } from "./DefaultResolver";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
-import type { ResolverCheckUpdateParams } from "./types";
+import type {
+  ResolverCheckUpdateParams,
+  ResolverNotifyAppReadyParams,
+} from "./types";
 
 const mocks = vi.hoisted(() => {
   (
@@ -38,10 +41,28 @@ const createParams = (
   ...params,
 });
 
+const createNotifyParams = (
+  params?: Partial<ResolverNotifyAppReadyParams>,
+): ResolverNotifyAppReadyParams => ({
+  activeBundleId: "bundle-id",
+  appVersion: "1.0.0",
+  channel: "production",
+  cohort: "730",
+  defaultChannel: "production",
+  fingerprintHash: null,
+  installId: "install-1",
+  isChannelSwitched: false,
+  platform: "ios",
+  sdkVersion: HOT_UPDATER_SDK_VERSION,
+  status: "STABLE",
+  ...params,
+});
+
 describe("createDefaultResolver", () => {
   beforeEach(() => {
     mocks.fetchUpdateInfo.mockReset();
     mocks.fetchUpdateInfo.mockResolvedValue(null);
+    vi.unstubAllGlobals();
   });
 
   it("strips trailing slashes from baseURL for app-version requests", async () => {
@@ -189,5 +210,60 @@ describe("createDefaultResolver", () => {
     await expect(resolver.checkUpdate?.(createParams())).rejects.toThrow(
       "baseURL resolver must return a non-empty string",
     );
+  });
+
+  it("posts app-ready events to the bundle-events endpoint", async () => {
+    const fetchMock = vi.fn<
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    >(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const resolver = createDefaultResolver(
+      "http://localhost:3007/hot-updater/",
+    );
+
+    await expect(
+      resolver.notifyAppReady?.(
+        createNotifyParams({
+          crashedBundleId: "crashed-bundle",
+          previousActiveBundleId: "crashed-bundle",
+          requestHeaders: {
+            authorization: "Bearer token",
+          },
+          requestTimeout: 1500,
+          status: "RECOVERED",
+        }),
+      ),
+    ).resolves.toEqual({
+      crashedBundleId: "crashed-bundle",
+      status: "RECOVERED",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:3007/hot-updater/bundle-events/app-ready",
+      expect.objectContaining({
+        headers: {
+          "Content-Type": "application/json",
+          authorization: "Bearer token",
+          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+        },
+        method: "POST",
+      }),
+    );
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual({
+      activeBundleId: "bundle-id",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "730",
+      crashedBundleId: "crashed-bundle",
+      defaultChannel: "production",
+      fingerprintHash: null,
+      installId: "install-1",
+      isChannelSwitched: false,
+      platform: "ios",
+      previousActiveBundleId: "crashed-bundle",
+      sdkVersion: HOT_UPDATER_SDK_VERSION,
+      status: "RECOVERED",
+    });
   });
 });

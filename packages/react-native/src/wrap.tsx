@@ -1,14 +1,22 @@
 import React, { useEffect, useState } from "react";
+import { Platform } from "react-native";
 
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
 import {
+  getAppVersion,
   getBundleId,
+  getChannel,
+  getCohort,
+  getDefaultChannel,
+  getFingerprintHash,
+  isChannelSwitched,
   type NotifyAppReadyResult,
   notifyAppReady as nativeNotifyAppReady,
   reload,
 } from "./native";
+import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
 import { type HotUpdaterState, useHotUpdaterStore } from "./store";
 import type { HotUpdaterBaseURL, HotUpdaterResolver } from "./types";
 
@@ -266,6 +274,13 @@ const waitForNextFrame = () =>
     void Promise.resolve().then(resolve);
   });
 
+const getRuntimePlatform = (): "ios" | "android" | null => {
+  if (Platform.OS === "ios" || Platform.OS === "android") {
+    return Platform.OS;
+  }
+  return null;
+};
+
 /**
  * Helper function to handle notifyAppReady flow
  */
@@ -280,13 +295,31 @@ const handleNotifyAppReady = async (options: {
 
   try {
     const nativeResult = nativeNotifyAppReady();
+    const platform = getRuntimePlatform();
 
-    // If resolver.notifyAppReady exists, call it with simplified params
-    if (options.resolver?.notifyAppReady) {
+    if (platform && options.resolver?.notifyAppReady) {
+      const defaultChannel = getDefaultChannel();
+      const channelSwitched = isChannelSwitched();
+      const channel = channelSwitched ? getChannel() : defaultChannel;
+      const cohort = getCohort();
       await options.resolver
         .notifyAppReady({
+          activeBundleId: getBundleId(),
+          previousActiveBundleId:
+            nativeResult.status === "RECOVERED"
+              ? (nativeResult.crashedBundleId ?? null)
+              : null,
           status: nativeResult.status,
-          crashedBundleId: nativeResult.crashedBundleId,
+          crashedBundleId: nativeResult.crashedBundleId ?? null,
+          platform,
+          channel,
+          defaultChannel,
+          appVersion: getAppVersion(),
+          fingerprintHash: getFingerprintHash(),
+          cohort,
+          installId: cohort,
+          sdkVersion: HOT_UPDATER_SDK_VERSION,
+          isChannelSwitched: channelSwitched,
           requestHeaders: options.requestHeaders,
           requestTimeout: options.requestTimeout,
         })

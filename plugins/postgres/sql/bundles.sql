@@ -36,6 +36,21 @@ CREATE TABLE bundle_patches (
     order_index integer NOT NULL DEFAULT 0
 );
 
+CREATE TABLE bundle_events (
+    id uuid PRIMARY KEY,
+    kind text NOT NULL,
+    install_id text NOT NULL,
+    active_bundle_id uuid NOT NULL,
+    previous_active_bundle_id uuid,
+    crashed_bundle_id uuid,
+    platform platforms NOT NULL,
+    channel text NOT NULL,
+    app_version text,
+    fingerprint_hash text,
+    cohort text,
+    payload jsonb NOT NULL
+);
+
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
 CREATE INDEX bundles_channel_idx ON bundles(channel);
@@ -43,3 +58,6 @@ CREATE INDEX bundles_rollout_idx ON bundles(rollout_cohort_count);
 CREATE INDEX bundles_target_cohorts_idx ON bundles USING GIN (target_cohorts);
 CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id);
 CREATE INDEX bundle_patches_base_bundle_id_idx ON bundle_patches(base_bundle_id);
+CREATE INDEX bundle_events_install_id_idx ON bundle_events(install_id);
+CREATE INDEX bundle_events_active_bundle_id_idx ON bundle_events(active_bundle_id);
+CREATE INDEX bundle_events_platform_channel_idx ON bundle_events(platform, channel);

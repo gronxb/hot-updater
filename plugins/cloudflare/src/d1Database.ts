@@ -1,7 +1,6 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
   getAssetBaseStorageUri,
-  getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
   NIL_UUID,
@@ -9,15 +8,25 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
+  BundleEventListQuery,
+  BundleEventPayload,
+  BundleListQuery,
+  BundlePatchListQuery,
+  CursorPage,
+  DatabaseBundleEvent,
+  DatabaseBundlePatch,
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
-  PaginationOptions,
+  DatabaseBundleRecord,
+  DatabasePluginCore,
 } from "@hot-updater/plugin-core";
 import {
   calculatePagination,
   createDatabasePlugin,
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
+  toBundleReadModel,
+  toDatabaseBundleRecord,
 } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 import minify from "pg-minify";
@@ -33,13 +42,13 @@ type QueryConditions = DatabaseBundleQueryWhere;
 
 interface BuildQueryResult {
   sql: string;
-  params: any[];
+  params: unknown[];
 }
 
 const buildJsonEachInClause = (
   columnName: string,
   values: string[],
-  params: any[],
+  params: unknown[],
 ) => {
   if (values.length === 0) {
     return "1 = 0";
@@ -79,10 +88,33 @@ interface D1BundlePatchRow {
   order_index: number | null;
 }
 
-async function resolvePage<T>(singlePage: any): Promise<T[]> {
+interface D1BundleEventRow {
+  id: string;
+  kind: string;
+  install_id: string;
+  active_bundle_id: string;
+  previous_active_bundle_id: string | null;
+  crashed_bundle_id: string | null;
+  platform: "ios" | "android";
+  channel: string;
+  app_version: string | null;
+  fingerprint_hash: string | null;
+  cohort: string | null;
+  payload: unknown;
+}
+
+interface D1QueryPage {
+  result: Array<{ results?: unknown[] }>;
+}
+
+interface D1PaginatedQuery {
+  iterPages: () => AsyncIterable<D1QueryPage>;
+}
+
+async function resolvePage<T>(singlePage: D1PaginatedQuery): Promise<T[]> {
   const results: T[] = [];
   for await (const page of singlePage.iterPages()) {
-    const data = page.result.flatMap((r: any) => r.results);
+    const data = page.result.flatMap((row) => row.results ?? []);
     results.push(...(data as T[]));
   }
   return results;
@@ -91,7 +123,7 @@ async function resolvePage<T>(singlePage: any): Promise<T[]> {
 // Helper function to build WHERE clause
 function buildWhereClause(conditions: QueryConditions): BuildQueryResult {
   const clauses: string[] = [];
-  const params: any[] = [];
+  const params: unknown[] = [];
 
   if (conditions.channel) {
     clauses.push("channel = ?");
@@ -210,16 +242,121 @@ const parseMetadata = (value: unknown): Bundle["metadata"] => {
 const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
   `${bundleId}:${baseBundleId}`;
 
-const bundleToPatchRows = (bundle: Bundle): D1BundlePatchRow[] =>
-  getBundlePatches(bundle).map((patch, index) => ({
-    id: buildBundlePatchId(bundle.id, patch.baseBundleId),
-    bundle_id: bundle.id,
-    base_bundle_id: patch.baseBundleId,
-    base_file_hash: patch.baseFileHash,
-    patch_file_hash: patch.patchFileHash,
-    patch_storage_uri: patch.patchStorageUri,
-    order_index: index,
-  }));
+const bundleRecordToRow = (bundleRecord: DatabaseBundleRecord): D1BundleRow => {
+  const bundle = toBundleReadModel(bundleRecord);
+  return {
+    id: bundle.id,
+    channel: bundle.channel,
+    enabled: bundle.enabled ? 1 : 0,
+    should_force_update: bundle.shouldForceUpdate ? 1 : 0,
+    file_hash: bundle.fileHash,
+    git_commit_hash: bundle.gitCommitHash ?? null,
+    message: bundle.message ?? null,
+    platform: bundle.platform,
+    target_app_version: bundle.targetAppVersion,
+    storage_uri: bundle.storageUri,
+    fingerprint_hash: bundle.fingerprintHash,
+    metadata: JSON.stringify(
+      stripBundleArtifactMetadata(bundle.metadata) ?? {},
+    ),
+    manifest_storage_uri: getManifestStorageUri(bundle),
+    manifest_file_hash: getManifestFileHash(bundle),
+    asset_base_storage_uri: getAssetBaseStorageUri(bundle),
+    rollout_cohort_count:
+      bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
+    target_cohorts: bundle.targetCohorts
+      ? JSON.stringify(bundle.targetCohorts)
+      : null,
+  };
+};
+
+const databaseBundlePatchToRow = (
+  patch: DatabaseBundlePatch,
+): D1BundlePatchRow => ({
+  id: patch.id ?? buildBundlePatchId(patch.bundleId, patch.baseBundleId),
+  bundle_id: patch.bundleId,
+  base_bundle_id: patch.baseBundleId,
+  base_file_hash: patch.baseFileHash,
+  patch_file_hash: patch.patchFileHash,
+  patch_storage_uri: patch.patchStorageUri,
+  order_index: patch.orderIndex,
+});
+
+const rowToDatabaseBundlePatch = (
+  row: D1BundlePatchRow,
+): DatabaseBundlePatch => ({
+  id: row.id,
+  bundleId: row.bundle_id,
+  baseBundleId: row.base_bundle_id,
+  baseFileHash: row.base_file_hash,
+  patchFileHash: row.patch_file_hash,
+  patchStorageUri: row.patch_storage_uri,
+  orderIndex: row.order_index ?? 0,
+});
+
+const isAppReadyPayload = (value: unknown): value is BundleEventPayload => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const payload = value as Partial<Record<keyof BundleEventPayload, unknown>>;
+  return (
+    (payload.status === "STABLE" || payload.status === "RECOVERED") &&
+    typeof payload.sdkVersion === "string" &&
+    typeof payload.defaultChannel === "string" &&
+    typeof payload.isChannelSwitched === "boolean"
+  );
+};
+
+const parseEventPayload = (value: unknown): BundleEventPayload => {
+  const parsed =
+    typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  if (!isAppReadyPayload(parsed)) {
+    throw new Error("Invalid bundle event payload.");
+  }
+  return parsed;
+};
+
+const rowToDatabaseBundleEvent = (
+  row: D1BundleEventRow,
+): DatabaseBundleEvent => {
+  if (row.kind !== "APP_READY") {
+    throw new Error(`Unsupported bundle event kind: ${row.kind}`);
+  }
+  return {
+    id: row.id,
+    kind: row.kind,
+    installId: row.install_id,
+    activeBundleId: row.active_bundle_id,
+    previousActiveBundleId: row.previous_active_bundle_id,
+    crashedBundleId: row.crashed_bundle_id,
+    platform: row.platform,
+    channel: row.channel,
+    appVersion: row.app_version,
+    fingerprintHash: row.fingerprint_hash,
+    cohort: row.cohort,
+    payload: parseEventPayload(row.payload),
+  };
+};
+
+const eventMatchesWhere = (
+  event: DatabaseBundleEvent,
+  where: BundleEventListQuery["where"] | undefined,
+) =>
+  !where ||
+  ((where.kind === undefined || event.kind === where.kind) &&
+    (where.installId === undefined || event.installId === where.installId) &&
+    (where.activeBundleId === undefined ||
+      event.activeBundleId === where.activeBundleId) &&
+    (where.previousActiveBundleId === undefined ||
+      event.previousActiveBundleId === where.previousActiveBundleId) &&
+    (where.crashedBundleId === undefined ||
+      event.crashedBundleId === where.crashedBundleId) &&
+    (where.platform === undefined || event.platform === where.platform) &&
+    (where.channel === undefined || event.channel === where.channel) &&
+    (where.appVersion === undefined || event.appVersion === where.appVersion) &&
+    (where.fingerprintHash === undefined ||
+      event.fingerprintHash === where.fingerprintHash) &&
+    (where.cohort === undefined || event.cohort === where.cohort));
 
 function transformRowToBundle(
   row: D1BundleRow,
@@ -269,12 +406,92 @@ function transformRowToBundle(
   };
 }
 
-export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
+const rowToDatabaseBundleRecord = (row: D1BundleRow): DatabaseBundleRecord =>
+  toDatabaseBundleRecord(transformRowToBundle(row, []));
+
+const paginateItems = <TItem>({
+  cursor,
+  getCursor,
+  items,
+  limit,
+  page,
+}: {
+  readonly cursor?: { readonly after?: string; readonly before?: string };
+  readonly getCursor: (item: TItem) => string;
+  readonly items: readonly TItem[];
+  readonly limit: number;
+  readonly page?: number;
+}): CursorPage<TItem> => {
+  const total = items.length;
+  const pageOffset = page ? (Math.max(1, page) - 1) * limit : undefined;
+  let startIndex =
+    pageOffset === undefined ? 0 : Math.min(pageOffset, Math.max(0, total));
+  let endIndex = limit > 0 ? startIndex + limit : total;
+
+  if (pageOffset === undefined && cursor?.after) {
+    const afterIndex = items.findIndex(
+      (item) => getCursor(item) === cursor.after,
+    );
+    startIndex = afterIndex >= 0 ? afterIndex + 1 : total;
+    endIndex = limit > 0 ? startIndex + limit : total;
+  } else if (pageOffset === undefined && cursor?.before) {
+    const beforeIndex = items.findIndex(
+      (item) => getCursor(item) === cursor.before,
+    );
+    endIndex = beforeIndex >= 0 ? beforeIndex : 0;
+    startIndex = limit > 0 ? Math.max(0, endIndex - limit) : 0;
+  }
+
+  const data = items.slice(startIndex, endIndex);
+  const pagination = calculatePagination(total, {
+    limit,
+    offset: startIndex,
+  });
+
+  return {
+    data,
+    pagination: {
+      ...pagination,
+      nextCursor:
+        data.length > 0 && startIndex + data.length < total
+          ? getCursor(data[data.length - 1]!)
+          : null,
+      previousCursor:
+        data.length > 0 && startIndex > 0 ? getCursor(data[0]!) : null,
+    },
+  };
+};
+
+export const d1Database = createDatabasePlugin({
   name: "d1Database",
-  factory: (config) => {
+  connect: (config: D1DatabaseConfig): DatabasePluginCore => {
     const cf = new Cloudflare({
       apiToken: config.cloudflareApiToken,
     });
+
+    const queryRows = async <TRow>(
+      sql: string,
+      params: readonly unknown[] = [],
+    ): Promise<TRow[]> => {
+      const result = await cf.d1.database.query(config.databaseId, {
+        account_id: config.accountId,
+        sql,
+        params: [...params] as string[],
+      });
+      return resolvePage<TRow>(result);
+    };
+
+    const runQuery = async (
+      sql: string,
+      params: readonly unknown[] = [],
+    ): Promise<void> => {
+      await cf.d1.database.query(config.databaseId, {
+        account_id: config.accountId,
+        sql,
+        params: [...params] as string[],
+      });
+    };
+
     const getPatchMap = async (bundleIds: string[]) => {
       const patchMap = new Map<string, D1BundlePatchRow[]>();
 
@@ -289,12 +506,9 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
         ORDER BY order_index ASC, base_bundle_id ASC
       `);
 
-      const result = await cf.d1.database.query(config.databaseId, {
-        account_id: config.accountId,
-        sql,
-        params: [JSON.stringify(bundleIds)],
-      });
-      const rows = await resolvePage<D1BundlePatchRow>(result);
+      const rows = await queryRows<D1BundlePatchRow>(sql, [
+        JSON.stringify(bundleIds),
+      ]);
 
       for (const row of rows) {
         const current = patchMap.get(row.bundle_id) ?? [];
@@ -305,73 +519,34 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
       return patchMap;
     };
 
-    // Helper function to get total count
-    async function getTotalCount(conditions: QueryConditions): Promise<number> {
-      const { sql: whereClause, params } = buildWhereClause(conditions);
-      const countSql = minify(
-        `SELECT COUNT(*) as total FROM bundles${whereClause}`,
+    const getBundleById = async (
+      bundleId: string,
+    ): Promise<DatabaseBundleRecord | null> => {
+      const rows = await queryRows<D1BundleRow>(
+        minify("SELECT * FROM bundles WHERE id = ? LIMIT 1"),
+        [bundleId],
       );
+      return rows[0] ? rowToDatabaseBundleRecord(rows[0]) : null;
+    };
 
-      const countResult = await cf.d1.database.query(config.databaseId, {
-        account_id: config.accountId,
-        sql: countSql,
-        params,
-      });
-
-      const rows = await resolvePage<{ total: number }>(countResult);
-      return rows[0]?.total || 0;
-    }
-
-    // Helper function to get paginated bundles
-    async function getPaginatedBundles(
+    const queryBundleRows = async (
       conditions: QueryConditions,
-      limit: number,
-      offset: number,
       orderBy?: DatabaseBundleQueryOrder,
-    ): Promise<Bundle[]> {
+    ): Promise<D1BundleRow[]> => {
       const { sql: whereClause, params } = buildWhereClause(conditions);
       const orderBySql =
         orderBy?.direction === "asc" ? "ORDER BY id ASC" : "ORDER BY id DESC";
-
-      // Build the complete query
-      const sql = minify(`
-      SELECT * FROM bundles
-      ${whereClause}
-      ${orderBySql}
-      LIMIT ?
-      OFFSET ?
-    `);
-
-      // Add pagination params
-      params.push(limit, offset);
-
-      const result = await cf.d1.database.query(config.databaseId, {
-        account_id: config.accountId,
-        sql,
-        params,
-      });
-
-      const rows = await resolvePage<D1BundleRow>(result);
-      const patchMap = await getPatchMap(rows.map((row) => row.id));
-      return rows.map((row) => transformRowToBundle(row, patchMap.get(row.id)));
-    }
+      const sql = minify(`SELECT * FROM bundles ${whereClause} ${orderBySql}`);
+      return queryRows<D1BundleRow>(sql, params);
+    };
 
     async function queryBundlesForUpdateInfo(
       conditions: QueryConditions,
     ): Promise<Bundle[]> {
-      const { sql: whereClause, params } = buildWhereClause(conditions);
-      const sql = minify(`
-        SELECT * FROM bundles
-        ${whereClause}
-      `);
-
-      const result = await cf.d1.database.query(config.databaseId, {
-        account_id: config.accountId,
-        sql,
-        params,
+      const rows = await queryBundleRows(conditions, {
+        field: "id",
+        direction: "desc",
       });
-
-      const rows = await resolvePage<D1BundleRow>(result);
       const patchMap = await getPatchMap(rows.map((row) => row.id));
       return rows.map((row) => transformRowToBundle(row, patchMap.get(row.id)));
     }
@@ -396,171 +571,18 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
         GROUP BY target_app_version
       `);
 
-      const result = await cf.d1.database.query(config.databaseId, {
-        account_id: config.accountId,
-        sql,
-        params: [channel, platform, minBundleId],
-      });
-
-      const rows = await resolvePage<{ target_app_version: string }>(result);
+      const rows = await queryRows<{ target_app_version: string }>(sql, [
+        channel,
+        platform,
+        minBundleId,
+      ]);
       return rows.map((row) => row.target_app_version);
     }
 
-    return {
-      async getUpdateInfo(args, context) {
-        const channel = args.channel ?? "production";
-        const minBundleId = args.minBundleId ?? NIL_UUID;
-
-        if (args._updateStrategy === "appVersion") {
-          const targetAppVersions = await getTargetAppVersionsForUpdateInfo({
-            platform: args.platform,
-            channel,
-            minBundleId,
-          });
-          const compatibleAppVersions = filterCompatibleAppVersions(
-            targetAppVersions,
-            args.appVersion,
-          );
-          const bundles =
-            compatibleAppVersions.length > 0
-              ? await queryBundlesForUpdateInfo({
-                  enabled: true,
-                  platform: args.platform,
-                  channel,
-                  id: {
-                    gte: minBundleId,
-                  },
-                  targetAppVersionIn: compatibleAppVersions,
-                })
-              : [];
-
-          return resolveUpdateInfoFromBundles({
-            args: { ...args, channel, minBundleId },
-            bundles,
-            context,
-          });
-        }
-
-        const bundles = await queryBundlesForUpdateInfo({
-          enabled: true,
-          platform: args.platform,
-          channel,
-          id: {
-            gte: minBundleId,
-          },
-          fingerprintHash: args.fingerprintHash,
-        });
-
-        return resolveUpdateInfoFromBundles({
-          args: { ...args, channel, minBundleId },
-          bundles,
-          context,
-        });
-      },
-
-      async getBundleById(bundleId) {
-        const sql = minify(/* sql */ `
-          SELECT * FROM bundles WHERE id = ? LIMIT 1`);
-        const [singlePage, patchMap] = await Promise.all([
-          cf.d1.database.query(config.databaseId, {
-            account_id: config.accountId,
-            sql,
-            params: [bundleId],
-          }),
-          getPatchMap([bundleId]),
-        ]);
-
-        const rows = await resolvePage<D1BundleRow>(singlePage);
-
-        if (rows.length === 0) {
-          return null;
-        }
-
-        return transformRowToBundle(rows[0], patchMap.get(bundleId));
-      },
-
-      async getBundles(options) {
-        const { where = {}, limit, orderBy } = options;
-        const offset =
-          (("offset" in options ? options.offset : undefined) as
-            | number
-            | undefined) ?? 0;
-
-        // 1. Get total count for pagination
-        const totalCount = await getTotalCount(where);
-
-        // 2. Get paginated bundles
-        const bundles = await getPaginatedBundles(
-          where,
-          limit,
-          offset,
-          orderBy,
-        );
-
-        // 3. Calculate pagination metadata
-        const paginationOptions: PaginationOptions = { limit, offset };
-        const pagination = calculatePagination(totalCount, paginationOptions);
-
-        return {
-          data: bundles,
-          pagination,
-        };
-      },
-
-      async getChannels() {
-        const sql = minify(/* sql */ `
-          SELECT channel FROM bundles GROUP BY channel
-        `);
-        const singlePage = await cf.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql,
-          params: [],
-        });
-
-        const rows = await resolvePage<{ channel: string }>(singlePage);
-        return rows.map((row) => row.channel);
-      },
-
-      async commitBundle({ changedSets }) {
-        if (changedSets.length === 0) {
-          return;
-        }
-
-        // Process each operation sequentially
-        for (const op of changedSets) {
-          if (op.operation === "delete") {
-            // Handle delete operation
-            const deleteSql = minify(/* sql */ `
-              DELETE FROM bundles WHERE id = ?
-            `);
-
-            const deletePatchSql = minify(/* sql */ `
-              DELETE FROM bundle_patches WHERE bundle_id = ?
-            `);
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: deletePatchSql,
-              params: [op.data.id],
-            });
-
-            const deleteBasePatchSql = minify(/* sql */ `
-              DELETE FROM bundle_patches WHERE base_bundle_id = ?
-            `);
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: deleteBasePatchSql,
-              params: [op.data.id],
-            });
-
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: deleteSql,
-              params: [op.data.id],
-            });
-          } else if (op.operation === "insert" || op.operation === "update") {
-            // Handle insert and update operations
-            const bundle = op.data;
-            const upsertSql = minify(/* sql */ `
+    const persistBundle = async (bundle: DatabaseBundleRecord) => {
+      const row = bundleRecordToRow(bundle);
+      await runQuery(
+        minify(/* sql */ `
               INSERT OR REPLACE INTO bundles (
                 id,
                 channel,
@@ -581,49 +603,42 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
                 target_cohorts
               )
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
+            `),
+        [
+          row.id,
+          row.channel,
+          row.enabled,
+          row.should_force_update,
+          row.file_hash,
+          row.git_commit_hash,
+          row.message,
+          row.platform,
+          row.target_app_version,
+          row.storage_uri,
+          row.fingerprint_hash,
+          row.metadata,
+          row.manifest_storage_uri,
+          row.manifest_file_hash,
+          row.asset_base_storage_uri,
+          row.rollout_cohort_count,
+          row.target_cohorts,
+        ],
+      );
+    };
 
-            const params = [
-              bundle.id,
-              bundle.channel,
-              bundle.enabled ? 1 : 0,
-              bundle.shouldForceUpdate ? 1 : 0,
-              bundle.fileHash,
-              bundle.gitCommitHash || null,
-              bundle.message || null,
-              bundle.platform,
-              bundle.targetAppVersion,
-              bundle.storageUri,
-              bundle.fingerprintHash,
-              JSON.stringify(
-                stripBundleArtifactMetadata(bundle.metadata) ?? {},
-              ),
-              getManifestStorageUri(bundle),
-              getManifestFileHash(bundle),
-              getAssetBaseStorageUri(bundle),
-              bundle.rolloutCohortCount ?? DEFAULT_ROLLOUT_COHORT_COUNT,
-              bundle.targetCohorts
-                ? JSON.stringify(bundle.targetCohorts)
-                : null,
-            ];
+    const replacePatchesForBundle = async (
+      bundleId: string,
+      patches: readonly DatabaseBundlePatch[],
+    ) => {
+      await runQuery(minify("DELETE FROM bundle_patches WHERE bundle_id = ?"), [
+        bundleId,
+      ]);
 
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: upsertSql,
-              params: params as string[],
-            });
+      if (patches.length === 0) {
+        return;
+      }
 
-            await cf.d1.database.query(config.databaseId, {
-              account_id: config.accountId,
-              sql: minify(`
-                DELETE FROM bundle_patches WHERE bundle_id = ?
-              `),
-              params: [bundle.id],
-            });
-
-            const patchRows = bundleToPatchRows(bundle);
-            if (patchRows.length > 0) {
-              const patchInsertSql = minify(`
+      const patchInsertSql = minify(`
                 INSERT OR REPLACE INTO bundle_patches (
                   id,
                   bundle_id,
@@ -636,24 +651,212 @@ export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
                 VALUES (?, ?, ?, ?, ?, ?, ?)
               `);
 
-              for (const patchRow of patchRows) {
-                await cf.d1.database.query(config.databaseId, {
-                  account_id: config.accountId,
-                  sql: patchInsertSql,
-                  params: [
-                    patchRow.id,
-                    patchRow.bundle_id,
-                    patchRow.base_bundle_id,
-                    patchRow.base_file_hash,
-                    patchRow.patch_file_hash,
-                    patchRow.patch_storage_uri,
-                    String(patchRow.order_index ?? 0),
-                  ],
-                });
-              }
-            }
+      for (const patch of patches) {
+        const patchRow = databaseBundlePatchToRow(patch);
+        await runQuery(patchInsertSql, [
+          patchRow.id,
+          patchRow.bundle_id,
+          patchRow.base_bundle_id,
+          patchRow.base_file_hash,
+          patchRow.patch_file_hash,
+          patchRow.patch_storage_uri,
+          patchRow.order_index ?? 0,
+        ]);
+      }
+    };
+
+    return {
+      bundles: {
+        async getById({ bundleId }) {
+          return getBundleById(bundleId);
+        },
+        async list(options: BundleListQuery) {
+          const rows = await queryBundleRows(
+            options.where ?? {},
+            options.orderBy,
+          );
+          const page = paginateItems({
+            items: rows,
+            limit: options.limit,
+            cursor: options.cursor,
+            page: options.page,
+            getCursor: (row) => row.id,
+          });
+          return {
+            ...page,
+            data: page.data.map(rowToDatabaseBundleRecord),
+          };
+        },
+        async insert({ bundle }) {
+          await persistBundle(bundle);
+        },
+        async update({ bundleId, patch }) {
+          const current = await getBundleById(bundleId);
+          if (!current) {
+            throw new Error("targetBundleId not found");
           }
-        }
+          await persistBundle({ ...current, ...patch, id: bundleId });
+        },
+        async delete({ bundleId }) {
+          await runQuery(minify("DELETE FROM bundles WHERE id = ?"), [
+            bundleId,
+          ]);
+        },
+      },
+      bundlePatches: {
+        async list(options: BundlePatchListQuery) {
+          const rows = await queryRows<D1BundlePatchRow>(
+            minify("SELECT * FROM bundle_patches ORDER BY order_index ASC"),
+          );
+          const patches = rows
+            .map(rowToDatabaseBundlePatch)
+            .filter((patch) => {
+              const where = options.where;
+              return (
+                !where ||
+                ((where.bundleId === undefined ||
+                  patch.bundleId === where.bundleId) &&
+                  (where.baseBundleId === undefined ||
+                    patch.baseBundleId === where.baseBundleId) &&
+                  (where.bundleIdIn === undefined ||
+                    where.bundleIdIn.includes(patch.bundleId)) &&
+                  (where.baseBundleIdIn === undefined ||
+                    where.baseBundleIdIn.includes(patch.baseBundleId)))
+              );
+            })
+            .sort((left, right) => {
+              const field = options.orderBy?.field ?? "orderIndex";
+              const direction = options.orderBy?.direction ?? "asc";
+              const result =
+                field === "orderIndex"
+                  ? left.orderIndex - right.orderIndex
+                  : left[field].localeCompare(right[field]);
+              return direction === "asc" ? result : -result;
+            });
+
+          return paginateItems({
+            items: patches,
+            limit: options.limit,
+            cursor: options.cursor,
+            getCursor: (patch) =>
+              patch.id ??
+              buildBundlePatchId(patch.bundleId, patch.baseBundleId),
+          });
+        },
+        async replaceForBundle({ bundleId, patches }) {
+          await replacePatchesForBundle(bundleId, patches);
+        },
+        async deleteForBundle({ bundleId }) {
+          await runQuery(
+            minify("DELETE FROM bundle_patches WHERE bundle_id = ?"),
+            [bundleId],
+          );
+        },
+        async deleteForBaseBundle({ baseBundleId }) {
+          await runQuery(
+            minify("DELETE FROM bundle_patches WHERE base_bundle_id = ?"),
+            [baseBundleId],
+          );
+        },
+      },
+      bundleEvents: {
+        async list(options: BundleEventListQuery) {
+          const direction = options.orderBy?.direction ?? "desc";
+          const rows = await queryRows<D1BundleEventRow>(
+            minify(`SELECT * FROM bundle_events ORDER BY id ${direction}`),
+          );
+          const events = rows
+            .map(rowToDatabaseBundleEvent)
+            .filter((event) => eventMatchesWhere(event, options.where));
+
+          return paginateItems({
+            items: events,
+            limit: options.limit,
+            cursor: options.cursor,
+            getCursor: (event) => event.id,
+          });
+        },
+        async append({ event }) {
+          await runQuery(
+            minify(`
+              INSERT INTO bundle_events (
+                id,
+                kind,
+                install_id,
+                active_bundle_id,
+                previous_active_bundle_id,
+                crashed_bundle_id,
+                platform,
+                channel,
+                app_version,
+                fingerprint_hash,
+                cohort,
+                payload
+              )
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `),
+            [
+              event.id,
+              event.kind,
+              event.installId,
+              event.activeBundleId,
+              event.previousActiveBundleId ?? null,
+              event.crashedBundleId ?? null,
+              event.platform,
+              event.channel,
+              event.appVersion ?? null,
+              event.fingerprintHash ?? null,
+              event.cohort ?? null,
+              JSON.stringify(event.payload),
+            ],
+          );
+        },
+      },
+      updateInfo: {
+        async get(args) {
+          const channel = args.channel ?? "production";
+          const minBundleId = args.minBundleId ?? NIL_UUID;
+
+          if (args._updateStrategy === "appVersion") {
+            const targetAppVersions = await getTargetAppVersionsForUpdateInfo({
+              platform: args.platform,
+              channel,
+              minBundleId,
+            });
+            const compatibleAppVersions = filterCompatibleAppVersions(
+              targetAppVersions,
+              args.appVersion,
+            );
+            const bundles =
+              compatibleAppVersions.length > 0
+                ? await queryBundlesForUpdateInfo({
+                    enabled: true,
+                    platform: args.platform,
+                    channel,
+                    id: { gte: minBundleId },
+                    targetAppVersionIn: compatibleAppVersions,
+                  })
+                : [];
+
+            return resolveUpdateInfoFromBundles({
+              args: { ...args, channel, minBundleId },
+              bundles,
+            });
+          }
+
+          const bundles = await queryBundlesForUpdateInfo({
+            enabled: true,
+            platform: args.platform,
+            channel,
+            id: { gte: minBundleId },
+            fingerprintHash: args.fingerprintHash,
+          });
+
+          return resolveUpdateInfoFromBundles({
+            args: { ...args, channel, minBundleId },
+            bundles,
+          });
+        },
       },
     };
   },

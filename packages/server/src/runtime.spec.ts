@@ -3,12 +3,24 @@ import { readFile } from "fs/promises";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
-  DatabasePlugin,
+  BundleListQuery,
+  BundlePatchListQuery,
+  CursorPage,
+  DatabaseBundlePatch,
+  DatabaseBundleRecord,
+  DatabasePluginCore,
+  DatabasePluginRuntime,
   RequestEnvContext,
   RuntimeStoragePlugin,
   RuntimeStorageProfile,
+  UpdateInfoRepository,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  markDatabaseRuntimeOpener,
+  toDatabaseBundlePatches,
+  toDatabaseBundleRecord,
+} from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
@@ -50,54 +62,251 @@ const createRuntimeStorage = (
   },
 });
 
+const createPage = <TData>(data: readonly TData[]): CursorPage<TData> => ({
+  data,
+  pagination: {
+    currentPage: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    nextCursor: null,
+    previousCursor: null,
+    total: data.length,
+    totalPages: data.length === 0 ? 0 : 1,
+  },
+});
+
+const matchesBundleQuery = (
+  bundle: DatabaseBundleRecord,
+  query: BundleListQuery,
+): boolean => {
+  const where = query.where;
+  if (!where) return true;
+  if (where.channel !== undefined && bundle.channel !== where.channel) {
+    return false;
+  }
+  if (where.platform !== undefined && bundle.platform !== where.platform) {
+    return false;
+  }
+  if (where.enabled !== undefined && bundle.enabled !== where.enabled) {
+    return false;
+  }
+  if (
+    where.targetAppVersion !== undefined &&
+    bundle.targetAppVersion !== where.targetAppVersion
+  ) {
+    return false;
+  }
+  if (
+    where.targetAppVersionNotNull === true &&
+    bundle.targetAppVersion === null
+  ) {
+    return false;
+  }
+  if (
+    where.fingerprintHash !== undefined &&
+    bundle.fingerprintHash !== where.fingerprintHash
+  ) {
+    return false;
+  }
+  const id = where.id;
+  if (!id) return true;
+  if (id.eq !== undefined && bundle.id !== id.eq) return false;
+  if (id.gt !== undefined && bundle.id.localeCompare(id.gt) <= 0) {
+    return false;
+  }
+  if (id.gte !== undefined && bundle.id.localeCompare(id.gte) < 0) {
+    return false;
+  }
+  if (id.lt !== undefined && bundle.id.localeCompare(id.lt) >= 0) {
+    return false;
+  }
+  if (id.lte !== undefined && bundle.id.localeCompare(id.lte) > 0) {
+    return false;
+  }
+  return !(id.in !== undefined && !id.in.includes(bundle.id));
+};
+
+const matchesPatchQuery = (
+  patch: DatabaseBundlePatch,
+  query: BundlePatchListQuery,
+): boolean => {
+  const where = query.where;
+  if (!where) return true;
+  if (where.bundleId !== undefined && patch.bundleId !== where.bundleId) {
+    return false;
+  }
+  if (
+    where.baseBundleId !== undefined &&
+    patch.baseBundleId !== where.baseBundleId
+  ) {
+    return false;
+  }
+  if (
+    where.bundleIdIn !== undefined &&
+    !where.bundleIdIn.includes(patch.bundleId)
+  ) {
+    return false;
+  }
+  return !(
+    where.baseBundleIdIn !== undefined &&
+    !where.baseBundleIdIn.includes(patch.baseBundleId)
+  );
+};
+
+const seedBundle = (
+  bundles: Map<string, DatabaseBundleRecord>,
+  patches: Map<string, DatabaseBundlePatch>,
+  nextBundle: Bundle,
+) => {
+  bundles.set(nextBundle.id, toDatabaseBundleRecord(nextBundle));
+  for (const patch of toDatabaseBundlePatches(nextBundle)) {
+    patches.set(patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`, patch);
+  }
+};
+
+type CreateTestDatabaseOptions = {
+  readonly bundles?: readonly Bundle[];
+  readonly name?: string;
+  readonly onBeforeInsert?: DatabasePluginCore["bundles"]["insert"];
+  readonly updateInfo?: UpdateInfoRepository["get"];
+};
+
+const createTestDatabase = (
+  options: CreateTestDatabaseOptions = {},
+): {
+  readonly bundles: Map<string, DatabaseBundleRecord>;
+  readonly database: DatabasePluginRuntime;
+  readonly patches: Map<string, DatabaseBundlePatch>;
+} => {
+  const bundles = new Map<string, DatabaseBundleRecord>();
+  const patches = new Map<string, DatabaseBundlePatch>();
+  for (const nextBundle of options.bundles ?? []) {
+    seedBundle(bundles, patches, nextBundle);
+  }
+
+  const database = createDatabasePlugin({
+    name: options.name ?? "testDatabase",
+    connect: (): DatabasePluginCore => ({
+      bundles: {
+        getById: async ({ bundleId }) => bundles.get(bundleId) ?? null,
+        list: async (query) => {
+          const direction = query.orderBy?.direction ?? "desc";
+          const data = Array.from(bundles.values())
+            .filter((nextBundle) => matchesBundleQuery(nextBundle, query))
+            .sort((left, right) => {
+              const result = left.id.localeCompare(right.id);
+              return direction === "asc" ? result : -result;
+            })
+            .slice(0, query.limit);
+          return createPage(data);
+        },
+        insert: async (params) => {
+          await options.onBeforeInsert?.(params);
+          const nextBundle = params.bundle;
+          bundles.set(nextBundle.id, nextBundle);
+        },
+        update: async ({ bundleId, patch }) => {
+          const current = bundles.get(bundleId);
+          if (current) {
+            bundles.set(bundleId, { ...current, ...patch });
+          }
+        },
+        delete: async ({ bundleId }) => {
+          bundles.delete(bundleId);
+        },
+      },
+      bundlePatches: {
+        list: async (query) => {
+          const data = Array.from(patches.values())
+            .filter((patch) => matchesPatchQuery(patch, query))
+            .sort(
+              (left, right) =>
+                left.orderIndex - right.orderIndex ||
+                left.baseBundleId.localeCompare(right.baseBundleId),
+            )
+            .slice(0, query.limit);
+          return createPage(data);
+        },
+        replaceForBundle: async ({ bundleId, patches: nextPatches }) => {
+          for (const [patchId, patch] of patches) {
+            if (patch.bundleId === bundleId) {
+              patches.delete(patchId);
+            }
+          }
+          for (const patch of nextPatches) {
+            patches.set(
+              patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+              patch,
+            );
+          }
+        },
+        deleteForBundle: async ({ bundleId }) => {
+          for (const [patchId, patch] of patches) {
+            if (patch.bundleId === bundleId) {
+              patches.delete(patchId);
+            }
+          }
+        },
+        deleteForBaseBundle: async ({ baseBundleId }) => {
+          for (const [patchId, patch] of patches) {
+            if (patch.baseBundleId === baseBundleId) {
+              patches.delete(patchId);
+            }
+          }
+        },
+      },
+      ...(options.updateInfo
+        ? {
+            updateInfo: {
+              get: options.updateInfo,
+            },
+          }
+        : {}),
+    }),
+  })({});
+
+  return { bundles, database, patches };
+};
+
 const createSchemaManagedDatabase = (
   adapterName: string,
   version: string | undefined,
-): DatabasePlugin<TestContext> & DatabaseAdapterCapabilities => ({
-  name: `${adapterName}Database`,
-  adapterName,
-  createMigrator: () =>
-    ({
-      async getVersion() {
-        return version;
-      },
-      async getNameVariants() {
-        return {};
-      },
-      async next() {
-        return undefined;
-      },
-      async previous() {
-        return undefined;
-      },
-      async up() {
-        throw new Error("not implemented");
-      },
-      async down() {
-        throw new Error("not implemented");
-      },
-      async migrateTo() {
-        throw new Error("not implemented");
-      },
-      async migrateToLatest() {
-        throw new Error("not implemented");
-      },
-      async migrate() {},
-    }) as Migrator,
-  async appendBundle() {},
-  async commitBundle() {},
-  async deleteBundle() {},
-  async getBundleById() {
-    throw new Error("runtime database should not be queried");
-  },
-  async getBundles() {
-    throw new Error("runtime database should not be queried");
-  },
-  async getChannels() {
-    throw new Error("runtime database should not be queried");
-  },
-  async updateBundle() {},
-});
+): DatabasePluginRuntime & DatabaseAdapterCapabilities => {
+  const { database } = createTestDatabase({
+    name: `${adapterName}Database`,
+  });
+  return Object.assign(database, {
+    adapterName,
+    createMigrator: () =>
+      ({
+        async getVersion() {
+          return version;
+        },
+        async getNameVariants() {
+          return {};
+        },
+        async next() {
+          return undefined;
+        },
+        async previous() {
+          return undefined;
+        },
+        async up() {
+          throw new Error("not implemented");
+        },
+        async down() {
+          throw new Error("not implemented");
+        },
+        async migrateTo() {
+          throw new Error("not implemented");
+        },
+        async migrateToLatest() {
+          throw new Error("not implemented");
+        },
+        async migrate() {},
+      }) as Migrator,
+  });
+};
 
 describe("runtime createHotUpdater", () => {
   it("publishes db tooling subpath and removes the runtime subpath", async () => {
@@ -121,31 +330,7 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("exports the root runtime API without database capabilities", () => {
-    const database: DatabasePlugin<TestContext> = {
-      name: "testDatabase",
-      async appendBundle() {},
-      async commitBundle() {},
-      async deleteBundle() {},
-      async getBundleById() {
-        return null;
-      },
-      async getBundles() {
-        return {
-          data: [],
-          pagination: {
-            currentPage: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            total: 0,
-            totalPages: 0,
-          },
-        };
-      },
-      async getChannels() {
-        return [];
-      },
-      async updateBundle() {},
-    };
+    const { database } = createTestDatabase();
 
     const hotUpdater = createHotUpdater({ database });
 
@@ -159,31 +344,7 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("requires storages to implement the runtime profile", () => {
-    const database: DatabasePlugin<TestContext> = {
-      name: "testDatabase",
-      async appendBundle() {},
-      async commitBundle() {},
-      async deleteBundle() {},
-      async getBundleById() {
-        return null;
-      },
-      async getBundles() {
-        return {
-          data: [],
-          pagination: {
-            currentPage: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            total: 0,
-            totalPages: 0,
-          },
-        };
-      },
-      async getChannels() {
-        return [];
-      },
-      async updateBundle() {},
-    };
+    const { database } = createTestDatabase();
     const nodeOnlyStorage = {
       name: "nodeOnlyStorage",
       supportedProtocol: "s3",
@@ -234,10 +395,7 @@ describe("runtime createHotUpdater", () => {
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${NIL_UUID}`,
     );
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>();
-    const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
-    >(async () => ({
+    const getUpdateInfo = vi.fn<UpdateInfoRepository["get"]>(async () => ({
       fileHash: bundle.fileHash,
       id: bundle.id,
       message: bundle.message,
@@ -253,26 +411,19 @@ describe("runtime createHotUpdater", () => {
       };
     });
 
-    const database: DatabasePlugin<TestContext> = {
-      name: "testDatabase",
-      async appendBundle() {},
-      async commitBundle() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
-        return id === bundle.id ? bundle : null;
-      },
-      getBundles,
-      getUpdateInfo,
-      async getChannels() {
-        return ["production"];
-      },
-      async onUnmount() {},
-      async updateBundle() {},
-    };
+    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+      vi.fn(
+        () =>
+          createTestDatabase({
+            bundles: [bundle],
+            updateInfo: getUpdateInfo,
+          }).database,
+      ),
+    );
     const storage = createRuntimeStorage(getDownloadUrl);
 
     const hotUpdater = createHotUpdater({
-      database,
+      database: openRuntime,
       storages: [storage],
       basePath: "/api/check-update",
       routes: {
@@ -297,16 +448,16 @@ describe("runtime createHotUpdater", () => {
       shouldForceUpdate: false,
       status: "UPDATE",
     });
-    expect(getUpdateInfo).toHaveBeenCalledWith(
-      {
-        _updateStrategy: "appVersion",
-        appVersion: "1.0.0",
-        bundleId: NIL_UUID,
-        channel: "production",
-        cohort: undefined,
-        minBundleId: NIL_UUID,
-        platform: "ios",
-      },
+    expect(getUpdateInfo).toHaveBeenCalledWith({
+      _updateStrategy: "appVersion",
+      appVersion: "1.0.0",
+      bundleId: NIL_UUID,
+      channel: "production",
+      cohort: undefined,
+      minBundleId: NIL_UUID,
+      platform: "ios",
+    });
+    expect(openRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
         env: {
           assetHost: "https://assets.example.com",
@@ -314,7 +465,6 @@ describe("runtime createHotUpdater", () => {
         request: expect.any(Request),
       }),
     );
-    expect(getBundles).not.toHaveBeenCalled();
     expect(getDownloadUrl).toHaveBeenCalledWith(
       "s3://test-bucket/bundles/bundle.zip",
       expect.objectContaining({
@@ -331,20 +481,6 @@ describe("runtime createHotUpdater", () => {
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${NIL_UUID}`,
     );
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
-      async () => {
-        return {
-          data: [bundle],
-          pagination: {
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-            total: 1,
-          },
-        };
-      },
-    );
     const getDownloadUrl = vi.fn<
       RuntimeStorageProfile<TestContext>["getDownloadUrl"]
     >(async (_storageUri, context) => {
@@ -353,25 +489,13 @@ describe("runtime createHotUpdater", () => {
       };
     });
 
-    const database: DatabasePlugin<TestContext> = {
-      name: "testDatabase",
-      async appendBundle() {},
-      async commitBundle() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
-        return id === bundle.id ? bundle : null;
-      },
-      getBundles,
-      async getChannels() {
-        return ["production"];
-      },
-      async onUnmount() {},
-      async updateBundle() {},
-    };
+    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+      vi.fn(() => createTestDatabase({ bundles: [bundle] }).database),
+    );
     const storage = createRuntimeStorage(getDownloadUrl);
 
     const hotUpdater = createHotUpdater({
-      database,
+      database: openRuntime,
       storages: [storage],
       basePath: "/api/check-update",
       routes: {
@@ -400,8 +524,7 @@ describe("runtime createHotUpdater", () => {
       shouldForceUpdate: false,
       status: "UPDATE",
     });
-    expect(getBundles).toHaveBeenCalledWith(
-      expect.any(Object),
+    expect(openRuntime).toHaveBeenCalledWith(
       expect.objectContaining({
         env: {
           assetHost: "https://assets.example.com",
@@ -458,18 +581,6 @@ describe("runtime createHotUpdater", () => {
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${currentBundle.id}`,
     );
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
-      async () => ({
-        data: [nextBundle],
-        pagination: {
-          hasNextPage: false,
-          hasPreviousPage: false,
-          currentPage: 1,
-          totalPages: 1,
-          total: 1,
-        },
-      }),
-    );
     const getDownloadUrl = vi.fn<
       RuntimeStorageProfile<TestContext>["getDownloadUrl"]
     >(async (storageUri, context) => {
@@ -525,27 +636,9 @@ describe("runtime createHotUpdater", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const database: DatabasePlugin<TestContext> = {
-      name: "testDatabase",
-      async appendBundle() {},
-      async commitBundle() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
-        if (id === currentBundle.id) {
-          return currentBundle;
-        }
-        if (id === nextBundle.id) {
-          return nextBundle;
-        }
-        return null;
-      },
-      getBundles,
-      async getChannels() {
-        return ["production"];
-      },
-      async onUnmount() {},
-      async updateBundle() {},
-    };
+    const { database } = createTestDatabase({
+      bundles: [currentBundle, nextBundle],
+    });
     const storage = createRuntimeStorage(getDownloadUrl, readText);
 
     try {
@@ -620,42 +713,15 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("does not inject the request into context unless explicitly provided", async () => {
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
-      async () => {
-        return {
-          data: [bundle],
-          pagination: {
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-            total: 1,
-          },
-        };
-      },
+    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+      vi.fn(() => createTestDatabase({ bundles: [bundle] }).database),
     );
-
-    const database: DatabasePlugin<TestContext> = {
-      name: "testDatabase",
-      async appendBundle() {},
-      async commitBundle() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
-        return id === bundle.id ? bundle : null;
-      },
-      getBundles,
-      async getChannels() {
-        return ["production"];
-      },
-      async onUnmount() {},
-      async updateBundle() {},
-    };
     const storage = createRuntimeStorage(async () => {
       return { fileUrl: "https://assets.example.com/bundle.zip" };
     });
 
     const hotUpdater = createHotUpdater({
-      database,
+      database: openRuntime,
       storages: [storage],
       basePath: "/api/check-update",
       routes: {
@@ -677,7 +743,7 @@ describe("runtime createHotUpdater", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(getBundles).toHaveBeenCalledWith(expect.any(Object), {
+    expect(openRuntime).toHaveBeenCalledWith({
       env: {
         assetHost: "https://assets.example.com",
       },
@@ -685,42 +751,15 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("supports stripped base-path requests and ignores extra framework args", async () => {
-    const getBundles = vi.fn<DatabasePlugin<TestContext>["getBundles"]>(
-      async () => {
-        return {
-          data: [bundle],
-          pagination: {
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-            total: 1,
-          },
-        };
-      },
+    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+      vi.fn(() => createTestDatabase({ bundles: [bundle] }).database),
     );
-
-    const database: DatabasePlugin<TestContext> = {
-      name: "testDatabase",
-      async appendBundle() {},
-      async commitBundle() {},
-      async deleteBundle() {},
-      async getBundleById(id) {
-        return id === bundle.id ? bundle : null;
-      },
-      getBundles,
-      async getChannels() {
-        return ["production"];
-      },
-      async onUnmount() {},
-      async updateBundle() {},
-    };
     const storage = createRuntimeStorage(async () => {
       return { fileUrl: "https://assets.example.com/bundle.zip" };
     });
 
     const hotUpdater = createHotUpdater({
-      database,
+      database: openRuntime,
       storages: [storage],
       basePath: "/api/check-update",
       routes: {
@@ -744,34 +783,13 @@ describe("runtime createHotUpdater", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(getBundles).toHaveBeenCalledWith(expect.any(Object), undefined);
+    expect(openRuntime).toHaveBeenCalledWith();
   });
 
   it("keeps the version route mounted when bundle routes are disabled", async () => {
-    const database = createDatabasePlugin({
+    const { database } = createTestDatabase({
       name: "version-enabled-plugin",
-      factory: () => ({
-        async getBundleById() {
-          return null;
-        },
-        async getBundles() {
-          return {
-            data: [],
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: 0,
-            },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        async commitBundle() {},
-      }),
-    })({});
+    });
 
     const hotUpdater = createHotUpdater({
       database,
@@ -793,30 +811,9 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("keeps the version route mounted when update-check routes are disabled", async () => {
-    const database = createDatabasePlugin({
+    const { database } = createTestDatabase({
       name: "version-disabled-plugin",
-      factory: () => ({
-        async getBundleById() {
-          return null;
-        },
-        async getBundles() {
-          return {
-            data: [],
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: 0,
-            },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        async commitBundle() {},
-      }),
-    })({});
+    });
 
     const hotUpdater = createHotUpdater({
       database,
@@ -838,83 +835,34 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("keeps optional maintenance capabilities lazy", () => {
-    const factory = vi.fn(() => ({
-      async getBundleById() {
-        return null;
-      },
-      async getBundles() {
-        return {
-          data: [],
-          pagination: {
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-            total: 0,
-          },
-        };
-      },
-      async getChannels() {
-        return [];
-      },
-      async commitBundle() {},
-    }));
-    const database = createDatabasePlugin({
-      name: "lazyRuntimePlugin",
-      factory,
-    })({});
+    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+      vi.fn(
+        () =>
+          createTestDatabase({
+            name: "lazyRuntimePlugin",
+          }).database,
+      ),
+    );
 
     createHotUpdater({
-      database,
+      database: openRuntime,
       basePath: "/api/check-update",
     });
 
-    expect(factory).not.toHaveBeenCalled();
+    expect(openRuntime).not.toHaveBeenCalled();
   });
 
   it("clears pending plugin changes after a failed mutation commit", async () => {
-    const committedBundles = new Map<string, Bundle>();
-    let commitAttempt = 0;
-
-    const database = createDatabasePlugin({
+    let insertAttempt = 0;
+    const { database } = createTestDatabase({
       name: "failingPlugin",
-      factory: () => ({
-        async getBundleById(bundleId) {
-          return committedBundles.get(bundleId) ?? null;
-        },
-        async getBundles() {
-          return {
-            data: Array.from(committedBundles.values()),
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: committedBundles.size,
-            },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        async commitBundle({ changedSets }) {
-          commitAttempt += 1;
-
-          if (commitAttempt === 1) {
-            throw new Error("commit failed");
-          }
-
-          for (const change of changedSets) {
-            if (change.operation === "delete") {
-              committedBundles.delete(change.data.id);
-              continue;
-            }
-
-            committedBundles.set(change.data.id, change.data);
-          }
-        },
-      }),
-    })({});
+      onBeforeInsert: async () => {
+        insertAttempt += 1;
+        if (insertAttempt === 1) {
+          throw new Error("commit failed");
+        }
+      },
+    });
 
     const hotUpdater = createHotUpdater({
       database,
@@ -944,12 +892,11 @@ describe("runtime createHotUpdater", () => {
     expect(await hotUpdater.getBundleById(failedBundle.id)).toBeNull();
     await expect(
       hotUpdater.getBundleById(succeedingBundle.id),
-    ).resolves.toEqual(succeedingBundle);
+    ).resolves.toMatchObject(succeedingBundle);
   });
 
   it("isolates pending mutation state between overlapping writes", async () => {
     const committedBundleIds: string[][] = [];
-    const onUnmount = vi.fn(async () => undefined);
     let releaseFirstCommit!: () => void;
     let notifyFirstCommitStarted!: () => void;
     const firstCommitStarted = new Promise<void>((resolve) => {
@@ -958,41 +905,20 @@ describe("runtime createHotUpdater", () => {
     const firstCommitGate = new Promise<void>((resolve) => {
       releaseFirstCommit = resolve;
     });
-    let commitCount = 0;
+    let insertCount = 0;
 
-    const database = createDatabasePlugin({
+    const { database } = createTestDatabase({
       name: "isolatedPlugin",
-      factory: () => ({
-        async getBundleById() {
-          return null;
-        },
-        async getBundles() {
-          return {
-            data: [],
-            pagination: {
-              hasNextPage: false,
-              hasPreviousPage: false,
-              currentPage: 1,
-              totalPages: 1,
-              total: 0,
-            },
-          };
-        },
-        async getChannels() {
-          return [];
-        },
-        onUnmount,
-        async commitBundle({ changedSets }) {
-          commitCount += 1;
-          committedBundleIds.push(changedSets.map((change) => change.data.id));
+      onBeforeInsert: async ({ bundle: nextBundle }) => {
+        insertCount += 1;
+        committedBundleIds.push([nextBundle.id]);
 
-          if (commitCount === 1) {
-            notifyFirstCommitStarted();
-            await firstCommitGate;
-          }
-        },
-      }),
-    })({});
+        if (insertCount === 1) {
+          notifyFirstCommitStarted();
+          await firstCommitGate;
+        }
+      },
+    });
 
     const hotUpdater = createHotUpdater({
       database,

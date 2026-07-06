@@ -12,12 +12,15 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabasePluginRuntime,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import {
   createUUIDv7,
   detectCompressionFormat,
+  readDatabaseRuntimeBundle,
+  stageDatabaseRuntimeBundleInsert,
+  stageDatabaseRuntimeBundleUpdate,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
@@ -45,7 +48,7 @@ export interface PromoteBundleInput {
 
 export interface PromoteBundleDependencies {
   config: ConfigResponse;
-  databasePlugin: DatabasePlugin;
+  databasePlugin: DatabasePluginRuntime;
   storagePlugin: NodeStoragePlugin | null;
 }
 
@@ -471,7 +474,7 @@ export async function promoteBundle(
     throw new Error("Target channel is required");
   }
 
-  const bundle = await deps.databasePlugin.getBundleById(bundleId);
+  const bundle = await readDatabaseRuntimeBundle(deps.databasePlugin, bundleId);
   if (!bundle) {
     throw new Error("Bundle not found");
   }
@@ -483,12 +486,18 @@ export async function promoteBundle(
   }
 
   if (action === "move") {
-    await deps.databasePlugin.updateBundle(bundleId, {
-      channel: normalizedTargetChannel,
+    await stageDatabaseRuntimeBundleUpdate(deps.databasePlugin, {
+      bundleId,
+      patch: {
+        channel: normalizedTargetChannel,
+      },
     });
-    await deps.databasePlugin.commitBundle();
+    await deps.databasePlugin.commit();
 
-    const updatedBundle = await deps.databasePlugin.getBundleById(bundleId);
+    const updatedBundle = await readDatabaseRuntimeBundle(
+      deps.databasePlugin,
+      bundleId,
+    );
     if (!updatedBundle) {
       throw new Error("Promoted bundle not found");
     }
@@ -512,8 +521,10 @@ export async function promoteBundle(
   let shouldCleanupUploadedCopy = true;
 
   try {
-    await deps.databasePlugin.appendBundle(copiedBundle);
-    await deps.databasePlugin.commitBundle();
+    await stageDatabaseRuntimeBundleInsert(deps.databasePlugin, {
+      bundle: copiedBundle,
+    });
+    await deps.databasePlugin.commit();
     shouldCleanupUploadedCopy = false;
     return copiedBundle;
   } catch (error) {

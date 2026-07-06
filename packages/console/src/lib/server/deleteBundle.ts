@@ -9,10 +9,14 @@ import {
   getPatchStorageUri,
 } from "@hot-updater/core";
 import type {
-  DatabasePlugin,
+  DatabasePluginRuntime,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { isContentAddressedAssetBaseStorageUri } from "@hot-updater/plugin-core";
+import {
+  isContentAddressedAssetBaseStorageUri,
+  readDatabaseRuntimeBundle,
+  stageDatabaseRuntimeBundleDelete,
+} from "@hot-updater/plugin-core";
 
 import { getLegacyBundleAssetCleanupUris } from "./legacyBundleAssetCleanup";
 
@@ -21,7 +25,7 @@ interface DeleteBundleInput {
 }
 
 interface DeleteBundleDependencies {
-  databasePlugin: DatabasePlugin;
+  databasePlugin: DatabasePluginRuntime;
   storagePlugin: NodeStoragePlugin;
   waitForStorageCleanup?: boolean;
 }
@@ -106,7 +110,7 @@ export async function deleteBundle(
     waitForStorageCleanup = true,
   }: DeleteBundleDependencies,
 ) {
-  const bundle = await databasePlugin.getBundleById(bundleId);
+  const bundle = await readDatabaseRuntimeBundle(databasePlugin, bundleId);
   if (!bundle) {
     throw new Error("Bundle not found");
   }
@@ -123,8 +127,8 @@ export async function deleteBundle(
     resolveStorageUriForDeletion(candidate, storagePlugin);
   }
 
-  await databasePlugin.deleteBundle(bundle);
-  await databasePlugin.commitBundle();
+  await stageDatabaseRuntimeBundleDelete(databasePlugin, bundle.id);
+  await databasePlugin.commit();
 
   const cleanupStorage = async () => {
     const cleanupUris = new Set<string>();

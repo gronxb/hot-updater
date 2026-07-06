@@ -1,8 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
+import { splitDatabaseBundle, toBundleReadModel } from "./databaseBundle";
 import { getRequestUpdateBundleSeeds } from "./requestUpdateBundleState";
-import type { Bundle } from "./types";
+import type {
+  Bundle,
+  DatabaseBundleQueryOptions,
+  DatabasePluginRuntime,
+  GetBundlesArgs,
+  PaginatedResult,
+  UpdateInfo,
+} from "./types";
 
 const DEFAULT_BUNDLE: Omit<
   Bundle,
@@ -85,6 +93,162 @@ let uploadObjectDelayMs = 0;
 let activeUploadObjectCount = 0;
 let maxActiveUploadObjectCount = 0;
 
+const PATCH_KEYS = [
+  "patches",
+  "patchBaseBundleId",
+  "patchBaseFileHash",
+  "patchFileHash",
+  "patchStorageUri",
+] as const;
+
+const hasPatchChange = (bundle: Partial<Bundle>): boolean =>
+  PATCH_KEYS.some((key) => key in bundle);
+
+type LegacyDatabaseFixture = {
+  readonly name: string;
+  readonly getBundleById: (bundleId: string) => Promise<Bundle | null>;
+  readonly getBundles: (
+    options: DatabaseBundleQueryOptions,
+  ) => Promise<PaginatedResult>;
+  readonly getUpdateInfo?: (
+    args: GetBundlesArgs,
+    context?: unknown,
+  ) => Promise<UpdateInfo | null>;
+  readonly getChannels: () => Promise<string[]>;
+  readonly appendBundle: (bundle: Bundle) => Promise<void>;
+  readonly updateBundle: (
+    bundleId: string,
+    patch: Partial<Bundle>,
+  ) => Promise<void>;
+  readonly deleteBundle: (bundle: Bundle) => Promise<void>;
+  readonly commitBundle: () => Promise<void>;
+  readonly onUnmount?: () => Promise<void>;
+};
+
+const stripEmptyPatchReadModel = (bundle: Bundle): Bundle => {
+  const {
+    patches,
+    patchBaseBundleId,
+    patchBaseFileHash,
+    patchFileHash,
+    patchStorageUri,
+    ...record
+  } = bundle;
+
+  if (
+    (patches === undefined || patches === null || patches.length === 0) &&
+    patchBaseBundleId == null &&
+    patchBaseFileHash == null &&
+    patchFileHash == null &&
+    patchStorageUri == null
+  ) {
+    return record;
+  }
+
+  return bundle;
+};
+
+const toLegacyDatabasePlugin = (
+  runtime: DatabasePluginRuntime,
+): LegacyDatabaseFixture => {
+  const getBundleById = async (bundleId: string): Promise<Bundle | null> => {
+    const record = await runtime.bundles.getById({ bundleId });
+    if (!record) {
+      return null;
+    }
+    const patches = await runtime.bundlePatches.list({
+      where: { bundleId },
+      limit: 1000,
+    });
+    return stripEmptyPatchReadModel(toBundleReadModel(record, patches.data));
+  };
+
+  const getBundles: LegacyDatabaseFixture["getBundles"] = async (options) => {
+    const page = await runtime.bundles.list(options);
+    const patchPage = await runtime.bundlePatches.list({
+      where: { bundleIdIn: page.data.map((bundle) => bundle.id) },
+      limit: 1000,
+    });
+    const patchGroups = new Map(
+      page.data.map((bundle) => [
+        bundle.id,
+        patchPage.data.filter((patch) => patch.bundleId === bundle.id),
+      ]),
+    );
+    const data = page.data.map((bundle) =>
+      stripEmptyPatchReadModel(
+        toBundleReadModel(bundle, patchGroups.get(bundle.id) ?? []),
+      ),
+    );
+    const total = page.pagination.total ?? data.length;
+    const pagination: PaginatedResult["pagination"] = {
+      total,
+      hasNextPage: page.pagination.hasNextPage,
+      hasPreviousPage: page.pagination.hasPreviousPage,
+      currentPage: page.pagination.currentPage ?? 1,
+      totalPages:
+        page.pagination.totalPages ??
+        (options.limit > 0 ? Math.ceil(total / options.limit) : 0),
+    };
+    if (page.pagination.nextCursor != null) {
+      pagination.nextCursor = page.pagination.nextCursor;
+    }
+    if (page.pagination.previousCursor != null) {
+      pagination.previousCursor = page.pagination.previousCursor;
+    }
+    return { data, pagination };
+  };
+
+  return {
+    name: runtime.name,
+    getBundleById,
+    getBundles,
+    getUpdateInfo: runtime.updateInfo
+      ? (args) => runtime.updateInfo?.get(args) ?? Promise.resolve(null)
+      : undefined,
+    async getChannels() {
+      const result = await getBundles({ limit: 1000 });
+      return Array.from(
+        new Set(result.data.map((bundle) => bundle.channel)),
+      ).sort();
+    },
+    async appendBundle(bundle) {
+      const splitBundle = splitDatabaseBundle(bundle);
+      await runtime.bundles.insert({ bundle: splitBundle.bundle });
+      if (splitBundle.patches.length > 0) {
+        await runtime.bundlePatches.replaceForBundle({
+          bundleId: bundle.id,
+          patches: splitBundle.patches,
+        });
+      }
+    },
+    async updateBundle(bundleId, patch) {
+      const current = await getBundleById(bundleId);
+      if (!current) {
+        throw new Error("targetBundleId not found");
+      }
+      const nextBundle = { ...current, ...patch };
+      const splitBundle = splitDatabaseBundle(nextBundle);
+      await runtime.bundles.update({
+        bundleId,
+        patch: splitBundle.bundle,
+      });
+      if (hasPatchChange(patch)) {
+        await runtime.bundlePatches.replaceForBundle({
+          bundleId,
+          patches: splitBundle.patches,
+        });
+      }
+    },
+    async deleteBundle(bundle) {
+      await runtime.bundles.delete({ bundleId: bundle.id });
+    },
+    async commitBundle() {
+      await runtime.commit();
+    },
+  };
+};
+
 beforeEach(() => {
   fakeStore = {};
   cloudfrontInvalidations = [];
@@ -101,17 +265,19 @@ afterEach(() => {
 
 describe("blobDatabase plugin", () => {
   const createPlugin = () =>
-    createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })(undefined)();
+    toLegacyDatabasePlugin(
+      createBlobDatabasePlugin({
+        name: "blobDatabase",
+        connect: () => ({
+          apiBasePath: "/api/check-update",
+          listObjects,
+          loadObject,
+          uploadObject,
+          deleteObject,
+          invalidatePaths,
+        }),
+      })(undefined),
+    );
 
   async function listObjects(prefix: string): Promise<string[]> {
     listObjectCalls.push(prefix);
@@ -278,7 +444,7 @@ describe("blobDatabase plugin", () => {
     ]);
   });
 
-  it("seeds request bundles from direct app-version update checks", async () => {
+  it("does not seed request bundles from direct app-version update checks", async () => {
     const latestBundle = createBundleJson(
       "production",
       "ios",
@@ -312,9 +478,7 @@ describe("blobDatabase plugin", () => {
       status: "UPDATE",
     });
 
-    expect(
-      getRequestUpdateBundleSeeds(context).map((bundle) => bundle.id),
-    ).toEqual([latestBundle.id, previousBundle.id]);
+    expect(getRequestUpdateBundleSeeds(context)).toEqual([]);
   });
 
   it("uses fingerprint manifests directly for update checks", async () => {
@@ -1017,17 +1181,19 @@ describe("blobDatabase plugin", () => {
     // Verify hooks.onDatabaseUpdated is called after commit
     const onDatabaseUpdated = vi.fn();
 
-    const pluginWithHook = createBlobDatabasePlugin({
-      name: "blobDatabase",
-      factory: () => ({
-        apiBasePath: "/api/check-update",
-        listObjects,
-        loadObject,
-        uploadObject,
-        deleteObject,
-        invalidatePaths,
-      }),
-    })({}, { onDatabaseUpdated })();
+    const pluginWithHook = toLegacyDatabasePlugin(
+      createBlobDatabasePlugin({
+        name: "blobDatabase",
+        connect: () => ({
+          apiBasePath: "/api/check-update",
+          listObjects,
+          loadObject,
+          uploadObject,
+          deleteObject,
+          invalidatePaths,
+        }),
+      })({}, { onDatabaseUpdated }),
+    );
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);
     await pluginWithHook.commitBundle();

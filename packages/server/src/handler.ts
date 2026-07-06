@@ -7,11 +7,17 @@ import type {
   Platform,
 } from "@hot-updater/core";
 import type {
+  DatabaseBundleEventInput,
   DatabaseBundleQueryOptions,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 import semver from "semver";
 
+import {
+  parseAppReadyBundleEvent,
+  UNSUPPORTED_BUNDLE_EVENTS_MESSAGE,
+} from "./bundleEvents";
+import { UnsupportedBundleEventsError } from "./db/types";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
@@ -41,6 +47,10 @@ export interface HandlerAPI<TContext = unknown> {
   ) => Promise<void>;
   deleteBundleById: (
     bundleId: string,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
+  appendBundleEvent?: (
+    event: DatabaseBundleEventInput,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
@@ -308,6 +318,41 @@ const handleAppVersionUpdateWithCohort: RouteHandler = async (
   });
 };
 
+const handleAppReadyBundleEvent: RouteHandler = async (
+  _params,
+  request,
+  api,
+  context,
+) => {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new HandlerBadRequestError("Invalid app-ready event payload");
+    }
+    throw error;
+  }
+
+  const parsedEvent = parseAppReadyBundleEvent(
+    body,
+    request.headers.get(SDK_VERSION_HEADER),
+  );
+  if (!parsedEvent.ok) {
+    throw new HandlerBadRequestError(parsedEvent.error);
+  }
+  if (!api.appendBundleEvent) {
+    throw new UnsupportedBundleEventsError();
+  }
+
+  await api.appendBundleEvent(parsedEvent.event, context);
+
+  return new Response(JSON.stringify({ success: true }), {
+    status: 201,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
 const handleGetBundle: RouteHandler = async (
   params,
   _request,
@@ -517,6 +562,7 @@ const routes: Record<string, RouteHandler<any>> = {
   version: handleVersion,
   fingerprintUpdateWithCohort: handleFingerprintUpdateWithCohort,
   appVersionUpdateWithCohort: handleAppVersionUpdateWithCohort,
+  appReadyBundleEvent: handleAppReadyBundleEvent,
   getBundle: handleGetBundle,
   getBundles: handleGetBundles,
   createBundles: handleCreateBundles,
@@ -574,6 +620,7 @@ export function createHandler<TContext = unknown>(
       "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
       "appVersionUpdateWithCohort",
     );
+    addRoute(router, "POST", "/bundle-events/app-ready", "appReadyBundleEvent");
   }
 
   if (routeOptions.bundles) {
@@ -625,6 +672,16 @@ export function createHandler<TContext = unknown>(
           status: 400,
           headers: { "Content-Type": "application/json" },
         });
+      }
+
+      if (error instanceof UnsupportedBundleEventsError) {
+        return new Response(
+          JSON.stringify({ error: UNSUPPORTED_BUNDLE_EVENTS_MESSAGE }),
+          {
+            status: 501,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
       }
 
       console.error("Hot Updater handler error:", error);

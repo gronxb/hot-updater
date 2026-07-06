@@ -14,12 +14,16 @@ import {
 } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabasePluginRuntime,
   NodeStoragePlugin,
   Platform,
 } from "@hot-updater/plugin-core";
 import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
 import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
+import {
+  listDatabaseRuntimeBundles,
+  stageDatabaseRuntimeBundleInsert,
+} from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
 import open from "open";
@@ -154,7 +158,7 @@ const getPatchBaseBundles = async ({
 }: {
   bundleId: string;
   channel: string;
-  databasePlugin: DatabasePlugin;
+  databasePlugin: DatabasePluginRuntime;
   maxBaseBundles: number;
   platform: Platform;
   target: {
@@ -167,10 +171,10 @@ const getPatchBaseBundles = async ({
     enabled: true,
     id: { lt: bundleId },
     platform,
-  } satisfies Parameters<DatabasePlugin["getBundles"]>[0]["where"];
+  } satisfies Parameters<DatabasePluginRuntime["bundles"]["list"]>[0]["where"];
 
   if (target.fingerprintHash) {
-    const { data } = await databasePlugin.getBundles({
+    const { data } = await listDatabaseRuntimeBundles(databasePlugin, {
       limit: maxBaseBundles,
       orderBy: {
         direction: "desc",
@@ -196,18 +200,21 @@ const getPatchBaseBundles = async ({
   let cursorAfter: string | undefined;
 
   while (compatibleBundles.length < maxBaseBundles) {
-    const { data, pagination } = await databasePlugin.getBundles({
-      ...(cursorAfter ? { cursor: { after: cursorAfter } } : {}),
-      limit: pageSize,
-      orderBy: {
-        direction: "desc",
-        field: "id",
+    const { data, pagination } = await listDatabaseRuntimeBundles(
+      databasePlugin,
+      {
+        ...(cursorAfter ? { cursor: { after: cursorAfter } } : {}),
+        limit: pageSize,
+        orderBy: {
+          direction: "desc",
+          field: "id",
+        },
+        where: {
+          ...baseWhere,
+          targetAppVersionNotNull: true,
+        },
       },
-      where: {
-        ...baseWhere,
-        targetAppVersionNotNull: true,
-      },
-    });
+    );
 
     for (const bundle of data) {
       if (
@@ -247,7 +254,7 @@ const createAutoPatches = async ({
 }: {
   bundleId: string;
   channel: string;
-  databasePlugin: DatabasePlugin;
+  databasePlugin: DatabasePluginRuntime;
   maxBaseBundles: number;
   platform: Platform;
   storagePlugin: NodeStoragePlugin;
@@ -1012,25 +1019,27 @@ const deployPlatform = async ({
           const appVersion = await getNativeAppVersion(platform);
 
           try {
-            await databasePlugin.appendBundle({
-              shouldForceUpdate: options.forceUpdate,
-              platform,
-              fileHash,
-              gitCommitHash,
-              message: options?.message ?? gitMessage,
-              id: bundleId,
-              enabled: !options.disabled,
-              channel,
-              targetAppVersion: target.appVersion,
-              fingerprintHash: target.fingerprintHash,
-              storageUri: taskRef.storageUri,
-              metadata: appVersion ? { app_version: appVersion } : {},
-              assetBaseStorageUri: taskRef.assetBaseStorageUri,
-              manifestFileHash,
-              manifestStorageUri: taskRef.manifestStorageUri,
-              rolloutCohortCount,
+            await stageDatabaseRuntimeBundleInsert(databasePlugin, {
+              bundle: {
+                shouldForceUpdate: options.forceUpdate,
+                platform,
+                fileHash,
+                gitCommitHash,
+                message: options?.message ?? gitMessage,
+                id: bundleId,
+                enabled: !options.disabled,
+                channel,
+                targetAppVersion: target.appVersion,
+                fingerprintHash: target.fingerprintHash,
+                storageUri: taskRef.storageUri,
+                metadata: appVersion ? { app_version: appVersion } : {},
+                assetBaseStorageUri: taskRef.assetBaseStorageUri,
+                manifestFileHash,
+                manifestStorageUri: taskRef.manifestStorageUri,
+                rolloutCohortCount,
+              },
             });
-            await databasePlugin.commitBundle();
+            await databasePlugin.commit();
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -1142,12 +1151,12 @@ const deployPlatform = async ({
     p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
     return { bundleId: confirmedBundleId, platform };
   } catch (e) {
-    await databasePlugin.onUnmount?.();
+    await databasePlugin.close?.();
     await fs.promises.rm(bundlePath, { force: true });
     console.error(e);
     process.exit(1);
   } finally {
-    await databasePlugin.onUnmount?.();
+    await databasePlugin.close?.();
   }
 };
 

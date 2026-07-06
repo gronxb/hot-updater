@@ -6,15 +6,21 @@ import type {
 } from "@hot-updater/core";
 import type {
   DatabaseBundleQueryOptions,
-  DatabasePlugin,
+  DatabaseBundleEventInput,
+  DatabaseRuntimeOpener as ContextualDatabaseRuntimeOpener,
+  DatabasePluginRuntime,
+  DatabaseRuntimeWithFactory,
   HotUpdaterContext,
+  MaybePromise,
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
+import { databaseRuntimeFactorySymbol } from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "../types";
 
-export type DatabasePluginFactory<TContext = unknown> =
-  (() => DatabasePlugin<TContext>) & Partial<DatabaseAdapterCapabilities>;
+export type DatabaseRuntimeOpener<TContext = unknown> =
+  ContextualDatabaseRuntimeOpener<TContext> &
+    Partial<DatabaseAdapterCapabilities>;
 
 export const sqlProviders = [
   "sqlite",
@@ -83,30 +89,35 @@ export interface DatabaseAdapterCapabilities {
   generateSchema?: SchemaGenerator;
 }
 
-export type DatabaseAdapterWithCapabilities<TContext = unknown> =
-  DatabasePlugin<TContext> & DatabaseAdapterCapabilities;
-
-export type DatabaseAdapter<TContext = unknown> =
-  | DatabaseAdapterWithCapabilities<TContext>
-  | DatabasePlugin<TContext>
-  | DatabasePluginFactory<TContext>;
-
-export function isDatabasePluginFactory<TContext = unknown>(
-  adapter: DatabaseAdapter<TContext>,
-): adapter is DatabasePluginFactory<TContext> {
-  return typeof adapter === "function";
+export class UnsupportedBundleEventsError extends Error {
+  constructor() {
+    super("Bundle events are not supported by this database provider.");
+    this.name = "UnsupportedBundleEventsError";
+  }
 }
 
-export function isDatabasePlugin<TContext = unknown>(
+export type DatabaseAdapter<TContext = unknown> =
+  | DatabasePluginRuntime
+  | DatabaseRuntimeOpener<TContext>;
+
+export function isDatabasePluginRuntime<TContext = unknown>(
   adapter: DatabaseAdapter<TContext>,
-): adapter is DatabasePlugin<TContext> {
+): adapter is DatabasePluginRuntime {
   return (
     typeof adapter === "object" &&
     adapter !== null &&
-    "getBundleById" in adapter &&
-    "getBundles" in adapter &&
-    "getChannels" in adapter
+    "bundles" in adapter &&
+    "bundlePatches" in adapter &&
+    "commit" in adapter
   );
+}
+
+export function openDatabaseRuntime(
+  runtime: DatabasePluginRuntime,
+): MaybePromise<DatabasePluginRuntime> {
+  const runtimeWithFactory = runtime as DatabaseRuntimeWithFactory;
+  const openRuntime = runtimeWithFactory[databaseRuntimeFactorySymbol];
+  return openRuntime ? openRuntime() : runtime;
 }
 
 export function getSQLProvider(
@@ -150,6 +161,10 @@ export interface DatabaseAPI<TContext = unknown> {
   ): Promise<void>;
   deleteBundleById(
     bundleId: string,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<void>;
+  appendBundleEvent?(
+    event: DatabaseBundleEventInput,
     context?: HotUpdaterContext<TContext>,
   ): Promise<void>;
 }

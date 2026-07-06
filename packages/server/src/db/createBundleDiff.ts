@@ -14,10 +14,14 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabasePluginRuntime,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { resolveManifestAssetStorageUri } from "@hot-updater/plugin-core";
+import {
+  readDatabaseRuntimeBundle,
+  resolveManifestAssetStorageUri,
+  stageDatabaseRuntimeBundleUpdate,
+} from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;
@@ -30,7 +34,7 @@ export interface CreateBundleDiffInput {
 }
 
 export interface CreateBundleDiffDependencies {
-  databasePlugin: DatabasePlugin;
+  databasePlugin: DatabasePluginRuntime;
   storagePlugin: NodeStoragePlugin | null;
 }
 
@@ -257,8 +261,14 @@ export async function createBundleDiff(
     throw new Error("Base bundle must be different from the target bundle");
   }
 
-  const baseBundle = await deps.databasePlugin.getBundleById(baseBundleId);
-  const targetBundle = await deps.databasePlugin.getBundleById(bundleId);
+  const baseBundle = await readDatabaseRuntimeBundle(
+    deps.databasePlugin,
+    baseBundleId,
+  );
+  const targetBundle = await readDatabaseRuntimeBundle(
+    deps.databasePlugin,
+    bundleId,
+  );
 
   if (!baseBundle || !targetBundle) {
     throw new Error("Bundle not found");
@@ -347,14 +357,17 @@ export async function createBundleDiff(
       makePrimary: options.makePrimary ?? true,
     });
 
-    await deps.databasePlugin.updateBundle(targetBundle.id, {
-      patches: nextState.patches,
-      patchBaseBundleId: nextState.primaryPatch.baseBundleId,
-      patchBaseFileHash: nextState.primaryPatch.baseFileHash,
-      patchFileHash: nextState.primaryPatch.patchFileHash,
-      patchStorageUri: nextState.primaryPatch.patchStorageUri,
+    await stageDatabaseRuntimeBundleUpdate(deps.databasePlugin, {
+      bundleId: targetBundle.id,
+      patch: {
+        patches: nextState.patches,
+        patchBaseBundleId: nextState.primaryPatch.baseBundleId,
+        patchBaseFileHash: nextState.primaryPatch.baseFileHash,
+        patchFileHash: nextState.primaryPatch.patchFileHash,
+        patchStorageUri: nextState.primaryPatch.patchStorageUri,
+      },
     });
-    await deps.databasePlugin.commitBundle();
+    await deps.databasePlugin.commit();
 
     if (
       previousPatch?.patchStorageUri &&
@@ -367,7 +380,8 @@ export async function createBundleDiff(
         });
     }
 
-    const updatedBundle = await deps.databasePlugin.getBundleById(
+    const updatedBundle = await readDatabaseRuntimeBundle(
+      deps.databasePlugin,
       targetBundle.id,
     );
     if (!updatedBundle) {

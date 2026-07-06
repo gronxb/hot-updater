@@ -3,8 +3,14 @@ import { setTimeout as sleep } from "timers/promises";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabasePluginRuntime,
   Platform,
+} from "@hot-updater/plugin-core";
+import {
+  listDatabaseRuntimeBundles,
+  readDatabaseRuntimeBundle,
+  stageDatabaseRuntimeBundleDelete,
+  stageDatabaseRuntimeBundleUpdate,
 } from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
@@ -133,12 +139,14 @@ const refuseNonInteractiveMutation = (action: string): never => {
   process.exit(1);
 };
 
-const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
+const safeCloseDatabase = async (
+  database: DatabasePluginRuntime,
+): Promise<void> => {
   try {
-    await databasePlugin.onUnmount?.();
+    await database.close?.();
   } catch (err) {
     p.log.warn(
-      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
+      `Database plugin close failed (cleanup-only, original error preserved): ${
         (err as Error)?.message ?? String(err)
       }`,
     );
@@ -152,13 +160,13 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
 
   const config = await loadConfig(null);
 
-  const databasePlugin: DatabasePlugin = await config.database();
+  const database = await config.database();
   try {
     const limit =
       Number.isInteger(options.limit) && options.limit! > 0
         ? options.limit!
         : DEFAULT_LIMIT;
-    const result = await databasePlugin.getBundles({
+    const result = await listDatabaseRuntimeBundles(database, {
       where: {
         channel: options.channel,
         platform: options.platform,
@@ -169,7 +177,7 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
       options.json ? JSON.stringify(result, null, 2) : tabulate(result.data),
     );
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeCloseDatabase(database);
   }
 };
 
@@ -182,9 +190,9 @@ export const handleBundleShow = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin: DatabasePlugin = await config.database();
+  const database = await config.database();
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
+    const bundle = await readDatabaseRuntimeBundle(database, bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -197,7 +205,7 @@ export const handleBundleShow = async (
 
     p.log.message(formatBundleSummary(bundle));
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeCloseDatabase(database);
   }
 };
 
@@ -211,9 +219,9 @@ export const handleBundleSetEnabled = async (
 
   const config = await loadConfig(null);
 
-  const databasePlugin: DatabasePlugin = await config.database();
+  const database = await config.database();
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
+    const bundle = await readDatabaseRuntimeBundle(database, bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -240,10 +248,13 @@ export const handleBundleSetEnabled = async (
       }
     }
 
-    await databasePlugin.updateBundle(bundleId, { enabled: nextEnabled });
-    await databasePlugin.commitBundle();
+    await stageDatabaseRuntimeBundleUpdate(database, {
+      bundleId,
+      patch: { enabled: nextEnabled },
+    });
+    await database.commit();
 
-    const refetched = await databasePlugin.getBundleById(bundleId);
+    const refetched = await readDatabaseRuntimeBundle(database, bundleId);
     if (!refetched) {
       p.log.warn(
         `${bundleId} was deleted between commit and verify; treating as ${action}d.`,
@@ -258,7 +269,7 @@ export const handleBundleSetEnabled = async (
       p.log.info(`  ${ui.id(bundleId)}`);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeCloseDatabase(database);
   }
 };
 
@@ -291,9 +302,9 @@ export const handleBundleUpdate = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin: DatabasePlugin = await config.database();
+  const database = await config.database();
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
+    const bundle = await readDatabaseRuntimeBundle(database, bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -317,10 +328,13 @@ export const handleBundleUpdate = async (
       }
     }
 
-    await databasePlugin.updateBundle(bundleId, patch);
-    await databasePlugin.commitBundle();
+    await stageDatabaseRuntimeBundleUpdate(database, {
+      bundleId,
+      patch,
+    });
+    await database.commit();
 
-    const refetched = await databasePlugin.getBundleById(bundleId);
+    const refetched = await readDatabaseRuntimeBundle(database, bundleId);
     if (!refetched) {
       p.log.error(`Verification failed: ${bundleId} is missing after update.`);
       process.exit(1);
@@ -334,7 +348,7 @@ export const handleBundleUpdate = async (
     p.log.success("Updated bundle.");
     p.log.info(`  ${ui.id(bundleId)}`);
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeCloseDatabase(database);
   }
 };
 
@@ -345,9 +359,9 @@ export const handleBundleDelete = async (
   printBanner();
 
   const config = await loadConfig(null);
-  const databasePlugin: DatabasePlugin = await config.database();
+  const database = await config.database();
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
+    const bundle = await readDatabaseRuntimeBundle(database, bundleId);
     if (!bundle) {
       p.log.info(`No bundle with id ${bundleId}. No changes.`);
       return;
@@ -369,10 +383,10 @@ export const handleBundleDelete = async (
       }
     }
 
-    await databasePlugin.deleteBundle(bundle);
-    await databasePlugin.commitBundle();
+    await stageDatabaseRuntimeBundleDelete(database, bundle.id);
+    await database.commit();
 
-    const deleted = await waitForDeletedBundle(databasePlugin, bundleId);
+    const deleted = await waitForDeletedBundle(database, bundleId);
     if (!deleted) {
       p.log.error(`Verification failed: ${bundleId} still exists.`);
       process.exit(1);
@@ -381,16 +395,16 @@ export const handleBundleDelete = async (
     p.log.success("Deleted bundle record.");
     p.log.info(`  ${ui.id(bundleId)}`);
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeCloseDatabase(database);
   }
 };
 
 async function waitForDeletedBundle(
-  databasePlugin: DatabasePlugin,
+  database: DatabasePluginRuntime,
   bundleId: string,
 ) {
   for (let attempt = 0; attempt < DELETE_VERIFY_ATTEMPTS; attempt += 1) {
-    const refetched = await databasePlugin.getBundleById(bundleId);
+    const refetched = await readDatabaseRuntimeBundle(database, bundleId);
     if (!refetched) {
       return true;
     }

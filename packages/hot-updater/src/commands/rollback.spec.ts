@@ -1,18 +1,108 @@
-import type { Bundle, Platform } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  CursorPage,
+  DatabaseBundlePatch,
+  DatabaseBundleRecord,
+  DatabasePluginRuntime,
+  Platform,
+} from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
-  const mockDatabasePlugin = {
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
-    name: "mock-database",
-    onUnmount: vi.fn(),
-    updateBundle: vi.fn(),
+  type LegacyBundlePage = {
+    readonly data: readonly Bundle[];
+    readonly pagination?: Partial<CursorPage<Bundle>["pagination"]>;
   };
+  type LegacyGetBundles = (
+    options: Parameters<DatabasePluginRuntime["bundles"]["list"]>[0],
+  ) => Promise<LegacyBundlePage>;
+  const createPage = <TData>(
+    data: readonly TData[] = [],
+    pagination: Partial<CursorPage<TData>["pagination"]> = {},
+  ): CursorPage<TData> => ({
+    data,
+    pagination: {
+      currentPage: 1,
+      hasNextPage: false,
+      hasPreviousPage: false,
+      nextCursor: null,
+      previousCursor: null,
+      total: data.length,
+      totalPages: data.length === 0 ? 0 : 1,
+      ...pagination,
+    },
+  });
+  const toRecord = (bundle: Bundle): DatabaseBundleRecord => {
+    const {
+      patches: _patches,
+      patchBaseBundleId: _patchBaseBundleId,
+      patchBaseFileHash: _patchBaseFileHash,
+      patchFileHash: _patchFileHash,
+      patchStorageUri: _patchStorageUri,
+      ...record
+    } = bundle;
+    return record;
+  };
+  const mockDatabasePlugin = {
+    appendBundle: vi.fn<(bundle: Bundle) => Promise<void>>(),
+    commitBundle: vi.fn<() => Promise<void>>(),
+    deleteBundle: vi.fn<(bundle: { readonly id: string }) => Promise<void>>(),
+    getBundleById: vi.fn<(bundleId: string) => Promise<Bundle | null>>(),
+    getBundles: vi.fn<LegacyGetBundles>(),
+    getChannels: vi.fn<() => Promise<string[]>>(),
+    name: "mock-database",
+    onUnmount: vi.fn<() => Promise<void>>(),
+    updateBundle:
+      vi.fn<(bundleId: string, patch: Partial<Bundle>) => Promise<void>>(),
+    bundles: {
+      getById: vi.fn<DatabasePluginRuntime["bundles"]["getById"]>(),
+      list: vi.fn<DatabasePluginRuntime["bundles"]["list"]>(),
+      update: vi.fn<DatabasePluginRuntime["bundles"]["update"]>(),
+      delete: vi.fn<DatabasePluginRuntime["bundles"]["delete"]>(),
+      insert: vi.fn<DatabasePluginRuntime["bundles"]["insert"]>(),
+    },
+    bundlePatches: {
+      list: vi.fn<DatabasePluginRuntime["bundlePatches"]["list"]>(),
+      replaceForBundle:
+        vi.fn<DatabasePluginRuntime["bundlePatches"]["replaceForBundle"]>(),
+      deleteForBundle:
+        vi.fn<DatabasePluginRuntime["bundlePatches"]["deleteForBundle"]>(),
+      deleteForBaseBundle:
+        vi.fn<DatabasePluginRuntime["bundlePatches"]["deleteForBaseBundle"]>(),
+    },
+    commit: vi.fn<DatabasePluginRuntime["commit"]>(),
+    close: vi.fn<NonNullable<DatabasePluginRuntime["close"]>>(),
+  };
+  mockDatabasePlugin.bundles.getById.mockImplementation(
+    async ({ bundleId }) => {
+      const bundle = await mockDatabasePlugin.getBundleById(bundleId);
+      return bundle ? toRecord(bundle) : null;
+    },
+  );
+  mockDatabasePlugin.bundles.list.mockImplementation(async (options) => {
+    const result = await mockDatabasePlugin.getBundles(options);
+    return createPage(result.data.map(toRecord), result.pagination);
+  });
+  mockDatabasePlugin.bundles.update.mockImplementation(
+    async ({ bundleId, patch }) => {
+      await mockDatabasePlugin.updateBundle(bundleId, patch);
+    },
+  );
+  mockDatabasePlugin.bundles.delete.mockImplementation(async ({ bundleId }) => {
+    await mockDatabasePlugin.deleteBundle({ id: bundleId });
+  });
+  mockDatabasePlugin.bundles.insert.mockImplementation(async ({ bundle }) => {
+    await mockDatabasePlugin.appendBundle(bundle as Bundle);
+  });
+  mockDatabasePlugin.bundlePatches.list.mockResolvedValue(
+    createPage<DatabaseBundlePatch>(),
+  );
+  mockDatabasePlugin.commit.mockImplementation(async () => {
+    await mockDatabasePlugin.commitBundle();
+  });
+  mockDatabasePlugin.close.mockImplementation(async () => {
+    await mockDatabasePlugin.onUnmount();
+  });
   const mockCli = {
     loadConfig: vi.fn(),
     p: {
@@ -79,6 +169,17 @@ const setupConsoleSpies = () => {
   vi.spyOn(console, "log").mockImplementation(() => {});
 };
 
+const resetDatabaseMocks = () => {
+  mockDatabasePlugin.appendBundle.mockReset();
+  mockDatabasePlugin.commitBundle.mockReset();
+  mockDatabasePlugin.deleteBundle.mockReset();
+  mockDatabasePlugin.getBundleById.mockReset();
+  mockDatabasePlugin.getBundles.mockReset();
+  mockDatabasePlugin.getChannels.mockReset();
+  mockDatabasePlugin.onUnmount.mockReset();
+  mockDatabasePlugin.updateBundle.mockReset();
+};
+
 const stubGetBundlesByPlatform = (
   byPlatform: Partial<Record<Platform, Bundle[]>>,
 ) => {
@@ -95,6 +196,7 @@ const stubGetBundlesByPlatform = (
 describe("handleRollback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetDatabaseMocks();
     stubLoadedConfig();
     setupConsoleSpies();
   });
@@ -120,12 +222,14 @@ describe("handleRollback", () => {
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { yes: true });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-2", {
-      enabled: false,
-    });
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("and-2", {
-      enabled: false,
-    });
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "ios-2",
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "and-2",
+      expect.objectContaining({ enabled: false }),
+    );
     expect(mockDatabasePlugin.commitBundle).toHaveBeenCalledTimes(1);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       expect.stringContaining("ios-2"),
@@ -158,9 +262,10 @@ describe("handleRollback", () => {
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { platform: "ios", yes: true });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-2", {
-      enabled: false,
-    });
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "ios-2",
+      expect.objectContaining({ enabled: false }),
+    );
     expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalledWith(
       expect.stringMatching(/^and-/),
       expect.anything(),
@@ -182,12 +287,14 @@ describe("handleRollback", () => {
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { yes: true });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-1", {
-      enabled: false,
-    });
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("and-2", {
-      enabled: false,
-    });
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "ios-1",
+      expect.objectContaining({ enabled: false }),
+    );
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "and-2",
+      expect.objectContaining({ enabled: false }),
+    );
     expect(mockCli.p.log.message).toHaveBeenCalledWith(
       expect.stringContaining("binary-shipped JS"),
     );
@@ -205,9 +312,10 @@ describe("handleRollback", () => {
       platform: "ios",
       yes: true,
     });
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-1", {
-      enabled: false,
-    });
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "ios-1",
+      expect.objectContaining({ enabled: false }),
+    );
     expect(mockCli.p.log.success).toHaveBeenCalled();
   });
 
@@ -226,9 +334,10 @@ describe("handleRollback", () => {
     await handleRollback("dev", { yes: true });
 
     expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledTimes(1);
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-2", {
-      enabled: false,
-    });
+    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith(
+      "ios-2",
+      expect.objectContaining({ enabled: false }),
+    );
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("No enabled bundle on dev/android"),
     );

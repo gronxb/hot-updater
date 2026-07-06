@@ -144,7 +144,7 @@ const createMemoryHotUpdater = () => {
 
   const database = createBlobDatabasePlugin({
     name: "lambdaMemoryDatabase",
-    factory: () => ({
+    connect: () => ({
       apiBasePath: BASE_PATH,
       listObjects: async (prefix: string) =>
         keys.filter((key) => key.startsWith(prefix)),

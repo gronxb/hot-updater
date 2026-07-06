@@ -139,7 +139,7 @@ const createBenchHotUpdater = () => {
 
   const database = createBlobDatabasePlugin({
     name: "lambdaBenchDatabase",
-    factory: () => ({
+    connect: () => ({
       apiBasePath: BASE_PATH,
       listObjects: async (prefix: string) =>
         keys.filter((key) => key.startsWith(prefix)),
