@@ -7,6 +7,7 @@ final class CohortService {
     // Keep the legacy key so existing custom cohorts continue to work.
     private let cohortKey = "HotUpdater_CustomCohort"
     private let fallbackIdentifierKey = "HotUpdater_FallbackCohortIdentifier"
+    private let installIdKey = "HotUpdater_InstallId"
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
@@ -59,5 +60,15 @@ final class CohortService {
 
         userDefaults.set(initialCohort, forKey: cohortKey)
         return initialCohort
+    }
+
+    func getInstallId() -> String {
+        if let installId = userDefaults.string(forKey: installIdKey), !installId.isEmpty {
+            return installId
+        }
+
+        let installId = UUID().uuidString
+        userDefaults.set(installId, forKey: installIdKey)
+        return installId
     }
 }

@@ -39,6 +39,8 @@ const emptyPage = <TData>(): CursorPage<TData> => ({
   pagination: emptyPagination,
 });
 
+const PATCH_OVERLAY_LOOKUP_LIMIT = 1000;
+
 const resolveBundleEntry = (
   entry: BundleEntry | undefined,
 ): DatabaseBundleRecord | null | undefined => {
@@ -55,6 +57,45 @@ const compareStrings = (
 ) => {
   const result = left.localeCompare(right);
   return direction === "asc" ? result : -result;
+};
+
+const createOverlayPagination = <TData>(
+  page: CursorPage<TData>,
+  data: readonly TData[],
+  options: {
+    readonly limit: number;
+    readonly total: number;
+    readonly fullDataLength: number;
+    readonly getCursor: (item: TData) => string | null | undefined;
+    readonly preferPageCursors?: boolean;
+  },
+): CursorPage<TData>["pagination"] => {
+  const total = Math.max(0, options.total);
+  const nextCursor = data.at(-1) ? options.getCursor(data.at(-1)!) : null;
+  const previousCursor = data[0] ? options.getCursor(data[0]) : null;
+  const currentPage = Math.max(1, page.pagination.currentPage ?? 1);
+  const startOffset = options.limit > 0 ? (currentPage - 1) * options.limit : 0;
+  const hasNextPage = options.preferPageCursors
+    ? page.pagination.hasNextPage || options.fullDataLength > options.limit
+    : startOffset + data.length < total;
+  const pageNextCursor = options.preferPageCursors
+    ? page.pagination.nextCursor
+    : null;
+  const pagePreviousCursor = options.preferPageCursors
+    ? page.pagination.previousCursor
+    : null;
+  return {
+    ...page.pagination,
+    total,
+    totalPages:
+      options.limit > 0 && total > 0 ? Math.ceil(total / options.limit) : 0,
+    hasNextPage,
+    hasPreviousPage: page.pagination.hasPreviousPage,
+    nextCursor: hasNextPage ? (pageNextCursor ?? nextCursor ?? null) : null,
+    previousCursor: page.pagination.hasPreviousPage
+      ? (pagePreviousCursor ?? previousCursor ?? null)
+      : null,
+  };
 };
 
 const bundleMatches = (
@@ -187,6 +228,9 @@ const materializePatch = (patch: DatabaseBundlePatch): DatabaseBundlePatch => {
   };
 };
 
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
 const createEvent = (event: DatabaseBundleEventInput): DatabaseBundleEvent => ({
   ...event,
   id: createUUIDv7(),
@@ -194,6 +238,10 @@ const createEvent = (event: DatabaseBundleEventInput): DatabaseBundleEvent => ({
 
 class RuntimeStage {
   private readonly bundleEntries = new Map<string, BundleEntry>();
+  private readonly bundleUpdates = new Map<
+    string,
+    Partial<DatabaseBundleRecord>
+  >();
   private readonly bundlePatchReplacements = new Map<
     string,
     readonly DatabaseBundlePatch[]
@@ -210,6 +258,7 @@ class RuntimeStage {
           kind: "present",
           bundle: mutation.bundle,
         });
+        this.bundleUpdates.delete(mutation.bundle.id);
         this.mutations.push(mutation);
         return;
       case "bundle.update": {
@@ -222,12 +271,18 @@ class RuntimeStage {
               ...mutation.patch,
             },
           });
+        } else if (entry?.kind !== "deleted") {
+          this.bundleUpdates.set(mutation.bundleId, {
+            ...this.bundleUpdates.get(mutation.bundleId),
+            ...mutation.patch,
+          });
         }
         this.mutations.push(mutation);
         return;
       }
       case "bundle.delete":
         this.bundleEntries.set(mutation.bundleId, { kind: "deleted" });
+        this.bundleUpdates.delete(mutation.bundleId);
         this.mutations.push(mutation);
         return;
       case "bundlePatch.replaceForBundle":
@@ -257,84 +312,219 @@ class RuntimeStage {
     }
   }
 
-  peekBundle(bundleId: string): DatabaseBundleRecord | null | undefined {
-    return resolveBundleEntry(this.bundleEntries.get(bundleId));
+  private applyBundleUpdate(
+    bundle: DatabaseBundleRecord,
+  ): DatabaseBundleRecord {
+    const patch = this.bundleUpdates.get(bundle.id);
+    return patch ? { ...bundle, ...patch } : bundle;
   }
 
-  overlayBundles(
+  async resolveBundle(
+    core: DatabasePluginCore,
+    bundleId: string,
+  ): Promise<DatabaseBundleRecord | null | undefined> {
+    const entry = this.bundleEntries.get(bundleId);
+    const staged = resolveBundleEntry(entry);
+    if (staged !== undefined) {
+      return staged;
+    }
+    if (!this.bundleUpdates.has(bundleId)) {
+      return undefined;
+    }
+    const current = await core.bundles.getById({ bundleId });
+    return current ? this.applyBundleUpdate(current) : null;
+  }
+
+  async overlayBundles(
+    core: DatabasePluginCore,
     page: CursorPage<DatabaseBundleRecord>,
     query: BundleListQuery,
-  ): CursorPage<DatabaseBundleRecord> {
-    const byId = new Map(page.data.map((bundle) => [bundle.id, bundle]));
+  ): Promise<CursorPage<DatabaseBundleRecord>> {
+    const hasBundleMutations =
+      this.bundleEntries.size > 0 || this.bundleUpdates.size > 0;
+    const byId = new Map<string, DatabaseBundleRecord>();
+    const baseById = new Map(page.data.map((bundle) => [bundle.id, bundle]));
+    let total = page.pagination.total ?? page.data.length;
+
+    for (const bundle of page.data) {
+      const overlaidBundle = this.applyBundleUpdate(bundle);
+      if (bundleMatches(overlaidBundle, query)) {
+        byId.set(bundle.id, overlaidBundle);
+      } else {
+        byId.delete(bundle.id);
+        total -= 1;
+      }
+    }
+
+    for (const [bundleId, patch] of this.bundleUpdates) {
+      if (baseById.has(bundleId) || this.bundleEntries.has(bundleId)) {
+        continue;
+      }
+      const current = await core.bundles.getById({ bundleId });
+      if (!current) {
+        continue;
+      }
+      const overlaidBundle = { ...current, ...patch };
+      const beforeMatches = bundleMatches(current, query);
+      const afterMatches = bundleMatches(overlaidBundle, query);
+      if (!beforeMatches && afterMatches) {
+        total += 1;
+      } else if (beforeMatches && !afterMatches) {
+        total -= 1;
+      }
+      if (!beforeMatches && afterMatches) {
+        byId.set(bundleId, overlaidBundle);
+      }
+    }
+
     for (const [bundleId, entry] of this.bundleEntries) {
+      const baseBundle = baseById.get(bundleId);
+      const beforeMatches = baseBundle
+        ? bundleMatches(baseBundle, query)
+        : await core.bundles
+            .getById({ bundleId })
+            .then((bundle) => (bundle ? bundleMatches(bundle, query) : false));
       if (entry.kind === "deleted") {
         byId.delete(bundleId);
+        if (beforeMatches) {
+          total -= 1;
+        }
         continue;
       }
       if (bundleMatches(entry.bundle, query)) {
         byId.set(bundleId, entry.bundle);
+        if (!beforeMatches) {
+          total += 1;
+        }
       } else {
         byId.delete(bundleId);
+        if (beforeMatches) {
+          total -= 1;
+        }
       }
     }
     const direction = query.orderBy?.direction ?? "desc";
+    const fullData = Array.from(byId.values()).sort((left, right) =>
+      compareStrings(left.id, right.id, direction),
+    );
+    const data = fullData.slice(0, query.limit);
     return {
       ...page,
-      data: Array.from(byId.values())
-        .sort((left, right) => compareStrings(left.id, right.id, direction))
-        .slice(0, query.limit),
+      data,
+      pagination: createOverlayPagination(page, data, {
+        limit: query.limit,
+        total,
+        fullDataLength: fullData.length,
+        getCursor: (bundle) => bundle.id,
+        preferPageCursors: !hasBundleMutations,
+      }),
     };
   }
 
-  overlayPatches(
+  private async listCurrentPatches(
+    core: DatabasePluginCore,
+    where: NonNullable<BundlePatchListQuery["where"]>,
+  ): Promise<DatabaseBundlePatch[]> {
+    const patches: DatabaseBundlePatch[] = [];
+    let after: string | undefined;
+    for (;;) {
+      const page = await core.bundlePatches.list({
+        where,
+        limit: PATCH_OVERLAY_LOOKUP_LIMIT,
+        cursor: after ? { after } : undefined,
+      });
+      patches.push(...page.data.map(materializePatch));
+      if (!page.pagination.hasNextPage || !page.pagination.nextCursor) {
+        return patches;
+      }
+      after = page.pagination.nextCursor;
+    }
+  }
+
+  async overlayPatches(
+    core: DatabasePluginCore,
     page: CursorPage<DatabaseBundlePatch>,
     query: BundlePatchListQuery,
-  ): CursorPage<DatabaseBundlePatch> {
+  ): Promise<CursorPage<DatabaseBundlePatch>> {
     const byId = new Map(
-      page.data.map((patch) => [
-        patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
-        materializePatch(patch),
-      ]),
+      page.data.map((patch) => [getPatchId(patch), materializePatch(patch)]),
     );
+    const hasPatchMutations =
+      this.deletedPatchBundleIds.size > 0 ||
+      this.deletedPatchBaseBundleIds.size > 0 ||
+      this.bundlePatchReplacements.size > 0;
+    const currentMatchingPatchIds = new Set<string>();
+    const removedPatchIds = new Set<string>();
+    let total = page.pagination.total ?? page.data.length;
+    const removePatch = (patch: DatabaseBundlePatch) => {
+      const patchId = getPatchId(patch);
+      byId.delete(patchId);
+      if (patchMatches(patch, query)) {
+        currentMatchingPatchIds.add(patchId);
+      }
+      if (
+        currentMatchingPatchIds.has(patchId) &&
+        !removedPatchIds.has(patchId)
+      ) {
+        removedPatchIds.add(patchId);
+        total -= 1;
+      }
+    };
+    const addPatch = (patch: DatabaseBundlePatch) => {
+      const patchId = getPatchId(patch);
+      byId.set(patchId, patch);
+      if (
+        patchMatches(patch, query) &&
+        (removedPatchIds.has(patchId) || !currentMatchingPatchIds.has(patchId))
+      ) {
+        total += 1;
+      }
+      removedPatchIds.delete(patchId);
+    };
     for (const bundleId of this.deletedPatchBundleIds) {
-      for (const [patchId, patch] of byId) {
-        if (patch.bundleId === bundleId) {
-          byId.delete(patchId);
-        }
+      for (const patch of await this.listCurrentPatches(core, { bundleId })) {
+        removePatch(patch);
       }
     }
     for (const baseBundleId of this.deletedPatchBaseBundleIds) {
-      for (const [patchId, patch] of byId) {
-        if (patch.baseBundleId === baseBundleId) {
-          byId.delete(patchId);
-        }
+      for (const patch of await this.listCurrentPatches(core, {
+        baseBundleId,
+      })) {
+        removePatch(patch);
       }
     }
     for (const [bundleId, patches] of this.bundlePatchReplacements) {
-      for (const patchId of Array.from(byId.keys())) {
-        if (patchId.startsWith(`${bundleId}:`)) {
-          byId.delete(patchId);
-        }
+      for (const patch of await this.listCurrentPatches(core, { bundleId })) {
+        removePatch(patch);
       }
       for (const patch of patches) {
-        byId.set(`${patch.bundleId}:${patch.baseBundleId}`, patch);
+        addPatch(patch);
       }
     }
+    const data = Array.from(byId.values())
+      .filter((patch) => patchMatches(patch, query))
+      .slice()
+      .sort((left, right) => {
+        const direction = query.orderBy?.direction ?? "asc";
+        const field = query.orderBy?.field ?? "orderIndex";
+        if (field === "orderIndex") {
+          const result = left.orderIndex - right.orderIndex;
+          return direction === "asc" ? result : -result;
+        }
+        return compareStrings(left[field], right[field], direction);
+      });
+    const pageData = data.slice(0, query.limit);
     return {
       ...page,
-      data: Array.from(byId.values())
-        .filter((patch) => patchMatches(patch, query))
-        .slice()
-        .sort((left, right) => {
-          const direction = query.orderBy?.direction ?? "asc";
-          const field = query.orderBy?.field ?? "orderIndex";
-          if (field === "orderIndex") {
-            const result = left.orderIndex - right.orderIndex;
-            return direction === "asc" ? result : -result;
-          }
-          return compareStrings(left[field], right[field], direction);
-        })
-        .slice(0, query.limit),
+      data: pageData,
+      pagination: createOverlayPagination(page, pageData, {
+        limit: query.limit,
+        total,
+        fullDataLength: data.length,
+        getCursor: (patch) =>
+          patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+        preferPageCursors: !hasPatchMutations,
+      }),
     };
   }
 
@@ -343,17 +533,31 @@ class RuntimeStage {
     query: BundleEventListQuery,
   ): CursorPage<DatabaseBundleEvent> {
     const byId = new Map(page.data.map((event) => [event.id, event]));
+    const baseEventIds = new Set(byId.keys());
+    let total = page.pagination.total ?? page.data.length;
     for (const event of this.eventAppends) {
       if (eventMatches(event, query)) {
         byId.set(event.id, event);
+        if (!baseEventIds.has(event.id)) {
+          total += 1;
+        }
       }
     }
     const direction = query.orderBy?.direction ?? "desc";
+    const data = Array.from(byId.values()).sort((left, right) =>
+      compareStrings(left.id, right.id, direction),
+    );
+    const pageData = data.slice(0, query.limit);
     return {
       ...page,
-      data: Array.from(byId.values())
-        .sort((left, right) => compareStrings(left.id, right.id, direction))
-        .slice(0, query.limit),
+      data: pageData,
+      pagination: createOverlayPagination(page, pageData, {
+        limit: query.limit,
+        total,
+        fullDataLength: data.length,
+        getCursor: (event) => event.id,
+        preferPageCursors: this.eventAppends.length === 0,
+      }),
     };
   }
 
@@ -363,6 +567,7 @@ class RuntimeStage {
 
   clear(): void {
     this.bundleEntries.clear();
+    this.bundleUpdates.clear();
     this.bundlePatchReplacements.clear();
     this.deletedPatchBundleIds.clear();
     this.deletedPatchBaseBundleIds.clear();
@@ -511,7 +716,11 @@ export const createDatabaseRuntime = (
       await applyMutations(transaction?.core ?? core, mutations);
       await transaction?.commit();
     } catch (error) {
-      await transaction?.rollback();
+      try {
+        await transaction?.rollback();
+      } finally {
+        stage.clear();
+      }
       throw error;
     }
 
@@ -523,17 +732,17 @@ export const createDatabaseRuntime = (
     name: options.name,
     bundles: {
       getById: async ({ bundleId }) => {
-        const staged = stage.peekBundle(bundleId);
+        const core = await options.getCore();
+        const staged = await stage.resolveBundle(core, bundleId);
         if (staged !== undefined) {
           return staged;
         }
-        const core = await options.getCore();
         return core.bundles.getById({ bundleId });
       },
       list: async (params) => {
         const core = await options.getCore();
         const page = await core.bundles.list(params);
-        return stage.overlayBundles(page, params);
+        return stage.overlayBundles(core, page, params);
       },
       insert: async ({ bundle }) => {
         stage.stage({ kind: "bundle.insert", bundle });
@@ -549,7 +758,7 @@ export const createDatabaseRuntime = (
       list: async (params) => {
         const core = await options.getCore();
         const page = await core.bundlePatches.list(params);
-        return stage.overlayPatches(page, params);
+        return stage.overlayPatches(core, page, params);
       },
       replaceForBundle: async ({ bundleId, patches }) => {
         stage.stage({

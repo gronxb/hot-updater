@@ -26,6 +26,7 @@ import {
 } from "../db/bundleRows";
 import { createMongoMigrator } from "../db/fixedMigrator";
 import type { DatabaseAdapterCapabilities } from "../db/types";
+import { createCallbackDatabaseTransaction } from "./transaction";
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
@@ -90,224 +91,253 @@ const createMongoPlugin = createDatabasePlugin({
     const db = client.db();
     const bundles = db.collection<BundleRow>("bundles");
     const patches = db.collection<BundlePatchRow>("bundle_patches");
-    const fetchPatchMap = async (bundleIds: readonly string[]) => {
-      const patchMap = new Map<string, BundlePatchRow[]>();
-      if (bundleIds.length === 0) return patchMap;
-      const rows = await patches
-        .find({ bundle_id: { $in: [...bundleIds] } })
-        .sort({ order_index: 1 })
-        .toArray();
-      for (const row of rows) {
-        const current = patchMap.get(row.bundle_id) ?? [];
-        current.push(row);
-        patchMap.set(row.bundle_id, current);
-      }
-      return patchMap;
-    };
-    const mapRowsToBundles = async (
-      rows: readonly BundleRow[],
-    ): Promise<Bundle[]> => {
-      const patchMap = await fetchPatchMap(rows.map((row) => row.id));
-      return rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? []));
-    };
-    const replaceBundleRecord = async (
-      bundle: DatabaseBundleRecord,
-      session: ClientSession | undefined,
-    ) => {
-      const row = bundleRecordToRow(bundle);
-      await bundles.updateOne(
-        { id: bundle.id },
-        { $set: row },
-        { session, upsert: true },
-      );
-    };
-    const replacePatchesForBundle = async (
-      bundleId: string,
-      newPatches: readonly DatabaseBundlePatch[],
-      session: ClientSession | undefined,
-    ) => {
-      await patches.deleteMany({ bundle_id: bundleId }, { session });
-      const patchRows = newPatches.map(databaseBundlePatchToRow);
-      if (patchRows.length > 0)
-        await patches.insertMany(patchRows, { session });
-    };
-    const deleteByBundleId = async (
-      collection: Collection<BundlePatchRow>,
-      field: "bundle_id" | "base_bundle_id",
-      bundleId: string,
-      session: ClientSession | undefined,
-    ) => {
-      await collection.deleteMany({ [field]: bundleId }, { session });
-    };
-    return {
-      bundles: {
-        async getById({ bundleId }) {
-          const row = await bundles.findOne({ id: bundleId });
-          return row ? rowToDatabaseBundleRecord(row) : null;
-        },
-        async list(options) {
-          const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
-          const rows = await bundles
-            .find(mongoWhere(options.where))
-            .sort({ id: orderBy.direction === "asc" ? 1 : -1 })
-            .toArray();
-          const page = paginateCursorItems({
-            items: rows,
-            limit: options.limit,
-            cursor: options.cursor,
-            offset: options.page
-              ? (Math.max(1, options.page) - 1) * options.limit
-              : undefined,
-            getCursor: (row) => row.id,
-          });
-          return {
-            ...page,
-            data: page.data.map(rowToDatabaseBundleRecord),
-          };
-        },
-        async insert({ bundle }) {
-          await replaceBundleRecord(bundle, undefined);
-        },
-        async update({ bundleId, patch }) {
-          const row = await bundles.findOne({ id: bundleId });
-          if (!row) throw new Error("targetBundleId not found");
-          await replaceBundleRecord(
-            {
+    const createCore = (session?: ClientSession): DatabasePluginCore => {
+      const sessionArgs = () =>
+        session ? ([{ session }] as const) : ([] as const);
+      const withSession = <TOptions extends object>(options: TOptions) =>
+        session ? { ...options, session } : options;
+
+      const fetchPatchMap = async (bundleIds: readonly string[]) => {
+        const patchMap = new Map<string, BundlePatchRow[]>();
+        if (bundleIds.length === 0) return patchMap;
+        const rows = await patches
+          .find({ bundle_id: { $in: [...bundleIds] } }, ...sessionArgs())
+          .sort({ order_index: 1 })
+          .toArray();
+        for (const row of rows) {
+          const current = patchMap.get(row.bundle_id) ?? [];
+          current.push(row);
+          patchMap.set(row.bundle_id, current);
+        }
+        return patchMap;
+      };
+      const mapRowsToBundles = async (
+        rows: readonly BundleRow[],
+      ): Promise<Bundle[]> => {
+        const patchMap = await fetchPatchMap(rows.map((row) => row.id));
+        return rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? []));
+      };
+      const replaceBundleRecord = async (bundle: DatabaseBundleRecord) => {
+        const row = bundleRecordToRow(bundle);
+        await bundles.updateOne(
+          { id: bundle.id },
+          { $set: row },
+          withSession({ upsert: true }),
+        );
+      };
+      const replacePatchesForBundle = async (
+        bundleId: string,
+        newPatches: readonly DatabaseBundlePatch[],
+      ) => {
+        await patches.deleteMany({ bundle_id: bundleId }, ...sessionArgs());
+        const patchRows = newPatches.map(databaseBundlePatchToRow);
+        if (patchRows.length > 0)
+          await patches.insertMany(patchRows, ...sessionArgs());
+      };
+      const deleteByBundleId = async (
+        collection: Collection<BundlePatchRow>,
+        field: "bundle_id" | "base_bundle_id",
+        bundleId: string,
+      ) => {
+        await collection.deleteMany({ [field]: bundleId }, ...sessionArgs());
+      };
+      return {
+        bundles: {
+          async getById({ bundleId }) {
+            const row = await bundles.findOne(
+              { id: bundleId },
+              ...sessionArgs(),
+            );
+            return row ? rowToDatabaseBundleRecord(row) : null;
+          },
+          async list(options) {
+            const orderBy = options.orderBy ?? {
+              field: "id",
+              direction: "desc",
+            };
+            const rows = await bundles
+              .find(mongoWhere(options.where), ...sessionArgs())
+              .sort({ id: orderBy.direction === "asc" ? 1 : -1 })
+              .toArray();
+            const page = paginateCursorItems({
+              items: rows,
+              limit: options.limit,
+              cursor: options.cursor,
+              offset: options.page
+                ? (Math.max(1, options.page) - 1) * options.limit
+                : undefined,
+              getCursor: (row) => row.id,
+            });
+            return {
+              ...page,
+              data: page.data.map(rowToDatabaseBundleRecord),
+            };
+          },
+          async insert({ bundle }) {
+            await replaceBundleRecord(bundle);
+          },
+          async update({ bundleId, patch }) {
+            const row = await bundles.findOne(
+              { id: bundleId },
+              ...sessionArgs(),
+            );
+            if (!row) throw new Error("targetBundleId not found");
+            await replaceBundleRecord({
               ...rowToDatabaseBundleRecord(row),
               ...patch,
               id: bundleId,
-            },
-            undefined,
-          );
-        },
-        async delete({ bundleId }) {
-          await bundles.deleteMany({ id: bundleId });
-        },
-      },
-      bundlePatches: {
-        async list(options) {
-          const rows = await patches
-            .find({})
-            .sort({ order_index: 1 })
-            .toArray();
-          const data = rows
-            .map(rowToDatabaseBundlePatch)
-            .filter((patch) => {
-              const where = options.where;
-              return (
-                !where ||
-                ((where.bundleId === undefined ||
-                  patch.bundleId === where.bundleId) &&
-                  (where.baseBundleId === undefined ||
-                    patch.baseBundleId === where.baseBundleId) &&
-                  (where.bundleIdIn === undefined ||
-                    where.bundleIdIn.includes(patch.bundleId)) &&
-                  (where.baseBundleIdIn === undefined ||
-                    where.baseBundleIdIn.includes(patch.baseBundleId)))
-              );
-            })
-            .sort((left, right) => {
-              const direction = options.orderBy?.direction ?? "asc";
-              const field = options.orderBy?.field ?? "orderIndex";
-              const result =
-                field === "orderIndex"
-                  ? left.orderIndex - right.orderIndex
-                  : left[field].localeCompare(right[field]);
-              return direction === "asc" ? result : -result;
             });
-          return paginateCursorItems({
-            items: data,
-            limit: options.limit,
-            cursor: options.cursor,
-            getCursor: (patch) =>
-              patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
-          });
+          },
+          async delete({ bundleId }) {
+            await bundles.deleteMany({ id: bundleId }, ...sessionArgs());
+          },
         },
-        async replaceForBundle({ bundleId, patches }) {
-          await replacePatchesForBundle(bundleId, patches, undefined);
+        bundlePatches: {
+          async list(options) {
+            const rows = await patches
+              .find({}, ...sessionArgs())
+              .sort({ order_index: 1 })
+              .toArray();
+            const data = rows
+              .map(rowToDatabaseBundlePatch)
+              .filter((patch) => {
+                const where = options.where;
+                return (
+                  !where ||
+                  ((where.bundleId === undefined ||
+                    patch.bundleId === where.bundleId) &&
+                    (where.baseBundleId === undefined ||
+                      patch.baseBundleId === where.baseBundleId) &&
+                    (where.bundleIdIn === undefined ||
+                      where.bundleIdIn.includes(patch.bundleId)) &&
+                    (where.baseBundleIdIn === undefined ||
+                      where.baseBundleIdIn.includes(patch.baseBundleId)))
+                );
+              })
+              .sort((left, right) => {
+                const direction = options.orderBy?.direction ?? "asc";
+                const field = options.orderBy?.field ?? "orderIndex";
+                const result =
+                  field === "orderIndex"
+                    ? left.orderIndex - right.orderIndex
+                    : left[field].localeCompare(right[field]);
+                return direction === "asc" ? result : -result;
+              });
+            return paginateCursorItems({
+              items: data,
+              limit: options.limit,
+              cursor: options.cursor,
+              getCursor: (patch) =>
+                patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+            });
+          },
+          async replaceForBundle({ bundleId, patches }) {
+            await replacePatchesForBundle(bundleId, patches);
+          },
+          async deleteForBundle({ bundleId }) {
+            await deleteByBundleId(patches, "bundle_id", bundleId);
+          },
+          async deleteForBaseBundle({ baseBundleId }) {
+            await deleteByBundleId(patches, "base_bundle_id", baseBundleId);
+          },
         },
-        async deleteForBundle({ bundleId }) {
-          await deleteByBundleId(patches, "bundle_id", bundleId, undefined);
-        },
-        async deleteForBaseBundle({ baseBundleId }) {
-          await deleteByBundleId(
-            patches,
-            "base_bundle_id",
-            baseBundleId,
-            undefined,
-          );
-        },
-      },
-      updateInfo: {
-        async get(args) {
-          if (args._updateStrategy === "appVersion") {
+        updateInfo: {
+          async get(args) {
+            if (args._updateStrategy === "appVersion") {
+              const channel = args.channel ?? "production";
+              const minBundleId = args.minBundleId ?? NIL_UUID;
+              const rows = await bundles
+                .find(
+                  {
+                    enabled: true,
+                    platform: args.platform,
+                    channel,
+                    id: { $gte: minBundleId },
+                    target_app_version: { $exists: true, $nin: [null, ""] },
+                  },
+                  ...sessionArgs(),
+                )
+                .project<{ target_app_version?: string | null }>({
+                  target_app_version: 1,
+                })
+                .toArray();
+
+              const targetAppVersions = Array.from(
+                new Set(
+                  rows
+                    .map((row) => row.target_app_version)
+                    .filter(
+                      (value): value is string =>
+                        typeof value === "string" && value.length > 0,
+                    ),
+                ),
+              );
+              const compatibleAppVersions = filterCompatibleAppVersions(
+                targetAppVersions,
+                args.appVersion,
+              );
+              const updateRows =
+                compatibleAppVersions.length > 0
+                  ? await bundles
+                      .find(
+                        {
+                          enabled: true,
+                          platform: args.platform,
+                          channel,
+                          id: { $gte: minBundleId },
+                          target_app_version: { $in: compatibleAppVersions },
+                        },
+                        ...sessionArgs(),
+                      )
+                      .sort({ id: -1 })
+                      .toArray()
+                  : [];
+
+              return resolveUpdateInfoFromBundles({
+                args: { ...args, channel, minBundleId },
+                bundles: await mapRowsToBundles(updateRows),
+              });
+            }
+
             const channel = args.channel ?? "production";
             const minBundleId = args.minBundleId ?? NIL_UUID;
             const rows = await bundles
-              .find({
-                enabled: true,
-                platform: args.platform,
-                channel,
-                id: { $gte: minBundleId },
-                target_app_version: { $exists: true, $nin: [null, ""] },
-              })
-              .project<{ target_app_version?: string | null }>({
-                target_app_version: 1,
-              })
+              .find(
+                {
+                  enabled: true,
+                  platform: args.platform,
+                  channel,
+                  id: { $gte: minBundleId },
+                  fingerprint_hash: args.fingerprintHash,
+                },
+                ...sessionArgs(),
+              )
+              .sort({ id: -1 })
               .toArray();
-
-            const targetAppVersions = Array.from(
-              new Set(
-                rows
-                  .map((row) => row.target_app_version)
-                  .filter(
-                    (value): value is string =>
-                      typeof value === "string" && value.length > 0,
-                  ),
-              ),
-            );
-            const compatibleAppVersions = filterCompatibleAppVersions(
-              targetAppVersions,
-              args.appVersion,
-            );
-            const updateRows =
-              compatibleAppVersions.length > 0
-                ? await bundles
-                    .find({
-                      enabled: true,
-                      platform: args.platform,
-                      channel,
-                      id: { $gte: minBundleId },
-                      target_app_version: { $in: compatibleAppVersions },
-                    })
-                    .sort({ id: -1 })
-                    .toArray()
-                : [];
 
             return resolveUpdateInfoFromBundles({
               args: { ...args, channel, minBundleId },
-              bundles: await mapRowsToBundles(updateRows),
+              bundles: await mapRowsToBundles(rows),
             });
-          }
-
-          const channel = args.channel ?? "production";
-          const minBundleId = args.minBundleId ?? NIL_UUID;
-          const rows = await bundles
-            .find({
-              enabled: true,
-              platform: args.platform,
-              channel,
-              id: { $gte: minBundleId },
-              fingerprint_hash: args.fingerprintHash,
-            })
-            .sort({ id: -1 })
-            .toArray();
-
-          return resolveUpdateInfoFromBundles({
-            args: { ...args, channel, minBundleId },
-            bundles: await mapRowsToBundles(rows),
-          });
+          },
         },
+      };
+    };
+
+    const core = createCore();
+    if (typeof client.startSession !== "function") {
+      return core;
+    }
+
+    return {
+      ...core,
+      beginTransaction: async () => {
+        const session = client.startSession();
+        return createCallbackDatabaseTransaction<ClientSession>({
+          createCore,
+          onSettled: () => session.endSession(),
+          run: (operation) => session.withTransaction(() => operation(session)),
+        });
       },
     };
   },

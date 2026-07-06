@@ -37,6 +37,9 @@ type RuntimeOpener<TContext> = (
   context?: HotUpdaterContext<TContext>,
 ) => MaybePromise<DatabasePluginRuntime>;
 
+const isRuntimeScopeContext = (value: unknown): value is object =>
+  (typeof value === "object" && value !== null) || typeof value === "function";
+
 const bundleMatchesQueryWhere = (
   bundle: Bundle,
   where: DatabaseBundleQueryWhere | undefined,
@@ -147,10 +150,9 @@ export function createRuntimeDatabaseCore<TContext = unknown>(
   generateSchema: () => never;
 } {
   const requestRuntimes = new WeakMap<object, Promise<DatabasePluginRuntime>>();
-  let defaultRuntime: Promise<DatabasePluginRuntime> | null = null;
 
   const getRuntime = (context?: HotUpdaterContext<TContext>) => {
-    if (context && typeof context === "object") {
+    if (isRuntimeScopeContext(context)) {
       const cached = requestRuntimes.get(context);
       if (cached) return cached;
       const runtime = Promise.resolve(openRuntime(context));
@@ -158,8 +160,7 @@ export function createRuntimeDatabaseCore<TContext = unknown>(
       return runtime;
     }
 
-    defaultRuntime ??= Promise.resolve(openRuntime());
-    return defaultRuntime;
+    return Promise.resolve(openRuntime(context));
   };
 
   const isEligibleForUpdate = (

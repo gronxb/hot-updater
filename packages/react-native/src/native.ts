@@ -70,6 +70,7 @@ class HotUpdaterSessionState {
   private readonly defaultChannel: string;
   private currentChannel: string;
   private cachedCohort: string | undefined;
+  private cachedInstallId: string | undefined;
   private readonly inflightUpdates = new Map<string, Promise<boolean>>();
   private lastInstalledBundleId: string | null = null;
   private readonly activeBundleSnapshotCache = new Map<
@@ -157,6 +158,14 @@ class HotUpdaterSessionState {
 
   cacheCohort(cohort: string) {
     this.cachedCohort = cohort;
+  }
+
+  getCachedInstallId(): string | undefined {
+    return this.cachedInstallId;
+  }
+
+  cacheInstallId(installId: string) {
+    this.cachedInstallId = installId;
   }
 
   private clearActiveBundleSnapshotCache() {
@@ -827,4 +836,25 @@ export const getCohort = (): string => {
   const cohort = normalizeAndValidateCohort(HotUpdaterNative.getCohort());
   sessionState.cacheCohort(cohort);
   return cohort;
+};
+
+export const getInstallId = (): string => {
+  const cachedInstallId = sessionState.getCachedInstallId();
+  if (cachedInstallId !== undefined) {
+    return cachedInstallId;
+  }
+
+  const readInstallId = HotUpdaterNative.getInstallId;
+  if (typeof readInstallId !== "function") {
+    throw new Error("Native module is missing 'getInstallId()'");
+  }
+
+  const installId = readInstallId();
+  if (typeof installId !== "string" || installId.trim() === "") {
+    throw new Error("Native module returned an empty install id");
+  }
+
+  const normalized = installId.trim();
+  sessionState.cacheInstallId(normalized);
+  return normalized;
 };

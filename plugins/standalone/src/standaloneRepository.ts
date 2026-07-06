@@ -272,26 +272,22 @@ export const standaloneRepository = createDatabasePlugin({
         return cachedBundle;
       }
 
-      try {
-        const { path, headers: routeHeaders } = routes.retrieve(bundleId);
-        const response = await fetch(buildUrl(path), {
-          method: "GET",
-          headers: getHeaders(routeHeaders),
-        });
+      const { path, headers: routeHeaders } = routes.retrieve(bundleId);
+      const response = await fetch(buildUrl(path), {
+        method: "GET",
+        headers: getHeaders(routeHeaders),
+      });
 
-        if (!response.ok) {
+      if (!response.ok) {
+        if (response.status === 404) {
           return null;
         }
-
-        const bundle = (await response.json()) as Bundle;
-        bundleCache.set(bundle.id, bundle);
-        return bundle;
-      } catch (error) {
-        if (error instanceof Error) {
-          return null;
-        }
-        throw error;
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
       }
+
+      const bundle = (await response.json()) as Bundle;
+      bundleCache.set(bundle.id, bundle);
+      return bundle;
     };
 
     const requestBundlePageFromApi = async (
@@ -549,10 +545,9 @@ export const standaloneRepository = createDatabasePlugin({
         try {
           await response.json();
         } catch (error) {
-          if (error instanceof SyntaxError) {
-            return;
+          if (!(error instanceof SyntaxError)) {
+            throw error;
           }
-          throw error;
         }
       }
       bundleCache.delete(bundleId);

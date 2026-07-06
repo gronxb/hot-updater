@@ -11,6 +11,7 @@ import {
   getCohort,
   getDefaultChannel,
   getFingerprintHash,
+  getInstallId,
   isChannelSwitched,
   type NotifyAppReadyResult,
   notifyAppReady as nativeNotifyAppReady,
@@ -302,6 +303,7 @@ const handleNotifyAppReady = async (options: {
       const channelSwitched = isChannelSwitched();
       const channel = channelSwitched ? getChannel() : defaultChannel;
       const cohort = getCohort();
+      const installId = getInstallId();
       await options.resolver
         .notifyAppReady({
           activeBundleId: getBundleId(),
@@ -317,7 +319,7 @@ const handleNotifyAppReady = async (options: {
           appVersion: getAppVersion(),
           fingerprintHash: getFingerprintHash(),
           cohort,
-          installId: cohort,
+          installId,
           sdkVersion: HOT_UPDATER_SDK_VERSION,
           isChannelSwitched: channelSwitched,
           requestHeaders: options.requestHeaders,

@@ -172,6 +172,10 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
         return cohortService.getCohort()
     }
 
+    public func getInstallId() -> String {
+        return cohortService.getInstallId()
+    }
+
     // MARK: - Bundle URL Management
     
     /**

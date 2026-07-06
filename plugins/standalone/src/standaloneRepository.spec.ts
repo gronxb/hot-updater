@@ -618,10 +618,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(bundle).toEqual(testBundles[0]);
   });
 
-  it("getBundleById: returns null when retrieval fails", async () => {
+  it("getBundleById: returns null when the API returns 404", async () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles/:bundleId", () => {
-        return HttpResponse.error();
+        return new HttpResponse(null, {
+          status: 404,
+          statusText: "Not Found",
+        });
       }),
     );
 
@@ -629,17 +632,33 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(bundle).toBeNull();
   });
 
-  it("getBundleById: returns null on network error", async () => {
+  it("getBundleById: throws on network error", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new Error("Network failure"));
+
+    try {
+      await expect(
+        repo.getBundleById("00000000-0000-0000-0000-000000000001"),
+      ).rejects.toThrow("Network failure");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("getBundleById: throws when the API returns a server error", async () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles/:bundleId", () => {
-        throw new Error("Network failure");
+        return new HttpResponse(null, {
+          status: 500,
+          statusText: "Internal Server Error",
+        });
       }),
     );
 
-    const bundle = await repo.getBundleById(
-      "00000000-0000-0000-0000-000000000001",
-    );
-    expect(bundle).toBeNull();
+    await expect(
+      repo.getBundleById("00000000-0000-0000-0000-000000000001"),
+    ).rejects.toThrow("API Error: 500 Internal Server Error");
   });
 
   it("getBundles: throws error when API returns error", async () => {
@@ -701,10 +720,11 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
   it("updateBundle: throws error if target bundle does not exist", async () => {
     server.use(
-      http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json(
-          createPaginatedResult([], { limit: 20, offset: 0 }),
-        );
+      http.get("http://localhost/hot-updater/api/bundles/:bundleId", () => {
+        return new HttpResponse(null, {
+          status: 404,
+          statusText: "Not Found",
+        });
       }),
     );
 
@@ -806,6 +826,40 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
 
     expect(deleteCalled).toBe(true);
     expect(onDatabaseUpdated).toHaveBeenCalled();
+  });
+
+  it("commitBundle: DELETE operation invalidates cache when JSON success body is empty", async () => {
+    let getCalls = 0;
+    server.use(
+      http.get(
+        "http://localhost/hot-updater/api/bundles/:bundleId",
+        ({ params }) => {
+          getCalls += 1;
+          if (params.bundleId === testBundles[0].id && getCalls === 1) {
+            return HttpResponse.json(testBundles[0]);
+          }
+          return new HttpResponse(null, {
+            status: 404,
+            statusText: "Not Found",
+          });
+        },
+      ),
+      http.delete("http://localhost/hot-updater/api/bundles/:bundleId", () => {
+        return new HttpResponse("", {
+          headers: { "Content-Type": "application/json" },
+          status: 200,
+        });
+      }),
+    );
+
+    await expect(repo.getBundleById(testBundles[0].id)).resolves.toEqual(
+      testBundles[0],
+    );
+    await repo.deleteBundle(testBundles[0]);
+    await repo.commitBundle();
+
+    await expect(repo.getBundleById(testBundles[0].id)).resolves.toBeNull();
+    expect(getCalls).toBe(2);
   });
 
   it("commitBundle: DELETE operation throws error when API returns 404", async () => {

@@ -96,8 +96,12 @@ export class UnsupportedBundleEventsError extends Error {
   }
 }
 
-export type DatabaseAdapter<TContext = unknown> =
+export type MaybeDatabaseRuntime =
   | DatabasePluginRuntime
+  | PromiseLike<DatabasePluginRuntime>;
+
+export type DatabaseAdapter<TContext = unknown> =
+  | MaybeDatabaseRuntime
   | DatabaseRuntimeOpener<TContext>;
 
 export function isDatabasePluginRuntime<TContext = unknown>(

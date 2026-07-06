@@ -343,6 +343,21 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
   });
 
+  it("accepts promise-like database runtimes at the root entry", async () => {
+    const { database } = createTestDatabase({ bundles: [bundle] });
+    const thenableDatabase: PromiseLike<DatabasePluginRuntime> = {
+      then: (resolve, reject) =>
+        Promise.resolve(database).then(resolve, reject),
+    };
+
+    const hotUpdater = createHotUpdater({ database: thenableDatabase });
+
+    await expect(hotUpdater.getBundleById(bundle.id)).resolves.toMatchObject({
+      id: bundle.id,
+    });
+    expect(hotUpdater.adapterName).toBe("database");
+  });
+
   it("requires storages to implement the runtime profile", () => {
     const { database } = createTestDatabase();
     const nodeOnlyStorage = {
@@ -750,6 +765,55 @@ describe("runtime createHotUpdater", () => {
     });
   });
 
+  it("opens one runtime per contextless handler request", async () => {
+    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+      vi.fn(
+        () =>
+          createTestDatabase({
+            updateInfo: async () => ({
+              id: bundle.id,
+              message: null,
+              shouldForceUpdate: false,
+              status: "UPDATE",
+              storageUri: null,
+              fileHash: bundle.fileHash,
+            }),
+          }).database,
+      ),
+    );
+    const storage = createRuntimeStorage(async () => {
+      return { fileUrl: "https://assets.example.com/bundle.zip" };
+    });
+    const hotUpdater = createHotUpdater({
+      database: openRuntime,
+      storages: [storage],
+      basePath: "/api/check-update",
+      routes: {
+        updateCheck: true,
+        bundles: false,
+      },
+    });
+    const createRequest = () =>
+      new Request(
+        "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
+          `${NIL_UUID}/${NIL_UUID}`,
+      );
+
+    await expect(hotUpdater.handler(createRequest())).resolves.toMatchObject({
+      status: 200,
+    });
+    await expect(hotUpdater.handler(createRequest())).resolves.toMatchObject({
+      status: 200,
+    });
+
+    expect(openRuntime).toHaveBeenCalledTimes(2);
+    expect(openRuntime).toHaveBeenNthCalledWith(1, {});
+    expect(openRuntime).toHaveBeenNthCalledWith(2, {});
+    expect(vi.mocked(openRuntime).mock.calls[0]?.[0]).not.toBe(
+      vi.mocked(openRuntime).mock.calls[1]?.[0],
+    );
+  });
+
   it("supports stripped base-path requests and ignores extra framework args", async () => {
     const openRuntime = markDatabaseRuntimeOpener<TestContext>(
       vi.fn(() => createTestDatabase({ bundles: [bundle] }).database),
@@ -783,7 +847,7 @@ describe("runtime createHotUpdater", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(openRuntime).toHaveBeenCalledWith();
+    expect(openRuntime).toHaveBeenCalledWith({});
   });
 
   it("keeps the version route mounted when bundle routes are disabled", async () => {

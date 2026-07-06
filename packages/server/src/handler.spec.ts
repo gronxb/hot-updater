@@ -199,7 +199,7 @@ describe("createHandler", () => {
         minBundleId: "default",
         platform: "android",
       },
-      undefined,
+      {},
     );
   });
 
@@ -286,7 +286,7 @@ describe("createHandler", () => {
         page: undefined,
         where: {},
       },
-      undefined,
+      {},
     );
   });
 
@@ -451,7 +451,7 @@ describe("createHandler", () => {
         channels: ["production"],
       },
     });
-    expect(api.getChannels).toHaveBeenCalledWith(undefined);
+    expect(api.getChannels).toHaveBeenCalledWith({});
     expect(updateResponse.status).toBe(404);
   });
 
@@ -493,10 +493,11 @@ describe("createHandler", () => {
           channel: "production",
           platform: "ios",
         },
+        cursor: undefined,
         limit: 2,
         page: undefined,
       },
-      undefined,
+      {},
     );
   });
 
@@ -534,10 +535,11 @@ describe("createHandler", () => {
           targetAppVersionNotNull: true,
           fingerprintHash: null,
         },
+        cursor: undefined,
         limit: 5,
         page: undefined,
       },
-      undefined,
+      {},
     );
   });
 
@@ -576,7 +578,7 @@ describe("createHandler", () => {
           before: undefined,
         },
       },
-      undefined,
+      {},
     );
   });
 
@@ -615,7 +617,7 @@ describe("createHandler", () => {
           before: undefined,
         },
       },
-      undefined,
+      {},
     );
   });
 
@@ -672,7 +674,7 @@ describe("createHandler", () => {
           before: undefined,
         },
       },
-      undefined,
+      {},
     );
   });
 

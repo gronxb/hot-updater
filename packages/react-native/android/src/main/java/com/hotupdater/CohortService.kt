@@ -15,6 +15,7 @@ class CohortService(
         // Keep the legacy key so existing custom cohorts continue to work.
         private const val COHORT_KEY = "custom_cohort"
         private const val FALLBACK_IDENTIFIER_KEY = "fallback_identifier"
+        private const val INSTALL_ID_KEY = "install_id"
     }
 
     private fun hashString(value: String): Int {
@@ -70,5 +71,16 @@ class CohortService(
 
         prefs.edit().putString(COHORT_KEY, initialCohort).commit()
         return initialCohort
+    }
+
+    fun getInstallId(): String {
+        val installId = prefs.getString(INSTALL_ID_KEY, null)
+        if (!installId.isNullOrEmpty()) {
+            return installId
+        }
+
+        val generated = UUID.randomUUID().toString()
+        prefs.edit().putString(INSTALL_ID_KEY, generated).commit()
+        return generated
     }
 }

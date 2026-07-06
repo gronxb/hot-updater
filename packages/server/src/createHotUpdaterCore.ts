@@ -16,6 +16,7 @@ import {
   type DatabaseAdapterCapabilities,
   type DatabaseAPI,
   isDatabasePluginRuntime,
+  type MaybeDatabaseRuntime,
   openDatabaseRuntime,
   type StoragePluginFactory,
 } from "./db/types";
@@ -59,6 +60,11 @@ type PluginDatabaseCore<TContext> = {
   readonly generateSchema: () => never;
 };
 
+const isPromiseLike = <TValue>(value: unknown): value is PromiseLike<TValue> =>
+  (typeof value === "object" || typeof value === "function") &&
+  value !== null &&
+  typeof (value as { readonly then?: unknown }).then === "function";
+
 export const hotUpdaterCoreMetadata = Symbol.for(
   "@hot-updater/server/core-metadata",
 );
@@ -101,6 +107,7 @@ export function createHotUpdaterCore<TContext = unknown>(
 
   if (
     !isDatabaseRuntimeOpener(database) &&
+    !isPromiseLike<DatabasePluginRuntime>(database) &&
     !isDatabasePluginRuntime(database)
   ) {
     throw new Error(
@@ -109,22 +116,23 @@ export function createHotUpdaterCore<TContext = unknown>(
   }
 
   const adapterCapabilities = database as DatabaseAdapterCapabilities;
-  const openedDatabase = isDatabaseRuntimeOpener(database)
-    ? undefined
-    : database;
-  const isRuntimePromise = openedDatabase instanceof Promise;
+  const openedDatabase: MaybeDatabaseRuntime | undefined =
+    isDatabaseRuntimeOpener(database) ? undefined : database;
+  const isRuntimePromiseLike =
+    openedDatabase !== undefined &&
+    isPromiseLike<DatabasePluginRuntime>(openedDatabase);
   const runtimeOpener:
     | ((
         context?: HotUpdaterContext<TContext>,
       ) => MaybePromise<DatabasePluginRuntime>)
     | undefined = isDatabaseRuntimeOpener<TContext>(database)
     ? database
-    : isRuntimePromise ||
+    : isRuntimePromiseLike ||
         (openedDatabase !== undefined &&
           isDatabasePluginRuntime(openedDatabase))
       ? () =>
-          isRuntimePromise
-            ? openedDatabase
+          isRuntimePromiseLike
+            ? Promise.resolve(openedDatabase)
             : openDatabaseRuntime(openedDatabase)
       : undefined;
   if (!runtimeOpener) {
@@ -134,7 +142,7 @@ export function createHotUpdaterCore<TContext = unknown>(
   }
   const adapterName =
     adapterCapabilities.adapterName ??
-    (isRuntimePromise ? "database" : (openedDatabase?.name ?? "database"));
+    (isRuntimePromiseLike ? "database" : (openedDatabase?.name ?? "database"));
   const assertSchemaReady = createSchemaReadinessChecker(
     adapterName,
     adapterCapabilities.createMigrator,

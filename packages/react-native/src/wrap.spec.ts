@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getCohort: vi.fn(() => "730"),
   getDefaultChannel: vi.fn(() => "production"),
   getFingerprintHash: vi.fn(() => null),
+  getInstallId: vi.fn(() => "install-1"),
   isChannelSwitched: vi.fn(() => false),
   notifyAppReady: vi.fn(() => ({ status: "STABLE" })),
   reload: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock("./native", () => ({
   getCohort: mocks.getCohort,
   getDefaultChannel: mocks.getDefaultChannel,
   getFingerprintHash: mocks.getFingerprintHash,
+  getInstallId: mocks.getInstallId,
   isChannelSwitched: mocks.isChannelSwitched,
   notifyAppReady: mocks.notifyAppReady,
   reload: mocks.reload,
@@ -66,6 +68,7 @@ describe("HotUpdater wrap initialization", () => {
     mocks.getCohort.mockReturnValue("730");
     mocks.getDefaultChannel.mockReturnValue("production");
     mocks.getFingerprintHash.mockReturnValue(null);
+    mocks.getInstallId.mockReturnValue("install-1");
     mocks.isChannelSwitched.mockReturnValue(false);
     mocks.notifyAppReady.mockReturnValue({ status: "STABLE" });
   });
@@ -113,7 +116,7 @@ describe("HotUpdater wrap initialization", () => {
       crashedBundleId: null,
       defaultChannel: "production",
       fingerprintHash: null,
-      installId: "730",
+      installId: "install-1",
       isChannelSwitched: false,
       platform: "ios",
       previousActiveBundleId: null,

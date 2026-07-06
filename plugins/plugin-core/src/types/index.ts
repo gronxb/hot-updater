@@ -37,7 +37,7 @@ export interface Paginated<TData> {
 
 export type PaginatedResult = Paginated<Bundle[]>;
 
-export type MaybePromise<T> = T | Promise<T>;
+export type MaybePromise<T> = T | PromiseLike<T>;
 
 type DeprecatedBundlePatchKeys =
   | "patches"

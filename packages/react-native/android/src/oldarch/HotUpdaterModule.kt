@@ -299,6 +299,9 @@ class HotUpdaterModule internal constructor(
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun getCohort(): String = cohortService.getCohort()
 
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getInstallId(): String = cohortService.getInstallId()
+
     @ReactMethod
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {

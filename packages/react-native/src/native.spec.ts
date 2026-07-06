@@ -10,6 +10,7 @@ const nativeModuleMock = vi.hoisted(() => {
     getBaseURL: vi.fn<() => string | null>(() => null),
     getBundleId: vi.fn<() => string | null>(() => "bundle-id"),
     getCohort: vi.fn<() => string>(() => "123"),
+    getInstallId: vi.fn<() => string>(() => "install-1"),
     getManifest,
     getCrashHistory,
     getConstants: vi.fn(() => ({
@@ -63,6 +64,8 @@ describe("notifyAppReady", () => {
     nativeModuleMock.getCrashHistory.mockReturnValue([]);
     nativeModuleMock.getCohort.mockReset();
     nativeModuleMock.getCohort.mockReturnValue("123");
+    nativeModuleMock.getInstallId.mockReset();
+    nativeModuleMock.getInstallId.mockReturnValue("install-1");
     nativeModuleMock.getManifest.mockReset();
     nativeModuleMock.getManifest.mockReturnValue({
       assets: {
@@ -621,5 +624,44 @@ describe("notifyAppReady", () => {
     const { getCohort } = await import("./native");
 
     expect(() => getCohort()).toThrow(INVALID_COHORT_ERROR_MESSAGE);
+  });
+
+  it("returns the native install id independently from the cohort", async () => {
+    nativeModuleMock.getCohort.mockReturnValue("730");
+    nativeModuleMock.getInstallId.mockReturnValue("install-1");
+
+    const { getCohort, getInstallId } = await import("./native");
+
+    expect(getCohort()).toBe("730");
+    expect(getInstallId()).toBe("install-1");
+  });
+
+  it("caches the install id for the current JS session", async () => {
+    nativeModuleMock.getInstallId.mockReturnValue("install-1");
+
+    const { getInstallId } = await import("./native");
+
+    expect(getInstallId()).toBe("install-1");
+    nativeModuleMock.getInstallId.mockReturnValue("install-2");
+    expect(getInstallId()).toBe("install-1");
+    expect(nativeModuleMock.getInstallId).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws when native SDK does not expose getInstallId", async () => {
+    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
+      getInstallId?: typeof nativeModuleMock.getInstallId;
+    };
+    const originalGetInstallId = nativeModule.getInstallId;
+    nativeModule.getInstallId = null as unknown as Mock<() => string>;
+
+    try {
+      const { getInstallId } = await import("./native");
+
+      expect(() => getInstallId()).toThrow(
+        "Native module is missing 'getInstallId()'",
+      );
+    } finally {
+      nativeModule.getInstallId = originalGetInstallId;
+    }
   });
 });

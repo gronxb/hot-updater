@@ -27,7 +27,7 @@ type AwaitedDatabasePluginCore<TCoreResult extends DatabasePluginCoreResult> =
     : never;
 
 type RuntimeForConnectResult<TCoreResult extends DatabasePluginCoreResult> =
-  TCoreResult extends Promise<unknown>
+  TCoreResult extends PromiseLike<unknown>
     ? Promise<
         DatabaseRuntimeWithFactory<AwaitedDatabasePluginCore<TCoreResult>>
       >
@@ -45,6 +45,11 @@ const toCorePromise = (
   core: MaybePromise<DatabasePluginCore>,
 ): Promise<DatabasePluginCore> => Promise.resolve(core);
 
+const isPromiseLike = <TValue>(
+  value: TValue | PromiseLike<TValue>,
+): value is PromiseLike<TValue> =>
+  typeof (value as { readonly then?: unknown }).then === "function";
+
 const attachRuntimeFactory = <TCore extends DatabasePluginCore>(
   runtime: DatabasePluginRuntime,
   openRuntime: DatabaseRuntimeFactory,
@@ -57,7 +62,7 @@ const attachRuntimeFactory = <TCore extends DatabasePluginCore>(
 };
 
 export function createDatabasePlugin<TConfig, TCore extends DatabasePluginCore>(
-  options: DatabasePluginSpec<TConfig, Promise<TCore>>,
+  options: DatabasePluginSpec<TConfig, PromiseLike<TCore>>,
 ): (
   config: TConfig,
   hooks?: DatabasePluginHooks,
@@ -88,8 +93,8 @@ export function createDatabasePlugin<TConfig>(
       return attachRuntimeFactory(openRuntime(), openRuntime);
     };
 
-    if (connectedCore instanceof Promise) {
-      return connectedCore.then(createRuntimeForCore);
+    if (isPromiseLike(connectedCore)) {
+      return Promise.resolve(connectedCore).then(createRuntimeForCore);
     }
 
     return createRuntimeForCore(connectedCore);

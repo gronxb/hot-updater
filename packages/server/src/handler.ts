@@ -665,7 +665,8 @@ export function createHandler<TContext = unknown>(
         });
       }
 
-      return await handler(match.params || {}, request, api, context);
+      const requestContext = context ?? ({} as HotUpdaterContext<TContext>);
+      return await handler(match.params || {}, request, api, requestContext);
     } catch (error) {
       if (error instanceof HandlerBadRequestError) {
         return new Response(JSON.stringify({ error: error.message }), {

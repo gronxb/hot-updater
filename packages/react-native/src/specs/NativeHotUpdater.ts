@@ -165,6 +165,8 @@ export interface Spec extends TurboModule {
    */
   getCohort: () => string;
 
+  getInstallId: () => string;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;

@@ -277,6 +277,8 @@ class HotUpdaterModule internal constructor(
 
     override fun getCohort(): String = cohortService.getCohort()
 
+    override fun getInstallId(): String = cohortService.getInstallId()
+
     override fun getBundleId(): String? {
         val impl = getInstance()
         return impl.getBundleId()

@@ -1335,9 +1335,80 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
       await plugin.commit();
 
-      expect($transaction).not.toHaveBeenCalled();
-      expect(rootBundles.upsert).toHaveBeenCalledTimes(1);
-      expect(txBundles.upsert).not.toHaveBeenCalled();
+      expect($transaction).toHaveBeenCalledTimes(1);
+      expect(rootBundles.upsert).not.toHaveBeenCalled();
+      expect(rootPatches.deleteMany).not.toHaveBeenCalled();
+      expect(txBundles.upsert).toHaveBeenCalledTimes(1);
+      expect(txPatches.deleteMany).toHaveBeenCalledWith({
+        where: { bundle_id: transactionBundle.id },
+      });
+    });
+
+    it("aborts the Prisma transaction when a staged write fails", async () => {
+      const writeError = new Error("prisma write failed");
+      const transactionErrors: unknown[] = [];
+      const rootBundles = {
+        count: vi.fn(),
+        createMany: vi.fn(),
+        deleteMany: vi.fn(),
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+        upsert: vi.fn(),
+      };
+      const rootPatches = {
+        count: vi.fn(),
+        createMany: vi.fn(),
+        deleteMany: vi.fn(),
+        findFirst: vi.fn(),
+        findMany: vi.fn(),
+        upsert: vi.fn(),
+      };
+      const txBundles = {
+        ...rootBundles,
+        upsert: vi.fn(async () => {
+          throw writeError;
+        }),
+      };
+      const txPatches = {
+        ...rootPatches,
+        deleteMany: vi.fn(async () => undefined),
+      };
+      const $transaction = vi.fn(
+        async (
+          operation: (tx: Record<string, unknown>) => Promise<unknown>,
+        ) => {
+          try {
+            return await operation({
+              bundle_patches: txPatches,
+              bundles: txBundles,
+            });
+          } catch (error) {
+            transactionErrors.push(error);
+            throw error;
+          }
+        },
+      );
+      const plugin = prismaAdapter({
+        prisma: {
+          $transaction,
+          bundle_patches: rootPatches,
+          bundles: rootBundles,
+        },
+        provider: "postgresql",
+      });
+
+      const split = splitDatabaseBundle(transactionBundle);
+      await plugin.bundles.insert({ bundle: split.bundle });
+
+      await expect(plugin.commit()).rejects.toThrow(writeError);
+
+      expect($transaction).toHaveBeenCalledTimes(1);
+      expect(rootBundles.upsert).not.toHaveBeenCalled();
+      expect(txBundles.upsert).toHaveBeenCalledTimes(1);
+      expect(transactionErrors).toHaveLength(1);
+      expect(String(transactionErrors[0])).toContain(
+        "hot-updater-transaction-rollback",
+      );
     });
 
     it("commits Drizzle bundle changes inside a transaction when available", async () => {
@@ -1402,9 +1473,292 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
       await plugin.commit();
 
-      expect(transaction).not.toHaveBeenCalled();
-      expect(rootInsert).toHaveBeenCalledTimes(1);
-      expect(txInsert).not.toHaveBeenCalled();
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(rootInsert).not.toHaveBeenCalled();
+      expect(txInsert).toHaveBeenCalledTimes(1);
+    });
+
+    it("commits lazy Drizzle bundle changes inside the resolved db transaction", async () => {
+      const tables = {
+        bundle_patches: {
+          bundle_id: "bundle_id",
+          id: "patch_id",
+          order_index: "order_index",
+        },
+        bundles: {
+          id: "id",
+        },
+      };
+      const rootInsert = vi.fn(() => ({
+        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
+      }));
+      const txInsert = vi.fn(() => ({
+        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
+      }));
+      const createDb = (insert: typeof rootInsert) => ({
+        _: { fullSchema: tables },
+        $count: vi.fn(),
+        delete: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+        insert,
+        query: {
+          bundle_patches: {
+            findMany: vi.fn(),
+          },
+          bundles: {
+            findFirst: vi.fn(async () => undefined),
+            findMany: vi.fn(),
+          },
+        },
+        select: vi.fn(),
+        update: vi.fn(() => ({
+          set: vi.fn(() => ({
+            where: vi.fn(async () => undefined),
+          })),
+        })),
+      });
+      const txDb = createDb(txInsert);
+      const transaction = vi.fn(
+        async (operation: (tx: typeof txDb) => Promise<unknown>) =>
+          operation(txDb),
+      );
+      const dbFactory = vi.fn(async () => ({
+        ...createDb(rootInsert),
+        transaction,
+      }));
+      const plugin = drizzleAdapter({
+        db: dbFactory,
+        provider: "postgresql",
+        schema: tables,
+      });
+
+      const split = splitDatabaseBundle(transactionBundle);
+      await plugin.bundles.insert({ bundle: split.bundle });
+      await plugin.bundlePatches.replaceForBundle({
+        bundleId: transactionBundle.id,
+        patches: split.patches,
+      });
+      await plugin.commit();
+
+      expect(dbFactory).toHaveBeenCalledTimes(1);
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(rootInsert).not.toHaveBeenCalled();
+      expect(txInsert).toHaveBeenCalledTimes(1);
+    });
+
+    it("aborts the Drizzle transaction when a staged write fails", async () => {
+      const writeError = new Error("drizzle write failed");
+      const transactionErrors: unknown[] = [];
+      const tables = {
+        bundle_patches: {
+          bundle_id: "bundle_id",
+          id: "patch_id",
+          order_index: "order_index",
+        },
+        bundles: {
+          id: "id",
+        },
+      };
+      const rootInsert = vi.fn(() => ({
+        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
+      }));
+      const txInsert = vi.fn(() => ({
+        values: vi.fn(() => ({
+          execute: vi.fn(async () => {
+            throw writeError;
+          }),
+        })),
+      }));
+      const createDb = (insert: typeof rootInsert) => ({
+        _: { fullSchema: tables },
+        $count: vi.fn(),
+        delete: vi.fn(() => ({
+          where: vi.fn(async () => undefined),
+        })),
+        insert,
+        query: {
+          bundle_patches: {
+            findMany: vi.fn(),
+          },
+          bundles: {
+            findFirst: vi.fn(async () => undefined),
+            findMany: vi.fn(),
+          },
+        },
+        select: vi.fn(),
+        update: vi.fn(() => ({
+          set: vi.fn(() => ({
+            where: vi.fn(async () => undefined),
+          })),
+        })),
+      });
+      const txDb = createDb(txInsert);
+      const transaction = vi.fn(
+        async (operation: (tx: typeof txDb) => Promise<unknown>) => {
+          try {
+            return await operation(txDb);
+          } catch (error) {
+            transactionErrors.push(error);
+            throw error;
+          }
+        },
+      );
+      const db = {
+        ...createDb(rootInsert),
+        transaction,
+      };
+      const plugin = drizzleAdapter({
+        db,
+        provider: "postgresql",
+      });
+
+      const split = splitDatabaseBundle(transactionBundle);
+      await plugin.bundles.insert({ bundle: split.bundle });
+
+      await expect(plugin.commit()).rejects.toThrow(writeError);
+
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(rootInsert).not.toHaveBeenCalled();
+      expect(txInsert).toHaveBeenCalledTimes(1);
+      expect(transactionErrors).toHaveLength(1);
+      expect(String(transactionErrors[0])).toContain(
+        "hot-updater-transaction-rollback",
+      );
+    });
+
+    const createKyselyTransactionExecutor = ({
+      deleteFrom,
+      insertInto,
+    }: {
+      readonly deleteFrom: ReturnType<typeof vi.fn>;
+      readonly insertInto: ReturnType<typeof vi.fn>;
+    }) => ({
+      deleteFrom,
+      insertInto,
+      selectFrom: vi.fn(),
+    });
+
+    const createKyselyInsertInto = (
+      execute: () => Promise<unknown>,
+    ): ReturnType<typeof vi.fn> =>
+      vi.fn(() => ({
+        values: vi.fn(() => ({
+          onConflict: vi.fn((build: (oc: unknown) => unknown) => {
+            build({
+              column: vi.fn(() => ({
+                doUpdateSet: vi.fn(),
+              })),
+            });
+            return {
+              execute,
+            };
+          }),
+        })),
+      }));
+
+    const createKyselyDeleteFrom = (
+      execute: () => Promise<unknown>,
+    ): ReturnType<typeof vi.fn> =>
+      vi.fn(() => ({
+        where: vi.fn(() => ({
+          execute,
+        })),
+      }));
+
+    it("commits Kysely bundle changes inside a transaction when available", async () => {
+      const rootInsertInto = createKyselyInsertInto(async () => undefined);
+      const rootDeleteFrom = createKyselyDeleteFrom(async () => undefined);
+      const txInsertInto = createKyselyInsertInto(async () => undefined);
+      const txDeleteFrom = createKyselyDeleteFrom(async () => undefined);
+      const txExecutor = createKyselyTransactionExecutor({
+        deleteFrom: txDeleteFrom,
+        insertInto: txInsertInto,
+      });
+      const transactionExecute = vi.fn(
+        async (operation: (tx: typeof txExecutor) => Promise<unknown>) =>
+          operation(txExecutor),
+      );
+      const transaction = vi.fn(() => ({
+        execute: transactionExecute,
+      }));
+      const db = {
+        ...createKyselyTransactionExecutor({
+          deleteFrom: rootDeleteFrom,
+          insertInto: rootInsertInto,
+        }),
+        transaction,
+      };
+      const plugin = kyselyAdapter({
+        db: db as unknown as Kysely<never>,
+        provider: "postgresql",
+      });
+
+      const split = splitDatabaseBundle(transactionBundle);
+      await plugin.bundles.insert({ bundle: split.bundle });
+      await plugin.bundlePatches.replaceForBundle({
+        bundleId: transactionBundle.id,
+        patches: split.patches,
+      });
+      await plugin.commit();
+
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(rootInsertInto).not.toHaveBeenCalled();
+      expect(rootDeleteFrom).not.toHaveBeenCalled();
+      expect(txInsertInto).toHaveBeenCalledWith("bundles");
+      expect(txDeleteFrom).toHaveBeenCalledWith("bundle_patches");
+    });
+
+    it("aborts the Kysely transaction when a staged write fails", async () => {
+      const writeError = new Error("kysely write failed");
+      const transactionErrors: unknown[] = [];
+      const rootInsertInto = createKyselyInsertInto(async () => undefined);
+      const rootDeleteFrom = createKyselyDeleteFrom(async () => undefined);
+      const txInsertInto = createKyselyInsertInto(async () => {
+        throw writeError;
+      });
+      const txDeleteFrom = createKyselyDeleteFrom(async () => undefined);
+      const txExecutor = createKyselyTransactionExecutor({
+        deleteFrom: txDeleteFrom,
+        insertInto: txInsertInto,
+      });
+      const transactionExecute = vi.fn(
+        async (operation: (tx: typeof txExecutor) => Promise<unknown>) => {
+          try {
+            return await operation(txExecutor);
+          } catch (error) {
+            transactionErrors.push(error);
+            throw error;
+          }
+        },
+      );
+      const transaction = vi.fn(() => ({
+        execute: transactionExecute,
+      }));
+      const db = {
+        ...createKyselyTransactionExecutor({
+          deleteFrom: rootDeleteFrom,
+          insertInto: rootInsertInto,
+        }),
+        transaction,
+      };
+      const plugin = kyselyAdapter({
+        db: db as unknown as Kysely<never>,
+        provider: "postgresql",
+      });
+
+      const split = splitDatabaseBundle(transactionBundle);
+      await plugin.bundles.insert({ bundle: split.bundle });
+
+      await expect(plugin.commit()).rejects.toThrow(writeError);
+
+      expect(transaction).toHaveBeenCalledTimes(1);
+      expect(rootInsertInto).not.toHaveBeenCalled();
+      expect(txInsertInto).toHaveBeenCalledWith("bundles");
+      expect(transactionErrors).toHaveLength(1);
+      expect(String(transactionErrors[0])).toContain(
+        "hot-updater-transaction-rollback",
+      );
     });
 
     it("commits MongoDB bundle changes inside a session transaction when available", async () => {
@@ -1444,18 +1798,75 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
       await plugin.commit();
 
-      expect(client.startSession).not.toHaveBeenCalled();
-      expect(session.withTransaction).not.toHaveBeenCalled();
+      expect(client.startSession).toHaveBeenCalledTimes(1);
+      expect(session.withTransaction).toHaveBeenCalledTimes(1);
       expect(bundles.updateOne).toHaveBeenCalledWith(
         { id: transactionBundle.id },
         expect.any(Object),
-        expect.objectContaining({ session: undefined, upsert: true }),
+        expect.objectContaining({ session, upsert: true }),
       );
       expect(patches.deleteMany).toHaveBeenCalledWith(
         { bundle_id: transactionBundle.id },
-        { session: undefined },
+        { session },
       );
-      expect(session.endSession).not.toHaveBeenCalled();
+      expect(session.endSession).toHaveBeenCalledTimes(1);
+    });
+
+    it("aborts the MongoDB transaction when a staged write fails", async () => {
+      const writeError = new Error("mongodb write failed");
+      const transactionErrors: unknown[] = [];
+      const session = {
+        endSession: vi.fn(async () => undefined),
+        withTransaction: vi.fn(async (operation: () => Promise<void>) => {
+          try {
+            return await operation();
+          } catch (error) {
+            transactionErrors.push(error);
+            throw error;
+          }
+        }),
+      };
+      const bundles = {
+        countDocuments: vi.fn(),
+        deleteMany: vi.fn(),
+        distinct: vi.fn(),
+        find: vi.fn(),
+        findOne: vi.fn(),
+        updateOne: vi.fn(async () => {
+          throw writeError;
+        }),
+      };
+      const patches = {
+        deleteMany: vi.fn(async () => undefined),
+        find: vi.fn(),
+        insertMany: vi.fn(),
+      };
+      const client = {
+        db: () => ({
+          collection: (name: string) =>
+            name === "bundle_patches" ? patches : bundles,
+        }),
+        startSession: vi.fn(() => session),
+      } as unknown as MongoClient;
+      const plugin = mongoAdapter({ client });
+
+      const split = splitDatabaseBundle(transactionBundle);
+      await plugin.bundles.insert({ bundle: split.bundle });
+
+      await expect(plugin.commit()).rejects.toThrow(writeError);
+
+      expect(client.startSession).toHaveBeenCalledTimes(1);
+      expect(session.withTransaction).toHaveBeenCalledTimes(1);
+      expect(bundles.updateOne).toHaveBeenCalledWith(
+        { id: transactionBundle.id },
+        expect.any(Object),
+        expect.objectContaining({ session, upsert: true }),
+      );
+      expect(transactionErrors).toHaveLength(1);
+      expect(String(transactionErrors[0])).toContain(
+        "hot-updater-transaction-rollback",
+      );
+      expect(session.endSession).toHaveBeenCalledTimes(1);
     });
   });
 
