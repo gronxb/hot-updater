@@ -17,7 +17,6 @@ import {
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
-import { stageDatabaseRuntimeBundleUpdate } from "../../../plugins/plugin-core/src/databaseRuntimeBundle.ts";
 import type { DatabasePluginRuntime } from "../../../plugins/plugin-core/src/types/index.ts";
 import {
   createCrashRecoveryArtifactNames,
@@ -47,6 +46,13 @@ type JobState = {
 };
 
 type DeployMode = "crash" | "reset";
+
+type ProviderBundlePatch = {
+  readonly enabled?: boolean;
+  readonly rolloutCohortCount?: number | null;
+  readonly shouldForceUpdate?: boolean;
+  readonly targetCohorts?: string[] | null;
+};
 
 type DeployedBundleRecord = {
   archiveSizeBytes: number | null;
@@ -1441,14 +1447,26 @@ async function fetchEnabledBundlesForRemoteReset(
   return enabledBundles;
 }
 
-async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
-  const definedPatch = Object.fromEntries(
-    Object.entries(patch).filter(([, value]) => value !== undefined),
-  ) as Partial<Bundle>;
-  const patchKeys = Object.keys(definedPatch);
-  if (patchKeys.length > 0) {
+async function patchProviderBundle(
+  bundleId: string,
+  patch: ProviderBundlePatch,
+) {
+  const definedPatch = {
+    ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+    ...(patch.rolloutCohortCount !== undefined
+      ? { rolloutCohortCount: patch.rolloutCohortCount }
+      : {}),
+    ...(patch.shouldForceUpdate !== undefined
+      ? { shouldForceUpdate: patch.shouldForceUpdate }
+      : {}),
+    ...(patch.targetCohorts !== undefined
+      ? { targetCohorts: patch.targetCohorts }
+      : {}),
+  } satisfies ProviderBundlePatch;
+
+  if (Object.keys(definedPatch).length > 0) {
     await withDatabasePlugin(async (databasePlugin) => {
-      await stageDatabaseRuntimeBundleUpdate(databasePlugin, {
+      await databasePlugin.bundles.update({
         bundleId,
         patch: definedPatch,
       });
@@ -1717,7 +1735,7 @@ async function clearProviderBundles({
           nextBatch,
           REMOTE_RESET_DATABASE_CONCURRENCY,
           (bundle) =>
-            stageDatabaseRuntimeBundleUpdate(databasePlugin, {
+            databasePlugin.bundles.update({
               bundleId: bundle.id,
               patch: { enabled: false },
             }),
@@ -1789,12 +1807,7 @@ async function clearProviderBundles({
 
 function updateTrackedBundleRecord(
   bundleId: string,
-  patch: {
-    enabled?: boolean;
-    rolloutCohortCount?: number | null;
-    shouldForceUpdate?: boolean;
-    targetCohorts?: string[] | null;
-  },
+  patch: ProviderBundlePatch,
 ) {
   const record = fixtureSession.deployedBundles.find(
     (entry) => entry.bundleId === bundleId,
