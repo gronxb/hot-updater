@@ -815,7 +815,9 @@ export type ConfigInput = {
   signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
-  database: () => MaybePromise<DatabasePluginRuntime>;
+  database:
+    | MaybePromise<DatabasePluginRuntime>
+    | (() => MaybePromise<DatabasePluginRuntime>);
 };
 
 export interface NativeBuildOptions {

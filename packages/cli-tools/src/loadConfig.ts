@@ -2,9 +2,12 @@ import path from "path";
 
 import type {
   ConfigInput,
+  DatabasePluginRuntime,
+  MaybePromise,
   Platform,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
+import { databaseRuntimeFactorySymbol } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -15,6 +18,8 @@ export type HotUpdaterConfigOptions = {
   platform: Platform;
   channel: string;
 } | null;
+
+export type LoadedDatabaseConfig = () => MaybePromise<DatabasePluginRuntime>;
 
 const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   // Find actual Info.plist files in the ios directory
@@ -121,15 +126,44 @@ const getDefaultConfig = (): ConfigInput => {
   };
 };
 
-export type ConfigResponse = RequiredDeep<ConfigInput>;
+export type ConfigResponse = Omit<RequiredDeep<ConfigInput>, "database"> & {
+  database: LoadedDatabaseConfig;
+};
 
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
 ) => {
-  return sources.reduceRight<ConfigInput>(
+  const mergedConfig = sources.reduceRight<ConfigInput>(
     (mergedConfig, source) => merge(mergedConfig, source ?? {}),
     {} as ConfigInput,
   );
+  const databaseConfig = sources.find(
+    (source) => source?.database !== undefined,
+  )?.database;
+
+  return databaseConfig === undefined
+    ? mergedConfig
+    : { ...mergedConfig, database: databaseConfig };
+};
+
+const openRuntime = (database: DatabasePluginRuntime) => {
+  const openDatabaseRuntime = (
+    database as Partial<
+      Record<typeof databaseRuntimeFactorySymbol, LoadedDatabaseConfig>
+    >
+  )[databaseRuntimeFactorySymbol];
+
+  return openDatabaseRuntime ? openDatabaseRuntime() : database;
+};
+
+const normalizeDatabaseConfig = (
+  database: RequiredDeep<ConfigInput>["database"],
+): LoadedDatabaseConfig => {
+  if (typeof database === "function") {
+    return database;
+  }
+
+  return () => Promise.resolve(database).then(openRuntime);
 };
 
 const getConfigLoaderOptions = (
@@ -164,5 +198,13 @@ export const loadConfig = async (
     getConfigLoaderOptions(options),
   );
 
-  return mergeConfigSources(config, getDefaultConfig()) as ConfigResponse;
+  const mergedConfig = mergeConfigSources(
+    config,
+    getDefaultConfig(),
+  ) as RequiredDeep<ConfigInput>;
+
+  return {
+    ...mergedConfig,
+    database: normalizeDatabaseConfig(mergedConfig.database),
+  } as ConfigResponse;
 };

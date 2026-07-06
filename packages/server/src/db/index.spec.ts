@@ -1788,7 +1788,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         }),
         startSession: vi.fn(() => session),
       } as unknown as MongoClient;
-      const plugin = mongoAdapter({ client });
+      const plugin = mongoAdapter({ client, transactions: "enabled" });
 
       const split = splitDatabaseBundle(transactionBundle);
       await plugin.bundles.insert({ bundle: split.bundle });
@@ -1848,7 +1848,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         }),
         startSession: vi.fn(() => session),
       } as unknown as MongoClient;
-      const plugin = mongoAdapter({ client });
+      const plugin = mongoAdapter({ client, transactions: "enabled" });
 
       const split = splitDatabaseBundle(transactionBundle);
       await plugin.bundles.insert({ bundle: split.bundle });

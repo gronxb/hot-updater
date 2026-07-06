@@ -30,6 +30,11 @@ import { createCallbackDatabaseTransaction } from "./transaction";
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
+  /**
+   * Enable only for deployments that support MongoDB multi-document
+   * transactions, such as replica sets or sharded clusters.
+   */
+  readonly transactions?: "enabled";
 }
 
 const mongoWhere = (
@@ -87,7 +92,8 @@ const mongoWhere = (
 
 const createMongoPlugin = createDatabasePlugin({
   name: "mongodb",
-  connect: ({ client }: MongoDBConfig): DatabasePluginCore => {
+  connect: (config: MongoDBConfig): DatabasePluginCore => {
+    const { client } = config;
     const db = client.db();
     const bundles = db.collection<BundleRow>("bundles");
     const patches = db.collection<BundlePatchRow>("bundle_patches");
@@ -325,7 +331,10 @@ const createMongoPlugin = createDatabasePlugin({
     };
 
     const core = createCore();
-    if (typeof client.startSession !== "function") {
+    if (
+      config.transactions !== "enabled" ||
+      typeof client.startSession !== "function"
+    ) {
       return core;
     }
 
