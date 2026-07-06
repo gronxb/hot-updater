@@ -165,6 +165,16 @@ const requireRouteParam = (
   return value;
 };
 
+const isInvalidUuidLookupError = (error: unknown, value: string): boolean => {
+  if (typeof error !== "object" || error === null) return false;
+  if (!("code" in error) || !("params" in error)) return false;
+  return (
+    error.code === "22P02" &&
+    Array.isArray(error.params) &&
+    error.params.includes(value)
+  );
+};
+
 const parseBooleanSearchParam = (
   url: URL,
   key: string,
@@ -360,7 +370,15 @@ const handleGetBundle: RouteHandler = async (
   context,
 ) => {
   const bundleId = requireRouteParam(params, "id");
-  const bundle = await api.getBundleById(bundleId, context);
+  let bundle: Bundle | null;
+  try {
+    bundle = await api.getBundleById(bundleId, context);
+  } catch (error) {
+    if (!isInvalidUuidLookupError(error, bundleId)) {
+      throw error;
+    }
+    bundle = null;
+  }
 
   if (!bundle) {
     return new Response(JSON.stringify({ error: "Bundle not found" }), {

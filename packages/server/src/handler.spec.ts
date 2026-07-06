@@ -290,6 +290,47 @@ describe("createHandler", () => {
     );
   });
 
+  it("returns 404 when bundle lookup rejects an invalid UUID", async () => {
+    const api = createApi();
+    api.getBundleById.mockRejectedValueOnce(
+      Object.assign(
+        new Error('invalid input syntax for type uuid: "non-existent-bundle"'),
+        {
+          code: "22P02",
+          params: ["non-existent-bundle"],
+        },
+      ),
+    );
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles/non-existent-bundle",
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: "Bundle not found",
+    });
+  });
+
+  it("keeps unexpected bundle lookup errors as server errors", async () => {
+    const api = createApi();
+    api.getBundleById.mockRejectedValueOnce(new Error("database unavailable"));
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/bundles/bundle-1"),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Internal server error",
+      message: "database unavailable",
+    });
+  });
+
   it("keeps update-check routes mounted for partial runtime route config", async () => {
     const api = createApi();
     const handler = createHandler(api, {

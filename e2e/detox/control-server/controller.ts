@@ -17,7 +17,8 @@ import {
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
-import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
+import { stageDatabaseRuntimeBundleUpdate } from "../../../plugins/plugin-core/src/databaseRuntimeBundle.ts";
+import type { DatabasePluginRuntime } from "../../../plugins/plugin-core/src/types/index.ts";
 import {
   createCrashRecoveryArtifactNames,
   waitForCrashRecoveryState,
@@ -1311,16 +1312,16 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
 }
 
 async function withDatabasePlugin<T>(
-  callback: (databasePlugin: DatabasePlugin) => Promise<T>,
+  callback: (databasePlugin: DatabasePluginRuntime) => Promise<T>,
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
       loadConfig: (
         options: null,
-      ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
+      ) => Promise<{ database: () => Promise<DatabasePluginRuntime> }>;
     };
   const originalCwd = process.cwd();
-  let databasePlugin: DatabasePlugin | null = null;
+  let databasePlugin: DatabasePluginRuntime | null = null;
 
   try {
     process.chdir(fixtureSession.exampleDir);
@@ -1330,7 +1331,7 @@ async function withDatabasePlugin<T>(
       return await callback(databasePlugin);
     });
   } finally {
-    await databasePlugin?.onUnmount?.();
+    await databasePlugin?.close?.();
     process.chdir(originalCwd);
   }
 }
@@ -1447,31 +1448,11 @@ async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
   const patchKeys = Object.keys(definedPatch);
   if (patchKeys.length > 0) {
     await withDatabasePlugin(async (databasePlugin) => {
-      const bundle = await databasePlugin.getBundleById(bundleId);
-      if (!bundle) {
-        throw new Error(`No bundle with id ${bundleId}.`);
-      }
-
-      await databasePlugin.updateBundle(bundleId, definedPatch);
-      await databasePlugin.commitBundle();
-
-      const refetched = await databasePlugin.getBundleById(bundleId);
-      if (!refetched) {
-        throw new Error(
-          `Verification failed: ${bundleId} is missing after patch.`,
-        );
-      }
-      for (const key of patchKeys) {
-        const expected = definedPatch[key as keyof Bundle];
-        const observed = refetched[key as keyof Bundle];
-        if (
-          JSON.stringify(observed ?? null) !== JSON.stringify(expected ?? null)
-        ) {
-          throw new Error(
-            `Verification failed: ${bundleId} ${key} expected ${JSON.stringify(expected)} but observed ${JSON.stringify(observed)}.`,
-          );
-        }
-      }
+      await stageDatabaseRuntimeBundleUpdate(databasePlugin, {
+        bundleId,
+        patch: definedPatch,
+      });
+      await databasePlugin.commit();
     });
   }
 
@@ -1736,23 +1717,12 @@ async function clearProviderBundles({
           nextBatch,
           REMOTE_RESET_DATABASE_CONCURRENCY,
           (bundle) =>
-            databasePlugin.updateBundle(bundle.id, { enabled: false }),
+            stageDatabaseRuntimeBundleUpdate(databasePlugin, {
+              bundleId: bundle.id,
+              patch: { enabled: false },
+            }),
         );
-        await databasePlugin.commitBundle();
-
-        const refetched = await mapWithConcurrency(
-          nextBatch,
-          REMOTE_RESET_DATABASE_CONCURRENCY,
-          (bundle) => databasePlugin.getBundleById(bundle.id),
-        );
-        const stillEnabled = refetched.find(
-          (bundle) => bundle?.enabled !== false,
-        );
-        if (stillEnabled) {
-          throw new Error(
-            `Failed to disable bundle ${stillEnabled.id} during reset.`,
-          );
-        }
+        await databasePlugin.commit();
       });
       for (const bundle of nextBatch) {
         clearedIds.add(bundle.id);
