@@ -88,13 +88,13 @@ export interface DatabaseBundleQueryOrder {
 
 export interface DatabaseBundleCursor {
   /**
-   * Fetch the next window after this bundle ID.
+   * Fetch the next window after this opaque cursor token.
    *
    * This is the preferred pagination mode for bundle-management queries.
    */
   after?: string;
   /**
-   * Fetch the previous window before this bundle ID.
+   * Fetch the previous window before this opaque cursor token.
    *
    * This is the preferred pagination mode for bundle-management queries.
    */
