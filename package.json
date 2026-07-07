@@ -17,6 +17,7 @@
     "bench:update-check:orm": "node ./scripts/bench.mjs packages/server/src/db/ormUpdateCheck.bench.ts",
     "bench:lambda": "node ./scripts/bench.mjs plugins/aws/lambda/updateCheck.bench.ts",
     "bench:lambda:memory": "node ./scripts/bench-memory.mjs plugins/aws/lambda/updateCheck.memory.spec.ts",
+    "template:console:check": "node ./scripts/check-console-template-drift.mjs",
     "build": "nx run-many --target=build --projects=packages/*,plugins/*,docs",
     "fingerprint:create": "nx run-many --target='fingerprint:create' --projects=examples/*",
     "e2e:detox": "node --experimental-strip-types ./e2e/detox/scripts/run.ts",

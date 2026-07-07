@@ -1,0 +1,438 @@
+// allow: SIZE_OK — form regression suite covers existing dense editor flows plus G004 capability gates.
+import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/core";
+import type { Bundle } from "@hot-updater/plugin-core";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  createSupportedConsoleCapabilities,
+  type ConsoleCapabilities,
+} from "@/lib/console-capabilities";
+
+import { BundleEditorForm } from "./BundleEditorForm";
+
+const {
+  mockUpdateBundleMutation,
+  mockBundleDownloadUrlMutation,
+  mockCapabilities,
+  mockToastError,
+  mockToastSuccess,
+} = vi.hoisted(() => {
+  let capabilityData: ConsoleCapabilities | undefined;
+
+  return {
+    mockUpdateBundleMutation: {
+      isPending: false,
+      mutateAsync: vi.fn(),
+    },
+    mockBundleDownloadUrlMutation: {
+      isPending: false,
+      mutateAsync: vi.fn(),
+    },
+    mockCapabilities: {
+      get data(): ConsoleCapabilities | undefined {
+        return capabilityData;
+      },
+      set data(nextCapabilityData: ConsoleCapabilities | undefined) {
+        capabilityData = nextCapabilityData;
+      },
+    },
+    mockToastError: vi.fn(),
+    mockToastSuccess: vi.fn(),
+  };
+});
+
+vi.mock("@/lib/api", () => ({
+  useBundleDownloadUrlMutation: () => mockBundleDownloadUrlMutation,
+  useUpdateBundleMutation: () => mockUpdateBundleMutation,
+}));
+
+vi.mock("@/lib/useCapabilities", () => ({
+  useCapabilitiesQuery: () => ({ data: mockCapabilities.data }),
+}));
+
+vi.mock("./DeleteBundleDialog", () => ({
+  DeleteBundleDialog: () => null,
+}));
+
+vi.mock("./PromoteChannelDialog", () => ({
+  PromoteChannelDialog: () => null,
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: mockToastSuccess,
+    error: mockToastError,
+  },
+}));
+
+const bundle: Bundle = {
+  id: "0195a408-8f13-7d9b-8df4-123456789abc",
+  channel: "production",
+  platform: "ios",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "abc123",
+  storageUri: "s3://bucket/bundle.zip",
+  gitCommitHash: "deadbeef",
+  message: "Initial message",
+  targetAppVersion: "1.0.0",
+  fingerprintHash: null,
+  rolloutCohortCount: 1000,
+  targetCohorts: [],
+};
+
+describe("BundleEditorForm", () => {
+  const originalWindowOpen = window.open;
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  beforeEach(() => {
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+    window.open = vi.fn(() => null);
+    mockCapabilities.data = createSupportedConsoleCapabilities();
+    mockBundleDownloadUrlMutation.isPending = false;
+    mockBundleDownloadUrlMutation.mutateAsync.mockReset();
+    mockUpdateBundleMutation.isPending = false;
+    mockUpdateBundleMutation.mutateAsync.mockReset();
+    mockToastError.mockReset();
+    mockToastSuccess.mockReset();
+  });
+
+  afterEach(() => {
+    window.open = originalWindowOpen;
+  });
+
+  it("disables save until the form becomes dirty", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    const saveButton = screen.getByRole("button", { name: "Save Changes" });
+    const messageInput = screen.getByLabelText("Message");
+
+    expect(saveButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(messageInput, { target: { value: "Updated message" } });
+
+    expect(saveButton.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.change(messageInput, { target: { value: bundle.message } });
+
+    expect(saveButton.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("tracks non-text field changes through the form dirty state", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    const saveButton = screen.getByRole("button", { name: "Save Changes" });
+    const enabledSwitch = screen.getByRole("switch", { name: "Enabled" });
+
+    expect(saveButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(enabledSwitch);
+
+    expect(saveButton.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(enabledSwitch);
+
+    expect(saveButton.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("edits rollout percentage from the keyboard as one decimal place", async () => {
+    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    const rolloutPercentageInput = screen.getByLabelText("Rollout Percentage");
+
+    fireEvent.change(rolloutPercentageInput, {
+      target: { value: "33.37" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect((rolloutPercentageInput as HTMLInputElement).value).toBe("33.3");
+
+    await waitFor(() => {
+      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+        bundle: expect.objectContaining({
+          rolloutCohortCount: 333,
+        }),
+      });
+    });
+  });
+
+  it("clamps keyboard rollout edits to 1 through 100 percent", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    const rolloutPercentageInput = screen.getByLabelText("Rollout Percentage");
+
+    fireEvent.change(rolloutPercentageInput, {
+      target: { value: "0.5" },
+    });
+    fireEvent.blur(rolloutPercentageInput);
+
+    expect((rolloutPercentageInput as HTMLInputElement).value).toBe("1.0");
+
+    fireEvent.change(rolloutPercentageInput, {
+      target: { value: "150" },
+    });
+    fireEvent.blur(rolloutPercentageInput);
+
+    expect((rolloutPercentageInput as HTMLInputElement).value).toBe("100.0");
+  });
+
+  it("disables secondary actions while the save mutation is pending", () => {
+    mockUpdateBundleMutation.isPending = true;
+
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    expect(
+      screen
+        .getByRole("button", { name: "Promote to Channel" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Download Bundle" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Delete Bundle" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("disables editing and destructive actions when capabilities are unsupported", () => {
+    const capabilities = createSupportedConsoleCapabilities();
+    capabilities.updateBundle = {
+      supported: false,
+      reason: "database is read-only",
+    };
+    capabilities.promoteBundleMove = {
+      supported: false,
+      reason: "move unavailable",
+    };
+    capabilities.promoteBundleCopy = {
+      supported: false,
+      reason: "copy unavailable",
+    };
+    capabilities.deleteBundle = {
+      supported: false,
+      reason: "delete unavailable",
+    };
+    capabilities.downloadBundle = {
+      supported: false,
+      reason: "download unavailable",
+    };
+    mockCapabilities.data = capabilities;
+
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    expect(screen.getByLabelText("Message").hasAttribute("disabled")).toBe(
+      true,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Save Changes" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Promote to Channel" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Download Bundle" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "Delete Bundle" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("shows normalized semver ranges and blocks invalid target app versions", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    const saveButton = screen.getByRole("button", { name: "Save Changes" });
+    const targetAppVersionInput = screen.getByLabelText("Target App Version");
+
+    fireEvent.change(targetAppVersionInput, { target: { value: "invalid" } });
+
+    expect(screen.getByRole("alert").textContent).toBe(
+      "Invalid target app version",
+    );
+    expect(targetAppVersionInput.getAttribute("aria-invalid")).toBe("true");
+    expect(saveButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(targetAppVersionInput, {
+      target: { value: ">= 1.0.0 < 2.0.0" },
+    });
+
+    expect(screen.getByText(">=1.0.0 <2.0.0")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(saveButton.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("hides target app version for fingerprint bundles", () => {
+    render(
+      <BundleEditorForm
+        bundle={{
+          ...bundle,
+          targetAppVersion: null,
+          fingerprintHash: "fingerprint-hash",
+        }}
+        onClose={() => {}}
+      />,
+    );
+
+    const saveButton = screen.getByRole("button", { name: "Save Changes" });
+    const messageInput = screen.getByLabelText("Message");
+
+    expect(screen.queryByLabelText("Target App Version")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(saveButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(messageInput, { target: { value: "Updated message" } });
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(saveButton.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("submits the remaining target cohorts after one is removed", async () => {
+    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+
+    render(
+      <BundleEditorForm
+        bundle={{
+          ...bundle,
+          targetCohorts: ["device-1", "device-2"],
+        }}
+        onClose={() => {}}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove cohort device-1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+        bundle: expect.objectContaining({
+          targetCohorts: ["device-2"],
+        }),
+      });
+    });
+  });
+
+  it("submits null when the last target cohort is removed", async () => {
+    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+
+    render(
+      <BundleEditorForm
+        bundle={{
+          ...bundle,
+          targetCohorts: ["device-1"],
+        }}
+        onClose={() => {}}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove cohort device-1" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+        bundle: expect.objectContaining({
+          targetCohorts: null,
+        }),
+      });
+    });
+  });
+
+  it("normalizes cohorts before submitting", async () => {
+    mockUpdateBundleMutation.mutateAsync.mockResolvedValue(undefined);
+
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Enter cohort..."), {
+      target: { value: " QA-GROUP " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add cohort" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(mockUpdateBundleMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+        bundle: expect.objectContaining({
+          targetCohorts: ["qa-group"],
+        }),
+      });
+    });
+  });
+
+  it("rejects invalid cohorts", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Enter cohort..."), {
+      target: { value: "Bad Cohort" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add cohort" }));
+
+    expect(mockToastError).toHaveBeenCalledWith(INVALID_COHORT_ERROR_MESSAGE);
+  });
+
+  it("rejects cohorts longer than the endpoint-safe limit", () => {
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    fireEvent.change(screen.getByPlaceholderText("Enter cohort..."), {
+      target: { value: "a".repeat(65) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add cohort" }));
+
+    expect(mockToastError).toHaveBeenCalledWith(INVALID_COHORT_ERROR_MESSAGE);
+  });
+
+  it("opens the download URL when Download Bundle is clicked", async () => {
+    mockBundleDownloadUrlMutation.mutateAsync.mockResolvedValue({
+      fileUrl: "https://example.invalid/bundle.zip",
+    });
+
+    render(<BundleEditorForm bundle={bundle} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Download Bundle" }));
+
+    await waitFor(() => {
+      expect(mockBundleDownloadUrlMutation.mutateAsync).toHaveBeenCalledWith({
+        bundleId: bundle.id,
+      });
+    });
+
+    expect(window.open).toHaveBeenCalledWith("", "_blank");
+    expect(window.open).toHaveBeenCalledWith(
+      "https://example.invalid/bundle.zip",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+});
