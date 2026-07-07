@@ -2,10 +2,12 @@ import type {
   BundleEventListQuery,
   BundleListQuery,
   BundlePatchListQuery,
+  BundlePatchResource,
   CursorPage,
   DatabaseBundleEvent,
   DatabaseBundleEventInput,
   DatabaseBundlePatch,
+  DatabaseBundlePatchUpdate,
   DatabaseBundleRecord,
   DatabaseCommitParams,
   DatabaseMutation,
@@ -27,6 +29,15 @@ type BundleEntry =
       readonly kind: "deleted";
     };
 
+type BundlePatchEntry =
+  | {
+      readonly kind: "present";
+      readonly patch: DatabaseBundlePatch;
+    }
+  | {
+      readonly kind: "deleted";
+    };
+
 const emptyPagination = {
   hasNextPage: false,
   hasPreviousPage: false,
@@ -38,8 +49,6 @@ const emptyPage = <TData>(): CursorPage<TData> => ({
   data: [],
   pagination: emptyPagination,
 });
-
-const PATCH_OVERLAY_LOOKUP_LIMIT = 1000;
 
 const resolveBundleEntry = (
   entry: BundleEntry | undefined,
@@ -168,6 +177,13 @@ const patchMatches = (
   if (!where) {
     return true;
   }
+  const patchId = getPatchId(patch);
+  if (where.id !== undefined && patchId !== where.id) {
+    return false;
+  }
+  if (where.idIn !== undefined && !where.idIn.includes(patchId)) {
+    return false;
+  }
   if (where.bundleId !== undefined && patch.bundleId !== where.bundleId) {
     return false;
   }
@@ -232,6 +248,36 @@ const materializePatch = (patch: DatabaseBundlePatch): DatabaseBundlePatch => {
 const getPatchId = (patch: DatabaseBundlePatch): string =>
   patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
 
+const getCoreBundlePatchById = async (
+  resource: BundlePatchResource,
+  patchId: string,
+): Promise<DatabaseBundlePatch | null> => {
+  const patch = await resource.getById({ patchId });
+  return patch ? materializePatch(patch) : null;
+};
+
+const insertCoreBundlePatch = async (
+  resource: BundlePatchResource,
+  patch: DatabaseBundlePatch,
+): Promise<void> => {
+  await resource.insert({ patch: materializePatch(patch) });
+};
+
+const updateCoreBundlePatch = async (
+  resource: BundlePatchResource,
+  patchId: string,
+  patch: DatabaseBundlePatchUpdate,
+): Promise<void> => {
+  await resource.update({ patchId, patch });
+};
+
+const deleteCoreBundlePatch = async (
+  resource: BundlePatchResource,
+  patchId: string,
+): Promise<void> => {
+  await resource.delete({ patchId });
+};
+
 const createEvent = (event: DatabaseBundleEventInput): DatabaseBundleEvent => ({
   ...event,
   id: createUUIDv7(),
@@ -243,12 +289,11 @@ class RuntimeStage {
     string,
     Partial<DatabaseBundleRecord>
   >();
-  private readonly bundlePatchReplacements = new Map<
+  private readonly bundlePatchEntries = new Map<string, BundlePatchEntry>();
+  private readonly bundlePatchUpdates = new Map<
     string,
-    readonly DatabaseBundlePatch[]
+    DatabaseBundlePatchUpdate
   >();
-  private readonly deletedPatchBundleIds = new Set<string>();
-  private readonly deletedPatchBaseBundleIds = new Set<string>();
   private readonly eventAppends: DatabaseBundleEvent[] = [];
   private readonly mutations: DatabaseMutation[] = [];
 
@@ -286,24 +331,39 @@ class RuntimeStage {
         this.bundleUpdates.delete(mutation.bundleId);
         this.mutations.push(mutation);
         return;
-      case "bundlePatch.replaceForBundle":
-        this.bundlePatchReplacements.set(
-          mutation.bundleId,
-          mutation.patches.map(materializePatch),
-        );
-        this.deletedPatchBundleIds.delete(mutation.bundleId);
-        this.mutations.push({
-          ...mutation,
-          patches: mutation.patches.map(materializePatch),
+      case "bundlePatch.insert": {
+        const patch = materializePatch(mutation.patch);
+        const patchId = getPatchId(patch);
+        this.bundlePatchEntries.set(patchId, {
+          kind: "present",
+          patch,
         });
+        this.bundlePatchUpdates.delete(patchId);
+        this.mutations.push({ ...mutation, patch });
         return;
-      case "bundlePatch.deleteForBundle":
-        this.deletedPatchBundleIds.add(mutation.bundleId);
-        this.bundlePatchReplacements.delete(mutation.bundleId);
+      }
+      case "bundlePatch.update": {
+        const entry = this.bundlePatchEntries.get(mutation.patchId);
+        if (entry?.kind === "present") {
+          this.bundlePatchEntries.set(mutation.patchId, {
+            kind: "present",
+            patch: materializePatch({
+              ...entry.patch,
+              ...mutation.patch,
+            }),
+          });
+        } else if (entry?.kind !== "deleted") {
+          this.bundlePatchUpdates.set(mutation.patchId, {
+            ...this.bundlePatchUpdates.get(mutation.patchId),
+            ...mutation.patch,
+          });
+        }
         this.mutations.push(mutation);
         return;
-      case "bundlePatch.deleteForBaseBundle":
-        this.deletedPatchBaseBundleIds.add(mutation.baseBundleId);
+      }
+      case "bundlePatch.delete":
+        this.bundlePatchEntries.set(mutation.patchId, { kind: "deleted" });
+        this.bundlePatchUpdates.delete(mutation.patchId);
         this.mutations.push(mutation);
         return;
       case "bundleEvent.append":
@@ -320,6 +380,13 @@ class RuntimeStage {
     return patch ? { ...bundle, ...patch } : bundle;
   }
 
+  private applyBundlePatchUpdate(
+    patch: DatabaseBundlePatch,
+  ): DatabaseBundlePatch {
+    const update = this.bundlePatchUpdates.get(getPatchId(patch));
+    return update ? materializePatch({ ...patch, ...update }) : patch;
+  }
+
   async resolveBundle(
     core: DatabasePluginCore,
     bundleId: string,
@@ -334,6 +401,21 @@ class RuntimeStage {
     }
     const current = await core.bundles.getById({ bundleId });
     return current ? this.applyBundleUpdate(current) : null;
+  }
+
+  async resolvePatch(
+    core: DatabasePluginCore,
+    patchId: string,
+  ): Promise<DatabaseBundlePatch | null | undefined> {
+    const entry = this.bundlePatchEntries.get(patchId);
+    if (entry) {
+      return entry.kind === "present" ? entry.patch : null;
+    }
+    if (!this.bundlePatchUpdates.has(patchId)) {
+      return undefined;
+    }
+    const current = await getCoreBundlePatchById(core.bundlePatches, patchId);
+    return current ? this.applyBundlePatchUpdate(current) : null;
   }
 
   async overlayBundles(
@@ -422,88 +504,77 @@ class RuntimeStage {
     };
   }
 
-  private async listCurrentPatches(
-    core: DatabasePluginCore,
-    where: NonNullable<BundlePatchListQuery["where"]>,
-  ): Promise<DatabaseBundlePatch[]> {
-    const patches: DatabaseBundlePatch[] = [];
-    let after: string | undefined;
-    for (;;) {
-      const page = await core.bundlePatches.list({
-        where,
-        limit: PATCH_OVERLAY_LOOKUP_LIMIT,
-        cursor: after ? { after } : undefined,
-      });
-      patches.push(...page.data.map(materializePatch));
-      if (!page.pagination.hasNextPage || !page.pagination.nextCursor) {
-        return patches;
-      }
-      after = page.pagination.nextCursor;
-    }
-  }
-
   async overlayPatches(
     core: DatabasePluginCore,
     page: CursorPage<DatabaseBundlePatch>,
     query: BundlePatchListQuery,
   ): Promise<CursorPage<DatabaseBundlePatch>> {
-    const byId = new Map(
-      page.data.map((patch) => [getPatchId(patch), materializePatch(patch)]),
-    );
     const hasPatchMutations =
-      this.deletedPatchBundleIds.size > 0 ||
-      this.deletedPatchBaseBundleIds.size > 0 ||
-      this.bundlePatchReplacements.size > 0;
-    const currentMatchingPatchIds = new Set<string>();
-    const removedPatchIds = new Set<string>();
+      this.bundlePatchEntries.size > 0 || this.bundlePatchUpdates.size > 0;
+    const byId = new Map<string, DatabaseBundlePatch>();
+    const baseById = new Map(
+      page.data.map((patch) => {
+        const materializedPatch = materializePatch(patch);
+        return [getPatchId(materializedPatch), materializedPatch];
+      }),
+    );
     let total = page.pagination.total ?? page.data.length;
-    const removePatch = (patch: DatabaseBundlePatch) => {
-      const patchId = getPatchId(patch);
-      byId.delete(patchId);
-      if (patchMatches(patch, query)) {
-        currentMatchingPatchIds.add(patchId);
-      }
-      if (
-        currentMatchingPatchIds.has(patchId) &&
-        !removedPatchIds.has(patchId)
-      ) {
-        removedPatchIds.add(patchId);
+
+    for (const patch of page.data) {
+      const materializedPatch = materializePatch(patch);
+      const overlaidPatch = this.applyBundlePatchUpdate(materializedPatch);
+      if (patchMatches(overlaidPatch, query)) {
+        byId.set(getPatchId(overlaidPatch), overlaidPatch);
+      } else {
         total -= 1;
       }
-    };
-    const addPatch = (patch: DatabaseBundlePatch) => {
-      const patchId = getPatchId(patch);
-      byId.set(patchId, patch);
-      if (
-        patchMatches(patch, query) &&
-        (removedPatchIds.has(patchId) || !currentMatchingPatchIds.has(patchId))
-      ) {
+    }
+
+    for (const [patchId, patchUpdate] of this.bundlePatchUpdates) {
+      if (baseById.has(patchId) || this.bundlePatchEntries.has(patchId)) {
+        continue;
+      }
+      const current = await getCoreBundlePatchById(core.bundlePatches, patchId);
+      if (!current) {
+        continue;
+      }
+      const overlaidPatch = materializePatch({ ...current, ...patchUpdate });
+      const beforeMatches = patchMatches(current, query);
+      const afterMatches = patchMatches(overlaidPatch, query);
+      if (!beforeMatches && afterMatches) {
         total += 1;
-      }
-      removedPatchIds.delete(patchId);
-    };
-    for (const bundleId of this.deletedPatchBundleIds) {
-      for (const patch of await this.listCurrentPatches(core, { bundleId })) {
-        removePatch(patch);
+        byId.set(patchId, overlaidPatch);
+      } else if (beforeMatches && !afterMatches) {
+        total -= 1;
       }
     }
-    for (const baseBundleId of this.deletedPatchBaseBundleIds) {
-      for (const patch of await this.listCurrentPatches(core, {
-        baseBundleId,
-      })) {
-        removePatch(patch);
+
+    for (const [patchId, entry] of this.bundlePatchEntries) {
+      const basePatch =
+        baseById.get(patchId) ??
+        (await getCoreBundlePatchById(core.bundlePatches, patchId));
+      const beforeMatches = basePatch ? patchMatches(basePatch, query) : false;
+      if (entry.kind === "deleted") {
+        byId.delete(patchId);
+        if (beforeMatches) {
+          total -= 1;
+        }
+        continue;
+      }
+      if (patchMatches(entry.patch, query)) {
+        byId.set(patchId, entry.patch);
+        if (!beforeMatches) {
+          total += 1;
+        }
+      } else {
+        byId.delete(patchId);
+        if (beforeMatches) {
+          total -= 1;
+        }
       }
     }
-    for (const [bundleId, patches] of this.bundlePatchReplacements) {
-      for (const patch of await this.listCurrentPatches(core, { bundleId })) {
-        removePatch(patch);
-      }
-      for (const patch of patches) {
-        addPatch(patch);
-      }
-    }
+
     const data = Array.from(byId.values())
-      .filter((patch) => patchMatches(patch, query))
       .slice()
       .sort((left, right) => {
         const direction = query.orderBy?.direction ?? "asc";
@@ -512,7 +583,9 @@ class RuntimeStage {
           const result = left.orderIndex - right.orderIndex;
           return direction === "asc" ? result : -result;
         }
-        return compareStrings(left[field], right[field], direction);
+        const leftValue = field === "id" ? getPatchId(left) : left[field];
+        const rightValue = field === "id" ? getPatchId(right) : right[field];
+        return compareStrings(leftValue, rightValue, direction);
       });
     const pageData = data.slice(0, query.limit);
     return {
@@ -569,9 +642,8 @@ class RuntimeStage {
   clear(): void {
     this.bundleEntries.clear();
     this.bundleUpdates.clear();
-    this.bundlePatchReplacements.clear();
-    this.deletedPatchBundleIds.clear();
-    this.deletedPatchBaseBundleIds.clear();
+    this.bundlePatchEntries.clear();
+    this.bundlePatchUpdates.clear();
     this.eventAppends.splice(0);
     this.mutations.splice(0);
   }
@@ -594,15 +666,8 @@ const applyMutations = async (
   mutations: readonly DatabaseMutation[],
 ): Promise<void> => {
   for (const mutation of mutations) {
-    if (mutation.kind === "bundlePatch.deleteForBaseBundle") {
-      await core.bundlePatches.deleteForBaseBundle({
-        baseBundleId: mutation.baseBundleId,
-      });
-    }
-  }
-  for (const mutation of mutations) {
-    if (mutation.kind === "bundlePatch.deleteForBundle") {
-      await core.bundlePatches.deleteForBundle({ bundleId: mutation.bundleId });
+    if (mutation.kind === "bundlePatch.delete") {
+      await deleteCoreBundlePatch(core.bundlePatches, mutation.patchId);
     }
   }
   for (const mutation of mutations) {
@@ -624,11 +689,17 @@ const applyMutations = async (
     }
   }
   for (const mutation of mutations) {
-    if (mutation.kind === "bundlePatch.replaceForBundle") {
-      await core.bundlePatches.replaceForBundle({
-        bundleId: mutation.bundleId,
-        patches: mutation.patches,
-      });
+    if (mutation.kind === "bundlePatch.insert") {
+      await insertCoreBundlePatch(core.bundlePatches, mutation.patch);
+    }
+  }
+  for (const mutation of mutations) {
+    if (mutation.kind === "bundlePatch.update") {
+      await updateCoreBundlePatch(
+        core.bundlePatches,
+        mutation.patchId,
+        mutation.patch,
+      );
     }
   }
   for (const mutation of mutations) {
@@ -717,11 +788,7 @@ export const createDatabaseRuntime = (
       await applyMutations(transaction?.core ?? core, mutations);
       await transaction?.commit();
     } catch (error) {
-      try {
-        await transaction?.rollback();
-      } finally {
-        stage.clear();
-      }
+      await transaction?.rollback();
       throw error;
     }
 
@@ -756,26 +823,27 @@ export const createDatabaseRuntime = (
       },
     },
     bundlePatches: {
+      getById: async ({ patchId }) => {
+        const core = await options.getCore();
+        const staged = await stage.resolvePatch(core, patchId);
+        if (staged !== undefined) {
+          return staged;
+        }
+        return getCoreBundlePatchById(core.bundlePatches, patchId);
+      },
       list: async (params) => {
         const core = await options.getCore();
         const page = await core.bundlePatches.list(params);
         return stage.overlayPatches(core, page, params);
       },
-      replaceForBundle: async ({ bundleId, patches }) => {
-        stage.stage({
-          kind: "bundlePatch.replaceForBundle",
-          bundleId,
-          patches: patches.map(materializePatch),
-        });
+      insert: async ({ patch }) => {
+        stage.stage({ kind: "bundlePatch.insert", patch });
       },
-      deleteForBundle: async ({ bundleId }) => {
-        stage.stage({ kind: "bundlePatch.deleteForBundle", bundleId });
+      update: async ({ patchId, patch }) => {
+        stage.stage({ kind: "bundlePatch.update", patchId, patch });
       },
-      deleteForBaseBundle: async ({ baseBundleId }) => {
-        stage.stage({
-          kind: "bundlePatch.deleteForBaseBundle",
-          baseBundleId,
-        });
+      delete: async ({ patchId }) => {
+        stage.stage({ kind: "bundlePatch.delete", patchId });
       },
     },
     commit,

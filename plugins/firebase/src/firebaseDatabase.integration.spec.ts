@@ -1,5 +1,6 @@
 import type {
   Bundle,
+  DatabaseBundlePatch,
   DatabaseBundleQueryOptions,
   DatabasePluginRuntime,
   GetBundlesArgs,
@@ -23,6 +24,49 @@ const PROJECT_ID = "firebase-database-test";
 
 const { firestore, bundlesCollection, channelsCollection, clearCollections } =
   createFirestoreMock(PROJECT_ID);
+
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const replaceRuntimeBundlePatches = async (
+  runtime: DatabasePluginRuntime,
+  bundleId: string,
+  patches: readonly DatabaseBundlePatch[],
+): Promise<void> => {
+  const current = await runtime.bundlePatches.list({
+    where: { bundleId },
+    limit: 1000,
+  });
+  for (const patch of current.data) {
+    await runtime.bundlePatches.delete({ patchId: getPatchId(patch) });
+  }
+  for (const patch of patches) {
+    await runtime.bundlePatches.insert({ patch });
+  }
+};
+
+const deleteRuntimeBundle = async (
+  runtime: DatabasePluginRuntime,
+  bundleId: string,
+): Promise<void> => {
+  const patchIds = new Set<string>();
+  const patchPages = await Promise.all([
+    runtime.bundlePatches.list({ where: { bundleId }, limit: 1000 }),
+    runtime.bundlePatches.list({
+      where: { baseBundleId: bundleId },
+      limit: 1000,
+    }),
+  ]);
+  for (const page of patchPages) {
+    for (const patch of page.data) {
+      patchIds.add(getPatchId(patch));
+    }
+  }
+  for (const patchId of patchIds) {
+    await runtime.bundlePatches.delete({ patchId });
+  }
+  await runtime.bundles.delete({ bundleId });
+};
 
 type LegacyDatabaseFixture = {
   readonly name: string;
@@ -97,10 +141,7 @@ const toLegacyDatabasePlugin = (
     async appendBundle(bundle) {
       const split = splitDatabaseBundle(bundle);
       await runtime.bundles.insert({ bundle: split.bundle });
-      await runtime.bundlePatches.replaceForBundle({
-        bundleId: bundle.id,
-        patches: split.patches,
-      });
+      await replaceRuntimeBundlePatches(runtime, bundle.id, split.patches);
     },
     async updateBundle(bundleId, patch) {
       const current = await readBundle(bundleId);
@@ -109,17 +150,10 @@ const toLegacyDatabasePlugin = (
       }
       const split = splitDatabaseBundle({ ...current, ...patch, id: bundleId });
       await runtime.bundles.update({ bundleId, patch: split.bundle });
-      await runtime.bundlePatches.replaceForBundle({
-        bundleId,
-        patches: split.patches,
-      });
+      await replaceRuntimeBundlePatches(runtime, bundleId, split.patches);
     },
     async deleteBundle(bundle) {
-      await runtime.bundlePatches.deleteForBaseBundle({
-        baseBundleId: bundle.id,
-      });
-      await runtime.bundlePatches.deleteForBundle({ bundleId: bundle.id });
-      await runtime.bundles.delete({ bundleId: bundle.id });
+      await deleteRuntimeBundle(runtime, bundle.id);
     },
     async commitBundle() {
       await runtime.commit();

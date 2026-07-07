@@ -94,12 +94,15 @@ const createInsertFailingDatabasePlugin = (
         },
       },
       bundlePatches: {
-        async deleteForBaseBundle() {},
-        async deleteForBundle() {},
+        async delete() {},
+        async getById() {
+          return null;
+        },
+        async insert() {},
         async list() {
           return createCursorPage(split.patches);
         },
-        async replaceForBundle() {},
+        async update() {},
       },
     }),
   })(undefined);

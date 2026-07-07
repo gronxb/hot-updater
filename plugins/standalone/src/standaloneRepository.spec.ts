@@ -1,6 +1,7 @@
 import {
   type Bundle,
   calculatePagination,
+  type DatabaseBundlePatch,
   type DatabaseBundleQueryOptions,
   type DatabasePluginRuntime,
   type GetBundlesArgs,
@@ -122,6 +123,35 @@ const PATCH_KEYS = [
 const hasPatchChange = (bundle: Partial<Bundle>): boolean =>
   PATCH_KEYS.some((key) => key in bundle);
 
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const replaceRuntimeBundlePatches = async (
+  runtime: DatabasePluginRuntime,
+  bundleId: string,
+  patches: readonly DatabaseBundlePatch[],
+): Promise<void> => {
+  const current = await runtime.bundlePatches.list({
+    where: { bundleId },
+    limit: 1000,
+  });
+  for (const patch of current.data) {
+    await runtime.bundlePatches.delete({ patchId: getPatchId(patch) });
+  }
+  for (const patch of patches) {
+    await runtime.bundlePatches.insert({ patch });
+  }
+};
+
+const insertRuntimeBundlePatches = async (
+  runtime: DatabasePluginRuntime,
+  patches: readonly DatabaseBundlePatch[],
+): Promise<void> => {
+  for (const patch of patches) {
+    await runtime.bundlePatches.insert({ patch });
+  }
+};
+
 const stripEmptyPatchReadModel = (bundle: Bundle): Bundle => {
   const {
     patches,
@@ -182,20 +212,8 @@ const toLegacyRepository = (
 
   const getBundles: LegacyDatabaseFixture["getBundles"] = async (options) => {
     const page = await runtime.bundles.list(options);
-    const patchPage = await runtime.bundlePatches.list({
-      where: { bundleIdIn: page.data.map((bundle) => bundle.id) },
-      limit: 1000,
-    });
-    const patchGroups = new Map(
-      page.data.map((bundle) => [
-        bundle.id,
-        patchPage.data.filter((patch) => patch.bundleId === bundle.id),
-      ]),
-    );
     const data = page.data.map((bundle) =>
-      stripEmptyPatchReadModel(
-        toBundleReadModel(bundle, patchGroups.get(bundle.id) ?? []),
-      ),
+      stripEmptyPatchReadModel(toBundleReadModel(bundle)),
     );
     const total = page.pagination.total ?? data.length;
     const pagination: PaginatedResult["pagination"] = {
@@ -233,10 +251,7 @@ const toLegacyRepository = (
     async appendBundle(bundle) {
       const splitBundle = splitDatabaseBundle(bundle);
       await runtime.bundles.insert({ bundle: splitBundle.bundle });
-      await runtime.bundlePatches.replaceForBundle({
-        bundleId: bundle.id,
-        patches: splitBundle.patches,
-      });
+      await insertRuntimeBundlePatches(runtime, splitBundle.patches);
     },
     async updateBundle(bundleId, patch) {
       const current = await getBundleById(bundleId);
@@ -250,10 +265,11 @@ const toLegacyRepository = (
         patch: splitBundle.bundle,
       });
       if (hasPatchChange(patch)) {
-        await runtime.bundlePatches.replaceForBundle({
+        await replaceRuntimeBundlePatches(
+          runtime,
           bundleId,
-          patches: splitBundle.patches,
-        });
+          splitBundle.patches,
+        );
       }
     },
     async deleteBundle(bundle) {

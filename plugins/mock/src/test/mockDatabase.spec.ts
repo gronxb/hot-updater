@@ -1,5 +1,5 @@
 import type { Bundle } from "@hot-updater/core";
-import { splitDatabaseBundle } from "@hot-updater/plugin-core";
+import { stageDatabaseRuntimeBundleInsert } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setupGetUpdateInfoTestSuite } from "../../../../packages/test-utils/src/index";
@@ -46,12 +46,7 @@ const stageBundleInsert = async (
   runtime: MockRuntime,
   bundle: Bundle,
 ): Promise<void> => {
-  const splitBundle = splitDatabaseBundle(bundle);
-  await runtime.bundles.insert({ bundle: splitBundle.bundle });
-  await runtime.bundlePatches.replaceForBundle({
-    bundleId: bundle.id,
-    patches: splitBundle.patches,
-  });
+  await stageDatabaseRuntimeBundleInsert(runtime, { bundle });
 };
 
 const getChannels = async (runtime: MockRuntime): Promise<string[]> => {

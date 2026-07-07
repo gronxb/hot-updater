@@ -4,7 +4,9 @@ import { NIL_UUID } from "@hot-updater/core";
 import type { DatabasePluginRuntime } from "@hot-updater/plugin-core";
 import {
   createBlobDatabasePlugin,
-  splitDatabaseBundle,
+  stageDatabaseRuntimeBundleDelete,
+  stageDatabaseRuntimeBundleInsert,
+  stageDatabaseRuntimeBundleUpdate,
   toBundleReadModel,
 } from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
@@ -160,12 +162,7 @@ const stageRuntimeBundle = async (
   runtime: DatabasePluginRuntime,
   bundle: Bundle,
 ): Promise<void> => {
-  const split = splitDatabaseBundle(bundle);
-  await runtime.bundles.insert({ bundle: split.bundle });
-  await runtime.bundlePatches.replaceForBundle({
-    bundleId: bundle.id,
-    patches: split.patches,
-  });
+  await stageDatabaseRuntimeBundleInsert(runtime, { bundle });
 };
 
 const writeRuntimeBundle = async (
@@ -181,14 +178,9 @@ const updateRuntimeBundle = async (
   bundleId: string,
   patch: Partial<Bundle>,
 ): Promise<void> => {
-  const current = await readRuntimeBundle(runtime, bundleId);
-  if (!current) throw new Error("targetBundleId not found");
-  const updated = { ...current, ...patch };
-  const split = splitDatabaseBundle(updated);
-  await runtime.bundles.update({ bundleId, patch: split.bundle });
-  await runtime.bundlePatches.replaceForBundle({
+  await stageDatabaseRuntimeBundleUpdate(runtime, {
     bundleId,
-    patches: split.patches,
+    patch,
   });
   await runtime.commit();
 };
@@ -197,9 +189,7 @@ const deleteRuntimeBundle = async (
   runtime: DatabasePluginRuntime,
   bundleId: string,
 ): Promise<void> => {
-  await runtime.bundlePatches.deleteForBaseBundle({ baseBundleId: bundleId });
-  await runtime.bundlePatches.deleteForBundle({ bundleId });
-  await runtime.bundles.delete({ bundleId });
+  await stageDatabaseRuntimeBundleDelete(runtime, bundleId);
   await runtime.commit();
 };
 

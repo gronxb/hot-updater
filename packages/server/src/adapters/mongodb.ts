@@ -1,6 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
+  BundlePatchListQuery,
   DatabaseBundlePatch,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
@@ -12,13 +13,14 @@ import {
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
-import type { ClientSession, Collection, Filter, MongoClient } from "mongodb";
+import type { ClientSession, Filter, MongoClient } from "mongodb";
 
 import {
   bundleRecordToRow,
   type BundlePatchRow,
   type BundleRow,
   databaseBundlePatchToRow,
+  databaseBundlePatchUpdateToRow,
   paginateCursorItems,
   rowToDatabaseBundlePatch,
   rowToDatabaseBundleRecord,
@@ -27,6 +29,17 @@ import {
 import { createMongoMigrator } from "../db/fixedMigrator";
 import type { DatabaseAdapterCapabilities } from "../db/types";
 import { createCallbackDatabaseTransaction } from "./transaction";
+
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
@@ -131,22 +144,6 @@ const createMongoPlugin = createDatabasePlugin({
           withSession({ upsert: true }),
         );
       };
-      const replacePatchesForBundle = async (
-        bundleId: string,
-        newPatches: readonly DatabaseBundlePatch[],
-      ) => {
-        await patches.deleteMany({ bundle_id: bundleId }, ...sessionArgs());
-        const patchRows = newPatches.map(databaseBundlePatchToRow);
-        if (patchRows.length > 0)
-          await patches.insertMany(patchRows, ...sessionArgs());
-      };
-      const deleteByBundleId = async (
-        collection: Collection<BundlePatchRow>,
-        field: "bundle_id" | "base_bundle_id",
-        bundleId: string,
-      ) => {
-        await collection.deleteMany({ [field]: bundleId }, ...sessionArgs());
-      };
       return {
         bundles: {
           async getById({ bundleId }) {
@@ -210,10 +207,13 @@ const createMongoPlugin = createDatabasePlugin({
                 const where = options.where;
                 return (
                   !where ||
-                  ((where.bundleId === undefined ||
-                    patch.bundleId === where.bundleId) &&
+                  ((where.id === undefined || getPatchId(patch) === where.id) &&
+                    (where.bundleId === undefined ||
+                      patch.bundleId === where.bundleId) &&
                     (where.baseBundleId === undefined ||
                       patch.baseBundleId === where.baseBundleId) &&
+                    (where.idIn === undefined ||
+                      where.idIn.includes(getPatchId(patch))) &&
                     (where.bundleIdIn === undefined ||
                       where.bundleIdIn.includes(patch.bundleId)) &&
                     (where.baseBundleIdIn === undefined ||
@@ -226,25 +226,40 @@ const createMongoPlugin = createDatabasePlugin({
                 const result =
                   field === "orderIndex"
                     ? left.orderIndex - right.orderIndex
-                    : left[field].localeCompare(right[field]);
+                    : getPatchStringField(left, field).localeCompare(
+                        getPatchStringField(right, field),
+                      );
                 return direction === "asc" ? result : -result;
               });
             return paginateCursorItems({
               items: data,
               limit: options.limit,
               cursor: options.cursor,
-              getCursor: (patch) =>
-                patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+              getCursor: getPatchId,
             });
           },
-          async replaceForBundle({ bundleId, patches }) {
-            await replacePatchesForBundle(bundleId, patches);
+          async getById({ patchId }) {
+            const row = await patches.findOne(
+              { id: patchId },
+              ...sessionArgs(),
+            );
+            return row ? rowToDatabaseBundlePatch(row) : null;
           },
-          async deleteForBundle({ bundleId }) {
-            await deleteByBundleId(patches, "bundle_id", bundleId);
+          async insert({ patch }) {
+            await patches.insertMany(
+              [databaseBundlePatchToRow(patch)],
+              ...sessionArgs(),
+            );
           },
-          async deleteForBaseBundle({ baseBundleId }) {
-            await deleteByBundleId(patches, "base_bundle_id", baseBundleId);
+          async update({ patchId, patch }) {
+            await patches.updateOne(
+              { id: patchId },
+              { $set: databaseBundlePatchUpdateToRow(patch) },
+              ...sessionArgs(),
+            );
+          },
+          async delete({ patchId }) {
+            await patches.deleteMany({ id: patchId }, ...sessionArgs());
           },
         },
         updateInfo: {

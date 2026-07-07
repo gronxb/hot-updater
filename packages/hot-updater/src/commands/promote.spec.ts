@@ -67,13 +67,11 @@ const {
       insert: vi.fn<DatabasePluginRuntime["bundles"]["insert"]>(),
     },
     bundlePatches: {
+      getById: vi.fn<DatabasePluginRuntime["bundlePatches"]["getById"]>(),
       list: vi.fn<DatabasePluginRuntime["bundlePatches"]["list"]>(),
-      replaceForBundle:
-        vi.fn<DatabasePluginRuntime["bundlePatches"]["replaceForBundle"]>(),
-      deleteForBundle:
-        vi.fn<DatabasePluginRuntime["bundlePatches"]["deleteForBundle"]>(),
-      deleteForBaseBundle:
-        vi.fn<DatabasePluginRuntime["bundlePatches"]["deleteForBaseBundle"]>(),
+      insert: vi.fn<DatabasePluginRuntime["bundlePatches"]["insert"]>(),
+      update: vi.fn<DatabasePluginRuntime["bundlePatches"]["update"]>(),
+      delete: vi.fn<DatabasePluginRuntime["bundlePatches"]["delete"]>(),
     },
     commit: vi.fn<DatabasePluginRuntime["commit"]>(),
     close: vi.fn<NonNullable<DatabasePluginRuntime["close"]>>(),

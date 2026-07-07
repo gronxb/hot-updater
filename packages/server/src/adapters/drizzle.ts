@@ -1,6 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
+  BundlePatchListQuery,
   DatabaseBundlePatch,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
@@ -35,6 +36,7 @@ import {
   type BundleRow,
   databaseBundleEventToRow,
   databaseBundlePatchToRow,
+  databaseBundlePatchUpdateToRow,
   paginateCursorItems,
   rowToDatabaseBundleEvent,
   rowToDatabaseBundlePatch,
@@ -58,6 +60,17 @@ import {
   type DrizzleTable,
 } from "./drizzleLazyDB";
 import { createCallbackDatabaseTransaction } from "./transaction";
+
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
 
 export interface DrizzleConfig {
   readonly db: unknown | (() => unknown | Promise<unknown>);
@@ -137,20 +150,6 @@ const createDrizzlePlugin = createDatabasePlugin({
             .where(eq(column(bundleTable(), "id"), bundle.id));
         } else {
           const inserted = activeDB.insert(bundleTable()).values(row);
-          if (inserted.execute) await inserted.execute();
-          else await inserted;
-        }
-      };
-      const replacePatchesForBundle = async (
-        bundleId: string,
-        newPatches: readonly DatabaseBundlePatch[],
-      ) => {
-        await activeDB
-          .delete(patchTable())
-          .where(eq(column(patchTable(), "bundle_id"), bundleId));
-        const patchRows = newPatches.map(databaseBundlePatchToRow);
-        if (patchRows.length > 0) {
-          const inserted = activeDB.insert(patchTable()).values(patchRows);
           if (inserted.execute) await inserted.execute();
           else await inserted;
         }
@@ -248,10 +247,13 @@ const createDrizzlePlugin = createDatabasePlugin({
                 const where = options.where;
                 return (
                   !where ||
-                  ((where.bundleId === undefined ||
-                    patch.bundleId === where.bundleId) &&
+                  ((where.id === undefined || getPatchId(patch) === where.id) &&
+                    (where.bundleId === undefined ||
+                      patch.bundleId === where.bundleId) &&
                     (where.baseBundleId === undefined ||
                       patch.baseBundleId === where.baseBundleId) &&
+                    (where.idIn === undefined ||
+                      where.idIn.includes(getPatchId(patch))) &&
                     (where.bundleIdIn === undefined ||
                       where.bundleIdIn.includes(patch.bundleId)) &&
                     (where.baseBundleIdIn === undefined ||
@@ -264,29 +266,41 @@ const createDrizzlePlugin = createDatabasePlugin({
                 const result =
                   field === "orderIndex"
                     ? left.orderIndex - right.orderIndex
-                    : left[field].localeCompare(right[field]);
+                    : getPatchStringField(left, field).localeCompare(
+                        getPatchStringField(right, field),
+                      );
                 return direction === "asc" ? result : -result;
               });
             return paginateCursorItems({
               items: patchRows,
               limit: options.limit,
               cursor: options.cursor,
-              getCursor: (patch) =>
-                patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+              getCursor: getPatchId,
             });
           },
-          async replaceForBundle({ bundleId, patches }) {
-            await replacePatchesForBundle(bundleId, patches);
+          async getById({ patchId }) {
+            const row = await activeDB.query["bundle_patches"]?.findFirst({
+              where: eq(column(patchTable(), "id"), patchId),
+            });
+            return row ? rowToDatabaseBundlePatch(row as BundlePatchRow) : null;
           },
-          async deleteForBundle({ bundleId }) {
+          async insert({ patch }) {
+            const inserted = activeDB
+              .insert(patchTable())
+              .values(databaseBundlePatchToRow(patch));
+            if (inserted.execute) await inserted.execute();
+            else await inserted;
+          },
+          async update({ patchId, patch }) {
+            await activeDB
+              .update(patchTable())
+              .set(databaseBundlePatchUpdateToRow(patch))
+              .where(eq(column(patchTable(), "id"), patchId));
+          },
+          async delete({ patchId }) {
             await activeDB
               .delete(patchTable())
-              .where(eq(column(patchTable(), "bundle_id"), bundleId));
-          },
-          async deleteForBaseBundle({ baseBundleId }) {
-            await activeDB
-              .delete(patchTable())
-              .where(eq(column(patchTable(), "base_bundle_id"), baseBundleId));
+              .where(eq(column(patchTable(), "id"), patchId));
           },
         },
         bundleEvents: {

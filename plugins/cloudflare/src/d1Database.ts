@@ -15,6 +15,7 @@ import type {
   CursorPage,
   DatabaseBundleEvent,
   DatabaseBundlePatch,
+  DatabaseBundlePatchUpdate,
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
@@ -243,6 +244,17 @@ const parseMetadata = (value: unknown): Bundle["metadata"] => {
 const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
   `${bundleId}:${baseBundleId}`;
 
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? buildBundlePatchId(patch.bundleId, patch.baseBundleId);
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
+
 const bundleRecordToRow = (bundleRecord: DatabaseBundleRecord): D1BundleRow => {
   const bundle = toBundleReadModel(bundleRecord);
   return {
@@ -294,6 +306,33 @@ const rowToDatabaseBundlePatch = (
   patchStorageUri: row.patch_storage_uri,
   orderIndex: row.order_index ?? 0,
 });
+
+const toPatchUpdateSql = (
+  patch: DatabaseBundlePatchUpdate,
+): {
+  readonly assignments: readonly string[];
+  readonly values: readonly unknown[];
+} => {
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (patch.baseFileHash !== undefined) {
+    assignments.push("base_file_hash = ?");
+    values.push(patch.baseFileHash);
+  }
+  if (patch.patchFileHash !== undefined) {
+    assignments.push("patch_file_hash = ?");
+    values.push(patch.patchFileHash);
+  }
+  if (patch.patchStorageUri !== undefined) {
+    assignments.push("patch_storage_uri = ?");
+    values.push(patch.patchStorageUri);
+  }
+  if (patch.orderIndex !== undefined) {
+    assignments.push("order_index = ?");
+    values.push(patch.orderIndex);
+  }
+  return { assignments, values };
+};
 
 const isAppReadyPayload = (value: unknown): value is BundleEventPayload => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -629,34 +668,22 @@ export const d1Database = createDatabasePlugin({
       );
     };
 
-    const replacePatchesForBundle = async (
-      bundleId: string,
-      patches: readonly DatabaseBundlePatch[],
-    ) => {
-      await runQuery(minify("DELETE FROM bundle_patches WHERE bundle_id = ?"), [
-        bundleId,
-      ]);
-
-      if (patches.length === 0) {
-        return;
-      }
-
-      const patchInsertSql = minify(`
-                INSERT OR REPLACE INTO bundle_patches (
-                  id,
-                  bundle_id,
-                  base_bundle_id,
-                  base_file_hash,
-                  patch_file_hash,
-                  patch_storage_uri,
-                  order_index
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-              `);
-
-      for (const patch of patches) {
-        const patchRow = databaseBundlePatchToRow(patch);
-        await runQuery(patchInsertSql, [
+    const persistPatch = async (patch: DatabaseBundlePatch) => {
+      const patchRow = databaseBundlePatchToRow(patch);
+      await runQuery(
+        minify(`
+          INSERT OR REPLACE INTO bundle_patches (
+            id,
+            bundle_id,
+            base_bundle_id,
+            base_file_hash,
+            patch_file_hash,
+            patch_storage_uri,
+            order_index
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `),
+        [
           patchRow.id,
           patchRow.bundle_id,
           patchRow.base_bundle_id,
@@ -664,8 +691,8 @@ export const d1Database = createDatabasePlugin({
           patchRow.patch_file_hash,
           patchRow.patch_storage_uri,
           patchRow.order_index ?? 0,
-        ]);
-      }
+        ],
+      );
     };
 
     return {
@@ -717,10 +744,13 @@ export const d1Database = createDatabasePlugin({
               const where = options.where;
               return (
                 !where ||
-                ((where.bundleId === undefined ||
-                  patch.bundleId === where.bundleId) &&
+                ((where.id === undefined || getPatchId(patch) === where.id) &&
+                  (where.bundleId === undefined ||
+                    patch.bundleId === where.bundleId) &&
                   (where.baseBundleId === undefined ||
                     patch.baseBundleId === where.baseBundleId) &&
+                  (where.idIn === undefined ||
+                    where.idIn.includes(getPatchId(patch))) &&
                   (where.bundleIdIn === undefined ||
                     where.bundleIdIn.includes(patch.bundleId)) &&
                   (where.baseBundleIdIn === undefined ||
@@ -733,7 +763,9 @@ export const d1Database = createDatabasePlugin({
               const result =
                 field === "orderIndex"
                   ? left.orderIndex - right.orderIndex
-                  : left[field].localeCompare(right[field]);
+                  : getPatchStringField(left, field).localeCompare(
+                      getPatchStringField(right, field),
+                    );
               return direction === "asc" ? result : -result;
             });
 
@@ -741,25 +773,34 @@ export const d1Database = createDatabasePlugin({
             items: patches,
             limit: options.limit,
             cursor: options.cursor,
-            getCursor: (patch) =>
-              patch.id ??
-              buildBundlePatchId(patch.bundleId, patch.baseBundleId),
+            getCursor: getPatchId,
           });
         },
-        async replaceForBundle({ bundleId, patches }) {
-          await replacePatchesForBundle(bundleId, patches);
+        async getById({ patchId }) {
+          const rows = await queryRows<D1BundlePatchRow>(
+            minify("SELECT * FROM bundle_patches WHERE id = ?"),
+            [patchId],
+          );
+          const row = rows[0];
+          return row ? rowToDatabaseBundlePatch(row) : null;
         },
-        async deleteForBundle({ bundleId }) {
+        async insert({ patch }) {
+          await persistPatch(patch);
+        },
+        async update({ patchId, patch }) {
+          const update = toPatchUpdateSql(patch);
+          if (update.assignments.length === 0) return;
           await runQuery(
-            minify("DELETE FROM bundle_patches WHERE bundle_id = ?"),
-            [bundleId],
+            minify(
+              `UPDATE bundle_patches SET ${update.assignments.join(", ")} WHERE id = ?`,
+            ),
+            [...update.values, patchId],
           );
         },
-        async deleteForBaseBundle({ baseBundleId }) {
-          await runQuery(
-            minify("DELETE FROM bundle_patches WHERE base_bundle_id = ?"),
-            [baseBundleId],
-          );
+        async delete({ patchId }) {
+          await runQuery(minify("DELETE FROM bundle_patches WHERE id = ?"), [
+            patchId,
+          ]);
         },
       },
       bundleEvents: {

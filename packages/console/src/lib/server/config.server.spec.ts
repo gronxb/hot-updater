@@ -25,10 +25,11 @@ function createDatabasePlugin(name: string): DatabasePluginRuntime {
       delete: vi.fn(),
     },
     bundlePatches: {
+      getById: vi.fn(),
       list: vi.fn(),
-      replaceForBundle: vi.fn(),
-      deleteForBundle: vi.fn(),
-      deleteForBaseBundle: vi.fn(),
+      insert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
     },
     commit: vi.fn(),
   };

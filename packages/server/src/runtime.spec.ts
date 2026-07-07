@@ -227,32 +227,21 @@ const createTestDatabase = (
             .slice(0, query.limit);
           return createPage(data);
         },
-        replaceForBundle: async ({ bundleId, patches: nextPatches }) => {
-          for (const [patchId, patch] of patches) {
-            if (patch.bundleId === bundleId) {
-              patches.delete(patchId);
-            }
-          }
-          for (const patch of nextPatches) {
-            patches.set(
-              patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
-              patch,
-            );
+        getById: async ({ patchId }) => patches.get(patchId) ?? null,
+        insert: async ({ patch }) => {
+          patches.set(patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`, {
+            ...patch,
+            id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+          });
+        },
+        update: async ({ patchId, patch }) => {
+          const current = patches.get(patchId);
+          if (current) {
+            patches.set(patchId, { ...current, ...patch, id: patchId });
           }
         },
-        deleteForBundle: async ({ bundleId }) => {
-          for (const [patchId, patch] of patches) {
-            if (patch.bundleId === bundleId) {
-              patches.delete(patchId);
-            }
-          }
-        },
-        deleteForBaseBundle: async ({ baseBundleId }) => {
-          for (const [patchId, patch] of patches) {
-            if (patch.baseBundleId === baseBundleId) {
-              patches.delete(patchId);
-            }
-          }
+        delete: async ({ patchId }) => {
+          patches.delete(patchId);
         },
       },
       ...(options.updateInfo

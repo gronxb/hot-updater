@@ -1,6 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   type Bundle,
+  type BundlePatchListQuery,
   calculatePagination,
   createDatabasePlugin,
   type CursorPage,
@@ -17,6 +18,22 @@ import {
 } from "@hot-updater/plugin-core";
 
 import { minMax, sleep } from "./util/utils";
+
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
+
+const materializePatch = (patch: DatabaseBundlePatch): DatabaseBundlePatch => ({
+  ...patch,
+  id: getPatchId(patch),
+});
 
 const bundleMatchesQueryWhere = (
   bundle: DatabaseBundleRecord,
@@ -240,10 +257,13 @@ export const mockDatabase = createDatabasePlugin({
             .filter(
               (patch) =>
                 !where ||
-                ((where.bundleId === undefined ||
-                  patch.bundleId === where.bundleId) &&
+                ((where.id === undefined || getPatchId(patch) === where.id) &&
+                  (where.bundleId === undefined ||
+                    patch.bundleId === where.bundleId) &&
                   (where.baseBundleId === undefined ||
                     patch.baseBundleId === where.baseBundleId) &&
+                  (where.idIn === undefined ||
+                    where.idIn.includes(getPatchId(patch))) &&
                   (where.bundleIdIn === undefined ||
                     where.bundleIdIn.includes(patch.bundleId)) &&
                   (where.baseBundleIdIn === undefined ||
@@ -255,39 +275,66 @@ export const mockDatabase = createDatabasePlugin({
               const result =
                 field === "orderIndex"
                   ? left.orderIndex - right.orderIndex
-                  : left[field].localeCompare(right[field]);
+                  : getPatchStringField(left, field).localeCompare(
+                      getPatchStringField(right, field),
+                    );
               return direction === "asc" ? result : -result;
             });
 
           return paginateMockBundles({
             bundles: patches.map((patch) => ({
               ...patch,
-              id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+              id: getPatchId(patch),
             })),
             limit: options.limit,
             cursor: options.cursor,
             orderBy: undefined,
           });
         },
-        async replaceForBundle({ bundleId, patches }) {
+        async getById({ patchId }) {
           await sleep(minMax(config.latency.min, config.latency.max));
-          bundlePatches.set(bundleId, [...patches]);
+          return (
+            Array.from(bundlePatches.values())
+              .flat()
+              .map(materializePatch)
+              .find((patch) => getPatchId(patch) === patchId) ?? null
+          );
         },
-        async deleteForBundle({ bundleId }) {
+        async insert({ patch }) {
           await sleep(minMax(config.latency.min, config.latency.max));
-          bundlePatches.delete(bundleId);
+          const nextPatch = materializePatch(patch);
+          const patches =
+            bundlePatches
+              .get(nextPatch.bundleId)
+              ?.filter((item) => getPatchId(item) !== getPatchId(nextPatch)) ??
+            [];
+          bundlePatches.set(
+            nextPatch.bundleId,
+            [...patches, nextPatch].sort(
+              (left, right) => left.orderIndex - right.orderIndex,
+            ),
+          );
         },
-        async deleteForBaseBundle({ baseBundleId }) {
+        async update({ patchId, patch }) {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          for (const [bundleId, patches] of bundlePatches) {
+            bundlePatches.set(
+              bundleId,
+              patches.map((current) =>
+                getPatchId(current) === patchId
+                  ? materializePatch({ ...current, ...patch })
+                  : current,
+              ),
+            );
+          }
+        },
+        async delete({ patchId }) {
           await sleep(minMax(config.latency.min, config.latency.max));
           for (const [bundleId, patches] of bundlePatches) {
             const nextPatches = patches.filter(
-              (patch) => patch.baseBundleId !== baseBundleId,
+              (patch) => getPatchId(patch) !== patchId,
             );
-            if (nextPatches.length === 0) {
-              bundlePatches.delete(bundleId);
-            } else {
-              bundlePatches.set(bundleId, nextPatches);
-            }
+            bundlePatches.set(bundleId, nextPatches);
           }
         },
       },

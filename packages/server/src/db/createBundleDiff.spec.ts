@@ -113,19 +113,14 @@ const createDatabaseRuntime = (
         },
       },
       bundlePatches: {
-        async deleteForBaseBundle({ baseBundleId }) {
-          for (const patch of bundlePatches.values()) {
-            if (patch.baseBundleId === baseBundleId) {
-              bundlePatches.delete(getPatchId(patch));
-            }
-          }
+        async getById({ patchId }) {
+          return bundlePatches.get(patchId) ?? null;
         },
-        async deleteForBundle({ bundleId }) {
-          for (const patch of bundlePatches.values()) {
-            if (patch.bundleId === bundleId) {
-              bundlePatches.delete(getPatchId(patch));
-            }
-          }
+        async insert({ patch }) {
+          bundlePatches.set(getPatchId(patch), {
+            ...patch,
+            id: getPatchId(patch),
+          });
         },
         async list({ where }) {
           return createCursorPage(
@@ -134,15 +129,14 @@ const createDatabaseRuntime = (
             ),
           );
         },
-        async replaceForBundle({ bundleId, patches }) {
-          for (const patch of bundlePatches.values()) {
-            if (patch.bundleId === bundleId) {
-              bundlePatches.delete(getPatchId(patch));
-            }
+        async update({ patchId, patch }) {
+          const current = bundlePatches.get(patchId);
+          if (current) {
+            bundlePatches.set(patchId, { ...current, ...patch, id: patchId });
           }
-          for (const patch of patches) {
-            bundlePatches.set(getPatchId(patch), patch);
-          }
+        },
+        async delete({ patchId }) {
+          bundlePatches.delete(patchId);
         },
       },
     }),

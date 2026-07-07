@@ -271,12 +271,22 @@ const toBlobBundleReadModel = (
 ): Bundle =>
   patches.length === 0 ? record : toBundleReadModel(record, patches);
 
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const materializePatch = (patch: DatabaseBundlePatch): DatabaseBundlePatch => ({
+  ...patch,
+  id: getPatchId(patch),
+});
+
 const patchMatches = (
   patch: DatabaseBundlePatch,
   where: BundlePatchListQuery["where"],
 ) =>
   !where ||
-  ((where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+  ((where.id === undefined || getPatchId(patch) === where.id) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
     (where.baseBundleId === undefined ||
       patch.baseBundleId === where.baseBundleId) &&
     (where.bundleIdIn === undefined ||
@@ -294,7 +304,9 @@ const sortBundlePatches = (
     const result =
       field === "orderIndex"
         ? left.orderIndex - right.orderIndex
-        : left[field].localeCompare(right[field]);
+        : (field === "id" ? getPatchId(left) : left[field]).localeCompare(
+            field === "id" ? getPatchId(right) : right[field],
+          );
     return direction === "asc" ? result : -result;
   });
 
@@ -304,19 +316,12 @@ const paginateBundlePatches = (
 ): CursorPage<DatabaseBundlePatch> => {
   const cursor = query.cursor;
   const offset = cursor?.after
-    ? patches.findIndex(
-        (patch) =>
-          (patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`) ===
-          cursor.after,
-      ) + 1
+    ? patches.findIndex((patch) => getPatchId(patch) === cursor.after) + 1
     : cursor?.before
       ? Math.max(
           0,
-          patches.findIndex(
-            (patch) =>
-              (patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`) ===
-              cursor.before,
-          ) - query.limit,
+          patches.findIndex((patch) => getPatchId(patch) === cursor.before) -
+            query.limit,
         )
       : 0;
   const startOffset = Math.max(0, offset);
@@ -716,10 +721,40 @@ export const createBlobDatabasePlugin = <TConfig>({
       const patches = sortBundlePatches(
         bundles
           .flatMap(toDatabaseBundlePatches)
+          .map(materializePatch)
           .filter((patch) => patchMatches(patch, options.where)),
         options.orderBy,
       );
       return paginateBundlePatches(patches, options);
+    };
+
+    const getBundlePatchById = async (
+      patchId: string,
+    ): Promise<DatabaseBundlePatch | null> => {
+      const page = await getBundlePatches({
+        where: { id: patchId },
+        limit: 1,
+      });
+      return page.data[0] ?? null;
+    };
+
+    const replaceBundlePatches = async (
+      bundleId: string,
+      patches: readonly DatabaseBundlePatch[],
+    ) => {
+      const current = await getBundleById(bundleId);
+      if (!current) {
+        throw new Error("targetBundleId not found");
+      }
+      await flushChangedBundles([
+        {
+          operation: "update",
+          data: toBlobBundleReadModel(
+            toDatabaseBundleRecord(current),
+            patches.map(materializePatch),
+          ),
+        },
+      ]);
     };
 
     const flushChangedBundles = async (
@@ -977,53 +1012,57 @@ export const createBlobDatabasePlugin = <TConfig>({
         },
         bundlePatches: {
           list: getBundlePatches,
-          async replaceForBundle({ bundleId, patches }) {
-            const current = await getBundleById(bundleId);
+          getById: async ({ patchId }) => getBundlePatchById(patchId),
+          async insert({ patch }) {
+            const nextPatch = materializePatch(patch);
+            const current = await getBundleById(nextPatch.bundleId);
             if (!current) {
               throw new Error("targetBundleId not found");
             }
-            await flushChangedBundles([
-              {
-                operation: "update",
-                data: toBlobBundleReadModel(
-                  toDatabaseBundleRecord(current),
-                  patches,
-                ),
-              },
+            const patches = toDatabaseBundlePatches(current)
+              .map(materializePatch)
+              .filter(
+                (currentPatch) => getPatchId(currentPatch) !== nextPatch.id,
+              );
+            await replaceBundlePatches(nextPatch.bundleId, [
+              ...patches,
+              nextPatch,
             ]);
           },
-          async deleteForBundle({ bundleId }) {
-            const current = await getBundleById(bundleId);
+          async update({ patchId, patch }) {
+            const currentPatch = await getBundlePatchById(patchId);
+            if (!currentPatch) {
+              return;
+            }
+            const current = await getBundleById(currentPatch.bundleId);
             if (!current) {
               return;
             }
-            await flushChangedBundles([
-              {
-                operation: "update",
-                data: toBlobBundleReadModel(toDatabaseBundleRecord(current)),
-              },
-            ]);
+            const nextPatch = materializePatch({
+              ...currentPatch,
+              ...patch,
+              id: patchId,
+            });
+            const patches = toDatabaseBundlePatches(current)
+              .map(materializePatch)
+              .map((candidate) =>
+                getPatchId(candidate) === patchId ? nextPatch : candidate,
+              );
+            await replaceBundlePatches(currentPatch.bundleId, patches);
           },
-          async deleteForBaseBundle({ baseBundleId }) {
-            const bundles = await loadAllBundlesForManagementFallback();
-            const changedSets: BlobBundleChange[] = [];
-            for (const bundle of bundles) {
-              const patches = toDatabaseBundlePatches(bundle);
-              if (
-                patches.some((patch) => patch.baseBundleId === baseBundleId)
-              ) {
-                changedSets.push({
-                  operation: "update",
-                  data: toBlobBundleReadModel(
-                    toDatabaseBundleRecord(bundle),
-                    patches.filter(
-                      (patch) => patch.baseBundleId !== baseBundleId,
-                    ),
-                  ),
-                });
-              }
+          async delete({ patchId }) {
+            const currentPatch = await getBundlePatchById(patchId);
+            if (!currentPatch) {
+              return;
             }
-            await flushChangedBundles(changedSets);
+            const current = await getBundleById(currentPatch.bundleId);
+            if (!current) {
+              return;
+            }
+            const patches = toDatabaseBundlePatches(current)
+              .map(materializePatch)
+              .filter((patch) => getPatchId(patch) !== patchId);
+            await replaceBundlePatches(currentPatch.bundleId, patches);
           },
         },
         updateInfo: {

@@ -14,6 +14,7 @@ import type {
   CursorPage,
   DatabaseBundleEvent,
   DatabaseBundlePatch,
+  DatabaseBundlePatchUpdate,
   DatabaseBundleRecord,
 } from "@hot-updater/plugin-core";
 import {
@@ -134,6 +135,21 @@ export const databaseBundlePatchToRow = (
   patch_file_hash: patch.patchFileHash,
   patch_storage_uri: patch.patchStorageUri,
   order_index: patch.orderIndex,
+});
+
+export const databaseBundlePatchUpdateToRow = (
+  patch: DatabaseBundlePatchUpdate,
+): Partial<BundlePatchRow> => ({
+  ...(patch.baseFileHash !== undefined
+    ? { base_file_hash: patch.baseFileHash }
+    : {}),
+  ...(patch.patchFileHash !== undefined
+    ? { patch_file_hash: patch.patchFileHash }
+    : {}),
+  ...(patch.patchStorageUri !== undefined
+    ? { patch_storage_uri: patch.patchStorageUri }
+    : {}),
+  ...(patch.orderIndex !== undefined ? { order_index: patch.orderIndex } : {}),
 });
 
 const mapPatchRowToPatch = (record: BundlePatchRow): BundlePatchArtifact => ({

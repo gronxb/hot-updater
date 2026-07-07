@@ -1,6 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
+  BundlePatchListQuery,
   DatabaseBundlePatch,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
@@ -22,6 +23,7 @@ import {
   type BundleRow,
   databaseBundleEventToRow,
   databaseBundlePatchToRow,
+  databaseBundlePatchUpdateToRow,
   paginateCursorItems,
   rowToDatabaseBundleEvent,
   rowToDatabaseBundlePatch,
@@ -35,6 +37,17 @@ import type {
   RelationMode,
 } from "../db/types";
 import { createCallbackDatabaseTransaction } from "./transaction";
+
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
 
 type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
 
@@ -165,21 +178,6 @@ const createKyselyPlugin = createDatabasePlugin({
       }
     };
 
-    const replacePatchesForBundle = async (
-      executor: Kysely<Database> | Transaction<Database>,
-      bundleId: string,
-      patches: readonly DatabaseBundlePatch[],
-    ) => {
-      await executor
-        .deleteFrom("bundle_patches")
-        .where("bundle_id", "=", bundleId)
-        .execute();
-      const patchRows = patches.map(databaseBundlePatchToRow);
-      if (patchRows.length > 0) {
-        await executor.insertInto("bundle_patches").values(patchRows).execute();
-      }
-    };
-
     const createCore = (
       executor: Kysely<Database> | Transaction<Database>,
     ): DatabasePluginCore => {
@@ -285,10 +283,13 @@ const createKyselyPlugin = createDatabasePlugin({
                 const where = options.where;
                 return (
                   !where ||
-                  ((where.bundleId === undefined ||
-                    patch.bundleId === where.bundleId) &&
+                  ((where.id === undefined || getPatchId(patch) === where.id) &&
+                    (where.bundleId === undefined ||
+                      patch.bundleId === where.bundleId) &&
                     (where.baseBundleId === undefined ||
                       patch.baseBundleId === where.baseBundleId) &&
+                    (where.idIn === undefined ||
+                      where.idIn.includes(getPatchId(patch))) &&
                     (where.bundleIdIn === undefined ||
                       where.bundleIdIn.includes(patch.bundleId)) &&
                     (where.baseBundleIdIn === undefined ||
@@ -301,30 +302,46 @@ const createKyselyPlugin = createDatabasePlugin({
                 const result =
                   field === "orderIndex"
                     ? left.orderIndex - right.orderIndex
-                    : left[field].localeCompare(right[field]);
+                    : getPatchStringField(left, field).localeCompare(
+                        getPatchStringField(right, field),
+                      );
                 return direction === "asc" ? result : -result;
               });
             return paginateCursorItems({
               items: patches,
               limit: options.limit,
               cursor: options.cursor,
-              getCursor: (patch) =>
-                patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+              getCursor: getPatchId,
             });
           },
-          async replaceForBundle({ bundleId, patches }) {
-            await replacePatchesForBundle(executor, bundleId, patches);
+          async getById({ patchId }) {
+            const row = await executor
+              .selectFrom("bundle_patches")
+              .selectAll()
+              .where("id", "=", patchId)
+              .executeTakeFirst();
+            return row ? rowToDatabaseBundlePatch(row) : null;
           },
-          async deleteForBundle({ bundleId }) {
+          async insert({ patch }) {
+            const row = databaseBundlePatchToRow(patch);
+            const { id: _id, ...updateRow } = row;
             await executor
-              .deleteFrom("bundle_patches")
-              .where("bundle_id", "=", bundleId)
+              .insertInto("bundle_patches")
+              .values(row)
+              .onConflict((oc) => oc.column("id").doUpdateSet(updateRow))
               .execute();
           },
-          async deleteForBaseBundle({ baseBundleId }) {
+          async update({ patchId, patch }) {
+            await executor
+              .updateTable("bundle_patches")
+              .set(databaseBundlePatchUpdateToRow(patch))
+              .where("id", "=", patchId)
+              .execute();
+          },
+          async delete({ patchId }) {
             await executor
               .deleteFrom("bundle_patches")
-              .where("base_bundle_id", "=", baseBundleId)
+              .where("id", "=", patchId)
               .execute();
           },
         },

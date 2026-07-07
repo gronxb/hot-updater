@@ -29,6 +29,9 @@ const hasOwn = (value: object, key: PropertyKey) =>
 const hasPatchChange = (bundle: Partial<Bundle>): boolean =>
   PATCH_KEYS.some((key) => hasOwn(bundle, key));
 
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
 const sortBundles = (
   bundles: readonly Bundle[],
   orderBy: DatabaseBundleQueryOrder | undefined,
@@ -84,6 +87,46 @@ export const listDatabaseRuntimeBundlePatches = async (
   }
 
   return patches;
+};
+
+export const replaceDatabaseRuntimeBundlePatches = async (
+  runtime: DatabasePluginRuntime,
+  options: {
+    readonly bundleId: string;
+    readonly patches: readonly DatabaseBundlePatch[];
+  },
+): Promise<void> => {
+  const current = await listDatabaseRuntimeBundlePatches(runtime, {
+    bundleId: options.bundleId,
+  });
+  for (const patch of current) {
+    await runtime.bundlePatches.delete({ patchId: getPatchId(patch) });
+  }
+  for (const patch of options.patches) {
+    await runtime.bundlePatches.insert({ patch });
+  }
+};
+
+export const deleteDatabaseRuntimeBundlePatchesForBundle = async (
+  runtime: DatabasePluginRuntime,
+  bundleId: string,
+): Promise<void> => {
+  const patches = await listDatabaseRuntimeBundlePatches(runtime, { bundleId });
+  for (const patch of patches) {
+    await runtime.bundlePatches.delete({ patchId: getPatchId(patch) });
+  }
+};
+
+export const deleteDatabaseRuntimeBundlePatchesForBaseBundle = async (
+  runtime: DatabasePluginRuntime,
+  baseBundleId: string,
+): Promise<void> => {
+  const patches = await listDatabaseRuntimeBundlePatches(runtime, {
+    baseBundleId,
+  });
+  for (const patch of patches) {
+    await runtime.bundlePatches.delete({ patchId: getPatchId(patch) });
+  }
 };
 
 const groupPatchesByBundleId = (
@@ -147,10 +190,9 @@ export const stageDatabaseRuntimeBundleInsert = async (
   options.validate?.(options.bundle);
   const split = splitDatabaseBundle(options.bundle);
   await runtime.bundles.insert({ bundle: split.bundle });
-  await runtime.bundlePatches.replaceForBundle({
-    bundleId: options.bundle.id,
-    patches: split.patches,
-  });
+  for (const patch of split.patches) {
+    await runtime.bundlePatches.insert({ patch });
+  }
 };
 
 export const stageDatabaseRuntimeBundleUpdate = async (
@@ -171,7 +213,7 @@ export const stageDatabaseRuntimeBundleUpdate = async (
     patch: split.bundle,
   });
   if (hasPatchChange(options.patch)) {
-    await runtime.bundlePatches.replaceForBundle({
+    await replaceDatabaseRuntimeBundlePatches(runtime, {
       bundleId: options.bundleId,
       patches: split.patches,
     });
@@ -183,7 +225,7 @@ export const stageDatabaseRuntimeBundleDelete = async (
   runtime: DatabasePluginRuntime,
   bundleId: string,
 ): Promise<void> => {
-  await runtime.bundlePatches.deleteForBaseBundle({ baseBundleId: bundleId });
-  await runtime.bundlePatches.deleteForBundle({ bundleId });
+  await deleteDatabaseRuntimeBundlePatchesForBaseBundle(runtime, bundleId);
+  await deleteDatabaseRuntimeBundlePatchesForBundle(runtime, bundleId);
   await runtime.bundles.delete({ bundleId });
 };

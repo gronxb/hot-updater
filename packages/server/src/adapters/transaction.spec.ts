@@ -23,10 +23,11 @@ const emptyPage = <TData>(): CursorPage<TData> => ({
 
 const createCore = (): DatabasePluginCore => ({
   bundlePatches: {
-    deleteForBaseBundle: async () => undefined,
-    deleteForBundle: async () => undefined,
+    delete: async () => undefined,
+    getById: async () => null,
+    insert: async () => undefined,
     list: async () => emptyPage<DatabaseBundlePatch>(),
-    replaceForBundle: async () => undefined,
+    update: async () => undefined,
   },
   bundles: {
     delete: async () => undefined,

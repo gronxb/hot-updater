@@ -57,15 +57,20 @@ const matchesBundleWhere = (
   );
 };
 
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
 const matchesBundlePatchWhere = (
   patch: DatabaseBundlePatch,
   where: BundlePatchListQuery["where"],
 ) => {
   if (!where) return true;
   return (
+    (where.id === undefined || getPatchId(patch) === where.id) &&
     (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
     (where.baseBundleId === undefined ||
       patch.baseBundleId === where.baseBundleId) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
     (where.bundleIdIn === undefined ||
       where.bundleIdIn.includes(patch.bundleId)) &&
     (where.baseBundleIdIn === undefined ||
@@ -101,8 +106,10 @@ function createDatabasePlugin(bundles: Bundle[]) {
       update: vi.fn(),
     },
     bundlePatches: {
-      deleteForBaseBundle: vi.fn(),
-      deleteForBundle: vi.fn(),
+      getById: vi.fn(
+        async ({ patchId }) =>
+          bundlePatches.find((patch) => getPatchId(patch) === patchId) ?? null,
+      ),
       list: vi.fn(async ({ where }) =>
         createCursorPage(
           bundlePatches.filter((patch) =>
@@ -110,7 +117,9 @@ function createDatabasePlugin(bundles: Bundle[]) {
           ),
         ),
       ),
-      replaceForBundle: vi.fn(),
+      insert: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
     },
     commit: vi.fn(),
   } satisfies DatabasePluginRuntime;

@@ -1,6 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
+  BundlePatchListQuery,
   DatabaseBundlePatch,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
@@ -21,6 +22,7 @@ import {
   type BundleRow,
   databaseBundleEventToRow,
   databaseBundlePatchToRow,
+  databaseBundlePatchUpdateToRow,
   paginateCursorItems,
   rowToDatabaseBundleEvent,
   rowToDatabaseBundlePatch,
@@ -39,6 +41,17 @@ import type {
 } from "../db/types";
 import { createCallbackDatabaseTransaction } from "./transaction";
 
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
+
 type PrismaRelationMode = "prisma" | "foreign-keys";
 
 type PrismaDelegate = {
@@ -49,6 +62,7 @@ type PrismaDelegate = {
     args?: unknown,
   ) => Promise<Record<string, unknown> | null>;
   readonly findMany: (args?: unknown) => Promise<Record<string, unknown>[]>;
+  readonly update: (args: unknown) => Promise<unknown>;
   readonly upsert: (args: unknown) => Promise<unknown>;
 };
 
@@ -149,19 +163,6 @@ const createPrismaPlugin = createDatabasePlugin({
         update,
       });
     };
-    const replacePatchesForBundle = async (
-      client: Record<string, unknown>,
-      bundleId: string,
-      patches: readonly DatabaseBundlePatch[],
-    ) => {
-      const patchDelegate = getDelegate(client, "bundle_patches");
-      await patchDelegate.deleteMany({ where: { bundle_id: bundleId } });
-      const patchRows = patches.map(databaseBundlePatchToRow);
-      if (patchRows.length > 0) {
-        await patchDelegate.createMany({ data: patchRows });
-      }
-    };
-
     const createCore = (
       client: Record<string, unknown>,
     ): DatabasePluginCore => {
@@ -253,10 +254,13 @@ const createPrismaPlugin = createDatabasePlugin({
                 const where = options.where;
                 return (
                   !where ||
-                  ((where.bundleId === undefined ||
-                    patch.bundleId === where.bundleId) &&
+                  ((where.id === undefined || getPatchId(patch) === where.id) &&
+                    (where.bundleId === undefined ||
+                      patch.bundleId === where.bundleId) &&
                     (where.baseBundleId === undefined ||
                       patch.baseBundleId === where.baseBundleId) &&
+                    (where.idIn === undefined ||
+                      where.idIn.includes(getPatchId(patch))) &&
                     (where.bundleIdIn === undefined ||
                       where.bundleIdIn.includes(patch.bundleId)) &&
                     (where.baseBundleIdIn === undefined ||
@@ -269,29 +273,39 @@ const createPrismaPlugin = createDatabasePlugin({
                 const result =
                   field === "orderIndex"
                     ? left.orderIndex - right.orderIndex
-                    : left[field].localeCompare(right[field]);
+                    : getPatchStringField(left, field).localeCompare(
+                        getPatchStringField(right, field),
+                      );
                 return direction === "asc" ? result : -result;
               });
             return paginateCursorItems({
               items: data,
               limit: options.limit,
               cursor: options.cursor,
-              getCursor: (patch) =>
-                patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+              getCursor: getPatchId,
             });
           },
-          async replaceForBundle({ bundleId, patches }) {
-            await replacePatchesForBundle(client, bundleId, patches);
-          },
-          async deleteForBundle({ bundleId }) {
+          async getById({ patchId }) {
             const patches = getDelegate(client, "bundle_patches");
-            await patches.deleteMany({ where: { bundle_id: bundleId } });
+            const row = await patches.findFirst({ where: { id: patchId } });
+            return row ? rowToDatabaseBundlePatch(row as BundlePatchRow) : null;
           },
-          async deleteForBaseBundle({ baseBundleId }) {
+          async insert({ patch }) {
             const patches = getDelegate(client, "bundle_patches");
-            await patches.deleteMany({
-              where: { base_bundle_id: baseBundleId },
+            await patches.createMany({
+              data: [databaseBundlePatchToRow(patch)],
             });
+          },
+          async update({ patchId, patch }) {
+            const patches = getDelegate(client, "bundle_patches");
+            await patches.update({
+              where: { id: patchId },
+              data: databaseBundlePatchUpdateToRow(patch),
+            });
+          },
+          async delete({ patchId }) {
+            const patches = getDelegate(client, "bundle_patches");
+            await patches.deleteMany({ where: { id: patchId } });
           },
         },
         bundleEvents: {

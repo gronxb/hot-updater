@@ -6,6 +6,7 @@ import type {
   CursorPage,
   DatabaseBundleEvent,
   DatabaseBundlePatch,
+  DatabaseBundlePatchUpdate,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
   DatabasePluginCore,
@@ -90,6 +91,17 @@ const mapUpdateInfoRow = (row: SupabaseUpdateInfoRow): UpdateInfo => ({
 const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
   `${bundleId}:${baseBundleId}`;
 
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? buildBundlePatchId(patch.bundleId, patch.baseBundleId);
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
+
 const rowToDatabaseBundleRecord = (row: Parameters<typeof mapRowToBundle>[0]) =>
   toDatabaseBundleRecord(mapRowToBundle(row));
 
@@ -118,6 +130,21 @@ const databaseBundlePatchToRow = (
   patch_file_hash: patch.patchFileHash,
   patch_storage_uri: patch.patchStorageUri,
   order_index: patch.orderIndex,
+});
+
+const databaseBundlePatchUpdateToRow = (
+  patch: DatabaseBundlePatchUpdate,
+): Partial<SupabaseBundlePatchRow> => ({
+  ...(patch.baseFileHash !== undefined
+    ? { base_file_hash: patch.baseFileHash }
+    : {}),
+  ...(patch.patchFileHash !== undefined
+    ? { patch_file_hash: patch.patchFileHash }
+    : {}),
+  ...(patch.patchStorageUri !== undefined
+    ? { patch_storage_uri: patch.patchStorageUri }
+    : {}),
+  ...(patch.orderIndex !== undefined ? { order_index: patch.orderIndex } : {}),
 });
 
 const isAppReadyPayload = (value: unknown): value is BundleEventPayload => {
@@ -512,10 +539,13 @@ export const supabaseDatabase = createDatabasePlugin({
               const where = options.where;
               return (
                 !where ||
-                ((where.bundleId === undefined ||
-                  patch.bundleId === where.bundleId) &&
+                ((where.id === undefined || getPatchId(patch) === where.id) &&
+                  (where.bundleId === undefined ||
+                    patch.bundleId === where.bundleId) &&
                   (where.baseBundleId === undefined ||
                     patch.baseBundleId === where.baseBundleId) &&
+                  (where.idIn === undefined ||
+                    where.idIn.includes(getPatchId(patch))) &&
                   (where.bundleIdIn === undefined ||
                     where.bundleIdIn.includes(patch.bundleId)) &&
                   (where.baseBundleIdIn === undefined ||
@@ -528,7 +558,9 @@ export const supabaseDatabase = createDatabasePlugin({
               const result =
                 field === "orderIndex"
                   ? left.orderIndex - right.orderIndex
-                  : left[field].localeCompare(right[field]);
+                  : getPatchStringField(left, field).localeCompare(
+                      getPatchStringField(right, field),
+                    );
               return direction === "asc" ? result : -result;
             });
 
@@ -536,48 +568,44 @@ export const supabaseDatabase = createDatabasePlugin({
             items: patches,
             limit: options.limit,
             cursor: options.cursor,
-            getCursor: (patch) =>
-              patch.id ??
-              buildBundlePatchId(patch.bundleId, patch.baseBundleId),
+            getCursor: getPatchId,
           });
         },
-
-        async replaceForBundle({ bundleId, patches }) {
-          const { error: patchDeleteError } = await supabase
+        async getById({ patchId }) {
+          const { data, error } = await supabase
             .from("bundle_patches")
-            .delete()
-            .eq("bundle_id", bundleId);
-          if (patchDeleteError) {
-            throw createSupabaseError(patchDeleteError);
+            .select("*")
+            .eq("id", patchId)
+            .maybeSingle();
+          if (error) {
+            throw createSupabaseError(error);
           }
-
-          if (patches.length > 0) {
-            const { error: patchInsertError } = await supabase
-              .from("bundle_patches")
-              .upsert(patches.map(databaseBundlePatchToRow), {
-                onConflict: "id",
-              });
-            if (patchInsertError) {
-              throw createSupabaseError(patchInsertError);
-            }
-          }
+          return data ? rowToDatabaseBundlePatch(data) : null;
         },
-
-        async deleteForBundle({ bundleId }) {
+        async insert({ patch }) {
           const { error } = await supabase
             .from("bundle_patches")
-            .delete()
-            .eq("bundle_id", bundleId);
+            .upsert(databaseBundlePatchToRow(patch), { onConflict: "id" });
           if (error) {
             throw createSupabaseError(error);
           }
         },
-
-        async deleteForBaseBundle({ baseBundleId }) {
+        async update({ patchId, patch }) {
+          const row = databaseBundlePatchUpdateToRow(patch);
+          if (Object.keys(row).length === 0) return;
+          const { error } = await supabase
+            .from("bundle_patches")
+            .update(row)
+            .eq("id", patchId);
+          if (error) {
+            throw createSupabaseError(error);
+          }
+        },
+        async delete({ patchId }) {
           const { error } = await supabase
             .from("bundle_patches")
             .delete()
-            .eq("base_bundle_id", baseBundleId);
+            .eq("id", patchId);
           if (error) {
             throw createSupabaseError(error);
           }

@@ -2,7 +2,9 @@ import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
 import type { DatabasePluginRuntime } from "@hot-updater/plugin-core";
 import {
-  splitDatabaseBundle,
+  stageDatabaseRuntimeBundleDelete,
+  stageDatabaseRuntimeBundleInsert,
+  stageDatabaseRuntimeBundleUpdate,
   toBundleReadModel,
 } from "@hot-updater/plugin-core";
 import {
@@ -473,12 +475,7 @@ describe("supabaseDatabase plugin", () => {
   };
 
   const writeBundle = async (bundle: Bundle) => {
-    const split = splitDatabaseBundle(bundle);
-    await plugin.bundles.insert({ bundle: split.bundle });
-    await plugin.bundlePatches.replaceForBundle({
-      bundleId: bundle.id,
-      patches: split.patches,
-    });
+    await stageDatabaseRuntimeBundleInsert(plugin, { bundle });
     await plugin.commit();
   };
 
@@ -487,19 +484,15 @@ describe("supabaseDatabase plugin", () => {
     if (!current) {
       throw new Error("targetBundleId not found");
     }
-    const split = splitDatabaseBundle({ ...current, ...patch, id: bundleId });
-    await plugin.bundles.update({ bundleId, patch: split.bundle });
-    await plugin.bundlePatches.replaceForBundle({
+    await stageDatabaseRuntimeBundleUpdate(plugin, {
       bundleId,
-      patches: split.patches,
+      patch,
     });
     await plugin.commit();
   };
 
   const deleteBundle = async (bundleId: string) => {
-    await plugin.bundlePatches.deleteForBaseBundle({ baseBundleId: bundleId });
-    await plugin.bundlePatches.deleteForBundle({ bundleId });
-    await plugin.bundles.delete({ bundleId });
+    await stageDatabaseRuntimeBundleDelete(plugin, bundleId);
     await plugin.commit();
   };
 

@@ -156,13 +156,23 @@ const patchMatches = (
   where: BundlePatchListQuery["where"],
 ) =>
   !where ||
-  ((where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+  ((where.id === undefined || getPatchId(patch) === where.id) &&
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
     (where.baseBundleId === undefined ||
       patch.baseBundleId === where.baseBundleId) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
     (where.bundleIdIn === undefined ||
       where.bundleIdIn.includes(patch.bundleId)) &&
     (where.baseBundleIdIn === undefined ||
       where.baseBundleIdIn.includes(patch.baseBundleId)));
+
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const materializePatch = (patch: DatabaseBundlePatch): DatabaseBundlePatch => ({
+  ...patch,
+  id: getPatchId(patch),
+});
 
 const sortPatches = (
   patches: readonly DatabaseBundlePatch[],
@@ -174,9 +184,19 @@ const sortPatches = (
     const result =
       field === "orderIndex"
         ? left.orderIndex - right.orderIndex
-        : left[field].localeCompare(right[field]);
+        : getPatchStringField(left, field).localeCompare(
+            getPatchStringField(right, field),
+          );
     return direction === "asc" ? result : -result;
   });
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
 
 const paginatePatches = (
   patches: readonly DatabaseBundlePatch[],
@@ -184,12 +204,14 @@ const paginatePatches = (
 ): CursorPage<DatabaseBundlePatch> => {
   const cursor = query.cursor;
   const offset = cursor?.after
-    ? patches.findIndex(
-        (patch) =>
-          (patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`) ===
-          cursor.after,
-      ) + 1
-    : 0;
+    ? patches.findIndex((patch) => getPatchId(patch) === cursor.after) + 1
+    : cursor?.before
+      ? Math.max(
+          0,
+          patches.findIndex((patch) => getPatchId(patch) === cursor.before) -
+            query.limit,
+        )
+      : 0;
   const startOffset = Math.max(0, offset);
   const data = patches.slice(startOffset, startOffset + query.limit);
   const pagination = calculatePagination(patches.length, {
@@ -203,10 +225,12 @@ const paginatePatches = (
       ...pagination,
       nextCursor:
         data.length > 0 && startOffset + data.length < patches.length
-          ? (data.at(-1)?.id ?? null)
+          ? data.at(-1)
+            ? getPatchId(data.at(-1)!)
+            : null
           : null,
       previousCursor:
-        data.length > 0 && startOffset > 0 ? (data[0]?.id ?? null) : null,
+        data.length > 0 && startOffset > 0 ? getPatchId(data[0]!) : null,
     },
   };
 };
@@ -569,9 +593,20 @@ export const standaloneRepository = createDatabasePlugin({
       }
       await patchBundle(
         bundleId,
-        toBundleReadModel(toDatabaseBundleRecord(current), patches),
+        toBundleReadModel(
+          toDatabaseBundleRecord(current),
+          patches.map(materializePatch),
+        ),
       );
     };
+
+    const requestBundlePatchById = async (
+      patchId: string,
+    ): Promise<DatabaseBundlePatch | null> =>
+      (await requestAllBundles())
+        .flatMap(toDatabaseBundlePatches)
+        .map(materializePatch)
+        .find((patch) => getPatchId(patch) === patchId) ?? null;
 
     return {
       bundles: {
@@ -610,28 +645,60 @@ export const standaloneRepository = createDatabasePlugin({
           const patches = sortPatches(
             bundles
               .flatMap(toDatabaseBundlePatches)
+              .map(materializePatch)
               .filter((patch) => patchMatches(patch, where)),
             options.orderBy,
           );
           return paginatePatches(patches, options);
         },
-        async replaceForBundle({ bundleId, patches }) {
-          await patchBundlePatches(bundleId, patches);
-        },
-        async deleteForBundle({ bundleId }) {
-          await patchBundlePatches(bundleId, []);
-        },
-        async deleteForBaseBundle({ baseBundleId }) {
-          const bundles = await requestAllBundles();
-          for (const bundle of bundles) {
-            const patches = toDatabaseBundlePatches(bundle);
-            if (patches.some((patch) => patch.baseBundleId === baseBundleId)) {
-              await patchBundlePatches(
-                bundle.id,
-                patches.filter((patch) => patch.baseBundleId !== baseBundleId),
-              );
-            }
+        getById: async ({ patchId }) => requestBundlePatchById(patchId),
+        async insert({ patch }) {
+          const nextPatch = materializePatch(patch);
+          const current = await requestBundleById(nextPatch.bundleId);
+          if (!current) {
+            throw new Error("targetBundleId not found");
           }
+          const patches = toDatabaseBundlePatches(current)
+            .map(materializePatch)
+            .filter(
+              (currentPatch) => getPatchId(currentPatch) !== nextPatch.id,
+            );
+          await patchBundlePatches(nextPatch.bundleId, [...patches, nextPatch]);
+        },
+        async update({ patchId, patch }) {
+          const currentPatch = await requestBundlePatchById(patchId);
+          if (!currentPatch) {
+            return;
+          }
+          const current = await requestBundleById(currentPatch.bundleId);
+          if (!current) {
+            return;
+          }
+          const nextPatch = materializePatch({
+            ...currentPatch,
+            ...patch,
+            id: patchId,
+          });
+          const patches = toDatabaseBundlePatches(current)
+            .map(materializePatch)
+            .map((candidate) =>
+              getPatchId(candidate) === patchId ? nextPatch : candidate,
+            );
+          await patchBundlePatches(currentPatch.bundleId, patches);
+        },
+        async delete({ patchId }) {
+          const currentPatch = await requestBundlePatchById(patchId);
+          if (!currentPatch) {
+            return;
+          }
+          const current = await requestBundleById(currentPatch.bundleId);
+          if (!current) {
+            return;
+          }
+          const patches = toDatabaseBundlePatches(current)
+            .map(materializePatch)
+            .filter((patch) => getPatchId(patch) !== patchId);
+          await patchBundlePatches(currentPatch.bundleId, patches);
         },
       },
     };

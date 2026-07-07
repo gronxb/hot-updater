@@ -14,6 +14,7 @@ import {
 } from "@aws-sdk/client-s3";
 import type {
   Bundle,
+  DatabaseBundlePatch,
   DatabaseBundleQueryOptions,
   DatabasePluginRuntime,
   GetBundlesArgs,
@@ -81,6 +82,26 @@ const PATCH_KEYS = [
 
 const hasPatchChange = (bundle: Partial<Bundle>): boolean =>
   PATCH_KEYS.some((key) => key in bundle);
+
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
+
+const replaceRuntimeBundlePatches = async (
+  runtime: DatabasePluginRuntime,
+  bundleId: string,
+  patches: readonly DatabaseBundlePatch[],
+): Promise<void> => {
+  const current = await runtime.bundlePatches.list({
+    where: { bundleId },
+    limit: 1000,
+  });
+  for (const patch of current.data) {
+    await runtime.bundlePatches.delete({ patchId: getPatchId(patch) });
+  }
+  for (const patch of patches) {
+    await runtime.bundlePatches.insert({ patch });
+  }
+};
 
 type LegacyDatabaseFixture = {
   readonly name: string;
@@ -190,10 +211,11 @@ const toLegacyDatabasePlugin = (
       const splitBundle = splitDatabaseBundle(bundle);
       await runtime.bundles.insert({ bundle: splitBundle.bundle });
       if (splitBundle.patches.length > 0) {
-        await runtime.bundlePatches.replaceForBundle({
-          bundleId: bundle.id,
-          patches: splitBundle.patches,
-        });
+        await replaceRuntimeBundlePatches(
+          runtime,
+          bundle.id,
+          splitBundle.patches,
+        );
       }
     },
     async updateBundle(bundleId, patch) {
@@ -208,10 +230,11 @@ const toLegacyDatabasePlugin = (
         patch: splitBundle.bundle,
       });
       if (hasPatchChange(patch)) {
-        await runtime.bundlePatches.replaceForBundle({
+        await replaceRuntimeBundlePatches(
+          runtime,
           bundleId,
-          patches: splitBundle.patches,
-        });
+          splitBundle.patches,
+        );
       }
     },
     async deleteBundle(bundle) {

@@ -128,8 +128,14 @@ export interface DatabaseBundlePatch {
   readonly orderIndex: number;
 }
 
+export type DatabaseBundlePatchUpdate = Partial<
+  Omit<DatabaseBundlePatch, "id" | "bundleId" | "baseBundleId">
+>;
+
 export interface BundlePatchListQuery {
   readonly where?: {
+    readonly id?: string;
+    readonly idIn?: readonly string[];
     readonly bundleId?: string;
     readonly baseBundleId?: string;
     readonly bundleIdIn?: readonly string[];
@@ -141,7 +147,7 @@ export interface BundlePatchListQuery {
     readonly before?: string;
   };
   readonly orderBy?: {
-    readonly field: "bundleId" | "baseBundleId" | "orderIndex";
+    readonly field: "id" | "bundleId" | "baseBundleId" | "orderIndex";
     readonly direction: "asc" | "desc";
   };
 }
@@ -229,20 +235,23 @@ export interface BundlePatchRepository {
   ) => Promise<CursorPage<DatabaseBundlePatch>>;
 }
 
-export interface RuntimeBundlePatchRepository extends BundlePatchRepository {
-  readonly replaceForBundle: (params: {
-    readonly bundleId: string;
-    readonly patches: readonly DatabaseBundlePatch[];
+export interface BundlePatchCrudResource extends BundlePatchRepository {
+  readonly getById: (params: {
+    readonly patchId: string;
+  }) => Promise<DatabaseBundlePatch | null>;
+  readonly insert: (params: {
+    readonly patch: DatabaseBundlePatch;
   }) => Promise<void>;
-  readonly deleteForBundle: (params: {
-    readonly bundleId: string;
+  readonly update: (params: {
+    readonly patchId: string;
+    readonly patch: DatabaseBundlePatchUpdate;
   }) => Promise<void>;
-  readonly deleteForBaseBundle: (params: {
-    readonly baseBundleId: string;
-  }) => Promise<void>;
+  readonly delete: (params: { readonly patchId: string }) => Promise<void>;
 }
 
-export type BundlePatchResource = RuntimeBundlePatchRepository;
+export type RuntimeBundlePatchRepository = BundlePatchCrudResource;
+
+export type BundlePatchResource = BundlePatchCrudResource;
 
 export interface BundleEventRepository {
   readonly list: (
@@ -299,16 +308,13 @@ export type BundleMutation =
   | { readonly kind: "bundle.delete"; readonly bundleId: string };
 
 export type BundlePatchMutation =
+  | { readonly kind: "bundlePatch.insert"; readonly patch: DatabaseBundlePatch }
   | {
-      readonly kind: "bundlePatch.replaceForBundle";
-      readonly bundleId: string;
-      readonly patches: readonly DatabaseBundlePatch[];
+      readonly kind: "bundlePatch.update";
+      readonly patchId: string;
+      readonly patch: DatabaseBundlePatchUpdate;
     }
-  | { readonly kind: "bundlePatch.deleteForBundle"; readonly bundleId: string }
-  | {
-      readonly kind: "bundlePatch.deleteForBaseBundle";
-      readonly baseBundleId: string;
-    };
+  | { readonly kind: "bundlePatch.delete"; readonly patchId: string };
 
 export type BundleEventMutation = {
   readonly kind: "bundleEvent.append";

@@ -48,6 +48,15 @@ import { createMigrator, generateSchema } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabaseAdapterCapabilities, ORMProvider } from "./types";
 
+const insertRuntimeBundlePatches = async (
+  runtime: DatabasePluginRuntime,
+  patches: readonly DatabaseBundlePatch[],
+): Promise<void> => {
+  for (const patch of patches) {
+    await runtime.bundlePatches.insert({ patch });
+  }
+};
+
 const RAW_PRISMA_SCHEMA = `model bundles {
   id String @id
   platform String
@@ -228,34 +237,23 @@ const createRuntimeOnlyDatabase = ({
         },
       },
       bundlePatches: {
+        getById: async ({ patchId }) => patches.get(patchId) ?? null,
         list: async ({ limit }) =>
           createEmptyPage(Array.from(patches.values()).slice(0, limit)),
-        replaceForBundle: async ({ bundleId, patches: nextPatches }) => {
-          for (const [patchId, patch] of patches) {
-            if (patch.bundleId === bundleId) {
-              patches.delete(patchId);
-            }
-          }
-          for (const patch of nextPatches) {
-            patches.set(
-              patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
-              patch,
-            );
+        insert: async ({ patch }) => {
+          patches.set(patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`, {
+            ...patch,
+            id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+          });
+        },
+        update: async ({ patchId, patch }) => {
+          const current = patches.get(patchId);
+          if (current) {
+            patches.set(patchId, { ...current, ...patch, id: patchId });
           }
         },
-        deleteForBundle: async ({ bundleId }) => {
-          for (const [patchId, patch] of patches) {
-            if (patch.bundleId === bundleId) {
-              patches.delete(patchId);
-            }
-          }
-        },
-        deleteForBaseBundle: async ({ baseBundleId }) => {
-          for (const [patchId, patch] of patches) {
-            if (patch.baseBundleId === baseBundleId) {
-              patches.delete(patchId);
-            }
-          }
+        delete: async ({ patchId }) => {
+          patches.delete(patchId);
         },
       },
     }),
@@ -299,6 +297,18 @@ const transactionBundle: Bundle = {
   storageUri: "s3://test-bucket/transaction.zip",
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
+};
+
+const transactionBundleWithPatch: Bundle = {
+  ...transactionBundle,
+  patches: [
+    {
+      baseBundleId: "00000000-0000-0000-0000-000000000666",
+      baseFileHash: "transaction-base-hash",
+      patchFileHash: "transaction-patch-hash",
+      patchStorageUri: "s3://test-bucket/transaction.patch",
+    },
+  ],
 };
 
 const appVersionFastPathBundle: Bundle = {
@@ -1327,20 +1337,21 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       });
 
-      const split = splitDatabaseBundle(transactionBundle);
+      const split = splitDatabaseBundle(transactionBundleWithPatch);
       await plugin.bundles.insert({ bundle: split.bundle });
-      await plugin.bundlePatches.replaceForBundle({
-        bundleId: transactionBundle.id,
-        patches: split.patches,
-      });
+      await insertRuntimeBundlePatches(plugin, split.patches);
       await plugin.commit();
 
       expect($transaction).toHaveBeenCalledTimes(1);
       expect(rootBundles.upsert).not.toHaveBeenCalled();
       expect(rootPatches.deleteMany).not.toHaveBeenCalled();
       expect(txBundles.upsert).toHaveBeenCalledTimes(1);
-      expect(txPatches.deleteMany).toHaveBeenCalledWith({
-        where: { bundle_id: transactionBundle.id },
+      expect(txPatches.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({
+            bundle_id: transactionBundle.id,
+          }),
+        ],
       });
     });
 
@@ -1465,17 +1476,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       });
 
-      const split = splitDatabaseBundle(transactionBundle);
+      const split = splitDatabaseBundle(transactionBundleWithPatch);
       await plugin.bundles.insert({ bundle: split.bundle });
-      await plugin.bundlePatches.replaceForBundle({
-        bundleId: transactionBundle.id,
-        patches: split.patches,
-      });
+      await insertRuntimeBundlePatches(plugin, split.patches);
       await plugin.commit();
 
       expect(transaction).toHaveBeenCalledTimes(1);
       expect(rootInsert).not.toHaveBeenCalled();
-      expect(txInsert).toHaveBeenCalledTimes(1);
+      expect(txInsert).toHaveBeenCalledTimes(2);
     });
 
     it("commits lazy Drizzle bundle changes inside the resolved db transaction", async () => {
@@ -1533,18 +1541,15 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         schema: tables,
       });
 
-      const split = splitDatabaseBundle(transactionBundle);
+      const split = splitDatabaseBundle(transactionBundleWithPatch);
       await plugin.bundles.insert({ bundle: split.bundle });
-      await plugin.bundlePatches.replaceForBundle({
-        bundleId: transactionBundle.id,
-        patches: split.patches,
-      });
+      await insertRuntimeBundlePatches(plugin, split.patches);
       await plugin.commit();
 
       expect(dbFactory).toHaveBeenCalledTimes(1);
       expect(transaction).toHaveBeenCalledTimes(1);
       expect(rootInsert).not.toHaveBeenCalled();
-      expect(txInsert).toHaveBeenCalledTimes(1);
+      expect(txInsert).toHaveBeenCalledTimes(2);
     });
 
     it("aborts the Drizzle transaction when a staged write fails", async () => {
@@ -1694,19 +1699,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       });
 
-      const split = splitDatabaseBundle(transactionBundle);
+      const split = splitDatabaseBundle(transactionBundleWithPatch);
       await plugin.bundles.insert({ bundle: split.bundle });
-      await plugin.bundlePatches.replaceForBundle({
-        bundleId: transactionBundle.id,
-        patches: split.patches,
-      });
+      await insertRuntimeBundlePatches(plugin, split.patches);
       await plugin.commit();
 
       expect(transaction).toHaveBeenCalledTimes(1);
       expect(rootInsertInto).not.toHaveBeenCalled();
       expect(rootDeleteFrom).not.toHaveBeenCalled();
       expect(txInsertInto).toHaveBeenCalledWith("bundles");
-      expect(txDeleteFrom).toHaveBeenCalledWith("bundle_patches");
+      expect(txInsertInto).toHaveBeenCalledWith("bundle_patches");
+      expect(txDeleteFrom).not.toHaveBeenCalled();
     });
 
     it("aborts the Kysely transaction when a staged write fails", async () => {
@@ -1790,12 +1793,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       } as unknown as MongoClient;
       const plugin = mongoAdapter({ client, transactions: "enabled" });
 
-      const split = splitDatabaseBundle(transactionBundle);
+      const split = splitDatabaseBundle(transactionBundleWithPatch);
       await plugin.bundles.insert({ bundle: split.bundle });
-      await plugin.bundlePatches.replaceForBundle({
-        bundleId: transactionBundle.id,
-        patches: split.patches,
-      });
+      await insertRuntimeBundlePatches(plugin, split.patches);
       await plugin.commit();
 
       expect(client.startSession).toHaveBeenCalledTimes(1);
@@ -1805,8 +1805,12 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         expect.any(Object),
         expect.objectContaining({ session, upsert: true }),
       );
-      expect(patches.deleteMany).toHaveBeenCalledWith(
-        { bundle_id: transactionBundle.id },
+      expect(patches.insertMany).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({
+            bundle_id: transactionBundle.id,
+          }),
+        ],
         { session },
       );
       expect(session.endSession).toHaveBeenCalledTimes(1);

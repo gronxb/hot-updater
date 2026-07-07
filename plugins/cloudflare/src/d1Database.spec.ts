@@ -1,6 +1,8 @@
 import type { Bundle, DatabasePluginRuntime } from "@hot-updater/plugin-core";
 import {
-  splitDatabaseBundle,
+  stageDatabaseRuntimeBundleDelete,
+  stageDatabaseRuntimeBundleInsert,
+  stageDatabaseRuntimeBundleUpdate,
   toBundleReadModel,
 } from "@hot-updater/plugin-core";
 import {
@@ -375,12 +377,7 @@ describe("d1Database plugin", () => {
   };
 
   const writeBundle = async (bundle: Bundle): Promise<void> => {
-    const split = splitDatabaseBundle(bundle);
-    await plugin.bundles.insert({ bundle: split.bundle });
-    await plugin.bundlePatches.replaceForBundle({
-      bundleId: bundle.id,
-      patches: split.patches,
-    });
+    await stageDatabaseRuntimeBundleInsert(plugin, { bundle });
     await plugin.commit();
   };
 
@@ -392,12 +389,9 @@ describe("d1Database plugin", () => {
     if (!current) {
       throw new Error("targetBundleId not found");
     }
-    const updated = { ...current, ...newBundle };
-    const split = splitDatabaseBundle(updated);
-    await plugin.bundles.update({ bundleId, patch: split.bundle });
-    await plugin.bundlePatches.replaceForBundle({
+    await stageDatabaseRuntimeBundleUpdate(plugin, {
       bundleId,
-      patches: split.patches,
+      patch: newBundle,
     });
     await plugin.commit();
   };
@@ -452,11 +446,7 @@ describe("d1Database plugin", () => {
     },
     updateBundleById: updateBundle,
     deleteBundleById: async (bundleId) => {
-      await plugin.bundlePatches.deleteForBaseBundle({
-        baseBundleId: bundleId,
-      });
-      await plugin.bundlePatches.deleteForBundle({ bundleId });
-      await plugin.bundles.delete({ bundleId });
+      await stageDatabaseRuntimeBundleDelete(plugin, bundleId);
       await plugin.commit();
     },
   });

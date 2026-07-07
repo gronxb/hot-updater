@@ -69,9 +69,10 @@ describe("createDatabasePlugin", () => {
         },
         bundlePatches: {
           list: async () => emptyPatchPage(),
-          replaceForBundle: async () => undefined,
-          deleteForBundle: async () => undefined,
-          deleteForBaseBundle: async () => undefined,
+          getById: async () => null,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
         },
       }),
     })({});
@@ -88,9 +89,10 @@ describe("createDatabasePlugin", () => {
     expect(insertedBundles).toStrictEqual([baseBundle]);
   });
 
-  it("clears staged mutations after failed commits", async () => {
+  it("keeps staged mutations after failed commits", async () => {
     let insertAttempts = 0;
     const onDatabaseUpdated = vi.fn();
+    let shouldFail = true;
     const plugin = createDatabasePlugin({
       name: "test-plugin",
       connect: (): DatabasePluginCore => ({
@@ -99,16 +101,19 @@ describe("createDatabasePlugin", () => {
           list: async () => emptyPage<DatabaseBundleRecord>(),
           insert: async () => {
             insertAttempts += 1;
-            throw new Error("insert failed");
+            if (shouldFail) {
+              throw new Error("insert failed");
+            }
           },
           update: async () => undefined,
           delete: async () => undefined,
         },
         bundlePatches: {
           list: async () => emptyPatchPage(),
-          replaceForBundle: async () => undefined,
-          deleteForBundle: async () => undefined,
-          deleteForBaseBundle: async () => undefined,
+          getById: async () => null,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
         },
       }),
     })({}, { onDatabaseUpdated });
@@ -122,10 +127,11 @@ describe("createDatabasePlugin", () => {
 
     await expect(
       plugin.bundles.getById({ bundleId: baseBundle.id }),
-    ).resolves.toBeNull();
+    ).resolves.toStrictEqual(baseBundle);
+    shouldFail = false;
     await expect(plugin.commit()).resolves.toBeUndefined();
-    expect(insertAttempts).toBe(1);
-    expect(onDatabaseUpdated).not.toHaveBeenCalled();
+    expect(insertAttempts).toBe(2);
+    expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
   });
 
   it("returns a promise when connect is async", async () => {
@@ -139,9 +145,10 @@ describe("createDatabasePlugin", () => {
       },
       bundlePatches: {
         list: async () => emptyPatchPage(),
-        replaceForBundle: async () => undefined,
-        deleteForBundle: async () => undefined,
-        deleteForBaseBundle: async () => undefined,
+        getById: async () => null,
+        insert: async () => undefined,
+        update: async () => undefined,
+        delete: async () => undefined,
       },
     }));
 
@@ -166,9 +173,10 @@ describe("createDatabasePlugin", () => {
       },
       bundlePatches: {
         list: async () => emptyPatchPage(),
-        replaceForBundle: async () => undefined,
-        deleteForBundle: async () => undefined,
-        deleteForBaseBundle: async () => undefined,
+        getById: async () => null,
+        insert: async () => undefined,
+        update: async () => undefined,
+        delete: async () => undefined,
       },
     };
     const connect = (() => ({
@@ -233,9 +241,10 @@ describe("createDatabasePlugin", () => {
         },
         bundlePatches: {
           list: async () => emptyPatchPage(),
-          replaceForBundle: async () => undefined,
-          deleteForBundle: async () => undefined,
-          deleteForBaseBundle: async () => undefined,
+          getById: async () => null,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
         },
       }),
     })({});
@@ -293,6 +302,93 @@ describe("createDatabasePlugin", () => {
     });
   });
 
+  it("treats bundlePatches as generic staged CRUD resources", async () => {
+    const persistedPatches: DatabaseBundlePatch[] = [];
+    const firstPatch = patch("bundle-1", "base-1", 0);
+    const patchId = firstPatch.id ?? `${firstPatch.bundleId}:base-1`;
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      connect: (): DatabasePluginCore => ({
+        bundles: {
+          getById: async () => null,
+          list: async () => emptyPage<DatabaseBundleRecord>(),
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
+        },
+        bundlePatches: {
+          getById: async ({ patchId }) =>
+            persistedPatches.find((item) => item.id === patchId) ?? null,
+          list: async ({ limit }) =>
+            emptyPage(persistedPatches.slice(0, limit)),
+          insert: async ({ patch }) => {
+            persistedPatches.push(patch);
+          },
+          update: async ({ patchId, patch }) => {
+            const index = persistedPatches.findIndex(
+              (item) => item.id === patchId,
+            );
+            if (index >= 0) {
+              persistedPatches[index] = {
+                ...persistedPatches[index]!,
+                ...patch,
+              };
+            }
+          },
+          delete: async ({ patchId }) => {
+            const index = persistedPatches.findIndex(
+              (item) => item.id === patchId,
+            );
+            if (index >= 0) {
+              persistedPatches.splice(index, 1);
+            }
+          },
+        },
+      }),
+    })({});
+
+    await plugin.bundlePatches.insert({ patch: firstPatch });
+
+    await expect(plugin.bundlePatches.getById({ patchId })).resolves.toEqual(
+      firstPatch,
+    );
+    await expect(
+      plugin.bundlePatches.list({ limit: 10 }),
+    ).resolves.toMatchObject({
+      data: [firstPatch],
+    });
+    expect(persistedPatches).toStrictEqual([]);
+
+    await plugin.commit();
+
+    expect(persistedPatches).toStrictEqual([firstPatch]);
+
+    await plugin.bundlePatches.update({
+      patchId,
+      patch: { orderIndex: 2 },
+    });
+
+    await expect(
+      plugin.bundlePatches.getById({ patchId }),
+    ).resolves.toMatchObject({
+      orderIndex: 2,
+    });
+    expect(persistedPatches[0]?.orderIndex).toBe(0);
+
+    await plugin.commit();
+
+    expect(persistedPatches[0]?.orderIndex).toBe(2);
+
+    await plugin.bundlePatches.delete({ patchId });
+
+    await expect(plugin.bundlePatches.getById({ patchId })).resolves.toBeNull();
+    expect(persistedPatches).toHaveLength(1);
+
+    await plugin.commit();
+
+    expect(persistedPatches).toStrictEqual([]);
+  });
+
   it("updates staged patch pagination metadata for off-page deletes and replacements", async () => {
     const persistedPatches = [
       patch("bundle-1", "base-1", 0),
@@ -343,17 +439,21 @@ describe("createDatabasePlugin", () => {
               },
             };
           },
-          replaceForBundle: async () => undefined,
-          deleteForBundle: async () => undefined,
-          deleteForBaseBundle: async () => undefined,
+          getById: async ({ patchId }) =>
+            persistedPatches.find((item) => item.id === patchId) ?? null,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
         },
       }),
     })({});
 
-    await plugin.bundlePatches.deleteForBundle({ bundleId: "bundle-2" });
-    await plugin.bundlePatches.replaceForBundle({
-      bundleId: "bundle-4",
-      patches: [patch("bundle-4", "base-4", 3), patch("bundle-4", "base-5", 4)],
+    await plugin.bundlePatches.delete({ patchId: "bundle-2:base-2" });
+    await plugin.bundlePatches.insert({
+      patch: patch("bundle-4", "base-4", 3),
+    });
+    await plugin.bundlePatches.insert({
+      patch: patch("bundle-4", "base-5", 4),
     });
 
     await expect(
@@ -415,14 +515,16 @@ describe("createDatabasePlugin", () => {
               },
             };
           },
-          replaceForBundle: async () => undefined,
-          deleteForBundle: async () => undefined,
-          deleteForBaseBundle: async () => undefined,
+          getById: async ({ patchId }) =>
+            persistedPatches.find((item) => item.id === patchId) ?? null,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
         },
       }),
     })({});
 
-    await plugin.bundlePatches.deleteForBundle({ bundleId: "bundle-2" });
+    await plugin.bundlePatches.delete({ patchId: "bundle-2:base-2" });
 
     await expect(
       plugin.bundlePatches.list({ limit: 1 }),
@@ -480,9 +582,10 @@ describe("createDatabasePlugin", () => {
         },
         bundlePatches: {
           list: async () => emptyPatchPage(),
-          replaceForBundle: async () => undefined,
-          deleteForBundle: async () => undefined,
-          deleteForBaseBundle: async () => undefined,
+          getById: async () => null,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
         },
         bundleEvents: {
           list: async ({ limit }) => ({
@@ -547,9 +650,10 @@ describe("createDatabasePlugin", () => {
         },
         bundlePatches: {
           list: async () => emptyPatchPage(),
-          replaceForBundle: async () => undefined,
-          deleteForBundle: async () => undefined,
-          deleteForBaseBundle: async () => undefined,
+          getById: async () => null,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
         },
       }),
     })({});

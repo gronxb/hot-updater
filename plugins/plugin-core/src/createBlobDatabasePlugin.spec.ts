@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
 import { splitDatabaseBundle, toBundleReadModel } from "./databaseBundle";
+import { replaceDatabaseRuntimeBundlePatches } from "./databaseRuntimeBundle";
 import { getRequestUpdateBundleSeeds } from "./requestUpdateBundleState";
 import type {
   Bundle,
@@ -216,7 +217,7 @@ const toLegacyDatabasePlugin = (
       const splitBundle = splitDatabaseBundle(bundle);
       await runtime.bundles.insert({ bundle: splitBundle.bundle });
       if (splitBundle.patches.length > 0) {
-        await runtime.bundlePatches.replaceForBundle({
+        await replaceDatabaseRuntimeBundlePatches(runtime, {
           bundleId: bundle.id,
           patches: splitBundle.patches,
         });
@@ -234,7 +235,7 @@ const toLegacyDatabasePlugin = (
         patch: splitBundle.bundle,
       });
       if (hasPatchChange(patch)) {
-        await runtime.bundlePatches.replaceForBundle({
+        await replaceDatabaseRuntimeBundlePatches(runtime, {
           bundleId,
           patches: splitBundle.patches,
         });

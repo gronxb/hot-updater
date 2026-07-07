@@ -13,6 +13,7 @@ import type {
   DatabasePluginCore,
   DatabaseBundleEvent,
   DatabaseBundlePatch,
+  DatabaseBundlePatchUpdate,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
   Platform,
@@ -58,6 +59,17 @@ const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
 
 const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
   `${bundleId}:${baseBundleId}`;
+
+const getDatabaseBundlePatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? buildBundlePatchId(patch.bundleId, patch.baseBundleId);
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getDatabaseBundlePatchId(patch) : patch[field]);
 
 const mapPatchRowToPatch = (row: PostgresBundlePatchRow) => ({
   baseBundleId: row.base_bundle_id,
@@ -158,6 +170,21 @@ const databaseBundlePatchToRow = (
   patch_file_hash: patch.patchFileHash,
   patch_storage_uri: patch.patchStorageUri,
   order_index: patch.orderIndex,
+});
+
+const databaseBundlePatchUpdateToRow = (
+  patch: DatabaseBundlePatchUpdate,
+): Partial<Database["bundle_patches"]> => ({
+  ...(patch.baseFileHash !== undefined
+    ? { base_file_hash: patch.baseFileHash }
+    : {}),
+  ...(patch.patchFileHash !== undefined
+    ? { patch_file_hash: patch.patchFileHash }
+    : {}),
+  ...(patch.patchStorageUri !== undefined
+    ? { patch_storage_uri: patch.patchStorageUri }
+    : {}),
+  ...(patch.orderIndex !== undefined ? { order_index: patch.orderIndex } : {}),
 });
 
 const isAppReadyPayload = (value: unknown): value is BundleEventPayload => {
@@ -483,10 +510,14 @@ export const postgres = createDatabasePlugin({
                 const where = options.where;
                 return (
                   !where ||
-                  ((where.bundleId === undefined ||
-                    patch.bundleId === where.bundleId) &&
+                  ((where.id === undefined ||
+                    getDatabaseBundlePatchId(patch) === where.id) &&
+                    (where.bundleId === undefined ||
+                      patch.bundleId === where.bundleId) &&
                     (where.baseBundleId === undefined ||
                       patch.baseBundleId === where.baseBundleId) &&
+                    (where.idIn === undefined ||
+                      where.idIn.includes(getDatabaseBundlePatchId(patch))) &&
                     (where.bundleIdIn === undefined ||
                       where.bundleIdIn.includes(patch.bundleId)) &&
                     (where.baseBundleIdIn === undefined ||
@@ -499,7 +530,9 @@ export const postgres = createDatabasePlugin({
                 const result =
                   field === "orderIndex"
                     ? left.orderIndex - right.orderIndex
-                    : left[field].localeCompare(right[field]);
+                    : getPatchStringField(left, field).localeCompare(
+                        getPatchStringField(right, field),
+                      );
                 return direction === "asc" ? result : -result;
               });
 
@@ -507,37 +540,39 @@ export const postgres = createDatabasePlugin({
               items: patches,
               limit: options.limit,
               cursor: options.cursor,
-              getCursor: (patch) =>
-                patch.id ??
-                buildBundlePatchId(patch.bundleId, patch.baseBundleId),
+              getCursor: getDatabaseBundlePatchId,
             });
           },
-
-          async replaceForBundle({ bundleId, patches }) {
-            await executor
-              .deleteFrom("bundle_patches")
-              .where("bundle_id", "=", bundleId)
-              .execute();
-            const patchRows = patches.map(databaseBundlePatchToRow);
-            if (patchRows.length > 0) {
-              await executor
-                .insertInto("bundle_patches")
-                .values(patchRows)
-                .execute();
-            }
+          async getById({ patchId }) {
+            const row = await executor
+              .selectFrom("bundle_patches")
+              .selectAll()
+              .where("id", "=", patchId)
+              .executeTakeFirst();
+            return row ? rowToDatabaseBundlePatch(row) : null;
           },
-
-          async deleteForBundle({ bundleId }) {
+          async insert({ patch }) {
+            const row = databaseBundlePatchToRow(patch);
+            const { id: _id, ...updateValues } = row;
             await executor
-              .deleteFrom("bundle_patches")
-              .where("bundle_id", "=", bundleId)
+              .insertInto("bundle_patches")
+              .values(row)
+              .onConflict((oc) => oc.column("id").doUpdateSet(updateValues))
               .execute();
           },
-
-          async deleteForBaseBundle({ baseBundleId }) {
+          async update({ patchId, patch }) {
+            const updateRow = databaseBundlePatchUpdateToRow(patch);
+            if (Object.keys(updateRow).length === 0) return;
+            await executor
+              .updateTable("bundle_patches")
+              .set(updateRow)
+              .where("id", "=", patchId)
+              .execute();
+          },
+          async delete({ patchId }) {
             await executor
               .deleteFrom("bundle_patches")
-              .where("base_bundle_id", "=", baseBundleId)
+              .where("id", "=", patchId)
               .execute();
           },
         },

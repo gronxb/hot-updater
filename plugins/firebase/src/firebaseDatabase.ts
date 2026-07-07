@@ -299,6 +299,22 @@ const rowToDatabaseBundleRecord = (firestoreData: FirestoreBundleData) =>
 const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
   `${bundleId}:${baseBundleId}`;
 
+const getPatchId = (patch: DatabaseBundlePatch): string =>
+  patch.id ?? buildBundlePatchId(patch.bundleId, patch.baseBundleId);
+
+const materializePatch = (patch: DatabaseBundlePatch): DatabaseBundlePatch => ({
+  ...patch,
+  id: getPatchId(patch),
+});
+
+const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: Exclude<
+    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
+    "orderIndex"
+  >,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
+
 const bundleToDatabaseBundlePatches = (bundle: Bundle): DatabaseBundlePatch[] =>
   getBundlePatches(bundle).map((patch, index) => ({
     id: buildBundlePatchId(bundle.id, patch.baseBundleId),
@@ -315,9 +331,11 @@ const patchMatchesWhere = (
   where: BundlePatchListQuery["where"] | undefined,
 ) =>
   !where ||
-  ((where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+  ((where.id === undefined || getPatchId(patch) === where.id) &&
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
     (where.baseBundleId === undefined ||
       patch.baseBundleId === where.baseBundleId) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
     (where.bundleIdIn === undefined ||
       where.bundleIdIn.includes(patch.bundleId)) &&
     (where.baseBundleIdIn === undefined ||
@@ -418,6 +436,35 @@ export const firebaseDatabase = createDatabasePlugin({
       ]);
     };
 
+    const getAllBundlePatchRecords = async () => {
+      const querySnapshot = await bundlesCollection.get();
+      return querySnapshot.docs
+        .map((doc) => convertToBundle(doc.data() as FirestoreBundleData))
+        .flatMap(bundleToDatabaseBundlePatches);
+    };
+
+    const getBundlePatchById = async (
+      patchId: string,
+    ): Promise<DatabaseBundlePatch | null> =>
+      (await getAllBundlePatchRecords()).find(
+        (patch) => getPatchId(patch) === patchId,
+      ) ?? null;
+
+    const replaceBundlePatches = async (
+      bundleId: string,
+      patches: readonly DatabaseBundlePatch[],
+    ) => {
+      const bundleRef = bundlesCollection.doc(bundleId);
+      const bundleSnap = await bundleRef.get();
+      if (!bundleSnap.exists) {
+        throw new Error("targetBundleId not found");
+      }
+      await bundleRef.set(
+        patchesToFirestoreFields(patches.map(materializePatch)),
+        { merge: true },
+      );
+    };
+
     return {
       bundles: {
         async getById({ bundleId }) {
@@ -496,10 +543,7 @@ export const firebaseDatabase = createDatabasePlugin({
 
       bundlePatches: {
         async list(options: BundlePatchListQuery) {
-          const querySnapshot = await bundlesCollection.get();
-          const patches = querySnapshot.docs
-            .map((doc) => convertToBundle(doc.data() as FirestoreBundleData))
-            .flatMap(bundleToDatabaseBundlePatches)
+          const patches = (await getAllBundlePatchRecords())
             .filter((patch) => patchMatchesWhere(patch, options.where))
             .sort((left, right) => {
               const direction = options.orderBy?.direction ?? "asc";
@@ -507,7 +551,9 @@ export const firebaseDatabase = createDatabasePlugin({
               const result =
                 field === "orderIndex"
                   ? left.orderIndex - right.orderIndex
-                  : left[field].localeCompare(right[field]);
+                  : getPatchStringField(left, field).localeCompare(
+                      getPatchStringField(right, field),
+                    );
               return direction === "asc" ? result : -result;
             });
 
@@ -515,40 +561,76 @@ export const firebaseDatabase = createDatabasePlugin({
             items: patches,
             limit: options.limit,
             cursor: options.cursor,
-            getCursor: (patch) =>
-              patch.id ??
-              buildBundlePatchId(patch.bundleId, patch.baseBundleId),
+            getCursor: getPatchId,
           });
         },
 
-        async replaceForBundle({ bundleId, patches }) {
-          await bundlesCollection
-            .doc(bundleId)
-            .set(patchesToFirestoreFields(patches), { merge: true });
-        },
+        getById: async ({ patchId }) => getBundlePatchById(patchId),
 
-        async deleteForBundle({ bundleId }) {
-          await bundlesCollection
-            .doc(bundleId)
-            .set(patchesToFirestoreFields([]), { merge: true });
-        },
-
-        async deleteForBaseBundle({ baseBundleId }) {
-          const querySnapshot = await bundlesCollection.get();
-          await Promise.all(
-            querySnapshot.docs.map(async (doc) => {
-              const bundle = convertToBundle(doc.data() as FirestoreBundleData);
-              const remainingPatches = bundleToDatabaseBundlePatches(
-                bundle,
-              ).filter((patch) => patch.baseBundleId !== baseBundleId);
-              if (remainingPatches.length === (bundle.patches ?? []).length) {
-                return;
-              }
-              await doc.ref.set(patchesToFirestoreFields(remainingPatches), {
-                merge: true,
-              });
-            }),
+        async insert({ patch }) {
+          const nextPatch = materializePatch(patch);
+          const bundleSnap = await bundlesCollection
+            .doc(nextPatch.bundleId)
+            .get();
+          if (!bundleSnap.exists) {
+            throw new Error("targetBundleId not found");
+          }
+          const bundle = convertToBundle(
+            bundleSnap.data() as FirestoreBundleData,
           );
+          const patches = bundleToDatabaseBundlePatches(bundle).filter(
+            (currentPatch) => getPatchId(currentPatch) !== nextPatch.id,
+          );
+          await replaceBundlePatches(nextPatch.bundleId, [
+            ...patches,
+            nextPatch,
+          ]);
+        },
+
+        async update({ patchId, patch }) {
+          const currentPatch = await getBundlePatchById(patchId);
+          if (!currentPatch) {
+            return;
+          }
+          const bundleSnap = await bundlesCollection
+            .doc(currentPatch.bundleId)
+            .get();
+          if (!bundleSnap.exists) {
+            return;
+          }
+          const bundle = convertToBundle(
+            bundleSnap.data() as FirestoreBundleData,
+          );
+          const nextPatch = materializePatch({
+            ...currentPatch,
+            ...patch,
+            id: patchId,
+          });
+          const patches = bundleToDatabaseBundlePatches(bundle).map(
+            (candidate) =>
+              getPatchId(candidate) === patchId ? nextPatch : candidate,
+          );
+          await replaceBundlePatches(currentPatch.bundleId, patches);
+        },
+
+        async delete({ patchId }) {
+          const currentPatch = await getBundlePatchById(patchId);
+          if (!currentPatch) {
+            return;
+          }
+          const bundleSnap = await bundlesCollection
+            .doc(currentPatch.bundleId)
+            .get();
+          if (!bundleSnap.exists) {
+            return;
+          }
+          const bundle = convertToBundle(
+            bundleSnap.data() as FirestoreBundleData,
+          );
+          const patches = bundleToDatabaseBundlePatches(bundle).filter(
+            (patch) => getPatchId(patch) !== patchId,
+          );
+          await replaceBundlePatches(currentPatch.bundleId, patches);
         },
       },
 

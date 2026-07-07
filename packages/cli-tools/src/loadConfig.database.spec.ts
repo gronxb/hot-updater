@@ -52,9 +52,10 @@ const databaseCoreSource = [
   "        },",
   "      };",
   "    },",
-  "    async replaceForBundle() {},",
-  "    async deleteForBundle() {},",
-  "    async deleteForBaseBundle() {},",
+  "    async getById() { return null; },",
+  "    async insert() {},",
+  "    async update() {},",
+  "    async delete() {},",
   "  },",
   "});",
 ] as const;
