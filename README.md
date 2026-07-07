@@ -27,10 +27,10 @@
 
   Attach the Hot Updater agent skill so AI coding agents can use concise CLI
   context for deploys, bundle management, rollbacks, and verification:
-  [`.agents/skills/hot-updater/SKILL.md`](https://github.com/gronxb/hot-updater/blob/main/.agents/skills/hot-updater/SKILL.md)
+  [`skills/hot-updater/SKILL.md`](https://github.com/hot-updater/skills/blob/main/skills/hot-updater/SKILL.md)
 
   ```sh
-  npx skills add gronxb/hot-updater --skill hot-updater
+  npx skills add hot-updater/skills --skill hot-updater
   ```
 
   Then ask your agent with prompts like
