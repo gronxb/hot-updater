@@ -1545,7 +1545,8 @@ describe("Detox scenario contract", () => {
     const stages = await scenarioStages("force-update-auto-reload");
 
     // When: the Detox scenario is inspected.
-    // Then: it waits pending first, reloads, then verifies the stable launch.
+    // Then: it waits pending first, reloads, then proves the active bundle
+    // survives a cold relaunch.
     expect(stages).toEqual([
       "deploy force update bundle",
       "launch force update app",
@@ -1553,7 +1554,18 @@ describe("Detox scenario contract", () => {
       "wait force update metadata pending",
       "reload force update",
       "wait force update metadata stable",
+      "assert force update runtime bundle",
       "assert force update launch",
+      "assert force update crash history empty",
+      "capture force update post-reload state",
+      "assert force update metadata active",
+      "terminate force update app",
+      "cold relaunch force update app",
+      "assert force update cold runtime bundle",
+      "assert force update cold launch",
+      "assert force update cold crash history empty",
+      "capture force update cold state",
+      "assert force update cold metadata active",
     ]);
     expect(
       (
@@ -1571,6 +1583,18 @@ describe("Detox scenario contract", () => {
         )
       ).verificationPending,
     ).toBe(false);
+    expect(
+      await controlStepBody(
+        "force-update-auto-reload",
+        "assert force update metadata active",
+      ),
+    ).toEqual({ bundleId: "$forceBundleId" });
+    expect(
+      await controlStepBody(
+        "force-update-auto-reload",
+        "assert force update cold metadata active",
+      ),
+    ).toEqual({ bundleId: "$forceBundleId" });
   });
 
   it("models archive-to-diff OTA install and metadata verification sequence", async () => {

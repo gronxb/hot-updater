@@ -41,9 +41,60 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
       },
     );
     await app.assertText(
+      "assert force update runtime bundle",
+      "runtime-bundle-id",
+      "$forceBundleId",
+    );
+    await app.assertText(
       "assert force update launch",
       "launch-status-result",
       "Current Launch Status: STABLE",
+    );
+    await app.assertText(
+      "assert force update crash history empty",
+      "crash-history-count",
+      "0",
+    );
+    await app.control(
+      "capture force update post-reload state",
+      "/e2e/capture-state",
+      {
+        prefix: "force-update-post-reload",
+      },
+    );
+    await app.control(
+      "assert force update metadata active",
+      "/e2e/assert-metadata-active",
+      {
+        bundleId: "$forceBundleId",
+      },
+    );
+    await app.terminate("terminate force update app");
+    await app.launch("cold relaunch force update app");
+    await app.assertText(
+      "assert force update cold runtime bundle",
+      "runtime-bundle-id",
+      "$forceBundleId",
+    );
+    await app.assertText(
+      "assert force update cold launch",
+      "launch-status-result",
+      "Current Launch Status: STABLE",
+    );
+    await app.assertText(
+      "assert force update cold crash history empty",
+      "crash-history-count",
+      "0",
+    );
+    await app.control("capture force update cold state", "/e2e/capture-state", {
+      prefix: "force-update-cold-relaunch",
+    });
+    await app.control(
+      "assert force update cold metadata active",
+      "/e2e/assert-metadata-active",
+      {
+        bundleId: "$forceBundleId",
+      },
     );
   },
 };
