@@ -92,6 +92,7 @@ const defaultDetoxScenarioNames = [
   "target-cohorts-only",
   "target-cohorts-rollout-interaction",
   "targeted-cohort-switchback",
+  "compatible-update-cold-restart",
   "force-update-auto-reload",
   "disabled-bundle-rollback-to-builtin",
   "disabled-bundle-rollback-to-previous-ota",
@@ -237,7 +238,7 @@ describe("Detox scenario contract", () => {
 
     expect(detoxScenarios).toEqual(defaultDetoxScenarioNames);
     expect(listDetoxScenarioNames()).toEqual(defaultDetoxScenarioNames);
-    expect(new Set(listDetoxScenarioNames()).size).toBe(14);
+    expect(new Set(listDetoxScenarioNames()).size).toBe(15);
   });
 
   it("uses Detox-owned scenario lookup in the runner", async () => {
@@ -1595,6 +1596,60 @@ describe("Detox scenario contract", () => {
         "assert force update cold metadata active",
       ),
     ).toEqual({ bundleId: "$forceBundleId" });
+  });
+
+  it("models compatible-update-cold-restart through a cold launch", async () => {
+    const stages = await scenarioStages("compatible-update-cold-restart");
+
+    expect(stages).toEqual([
+      "deploy compatible update bundle",
+      "launch compatible update app",
+      "install compatible update",
+      "assert compatible update action result",
+      "wait compatible metadata pending",
+      "reload compatible update",
+      "wait compatible metadata stable",
+      "assert compatible runtime bundle",
+      "assert compatible launch",
+      "assert compatible crash history empty",
+      "capture compatible post-reload state",
+      "assert compatible metadata active",
+      "terminate compatible update app",
+      "cold relaunch compatible update app",
+      "assert compatible cold runtime bundle",
+      "assert compatible cold launch",
+      "assert compatible cold crash history empty",
+      "capture compatible cold state",
+      "assert compatible cold metadata active",
+    ]);
+    expect(
+      (
+        await controlStepBody(
+          "compatible-update-cold-restart",
+          "wait compatible metadata pending",
+        )
+      ).verificationPending,
+    ).toBe(true);
+    expect(
+      (
+        await controlStepBody(
+          "compatible-update-cold-restart",
+          "wait compatible metadata stable",
+        )
+      ).verificationPending,
+    ).toBe(false);
+    expect(
+      await controlStepBody(
+        "compatible-update-cold-restart",
+        "assert compatible metadata active",
+      ),
+    ).toEqual({ bundleId: "$bundleId" });
+    expect(
+      await controlStepBody(
+        "compatible-update-cold-restart",
+        "assert compatible cold metadata active",
+      ),
+    ).toEqual({ bundleId: "$bundleId" });
   });
 
   it("models archive-to-diff OTA install and metadata verification sequence", async () => {

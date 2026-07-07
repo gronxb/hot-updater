@@ -2,6 +2,7 @@ import { bspatchArchiveToDiffOtaScenario } from "./scenarios/bspatch-archive-to-
 import { bspatchConsecutiveDiffOtaScenario } from "./scenarios/bspatch-consecutive-diff-ota.ts";
 import { bspatchDisabledChainRollbackScenario } from "./scenarios/bspatch-disabled-chain-rollback.ts";
 import { bspatchManifestDiffFallbackScenario } from "./scenarios/bspatch-manifest-diff-fallback.ts";
+import { compatibleUpdateColdRestartScenario } from "./scenarios/compatible-update-cold-restart.ts";
 import { disabledBundleRollbackToBuiltinScenario } from "./scenarios/disabled-bundle-rollback-to-builtin.ts";
 import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disabled-bundle-rollback-to-previous-ota.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
@@ -31,6 +32,7 @@ const detoxScenarios: readonly DetoxScenarioDefinition[] = [
   targetCohortsOnlyScenario,
   targetCohortsRolloutInteractionScenario,
   targetedCohortSwitchbackScenario,
+  compatibleUpdateColdRestartScenario,
   forceUpdateAutoReloadScenario,
   disabledBundleRollbackToBuiltinScenario,
   disabledBundleRollbackToPreviousOtaScenario,
