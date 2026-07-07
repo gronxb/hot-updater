@@ -49,6 +49,21 @@ const getPatchStringField = (
   >,
 ): string => (field === "id" ? getPatchId(patch) : patch[field]);
 
+const patchMatchesWhere = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
+) =>
+  !where ||
+  ((where.id === undefined || getPatchId(patch) === where.id) &&
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+    (where.baseBundleId === undefined ||
+      patch.baseBundleId === where.baseBundleId) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
+    (where.bundleIdIn === undefined ||
+      where.bundleIdIn.includes(patch.bundleId)) &&
+    (where.baseBundleIdIn === undefined ||
+      where.baseBundleIdIn.includes(patch.baseBundleId)));
+
 type KyselySQLProvider = Exclude<ORMSQLProvider, "mssql">;
 
 export type { RelationMode, KyselySQLProvider as SQLProvider };
@@ -214,38 +229,33 @@ const createKyselyPlugin = createDatabasePlugin({
               .executeTakeFirst();
             return row ? rowToDatabaseBundleRecord(row) : null;
           },
-          async list(options) {
-            if (hasEmptySetFilter(options.where)) {
-              return paginateCursorItems({
-                items: [] as DatabaseBundleRecord[],
-                limit: options.limit,
-                cursor: options.cursor,
-                getCursor: (bundle) => bundle.id,
-              });
+          async findMany({ where, orderBy, window }) {
+            if (hasEmptySetFilter(where)) {
+              return [];
             }
-            const orderBy = options.orderBy ?? {
+            const bundleOrder = orderBy ?? {
               field: "id",
               direction: "desc",
             };
             const rows = await applyWhere(
               executor.selectFrom("bundles").selectAll(),
-              options.where,
+              where,
             )
-              .orderBy("id", orderBy.direction)
+              .orderBy("id", bundleOrder.direction)
               .execute();
-            const page = paginateCursorItems({
-              items: rows,
-              limit: options.limit,
-              cursor: options.cursor,
-              offset: options.page
-                ? (Math.max(1, options.page) - 1) * options.limit
-                : undefined,
-              getCursor: (row) => row.id,
-            });
-            return {
-              ...page,
-              data: page.data.map(rowToDatabaseBundleRecord),
-            };
+            return rows
+              .slice(window.offset, window.offset + window.limit)
+              .map(rowToDatabaseBundleRecord);
+          },
+          async count({ where }) {
+            if (hasEmptySetFilter(where)) {
+              return 0;
+            }
+            const rows = await applyWhere(
+              executor.selectFrom("bundles").select(["id"]),
+              where,
+            ).execute();
+            return rows.length;
           },
           async insert({ bundle }) {
             await upsertBundleRecord(executor, bundle);
@@ -271,7 +281,7 @@ const createKyselyPlugin = createDatabasePlugin({
           },
         },
         bundlePatches: {
-          async list(options) {
+          async findMany({ where, orderBy, window }) {
             const rows = await executor
               .selectFrom("bundle_patches")
               .selectAll()
@@ -279,40 +289,29 @@ const createKyselyPlugin = createDatabasePlugin({
               .execute();
             const patches = rows
               .map(rowToDatabaseBundlePatch)
-              .filter((patch) => {
-                const where = options.where;
-                return (
-                  !where ||
-                  ((where.id === undefined || getPatchId(patch) === where.id) &&
-                    (where.bundleId === undefined ||
-                      patch.bundleId === where.bundleId) &&
-                    (where.baseBundleId === undefined ||
-                      patch.baseBundleId === where.baseBundleId) &&
-                    (where.idIn === undefined ||
-                      where.idIn.includes(getPatchId(patch))) &&
-                    (where.bundleIdIn === undefined ||
-                      where.bundleIdIn.includes(patch.bundleId)) &&
-                    (where.baseBundleIdIn === undefined ||
-                      where.baseBundleIdIn.includes(patch.baseBundleId)))
-                );
-              })
+              .filter((patch) => patchMatchesWhere(patch, where))
               .sort((left, right) => {
-                const direction = options.orderBy?.direction ?? "asc";
-                const field = options.orderBy?.field ?? "orderIndex";
+                const direction = orderBy?.direction ?? "asc";
+                const field = orderBy?.field ?? "orderIndex";
                 const result =
                   field === "orderIndex"
-                    ? left.orderIndex - right.orderIndex
+                    ? left.orderIndex - right.orderIndex ||
+                      getPatchId(left).localeCompare(getPatchId(right))
                     : getPatchStringField(left, field).localeCompare(
                         getPatchStringField(right, field),
                       );
                 return direction === "asc" ? result : -result;
               });
-            return paginateCursorItems({
-              items: patches,
-              limit: options.limit,
-              cursor: options.cursor,
-              getCursor: getPatchId,
-            });
+            return patches.slice(window.offset, window.offset + window.limit);
+          },
+          async count({ where }) {
+            const rows = await executor
+              .selectFrom("bundle_patches")
+              .selectAll()
+              .execute();
+            return rows
+              .map(rowToDatabaseBundlePatch)
+              .filter((patch) => patchMatchesWhere(patch, where)).length;
           },
           async getById({ patchId }) {
             const row = await executor

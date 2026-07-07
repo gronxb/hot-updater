@@ -412,13 +412,13 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     const result = await repo.getBundles({
       limit: 1,
       cursor: {
-        after: "bundle1",
+        after: "offset:0",
       },
     });
 
-    expect(requestedAfter).toBe("bundle1");
+    expect(requestedAfter).toBeNull();
     expect(requestedBefore).toBeNull();
-    expect(requestedPage).toBeNull();
+    expect(requestedPage).toBe("2");
     expect(result.data).toEqual([TEST_BUNDLE_1]);
   });
 
@@ -446,11 +446,11 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       limit: 20,
       page: 2,
       cursor: {
-        after: "bundle-020",
+        after: "offset:19",
       },
     });
 
-    expect(requestedAfter).toBe("bundle-020");
+    expect(requestedAfter).toBeNull();
     expect(requestedPage).toBe("2");
   });
 
@@ -527,8 +527,8 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     server.use(
       http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
         const url = new URL(request.url);
-        const after = url.searchParams.get("after");
-        if (after === TEST_BUNDLE_2.id) {
+        const page = url.searchParams.get("page");
+        if (page === "2") {
           return HttpResponse.json({
             data: [TEST_BUNDLE_3],
             pagination: {
@@ -575,7 +575,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       hasPreviousPage: false,
       currentPage: 1,
       totalPages: 2,
-      nextCursor: TEST_BUNDLE_2.id,
+      nextCursor: "offset:1",
     });
 
     const secondPage = await repo.getBundles({
@@ -592,7 +592,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
       hasPreviousPage: true,
       currentPage: 2,
       totalPages: 2,
-      previousCursor: TEST_BUNDLE_3.id,
+      previousCursor: "offset:2",
     });
   });
 

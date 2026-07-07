@@ -52,6 +52,21 @@ const getPatchStringField = (
   >,
 ): string => (field === "id" ? getPatchId(patch) : patch[field]);
 
+const patchMatchesWhere = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
+) =>
+  !where ||
+  ((where.id === undefined || getPatchId(patch) === where.id) &&
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+    (where.baseBundleId === undefined ||
+      patch.baseBundleId === where.baseBundleId) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
+    (where.bundleIdIn === undefined ||
+      where.bundleIdIn.includes(patch.bundleId)) &&
+    (where.baseBundleIdIn === undefined ||
+      where.baseBundleIdIn.includes(patch.baseBundleId)));
+
 type PrismaRelationMode = "prisma" | "foreign-keys";
 
 type PrismaDelegate = {
@@ -200,29 +215,23 @@ const createPrismaPlugin = createDatabasePlugin({
             const row = await bundles.findFirst({ where: { id: bundleId } });
             return row ? rowToDatabaseBundleRecord(row as BundleRow) : null;
           },
-          async list(options) {
+          async findMany({ where, orderBy, window }) {
             const bundles = getDelegate(client, "bundles");
-            const orderBy = options.orderBy ?? {
+            const bundleOrder = orderBy ?? {
               field: "id",
               direction: "desc",
             };
             const rows = await bundles.findMany({
-              where: prismaWhere(options.where),
-              orderBy: { id: orderBy.direction },
+              where: prismaWhere(where),
+              orderBy: { id: bundleOrder.direction },
+              skip: window.offset,
+              take: window.limit,
             });
-            const page = paginateCursorItems({
-              items: rows as BundleRow[],
-              limit: options.limit,
-              cursor: options.cursor,
-              offset: options.page
-                ? (Math.max(1, options.page) - 1) * options.limit
-                : undefined,
-              getCursor: (row) => row.id,
-            });
-            return {
-              ...page,
-              data: page.data.map(rowToDatabaseBundleRecord),
-            };
+            return (rows as BundleRow[]).map(rowToDatabaseBundleRecord);
+          },
+          async count({ where }) {
+            const bundles = getDelegate(client, "bundles");
+            return bundles.count({ where: prismaWhere(where) });
           },
           async insert({ bundle }) {
             await upsertBundleRecord(client, bundle);
@@ -243,47 +252,36 @@ const createPrismaPlugin = createDatabasePlugin({
           },
         },
         bundlePatches: {
-          async list(options) {
+          async findMany({ where, orderBy, window }) {
             const patches = getDelegate(client, "bundle_patches");
             const rows = await patches.findMany({
               orderBy: { order_index: "asc" },
             });
             const data = rows
               .map((row) => rowToDatabaseBundlePatch(row as BundlePatchRow))
-              .filter((patch) => {
-                const where = options.where;
-                return (
-                  !where ||
-                  ((where.id === undefined || getPatchId(patch) === where.id) &&
-                    (where.bundleId === undefined ||
-                      patch.bundleId === where.bundleId) &&
-                    (where.baseBundleId === undefined ||
-                      patch.baseBundleId === where.baseBundleId) &&
-                    (where.idIn === undefined ||
-                      where.idIn.includes(getPatchId(patch))) &&
-                    (where.bundleIdIn === undefined ||
-                      where.bundleIdIn.includes(patch.bundleId)) &&
-                    (where.baseBundleIdIn === undefined ||
-                      where.baseBundleIdIn.includes(patch.baseBundleId)))
-                );
-              })
+              .filter((patch) => patchMatchesWhere(patch, where))
               .sort((left, right) => {
-                const direction = options.orderBy?.direction ?? "asc";
-                const field = options.orderBy?.field ?? "orderIndex";
+                const direction = orderBy?.direction ?? "asc";
+                const field = orderBy?.field ?? "orderIndex";
                 const result =
                   field === "orderIndex"
-                    ? left.orderIndex - right.orderIndex
+                    ? left.orderIndex - right.orderIndex ||
+                      getPatchId(left).localeCompare(getPatchId(right))
                     : getPatchStringField(left, field).localeCompare(
                         getPatchStringField(right, field),
                       );
                 return direction === "asc" ? result : -result;
               });
-            return paginateCursorItems({
-              items: data,
-              limit: options.limit,
-              cursor: options.cursor,
-              getCursor: getPatchId,
+            return data.slice(window.offset, window.offset + window.limit);
+          },
+          async count({ where }) {
+            const patches = getDelegate(client, "bundle_patches");
+            const rows = await patches.findMany({
+              orderBy: { order_index: "asc" },
             });
+            return rows
+              .map((row) => rowToDatabaseBundlePatch(row as BundlePatchRow))
+              .filter((patch) => patchMatchesWhere(patch, where)).length;
           },
           async getById({ patchId }) {
             const patches = getDelegate(client, "bundle_patches");

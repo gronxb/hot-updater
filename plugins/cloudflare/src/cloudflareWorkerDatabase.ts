@@ -10,7 +10,6 @@ import type {
   Bundle,
   BundleEventListQuery,
   BundleEventPayload,
-  BundleListQuery,
   BundlePatchListQuery,
   CursorPage,
   DatabaseBundleEvent,
@@ -257,6 +256,21 @@ const getPatchStringField = (
     "orderIndex"
   >,
 ): string => (field === "id" ? getPatchId(patch) : patch[field]);
+
+const patchMatchesWhere = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
+) =>
+  !where ||
+  ((where.id === undefined || getPatchId(patch) === where.id) &&
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+    (where.baseBundleId === undefined ||
+      patch.baseBundleId === where.baseBundleId) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
+    (where.bundleIdIn === undefined ||
+      where.bundleIdIn.includes(patch.bundleId)) &&
+    (where.baseBundleIdIn === undefined ||
+      where.baseBundleIdIn.includes(patch.baseBundleId)));
 
 const bundleRecordToRow = (
   bundleRecord: DatabaseBundleRecord,
@@ -722,19 +736,15 @@ const createD1WorkerPlugin = createDatabasePlugin({
         async getById({ bundleId }) {
           return getBundleById(bundleId);
         },
-        async list(options: BundleListQuery) {
-          const rows = await queryBundleRows(options.where, options.orderBy);
-          const page = paginateItems({
-            items: rows,
-            limit: options.limit,
-            cursor: options.cursor,
-            page: options.page,
-            getCursor: (row) => row.id,
-          });
-          return {
-            ...page,
-            data: page.data.map(rowToDatabaseBundleRecord),
-          };
+        async findMany({ where, orderBy, window }) {
+          const rows = await queryBundleRows(where, orderBy);
+          return rows
+            .slice(window.offset, window.offset + window.limit)
+            .map(rowToDatabaseBundleRecord);
+        },
+        async count({ where }) {
+          const rows = await queryBundleRows(where);
+          return rows.length;
         },
         async insert({ bundle }) {
           await persistBundle(bundle);
@@ -749,46 +759,34 @@ const createD1WorkerPlugin = createDatabasePlugin({
         },
       },
       bundlePatches: {
-        async list(options: BundlePatchListQuery) {
+        async findMany({ where, orderBy, window }) {
           const rows = await queryAll<D1WorkerBundlePatchRow>(
             "SELECT * FROM bundle_patches ORDER BY order_index ASC",
           );
           const patches = rows
             .map(rowToDatabaseBundlePatch)
-            .filter((patch) => {
-              const where = options.where;
-              return (
-                !where ||
-                ((where.id === undefined || getPatchId(patch) === where.id) &&
-                  (where.bundleId === undefined ||
-                    patch.bundleId === where.bundleId) &&
-                  (where.baseBundleId === undefined ||
-                    patch.baseBundleId === where.baseBundleId) &&
-                  (where.idIn === undefined ||
-                    where.idIn.includes(getPatchId(patch))) &&
-                  (where.bundleIdIn === undefined ||
-                    where.bundleIdIn.includes(patch.bundleId)) &&
-                  (where.baseBundleIdIn === undefined ||
-                    where.baseBundleIdIn.includes(patch.baseBundleId)))
-              );
-            })
+            .filter((patch) => patchMatchesWhere(patch, where))
             .sort((left, right) => {
-              const field = options.orderBy?.field ?? "orderIndex";
-              const direction = options.orderBy?.direction ?? "asc";
+              const field = orderBy?.field ?? "orderIndex";
+              const direction = orderBy?.direction ?? "asc";
               const result =
                 field === "orderIndex"
-                  ? left.orderIndex - right.orderIndex
+                  ? left.orderIndex - right.orderIndex ||
+                    getPatchId(left).localeCompare(getPatchId(right))
                   : getPatchStringField(left, field).localeCompare(
                       getPatchStringField(right, field),
                     );
               return direction === "asc" ? result : -result;
             });
-          return paginateItems({
-            items: patches,
-            limit: options.limit,
-            cursor: options.cursor,
-            getCursor: getPatchId,
-          });
+          return patches.slice(window.offset, window.offset + window.limit);
+        },
+        async count({ where }) {
+          const rows = await queryAll<D1WorkerBundlePatchRow>(
+            "SELECT * FROM bundle_patches ORDER BY order_index ASC",
+          );
+          return rows
+            .map(rowToDatabaseBundlePatch)
+            .filter((patch) => patchMatchesWhere(patch, where)).length;
         },
         async getById({ patchId }) {
           const row = await queryFirst<D1WorkerBundlePatchRow>(

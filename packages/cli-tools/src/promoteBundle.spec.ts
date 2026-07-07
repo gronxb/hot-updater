@@ -7,7 +7,6 @@ import { brotliDecompressSync } from "node:zlib";
 
 import type {
   Bundle,
-  CursorPage,
   DatabaseBundleRecord,
   DatabasePluginCore,
   DatabasePluginRuntime,
@@ -50,21 +49,6 @@ const config = {
   },
 } as ConfigResponse;
 
-const createCursorPage = <TData>(
-  data: readonly TData[],
-): CursorPage<TData> => ({
-  data,
-  pagination: {
-    currentPage: 1,
-    hasNextPage: false,
-    hasPreviousPage: false,
-    nextCursor: null,
-    previousCursor: null,
-    total: data.length,
-    totalPages: data.length === 0 ? 0 : 1,
-  },
-});
-
 const createInsertFailingDatabasePlugin = (
   bundle: Bundle,
 ): DatabasePluginRuntime => {
@@ -84,8 +68,12 @@ const createInsertFailingDatabasePlugin = (
         async insert() {
           throw new Error("append failed");
         },
-        async list() {
-          return createCursorPage(Array.from(bundleRecords.values()));
+        async findMany({ window }) {
+          const bundles = Array.from(bundleRecords.values());
+          return bundles.slice(window.offset, window.offset + window.limit);
+        },
+        async count() {
+          return bundleRecords.size;
         },
         async update({ bundleId, patch }) {
           const existing = bundleRecords.get(bundleId);
@@ -99,8 +87,14 @@ const createInsertFailingDatabasePlugin = (
           return null;
         },
         async insert() {},
-        async list() {
-          return createCursorPage(split.patches);
+        async findMany({ window }) {
+          return split.patches.slice(
+            window.offset,
+            window.offset + window.limit,
+          );
+        },
+        async count() {
+          return split.patches.length;
         },
         async update() {},
       },

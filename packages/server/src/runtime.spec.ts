@@ -5,7 +5,6 @@ import { NIL_UUID } from "@hot-updater/core";
 import type {
   BundleListQuery,
   BundlePatchListQuery,
-  CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
   DatabasePluginCore,
@@ -59,19 +58,6 @@ const createRuntimeStorage = (
       getDownloadUrl,
       readText,
     },
-  },
-});
-
-const createPage = <TData>(data: readonly TData[]): CursorPage<TData> => ({
-  data,
-  pagination: {
-    currentPage: 1,
-    hasNextPage: false,
-    hasPreviousPage: false,
-    nextCursor: null,
-    previousCursor: null,
-    total: data.length,
-    totalPages: data.length === 0 ? 0 : 1,
   },
 });
 
@@ -189,16 +175,22 @@ const createTestDatabase = (
     connect: (): DatabasePluginCore => ({
       bundles: {
         getById: async ({ bundleId }) => bundles.get(bundleId) ?? null,
-        list: async (query) => {
+        findMany: async ({ where, orderBy, window }) => {
+          const query = { where, orderBy, limit: window.limit };
           const direction = query.orderBy?.direction ?? "desc";
-          const data = Array.from(bundles.values())
+          return Array.from(bundles.values())
             .filter((nextBundle) => matchesBundleQuery(nextBundle, query))
             .sort((left, right) => {
               const result = left.id.localeCompare(right.id);
               return direction === "asc" ? result : -result;
             })
-            .slice(0, query.limit);
-          return createPage(data);
+            .slice(window.offset, window.offset + window.limit);
+        },
+        count: async ({ where }) => {
+          const query = { where, limit: Number.MAX_SAFE_INTEGER };
+          return Array.from(bundles.values()).filter((nextBundle) =>
+            matchesBundleQuery(nextBundle, query),
+          ).length;
         },
         insert: async (params) => {
           await options.onBeforeInsert?.(params);
@@ -216,16 +208,22 @@ const createTestDatabase = (
         },
       },
       bundlePatches: {
-        list: async (query) => {
-          const data = Array.from(patches.values())
+        findMany: async ({ where, orderBy, window }) => {
+          const query = { where, orderBy, limit: window.limit };
+          return Array.from(patches.values())
             .filter((patch) => matchesPatchQuery(patch, query))
             .sort(
               (left, right) =>
                 left.orderIndex - right.orderIndex ||
                 left.baseBundleId.localeCompare(right.baseBundleId),
             )
-            .slice(0, query.limit);
-          return createPage(data);
+            .slice(window.offset, window.offset + window.limit);
+        },
+        count: async ({ where }) => {
+          const query = { where, limit: Number.MAX_SAFE_INTEGER };
+          return Array.from(patches.values()).filter((patch) =>
+            matchesPatchQuery(patch, query),
+          ).length;
         },
         getById: async ({ patchId }) => patches.get(patchId) ?? null,
         insert: async ({ patch }) => {

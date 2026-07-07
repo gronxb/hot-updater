@@ -1,6 +1,8 @@
 import type {
   BundleEventListQuery,
+  BundleFindManyQuery,
   BundleListQuery,
+  BundlePatchFindManyQuery,
   BundlePatchListQuery,
   BundlePatchResource,
   CursorPage,
@@ -14,6 +16,7 @@ import type {
   DatabasePluginCore,
   DatabasePluginHooks,
   DatabasePluginRuntime,
+  DatabaseResourceWindow,
   HotUpdaterContext,
   MaybePromise,
   RuntimeBundleEventRepository,
@@ -66,6 +69,146 @@ const compareStrings = (
 ) => {
   const result = left.localeCompare(right);
   return direction === "asc" ? result : -result;
+};
+
+const offsetCursorPrefix = "offset:";
+
+const encodeOffsetCursor = (offset: number): string =>
+  `${offsetCursorPrefix}${Math.max(0, Math.trunc(offset))}`;
+
+const decodeOffsetCursor = (cursor: string | undefined): number | null => {
+  if (!cursor?.startsWith(offsetCursorPrefix)) {
+    return null;
+  }
+  const offset = Number(cursor.slice(offsetCursorPrefix.length));
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    return null;
+  }
+  return offset;
+};
+
+const queryWindow = (query: {
+  readonly limit: number;
+  readonly page?: number;
+  readonly cursor?: {
+    readonly after?: string;
+    readonly before?: string;
+  };
+}) => {
+  if ("offset" in query) {
+    throw new Error(
+      "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
+    );
+  }
+
+  const limit = Math.max(0, query.limit);
+  if (query.page !== undefined && query.page > 0) {
+    return {
+      offset: limit > 0 ? (Math.trunc(query.page) - 1) * limit : 0,
+      limit,
+    };
+  }
+  const afterOffset = decodeOffsetCursor(query.cursor?.after);
+  if (afterOffset !== null) {
+    return { offset: afterOffset + 1, limit };
+  }
+  const beforeOffset = decodeOffsetCursor(query.cursor?.before);
+  if (beforeOffset !== null) {
+    return { offset: Math.max(0, beforeOffset - limit), limit };
+  }
+  return { offset: 0, limit };
+};
+
+const createCorePagination = <TData>(
+  data: readonly TData[],
+  options: {
+    readonly limit: number;
+    readonly offset: number;
+    readonly total: number;
+  },
+): CursorPage<TData>["pagination"] => {
+  const total = Math.max(0, options.total);
+  const limit = Math.max(0, options.limit);
+  const offset = Math.max(0, options.offset);
+  const hasNextPage = limit > 0 && offset + data.length < total;
+  const hasPreviousPage = limit > 0 && offset > 0;
+  return {
+    total,
+    currentPage: limit > 0 ? Math.floor(offset / limit) + 1 : 1,
+    totalPages: limit > 0 && total > 0 ? Math.ceil(total / limit) : 0,
+    hasNextPage,
+    hasPreviousPage,
+    nextCursor:
+      hasNextPage && data.length > 0
+        ? encodeOffsetCursor(offset + data.length - 1)
+        : null,
+    previousCursor: hasPreviousPage ? encodeOffsetCursor(offset) : null,
+  };
+};
+
+const resolveCoreTotal = async <TData>(
+  data: readonly TData[],
+  window: DatabaseResourceWindow,
+  count: () => Promise<number>,
+): Promise<number> => {
+  if (
+    window.limit > 0 &&
+    data.length < window.limit &&
+    (data.length > 0 || window.offset === 0)
+  ) {
+    return window.offset + data.length;
+  }
+  return count();
+};
+
+const listCoreBundles = async (
+  core: DatabasePluginCore,
+  query: BundleListQuery,
+): Promise<CursorPage<DatabaseBundleRecord>> => {
+  const window = queryWindow(query);
+  const findManyQuery: BundleFindManyQuery = {
+    where: query.where,
+    orderBy: query.orderBy,
+    window,
+  };
+  const data = await core.bundles.findMany(findManyQuery);
+  const total = await resolveCoreTotal(data, window, () =>
+    core.bundles.count({ where: query.where }),
+  );
+  return {
+    data,
+    pagination: createCorePagination(data, {
+      limit: window.limit,
+      offset: window.offset,
+      total,
+    }),
+  };
+};
+
+const listCoreBundlePatches = async (
+  core: DatabasePluginCore,
+  query: BundlePatchListQuery,
+): Promise<CursorPage<DatabaseBundlePatch>> => {
+  const window = queryWindow(query);
+  const findManyQuery: BundlePatchFindManyQuery = {
+    where: query.where,
+    orderBy: query.orderBy,
+    window,
+  };
+  const data = (await core.bundlePatches.findMany(findManyQuery)).map(
+    materializePatch,
+  );
+  const total = await resolveCoreTotal(data, window, () =>
+    core.bundlePatches.count({ where: query.where }),
+  );
+  return {
+    data,
+    pagination: createCorePagination(data, {
+      limit: window.limit,
+      offset: window.offset,
+      total,
+    }),
+  };
 };
 
 const createOverlayPagination = <TData>(
@@ -580,7 +723,9 @@ class RuntimeStage {
         const direction = query.orderBy?.direction ?? "asc";
         const field = query.orderBy?.field ?? "orderIndex";
         if (field === "orderIndex") {
-          const result = left.orderIndex - right.orderIndex;
+          const result =
+            left.orderIndex - right.orderIndex ||
+            getPatchId(left).localeCompare(getPatchId(right));
           return direction === "asc" ? result : -result;
         }
         const leftValue = field === "id" ? getPatchId(left) : left[field];
@@ -809,7 +954,7 @@ export const createDatabaseRuntime = (
       },
       list: async (params) => {
         const core = await options.getCore();
-        const page = await core.bundles.list(params);
+        const page = await listCoreBundles(core, params);
         return stage.overlayBundles(core, page, params);
       },
       insert: async ({ bundle }) => {
@@ -833,7 +978,7 @@ export const createDatabaseRuntime = (
       },
       list: async (params) => {
         const core = await options.getCore();
-        const page = await core.bundlePatches.list(params);
+        const page = await listCoreBundlePatches(core, params);
         return stage.overlayPatches(core, page, params);
       },
       insert: async ({ patch }) => {

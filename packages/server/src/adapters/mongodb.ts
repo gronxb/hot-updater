@@ -21,7 +21,6 @@ import {
   type BundleRow,
   databaseBundlePatchToRow,
   databaseBundlePatchUpdateToRow,
-  paginateCursorItems,
   rowToDatabaseBundlePatch,
   rowToDatabaseBundleRecord,
   rowToBundle,
@@ -40,6 +39,21 @@ const getPatchStringField = (
     "orderIndex"
   >,
 ): string => (field === "id" ? getPatchId(patch) : patch[field]);
+
+const patchMatchesWhere = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
+) =>
+  !where ||
+  ((where.id === undefined || getPatchId(patch) === where.id) &&
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+    (where.baseBundleId === undefined ||
+      patch.baseBundleId === where.baseBundleId) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
+    (where.bundleIdIn === undefined ||
+      where.bundleIdIn.includes(patch.bundleId)) &&
+    (where.baseBundleIdIn === undefined ||
+      where.baseBundleIdIn.includes(patch.baseBundleId)));
 
 export interface MongoDBConfig {
   readonly client: MongoClient;
@@ -153,28 +167,21 @@ const createMongoPlugin = createDatabasePlugin({
             );
             return row ? rowToDatabaseBundleRecord(row) : null;
           },
-          async list(options) {
-            const orderBy = options.orderBy ?? {
+          async findMany({ where, orderBy, window }) {
+            const bundleOrder = orderBy ?? {
               field: "id",
               direction: "desc",
             };
             const rows = await bundles
-              .find(mongoWhere(options.where), ...sessionArgs())
-              .sort({ id: orderBy.direction === "asc" ? 1 : -1 })
+              .find(mongoWhere(where), ...sessionArgs())
+              .sort({ id: bundleOrder.direction === "asc" ? 1 : -1 })
               .toArray();
-            const page = paginateCursorItems({
-              items: rows,
-              limit: options.limit,
-              cursor: options.cursor,
-              offset: options.page
-                ? (Math.max(1, options.page) - 1) * options.limit
-                : undefined,
-              getCursor: (row) => row.id,
-            });
-            return {
-              ...page,
-              data: page.data.map(rowToDatabaseBundleRecord),
-            };
+            return rows
+              .slice(window.offset, window.offset + window.limit)
+              .map(rowToDatabaseBundleRecord);
+          },
+          async count({ where }) {
+            return bundles.countDocuments(mongoWhere(where), ...sessionArgs());
           },
           async insert({ bundle }) {
             await replaceBundleRecord(bundle);
@@ -196,47 +203,36 @@ const createMongoPlugin = createDatabasePlugin({
           },
         },
         bundlePatches: {
-          async list(options) {
+          async findMany({ where, orderBy, window }) {
             const rows = await patches
               .find({}, ...sessionArgs())
               .sort({ order_index: 1 })
               .toArray();
             const data = rows
               .map(rowToDatabaseBundlePatch)
-              .filter((patch) => {
-                const where = options.where;
-                return (
-                  !where ||
-                  ((where.id === undefined || getPatchId(patch) === where.id) &&
-                    (where.bundleId === undefined ||
-                      patch.bundleId === where.bundleId) &&
-                    (where.baseBundleId === undefined ||
-                      patch.baseBundleId === where.baseBundleId) &&
-                    (where.idIn === undefined ||
-                      where.idIn.includes(getPatchId(patch))) &&
-                    (where.bundleIdIn === undefined ||
-                      where.bundleIdIn.includes(patch.bundleId)) &&
-                    (where.baseBundleIdIn === undefined ||
-                      where.baseBundleIdIn.includes(patch.baseBundleId)))
-                );
-              })
+              .filter((patch) => patchMatchesWhere(patch, where))
               .sort((left, right) => {
-                const direction = options.orderBy?.direction ?? "asc";
-                const field = options.orderBy?.field ?? "orderIndex";
+                const direction = orderBy?.direction ?? "asc";
+                const field = orderBy?.field ?? "orderIndex";
                 const result =
                   field === "orderIndex"
-                    ? left.orderIndex - right.orderIndex
+                    ? left.orderIndex - right.orderIndex ||
+                      getPatchId(left).localeCompare(getPatchId(right))
                     : getPatchStringField(left, field).localeCompare(
                         getPatchStringField(right, field),
                       );
                 return direction === "asc" ? result : -result;
               });
-            return paginateCursorItems({
-              items: data,
-              limit: options.limit,
-              cursor: options.cursor,
-              getCursor: getPatchId,
-            });
+            return data.slice(window.offset, window.offset + window.limit);
+          },
+          async count({ where }) {
+            const rows = await patches
+              .find({}, ...sessionArgs())
+              .sort({ order_index: 1 })
+              .toArray();
+            return rows
+              .map(rowToDatabaseBundlePatch)
+              .filter((patch) => patchMatchesWhere(patch, where)).length;
           },
           async getById({ patchId }) {
             const row = await patches.findOne(

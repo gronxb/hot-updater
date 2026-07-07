@@ -26,16 +26,19 @@ export const myDatabase = createDatabasePlugin({
   connect: (config: MyConfig) => ({
     bundles: {
       getById: async ({ bundleId }) => { /* ... */ },
-      list: async (query) => ({ data: [], pagination: {} }),
+      findMany: async ({ where, orderBy, window }) => [],
+      count: async ({ where }) => 0,
       insert: async ({ bundle }) => { /* ... */ },
       update: async ({ bundleId, patch }) => { /* ... */ },
       delete: async ({ bundleId }) => { /* ... */ },
     },
     bundlePatches: {
-      list: async (query) => ({ data: [], pagination: {} }),
-      replaceForBundle: async ({ bundleId, patches }) => { /* ... */ },
-      deleteForBundle: async ({ bundleId }) => { /* ... */ },
-      deleteForBaseBundle: async ({ baseBundleId }) => { /* ... */ },
+      getById: async ({ patchId }) => { /* ... */ },
+      findMany: async ({ where, orderBy, window }) => [],
+      count: async ({ where }) => 0,
+      insert: async ({ patch }) => { /* ... */ },
+      update: async ({ patchId, patch }) => { /* ... */ },
+      delete: async ({ patchId }) => { /* ... */ },
     },
     close: async () => { /* optional cleanup */ },
   })
@@ -51,8 +54,9 @@ Your `connect` function must return a resource core with these methods:
   bundles: {
     getById: (params: { bundleId: string }) =>
       Promise<DatabaseBundleRecord | null>;
-    list: (query: BundleListQuery) =>
-      Promise<CursorPage<DatabaseBundleRecord>>;
+    findMany: (query: BundleFindManyQuery) =>
+      Promise<readonly DatabaseBundleRecord[]>;
+    count: (query: BundleCountQuery) => Promise<number>;
     insert: (params: { bundle: DatabaseBundleRecord }) => Promise<void>;
     update: (params: {
       bundleId: string;
@@ -62,14 +66,17 @@ Your `connect` function must return a resource core with these methods:
   };
 
   bundlePatches: {
-    list: (query: BundlePatchListQuery) =>
-      Promise<CursorPage<DatabaseBundlePatch>>;
-    replaceForBundle: (params: {
-      bundleId: string;
-      patches: readonly DatabaseBundlePatch[];
+    getById: (params: { patchId: string }) =>
+      Promise<DatabaseBundlePatch | null>;
+    findMany: (query: BundlePatchFindManyQuery) =>
+      Promise<readonly DatabaseBundlePatch[]>;
+    count: (query: BundlePatchCountQuery) => Promise<number>;
+    insert: (params: { patch: DatabaseBundlePatch }) => Promise<void>;
+    update: (params: {
+      patchId: string;
+      patch: DatabaseBundlePatchUpdate;
     }) => Promise<void>;
-    deleteForBundle: (params: { bundleId: string }) => Promise<void>;
-    deleteForBaseBundle: (params: { baseBundleId: string }) => Promise<void>;
+    delete: (params: { patchId: string }) => Promise<void>;
   };
 
   updateInfo?: {
@@ -103,10 +110,12 @@ Here's a complete custom database plugin using a REST API:
 
 ```typescript title="customDatabase.ts"
 import {
-  type BundleListQuery,
-  type BundlePatchListQuery,
-  type CursorPage,
+  type BundleCountQuery,
+  type BundleFindManyQuery,
+  type BundlePatchCountQuery,
+  type BundlePatchFindManyQuery,
   type DatabaseBundlePatch,
+  type DatabaseBundlePatchUpdate,
   type DatabaseBundleRecord,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
@@ -139,19 +148,14 @@ export const customDatabase = createDatabasePlugin({
           return response.json();
         },
 
-        async list(
-          query: BundleListQuery,
-        ): Promise<CursorPage<DatabaseBundleRecord>> {
+        async findMany(
+          query: BundleFindManyQuery,
+        ): Promise<readonly DatabaseBundleRecord[]> {
           const params = new URLSearchParams({
-            limit: String(query.limit),
+            limit: String(query.window.limit),
+            offset: String(query.window.offset),
           });
 
-          if (query.cursor?.after) {
-            params.set("after", query.cursor.after);
-          }
-          if (query.cursor?.before) {
-            params.set("before", query.cursor.before);
-          }
           if (query.where?.channel) {
             params.set("channel", query.where.channel);
           }
@@ -168,6 +172,27 @@ export const customDatabase = createDatabasePlugin({
           }
 
           return response.json();
+        },
+
+        async count(query: BundleCountQuery): Promise<number> {
+          const params = new URLSearchParams();
+          if (query.where?.channel) {
+            params.set("channel", query.where.channel);
+          }
+          if (query.where?.platform) {
+            params.set("platform", query.where.platform);
+          }
+
+          const response = await fetch(`${config.baseUrl}/bundles/count?${params}`, {
+            headers,
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to count bundles: ${response.statusText}`);
+          }
+
+          const { count } = await response.json();
+          return count;
         },
 
         async insert({ bundle }) {
@@ -195,18 +220,27 @@ export const customDatabase = createDatabasePlugin({
       },
 
       bundlePatches: {
-        async list(
-          query: BundlePatchListQuery,
-        ): Promise<CursorPage<DatabaseBundlePatch>> {
+        async getById({ patchId }) {
+          const response = await fetch(
+            `${config.baseUrl}/bundle-patches/${patchId}`,
+            { headers },
+          );
+
+          if (!response.ok) {
+            if (response.status === 404) return null;
+            throw new Error(`Failed to fetch patch: ${response.statusText}`);
+          }
+
+          return response.json();
+        },
+
+        async findMany(
+          query: BundlePatchFindManyQuery,
+        ): Promise<readonly DatabaseBundlePatch[]> {
           const params = new URLSearchParams({
-            limit: String(query.limit),
+            limit: String(query.window.limit),
+            offset: String(query.window.offset),
           });
-          if (query.cursor?.after) {
-            params.set("after", query.cursor.after);
-          }
-          if (query.cursor?.before) {
-            params.set("before", query.cursor.before);
-          }
           if (query.where?.bundleId) {
             params.set("bundleId", query.where.bundleId);
           }
@@ -223,23 +257,49 @@ export const customDatabase = createDatabasePlugin({
           return response.json();
         },
 
-        async replaceForBundle({ bundleId, patches }) {
-          await fetch(`${config.baseUrl}/bundles/${bundleId}/patches`, {
-            method: "PUT",
+        async count(query: BundlePatchCountQuery): Promise<number> {
+          const params = new URLSearchParams();
+          if (query.where?.bundleId) {
+            params.set("bundleId", query.where.bundleId);
+          }
+
+          const response = await fetch(
+            `${config.baseUrl}/bundle-patches/count?${params}`,
+            { headers },
+          );
+
+          if (!response.ok) {
+            throw new Error(`Failed to count patches: ${response.statusText}`);
+          }
+
+          const { count } = await response.json();
+          return count;
+        },
+
+        async insert({ patch }) {
+          await fetch(`${config.baseUrl}/bundle-patches`, {
+            method: "POST",
             headers,
-            body: JSON.stringify(patches),
+            body: JSON.stringify(patch),
           });
         },
 
-        async deleteForBundle({ bundleId }) {
-          await fetch(`${config.baseUrl}/bundles/${bundleId}/patches`, {
-            method: "DELETE",
+        async update({
+          patchId,
+          patch,
+        }: {
+          patchId: string;
+          patch: DatabaseBundlePatchUpdate;
+        }) {
+          await fetch(`${config.baseUrl}/bundle-patches/${patchId}`, {
+            method: "PATCH",
             headers,
+            body: JSON.stringify(patch),
           });
         },
 
-        async deleteForBaseBundle({ baseBundleId }) {
-          await fetch(`${config.baseUrl}/bundle-patches/by-base/${baseBundleId}`, {
+        async delete({ patchId }) {
+          await fetch(`${config.baseUrl}/bundle-patches/${patchId}`, {
             method: "DELETE",
             headers,
           });
@@ -250,8 +310,9 @@ export const customDatabase = createDatabasePlugin({
 });
 ```
 
-Use cursor pagination as the contract for bundle-management queries. The
-`offset` query parameter has been removed from the public API.
+Use `window.offset` and `window.limit` as the provider read contract. The public
+runtime still exposes cursor pagination, and `createDatabasePlugin` converts
+runtime cursors into provider windows.
 
 Callers stage writes through resource methods and then flush them with the
 runtime `commit()` method:
@@ -263,21 +324,21 @@ const database = await customDatabase({
 });
 
 await database.bundles.insert({ bundle });
-await database.bundlePatches.replaceForBundle({
-  bundleId: bundle.id,
-  patches,
-});
+for (const patch of patches) {
+  await database.bundlePatches.insert({ patch });
+}
 await database.commit();
 ```
 
 ## Helper Utilities
 
-The `@hot-updater/plugin-core` package provides helper functions:
+The `@hot-updater/plugin-core` package owns runtime pagination for database
+plugins. Provider implementations normally only need to return rows from
+`findMany` and totals from `count`.
 
 ### calculatePagination
 
-Generates pagination metadata after your implementation resolves a cursor into
-an internal start index:
+Generates pagination metadata for runtime/public pagination helpers:
 
 ```typescript
 import { calculatePagination } from "@hot-updater/plugin-core";
@@ -336,8 +397,8 @@ const hotUpdater = createHotUpdater({
 ### Performance
 
 - Prefer `getUpdateInfo` for the update-check hot path so runtime requests do
-  not fall back to wide `getBundles` scans
-- Implement efficient filtering in `getBundles`
+  not fall back to wide bundle scans
+- Implement efficient filtering in `findMany` and `count`
 - Use database indexes for common queries
 - Use `beginTransaction` or `commit({ batch })` support when your provider can
   apply staged mutations atomically

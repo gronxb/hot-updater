@@ -2,9 +2,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import {
   type Bundle,
   type BundlePatchListQuery,
-  calculatePagination,
   createDatabasePlugin,
-  type CursorPage,
   type DatabaseBundlePatch,
   type DatabaseBundleQueryOrder,
   type DatabaseBundleQueryWhere,
@@ -91,97 +89,37 @@ const sortBundles = <TBundle extends { readonly id: string }>(
   });
 };
 
-const paginateMockBundles = <TBundle extends { readonly id: string }>({
-  bundles,
-  limit,
-  offset,
-  cursor,
-  orderBy,
-}: {
-  bundles: TBundle[];
-  limit: number;
-  offset?: number;
-  cursor?: { after?: string; before?: string };
-  orderBy?: DatabaseBundleQueryOrder;
-}): CursorPage<TBundle> => {
-  const sortedBundles = sortBundles(bundles, orderBy);
-  const direction = orderBy?.direction ?? "desc";
-  const total = sortedBundles.length;
+const patchMatchesWhere = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
+) =>
+  !where ||
+  ((where.id === undefined || getPatchId(patch) === where.id) &&
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+    (where.baseBundleId === undefined ||
+      patch.baseBundleId === where.baseBundleId) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
+    (where.bundleIdIn === undefined ||
+      where.bundleIdIn.includes(patch.bundleId)) &&
+    (where.baseBundleIdIn === undefined ||
+      where.baseBundleIdIn.includes(patch.baseBundleId)));
 
-  if (offset !== undefined) {
-    const normalizedOffset = Math.max(0, offset);
-    const data =
-      limit > 0
-        ? sortedBundles.slice(normalizedOffset, normalizedOffset + limit)
-        : sortedBundles.slice(normalizedOffset);
-    const pagination = calculatePagination(total, {
-      limit,
-      offset: normalizedOffset,
-    });
-
-    return {
-      data,
-      pagination: {
-        ...pagination,
-        nextCursor:
-          data.length > 0 && normalizedOffset + data.length < total
-            ? (data.at(-1)?.id ?? null)
-            : null,
-        previousCursor:
-          data.length > 0 && normalizedOffset > 0
-            ? (data[0]?.id ?? null)
-            : null,
-      },
-    };
-  }
-
-  let data: TBundle[];
-  if (cursor?.after) {
-    const after = cursor.after;
-    const candidates = sortedBundles.filter((bundle) =>
-      direction === "desc"
-        ? bundle.id.localeCompare(after) < 0
-        : bundle.id.localeCompare(after) > 0,
-    );
-    data = limit > 0 ? candidates.slice(0, limit) : candidates;
-  } else if (cursor?.before) {
-    const before = cursor.before;
-    const candidates = sortedBundles.filter((bundle) =>
-      direction === "desc"
-        ? bundle.id.localeCompare(before) > 0
-        : bundle.id.localeCompare(before) < 0,
-    );
-    data =
-      limit > 0
-        ? candidates.slice(Math.max(0, candidates.length - limit))
-        : candidates;
-  } else {
-    data = limit > 0 ? sortedBundles.slice(0, limit) : sortedBundles;
-  }
-
-  const firstBundle = data[0];
-  const startIndex = firstBundle
-    ? sortedBundles.findIndex((bundle) => bundle.id === firstBundle.id)
-    : cursor?.after
-      ? total
-      : 0;
-  const pagination = calculatePagination(total, { limit, offset: startIndex });
-  const nextCursor =
-    data.length > 0 && startIndex + data.length < total
-      ? data.at(-1)?.id
-      : cursor?.before;
-  const previousCursor =
-    data.length > 0 && startIndex > 0 ? data[0]?.id : cursor?.after;
-
-  return {
-    data,
-    pagination: {
-      ...pagination,
-      nextCursor: nextCursor ?? null,
-      previousCursor: previousCursor ?? null,
-    },
-  };
-};
+const sortPatches = (
+  patches: readonly DatabaseBundlePatch[],
+  orderBy: BundlePatchListQuery["orderBy"],
+) =>
+  patches.slice().sort((left, right) => {
+    const direction = orderBy?.direction ?? "asc";
+    const field = orderBy?.field ?? "orderIndex";
+    const result =
+      field === "orderIndex"
+        ? left.orderIndex - right.orderIndex ||
+          getPatchId(left).localeCompare(getPatchId(right))
+        : getPatchStringField(left, field).localeCompare(
+            getPatchStringField(right, field),
+          );
+    return direction === "asc" ? result : -result;
+  });
 
 export interface MockDatabaseConfig {
   latency: { min: number; max: number };
@@ -210,8 +148,7 @@ export const mockDatabase = createDatabasePlugin({
           await sleep(minMax(config.latency.min, config.latency.max));
           return bundleRecords.get(bundleId) ?? null;
         },
-        async list(options) {
-          const { where, limit, cursor, orderBy, page } = options;
+        async findMany({ where, orderBy, window }) {
           await sleep(minMax(config.latency.min, config.latency.max));
 
           const filteredBundles = sortBundles(
@@ -221,13 +158,16 @@ export const mockDatabase = createDatabasePlugin({
             orderBy,
           );
 
-          return paginateMockBundles({
-            bundles: filteredBundles,
-            limit,
-            offset: page ? (Math.max(1, page) - 1) * limit : undefined,
-            cursor,
-            orderBy,
-          });
+          return filteredBundles.slice(
+            window.offset,
+            window.offset + window.limit,
+          );
+        },
+        async count({ where }) {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          return Array.from(bundleRecords.values()).filter((bundle) =>
+            bundleMatchesQueryWhere(bundle, where),
+          ).length;
         },
         async insert({ bundle }) {
           await sleep(minMax(config.latency.min, config.latency.max));
@@ -249,47 +189,23 @@ export const mockDatabase = createDatabasePlugin({
         },
       },
       bundlePatches: {
-        async list(options) {
+        async findMany({ where, orderBy, window }) {
           await sleep(minMax(config.latency.min, config.latency.max));
-          const where = options.where;
-          const patches = Array.from(bundlePatches.values())
-            .flat()
-            .filter(
-              (patch) =>
-                !where ||
-                ((where.id === undefined || getPatchId(patch) === where.id) &&
-                  (where.bundleId === undefined ||
-                    patch.bundleId === where.bundleId) &&
-                  (where.baseBundleId === undefined ||
-                    patch.baseBundleId === where.baseBundleId) &&
-                  (where.idIn === undefined ||
-                    where.idIn.includes(getPatchId(patch))) &&
-                  (where.bundleIdIn === undefined ||
-                    where.bundleIdIn.includes(patch.bundleId)) &&
-                  (where.baseBundleIdIn === undefined ||
-                    where.baseBundleIdIn.includes(patch.baseBundleId))),
-            )
-            .sort((left, right) => {
-              const direction = options.orderBy?.direction ?? "asc";
-              const field = options.orderBy?.field ?? "orderIndex";
-              const result =
-                field === "orderIndex"
-                  ? left.orderIndex - right.orderIndex
-                  : getPatchStringField(left, field).localeCompare(
-                      getPatchStringField(right, field),
-                    );
-              return direction === "asc" ? result : -result;
-            });
+          const patches = sortPatches(
+            Array.from(bundlePatches.values())
+              .flat()
+              .filter((patch) => patchMatchesWhere(patch, where))
+              .map(materializePatch),
+            orderBy,
+          );
 
-          return paginateMockBundles({
-            bundles: patches.map((patch) => ({
-              ...patch,
-              id: getPatchId(patch),
-            })),
-            limit: options.limit,
-            cursor: options.cursor,
-            orderBy: undefined,
-          });
+          return patches.slice(window.offset, window.offset + window.limit);
+        },
+        async count({ where }) {
+          await sleep(minMax(config.latency.min, config.latency.max));
+          return Array.from(bundlePatches.values())
+            .flat()
+            .filter((patch) => patchMatchesWhere(patch, where)).length;
         },
         async getById({ patchId }) {
           await sleep(minMax(config.latency.min, config.latency.max));
@@ -310,9 +226,7 @@ export const mockDatabase = createDatabasePlugin({
             [];
           bundlePatches.set(
             nextPatch.bundleId,
-            [...patches, nextPatch].sort(
-              (left, right) => left.orderIndex - right.orderIndex,
-            ),
+            sortPatches([...patches, nextPatch], undefined),
           );
         },
         async update({ patchId, patch }) {

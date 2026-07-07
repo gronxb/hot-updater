@@ -118,6 +118,21 @@ export interface DatabaseBundleQueryOptions {
 
 export type BundleListQuery = DatabaseBundleQueryOptions;
 
+export interface DatabaseResourceWindow {
+  readonly offset: number;
+  readonly limit: number;
+}
+
+export interface BundleFindManyQuery {
+  readonly where?: DatabaseBundleQueryWhere;
+  readonly window: DatabaseResourceWindow;
+  readonly orderBy?: DatabaseBundleQueryOrder;
+}
+
+export interface BundleCountQuery {
+  readonly where?: DatabaseBundleQueryWhere;
+}
+
 export interface DatabaseBundlePatch {
   readonly id?: string;
   readonly bundleId: string;
@@ -150,6 +165,16 @@ export interface BundlePatchListQuery {
     readonly field: "id" | "bundleId" | "baseBundleId" | "orderIndex";
     readonly direction: "asc" | "desc";
   };
+}
+
+export interface BundlePatchFindManyQuery {
+  readonly where?: BundlePatchListQuery["where"];
+  readonly window: DatabaseResourceWindow;
+  readonly orderBy?: BundlePatchListQuery["orderBy"];
+}
+
+export interface BundlePatchCountQuery {
+  readonly where?: BundlePatchListQuery["where"];
 }
 
 export type BundleEventKind = "APP_READY";
@@ -211,12 +236,19 @@ export interface BundleRepository {
   readonly getById: (params: {
     readonly bundleId: string;
   }) => Promise<DatabaseBundleRecord | null>;
+  readonly findMany: (
+    params: BundleFindManyQuery,
+  ) => Promise<readonly DatabaseBundleRecord[]>;
+  readonly count: (params: BundleCountQuery) => Promise<number>;
+}
+
+export interface RuntimeBundleRepository {
+  readonly getById: (params: {
+    readonly bundleId: string;
+  }) => Promise<DatabaseBundleRecord | null>;
   readonly list: (
     params: BundleListQuery,
   ) => Promise<CursorPage<DatabaseBundleRecord>>;
-}
-
-export interface RuntimeBundleRepository extends BundleRepository {
   readonly insert: (params: {
     readonly bundle: DatabaseBundleRecord;
   }) => Promise<void>;
@@ -227,12 +259,22 @@ export interface RuntimeBundleRepository extends BundleRepository {
   readonly delete: (params: { readonly bundleId: string }) => Promise<void>;
 }
 
-export type BundleResource = RuntimeBundleRepository;
+export interface BundleResource extends BundleRepository {
+  readonly insert: (params: {
+    readonly bundle: DatabaseBundleRecord;
+  }) => Promise<void>;
+  readonly update: (params: {
+    readonly bundleId: string;
+    readonly patch: Partial<DatabaseBundleRecord>;
+  }) => Promise<void>;
+  readonly delete: (params: { readonly bundleId: string }) => Promise<void>;
+}
 
 export interface BundlePatchRepository {
-  readonly list: (
-    params: BundlePatchListQuery,
-  ) => Promise<CursorPage<DatabaseBundlePatch>>;
+  readonly findMany: (
+    params: BundlePatchFindManyQuery,
+  ) => Promise<readonly DatabaseBundlePatch[]>;
+  readonly count: (params: BundlePatchCountQuery) => Promise<number>;
 }
 
 export interface BundlePatchCrudResource extends BundlePatchRepository {
@@ -249,7 +291,22 @@ export interface BundlePatchCrudResource extends BundlePatchRepository {
   readonly delete: (params: { readonly patchId: string }) => Promise<void>;
 }
 
-export type RuntimeBundlePatchRepository = BundlePatchCrudResource;
+export interface RuntimeBundlePatchRepository {
+  readonly getById: (params: {
+    readonly patchId: string;
+  }) => Promise<DatabaseBundlePatch | null>;
+  readonly list: (
+    params: BundlePatchListQuery,
+  ) => Promise<CursorPage<DatabaseBundlePatch>>;
+  readonly insert: (params: {
+    readonly patch: DatabaseBundlePatch;
+  }) => Promise<void>;
+  readonly update: (params: {
+    readonly patchId: string;
+    readonly patch: DatabaseBundlePatchUpdate;
+  }) => Promise<void>;
+  readonly delete: (params: { readonly patchId: string }) => Promise<void>;
+}
 
 export type BundlePatchResource = BundlePatchCrudResource;
 

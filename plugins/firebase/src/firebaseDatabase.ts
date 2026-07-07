@@ -15,7 +15,6 @@ import {
 import type {
   Bundle,
   BundlePatchListQuery,
-  CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
@@ -23,7 +22,6 @@ import type {
   DatabasePluginCore,
 } from "@hot-updater/plugin-core";
 import {
-  calculatePagination,
   createDatabasePlugin,
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
@@ -162,59 +160,6 @@ const chunkValues = <T>(values: T[], size: number) => {
   }
 
   return chunks;
-};
-
-const paginateItems = <TItem>({
-  cursor,
-  getCursor,
-  items,
-  limit,
-  page,
-}: {
-  readonly cursor?: { readonly after?: string; readonly before?: string };
-  readonly getCursor: (item: TItem) => string;
-  readonly items: readonly TItem[];
-  readonly limit: number;
-  readonly page?: number;
-}): CursorPage<TItem> => {
-  const total = items.length;
-  const pageOffset = page ? (Math.max(1, page) - 1) * limit : undefined;
-  let startIndex =
-    pageOffset === undefined ? 0 : Math.min(pageOffset, Math.max(0, total));
-  let endIndex = limit > 0 ? startIndex + limit : total;
-
-  if (pageOffset === undefined && cursor?.after) {
-    const afterIndex = items.findIndex(
-      (item) => getCursor(item) === cursor.after,
-    );
-    startIndex = afterIndex >= 0 ? afterIndex + 1 : total;
-    endIndex = limit > 0 ? startIndex + limit : total;
-  } else if (pageOffset === undefined && cursor?.before) {
-    const beforeIndex = items.findIndex(
-      (item) => getCursor(item) === cursor.before,
-    );
-    endIndex = beforeIndex >= 0 ? beforeIndex : 0;
-    startIndex = limit > 0 ? Math.max(0, endIndex - limit) : 0;
-  }
-
-  const data = items.slice(startIndex, endIndex);
-  const pagination = calculatePagination(total, {
-    limit,
-    offset: startIndex,
-  });
-
-  return {
-    data,
-    pagination: {
-      ...pagination,
-      nextCursor:
-        data.length > 0 && startIndex + data.length < total
-          ? getCursor(data[data.length - 1]!)
-          : null,
-      previousCursor:
-        data.length > 0 && startIndex > 0 ? getCursor(data[0]!) : null,
-    },
-  };
 };
 
 const convertToBundle = (firestoreData: FirestoreBundleData): Bundle => {
@@ -477,8 +422,7 @@ export const firebaseDatabase = createDatabasePlugin({
           );
         },
 
-        async list(options) {
-          const { where, orderBy } = options;
+        async findMany({ where, orderBy, window }) {
           let query = applyFirestoreQueryableFilters(bundlesCollection, where);
 
           query = query.orderBy(
@@ -493,18 +437,20 @@ export const firebaseDatabase = createDatabasePlugin({
               .filter((bundle) => bundleMatchesQueryWhere(bundle, where)),
             orderBy,
           );
-          const page = paginateItems({
-            items: filteredBundles,
-            limit: options.limit,
-            cursor: options.cursor,
-            page: options.page,
-            getCursor: (bundle) => bundle.id,
-          });
+          return filteredBundles
+            .slice(window.offset, window.offset + window.limit)
+            .map((bundle) => toDatabaseBundleRecord(bundle));
+        },
 
-          return {
-            ...page,
-            data: page.data.map((bundle) => toDatabaseBundleRecord(bundle)),
-          };
+        async count({ where }) {
+          const query = applyFirestoreQueryableFilters(
+            bundlesCollection,
+            where,
+          );
+          const querySnapshot = await query.get();
+          return querySnapshot.docs
+            .map((doc) => convertToBundle(doc.data() as FirestoreBundleData))
+            .filter((bundle) => bundleMatchesQueryWhere(bundle, where)).length;
         },
 
         async insert({ bundle }) {
@@ -542,27 +488,29 @@ export const firebaseDatabase = createDatabasePlugin({
       },
 
       bundlePatches: {
-        async list(options: BundlePatchListQuery) {
+        async findMany({ where, orderBy, window }) {
           const patches = (await getAllBundlePatchRecords())
-            .filter((patch) => patchMatchesWhere(patch, options.where))
+            .filter((patch) => patchMatchesWhere(patch, where))
             .sort((left, right) => {
-              const direction = options.orderBy?.direction ?? "asc";
-              const field = options.orderBy?.field ?? "orderIndex";
+              const direction = orderBy?.direction ?? "asc";
+              const field = orderBy?.field ?? "orderIndex";
               const result =
                 field === "orderIndex"
-                  ? left.orderIndex - right.orderIndex
+                  ? left.orderIndex - right.orderIndex ||
+                    getPatchId(left).localeCompare(getPatchId(right))
                   : getPatchStringField(left, field).localeCompare(
                       getPatchStringField(right, field),
                     );
               return direction === "asc" ? result : -result;
             });
 
-          return paginateItems({
-            items: patches,
-            limit: options.limit,
-            cursor: options.cursor,
-            getCursor: getPatchId,
-          });
+          return patches.slice(window.offset, window.offset + window.limit);
+        },
+
+        async count({ where }) {
+          return (await getAllBundlePatchRecords()).filter((patch) =>
+            patchMatchesWhere(patch, where),
+          ).length;
         },
 
         getById: async ({ patchId }) => getBundlePatchById(patchId),

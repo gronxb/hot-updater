@@ -2,15 +2,12 @@ import type {
   Bundle,
   BundleListQuery,
   BundlePatchListQuery,
-  CursorPage,
   DatabaseBundleIdFilter,
   DatabaseBundlePatch,
-  DatabaseBundleRecord,
   DatabasePluginCore,
   PaginatedResult,
 } from "@hot-updater/plugin-core";
 import {
-  calculatePagination,
   createDatabasePlugin,
   toBundleReadModel,
   toDatabaseBundlePatches,
@@ -140,17 +137,6 @@ const setBundleIdFilterSearchParams = (
   appendStringArraySearchParams(url, "idIn", filter.in);
 };
 
-const toRecordPage = (
-  result: PaginatedResult,
-): CursorPage<DatabaseBundleRecord> => ({
-  data: result.data.map(toDatabaseBundleRecord),
-  pagination: {
-    ...result.pagination,
-    nextCursor: result.pagination.nextCursor ?? null,
-    previousCursor: result.pagination.previousCursor ?? null,
-  },
-});
-
 const patchMatches = (
   patch: DatabaseBundlePatch,
   where: BundlePatchListQuery["where"],
@@ -183,7 +169,8 @@ const sortPatches = (
     const field = orderBy?.field ?? "orderIndex";
     const result =
       field === "orderIndex"
-        ? left.orderIndex - right.orderIndex
+        ? left.orderIndex - right.orderIndex ||
+          getPatchId(left).localeCompare(getPatchId(right))
         : getPatchStringField(left, field).localeCompare(
             getPatchStringField(right, field),
           );
@@ -198,47 +185,20 @@ const getPatchStringField = (
   >,
 ): string => (field === "id" ? getPatchId(patch) : patch[field]);
 
-const paginatePatches = (
-  patches: readonly DatabaseBundlePatch[],
-  query: BundlePatchListQuery,
-): CursorPage<DatabaseBundlePatch> => {
-  const cursor = query.cursor;
-  const offset = cursor?.after
-    ? patches.findIndex((patch) => getPatchId(patch) === cursor.after) + 1
-    : cursor?.before
-      ? Math.max(
-          0,
-          patches.findIndex((patch) => getPatchId(patch) === cursor.before) -
-            query.limit,
-        )
-      : 0;
-  const startOffset = Math.max(0, offset);
-  const data = patches.slice(startOffset, startOffset + query.limit);
-  const pagination = calculatePagination(patches.length, {
-    limit: query.limit,
-    offset: startOffset,
-  });
-
-  return {
-    data,
-    pagination: {
-      ...pagination,
-      nextCursor:
-        data.length > 0 && startOffset + data.length < patches.length
-          ? data.at(-1)
-            ? getPatchId(data.at(-1)!)
-            : null
-          : null,
-      previousCursor:
-        data.length > 0 && startOffset > 0 ? getPatchId(data[0]!) : null,
-    },
-  };
-};
-
 export const standaloneRepository = createDatabasePlugin({
   name: "standalone-repository",
   connect: (config: StandaloneRepositoryConfig): DatabasePluginCore => {
     const bundleCache = new Map<string, Bundle>();
+    let bundleListTotalCache: {
+      readonly key: string;
+      readonly total: number;
+    } | null = null;
+    const getBundleListTotalCacheKey = (
+      where: BundleListQuery["where"],
+    ): string => JSON.stringify(where ?? null);
+    const clearBundleListTotalCache = () => {
+      bundleListTotalCache = null;
+    };
     const customListRoute = config.routes?.list?.();
     const routes = {
       list: () => createRoute(defaultRoutes.list(), customListRoute),
@@ -523,6 +483,7 @@ export const standaloneRepository = createDatabasePlugin({
       if (!result.success) {
         throw new Error("Failed to commit bundle");
       }
+      clearBundleListTotalCache();
       bundleCache.set(bundle.id, bundle);
     };
 
@@ -542,6 +503,7 @@ export const standaloneRepository = createDatabasePlugin({
       if (!result.success) {
         throw new Error("Failed to commit bundle");
       }
+      clearBundleListTotalCache();
       const current = bundleCache.get(bundleId);
       if (current) {
         bundleCache.set(bundleId, { ...current, ...patch });
@@ -574,6 +536,7 @@ export const standaloneRepository = createDatabasePlugin({
           }
         }
       }
+      clearBundleListTotalCache();
       bundleCache.delete(bundleId);
     };
 
@@ -614,8 +577,38 @@ export const standaloneRepository = createDatabasePlugin({
           const bundle = await requestBundleById(bundleId);
           return bundle ? toDatabaseBundleRecord(bundle) : null;
         },
-        async list(options) {
-          return toRecordPage(await requestBundlePage(options));
+        async findMany({ where, orderBy, window }) {
+          if (window.limit <= 0) {
+            return [];
+          }
+          const pageNumber = Math.floor(window.offset / window.limit) + 1;
+          const page = await requestBundlePage({
+            where,
+            orderBy,
+            limit: window.limit,
+            page: pageNumber,
+          });
+          bundleListTotalCache = {
+            key: getBundleListTotalCacheKey(where),
+            total: page.pagination.total,
+          };
+          const pageOffset = (pageNumber - 1) * window.limit;
+          const start = window.offset - pageOffset;
+          return page.data
+            .slice(start, start + window.limit)
+            .map(toDatabaseBundleRecord);
+        },
+        async count({ where }) {
+          const cacheKey = getBundleListTotalCacheKey(where);
+          if (bundleListTotalCache?.key === cacheKey) {
+            return bundleListTotalCache.total;
+          }
+          const page = await requestBundlePage({ where, limit: 1 });
+          bundleListTotalCache = {
+            key: cacheKey,
+            total: page.pagination.total,
+          };
+          return page.pagination.total;
         },
         async insert({ bundle }) {
           await postBundle(bundle);
@@ -632,8 +625,7 @@ export const standaloneRepository = createDatabasePlugin({
         },
       },
       bundlePatches: {
-        async list(options) {
-          const where = options.where;
+        async findMany({ where, orderBy, window }) {
           const bundles =
             where?.bundleId !== undefined
               ? [await requestBundleById(where.bundleId)].filter(
@@ -647,9 +639,23 @@ export const standaloneRepository = createDatabasePlugin({
               .flatMap(toDatabaseBundlePatches)
               .map(materializePatch)
               .filter((patch) => patchMatches(patch, where)),
-            options.orderBy,
+            orderBy,
           );
-          return paginatePatches(patches, options);
+          return patches.slice(window.offset, window.offset + window.limit);
+        },
+        async count({ where }) {
+          const bundles =
+            where?.bundleId !== undefined
+              ? [await requestBundleById(where.bundleId)].filter(
+                  (bundle): bundle is Bundle => bundle !== null,
+                )
+              : where?.bundleIdIn !== undefined
+                ? await requestBundlesByIds(where.bundleIdIn)
+                : await requestAllBundles();
+          return bundles
+            .flatMap(toDatabaseBundlePatches)
+            .map(materializePatch)
+            .filter((patch) => patchMatches(patch, where)).length;
         },
         getById: async ({ patchId }) => requestBundlePatchById(patchId),
         async insert({ patch }) {

@@ -2,24 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import type {
-  CursorPage,
   DatabaseBundleEvent,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
   DatabasePluginCore,
 } from "./types";
-
-const emptyPage = <T>(data: T[] = []): CursorPage<T> => ({
-  data,
-  pagination: {
-    hasNextPage: false,
-    hasPreviousPage: false,
-    nextCursor: null,
-    previousCursor: null,
-  },
-});
-
-const emptyPatchPage = () => emptyPage<DatabaseBundlePatch>();
 
 const patch = (
   bundleId: string,
@@ -60,7 +47,9 @@ describe("createDatabasePlugin", () => {
         bundles: {
           getById: async ({ bundleId }) =>
             insertedBundles.find((bundle) => bundle.id === bundleId) ?? null,
-          list: async () => emptyPage(insertedBundles),
+          findMany: async ({ window }) =>
+            insertedBundles.slice(window.offset, window.offset + window.limit),
+          count: async () => insertedBundles.length,
           insert: async ({ bundle }) => {
             insertedBundles.push(bundle);
           },
@@ -68,7 +57,8 @@ describe("createDatabasePlugin", () => {
           delete: async () => undefined,
         },
         bundlePatches: {
-          list: async () => emptyPatchPage(),
+          findMany: async () => [],
+          count: async () => 0,
           getById: async () => null,
           insert: async () => undefined,
           update: async () => undefined,
@@ -98,7 +88,8 @@ describe("createDatabasePlugin", () => {
       connect: (): DatabasePluginCore => ({
         bundles: {
           getById: async () => null,
-          list: async () => emptyPage<DatabaseBundleRecord>(),
+          findMany: async () => [],
+          count: async () => 0,
           insert: async () => {
             insertAttempts += 1;
             if (shouldFail) {
@@ -109,7 +100,8 @@ describe("createDatabasePlugin", () => {
           delete: async () => undefined,
         },
         bundlePatches: {
-          list: async () => emptyPatchPage(),
+          findMany: async () => [],
+          count: async () => 0,
           getById: async () => null,
           insert: async () => undefined,
           update: async () => undefined,
@@ -138,13 +130,15 @@ describe("createDatabasePlugin", () => {
     const connect = vi.fn(async () => ({
       bundles: {
         getById: async () => null,
-        list: async () => emptyPage<DatabaseBundleRecord>(),
+        findMany: async () => [],
+        count: async () => 0,
         insert: async () => undefined,
         update: async () => undefined,
         delete: async () => undefined,
       },
       bundlePatches: {
-        list: async () => emptyPatchPage(),
+        findMany: async () => [],
+        count: async () => 0,
         getById: async () => null,
         insert: async () => undefined,
         update: async () => undefined,
@@ -166,13 +160,15 @@ describe("createDatabasePlugin", () => {
     const core: DatabasePluginCore = {
       bundles: {
         getById: async () => null,
-        list: async () => emptyPage<DatabaseBundleRecord>(),
+        findMany: async () => [],
+        count: async () => 0,
         insert: async () => undefined,
         update: async () => undefined,
         delete: async () => undefined,
       },
       bundlePatches: {
-        list: async () => emptyPatchPage(),
+        findMany: async () => [],
+        count: async () => 0,
         getById: async () => null,
         insert: async () => undefined,
         update: async () => undefined,
@@ -202,27 +198,20 @@ describe("createDatabasePlugin", () => {
         bundles: {
           getById: async ({ bundleId }) =>
             persistedBundles.find((bundle) => bundle.id === bundleId) ?? null,
-          list: async ({ where, limit }) => {
-            const data = persistedBundles
+          findMany: async ({ where, window }) =>
+            persistedBundles
               .filter(
                 (bundle) =>
                   where?.channel === undefined ||
                   bundle.channel === where.channel,
               )
-              .slice(0, limit);
-            return {
-              data,
-              pagination: {
-                total: data.length,
-                currentPage: 1,
-                totalPages: data.length === 0 ? 0 : 1,
-                hasNextPage: false,
-                hasPreviousPage: false,
-                nextCursor: null,
-                previousCursor: null,
-              },
-            };
-          },
+              .slice(window.offset, window.offset + window.limit),
+          count: async ({ where }) =>
+            persistedBundles.filter(
+              (bundle) =>
+                where?.channel === undefined ||
+                bundle.channel === where.channel,
+            ).length,
           insert: async ({ bundle }) => {
             persistedBundles.push(bundle);
           },
@@ -240,7 +229,8 @@ describe("createDatabasePlugin", () => {
           delete: async () => undefined,
         },
         bundlePatches: {
-          list: async () => emptyPatchPage(),
+          findMany: async () => [],
+          count: async () => 0,
           getById: async () => null,
           insert: async () => undefined,
           update: async () => undefined,
@@ -302,6 +292,183 @@ describe("createDatabasePlugin", () => {
     });
   });
 
+  it("builds runtime bundle pages from provider findMany and count primitives", async () => {
+    const persistedBundles: DatabaseBundleRecord[] = [
+      baseBundle,
+      {
+        ...baseBundle,
+        id: "0195a408-8f13-7d9b-8df4-123456789abd",
+        channel: "staging",
+      },
+    ];
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      connect: (): DatabasePluginCore => ({
+        bundles: {
+          getById: async ({ bundleId }) =>
+            persistedBundles.find((bundle) => bundle.id === bundleId) ?? null,
+          findMany: async ({ where, window }) =>
+            persistedBundles
+              .filter(
+                (bundle) =>
+                  where?.channel === undefined ||
+                  bundle.channel === where.channel,
+              )
+              .slice(window.offset, window.offset + window.limit),
+          count: async ({ where }) =>
+            persistedBundles.filter(
+              (bundle) =>
+                where?.channel === undefined ||
+                bundle.channel === where.channel,
+            ).length,
+          insert: async ({ bundle }) => {
+            persistedBundles.push(bundle);
+          },
+          update: async ({ bundleId, patch }) => {
+            const index = persistedBundles.findIndex(
+              (bundle) => bundle.id === bundleId,
+            );
+            if (index >= 0) {
+              persistedBundles[index] = {
+                ...persistedBundles[index]!,
+                ...patch,
+              };
+            }
+          },
+          delete: async () => undefined,
+        },
+        bundlePatches: {
+          findMany: async () => [],
+          count: async () => 0,
+          getById: async () => null,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
+        },
+      }),
+    })({});
+
+    await plugin.bundles.update({
+      bundleId: baseBundle.id,
+      patch: { channel: "staging" },
+    });
+
+    await expect(
+      plugin.bundles.list({
+        where: { channel: "staging" },
+        limit: 1,
+      }),
+    ).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: "0195a408-8f13-7d9b-8df4-123456789abd",
+        }),
+      ],
+      pagination: {
+        total: 2,
+        totalPages: 2,
+        hasNextPage: true,
+        hasPreviousPage: false,
+      },
+    });
+    await expect(
+      plugin.bundles.list({
+        where: { channel: "staging" },
+        limit: 2,
+      }),
+    ).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: "0195a408-8f13-7d9b-8df4-123456789abd",
+        }),
+        expect.objectContaining({ id: baseBundle.id }),
+      ],
+      pagination: {
+        total: 2,
+        totalPages: 1,
+        hasNextPage: false,
+      },
+    });
+    expect(persistedBundles[0]?.channel).toBe("production");
+  });
+
+  it("handles low-level pagination boundaries without provider cursors", async () => {
+    const persistedPatches = [
+      patch("bundle-1", "base-1", 0),
+      patch("bundle-2", "base-2", 0),
+      patch("bundle-3", "base-3", 1),
+    ];
+    const sortedPatches = () =>
+      [...persistedPatches].sort(
+        (left, right) =>
+          left.orderIndex - right.orderIndex ||
+          (left.id ?? "").localeCompare(right.id ?? ""),
+      );
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      connect: (): DatabasePluginCore => ({
+        bundles: {
+          getById: async () => null,
+          findMany: async () => [],
+          count: async () => 0,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
+        },
+        bundlePatches: {
+          getById: async ({ patchId }) =>
+            persistedPatches.find((item) => item.id === patchId) ?? null,
+          findMany: async ({ window }) =>
+            sortedPatches().slice(window.offset, window.offset + window.limit),
+          count: async () => persistedPatches.length,
+          insert: async () => undefined,
+          update: async () => undefined,
+          delete: async () => undefined,
+        },
+      }),
+    })({});
+
+    await expect(
+      plugin.bundlePatches.list({
+        limit: 1,
+        cursor: { after: "not-a-core-cursor" },
+        orderBy: { field: "orderIndex", direction: "asc" },
+      }),
+    ).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: "bundle-1:base-1" })],
+      pagination: {
+        total: 3,
+        hasNextPage: true,
+        hasPreviousPage: false,
+      },
+    });
+
+    const firstPage = await plugin.bundlePatches.list({
+      limit: 2,
+      orderBy: { field: "orderIndex", direction: "asc" },
+    });
+
+    expect(firstPage.data.map((item) => item.id)).toStrictEqual([
+      "bundle-1:base-1",
+      "bundle-2:base-2",
+    ]);
+
+    await expect(
+      plugin.bundlePatches.list({
+        limit: 2,
+        cursor: { after: firstPage.pagination.nextCursor ?? undefined },
+        orderBy: { field: "orderIndex", direction: "asc" },
+      }),
+    ).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: "bundle-3:base-3" })],
+      pagination: {
+        total: 3,
+        hasNextPage: false,
+        hasPreviousPage: true,
+      },
+    });
+  });
+
   it("treats bundlePatches as generic staged CRUD resources", async () => {
     const persistedPatches: DatabaseBundlePatch[] = [];
     const firstPatch = patch("bundle-1", "base-1", 0);
@@ -311,7 +478,8 @@ describe("createDatabasePlugin", () => {
       connect: (): DatabasePluginCore => ({
         bundles: {
           getById: async () => null,
-          list: async () => emptyPage<DatabaseBundleRecord>(),
+          findMany: async () => [],
+          count: async () => 0,
           insert: async () => undefined,
           update: async () => undefined,
           delete: async () => undefined,
@@ -319,8 +487,9 @@ describe("createDatabasePlugin", () => {
         bundlePatches: {
           getById: async ({ patchId }) =>
             persistedPatches.find((item) => item.id === patchId) ?? null,
-          list: async ({ limit }) =>
-            emptyPage(persistedPatches.slice(0, limit)),
+          findMany: async ({ window }) =>
+            persistedPatches.slice(window.offset, window.offset + window.limit),
+          count: async () => persistedPatches.length,
           insert: async ({ patch }) => {
             persistedPatches.push(patch);
           },
@@ -400,13 +569,14 @@ describe("createDatabasePlugin", () => {
       connect: (): DatabasePluginCore => ({
         bundles: {
           getById: async () => null,
-          list: async () => emptyPage<DatabaseBundleRecord>(),
+          findMany: async () => [],
+          count: async () => 0,
           insert: async () => undefined,
           update: async () => undefined,
           delete: async () => undefined,
         },
         bundlePatches: {
-          list: async ({ where, limit, cursor }) => {
+          findMany: async ({ where, window }) => {
             const filtered = persistedPatches.filter((item) => {
               if (where?.bundleId !== undefined) {
                 return item.bundleId === where.bundleId;
@@ -416,29 +586,18 @@ describe("createDatabasePlugin", () => {
               }
               return true;
             });
-            const offset = cursor?.after
-              ? filtered.findIndex((item) => item.id === cursor.after) + 1
-              : 0;
-            const data = filtered.slice(offset, offset + limit);
-            return {
-              data,
-              pagination: {
-                currentPage: 1,
-                hasNextPage: offset + data.length < filtered.length,
-                hasPreviousPage: offset > 0,
-                nextCursor:
-                  offset + data.length < filtered.length
-                    ? (data.at(-1)?.id ?? null)
-                    : null,
-                previousCursor: null,
-                total: filtered.length,
-                totalPages:
-                  limit > 0 && filtered.length > 0
-                    ? Math.ceil(filtered.length / limit)
-                    : 0,
-              },
-            };
+            return filtered.slice(window.offset, window.offset + window.limit);
           },
+          count: async ({ where }) =>
+            persistedPatches.filter((item) => {
+              if (where?.bundleId !== undefined) {
+                return item.bundleId === where.bundleId;
+              }
+              if (where?.baseBundleId !== undefined) {
+                return item.baseBundleId === where.baseBundleId;
+              }
+              return true;
+            }).length,
           getById: async ({ patchId }) =>
             persistedPatches.find((item) => item.id === patchId) ?? null,
           insert: async () => undefined,
@@ -476,13 +635,14 @@ describe("createDatabasePlugin", () => {
       connect: (): DatabasePluginCore => ({
         bundles: {
           getById: async () => null,
-          list: async () => emptyPage<DatabaseBundleRecord>(),
+          findMany: async () => [],
+          count: async () => 0,
           insert: async () => undefined,
           update: async () => undefined,
           delete: async () => undefined,
         },
         bundlePatches: {
-          list: async ({ where, limit, cursor }) => {
+          findMany: async ({ where, window }) => {
             const filtered = persistedPatches.filter((item) => {
               if (where?.bundleId !== undefined) {
                 return item.bundleId === where.bundleId;
@@ -492,29 +652,18 @@ describe("createDatabasePlugin", () => {
               }
               return true;
             });
-            const offset = cursor?.after
-              ? filtered.findIndex((item) => item.id === cursor.after) + 1
-              : 0;
-            const data = filtered.slice(offset, offset + limit);
-            return {
-              data,
-              pagination: {
-                currentPage: 1,
-                hasNextPage: offset + data.length < filtered.length,
-                hasPreviousPage: offset > 0,
-                nextCursor:
-                  offset + data.length < filtered.length
-                    ? (data.at(-1)?.id ?? null)
-                    : null,
-                previousCursor: null,
-                total: filtered.length,
-                totalPages:
-                  limit > 0 && filtered.length > 0
-                    ? Math.ceil(filtered.length / limit)
-                    : 0,
-              },
-            };
+            return filtered.slice(window.offset, window.offset + window.limit);
           },
+          count: async ({ where }) =>
+            persistedPatches.filter((item) => {
+              if (where?.bundleId !== undefined) {
+                return item.bundleId === where.bundleId;
+              }
+              if (where?.baseBundleId !== undefined) {
+                return item.baseBundleId === where.baseBundleId;
+              }
+              return true;
+            }).length,
           getById: async ({ patchId }) =>
             persistedPatches.find((item) => item.id === patchId) ?? null,
           insert: async () => undefined,
@@ -575,13 +724,15 @@ describe("createDatabasePlugin", () => {
       connect: (): DatabasePluginCore => ({
         bundles: {
           getById: async () => null,
-          list: async () => emptyPage<DatabaseBundleRecord>(),
+          findMany: async () => [],
+          count: async () => 0,
           insert: async () => undefined,
           update: async () => undefined,
           delete: async () => undefined,
         },
         bundlePatches: {
-          list: async () => emptyPatchPage(),
+          findMany: async () => [],
+          count: async () => 0,
           getById: async () => null,
           insert: async () => undefined,
           update: async () => undefined,
@@ -643,13 +794,15 @@ describe("createDatabasePlugin", () => {
       connect: () => ({
         bundles: {
           getById: async () => null,
-          list: async () => emptyPage<DatabaseBundleRecord>(),
+          findMany: async () => [],
+          count: async () => 0,
           insert: async () => undefined,
           update: async () => undefined,
           delete: async () => undefined,
         },
         bundlePatches: {
-          list: async () => emptyPatchPage(),
+          findMany: async () => [],
+          count: async () => 0,
           getById: async () => null,
           insert: async () => undefined,
           update: async () => undefined,

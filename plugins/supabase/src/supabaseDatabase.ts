@@ -102,6 +102,21 @@ const getPatchStringField = (
   >,
 ): string => (field === "id" ? getPatchId(patch) : patch[field]);
 
+const patchMatchesWhere = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
+) =>
+  !where ||
+  ((where.id === undefined || getPatchId(patch) === where.id) &&
+    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
+    (where.baseBundleId === undefined ||
+      patch.baseBundleId === where.baseBundleId) &&
+    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
+    (where.bundleIdIn === undefined ||
+      where.bundleIdIn.includes(patch.bundleId)) &&
+    (where.baseBundleIdIn === undefined ||
+      where.baseBundleIdIn.includes(patch.baseBundleId)));
+
 const rowToDatabaseBundleRecord = (row: Parameters<typeof mapRowToBundle>[0]) =>
   toDatabaseBundleRecord(mapRowToBundle(row));
 
@@ -444,41 +459,43 @@ export const supabaseDatabase = createDatabasePlugin({
           return rowToDatabaseBundleRecord(data);
         },
 
-        async list(options) {
-          if (hasEmptySetFilter(options.where)) {
-            return paginateItems({
-              items: [] as DatabaseBundleRecord[],
-              limit: options.limit,
-              cursor: options.cursor,
-              getCursor: (bundle) => bundle.id,
-            });
+        async findMany({ where, orderBy, window }) {
+          if (hasEmptySetFilter(where)) {
+            return [];
           }
 
-          const orderBy = options.orderBy ?? { field: "id", direction: "desc" };
+          const bundleOrder = orderBy ?? { field: "id", direction: "desc" };
           const query = applyBundleWhere(
             supabase
               .from("bundles")
               .select(BUNDLE_SELECT_COLUMNS)
-              .order("id", { ascending: orderBy.direction === "asc" }),
-            options.where,
+              .order("id", { ascending: bundleOrder.direction === "asc" }),
+            where,
           );
           const { data, error } = await query;
           if (error) {
             throw createSupabaseError(error);
           }
 
-          const page = paginateItems({
-            items: data ?? [],
-            limit: options.limit,
-            cursor: options.cursor,
-            page: options.page,
-            getCursor: (row) => row.id,
-          });
+          return (data ?? [])
+            .slice(window.offset, window.offset + window.limit)
+            .map(rowToDatabaseBundleRecord);
+        },
 
-          return {
-            ...page,
-            data: page.data.map(rowToDatabaseBundleRecord),
-          };
+        async count({ where }) {
+          if (hasEmptySetFilter(where)) {
+            return 0;
+          }
+
+          const query = applyBundleWhere(
+            supabase.from("bundles").select("id"),
+            where,
+          );
+          const { data, error } = await query;
+          if (error) {
+            throw createSupabaseError(error);
+          }
+          return (data ?? []).length;
         },
 
         async insert({ bundle }) {
@@ -524,7 +541,7 @@ export const supabaseDatabase = createDatabasePlugin({
       },
 
       bundlePatches: {
-        async list(options: BundlePatchListQuery) {
+        async findMany({ where, orderBy, window }) {
           const { data, error } = await supabase
             .from("bundle_patches")
             .select("*")
@@ -535,41 +552,32 @@ export const supabaseDatabase = createDatabasePlugin({
 
           const patches = (data ?? [])
             .map(rowToDatabaseBundlePatch)
-            .filter((patch) => {
-              const where = options.where;
-              return (
-                !where ||
-                ((where.id === undefined || getPatchId(patch) === where.id) &&
-                  (where.bundleId === undefined ||
-                    patch.bundleId === where.bundleId) &&
-                  (where.baseBundleId === undefined ||
-                    patch.baseBundleId === where.baseBundleId) &&
-                  (where.idIn === undefined ||
-                    where.idIn.includes(getPatchId(patch))) &&
-                  (where.bundleIdIn === undefined ||
-                    where.bundleIdIn.includes(patch.bundleId)) &&
-                  (where.baseBundleIdIn === undefined ||
-                    where.baseBundleIdIn.includes(patch.baseBundleId)))
-              );
-            })
+            .filter((patch) => patchMatchesWhere(patch, where))
             .sort((left, right) => {
-              const direction = options.orderBy?.direction ?? "asc";
-              const field = options.orderBy?.field ?? "orderIndex";
+              const direction = orderBy?.direction ?? "asc";
+              const field = orderBy?.field ?? "orderIndex";
               const result =
                 field === "orderIndex"
-                  ? left.orderIndex - right.orderIndex
+                  ? left.orderIndex - right.orderIndex ||
+                    getPatchId(left).localeCompare(getPatchId(right))
                   : getPatchStringField(left, field).localeCompare(
                       getPatchStringField(right, field),
                     );
               return direction === "asc" ? result : -result;
             });
 
-          return paginateItems({
-            items: patches,
-            limit: options.limit,
-            cursor: options.cursor,
-            getCursor: getPatchId,
-          });
+          return patches.slice(window.offset, window.offset + window.limit);
+        },
+        async count({ where }) {
+          const { data, error } = await supabase
+            .from("bundle_patches")
+            .select("*");
+          if (error) {
+            throw createSupabaseError(error);
+          }
+          return (data ?? [])
+            .map(rowToDatabaseBundlePatch)
+            .filter((patch) => patchMatchesWhere(patch, where)).length;
         },
         async getById({ patchId }) {
           const { data, error } = await supabase

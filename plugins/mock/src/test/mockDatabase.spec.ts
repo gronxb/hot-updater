@@ -229,7 +229,7 @@ describe("mockDatabase", () => {
       hasPreviousPage: false,
       currentPage: 1,
       totalPages: 2,
-      nextCursor: "bundle2",
+      nextCursor: "offset:1",
       previousCursor: null,
     });
 
@@ -249,7 +249,7 @@ describe("mockDatabase", () => {
       currentPage: 2,
       totalPages: 2,
       nextCursor: null,
-      previousCursor: "bundle1",
+      previousCursor: "offset:2",
     });
   });
 

@@ -2,7 +2,6 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
-  CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
   DatabasePluginCore,
@@ -188,21 +187,6 @@ function createTestStoragePlugin(
   };
 }
 
-const createEmptyPage = <TData>(
-  data: readonly TData[] = [],
-): CursorPage<TData> => ({
-  data,
-  pagination: {
-    currentPage: 1,
-    hasNextPage: false,
-    hasPreviousPage: false,
-    nextCursor: null,
-    previousCursor: null,
-    total: data.length,
-    totalPages: data.length === 0 ? 0 : 1,
-  },
-});
-
 type CreateRuntimeOnlyDatabaseOptions = {
   readonly name: string;
   readonly onBeforeInsert?: DatabasePluginCore["bundles"]["insert"];
@@ -219,8 +203,12 @@ const createRuntimeOnlyDatabase = ({
     connect: (): DatabasePluginCore => ({
       bundles: {
         getById: async ({ bundleId }) => bundles.get(bundleId) ?? null,
-        list: async ({ limit }) =>
-          createEmptyPage(Array.from(bundles.values()).slice(0, limit)),
+        findMany: async ({ window }) =>
+          Array.from(bundles.values()).slice(
+            window.offset,
+            window.offset + window.limit,
+          ),
+        count: async () => bundles.size,
         insert: async (params) => {
           await onBeforeInsert?.(params);
           const bundle = params.bundle;
@@ -238,8 +226,12 @@ const createRuntimeOnlyDatabase = ({
       },
       bundlePatches: {
         getById: async ({ patchId }) => patches.get(patchId) ?? null,
-        list: async ({ limit }) =>
-          createEmptyPage(Array.from(patches.values()).slice(0, limit)),
+        findMany: async ({ window }) =>
+          Array.from(patches.values()).slice(
+            window.offset,
+            window.offset + window.limit,
+          ),
+        count: async () => patches.size,
         insert: async ({ patch }) => {
           patches.set(patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`, {
             ...patch,

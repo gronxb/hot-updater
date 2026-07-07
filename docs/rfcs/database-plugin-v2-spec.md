@@ -9,7 +9,7 @@ The v2 contract treats these as first-class database resources and behaviors:
 
 - bundles
 - bundle patches
-- cursor pagination for list queries
+- runtime-owned cursor pagination for list queries
 - optional bundle events as an append-only event sourcing log
 
 Transaction support is not modeled as a capability flag. Providers that can
@@ -38,7 +38,8 @@ are satisfied:
 - `bundle_patches` remains a first-class resource and is not hidden inside
   bundle-only writes.
 - Provider-authored `bundlePatches` implementations expose generic resource
-  CRUD: `getById`, `list`, `insert`, `update`, and `delete`.
+  CRUD plus low-level reads: `getById`, `findMany`, `count`, `insert`, `update`,
+  and `delete`. They do not construct `CursorPage` envelopes.
 - Patch-set rewrites such as "replace all patches for bundle" or "delete all
   patches for base bundle" are core orchestration over patch resources, not
   provider-facing `bundlePatches` methods.
@@ -579,9 +580,16 @@ Patch identity rules:
 
 ## Pagination
 
-Cursor pagination is part of the v2 contract. Providers may implement it using
-SQL cursors, ordered key scans, document pagination, or in-memory slicing for
-small document-backed stores, but the external shape is always the same.
+Cursor pagination is part of the runtime/API v2 contract, not the
+provider-authored low-level resource contract. Providers expose bounded
+`findMany(...)` primitives plus `count(...)`; `createDatabasePlugin` normalizes
+runtime `list(...)` queries into a read window, calls the provider primitives,
+encodes opaque cursors, and returns the external `CursorPage` shape.
+
+Small in-memory or document-backed providers may implement `findMany` by scanning
+and slicing internally. SQL, ORM, and document database providers should map
+`findMany` to a bounded query and `count` to the backend's count primitive. In both
+cases provider code returns rows, not a pagination envelope.
 
 ```ts
 export interface CursorPage<T> {
@@ -592,6 +600,17 @@ export interface CursorPage<T> {
     readonly nextCursor: string | null;
     readonly previousCursor: string | null;
   };
+}
+```
+
+Provider-facing windows are offset based. Runtime cursors are opaque strings
+owned by core, so providers are not required to parse, validate, or generate
+cursor tokens.
+
+```ts
+export interface DatabaseResourceWindow {
+  readonly offset: number;
+  readonly limit: number;
 }
 ```
 
@@ -637,9 +656,13 @@ export interface BundleRepository {
     params: { readonly bundleId: string },
   ) => Promise<DatabaseBundleRecord | null>;
 
-  readonly list: (
-    params: BundleListQuery,
-  ) => Promise<CursorPage<DatabaseBundleRecord>>;
+  readonly findMany: (
+    params: BundleFindManyQuery,
+  ) => Promise<readonly DatabaseBundleRecord[]>;
+
+  readonly count: (
+    params: BundleCountQuery,
+  ) => Promise<number>;
 }
 
 export interface BundleListQuery {
@@ -653,6 +676,19 @@ export interface BundleListQuery {
     readonly field: "id";
     readonly direction: "asc" | "desc";
   };
+}
+
+export interface BundleFindManyQuery {
+  readonly where?: BundleWhere;
+  readonly window: DatabaseResourceWindow;
+  readonly orderBy?: {
+    readonly field: "id";
+    readonly direction: "asc" | "desc";
+  };
+}
+
+export interface BundleCountQuery {
+  readonly where?: BundleWhere;
 }
 ```
 
@@ -698,9 +734,13 @@ export interface BundlePatchRepository {
     params: { readonly patchId: string },
   ) => Promise<DatabaseBundlePatch | null>;
 
-  readonly list: (
-    params: BundlePatchListQuery,
-  ) => Promise<CursorPage<DatabaseBundlePatch>>;
+  readonly findMany: (
+    params: BundlePatchFindManyQuery,
+  ) => Promise<readonly DatabaseBundlePatch[]>;
+
+  readonly count: (
+    params: BundlePatchCountQuery,
+  ) => Promise<number>;
 }
 
 export type DatabaseBundlePatchUpdate = Partial<
@@ -725,6 +765,16 @@ export interface BundlePatchListQuery {
     readonly field: "id" | "bundleId" | "baseBundleId" | "orderIndex";
     readonly direction: "asc" | "desc";
   };
+}
+
+export interface BundlePatchFindManyQuery {
+  readonly where?: BundlePatchListQuery["where"];
+  readonly window: DatabaseResourceWindow;
+  readonly orderBy?: BundlePatchListQuery["orderBy"];
+}
+
+export interface BundlePatchCountQuery {
+  readonly where?: BundlePatchListQuery["where"];
 }
 ```
 
@@ -1070,8 +1120,8 @@ generic arguments.
 Provider example:
 
 This is intentionally written inline so the provider implementation shape is
-visible. Real providers can still extract row mappers and cursor query builders
-after the core shape is clear.
+visible. Real providers can still extract row mappers and query builders after
+the core shape is clear.
 
 ```ts
 export interface D1DatabaseConfig {
@@ -1100,16 +1150,28 @@ export const d1Database = createDatabasePlugin({
           return row ? toBundleRecord(row) : null;
         },
 
-        async list(params) {
-          const page = toD1CursorQuery("bundles", params, {
-            defaultOrderBy: { field: "id", direction: "desc" },
+        async findMany({ where, orderBy, window }) {
+          const query = toD1WindowQuery("bundles", {
+            where,
+            orderBy: orderBy ?? { field: "id", direction: "desc" },
+            window,
           });
           const { results } = await database
-            .prepare(page.sql)
-            .bind(...page.params)
+            .prepare(query.sql)
+            .bind(...query.params)
             .all<BundleRow>();
 
-          return toCursorPage(results.map(toBundleRecord), page);
+          return results.map(toBundleRecord);
+        },
+
+        async count({ where }) {
+          const query = toD1CountQuery("bundles", { where });
+          const row = await database
+            .prepare(query.sql)
+            .bind(...query.params)
+            .first<{ count: number }>();
+
+          return row?.count ?? 0;
         },
 
         async insert({ bundle }) {
@@ -1155,16 +1217,28 @@ export const d1Database = createDatabasePlugin({
           return results[0] ? toBundlePatch(results[0]) : null;
         },
 
-        async list(params) {
-          const page = toD1CursorQuery("bundle_patches", params, {
-            defaultOrderBy: { field: "orderIndex", direction: "asc" },
+        async findMany({ where, orderBy, window }) {
+          const query = toD1WindowQuery("bundle_patches", {
+            where,
+            orderBy: orderBy ?? { field: "orderIndex", direction: "asc" },
+            window,
           });
           const { results } = await database
-            .prepare(page.sql)
-            .bind(...page.params)
+            .prepare(query.sql)
+            .bind(...query.params)
             .all<BundlePatchRow>();
 
-          return toCursorPage(results.map(toBundlePatch), page);
+          return results.map(toBundlePatch);
+        },
+
+        async count({ where }) {
+          const query = toD1CountQuery("bundle_patches", { where });
+          const row = await database
+            .prepare(query.sql)
+            .bind(...query.params)
+            .first<{ count: number }>();
+
+          return row?.count ?? 0;
         },
 
         async insert({ patch }) {

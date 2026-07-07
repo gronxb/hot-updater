@@ -1,7 +1,6 @@
 import { orderBy } from "es-toolkit";
 import semver from "semver";
 
-import { calculatePagination } from "./calculatePagination";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import {
   toBundleReadModel,
@@ -15,9 +14,9 @@ import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
   AppVersionGetBundlesArgs,
   Bundle,
-  BundleListQuery,
+  BundleFindManyQuery,
+  BundlePatchFindManyQuery,
   BundlePatchListQuery,
-  CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
   DatabaseBundleQueryWhere,
@@ -254,17 +253,6 @@ function sortManagedBundles(
   return sortBundles(bundles, orderBy);
 }
 
-const toRecordPage = (
-  result: ReturnType<typeof paginateBundles>,
-): CursorPage<DatabaseBundleRecord> => ({
-  data: result.data.map(toDatabaseBundleRecord),
-  pagination: {
-    ...result.pagination,
-    nextCursor: result.pagination.nextCursor ?? null,
-    previousCursor: result.pagination.previousCursor ?? null,
-  },
-});
-
 const toBlobBundleReadModel = (
   record: DatabaseBundleRecord,
   patches: readonly DatabaseBundlePatch[] = [],
@@ -303,47 +291,13 @@ const sortBundlePatches = (
     const field = orderBy?.field ?? "orderIndex";
     const result =
       field === "orderIndex"
-        ? left.orderIndex - right.orderIndex
+        ? left.orderIndex - right.orderIndex ||
+          getPatchId(left).localeCompare(getPatchId(right))
         : (field === "id" ? getPatchId(left) : left[field]).localeCompare(
             field === "id" ? getPatchId(right) : right[field],
           );
     return direction === "asc" ? result : -result;
   });
-
-const paginateBundlePatches = (
-  patches: readonly DatabaseBundlePatch[],
-  query: BundlePatchListQuery,
-): CursorPage<DatabaseBundlePatch> => {
-  const cursor = query.cursor;
-  const offset = cursor?.after
-    ? patches.findIndex((patch) => getPatchId(patch) === cursor.after) + 1
-    : cursor?.before
-      ? Math.max(
-          0,
-          patches.findIndex((patch) => getPatchId(patch) === cursor.before) -
-            query.limit,
-        )
-      : 0;
-  const startOffset = Math.max(0, offset);
-  const data = patches.slice(startOffset, startOffset + query.limit);
-  const pagination = calculatePagination(patches.length, {
-    limit: query.limit,
-    offset: startOffset,
-  });
-
-  return {
-    data,
-    pagination: {
-      ...pagination,
-      nextCursor:
-        data.length > 0 && startOffset + data.length < patches.length
-          ? (data.at(-1)?.id ?? null)
-          : null,
-      previousCursor:
-        data.length > 0 && startOffset > 0 ? (data[0]?.id ?? null) : null,
-    },
-  };
-};
 
 export interface BlobOperations {
   listObjects: (prefix: string) => Promise<string[]>;
@@ -674,8 +628,8 @@ export const createBlobDatabasePlugin = <TConfig>({
       return getFingerprintUpdateInfo(args, context);
     };
 
-    const getBundles = async (options: BundleListQuery) => {
-      const { where, limit, orderBy, cursor, page } = options;
+    const findBundles = async (options: BundleFindManyQuery) => {
+      const { where, orderBy, window } = options;
       let allBundles = await loadAllBundlesForManagementFallback(where);
       if (where) {
         allBundles = allBundles.filter((bundle) =>
@@ -685,14 +639,24 @@ export const createBlobDatabasePlugin = <TConfig>({
 
       return paginateBundles({
         bundles: allBundles,
-        limit,
-        offset:
-          page !== undefined && limit > 0
-            ? Math.max(0, page - 1) * limit
-            : undefined,
-        cursor,
+        limit: window.limit,
+        offset: window.offset,
         orderBy,
-      });
+      }).data.map(toDatabaseBundleRecord);
+    };
+
+    const countBundles = async ({
+      where,
+    }: {
+      readonly where?: DatabaseBundleQueryWhere;
+    }) => {
+      let allBundles = await loadAllBundlesForManagementFallback(where);
+      if (where) {
+        allBundles = allBundles.filter((bundle) =>
+          bundleMatchesQueryWhere(bundle, where),
+        );
+      }
+      return allBundles.length;
     };
 
     const getBundlesForPatchQuery = async (
@@ -714,9 +678,9 @@ export const createBlobDatabasePlugin = <TConfig>({
       return loadAllBundlesForManagementFallback();
     };
 
-    const getBundlePatches = async (
-      options: BundlePatchListQuery,
-    ): Promise<CursorPage<DatabaseBundlePatch>> => {
+    const findBundlePatches = async (
+      options: BundlePatchFindManyQuery,
+    ): Promise<readonly DatabaseBundlePatch[]> => {
       const bundles = await getBundlesForPatchQuery(options.where);
       const patches = sortBundlePatches(
         bundles
@@ -725,17 +689,30 @@ export const createBlobDatabasePlugin = <TConfig>({
           .filter((patch) => patchMatches(patch, options.where)),
         options.orderBy,
       );
-      return paginateBundlePatches(patches, options);
+      return patches.slice(
+        options.window.offset,
+        options.window.offset + options.window.limit,
+      );
+    };
+
+    const countBundlePatches = async (
+      options: Pick<BundlePatchListQuery, "where">,
+    ): Promise<number> => {
+      const bundles = await getBundlesForPatchQuery(options.where);
+      return bundles
+        .flatMap(toDatabaseBundlePatches)
+        .map(materializePatch)
+        .filter((patch) => patchMatches(patch, options.where)).length;
     };
 
     const getBundlePatchById = async (
       patchId: string,
     ): Promise<DatabaseBundlePatch | null> => {
-      const page = await getBundlePatches({
+      const patches = await findBundlePatches({
         where: { id: patchId },
-        limit: 1,
+        window: { offset: 0, limit: 1 },
       });
-      return page.data[0] ?? null;
+      return patches[0] ?? null;
     };
 
     const replaceBundlePatches = async (
@@ -971,9 +948,8 @@ export const createBlobDatabasePlugin = <TConfig>({
             const bundle = await getBundleById(bundleId);
             return bundle ? toDatabaseBundleRecord(bundle) : null;
           },
-          async list(options) {
-            return toRecordPage(await getBundles(options));
-          },
+          findMany: findBundles,
+          count: countBundles,
           async insert({ bundle }) {
             await flushChangedBundles([
               {
@@ -1011,7 +987,8 @@ export const createBlobDatabasePlugin = <TConfig>({
           },
         },
         bundlePatches: {
-          list: getBundlePatches,
+          findMany: findBundlePatches,
+          count: countBundlePatches,
           getById: async ({ patchId }) => getBundlePatchById(patchId),
           async insert({ patch }) {
             const nextPatch = materializePatch(patch);

@@ -1,8 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 import type {
   BundleEventListQuery,
-  BundlePatchListQuery,
-  BundleListQuery,
   DatabaseBundleEvent,
   DatabaseBundleEventInput,
   DatabaseBundlePatch,
@@ -69,10 +67,9 @@ const createMemoryDatabase = (
       const core = {
         bundles: {
           getById: async ({ bundleId }) => bundles.get(bundleId) ?? null,
-          list: async (query: BundleListQuery) => {
-            const data = Array.from(bundles.values())
+          findMany: async ({ where, window }) => {
+            return Array.from(bundles.values())
               .filter((bundle) => {
-                const where = query.where;
                 return (
                   !where ||
                   ((where.id?.eq === undefined || bundle.id === where.id.eq) &&
@@ -83,19 +80,19 @@ const createMemoryDatabase = (
                 );
               })
               .sort((left, right) => right.id.localeCompare(left.id))
-              .slice(0, query.limit);
-            return {
-              data,
-              pagination: {
-                total: data.length,
-                currentPage: 1,
-                totalPages: data.length === 0 ? 0 : 1,
-                hasNextPage: false,
-                hasPreviousPage: false,
-                nextCursor: null,
-                previousCursor: null,
-              },
-            };
+              .slice(window.offset, window.offset + window.limit);
+          },
+          count: async ({ where }) => {
+            return Array.from(bundles.values()).filter((bundle) => {
+              return (
+                !where ||
+                ((where.id?.eq === undefined || bundle.id === where.id.eq) &&
+                  (where.channel === undefined ||
+                    bundle.channel === where.channel) &&
+                  (where.platform === undefined ||
+                    bundle.platform === where.platform))
+              );
+            }).length;
           },
           insert: async ({ bundle }) => {
             bundles.set(bundle.id, bundle);
@@ -111,9 +108,8 @@ const createMemoryDatabase = (
           },
         },
         bundlePatches: {
-          list: async (query: BundlePatchListQuery) => {
-            const where = query.where;
-            const data = Array.from(patches.values())
+          findMany: async ({ where, window }) => {
+            return Array.from(patches.values())
               .filter(
                 (patch) =>
                   !where ||
@@ -125,19 +121,19 @@ const createMemoryDatabase = (
                       where.bundleIdIn.includes(patch.bundleId))),
               )
               .sort((left, right) => left.orderIndex - right.orderIndex)
-              .slice(0, query.limit);
-            return {
-              data,
-              pagination: {
-                total: data.length,
-                currentPage: 1,
-                totalPages: data.length === 0 ? 0 : 1,
-                hasNextPage: false,
-                hasPreviousPage: false,
-                nextCursor: null,
-                previousCursor: null,
-              },
-            };
+              .slice(window.offset, window.offset + window.limit);
+          },
+          count: async ({ where }) => {
+            return Array.from(patches.values()).filter(
+              (patch) =>
+                !where ||
+                ((where.bundleId === undefined ||
+                  patch.bundleId === where.bundleId) &&
+                  (where.baseBundleId === undefined ||
+                    patch.baseBundleId === where.baseBundleId) &&
+                  (where.bundleIdIn === undefined ||
+                    where.bundleIdIn.includes(patch.bundleId))),
+            ).length;
           },
           getById: async ({ patchId }) => patches.get(patchId) ?? null,
           insert: async ({ patch }) => {

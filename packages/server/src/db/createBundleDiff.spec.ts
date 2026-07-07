@@ -4,7 +4,6 @@ import { brotliCompressSync } from "node:zlib";
 import type {
   BundlePatchListQuery,
   Bundle,
-  CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
   DatabasePluginCore,
@@ -40,21 +39,6 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   storageUri: `s3://test-bucket/releases/${id}/bundle.zip`,
   targetAppVersion: "1.0.0",
   ...overrides,
-});
-
-const createCursorPage = <TData>(
-  data: readonly TData[],
-): CursorPage<TData> => ({
-  data,
-  pagination: {
-    currentPage: 1,
-    hasNextPage: false,
-    hasPreviousPage: false,
-    nextCursor: null,
-    previousCursor: null,
-    total: data.length,
-    totalPages: data.length === 0 ? 0 : 1,
-  },
 });
 
 const getPatchId = (patch: DatabaseBundlePatch): string =>
@@ -103,8 +87,12 @@ const createDatabaseRuntime = (
         async insert({ bundle }) {
           bundleRecords.set(bundle.id, bundle);
         },
-        async list() {
-          return createCursorPage(Array.from(bundleRecords.values()));
+        async findMany({ window }) {
+          const bundles = Array.from(bundleRecords.values());
+          return bundles.slice(window.offset, window.offset + window.limit);
+        },
+        async count() {
+          return bundleRecords.size;
         },
         async update({ bundleId, patch }) {
           const bundle = bundleRecords.get(bundleId);
@@ -122,12 +110,15 @@ const createDatabaseRuntime = (
             id: getPatchId(patch),
           });
         },
-        async list({ where }) {
-          return createCursorPage(
-            Array.from(bundlePatches.values()).filter((patch) =>
-              matchesBundlePatchWhere(patch, where),
-            ),
-          );
+        async findMany({ where, window }) {
+          return Array.from(bundlePatches.values())
+            .filter((patch) => matchesBundlePatchWhere(patch, where))
+            .slice(window.offset, window.offset + window.limit);
+        },
+        async count({ where }) {
+          return Array.from(bundlePatches.values()).filter((patch) =>
+            matchesBundlePatchWhere(patch, where),
+          ).length;
         },
         async update({ patchId, patch }) {
           const current = bundlePatches.get(patchId);

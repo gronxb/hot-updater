@@ -645,7 +645,7 @@ describe("firebaseDatabase plugin", () => {
       hasPreviousPage: false,
       currentPage: 1,
       totalPages: 2,
-      nextCursor: "bundle2",
+      nextCursor: "offset:1",
     });
 
     const secondPage = await plugin.getBundles({
@@ -663,7 +663,7 @@ describe("firebaseDatabase plugin", () => {
       hasPreviousPage: true,
       currentPage: 2,
       totalPages: 2,
-      previousCursor: "bundle1",
+      previousCursor: "offset:2",
     });
   });
 

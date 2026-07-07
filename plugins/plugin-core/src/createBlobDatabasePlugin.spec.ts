@@ -1406,9 +1406,9 @@ describe("blobDatabase plugin", () => {
       hasPreviousPage: false,
       currentPage: 1,
       totalPages: 2,
-      nextCursor: "bundle-200",
+      nextCursor: "offset:1",
     });
-    expect(firstPage.pagination.nextCursor).toBe("bundle-200");
+    expect(firstPage.pagination.nextCursor).toBe("offset:1");
 
     const secondPage = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },
@@ -1425,9 +1425,9 @@ describe("blobDatabase plugin", () => {
       hasPreviousPage: true,
       currentPage: 2,
       totalPages: 2,
-      previousCursor: "bundle-100",
+      previousCursor: "offset:2",
     });
-    expect(secondPage.pagination.previousCursor).toBe("bundle-100");
+    expect(secondPage.pagination.previousCursor).toBe("offset:2");
 
     const previousPage = await plugin.getBundles({
       where: { channel: "production", platform: "ios" },

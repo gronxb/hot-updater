@@ -1,39 +1,23 @@
-import type {
-  CursorPage,
-  DatabaseBundlePatch,
-  DatabaseBundleRecord,
-  DatabasePluginCore,
-} from "@hot-updater/plugin-core";
+import type { DatabasePluginCore } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createCallbackDatabaseTransaction } from "./transaction";
 
-const emptyPage = <TData>(): CursorPage<TData> => ({
-  data: [],
-  pagination: {
-    currentPage: 1,
-    hasNextPage: false,
-    hasPreviousPage: false,
-    nextCursor: null,
-    previousCursor: null,
-    total: 0,
-    totalPages: 0,
-  },
-});
-
 const createCore = (): DatabasePluginCore => ({
   bundlePatches: {
+    count: async () => 0,
     delete: async () => undefined,
+    findMany: async () => [],
     getById: async () => null,
     insert: async () => undefined,
-    list: async () => emptyPage<DatabaseBundlePatch>(),
     update: async () => undefined,
   },
   bundles: {
+    count: async () => 0,
     delete: async () => undefined,
+    findMany: async () => [],
     getById: async () => null,
     insert: async () => undefined,
-    list: async () => emptyPage<DatabaseBundleRecord>(),
     update: async () => undefined,
   },
 });
