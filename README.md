@@ -30,7 +30,7 @@
   [`skills/hot-updater/SKILL.md`](https://github.com/hot-updater/skills/blob/main/skills/hot-updater/SKILL.md)
 
   ```sh
-  npx skills add hot-updater/skills --skill hot-updater
+  npx skills add hot-updater/skills
   ```
 
   Then ask your agent with prompts like
