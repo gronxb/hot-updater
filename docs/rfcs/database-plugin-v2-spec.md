@@ -239,8 +239,8 @@ Identity map rules:
   provider results before returning.
 - `bundlePatches.getById` and `bundlePatches.list` overlay staged patch
   inserts, updates, and deletes before returning.
-- `bundleEvents.list` overlays staged `append` events before returning when the
-  provider exposes `bundleEvents`.
+- `runtime.bundleEvents.list` overlays staged `append` events before returning
+  when the provider exposes `bundleEvents`.
 - Staged write methods retain resource data only; they do not retain a
   per-mutation ambient state or transaction handle.
 - Successful runtime `commit` clears staged entries that were applied.
@@ -363,6 +363,14 @@ connect({ pool }) {
         return result.rows[0] ? toBundleRecord(result.rows[0]) : null;
       },
 
+      async findMany(query) {
+        return findBundles(db, query);
+      },
+
+      async count(query) {
+        return countBundles(db, query);
+      },
+
       async insert({ bundle }) {
         await db.query(insertBundleSql, toBundleInsertValues(bundle));
       },
@@ -387,8 +395,12 @@ connect({ pool }) {
         return result.rows[0] ? toBundlePatch(result.rows[0]) : null;
       },
 
-      async list(query) {
-        return listBundlePatches(db, query);
+      async findMany(query) {
+        return findBundlePatches(db, query);
+      },
+
+      async count(query) {
+        return countBundlePatches(db, query);
       },
 
       async insert({ patch }) {
@@ -406,8 +418,12 @@ connect({ pool }) {
     },
 
     bundleEvents: {
-      async list(query) {
-        return listBundleEvents(db, query);
+      async findMany(query) {
+        return findBundleEvents(db, query);
+      },
+
+      async count(query) {
+        return countBundleEvents(db, query);
       },
 
       async append({ event }) {
@@ -798,7 +814,11 @@ who is signed in. It defaults to `null`, is set explicitly with
 aggregate by install, by user, or keep the two identities independent.
 
 ```ts
-export interface RuntimeBundleEventRepository extends BundleEventRepository {
+export interface RuntimeBundleEventRepository {
+  readonly list: (
+    params: BundleEventListQuery,
+  ) => Promise<CursorPage<DatabaseBundleEvent>>;
+
   readonly append: (
     params: { readonly event: DatabaseBundleEventInput },
   ) => Promise<void>;
@@ -811,9 +831,13 @@ export interface BundleEventResource extends BundleEventRepository {
 }
 
 export interface BundleEventRepository {
-  readonly list: (
-    params: BundleEventListQuery,
-  ) => Promise<CursorPage<DatabaseBundleEvent>>;
+  readonly findMany: (
+    params: BundleEventFindManyQuery,
+  ) => Promise<readonly DatabaseBundleEvent[]>;
+
+  readonly count: (
+    params: BundleEventCountQuery,
+  ) => Promise<number>;
 }
 ```
 
@@ -891,6 +915,16 @@ export interface BundleEventListQuery {
     readonly field: "id";
     readonly direction: "asc" | "desc";
   };
+}
+
+export interface BundleEventFindManyQuery {
+  readonly where?: BundleEventListQuery["where"];
+  readonly window: DatabaseResourceWindow;
+  readonly orderBy?: BundleEventListQuery["orderBy"];
+}
+
+export interface BundleEventCountQuery {
+  readonly where?: BundleEventListQuery["where"];
 }
 ```
 
@@ -1272,16 +1306,26 @@ export const d1Database = createDatabasePlugin({
       },
 
       bundleEvents: {
-        async list(params) {
-          const page = toD1CursorQuery("bundle_events", params, {
-            defaultOrderBy: { field: "id", direction: "desc" },
-          });
+        async findMany({ where, orderBy, window }) {
+          const direction = orderBy?.direction ?? "desc";
           const { results } = await database
-            .prepare(page.sql)
-            .bind(...page.params)
+            .prepare(`SELECT * FROM bundle_events ORDER BY id ${direction}`)
             .all<BundleEventRow>();
 
-          return toCursorPage(results.map(toBundleEvent), page);
+          return results
+            .map(toBundleEvent)
+            .filter((event) => eventMatchesWhere(event, where))
+            .slice(window.offset, window.offset + window.limit);
+        },
+
+        async count({ where }) {
+          const { results } = await database
+            .prepare("SELECT * FROM bundle_events")
+            .all<BundleEventRow>();
+
+          return results
+            .map(toBundleEvent)
+            .filter((event) => eventMatchesWhere(event, where)).length;
         },
 
         async append({ event }) {

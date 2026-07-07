@@ -1,6 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 import type {
-  BundleEventListQuery,
+  BundleEventFindManyQuery,
   DatabaseBundleEvent,
   DatabaseBundleEventInput,
   DatabaseBundlePatch,
@@ -161,8 +161,7 @@ const createMemoryDatabase = (
       return {
         ...core,
         bundleEvents: {
-          list: async (query: BundleEventListQuery) => {
-            const where = query.where;
+          findMany: async ({ where, window }: BundleEventFindManyQuery) => {
             const data = Array.from(events.values())
               .filter(
                 (event) =>
@@ -172,19 +171,17 @@ const createMemoryDatabase = (
                       event.activeBundleId === where.activeBundleId)),
               )
               .sort((left, right) => right.id.localeCompare(left.id))
-              .slice(0, query.limit);
-            return {
-              data,
-              pagination: {
-                total: data.length,
-                currentPage: 1,
-                totalPages: data.length === 0 ? 0 : 1,
-                hasNextPage: false,
-                hasPreviousPage: false,
-                nextCursor: null,
-                previousCursor: null,
-              },
-            };
+              .slice(window.offset, window.offset + window.limit);
+            return data;
+          },
+          count: async ({ where }) => {
+            return Array.from(events.values()).filter(
+              (event) =>
+                !where ||
+                ((where.kind === undefined || event.kind === where.kind) &&
+                  (where.activeBundleId === undefined ||
+                    event.activeBundleId === where.activeBundleId)),
+            ).length;
           },
           append: async ({ event }) => {
             events.set(event.id, event);

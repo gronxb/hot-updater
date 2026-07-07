@@ -319,6 +319,65 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     expect(callCount).toBe(1);
   });
 
+  it("getBundles: reads beyond the remote 100 bundle page limit", async () => {
+    const largeBundles = Array.from(
+      { length: 121 },
+      (_, index): Bundle => ({
+        ...TEST_BUNDLE_1,
+        id: `large-bundle-${String(index).padStart(3, "0")}`,
+        channel: index === 0 ? "oldest" : "production",
+      }),
+    );
+    const sortedBundles = sortByRuntimeDefault(largeBundles);
+    const requestedLimits: number[] = [];
+
+    server.use(
+      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
+        const url = new URL(request.url);
+        const requestedLimit = Number(url.searchParams.get("limit") ?? "20");
+        const remoteLimit = Math.min(requestedLimit, 100);
+        requestedLimits.push(remoteLimit);
+
+        const after = url.searchParams.get("after");
+        const afterOffset = after?.startsWith("offset:")
+          ? Number(after.slice("offset:".length))
+          : null;
+        const offset = afterOffset !== null ? afterOffset + 1 : 0;
+        const data = sortedBundles.slice(offset, offset + remoteLimit);
+        const result = createPaginatedResult(data, {
+          total: sortedBundles.length,
+          limit: remoteLimit,
+          offset,
+        });
+
+        return HttpResponse.json({
+          ...result,
+          pagination: {
+            ...result.pagination,
+            nextCursor: result.pagination.hasNextPage
+              ? `offset:${offset + data.length - 1}`
+              : undefined,
+            previousCursor: result.pagination.hasPreviousPage
+              ? `offset:${offset}`
+              : undefined,
+          },
+        });
+      }),
+    );
+
+    const result = await repo.getBundles({ limit: 1000 });
+
+    expect(result.data).toHaveLength(121);
+    expect(result.data.at(-1)?.id).toBe("large-bundle-000");
+    expect(result.pagination).toMatchObject({
+      total: 121,
+      hasNextPage: false,
+      totalPages: 1,
+    });
+    expect(requestedLimits).toHaveLength(2);
+    expect(requestedLimits.every((limit) => limit <= 100)).toBe(true);
+  });
+
   it("getBundles: makes new request when refresh is true", async () => {
     let callCount = 0;
     server.use(

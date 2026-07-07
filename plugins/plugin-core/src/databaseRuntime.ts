@@ -1,5 +1,7 @@
 import type {
+  BundleEventFindManyQuery,
   BundleEventListQuery,
+  BundleEventResource,
   BundleFindManyQuery,
   BundleListQuery,
   BundlePatchFindManyQuery,
@@ -200,6 +202,33 @@ const listCoreBundlePatches = async (
   );
   const total = await resolveCoreTotal(data, window, () =>
     core.bundlePatches.count({ where: query.where }),
+  );
+  return {
+    data,
+    pagination: createCorePagination(data, {
+      limit: window.limit,
+      offset: window.offset,
+      total,
+    }),
+  };
+};
+
+const listCoreBundleEvents = async (
+  resource: BundleEventResource | undefined,
+  query: BundleEventListQuery,
+): Promise<CursorPage<DatabaseBundleEvent>> => {
+  if (!resource) {
+    return emptyPage<DatabaseBundleEvent>();
+  }
+  const window = queryWindow(query);
+  const findManyQuery: BundleEventFindManyQuery = {
+    where: query.where,
+    orderBy: query.orderBy,
+    window,
+  };
+  const data = await resource.findMany(findManyQuery);
+  const total = await resolveCoreTotal(data, window, () =>
+    resource.count({ where: query.where }),
   );
   return {
     data,
@@ -1014,9 +1043,7 @@ export const createDatabaseRuntime = (
     const bundleEvents: RuntimeBundleEventRepository = {
       list: async (params) => {
         const core = await options.getCore();
-        const page = core.bundleEvents
-          ? await core.bundleEvents.list(params)
-          : emptyPage<DatabaseBundleEvent>();
+        const page = await listCoreBundleEvents(core.bundleEvents, params);
         return stage.overlayEvents(page, params);
       },
       append: async ({ event }) => {

@@ -232,6 +232,16 @@ export interface BundleEventListQuery {
   };
 }
 
+export interface BundleEventFindManyQuery {
+  readonly where?: BundleEventListQuery["where"];
+  readonly window: DatabaseResourceWindow;
+  readonly orderBy?: BundleEventListQuery["orderBy"];
+}
+
+export interface BundleEventCountQuery {
+  readonly where?: BundleEventListQuery["where"];
+}
+
 export interface BundleRepository {
   readonly getById: (params: {
     readonly bundleId: string;
@@ -311,12 +321,16 @@ export interface RuntimeBundlePatchRepository {
 export type BundlePatchResource = BundlePatchCrudResource;
 
 export interface BundleEventRepository {
+  readonly findMany: (
+    params: BundleEventFindManyQuery,
+  ) => Promise<readonly DatabaseBundleEvent[]>;
+  readonly count: (params: BundleEventCountQuery) => Promise<number>;
+}
+
+export interface RuntimeBundleEventRepository {
   readonly list: (
     params: BundleEventListQuery,
   ) => Promise<CursorPage<DatabaseBundleEvent>>;
-}
-
-export interface RuntimeBundleEventRepository extends BundleEventRepository {
   readonly append: (params: {
     readonly event: DatabaseBundleEventInput;
   }) => Promise<void>;

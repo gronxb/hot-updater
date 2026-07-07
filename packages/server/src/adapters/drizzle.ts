@@ -37,7 +37,6 @@ import {
   databaseBundleEventToRow,
   databaseBundlePatchToRow,
   databaseBundlePatchUpdateToRow,
-  paginateCursorItems,
   rowToDatabaseBundleEvent,
   rowToDatabaseBundlePatch,
   rowToDatabaseBundleRecord,
@@ -301,23 +300,24 @@ const createDrizzlePlugin = createDatabasePlugin({
           },
         },
         bundleEvents: {
-          async list(options) {
+          async findMany({ where, orderBy, window }) {
             const rows = await activeDB.query["bundle_events"]?.findMany({
               orderBy: [
-                options.orderBy?.direction === "asc"
+                orderBy?.direction === "asc"
                   ? asc(column(eventTable(), "id"))
                   : desc(column(eventTable(), "id")),
               ],
             });
-            const events = ((rows ?? []) as BundleEventRow[])
+            return ((rows ?? []) as BundleEventRow[])
               .map(rowToDatabaseBundleEvent)
-              .filter((event) => bundleEventMatchesWhere(event, options.where));
-            return paginateCursorItems({
-              items: events,
-              limit: options.limit,
-              cursor: options.cursor,
-              getCursor: (event) => event.id,
-            });
+              .filter((event) => bundleEventMatchesWhere(event, where))
+              .slice(window.offset, window.offset + window.limit);
+          },
+          async count({ where }) {
+            const rows = await activeDB.query["bundle_events"]?.findMany();
+            return ((rows ?? []) as BundleEventRow[])
+              .map(rowToDatabaseBundleEvent)
+              .filter((event) => bundleEventMatchesWhere(event, where)).length;
           },
           async append({ event }) {
             const inserted = activeDB

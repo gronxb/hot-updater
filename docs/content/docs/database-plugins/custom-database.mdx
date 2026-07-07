@@ -84,8 +84,9 @@ Your `connect` function must return a resource core with these methods:
   };
 
   bundleEvents?: {
-    list: (query: BundleEventListQuery) =>
-      Promise<CursorPage<DatabaseBundleEvent>>;
+    findMany: (query: BundleEventFindManyQuery) =>
+      Promise<readonly DatabaseBundleEvent[]>;
+    count: (query: BundleEventCountQuery) => Promise<number>;
     append: (params: { event: DatabaseBundleEvent }) => Promise<void>;
   };
 

@@ -8,10 +8,9 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  BundleEventListQuery,
+  BundleEventFindManyQuery,
   BundleEventPayload,
   BundlePatchListQuery,
-  CursorPage,
   DatabaseBundleEvent,
   DatabaseBundlePatch,
   DatabaseBundlePatchUpdate,
@@ -22,7 +21,6 @@ import type {
   RequestEnvContext,
 } from "@hot-updater/plugin-core";
 import {
-  calculatePagination,
   createDatabasePlugin,
   filterCompatibleAppVersions,
   markDatabaseRuntimeOpener,
@@ -400,7 +398,7 @@ const rowToDatabaseBundleEvent = (
 
 const eventMatchesWhere = (
   event: DatabaseBundleEvent,
-  where: BundleEventListQuery["where"] | undefined,
+  where: BundleEventFindManyQuery["where"] | undefined,
 ) =>
   !where ||
   ((where.kind === undefined || event.kind === where.kind) &&
@@ -471,59 +469,6 @@ const rowToDatabaseBundleRecord = (
   row: D1WorkerBundleRow,
 ): DatabaseBundleRecord =>
   toDatabaseBundleRecord(transformRowToBundle(row, []));
-
-const paginateItems = <TItem>({
-  cursor,
-  getCursor,
-  items,
-  limit,
-  page,
-}: {
-  readonly cursor?: { readonly after?: string; readonly before?: string };
-  readonly getCursor: (item: TItem) => string;
-  readonly items: readonly TItem[];
-  readonly limit: number;
-  readonly page?: number;
-}): CursorPage<TItem> => {
-  const total = items.length;
-  const pageOffset = page ? (Math.max(1, page) - 1) * limit : undefined;
-  let startIndex =
-    pageOffset === undefined ? 0 : Math.min(pageOffset, Math.max(0, total));
-  let endIndex = limit > 0 ? startIndex + limit : total;
-
-  if (pageOffset === undefined && cursor?.after) {
-    const afterIndex = items.findIndex(
-      (item) => getCursor(item) === cursor.after,
-    );
-    startIndex = afterIndex >= 0 ? afterIndex + 1 : total;
-    endIndex = limit > 0 ? startIndex + limit : total;
-  } else if (pageOffset === undefined && cursor?.before) {
-    const beforeIndex = items.findIndex(
-      (item) => getCursor(item) === cursor.before,
-    );
-    endIndex = beforeIndex >= 0 ? beforeIndex : 0;
-    startIndex = limit > 0 ? Math.max(0, endIndex - limit) : 0;
-  }
-
-  const data = items.slice(startIndex, endIndex);
-  const pagination = calculatePagination(total, {
-    limit,
-    offset: startIndex,
-  });
-
-  return {
-    data,
-    pagination: {
-      ...pagination,
-      nextCursor:
-        data.length > 0 && startIndex + data.length < total
-          ? getCursor(data[data.length - 1]!)
-          : null,
-      previousCursor:
-        data.length > 0 && startIndex > 0 ? getCursor(data[0]!) : null,
-    },
-  };
-};
 
 const resolveDbFromContext = (
   context?: RequestEnvContext<CloudflareWorkerDatabaseEnv>,
@@ -811,20 +756,23 @@ const createD1WorkerPlugin = createDatabasePlugin({
         },
       },
       bundleEvents: {
-        async list(options: BundleEventListQuery) {
-          const direction = options.orderBy?.direction ?? "desc";
+        async findMany({ where, orderBy, window }) {
+          const direction = orderBy?.direction ?? "desc";
           const rows = await queryAll<D1WorkerBundleEventRow>(
             `SELECT * FROM bundle_events ORDER BY id ${direction}`,
           );
-          const events = rows
+          return rows
             .map(rowToDatabaseBundleEvent)
-            .filter((event) => eventMatchesWhere(event, options.where));
-          return paginateItems({
-            items: events,
-            limit: options.limit,
-            cursor: options.cursor,
-            getCursor: (event) => event.id,
-          });
+            .filter((event) => eventMatchesWhere(event, where))
+            .slice(window.offset, window.offset + window.limit);
+        },
+        async count({ where }) {
+          const rows = await queryAll<D1WorkerBundleEventRow>(
+            "SELECT * FROM bundle_events",
+          );
+          return rows
+            .map(rowToDatabaseBundleEvent)
+            .filter((event) => eventMatchesWhere(event, where)).length;
         },
         async append({ event }) {
           await run(

@@ -24,7 +24,6 @@ import {
   databaseBundleEventToRow,
   databaseBundlePatchToRow,
   databaseBundlePatchUpdateToRow,
-  paginateCursorItems,
   rowToDatabaseBundleEvent,
   rowToDatabaseBundlePatch,
   rowToDatabaseBundleRecord,
@@ -345,21 +344,25 @@ const createKyselyPlugin = createDatabasePlugin({
           },
         },
         bundleEvents: {
-          async list(options) {
+          async findMany({ where, orderBy, window }) {
             const rows = await executor
               .selectFrom("bundle_events")
               .selectAll()
-              .orderBy("id", options.orderBy?.direction ?? "desc")
+              .orderBy("id", orderBy?.direction ?? "desc")
               .execute();
-            const events = rows
+            return rows
               .map(rowToDatabaseBundleEvent)
-              .filter((event) => bundleEventMatchesWhere(event, options.where));
-            return paginateCursorItems({
-              items: events,
-              limit: options.limit,
-              cursor: options.cursor,
-              getCursor: (event) => event.id,
-            });
+              .filter((event) => bundleEventMatchesWhere(event, where))
+              .slice(window.offset, window.offset + window.limit);
+          },
+          async count({ where }) {
+            const rows = await executor
+              .selectFrom("bundle_events")
+              .selectAll()
+              .execute();
+            return rows
+              .map(rowToDatabaseBundleEvent)
+              .filter((event) => bundleEventMatchesWhere(event, where)).length;
           },
           async append({ event }) {
             await executor

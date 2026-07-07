@@ -23,7 +23,6 @@ import {
   databaseBundleEventToRow,
   databaseBundlePatchToRow,
   databaseBundlePatchUpdateToRow,
-  paginateCursorItems,
   rowToDatabaseBundleEvent,
   rowToDatabaseBundlePatch,
   rowToDatabaseBundleRecord,
@@ -307,20 +306,22 @@ const createPrismaPlugin = createDatabasePlugin({
           },
         },
         bundleEvents: {
-          async list(options) {
+          async findMany({ where, orderBy, window }) {
             const events = getDelegate(client, "bundle_events");
             const rows = await events.findMany({
-              orderBy: { id: options.orderBy?.direction ?? "desc" },
+              orderBy: { id: orderBy?.direction ?? "desc" },
             });
-            const data = rows
+            return rows
               .map((row) => rowToDatabaseBundleEvent(row as BundleEventRow))
-              .filter((event) => bundleEventMatchesWhere(event, options.where));
-            return paginateCursorItems({
-              items: data,
-              limit: options.limit,
-              cursor: options.cursor,
-              getCursor: (event) => event.id,
-            });
+              .filter((event) => bundleEventMatchesWhere(event, where))
+              .slice(window.offset, window.offset + window.limit);
+          },
+          async count({ where }) {
+            const events = getDelegate(client, "bundle_events");
+            const rows = await events.findMany();
+            return rows
+              .map((row) => rowToDatabaseBundleEvent(row as BundleEventRow))
+              .filter((event) => bundleEventMatchesWhere(event, where)).length;
           },
           async append({ event }) {
             const events = getDelegate(client, "bundle_events");

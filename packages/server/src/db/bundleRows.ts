@@ -8,17 +8,14 @@ import {
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 import type {
-  BundleEventListQuery,
+  BundleEventFindManyQuery,
   BundleEventPayload,
-  BundlePatchListQuery,
-  CursorPage,
   DatabaseBundleEvent,
   DatabaseBundlePatch,
   DatabaseBundlePatchUpdate,
   DatabaseBundleRecord,
 } from "@hot-updater/plugin-core";
 import {
-  calculatePagination,
   toBundleReadModel,
   toDatabaseBundleRecord,
 } from "@hot-updater/plugin-core";
@@ -236,7 +233,7 @@ export const databaseBundleEventToRow = (
 
 export const bundleEventMatchesWhere = (
   event: DatabaseBundleEvent,
-  where: BundleEventListQuery["where"] | undefined,
+  where: BundleEventFindManyQuery["where"] | undefined,
 ) =>
   !where ||
   ((where.kind === undefined || event.kind === where.kind) &&
@@ -299,58 +296,3 @@ export const rowToBundle = (
 export const rowToDatabaseBundleRecord = (
   record: BundleRow,
 ): DatabaseBundleRecord => toDatabaseBundleRecord(rowToBundle(record, []));
-
-export const paginateCursorItems = <TItem>({
-  items,
-  limit,
-  cursor,
-  offset,
-  getCursor,
-}: {
-  readonly items: readonly TItem[];
-  readonly limit: number;
-  readonly cursor?: BundlePatchListQuery["cursor"];
-  readonly offset?: number;
-  readonly getCursor: (item: TItem) => string;
-}): CursorPage<TItem> => {
-  const total = items.length;
-  const normalizedOffset =
-    offset !== undefined
-      ? Math.max(0, Math.min(offset, Math.max(0, total - 1)))
-      : undefined;
-  let startIndex = normalizedOffset ?? 0;
-  let endIndex = limit > 0 ? startIndex + limit : total;
-
-  if (normalizedOffset === undefined && cursor?.after) {
-    const afterIndex = items.findIndex(
-      (item) => getCursor(item) === cursor.after,
-    );
-    startIndex = afterIndex >= 0 ? afterIndex + 1 : total;
-    endIndex = limit > 0 ? startIndex + limit : total;
-  } else if (normalizedOffset === undefined && cursor?.before) {
-    const beforeIndex = items.findIndex(
-      (item) => getCursor(item) === cursor.before,
-    );
-    endIndex = beforeIndex >= 0 ? beforeIndex : 0;
-    startIndex = limit > 0 ? Math.max(0, endIndex - limit) : 0;
-  }
-
-  const data = items.slice(startIndex, endIndex);
-  const pagination = calculatePagination(total, {
-    limit,
-    offset: startIndex,
-  });
-
-  return {
-    data,
-    pagination: {
-      ...pagination,
-      nextCursor:
-        data.length > 0 && startIndex + data.length < total
-          ? getCursor(data[data.length - 1]!)
-          : null,
-      previousCursor:
-        data.length > 0 && startIndex > 0 ? getCursor(data[0]!) : null,
-    },
-  };
-};

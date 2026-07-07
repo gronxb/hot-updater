@@ -739,24 +739,9 @@ describe("createDatabasePlugin", () => {
           delete: async () => undefined,
         },
         bundleEvents: {
-          list: async ({ limit }) => ({
-            data: persistedEvents.slice(0, limit),
-            pagination: {
-              currentPage: 1,
-              hasNextPage: persistedEvents.length > limit,
-              hasPreviousPage: false,
-              nextCursor:
-                persistedEvents.length > limit
-                  ? (persistedEvents.at(limit - 1)?.id ?? null)
-                  : null,
-              previousCursor: null,
-              total: persistedEvents.length,
-              totalPages:
-                limit > 0 && persistedEvents.length > 0
-                  ? Math.ceil(persistedEvents.length / limit)
-                  : 0,
-            },
-          }),
+          findMany: async ({ window }) =>
+            persistedEvents.slice(window.offset, window.offset + window.limit),
+          count: async () => persistedEvents.length,
           append: async () => undefined,
         },
       }),

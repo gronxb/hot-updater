@@ -581,21 +581,36 @@ export const standaloneRepository = createDatabasePlugin({
           if (window.limit <= 0) {
             return [];
           }
-          const pageNumber = Math.floor(window.offset / window.limit) + 1;
+          if (
+            window.limit <= MAX_REMOTE_BUNDLE_LIST_LIMIT &&
+            window.offset % window.limit === 0
+          ) {
+            const pageNumber = Math.floor(window.offset / window.limit) + 1;
+            const page = await requestBundlePage({
+              where,
+              orderBy,
+              limit: window.limit,
+              page: pageNumber,
+            });
+            bundleListTotalCache = {
+              key: getBundleListTotalCacheKey(where),
+              total: page.pagination.total,
+            };
+            return page.data.map(toDatabaseBundleRecord);
+          }
+
+          const fetchLimit = window.offset + window.limit;
           const page = await requestBundlePage({
             where,
             orderBy,
-            limit: window.limit,
-            page: pageNumber,
+            limit: fetchLimit,
           });
           bundleListTotalCache = {
             key: getBundleListTotalCacheKey(where),
             total: page.pagination.total,
           };
-          const pageOffset = (pageNumber - 1) * window.limit;
-          const start = window.offset - pageOffset;
           return page.data
-            .slice(start, start + window.limit)
+            .slice(window.offset, window.offset + window.limit)
             .map(toDatabaseBundleRecord);
         },
         async count({ where }) {
