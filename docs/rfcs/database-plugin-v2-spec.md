@@ -723,6 +723,12 @@ The table is append-only. Providers should not update or delete bundle events as
 part of normal Hot Updater workflows. Event summaries are derived read models,
 not provider-authored source-of-truth APIs.
 
+`install_id` identifies one native app installation. `user_id` is a separate,
+optional application-level identifier for event analysis after the host app knows
+who is signed in. It defaults to `null`, is set explicitly with
+`HotUpdater.setUserId()`, and is stored beside `install_id` so event pipelines can
+aggregate by install, by user, or keep the two identities independent.
+
 ```ts
 export interface RuntimeBundleEventRepository extends BundleEventRepository {
   readonly append: (
@@ -758,6 +764,7 @@ Table shape:
 | `app_version` | `text` | no | Native app version. | `HotUpdater.getAppVersion()` |
 | `fingerprint_hash` | `text` | no | Current native/build fingerprint hash. | `HotUpdater.getFingerprintHash()` |
 | `cohort` | `text` | no | Rollout cohort used for update eligibility. | `HotUpdater.getCohort()` |
+| `user_id` | `text` | no | Optional application user id. Defaults to null until configured by the app. | `HotUpdater.setUserId()` |
 | `payload` | `json` | yes | Event-specific extra data. Do not put core query/group-by fields only in payload. | Client/server |
 
 Type shape:
@@ -776,6 +783,7 @@ export interface DatabaseBundleEventInput {
   readonly appVersion?: string | null;
   readonly fingerprintHash?: string | null;
   readonly cohort?: string | null;
+  readonly userId?: string | null;
   readonly payload: BundleEventPayload;
 }
 
@@ -804,6 +812,7 @@ export interface BundleEventListQuery {
     readonly appVersion?: string;
     readonly fingerprintHash?: string;
     readonly cohort?: string;
+    readonly userId?: string;
   };
   readonly limit: number;
   readonly cursor?: {

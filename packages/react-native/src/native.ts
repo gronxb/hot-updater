@@ -71,6 +71,7 @@ class HotUpdaterSessionState {
   private currentChannel: string;
   private cachedCohort: string | undefined;
   private cachedInstallId: string | undefined;
+  private userId: string | null = null;
   private readonly inflightUpdates = new Map<string, Promise<boolean>>();
   private lastInstalledBundleId: string | null = null;
   private readonly activeBundleSnapshotCache = new Map<
@@ -166,6 +167,14 @@ class HotUpdaterSessionState {
 
   cacheInstallId(installId: string) {
     this.cachedInstallId = installId;
+  }
+
+  getUserId(): string | null {
+    return this.userId;
+  }
+
+  setUserId(userId: string | null) {
+    this.userId = userId;
   }
 
   private clearActiveBundleSnapshotCache() {
@@ -857,4 +866,16 @@ export const getInstallId = (): string => {
   const normalized = installId.trim();
   sessionState.cacheInstallId(normalized);
   return normalized;
+};
+
+export const getUserId = (): string | null => sessionState.getUserId();
+
+export const setUserId = (userId: string | null): void => {
+  if (userId === null) {
+    sessionState.setUserId(null);
+    return;
+  }
+
+  const normalized = userId.trim();
+  sessionState.setUserId(normalized || null);
 };

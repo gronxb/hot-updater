@@ -211,7 +211,8 @@ const eventMatches = (
     (where.appVersion === undefined || event.appVersion === where.appVersion) &&
     (where.fingerprintHash === undefined ||
       event.fingerprintHash === where.fingerprintHash) &&
-    (where.cohort === undefined || event.cohort === where.cohort)
+    (where.cohort === undefined || event.cohort === where.cohort) &&
+    (where.userId === undefined || event.userId === where.userId)
   );
 };
 

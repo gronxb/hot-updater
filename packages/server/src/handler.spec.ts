@@ -392,6 +392,7 @@ describe("createHandler", () => {
         kind: "APP_READY",
         platform: "ios",
         previousActiveBundleId: null,
+        userId: null,
         payload: {
           defaultChannel: "production",
           isChannelSwitched: false,

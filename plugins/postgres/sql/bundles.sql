@@ -48,6 +48,7 @@ CREATE TABLE bundle_events (
     app_version text,
     fingerprint_hash text,
     cohort text,
+    user_id text,
     payload jsonb NOT NULL
 );
 

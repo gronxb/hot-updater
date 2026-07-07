@@ -93,6 +93,8 @@ export interface ResolverNotifyAppReadyParams {
 
   installId: string;
 
+  userId: string | null;
+
   sdkVersion: string;
 
   isChannelSwitched: boolean;

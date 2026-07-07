@@ -200,6 +200,7 @@ const rowToDatabaseBundleEvent = (
     appVersion: row.app_version,
     fingerprintHash: row.fingerprint_hash,
     cohort: row.cohort,
+    userId: row.user_id,
     payload: parseEventPayload(row.payload),
   };
 };
@@ -218,6 +219,7 @@ const databaseBundleEventToRow = (
   app_version: event.appVersion ?? null,
   fingerprint_hash: event.fingerprintHash ?? null,
   cohort: event.cohort ?? null,
+  user_id: event.userId ?? null,
   payload: event.payload,
 });
 
@@ -239,7 +241,8 @@ const eventMatchesWhere = (
     (where.appVersion === undefined || event.appVersion === where.appVersion) &&
     (where.fingerprintHash === undefined ||
       event.fingerprintHash === where.fingerprintHash) &&
-    (where.cohort === undefined || event.cohort === where.cohort));
+    (where.cohort === undefined || event.cohort === where.cohort) &&
+    (where.userId === undefined || event.userId === where.userId));
 
 const paginateItems = <TItem>({
   cursor,

@@ -39,6 +39,21 @@ const getOptionalStringOrNull = (
   return typeof value === "string" ? value : null;
 };
 
+const getOptionalTrimmedStringOrNull = (
+  record: Record<string, unknown>,
+  key: string,
+): string | null => {
+  const value = record[key];
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || null;
+};
+
 const getRequiredBoolean = (
   record: Record<string, unknown>,
   key: string,
@@ -106,6 +121,7 @@ export const parseAppReadyBundleEvent = (
       appVersion: getOptionalStringOrNull(payload, "appVersion"),
       fingerprintHash: getOptionalStringOrNull(payload, "fingerprintHash"),
       cohort: getOptionalStringOrNull(payload, "cohort"),
+      userId: getOptionalTrimmedStringOrNull(payload, "userId"),
       payload: {
         status,
         sdkVersion,

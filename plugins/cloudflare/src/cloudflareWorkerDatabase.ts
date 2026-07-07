@@ -113,6 +113,7 @@ interface D1WorkerBundleEventRow {
   app_version: string | null;
   fingerprint_hash: string | null;
   cohort: string | null;
+  user_id: string | null;
   payload: unknown;
 }
 
@@ -339,6 +340,7 @@ const rowToDatabaseBundleEvent = (
     appVersion: row.app_version,
     fingerprintHash: row.fingerprint_hash,
     cohort: row.cohort,
+    userId: row.user_id,
     payload: parseEventPayload(row.payload),
   };
 };
@@ -361,7 +363,8 @@ const eventMatchesWhere = (
     (where.appVersion === undefined || event.appVersion === where.appVersion) &&
     (where.fingerprintHash === undefined ||
       event.fingerprintHash === where.fingerprintHash) &&
-    (where.cohort === undefined || event.cohort === where.cohort));
+    (where.cohort === undefined || event.cohort === where.cohort) &&
+    (where.userId === undefined || event.userId === where.userId));
 
 function transformRowToBundle(
   row: D1WorkerBundleRow,
@@ -797,9 +800,10 @@ const createD1WorkerPlugin = createDatabasePlugin({
                 app_version,
                 fingerprint_hash,
                 cohort,
+                user_id,
                 payload
               )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
             [
               event.id,
@@ -813,6 +817,7 @@ const createD1WorkerPlugin = createDatabasePlugin({
               event.appVersion ?? null,
               event.fingerprintHash ?? null,
               event.cohort ?? null,
+              event.userId ?? null,
               JSON.stringify(event.payload),
             ],
           );

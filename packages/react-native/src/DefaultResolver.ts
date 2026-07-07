@@ -96,6 +96,7 @@ export function createDefaultResolver(
               fingerprintHash: params.fingerprintHash,
               cohort: params.cohort,
               installId: params.installId,
+              userId: params.userId,
               sdkVersion: params.sdkVersion,
               defaultChannel: params.defaultChannel,
               isChannelSwitched: params.isChannelSwitched,

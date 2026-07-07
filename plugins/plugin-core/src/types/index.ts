@@ -168,6 +168,7 @@ export interface DatabaseBundleEventInput {
   readonly appVersion?: string | null;
   readonly fingerprintHash?: string | null;
   readonly cohort?: string | null;
+  readonly userId?: string | null;
   readonly payload: BundleEventPayload;
 }
 
@@ -187,6 +188,7 @@ export interface BundleEventListQuery {
     readonly appVersion?: string;
     readonly fingerprintHash?: string;
     readonly cohort?: string;
+    readonly userId?: string;
   };
   readonly limit: number;
   readonly cursor?: {

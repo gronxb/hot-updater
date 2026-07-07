@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getDefaultChannel: vi.fn(() => "production"),
   getFingerprintHash: vi.fn(() => null),
   getInstallId: vi.fn(() => "install-1"),
+  getUserId: vi.fn<() => string | null>(() => null),
   isChannelSwitched: vi.fn(() => false),
   notifyAppReady: vi.fn(() => ({ status: "STABLE" })),
   reload: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock("./native", () => ({
   getDefaultChannel: mocks.getDefaultChannel,
   getFingerprintHash: mocks.getFingerprintHash,
   getInstallId: mocks.getInstallId,
+  getUserId: mocks.getUserId,
   isChannelSwitched: mocks.isChannelSwitched,
   notifyAppReady: mocks.notifyAppReady,
   reload: mocks.reload,
@@ -69,6 +71,7 @@ describe("HotUpdater wrap initialization", () => {
     mocks.getDefaultChannel.mockReturnValue("production");
     mocks.getFingerprintHash.mockReturnValue(null);
     mocks.getInstallId.mockReturnValue("install-1");
+    mocks.getUserId.mockReturnValue(null);
     mocks.isChannelSwitched.mockReturnValue(false);
     mocks.notifyAppReady.mockReturnValue({ status: "STABLE" });
   });
@@ -125,7 +128,31 @@ describe("HotUpdater wrap initialization", () => {
         Authorization: "Bearer token",
       },
       requestTimeout: 1000,
+      userId: null,
     });
+  });
+
+  it("passes a configured user id to resolver notifyAppReady", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("requestAnimationFrame", (callback: () => void) => {
+      setTimeout(callback, 0);
+      return 1;
+    });
+    mocks.getUserId.mockReturnValue("user-123");
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn().mockResolvedValue(undefined),
+    };
+    const { init } = await import("./wrap");
+
+    init({ resolver });
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(resolver.notifyAppReady).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-123",
+      }),
+    );
   });
 
   it("calls init onError when app-ready notification fails", async () => {

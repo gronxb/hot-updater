@@ -71,6 +71,7 @@ model bundle_events {
   app_version String?
   fingerprint_hash String?
   cohort String?
+  user_id String?
   payload Json
   @@index([install_id], map: "bundle_events_install_id_idx")
   @@index([active_bundle_id], map: "bundle_events_active_bundle_id_idx")

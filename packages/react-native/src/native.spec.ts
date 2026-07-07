@@ -24,6 +24,7 @@ const nativeModuleMock = vi.hoisted(() => {
     reload: vi.fn(),
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
+    setUserId: vi.fn(),
     setBundleURL: vi.fn(),
     switchChannel: vi.fn(),
     updateBundle: vi.fn(),
@@ -77,6 +78,7 @@ describe("notifyAppReady", () => {
     });
     nativeModuleMock.resetChannel.mockReset();
     nativeModuleMock.setCohort.mockReset();
+    nativeModuleMock.setUserId.mockReset();
     nativeModuleMock.updateBundle.mockReset();
   });
 
@@ -663,5 +665,15 @@ describe("notifyAppReady", () => {
     } finally {
       nativeModule.getInstallId = originalGetInstallId;
     }
+  });
+
+  it("returns null user id until setUserId configures one", async () => {
+    const { getUserId, setUserId } = await import("./native");
+
+    expect(getUserId()).toBeNull();
+
+    setUserId(" user-123 ");
+
+    expect(getUserId()).toBe("user-123");
   });
 });

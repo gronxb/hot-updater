@@ -75,6 +75,7 @@ export const bundle_events = pgTable("bundle_events", {
   app_version: text("app_version"),
   fingerprint_hash: text("fingerprint_hash"),
   cohort: text("cohort"),
+  user_id: text("user_id"),
   payload: json("payload").notNull()
 }, (table) => [
   index("bundle_events_install_id_idx").on(table.install_id),

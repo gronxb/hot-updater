@@ -55,6 +55,7 @@ const createNotifyParams = (
   platform: "ios",
   sdkVersion: HOT_UPDATER_SDK_VERSION,
   status: "STABLE",
+  userId: null,
   ...params,
 });
 
@@ -264,6 +265,7 @@ describe("createDefaultResolver", () => {
       previousActiveBundleId: "crashed-bundle",
       sdkVersion: HOT_UPDATER_SDK_VERSION,
       status: "RECOVERED",
+      userId: null,
     });
   });
 });

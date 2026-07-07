@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => {
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
     setReloadBehavior: vi.fn(),
+    setUserId: vi.fn(),
     updateBundle: vi.fn(),
     wrap: vi.fn(),
   };
@@ -64,6 +65,7 @@ vi.mock("./native", () => ({
   resetChannel: mocks.resetChannel,
   setCohort: mocks.setCohort,
   setReloadBehavior: mocks.setReloadBehavior,
+  setUserId: mocks.setUserId,
   updateBundle: mocks.updateBundle,
 }));
 
@@ -290,6 +292,14 @@ describe("HotUpdater client initialization", () => {
     } satisfies HotUpdaterInitOptions;
 
     expect(options.baseURL).toBe("https://updates.example.com");
+  });
+
+  it("exposes setUserId on the public client", async () => {
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.setUserId("user-123");
+
+    expect(mocks.setUserId).toHaveBeenCalledWith("user-123");
   });
 
   it("uses init configuration for later manual update checks", async () => {

@@ -10,6 +10,7 @@ CREATE TABLE bundle_events (
     app_version TEXT,
     fingerprint_hash TEXT,
     cohort TEXT,
+    user_id TEXT,
     payload TEXT NOT NULL
 );
 

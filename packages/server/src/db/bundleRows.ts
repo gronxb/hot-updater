@@ -66,6 +66,7 @@ export type BundleEventRow = {
   readonly app_version: string | null;
   readonly fingerprint_hash: string | null;
   readonly cohort: string | null;
+  readonly user_id: string | null;
   readonly payload: unknown;
 };
 
@@ -194,6 +195,7 @@ export const rowToDatabaseBundleEvent = (
     appVersion: record.app_version,
     fingerprintHash: record.fingerprint_hash,
     cohort: record.cohort,
+    userId: record.user_id,
     payload: parseEventPayload(record.payload),
   };
 };
@@ -212,6 +214,7 @@ export const databaseBundleEventToRow = (
   app_version: event.appVersion ?? null,
   fingerprint_hash: event.fingerprintHash ?? null,
   cohort: event.cohort ?? null,
+  user_id: event.userId ?? null,
   payload: event.payload,
 });
 
@@ -233,7 +236,8 @@ export const bundleEventMatchesWhere = (
     (where.appVersion === undefined || event.appVersion === where.appVersion) &&
     (where.fingerprintHash === undefined ||
       event.fingerprintHash === where.fingerprintHash) &&
-    (where.cohort === undefined || event.cohort === where.cohort));
+    (where.cohort === undefined || event.cohort === where.cohort) &&
+    (where.userId === undefined || event.userId === where.userId));
 
 export const rowToBundle = (
   record: BundleRow,

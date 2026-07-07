@@ -22,6 +22,7 @@ import {
   reload,
   resetChannel,
   setCohort,
+  setUserId,
   setReloadBehavior,
   type UpdateParams,
   updateBundle,
@@ -410,6 +411,8 @@ function createHotUpdaterClient() {
     getCohort,
 
     getInstallId,
+
+    setUserId,
 
     /**
      * Adds a listener to HotUpdater events.

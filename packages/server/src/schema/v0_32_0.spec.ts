@@ -23,6 +23,7 @@ describe("bundleEventsV032", () => {
       { ormName: "app_version", type: "string", nullable: true },
       { ormName: "fingerprint_hash", type: "string", nullable: true },
       { ormName: "cohort", type: "string", nullable: true },
+      { ormName: "user_id", type: "string", nullable: true },
       { ormName: "payload", type: "json" },
     ]);
     expect(bundleEventsV032.indexes).toEqual([

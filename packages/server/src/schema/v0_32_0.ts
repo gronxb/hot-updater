@@ -28,6 +28,7 @@ export const bundleEventsV032 = table(
     app_version: stringColumn("app_version").nullable(),
     fingerprint_hash: stringColumn("fingerprint_hash").nullable(),
     cohort: stringColumn("cohort").nullable(),
+    user_id: stringColumn("user_id").nullable(),
     payload: json("payload"),
   },
   {

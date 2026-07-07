@@ -42,6 +42,7 @@ export interface SupabaseBundleEventRow {
   app_version: string | null;
   fingerprint_hash: string | null;
   cohort: string | null;
+  user_id: string | null;
   payload: unknown;
 }
 
