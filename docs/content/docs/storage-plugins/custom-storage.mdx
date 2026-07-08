@@ -23,23 +23,17 @@ selection.
 
 All storage plugins use `createStoragePlugin`. The same plugin shape can run in
 CLI commands, console server actions, serverless functions, and edge runtimes
-as long as the implementation only uses APIs available in that runtime. If a
-platform needs bindings such as Cloudflare R2, pass those bindings directly in
-the storage config before handing the plugin to `createHotUpdater`.
+as long as the implementation only uses APIs available in that runtime.
+Cloudflare Worker-specific storage can read runtime bindings with
+`cloudflare:workers` instead of passing request context into storage methods.
 
 ```typescript
 import { createHotUpdater } from "@hot-updater/server";
 import { r2Storage } from "@hot-updater/cloudflare/worker";
 
-export const createHandler = (request: Request, env: Env) =>
+export const createHandler = () =>
   createHotUpdater({
-    storages: [
-      r2Storage({
-        bucket: env.BUCKET,
-        jwtSecret: env.JWT_SECRET,
-        publicBaseUrl: new URL(request.url).origin,
-      }),
-    ],
+    storages: [r2Storage()],
   });
 ```
 
@@ -407,15 +401,15 @@ const hotUpdater = createHotUpdater({
 });
 ```
 
-For Workers, Pages, or other edge runtimes, inject platform bindings into the
-storage config directly:
+For Workers, Pages, or other edge runtimes, keep the storage config limited to
+serializable options and let the runtime-specific module read platform
+bindings:
 
 ```typescript
 const hotUpdater = createHotUpdater({
   storages: [
     myEdgeStorage({
-      bucket: env.BUCKET,
-      publicBaseUrl: new URL(request.url).origin,
+      bucketName: "bundles",
     }),
   ],
 });

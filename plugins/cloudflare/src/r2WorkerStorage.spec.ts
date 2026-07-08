@@ -3,12 +3,30 @@ import {
   assertStorageDelete,
   assertStorageUpload,
 } from "@hot-updater/plugin-core";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  type CloudflareWorkerStorageEnv,
-  r2WorkerStorage,
-} from "./r2WorkerStorage";
+import type { CloudflareWorkerStorageEnv } from "./r2WorkerStorage";
+
+const { workerEnv } = vi.hoisted(
+  (): { workerEnv: CloudflareWorkerStorageEnv } => ({
+    workerEnv: {
+      BUCKET: {
+        delete: vi.fn(async (_key: string | string[]) => {}),
+        get: vi.fn(async (_key: string) => null),
+        head: vi.fn(async (_key: string) => null),
+        put: vi.fn(async () => ({})),
+      },
+      HOT_UPDATER_PUBLIC_BASE_URL: "https://assets.example.com",
+      JWT_SECRET: "secret",
+    },
+  }),
+);
+
+vi.mock("cloudflare:workers", () => ({
+  env: workerEnv,
+}));
+
+import { r2WorkerStorage } from "./r2WorkerStorage";
 
 const createBucket = (
   overrides: Partial<CloudflareWorkerStorageEnv["BUCKET"]> = {},
@@ -22,16 +40,19 @@ const createBucket = (
   }) satisfies CloudflareWorkerStorageEnv["BUCKET"];
 
 describe("r2WorkerStorage", () => {
+  beforeEach(() => {
+    workerEnv.BUCKET = createBucket();
+    workerEnv.HOT_UPDATER_PUBLIC_BASE_URL = "https://assets.example.com";
+    workerEnv.JWT_SECRET = "secret";
+  });
+
   it("reads manifest text directly from the R2 binding", async () => {
     const get = vi.fn(async (key: string) => ({
       arrayBuffer: async () => new Response(key).arrayBuffer(),
       text: async () => `text:${key}`,
     }));
-    const storage = r2WorkerStorage({
-      bucket: createBucket({ get }),
-      jwtSecret: "secret",
-      publicBaseUrl: "https://assets.example.com",
-    })();
+    workerEnv.BUCKET = createBucket({ get });
+    const storage = r2WorkerStorage()();
     assertRuntimeStorageOperations(storage);
 
     await expect(
@@ -46,11 +67,8 @@ describe("r2WorkerStorage", () => {
       arrayBuffer: async () => data,
       text: async () => "bundle",
     }));
-    const storage = r2WorkerStorage({
-      bucket: createBucket({ get }),
-      jwtSecret: "secret",
-      publicBaseUrl: "https://assets.example.com",
-    })();
+    workerEnv.BUCKET = createBucket({ get });
+    const storage = r2WorkerStorage()();
     if (!storage.readBytes) {
       throw new Error("expected readBytes operation");
     }
@@ -63,11 +81,8 @@ describe("r2WorkerStorage", () => {
 
   it("deletes objects through the R2 binding", async () => {
     const deleteObject = vi.fn();
-    const storage = r2WorkerStorage({
-      bucket: createBucket({ delete: deleteObject }),
-      jwtSecret: "secret",
-      publicBaseUrl: "https://assets.example.com",
-    })();
+    workerEnv.BUCKET = createBucket({ delete: deleteObject });
+    const storage = r2WorkerStorage()();
     assertStorageDelete(storage);
 
     await storage.delete({
@@ -79,11 +94,8 @@ describe("r2WorkerStorage", () => {
 
   it("checks object existence through the R2 binding", async () => {
     const head = vi.fn().mockResolvedValueOnce({}).mockResolvedValueOnce(null);
-    const storage = r2WorkerStorage({
-      bucket: createBucket({ head }),
-      jwtSecret: "secret",
-      publicBaseUrl: "https://assets.example.com",
-    })();
+    workerEnv.BUCKET = createBucket({ head });
+    const storage = r2WorkerStorage()();
     if (!storage.exists) {
       throw new Error("expected exists operation");
     }
@@ -96,13 +108,29 @@ describe("r2WorkerStorage", () => {
     ).resolves.toBe(false);
   });
 
+  it("signs download URLs with Worker env config", async () => {
+    workerEnv.HOT_UPDATER_PUBLIC_BASE_URL =
+      "https://updates.example.dev/ignored";
+    const storage = r2WorkerStorage()();
+    if (!storage.getDownloadUrl) {
+      throw new Error("expected getDownloadUrl operation");
+    }
+
+    const { fileUrl } = await storage.getDownloadUrl({
+      storageUri: "r2://bundles/app/bundle.zip",
+    });
+    const url = new URL(fileUrl);
+
+    expect(url.origin).toBe("https://updates.example.dev");
+    expect(url.pathname).toBe("/bundles/app/bundle.zip");
+    expect(url.searchParams.get("token")).toEqual(expect.any(String));
+  });
+
   it("uploads bytes through the R2 binding", async () => {
     const put = vi.fn();
+    workerEnv.BUCKET = createBucket({ put });
     const storage = r2WorkerStorage({
-      bucket: createBucket({ put }),
       bucketName: "updates",
-      jwtSecret: "secret",
-      publicBaseUrl: "https://assets.example.com",
     })();
     assertStorageUpload(storage);
 
@@ -130,11 +158,7 @@ describe("r2WorkerStorage", () => {
   });
 
   it("rejects file upload sources in worker runtimes", async () => {
-    const storage = r2WorkerStorage({
-      bucket: createBucket(),
-      jwtSecret: "secret",
-      publicBaseUrl: "https://assets.example.com",
-    })();
+    const storage = r2WorkerStorage()();
     assertStorageUpload(storage);
 
     await expect(

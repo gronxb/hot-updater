@@ -3,8 +3,10 @@ import {
   createStoragePlugin,
   type StorageUploadSource,
 } from "@hot-updater/plugin-core";
+import { env } from "cloudflare:workers";
 
 export interface CloudflareWorkerStorageEnv {
+  HOT_UPDATER_PUBLIC_BASE_URL: string;
   JWT_SECRET: string;
   BUCKET: {
     delete: (key: string | string[]) => Promise<void>;
@@ -25,18 +27,9 @@ export interface CloudflareWorkerStorageEnv {
   };
 }
 
-type StringResolver = () => string | Promise<string>;
-
 export interface CloudflareWorkerStorageConfig {
-  bucket: CloudflareWorkerStorageEnv["BUCKET"];
   bucketName?: string;
-  jwtSecret: string | StringResolver;
-  publicBaseUrl: string | StringResolver;
 }
-
-const resolveString = async (value: string | StringResolver) => {
-  return typeof value === "function" ? await value() : value;
-};
 
 const createPublicObjectPath = (storageUrl: URL) =>
   `${storageUrl.host}${storageUrl.pathname}`;
@@ -61,21 +54,25 @@ const createUploadBody = (source: StorageUploadSource) => {
   return source.data;
 };
 
-export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
+const getWorkerEnv = (): CloudflareWorkerStorageEnv => env;
+
+export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig = {}) => {
   return createStoragePlugin<CloudflareWorkerStorageConfig>({
     name: "r2WorkerStorage",
     supportedProtocol: "r2",
     factory: (config) => ({
       async delete({ storageUri }) {
+        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
           throw new Error("Invalid R2 storage URI protocol");
         }
 
-        await config.bucket.delete(createR2ObjectKey(storageUrl));
+        await workerEnv.BUCKET.delete(createR2ObjectKey(storageUrl));
       },
       async exists({ storageUri }) {
+        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
@@ -83,10 +80,11 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
         }
 
         return (
-          (await config.bucket.head(createR2ObjectKey(storageUrl))) !== null
+          (await workerEnv.BUCKET.head(createR2ObjectKey(storageUrl))) !== null
         );
       },
       async upload({ key, source }) {
+        const workerEnv = getWorkerEnv();
         const putOptions =
           source.kind === "bytes" && source.contentType
             ? {
@@ -95,20 +93,23 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
                 },
               }
             : undefined;
-        await config.bucket.put(key, createUploadBody(source), putOptions);
+        await workerEnv.BUCKET.put(key, createUploadBody(source), putOptions);
 
         return {
           storageUri: createStorageUri(config.bucketName ?? "bundles", key),
         };
       },
       async readBytes({ storageUri }) {
+        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
           throw new Error("Invalid R2 storage URI protocol");
         }
 
-        const object = await config.bucket.get(createR2ObjectKey(storageUrl));
+        const object = await workerEnv.BUCKET.get(
+          createR2ObjectKey(storageUrl),
+        );
         if (!object) {
           return null;
         }
@@ -116,6 +117,7 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
         return object.arrayBuffer();
       },
       async readText({ storageUri }) {
+        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
@@ -123,7 +125,7 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
         }
 
         const key = createR2ObjectKey(storageUrl);
-        const object = await config.bucket.get(key);
+        const object = await workerEnv.BUCKET.get(key);
         if (!object) {
           return null;
         }
@@ -131,6 +133,7 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
         return object.text();
       },
       async getDownloadUrl({ storageUri }) {
+        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
@@ -138,12 +141,8 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
         }
 
         const key = createPublicObjectPath(storageUrl);
-        const [jwtSecret, publicBaseUrl] = await Promise.all([
-          resolveString(config.jwtSecret),
-          resolveString(config.publicBaseUrl),
-        ]);
-        const token = await signToken(key, jwtSecret);
-        const url = new URL(publicBaseUrl);
+        const token = await signToken(key, workerEnv.JWT_SECRET);
+        const url = new URL(workerEnv.HOT_UPDATER_PUBLIC_BASE_URL);
 
         url.pathname = key;
         url.search = "";

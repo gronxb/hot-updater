@@ -21,9 +21,9 @@ export type RequestEnvContext<TEnv = CloudflareWorkerRuntimeEnv> =
   BaseRequestEnvContext<TEnv>;
 
 export const d1Database = <
-  TContext extends RequestEnvContext<CloudflareWorkerRuntimeEnv> =
-    RequestEnvContext<CloudflareWorkerRuntimeEnv>,
+  TContext extends RequestEnvContext<CloudflareWorkerDatabaseEnv> =
+    RequestEnvContext<CloudflareWorkerDatabaseEnv>,
 >() => d1WorkerDatabase<TContext>();
 
-export const r2Storage = (config: CloudflareWorkerStorageConfig) =>
+export const r2Storage = (config: CloudflareWorkerStorageConfig = {}) =>
   r2WorkerStorage(config);

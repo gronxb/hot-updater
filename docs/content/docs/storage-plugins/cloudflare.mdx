@@ -107,22 +107,17 @@ Cloudflare Workers should use the Worker runtime export instead:
 import { r2Storage } from "@hot-updater/cloudflare/worker";
 import { createHotUpdater } from "@hot-updater/server";
 
-export const createWorkerHotUpdater = (request: Request, env: Env) =>
-  createHotUpdater({
-    storages: [
-      r2Storage({
-        bucket: env.BUCKET,
-        jwtSecret: env.JWT_SECRET,
-        publicBaseUrl: new URL(request.url).origin,
-      }),
-    ],
-    // ... other options
-  });
+export const hotUpdater = createHotUpdater({
+  storages: [r2Storage()],
+  // ... other options
+});
 ```
 
 The Worker storage plugin signs bundle download URLs and reads small metadata
-files directly from the R2 binding. This lets update checks use bundle diffing
-without the Worker fetching its own signed public URL.
+files directly from the `BUCKET`, `JWT_SECRET`, and
+`HOT_UPDATER_PUBLIC_BASE_URL` Worker bindings through `cloudflare:workers`.
+This lets update checks use bundle diffing without the Worker fetching its own
+signed public URL.
 
 ## Limitations
 
