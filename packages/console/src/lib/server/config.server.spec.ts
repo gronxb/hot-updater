@@ -90,9 +90,8 @@ describe("config.server", () => {
         storage,
       });
 
-    const { prepareConfig, setConsoleConfigLoader } = await import(
-      "./config.server"
-    );
+    const { prepareConfig, setConsoleConfigLoader } =
+      await import("./config.server");
     setConsoleConfigLoader(configLoader);
 
     await expect(prepareConfig()).rejects.toThrow("load failed");
@@ -122,9 +121,8 @@ describe("config.server", () => {
       storage,
     });
 
-    const { prepareConfig, setConsoleConfigLoader } = await import(
-      "./config.server"
-    );
+    const { prepareConfig, setConsoleConfigLoader } =
+      await import("./config.server");
     setConsoleConfigLoader(configLoader);
 
     await expect(prepareConfig()).resolves.toMatchObject({
