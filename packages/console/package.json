@@ -23,6 +23,8 @@
     "./package.json": "./package.json"
   },
   "scripts": {
+    "prepack": "node pack-manifest.mjs prepare",
+    "postpack": "node pack-manifest.mjs restore",
     "dev": "vite dev --port 3000",
     "build": "vite build && vite build --config vite.library.config.ts && vite build --config vite.hosted.config.ts && node copy-assets.mjs",
     "check": "oxfmt --write \"**/*.{ts,tsx}\" && oxlint --fix --fix-suggestions --fix-dangerously .",
