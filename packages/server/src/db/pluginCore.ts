@@ -356,7 +356,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
 
       const readStorageText = coreOptions?.readStorageText;
       if (info.id === NIL_UUID || !readStorageText) {
-        const fileUrl = await resolveFileUrl(storageUri ?? null, context);
+        const fileUrl = await resolveFileUrl(storageUri ?? null);
         const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
         return baseResponse;
       }
@@ -377,7 +377,7 @@ export function createPluginDatabaseCore<TContext = unknown>(
         );
       };
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
-        resolveFileUrl(storageUri ?? null, context),
+        resolveFileUrl(storageUri ?? null),
         requestBundles.getById(info.id, () =>
           getPlugin().getBundleById(info.id, context),
         ),
@@ -389,7 +389,6 @@ export function createPluginDatabaseCore<TContext = unknown>(
         resolveFileUrl,
         readStorageText,
         targetBundle,
-        context,
       });
       if (!manifestArtifacts) {
         return baseResponse;

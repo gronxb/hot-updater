@@ -104,7 +104,7 @@ describe("config.server", () => {
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts profile-free runtime storage plugins", async () => {
+  it("accepts storage plugins with runtime read operations", async () => {
     const databasePlugin = createDatabasePlugin("db");
     const database = vi.fn().mockResolvedValue(databasePlugin);
     const storagePlugin = {

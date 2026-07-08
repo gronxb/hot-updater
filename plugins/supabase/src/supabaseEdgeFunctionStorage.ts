@@ -55,7 +55,7 @@ export const supabaseEdgeFunctionStorage =
       );
 
       return {
-        async readText(storageUri) {
+        async readText({ storageUri }) {
           const { bucketName, key } = parseSupabaseStorageUri(storageUri);
           const { data, error } = await supabase.storage
             .from(bucketName)
@@ -75,7 +75,7 @@ export const supabaseEdgeFunctionStorage =
 
           return data.text();
         },
-        async getDownloadUrl(storageUri) {
+        async getDownloadUrl({ storageUri }) {
           const { bucketName, key } = parseSupabaseStorageUri(storageUri);
           const bucket = supabase.storage.from(bucketName);
           const expiresIn = config.signedUrlExpiresIn ?? 3600;

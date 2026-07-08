@@ -154,5 +154,4 @@ export interface DatabaseAPI<TContext = unknown> {
   ): Promise<void>;
 }
 
-export type StoragePluginFactory<TContext = unknown> =
-  () => StoragePlugin<TContext>;
+export type StoragePluginFactory = () => StoragePlugin;

@@ -43,7 +43,9 @@ describe("s3LambdaEdgeStorage", () => {
     }
 
     await expect(
-      storage.getDownloadUrl("s3://test-bucket/releases/bundle.zip"),
+      storage.getDownloadUrl({
+        storageUri: "s3://test-bucket/releases/bundle.zip",
+      }),
     ).resolves.toEqual({
       fileUrl: "https://signed.example.com/bundle.zip",
     });
@@ -87,8 +89,12 @@ describe("s3LambdaEdgeStorage", () => {
       throw new Error("expected getDownloadUrl operation");
     }
 
-    await storage.getDownloadUrl("s3://test-bucket/releases/first.zip");
-    await storage.getDownloadUrl("s3://test-bucket/releases/second.zip");
+    await storage.getDownloadUrl({
+      storageUri: "s3://test-bucket/releases/first.zip",
+    });
+    await storage.getDownloadUrl({
+      storageUri: "s3://test-bucket/releases/second.zip",
+    });
 
     expect(getParameter).toHaveBeenCalledTimes(1);
   });
@@ -108,7 +114,9 @@ describe("s3LambdaEdgeStorage", () => {
       throw new Error("expected getDownloadUrl operation");
     }
 
-    await storage.getDownloadUrl("s3://test-bucket/releases/bundle.zip");
+    await storage.getDownloadUrl({
+      storageUri: "s3://test-bucket/releases/bundle.zip",
+    });
 
     expect(getPrivateKey).toHaveBeenCalledTimes(1);
     expect(getSignedUrl).toHaveBeenCalledWith(

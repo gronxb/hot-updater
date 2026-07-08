@@ -51,9 +51,12 @@ describe("standaloneStorage", () => {
       assertFileStoragePlugin(storage);
 
       await expect(
-        storage.upload("bundle-id", {
-          kind: "file",
-          filePath,
+        storage.upload({
+          key: "bundle-id",
+          source: {
+            kind: "file",
+            filePath,
+          },
         }),
       ).resolves.toEqual({
         storageUri: "http://localhost/bundle.zip",
@@ -84,8 +87,8 @@ describe("standaloneStorage", () => {
     })();
     assertFileStoragePlugin(storage);
 
-    await expect(storage.exists("http://localhost/bundle.zip")).resolves.toBe(
-      true,
-    );
+    await expect(
+      storage.exists({ storageUri: "http://localhost/bundle.zip" }),
+    ).resolves.toBe(true);
   });
 });

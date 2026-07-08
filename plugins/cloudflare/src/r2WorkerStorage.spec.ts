@@ -2,7 +2,6 @@ import {
   assertRuntimeStorageOperations,
   assertStorageDelete,
   assertStorageUpload,
-  type RequestEnvContext,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -10,8 +9,6 @@ import {
   type CloudflareWorkerStorageEnv,
   r2WorkerStorage,
 } from "./r2WorkerStorage";
-
-type TestContext = RequestEnvContext<CloudflareWorkerStorageEnv>;
 
 const createBucket = (
   overrides: Partial<CloudflareWorkerStorageEnv["BUCKET"]> = {},
@@ -31,19 +28,14 @@ describe("r2WorkerStorage", () => {
       text: async () => `text:${key}`,
     }));
     const storage = r2WorkerStorage({
+      bucket: createBucket({ get }),
       jwtSecret: "secret",
       publicBaseUrl: "https://assets.example.com",
     })();
     assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.readText("r2://bundles/app/manifest.json", {
-        env: {
-          BUCKET: createBucket({ get }),
-          JWT_SECRET: "secret",
-        },
-        request: new Request("https://updates.example.com"),
-      } satisfies TestContext),
+      storage.readText({ storageUri: "r2://bundles/app/manifest.json" }),
     ).resolves.toBe("text:app/manifest.json");
     expect(get).toHaveBeenCalledWith("app/manifest.json");
   });
@@ -55,6 +47,7 @@ describe("r2WorkerStorage", () => {
       text: async () => "bundle",
     }));
     const storage = r2WorkerStorage({
+      bucket: createBucket({ get }),
       jwtSecret: "secret",
       publicBaseUrl: "https://assets.example.com",
     })();
@@ -63,13 +56,7 @@ describe("r2WorkerStorage", () => {
     }
 
     await expect(
-      storage.readBytes("r2://bundles/app/bundle.zip", {
-        env: {
-          BUCKET: createBucket({ get }),
-          JWT_SECRET: "secret",
-        },
-        request: new Request("https://updates.example.com"),
-      } satisfies TestContext),
+      storage.readBytes({ storageUri: "r2://bundles/app/bundle.zip" }),
     ).resolves.toEqual(data);
     expect(get).toHaveBeenCalledWith("app/bundle.zip");
   });
@@ -77,18 +64,15 @@ describe("r2WorkerStorage", () => {
   it("deletes objects through the R2 binding", async () => {
     const deleteObject = vi.fn();
     const storage = r2WorkerStorage({
+      bucket: createBucket({ delete: deleteObject }),
       jwtSecret: "secret",
       publicBaseUrl: "https://assets.example.com",
     })();
     assertStorageDelete(storage);
 
-    await storage.delete("r2://bundles/app/bundle.zip", {
-      env: {
-        BUCKET: createBucket({ delete: deleteObject }),
-        JWT_SECRET: "secret",
-      },
-      request: new Request("https://updates.example.com"),
-    } satisfies TestContext);
+    await storage.delete({
+      storageUri: "r2://bundles/app/bundle.zip",
+    });
 
     expect(deleteObject).toHaveBeenCalledWith("app/bundle.zip");
   });
@@ -96,31 +80,26 @@ describe("r2WorkerStorage", () => {
   it("checks object existence through the R2 binding", async () => {
     const head = vi.fn().mockResolvedValueOnce({}).mockResolvedValueOnce(null);
     const storage = r2WorkerStorage({
+      bucket: createBucket({ head }),
       jwtSecret: "secret",
       publicBaseUrl: "https://assets.example.com",
     })();
     if (!storage.exists) {
       throw new Error("expected exists operation");
     }
-    const context = {
-      env: {
-        BUCKET: createBucket({ head }),
-        JWT_SECRET: "secret",
-      },
-      request: new Request("https://updates.example.com"),
-    } satisfies TestContext;
 
     await expect(
-      storage.exists("r2://bundles/app/bundle.zip", context),
+      storage.exists({ storageUri: "r2://bundles/app/bundle.zip" }),
     ).resolves.toBe(true);
     await expect(
-      storage.exists("r2://bundles/app/missing.zip", context),
+      storage.exists({ storageUri: "r2://bundles/app/missing.zip" }),
     ).resolves.toBe(false);
   });
 
   it("uploads bytes through the R2 binding", async () => {
     const put = vi.fn();
     const storage = r2WorkerStorage({
+      bucket: createBucket({ put }),
       bucketName: "updates",
       jwtSecret: "secret",
       publicBaseUrl: "https://assets.example.com",
@@ -128,21 +107,14 @@ describe("r2WorkerStorage", () => {
     assertStorageUpload(storage);
 
     await expect(
-      storage.upload(
-        "app/manifest.json",
-        {
+      storage.upload({
+        key: "app/manifest.json",
+        source: {
           kind: "bytes",
           data: '{"bundleId":"app"}',
           contentType: "application/json",
         },
-        {
-          env: {
-            BUCKET: createBucket({ put }),
-            JWT_SECRET: "secret",
-          },
-          request: new Request("https://updates.example.com"),
-        } satisfies TestContext,
-      ),
+      }),
     ).resolves.toEqual({
       storageUri: "r2://updates/app/manifest.json",
     });
@@ -157,22 +129,22 @@ describe("r2WorkerStorage", () => {
     );
   });
 
-  it("fails fast when the R2 binding is missing", async () => {
+  it("rejects file upload sources in worker runtimes", async () => {
     const storage = r2WorkerStorage({
+      bucket: createBucket(),
       jwtSecret: "secret",
       publicBaseUrl: "https://assets.example.com",
     })();
-    assertRuntimeStorageOperations(storage);
+    assertStorageUpload(storage);
 
     await expect(
-      storage.readText("r2://bundles/app/manifest.json", {
-        env: {
-          JWT_SECRET: "secret",
+      storage.upload({
+        key: "app/bundle.zip",
+        source: {
+          kind: "file",
+          filePath: "bundle.zip",
         },
-        request: new Request("https://updates.example.com"),
-      } as TestContext),
-    ).rejects.toThrow(
-      "r2WorkerStorage requires env.BUCKET in the hot updater context.",
-    );
+      }),
+    ).rejects.toThrow("r2WorkerStorage only supports bytes upload sources.");
   });
 });

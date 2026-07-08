@@ -43,10 +43,9 @@ describe("supabaseEdgeFunctionStorage", () => {
     assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.getDownloadUrl(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-        {},
-      ),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "updates/assets/sha256/fi/file-hash.png": Object not found',
     );
@@ -70,10 +69,9 @@ describe("supabaseEdgeFunctionStorage", () => {
     assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.getDownloadUrl(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-        {},
-      ),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "updates/assets/sha256/fi/file-hash.png": Failed to generate download URL: Object not found',
     );
@@ -94,10 +92,9 @@ describe("supabaseEdgeFunctionStorage", () => {
     assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.getDownloadUrl(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-        {},
-      ),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "updates/assets/sha256/fi/file-hash.png": Storage API failed',
     );

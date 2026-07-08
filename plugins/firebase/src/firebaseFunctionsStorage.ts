@@ -26,14 +26,14 @@ const createFirebaseFunctionsStorage =
       })();
 
       return {
-        async readText(storageUri, context) {
+        async readText({ storageUri }) {
           if (!fallbackStorage.readText) {
             throw new Error("firebaseStorage does not implement readText.");
           }
 
-          return fallbackStorage.readText(storageUri, context);
+          return fallbackStorage.readText({ storageUri });
         },
-        async getDownloadUrl(storageUri, context) {
+        async getDownloadUrl({ storageUri }) {
           if (config.cdnUrl) {
             const storageUrl = new URL(storageUri);
 
@@ -50,7 +50,7 @@ const createFirebaseFunctionsStorage =
             );
           }
 
-          return fallbackStorage.getDownloadUrl(storageUri, context);
+          return fallbackStorage.getDownloadUrl({ storageUri });
         },
       };
     },
@@ -62,7 +62,7 @@ export const firebaseFunctionsStorage = (
 ) => {
   if (!config.storageBucket) {
     throw new Error(
-      "firebaseFunctionsStorage requires storageBucket for the runtime storage profile.",
+      "firebaseFunctionsStorage requires storageBucket for runtime storage operations.",
     );
   }
 

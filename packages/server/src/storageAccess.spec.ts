@@ -14,7 +14,7 @@ describe("createStorageAccess", () => {
       name: "httpStorage",
       supportedProtocol: "http",
       readText,
-      async getDownloadUrl(storageUri) {
+      async getDownloadUrl({ storageUri }) {
         return { fileUrl: storageUri };
       },
     };
@@ -28,10 +28,9 @@ describe("createStorageAccess", () => {
     await expect(
       readStorageText("http://assets.example.com/manifest.json"),
     ).resolves.toBe("manifest text");
-    expect(readText).toHaveBeenCalledWith(
-      "http://assets.example.com/manifest.json",
-      undefined,
-    );
+    expect(readText).toHaveBeenCalledWith({
+      storageUri: "http://assets.example.com/manifest.json",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

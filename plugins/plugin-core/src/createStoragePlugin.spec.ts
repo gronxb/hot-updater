@@ -4,13 +4,18 @@ import { createStoragePlugin } from "./createStoragePlugin";
 import type { ConfigInput, StoragePlugin, StorageUploadSource } from "./types";
 
 describe("createStoragePlugin", () => {
-  it("creates a profile-free storage plugin and calls upload hooks", async () => {
-    const upload = vi.fn(async (key: string, source: StorageUploadSource) => ({
-      storageUri:
-        source.kind === "file"
-          ? `s3://bucket/${key}/${source.filePath}`
-          : `s3://bucket/${key}/bytes`,
-    }));
+  it("creates a storage plugin and calls upload hooks", async () => {
+    const upload = vi.fn(
+      async (params: {
+        readonly key: string;
+        readonly source: StorageUploadSource;
+      }) => ({
+        storageUri:
+          params.source.kind === "file"
+            ? `s3://bucket/${params.key}/${params.source.filePath}`
+            : `s3://bucket/${params.key}/bytes`,
+      }),
+    );
     const readText = vi.fn(async () => '{"id":"bundle-id"}');
     const onStorageUploaded = vi.fn(async () => undefined);
 
@@ -33,25 +38,34 @@ describe("createStoragePlugin", () => {
       filePath: "bundle.zip",
     } satisfies StorageUploadSource;
 
-    expect("profiles" in plugin).toBe(false);
     expect("put" in plugin).toBe(false);
 
     if (!plugin.upload) {
       throw new Error("expected upload operation");
     }
-    await expect(plugin.upload("bundle-id", source)).resolves.toEqual({
+    await expect(
+      plugin.upload({
+        key: "bundle-id",
+        source,
+      }),
+    ).resolves.toEqual({
       storageUri: "s3://bucket/bundle-id/bundle.zip",
     });
-    expect(upload).toHaveBeenCalledWith("bundle-id", source, undefined);
+    expect(upload).toHaveBeenCalledWith({
+      key: "bundle-id",
+      source,
+    });
     expect(onStorageUploaded).toHaveBeenCalledOnce();
 
     if (!plugin.readText) {
       throw new Error("expected readText operation");
     }
-    await expect(plugin.readText("s3://bucket/manifest.json")).resolves.toBe(
-      '{"id":"bundle-id"}',
-    );
-    expect(readText).toHaveBeenCalledWith("s3://bucket/manifest.json");
+    await expect(
+      plugin.readText({ storageUri: "s3://bucket/manifest.json" }),
+    ).resolves.toBe('{"id":"bundle-id"}');
+    expect(readText).toHaveBeenCalledWith({
+      storageUri: "s3://bucket/manifest.json",
+    });
   });
 
   it("keeps unsupported operations absent from the plugin shape", () => {
@@ -70,28 +84,21 @@ describe("createStoragePlugin", () => {
     expect("upload" in plugin).toBe(false);
   });
 
-  it("passes config and runtime context to low-level operations", async () => {
+  it("passes config and object params to low-level operations", async () => {
     const getDownloadUrl = vi.fn(
       async (
-        storageUri: string,
-        context: { env: { accountId: string } } | undefined,
+        params: { readonly storageUri: string },
         config: { publicHost: string },
       ) => ({
-        fileUrl: `${config.publicHost}/${context?.env.accountId}/${storageUri}`,
+        fileUrl: `${config.publicHost}/${params.storageUri}`,
       }),
     );
-    const context = {
-      env: {
-        accountId: "account-id",
-      },
-    };
 
-    const plugin = createStoragePlugin<{ publicHost: string }, typeof context>({
+    const plugin = createStoragePlugin<{ publicHost: string }>({
       name: "contextStorage",
       supportedProtocol: "r2",
       factory: (config) => ({
-        getDownloadUrl: (storageUri, runtimeContext) =>
-          getDownloadUrl(storageUri, runtimeContext, config),
+        getDownloadUrl: (params) => getDownloadUrl(params, config),
         upload: vi.fn(async () => ({
           storageUri: "r2://bucket/bundle.zip",
         })),
@@ -103,19 +110,18 @@ describe("createStoragePlugin", () => {
     }
 
     await expect(
-      plugin.getDownloadUrl("r2://bucket/bundle.zip", context),
+      plugin.getDownloadUrl({ storageUri: "r2://bucket/bundle.zip" }),
     ).resolves.toEqual({
-      fileUrl: "https://assets.example.com/account-id/r2://bucket/bundle.zip",
+      fileUrl: "https://assets.example.com/r2://bucket/bundle.zip",
     });
 
     expect(getDownloadUrl).toHaveBeenCalledWith(
-      "r2://bucket/bundle.zip",
-      context,
+      { storageUri: "r2://bucket/bundle.zip" },
       { publicHost: "https://assets.example.com" },
     );
   });
 
-  it("allows ConfigInput.storage to return profile-free StoragePlugin", () => {
+  it("allows ConfigInput.storage to return StoragePlugin", () => {
     const storageFactory = createStoragePlugin({
       name: "configStorage",
       supportedProtocol: "r2",
@@ -131,6 +137,5 @@ describe("createStoragePlugin", () => {
     const plugin: StoragePlugin = config.storage();
 
     expect(plugin.name).toBe("configStorage");
-    expect("profiles" in plugin).toBe(false);
   });
 });

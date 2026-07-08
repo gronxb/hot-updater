@@ -25,9 +25,5 @@ export const d1Database = <
     RequestEnvContext<CloudflareWorkerRuntimeEnv>,
 >() => d1WorkerDatabase<TContext>();
 
-export const r2Storage = <
-  TContext extends RequestEnvContext<CloudflareWorkerRuntimeEnv> =
-    RequestEnvContext<CloudflareWorkerRuntimeEnv>,
->(
-  config: CloudflareWorkerStorageConfig<TContext>,
-) => r2WorkerStorage<TContext>(config);
+export const r2Storage = (config: CloudflareWorkerStorageConfig) =>
+  r2WorkerStorage(config);

@@ -83,7 +83,7 @@ export const standaloneStorage =
     return {
       name: "standaloneStorage",
       supportedProtocol: "http",
-      async delete(storageUri: string) {
+      async delete({ storageUri }) {
         const { path: routePath, headers: routeHeaders } =
           routes.delete(storageUri);
         const response = await fetch(`${config.baseUrl}${routePath}`, {
@@ -100,7 +100,7 @@ export const standaloneStorage =
           throw error;
         }
       },
-      async upload(key, source) {
+      async upload({ key, source }) {
         const filePath = getStorageUploadFilePath(source);
         const fileContent = await fs.readFile(filePath);
         const contentType =
@@ -148,13 +148,13 @@ export const standaloneStorage =
           storageUri: result.storageUri,
         };
       },
-      async exists(storageUri: string) {
-        const { fileUrl } = await getDownloadUrl(storageUri);
+      async exists({ storageUri }) {
+        const { fileUrl } = await getDownloadUrl({ storageUri });
         const response = await fetch(fileUrl, { method: "HEAD" });
         return response.ok;
       },
-      async downloadFile(storageUri: string, filePath: string) {
-        const { fileUrl } = await getDownloadUrl(storageUri);
+      async downloadFile({ storageUri, filePath }) {
+        const { fileUrl } = await getDownloadUrl({ storageUri });
         const response = await fetch(fileUrl);
         if (!response.ok) {
           throw new Error(`Failed to download bundle: ${response.statusText}`);
@@ -166,7 +166,7 @@ export const standaloneStorage =
           new Uint8Array(await response.arrayBuffer()),
         );
       },
-      async readText(storageUri: string) {
+      async readText({ storageUri }) {
         const { path: routePath, headers: routeHeaders } =
           routes.readText(storageUri);
         const response = await fetch(`${config.baseUrl}${routePath}`, {
@@ -183,7 +183,11 @@ export const standaloneStorage =
       getDownloadUrl,
     };
 
-    async function getDownloadUrl(storageUri: string) {
+    async function getDownloadUrl({
+      storageUri,
+    }: {
+      readonly storageUri: string;
+    }) {
       const { path: routePath, headers: routeHeaders } =
         routes.getDownloadUrl(storageUri);
       const response = await fetch(`${config.baseUrl}${routePath}`, {

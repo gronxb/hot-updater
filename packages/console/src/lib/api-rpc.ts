@@ -239,7 +239,9 @@ export const getBundleDownloadUrl = createServerFn({ method: "GET" })
       }
 
       assertStorageGetDownloadUrl(storagePlugin);
-      const downloadTarget = await storagePlugin.getDownloadUrl(storageUri);
+      const downloadTarget = await storagePlugin.getDownloadUrl({
+        storageUri,
+      });
       const { fileUrl } = downloadTarget;
 
       if (!fileUrl) {

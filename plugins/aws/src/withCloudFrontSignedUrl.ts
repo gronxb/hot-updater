@@ -1,9 +1,6 @@
 import { SSM } from "@aws-sdk/client-ssm";
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
-import type {
-  StoragePlugin,
-  StorageResolveContext,
-} from "@hot-updater/plugin-core";
+import type { StoragePlugin } from "@hot-updater/plugin-core";
 
 import { applySsmRuntimeAwsConfig } from "./runtimeAwsConfig";
 
@@ -21,20 +18,17 @@ interface CloudFrontPrivateKeyFromSsm {
   ssmRegion: string;
 }
 
-export type PublicBaseUrlResolver<TContext = unknown> = (
-  context?: StorageResolveContext<TContext>,
-) => string | Promise<string>;
+export type PublicBaseUrlResolver = () => string | Promise<string>;
 
 export type CloudFrontSignedUrlConfig =
   | CloudFrontPrivateKeyFromGetter
   | CloudFrontPrivateKeyFromSsm;
 
-export type WithCloudFrontSignedUrlOptions<TContext = unknown> =
-  CloudFrontSignedUrlConfig & {
-    keyPairId: string;
-    publicBaseUrl: string | PublicBaseUrlResolver<TContext>;
-    expiresSeconds?: number;
-  };
+export type WithCloudFrontSignedUrlOptions = CloudFrontSignedUrlConfig & {
+  keyPairId: string;
+  publicBaseUrl: string | PublicBaseUrlResolver;
+  expiresSeconds?: number;
+};
 
 const privateKeyCache = new Map<string, Promise<string>>();
 
@@ -112,13 +106,10 @@ const resolvePrivateKey = (
   return privateKeyPromise;
 };
 
-const resolvePublicBaseUrl = async <TContext>(
-  config: WithCloudFrontSignedUrlOptions<TContext>,
-  context?: StorageResolveContext<TContext>,
-) => {
+const resolvePublicBaseUrl = async (config: WithCloudFrontSignedUrlOptions) => {
   const publicBaseUrl =
     typeof config.publicBaseUrl === "function"
-      ? await config.publicBaseUrl(context)
+      ? await config.publicBaseUrl()
       : config.publicBaseUrl;
 
   if (!publicBaseUrl) {
@@ -128,12 +119,9 @@ const resolvePublicBaseUrl = async <TContext>(
   return publicBaseUrl;
 };
 
-export const withCloudFrontSignedUrl = <
-  TContext = unknown,
-  TStorage extends StoragePlugin<TContext> = StoragePlugin<TContext>,
->(
+export const withCloudFrontSignedUrl = <TStorage extends StoragePlugin>(
   storageFactory: () => TStorage,
-  config: WithCloudFrontSignedUrlOptions<TContext>,
+  config: WithCloudFrontSignedUrlOptions,
 ) => {
   return (): TStorage => {
     const baseStorage = storageFactory();
@@ -141,7 +129,7 @@ export const withCloudFrontSignedUrl = <
     return {
       ...baseStorage,
       name: `${baseStorage.name}WithCloudFrontSignedUrl`,
-      async getDownloadUrl(storageUri, context) {
+      async getDownloadUrl({ storageUri }) {
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "s3:") {
@@ -151,12 +139,12 @@ export const withCloudFrontSignedUrl = <
             );
           }
 
-          return baseStorage.getDownloadUrl(storageUri, context);
+          return baseStorage.getDownloadUrl({ storageUri });
         }
 
         const [privateKey, publicBaseUrl] = await Promise.all([
           resolvePrivateKey(config),
-          resolvePublicBaseUrl(config, context),
+          resolvePublicBaseUrl(config),
         ]);
         const url = new URL(publicBaseUrl);
         url.pathname = storageUrl.pathname;

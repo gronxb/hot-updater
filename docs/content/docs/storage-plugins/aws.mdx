@@ -85,13 +85,13 @@ export default defineConfig({
 
 This prefix is stored in the `storageUri` field in the database.
 
-## Profiles
+## Supported Operations
 
-`s3Storage` implements both storage profiles:
+`s3Storage` implements the full storage operation set:
 
-- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
-- `runtime`: creates presigned HTTP(S) download URLs and reads small metadata
-  files directly through the S3 API.
+- uploads, deletes, and downloads local files during CLI/console workflows.
+- creates presigned HTTP(S) download URLs and reads small metadata files
+  directly through the S3 API.
 
 This means the same `s3Storage` configuration can be used in both
 `hot-updater.config.ts` and `createHotUpdater`.

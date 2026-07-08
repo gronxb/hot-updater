@@ -1,8 +1,5 @@
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
-import type {
-  RequestEnvContext,
-  StoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { StoragePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { withCloudFrontSignedUrl } from "./withCloudFrontSignedUrl";
@@ -11,15 +8,13 @@ vi.mock("@aws-sdk/cloudfront-signer", () => ({
   getSignedUrl: vi.fn(() => "https://signed.example.com/bundle.zip"),
 }));
 
-type TestContext = RequestEnvContext;
-
-const createBaseStorage = (): StoragePlugin<TestContext> => ({
+const createBaseStorage = (): StoragePlugin => ({
   name: "baseStorage",
   supportedProtocol: "s3",
-  async readText(storageUri) {
+  async readText({ storageUri }) {
     return storageUri;
   },
-  async getDownloadUrl(storageUri) {
+  async getDownloadUrl({ storageUri }) {
     return {
       fileUrl: storageUri.replace("s3://", "https://s3.example.com/"),
     };
@@ -27,32 +22,21 @@ const createBaseStorage = (): StoragePlugin<TestContext> => ({
 });
 
 describe("withCloudFrontSignedUrl", () => {
-  it("signs the CloudFront URL using the request origin", async () => {
-    const storage = withCloudFrontSignedUrl<TestContext>(
-      () => createBaseStorage(),
-      {
-        keyPairId: "K123",
-        getPrivateKey: async () => "private-key",
-        publicBaseUrl: (context) => {
-          const request = context?.request;
-          if (!request) {
-            throw new Error("request is required");
-          }
-          return new URL(request.url).origin;
-        },
-        expiresSeconds: 60,
-      },
-    )();
+  it("signs the CloudFront URL using the configured public base URL", async () => {
+    const storage = withCloudFrontSignedUrl(() => createBaseStorage(), {
+      keyPairId: "K123",
+      getPrivateKey: async () => "private-key",
+      publicBaseUrl: () => "https://d2zkxggbe748dg.cloudfront.net",
+      expiresSeconds: 60,
+    })();
 
     if (!storage.getDownloadUrl) {
       throw new Error("expected getDownloadUrl operation");
     }
 
     await expect(
-      storage.getDownloadUrl("s3://test-bucket/releases/bundle.zip", {
-        request: new Request(
-          "https://d2zkxggbe748dg.cloudfront.net/api/check-update",
-        ),
+      storage.getDownloadUrl({
+        storageUri: "s3://test-bucket/releases/bundle.zip",
       }),
     ).resolves.toEqual({
       fileUrl: "https://signed.example.com/bundle.zip",

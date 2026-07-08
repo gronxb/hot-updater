@@ -21,16 +21,14 @@ Build plugins handle the bundling process when you run the `hot-updater deploy` 
 
 Storage plugins upload your generated bundles during the `hot-updater deploy` command and store them in your chosen storage provider.
 
-Storage plugins expose explicit environment profiles:
+Storage plugins expose storage operations directly:
 
-- `node`: deploy-time APIs for upload, delete, and local file downloads.
-- `runtime`: update-check APIs for HTTP(S) download URLs and small metadata
-  reads.
+- deploy-time APIs for upload, delete, and local file downloads.
+- update-check APIs for HTTP(S) download URLs and small metadata reads.
 
-`hot-updater.config.ts` uses the `node` profile. `createHotUpdater` uses the
-`runtime` profile. Most apps can use the official storage plugins directly;
-custom plugin authors only need the profile details when implementing their own
-storage provider.
+`hot-updater.config.ts` and `createHotUpdater` use the same operation names.
+Most apps can use the official storage plugins directly; custom plugin authors
+only need to implement the operations their provider can support.
 
 ### Supported Plugins
 

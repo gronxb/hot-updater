@@ -81,7 +81,7 @@ const createStoragePlugin = (
   name: "mockStorage",
   supportedProtocol: "s3",
   async delete() {},
-  async downloadFile(storageUri, filePath) {
+  async downloadFile({ storageUri, filePath }) {
     const storageUrl = new URL(storageUri);
     const response = await fetch(
       `https://assets.example.com${storageUrl.pathname}`,
@@ -118,9 +118,11 @@ describe("createBundleDiff", () => {
       [baseBundle.id, baseBundle],
       [targetBundle.id, targetBundle],
     ]);
-    const upload = vi.fn<FileStoragePlugin["upload"]>(async (key, source) => ({
-      storageUri: `s3://test-bucket/${key}/${getUploadSourceFilename(source)}`,
-    }));
+    const upload = vi.fn<FileStoragePlugin["upload"]>(
+      async ({ key, source }) => ({
+        storageUri: `s3://test-bucket/${key}/${getUploadSourceFilename(source)}`,
+      }),
+    );
 
     vi.stubGlobal(
       "fetch",
@@ -214,9 +216,11 @@ describe("createBundleDiff", () => {
       [baseBundle.id, baseBundle],
       [targetBundle.id, targetBundle],
     ]);
-    const upload = vi.fn<FileStoragePlugin["upload"]>(async (key, source) => ({
-      storageUri: `s3://test-bucket/${key}/${getUploadSourceFilename(source)}`,
-    }));
+    const upload = vi.fn<FileStoragePlugin["upload"]>(
+      async ({ key, source }) => ({
+        storageUri: `s3://test-bucket/${key}/${getUploadSourceFilename(source)}`,
+      }),
+    );
 
     vi.stubGlobal(
       "fetch",
@@ -304,9 +308,11 @@ describe("createBundleDiff", () => {
       [secondaryBaseBundle.id, secondaryBaseBundle],
       [targetBundle.id, targetBundle],
     ]);
-    const upload = vi.fn<FileStoragePlugin["upload"]>(async (key, source) => ({
-      storageUri: `s3://test-bucket/${key}/${getUploadSourceFilename(source)}`,
-    }));
+    const upload = vi.fn<FileStoragePlugin["upload"]>(
+      async ({ key, source }) => ({
+        storageUri: `s3://test-bucket/${key}/${getUploadSourceFilename(source)}`,
+      }),
+    );
 
     vi.stubGlobal(
       "fetch",

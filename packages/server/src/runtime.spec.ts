@@ -6,7 +6,6 @@ import type {
   DatabasePlugin,
   RequestEnvContext,
   RuntimeStorageOperations,
-  StoragePlugin,
 } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
@@ -37,10 +36,9 @@ type TestEnv = {
 type TestContext = RequestEnvContext<TestEnv>;
 
 const createRuntimeStorage = (
-  getDownloadUrl: NonNullable<StoragePlugin<TestContext>["getDownloadUrl"]>,
-  readText: NonNullable<StoragePlugin<TestContext>["readText"]> = async () =>
-    null,
-): RuntimeStorageOperations<TestContext> => ({
+  getDownloadUrl: RuntimeStorageOperations["getDownloadUrl"],
+  readText: RuntimeStorageOperations["readText"] = async () => null,
+): RuntimeStorageOperations => ({
   name: "testStorage",
   supportedProtocol: "s3",
   getDownloadUrl,
@@ -220,7 +218,7 @@ describe("runtime createHotUpdater", () => {
     );
   });
 
-  it("resolves storage URLs with handler context when database fast-path is used", async () => {
+  it("resolves storage URLs without passing handler context to storage when database fast-path is used", async () => {
     const request = new Request(
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${NIL_UUID}`,
@@ -236,13 +234,13 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE",
       storageUri: bundle.storageUri,
     }));
-    const getDownloadUrl = vi.fn<
-      NonNullable<StoragePlugin<TestContext>["getDownloadUrl"]>
-    >(async (_storageUri, context) => {
-      return {
-        fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
-      };
-    });
+    const getDownloadUrl = vi.fn<RuntimeStorageOperations["getDownloadUrl"]>(
+      async () => {
+        return {
+          fileUrl: "https://assets.example.com/bundle.zip",
+        };
+      },
+    );
 
     const database: DatabasePlugin<TestContext> = {
       name: "testDatabase",
@@ -306,18 +304,12 @@ describe("runtime createHotUpdater", () => {
       }),
     );
     expect(getBundles).not.toHaveBeenCalled();
-    expect(getDownloadUrl).toHaveBeenCalledWith(
-      "s3://test-bucket/bundles/bundle.zip",
-      expect.objectContaining({
-        env: {
-          assetHost: "https://assets.example.com",
-        },
-        request: expect.any(Request),
-      }),
-    );
+    expect(getDownloadUrl).toHaveBeenCalledWith({
+      storageUri: "s3://test-bucket/bundles/bundle.zip",
+    });
   });
 
-  it("passes the handler context to database and storage resolution", async () => {
+  it("passes the handler context to database while storage receives object params only", async () => {
     const request = new Request(
       "https://updates.example.com/api/check-update/app-version/ios/1.0.0/production/" +
         `${NIL_UUID}/${NIL_UUID}`,
@@ -336,13 +328,13 @@ describe("runtime createHotUpdater", () => {
         };
       },
     );
-    const getDownloadUrl = vi.fn<
-      NonNullable<StoragePlugin<TestContext>["getDownloadUrl"]>
-    >(async (_storageUri, context) => {
-      return {
-        fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
-      };
-    });
+    const getDownloadUrl = vi.fn<RuntimeStorageOperations["getDownloadUrl"]>(
+      async () => {
+        return {
+          fileUrl: "https://assets.example.com/bundle.zip",
+        };
+      },
+    );
 
     const database: DatabasePlugin<TestContext> = {
       name: "testDatabase",
@@ -400,15 +392,9 @@ describe("runtime createHotUpdater", () => {
         request: expect.any(Request),
       }),
     );
-    expect(getDownloadUrl).toHaveBeenCalledWith(
-      "s3://test-bucket/bundles/bundle.zip",
-      expect.objectContaining({
-        env: {
-          assetHost: "https://assets.example.com",
-        },
-        request: expect.any(Request),
-      }),
-    );
+    expect(getDownloadUrl).toHaveBeenCalledWith({
+      storageUri: "s3://test-bucket/bundles/bundle.zip",
+    });
   });
 
   it("returns bsdiff patch metadata when the full asset fallback URL is unavailable", async () => {
@@ -461,21 +447,21 @@ describe("runtime createHotUpdater", () => {
         },
       }),
     );
-    const getDownloadUrl = vi.fn<
-      NonNullable<StoragePlugin<TestContext>["getDownloadUrl"]>
-    >(async (storageUri, context) => {
-      if (storageUri.endsWith("/files/index.ios.bundle")) {
-        throw new Error("full asset fallback is unavailable");
-      }
+    const getDownloadUrl = vi.fn<RuntimeStorageOperations["getDownloadUrl"]>(
+      async ({ storageUri }) => {
+        if (storageUri.endsWith("/files/index.ios.bundle")) {
+          throw new Error("full asset fallback is unavailable");
+        }
 
-      const storageUrl = new URL(storageUri);
-      return {
-        fileUrl: new URL(
-          storageUrl.pathname,
-          context?.env?.assetHost,
-        ).toString(),
-      };
-    });
+        const storageUrl = new URL(storageUri);
+        return {
+          fileUrl: new URL(
+            storageUrl.pathname,
+            "https://assets.example.com",
+          ).toString(),
+        };
+      },
+    );
     const manifests = new Map([
       [
         currentManifestStorageUri,
@@ -506,8 +492,8 @@ describe("runtime createHotUpdater", () => {
         }),
       ],
     ]);
-    const readText = vi.fn<NonNullable<StoragePlugin<TestContext>["readText"]>>(
-      async (storageUri) => manifests.get(storageUri) ?? null,
+    const readText = vi.fn<RuntimeStorageOperations["readText"]>(
+      async ({ storageUri }) => manifests.get(storageUri) ?? null,
     );
     const fetchMock = vi.fn<typeof fetch>(async () => {
       return new Response("manifest fetch should not be used", {
@@ -586,24 +572,12 @@ describe("runtime createHotUpdater", () => {
         shouldForceUpdate: false,
         status: "UPDATE",
       });
-      expect(readText).toHaveBeenCalledWith(
-        nextManifestStorageUri,
-        expect.objectContaining({
-          env: {
-            assetHost: "https://assets.example.com",
-          },
-          request: expect.any(Request),
-        }),
-      );
-      expect(readText).toHaveBeenCalledWith(
-        currentManifestStorageUri,
-        expect.objectContaining({
-          env: {
-            assetHost: "https://assets.example.com",
-          },
-          request: expect.any(Request),
-        }),
-      );
+      expect(readText).toHaveBeenCalledWith({
+        storageUri: nextManifestStorageUri,
+      });
+      expect(readText).toHaveBeenCalledWith({
+        storageUri: currentManifestStorageUri,
+      });
       expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();

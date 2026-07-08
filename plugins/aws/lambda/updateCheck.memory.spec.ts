@@ -167,7 +167,7 @@ const createMemoryHotUpdater = () => {
         async readText() {
           return null;
         },
-        async getDownloadUrl(storageUri: string) {
+        async getDownloadUrl({ storageUri }: { readonly storageUri: string }) {
           const url = new URL("https://assets.example.com");
           url.pathname = new URL(storageUri).pathname;
           return {

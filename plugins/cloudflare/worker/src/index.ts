@@ -1,12 +1,7 @@
 import { createHotUpdater } from "@hot-updater/server";
 import { Hono } from "hono";
 
-import {
-  d1Database,
-  type RequestEnvContext,
-  r2Storage,
-  verifyJwtSignedUrl,
-} from "../../src/worker";
+import { d1Database, r2Storage, verifyJwtSignedUrl } from "../../src/worker";
 
 export type CloudflareWorkerEnv = {
   DB: {
@@ -18,37 +13,29 @@ export type CloudflareWorkerEnv = {
 
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
-const resolveRequestOrigin = (context?: RequestEnvContext) => {
-  const request = context?.request;
-
-  if (!request) {
-    throw new Error(
-      "r2WorkerStorage requires a request to resolve publicBaseUrl.",
-    );
-  }
-
-  return new URL(request.url).origin;
-};
-
-const hotUpdater = createHotUpdater({
-  database: d1Database(),
-  storages: [
-    r2Storage({
-      publicBaseUrl: resolveRequestOrigin,
-    }),
-  ],
-  basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
-    updateCheck: true,
-    bundles: false,
-  },
-});
+const createHotUpdaterHandler = (request: Request, env: CloudflareWorkerEnv) =>
+  createHotUpdater({
+    database: d1Database(),
+    storages: [
+      r2Storage({
+        bucket: env.BUCKET,
+        jwtSecret: env.JWT_SECRET,
+        publicBaseUrl: new URL(request.url).origin,
+      }),
+    ],
+    basePath: HOT_UPDATER_BASE_PATH,
+    routes: {
+      updateCheck: true,
+      bundles: false,
+    },
+  });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();
 
 app.mount(
   HOT_UPDATER_BASE_PATH,
   (request: Request, env: CloudflareWorkerEnv) => {
+    const hotUpdater = createHotUpdaterHandler(request, env);
     return hotUpdater.handler(request, {
       request,
       env,

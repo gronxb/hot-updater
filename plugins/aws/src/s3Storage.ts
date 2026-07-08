@@ -38,7 +38,7 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
     const getStorageKey = createStorageKeyBuilder(config.basePath);
 
     return {
-      async delete(storageUri) {
+      async delete({ storageUri }) {
         const { bucket, key } = parseStorageUri(storageUri, "s3");
         if (bucket !== bucketName) {
           throw new Error(
@@ -72,7 +72,7 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
 
         throw new Error("Bundle Not Found");
       },
-      async upload(key, source) {
+      async upload({ key, source }) {
         const filePath = getStorageUploadFilePath(source);
         const Body = await fs.readFile(filePath);
         const ContentType = getContentType(filePath);
@@ -99,7 +99,7 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
           storageUri: `s3://${bucketName}/${Key}`,
         };
       },
-      async exists(storageUri: string) {
+      async exists({ storageUri }) {
         const { bucket, key } = parseStorageUri(storageUri, "s3");
         if (bucket !== bucketName) {
           throw new Error(
@@ -123,7 +123,7 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
           throw error;
         }
       },
-      async downloadFile(storageUri: string, filePath: string) {
+      async downloadFile({ storageUri, filePath }) {
         const { bucket, key } = parseStorageUri(storageUri, "s3");
         if (bucket !== bucketName) {
           throw new Error(
@@ -145,7 +145,7 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
           await response.Body.transformToByteArray(),
         );
       },
-      async readText(storageUri: string) {
+      async readText({ storageUri }) {
         const { bucket, key } = parseStorageUri(storageUri, "s3");
         if (bucket !== bucketName) {
           throw new Error(
@@ -171,7 +171,7 @@ export const s3Storage = createStoragePlugin<S3StorageConfig>({
           throw error;
         }
       },
-      async getDownloadUrl(storageUri: string) {
+      async getDownloadUrl({ storageUri }) {
         const u = new URL(storageUri);
         if (u.protocol.replace(":", "") !== "s3") {
           throw new Error("Invalid S3 storage URI protocol");

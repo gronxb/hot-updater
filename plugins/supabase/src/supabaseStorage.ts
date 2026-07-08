@@ -104,7 +104,7 @@ export const supabaseStorage = createStoragePlugin<SupabaseStorageConfig>({
     const getStorageKey = createStorageKeyBuilder(config.basePath);
 
     return {
-      async delete(storageUri) {
+      async delete({ storageUri }) {
         const { key, bucket: bucketName } = parseStorageUri(
           storageUri,
           "supabase-storage",
@@ -124,7 +124,7 @@ export const supabaseStorage = createStoragePlugin<SupabaseStorageConfig>({
           throw new Error(`Failed to delete bundle: ${error.message}`);
         }
       },
-      async upload(key, source) {
+      async upload({ key, source }) {
         const filePath = getStorageUploadFilePath(source);
         const Body = await fs.readFile(filePath);
         const ContentType = getContentType(filePath);
@@ -153,7 +153,7 @@ export const supabaseStorage = createStoragePlugin<SupabaseStorageConfig>({
           storageUri: `supabase-storage://${fullPath}`,
         };
       },
-      async exists(storageUri: string) {
+      async exists({ storageUri }) {
         const { key, bucket: bucketName } = parseStorageUri(
           storageUri,
           "supabase-storage",
@@ -179,7 +179,7 @@ export const supabaseStorage = createStoragePlugin<SupabaseStorageConfig>({
 
         return data;
       },
-      async downloadFile(storageUri: string, filePath: string) {
+      async downloadFile({ storageUri, filePath }) {
         const { key, bucket: bucketName } = parseStorageUri(
           storageUri,
           "supabase-storage",
@@ -201,7 +201,7 @@ export const supabaseStorage = createStoragePlugin<SupabaseStorageConfig>({
         await fs.mkdir(path.dirname(filePath), { recursive: true });
         await fs.writeFile(filePath, new Uint8Array(await data.arrayBuffer()));
       },
-      async readText(storageUri: string) {
+      async readText({ storageUri }) {
         const { key, bucket: bucketName } = parseStorageUri(
           storageUri,
           "supabase-storage",
@@ -226,7 +226,7 @@ export const supabaseStorage = createStoragePlugin<SupabaseStorageConfig>({
 
         return data.text();
       },
-      async getDownloadUrl(storageUri: string) {
+      async getDownloadUrl({ storageUri }) {
         const u = new URL(storageUri);
         if (u.protocol.replace(":", "") !== "supabase-storage") {
           throw new Error("Invalid Supabase storage URI protocol");

@@ -123,7 +123,7 @@ async function downloadStorageBytes(
   const filePath = path.join(workDir, filename);
 
   try {
-    await storagePlugin.downloadFile(storageUri, filePath);
+    await storagePlugin.downloadFile({ storageUri, filePath });
     return new Uint8Array(await fs.readFile(filePath));
   } finally {
     await fs.rm(workDir, { force: true, recursive: true });
@@ -329,9 +329,12 @@ export async function createBundleDiff(
     ]
       .filter(Boolean)
       .join("/");
-    const patchUpload = await deps.storagePlugin.upload(uploadKey, {
-      kind: "file",
-      filePath: patchPath,
+    const patchUpload = await deps.storagePlugin.upload({
+      key: uploadKey,
+      source: {
+        kind: "file",
+        filePath: patchPath,
+      },
     });
     const patchFileHash = await getFileHash(patchPath);
 
@@ -361,7 +364,7 @@ export async function createBundleDiff(
       previousPatch.patchStorageUri !== patchUpload.storageUri
     ) {
       await deps.storagePlugin
-        .delete(previousPatch.patchStorageUri)
+        .delete({ storageUri: previousPatch.patchStorageUri })
         .catch(() => {
           return;
         });

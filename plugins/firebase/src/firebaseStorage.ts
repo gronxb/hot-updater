@@ -33,7 +33,7 @@ export const firebaseStorage = createStoragePlugin<FirebaseStorageConfig>({
     const getStorageKey = createStorageKeyBuilder(config.basePath);
 
     return {
-      async delete(storageUri) {
+      async delete({ storageUri }) {
         const { bucket: bucketName, key } = parseStorageUri(storageUri, "gs");
         if (bucketName !== config.storageBucket) {
           throw new Error(
@@ -49,7 +49,7 @@ export const firebaseStorage = createStoragePlugin<FirebaseStorageConfig>({
           throw new Error("Bundle Not Found");
         }
       },
-      async upload(key, source) {
+      async upload({ key, source }) {
         const filePath = getStorageUploadFilePath(source);
         try {
           const fileContent = await fs.readFile(filePath);
@@ -76,7 +76,7 @@ export const firebaseStorage = createStoragePlugin<FirebaseStorageConfig>({
           throw error;
         }
       },
-      async exists(storageUri: string) {
+      async exists({ storageUri }) {
         const { bucket: bucketName, key } = parseStorageUri(storageUri, "gs");
         if (bucketName !== config.storageBucket) {
           throw new Error(
@@ -87,7 +87,7 @@ export const firebaseStorage = createStoragePlugin<FirebaseStorageConfig>({
         const [exists] = await bucket.file(key).exists();
         return exists;
       },
-      async downloadFile(storageUri: string, filePath: string) {
+      async downloadFile({ storageUri, filePath }) {
         const { bucket: bucketName, key } = parseStorageUri(storageUri, "gs");
         if (bucketName !== config.storageBucket) {
           throw new Error(
@@ -98,7 +98,7 @@ export const firebaseStorage = createStoragePlugin<FirebaseStorageConfig>({
         await fs.mkdir(path.dirname(filePath), { recursive: true });
         await bucket.file(key).download({ destination: filePath });
       },
-      async readText(storageUri: string) {
+      async readText({ storageUri }) {
         const { bucket: bucketName, key } = parseStorageUri(storageUri, "gs");
         if (bucketName !== config.storageBucket) {
           throw new Error(
@@ -122,7 +122,7 @@ export const firebaseStorage = createStoragePlugin<FirebaseStorageConfig>({
           throw error;
         }
       },
-      async getDownloadUrl(storageUri: string) {
+      async getDownloadUrl({ storageUri }) {
         const u = new URL(storageUri);
         if (u.protocol.replace(":", "") !== "gs") {
           throw new Error("Invalid Firebase storage URI protocol");

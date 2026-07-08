@@ -246,11 +246,11 @@ describe("createCopiedBundleArchive", () => {
         name: "mockStorage",
         supportedProtocol: "s3",
         delete: vi.fn(),
-        downloadFile: vi.fn(async (_storageUri, filePath) => {
+        downloadFile: vi.fn(async ({ filePath }) => {
           await fs.copyFile(archivePath, filePath);
         }),
         exists: vi.fn(async () => false),
-        upload: vi.fn(async (key, source) => {
+        upload: vi.fn(async ({ key, source }) => {
           const filePath = getUploadSourcePath(source);
           const uploadPath = path.join(
             path.dirname(archivePath),
@@ -351,7 +351,7 @@ describe("createCopiedBundleArchive", () => {
       name: "mockStorage",
       supportedProtocol: "s3",
       delete: vi.fn(),
-      downloadFile: vi.fn(async (_storageUri, filePath) => {
+      downloadFile: vi.fn(async ({ filePath }) => {
         await fs.copyFile(archivePath, filePath);
       }),
       exists: vi.fn(async () => false),
@@ -401,11 +401,11 @@ describe("createCopiedBundleArchive", () => {
       name: "mockStorage",
       supportedProtocol: "s3",
       delete: vi.fn(),
-      downloadFile: vi.fn(async (_storageUri, filePath) => {
+      downloadFile: vi.fn(async ({ filePath }) => {
         await fs.copyFile(archivePath, filePath);
       }),
       exists: vi.fn(async () => false),
-      upload: vi.fn(async (key, source) => {
+      upload: vi.fn(async ({ key, source }) => {
         const filePath = getUploadSourcePath(source);
         const uploadPath = path.join(path.dirname(archivePath), "uploads", key);
         const finalPath = path.join(uploadPath, path.basename(filePath));
@@ -488,11 +488,11 @@ describe("createCopiedBundleArchive", () => {
       name: "mockStorage",
       supportedProtocol: "s3",
       delete: deleteFromStorage,
-      downloadFile: vi.fn(async (_storageUri, filePath) => {
+      downloadFile: vi.fn(async ({ filePath }) => {
         await fs.copyFile(archivePath, filePath);
       }),
       exists: vi.fn(async () => false),
-      upload: vi.fn(async (key, source) => {
+      upload: vi.fn(async ({ key, source }) => {
         const filePath = getUploadSourcePath(source);
         return {
           storageUri: `s3://bucket/${path.posix
@@ -538,18 +538,18 @@ describe("createCopiedBundleArchive", () => {
         ),
       ).rejects.toThrow("append failed");
 
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/bundle.zip",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/manifest.json",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/files/assets/logo.png",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/files/index.js",
-      );
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/bundle.zip",
+      });
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/manifest.json",
+      });
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/files/assets/logo.png",
+      });
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/files/index.js",
+      });
     } finally {
       await cleanup();
     }

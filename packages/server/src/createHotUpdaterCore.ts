@@ -32,17 +32,11 @@ export type HotUpdaterAPI<TContext = unknown> = RuntimeHotUpdaterAPI<TContext>;
 
 export interface CreateHotUpdaterOptions<TContext = unknown> {
   readonly database: DatabaseAdapter<TContext>;
-  readonly storages?: readonly (
-    | StoragePlugin<TContext>
-    | StoragePluginFactory<TContext>
-  )[];
+  readonly storages?: readonly (StoragePlugin | StoragePluginFactory)[];
   /**
    * @deprecated Use `storages` instead. This field will be removed in a future version.
    */
-  readonly storagePlugins?: readonly (
-    | StoragePlugin<TContext>
-    | StoragePluginFactory<TContext>
-  )[];
+  readonly storagePlugins?: readonly (StoragePlugin | StoragePluginFactory)[];
   readonly basePath?: string;
   readonly cwd?: string;
   readonly routes?: HandlerRoutes;

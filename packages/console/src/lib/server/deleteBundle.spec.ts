@@ -61,7 +61,7 @@ function createStoragePlugin(
     exists: overrides?.exists ?? vi.fn(async () => false),
     getDownloadUrl:
       overrides?.getDownloadUrl ??
-      vi.fn(async (storageUri: string) => {
+      vi.fn(async ({ storageUri }: { readonly storageUri: string }) => {
         const storageUrl = new URL(storageUri);
         return {
           fileUrl: `https://assets.example.com${storageUrl.pathname}`,
@@ -92,7 +92,9 @@ describe("deleteBundle", () => {
     expect(databasePlugin.getBundleById).toHaveBeenCalledWith(baseBundle.id);
     expect(databasePlugin.deleteBundle).toHaveBeenCalledWith(baseBundle);
     expect(databasePlugin.commitBundle).toHaveBeenCalledOnce();
-    expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: baseBundle.storageUri,
+    });
 
     expect(
       databasePlugin.deleteBundle.mock.invocationCallOrder[0],
@@ -183,7 +185,9 @@ describe("deleteBundle", () => {
 
     expect(databasePlugin.deleteBundle).toHaveBeenCalledOnce();
     expect(databasePlugin.commitBundle).toHaveBeenCalledOnce();
-    expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: baseBundle.storageUri,
+    });
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "Failed to delete bundle from storage:",
       expect.any(Error),
@@ -206,7 +210,9 @@ describe("deleteBundle", () => {
 
     expect(databasePlugin.deleteBundle).toHaveBeenCalledOnce();
     expect(databasePlugin.commitBundle).toHaveBeenCalledOnce();
-    expect(deleteFromStorage).toHaveBeenCalledWith(baseBundle.storageUri);
+    expect(deleteFromStorage).toHaveBeenCalledWith({
+      storageUri: baseBundle.storageUri,
+    });
   });
 
   it("deletes manifest artifacts individually when metadata is available", async () => {

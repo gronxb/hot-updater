@@ -930,9 +930,12 @@ const deployPlatform = async ({
             };
 
             updateUploadProgress();
-            const { storageUri } = await storagePlugin.upload(bundleId, {
-              kind: "file",
-              filePath: bundlePath,
+            const { storageUri } = await storagePlugin.upload({
+              key: bundleId,
+              source: {
+                kind: "file",
+                filePath: bundlePath,
+              },
             });
             taskRef.storageUri = storageUri;
             uploadedStepCount += 1;
@@ -968,12 +971,15 @@ const deployPlatform = async ({
                   uploadFilename: path.posix.basename(storagePath),
                 });
 
-                if (await storagePlugin.exists(storageUri)) {
+                if (await storagePlugin.exists({ storageUri })) {
                   skippedUploadCount += 1;
                 } else {
-                  await storagePlugin.upload(uploadKey, {
-                    kind: "file",
-                    filePath: uploadSourcePath,
+                  await storagePlugin.upload({
+                    key: uploadKey,
+                    source: {
+                      kind: "file",
+                      filePath: uploadSourcePath,
+                    },
                   });
                 }
                 uploadedStepCount += 1;
@@ -981,9 +987,12 @@ const deployPlatform = async ({
               },
             );
 
-            const manifestUpload = await storagePlugin.upload(bundleId, {
-              kind: "file",
-              filePath: taskRef.manifestPath,
+            const manifestUpload = await storagePlugin.upload({
+              key: bundleId,
+              source: {
+                kind: "file",
+                filePath: taskRef.manifestPath,
+              },
             });
             taskRef.manifestStorageUri = manifestUpload.storageUri;
             uploadedStepCount += 1;

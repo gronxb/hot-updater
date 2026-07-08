@@ -1,18 +1,17 @@
 import {
   createStoragePlugin,
-  getStorageUploadFilePath,
   type StoragePluginHooks,
   type StoragePlugin,
 } from "@hot-updater/plugin-core";
 
 import {
-  createS3RuntimeStorageProfile,
-  createS3StorageProfile,
+  createS3RuntimeStorageOperations,
+  createS3StorageOperations,
   type R2S3StorageConfig,
 } from "./r2S3Storage";
 import {
-  createWranglerRuntimeStorageProfile,
-  createWranglerStorageProfile,
+  createWranglerRuntimeStorageOperations,
+  createWranglerStorageOperations,
   type R2WranglerStorageConfig,
 } from "./r2WranglerStorage";
 
@@ -48,8 +47,8 @@ const createR2StoragePlugin = createStoragePlugin<R2StorageConfig>({
   supportedProtocol: "r2",
   factory: (config) => {
     if (hasS3Credentials(config)) {
-      const node = createS3StorageProfile(config);
-      const runtime = createS3RuntimeStorageProfile(config);
+      const node = createS3StorageOperations(config);
+      const runtime = createS3RuntimeStorageOperations(config);
 
       return {
         delete: node.delete,
@@ -57,13 +56,12 @@ const createR2StoragePlugin = createStoragePlugin<R2StorageConfig>({
         exists: node.exists,
         getDownloadUrl: runtime.getDownloadUrl,
         readText: runtime.readText,
-        upload: (key, source) =>
-          node.upload(key, getStorageUploadFilePath(source)),
+        upload: node.upload,
       };
     }
 
-    const node = createWranglerStorageProfile(config);
-    const runtime = createWranglerRuntimeStorageProfile();
+    const node = createWranglerStorageOperations(config);
+    const runtime = createWranglerRuntimeStorageOperations();
 
     return {
       delete: node.delete,
@@ -71,8 +69,7 @@ const createR2StoragePlugin = createStoragePlugin<R2StorageConfig>({
       exists: node.exists,
       getDownloadUrl: runtime.getDownloadUrl,
       readText: runtime.readText,
-      upload: (key, source) =>
-        node.upload(key, getStorageUploadFilePath(source)),
+      upload: node.upload,
     };
   },
 });

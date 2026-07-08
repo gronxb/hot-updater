@@ -71,7 +71,7 @@ async function readStorageText(
   }
 
   assertStorageReadText(storagePlugin);
-  const text = await storagePlugin.readText(storageUri);
+  const text = await storagePlugin.readText({ storageUri });
   if (text === null) {
     throw new Error(`Failed to read bundle manifest: ${storageUri}`);
   }
@@ -234,7 +234,7 @@ export async function deleteBundle(
     assertStorageDelete(storagePlugin);
     for (const storageUri of cleanupUris) {
       try {
-        await storagePlugin.delete(storageUri);
+        await storagePlugin.delete({ storageUri });
       } catch (error) {
         console.error("Failed to delete bundle from storage:", error);
       }

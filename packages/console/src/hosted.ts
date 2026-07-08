@@ -141,33 +141,32 @@ export type HotUpdaterConsoleDatabasePlugin = {
   ) => Promise<void>;
 };
 export type HotUpdaterConsoleStoragePlugin = {
-  upload?: (
-    key: string,
-    source:
+  upload?: (params: {
+    readonly key: string;
+    readonly source:
       | {
-          kind: "file";
-          filePath: string;
+          readonly kind: "file";
+          readonly filePath: string;
         }
       | {
-          kind: "bytes";
-          data: ArrayBuffer | Uint8Array | string;
-          contentType?: string;
-        },
-    context?: unknown,
-  ) => Promise<{ storageUri: string }>;
-  exists?: (storageUri: string, context?: unknown) => Promise<boolean>;
-  delete?: (storageUri: string, context?: unknown) => Promise<void>;
-  getDownloadUrl?: (
-    storageUri: string,
-    context?: unknown,
-  ) => Promise<{ fileUrl: string }>;
-  readText?: (storageUri: string, context?: unknown) => Promise<string | null>;
-  readBytes?: (
-    storageUri: string,
-    context?: unknown,
-  ) => Promise<ArrayBuffer | Uint8Array | null>;
-  supportedProtocol: string;
-  name: string;
+          readonly kind: "bytes";
+          readonly data: ArrayBuffer | Uint8Array | string;
+          readonly contentType?: string;
+        };
+  }) => Promise<{ readonly storageUri: string }>;
+  exists?: (params: { readonly storageUri: string }) => Promise<boolean>;
+  delete?: (params: { readonly storageUri: string }) => Promise<void>;
+  getDownloadUrl?: (params: {
+    readonly storageUri: string;
+  }) => Promise<{ readonly fileUrl: string }>;
+  readText?: (params: {
+    readonly storageUri: string;
+  }) => Promise<string | null>;
+  readBytes?: (params: {
+    readonly storageUri: string;
+  }) => Promise<ArrayBuffer | Uint8Array | null>;
+  readonly supportedProtocol: string;
+  readonly name: string;
 };
 export type HotUpdaterConsoleConfig = {
   console?: {
@@ -290,7 +289,9 @@ export function createHotUpdaterConsoleApi(
       }
 
       assertStorageGetDownloadUrl(storagePlugin);
-      const downloadTarget = await storagePlugin.getDownloadUrl(storageUri);
+      const downloadTarget = await storagePlugin.getDownloadUrl({
+        storageUri,
+      });
       const { fileUrl } = downloadTarget;
 
       if (!fileUrl) {

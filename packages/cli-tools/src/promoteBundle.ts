@@ -194,7 +194,7 @@ async function downloadFromStorage(
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  await storagePlugin.downloadFile(storageUri, filePath);
+  await storagePlugin.downloadFile({ storageUri, filePath });
 }
 
 async function extractZipArchive(archivePath: string, extractDir: string) {
@@ -380,14 +380,20 @@ export async function createCopiedBundleArchive({
       ? await signFileHash(manifestHash, signingKeyPath)
       : manifestHash;
 
-    const archiveUpload = await storagePlugin.upload(nextBundleId, {
-      kind: "file",
-      filePath: outputArchivePath,
+    const archiveUpload = await storagePlugin.upload({
+      key: nextBundleId,
+      source: {
+        kind: "file",
+        filePath: outputArchivePath,
+      },
     });
     uploadedStorageUris.push(archiveUpload.storageUri);
-    const manifestUpload = await storagePlugin.upload(nextBundleId, {
-      kind: "file",
-      filePath: manifestPath,
+    const manifestUpload = await storagePlugin.upload({
+      key: nextBundleId,
+      source: {
+        kind: "file",
+        filePath: manifestPath,
+      },
     });
     uploadedStorageUris.push(manifestUpload.storageUri);
 
@@ -406,9 +412,12 @@ export async function createCopiedBundleArchive({
         sourcePath,
         workDir,
       });
-      const assetUpload = await storagePlugin.upload(uploadKey, {
-        kind: "file",
-        filePath: uploadPath,
+      const assetUpload = await storagePlugin.upload({
+        key: uploadKey,
+        source: {
+          kind: "file",
+          filePath: uploadPath,
+        },
       });
       uploadedStorageUris.push(assetUpload.storageUri);
     }
@@ -455,7 +464,7 @@ async function deleteUploadedCopy(
 
   for (const storageUri of new Set(storageUris)) {
     try {
-      await storagePlugin.delete(storageUri);
+      await storagePlugin.delete({ storageUri });
     } catch (error) {
       console.error("Failed to delete uploaded bundle copy:", error);
     }
