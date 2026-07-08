@@ -13,9 +13,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   createStorageKeyBuilder,
   getContentType,
-  type NodeStorageProfile,
   parseStorageUri,
-  type RuntimeStorageProfile,
+  type StoragePluginCore,
 } from "@hot-updater/plugin-core";
 
 export interface R2S3StorageConfig extends S3ClientConfig {
@@ -70,15 +69,15 @@ const createS3Client = (config: R2S3StorageConfig) => {
   });
 };
 
-export const createS3StorageProfile = (
+export const createS3StorageOperations = (
   config: R2S3StorageConfig,
-): NodeStorageProfile => {
+): Pick<StoragePluginCore, "delete" | "downloadFile" | "exists" | "upload"> => {
   const { bucketName } = config;
   const client = createS3Client(config);
   const getStorageKey = createStorageKeyBuilder(config.basePath);
 
   return {
-    async delete(storageUri) {
+    async delete({ storageUri }) {
       const { bucket, key } = parseStorageUri(storageUri, "r2");
       ensureExpectedR2Bucket(bucket, bucketName);
 
@@ -86,7 +85,13 @@ export const createS3StorageProfile = (
         new DeleteObjectCommand({ Bucket: bucketName, Key: key }),
       );
     },
-    async upload(key, filePath) {
+    async upload({ key, source }) {
+      if (source.kind !== "file") {
+        throw new Error(
+          "This storage plugin only supports file upload sources.",
+        );
+      }
+      const filePath = source.filePath;
       const Body = await fs.readFile(filePath);
       const ContentType = getContentType(filePath);
       const filename = path.basename(filePath);
@@ -108,7 +113,7 @@ export const createS3StorageProfile = (
         storageUri: `r2://${bucketName}/${Key}`,
       };
     },
-    async exists(storageUri: string) {
+    async exists({ storageUri }) {
       const { bucket, key } = parseStorageUri(storageUri, "r2");
       ensureExpectedR2Bucket(bucket, bucketName);
 
@@ -125,7 +130,7 @@ export const createS3StorageProfile = (
         throw error;
       }
     },
-    async downloadFile(storageUri, filePath) {
+    async downloadFile({ storageUri, filePath }) {
       const { bucket, key } = parseStorageUri(storageUri, "r2");
       ensureExpectedR2Bucket(bucket, bucketName);
 
@@ -143,14 +148,14 @@ export const createS3StorageProfile = (
   };
 };
 
-export const createS3RuntimeStorageProfile = (
+export const createS3RuntimeStorageOperations = (
   config: R2S3StorageConfig,
-): RuntimeStorageProfile => {
+): Pick<StoragePluginCore, "getDownloadUrl" | "readText"> => {
   const { bucketName } = config;
   const client = createS3Client(config);
 
   return {
-    async readText(storageUri) {
+    async readText({ storageUri }) {
       const { bucket, key } = parseStorageUri(storageUri, "r2");
       ensureExpectedR2Bucket(bucket, bucketName);
 
@@ -172,7 +177,7 @@ export const createS3RuntimeStorageProfile = (
         throw error;
       }
     },
-    async getDownloadUrl(storageUri) {
+    async getDownloadUrl({ storageUri }) {
       const { bucket, key } = parseStorageUri(storageUri, "r2");
       ensureExpectedR2Bucket(bucket, bucketName);
 

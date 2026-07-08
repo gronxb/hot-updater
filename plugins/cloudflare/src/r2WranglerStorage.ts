@@ -5,9 +5,8 @@ import path from "node:path";
 import {
   createStorageKeyBuilder,
   getContentType,
-  type NodeStorageProfile,
   parseStorageUri,
-  type RuntimeStorageProfile,
+  type StoragePluginCore,
 } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
@@ -56,9 +55,9 @@ const isR2ObjectNotFoundError = (error: ExecaError) => {
   );
 };
 
-export const createWranglerStorageProfile = (
+export const createWranglerStorageOperations = (
   config: R2WranglerStorageConfig,
-): NodeStorageProfile => {
+): Pick<StoragePluginCore, "delete" | "downloadFile" | "exists" | "upload"> => {
   const { bucketName, cloudflareApiToken, accountId } = config;
   const wrangler = createWrangler({
     accountId,
@@ -68,7 +67,7 @@ export const createWranglerStorageProfile = (
   const getStorageKey = createStorageKeyBuilder(config.basePath);
 
   return {
-    async delete(storageUri) {
+    async delete({ storageUri }) {
       const { bucket, key } = parseStorageUri(storageUri, "r2");
       ensureExpectedR2Bucket(bucket, bucketName);
 
@@ -84,7 +83,13 @@ export const createWranglerStorageProfile = (
         throw new Error("Can not delete bundle");
       }
     },
-    async upload(key, filePath) {
+    async upload({ key, source }) {
+      if (source.kind !== "file") {
+        throw new Error(
+          "This storage plugin only supports file upload sources.",
+        );
+      }
+      const filePath = source.filePath;
       const contentType = getContentType(filePath);
 
       const filename = path.basename(filePath);
@@ -117,7 +122,7 @@ export const createWranglerStorageProfile = (
         storageUri: `r2://${bucketName}/${Key}`,
       };
     },
-    async exists(storageUri: string) {
+    async exists({ storageUri }) {
       const { bucket, key } = parseStorageUri(storageUri, "r2");
       ensureExpectedR2Bucket(bucket, bucketName);
 
@@ -147,7 +152,7 @@ export const createWranglerStorageProfile = (
         await fs.rm(tempDir, { force: true, recursive: true });
       }
     },
-    async downloadFile(storageUri, filePath) {
+    async downloadFile({ storageUri, filePath }) {
       const { bucket, key } = parseStorageUri(storageUri, "r2");
       ensureExpectedR2Bucket(bucket, bucketName);
 
@@ -176,18 +181,20 @@ export const createWranglerStorageProfile = (
   };
 };
 
-export const createWranglerRuntimeStorageProfile =
-  (): RuntimeStorageProfile => {
-    const error = new Error(
-      "r2Storage runtime profile requires R2 S3 credentials. Wrangler-based R2 access is only supported by the node profile.",
-    );
+export const createWranglerRuntimeStorageOperations = (): Pick<
+  StoragePluginCore,
+  "getDownloadUrl" | "readText"
+> => {
+  const error = new Error(
+    "r2Storage runtime operations require R2 S3 credentials. Wrangler-based R2 access is only supported for deploy-time file operations.",
+  );
 
-    return {
-      async readText() {
-        throw error;
-      },
-      async getDownloadUrl() {
-        throw error;
-      },
-    };
+  return {
+    async readText() {
+      throw error;
+    },
+    async getDownloadUrl() {
+      throw error;
+    },
   };
+};

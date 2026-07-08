@@ -2,6 +2,10 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
+import {
+  assertFileStoragePlugin,
+  assertRuntimeStorageOperations,
+} from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { supabaseStorage } from "./supabaseStorage";
@@ -47,11 +51,12 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-      ),
+      storage.exists({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).resolves.toBe(true);
 
     expect(bucket.exists).toHaveBeenCalledWith(
@@ -74,11 +79,12 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-      ),
+      storage.exists({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).resolves.toBe(false);
     expect(bucket.createSignedUrl).not.toHaveBeenCalled();
   });
@@ -95,11 +101,12 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-      ),
+      storage.exists({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Object not found',
     );
@@ -116,11 +123,12 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-      ),
+      storage.exists({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toBe(error);
   });
 
@@ -130,11 +138,12 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
-        "supabase-storage://other/assets/sha256/fi/file-hash.png",
-      ),
+      storage.exists({
+        storageUri: "supabase-storage://other/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Bucket name mismatch: expected "updates", but found "other".',
     );
@@ -152,12 +161,12 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-        {},
-      ),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Object not found',
     );
@@ -187,9 +196,16 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.upload("bundles", uploadPath),
+      storage.upload({
+        key: "bundles",
+        source: {
+          kind: "file",
+          filePath: uploadPath,
+        },
+      }),
     ).resolves.toEqual({
       storageUri: "supabase-storage://updates/bundles/bundle.zip",
     });
@@ -221,12 +237,12 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-        {},
-      ),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Failed to generate download URL: Object not found',
     );
@@ -245,12 +261,12 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-        {},
-      ),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "assets/sha256/fi/file-hash.png": Storage API failed',
     );

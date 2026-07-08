@@ -358,98 +358,67 @@ export interface RequestEnvContext<TEnv = unknown> {
 
 export type HotUpdaterContext<TContext = unknown> = TContext;
 
-export type StorageResolveContext<TContext = unknown> =
-  HotUpdaterContext<TContext>;
+export type StorageUploadSource =
+  | {
+      readonly kind: "file";
+      readonly filePath: string;
+    }
+  | {
+      readonly kind: "bytes";
+      readonly data: ArrayBuffer | Uint8Array | string;
+      readonly contentType?: string;
+    };
 
-export interface NodeStorageProfile {
-  upload: (
-    key: string,
-    filePath: string,
-  ) => Promise<{
-    storageUri: string;
-  }>;
+export interface StorageUploadResult {
+  readonly storageUri: string;
+}
+
+export interface StorageUploadParams {
+  readonly key: string;
+  readonly source: StorageUploadSource;
+}
+
+export interface StorageUriParams {
+  readonly storageUri: string;
+}
+
+export interface StorageDownloadFileParams extends StorageUriParams {
+  readonly filePath: string;
+}
+
+export interface StorageDownloadUrlResult {
+  readonly fileUrl: string;
+}
+
+export interface StoragePluginCore {
+  upload?: (params: StorageUploadParams) => Promise<StorageUploadResult>;
 
   /**
    * Returns true when the object can be safely reused by deploy without
    * uploading it again. Providers may validate more than physical existence
    * when runtime access needs an additional readiness check.
    */
-  exists: (storageUri: string) => Promise<boolean>;
+  exists?: (params: StorageUriParams) => Promise<boolean>;
 
-  delete: (storageUri: string) => Promise<void>;
+  delete?: (params: StorageUriParams) => Promise<void>;
 
-  downloadFile: (storageUri: string, filePath: string) => Promise<void>;
+  downloadFile?: (params: StorageDownloadFileParams) => Promise<void>;
+
+  getDownloadUrl?: (
+    params: StorageUriParams,
+  ) => Promise<StorageDownloadUrlResult>;
+
+  readText?: (params: StorageUriParams) => Promise<string | null>;
+
+  readBytes?: (
+    params: StorageUriParams,
+  ) => Promise<ArrayBuffer | Uint8Array | null>;
 }
 
-export interface RuntimeStorageProfile<TContext = unknown> {
-  getDownloadUrl: (
-    storageUri: string,
-    context?: StorageResolveContext<TContext>,
-  ) => Promise<{
-    fileUrl: string;
-  }>;
+export interface StoragePlugin extends StoragePluginCore {
+  readonly supportedProtocol: string;
 
-  readText: (
-    storageUri: string,
-    context?: StorageResolveContext<TContext>,
-  ) => Promise<string | null>;
-}
-
-export interface StoragePluginProfiles<TContext = unknown> {
-  /**
-   * Node/deploy/console profile.
-   *
-   * Use this profile when the caller can materialize storage objects to the
-   * local filesystem.
-   */
-  node?: NodeStorageProfile;
-
-  /**
-   * Runtime update-check profile.
-   *
-   * Use this profile when the caller needs signed/public client URLs and direct
-   * server-side reads for small control-plane text objects such as manifests.
-   */
-  runtime?: RuntimeStorageProfile<TContext>;
-}
-
-export interface StoragePlugin<TContext = unknown> {
-  /**
-   * Protocol this storage plugin can resolve.
-   * @example "s3", "r2", "supabase-storage".
-   */
-  supportedProtocol: string;
-
-  name: string;
-
-  profiles: StoragePluginProfiles<TContext>;
-}
-
-export interface NodeStoragePlugin<
-  TContext = unknown,
-> extends StoragePlugin<TContext> {
-  profiles: {
-    node: NodeStorageProfile;
-    runtime?: RuntimeStorageProfile<TContext>;
-  };
-}
-
-export interface RuntimeStoragePlugin<
-  TContext = unknown,
-> extends StoragePlugin<TContext> {
-  profiles: {
-    node?: NodeStorageProfile;
-    runtime: RuntimeStorageProfile<TContext>;
-  };
-}
-
-export interface UniversalStoragePlugin<
-  TContext = unknown,
-> extends StoragePlugin<TContext> {
-  profiles: {
-    node: NodeStorageProfile;
-    runtime: RuntimeStorageProfile<TContext>;
-  };
+  readonly name: string;
 }
 
 export interface StoragePluginHooks {
@@ -610,7 +579,7 @@ export type ConfigInput = {
    */
   signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
-  storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
+  storage: () => Promise<StoragePlugin> | StoragePlugin;
   database: () => Promise<DatabasePlugin> | DatabasePlugin;
 };
 

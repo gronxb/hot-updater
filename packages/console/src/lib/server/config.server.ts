@@ -1,15 +1,41 @@
-import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
-import {
-  assertNodeStoragePlugin,
-  type NodeStoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { ConfigInput, StoragePlugin } from "@hot-updater/plugin-core";
 
-let configPromise: Promise<ConfigResponse> | null = null;
-let storagePluginPromise: Promise<NodeStoragePlugin> | null = null;
+type ConsoleServerConfig = Pick<
+  ConfigInput,
+  "console" | "database" | "storage"
+>;
+type ConsoleConfigLoader = () =>
+  | ConsoleServerConfig
+  | Promise<ConsoleServerConfig>;
+
+let configPromise: Promise<ConsoleServerConfig> | null = null;
+let configLoader: ConsoleConfigLoader | null = null;
+let storagePluginPromise: Promise<StoragePlugin> | null = null;
+
+export const setConsoleConfigLoader = (loader: ConsoleConfigLoader) => {
+  configLoader = loader;
+  configPromise = null;
+  storagePluginPromise = null;
+};
+
+const getGlobalConfigLoader = () => {
+  const globalScope = globalThis as typeof globalThis & {
+    __HOT_UPDATER_CONSOLE_CONFIG_LOADER__?: ConsoleConfigLoader;
+  };
+
+  return globalScope.__HOT_UPDATER_CONSOLE_CONFIG_LOADER__ ?? null;
+};
 
 const loadCachedConfig = async () => {
   if (!configPromise) {
-    configPromise = loadConfig(null).catch((error) => {
+    const load = configLoader ?? getGlobalConfigLoader();
+    if (!load) {
+      throw new Error(
+        "Hot Updater Console config loader is not registered. Call setConsoleConfigLoader before using server APIs.",
+      );
+    }
+
+    configPromise = Promise.resolve(load()).catch((error) => {
       configPromise = null;
       throw error;
     });
@@ -18,7 +44,7 @@ const loadCachedConfig = async () => {
   return configPromise;
 };
 
-const loadCachedStoragePlugin = async (config: ConfigResponse) => {
+const loadCachedStoragePlugin = async (config: ConsoleServerConfig) => {
   if (!storagePluginPromise) {
     storagePluginPromise = Promise.resolve(config.storage())
       .then((storagePlugin) => {
@@ -26,7 +52,6 @@ const loadCachedStoragePlugin = async (config: ConfigResponse) => {
           throw new Error("Storage plugin initialization failed");
         }
 
-        assertNodeStoragePlugin(storagePlugin);
         return storagePlugin;
       })
       .catch((error) => {

@@ -1,18 +1,7 @@
 // @vitest-environment node
 
-import type {
-  DatabasePlugin,
-  NodeStoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { DatabasePlugin, StoragePlugin } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-const { loadConfigMock } = vi.hoisted(() => ({
-  loadConfigMock: vi.fn(),
-}));
-
-vi.mock("@hot-updater/cli-tools", () => ({
-  loadConfig: loadConfigMock,
-}));
 
 function createDatabasePlugin(name: string): DatabasePlugin {
   return {
@@ -27,25 +16,24 @@ function createDatabasePlugin(name: string): DatabasePlugin {
   };
 }
 
-function createStoragePlugin(): NodeStoragePlugin {
+function createStoragePlugin(): StoragePlugin {
   return {
     name: "storage",
     supportedProtocol: "s3",
-    profiles: {
-      node: {
-        upload: vi.fn(),
-        exists: vi.fn(async () => false),
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-      },
-    },
+    delete: vi.fn(),
+    getDownloadUrl: vi.fn(),
+    readText: vi.fn(),
   };
 }
 
 afterEach(() => {
   vi.resetModules();
   vi.restoreAllMocks();
-  loadConfigMock.mockReset();
+  delete (
+    globalThis as typeof globalThis & {
+      __HOT_UPDATER_CONSOLE_CONFIG_LOADER__?: unknown;
+    }
+  ).__HOT_UPDATER_CONSOLE_CONFIG_LOADER__;
 });
 
 describe("config.server", () => {
@@ -59,20 +47,22 @@ describe("config.server", () => {
       .mockResolvedValueOnce(secondDatabasePlugin);
     const storage = vi.fn().mockResolvedValue(storagePlugin);
 
-    loadConfigMock.mockResolvedValue({
+    const configLoader = vi.fn().mockResolvedValue({
       console: { port: 1422 },
       database,
       storage,
     });
 
-    const { isConfigLoaded, prepareConfig } = await import("./config.server");
+    const { isConfigLoaded, prepareConfig, setConsoleConfigLoader } =
+      await import("./config.server");
+    setConsoleConfigLoader(configLoader);
 
     expect(isConfigLoaded()).toBe(false);
 
     const first = await prepareConfig();
     const second = await prepareConfig();
 
-    expect(loadConfigMock).toHaveBeenCalledTimes(1);
+    expect(configLoader).toHaveBeenCalledTimes(1);
     expect(database).toHaveBeenCalledTimes(2);
     expect(storage).toHaveBeenCalledTimes(1);
     expect(first.databasePlugin).toBe(firstDatabasePlugin);
@@ -91,7 +81,8 @@ describe("config.server", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
 
-    loadConfigMock
+    const configLoader = vi
+      .fn()
       .mockRejectedValueOnce(new Error("load failed"))
       .mockResolvedValueOnce({
         console: { port: 1422 },
@@ -99,45 +90,79 @@ describe("config.server", () => {
         storage,
       });
 
-    const { prepareConfig } = await import("./config.server");
+    const { prepareConfig, setConsoleConfigLoader } =
+      await import("./config.server");
+    setConsoleConfigLoader(configLoader);
 
     await expect(prepareConfig()).rejects.toThrow("load failed");
 
     const recovered = await prepareConfig();
 
-    expect(loadConfigMock).toHaveBeenCalledTimes(2);
+    expect(configLoader).toHaveBeenCalledTimes(2);
     expect(recovered.databasePlugin).toBe(databasePlugin);
     expect(recovered.storagePlugin).toBe(storagePlugin);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("requires the configured storage plugin to implement the node profile", async () => {
-    const database = vi.fn().mockResolvedValue(createDatabasePlugin("db"));
-    const storage = vi.fn().mockResolvedValue({
+  it("accepts storage plugins with runtime read operations", async () => {
+    const databasePlugin = createDatabasePlugin("db");
+    const database = vi.fn().mockResolvedValue(databasePlugin);
+    const storagePlugin = {
       name: "runtimeOnlyStorage",
       supportedProtocol: "s3",
-      profiles: {
-        runtime: {
-          getDownloadUrl: vi.fn(),
-          readText: vi.fn(),
-        },
-      },
-    });
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
+      getDownloadUrl: vi.fn(),
+      readText: vi.fn(),
+    } satisfies StoragePlugin;
+    const storage = vi.fn().mockResolvedValue(storagePlugin);
 
-    loadConfigMock.mockResolvedValue({
+    const configLoader = vi.fn().mockResolvedValue({
       console: { port: 1422 },
       database,
       storage,
     });
 
+    const { prepareConfig, setConsoleConfigLoader } =
+      await import("./config.server");
+    setConsoleConfigLoader(configLoader);
+
+    await expect(prepareConfig()).resolves.toMatchObject({
+      databasePlugin,
+      storagePlugin,
+    });
+  });
+
+  it("throws when no config loader is registered", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { prepareConfig } = await import("./config.server");
 
     await expect(prepareConfig()).rejects.toThrow(
-      'runtimeOnlyStorage does not implement the node storage profile for protocol "s3".',
+      "Hot Updater Console config loader is not registered.",
     );
-    expect(consoleErrorSpy).toHaveBeenCalledOnce();
+  });
+
+  it("uses a global config loader fallback", async () => {
+    const databasePlugin = createDatabasePlugin("db");
+    const storagePlugin = createStoragePlugin();
+    const database = vi.fn().mockResolvedValue(databasePlugin);
+    const storage = vi.fn().mockResolvedValue(storagePlugin);
+    const configLoader = vi.fn().mockResolvedValue({
+      console: { port: 1422 },
+      database,
+      storage,
+    });
+    (
+      globalThis as typeof globalThis & {
+        __HOT_UPDATER_CONSOLE_CONFIG_LOADER__?: typeof configLoader;
+      }
+    ).__HOT_UPDATER_CONSOLE_CONFIG_LOADER__ = configLoader;
+
+    const { prepareConfig } = await import("./config.server");
+
+    await expect(prepareConfig()).resolves.toMatchObject({
+      databasePlugin,
+      storagePlugin,
+    });
+
+    expect(configLoader).toHaveBeenCalledOnce();
   });
 });

@@ -8,6 +8,7 @@
     "enabled": true
   },
   "vars": {
+    "HOT_UPDATER_PUBLIC_BASE_URL": "https://updates.example.com",
     "JWT_SECRET": "test-secret"
   },
   "d1_databases": [

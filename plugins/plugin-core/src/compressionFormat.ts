@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import mime from "mime";
 
 /**
@@ -64,13 +62,27 @@ export function getCompressionMimeType(filename: string): string | undefined {
   return detectCompressionFormat(filename).mimeType;
 }
 
+function getFileName(filePath: string): string {
+  const trimmedPath = filePath.replace(/[/\\]+$/, "");
+  const lastSeparatorIndex = Math.max(
+    trimmedPath.lastIndexOf("/"),
+    trimmedPath.lastIndexOf("\\"),
+  );
+
+  if (lastSeparatorIndex === -1) {
+    return trimmedPath;
+  }
+
+  return trimmedPath.slice(lastSeparatorIndex + 1);
+}
+
 /**
  * Gets Content-Type for a bundle file with 3-tier fallback
  * @param bundlePath The bundle file path
  * @returns Content-Type string (never undefined, falls back to application/octet-stream)
  */
 export function getContentType(bundlePath: string): string {
-  const filename = path.basename(bundlePath);
+  const filename = getFileName(bundlePath);
 
   return (
     mime.getType(bundlePath) ??

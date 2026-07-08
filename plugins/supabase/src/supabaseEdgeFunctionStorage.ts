@@ -1,4 +1,4 @@
-import { createRuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "./types";
@@ -45,7 +45,7 @@ const parseSupabaseStorageUri = (storageUri: string) => {
 };
 
 export const supabaseEdgeFunctionStorage =
-  createRuntimeStoragePlugin<SupabaseEdgeFunctionStorageConfig>({
+  createStoragePlugin<SupabaseEdgeFunctionStorageConfig>({
     name: "supabaseEdgeFunctionStorage",
     supportedProtocol: "supabase-storage",
     factory: (config) => {
@@ -55,7 +55,7 @@ export const supabaseEdgeFunctionStorage =
       );
 
       return {
-        async readText(storageUri) {
+        async readText({ storageUri }) {
           const { bucketName, key } = parseSupabaseStorageUri(storageUri);
           const { data, error } = await supabase.storage
             .from(bucketName)
@@ -75,7 +75,7 @@ export const supabaseEdgeFunctionStorage =
 
           return data.text();
         },
-        async getDownloadUrl(storageUri) {
+        async getDownloadUrl({ storageUri }) {
           const { bucketName, key } = parseSupabaseStorageUri(storageUri);
           const bucket = supabase.storage.from(bucketName);
           const expiresIn = config.signedUrlExpiresIn ?? 3600;

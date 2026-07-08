@@ -8,6 +8,10 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import {
+  assertFileStoragePlugin,
+  assertRuntimeStorageOperations,
+} from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -134,12 +138,18 @@ describe("r2Storage", () => {
         secretAccessKey: "secret-access-key",
       },
     })();
+    assertFileStoragePlugin(storage);
 
     const filePath = "/tmp/hot-updater-r2-upload.txt";
     await fs.writeFile(filePath, "hello r2");
-
     await expect(
-      storage.profiles.node.upload("releases/bundle-1", filePath),
+      storage.upload({
+        key: "releases/bundle-1",
+        source: {
+          kind: "file",
+          filePath,
+        },
+      }),
     ).resolves.toEqual({
       storageUri:
         "r2://test-bucket/releases/bundle-1/hot-updater-r2-upload.txt",
@@ -167,14 +177,15 @@ describe("r2Storage", () => {
         secretAccessKey: "secret-access-key",
       },
     })();
+    assertFileStoragePlugin(storage);
 
     const downloadPath = "/tmp/hot-updater-test-manifest.json";
     await fs.rm(downloadPath, { force: true });
 
-    await storage.profiles.node.downloadFile(
-      "r2://test-bucket/releases/bundle-1/manifest.json",
-      downloadPath,
-    );
+    await storage.downloadFile({
+      storageUri: "r2://test-bucket/releases/bundle-1/manifest.json",
+      filePath: downloadPath,
+    });
 
     expect(JSON.parse(await fs.readFile(downloadPath, "utf8"))).toEqual({
       assets: {},
@@ -195,12 +206,13 @@ describe("r2Storage", () => {
         secretAccessKey: "secret-access-key",
       },
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists("r2://test-bucket/releases/logo.png"),
+      storage.exists({ storageUri: "r2://test-bucket/releases/logo.png" }),
     ).resolves.toBe(true);
     await expect(
-      storage.profiles.node.exists("r2://test-bucket/releases/missing.png"),
+      storage.exists({ storageUri: "r2://test-bucket/releases/missing.png" }),
     ).resolves.toBe(false);
   });
 
@@ -216,8 +228,9 @@ describe("r2Storage", () => {
         secretAccessKey: "secret-access-key",
       },
     })();
+    assertFileStoragePlugin(storage);
 
-    await storage.profiles.node.delete("r2://test-bucket/releases/logo.png");
+    await storage.delete({ storageUri: "r2://test-bucket/releases/logo.png" });
 
     expect(deletedKeys).toEqual(["releases/logo.png"]);
     expect(fakeStore["releases/logo.png"]).toBeUndefined();
@@ -241,16 +254,17 @@ describe("r2Storage", () => {
         secretAccessKey: "secret-access-key",
       },
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.readText(
-        "r2://test-bucket/releases/bundle-1/manifest.json",
-      ),
+      storage.readText({
+        storageUri: "r2://test-bucket/releases/bundle-1/manifest.json",
+      }),
     ).resolves.toBe('{"assets":{},"bundleId":"bundle-1"}');
     await expect(
-      storage.profiles.runtime.readText(
-        "r2://test-bucket/releases/missing.json",
-      ),
+      storage.readText({
+        storageUri: "r2://test-bucket/releases/missing.json",
+      }),
     ).resolves.toBeNull();
   });
 
@@ -264,11 +278,12 @@ describe("r2Storage", () => {
         secretAccessKey: "secret-access-key",
       },
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
-        "r2://test-bucket/releases/bundle-1/index.bundle",
-      ),
+      storage.getDownloadUrl({
+        storageUri: "r2://test-bucket/releases/bundle-1/index.bundle",
+      }),
     ).resolves.toEqual({
       fileUrl: "https://signed-r2.example.com/object",
     });
@@ -303,14 +318,15 @@ describe("r2Storage", () => {
       bucketName: "test-bucket",
       cloudflareApiToken: "api-token",
     })();
+    assertFileStoragePlugin(storage);
 
     const downloadPath = "/tmp/hot-updater-test-manifest.json";
     await fs.rm(downloadPath, { force: true });
 
-    await storage.profiles.node.downloadFile(
-      "r2://test-bucket/releases/bundle-1/manifest.json",
-      downloadPath,
-    );
+    await storage.downloadFile({
+      storageUri: "r2://test-bucket/releases/bundle-1/manifest.json",
+      filePath: downloadPath,
+    });
 
     expect(JSON.parse(await fs.readFile(downloadPath, "utf8"))).toEqual({
       bundleId: "bundle-1",
@@ -327,18 +343,21 @@ describe("r2Storage", () => {
     );
   });
 
-  it("keeps the deprecated wrangler path node-only at runtime", async () => {
+  it("rejects runtime reads for the deprecated wrangler path", async () => {
     const storage = r2Storage({
       accountId: "account-id",
       bucketName: "test-bucket",
       cloudflareApiToken: "api-token",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.readText(
-        "r2://test-bucket/releases/bundle-1/manifest.json",
-      ),
-    ).rejects.toThrow("r2Storage runtime profile requires R2 S3 credentials.");
+      storage.readText({
+        storageUri: "r2://test-bucket/releases/bundle-1/manifest.json",
+      }),
+    ).rejects.toThrow(
+      "r2Storage runtime operations require R2 S3 credentials.",
+    );
   });
 
   it("rejects downloads from a different bucket", async () => {
@@ -347,12 +366,13 @@ describe("r2Storage", () => {
       bucketName: "test-bucket",
       cloudflareApiToken: "api-token",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.downloadFile(
-        "r2://other-bucket/releases/bundle-1/manifest.json",
-        "/tmp/hot-updater-test-manifest.json",
-      ),
+      storage.downloadFile({
+        storageUri: "r2://other-bucket/releases/bundle-1/manifest.json",
+        filePath: "/tmp/hot-updater-test-manifest.json",
+      }),
     ).rejects.toThrow(
       'Bucket name mismatch: expected "test-bucket", but found "other-bucket".',
     );
@@ -367,9 +387,10 @@ describe("r2Storage", () => {
       bucketName: "test-bucket",
       cloudflareApiToken: "api-token",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists("r2://test-bucket/releases/logo.png"),
+      storage.exists({ storageUri: "r2://test-bucket/releases/logo.png" }),
     ).resolves.toBe(false);
     expect(wrangler).toHaveBeenCalledWith(
       "r2",
@@ -391,9 +412,10 @@ describe("r2Storage", () => {
       bucketName: "test-bucket",
       cloudflareApiToken: "api-token",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists("r2://test-bucket/releases/logo.png"),
+      storage.exists({ storageUri: "r2://test-bucket/releases/logo.png" }),
     ).rejects.toBe(error);
   });
 });

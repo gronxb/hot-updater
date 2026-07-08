@@ -20,16 +20,12 @@ const {
     updateBundle: vi.fn(),
   };
   const mockStoragePlugin = {
+    delete: vi.fn(),
+    downloadFile: vi.fn(),
+    exists: vi.fn(async () => false),
     name: "mock-storage",
     supportedProtocol: "s3",
-    profiles: {
-      node: {
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-        exists: vi.fn(async () => false),
-        upload: vi.fn(),
-      },
-    },
+    upload: vi.fn(),
   };
   const mockCli = {
     loadConfig: vi.fn(),
@@ -102,9 +98,18 @@ const expectExit = (code: number) => {
   return { exitSpy, code };
 };
 
-const setupConsoleSpies = () => {
-  vi.spyOn(console, "log").mockImplementation(() => {});
+const withStdinTty = async (value: boolean, run: () => Promise<void>) => {
+  const descriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  Object.defineProperty(process.stdin, "isTTY", { configurable: true, value });
+  try {
+    await run();
+  } finally {
+    if (descriptor) Object.defineProperty(process.stdin, "isTTY", descriptor);
+  }
 };
+
+const setupConsoleSpies = () =>
+  vi.spyOn(console, "log").mockImplementation(() => {});
 
 describe("handlePromote", () => {
   beforeEach(() => {
@@ -224,55 +229,35 @@ describe("handlePromote", () => {
   });
 
   it("aborts with exit code 2 when interactive confirmation declines", async () => {
-    const isTtyDescriptor = Object.getOwnPropertyDescriptor(
-      process.stdin,
-      "isTTY",
-    );
-    Object.defineProperty(process.stdin, "isTTY", {
-      configurable: true,
-      value: true,
+    await withStdinTty(true, async () => {
+      mockDatabasePlugin.getBundleById.mockResolvedValue(
+        buildBundle({ id: "src-1" }),
+      );
+      mockCli.p.confirm.mockResolvedValueOnce(false);
+
+      const { exitSpy } = expectExit(2);
+      const { handlePromote } = await import("./promote");
+      await expect(handlePromote("src-1", { target: "beta" })).rejects.toThrow(
+        "process.exit(2)",
+      );
+      expect(exitSpy).toHaveBeenCalledWith(2);
+      expect(mockPromoteBundle).not.toHaveBeenCalled();
     });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(
-      buildBundle({ id: "src-1" }),
-    );
-    mockCli.p.confirm.mockResolvedValueOnce(false);
-
-    const { exitSpy } = expectExit(2);
-    const { handlePromote } = await import("./promote");
-    await expect(handlePromote("src-1", { target: "beta" })).rejects.toThrow(
-      "process.exit(2)",
-    );
-    expect(exitSpy).toHaveBeenCalledWith(2);
-    expect(mockPromoteBundle).not.toHaveBeenCalled();
-
-    if (isTtyDescriptor) {
-      Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
-    }
   });
 
   it("refuses to mutate without -y in a non-TTY shell", async () => {
-    const isTtyDescriptor = Object.getOwnPropertyDescriptor(
-      process.stdin,
-      "isTTY",
-    );
-    Object.defineProperty(process.stdin, "isTTY", {
-      configurable: true,
-      value: false,
+    await withStdinTty(false, async () => {
+      mockDatabasePlugin.getBundleById.mockResolvedValue(
+        buildBundle({ id: "src-1" }),
+      );
+
+      const { exitSpy } = expectExit(1);
+      const { handlePromote } = await import("./promote");
+      await expect(handlePromote("src-1", { target: "beta" })).rejects.toThrow(
+        "process.exit(1)",
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(
-      buildBundle({ id: "src-1" }),
-    );
-
-    const { exitSpy } = expectExit(1);
-    const { handlePromote } = await import("./promote");
-    await expect(handlePromote("src-1", { target: "beta" })).rejects.toThrow(
-      "process.exit(1)",
-    );
-    expect(exitSpy).toHaveBeenCalledWith(1);
-
-    if (isTtyDescriptor) {
-      Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
-    }
   });
 
   it("propagates promoteBundle errors and calls onUnmount", async () => {

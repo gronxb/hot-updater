@@ -8,7 +8,8 @@ import { brotliDecompressSync } from "node:zlib";
 import type {
   Bundle,
   DatabasePlugin,
-  NodeStoragePlugin,
+  FileStoragePlugin,
+  StorageUploadSource,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
 import * as tar from "tar";
@@ -42,6 +43,14 @@ const config = {
     enabled: false,
   },
 } as ConfigResponse;
+
+const getUploadSourcePath = (source: StorageUploadSource) => {
+  if (source.kind !== "file") {
+    throw new Error("expected file upload source");
+  }
+
+  return source.filePath;
+};
 
 async function createZipArchive(
   archivePath: string,
@@ -233,41 +242,38 @@ describe("createCopiedBundleArchive", () => {
         }),
       });
       const uploadedFiles = new Map<string, string>();
-      const storagePlugin: NodeStoragePlugin = {
+      const storagePlugin: FileStoragePlugin = {
         name: "mockStorage",
         supportedProtocol: "s3",
-        profiles: {
-          node: {
-            delete: vi.fn(),
-            downloadFile: vi.fn(async (_storageUri, filePath) => {
-              await fs.copyFile(archivePath, filePath);
-            }),
-            exists: vi.fn(async () => false),
-            upload: vi.fn(async (key, filePath) => {
-              const uploadPath = path.join(
-                path.dirname(archivePath),
-                "uploads",
-                key,
-              );
-              const finalPath = path.join(uploadPath, path.basename(filePath));
-              await fs.mkdir(path.dirname(finalPath), { recursive: true });
-              await fs.copyFile(filePath, finalPath);
-              uploadedFiles.set(
-                path.posix.join(key, path.basename(filePath)),
+        delete: vi.fn(),
+        downloadFile: vi.fn(async ({ filePath }) => {
+          await fs.copyFile(archivePath, filePath);
+        }),
+        exists: vi.fn(async () => false),
+        upload: vi.fn(async ({ key, source }) => {
+          const filePath = getUploadSourcePath(source);
+          const uploadPath = path.join(
+            path.dirname(archivePath),
+            "uploads",
+            key,
+          );
+          const finalPath = path.join(uploadPath, path.basename(filePath));
+          await fs.mkdir(path.dirname(finalPath), { recursive: true });
+          await fs.copyFile(filePath, finalPath);
+          uploadedFiles.set(
+            path.posix.join(key, path.basename(filePath)),
+            finalPath,
+          );
+          return {
+            storageUri: `s3://bucket/${path
+              .relative(
+                path.join(path.dirname(archivePath), "uploads"),
                 finalPath,
-              );
-              return {
-                storageUri: `s3://bucket/${path
-                  .relative(
-                    path.join(path.dirname(archivePath), "uploads"),
-                    finalPath,
-                  )
-                  .split(path.sep)
-                  .join("/")}`,
-              };
-            }),
-          },
-        },
+              )
+              .split(path.sep)
+              .join("/")}`,
+          };
+        }),
       };
 
       vi.stubGlobal(
@@ -341,19 +347,15 @@ describe("createCopiedBundleArchive", () => {
     const { archivePath, cleanup } = await createSourceArchive("zip", {
       "index.js": "console.log('hello');",
     });
-    const storagePlugin: NodeStoragePlugin = {
+    const storagePlugin: FileStoragePlugin = {
       name: "mockStorage",
       supportedProtocol: "s3",
-      profiles: {
-        node: {
-          delete: vi.fn(),
-          downloadFile: vi.fn(async (_storageUri, filePath) => {
-            await fs.copyFile(archivePath, filePath);
-          }),
-          exists: vi.fn(async () => false),
-          upload: vi.fn(),
-        },
-      },
+      delete: vi.fn(),
+      downloadFile: vi.fn(async ({ filePath }) => {
+        await fs.copyFile(archivePath, filePath);
+      }),
+      exists: vi.fn(async () => false),
+      upload: vi.fn(),
     };
 
     vi.stubGlobal(
@@ -395,41 +397,34 @@ describe("createCopiedBundleArchive", () => {
       }),
     });
     const uploadedFiles = new Map<string, string>();
-    const storagePlugin: NodeStoragePlugin = {
+    const storagePlugin: FileStoragePlugin = {
       name: "mockStorage",
       supportedProtocol: "s3",
-      profiles: {
-        node: {
-          delete: vi.fn(),
-          downloadFile: vi.fn(async (_storageUri, filePath) => {
-            await fs.copyFile(archivePath, filePath);
-          }),
-          exists: vi.fn(async () => false),
-          upload: vi.fn(async (key, filePath) => {
-            const uploadPath = path.join(
-              path.dirname(archivePath),
-              "uploads",
-              key,
-            );
-            const finalPath = path.join(uploadPath, path.basename(filePath));
-            await fs.mkdir(path.dirname(finalPath), { recursive: true });
-            await fs.copyFile(filePath, finalPath);
-            uploadedFiles.set(
-              path.posix.join(key, path.basename(filePath)),
+      delete: vi.fn(),
+      downloadFile: vi.fn(async ({ filePath }) => {
+        await fs.copyFile(archivePath, filePath);
+      }),
+      exists: vi.fn(async () => false),
+      upload: vi.fn(async ({ key, source }) => {
+        const filePath = getUploadSourcePath(source);
+        const uploadPath = path.join(path.dirname(archivePath), "uploads", key);
+        const finalPath = path.join(uploadPath, path.basename(filePath));
+        await fs.mkdir(path.dirname(finalPath), { recursive: true });
+        await fs.copyFile(filePath, finalPath);
+        uploadedFiles.set(
+          path.posix.join(key, path.basename(filePath)),
+          finalPath,
+        );
+        return {
+          storageUri: `s3://bucket/${path
+            .relative(
+              path.join(path.dirname(archivePath), "uploads"),
               finalPath,
-            );
-            return {
-              storageUri: `s3://bucket/${path
-                .relative(
-                  path.join(path.dirname(archivePath), "uploads"),
-                  finalPath,
-                )
-                .split(path.sep)
-                .join("/")}`,
-            };
-          }),
-        },
-      },
+            )
+            .split(path.sep)
+            .join("/")}`,
+        };
+      }),
     };
 
     vi.stubGlobal(
@@ -489,25 +484,22 @@ describe("createCopiedBundleArchive", () => {
       }),
     });
     const deleteFromStorage = vi.fn();
-    const storagePlugin: NodeStoragePlugin = {
+    const storagePlugin: FileStoragePlugin = {
       name: "mockStorage",
       supportedProtocol: "s3",
-      profiles: {
-        node: {
-          delete: deleteFromStorage,
-          downloadFile: vi.fn(async (_storageUri, filePath) => {
-            await fs.copyFile(archivePath, filePath);
-          }),
-          exists: vi.fn(async () => false),
-          upload: vi.fn(async (key, filePath) => {
-            return {
-              storageUri: `s3://bucket/${path.posix
-                .join(key, path.basename(filePath))
-                .replaceAll("//", "/")}`,
-            };
-          }),
-        },
-      },
+      delete: deleteFromStorage,
+      downloadFile: vi.fn(async ({ filePath }) => {
+        await fs.copyFile(archivePath, filePath);
+      }),
+      exists: vi.fn(async () => false),
+      upload: vi.fn(async ({ key, source }) => {
+        const filePath = getUploadSourcePath(source);
+        return {
+          storageUri: `s3://bucket/${path.posix
+            .join(key, path.basename(filePath))
+            .replaceAll("//", "/")}`,
+        };
+      }),
     };
     const databasePlugin = {
       name: "mockDatabase",
@@ -546,18 +538,18 @@ describe("createCopiedBundleArchive", () => {
         ),
       ).rejects.toThrow("append failed");
 
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/bundle.zip",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/manifest.json",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/files/assets/logo.png",
-      );
-      expect(deleteFromStorage).toHaveBeenCalledWith(
-        "s3://bucket/bundle-copy-id/files/index.js",
-      );
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/bundle.zip",
+      });
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/manifest.json",
+      });
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/files/assets/logo.png",
+      });
+      expect(deleteFromStorage).toHaveBeenCalledWith({
+        storageUri: "s3://bucket/bundle-copy-id/files/index.js",
+      });
     } finally {
       await cleanup();
     }

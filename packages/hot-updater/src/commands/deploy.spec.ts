@@ -1,3 +1,4 @@
+import type { StorageUploadSource } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -14,14 +15,10 @@ const {
   const mockStoragePlugin = {
     name: "mock-storage",
     supportedProtocol: "s3",
-    profiles: {
-      node: {
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-        exists: vi.fn(),
-        upload: vi.fn(),
-      },
-    },
+    delete: vi.fn(),
+    downloadFile: vi.fn(),
+    exists: vi.fn(),
+    upload: vi.fn(),
   };
   const mockDatabasePlugin = {
     appendBundle: vi.fn(),
@@ -70,6 +67,14 @@ const {
     mockStoragePlugin,
   };
 });
+
+const getUploadFilePath = (source: StorageUploadSource) => {
+  if (source.kind !== "file") {
+    throw new Error("expected file upload source");
+  }
+
+  return source.filePath;
+};
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -416,10 +421,10 @@ describe("deploy rollout wiring", () => {
       bundleId: "bundle-123",
       stdout: null,
     });
-    mockStoragePlugin.profiles.node.upload.mockResolvedValue({
+    mockStoragePlugin.upload.mockResolvedValue({
       storageUri: "s3://bundles/bundle-123/bundle.tar.br",
     });
-    mockStoragePlugin.profiles.node.exists.mockResolvedValue(false);
+    mockStoragePlugin.exists.mockResolvedValue(false);
     mockDatabasePlugin.appendBundle.mockResolvedValue(undefined);
     mockDatabasePlugin.commitBundle.mockResolvedValue(undefined);
     mockDatabasePlugin.getBundles.mockResolvedValue({
@@ -649,20 +654,19 @@ describe("deploy rollout wiring", () => {
   });
 
   it("uploads manifest artifacts and stores manifest metadata on the bundle", async () => {
-    mockStoragePlugin.profiles.node.upload.mockImplementation(
-      async (key, filePath) => {
-        const filename =
-          filePath === "/mock/build/manifest.json"
-            ? "manifest.json"
-            : filePath === "/mock/build/index.bundle"
-              ? "index.bundle"
-              : "bundle.tar.br";
+    mockStoragePlugin.upload.mockImplementation(async ({ key, source }) => {
+      const filePath = getUploadFilePath(source);
+      const filename =
+        filePath === "/mock/build/manifest.json"
+          ? "manifest.json"
+          : filePath === "/mock/build/index.bundle"
+            ? "index.bundle"
+            : "bundle.tar.br";
 
-        return {
-          storageUri: `s3://bundles/${key}/${filename}`,
-        };
-      },
-    );
+      return {
+        storageUri: `s3://bundles/${key}/${filename}`,
+      };
+    });
 
     await deploy({
       channel: "production",
@@ -672,7 +676,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
+    expect(mockStoragePlugin.upload).toHaveBeenCalledTimes(3);
     expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
       expect.objectContaining({
         assetBaseStorageUri: "s3://bundles/assets",
@@ -710,23 +714,22 @@ describe("deploy rollout wiring", () => {
         manifestPath: "/mock/build/manifest.json",
       }),
     );
-    mockStoragePlugin.profiles.node.upload.mockImplementation(
-      async (key, filePath) => {
-        if (key === "assets/sha256/fi") {
-          activeAssetUploads += 1;
-          maxActiveAssetUploads = Math.max(
-            maxActiveAssetUploads,
-            activeAssetUploads,
-          );
-          await new Promise((resolve) => setTimeout(resolve, 0));
-          activeAssetUploads -= 1;
-        }
+    mockStoragePlugin.upload.mockImplementation(async ({ key, source }) => {
+      const filePath = getUploadFilePath(source);
+      if (key === "assets/sha256/fi") {
+        activeAssetUploads += 1;
+        maxActiveAssetUploads = Math.max(
+          maxActiveAssetUploads,
+          activeAssetUploads,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        activeAssetUploads -= 1;
+      }
 
-        return {
-          storageUri: `s3://bundles/${key}/${path.basename(filePath)}`,
-        };
-      },
-    );
+      return {
+        storageUri: `s3://bundles/${key}/${path.basename(filePath)}`,
+      };
+    });
 
     await deploy({
       channel: "production",
@@ -736,7 +739,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(22);
+    expect(mockStoragePlugin.upload).toHaveBeenCalledTimes(22);
     expect(maxActiveAssetUploads).toBeGreaterThan(1);
     expect(maxActiveAssetUploads).toBeLessThanOrEqual(8);
   });
@@ -761,20 +764,24 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledTimes(1);
-    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
-      "s3://bundles/assets/sha256/fi/file-hash.png",
-    );
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
-      "assets/sha256/fi",
-      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.png",
-    );
+    expect(mockStoragePlugin.exists).toHaveBeenCalledTimes(1);
+    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+      storageUri: "s3://bundles/assets/sha256/fi/file-hash.png",
+    });
+    expect(mockStoragePlugin.upload).toHaveBeenCalledTimes(3);
+    expect(mockStoragePlugin.upload).toHaveBeenCalledWith({
+      key: "assets/sha256/fi",
+      source: {
+        kind: "file",
+        filePath:
+          "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.png",
+      },
+    });
   });
 
   it("skips content-addressed asset uploads that already exist", async () => {
-    mockStoragePlugin.profiles.node.exists.mockImplementation(
-      async (storageUri) =>
+    mockStoragePlugin.exists.mockImplementation(
+      async ({ storageUri }) =>
         storageUri === "s3://bundles/assets/sha256/fi/file-hash.png",
     );
     vi.mocked(getBundleZipTargets).mockResolvedValue([
@@ -792,14 +799,16 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
-      "s3://bundles/assets/sha256/fi/file-hash.png",
-    );
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(2);
-    expect(mockStoragePlugin.profiles.node.upload).not.toHaveBeenCalledWith(
-      "assets/sha256/fi",
-      expect.stringContaining("file-hash.png"),
-    );
+    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+      storageUri: "s3://bundles/assets/sha256/fi/file-hash.png",
+    });
+    expect(mockStoragePlugin.upload).toHaveBeenCalledTimes(2);
+    expect(mockStoragePlugin.upload).not.toHaveBeenCalledWith({
+      key: "assets/sha256/fi",
+      source: expect.objectContaining({
+        filePath: expect.stringContaining("file-hash.png"),
+      }),
+    });
   });
 
   it("ignores deploy upload cache config and checks remote existence", async () => {
@@ -832,9 +841,9 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.exists).toHaveBeenCalledWith(
-      "s3://bundles/assets/sha256/fi/file-hash.png",
-    );
+    expect(mockStoragePlugin.exists).toHaveBeenCalledWith({
+      storageUri: "s3://bundles/assets/sha256/fi/file-hash.png",
+    });
     expect(fs.promises.readFile).not.toHaveBeenCalledWith(
       expect.stringContaining("deploy-upload-cache.json"),
       expect.anything(),
@@ -846,7 +855,7 @@ describe("deploy rollout wiring", () => {
   });
 
   it("does not write a deploy upload cache when asset upload fails", async () => {
-    mockStoragePlugin.profiles.node.upload.mockImplementation(async (key) => {
+    mockStoragePlugin.upload.mockImplementation(async ({ key }) => {
       if (key === "assets/sha256/fi") {
         throw new Error("asset upload failed");
       }
@@ -934,14 +943,21 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
-      "assets/sha256/fi",
-      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.br",
-    );
-    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledWith(
-      "assets/sha256/fi",
-      "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.png",
-    );
+    expect(mockStoragePlugin.upload).toHaveBeenCalledWith({
+      key: "assets/sha256/fi",
+      source: {
+        kind: "file",
+        filePath: "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.br",
+      },
+    });
+    expect(mockStoragePlugin.upload).toHaveBeenCalledWith({
+      key: "assets/sha256/fi",
+      source: {
+        kind: "file",
+        filePath:
+          "/mock/cwd/.hot-updater/output/upload-artifacts/file-hash.png",
+      },
+    });
   });
 
   it("does not create a nested spinner when signing is enabled", async () => {

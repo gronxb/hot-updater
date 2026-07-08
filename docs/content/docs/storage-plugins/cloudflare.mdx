@@ -41,7 +41,8 @@ export default defineConfig({
 });
 ```
 
-This approach provides both the `node` and `runtime` storage profiles.
+This approach provides uploads, deletes, local downloads, signed HTTP(S)
+download URLs, and direct metadata reads through one storage plugin.
 
 </Callout>
 
@@ -96,9 +97,9 @@ export default defineConfig({
 
 ## Runtime Usage
 
-`r2Storage` is a CLI/deploy-time storage plugin. It implements the `node`
-profile and uses the R2 S3-compatible API when `credentials` are provided.
-Configs without `credentials` fall back to Wrangler for backward compatibility.
+`r2Storage` is a CLI/deploy-time storage plugin. It uses the R2 S3-compatible
+API when `credentials` are provided. Configs without `credentials` fall back to
+Wrangler for backward compatibility.
 
 Cloudflare Workers should use the Worker runtime export instead:
 
@@ -107,27 +108,25 @@ import { r2Storage } from "@hot-updater/cloudflare/worker";
 import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
-  storages: [
-    r2Storage({
-      publicBaseUrl: (context) => new URL(context!.request!.url).origin,
-    }),
-  ],
+  storages: [r2Storage()],
   // ... other options
 });
 ```
 
-The Worker runtime plugin implements the `runtime` profile. It signs bundle
-download URLs and reads small metadata files directly from the R2 binding. This
-lets update checks use bundle diffing without the Worker fetching its own signed
-public URL.
+The Worker storage plugin signs bundle download URLs and reads small metadata
+files directly from the `BUCKET`, `JWT_SECRET`, and
+`HOT_UPDATER_PUBLIC_BASE_URL` Worker bindings through `cloudflare:workers`.
+This lets update checks use bundle diffing without the Worker fetching its own
+signed public URL.
 
 ## Limitations
 
-- `r2Storage` does not implement the runtime profile.
+- `r2Storage` without S3-compatible credentials cannot resolve runtime
+  download URLs.
 - Legacy `r2Storage` configs without `credentials` use Wrangler and are slower
   than the S3-compatible API path.
-- For a single plugin that supports both deploy-time and runtime profiles, use
-  `s3Storage` from `@hot-updater/aws` with R2 S3 API credentials.
+- For one plugin that supports every storage operation, use `s3Storage` from
+  `@hot-updater/aws` with R2 S3 API credentials.
 
 ## Protocol
 

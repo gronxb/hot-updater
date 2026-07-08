@@ -4,6 +4,7 @@ declare namespace Cloudflare {
   interface Env {
     DB: D1Database;
     BUCKET: R2Bucket;
+    HOT_UPDATER_PUBLIC_BASE_URL: string;
     JWT_SECRET: string;
   }
 }

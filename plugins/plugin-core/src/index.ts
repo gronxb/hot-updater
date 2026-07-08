@@ -17,6 +17,6 @@ export {
 } from "./requestUpdateBundleState";
 export * from "./resolveUpdateInfoFromBundles";
 export * from "./semverSatisfies";
-export * from "./storageProfile";
+export * from "./storageOperations";
 export * from "./types";
 export * from "./uuidv7";

@@ -12,6 +12,9 @@ export default defineConfig([
     format: ["esm", "cjs"],
     dts: true,
     outDir: "dist/worker",
+    deps: {
+      neverBundle: ["cloudflare:workers"],
+    },
     failOnWarn: true,
   },
   {

@@ -1,191 +1,162 @@
-# Hot Updater Console (v2)
+# @hot-updater/console
 
-Modern web-based management console for Hot Updater built with **TanStack Start** and **shadcn/ui**.
+React component package for the Hot Updater management console.
 
-## 🚀 Features
+This package owns the console UI and the server-side helper that adapts a Hot
+Updater config into the API consumed by that UI. A deployable app should keep
+provider plugins in `hot-updater.config.ts`, register the Vite plugin, and
+render `HotUpdaterConsole` with the generated API client.
 
-- **Bundle Management** - View, filter, and manage OTA update bundles
-- **Real-time Filtering** - Filter by platform (iOS/Android) and channel
-- **Bundle Editor** - Edit bundle configurations with intuitive forms
-- **Rollout Control** - Adjust rollout percentage with visual slider
-- **Rollout Statistics** - View deployment metrics and success rates
-- **Channel Promotion** - Copy or move bundles between channels
-- **Emergency Rollback** - One-click disable and rollback
-- **Dark Mode** - Full dark mode support with system preference detection
-- **Responsive Design** - Works seamlessly on desktop, tablet, and mobile
+## Exports
 
-## 🛠️ Tech Stack
+```tsx
+import { HotUpdaterConsole } from "@hot-updater/console";
+import type { ConsoleApiClient } from "@hot-updater/console";
+import { defineConfig } from "@hot-updater/console/config";
+import { createHotUpdaterConsoleApi } from "@hot-updater/console/hosted";
+import { hotUpdaterConsole } from "@hot-updater/console/vite";
+import "@hot-updater/console/embedded.css";
+```
 
-### Frontend
-- **TanStack Start** - Full-stack React framework with SSR
-- **TanStack Router** - File-based routing with type safety
-- **TanStack Query** - Data fetching and caching
-- **TanStack Form** - Form state management and validation
-- **TanStack Table** - Powerful table with sorting and pagination
-- **React 19** - Latest React features
+- `HotUpdaterConsole` renders the bundle management UI.
+- `ConsoleApiClient` is the client contract used by the component.
+- `defineConfig(config)` type-checks a deployable console config.
+- `createHotUpdaterConsoleApi(config)` creates the hosted server API from a
+  loaded Hot Updater config.
+- `hotUpdaterConsole()` wires `hot-updater.config.ts` into the deployable app as
+  Vite virtual modules.
+- `embedded.css` contains the console styles for embedded/deployable shells.
 
-### UI Components
-- **shadcn/ui** - High-quality accessible components (Radix Mira style)
-- **Tailwind CSS v4** - Utility-first CSS with oklch color system
-- **Lucide React** - Beautiful icon library
-- **Sonner** - Toast notifications
+## Deployable Console Flow
 
-### Backend
-- **TanStack Start Server Functions** - Type-safe server endpoints
-- **Hot Updater Plugins** - Storage and database plugin integration
-
-## 📦 Installation
+Use the deployable console repository as the thin Vite/Nitro shell. The Hot
+Updater repository does not ship an app template; this package provides the UI
+and API adapter, and the `hot-updater/console` repository owns deployment.
 
 ```bash
-# Install dependencies (from monorepo root)
+git clone https://github.com/hot-updater/console
+cd console
+corepack enable
 pnpm install
 ```
 
-## 🏃‍♂️ Development
+Configure `hot-updater.config.ts` in that repository with the same provider
+plugins used by your OTA deployment. The console package receives plugins from
+this file; provider credentials stay in the deployable app environment.
+
+```ts
+import { s3Database, s3Storage } from "@hot-updater/aws";
+import { defineConfig } from "@hot-updater/console/config";
+
+export default defineConfig({
+  storage: s3Storage({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
+  database: s3Database({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
+});
+```
+
+Install any provider packages referenced by the config and provide credentials
+through the deployment environment. Do not commit secrets.
+
+The deployable app should request the server API from the virtual module:
+
+```ts
+import { createConsoleApi } from "virtual:hot-updater-console/server-api";
+
+const api = await createConsoleApi();
+```
+
+Register the Vite plugin so the virtual module resolves to the app's
+`hot-updater.config.ts`:
+
+```ts title="vite.config.ts"
+import { hotUpdaterConsole } from "@hot-updater/console/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [
+    hotUpdaterConsole(),
+    // nitro(), tanstackStart(), viteReact(), ...
+  ],
+});
+```
+
+Run locally:
 
 ```bash
-# Start development server
 pnpm dev
+```
 
-# Build for production
+Build and run the Nitro output:
+
+```bash
 pnpm build
-
-# Preview production build
-pnpm preview
-
-# Type checking
-pnpm test:type
+pnpm start
 ```
 
-The console will be available at `http://localhost:3000`.
+For Node-compatible hosts, use:
 
-## 📁 Project Structure
-
-```
-src/
-├── routes/
-│   ├── __root.tsx              # Root layout with providers
-│   ├── index.tsx               # Bundle list page
-│   └── api/                    # API routes (future)
-├── components/
-│   ├── ui/                     # shadcn components
-│   ├── features/
-│   │   └── bundles/            # Bundle-related components
-│   ├── PlatformIcon.tsx        # iOS/Android icons
-│   ├── BundleIdDisplay.tsx     # Truncated bundle ID with tooltip
-│   ├── RolloutPercentageBadge.tsx
-│   ├── TimestampDisplay.tsx    # UUIDv7 timestamp formatting
-│   ├── ChannelBadge.tsx
-│   └── EnabledStatusIcon.tsx
-├── hooks/
-│   └── useFilterParams.ts      # URL-based filter state
-├── lib/
-│   ├── api.ts                  # React Query hooks
-│   ├── constants.ts            # Shared constants
-│   ├── utils.ts                # Utility functions
-│   └── server/
-│       ├── api.server.ts       # Server functions
-│       └── config.server.ts    # Hot Updater config loader
-└── styles.css                  # Global styles & theme variables
+```text
+Install command: corepack enable && pnpm install --frozen-lockfile
+Build command:   pnpm build
+Start command:   pnpm start
 ```
 
-## 🎨 Key Components
+`pnpm build` writes the deployable Nitro server to `.output/server/index.mjs`.
+`pnpm start` runs that output directly. Set `PORT` and, if your host requires
+it, `NITRO_PORT`.
 
-### Bundle List Page
-- **FilterToolbar** - Platform and channel filters with reset button
-- **BundlesTable** - Server-side paginated table (20 per page)
-- **BundleTableColumns** - Column definitions with custom cell renderers
+### Cloudflare Pages
 
-### Bundle Editor Sheet
-- **BundleEditorSheet** - Right-side slide-out panel
-- **BundleEditorForm** - TanStack Form with validation
-- **BundleMetadata** - Read-only bundle information display
+Nitro supports Cloudflare Pages with the `cloudflare_pages` preset. Configure
+the Pages project with the Nitro Cloudflare preset and Cloudflare Pages build
+settings:
 
-### Dialogs
-- **PromoteChannelDialog** - Channel promotion with copy/move toggle
-- **DeleteBundleDialog** - Confirmation dialog with bundle details
-- **EmergencyRollbackButton** - One-click disable + 0% rollout
-
-## 🔌 API Integration
-
-The console integrates with Hot Updater's plugin system through TanStack Start server functions:
-
-- `getConfig()` - Load console configuration
-- `getChannels()` - List available channels
-- `getBundles(filters)` - List bundles with pagination
-- `getBundle(bundleId)` - Get single bundle details
-- `updateBundle(bundleId, data)` - Update bundle configuration
-- `createBundle(bundle)` - Create new bundle
-- `deleteBundle(bundleId)` - Delete bundle
-
-## 🎯 Configuration
-
-Configure Hot Updater in `hot-updater.config.ts`:
-
-```typescript
-import { mockDatabase, mockStorage } from "@hot-updater/mock";
-
-export default {
-  storage: mockStorage(),
-  database: mockDatabase({
-    latency: { min: 500, max: 700 },
-    initialBundles: [
-      // ... your bundles
-    ],
-  }),
-};
+```text
+Build command:          corepack enable && pnpm install --frozen-lockfile && NITRO_PRESET=cloudflare_pages pnpm build
+Build output directory: dist
+Root directory:         /
 ```
 
-## 🌈 Theming
+References: [Nitro Cloudflare provider](https://nitro.build/deploy/providers/cloudflare)
+and [Cloudflare Pages build configuration](https://developers.cloudflare.com/pages/configuration/build-configuration/).
 
-The console uses Tailwind CSS v4 with oklch color space for accessible colors. Theme variables are defined in `src/styles.css`:
+For direct upload from a local checkout:
 
-- Light mode: Default
-- Dark mode: Automatically enabled with `class="dark"`
-- System preference: Respects OS theme setting
+```bash
+NITRO_PRESET=cloudflare_pages pnpm build
+pnpm dlx wrangler pages deploy dist
+```
 
-## 🔒 Type Safety
+Add the environment variables and Cloudflare bindings required by
+`hot-updater.config.ts` to the Pages project. If the deployable app uses
+TanStack Start or Better Auth, set the Cloudflare compatibility flag to
+`nodejs_compat`.
 
-- Full TypeScript strict mode
-- Type-safe server functions with TanStack Start
-- Type-safe routing with TanStack Router
-- Type-safe forms with TanStack Form
+Use Cloudflare environment variables and bindings for credentials referenced by
+`hot-updater.config.ts`. For Cloudflare R2 runtime access, bind the bucket used
+by the storage plugin to the Pages project.
 
-## 📊 Data Flow
+## Config Handoff
 
-1. **URL State** → `useFilterParams()` hook manages filter state in URL
-2. **Server Functions** → TanStack Start server functions call Hot Updater plugins
-3. **React Query** → `useBundlesQuery()` fetches and caches data
-4. **UI Components** → Display data with shadcn components
-5. **Mutations** → `useUpdateBundleMutation()` updates data with optimistic updates
-6. **Cache Invalidation** → React Query automatically refreshes affected queries
+The deployable app should keep provider plugins in `hot-updater.config.ts` and
+load them through the Vite virtual server API:
 
-## 🚦 Development Guidelines
+```ts
+import { createConsoleApi } from "virtual:hot-updater-console/server-api";
 
-- **Server-only code** must use `.server.ts` extension
-- **Client-side constants** live in `src/lib/constants.ts`
-- **shadcn components** are customizable in `src/components/ui/`
-- **Form validation** uses TanStack Form validators
-- **Toast notifications** use Sonner for success/error feedback
+const api = await createConsoleApi();
+```
 
-## 🐛 Troubleshooting
+The Vite plugin makes the config file an explicit build input, avoiding
+deployable-shell code that reaches into `../../hot-updater.config` by relative
+path. `createHotUpdaterConsoleApi` still lazily initializes `config.database()`
+and `config.storage()` when console operations need them. The component package
+does not own deployment credentials or provider selection; the deployable shell
+does.
 
-### Build Errors
-- Ensure `.server.ts` files are not imported on the client
-- Check that native modules (`.node`) are excluded from bundling
+## Access Control
 
-### Development Server
-- Default port is 3000
-- Change port: `pnpm dev --port 3001`
-
-### Hot Updater Config
-- Ensure `hot-updater.config.ts` is at package root
-- Verify storage and database plugins are correctly initialized
-
-## 📝 License
-
-MIT - See monorepo LICENSE file
-
-## 🤝 Contributing
-
-See the main Hot Updater repository for contribution guidelines.
+Run the console behind your deployment platform's access boundary, such as SSO,
+VPN, IP allowlist, or an identity-aware reverse proxy. Keep OTA provider
+credentials in the runtime environment and avoid exposing the service publicly
+without an outer access layer.

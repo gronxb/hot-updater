@@ -1,10 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import type {
-  RuntimeStoragePlugin,
-  StorageResolveContext,
-} from "@hot-updater/plugin-core";
+import type { RuntimeStorageOperations } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   setupBundleMethodsTestSuite,
@@ -150,22 +147,17 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one, many })
 
 function createTestStoragePlugin(
   protocol: string,
-  resolveFileUrl: (
-    storageUri: string,
-    context?: StorageResolveContext,
-  ) => string,
-  readText: (storageUri: string) => Promise<string | null> = async () => null,
-): RuntimeStoragePlugin {
+  resolveFileUrl: (storageUri: string) => string,
+  readText: (params: {
+    readonly storageUri: string;
+  }) => Promise<string | null> = async () => null,
+): RuntimeStorageOperations {
   return {
     name: `${protocol}TestStorage`,
     supportedProtocol: protocol,
-    profiles: {
-      runtime: {
-        readText,
-        async getDownloadUrl(storageUri, context) {
-          return { fileUrl: resolveFileUrl(storageUri, context) };
-        },
-      },
+    readText,
+    async getDownloadUrl({ storageUri }) {
+      return { fileUrl: resolveFileUrl(storageUri) };
     },
   };
 }
@@ -253,7 +245,11 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
   const kysely = new Kysely({ dialect: new PGliteDialect(db) });
   const storageTexts = new Map<string, string | Error>();
-  const readStoredText = async (storageUri: string) => {
+  const readStoredText = async ({
+    storageUri,
+  }: {
+    readonly storageUri: string;
+  }) => {
     const text = storageTexts.get(storageUri);
     if (text instanceof Error) {
       throw text;

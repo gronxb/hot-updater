@@ -1,5 +1,5 @@
 import {
-  createRuntimeStoragePlugin,
+  createStoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import type { AppOptions } from "firebase-admin/app";
@@ -16,7 +16,7 @@ export interface FirebaseFunctionsStorageConfig extends AppOptions {
 }
 
 const createFirebaseFunctionsStorage =
-  createRuntimeStoragePlugin<FirebaseFunctionsStorageConfig>({
+  createStoragePlugin<FirebaseFunctionsStorageConfig>({
     name: "firebaseFunctionsStorage",
     supportedProtocol: "gs",
     factory: (config) => {
@@ -26,10 +26,14 @@ const createFirebaseFunctionsStorage =
       })();
 
       return {
-        async readText(storageUri, context) {
-          return fallbackStorage.profiles.runtime.readText(storageUri, context);
+        async readText({ storageUri }) {
+          if (!fallbackStorage.readText) {
+            throw new Error("firebaseStorage does not implement readText.");
+          }
+
+          return fallbackStorage.readText({ storageUri });
         },
-        async getDownloadUrl(storageUri, context) {
+        async getDownloadUrl({ storageUri }) {
           if (config.cdnUrl) {
             const storageUrl = new URL(storageUri);
 
@@ -40,10 +44,13 @@ const createFirebaseFunctionsStorage =
             }
           }
 
-          return fallbackStorage.profiles.runtime.getDownloadUrl(
-            storageUri,
-            context,
-          );
+          if (!fallbackStorage.getDownloadUrl) {
+            throw new Error(
+              "firebaseStorage does not implement getDownloadUrl.",
+            );
+          }
+
+          return fallbackStorage.getDownloadUrl({ storageUri });
         },
       };
     },
@@ -55,7 +62,7 @@ export const firebaseFunctionsStorage = (
 ) => {
   if (!config.storageBucket) {
     throw new Error(
-      "firebaseFunctionsStorage requires storageBucket for the runtime storage profile.",
+      "firebaseFunctionsStorage requires storageBucket for runtime storage operations.",
     );
   }
 

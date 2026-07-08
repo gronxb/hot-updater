@@ -1,40 +1,27 @@
 import { createHotUpdater } from "@hot-updater/server";
+import { env } from "cloudflare:workers";
 import { Hono } from "hono";
 
-import {
-  d1Database,
-  type RequestEnvContext,
-  r2Storage,
-  verifyJwtSignedUrl,
-} from "../../src/worker";
+import { d1Database, r2Storage, verifyJwtSignedUrl } from "../../src/worker";
 
 export type CloudflareWorkerEnv = {
   DB: {
     prepare: D1Database["prepare"];
   };
   BUCKET: R2Bucket;
+  HOT_UPDATER_PUBLIC_BASE_URL: string;
   JWT_SECRET: string;
 };
 
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
-const resolveRequestOrigin = (context?: RequestEnvContext) => {
-  const request = context?.request;
-
-  if (!request) {
-    throw new Error(
-      "r2WorkerStorage requires a request to resolve publicBaseUrl.",
-    );
-  }
-
-  return new URL(request.url).origin;
-};
-
 const hotUpdater = createHotUpdater({
   database: d1Database(),
   storages: [
     r2Storage({
-      publicBaseUrl: resolveRequestOrigin,
+      bucket: env.BUCKET,
+      jwtSecret: env.JWT_SECRET,
+      publicBaseUrl: env.HOT_UPDATER_PUBLIC_BASE_URL,
     }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
@@ -48,10 +35,10 @@ const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();
 
 app.mount(
   HOT_UPDATER_BASE_PATH,
-  (request: Request, env: CloudflareWorkerEnv) => {
+  (request: Request, bindings: CloudflareWorkerEnv) => {
     return hotUpdater.handler(request, {
       request,
-      env,
+      env: bindings,
     });
   },
   {
@@ -63,10 +50,10 @@ app.get("*", async (c) => {
   const result = await verifyJwtSignedUrl({
     path: c.req.path,
     token: c.req.query("token"),
-    jwtSecret: c.env.JWT_SECRET,
+    jwtSecret: env.JWT_SECRET,
     handler: async (storageUri) => {
       const [, ...key] = storageUri.split("/");
-      const object = await c.env.BUCKET.get(key.join("/"));
+      const object = await env.BUCKET.get(key.join("/"));
       if (!object) {
         return null;
       }

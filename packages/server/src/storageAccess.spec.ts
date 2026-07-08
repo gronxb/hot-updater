@@ -1,4 +1,4 @@
-import type { RuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import type { RuntimeStorageOperations } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStorageAccess } from "./storageAccess";
@@ -10,16 +10,12 @@ describe("createStorageAccess", () => {
 
   it("reads text through a matching runtime storage plugin before direct HTTP fetch", async () => {
     const readText = vi.fn(async () => "manifest text");
-    const storagePlugin: RuntimeStoragePlugin = {
+    const storagePlugin: RuntimeStorageOperations = {
       name: "httpStorage",
       supportedProtocol: "http",
-      profiles: {
-        runtime: {
-          readText,
-          async getDownloadUrl(storageUri) {
-            return { fileUrl: storageUri };
-          },
-        },
+      readText,
+      async getDownloadUrl({ storageUri }) {
+        return { fileUrl: storageUri };
       },
     };
     const fetchMock = vi.fn<typeof fetch>(async () => {
@@ -32,10 +28,9 @@ describe("createStorageAccess", () => {
     await expect(
       readStorageText("http://assets.example.com/manifest.json"),
     ).resolves.toBe("manifest text");
-    expect(readText).toHaveBeenCalledWith(
-      "http://assets.example.com/manifest.json",
-      undefined,
-    );
+    expect(readText).toHaveBeenCalledWith({
+      storageUri: "http://assets.example.com/manifest.json",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

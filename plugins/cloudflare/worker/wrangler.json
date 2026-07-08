@@ -20,6 +20,7 @@
     }
   ],
   "vars": {
+    "HOT_UPDATER_PUBLIC_BASE_URL": "https://updates.example.com",
     "JWT_SECRET": "USER_JWT_SECRET"
   }
 }

@@ -1,194 +1,141 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createUniversalStoragePlugin,
-  createNodeStoragePlugin,
-  createRuntimeStoragePlugin,
-} from "./createStoragePlugin";
-import {
-  assertNodeStoragePlugin,
-  assertRuntimeStoragePlugin,
-  isNodeStoragePlugin,
-  isRuntimeStoragePlugin,
-} from "./storageProfile";
+import { createStoragePlugin } from "./createStoragePlugin";
+import type { ConfigInput, StoragePlugin, StorageUploadSource } from "./types";
 
 describe("createStoragePlugin", () => {
-  it("creates a node storage profile and calls upload hooks", async () => {
-    const upload = vi.fn(async (key: string, filePath: string) => ({
-      storageUri: `s3://bucket/${key}/${filePath}`,
-    }));
+  it("creates a storage plugin and calls upload hooks", async () => {
+    const upload = vi.fn(
+      async (params: {
+        readonly key: string;
+        readonly source: StorageUploadSource;
+      }) => ({
+        storageUri:
+          params.source.kind === "file"
+            ? `s3://bucket/${params.key}/${params.source.filePath}`
+            : `s3://bucket/${params.key}/bytes`,
+      }),
+    );
+    const readText = vi.fn(async () => '{"id":"bundle-id"}');
     const onStorageUploaded = vi.fn(async () => undefined);
 
-    const plugin = createNodeStoragePlugin({
-      name: "testNodeStorage",
+    const plugin = createStoragePlugin({
+      name: "testStorage",
       supportedProtocol: "s3",
       factory: () => ({
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
+        delete: vi.fn(async () => undefined),
         exists: vi.fn(async () => false),
+        getDownloadUrl: vi.fn(async () => ({
+          fileUrl: "https://assets.example.com/bundle.zip",
+        })),
+        readText,
         upload,
       }),
     })({}, { onStorageUploaded })();
 
+    const source = {
+      kind: "file",
+      filePath: "bundle.zip",
+    } satisfies StorageUploadSource;
+
+    expect("put" in plugin).toBe(false);
+
+    if (!plugin.upload) {
+      throw new Error("expected upload operation");
+    }
     await expect(
-      plugin.profiles.node.upload("bundle-id", "bundle.zip"),
+      plugin.upload({
+        key: "bundle-id",
+        source,
+      }),
     ).resolves.toEqual({
       storageUri: "s3://bucket/bundle-id/bundle.zip",
     });
-
-    expect(plugin.profiles.runtime).toBeUndefined();
-    expect(upload).toHaveBeenCalledWith("bundle-id", "bundle.zip");
+    expect(upload).toHaveBeenCalledWith({
+      key: "bundle-id",
+      source,
+    });
     expect(onStorageUploaded).toHaveBeenCalledOnce();
+
+    if (!plugin.readText) {
+      throw new Error("expected readText operation");
+    }
+    await expect(
+      plugin.readText({ storageUri: "s3://bucket/manifest.json" }),
+    ).resolves.toBe('{"id":"bundle-id"}');
+    expect(readText).toHaveBeenCalledWith({
+      storageUri: "s3://bucket/manifest.json",
+    });
   });
 
-  it("does not initialize provider profiles before a profile is accessed", async () => {
-    const factory = vi.fn(() => ({
-      delete: vi.fn(),
-      downloadFile: vi.fn(),
-      exists: vi.fn(async () => false),
-      upload: vi.fn(async () => ({ storageUri: "s3://bucket/bundle.zip" })),
-    }));
-
-    const plugin = createNodeStoragePlugin({
-      name: "testNodeStorage",
-      supportedProtocol: "s3",
-      factory,
+  it("keeps unsupported operations absent from the plugin shape", () => {
+    const plugin = createStoragePlugin({
+      name: "downloadOnlyStorage",
+      supportedProtocol: "r2",
+      factory: () => ({
+        readText: vi.fn(async () => null),
+      }),
     })({})();
 
-    expect(factory).not.toHaveBeenCalled();
-    assertNodeStoragePlugin(plugin);
-    expect(factory).not.toHaveBeenCalled();
-
-    await plugin.profiles.node.upload("bundle-id", "bundle.zip");
-
-    expect(factory).toHaveBeenCalledOnce();
+    expect("delete" in plugin).toBe(false);
+    expect("exists" in plugin).toBe(false);
+    expect("getDownloadUrl" in plugin).toBe(false);
+    expect("readBytes" in plugin).toBe(false);
+    expect("upload" in plugin).toBe(false);
   });
 
-  it("creates a runtime storage profile with required direct text reads", async () => {
+  it("passes config and object params to low-level operations", async () => {
     const getDownloadUrl = vi.fn(
       async (
-        _storageUri: string,
-        _context: unknown,
-        _config: { publicHost: string },
+        params: { readonly storageUri: string },
+        config: { publicHost: string },
       ) => ({
-        fileUrl: "https://assets.example.com/bundle.zip",
+        fileUrl: `${config.publicHost}/${params.storageUri}`,
       }),
     );
-    const readText = vi.fn(
-      async (
-        _storageUri: string,
-        _context: unknown,
-        _config: { publicHost: string },
-      ) => '{"id":"bundle-id"}',
-    );
-    const context = {
-      env: {
-        bucketName: "assets",
-      },
-    };
 
-    const plugin = createRuntimeStoragePlugin<
-      { publicHost: string },
-      typeof context
-    >({
-      name: "testRuntimeStorage",
+    const plugin = createStoragePlugin<{ publicHost: string }>({
+      name: "contextStorage",
       supportedProtocol: "r2",
       factory: (config) => ({
-        getDownloadUrl: async (storageUri, runtimeContext) =>
-          getDownloadUrl(storageUri, runtimeContext, config),
-        readText: async (storageUri, runtimeContext) =>
-          readText(storageUri, runtimeContext, config),
+        getDownloadUrl: (params) => getDownloadUrl(params, config),
+        upload: vi.fn(async () => ({
+          storageUri: "r2://bucket/bundle.zip",
+        })),
       }),
     })({ publicHost: "https://assets.example.com" })();
 
-    await expect(
-      plugin.profiles.runtime.getDownloadUrl("r2://bucket/bundle.zip", context),
-    ).resolves.toEqual({
-      fileUrl: "https://assets.example.com/bundle.zip",
-    });
-    await expect(
-      plugin.profiles.runtime.readText("r2://bucket/manifest.json", context),
-    ).resolves.toBe('{"id":"bundle-id"}');
+    if (!plugin.getDownloadUrl) {
+      throw new Error("expected getDownloadUrl operation");
+    }
 
-    expect(plugin.profiles.node).toBeUndefined();
+    await expect(
+      plugin.getDownloadUrl({ storageUri: "r2://bucket/bundle.zip" }),
+    ).resolves.toEqual({
+      fileUrl: "https://assets.example.com/r2://bucket/bundle.zip",
+    });
+
     expect(getDownloadUrl).toHaveBeenCalledWith(
-      "r2://bucket/bundle.zip",
-      context,
-      { publicHost: "https://assets.example.com" },
-    );
-    expect(readText).toHaveBeenCalledWith(
-      "r2://bucket/manifest.json",
-      context,
+      { storageUri: "r2://bucket/bundle.zip" },
       { publicHost: "https://assets.example.com" },
     );
   });
 
-  it("creates a universal storage profile for plugins shared by deploy and runtime", async () => {
-    const exists = vi.fn(async () => true);
-    const plugin = createUniversalStoragePlugin({
-      name: "testUniversalStorage",
-      supportedProtocol: "supabase-storage",
-      factory: () => ({
-        node: {
-          delete: vi.fn(),
-          downloadFile: vi.fn(),
-          exists,
-          upload: vi.fn(async () => ({
-            storageUri: "supabase-storage://bucket/bundle.zip",
-          })),
-        },
-        runtime: {
-          getDownloadUrl: vi.fn(async () => ({
-            fileUrl: "https://assets.example.com/bundle.zip",
-          })),
-          readText: vi.fn(async () => null),
-        },
-      }),
-    })({})();
-
-    expect(isNodeStoragePlugin(plugin)).toBe(true);
-    expect(isRuntimeStoragePlugin(plugin)).toBe(true);
-    await expect(
-      plugin.profiles.node.upload("bundle-id", "bundle.zip"),
-    ).resolves.toEqual({
-      storageUri: "supabase-storage://bucket/bundle.zip",
-    });
-    await expect(
-      plugin.profiles.runtime.readText(
-        "supabase-storage://bucket/manifest.json",
-      ),
-    ).resolves.toBeNull();
-    await expect(
-      plugin.profiles.node.exists?.("supabase-storage://bucket/bundle.zip"),
-    ).resolves.toBe(true);
-    expect(exists).toHaveBeenCalledWith("supabase-storage://bucket/bundle.zip");
-  });
-
-  it("throws clear errors when the required profile is missing", () => {
-    const nodeOnlyPlugin = createNodeStoragePlugin({
-      name: "nodeOnlyStorage",
-      supportedProtocol: "s3",
-      factory: () => ({
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-        exists: vi.fn(async () => false),
-        upload: vi.fn(),
-      }),
-    })({})();
-    const runtimeOnlyPlugin = createRuntimeStoragePlugin({
-      name: "runtimeOnlyStorage",
+  it("allows ConfigInput.storage to return StoragePlugin", () => {
+    const storageFactory = createStoragePlugin({
+      name: "configStorage",
       supportedProtocol: "r2",
       factory: () => ({
-        getDownloadUrl: vi.fn(),
-        readText: vi.fn(),
+        upload: vi.fn(async () => ({ storageUri: "r2://bucket/bundle.zip" })),
       }),
-    })({})();
+    });
 
-    expect(() => assertRuntimeStoragePlugin(nodeOnlyPlugin)).toThrow(
-      'nodeOnlyStorage does not implement the runtime storage profile for protocol "s3".',
-    );
-    expect(() => assertNodeStoragePlugin(runtimeOnlyPlugin)).toThrow(
-      'runtimeOnlyStorage does not implement the node storage profile for protocol "r2".',
-    );
+    const config = {
+      storage: storageFactory({}),
+    } satisfies Pick<ConfigInput, "storage">;
+
+    const plugin: StoragePlugin = config.storage();
+
+    expect(plugin.name).toBe("configStorage");
   });
 });

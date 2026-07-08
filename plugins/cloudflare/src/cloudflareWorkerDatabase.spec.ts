@@ -1,7 +1,10 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabasePlugin,
+  RequestEnvContext,
+} from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { d1Database, type RequestEnvContext } from "./worker";
+import { d1WorkerDatabase } from "./cloudflareWorkerDatabase";
 
 type WorkerBundleRow = {
   id: string;
@@ -37,7 +40,21 @@ type TestEnv = {
   DB: ReturnType<typeof createD1Binding>;
   JWT_SECRET: string;
   BUCKET: {
-    get: (key: string) => Promise<{ text: () => Promise<string> } | null>;
+    delete: (key: string | string[]) => Promise<void>;
+    get: (key: string) => Promise<{
+      arrayBuffer: () => Promise<ArrayBuffer>;
+      text: () => Promise<string>;
+    } | null>;
+    head: (key: string) => Promise<unknown | null>;
+    put: (
+      key: string,
+      value: ArrayBuffer | ArrayBufferView | string | Blob,
+      options?: {
+        httpMetadata?: {
+          contentType?: string;
+        };
+      },
+    ) => Promise<unknown>;
   };
 };
 
@@ -213,13 +230,16 @@ describe("cloudflare worker d1Database", () => {
   beforeEach(() => {
     rows.clear();
     patchRows.clear();
-    plugin = d1Database<RequestEnvContext<TestEnv>>()();
+    plugin = d1WorkerDatabase<RequestEnvContext<TestEnv>>()();
     context = {
       env: {
         DB: createD1Binding(),
         JWT_SECRET: "test-secret",
         BUCKET: {
+          delete: async () => {},
           get: async () => null,
+          head: async () => null,
+          put: async () => ({}),
         },
       },
     };

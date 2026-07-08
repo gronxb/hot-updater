@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { assertFileStoragePlugin } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { standaloneStorage } from "./standaloneStorage";
@@ -47,8 +48,16 @@ describe("standaloneStorage", () => {
     )();
 
     try {
+      assertFileStoragePlugin(storage);
+
       await expect(
-        storage.profiles.node.upload("bundle-id", filePath),
+        storage.upload({
+          key: "bundle-id",
+          source: {
+            kind: "file",
+            filePath,
+          },
+        }),
       ).resolves.toEqual({
         storageUri: "http://localhost/bundle.zip",
       });
@@ -76,9 +85,10 @@ describe("standaloneStorage", () => {
     const storage = standaloneStorage({
       baseUrl: "http://localhost",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists("http://localhost/bundle.zip"),
+      storage.exists({ storageUri: "http://localhost/bundle.zip" }),
     ).resolves.toBe(true);
   });
 });

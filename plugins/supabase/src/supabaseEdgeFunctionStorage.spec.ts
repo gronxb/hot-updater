@@ -1,3 +1,4 @@
+import { assertRuntimeStorageOperations } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { supabaseEdgeFunctionStorage } from "./supabaseEdgeFunctionStorage";
@@ -39,12 +40,12 @@ describe("supabaseEdgeFunctionStorage", () => {
       supabaseServiceRoleKey: "service-role-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-        {},
-      ),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "updates/assets/sha256/fi/file-hash.png": Object not found',
     );
@@ -65,12 +66,12 @@ describe("supabaseEdgeFunctionStorage", () => {
       supabaseServiceRoleKey: "service-role-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-        {},
-      ),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "updates/assets/sha256/fi/file-hash.png": Failed to generate download URL: Object not found',
     );
@@ -88,12 +89,12 @@ describe("supabaseEdgeFunctionStorage", () => {
       supabaseServiceRoleKey: "service-role-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
-        "supabase-storage://updates/assets/sha256/fi/file-hash.png",
-        {},
-      ),
+      storage.getDownloadUrl({
+        storageUri: "supabase-storage://updates/assets/sha256/fi/file-hash.png",
+      }),
     ).rejects.toThrow(
       'Failed to generate download URL for "updates/assets/sha256/fi/file-hash.png": Storage API failed',
     );
