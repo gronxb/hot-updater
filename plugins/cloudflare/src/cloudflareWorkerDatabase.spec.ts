@@ -37,7 +37,21 @@ type TestEnv = {
   DB: ReturnType<typeof createD1Binding>;
   JWT_SECRET: string;
   BUCKET: {
-    get: (key: string) => Promise<{ text: () => Promise<string> } | null>;
+    delete: (key: string | string[]) => Promise<void>;
+    get: (key: string) => Promise<{
+      arrayBuffer: () => Promise<ArrayBuffer>;
+      text: () => Promise<string>;
+    } | null>;
+    head: (key: string) => Promise<unknown | null>;
+    put: (
+      key: string,
+      value: ArrayBuffer | ArrayBufferView | string | Blob,
+      options?: {
+        httpMetadata?: {
+          contentType?: string;
+        };
+      },
+    ) => Promise<unknown>;
   };
 };
 
@@ -219,7 +233,10 @@ describe("cloudflare worker d1Database", () => {
         DB: createD1Binding(),
         JWT_SECRET: "test-secret",
         BUCKET: {
+          delete: async () => {},
           get: async () => null,
+          head: async () => null,
+          put: async () => ({}),
         },
       },
     };

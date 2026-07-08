@@ -361,6 +361,70 @@ export type HotUpdaterContext<TContext = unknown> = TContext;
 export type StorageResolveContext<TContext = unknown> =
   HotUpdaterContext<TContext>;
 
+export type StorageUploadSource =
+  | {
+      kind: "file";
+      filePath: string;
+    }
+  | {
+      kind: "bytes";
+      data: ArrayBuffer | Uint8Array | string;
+      contentType?: string;
+    };
+
+export interface StorageUploadResult {
+  storageUri: string;
+}
+
+export interface StoragePluginCore<TContext = unknown> {
+  upload?: (
+    key: string,
+    source: StorageUploadSource,
+    context?: StorageResolveContext<TContext>,
+  ) => Promise<StorageUploadResult>;
+
+  exists?: (
+    storageUri: string,
+    context?: StorageResolveContext<TContext>,
+  ) => Promise<boolean>;
+
+  delete?: (
+    storageUri: string,
+    context?: StorageResolveContext<TContext>,
+  ) => Promise<void>;
+
+  downloadFile?: (
+    storageUri: string,
+    filePath: string,
+    context?: StorageResolveContext<TContext>,
+  ) => Promise<void>;
+
+  getDownloadUrl?: (
+    storageUri: string,
+    context?: StorageResolveContext<TContext>,
+  ) => Promise<{
+    fileUrl: string;
+  }>;
+
+  readText?: (
+    storageUri: string,
+    context?: StorageResolveContext<TContext>,
+  ) => Promise<string | null>;
+
+  readBytes?: (
+    storageUri: string,
+    context?: StorageResolveContext<TContext>,
+  ) => Promise<ArrayBuffer | Uint8Array | null>;
+}
+
+export interface StoragePlugin<
+  TContext = unknown,
+> extends StoragePluginCore<TContext> {
+  supportedProtocol: string;
+
+  name: string;
+}
+
 export interface NodeStorageProfile {
   upload: (
     key: string,
@@ -413,7 +477,7 @@ export interface StoragePluginProfiles<TContext = unknown> {
   runtime?: RuntimeStorageProfile<TContext>;
 }
 
-export interface StoragePlugin<TContext = unknown> {
+export interface LegacyProfiledStoragePlugin<TContext = unknown> {
   /**
    * Protocol this storage plugin can resolve.
    * @example "s3", "r2", "supabase-storage".
@@ -427,7 +491,7 @@ export interface StoragePlugin<TContext = unknown> {
 
 export interface NodeStoragePlugin<
   TContext = unknown,
-> extends StoragePlugin<TContext> {
+> extends LegacyProfiledStoragePlugin<TContext> {
   profiles: {
     node: NodeStorageProfile;
     runtime?: RuntimeStorageProfile<TContext>;
@@ -436,7 +500,7 @@ export interface NodeStoragePlugin<
 
 export interface RuntimeStoragePlugin<
   TContext = unknown,
-> extends StoragePlugin<TContext> {
+> extends LegacyProfiledStoragePlugin<TContext> {
   profiles: {
     node?: NodeStorageProfile;
     runtime: RuntimeStorageProfile<TContext>;
@@ -445,7 +509,7 @@ export interface RuntimeStoragePlugin<
 
 export interface UniversalStoragePlugin<
   TContext = unknown,
-> extends StoragePlugin<TContext> {
+> extends LegacyProfiledStoragePlugin<TContext> {
   profiles: {
     node: NodeStorageProfile;
     runtime: RuntimeStorageProfile<TContext>;
@@ -610,7 +674,7 @@ export type ConfigInput = {
    */
   signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
-  storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
+  storage: () => Promise<StoragePlugin> | StoragePlugin;
   database: () => Promise<DatabasePlugin> | DatabasePlugin;
 };
 

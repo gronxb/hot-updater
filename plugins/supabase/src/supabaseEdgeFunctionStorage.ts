@@ -1,4 +1,4 @@
-import { createRuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import { createStoragePlugin } from "@hot-updater/plugin-core";
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "./types";
@@ -45,7 +45,7 @@ const parseSupabaseStorageUri = (storageUri: string) => {
 };
 
 export const supabaseEdgeFunctionStorage =
-  createRuntimeStoragePlugin<SupabaseEdgeFunctionStorageConfig>({
+  createStoragePlugin<SupabaseEdgeFunctionStorageConfig>({
     name: "supabaseEdgeFunctionStorage",
     supportedProtocol: "supabase-storage",
     factory: (config) => {

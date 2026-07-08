@@ -1,42 +1,35 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { UniversalStoragePlugin } from "@hot-updater/plugin-core";
+import type { StoragePlugin } from "@hot-updater/plugin-core";
 
-export const mockStorage = (_: any) => (): UniversalStoragePlugin => {
+export const mockStorage = (_: unknown) => (): StoragePlugin => {
   return {
     name: "mock",
     supportedProtocol: "storage",
-    profiles: {
-      node: {
-        upload: (key: string) =>
-          Promise.resolve({
-            storageUri: `storage://my-app/${key}/bundle.zip`,
-          }),
-        exists: (_storageUri: string) => Promise.resolve(false),
-        delete: (_storageUri: string) => Promise.resolve(),
-        async downloadFile(storageUri: string, filePath: string) {
-          await fs.mkdir(path.dirname(filePath), { recursive: true });
-          await fs.writeFile(filePath, storageUri);
-        },
-      },
-      runtime: {
-        async readText() {
-          return null;
-        },
-        async getDownloadUrl(storageUri: string) {
-          try {
-            const url = new URL(storageUri);
-            if (url.protocol === "http:" || url.protocol === "https:") {
-              return { fileUrl: storageUri };
-            }
-          } catch {}
-          // For mock, return a deterministic fake URL for testing.
-          return {
-            fileUrl: `https://example.invalid/download?u=${encodeURIComponent(storageUri)}`,
-          };
-        },
-      },
+    upload: (key: string) =>
+      Promise.resolve({
+        storageUri: `storage://my-app/${key}/bundle.zip`,
+      }),
+    exists: (_storageUri: string) => Promise.resolve(false),
+    delete: (_storageUri: string) => Promise.resolve(),
+    async downloadFile(storageUri: string, filePath: string) {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, storageUri);
+    },
+    async readText() {
+      return null;
+    },
+    async getDownloadUrl(storageUri: string) {
+      try {
+        const url = new URL(storageUri);
+        if (url.protocol === "http:" || url.protocol === "https:") {
+          return { fileUrl: storageUri };
+        }
+      } catch {}
+      return {
+        fileUrl: `https://example.invalid/download?u=${encodeURIComponent(storageUri)}`,
+      };
     },
   };
 };

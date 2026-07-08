@@ -2,9 +2,10 @@ import fs from "fs/promises";
 import path from "path";
 
 import type {
-  UniversalStoragePlugin,
+  StoragePlugin,
   StoragePluginHooks,
 } from "@hot-updater/plugin-core";
+import { getStorageUploadFilePath } from "@hot-updater/plugin-core";
 import mime from "mime";
 
 import type { RouteConfig } from "./standaloneRepository";
@@ -50,7 +51,7 @@ export interface StandaloneStorageConfig {
 
 export const standaloneStorage =
   (config: StandaloneStorageConfig, hooks?: StoragePluginHooks) =>
-  (): UniversalStoragePlugin => {
+  (): StoragePlugin => {
     const routes: StorageRoutes = {
       upload: (key: string, filePath: string) =>
         createRoute(
@@ -82,112 +83,104 @@ export const standaloneStorage =
     return {
       name: "standaloneStorage",
       supportedProtocol: "http",
-      profiles: {
-        node: {
-          async delete(storageUri: string) {
-            const { path: routePath, headers: routeHeaders } =
-              routes.delete(storageUri);
-            const response = await fetch(`${config.baseUrl}${routePath}`, {
-              method: "DELETE",
-              headers: getHeaders(routeHeaders),
-              body: JSON.stringify({ storageUri }),
-            });
+      async delete(storageUri: string) {
+        const { path: routePath, headers: routeHeaders } =
+          routes.delete(storageUri);
+        const response = await fetch(`${config.baseUrl}${routePath}`, {
+          method: "DELETE",
+          headers: getHeaders(routeHeaders),
+          body: JSON.stringify({ storageUri }),
+        });
 
-            if (!response.ok) {
-              const error = new Error(
-                `Failed to delete bundle: ${response.statusText}`,
-              );
-              console.error(error);
-              throw error;
-            }
-          },
-          async upload(key: string, filePath: string) {
-            const fileContent = await fs.readFile(filePath);
-            const contentType =
-              mime.getType(filePath) ?? "application/octet-stream";
-            const filename = path.basename(filePath);
-
-            const { path: routePath, headers: routeHeaders } = routes.upload(
-              key,
-              filePath,
-            );
-
-            const formData = new FormData();
-            formData.append(
-              "file",
-              new Blob([fileContent], { type: contentType }),
-              filename,
-            );
-            formData.append("key", key);
-
-            const response = await fetch(`${config.baseUrl}${routePath}`, {
-              method: "POST",
-              headers: getHeaders(routeHeaders),
-              body: formData,
-            });
-
-            if (!response.ok) {
-              const error = `Failed to upload bundle: ${response.statusText}`;
-              console.error(`[upload] ${error}`);
-              throw new Error(error);
-            }
-
-            const result = (await response.json()) as {
-              storageUri: string;
-            };
-
-            if (!result.storageUri) {
-              const error =
-                "Failed to upload bundle - no storageUri in response";
-              console.error(`[upload] ${error}`);
-              throw new Error(error);
-            }
-
-            await hooks?.onStorageUploaded?.();
-
-            return {
-              storageUri: result.storageUri,
-            };
-          },
-          async exists(storageUri: string) {
-            const { fileUrl } = await getDownloadUrl(storageUri);
-            const response = await fetch(fileUrl, { method: "HEAD" });
-            return response.ok;
-          },
-          async downloadFile(storageUri: string, filePath: string) {
-            const { fileUrl } = await getDownloadUrl(storageUri);
-            const response = await fetch(fileUrl);
-            if (!response.ok) {
-              throw new Error(
-                `Failed to download bundle: ${response.statusText}`,
-              );
-            }
-
-            await fs.mkdir(path.dirname(filePath), { recursive: true });
-            await fs.writeFile(
-              filePath,
-              new Uint8Array(await response.arrayBuffer()),
-            );
-          },
-        },
-        runtime: {
-          async readText(storageUri: string) {
-            const { path: routePath, headers: routeHeaders } =
-              routes.readText(storageUri);
-            const response = await fetch(`${config.baseUrl}${routePath}`, {
-              method: "POST",
-              headers: getHeaders(routeHeaders),
-              body: JSON.stringify({ storageUri }),
-            });
-            if (!response.ok) {
-              return null;
-            }
-
-            return response.text();
-          },
-          getDownloadUrl,
-        },
+        if (!response.ok) {
+          const error = new Error(
+            `Failed to delete bundle: ${response.statusText}`,
+          );
+          console.error(error);
+          throw error;
+        }
       },
+      async upload(key, source) {
+        const filePath = getStorageUploadFilePath(source);
+        const fileContent = await fs.readFile(filePath);
+        const contentType =
+          mime.getType(filePath) ?? "application/octet-stream";
+        const filename = path.basename(filePath);
+
+        const { path: routePath, headers: routeHeaders } = routes.upload(
+          key,
+          filePath,
+        );
+
+        const formData = new FormData();
+        formData.append(
+          "file",
+          new Blob([fileContent], { type: contentType }),
+          filename,
+        );
+        formData.append("key", key);
+
+        const response = await fetch(`${config.baseUrl}${routePath}`, {
+          method: "POST",
+          headers: getHeaders(routeHeaders),
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const error = `Failed to upload bundle: ${response.statusText}`;
+          console.error(`[upload] ${error}`);
+          throw new Error(error);
+        }
+
+        const result = (await response.json()) as {
+          storageUri: string;
+        };
+
+        if (!result.storageUri) {
+          const error = "Failed to upload bundle - no storageUri in response";
+          console.error(`[upload] ${error}`);
+          throw new Error(error);
+        }
+
+        await hooks?.onStorageUploaded?.();
+
+        return {
+          storageUri: result.storageUri,
+        };
+      },
+      async exists(storageUri: string) {
+        const { fileUrl } = await getDownloadUrl(storageUri);
+        const response = await fetch(fileUrl, { method: "HEAD" });
+        return response.ok;
+      },
+      async downloadFile(storageUri: string, filePath: string) {
+        const { fileUrl } = await getDownloadUrl(storageUri);
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to download bundle: ${response.statusText}`);
+        }
+
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(
+          filePath,
+          new Uint8Array(await response.arrayBuffer()),
+        );
+      },
+      async readText(storageUri: string) {
+        const { path: routePath, headers: routeHeaders } =
+          routes.readText(storageUri);
+        const response = await fetch(`${config.baseUrl}${routePath}`, {
+          method: "POST",
+          headers: getHeaders(routeHeaders),
+          body: JSON.stringify({ storageUri }),
+        });
+        if (!response.ok) {
+          return null;
+        }
+
+        return response.text();
+      },
+      getDownloadUrl,
     };
 
     async function getDownloadUrl(storageUri: string) {

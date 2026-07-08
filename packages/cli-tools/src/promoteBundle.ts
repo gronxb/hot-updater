@@ -13,7 +13,7 @@ import {
 import type {
   Bundle,
   DatabasePlugin,
-  NodeStoragePlugin,
+  FileStoragePlugin,
 } from "@hot-updater/plugin-core";
 import {
   createUUIDv7,
@@ -46,7 +46,7 @@ export interface PromoteBundleInput {
 export interface PromoteBundleDependencies {
   config: ConfigResponse;
   databasePlugin: DatabasePlugin;
-  storagePlugin: NodeStoragePlugin | null;
+  storagePlugin: FileStoragePlugin | null;
 }
 
 function isSignedFileHash(fileHash: string) {
@@ -155,7 +155,7 @@ function resolveExtractedPath(rootDir: string, entryName: string) {
 
 async function downloadArchive(
   storageUri: string,
-  storagePlugin: NodeStoragePlugin | null,
+  storagePlugin: FileStoragePlugin | null,
   archivePath: string,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
@@ -182,7 +182,7 @@ async function downloadFromUrl(fileUrl: string) {
 
 async function downloadFromStorage(
   storageUri: string,
-  storagePlugin: NodeStoragePlugin | null,
+  storagePlugin: FileStoragePlugin | null,
   filePath: string,
 ) {
   if (!storagePlugin) {
@@ -194,7 +194,7 @@ async function downloadFromStorage(
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
+  await storagePlugin.downloadFile(storageUri, filePath);
 }
 
 async function extractZipArchive(archivePath: string, extractDir: string) {
@@ -331,7 +331,7 @@ export async function createCopiedBundleArchive({
   bundle: Bundle;
   config: ConfigResponse;
   nextBundleId: string;
-  storagePlugin: NodeStoragePlugin;
+  storagePlugin: FileStoragePlugin;
   targetChannel: string;
 }) {
   // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
@@ -380,15 +380,15 @@ export async function createCopiedBundleArchive({
       ? await signFileHash(manifestHash, signingKeyPath)
       : manifestHash;
 
-    const archiveUpload = await storagePlugin.profiles.node.upload(
-      nextBundleId,
-      outputArchivePath,
-    );
+    const archiveUpload = await storagePlugin.upload(nextBundleId, {
+      kind: "file",
+      filePath: outputArchivePath,
+    });
     uploadedStorageUris.push(archiveUpload.storageUri);
-    const manifestUpload = await storagePlugin.profiles.node.upload(
-      nextBundleId,
-      manifestPath,
-    );
+    const manifestUpload = await storagePlugin.upload(nextBundleId, {
+      kind: "file",
+      filePath: manifestPath,
+    });
     uploadedStorageUris.push(manifestUpload.storageUri);
 
     const assetPaths = Object.keys(manifest.assets ?? {}).sort((left, right) =>
@@ -406,10 +406,10 @@ export async function createCopiedBundleArchive({
         sourcePath,
         workDir,
       });
-      const assetUpload = await storagePlugin.profiles.node.upload(
-        uploadKey,
-        uploadPath,
-      );
+      const assetUpload = await storagePlugin.upload(uploadKey, {
+        kind: "file",
+        filePath: uploadPath,
+      });
       uploadedStorageUris.push(assetUpload.storageUri);
     }
 
@@ -446,7 +446,7 @@ export async function createCopiedBundleArchive({
 }
 
 async function deleteUploadedCopy(
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: FileStoragePlugin,
   storageUris: string[],
 ) {
   if (storageUris.length === 0) {
@@ -455,7 +455,7 @@ async function deleteUploadedCopy(
 
   for (const storageUri of new Set(storageUris)) {
     try {
-      await storagePlugin.profiles.node.delete(storageUri);
+      await storagePlugin.delete(storageUri);
     } catch (error) {
       console.error("Failed to delete uploaded bundle copy:", error);
     }

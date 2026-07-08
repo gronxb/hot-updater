@@ -1,9 +1,9 @@
 import type {
   DatabasePlugin,
   HotUpdaterContext,
-  RuntimeStoragePlugin,
+  StoragePlugin,
 } from "@hot-updater/plugin-core";
-import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import { assertRuntimeStorageOperations } from "@hot-updater/plugin-core";
 
 import { createPluginDatabaseCore } from "./db/pluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
@@ -33,14 +33,14 @@ export type HotUpdaterAPI<TContext = unknown> = RuntimeHotUpdaterAPI<TContext>;
 export interface CreateHotUpdaterOptions<TContext = unknown> {
   readonly database: DatabaseAdapter<TContext>;
   readonly storages?: readonly (
-    | RuntimeStoragePlugin<TContext>
+    | StoragePlugin<TContext>
     | StoragePluginFactory<TContext>
   )[];
   /**
    * @deprecated Use `storages` instead. This field will be removed in a future version.
    */
   readonly storagePlugins?: readonly (
-    | RuntimeStoragePlugin<TContext>
+    | StoragePlugin<TContext>
     | StoragePluginFactory<TContext>
   )[];
   readonly basePath?: string;
@@ -88,7 +88,7 @@ export function createHotUpdaterCore<TContext = unknown>(
   const storagePlugins = (options.storages ?? options.storagePlugins ?? []).map(
     (plugin) => {
       const storagePlugin = typeof plugin === "function" ? plugin() : plugin;
-      assertRuntimeStoragePlugin(storagePlugin);
+      assertRuntimeStorageOperations(storagePlugin);
       return storagePlugin;
     },
   );

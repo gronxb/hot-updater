@@ -1,7 +1,8 @@
 import {
-  createUniversalStoragePlugin,
+  createStoragePlugin,
+  getStorageUploadFilePath,
   type StoragePluginHooks,
-  type UniversalStoragePlugin,
+  type StoragePlugin,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -29,10 +30,7 @@ const hasS3Credentials = (
  * Cloudflare R2 storage plugin for Hot Updater.
  */
 interface R2Storage {
-  (
-    config: R2S3StorageConfig,
-    hooks?: StoragePluginHooks,
-  ): () => UniversalStoragePlugin;
+  (config: R2S3StorageConfig, hooks?: StoragePluginHooks): () => StoragePlugin;
   /**
    * @deprecated `cloudflareApiToken` uses the Wrangler CLI for R2 operations,
    * which is slower than direct S3-compatible API access. Create R2
@@ -42,23 +40,39 @@ interface R2Storage {
   (
     config: R2WranglerStorageConfig,
     hooks?: StoragePluginHooks,
-  ): () => UniversalStoragePlugin;
+  ): () => StoragePlugin;
 }
 
-const createR2StoragePlugin = createUniversalStoragePlugin<R2StorageConfig>({
+const createR2StoragePlugin = createStoragePlugin<R2StorageConfig>({
   name: "r2Storage",
   supportedProtocol: "r2",
   factory: (config) => {
     if (hasS3Credentials(config)) {
+      const node = createS3StorageProfile(config);
+      const runtime = createS3RuntimeStorageProfile(config);
+
       return {
-        node: createS3StorageProfile(config),
-        runtime: createS3RuntimeStorageProfile(config),
+        delete: node.delete,
+        downloadFile: node.downloadFile,
+        exists: node.exists,
+        getDownloadUrl: runtime.getDownloadUrl,
+        readText: runtime.readText,
+        upload: (key, source) =>
+          node.upload(key, getStorageUploadFilePath(source)),
       };
     }
 
+    const node = createWranglerStorageProfile(config);
+    const runtime = createWranglerRuntimeStorageProfile();
+
     return {
-      node: createWranglerStorageProfile(config),
-      runtime: createWranglerRuntimeStorageProfile(),
+      delete: node.delete,
+      downloadFile: node.downloadFile,
+      exists: node.exists,
+      getDownloadUrl: runtime.getDownloadUrl,
+      readText: runtime.readText,
+      upload: (key, source) =>
+        node.upload(key, getStorageUploadFilePath(source)),
     };
   },
 });

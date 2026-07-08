@@ -1,7 +1,3 @@
-import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
-
 import {
   getAssetBaseStorageUri,
   getBundlePatches,
@@ -9,10 +5,15 @@ import {
   getPatchStorageUri,
 } from "@hot-updater/core";
 import type {
+  Bundle,
   DatabasePlugin,
-  NodeStoragePlugin,
+  StoragePlugin,
 } from "@hot-updater/plugin-core";
-import { isContentAddressedAssetBaseStorageUri } from "@hot-updater/plugin-core";
+import {
+  assertStorageDelete,
+  assertStorageReadText,
+  isContentAddressedAssetBaseStorageUri,
+} from "@hot-updater/plugin-core";
 
 import { getLegacyBundleAssetCleanupUris } from "./legacyBundleAssetCleanup";
 
@@ -22,7 +23,7 @@ interface DeleteBundleInput {
 
 interface DeleteBundleDependencies {
   databasePlugin: DatabasePlugin;
-  storagePlugin: NodeStoragePlugin;
+  storagePlugin: StoragePlugin;
   waitForStorageCleanup?: boolean;
 }
 
@@ -30,11 +31,9 @@ interface BundleManifest {
   assets?: Record<string, { fileHash: string; signature?: string }>;
 }
 
-const HOT_UPDATER_DOWNLOAD_DIR_PREFIX = "downloads-";
-
 function resolveStorageUriForDeletion(
   storageUri: string,
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: StoragePlugin,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
@@ -46,12 +45,13 @@ function resolveStorageUriForDeletion(
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
+  assertStorageDelete(storagePlugin);
   return storageUri;
 }
 
-async function downloadStorageBytes(
+async function readStorageText(
   storageUri: string,
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: StoragePlugin,
 ) {
   const protocol = new URL(storageUri).protocol.replace(":", "");
 
@@ -63,39 +63,77 @@ async function downloadStorageBytes(
       );
     }
 
-    return new Uint8Array(await response.arrayBuffer());
+    return response.text();
   }
 
   if (storagePlugin.supportedProtocol !== protocol) {
     throw new Error(`No storage plugin for protocol: ${protocol}`);
   }
 
-  const downloadRoot = path.join(process.cwd(), ".hot-updater");
-  await fs.mkdir(downloadRoot, { recursive: true });
-  const workDir = await fs.mkdtemp(
-    path.join(downloadRoot, HOT_UPDATER_DOWNLOAD_DIR_PREFIX),
-  );
-  const filename = path.basename(new URL(storageUri).pathname) || randomUUID();
-  const filePath = path.join(workDir, filename);
-
-  try {
-    await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
-    return new Uint8Array(await fs.readFile(filePath));
-  } finally {
-    await fs.rm(workDir, { force: true, recursive: true });
+  assertStorageReadText(storagePlugin);
+  const text = await storagePlugin.readText(storageUri);
+  if (text === null) {
+    throw new Error(`Failed to read bundle manifest: ${storageUri}`);
   }
+  return text;
 }
 
 async function loadBundleManifest(
   manifestStorageUri: string,
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: StoragePlugin,
 ) {
-  const manifestBytes = await downloadStorageBytes(
-    manifestStorageUri,
-    storagePlugin,
-  );
+  const manifestText = await readStorageText(manifestStorageUri, storagePlugin);
 
-  return JSON.parse(new TextDecoder().decode(manifestBytes)) as BundleManifest;
+  return JSON.parse(manifestText) as BundleManifest;
+}
+
+function collectStorageReferenceUris(bundle: Bundle) {
+  return [
+    bundle.storageUri,
+    getManifestStorageUri(bundle),
+    getAssetBaseStorageUri(bundle),
+    getPatchStorageUri(bundle),
+    ...getBundlePatches(bundle).map((patch) => patch.patchStorageUri),
+  ].filter((value): value is string => Boolean(value));
+}
+
+async function collectRemainingStorageReferenceUris(
+  databasePlugin: DatabasePlugin,
+  deletedBundleId: string,
+) {
+  const referencedStorageUris = new Set<string>();
+  let cursorAfter: string | undefined;
+  let page = 1;
+
+  for (;;) {
+    const result = await databasePlugin.getBundles({
+      limit: 100,
+      ...(cursorAfter ? { cursor: { after: cursorAfter } } : { page }),
+      orderBy: { field: "id", direction: "asc" },
+    });
+
+    for (const bundle of result.data) {
+      if (bundle.id === deletedBundleId) {
+        continue;
+      }
+
+      for (const storageUri of collectStorageReferenceUris(bundle)) {
+        referencedStorageUris.add(storageUri);
+      }
+    }
+
+    if (!result.pagination.hasNextPage) {
+      break;
+    }
+
+    if (result.pagination.nextCursor) {
+      cursorAfter = result.pagination.nextCursor;
+    } else {
+      page += 1;
+    }
+  }
+
+  return referencedStorageUris;
 }
 
 export async function deleteBundle(
@@ -111,13 +149,7 @@ export async function deleteBundle(
     throw new Error("Bundle not found");
   }
 
-  const cleanupCandidates = [
-    bundle.storageUri,
-    getManifestStorageUri(bundle),
-    getAssetBaseStorageUri(bundle),
-    getPatchStorageUri(bundle),
-    ...getBundlePatches(bundle).map((patch) => patch.patchStorageUri),
-  ].filter((value): value is string => Boolean(value));
+  const cleanupCandidates = collectStorageReferenceUris(bundle);
 
   for (const candidate of cleanupCandidates) {
     resolveStorageUriForDeletion(candidate, storagePlugin);
@@ -127,9 +159,17 @@ export async function deleteBundle(
   await databasePlugin.commitBundle();
 
   const cleanupStorage = async () => {
+    const referencedStorageUris = await collectRemainingStorageReferenceUris(
+      databasePlugin,
+      bundle.id,
+    );
     const cleanupUris = new Set<string>();
     const addCleanupUri = (storageUri: string | undefined) => {
       if (!storageUri) {
+        return;
+      }
+
+      if (referencedStorageUris.has(storageUri)) {
         return;
       }
 
@@ -191,9 +231,10 @@ export async function deleteBundle(
       return;
     }
 
+    assertStorageDelete(storagePlugin);
     for (const storageUri of cleanupUris) {
       try {
-        await storagePlugin.profiles.node.delete(storageUri);
+        await storagePlugin.delete(storageUri);
       } catch (error) {
         console.error("Failed to delete bundle from storage:", error);
       }

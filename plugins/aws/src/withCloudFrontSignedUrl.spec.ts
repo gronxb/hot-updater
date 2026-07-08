@@ -1,7 +1,7 @@
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
 import type {
   RequestEnvContext,
-  RuntimeStoragePlugin,
+  StoragePlugin,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,20 +13,16 @@ vi.mock("@aws-sdk/cloudfront-signer", () => ({
 
 type TestContext = RequestEnvContext;
 
-const createBaseStorage = (): RuntimeStoragePlugin<TestContext> => ({
+const createBaseStorage = (): StoragePlugin<TestContext> => ({
   name: "baseStorage",
   supportedProtocol: "s3",
-  profiles: {
-    runtime: {
-      async readText(storageUri) {
-        return storageUri;
-      },
-      async getDownloadUrl(storageUri) {
-        return {
-          fileUrl: storageUri.replace("s3://", "https://s3.example.com/"),
-        };
-      },
-    },
+  async readText(storageUri) {
+    return storageUri;
+  },
+  async getDownloadUrl(storageUri) {
+    return {
+      fileUrl: storageUri.replace("s3://", "https://s3.example.com/"),
+    };
   },
 });
 
@@ -48,15 +44,16 @@ describe("withCloudFrontSignedUrl", () => {
       },
     )();
 
+    if (!storage.getDownloadUrl) {
+      throw new Error("expected getDownloadUrl operation");
+    }
+
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
-        "s3://test-bucket/releases/bundle.zip",
-        {
-          request: new Request(
-            "https://d2zkxggbe748dg.cloudfront.net/api/check-update",
-          ),
-        },
-      ),
+      storage.getDownloadUrl("s3://test-bucket/releases/bundle.zip", {
+        request: new Request(
+          "https://d2zkxggbe748dg.cloudfront.net/api/check-update",
+        ),
+      }),
     ).resolves.toEqual({
       fileUrl: "https://signed.example.com/bundle.zip",
     });

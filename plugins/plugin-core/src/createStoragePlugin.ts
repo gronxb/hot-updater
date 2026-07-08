@@ -4,63 +4,53 @@ import type {
   RuntimeStoragePlugin,
   RuntimeStorageProfile,
   StoragePlugin,
+  StoragePluginCore,
   StoragePluginHooks,
-  StoragePluginProfiles,
+  StorageUploadSource,
   UniversalStoragePlugin,
 } from "./types";
 
+type StoragePluginFactory<TConfig, TContext = unknown> = (
+  config: TConfig,
+) => StoragePluginCore<TContext>;
+
 type StorageProfileFactory<TConfig, TProfiles> = (config: TConfig) => TProfiles;
 
-interface BaseStoragePluginOptions<
-  TConfig,
-  TContext = unknown,
-  TProfiles extends StoragePluginProfiles<TContext> =
-    StoragePluginProfiles<TContext>,
-> {
-  /**
-   * The name of the storage plugin (e.g., "s3Storage", "r2Storage").
-   */
+export const getStorageUploadFilePath = (source: StorageUploadSource) => {
+  if (source.kind !== "file") {
+    throw new Error("This storage plugin only supports file upload sources.");
+  }
+
+  return source.filePath;
+};
+
+interface BaseStoragePluginOptions<TConfig, TContext = unknown> {
   name: string;
-  /**
-   * The protocol that this storage plugin supports (e.g., "s3", "r2", "gs").
-   *
-   * This value is stored in the database and is used by the server to
-   * understand how to fetch assets.
-   */
   supportedProtocol: string;
-  /**
-   * Function that creates the storage plugin profiles.
-   */
-  factory: StorageProfileFactory<TConfig, TProfiles>;
+  factory: StoragePluginFactory<TConfig, TContext>;
 }
 
+type CreateStoragePluginOptions<
+  TConfig,
+  TContext = unknown,
+> = BaseStoragePluginOptions<TConfig, TContext>;
+
 type CreateNodeStoragePluginOptions<TConfig> = Omit<
-  BaseStoragePluginOptions<TConfig, unknown, { node: NodeStorageProfile }>,
+  BaseStoragePluginOptions<TConfig, unknown>,
   "factory"
 > & {
   factory: StorageProfileFactory<TConfig, NodeStorageProfile>;
 };
 
 type CreateRuntimeStoragePluginOptions<TConfig, TContext = unknown> = Omit<
-  BaseStoragePluginOptions<
-    TConfig,
-    TContext,
-    { runtime: RuntimeStorageProfile<TContext> }
-  >,
+  BaseStoragePluginOptions<TConfig, TContext>,
   "factory"
 > & {
   factory: StorageProfileFactory<TConfig, RuntimeStorageProfile<TContext>>;
 };
 
 type CreateUniversalStoragePluginOptions<TConfig, TContext = unknown> = Omit<
-  BaseStoragePluginOptions<
-    TConfig,
-    TContext,
-    {
-      node: NodeStorageProfile;
-      runtime: RuntimeStorageProfile<TContext>;
-    }
-  >,
+  BaseStoragePluginOptions<TConfig, TContext>,
   "factory"
 > & {
   factory: StorageProfileFactory<
@@ -72,199 +62,203 @@ type CreateUniversalStoragePluginOptions<TConfig, TContext = unknown> = Omit<
   >;
 };
 
-const wrapNodeProfile = (
-  node: NodeStorageProfile,
+const wrapStorageUpload = <TContext>(
+  implementation: StoragePluginCore<TContext>,
   hooks?: StoragePluginHooks,
-): NodeStorageProfile => ({
-  ...node,
-  async upload(key, filePath) {
-    const result = await node.upload(key, filePath);
+): NonNullable<StoragePluginCore<TContext>["upload"]> => {
+  return async (key, source, context) => {
+    const result = await implementation.upload?.(key, source, context);
+    if (!result) {
+      throw new Error("Storage plugin does not implement upload.");
+    }
+
     await hooks?.onStorageUploaded?.();
     return result;
-  },
-});
-
-const createProfiledStoragePlugin = <TContext>(
-  {
-    createProfiles,
-    name,
-    profileShape,
-    supportedProtocol,
-  }: {
-    createProfiles: () => StoragePluginProfiles<TContext>;
-    name: string;
-    profileShape?: {
-      node?: boolean;
-      runtime?: boolean;
-    };
-    supportedProtocol: string;
-  },
-  hooks?: StoragePluginHooks,
-): StoragePlugin<TContext> => {
-  let cachedProfiles: StoragePluginProfiles<TContext> | null = null;
-  let cachedNodeProfile: NodeStorageProfile | undefined;
-  let cachedRuntimeProfile: RuntimeStorageProfile<TContext> | undefined;
-
-  const getProfiles = () => {
-    cachedProfiles ??= createProfiles();
-    return cachedProfiles;
-  };
-
-  const getNodeProfile = () => {
-    const node = getProfiles().node;
-    if (!node) {
-      return undefined;
-    }
-
-    cachedNodeProfile ??= wrapNodeProfile(node, hooks);
-    return cachedNodeProfile;
-  };
-
-  const requireNodeProfile = () => {
-    const node = getNodeProfile();
-    if (!node) {
-      throw new Error(
-        `${name} does not implement the node storage profile for protocol "${supportedProtocol}".`,
-      );
-    }
-
-    return node;
-  };
-
-  const getRuntimeProfile = () => {
-    const runtime = getProfiles().runtime;
-    if (!runtime) {
-      return undefined;
-    }
-
-    cachedRuntimeProfile ??= runtime;
-    return cachedRuntimeProfile;
-  };
-
-  const requireRuntimeProfile = () => {
-    const runtime = getRuntimeProfile();
-    if (!runtime) {
-      throw new Error(
-        `${name} does not implement the runtime storage profile for protocol "${supportedProtocol}".`,
-      );
-    }
-
-    return runtime;
-  };
-
-  const profiles = {} as StoragePluginProfiles<TContext>;
-
-  if (profileShape?.node) {
-    profiles.node = {
-      async delete(storageUri) {
-        return requireNodeProfile().delete(storageUri);
-      },
-      async downloadFile(storageUri, filePath) {
-        return requireNodeProfile().downloadFile(storageUri, filePath);
-      },
-      async exists(storageUri) {
-        return requireNodeProfile().exists(storageUri);
-      },
-      async upload(key, filePath) {
-        return requireNodeProfile().upload(key, filePath);
-      },
-    };
-  } else if (profileShape?.node !== false) {
-    Object.defineProperty(profiles, "node", {
-      enumerable: true,
-      get: getNodeProfile,
-    });
-  }
-
-  if (profileShape?.runtime) {
-    profiles.runtime = {
-      async getDownloadUrl(storageUri, context) {
-        return requireRuntimeProfile().getDownloadUrl(storageUri, context);
-      },
-      async readText(storageUri, context) {
-        return requireRuntimeProfile().readText(storageUri, context);
-      },
-    };
-  } else if (profileShape?.runtime !== false) {
-    Object.defineProperty(profiles, "runtime", {
-      enumerable: true,
-      get: getRuntimeProfile,
-    });
-  }
-
-  return {
-    name,
-    supportedProtocol,
-    profiles,
   };
 };
 
-/**
- * Creates a deploy/CLI/console storage plugin.
- */
+export const createStoragePlugin = <TConfig, TContext = unknown>(
+  options: CreateStoragePluginOptions<TConfig, TContext>,
+) => {
+  return (config: TConfig, hooks?: StoragePluginHooks) => {
+    return (): StoragePlugin<TContext> => {
+      const implementation = options.factory(config);
+
+      return {
+        name: options.name,
+        supportedProtocol: options.supportedProtocol,
+        ...(implementation.delete ? { delete: implementation.delete } : {}),
+        ...(implementation.downloadFile
+          ? { downloadFile: implementation.downloadFile }
+          : {}),
+        ...(implementation.exists ? { exists: implementation.exists } : {}),
+        ...(implementation.getDownloadUrl
+          ? { getDownloadUrl: implementation.getDownloadUrl }
+          : {}),
+        ...(implementation.readBytes
+          ? { readBytes: implementation.readBytes }
+          : {}),
+        ...(implementation.readText
+          ? { readText: implementation.readText }
+          : {}),
+        ...(implementation.upload
+          ? { upload: wrapStorageUpload(implementation, hooks) }
+          : {}),
+      };
+    };
+  };
+};
+
+const createMissingProfileError = (
+  name: string,
+  supportedProtocol: string,
+  profile: string,
+) =>
+  new Error(
+    `${name} does not implement the ${profile} storage profile for protocol "${supportedProtocol}".`,
+  );
+
+const createLazyNodeProfile = ({
+  createNode,
+  hooks,
+  name,
+  supportedProtocol,
+}: {
+  createNode: () => NodeStorageProfile | undefined;
+  hooks?: StoragePluginHooks;
+  name: string;
+  supportedProtocol: string;
+}): NodeStorageProfile => {
+  let cachedNodeProfile: NodeStorageProfile | undefined;
+
+  const requireNodeProfile = () => {
+    cachedNodeProfile ??= createNode();
+    if (!cachedNodeProfile) {
+      throw createMissingProfileError(name, supportedProtocol, "node");
+    }
+
+    return cachedNodeProfile;
+  };
+
+  return {
+    async delete(storageUri) {
+      return requireNodeProfile().delete(storageUri);
+    },
+    async downloadFile(storageUri, filePath) {
+      return requireNodeProfile().downloadFile(storageUri, filePath);
+    },
+    async exists(storageUri) {
+      return requireNodeProfile().exists(storageUri);
+    },
+    async upload(key, filePath) {
+      const result = await requireNodeProfile().upload(key, filePath);
+      await hooks?.onStorageUploaded?.();
+      return result;
+    },
+  };
+};
+
+const createLazyRuntimeProfile = <TContext>({
+  createRuntime,
+  name,
+  supportedProtocol,
+}: {
+  createRuntime: () => RuntimeStorageProfile<TContext> | undefined;
+  name: string;
+  supportedProtocol: string;
+}): RuntimeStorageProfile<TContext> => {
+  let cachedRuntimeProfile: RuntimeStorageProfile<TContext> | undefined;
+
+  const requireRuntimeProfile = () => {
+    cachedRuntimeProfile ??= createRuntime();
+    if (!cachedRuntimeProfile) {
+      throw createMissingProfileError(name, supportedProtocol, "runtime");
+    }
+
+    return cachedRuntimeProfile;
+  };
+
+  return {
+    async getDownloadUrl(storageUri, context) {
+      return requireRuntimeProfile().getDownloadUrl(storageUri, context);
+    },
+    async readText(storageUri, context) {
+      return requireRuntimeProfile().readText(storageUri, context);
+    },
+  };
+};
+
 export const createNodeStoragePlugin = <TConfig>(
   options: CreateNodeStoragePluginOptions<TConfig>,
 ) => {
   return (config: TConfig, hooks?: StoragePluginHooks) => {
-    return (): NodeStoragePlugin =>
-      createProfiledStoragePlugin(
-        {
-          createProfiles: () => ({ node: options.factory(config) }),
+    return (): NodeStoragePlugin => ({
+      name: options.name,
+      supportedProtocol: options.supportedProtocol,
+      profiles: {
+        node: createLazyNodeProfile({
+          createNode: () => options.factory(config),
+          hooks,
           name: options.name,
-          profileShape: {
-            node: true,
-            runtime: false,
-          },
           supportedProtocol: options.supportedProtocol,
-        },
-        hooks,
-      ) as NodeStoragePlugin;
+        }),
+      },
+    });
   };
 };
 
-/**
- * Creates an update-check runtime storage plugin.
- */
 export const createRuntimeStoragePlugin = <TConfig, TContext = unknown>(
   options: CreateRuntimeStoragePluginOptions<TConfig, TContext>,
 ) => {
-  return (config: TConfig, hooks?: StoragePluginHooks) => {
-    return (): RuntimeStoragePlugin<TContext> =>
-      createProfiledStoragePlugin(
-        {
-          createProfiles: () => ({ runtime: options.factory(config) }),
+  return (config: TConfig) => {
+    return (): RuntimeStoragePlugin<TContext> => ({
+      name: options.name,
+      supportedProtocol: options.supportedProtocol,
+      profiles: {
+        runtime: createLazyRuntimeProfile({
+          createRuntime: () => options.factory(config),
           name: options.name,
-          profileShape: {
-            node: false,
-            runtime: true,
-          },
           supportedProtocol: options.supportedProtocol,
-        },
-        hooks,
-      ) as RuntimeStoragePlugin<TContext>;
+        }),
+      },
+    });
   };
 };
 
-/**
- * Creates a storage plugin that can be used by both Node tooling and update
- * check runtimes.
- */
 export const createUniversalStoragePlugin = <TConfig, TContext = unknown>(
   options: CreateUniversalStoragePluginOptions<TConfig, TContext>,
 ) => {
   return (config: TConfig, hooks?: StoragePluginHooks) => {
-    return (): UniversalStoragePlugin<TContext> =>
-      createProfiledStoragePlugin(
-        {
-          createProfiles: () => options.factory(config),
-          name: options.name,
-          profileShape: {
-            node: true,
-            runtime: true,
-          },
-          supportedProtocol: options.supportedProtocol,
+    return (): UniversalStoragePlugin<TContext> => {
+      let cachedProfiles:
+        | {
+            node: NodeStorageProfile;
+            runtime: RuntimeStorageProfile<TContext>;
+          }
+        | undefined;
+
+      const getProfiles = () => {
+        cachedProfiles ??= options.factory(config);
+        return cachedProfiles;
+      };
+
+      return {
+        name: options.name,
+        supportedProtocol: options.supportedProtocol,
+        profiles: {
+          node: createLazyNodeProfile({
+            createNode: () => getProfiles().node,
+            hooks,
+            name: options.name,
+            supportedProtocol: options.supportedProtocol,
+          }),
+          runtime: createLazyRuntimeProfile({
+            createRuntime: () => getProfiles().runtime,
+            name: options.name,
+            supportedProtocol: options.supportedProtocol,
+          }),
         },
-        hooks,
-      ) as UniversalStoragePlugin<TContext>;
+      };
+    };
   };
 };

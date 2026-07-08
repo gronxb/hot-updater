@@ -1,5 +1,5 @@
-import type { ConfigResponse } from "@hot-updater/cli-tools";
 import type { Bundle } from "@hot-updater/plugin-core";
+import type { ConfigInput } from "@hot-updater/plugin-core";
 import type { PaginationInfo } from "@hot-updater/plugin-core";
 import { createContext, type ReactNode, useContext } from "react";
 
@@ -34,7 +34,7 @@ export type ConsoleApiClient = {
   }>;
   getChannels: () => Promise<string[]>;
   getConfig: () => Promise<{
-    console?: ConfigResponse["console"];
+    console?: ConfigInput["console"];
   }>;
   getConfigLoaded: () => Promise<{
     configLoaded: boolean;

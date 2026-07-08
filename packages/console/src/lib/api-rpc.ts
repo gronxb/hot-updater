@@ -1,4 +1,7 @@
-import { isRuntimeStoragePlugin, type Bundle } from "@hot-updater/plugin-core";
+import {
+  assertStorageGetDownloadUrl,
+  type Bundle,
+} from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
 import { DEFAULT_PAGE_LIMIT } from "./constants";
@@ -235,14 +238,8 @@ export const getBundleDownloadUrl = createServerFn({ method: "GET" })
         throw new Error(`No storage plugin for protocol: ${protocol}`);
       }
 
-      if (!isRuntimeStoragePlugin(storagePlugin)) {
-        throw new Error(
-          `${storagePlugin.name} does not support runtime download URL resolution.`,
-        );
-      }
-
-      const downloadTarget =
-        await storagePlugin.profiles.runtime.getDownloadUrl(storageUri);
+      assertStorageGetDownloadUrl(storagePlugin);
+      const downloadTarget = await storagePlugin.getDownloadUrl(storageUri);
       const { fileUrl } = downloadTarget;
 
       if (!fileUrl) {
@@ -284,10 +281,9 @@ export const promoteBundle = createServerFn({ method: "POST" })
     try {
       const { prepareConfig } = await import("./server/config.server");
       const { promoteBundle: promoteBundleWithConfig } =
-        await import("@hot-updater/cli-tools");
-      const { config, databasePlugin, storagePlugin } = await prepareConfig();
+        await import("./server/promoteBundle");
+      const { databasePlugin, storagePlugin } = await prepareConfig();
       const bundle = await promoteBundleWithConfig(data, {
-        config,
         databasePlugin,
         storagePlugin,
       });

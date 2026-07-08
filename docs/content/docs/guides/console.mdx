@@ -1,6 +1,6 @@
 ---
-title: "Console (Rollback & Force Update)"
-description: "Opens a localhost server based on plugins configured in `hot-updater.config.ts`. For security reasons, only localhost server is supported at the moment."
+title: "Console"
+description: "Run the Hot Updater management console locally or deploy it with the standalone Nitro console app."
 icon: Terminal
 ---
 
@@ -9,16 +9,107 @@ icon: Terminal
 - Rollback
 - Force update flag
 - Quick access to git history for updates
+- Bundle filtering, editing, deletion, promotion, and download URLs
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
-## Configuration (Optional)
+## Local Console
+
+For local bundle management, run the CLI console from your React Native project:
+
+```package-install
+npx hot-updater console
+```
+
+The CLI opens a local server based on the plugins configured in
+`hot-updater.config.ts`.
+
+## Deployable Console
+
+For a hosted console, use the deployable Vite/Nitro shell:
+
+```bash
+git clone https://github.com/hot-updater/console
+cd console
+corepack enable
+pnpm install
+```
+
+Configure `hot-updater.config.ts` in the console repository with the same
+storage and database plugins used by your OTA deployment:
+
+```ts title="hot-updater.config.ts"
+import { s3Database, s3Storage } from "@hot-updater/aws";
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: s3Storage({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
+  database: s3Database({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
+  updateStrategy: "appVersion",
+});
+```
+
+The deployable app imports that config and passes it to
+`@hot-updater/console/hosted`. The package owns the console component and API
+adapter; the deployable app owns provider selection, credentials, auth, and
+Nitro deployment.
+
+```ts
+import { createHotUpdaterConsoleApi } from "@hot-updater/console/hosted";
+
+import config from "./hot-updater.config";
+
+const api = createHotUpdaterConsoleApi(config);
+```
+
+Run locally:
+
+```bash
+pnpm dev
+```
+
+Build the Nitro output:
+
+```bash
+pnpm build
+pnpm start
+```
+
+### Cloudflare Pages
+
+Nitro supports Cloudflare Pages with the `cloudflare_pages` preset. Configure
+Cloudflare Pages with the Nitro Cloudflare preset and Cloudflare Pages build
+settings:
+
+```text
+Build command:          corepack enable && pnpm install --frozen-lockfile && NITRO_PRESET=cloudflare_pages pnpm build
+Build output directory: .output/public
+Root directory:         /
+```
+
+References: [Nitro Cloudflare provider](https://nitro.build/deploy/providers/cloudflare)
+and [Cloudflare Pages build configuration](https://developers.cloudflare.com/pages/configuration/build-configuration/).
+
+For direct upload:
+
+```bash
+NITRO_PRESET=cloudflare_pages pnpm build
+pnpm dlx wrangler pages deploy .output/public
+```
+
+Add the environment variables and Cloudflare bindings required by
+`hot-updater.config.ts` to the Pages project. For R2-backed storage, bind the
+bucket used by the storage plugin.
+
+## Configuration
 
 This is a console configuration that does not affect the bundle.
 
 You can configure additional console settings in the `hot-updater.config.ts` file.
 
-The `storage` and `database` plugins must be exist.
+The `storage` and `database` plugins must exist.
 
 | Option           | Description                                              | Default |
 | ---------------- | -------------------------------------------------------- | ------- |
@@ -37,14 +128,6 @@ export default defineConfig({
   database: ...,
 });
 
-```
-
-## Usage
-
-Execute the following command:
-
-```package-install
-npx hot-updater console
 ```
 
 You can also use the bundle CLI for automation and CI scripts:

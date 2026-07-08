@@ -1,6 +1,6 @@
 import type {
   HotUpdaterContext,
-  RuntimeStoragePlugin,
+  RuntimeStorageOperations,
 } from "@hot-updater/plugin-core";
 
 const assertRemoteDownloadUrl = (fileUrl: string) => {
@@ -25,7 +25,7 @@ const isRemoteUrlProtocol = (protocol: string) =>
   protocol === "http" || protocol === "https";
 
 export const createStorageAccess = <TContext>(
-  storagePlugins: RuntimeStoragePlugin<TContext>[],
+  storagePlugins: RuntimeStorageOperations<TContext>[],
 ) => {
   const findStoragePlugin = (protocol: string) => {
     return storagePlugins.find((item) => item.supportedProtocol === protocol);
@@ -42,10 +42,7 @@ export const createStorageAccess = <TContext>(
     const protocol = getStorageProtocol(storageUri);
     const plugin = findStoragePlugin(protocol);
     if (plugin) {
-      const downloadTarget = await plugin.profiles.runtime.getDownloadUrl(
-        storageUri,
-        context,
-      );
+      const downloadTarget = await plugin.getDownloadUrl(storageUri, context);
       const { fileUrl } = downloadTarget;
       if (!fileUrl) {
         throw new Error("Storage plugin returned empty fileUrl");
@@ -68,7 +65,7 @@ export const createStorageAccess = <TContext>(
     const protocol = getStorageProtocol(storageUri);
     const plugin = findStoragePlugin(protocol);
     if (plugin) {
-      return plugin.profiles.runtime.readText(storageUri, context);
+      return plugin.readText(storageUri, context);
     }
 
     if (isRemoteUrlProtocol(protocol)) {

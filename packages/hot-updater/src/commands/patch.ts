@@ -1,5 +1,6 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
+import { assertFileStoragePlugin } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 
 import { getPlatform } from "@/prompts/getPlatform";
@@ -38,6 +39,7 @@ export const createPatch = async (options: PatchOptions) => {
     config.database(),
     config.storage(),
   ]);
+  assertFileStoragePlugin(storagePlugin);
 
   try {
     p.note(

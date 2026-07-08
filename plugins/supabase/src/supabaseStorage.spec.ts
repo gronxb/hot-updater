@@ -2,6 +2,10 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
+import {
+  assertFileStoragePlugin,
+  assertRuntimeStorageOperations,
+} from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { supabaseStorage } from "./supabaseStorage";
@@ -47,9 +51,10 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
+      storage.exists(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
       ),
     ).resolves.toBe(true);
@@ -74,9 +79,10 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
+      storage.exists(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
       ),
     ).resolves.toBe(false);
@@ -95,9 +101,10 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
+      storage.exists(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
       ),
     ).rejects.toThrow(
@@ -116,9 +123,10 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
+      storage.exists(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
       ),
     ).rejects.toBe(error);
@@ -130,11 +138,10 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.exists(
-        "supabase-storage://other/assets/sha256/fi/file-hash.png",
-      ),
+      storage.exists("supabase-storage://other/assets/sha256/fi/file-hash.png"),
     ).rejects.toThrow(
       'Bucket name mismatch: expected "updates", but found "other".',
     );
@@ -152,9 +159,10 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
+      storage.getDownloadUrl(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),
@@ -187,9 +195,13 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertFileStoragePlugin(storage);
 
     await expect(
-      storage.profiles.node.upload("bundles", uploadPath),
+      storage.upload("bundles", {
+        kind: "file",
+        filePath: uploadPath,
+      }),
     ).resolves.toEqual({
       storageUri: "supabase-storage://updates/bundles/bundle.zip",
     });
@@ -221,9 +233,10 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
+      storage.getDownloadUrl(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),
@@ -245,9 +258,10 @@ describe("supabaseStorage", () => {
       supabaseAnonKey: "anon-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
+      storage.getDownloadUrl(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),

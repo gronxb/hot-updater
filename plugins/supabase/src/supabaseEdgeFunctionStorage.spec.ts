@@ -1,3 +1,4 @@
+import { assertRuntimeStorageOperations } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { supabaseEdgeFunctionStorage } from "./supabaseEdgeFunctionStorage";
@@ -39,9 +40,10 @@ describe("supabaseEdgeFunctionStorage", () => {
       supabaseServiceRoleKey: "service-role-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
+      storage.getDownloadUrl(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),
@@ -65,9 +67,10 @@ describe("supabaseEdgeFunctionStorage", () => {
       supabaseServiceRoleKey: "service-role-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
+      storage.getDownloadUrl(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),
@@ -88,9 +91,10 @@ describe("supabaseEdgeFunctionStorage", () => {
       supabaseServiceRoleKey: "service-role-key",
       supabaseUrl: "https://example.supabase.co",
     })();
+    assertRuntimeStorageOperations(storage);
 
     await expect(
-      storage.profiles.runtime.getDownloadUrl(
+      storage.getDownloadUrl(
         "supabase-storage://updates/assets/sha256/fi/file-hash.png",
         {},
       ),

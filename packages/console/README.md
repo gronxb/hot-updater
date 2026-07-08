@@ -24,7 +24,9 @@ import "@hot-updater/console/embedded.css";
 
 ## Deployable Console Flow
 
-Use the deployable console repository as the thin Vite/Nitro shell:
+Use the deployable console repository as the thin Vite/Nitro shell. The Hot
+Updater repository does not ship an app template; this package provides the UI
+and API adapter, and the `hot-updater/console` repository owns deployment.
 
 ```bash
 git clone https://github.com/hot-updater/console
@@ -34,7 +36,8 @@ pnpm install
 ```
 
 Configure `hot-updater.config.ts` in that repository with the same provider
-plugins used by your OTA deployment:
+plugins used by your OTA deployment. The console package receives plugins from
+this file; provider credentials stay in the deployable app environment.
 
 ```ts
 import { s3Database, s3Storage } from "@hot-updater/aws";
@@ -51,6 +54,16 @@ export default defineConfig({
 
 Install any provider packages referenced by the config and provide credentials
 through the deployment environment. Do not commit secrets.
+
+The deployable app should import that config and pass it into this package:
+
+```ts
+import { createHotUpdaterConsoleApi } from "@hot-updater/console/hosted";
+
+import config from "./hot-updater.config";
+
+const api = createHotUpdaterConsoleApi(config);
+```
 
 Run locally:
 
@@ -77,16 +90,42 @@ Start command:   pnpm start
 `pnpm start` runs that output directly. Set `PORT` and, if your host requires
 it, `NITRO_PORT`.
 
+### Cloudflare Pages
+
+Nitro supports Cloudflare Pages with the `cloudflare_pages` preset. Configure
+the Pages project with the Nitro Cloudflare preset and Cloudflare Pages build
+settings:
+
+```text
+Build command:          corepack enable && pnpm install --frozen-lockfile && NITRO_PRESET=cloudflare_pages pnpm build
+Build output directory: .output/public
+Root directory:         /
+```
+
+References: [Nitro Cloudflare provider](https://nitro.build/deploy/providers/cloudflare)
+and [Cloudflare Pages build configuration](https://developers.cloudflare.com/pages/configuration/build-configuration/).
+
+For direct upload from a local checkout:
+
+```bash
+NITRO_PRESET=cloudflare_pages pnpm build
+pnpm dlx wrangler pages deploy .output/public
+```
+
+Use Cloudflare environment variables and bindings for credentials referenced by
+`hot-updater.config.ts`. For Cloudflare R2 runtime access, bind the bucket used
+by the storage plugin to the Pages project.
+
 ## Config Handoff
 
 The deployable app should keep provider plugins in `hot-updater.config.ts` and
 pass the loaded config into this package:
 
 ```ts
-import { loadConfig } from "@hot-updater/cli-tools";
 import { createHotUpdaterConsoleApi } from "@hot-updater/console/hosted";
 
-const config = await loadConfig(null);
+import config from "./hot-updater.config";
+
 const api = createHotUpdaterConsoleApi(config);
 ```
 

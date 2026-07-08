@@ -15,10 +15,10 @@ import {
 import type {
   Bundle,
   DatabasePlugin,
-  NodeStoragePlugin,
+  FileStoragePlugin,
   Platform,
 } from "@hot-updater/plugin-core";
-import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
+import { assertFileStoragePlugin } from "@hot-updater/plugin-core";
 import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
@@ -250,7 +250,7 @@ const createAutoPatches = async ({
   databasePlugin: DatabasePlugin;
   maxBaseBundles: number;
   platform: Platform;
-  storagePlugin: NodeStoragePlugin;
+  storagePlugin: FileStoragePlugin;
   target: {
     appVersion: string | null;
     fingerprintHash: string | null;
@@ -731,7 +731,7 @@ const deployPlatform = async ({
     config.storage(),
     config.database(),
   ]);
-  assertNodeStoragePlugin(storagePlugin);
+  assertFileStoragePlugin(storagePlugin);
 
   try {
     const taskRef: {
@@ -930,10 +930,10 @@ const deployPlatform = async ({
             };
 
             updateUploadProgress();
-            const { storageUri } = await storagePlugin.profiles.node.upload(
-              bundleId,
-              bundlePath,
-            );
+            const { storageUri } = await storagePlugin.upload(bundleId, {
+              kind: "file",
+              filePath: bundlePath,
+            });
             taskRef.storageUri = storageUri;
             uploadedStepCount += 1;
             updateUploadProgress();
@@ -968,23 +968,23 @@ const deployPlatform = async ({
                   uploadFilename: path.posix.basename(storagePath),
                 });
 
-                if (await storagePlugin.profiles.node.exists(storageUri)) {
+                if (await storagePlugin.exists(storageUri)) {
                   skippedUploadCount += 1;
                 } else {
-                  await storagePlugin.profiles.node.upload(
-                    uploadKey,
-                    uploadSourcePath,
-                  );
+                  await storagePlugin.upload(uploadKey, {
+                    kind: "file",
+                    filePath: uploadSourcePath,
+                  });
                 }
                 uploadedStepCount += 1;
                 updateUploadProgress();
               },
             );
 
-            const manifestUpload = await storagePlugin.profiles.node.upload(
-              bundleId,
-              taskRef.manifestPath,
-            );
+            const manifestUpload = await storagePlugin.upload(bundleId, {
+              kind: "file",
+              filePath: taskRef.manifestPath,
+            });
             taskRef.manifestStorageUri = manifestUpload.storageUri;
             uploadedStepCount += 1;
             updateUploadProgress();

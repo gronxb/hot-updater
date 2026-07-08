@@ -8,7 +8,7 @@ import type {
   DatabaseBundleQueryOptions,
   DatabasePlugin,
   HotUpdaterContext,
-  RuntimeStoragePlugin,
+  StoragePlugin,
 } from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "../types";
@@ -155,4 +155,4 @@ export interface DatabaseAPI<TContext = unknown> {
 }
 
 export type StoragePluginFactory<TContext = unknown> =
-  () => RuntimeStoragePlugin<TContext>;
+  () => StoragePlugin<TContext>;

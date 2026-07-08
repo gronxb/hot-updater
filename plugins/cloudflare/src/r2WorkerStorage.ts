@@ -1,14 +1,29 @@
 import { signToken } from "@hot-updater/js";
 import {
-  createRuntimeStoragePlugin,
+  createStoragePlugin,
   type HotUpdaterContext,
   type RequestEnvContext,
+  type StorageUploadSource,
 } from "@hot-updater/plugin-core";
 
 export interface CloudflareWorkerStorageEnv {
   JWT_SECRET: string;
   BUCKET: {
-    get: (key: string) => Promise<{ text: () => Promise<string> } | null>;
+    delete: (key: string | string[]) => Promise<void>;
+    get: (key: string) => Promise<{
+      arrayBuffer: () => Promise<ArrayBuffer>;
+      text: () => Promise<string>;
+    } | null>;
+    head: (key: string) => Promise<unknown | null>;
+    put: (
+      key: string,
+      value: ArrayBuffer | ArrayBufferView | string | Blob,
+      options?: {
+        httpMetadata?: {
+          contentType?: string;
+        };
+      },
+    ) => Promise<unknown>;
   };
 }
 
@@ -19,6 +34,7 @@ type ContextResolver<TContext, TValue> = (
 export interface CloudflareWorkerStorageConfig<
   TContext extends RequestEnvContext<CloudflareWorkerStorageEnv>,
 > {
+  bucketName?: string;
   jwtSecret?: string | ContextResolver<TContext, string>;
   publicBaseUrl: string | ContextResolver<TContext, string>;
 }
@@ -66,61 +82,128 @@ const createPublicObjectPath = (storageUrl: URL) =>
 const createR2ObjectKey = (storageUrl: URL) =>
   storageUrl.pathname.replace(/^\/+/, "");
 
+const createStorageUri = (bucketName: string, key: string) => {
+  const normalizedKey = key
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `r2://${bucketName}/${normalizedKey}`;
+};
+
+const createUploadBody = (source: StorageUploadSource) => {
+  if (source.kind === "file") {
+    throw new Error("r2WorkerStorage only supports bytes upload sources.");
+  }
+
+  return source.data;
+};
+
 export const r2WorkerStorage = <
   TContext extends RequestEnvContext<CloudflareWorkerStorageEnv> =
     RequestEnvContext<CloudflareWorkerStorageEnv>,
 >(
   config: CloudflareWorkerStorageConfig<TContext>,
 ) => {
-  return createRuntimeStoragePlugin<
-    CloudflareWorkerStorageConfig<TContext>,
-    TContext
-  >({
-    name: "r2WorkerStorage",
-    supportedProtocol: "r2",
-    factory: (config) => ({
-      async readText(storageUri, context) {
-        const storageUrl = new URL(storageUri);
+  return createStoragePlugin<CloudflareWorkerStorageConfig<TContext>, TContext>(
+    {
+      name: "r2WorkerStorage",
+      supportedProtocol: "r2",
+      factory: (config) => ({
+        async delete(storageUri, context) {
+          const storageUrl = new URL(storageUri);
 
-        if (storageUrl.protocol !== "r2:") {
-          throw new Error("Invalid R2 storage URI protocol");
-        }
+          if (storageUrl.protocol !== "r2:") {
+            throw new Error("Invalid R2 storage URI protocol");
+          }
 
-        const bucket = resolveR2BucketFromContext(context);
-        const key = createR2ObjectKey(storageUrl);
-        const object = await bucket.get(key);
-        if (!object) {
-          return null;
-        }
+          const bucket = resolveR2BucketFromContext(context);
+          await bucket.delete(createR2ObjectKey(storageUrl));
+        },
+        async exists(storageUri, context) {
+          const storageUrl = new URL(storageUri);
 
-        return object.text();
-      },
-      async getDownloadUrl(storageUri, context) {
-        const storageUrl = new URL(storageUri);
+          if (storageUrl.protocol !== "r2:") {
+            throw new Error("Invalid R2 storage URI protocol");
+          }
 
-        if (storageUrl.protocol !== "r2:") {
-          throw new Error("Invalid R2 storage URI protocol");
-        }
+          const bucket = resolveR2BucketFromContext(context);
+          return (await bucket.head(createR2ObjectKey(storageUrl))) !== null;
+        },
+        async upload(key, source, context) {
+          const bucket = resolveR2BucketFromContext(context);
+          const putOptions =
+            source.kind === "bytes" && source.contentType
+              ? {
+                  httpMetadata: {
+                    contentType: source.contentType,
+                  },
+                }
+              : undefined;
+          await bucket.put(key, createUploadBody(source), putOptions);
 
-        const key = createPublicObjectPath(storageUrl);
-        const [jwtSecret, publicBaseUrl] = await Promise.all([
-          resolveContextValue(
-            config.jwtSecret ?? resolveJwtSecretFromContext,
-            context,
-          ),
-          resolveContextValue(config.publicBaseUrl, context),
-        ]);
-        const token = await signToken(key, jwtSecret);
-        const url = new URL(publicBaseUrl);
+          return {
+            storageUri: createStorageUri(config.bucketName ?? "bundles", key),
+          };
+        },
+        async readBytes(storageUri, context) {
+          const storageUrl = new URL(storageUri);
 
-        url.pathname = key;
-        url.search = "";
-        url.searchParams.set("token", token);
+          if (storageUrl.protocol !== "r2:") {
+            throw new Error("Invalid R2 storage URI protocol");
+          }
 
-        return {
-          fileUrl: url.toString(),
-        };
-      },
-    }),
-  })(config);
+          const bucket = resolveR2BucketFromContext(context);
+          const object = await bucket.get(createR2ObjectKey(storageUrl));
+          if (!object) {
+            return null;
+          }
+
+          return object.arrayBuffer();
+        },
+        async readText(storageUri, context) {
+          const storageUrl = new URL(storageUri);
+
+          if (storageUrl.protocol !== "r2:") {
+            throw new Error("Invalid R2 storage URI protocol");
+          }
+
+          const bucket = resolveR2BucketFromContext(context);
+          const key = createR2ObjectKey(storageUrl);
+          const object = await bucket.get(key);
+          if (!object) {
+            return null;
+          }
+
+          return object.text();
+        },
+        async getDownloadUrl(storageUri, context) {
+          const storageUrl = new URL(storageUri);
+
+          if (storageUrl.protocol !== "r2:") {
+            throw new Error("Invalid R2 storage URI protocol");
+          }
+
+          const key = createPublicObjectPath(storageUrl);
+          const [jwtSecret, publicBaseUrl] = await Promise.all([
+            resolveContextValue(
+              config.jwtSecret ?? resolveJwtSecretFromContext,
+              context,
+            ),
+            resolveContextValue(config.publicBaseUrl, context),
+          ]);
+          const token = await signToken(key, jwtSecret);
+          const url = new URL(publicBaseUrl);
+
+          url.pathname = key;
+          url.search = "";
+          url.searchParams.set("token", token);
+
+          return {
+            fileUrl: url.toString(),
+          };
+        },
+      }),
+    },
+  )(config);
 };

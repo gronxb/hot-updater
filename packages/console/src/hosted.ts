@@ -1,11 +1,9 @@
-import type { ConfigResponse } from "@hot-updater/cli-tools";
-import { promoteBundle } from "@hot-updater/cli-tools";
 import {
-  assertNodeStoragePlugin,
-  isRuntimeStoragePlugin,
+  assertStorageGetDownloadUrl,
   type Bundle,
+  type ConfigInput,
   type DatabasePlugin,
-  type NodeStoragePlugin,
+  type StoragePlugin,
 } from "@hot-updater/plugin-core";
 
 import type { ConsoleApiClient } from "./lib/api-client";
@@ -15,6 +13,7 @@ import {
   getBundleChildCounts as getBundleChildCountsWithConfig,
   getBundleChildren as getBundleChildrenWithConfig,
 } from "./lib/server/getBundleChildren";
+import { promoteBundle as promoteBundleWithStorage } from "./lib/server/promoteBundle";
 
 const emptyBundleList = {
   data: [],
@@ -41,12 +40,16 @@ const assertRemoteDownloadUrl = (fileUrl: string) => {
 };
 
 export type HotUpdaterConsoleServerApi = ConsoleApiClient;
+export type HotUpdaterConsoleConfig = Pick<
+  ConfigInput,
+  "console" | "database" | "storage"
+>;
 
 export function createHotUpdaterConsoleApi(
-  config: ConfigResponse,
+  config: HotUpdaterConsoleConfig,
 ): HotUpdaterConsoleServerApi {
   let databasePluginPromise: Promise<DatabasePlugin> | null = null;
-  let storagePluginPromise: Promise<NodeStoragePlugin> | null = null;
+  let storagePluginPromise: Promise<StoragePlugin> | null = null;
 
   const loadDatabasePlugin = async () => {
     if (!databasePluginPromise) {
@@ -75,7 +78,6 @@ export function createHotUpdaterConsoleApi(
             throw new Error("Storage plugin initialization failed");
           }
 
-          assertNodeStoragePlugin(storagePlugin);
           return storagePlugin;
         })
         .catch((error) => {
@@ -150,14 +152,8 @@ export function createHotUpdaterConsoleApi(
         throw new Error(`No storage plugin for protocol: ${protocol}`);
       }
 
-      if (!isRuntimeStoragePlugin(storagePlugin)) {
-        throw new Error(
-          `${storagePlugin.name} does not support runtime download URL resolution.`,
-        );
-      }
-
-      const downloadTarget =
-        await storagePlugin.profiles.runtime.getDownloadUrl(storageUri);
+      assertStorageGetDownloadUrl(storagePlugin);
+      const downloadTarget = await storagePlugin.getDownloadUrl(storageUri);
       const { fileUrl } = downloadTarget;
 
       if (!fileUrl) {
@@ -209,8 +205,7 @@ export function createHotUpdaterConsoleApi(
     getConfigLoaded: async () => ({ configLoaded: true }),
     promoteBundle: async (input) => {
       const { databasePlugin, storagePlugin } = await prepareConfig();
-      const bundle = await promoteBundle(input, {
-        config,
+      const bundle = await promoteBundleWithStorage(input, {
         databasePlugin,
         storagePlugin,
       });
@@ -232,4 +227,4 @@ export function createHotUpdaterConsoleApi(
   };
 }
 
-export type { Bundle, ConfigResponse };
+export type { Bundle };

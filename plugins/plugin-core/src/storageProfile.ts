@@ -1,11 +1,11 @@
 import type {
+  LegacyProfiledStoragePlugin,
   NodeStoragePlugin,
   RuntimeStoragePlugin,
-  StoragePlugin,
 } from "./types";
 
 const createMissingProfileError = (
-  plugin: Pick<StoragePlugin, "name" | "supportedProtocol">,
+  plugin: Pick<LegacyProfiledStoragePlugin, "name" | "supportedProtocol">,
   profile: string,
 ) =>
   new Error(
@@ -13,15 +13,15 @@ const createMissingProfileError = (
   );
 
 export const isNodeStoragePlugin = <TContext = unknown>(
-  plugin: StoragePlugin<TContext>,
+  plugin: LegacyProfiledStoragePlugin<TContext>,
 ): plugin is NodeStoragePlugin<TContext> => Boolean(plugin.profiles.node);
 
 export const isRuntimeStoragePlugin = <TContext = unknown>(
-  plugin: StoragePlugin<TContext>,
+  plugin: LegacyProfiledStoragePlugin<TContext>,
 ): plugin is RuntimeStoragePlugin<TContext> => Boolean(plugin.profiles.runtime);
 
 export function assertNodeStoragePlugin<TContext = unknown>(
-  plugin: StoragePlugin<TContext>,
+  plugin: LegacyProfiledStoragePlugin<TContext>,
 ): asserts plugin is NodeStoragePlugin<TContext> {
   if (!isNodeStoragePlugin(plugin)) {
     throw createMissingProfileError(plugin, "node");
@@ -29,7 +29,7 @@ export function assertNodeStoragePlugin<TContext = unknown>(
 }
 
 export function assertRuntimeStoragePlugin<TContext = unknown>(
-  plugin: StoragePlugin<TContext>,
+  plugin: LegacyProfiledStoragePlugin<TContext>,
 ): asserts plugin is RuntimeStoragePlugin<TContext> {
   if (!isRuntimeStoragePlugin(plugin)) {
     throw createMissingProfileError(plugin, "runtime");

@@ -1,5 +1,5 @@
 import {
-  createRuntimeStoragePlugin,
+  createStoragePlugin,
   type StoragePluginHooks,
 } from "@hot-updater/plugin-core";
 import type { AppOptions } from "firebase-admin/app";
@@ -16,7 +16,7 @@ export interface FirebaseFunctionsStorageConfig extends AppOptions {
 }
 
 const createFirebaseFunctionsStorage =
-  createRuntimeStoragePlugin<FirebaseFunctionsStorageConfig>({
+  createStoragePlugin<FirebaseFunctionsStorageConfig>({
     name: "firebaseFunctionsStorage",
     supportedProtocol: "gs",
     factory: (config) => {
@@ -27,7 +27,11 @@ const createFirebaseFunctionsStorage =
 
       return {
         async readText(storageUri, context) {
-          return fallbackStorage.profiles.runtime.readText(storageUri, context);
+          if (!fallbackStorage.readText) {
+            throw new Error("firebaseStorage does not implement readText.");
+          }
+
+          return fallbackStorage.readText(storageUri, context);
         },
         async getDownloadUrl(storageUri, context) {
           if (config.cdnUrl) {
@@ -40,10 +44,13 @@ const createFirebaseFunctionsStorage =
             }
           }
 
-          return fallbackStorage.profiles.runtime.getDownloadUrl(
-            storageUri,
-            context,
-          );
+          if (!fallbackStorage.getDownloadUrl) {
+            throw new Error(
+              "firebaseStorage does not implement getDownloadUrl.",
+            );
+          }
+
+          return fallbackStorage.getDownloadUrl(storageUri, context);
         },
       };
     },

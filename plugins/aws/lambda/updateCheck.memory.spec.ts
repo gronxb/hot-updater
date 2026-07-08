@@ -164,19 +164,15 @@ const createMemoryHotUpdater = () => {
       {
         name: "lambdaMemoryStorage",
         supportedProtocol: "s3",
-        profiles: {
-          runtime: {
-            async readText() {
-              return null;
-            },
-            async getDownloadUrl(storageUri) {
-              const url = new URL("https://assets.example.com");
-              url.pathname = new URL(storageUri).pathname;
-              return {
-                fileUrl: url.toString(),
-              };
-            },
-          },
+        async readText() {
+          return null;
+        },
+        async getDownloadUrl(storageUri: string) {
+          const url = new URL("https://assets.example.com");
+          url.pathname = new URL(storageUri).pathname;
+          return {
+            fileUrl: url.toString(),
+          };
         },
       },
     ],

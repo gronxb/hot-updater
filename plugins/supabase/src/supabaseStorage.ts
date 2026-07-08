@@ -3,7 +3,8 @@ import path from "path";
 
 import {
   createStorageKeyBuilder,
-  createUniversalStoragePlugin,
+  createStoragePlugin,
+  getStorageUploadFilePath,
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
@@ -90,172 +91,162 @@ export type SupabaseStorageConfig = SupabaseServiceRoleConfig & {
   basePath?: string;
 };
 
-export const supabaseStorage =
-  createUniversalStoragePlugin<SupabaseStorageConfig>({
-    name: "supabaseStorage",
-    supportedProtocol: "supabase-storage",
-    factory: (config) => {
-      const supabase = createClient<Database>(
-        config.supabaseUrl,
-        resolveSupabaseServiceRoleKey(config),
-      );
+export const supabaseStorage = createStoragePlugin<SupabaseStorageConfig>({
+  name: "supabaseStorage",
+  supportedProtocol: "supabase-storage",
+  factory: (config) => {
+    const supabase = createClient<Database>(
+      config.supabaseUrl,
+      resolveSupabaseServiceRoleKey(config),
+    );
 
-      const bucket = supabase.storage.from(config.bucketName);
-      const getStorageKey = createStorageKeyBuilder(config.basePath);
+    const bucket = supabase.storage.from(config.bucketName);
+    const getStorageKey = createStorageKeyBuilder(config.basePath);
 
-      return {
-        node: {
-          async delete(storageUri) {
-            const { key, bucket: bucketName } = parseStorageUri(
-              storageUri,
-              "supabase-storage",
-            );
-            if (bucketName !== config.bucketName) {
-              throw new Error(
-                `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
-              );
-            }
+    return {
+      async delete(storageUri) {
+        const { key, bucket: bucketName } = parseStorageUri(
+          storageUri,
+          "supabase-storage",
+        );
+        if (bucketName !== config.bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+          );
+        }
 
-            const { error } = await bucket.remove([key]);
+        const { error } = await bucket.remove([key]);
 
-            if (error) {
-              if (error.message?.includes("not found")) {
-                throw new Error(`Bundle not found`);
-              }
-              throw new Error(`Failed to delete bundle: ${error.message}`);
-            }
-          },
+        if (error) {
+          if (error.message?.includes("not found")) {
+            throw new Error(`Bundle not found`);
+          }
+          throw new Error(`Failed to delete bundle: ${error.message}`);
+        }
+      },
+      async upload(key, source) {
+        const filePath = getStorageUploadFilePath(source);
+        const Body = await fs.readFile(filePath);
+        const ContentType = getContentType(filePath);
 
-          async upload(key, filePath) {
-            const Body = await fs.readFile(filePath);
-            const ContentType = getContentType(filePath);
+        const filename = path.basename(filePath);
 
-            const filename = path.basename(filePath);
+        const Key = getStorageKey(key, filename);
 
-            const Key = getStorageKey(key, filename);
+        const upload = await bucket.upload(Key, Body, {
+          contentType: ContentType,
+          cacheControl: "max-age=31536000",
+          headers: {},
+        });
+        if (upload.error) {
+          throw upload.error;
+        }
 
-            const upload = await bucket.upload(Key, Body, {
-              contentType: ContentType,
-              cacheControl: "max-age=31536000",
-              headers: {},
-            });
-            if (upload.error) {
-              throw upload.error;
-            }
+        await verifyObjectCanBeSignedForRuntime({
+          bucket,
+          key: Key,
+        });
 
-            await verifyObjectCanBeSignedForRuntime({
-              bucket,
-              key: Key,
-            });
+        const fullPath = upload.data.fullPath;
 
-            const fullPath = upload.data.fullPath;
+        return {
+          storageUri: `supabase-storage://${fullPath}`,
+        };
+      },
+      async exists(storageUri: string) {
+        const { key, bucket: bucketName } = parseStorageUri(
+          storageUri,
+          "supabase-storage",
+        );
+        if (bucketName !== config.bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+          );
+        }
 
-            return {
-              storageUri: `supabase-storage://${fullPath}`,
-            };
-          },
-          async exists(storageUri: string) {
-            const { key, bucket: bucketName } = parseStorageUri(
-              storageUri,
-              "supabase-storage",
-            );
-            if (bucketName !== config.bucketName) {
-              throw new Error(
-                `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
-              );
-            }
+        const { data, error } = await bucket.exists(key);
+        if (data === false) {
+          return false;
+        }
+        if (error) {
+          throw error;
+        }
 
-            const { data, error } = await bucket.exists(key);
-            if (data === false) {
-              return false;
-            }
-            if (error) {
-              throw error;
-            }
+        await verifyObjectCanBeSignedForRuntime({
+          bucket,
+          key,
+        });
 
-            await verifyObjectCanBeSignedForRuntime({
-              bucket,
-              key,
-            });
+        return data;
+      },
+      async downloadFile(storageUri: string, filePath: string) {
+        const { key, bucket: bucketName } = parseStorageUri(
+          storageUri,
+          "supabase-storage",
+        );
+        if (bucketName !== config.bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+          );
+        }
 
-            return data;
-          },
-          async downloadFile(storageUri: string, filePath: string) {
-            const { key, bucket: bucketName } = parseStorageUri(
-              storageUri,
-              "supabase-storage",
-            );
-            if (bucketName !== config.bucketName) {
-              throw new Error(
-                `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
-              );
-            }
+        const { data, error } = await bucket.download(key);
+        if (error) {
+          throw new Error(`Failed to download bundle: ${error.message}`);
+        }
+        if (!data) {
+          throw new Error("Failed to download bundle");
+        }
 
-            const { data, error } = await bucket.download(key);
-            if (error) {
-              throw new Error(`Failed to download bundle: ${error.message}`);
-            }
-            if (!data) {
-              throw new Error("Failed to download bundle");
-            }
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(filePath, new Uint8Array(await data.arrayBuffer()));
+      },
+      async readText(storageUri: string) {
+        const { key, bucket: bucketName } = parseStorageUri(
+          storageUri,
+          "supabase-storage",
+        );
+        if (bucketName !== config.bucketName) {
+          throw new Error(
+            `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
+          );
+        }
 
-            await fs.mkdir(path.dirname(filePath), { recursive: true });
-            await fs.writeFile(
-              filePath,
-              new Uint8Array(await data.arrayBuffer()),
-            );
-          },
-        },
-        runtime: {
-          async readText(storageUri: string) {
-            const { key, bucket: bucketName } = parseStorageUri(
-              storageUri,
-              "supabase-storage",
-            );
-            if (bucketName !== config.bucketName) {
-              throw new Error(
-                `Bucket name mismatch: expected "${config.bucketName}", but found "${bucketName}".`,
-              );
-            }
+        const { data, error } = await bucket.download(key);
+        if (error) {
+          if (error.message?.includes("not found")) {
+            return null;
+          }
 
-            const { data, error } = await bucket.download(key);
-            if (error) {
-              if (error.message?.includes("not found")) {
-                return null;
-              }
+          throw new Error(`Failed to read storage text: ${error.message}`);
+        }
+        if (!data) {
+          return null;
+        }
 
-              throw new Error(`Failed to read storage text: ${error.message}`);
-            }
-            if (!data) {
-              return null;
-            }
+        return data.text();
+      },
+      async getDownloadUrl(storageUri: string) {
+        const u = new URL(storageUri);
+        if (u.protocol.replace(":", "") !== "supabase-storage") {
+          throw new Error("Invalid Supabase storage URI protocol");
+        }
+        let key = `${u.host}${u.pathname}`.replace(/^\//, "");
+        if (!key) {
+          throw new Error("Invalid Supabase storage URI: missing key");
+        }
+        if (key.startsWith(`${config.bucketName}/`)) {
+          key = key.substring(`${config.bucketName}/`.length);
+        }
 
-            return data.text();
-          },
-          async getDownloadUrl(storageUri: string) {
-            // Simple validation: supported protocol must match
-            const u = new URL(storageUri);
-            if (u.protocol.replace(":", "") !== "supabase-storage") {
-              throw new Error("Invalid Supabase storage URI protocol");
-            }
-            // Extract key without bucket prefix if present
-            let key = `${u.host}${u.pathname}`.replace(/^\//, "");
-            if (!key) {
-              throw new Error("Invalid Supabase storage URI: missing key");
-            }
-            if (key.startsWith(`${config.bucketName}/`)) {
-              key = key.substring(`${config.bucketName}/`.length);
-            }
+        const signedUrl = await createSignedUrlOrThrow({
+          bucket,
+          key,
+          expiresIn: 3600,
+        });
 
-            const signedUrl = await createSignedUrlOrThrow({
-              bucket,
-              key,
-              expiresIn: 3600,
-            });
-
-            return { fileUrl: signedUrl };
-          },
-        },
-      };
-    },
-  });
+        return { fileUrl: signedUrl };
+      },
+    };
+  },
+});

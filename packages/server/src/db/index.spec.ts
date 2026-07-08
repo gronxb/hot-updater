@@ -2,7 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
-  RuntimeStoragePlugin,
+  RuntimeStorageOperations,
   StorageResolveContext,
 } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
@@ -155,17 +155,13 @@ function createTestStoragePlugin(
     context?: StorageResolveContext,
   ) => string,
   readText: (storageUri: string) => Promise<string | null> = async () => null,
-): RuntimeStoragePlugin {
+): RuntimeStorageOperations {
   return {
     name: `${protocol}TestStorage`,
     supportedProtocol: protocol,
-    profiles: {
-      runtime: {
-        readText,
-        async getDownloadUrl(storageUri, context) {
-          return { fileUrl: resolveFileUrl(storageUri, context) };
-        },
-      },
+    readText,
+    async getDownloadUrl(storageUri, context) {
+      return { fileUrl: resolveFileUrl(storageUri, context) };
     },
   };
 }

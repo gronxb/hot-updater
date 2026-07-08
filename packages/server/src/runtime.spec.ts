@@ -5,8 +5,8 @@ import { NIL_UUID } from "@hot-updater/core";
 import type {
   DatabasePlugin,
   RequestEnvContext,
-  RuntimeStoragePlugin,
-  RuntimeStorageProfile,
+  RuntimeStorageOperations,
+  StoragePlugin,
 } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
@@ -37,17 +37,14 @@ type TestEnv = {
 type TestContext = RequestEnvContext<TestEnv>;
 
 const createRuntimeStorage = (
-  getDownloadUrl: RuntimeStorageProfile<TestContext>["getDownloadUrl"],
-  readText: RuntimeStorageProfile<TestContext>["readText"] = async () => null,
-): RuntimeStoragePlugin<TestContext> => ({
+  getDownloadUrl: NonNullable<StoragePlugin<TestContext>["getDownloadUrl"]>,
+  readText: NonNullable<StoragePlugin<TestContext>["readText"]> = async () =>
+    null,
+): RuntimeStorageOperations<TestContext> => ({
   name: "testStorage",
   supportedProtocol: "s3",
-  profiles: {
-    runtime: {
-      getDownloadUrl,
-      readText,
-    },
-  },
+  getDownloadUrl,
+  readText,
 });
 
 const createSchemaManagedDatabase = (
@@ -158,7 +155,7 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
   });
 
-  it("requires storages to implement the runtime profile", () => {
+  it("requires storages to implement runtime operations", () => {
     const database: DatabasePlugin<TestContext> = {
       name: "testDatabase",
       async appendBundle() {},
@@ -187,25 +184,19 @@ describe("runtime createHotUpdater", () => {
     const nodeOnlyStorage = {
       name: "nodeOnlyStorage",
       supportedProtocol: "s3",
-      profiles: {
-        node: {
-          delete: vi.fn(),
-          downloadFile: vi.fn(),
-          exists: vi.fn(async () => false),
-          upload: vi.fn(),
-        },
-      },
+      delete: vi.fn(),
+      downloadFile: vi.fn(),
+      exists: vi.fn(async () => false),
+      upload: vi.fn(),
     };
 
     expect(() =>
       createHotUpdater({
         database,
-        storages: [
-          nodeOnlyStorage as unknown as RuntimeStoragePlugin<TestContext>,
-        ],
+        storages: [nodeOnlyStorage],
       }),
     ).toThrow(
-      'nodeOnlyStorage does not implement the runtime storage profile for protocol "s3".',
+      'nodeOnlyStorage does not implement the getDownloadUrl storage operation for protocol "s3".',
     );
   });
 
@@ -246,7 +237,7 @@ describe("runtime createHotUpdater", () => {
       storageUri: bundle.storageUri,
     }));
     const getDownloadUrl = vi.fn<
-      RuntimeStorageProfile<TestContext>["getDownloadUrl"]
+      NonNullable<StoragePlugin<TestContext>["getDownloadUrl"]>
     >(async (_storageUri, context) => {
       return {
         fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
@@ -346,7 +337,7 @@ describe("runtime createHotUpdater", () => {
       },
     );
     const getDownloadUrl = vi.fn<
-      RuntimeStorageProfile<TestContext>["getDownloadUrl"]
+      NonNullable<StoragePlugin<TestContext>["getDownloadUrl"]>
     >(async (_storageUri, context) => {
       return {
         fileUrl: new URL("/bundle.zip", context?.env?.assetHost).toString(),
@@ -471,7 +462,7 @@ describe("runtime createHotUpdater", () => {
       }),
     );
     const getDownloadUrl = vi.fn<
-      RuntimeStorageProfile<TestContext>["getDownloadUrl"]
+      NonNullable<StoragePlugin<TestContext>["getDownloadUrl"]>
     >(async (storageUri, context) => {
       if (storageUri.endsWith("/files/index.ios.bundle")) {
         throw new Error("full asset fallback is unavailable");
@@ -515,7 +506,7 @@ describe("runtime createHotUpdater", () => {
         }),
       ],
     ]);
-    const readText = vi.fn<RuntimeStorageProfile<TestContext>["readText"]>(
+    const readText = vi.fn<NonNullable<StoragePlugin<TestContext>["readText"]>>(
       async (storageUri) => manifests.get(storageUri) ?? null,
     );
     const fetchMock = vi.fn<typeof fetch>(async () => {
