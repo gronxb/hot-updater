@@ -4,18 +4,26 @@
   "version": "0.35.1",
   "files": [
     ".output",
-    "bin",
+    "dist",
+    "public",
+    "src",
     "package.json"
   ],
-  "bin": {
-    "hot-updater-console": "./bin/hot-updater-console.mjs"
-  },
   "exports": {
+    ".": {
+      "types": "./src/embedded.tsx",
+      "import": "./dist/embedded.mjs"
+    },
+    "./hosted": {
+      "types": "./src/hosted.ts",
+      "import": "./dist/hosted.mjs"
+    },
+    "./embedded.css": "./dist/embedded.css",
     "./package.json": "./package.json"
   },
   "scripts": {
     "dev": "vite dev --port 3000",
-    "build": "vite build && node copy-assets.mjs",
+    "build": "vite build && vite build --config vite.library.config.ts && vite build --config vite.hosted.config.ts && node copy-assets.mjs",
     "check": "oxfmt --write \"**/*.{ts,tsx}\" && oxlint --fix --fix-suggestions --fix-dangerously .",
     "format": "oxfmt --write \"**/*.{ts,tsx}\"",
     "preview": "vite preview",
@@ -23,10 +31,14 @@
     "test:type": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@hot-updater/cli-tools": "*"
+    "@hot-updater/cli-tools": "*",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "dependencies": {
     "@hot-updater/bsdiff": "workspace:*",
+    "@hot-updater/core": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*"
   },
   "devDependencies": {

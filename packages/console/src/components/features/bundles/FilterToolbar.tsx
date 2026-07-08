@@ -12,7 +12,11 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useFilterParams } from "@/hooks/useFilterParams";
 import { useChannelsQuery } from "@/lib/api";
 
-export function FilterToolbar() {
+export function FilterToolbar({
+  showSidebarTrigger = true,
+}: {
+  showSidebarTrigger?: boolean;
+}) {
   const { filters, setFilters, resetFilters } = useFilterParams();
   const { data: channels = [] } = useChannelsQuery();
 
@@ -20,7 +24,7 @@ export function FilterToolbar() {
 
   return (
     <header className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-2 border-b bg-background px-3 py-3 sm:h-12 sm:flex-nowrap sm:bg-card/70 sm:px-4 sm:py-0 sm:backdrop-blur-sm">
-      <SidebarTrigger className="-ml-1" />
+      {showSidebarTrigger ? <SidebarTrigger className="-ml-1" /> : null}
 
       <div className="ml-1 flex items-center gap-1.5 text-muted-foreground sm:ml-2">
         <Filter className="h-3.5 w-3.5" />

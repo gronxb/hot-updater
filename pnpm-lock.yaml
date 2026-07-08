@@ -1403,6 +1403,12 @@ importers:
       '@hot-updater/bsdiff':
         specifier: workspace:*
         version: link:../bsdiff
+      '@hot-updater/core':
+        specifier: workspace:*
+        version: link:../core
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../../plugins/plugin-core
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../server
@@ -1416,15 +1422,9 @@ importers:
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../cli-tools
-      '@hot-updater/core':
-        specifier: workspace:*
-        version: link:../core
       '@hot-updater/mock':
         specifier: workspace:*
         version: link:../../plugins/mock
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../../plugins/plugin-core
       '@tailwindcss/vite':
         specifier: ^4.2.1
         version: 4.3.0(vite@8.0.8(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
