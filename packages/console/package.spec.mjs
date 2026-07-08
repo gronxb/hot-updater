@@ -6,17 +6,18 @@ describe("@hot-updater/console package metadata", () => {
     expect(packageJson.bin).toBeUndefined();
     expect(packageJson.exports).toMatchObject({
       ".": {
-        types: "./src/embedded.tsx",
+        types: "./types/embedded.d.ts",
         import: "./dist/embedded.mjs",
       },
       "./hosted": {
-        types: "./src/hosted.ts",
+        types: "./types/hosted.d.ts",
         import: "./dist/hosted.mjs",
       },
     });
     expect(packageJson.files).toContain(".output");
     expect(packageJson.files).toContain("dist");
     expect(packageJson.files).toContain("src");
+    expect(packageJson.files).toContain("types");
     expect(packageJson.files).toContain("public");
     expect(packageJson.exports).not.toHaveProperty("./vite");
   });
