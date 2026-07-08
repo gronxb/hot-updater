@@ -6,7 +6,12 @@ const { mockCli, mockDatabasePlugin, mockServer, mockStoragePlugin } =
       onUnmount: vi.fn(),
     };
     const mockStoragePlugin = {
+      delete: vi.fn(),
+      downloadFile: vi.fn(),
+      exists: vi.fn(),
       name: "mock-storage",
+      supportedProtocol: "s3",
+      upload: vi.fn(),
     };
     const mockServer = {
       createBundleDiff: vi.fn(),

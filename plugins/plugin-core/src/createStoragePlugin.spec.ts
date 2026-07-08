@@ -42,7 +42,7 @@ describe("createStoragePlugin", () => {
     await expect(plugin.upload("bundle-id", source)).resolves.toEqual({
       storageUri: "s3://bucket/bundle-id/bundle.zip",
     });
-    expect(upload).toHaveBeenCalledWith("bundle-id", source);
+    expect(upload).toHaveBeenCalledWith("bundle-id", source, undefined);
     expect(onStorageUploaded).toHaveBeenCalledOnce();
 
     if (!plugin.readText) {
