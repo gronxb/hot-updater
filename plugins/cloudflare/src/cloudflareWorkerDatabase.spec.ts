@@ -1,7 +1,10 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabasePlugin,
+  RequestEnvContext,
+} from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { d1Database, type RequestEnvContext } from "./worker";
+import { d1WorkerDatabase } from "./cloudflareWorkerDatabase";
 
 type WorkerBundleRow = {
   id: string;
@@ -227,7 +230,7 @@ describe("cloudflare worker d1Database", () => {
   beforeEach(() => {
     rows.clear();
     patchRows.clear();
-    plugin = d1Database<RequestEnvContext<TestEnv>>()();
+    plugin = d1WorkerDatabase<RequestEnvContext<TestEnv>>()();
     context = {
       env: {
         DB: createD1Binding(),
