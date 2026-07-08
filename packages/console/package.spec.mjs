@@ -20,5 +20,6 @@ describe("@hot-updater/console package metadata", () => {
     expect(packageJson.files).toContain("types");
     expect(packageJson.files).toContain("public");
     expect(packageJson.exports).not.toHaveProperty("./vite");
+    expect(packageJson.dependencies).toBeUndefined();
   });
 });
