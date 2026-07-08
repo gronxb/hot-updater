@@ -254,7 +254,6 @@ export function createHotUpdaterConsoleApi(
       await deleteBundleWithStorage(input, {
         databasePlugin,
         storagePlugin,
-        waitForStorageCleanup: false,
       });
 
       return { success: true };

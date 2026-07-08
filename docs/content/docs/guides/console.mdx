@@ -40,15 +40,13 @@ storage and database plugins used by your OTA deployment:
 
 ```ts title="hot-updater.config.ts"
 import { s3Database, s3Storage } from "@hot-updater/aws";
-import { bare } from "@hot-updater/bare";
-import { defineConfig } from "hot-updater";
+import type { HotUpdaterConsoleConfig } from "@hot-updater/console/hosted";
 
-export default defineConfig({
-  build: bare({ enableHermes: true }),
+export default {
+  console: {},
   storage: s3Storage({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
   database: s3Database({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
-  updateStrategy: "appVersion",
-});
+} satisfies HotUpdaterConsoleConfig;
 ```
 
 The deployable app imports that config and passes it to
@@ -101,7 +99,9 @@ pnpm dlx wrangler pages deploy dist
 
 Add the environment variables and Cloudflare bindings required by
 `hot-updater.config.ts` to the Pages project. For R2-backed storage, bind the
-bucket used by the storage plugin.
+bucket used by the storage plugin. If your deployable console uses TanStack
+Start or Better Auth, set the Cloudflare compatibility flag to
+`nodejs_compat`.
 
 ## Configuration
 

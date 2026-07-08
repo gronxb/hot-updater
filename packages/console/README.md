@@ -41,15 +41,13 @@ this file; provider credentials stay in the deployable app environment.
 
 ```ts
 import { s3Database, s3Storage } from "@hot-updater/aws";
-import { bare } from "@hot-updater/bare";
-import { defineConfig } from "hot-updater";
+import type { HotUpdaterConsoleConfig } from "@hot-updater/console/hosted";
 
-export default defineConfig({
-  build: bare({ enableHermes: true }),
+export default {
+  console: {},
   storage: s3Storage({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
   database: s3Database({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
-  updateStrategy: "appVersion",
-});
+} satisfies HotUpdaterConsoleConfig;
 ```
 
 Install any provider packages referenced by the config and provide credentials
@@ -111,6 +109,11 @@ For direct upload from a local checkout:
 NITRO_PRESET=cloudflare_pages pnpm build
 pnpm dlx wrangler pages deploy dist
 ```
+
+Add the environment variables and Cloudflare bindings required by
+`hot-updater.config.ts` to the Pages project. If the deployable app uses
+TanStack Start or Better Auth, set the Cloudflare compatibility flag to
+`nodejs_compat`.
 
 Use Cloudflare environment variables and bindings for credentials referenced by
 `hot-updater.config.ts`. For Cloudflare R2 runtime access, bind the bucket used

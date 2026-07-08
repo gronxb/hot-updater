@@ -425,6 +425,7 @@ export interface StoragePlugin<
   name: string;
 }
 
+/** @deprecated Use profile-free `StoragePlugin` operations. */
 export interface NodeStorageProfile {
   upload: (
     key: string,
@@ -445,6 +446,7 @@ export interface NodeStorageProfile {
   downloadFile: (storageUri: string, filePath: string) => Promise<void>;
 }
 
+/** @deprecated Use profile-free `StoragePlugin` operations. */
 export interface RuntimeStorageProfile<TContext = unknown> {
   getDownloadUrl: (
     storageUri: string,
@@ -459,6 +461,7 @@ export interface RuntimeStorageProfile<TContext = unknown> {
   ) => Promise<string | null>;
 }
 
+/** @deprecated Use profile-free `StoragePlugin` operations. */
 export interface StoragePluginProfiles<TContext = unknown> {
   /**
    * Node/deploy/console profile.
@@ -477,6 +480,7 @@ export interface StoragePluginProfiles<TContext = unknown> {
   runtime?: RuntimeStorageProfile<TContext>;
 }
 
+/** @deprecated Use profile-free `StoragePlugin` operations. */
 export interface LegacyProfiledStoragePlugin<TContext = unknown> {
   /**
    * Protocol this storage plugin can resolve.
@@ -489,6 +493,7 @@ export interface LegacyProfiledStoragePlugin<TContext = unknown> {
   profiles: StoragePluginProfiles<TContext>;
 }
 
+/** @deprecated Use profile-free `StoragePlugin` operations. */
 export interface NodeStoragePlugin<
   TContext = unknown,
 > extends LegacyProfiledStoragePlugin<TContext> {
@@ -498,6 +503,7 @@ export interface NodeStoragePlugin<
   };
 }
 
+/** @deprecated Use profile-free `StoragePlugin` operations. */
 export interface RuntimeStoragePlugin<
   TContext = unknown,
 > extends LegacyProfiledStoragePlugin<TContext> {
@@ -507,6 +513,7 @@ export interface RuntimeStoragePlugin<
   };
 }
 
+/** @deprecated Use profile-free `StoragePlugin` operations. */
 export interface UniversalStoragePlugin<
   TContext = unknown,
 > extends LegacyProfiledStoragePlugin<TContext> {

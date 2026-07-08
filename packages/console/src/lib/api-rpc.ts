@@ -324,7 +324,6 @@ export const deleteBundle = createServerFn({ method: "POST" })
       await deleteBundleWithStorage(data, {
         databasePlugin,
         storagePlugin,
-        waitForStorageCleanup: false,
       });
 
       return { success: true };

@@ -12,14 +12,17 @@ const createMissingProfileError = (
     `${plugin.name} does not implement the ${profile} storage profile for protocol "${plugin.supportedProtocol}".`,
   );
 
+/** @deprecated Use profile-free `storageOperations` guards. */
 export const isNodeStoragePlugin = <TContext = unknown>(
   plugin: LegacyProfiledStoragePlugin<TContext>,
 ): plugin is NodeStoragePlugin<TContext> => Boolean(plugin.profiles.node);
 
+/** @deprecated Use profile-free `storageOperations` guards. */
 export const isRuntimeStoragePlugin = <TContext = unknown>(
   plugin: LegacyProfiledStoragePlugin<TContext>,
 ): plugin is RuntimeStoragePlugin<TContext> => Boolean(plugin.profiles.runtime);
 
+/** @deprecated Use profile-free `storageOperations` guards. */
 export function assertNodeStoragePlugin<TContext = unknown>(
   plugin: LegacyProfiledStoragePlugin<TContext>,
 ): asserts plugin is NodeStoragePlugin<TContext> {
@@ -28,6 +31,7 @@ export function assertNodeStoragePlugin<TContext = unknown>(
   }
 }
 
+/** @deprecated Use profile-free `storageOperations` guards. */
 export function assertRuntimeStoragePlugin<TContext = unknown>(
   plugin: LegacyProfiledStoragePlugin<TContext>,
 ): asserts plugin is RuntimeStoragePlugin<TContext> {
