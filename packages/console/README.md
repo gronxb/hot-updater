@@ -3,23 +3,28 @@
 React component package for the Hot Updater management console.
 
 This package owns the console UI and the server-side helper that adapts a Hot
-Updater config into the API consumed by that UI. A deployable app should load
-`hot-updater.config.ts`, pass the loaded config to `createHotUpdaterConsoleApi`,
-and render `HotUpdaterConsole` with that API client.
+Updater config into the API consumed by that UI. A deployable app should keep
+provider plugins in `hot-updater.config.ts`, register the Vite plugin, and
+render `HotUpdaterConsole` with the generated API client.
 
 ## Exports
 
 ```tsx
 import { HotUpdaterConsole } from "@hot-updater/console";
 import type { ConsoleApiClient } from "@hot-updater/console";
+import { defineConfig } from "@hot-updater/console/config";
 import { createHotUpdaterConsoleApi } from "@hot-updater/console/hosted";
+import { hotUpdaterConsole } from "@hot-updater/console/vite";
 import "@hot-updater/console/embedded.css";
 ```
 
 - `HotUpdaterConsole` renders the bundle management UI.
 - `ConsoleApiClient` is the client contract used by the component.
+- `defineConfig(config)` type-checks a deployable console config.
 - `createHotUpdaterConsoleApi(config)` creates the hosted server API from a
   loaded Hot Updater config.
+- `hotUpdaterConsole()` wires `hot-updater.config.ts` into the deployable app as
+  Vite virtual modules.
 - `embedded.css` contains the console styles for embedded/deployable shells.
 
 ## Deployable Console Flow
@@ -41,26 +46,38 @@ this file; provider credentials stay in the deployable app environment.
 
 ```ts
 import { s3Database, s3Storage } from "@hot-updater/aws";
-import type { HotUpdaterConsoleConfig } from "@hot-updater/console/hosted";
+import { defineConfig } from "@hot-updater/console/config";
 
-export default {
-  console: {},
+export default defineConfig({
   storage: s3Storage({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
   database: s3Database({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
-} satisfies HotUpdaterConsoleConfig;
+});
 ```
 
 Install any provider packages referenced by the config and provide credentials
 through the deployment environment. Do not commit secrets.
 
-The deployable app should import that config and pass it into this package:
+The deployable app should request the server API from the virtual module:
 
 ```ts
-import { createHotUpdaterConsoleApi } from "@hot-updater/console/hosted";
+import { createConsoleApi } from "virtual:hot-updater-console/server-api";
 
-import config from "./hot-updater.config";
+const api = await createConsoleApi();
+```
 
-const api = createHotUpdaterConsoleApi(config);
+Register the Vite plugin so the virtual module resolves to the app's
+`hot-updater.config.ts`:
+
+```ts title="vite.config.ts"
+import { hotUpdaterConsole } from "@hot-updater/console/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [
+    hotUpdaterConsole(),
+    // nitro(), tanstackStart(), viteReact(), ...
+  ],
+});
 ```
 
 Run locally:
@@ -122,19 +139,20 @@ by the storage plugin to the Pages project.
 ## Config Handoff
 
 The deployable app should keep provider plugins in `hot-updater.config.ts` and
-pass the loaded config into this package:
+load them through the Vite virtual server API:
 
 ```ts
-import { createHotUpdaterConsoleApi } from "@hot-updater/console/hosted";
+import { createConsoleApi } from "virtual:hot-updater-console/server-api";
 
-import config from "./hot-updater.config";
-
-const api = createHotUpdaterConsoleApi(config);
+const api = await createConsoleApi();
 ```
 
-`createHotUpdaterConsoleApi` lazily initializes `config.database()` and
-`config.storage()` when console operations need them. The component package does
-not own deployment credentials or provider selection; the deployable shell does.
+The Vite plugin makes the config file an explicit build input, avoiding
+deployable-shell code that reaches into `../../hot-updater.config` by relative
+path. `createHotUpdaterConsoleApi` still lazily initializes `config.database()`
+and `config.storage()` when console operations need them. The component package
+does not own deployment credentials or provider selection; the deployable shell
+does.
 
 ## Access Control
 

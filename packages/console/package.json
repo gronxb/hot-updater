@@ -19,6 +19,14 @@
       "types": "./types/hosted.d.ts",
       "import": "./dist/hosted.mjs"
     },
+    "./config": {
+      "types": "./types/config.d.ts",
+      "import": "./dist/config.mjs"
+    },
+    "./vite": {
+      "types": "./types/vite.d.ts",
+      "import": "./dist/vite.mjs"
+    },
     "./embedded.css": "./dist/embedded.css",
     "./package.json": "./package.json"
   },
@@ -26,7 +34,7 @@
     "prepack": "node pack-manifest.mjs prepare",
     "postpack": "node pack-manifest.mjs restore",
     "dev": "vite dev --port 3000",
-    "build": "vite build && vite build --config vite.library.config.ts && vite build --config vite.hosted.config.ts && node copy-assets.mjs",
+    "build": "vite build && vite build --config vite.library.config.ts && vite build --config vite.hosted.config.ts && vite build --config vite.config-entry.config.ts && vite build --config vite.plugin.config.ts && node copy-assets.mjs",
     "check": "oxfmt --write \"**/*.{ts,tsx}\" && oxlint --fix --fix-suggestions --fix-dangerously .",
     "format": "oxfmt --write \"**/*.{ts,tsx}\"",
     "preview": "vite preview",

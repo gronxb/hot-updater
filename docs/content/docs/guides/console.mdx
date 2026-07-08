@@ -40,26 +40,39 @@ storage and database plugins used by your OTA deployment:
 
 ```ts title="hot-updater.config.ts"
 import { s3Database, s3Storage } from "@hot-updater/aws";
-import type { HotUpdaterConsoleConfig } from "@hot-updater/console/hosted";
+import { defineConfig } from "@hot-updater/console/config";
 
-export default {
-  console: {},
+export default defineConfig({
   storage: s3Storage({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
   database: s3Database({ bucketName: process.env.HOT_UPDATER_BUCKET! }),
-} satisfies HotUpdaterConsoleConfig;
+});
 ```
 
-The deployable app imports that config and passes it to
-`@hot-updater/console/hosted`. The package owns the console component and API
-adapter; the deployable app owns provider selection, credentials, auth, and
-Nitro deployment.
+The deployable app registers that config through `@hot-updater/console/vite`.
+The package owns the console component and API adapter; the deployable app owns
+provider selection, credentials, auth, and Nitro deployment.
+
+Register the Vite plugin so `hot-updater.config.ts` becomes an explicit server
+bundle input:
+
+```ts title="vite.config.ts"
+import { hotUpdaterConsole } from "@hot-updater/console/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [
+    hotUpdaterConsole(),
+    // nitro(), tanstackStart(), viteReact(), ...
+  ],
+});
+```
+
+Then load the console API from the virtual server module:
 
 ```ts
-import { createHotUpdaterConsoleApi } from "@hot-updater/console/hosted";
+import { createConsoleApi } from "virtual:hot-updater-console/server-api";
 
-import config from "./hot-updater.config";
-
-const api = createHotUpdaterConsoleApi(config);
+const api = await createConsoleApi();
 ```
 
 Run locally:

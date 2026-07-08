@@ -19,13 +19,20 @@ describe("@hot-updater/console package metadata", () => {
         types: "./types/hosted.d.ts",
         import: "./dist/hosted.mjs",
       },
+      "./config": {
+        types: "./types/config.d.ts",
+        import: "./dist/config.mjs",
+      },
+      "./vite": {
+        types: "./types/vite.d.ts",
+        import: "./dist/vite.mjs",
+      },
     });
     expect(packageJson.files).toContain(".output");
     expect(packageJson.files).toContain("dist");
     expect(packageJson.files).toContain("src");
     expect(packageJson.files).toContain("types");
     expect(packageJson.files).toContain("public");
-    expect(packageJson.exports).not.toHaveProperty("./vite");
     expect(packageJson.dependencies).toBeUndefined();
   });
 
