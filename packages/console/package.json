@@ -7,15 +7,16 @@
     "dist",
     "public",
     "src",
+    "types",
     "package.json"
   ],
   "exports": {
     ".": {
-      "types": "./src/embedded.tsx",
+      "types": "./types/embedded.d.ts",
       "import": "./dist/embedded.mjs"
     },
     "./hosted": {
-      "types": "./src/hosted.ts",
+      "types": "./types/hosted.d.ts",
       "import": "./dist/hosted.mjs"
     },
     "./embedded.css": "./dist/embedded.css",
@@ -32,8 +33,6 @@
   },
   "peerDependencies": {
     "@hot-updater/cli-tools": "*",
-    "@hot-updater/core": "*",
-    "@hot-updater/plugin-core": "*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
