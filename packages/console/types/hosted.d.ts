@@ -121,11 +121,6 @@ export type HotUpdaterConsoleStoragePlugin = {
   ) => Promise<{ storageUri: string }>;
   exists?: (storageUri: string, context?: unknown) => Promise<boolean>;
   delete?: (storageUri: string, context?: unknown) => Promise<void>;
-  downloadFile?: (
-    storageUri: string,
-    filePath: string,
-    context?: unknown,
-  ) => Promise<void>;
   getDownloadUrl?: (
     storageUri: string,
     context?: unknown,
