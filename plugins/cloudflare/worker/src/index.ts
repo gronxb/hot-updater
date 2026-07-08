@@ -17,7 +17,13 @@ export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
 const hotUpdater = createHotUpdater({
   database: d1Database(),
-  storages: [r2Storage()],
+  storages: [
+    r2Storage({
+      bucket: env.BUCKET,
+      jwtSecret: env.JWT_SECRET,
+      publicBaseUrl: env.HOT_UPDATER_PUBLIC_BASE_URL,
+    }),
+  ],
   basePath: HOT_UPDATER_BASE_PATH,
   routes: {
     updateCheck: true,

@@ -3,32 +3,36 @@ import {
   createStoragePlugin,
   type StorageUploadSource,
 } from "@hot-updater/plugin-core";
-import { env } from "cloudflare:workers";
+
+export interface CloudflareWorkerStorageBucket {
+  readonly delete: (key: string | string[]) => Promise<void>;
+  readonly get: (key: string) => Promise<{
+    arrayBuffer: () => Promise<ArrayBuffer>;
+    text: () => Promise<string>;
+  } | null>;
+  readonly head: (key: string) => Promise<unknown | null>;
+  readonly put: (
+    key: string,
+    value: ArrayBuffer | ArrayBufferView | string | Blob,
+    options?: {
+      httpMetadata?: {
+        contentType?: string;
+      };
+    },
+  ) => Promise<unknown>;
+}
 
 export interface CloudflareWorkerStorageEnv {
-  HOT_UPDATER_PUBLIC_BASE_URL: string;
-  JWT_SECRET: string;
-  BUCKET: {
-    delete: (key: string | string[]) => Promise<void>;
-    get: (key: string) => Promise<{
-      arrayBuffer: () => Promise<ArrayBuffer>;
-      text: () => Promise<string>;
-    } | null>;
-    head: (key: string) => Promise<unknown | null>;
-    put: (
-      key: string,
-      value: ArrayBuffer | ArrayBufferView | string | Blob,
-      options?: {
-        httpMetadata?: {
-          contentType?: string;
-        };
-      },
-    ) => Promise<unknown>;
-  };
+  readonly HOT_UPDATER_PUBLIC_BASE_URL: string;
+  readonly JWT_SECRET: string;
+  readonly BUCKET: CloudflareWorkerStorageBucket;
 }
 
 export interface CloudflareWorkerStorageConfig {
-  bucketName?: string;
+  readonly bucket: CloudflareWorkerStorageBucket;
+  readonly jwtSecret: string;
+  readonly publicBaseUrl: string;
+  readonly bucketName?: string;
 }
 
 const createPublicObjectPath = (storageUrl: URL) =>
@@ -54,25 +58,21 @@ const createUploadBody = (source: StorageUploadSource) => {
   return source.data;
 };
 
-const getWorkerEnv = (): CloudflareWorkerStorageEnv => env;
-
-export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig = {}) => {
+export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig) => {
   return createStoragePlugin<CloudflareWorkerStorageConfig>({
     name: "r2WorkerStorage",
     supportedProtocol: "r2",
     factory: (config) => ({
       async delete({ storageUri }) {
-        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
           throw new Error("Invalid R2 storage URI protocol");
         }
 
-        await workerEnv.BUCKET.delete(createR2ObjectKey(storageUrl));
+        await config.bucket.delete(createR2ObjectKey(storageUrl));
       },
       async exists({ storageUri }) {
-        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
@@ -80,11 +80,10 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig = {}) => {
         }
 
         return (
-          (await workerEnv.BUCKET.head(createR2ObjectKey(storageUrl))) !== null
+          (await config.bucket.head(createR2ObjectKey(storageUrl))) !== null
         );
       },
       async upload({ key, source }) {
-        const workerEnv = getWorkerEnv();
         const putOptions =
           source.kind === "bytes" && source.contentType
             ? {
@@ -93,23 +92,20 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig = {}) => {
                 },
               }
             : undefined;
-        await workerEnv.BUCKET.put(key, createUploadBody(source), putOptions);
+        await config.bucket.put(key, createUploadBody(source), putOptions);
 
         return {
           storageUri: createStorageUri(config.bucketName ?? "bundles", key),
         };
       },
       async readBytes({ storageUri }) {
-        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
           throw new Error("Invalid R2 storage URI protocol");
         }
 
-        const object = await workerEnv.BUCKET.get(
-          createR2ObjectKey(storageUrl),
-        );
+        const object = await config.bucket.get(createR2ObjectKey(storageUrl));
         if (!object) {
           return null;
         }
@@ -117,7 +113,6 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig = {}) => {
         return object.arrayBuffer();
       },
       async readText({ storageUri }) {
-        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
@@ -125,7 +120,7 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig = {}) => {
         }
 
         const key = createR2ObjectKey(storageUrl);
-        const object = await workerEnv.BUCKET.get(key);
+        const object = await config.bucket.get(key);
         if (!object) {
           return null;
         }
@@ -133,7 +128,6 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig = {}) => {
         return object.text();
       },
       async getDownloadUrl({ storageUri }) {
-        const workerEnv = getWorkerEnv();
         const storageUrl = new URL(storageUri);
 
         if (storageUrl.protocol !== "r2:") {
@@ -141,8 +135,8 @@ export const r2WorkerStorage = (config: CloudflareWorkerStorageConfig = {}) => {
         }
 
         const key = createPublicObjectPath(storageUrl);
-        const token = await signToken(key, workerEnv.JWT_SECRET);
-        const url = new URL(workerEnv.HOT_UPDATER_PUBLIC_BASE_URL);
+        const token = await signToken(key, config.jwtSecret);
+        const url = new URL(config.publicBaseUrl);
 
         url.pathname = key;
         url.search = "";
