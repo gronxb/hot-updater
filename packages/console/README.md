@@ -98,7 +98,7 @@ settings:
 
 ```text
 Build command:          corepack enable && pnpm install --frozen-lockfile && NITRO_PRESET=cloudflare_pages pnpm build
-Build output directory: .output/public
+Build output directory: dist
 Root directory:         /
 ```
 
@@ -109,7 +109,7 @@ For direct upload from a local checkout:
 
 ```bash
 NITRO_PRESET=cloudflare_pages pnpm build
-pnpm dlx wrangler pages deploy .output/public
+pnpm dlx wrangler pages deploy dist
 ```
 
 Use Cloudflare environment variables and bindings for credentials referenced by
