@@ -7,7 +7,7 @@ import {
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, p } from "@hot-updater/cli-tools";
-import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
+import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 
 import {
@@ -200,16 +200,11 @@ bundleCommand
 
 bundleCommand
   .command("delete")
-  .description("Delete one or more bundle records by id, or an entire channel")
-  .argument("[bundle-ids...]", "the bundle id(s) to delete")
-  .option("-c, --channel <channel>", "delete every bundle on this channel")
-  .addOption(platformCommandOption)
+  .description("Delete one or more bundle records by id")
+  .argument("<bundle-ids...>", "the bundle id(s) to delete")
   .option("-y, --yes", "skip confirmation prompt")
-  .action(
-    (
-      bundleIds: string[],
-      options: { channel?: string; platform?: Platform; yes?: boolean },
-    ) => handleBundleDelete(bundleIds, options),
+  .action((bundleIds: string[], options: { yes?: boolean }) =>
+    handleBundleDelete(bundleIds, options),
   );
 
 bundleCommand

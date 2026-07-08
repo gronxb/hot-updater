@@ -456,58 +456,11 @@ describe("handleBundleDelete", () => {
     );
   });
 
-  it("deletes an entire channel, paginating until the cursor is exhausted", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const b1 = buildBundle({ id: "B1", channel: "review-1" });
-    const b2 = buildBundle({ id: "B2", channel: "review-1" });
-    mockDatabasePlugin.getBundles
-      .mockResolvedValueOnce({
-        data: [b1],
-        pagination: { hasNextPage: true, nextCursor: "cursor-2" },
-      })
-      .mockResolvedValueOnce({
-        data: [b2],
-        pagination: { hasNextPage: false, nextCursor: null },
-      });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(null); // both verified gone
-
-    const { handleBundleDelete } = await import("./bundle");
-    await handleBundleDelete([], { channel: "review-1", yes: true });
-
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
-    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(1, {
-      where: { channel: "review-1", platform: undefined },
-      limit: 100,
-      cursor: undefined,
-    });
-    expect(mockDatabasePlugin.getBundles).toHaveBeenNthCalledWith(2, {
-      where: { channel: "review-1", platform: undefined },
-      limit: 100,
-      cursor: { after: "cursor-2" },
-    });
-    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledTimes(2);
-    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalledTimes(1);
-    expect(mockCli.p.log.success).toHaveBeenCalledWith(
-      "Deleted 2 bundle records.",
-    );
-  });
-
-  it("exits 1 when neither ids nor --channel are provided", async () => {
+  it("exits 1 when no ids are provided", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const { exitSpy } = expectExit(1);
     const { handleBundleDelete } = await import("./bundle");
     await expect(handleBundleDelete([], {})).rejects.toThrow("process.exit(1)");
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockCli.loadConfig).not.toHaveBeenCalled();
-  });
-
-  it("exits 1 when both ids and --channel are provided", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const { exitSpy } = expectExit(1);
-    const { handleBundleDelete } = await import("./bundle");
-    await expect(
-      handleBundleDelete(["B1"], { channel: "dev", yes: true }),
-    ).rejects.toThrow("process.exit(1)");
     expect(exitSpy).toHaveBeenCalledWith(1);
     expect(mockCli.loadConfig).not.toHaveBeenCalled();
   });

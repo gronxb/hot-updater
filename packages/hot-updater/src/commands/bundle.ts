@@ -68,14 +68,9 @@ export interface BundleUpdateOptions extends BundleMutationOptions {
   targetCohorts?: string;
 }
 
-export interface BundleDeleteOptions extends BundleMutationOptions {
-  channel?: string;
-  platform?: Platform;
-}
+export type BundleDeleteOptions = BundleMutationOptions;
 
 const DEFAULT_LIMIT = 20;
-// Page size used when enumerating a whole channel for `delete --channel`.
-const CHANNEL_PAGE_SIZE = 100;
 const DELETE_VERIFY_ATTEMPTS = 12;
 const DELETE_VERIFY_DELAY_MS = 1000;
 
@@ -345,30 +340,6 @@ export const handleBundleUpdate = async (
   }
 };
 
-// Enumerate every bundle on a channel, paginating until the cursor is
-// exhausted so large (e.g. Pro, 1000-item) channels are fully covered.
-const collectChannelBundles = async (
-  databasePlugin: DatabasePlugin,
-  channel: string,
-  platform?: Platform,
-): Promise<Bundle[]> => {
-  const bundles: Bundle[] = [];
-  let after: string | undefined;
-  do {
-    const { data, pagination } = await databasePlugin.getBundles({
-      where: { channel, platform },
-      limit: CHANNEL_PAGE_SIZE,
-      cursor: after ? { after } : undefined,
-    });
-    bundles.push(...data);
-    after =
-      pagination.hasNextPage && pagination.nextCursor
-        ? pagination.nextCursor
-        : undefined;
-  } while (after);
-  return bundles;
-};
-
 export const handleBundleDelete = async (
   bundleIds: string[],
   options: BundleDeleteOptions = {},
@@ -376,60 +347,36 @@ export const handleBundleDelete = async (
   printBanner();
 
   const ids = bundleIds ?? [];
-  if (options.channel && ids.length > 0) {
-    p.log.error("Pass either bundle id(s) or --channel, not both.");
-    process.exit(1);
-  }
-  if (!options.channel && ids.length === 0) {
-    p.log.error(
-      "Provide at least one bundle id, or --channel to delete a whole channel.",
-    );
+  if (ids.length === 0) {
+    p.log.error("Provide at least one bundle id.");
     process.exit(1);
   }
 
   const config = await loadConfig(null);
   const databasePlugin: DatabasePlugin = await config.database();
   try {
-    // Resolve the target set: an entire channel, or the given ids.
-    let targets: Bundle[];
-    if (options.channel) {
-      targets = await collectChannelBundles(
-        databasePlugin,
-        options.channel,
-        options.platform,
-      );
-      if (targets.length === 0) {
-        p.log.info(`No bundles on channel ${options.channel}. No changes.`);
-        return;
+    // Resolve the target set from the given ids.
+    const fetched = await Promise.all(
+      ids.map((id) => databasePlugin.getBundleById(id)),
+    );
+    const targets: Bundle[] = [];
+    fetched.forEach((bundle, index) => {
+      if (bundle) {
+        targets.push(bundle);
+      } else {
+        p.log.info(`No bundle with id ${ids[index]}. Skipping.`);
       }
-    } else {
-      const fetched = await Promise.all(
-        ids.map((id) => databasePlugin.getBundleById(id)),
-      );
-      targets = [];
-      fetched.forEach((bundle, index) => {
-        if (bundle) {
-          targets.push(bundle);
-        } else {
-          p.log.info(`No bundle with id ${ids[index]}. Skipping.`);
-        }
-      });
-      if (targets.length === 0) {
-        p.log.info("No matching bundle records. No changes.");
-        return;
-      }
+    });
+    if (targets.length === 0) {
+      p.log.info("No matching bundle records. No changes.");
+      return;
     }
 
     const [firstTarget] = targets;
     if (firstTarget && targets.length === 1) {
       p.log.message(formatBundleSummary(firstTarget));
     } else {
-      const scope = options.channel
-        ? ` on channel ${ui.channel(options.channel)}`
-        : "";
-      p.log.message(
-        `${targets.length} bundle records${scope} will be deleted.`,
-      );
+      p.log.message(`${targets.length} bundle records will be deleted.`);
     }
 
     if (!options.yes) {
