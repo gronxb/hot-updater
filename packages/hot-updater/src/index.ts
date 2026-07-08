@@ -200,11 +200,11 @@ bundleCommand
 
 bundleCommand
   .command("delete")
-  .description("Delete a bundle record by id")
-  .argument("<bundle-id>", "the bundle id to delete")
+  .description("Delete one or more bundle records by id")
+  .argument("<bundle-ids...>", "the bundle id(s) to delete")
   .option("-y, --yes", "skip confirmation prompt")
-  .action((bundleId: string, options: { yes?: boolean }) =>
-    handleBundleDelete(bundleId, options),
+  .action((bundleIds: string[], options: { yes?: boolean }) =>
+    handleBundleDelete(bundleIds, options),
   );
 
 bundleCommand

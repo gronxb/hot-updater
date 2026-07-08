@@ -399,7 +399,7 @@ describe("handleBundleDelete", () => {
       .mockResolvedValueOnce(null);
 
     const { handleBundleDelete } = await import("./bundle");
-    await handleBundleDelete("B1", { yes: true });
+    await handleBundleDelete(["B1"], { yes: true });
 
     expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(bundle);
     expect(mockDatabasePlugin.commitBundle).toHaveBeenCalled();
@@ -419,7 +419,7 @@ describe("handleBundleDelete", () => {
 
     try {
       const { handleBundleDelete } = await import("./bundle");
-      const deletePromise = handleBundleDelete("B1", { yes: true });
+      const deletePromise = handleBundleDelete(["B1"], { yes: true });
       await vi.advanceTimersByTimeAsync(1000);
       await deletePromise;
 
@@ -431,5 +431,37 @@ describe("handleBundleDelete", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("deletes multiple ids with a single commit", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const b1 = buildBundle({ id: "B1" });
+    const b2 = buildBundle({ id: "B2" });
+    mockDatabasePlugin.getBundleById
+      .mockResolvedValueOnce(b1) // resolve B1
+      .mockResolvedValueOnce(b2) // resolve B2
+      .mockResolvedValueOnce(null) // verify B1 gone
+      .mockResolvedValueOnce(null); // verify B2 gone
+
+    const { handleBundleDelete } = await import("./bundle");
+    await handleBundleDelete(["B1", "B2"], { yes: true });
+
+    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledTimes(2);
+    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(b1);
+    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(b2);
+    // One commit for the whole batch, not one per bundle.
+    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalledTimes(1);
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "Deleted 2 bundle records.",
+    );
+  });
+
+  it("exits 1 when no ids are provided", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { exitSpy } = expectExit(1);
+    const { handleBundleDelete } = await import("./bundle");
+    await expect(handleBundleDelete([], {})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mockCli.loadConfig).not.toHaveBeenCalled();
   });
 });
