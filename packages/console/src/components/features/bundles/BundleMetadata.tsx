@@ -40,7 +40,7 @@ export function BundleMetadata({ bundle }: BundleMetadataProps) {
     hbcPatchFileHash;
   const gitCommitUrl =
     bundle.gitCommitHash && isFetched
-      ? getCommitUrl(configData?.console.gitUrl, bundle.gitCommitHash)
+      ? getCommitUrl(configData?.console?.gitUrl, bundle.gitCommitHash)
       : null;
 
   if (!hasMetadata) {
