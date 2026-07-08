@@ -43,60 +43,53 @@ type Bindings = {
   };
 };
 
-type SignedUrlContext = {
-  request?: Request;
-  distributionDomainName?: string;
-};
+type HotUpdaterApi = ReturnType<typeof createHotUpdater>;
 
-const resolveRequestOrigin = (context?: SignedUrlContext) => {
-  if (context?.distributionDomainName) {
-    return `https://${context.distributionDomainName}`;
+const hotUpdaterByPublicBaseUrl = new Map<string, HotUpdaterApi>();
+
+const getHotUpdater = (publicBaseUrl: string): HotUpdaterApi => {
+  const cachedHotUpdater = hotUpdaterByPublicBaseUrl.get(publicBaseUrl);
+  if (cachedHotUpdater) {
+    return cachedHotUpdater;
   }
 
-  if (!context?.request) {
-    throw new Error(
-      "CloudFront signed URL resolution requires a request context.",
-    );
-  }
+  const hotUpdater = createHotUpdater({
+    database: s3Database({
+      bucketName: S3_BUCKET_NAME,
+      region: SSM_REGION,
+    }),
+    storages: [
+      withCloudFrontSignedUrl(
+        s3Storage({
+          bucketName: S3_BUCKET_NAME,
+          region: SSM_REGION,
+        }),
+        {
+          keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+          ssmRegion: SSM_REGION,
+          ssmParameterName: SSM_PARAMETER_NAME,
+          publicBaseUrl,
+        },
+      ),
+    ],
+    basePath: HOT_UPDATER_BASE_PATH,
+    routes: {
+      updateCheck: true,
+      bundles: false,
+    },
+  });
 
-  return new URL(context.request.url).origin;
+  hotUpdaterByPublicBaseUrl.set(publicBaseUrl, hotUpdater);
+  return hotUpdater;
 };
-
-const hotUpdater = createHotUpdater<SignedUrlContext>({
-  database: s3Database({
-    bucketName: S3_BUCKET_NAME,
-    region: SSM_REGION,
-  }),
-  storages: [
-    withCloudFrontSignedUrl(
-      s3Storage({
-        bucketName: S3_BUCKET_NAME,
-        region: SSM_REGION,
-      }),
-      {
-        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-        ssmRegion: SSM_REGION,
-        ssmParameterName: SSM_PARAMETER_NAME,
-        publicBaseUrl: resolveRequestOrigin,
-      },
-    ),
-  ],
-  basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
-    updateCheck: true,
-    bundles: false,
-  },
-});
 
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.mount(
   HOT_UPDATER_BASE_PATH,
   async (request: Request, distributionDomainName: string) => {
-    const response = await hotUpdater.handler(request, {
-      request,
-      distributionDomainName,
-    });
+    const hotUpdater = getHotUpdater(`https://${distributionDomainName}`);
+    const response = await hotUpdater.handler(request);
 
     if (
       request.method === "GET" &&
