@@ -53,6 +53,7 @@ const runBundle = async ({
   const bundleOutput = path.join(buildPath, `${filename}.bundle`);
   const entryFile = resolveMain(cwd);
   const bundleId = uuidv7();
+  const enableHermes = isHermesEnabled(cwd, platform);
 
   const args = [
     "expo",
@@ -65,6 +66,9 @@ const runBundle = async ({
     bundleOutput,
     "--dev",
     String(false),
+    // disable minify when enableHermes is true
+    "--minify",
+    String(!enableHermes),
     "--assets-dest",
     buildPath,
     ...(sourcemap ? ["--sourcemap-output", `${bundleOutput}.map`] : []),
@@ -86,7 +90,6 @@ const runBundle = async ({
     }
   }
 
-  const enableHermes = isHermesEnabled(cwd, platform);
   if (enableHermes) {
     const { hermesVersion } = await compileHermes({
       cwd,
