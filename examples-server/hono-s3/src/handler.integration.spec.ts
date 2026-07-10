@@ -50,10 +50,19 @@ type StandaloneRepositoryRuntime = {
   readonly commit: () => Promise<void>;
 };
 
-type RuntimeFactoryHandle = {
-  readonly [key: symbol]:
-    | (() => StandaloneRepositoryRuntime | Promise<StandaloneRepositoryRuntime>)
-    | undefined;
+type StandaloneRepositoryRuntimeFactory = () =>
+  | StandaloneRepositoryRuntime
+  | Promise<StandaloneRepositoryRuntime>;
+
+const openStandaloneRepositoryRuntime = async (
+  handle: object,
+): Promise<StandaloneRepositoryRuntime> => {
+  const openRuntime = Reflect.get(handle, databaseRuntimeFactorySymbol);
+  if (typeof openRuntime !== "function") {
+    throw new Error("standaloneRepository runtime factory not found");
+  }
+
+  return (openRuntime as StandaloneRepositoryRuntimeFactory)();
 };
 
 const sleep = async (ms: number) => {
@@ -180,17 +189,14 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
   });
 
   it("updates targetAppVersion through standaloneRepository", async () => {
-    const repoHandle = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
-      commonHeaders: {
-        Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
-      },
-    }) as RuntimeFactoryHandle;
-    const openRepoRuntime = repoHandle[databaseRuntimeFactorySymbol];
-    if (!openRepoRuntime) {
-      throw new Error("standaloneRepository runtime factory not found");
-    }
-    const repo = await openRepoRuntime();
+    const repo = await openStandaloneRepositoryRuntime(
+      standaloneRepository({
+        baseUrl: `${baseUrl}/hot-updater`,
+        commonHeaders: {
+          Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+        },
+      }),
+    );
 
     const bundleId = "hono-s3-update-target-app-version";
 
