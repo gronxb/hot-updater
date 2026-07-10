@@ -551,9 +551,15 @@ class BundleFileStorageService(
 
     private fun resolveBundleFile(bundleDir: File): File? {
         val manifestFile = File(bundleDir, "manifest.json")
+        val hasManifestEntry =
+            manifestFile.exists() || bundleDir.list()?.contains(manifestFile.name) == true
         val manifest = parseBundleManifestFromFile(manifestFile)
-        if (manifestFile.isFile && manifest == null) {
+        if (hasManifestEntry && manifest == null) {
             Log.w(TAG, "Rejecting bundle with invalid manifest: ${manifestFile.absolutePath}")
+            return null
+        }
+        if (!hasManifestEntry && SignatureVerifier.isSigningEnabled(context)) {
+            Log.w(TAG, "Rejecting cached bundle without a manifest while signing is enabled")
             return null
         }
 
@@ -591,9 +597,11 @@ class BundleFileStorageService(
         if (!isFileWithinDirectory(fallbackBundleFile, bundleDir)) {
             return null
         }
-        val fallbackAsset = manifest?.assets?.get("index.android.bundle")
-        if (fallbackAsset != null && !isManifestBundleFileValid(fallbackBundleFile, fallbackAsset)) {
-            return null
+        if (manifest != null) {
+            val fallbackAsset = manifest.assets["index.android.bundle"] ?: return null
+            if (!isManifestBundleFileValid(fallbackBundleFile, fallbackAsset)) {
+                return null
+            }
         }
         return fallbackBundleFile
     }
@@ -1172,6 +1180,11 @@ class BundleFileStorageService(
                 }
                 return resolvedBundleFile.absolutePath
             }
+        }
+        if (SignatureVerifier.isSigningEnabled(context)) {
+            preferences.setItem("HotUpdaterBundleURL", null)
+            Log.w(TAG, "getCachedBundleURL: rejected unverified legacy path while signing is enabled")
+            return null
         }
         return urlString
     }

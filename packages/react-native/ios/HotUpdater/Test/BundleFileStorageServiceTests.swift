@@ -11,6 +11,7 @@ private func hotUpdaterApplyBsdiffPatchForTest(
     _ outputPath: NSString
 ) -> ObjCBool
 
+@Suite(.serialized)
 struct BundleFileStorageServiceTests {
     @Test
     func findBundleFileRejectsCorruptedManifestBundle() throws {
@@ -37,6 +38,120 @@ struct BundleFileStorageServiceTests {
             return
         }
         #expect(bundlePath == nil)
+    }
+
+    @Test
+    func findBundleFileRejectsSymlinkToUntrackedBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let bundleDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "symlinked-bundle"
+        )
+        try writeBundle(in: bundleDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: bundleDirectory, bundleId: "symlinked-bundle")
+
+        let bundleURL = bundleDirectory.appendingPathComponent("index.ios.bundle")
+        let payloadURL = bundleDirectory.appendingPathComponent("payload.bundle")
+        try FileManager.default.removeItem(at: bundleURL)
+        try Data("untracked-content".utf8).write(to: payloadURL)
+        try FileManager.default.createSymbolicLink(
+            at: bundleURL,
+            withDestinationURL: payloadURL
+        )
+
+        let result = service.findBundleFile(in: bundleDirectory.path)
+
+        guard case .success(let bundlePath) = result else {
+            Issue.record("Expected bundle lookup to complete")
+            return
+        }
+        #expect(bundlePath == nil)
+    }
+
+    @Test
+    func findBundleFileRejectsUntrackedBundleWhenManifestExists() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let bundleDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "untracked-bundle"
+        )
+        try writeBundle(in: bundleDirectory, bundleFileName: "index.ios.bundle")
+        try writeBundle(in: bundleDirectory, bundleFileName: "tracked.asset")
+        try writeManifest(
+            in: bundleDirectory,
+            bundleId: "untracked-bundle",
+            assetPaths: ["tracked.asset"]
+        )
+
+        let result = service.findBundleFile(in: bundleDirectory.path)
+
+        guard case .success(let bundlePath) = result else {
+            Issue.record("Expected bundle lookup to complete")
+            return
+        }
+        #expect(bundlePath == nil)
+    }
+
+    @Test
+    func findBundleFileRejectsLegacyBundleWhenSigningIsEnabled() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            HotUpdaterConfig.shared.clear()
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let bundleDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "signed-legacy-bundle"
+        )
+        try writeBundle(in: bundleDirectory, bundleFileName: "index.ios.bundle")
+        HotUpdaterConfig.shared.publicKey = "configured-for-test"
+
+        let result = service.findBundleFile(in: bundleDirectory.path)
+
+        guard case .success(let bundlePath) = result else {
+            Issue.record("Expected bundle lookup to complete")
+            return
+        }
+        #expect(bundlePath == nil)
+    }
+
+    @Test
+    func getCachedBundleURLClearsUnmanagedPathWhenSigningIsEnabled() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            HotUpdaterConfig.shared.clear()
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let preferences = InMemoryPreferencesService()
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            preferences: preferences
+        )
+        let unmanagedDirectory = workingDirectory.appendingPathComponent("legacy", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: unmanagedDirectory,
+            withIntermediateDirectories: true
+        )
+        let unmanagedBundle = unmanagedDirectory.appendingPathComponent("index.ios.bundle")
+        try Data("legacy-bundle".utf8).write(to: unmanagedBundle)
+        try preferences.setItem(unmanagedBundle.absoluteString, forKey: "HotUpdaterBundleURL")
+        HotUpdaterConfig.shared.publicKey = "configured-for-test"
+
+        #expect(service.getCachedBundleURL() == nil)
+        #expect(try preferences.getItem(forKey: "HotUpdaterBundleURL") == nil)
     }
 
     @Test

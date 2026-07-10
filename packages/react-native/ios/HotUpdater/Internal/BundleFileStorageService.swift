@@ -1283,13 +1283,19 @@ class BundleFileStorageService: BundleStorageService {
 
         let manifestPath = (directoryPath as NSString).appendingPathComponent("manifest.json")
         let manifest: ParsedBundleManifest?
-        if fileSystem.fileExists(atPath: manifestPath) {
+        let hasManifestEntry = fileSystem.fileExists(atPath: manifestPath)
+            || ((try? fileSystem.contentsOfDirectory(atPath: directoryPath))?.contains("manifest.json") == true)
+        if hasManifestEntry {
             guard let parsedManifest = parseBundleManifest(fromFile: manifestPath) else {
                 NSLog("[BundleStorage] Rejecting bundle with invalid manifest: \(manifestPath)")
                 return .success(nil)
             }
             manifest = parsedManifest
         } else {
+            guard !SignatureVerifier.isSigningEnabled() else {
+                NSLog("[BundleStorage] Rejecting cached bundle without a manifest while signing is enabled")
+                return .success(nil)
+            }
             manifest = nil
         }
 
@@ -1354,15 +1360,26 @@ class BundleFileStorageService: BundleStorageService {
         manifest: ParsedBundleManifest?
     ) -> Bool {
         let directoryURL = URL(fileURLWithPath: directoryPath, isDirectory: true)
-            .resolvingSymlinksInPath()
             .standardizedFileURL
         let bundleURL = URL(fileURLWithPath: bundlePath)
-            .resolvingSymlinksInPath()
             .standardizedFileURL
         let directoryPrefix = directoryURL.path.hasSuffix("/")
             ? directoryURL.path
             : "\(directoryURL.path)/"
         guard bundleURL.path.hasPrefix(directoryPrefix) else {
+            return false
+        }
+
+        let resolvedDirectoryURL = directoryURL
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let resolvedBundleURL = bundleURL
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let resolvedDirectoryPrefix = resolvedDirectoryURL.path.hasSuffix("/")
+            ? resolvedDirectoryURL.path
+            : "\(resolvedDirectoryURL.path)/"
+        guard resolvedBundleURL.path.hasPrefix(resolvedDirectoryPrefix) else {
             return false
         }
 
@@ -1372,15 +1389,15 @@ class BundleFileStorageService: BundleStorageService {
 
         let relativePath = String(bundleURL.path.dropFirst(directoryPrefix.count))
         guard let expectedAsset = manifest.assets[relativePath] else {
-            return true
+            return false
         }
 
         do {
-            try verifyManifestAssetFile(atPath: bundleURL.path, asset: expectedAsset)
+            try verifyManifestAssetFile(atPath: resolvedBundleURL.path, asset: expectedAsset)
             return true
         } catch {
             NSLog(
-                "[BundleStorage] Cached bundle failed integrity verification \(bundleURL.path): \(error.localizedDescription)"
+                "[BundleStorage] Cached bundle failed integrity verification \(resolvedBundleURL.path): \(error.localizedDescription)"
             )
             return false
         }
@@ -1499,13 +1516,13 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             guard case .success(let storeDirectory) = bundleStoreDir() else {
-                return bundleURL
+                return try allowLegacyCachedBundleURL(bundleURL)
             }
             let storeURL = URL(fileURLWithPath: storeDirectory, isDirectory: true).standardizedFileURL
             let cachedFileURL = URL(fileURLWithPath: bundleURL.path).standardizedFileURL
             let storePrefix = storeURL.path.hasSuffix("/") ? storeURL.path : "\(storeURL.path)/"
             guard cachedFileURL.path.hasPrefix(storePrefix) else {
-                return bundleURL
+                return try allowLegacyCachedBundleURL(bundleURL)
             }
 
             let relativePath = String(cachedFileURL.path.dropFirst(storePrefix.count))
@@ -1526,6 +1543,15 @@ class BundleFileStorageService: BundleStorageService {
             NSLog("[BundleStorage] Error getting cached bundle URL: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    private func allowLegacyCachedBundleURL(_ bundleURL: URL) throws -> URL? {
+        guard SignatureVerifier.isSigningEnabled() else {
+            return bundleURL
+        }
+        try preferences.setItem(nil, forKey: "HotUpdaterBundleURL")
+        NSLog("[BundleStorage] Rejected unverified legacy path while signing is enabled")
+        return nil
     }
     
     /**

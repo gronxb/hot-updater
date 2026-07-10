@@ -74,29 +74,40 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
-    fun `resolveBundleFile falls back to root index when manifest has no android bundle candidate`() {
+    fun `resolveBundleFile rejects untracked root index when manifest has no android bundle candidate`() {
         val rootDir = temporaryFolder.newFolder("no-android-candidate")
         val service = createService(rootDir)
         val bundleDir = createBundleDir(rootDir, "bundle-no-candidate")
-        val fallbackBundleFile = writeFile(bundleDir, "index.android.bundle")
+        writeFile(bundleDir, "index.android.bundle")
 
         writeManifest(bundleDir, listOf("index.ios.bundle", "assets/image.png"))
 
-        assertResolvedBundlePath(service, bundleDir, fallbackBundleFile)
+        assertNull(invokeResolveBundleFile(service, bundleDir))
     }
 
     @Test
-    fun `resolveBundleFile falls back to root index when manifest has multiple android bundle candidates`() {
+    fun `resolveBundleFile rejects untracked root index when manifest has multiple android bundle candidates`() {
         val rootDir = temporaryFolder.newFolder("multiple-android-candidates")
         val service = createService(rootDir)
         val bundleDir = createBundleDir(rootDir, "bundle-multiple-candidates")
-        val fallbackBundleFile = writeFile(bundleDir, "index.android.bundle")
+        writeFile(bundleDir, "index.android.bundle")
 
         writeFile(bundleDir, "foo.android.bundle")
         writeFile(bundleDir, "dist/bar.android.bundle")
         writeManifest(bundleDir, listOf("foo.android.bundle", "dist/bar.android.bundle"))
 
-        assertResolvedBundlePath(service, bundleDir, fallbackBundleFile)
+        assertNull(invokeResolveBundleFile(service, bundleDir))
+    }
+
+    @Test
+    fun `resolveBundleFile rejects non regular manifest entry`() {
+        val rootDir = temporaryFolder.newFolder("non-regular-manifest")
+        val service = createService(rootDir)
+        val bundleDir = createBundleDir(rootDir, "bundle-non-regular-manifest")
+        writeFile(bundleDir, "index.android.bundle")
+        File(bundleDir, "manifest.json").mkdir()
+
+        assertNull(invokeResolveBundleFile(service, bundleDir))
     }
 
     @Test
@@ -130,6 +141,38 @@ class BundleFileStorageServiceTest {
         val fallbackBundleFile = writeFile(bundleDir, "index.android.bundle")
 
         assertResolvedBundlePath(service, bundleDir, fallbackBundleFile)
+    }
+
+    @Test
+    fun `resolveBundleFile rejects legacy root index when signing is enabled`() {
+        val rootDir = temporaryFolder.newFolder("signed-legacy-root-index")
+        val service = createService(rootDir)
+        val bundleDir = createBundleDir(rootDir, "bundle-signed-legacy")
+        writeFile(bundleDir, "index.android.bundle")
+
+        HotUpdaterConfig.publicKey = "configured-for-test"
+        try {
+            assertNull(invokeResolveBundleFile(service, bundleDir))
+        } finally {
+            HotUpdaterConfig.clear()
+        }
+    }
+
+    @Test
+    fun `getCachedBundleURL clears unmanaged path when signing is enabled`() {
+        val rootDir = temporaryFolder.newFolder("signed-unmanaged-cache")
+        val preferences = InMemoryPreferencesService()
+        val service = createService(rootDir, preferences)
+        val unmanagedBundle = writeFile(rootDir, "legacy/index.android.bundle")
+        preferences.setItem("HotUpdaterBundleURL", unmanagedBundle.absolutePath)
+
+        HotUpdaterConfig.publicKey = "configured-for-test"
+        try {
+            assertNull(service.getCachedBundleURL())
+            assertNull(preferences.getItem("HotUpdaterBundleURL"))
+        } finally {
+            HotUpdaterConfig.clear()
+        }
     }
 
     @Test
