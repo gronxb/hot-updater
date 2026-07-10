@@ -23,10 +23,10 @@ https://hot-updater.dev
 
 Attach the Hot Updater agent skill so AI coding agents can use concise CLI
 context for deploys, bundle management, rollbacks, and verification:
-[`.agents/skills/hot-updater/SKILL.md`](https://github.com/gronxb/hot-updater/blob/main/.agents/skills/hot-updater/SKILL.md)
+[`skills/hot-updater/SKILL.md`](https://github.com/hot-updater/skills/blob/main/skills/hot-updater/SKILL.md)
 
 ```sh
-npx skills add gronxb/hot-updater --skill hot-updater
+npx skills add hot-updater/skills
 ```
 
 Then ask your agent with prompts like
@@ -41,9 +41,26 @@ the full workflow.
 - **Self-Hosted**: Complete control over your update infrastructure
 - **Multi-Platform**: Support for both iOS and Android
 - **Web Console**: Intuitive update management interface
+- **Bundle Diffing**: Reuse unchanged files and ship compact Hermes patches
+  for smaller OTA downloads
 - **Plugin System**: Support for various storage providers (AWS S3, Cloudflare R2 + D1, etc.)
 - **Version Control**: Robust app version management through semantic versioning
 - **New Architecture**: Support for new architecture like React Native
+
+## Bundle Diffing
+
+Hot Updater can deliver incremental OTA updates instead of making every
+device download the full archive again. A diff-enabled runtime reuses bundle
+files that already exist on the device, while deploys prepare `.bsdiff`
+patches for changed Hermes bundles by default.
+
+In practice, a release that would normally ship a 10 MB archive can be
+delivered as a ~600 KB patch when the Hermes bytecode change is small. If a
+patch is missing, incompatible, or not worth using, Hot Updater falls back to
+the normal archive update path.
+
+See the [Bundle Diffing guide](https://hot-updater.dev/docs/guides/bundle-diffing)
+for the full runtime behavior and fallback rules.
 
 ## Plugin System
 

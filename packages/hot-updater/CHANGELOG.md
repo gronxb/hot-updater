@@ -1,5 +1,18 @@
 # hot-updater
 
+## 0.35.2
+
+### Patch Changes
+
+- e3f0962: Add bulk deletion to `hot-updater bundle delete`. The command now accepts multiple bundle ids (`bundle delete <id...>`)
+  - @hot-updater/android-helper@0.35.2
+  - @hot-updater/apple-helper@0.35.2
+  - @hot-updater/cli-tools@0.35.2
+  - @hot-updater/console@0.35.2
+  - @hot-updater/core@0.35.2
+  - @hot-updater/server@0.35.2
+  - @hot-updater/plugin-core@0.35.2
+
 ## 0.35.1
 
 ### Patch Changes
