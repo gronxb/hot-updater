@@ -1,6 +1,6 @@
 ---
 title: "Drizzle"
-description: Build a self-hosted Hot Updater server with Drizzle ORM.
+description: Use Drizzle ORM as an official Hot Updater database middle layer.
 icon: drizzle
 version: "v0.22.0"
 ---
@@ -14,6 +14,9 @@ npm install drizzle-orm better-sqlite3 @types/better-sqlite3 --save-dev
 ```
 
 For other databases, see [Drizzle's adapter documentation](https://orm.drizzle.team/docs/get-started).
+
+Hot Updater treats Drizzle as an official database middle layer. The
+`provider` option selects the concrete database dialect beneath Drizzle.
 
 ## Setup
 
@@ -33,12 +36,12 @@ Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { drizzleDatabase } from "@hot-updater/server/adapters/drizzle";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
-  database: drizzleAdapter({ db, provider: "sqlite" }),
+  database: drizzleDatabase({ db, provider: "sqlite" }),
   storages: [
     s3Storage({
       region: "auto",

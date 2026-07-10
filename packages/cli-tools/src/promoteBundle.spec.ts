@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing bundle promotion regression suite; splitting belongs to a dedicated test-structure cleanup.
 // @vitest-environment node
 
 import fs from "node:fs/promises";
@@ -8,14 +9,14 @@ import { brotliDecompressSync } from "node:zlib";
 import type {
   Bundle,
   DatabaseBundleRecord,
-  DatabasePluginCore,
-  DatabasePluginRuntime,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import {
-  createDatabasePlugin as createDatabaseRuntimePlugin,
-  splitDatabaseBundle,
-} from "@hot-updater/plugin-core";
+import { splitDatabaseBundle } from "@hot-updater/plugin-core";
+import type {
+  DatabasePluginDeclaration,
+  DatabasePluginRuntime,
+} from "@hot-updater/plugin-core/internal";
+import { createDatabasePlugin as createDatabaseRuntimePlugin } from "@hot-updater/plugin-core/internal";
 import JSZip from "jszip";
 import * as tar from "tar";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -53,13 +54,14 @@ const createInsertFailingDatabasePlugin = (
   bundle: Bundle,
 ): DatabasePluginRuntime => {
   const split = splitDatabaseBundle(bundle);
+  let patchRecords = [...split.patches];
   const bundleRecords = new Map<string, DatabaseBundleRecord>([
     [bundle.id, split.bundle],
   ]);
 
   return createDatabaseRuntimePlugin({
     name: "mockDatabase",
-    connect: (): DatabasePluginCore => ({
+    connect: (): DatabasePluginDeclaration => ({
       bundles: {
         async delete() {},
         async getById({ bundleId }) {
@@ -68,12 +70,8 @@ const createInsertFailingDatabasePlugin = (
         async insert() {
           throw new Error("append failed");
         },
-        async findMany({ window }) {
-          const bundles = Array.from(bundleRecords.values());
-          return bundles.slice(window.offset, window.offset + window.limit);
-        },
-        async count() {
-          return bundleRecords.size;
+        async findRecords() {
+          return Array.from(bundleRecords.values());
         },
         async update({ bundleId, patch }) {
           const existing = bundleRecords.get(bundleId);
@@ -81,25 +79,20 @@ const createInsertFailingDatabasePlugin = (
           bundleRecords.set(bundleId, { ...existing, ...patch });
         },
       },
-      bundlePatches: {
-        async delete() {},
-        async getById() {
-          return null;
+      patches: {
+        storage: "embedded",
+        async findPatches() {
+          return patchRecords;
         },
-        async insert() {},
-        async findMany({ window }) {
-          return split.patches.slice(
-            window.offset,
-            window.offset + window.limit,
-          );
+        async getBundlePatches({ bundleId }) {
+          return patchRecords.filter((patch) => patch.bundleId === bundleId);
         },
-        async count() {
-          return split.patches.length;
+        async replaceBundlePatches({ patches }) {
+          patchRecords = [...patches];
         },
-        async update() {},
       },
     }),
-  })(undefined);
+  })(undefined) as DatabasePluginRuntime;
 };
 
 async function createZipArchive(

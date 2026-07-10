@@ -1,6 +1,6 @@
 {
-  "title": "Database Adapters",
-  "description": "ORMs and database drivers for Hot Updater",
+  "title": "Database Middle Layers",
+  "description": "Official Drizzle, Kysely, and Prisma layers with DB providers underneath.",
   "icon": "Database",
   "pages": ["sql-export", "drizzle", "prisma", "kysely", "mongodb", "s3"]
 }

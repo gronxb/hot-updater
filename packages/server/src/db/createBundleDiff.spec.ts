@@ -1,20 +1,20 @@
+// noqa: SIZE_OK - Existing bundle diff regression suite; splitting belongs to a dedicated test-structure cleanup.
 import fs from "node:fs/promises";
 import { brotliCompressSync } from "node:zlib";
 
 import type {
-  BundlePatchListQuery,
   Bundle,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginCore,
-  DatabasePluginRuntime,
   NodeStoragePlugin,
   NodeStorageProfile,
 } from "@hot-updater/plugin-core";
-import {
-  createDatabasePlugin as createDatabaseRuntimePlugin,
-  splitDatabaseBundle,
-} from "@hot-updater/plugin-core";
+import { splitDatabaseBundle } from "@hot-updater/plugin-core";
+import type {
+  DatabasePluginDeclaration,
+  DatabasePluginRuntime,
+} from "@hot-updater/plugin-core/internal";
+import { createDatabasePlugin as createDatabaseRuntimePlugin } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/bsdiff", () => ({
@@ -44,22 +44,6 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
 const getPatchId = (patch: DatabaseBundlePatch): string =>
   `${patch.bundleId}:${patch.baseBundleId}`;
 
-const matchesBundlePatchWhere = (
-  patch: DatabaseBundlePatch,
-  where: BundlePatchListQuery["where"],
-) => {
-  if (!where) return true;
-  return (
-    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
-    (where.baseBundleId === undefined ||
-      patch.baseBundleId === where.baseBundleId) &&
-    (where.bundleIdIn === undefined ||
-      where.bundleIdIn.includes(patch.bundleId)) &&
-    (where.baseBundleIdIn === undefined ||
-      where.baseBundleIdIn.includes(patch.baseBundleId))
-  );
-};
-
 const createDatabaseRuntime = (
   initialBundles: Map<string, Bundle>,
 ): DatabasePluginRuntime => {
@@ -76,7 +60,7 @@ const createDatabaseRuntime = (
 
   return createDatabaseRuntimePlugin({
     name: "mockDatabase",
-    connect: (): DatabasePluginCore => ({
+    connect: (): DatabasePluginDeclaration => ({
       bundles: {
         async delete({ bundleId }) {
           bundleRecords.delete(bundleId);
@@ -87,12 +71,8 @@ const createDatabaseRuntime = (
         async insert({ bundle }) {
           bundleRecords.set(bundle.id, bundle);
         },
-        async findMany({ window }) {
-          const bundles = Array.from(bundleRecords.values());
-          return bundles.slice(window.offset, window.offset + window.limit);
-        },
-        async count() {
-          return bundleRecords.size;
+        async findRecords() {
+          return Array.from(bundleRecords.values());
         },
         async update({ bundleId, patch }) {
           const bundle = bundleRecords.get(bundleId);
@@ -100,38 +80,32 @@ const createDatabaseRuntime = (
           bundleRecords.set(bundleId, { ...bundle, ...patch });
         },
       },
-      bundlePatches: {
-        async getById({ patchId }) {
-          return bundlePatches.get(patchId) ?? null;
+      patches: {
+        storage: "embedded",
+        async findPatches() {
+          return Array.from(bundlePatches.values());
         },
-        async insert({ patch }) {
-          bundlePatches.set(getPatchId(patch), {
-            ...patch,
-            id: getPatchId(patch),
-          });
+        async getBundlePatches({ bundleId }) {
+          return Array.from(bundlePatches.values()).filter(
+            (patch) => patch.bundleId === bundleId,
+          );
         },
-        async findMany({ where, window }) {
-          return Array.from(bundlePatches.values())
-            .filter((patch) => matchesBundlePatchWhere(patch, where))
-            .slice(window.offset, window.offset + window.limit);
-        },
-        async count({ where }) {
-          return Array.from(bundlePatches.values()).filter((patch) =>
-            matchesBundlePatchWhere(patch, where),
-          ).length;
-        },
-        async update({ patchId, patch }) {
-          const current = bundlePatches.get(patchId);
-          if (current) {
-            bundlePatches.set(patchId, { ...current, ...patch, id: patchId });
+        async replaceBundlePatches({ bundleId, patches }) {
+          for (const [patchId, patch] of bundlePatches) {
+            if (patch.bundleId === bundleId) {
+              bundlePatches.delete(patchId);
+            }
           }
-        },
-        async delete({ patchId }) {
-          bundlePatches.delete(patchId);
+          for (const patch of patches) {
+            bundlePatches.set(getPatchId(patch), {
+              ...patch,
+              id: getPatchId(patch),
+            });
+          }
         },
       },
     }),
-  })(undefined);
+  })(undefined) as DatabasePluginRuntime;
 };
 
 const createStoragePlugin = (

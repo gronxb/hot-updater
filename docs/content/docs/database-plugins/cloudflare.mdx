@@ -27,52 +27,55 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface D1DatabaseConfig {
-  databaseId: string;           // D1 database ID
-  accountId: string;            // Cloudflare account ID
-  cloudflareApiToken: string;   // Cloudflare API token
+  dialect: Dialect; // Kysely dialect for the D1 binding
 }
 ```
 
 ## Usage
 
-```typescript
-import { d1Database } from '@hot-updater/cloudflare';
-import { defineConfig } from 'hot-updater';
+In a Cloudflare Worker, use the Worker helper. It supplies the Kysely D1
+dialect from the `env.DB` binding at request time.
 
-export default defineConfig({
-  database: d1Database({
-    databaseId: process.env.D1_DATABASE_ID,
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN
-  }),
-  // ... other config
+```typescript
+import { createHotUpdater } from "@hot-updater/server";
+import { d1Database } from "@hot-updater/cloudflare/worker";
+
+export const hotUpdater = createHotUpdater({
+  database: d1Database(),
+  // ... storage and routes
+});
+```
+
+If you are composing the database manually, pass a Kysely D1 dialect yourself.
+
+```typescript
+import { d1Database } from "@hot-updater/cloudflare";
+import { D1Dialect } from "kysely-d1";
+
+export const database = d1Database({
+  dialect: new D1Dialect({ database: env.DB }),
 });
 ```
 
 ## Complete Example
 
-Combined R2 storage and D1 database:
+Combined R2 storage and D1 database in a Worker:
 
 ```typescript
-import { d1Database } from '@hot-updater/cloudflare';
-import { s3Storage } from '@hot-updater/aws';
-import { defineConfig } from 'hot-updater';
+import { createHotUpdater } from "@hot-updater/server";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker";
 
-export default defineConfig({
-  storage: s3Storage({
-    region: 'auto',
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
-    },
-    bucketName: 'my-r2-bucket'
+export const hotUpdater = createHotUpdater({
+  database: d1Database(),
+  storages: [
+    r2Storage({
+      publicBaseUrl: ({ request }) => new URL(request.url).origin,
+    }),
+  ],
+  basePath: "/api/check-update",
+  routes: {
+    updateCheck: true,
+    bundles: false,
   }),
-  database: d1Database({
-    databaseId: process.env.D1_DATABASE_ID,
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-    cloudflareApiToken: process.env.CLOUDFLARE_API_TOKEN
-  }),
-  // ... other config
 });
 ```

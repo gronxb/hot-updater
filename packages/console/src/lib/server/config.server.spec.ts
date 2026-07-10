@@ -1,9 +1,7 @@
 // @vitest-environment node
 
-import type {
-  DatabasePluginRuntime,
-  NodeStoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { NodeStoragePlugin } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { loadConfigMock } = vi.hoisted(() => ({

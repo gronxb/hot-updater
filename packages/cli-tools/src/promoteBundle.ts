@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing bundle promotion module; splitting belongs to a dedicated CLI cleanup.
 import crypto from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
@@ -10,24 +11,23 @@ import {
   getManifestFileHash,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
-import type {
-  Bundle,
-  DatabasePluginRuntime,
-  NodeStoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { Bundle, NodeStoragePlugin } from "@hot-updater/plugin-core";
 import {
   createUUIDv7,
   detectCompressionFormat,
-  readDatabaseRuntimeBundle,
-  stageDatabaseRuntimeBundleInsert,
-  stageDatabaseRuntimeBundleUpdate,
 } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import JSZip from "jszip";
 import * as tar from "tar";
 
 import { createTarBrTargetFiles } from "./createTarBr";
 import { createTarGzTargetFiles } from "./createTarGz";
 import { createZipTargetFiles } from "./createZip";
+import {
+  readDatabaseRuntimeBundle,
+  stageDatabaseRuntimeBundleInsert,
+  stageDatabaseRuntimeBundleUpdate,
+} from "./databaseRuntimeBundle";
 import type { ConfigResponse } from "./loadConfig";
 
 const LEGACY_BUNDLE_ERROR =

@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing bundle diff module; splitting belongs to a dedicated runtime cleanup.
 import crypto, { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -12,16 +13,14 @@ import {
   getBundlePatches,
   getManifestStorageUri,
 } from "@hot-updater/core";
-import type {
-  Bundle,
-  DatabasePluginRuntime,
-  NodeStoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { Bundle, NodeStoragePlugin } from "@hot-updater/plugin-core";
+import { resolveManifestAssetStorageUri } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
+
 import {
   readDatabaseRuntimeBundle,
-  resolveManifestAssetStorageUri,
   stageDatabaseRuntimeBundleUpdate,
-} from "@hot-updater/plugin-core";
+} from "./runtimeBundle";
 
 type BundleManifest = {
   bundleId: string;
@@ -148,9 +147,7 @@ async function fetchManifest(
     storagePlugin,
   );
 
-  const payload = JSON.parse(
-    new TextDecoder().decode(manifestBytes),
-  ) as unknown;
+  const payload: unknown = JSON.parse(new TextDecoder().decode(manifestBytes));
   if (!isBundleManifest(payload)) {
     throw new Error(`Invalid manifest payload for bundle ${bundle.id}`);
   }

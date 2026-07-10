@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing deploy command module; splitting belongs to a dedicated command cleanup.
 import fs from "fs";
 import path from "path";
 import { pipeline } from "stream/promises";
@@ -14,16 +15,16 @@ import {
 } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabasePluginRuntime,
   NodeStoragePlugin,
   Platform,
 } from "@hot-updater/plugin-core";
 import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
 import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import {
   listDatabaseRuntimeBundles,
   stageDatabaseRuntimeBundleInsert,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/server/db";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
 import open from "open";
@@ -773,7 +774,8 @@ const deployPlatform = async ({
 
           await fs.promises.mkdir(outputRoot, { recursive: true });
 
-          const buildPath = taskRef.buildResult?.buildPath;
+          const buildResult = taskRef.buildResult;
+          const buildPath = buildResult?.buildPath;
           if (!buildPath) {
             throw new Error("Build result not found");
           }
@@ -790,7 +792,7 @@ const deployPlatform = async ({
               )
               .map((file) => path.join(buildPath, file)),
           );
-          const currentBundleId = taskRef.buildResult.bundleId;
+          const currentBundleId = buildResult.bundleId;
           bundleId = currentBundleId;
 
           const manifestSigning =

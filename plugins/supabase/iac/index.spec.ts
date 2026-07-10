@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing Supabase IAC regression suite; splitting belongs to a dedicated test-structure cleanup.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -288,14 +289,20 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
-        "@hot-updater/server":
-          "./_hot-updater/hot-updater-server/dist/index.mjs",
-        "@hot-updater/supabase":
-          "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
         "@hot-updater/js": "./_hot-updater/hot-updater-js/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
+        "@hot-updater/plugin-core/internal":
+          "./_hot-updater/hot-updater-plugin-core/dist/internal.mjs",
+        "@hot-updater/postgres":
+          "./_hot-updater/hot-updater-postgres/dist/index.mjs",
+        "@hot-updater/server":
+          "./_hot-updater/hot-updater-server/dist/index.mjs",
+        "@hot-updater/server/adapters/kysely":
+          "./_hot-updater/hot-updater-server/dist/adapters/kysely.mjs",
+        "@hot-updater/supabase":
+          "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
         "@supabase/supabase-js": `npm:@supabase/supabase-js@${resolvePackageVersion(
           "@supabase/supabase-js",
           {
@@ -303,10 +310,16 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           },
         )}`,
         "es-toolkit": `npm:es-toolkit@${resolvePackageVersion("es-toolkit", {
-          searchFrom: path.resolve("plugins/plugin-core"),
+          searchFrom: path.resolve("plugins/supabase"),
+        })}`,
+        kysely: `npm:kysely@${resolvePackageVersion("kysely", {
+          searchFrom: path.resolve("plugins/supabase"),
         })}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
+        })}`,
+        pg: `npm:pg@${resolvePackageVersion("pg", {
+          searchFrom: path.resolve("plugins/postgres"),
         })}`,
         semver: `npm:semver@${resolvePackageVersion("semver", {
           searchFrom: path.resolve("plugins/plugin-core"),

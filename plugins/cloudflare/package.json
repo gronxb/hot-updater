@@ -63,6 +63,8 @@
     "@hot-updater/server": "workspace:*",
     "cloudflare": "4.2.0",
     "hono": "catalog:hono",
+    "kysely": "catalog:db",
+    "kysely-d1": "catalog:db",
     "uuidv7": "^1.0.2"
   },
   "devDependencies": {

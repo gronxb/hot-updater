@@ -1,24 +1,21 @@
-import type { DatabasePluginCore } from "@hot-updater/plugin-core";
+import type { DatabasePluginDeclaration } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it, vi } from "vitest";
 
 import { createCallbackDatabaseTransaction } from "./transaction";
 
-const createCore = (): DatabasePluginCore => ({
-  bundlePatches: {
-    count: async () => 0,
+const createConnection = (): DatabasePluginDeclaration => ({
+  bundles: {
     delete: async () => undefined,
-    findMany: async () => [],
+    findRecords: async () => [],
     getById: async () => null,
     insert: async () => undefined,
     update: async () => undefined,
   },
-  bundles: {
-    count: async () => 0,
-    delete: async () => undefined,
-    findMany: async () => [],
-    getById: async () => null,
-    insert: async () => undefined,
-    update: async () => undefined,
+  patches: {
+    storage: "embedded",
+    findPatches: async () => [],
+    getBundlePatches: async () => [],
+    replaceBundlePatches: async () => undefined,
   },
 });
 
@@ -29,7 +26,7 @@ describe("createCallbackDatabaseTransaction", () => {
 
     await expect(
       createCallbackDatabaseTransaction({
-        createCore,
+        createConnection,
         onSettled,
         run: async () => {
           throw failure;
@@ -45,7 +42,7 @@ describe("createCallbackDatabaseTransaction", () => {
     let operationCompleted = false;
 
     const transaction = await createCallbackDatabaseTransaction({
-      createCore,
+      createConnection,
       onSettled,
       run: async (operation) => {
         await operation("tx");
@@ -53,6 +50,9 @@ describe("createCallbackDatabaseTransaction", () => {
       },
     });
 
+    expect(transaction.connection).toMatchObject({
+      patches: { storage: "embedded" },
+    });
     expect(operationCompleted).toBe(false);
     await transaction.commit();
 

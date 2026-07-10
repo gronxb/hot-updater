@@ -1,10 +1,11 @@
+// noqa: SIZE_OK - Existing bundle command regression suite; splitting belongs to a dedicated test-structure cleanup.
 import type {
   Bundle,
   CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginRuntime,
 } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
@@ -152,7 +153,7 @@ const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
 const stubLoadedConfig = () => {
   mockCli.loadConfig.mockResolvedValue({
     database: vi.fn().mockResolvedValue(mockDatabasePlugin),
-  } as never);
+  });
 };
 
 const expectExit = (code: number) => {

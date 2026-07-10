@@ -1,62 +1,33 @@
+// noqa: SIZE_OK - Existing MongoDB adapter module; splitting belongs to a dedicated adapter cleanup.
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
-  BundlePatchListQuery,
-  DatabaseBundlePatch,
-  DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
-  DatabasePluginCore,
-  DatabasePluginRuntime,
+  DatabasePluginDeclaration,
 } from "@hot-updater/plugin-core";
 import {
-  createDatabasePlugin,
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
-import type { ClientSession, Filter, MongoClient } from "mongodb";
+import { createLegacyDatabasePlugin } from "@hot-updater/plugin-core/internal";
 
 import {
   bundleRecordToRow,
   type BundlePatchRow,
   type BundleRow,
-  databaseBundlePatchToRow,
-  databaseBundlePatchUpdateToRow,
-  rowToDatabaseBundlePatch,
   rowToDatabaseBundleRecord,
   rowToBundle,
 } from "../db/bundleRows";
 import { createMongoMigrator } from "../db/fixedMigrator";
-import type { DatabaseAdapterCapabilities } from "../db/types";
+import type {
+  DatabaseAdapterRuntime,
+  MongoClientRuntime,
+  MongoSessionRuntime,
+} from "../db/types";
 import { createCallbackDatabaseTransaction } from "./transaction";
 
-const getPatchId = (patch: DatabaseBundlePatch): string =>
-  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
-
-const getPatchStringField = (
-  patch: DatabaseBundlePatch,
-  field: Exclude<
-    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
-    "orderIndex"
-  >,
-): string => (field === "id" ? getPatchId(patch) : patch[field]);
-
-const patchMatchesWhere = (
-  patch: DatabaseBundlePatch,
-  where: BundlePatchListQuery["where"],
-) =>
-  !where ||
-  ((where.id === undefined || getPatchId(patch) === where.id) &&
-    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
-    (where.baseBundleId === undefined ||
-      patch.baseBundleId === where.baseBundleId) &&
-    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
-    (where.bundleIdIn === undefined ||
-      where.bundleIdIn.includes(patch.bundleId)) &&
-    (where.baseBundleIdIn === undefined ||
-      where.baseBundleIdIn.includes(patch.baseBundleId)));
-
 export interface MongoDBConfig {
-  readonly client: MongoClient;
+  readonly client: MongoClientRuntime;
   /**
    * Enable only for deployments that support MongoDB multi-document
    * transactions, such as replica sets or sharded clusters.
@@ -64,67 +35,21 @@ export interface MongoDBConfig {
   readonly transactions?: "enabled";
 }
 
-const mongoWhere = (
-  where: DatabaseBundleQueryWhere | undefined,
-): Filter<BundleRow> => {
-  const baseFilter: Filter<BundleRow> = {
-    ...(where?.channel !== undefined ? { channel: where.channel } : {}),
-    ...(where?.platform !== undefined ? { platform: where.platform } : {}),
-    ...(where?.enabled !== undefined ? { enabled: where.enabled } : {}),
-    ...(where?.fingerprintHash !== undefined
-      ? where.fingerprintHash === null
-        ? { fingerprint_hash: { $in: [null, ""] } }
-        : { fingerprint_hash: where.fingerprintHash }
-      : {}),
-    ...(where?.id
-      ? {
-          id: {
-            ...(where.id.eq !== undefined ? { $eq: where.id.eq } : {}),
-            ...(where.id.gt !== undefined ? { $gt: where.id.gt } : {}),
-            ...(where.id.gte !== undefined ? { $gte: where.id.gte } : {}),
-            ...(where.id.lt !== undefined ? { $lt: where.id.lt } : {}),
-            ...(where.id.lte !== undefined ? { $lte: where.id.lte } : {}),
-            ...(where.id.in !== undefined ? { $in: where.id.in } : {}),
-          },
-        }
-      : {}),
-  };
-  const targetAppVersionFilters: Filter<BundleRow>[] = [];
-  if (where?.targetAppVersion !== undefined) {
-    targetAppVersionFilters.push(
-      where.targetAppVersion === null
-        ? { target_app_version: { $in: [null, ""] } }
-        : { target_app_version: where.targetAppVersion },
-    );
-  }
-  if (where?.targetAppVersionIn) {
-    targetAppVersionFilters.push({
-      target_app_version: { $in: where.targetAppVersionIn },
-    });
-  }
-  if (where?.targetAppVersionNotNull) {
-    targetAppVersionFilters.push({
-      target_app_version: { $exists: true, $nin: [null, ""] },
-    });
-  }
+const normalizeBundlePatchRow = (row: BundlePatchRow): BundlePatchRow => ({
+  ...row,
+  order_index: row.order_index ?? 0,
+});
 
-  const filters = [
-    ...(Object.keys(baseFilter).length > 0 ? [baseFilter] : []),
-    ...targetAppVersionFilters,
-  ];
-  if (filters.length === 0) return {};
-  if (filters.length === 1) return filters[0] ?? {};
-  return { $and: filters };
-};
-
-const createMongoPlugin = createDatabasePlugin({
+const createMongoPlugin = createLegacyDatabasePlugin({
   name: "mongodb",
-  connect: (config: MongoDBConfig): DatabasePluginCore => {
+  connect: (config: MongoDBConfig): DatabasePluginDeclaration => {
     const { client } = config;
     const db = client.db();
     const bundles = db.collection<BundleRow>("bundles");
     const patches = db.collection<BundlePatchRow>("bundle_patches");
-    const createCore = (session?: ClientSession): DatabasePluginCore => {
+    const createConnection = (
+      session?: MongoSessionRuntime,
+    ): DatabasePluginDeclaration => {
       const sessionArgs = () =>
         session ? ([{ session }] as const) : ([] as const);
       const withSession = <TOptions extends object>(options: TOptions) =>
@@ -167,21 +92,9 @@ const createMongoPlugin = createDatabasePlugin({
             );
             return row ? rowToDatabaseBundleRecord(row) : null;
           },
-          async findMany({ where, orderBy, window }) {
-            const bundleOrder = orderBy ?? {
-              field: "id",
-              direction: "desc",
-            };
-            const rows = await bundles
-              .find(mongoWhere(where), ...sessionArgs())
-              .sort({ id: bundleOrder.direction === "asc" ? 1 : -1 })
-              .toArray();
-            return rows
-              .slice(window.offset, window.offset + window.limit)
-              .map(rowToDatabaseBundleRecord);
-          },
-          async count({ where }) {
-            return bundles.countDocuments(mongoWhere(where), ...sessionArgs());
+          async findRecords() {
+            const rows = await bundles.find({}, ...sessionArgs()).toArray();
+            return rows.map(rowToDatabaseBundleRecord);
           },
           async insert({ bundle }) {
             await replaceBundleRecord(bundle);
@@ -202,59 +115,33 @@ const createMongoPlugin = createDatabasePlugin({
             await bundles.deleteMany({ id: bundleId }, ...sessionArgs());
           },
         },
-        bundlePatches: {
-          async findMany({ where, orderBy, window }) {
+        patches: {
+          storage: "rows",
+          async findRows() {
             const rows = await patches
               .find({}, ...sessionArgs())
               .sort({ order_index: 1 })
               .toArray();
-            const data = rows
-              .map(rowToDatabaseBundlePatch)
-              .filter((patch) => patchMatchesWhere(patch, where))
-              .sort((left, right) => {
-                const direction = orderBy?.direction ?? "asc";
-                const field = orderBy?.field ?? "orderIndex";
-                const result =
-                  field === "orderIndex"
-                    ? left.orderIndex - right.orderIndex ||
-                      getPatchId(left).localeCompare(getPatchId(right))
-                    : getPatchStringField(left, field).localeCompare(
-                        getPatchStringField(right, field),
-                      );
-                return direction === "asc" ? result : -result;
-              });
-            return data.slice(window.offset, window.offset + window.limit);
+            return rows.map(normalizeBundlePatchRow);
           },
-          async count({ where }) {
-            const rows = await patches
-              .find({}, ...sessionArgs())
-              .sort({ order_index: 1 })
-              .toArray();
-            return rows
-              .map(rowToDatabaseBundlePatch)
-              .filter((patch) => patchMatchesWhere(patch, where)).length;
-          },
-          async getById({ patchId }) {
+          async getRowById({ patchId }) {
             const row = await patches.findOne(
               { id: patchId },
               ...sessionArgs(),
             );
-            return row ? rowToDatabaseBundlePatch(row) : null;
+            return row ? normalizeBundlePatchRow(row) : null;
           },
-          async insert({ patch }) {
-            await patches.insertMany(
-              [databaseBundlePatchToRow(patch)],
-              ...sessionArgs(),
-            );
+          async insertRow({ row }) {
+            await patches.insertMany([row], ...sessionArgs());
           },
-          async update({ patchId, patch }) {
+          async updateRow({ patchId, row }) {
             await patches.updateOne(
               { id: patchId },
-              { $set: databaseBundlePatchUpdateToRow(patch) },
+              { $set: row },
               ...sessionArgs(),
             );
           },
-          async delete({ patchId }) {
+          async deleteRow({ patchId }) {
             await patches.deleteMany({ id: patchId }, ...sessionArgs());
           },
         },
@@ -341,21 +228,22 @@ const createMongoPlugin = createDatabasePlugin({
       };
     };
 
-    const core = createCore();
+    const connection = createConnection();
+    const startSession = client.startSession;
     if (
       config.transactions !== "enabled" ||
-      typeof client.startSession !== "function"
+      typeof startSession !== "function"
     ) {
-      return core;
+      return connection;
     }
 
     return {
-      ...core,
+      ...connection,
       beginTransaction: async () => {
-        const session = client.startSession();
-        return createCallbackDatabaseTransaction<ClientSession>({
-          createCore,
-          onSettled: () => session.endSession(),
+        const session = startSession();
+        return createCallbackDatabaseTransaction<MongoSessionRuntime>({
+          createConnection,
+          onSettled: () => Promise.resolve(session.endSession()),
           run: (operation) => session.withTransaction(() => operation(session)),
         });
       },
@@ -363,9 +251,7 @@ const createMongoPlugin = createDatabasePlugin({
   },
 });
 
-export const mongoAdapter = (
-  config: MongoDBConfig,
-): DatabaseAdapterCapabilities & DatabasePluginRuntime => {
+export const mongoAdapter = (config: MongoDBConfig): DatabaseAdapterRuntime => {
   return Object.assign(createMongoPlugin(config), {
     adapterName: "mongodb",
     provider: "mongodb" as const,

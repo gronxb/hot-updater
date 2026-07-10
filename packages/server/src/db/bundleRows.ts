@@ -1,8 +1,7 @@
-import type { Bundle, BundlePatchArtifact, Platform } from "@hot-updater/core";
+import type { Bundle, Platform } from "@hot-updater/core";
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
   getAssetBaseStorageUri,
-  getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
   stripBundleArtifactMetadata,
@@ -11,8 +10,6 @@ import type {
   BundleEventFindManyQuery,
   BundleEventPayload,
   DatabaseBundleEvent,
-  DatabaseBundlePatch,
-  DatabaseBundlePatchUpdate,
   DatabaseBundleRecord,
 } from "@hot-updater/plugin-core";
 import {
@@ -20,7 +17,22 @@ import {
   toDatabaseBundleRecord,
 } from "@hot-updater/plugin-core";
 
+import {
+  bundlePatchRowToPatchArtifact,
+  type BundlePatchRow,
+} from "./bundlePatchRows";
 import { parseBundleMetadata } from "./updateArtifacts";
+
+export {
+  bundleToPatchRows,
+  databaseBundlePatchToRow,
+  databaseBundlePatchUpdateToRow,
+  isBundlePatchRow,
+  parseBundlePatchRow,
+  parseBundlePatchRows,
+  rowToDatabaseBundlePatch,
+  type BundlePatchRow,
+} from "./bundlePatchRows";
 
 export type BundleRow = {
   readonly id: string;
@@ -40,16 +52,6 @@ export type BundleRow = {
   readonly asset_base_storage_uri?: string | null;
   readonly rollout_cohort_count?: number | null;
   readonly target_cohorts?: unknown;
-};
-
-export type BundlePatchRow = {
-  readonly id: string;
-  readonly bundle_id: string;
-  readonly base_bundle_id: string;
-  readonly base_file_hash: string;
-  readonly patch_file_hash: string;
-  readonly patch_storage_uri: string;
-  readonly order_index?: number | null;
 };
 
 export type BundleEventRow = {
@@ -75,7 +77,7 @@ const parseTargetCohorts = (value: unknown): string[] | null => {
   }
   if (typeof value !== "string") return null;
   try {
-    const parsed = JSON.parse(value) as unknown;
+    const parsed: unknown = JSON.parse(value);
     return Array.isArray(parsed)
       ? parsed.filter((item): item is string => typeof item === "string")
       : null;
@@ -84,8 +86,12 @@ const parseTargetCohorts = (value: unknown): string[] | null => {
   }
 };
 
-const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
-  `${bundleId}:${baseBundleId}`;
+const parsePlatform = (value: string): Platform => {
+  if (value === "ios" || value === "android") {
+    return value;
+  }
+  throw new Error(`Unsupported platform: ${value}`);
+};
 
 export const bundleToRow = (bundle: Bundle): BundleRow => ({
   id: bundle.id,
@@ -111,63 +117,6 @@ export const bundleToRow = (bundle: Bundle): BundleRow => ({
 export const bundleRecordToRow = (bundle: DatabaseBundleRecord): BundleRow =>
   bundleToRow(toBundleReadModel(bundle));
 
-export const bundleToPatchRows = (bundle: Bundle): BundlePatchRow[] =>
-  getBundlePatches(bundle).map((patch, index) => ({
-    id: buildBundlePatchId(bundle.id, patch.baseBundleId),
-    bundle_id: bundle.id,
-    base_bundle_id: patch.baseBundleId,
-    base_file_hash: patch.baseFileHash,
-    patch_file_hash: patch.patchFileHash,
-    patch_storage_uri: patch.patchStorageUri,
-    order_index: index,
-  }));
-
-export const databaseBundlePatchToRow = (
-  patch: DatabaseBundlePatch,
-): BundlePatchRow => ({
-  id: patch.id ?? buildBundlePatchId(patch.bundleId, patch.baseBundleId),
-  bundle_id: patch.bundleId,
-  base_bundle_id: patch.baseBundleId,
-  base_file_hash: patch.baseFileHash,
-  patch_file_hash: patch.patchFileHash,
-  patch_storage_uri: patch.patchStorageUri,
-  order_index: patch.orderIndex,
-});
-
-export const databaseBundlePatchUpdateToRow = (
-  patch: DatabaseBundlePatchUpdate,
-): Partial<BundlePatchRow> => ({
-  ...(patch.baseFileHash !== undefined
-    ? { base_file_hash: patch.baseFileHash }
-    : {}),
-  ...(patch.patchFileHash !== undefined
-    ? { patch_file_hash: patch.patchFileHash }
-    : {}),
-  ...(patch.patchStorageUri !== undefined
-    ? { patch_storage_uri: patch.patchStorageUri }
-    : {}),
-  ...(patch.orderIndex !== undefined ? { order_index: patch.orderIndex } : {}),
-});
-
-const mapPatchRowToPatch = (record: BundlePatchRow): BundlePatchArtifact => ({
-  baseBundleId: record.base_bundle_id,
-  baseFileHash: record.base_file_hash,
-  patchFileHash: record.patch_file_hash,
-  patchStorageUri: record.patch_storage_uri,
-});
-
-export const rowToDatabaseBundlePatch = (
-  record: BundlePatchRow,
-): DatabaseBundlePatch => ({
-  id: record.id,
-  bundleId: record.bundle_id,
-  baseBundleId: record.base_bundle_id,
-  baseFileHash: record.base_file_hash,
-  patchFileHash: record.patch_file_hash,
-  patchStorageUri: record.patch_storage_uri,
-  orderIndex: record.order_index ?? 0,
-});
-
 const isAppReadyPayload = (value: unknown): value is BundleEventPayload => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
@@ -182,8 +131,7 @@ const isAppReadyPayload = (value: unknown): value is BundleEventPayload => {
 };
 
 const parseEventPayload = (value: unknown): BundleEventPayload => {
-  const parsed =
-    typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  const parsed: unknown = typeof value === "string" ? JSON.parse(value) : value;
   if (!isAppReadyPayload(parsed)) {
     throw new Error("Invalid bundle event payload.");
   }
@@ -203,7 +151,7 @@ export const rowToDatabaseBundleEvent = (
     activeBundleId: record.active_bundle_id,
     previousActiveBundleId: record.previous_active_bundle_id,
     crashedBundleId: record.crashed_bundle_id,
-    platform: record.platform as Platform,
+    platform: parsePlatform(record.platform),
     channel: record.channel,
     appVersion: record.app_version,
     fingerprintHash: record.fingerprint_hash,
@@ -263,12 +211,12 @@ export const rowToBundle = (
         (left.order_index ?? 0) - (right.order_index ?? 0) ||
         left.base_bundle_id.localeCompare(right.base_bundle_id),
     )
-    .map(mapPatchRowToPatch);
+    .map(bundlePatchRowToPatchArtifact);
   const primaryPatch = patches[0] ?? null;
 
   return {
     id: record.id,
-    platform: record.platform as Platform,
+    platform: parsePlatform(record.platform),
     shouldForceUpdate: Boolean(record.should_force_update),
     enabled: Boolean(record.enabled),
     fileHash: record.file_hash,

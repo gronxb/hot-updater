@@ -1,15 +1,18 @@
+// noqa: SIZE_OK - Existing standalone repository regression suite; splitting belongs to a dedicated test-structure cleanup.
 import {
   type Bundle,
-  calculatePagination,
   type DatabaseBundlePatch,
   type DatabaseBundleQueryOptions,
-  type DatabasePluginRuntime,
   type GetBundlesArgs,
   type PaginatedResult,
   splitDatabaseBundle,
   toBundleReadModel,
   type UpdateInfo,
 } from "@hot-updater/plugin-core";
+import {
+  calculatePagination,
+  type DatabasePluginRuntime,
+} from "@hot-updater/plugin-core/internal";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import {
@@ -297,7 +300,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
   beforeEach(() => {
     onDatabaseUpdated = vi.fn();
     repo = toLegacyRepository(
-      standaloneRepository(config, { onDatabaseUpdated }),
+      standaloneRepository(config, {
+        onDatabaseUpdated,
+      }) as DatabasePluginRuntime,
     );
   });
 
@@ -514,8 +519,10 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
   });
 
   it("getBundles: rejects removed offset pagination", async () => {
+    const legacyOffsetArgs = { limit: 20, offset: 1 };
+
     await expect(
-      repo.getBundles({ limit: 20, offset: 1 } as never),
+      repo.getBundles(legacyOffsetArgs),
     ).rejects.toThrow(
       "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
     );
@@ -1000,7 +1007,9 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
     };
 
     beforeEach(() => {
-      customRepo = toLegacyRepository(standaloneRepository(customConfig));
+      customRepo = toLegacyRepository(
+        standaloneRepository(customConfig) as DatabasePluginRuntime,
+      );
     });
 
     it("getBundles: uses custom list route and headers", async () => {

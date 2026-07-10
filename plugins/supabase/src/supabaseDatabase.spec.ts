@@ -1,471 +1,45 @@
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
-import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
-import type { DatabasePluginRuntime } from "@hot-updater/plugin-core";
+import { PGlite } from "@electric-sql/pglite";
+import type { Bundle, GetBundlesArgs } from "@hot-updater/core";
+import { toBundleReadModel } from "@hot-updater/plugin-core";
 import {
   stageDatabaseRuntimeBundleDelete,
   stageDatabaseRuntimeBundleInsert,
   stageDatabaseRuntimeBundleUpdate,
-  toBundleReadModel,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/server/db";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PGliteDialect } from "kysely-pglite-dialect";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { supabaseDatabase } from "./supabaseDatabase";
+import {
+  supabaseDatabase,
+  type SupabaseDatabaseRuntime,
+} from "./supabaseDatabase";
 
-type SupabaseBundleRow = {
-  id: string;
-  channel: string;
-  enabled: boolean;
-  should_force_update: boolean;
-  file_hash: string;
-  git_commit_hash: string | null;
-  message: string | null;
-  platform: "ios" | "android";
-  target_app_version: string | null;
-  fingerprint_hash: string | null;
-  storage_uri: string;
-  metadata: Record<string, unknown> | null;
-  manifest_storage_uri?: string | null;
-  manifest_file_hash?: string | null;
-  asset_base_storage_uri?: string | null;
-  rollout_cohort_count: number | null;
-  target_cohorts: string[] | null;
-};
+describe("supabaseDatabase official Kysely path", () => {
+  const db = new PGlite();
+  const plugin: SupabaseDatabaseRuntime = supabaseDatabase({
+    dialect: new PGliteDialect(db),
+  });
 
-type SupabaseBundlePatchRow = {
-  id: string;
-  bundle_id: string;
-  base_bundle_id: string;
-  base_file_hash: string;
-  patch_file_hash: string;
-  patch_storage_uri: string;
-  order_index: number;
-};
-
-const { bundleRows, bundlePatchRows, createMockSupabaseClient } = vi.hoisted(
-  () => {
-    const bundleRows = new Map<string, SupabaseBundleRow>();
-    const bundlePatchRows = new Map<string, SupabaseBundlePatchRow>();
-
-    type QueryFilter =
-      | {
-          type: "eq" | "gt" | "gte" | "lt" | "lte" | "is";
-          column: string;
-          value: unknown;
-        }
-      | {
-          type: "in";
-          column: string;
-          values: unknown[];
-        }
-      | {
-          type: "not";
-          column: string;
-          operator: string;
-          value: unknown;
-        };
-
-    const compareValues = (left: unknown, right: unknown) => {
-      if (typeof left === "string" && typeof right === "string") {
-        return left.localeCompare(right);
-      }
-
-      if (typeof left === "number" && typeof right === "number") {
-        return left - right;
-      }
-
-      if (typeof left === "boolean" && typeof right === "boolean") {
-        return Number(left) - Number(right);
-      }
-
-      return String(left).localeCompare(String(right));
-    };
-
-    class QueryBuilder {
-      private readonly filters: QueryFilter[] = [];
-      private ascending = true;
-      private limitValue: number | undefined;
-      private rangeStart: number | undefined;
-      private rangeEnd: number | undefined;
-      private singleRow = false;
-
-      constructor(
-        private readonly table: "bundles" | "bundle_patches",
-        private readonly mode: "select" | "delete",
-        private readonly options?: { count?: string; head?: boolean },
-      ) {}
-
-      eq(column: string, value: unknown) {
-        this.filters.push({ type: "eq", column, value });
-        return this;
-      }
-
-      gt(column: string, value: unknown) {
-        this.filters.push({ type: "gt", column, value });
-        return this;
-      }
-
-      gte(column: string, value: unknown) {
-        this.filters.push({ type: "gte", column, value });
-        return this;
-      }
-
-      lt(column: string, value: unknown) {
-        this.filters.push({ type: "lt", column, value });
-        return this;
-      }
-
-      lte(column: string, value: unknown) {
-        this.filters.push({ type: "lte", column, value });
-        return this;
-      }
-
-      in(column: string, values: unknown[]) {
-        this.filters.push({ type: "in", column, values });
-        return this;
-      }
-
-      is(column: string, value: unknown) {
-        this.filters.push({ type: "is", column, value });
-        return this;
-      }
-
-      not(column: string, operator: string, value: unknown) {
-        this.filters.push({ type: "not", column, operator, value });
-        return this;
-      }
-
-      order(_column: string, options?: { ascending?: boolean }) {
-        this.ascending = options?.ascending ?? true;
-        return this;
-      }
-
-      limit(value: number) {
-        this.limitValue = value;
-        return this;
-      }
-
-      range(from: number, to: number) {
-        this.rangeStart = from;
-        this.rangeEnd = to;
-        return this;
-      }
-
-      single() {
-        this.singleRow = true;
-        return this;
-      }
-
-      // This mock must be awaitable to match the Supabase query builder API.
-      then<TResult1 = any, TResult2 = never>(
-        onfulfilled?: ((value: any) => TResult1 | PromiseLike<TResult1>) | null,
-        onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
-      ) {
-        return this.execute().then(onfulfilled, onrejected);
-      }
-
-      private async execute() {
-        if (this.mode === "delete") {
-          const filteredRows = this.getFilteredRows();
-          for (const row of filteredRows) {
-            if (this.table === "bundles") {
-              bundleRows.delete(row.id);
-            } else {
-              bundlePatchRows.delete(row.id);
-            }
-          }
-          return { error: null };
-        }
-
-        let filteredRows = this.getFilteredRows();
-        filteredRows = filteredRows.sort((a, b) =>
-          this.ascending ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id),
-        );
-
-        const total = filteredRows.length;
-
-        if (this.singleRow) {
-          const data = filteredRows[0] ?? null;
-          return {
-            data,
-            error: data ? null : { message: "Row not found" },
-          };
-        }
-
-        if (this.options?.head) {
-          return {
-            data: null,
-            count: total,
-            error: null,
-          };
-        }
-
-        if (this.rangeStart !== undefined && this.rangeEnd !== undefined) {
-          filteredRows = filteredRows.slice(this.rangeStart, this.rangeEnd + 1);
-        } else if (this.limitValue !== undefined) {
-          filteredRows = filteredRows.slice(0, this.limitValue);
-        }
-
-        return {
-          data: filteredRows,
-          count: total,
-          error: null,
-        };
-      }
-
-      private getFilteredRows() {
-        let filteredRows: Array<SupabaseBundleRow | SupabaseBundlePatchRow> =
-          this.table === "bundles"
-            ? Array.from(bundleRows.values())
-            : Array.from(bundlePatchRows.values());
-
-        for (const filter of this.filters) {
-          filteredRows = filteredRows.filter((row) => {
-            const rowValue = (row as Record<string, unknown>)[filter.column];
-
-            switch (filter.type) {
-              case "eq":
-                return rowValue === filter.value;
-              case "gt":
-                return compareValues(rowValue, filter.value) > 0;
-              case "gte":
-                return compareValues(rowValue, filter.value) >= 0;
-              case "lt":
-                return compareValues(rowValue, filter.value) < 0;
-              case "lte":
-                return compareValues(rowValue, filter.value) <= 0;
-              case "in":
-                return filter.values.includes(rowValue);
-              case "is":
-                return rowValue === filter.value;
-              case "not":
-                if (filter.operator === "is") {
-                  return rowValue !== filter.value;
-                }
-
-                throw new Error(
-                  `Unsupported not operator in Supabase mock: ${filter.operator}`,
-                );
-            }
-
-            return false;
-          });
-        }
-
-        return filteredRows;
-      }
+  const migrate = async () => {
+    const migrator = plugin.createMigrator?.();
+    if (!migrator) {
+      throw new Error("supabaseDatabase did not expose a migrator");
     }
-
-    const createMockSupabaseClient = () => ({
-      from(table: string) {
-        if (table !== "bundles" && table !== "bundle_patches") {
-          throw new Error(`Unsupported table in Supabase mock: ${table}`);
-        }
-
-        return {
-          select(
-            _columns: string,
-            options?: { count?: string; head?: boolean },
-          ) {
-            return new QueryBuilder(table, "select", options);
-          },
-          delete() {
-            return new QueryBuilder(table, "delete");
-          },
-          async upsert(
-            payload:
-              | SupabaseBundleRow
-              | SupabaseBundlePatchRow[]
-              | SupabaseBundlePatchRow,
-          ) {
-            const values = Array.isArray(payload) ? payload : [payload];
-
-            for (const value of values) {
-              if (table === "bundles") {
-                bundleRows.set(value.id, value as SupabaseBundleRow);
-              } else {
-                bundlePatchRows.set(value.id, value as SupabaseBundlePatchRow);
-              }
-            }
-
-            return { error: null };
-          },
-        };
-      },
-      async rpc(name: string, params?: Record<string, unknown>) {
-        if (name === "get_channels") {
-          return {
-            data: Array.from(
-              new Set(
-                Array.from(bundleRows.values()).map((row) => row.channel),
-              ),
-            ).map((channel) => ({ channel })),
-            error: null,
-          };
-        }
-
-        if (name === "get_target_app_version_list") {
-          const platform =
-            params?.app_platform as SupabaseBundleRow["platform"];
-          const minBundleId = params?.min_bundle_id as string;
-
-          const data = Array.from(
-            new Set(
-              Array.from(bundleRows.values())
-                .filter(
-                  (row) =>
-                    row.platform === platform &&
-                    row.id.localeCompare(minBundleId) >= 0 &&
-                    row.target_app_version,
-                )
-                .map((row) => row.target_app_version),
-            ),
-          ).map((targetAppVersion) => ({
-            target_app_version: targetAppVersion,
-          }));
-
-          return { data, error: null };
-        }
-
-        if (name === "get_update_info_by_app_version") {
-          const platform =
-            params?.app_platform as SupabaseBundleRow["platform"];
-          const appVersion = params?.app_version as string;
-          const bundleId = params?.bundle_id as string;
-          const minBundleId = params?.min_bundle_id as string;
-          const channel = params?.target_channel as string;
-          const targetAppVersionList = (params?.target_app_version_list ??
-            []) as string[];
-          const cohort = (params?.cohort as string | null) ?? undefined;
-
-          const bundles = Array.from(bundleRows.values())
-            .filter(
-              (row) =>
-                row.enabled &&
-                row.platform === platform &&
-                row.channel === channel &&
-                row.id.localeCompare(minBundleId) >= 0 &&
-                targetAppVersionList.includes(row.target_app_version ?? ""),
-            )
-            .map(toBundle);
-
-          const updateInfo = (await getUpdateInfoJS(bundles, {
-            _updateStrategy: "appVersion",
-            appVersion,
-            bundleId,
-            minBundleId,
-            channel,
-            cohort,
-            platform,
-          })) as UpdateInfo | null;
-
-          return {
-            data: updateInfo ? [toUpdateInfoRow(updateInfo)] : [],
-            error: null,
-          };
-        }
-
-        if (name === "get_update_info_by_fingerprint_hash") {
-          const platform =
-            params?.app_platform as SupabaseBundleRow["platform"];
-          const bundleId = params?.bundle_id as string;
-          const minBundleId = params?.min_bundle_id as string;
-          const channel = params?.target_channel as string;
-          const fingerprintHash = params?.target_fingerprint_hash as string;
-          const cohort = (params?.cohort as string | null) ?? undefined;
-
-          const bundles = Array.from(bundleRows.values())
-            .filter(
-              (row) =>
-                row.enabled &&
-                row.platform === platform &&
-                row.channel === channel &&
-                row.id.localeCompare(minBundleId) >= 0 &&
-                row.fingerprint_hash === fingerprintHash,
-            )
-            .map(toBundle);
-
-          const updateInfo = (await getUpdateInfoJS(bundles, {
-            _updateStrategy: "fingerprint",
-            fingerprintHash,
-            bundleId,
-            minBundleId,
-            channel,
-            cohort,
-            platform,
-          })) as UpdateInfo | null;
-
-          return {
-            data: updateInfo ? [toUpdateInfoRow(updateInfo)] : [],
-            error: null,
-          };
-        }
-
-        return { data: null, error: new Error(`Unsupported RPC: ${name}`) };
-      },
+    const result = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
     });
+    await result.execute();
+  };
 
-    return { bundleRows, bundlePatchRows, createMockSupabaseClient };
-  },
-);
-
-const toBundle = (row: SupabaseBundleRow) => ({
-  channel: row.channel,
-  enabled: row.enabled,
-  shouldForceUpdate: row.should_force_update,
-  fileHash: row.file_hash,
-  gitCommitHash: row.git_commit_hash,
-  id: row.id,
-  message: row.message,
-  platform: row.platform,
-  targetAppVersion: row.target_app_version,
-  fingerprintHash: row.fingerprint_hash,
-  storageUri: row.storage_uri,
-  metadata: row.metadata ?? {},
-  manifestStorageUri: row.manifest_storage_uri ?? null,
-  manifestFileHash: row.manifest_file_hash ?? null,
-  assetBaseStorageUri: row.asset_base_storage_uri ?? null,
-  patches: Array.from(bundlePatchRows.values())
-    .filter((patch) => patch.bundle_id === row.id)
-    .sort(
-      (left, right) =>
-        left.order_index - right.order_index ||
-        left.base_bundle_id.localeCompare(right.base_bundle_id),
-    )
-    .map((patch) => ({
-      baseBundleId: patch.base_bundle_id,
-      baseFileHash: patch.base_file_hash,
-      patchFileHash: patch.patch_file_hash,
-      patchStorageUri: patch.patch_storage_uri,
-    })),
-  rolloutCohortCount: row.rollout_cohort_count ?? 1000,
-  targetCohorts: row.target_cohorts ?? null,
-});
-
-const toUpdateInfoRow = (updateInfo: UpdateInfo) => ({
-  id: updateInfo.id,
-  should_force_update: updateInfo.shouldForceUpdate,
-  message: updateInfo.message,
-  status: updateInfo.status,
-  storage_uri: updateInfo.storageUri,
-  file_hash: updateInfo.fileHash,
-});
-
-vi.mock("@supabase/supabase-js", () => ({
-  createClient: () => createMockSupabaseClient(),
-}));
-
-describe("supabaseDatabase plugin", () => {
-  let plugin: DatabasePluginRuntime;
-
-  const readBundle = async (bundleId: string) => {
+  const readBundle = async (bundleId: string): Promise<Bundle | null> => {
     const record = await plugin.bundles.getById({ bundleId });
-    if (!record) {
-      return null;
-    }
+    if (!record) return null;
+
     const patches = await plugin.bundlePatches.list({
       where: { bundleId },
       orderBy: { field: "orderIndex", direction: "asc" },
@@ -474,16 +48,15 @@ describe("supabaseDatabase plugin", () => {
     return toBundleReadModel(record, patches.data);
   };
 
-  const writeBundle = async (bundle: Bundle) => {
+  const writeBundle = async (bundle: Bundle): Promise<void> => {
     await stageDatabaseRuntimeBundleInsert(plugin, { bundle });
     await plugin.commit();
   };
 
-  const updateBundle = async (bundleId: string, patch: Partial<Bundle>) => {
-    const current = await readBundle(bundleId);
-    if (!current) {
-      throw new Error("targetBundleId not found");
-    }
+  const updateBundle = async (
+    bundleId: string,
+    patch: Partial<Bundle>,
+  ): Promise<void> => {
     await stageDatabaseRuntimeBundleUpdate(plugin, {
       bundleId,
       patch,
@@ -491,25 +64,37 @@ describe("supabaseDatabase plugin", () => {
     await plugin.commit();
   };
 
-  const deleteBundle = async (bundleId: string) => {
+  const deleteBundle = async (bundleId: string): Promise<void> => {
     await stageDatabaseRuntimeBundleDelete(plugin, bundleId);
     await plugin.commit();
   };
 
-  beforeEach(() => {
-    bundleRows.clear();
-    bundlePatchRows.clear();
-    plugin = supabaseDatabase({
-      supabaseUrl: "https://test.supabase.invalid",
-      supabaseAnonKey: "test-anon-key",
-    });
+  beforeAll(async () => {
+    await migrate();
+  });
+
+  beforeEach(async () => {
+    await db.exec("delete from bundle_patches; delete from bundles;");
+  });
+
+  afterAll(async () => {
+    await plugin.close?.();
+    await db.close();
+  });
+
+  it("creates a Kysely-backed Postgres runtime from a supplied dialect", () => {
+    expect(plugin.adapterName).toBe("kysely");
+    expect(plugin.provider).toBe("postgresql");
+    expect(plugin.createMigrator).toBeTypeOf("function");
   });
 
   setupBundleMethodsTestSuite({
     getBundleById: readBundle,
     getChannels: async () => {
       const result = await plugin.bundles.list({ limit: 1000 });
-      return Array.from(new Set(result.data.map((bundle) => bundle.channel)));
+      return Array.from(
+        new Set(result.data.map((bundle) => bundle.channel)),
+      ).sort();
     },
     insertBundle: writeBundle,
     getBundles: async (options) => {
@@ -524,21 +109,21 @@ describe("supabaseDatabase plugin", () => {
           ...result.pagination,
           total: result.pagination.total ?? result.data.length,
           currentPage: result.pagination.currentPage ?? 1,
-          totalPages: result.pagination.totalPages ?? 1,
+          totalPages:
+            result.pagination.totalPages ??
+            (result.data.length === 0
+              ? 0
+              : Math.ceil(result.data.length / options.limit)),
         },
       };
     },
     updateBundleById: updateBundle,
-    deleteBundleById: async (bundleId) => {
-      await deleteBundle(bundleId);
-    },
+    deleteBundleById: deleteBundle,
   });
 
   setupGetUpdateInfoTestSuite({
-    getUpdateInfo: async (bundles, args: GetBundlesArgs) => {
-      bundleRows.clear();
-      bundlePatchRows.clear();
-
+    getUpdateInfo: async (bundles: Bundle[], args: GetBundlesArgs) => {
+      await db.exec("delete from bundle_patches; delete from bundles;");
       for (const bundle of bundles) {
         await writeBundle(bundle);
       }
@@ -574,16 +159,14 @@ describe("supabaseDatabase plugin", () => {
     await writeBundle(currentBundle);
     await writeBundle(targetBundle);
 
-    const args: GetBundlesArgs = {
+    const updateInfo = await plugin.updateInfo?.get({
       _updateStrategy: "fingerprint",
       bundleId: currentBundle.id,
       channel: "production",
       fingerprintHash: "fingerprint-hash",
       minBundleId: "00000000-0000-0000-0000-000000000000",
       platform: "ios",
-    };
-
-    const updateInfo = await plugin.updateInfo?.get(args);
+    });
 
     expect(updateInfo).toEqual({
       fileHash: "target-file-hash",

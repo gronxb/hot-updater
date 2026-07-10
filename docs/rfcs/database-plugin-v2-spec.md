@@ -1,9 +1,18 @@
 # Database Plugin v2 Spec Draft
 
+This is a maintainer-facing implementation spec. Application and provider
+authors should start from the official database middle layers: Kysely, Drizzle,
+and Prisma. First-party SQL provider packages sit on the Kysely substrate by
+supplying Kysely dialects plus explicit Hot Updater provider metadata.
+`createDatabasePlugin` is an internal runtime helper for plugin-core and
+classified legacy/native exceptions; it is not the ordinary public provider
+authoring path.
+
 ## Goals
 
-`createDatabasePlugin` v2 defines a resource-oriented database contract for
-Hot Updater while keeping the provider-authored core small and predictable.
+Internally, `createDatabasePlugin` v2 defines a resource-oriented database
+contract for Hot Updater while keeping the connection declaration small and
+predictable.
 
 The v2 contract treats these as first-class database resources and behaviors:
 
@@ -30,19 +39,21 @@ append-only log.
 The implementation PR for this spec is complete only when all of these gates
 are satisfied:
 
-- Every `createDatabasePlugin` call site is migrated to the v2 surface.
+- Every remaining `createDatabasePlugin` call site is either plugin-core
+  internal code or a classified legacy/native exception.
 - Deploy, console, and `createHotUpdater` paths are updated for the new runtime
   shape.
 - `standaloneRepository` and request-handler adapter paths are migrated, not
   only provider package entry points.
 - `bundle_patches` remains a first-class resource and is not hidden inside
   bundle-only writes.
-- Provider-authored `bundlePatches` implementations expose generic resource
-  CRUD plus low-level reads: `getById`, `findMany`, `count`, `insert`, `update`,
-  and `delete`. They do not construct `CursorPage` envelopes.
+- Provider-authored patch storage is declared through `patches.storage`.
+  Row-backed providers expose row reads/writes; embedded document providers
+  expose patch-set reads/writes. They do not implement Hot Updater patch
+  filtering, pagination, id materialization, or partial-update mapping.
 - Patch-set rewrites such as "replace all patches for bundle" or "delete all
   patches for base bundle" are core orchestration over patch resources, not
-  provider-facing `bundlePatches` methods.
+  provider-facing patch methods.
 - Telemetry-capable providers add `bundle_events` as the append-only event
   sourcing resource for client telemetry.
 - Providers that cannot support telemetry, such as `s3Database`, omit
@@ -68,7 +79,7 @@ hot-updater-agent verify -platform full -profile <standalone-profile> \
   -env-target examples/v0.85.0/.env.hotupdater
 ```
 
-## Top-Level Plugin Spec
+## Internal Plugin Spec
 
 `factory` is not the right public word for v2. It describes an implementation
 pattern, but the database plugin boundary needs to express lifecycle:
@@ -85,63 +96,69 @@ export type MaybePromise<T> = T | Promise<T>;
 
 export interface DatabasePluginSpec {
   readonly name: string;
-  readonly connect: (config: unknown) => MaybePromise<DatabasePluginCore>;
+  readonly connect: (config: unknown) => MaybePromise<ProviderDeclaration>;
 }
 ```
 
-Provider authors should not write generic parameters at the
-`createDatabasePlugin` call site. Type inference may exist in the TypeScript
-implementation, but the documented authoring surface is the object shape:
-`name` plus `connect(config)`.
+Maintainer-authored internal providers should not write generic parameters at
+the `createDatabasePlugin` call site. Type inference may exist in the
+TypeScript implementation, but this is an internal runtime shape, not the
+normal public authoring surface.
 
-## Plugin Core Contract
+## Internal Connection Contract
 
-`connect` returns the provider-authored database core directly. There is no
+`connect` returns a provider-authored connection declaration. There is no
 `adapter` wrapper and no setup lifecycle in the provider-facing runtime object.
+The declaration keeps `bundlePatches` internal: providers describe how patch
+data is stored, and plugin-core normalizes that declaration into the runtime
+resource implementation.
 
 ```ts
-export interface DatabasePluginCore {
-  readonly beginTransaction?: () => Promise<DatabaseTransaction>;
-
-  readonly bundles: BundleResource;
-  readonly bundlePatches: BundlePatchResource;
-  readonly bundleEvents?: BundleEventResource;
-  readonly updateInfo?: UpdateInfoRepository;
-
-  readonly close?: () => Promise<void>;
-}
-
-export interface DatabasePluginRuntime {
-  readonly bundles: RuntimeBundleRepository;
-  readonly bundlePatches: RuntimeBundlePatchRepository;
-  readonly bundleEvents?: RuntimeBundleEventRepository;
-  readonly updateInfo?: UpdateInfoRepository;
-
-  readonly commit: (params?: DatabaseCommitParams) => Promise<void>;
-
-  readonly close?: () => Promise<void>;
-}
+type ProviderDeclaration =
+  | {
+      bundles: BundleStore;
+      patches:
+        | ({ storage: "rows" } & BundlePatchRowStore)
+        | ({ storage: "embedded" } & BundlePatchSetStore);
+      bundleEvents?: BundleEventStore;
+      updateInfo?: UpdateInfoStore;
+      beginTransaction?: () => Promise<{
+        connection: ProviderDeclaration;
+        commit: () => Promise<void>;
+        rollback: () => Promise<void>;
+      }>;
+      close?: () => Promise<void>;
+    }
+  | {
+      storage: "blob";
+      listObjects: (prefix: string) => Promise<string[]>;
+      loadObject: <T>(key: string) => Promise<T | null>;
+      uploadObject: <T>(key: string, value: T) => Promise<void>;
+      deleteObject: (key: string) => Promise<void>;
+      invalidatePaths: (paths: string[]) => Promise<void>;
+    };
 ```
 
 Lifecycle semantics:
 
 - `connect` is called by deploy, console, and `createHotUpdater` paths to open a
   configured runtime.
-- `connect` returns the provider-authored core object directly.
-- `createDatabasePlugin` wraps the core with one runtime `commit` method.
+- `connect` returns a provider-authored connection declaration.
+- `createDatabasePlugin` normalizes the connection and wraps it with one runtime
+  `commit` method.
 - `createDatabasePlugin` also wraps resource reads and staged writes with an
   instance-scoped identity map.
-- Provider cores declare `beginTransaction` only when the provider can expose an
-  explicit transaction handle.
+- Provider connection declarations expose `beginTransaction` only when the
+  provider can expose an explicit transaction handle.
 - Provider resources never declare or call `commit`; `commit()` is generated by
   `createDatabasePlugin` on the runtime object.
-- Provider `bundlePatches` methods are resource primitives. They do not expose
-  bundle-scoped patch-set commands such as `replaceForBundle`,
-  `deleteForBundle`, or `deleteForBaseBundle`.
-- `DatabaseTransaction.commit` and `DatabaseTransaction.rollback` live only on
-  the object returned from `beginTransaction`.
+- Provider `patches` declarations expose storage primitives. They do not expose
+  Hot Updater resource primitives or bundle-scoped patch-set commands such as
+  `replaceForBundle`, `deleteForBundle`, or `deleteForBaseBundle`.
+- Transaction `commit` and `rollback` live only on the object returned from
+  `beginTransaction`.
 - Normal Hot Updater callers do not call `beginTransaction`; the helper consumes
-  the provider core's transaction hook while running runtime `commit`.
+  the provider connection's transaction hook while running runtime `commit`.
 - Repository and resource methods use a params-only calling convention:
   `method(params)`.
 - Methods without domain params, such as `beginTransaction` and `commit`, take no
@@ -164,11 +181,11 @@ builders.
 Pass checklist:
 
 - The top-level provider spec is small: `name` plus `connect`.
-- `connect` returns `DatabasePluginCore` directly; there is no `adapter`
-  wrapper.
+- `connect` returns a `{ bundles, patches, ... }` declaration directly; there is
+  no second helper or `adapter` wrapper.
 - Provider authors do not pass schema, version, setup, or mode fields.
-- The core object is organized by resources: `bundles`, `bundlePatches`,
-  optional `bundleEvents`, and optional `updateInfo`.
+- The connection declaration is organized by storage surfaces: `bundles`,
+  `patches`, optional `bundleEvents`, and optional `updateInfo`.
 - Basic features are required by shape, not described by `capabilities` flags.
 - Optional features are also declared by shape; if `bundleEvents` is omitted, the
   runtime omits the `bundleEvents` resource for that provider.
@@ -208,7 +225,7 @@ Smells that the surface is drifting back to imperative:
 Current verdict:
 
 - The provider-facing spec is declarative if it remains `name + connect`.
-- `connect` is shallow enough when it returns the resource core directly.
+- `connect` is shallow enough when it returns a connection declaration.
 - Runtime `commit` is declarative at the boundary because callers flush staged
   resource changes instead of choosing provider-specific execution paths.
 - Provider write code is easier to maintain when each resource owns concrete
@@ -226,7 +243,7 @@ semantics.
 
 Identity map rules:
 
-- Every `DatabasePluginRuntime` instance owns one identity map.
+- Every opened plugin instance owns one identity map.
 - Runtime resource write methods stage mutations into that identity map.
 - Runtime `commit` expands staged mutations into provider primitive write
   methods; provider code does not implement identity map behavior.
@@ -280,24 +297,28 @@ await database.commit();
 Use this decision rule when choosing where `begin`, provider writes, and
 `commit` live:
 
-- Provider cores declare `beginTransaction` only when the provider can expose a
-  real transaction handle.
+- Provider connection declarations expose `beginTransaction` only when the
+  provider can expose a real transaction handle.
 - Provider resources declare concrete write primitives for their own resource.
 - Provider resources do not declare `commit` and do not call
   `transaction.commit()`.
 - `createDatabasePlugin` generates the public runtime `commit(params?)` method.
-- `DatabaseTransaction.commit` and `DatabaseTransaction.rollback` are declared on
-  the object returned from `beginTransaction`.
+- Transaction `commit` and `rollback` are declared on the object returned from
+  `beginTransaction`.
 - Runtime `commit` is the transaction boundary over staged mutations.
 - For PostgreSQL, `BEGIN`, `COMMIT`, and `ROLLBACK` belong to
   `beginTransaction` and the `createDatabasePlugin` runtime commit wrapper.
-- Transactional providers expose a transaction-bound `core` from
+- Transactional providers expose a transaction-bound `connection` from
   `beginTransaction`; resource methods close over the pool/client they should
   use and execute only their own primitive write.
 - `createDatabasePlugin` owns staging, ordering, transaction finalization, and
   hook execution.
 
-Provider primitive write methods:
+Internal runtime primitive write methods:
+
+These are not provider-authoring methods. Providers declare `bundles`,
+`patches`, and optional `bundleEvents`; plugin-core normalizes that declaration
+into the internal runtime core below.
 
 ```ts
 core.bundles.insert({ bundle });
@@ -322,7 +343,7 @@ await runtime.commit(); // or runtime.commit({ batch })
 // 3. stage the provided batch if commit({ batch }) was called
 // 4. snapshot staged mutations from the identity map
 // 5. open transaction if the provider exposes one
-// 6. write through tx.core when a transaction is open, otherwise through core
+// 6. write through tx.connection when a transaction is open, otherwise through connection
 // 7. append bundle events only when core.bundleEvents exists
 // 8. call tx.commit() once, or tx.rollback() once on failure
 // 9. clear the applied staged mutations after success
@@ -332,118 +353,131 @@ PostgreSQL sketch:
 
 ```ts
 connect({ pool }) {
-  const createCore = (db: PgPool | PgClient): DatabasePluginCore => ({
-    async beginTransaction() {
-      if (!("connect" in db)) {
-        throw new Error("Nested database transactions are not supported.");
-      }
+  const createConnection = (db: PgPool | PgClient) =>
+    ({
+      async beginTransaction() {
+        if (!("connect" in db)) {
+          throw new Error("Nested database transactions are not supported.");
+        }
 
-      const client = await db.connect();
-      await client.query("BEGIN");
+        const client = await db.connect();
+        await client.query("BEGIN");
 
-      return {
-        core: createCore(client),
-        async commit() {
-          await client.query("COMMIT");
-          client.release();
+        return {
+          connection: createConnection(client),
+          async commit() {
+            await client.query("COMMIT");
+            client.release();
+          },
+          async rollback() {
+            await client.query("ROLLBACK");
+            client.release();
+          },
+        };
+      },
+
+      bundles: {
+        async getById({ bundleId }) {
+          const result = await db.query("SELECT * FROM bundles WHERE id = $1", [
+            bundleId,
+          ]);
+
+          return result.rows[0] ? toBundleRecord(result.rows[0]) : null;
         },
-        async rollback() {
-          await client.query("ROLLBACK");
-          client.release();
+
+        async findMany(query) {
+          return findBundles(db, query);
         },
-      };
-    },
 
-    bundles: {
-      async getById({ bundleId }) {
-        const result = await db.query("SELECT * FROM bundles WHERE id = $1", [
-          bundleId,
-        ]);
+        async count(query) {
+          return countBundles(db, query);
+        },
 
-        return result.rows[0] ? toBundleRecord(result.rows[0]) : null;
+        async insert({ bundle }) {
+          await db.query(insertBundleSql, toBundleInsertValues(bundle));
+        },
+
+        async update({ bundleId, patch }) {
+          const update = toBundleUpdateStatement(bundleId, patch);
+          await db.query(update.sql, update.params);
+        },
+
+        async delete({ bundleId }) {
+          await db.query("DELETE FROM bundles WHERE id = $1", [bundleId]);
+        },
       },
 
-      async findMany(query) {
-        return findBundles(db, query);
+      patches: {
+        storage: "rows",
+        async findRows() {
+          const result = await db.query(
+            "SELECT * FROM bundle_patches ORDER BY order_index ASC",
+          );
+
+          return result.rows;
+        },
+
+        async getRowById({ patchId }) {
+          const result = await db.query(
+            "SELECT * FROM bundle_patches WHERE id = $1",
+            [patchId],
+          );
+
+          return result.rows[0] ?? null;
+        },
+
+        async insertRow({ row }) {
+          await db.query(insertBundlePatchSql, [
+            row.id,
+            row.bundle_id,
+            row.base_bundle_id,
+            row.base_file_hash,
+            row.patch_file_hash,
+            row.patch_storage_uri,
+            row.order_index,
+          ]);
+        },
+
+        async updateRow({ patchId, toSqlSet }) {
+          const set = toSqlSet((index) => `$${index}`);
+          await db.query(
+            `UPDATE bundle_patches SET ${set.sql} WHERE id = $${set.values.length + 1}`,
+            [...set.values, patchId],
+          );
+        },
+
+        async deleteRow({ patchId }) {
+          await db.query("DELETE FROM bundle_patches WHERE id = $1", [patchId]);
+        },
       },
 
-      async count(query) {
-        return countBundles(db, query);
+      bundleEvents: {
+        async findMany(query) {
+          return findBundleEvents(db, query);
+        },
+
+        async count(query) {
+          return countBundleEvents(db, query);
+        },
+
+        async append({ event }) {
+          await db.query(insertBundleEventSql, toBundleEventValues(event));
+        },
       },
+    });
 
-      async insert({ bundle }) {
-        await db.query(insertBundleSql, toBundleInsertValues(bundle));
-      },
-
-      async update({ bundleId, patch }) {
-        const update = toBundleUpdateStatement(bundleId, patch);
-        await db.query(update.sql, update.params);
-      },
-
-      async delete({ bundleId }) {
-        await db.query("DELETE FROM bundles WHERE id = $1", [bundleId]);
-      },
-    },
-
-    bundlePatches: {
-      async getById({ patchId }) {
-        const result = await db.query(
-          "SELECT * FROM bundle_patches WHERE id = $1",
-          [patchId],
-        );
-
-        return result.rows[0] ? toBundlePatch(result.rows[0]) : null;
-      },
-
-      async findMany(query) {
-        return findBundlePatches(db, query);
-      },
-
-      async count(query) {
-        return countBundlePatches(db, query);
-      },
-
-      async insert({ patch }) {
-        await db.query(insertBundlePatchSql, toBundlePatchValues(patch));
-      },
-
-      async update({ patchId, patch }) {
-        const update = toBundlePatchUpdateStatement(patchId, patch);
-        await db.query(update.sql, update.params);
-      },
-
-      async delete({ patchId }) {
-        await db.query("DELETE FROM bundle_patches WHERE id = $1", [patchId]);
-      },
-    },
-
-    bundleEvents: {
-      async findMany(query) {
-        return findBundleEvents(db, query);
-      },
-
-      async count(query) {
-        return countBundleEvents(db, query);
-      },
-
-      async append({ event }) {
-        await db.query(insertBundleEventSql, toBundleEventValues(event));
-      },
-    },
-  });
-
-  return createCore(pool);
+  return createConnection(pool);
 }
 ```
 
 ## Transaction Model
 
 ```ts
-export interface DatabaseTransaction {
-  readonly core: DatabasePluginCore;
-  readonly commit: () => Promise<void>;
-  readonly rollback: () => Promise<void>;
-}
+beginTransaction?: () => Promise<{
+  connection: ProviderDeclaration;
+  commit: () => Promise<void>;
+  rollback: () => Promise<void>;
+}>;
 ```
 
 Method argument convention:
@@ -463,8 +497,8 @@ No ambient operation argument:
 - Provider configuration belongs in `connect(config)`.
 - Query filters, ids, bundles, patches, events, and commit batches belong in
   params objects.
-- Transaction state is represented by a transaction-bound `core` returned from
-  `beginTransaction`, not by a field injected into every method call.
+- Transaction state is represented by a transaction-bound `connection` returned
+  from `beginTransaction`, not by a field injected into every method call.
 - Cloudflare Worker bindings such as `env.DB`, `env.BUCKET`, and
   `env.JWT_SECRET` should not be routed through every database method as
   an operation argument. In supported Worker runtimes, import `env` from
@@ -484,9 +518,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { d1Database, r2Storage } from "@hot-updater/cloudflare/worker";
 
 const hotUpdater = createHotUpdater({
-  database: d1Database({
-    database: env.HOT_UPDATER_D1,
-  }),
+  database: d1Database(),
   storages: [
     r2Storage({
       bucket: env.HOT_UPDATER_BUCKET,
@@ -527,21 +559,22 @@ const getById: BundleResource["getById"] = async ({ bundleId }) => {
 ```
 
 During runtime commit, `createDatabasePlugin` switches to the transaction-bound
-core only when the provider core declares `beginTransaction`:
+connection only when the provider connection declares `beginTransaction`:
 
 ```ts
-const transaction = await core.beginTransaction();
-const writeCore = transaction.core;
+const transaction = await connection.beginTransaction();
+const writeConnection = transaction.connection;
 
-await writeCore.bundles.insert({ bundle });
+await writeConnection.bundles.insert({ bundle });
 await transaction.commit();
 ```
 
 Transaction semantics:
 
 - `beginTransaction` is optional.
-- If `beginTransaction` returns a transaction-bound core, runtime commit must use
-  that core for all provider primitive writes inside the transaction.
+- If `beginTransaction` returns a transaction-bound connection, runtime commit
+  must use that connection for all provider primitive writes inside the
+  transaction.
 - Provider resource methods never call `transaction.commit()` or
   `transaction.rollback()`.
 - If `createDatabasePlugin` opens a transaction for runtime `commit`, it owns
@@ -634,51 +667,41 @@ export interface DatabaseResourceWindow {
 
 ```ts
 export interface RuntimeBundleRepository extends BundleRepository {
-  readonly insert: (
-    params: { readonly bundle: DatabaseBundleRecord },
-  ) => Promise<void>;
+  readonly insert: (params: {
+    readonly bundle: DatabaseBundleRecord;
+  }) => Promise<void>;
 
-  readonly update: (
-    params: {
-      readonly bundleId: string;
-      readonly patch: Partial<DatabaseBundleRecord>;
-    },
-  ) => Promise<void>;
+  readonly update: (params: {
+    readonly bundleId: string;
+    readonly patch: Partial<DatabaseBundleRecord>;
+  }) => Promise<void>;
 
-  readonly delete: (
-    params: { readonly bundleId: string },
-  ) => Promise<void>;
+  readonly delete: (params: { readonly bundleId: string }) => Promise<void>;
 }
 
 export interface BundleResource extends BundleRepository {
-  readonly insert: (
-    params: { readonly bundle: DatabaseBundleRecord },
-  ) => Promise<void>;
+  readonly insert: (params: {
+    readonly bundle: DatabaseBundleRecord;
+  }) => Promise<void>;
 
-  readonly update: (
-    params: {
-      readonly bundleId: string;
-      readonly patch: Partial<DatabaseBundleRecord>;
-    },
-  ) => Promise<void>;
+  readonly update: (params: {
+    readonly bundleId: string;
+    readonly patch: Partial<DatabaseBundleRecord>;
+  }) => Promise<void>;
 
-  readonly delete: (
-    params: { readonly bundleId: string },
-  ) => Promise<void>;
+  readonly delete: (params: { readonly bundleId: string }) => Promise<void>;
 }
 
 export interface BundleRepository {
-  readonly getById: (
-    params: { readonly bundleId: string },
-  ) => Promise<DatabaseBundleRecord | null>;
+  readonly getById: (params: {
+    readonly bundleId: string;
+  }) => Promise<DatabaseBundleRecord | null>;
 
   readonly findMany: (
     params: BundleFindManyQuery,
   ) => Promise<readonly DatabaseBundleRecord[]>;
 
-  readonly count: (
-    params: BundleCountQuery,
-  ) => Promise<number>;
+  readonly count: (params: BundleCountQuery) => Promise<number>;
 }
 
 export interface BundleListQuery {
@@ -712,51 +735,41 @@ export interface BundleCountQuery {
 
 ```ts
 export interface RuntimeBundlePatchRepository extends BundlePatchRepository {
-  readonly insert: (
-    params: { readonly patch: DatabaseBundlePatch },
-  ) => Promise<void>;
+  readonly insert: (params: {
+    readonly patch: DatabaseBundlePatch;
+  }) => Promise<void>;
 
-  readonly update: (
-    params: {
-      readonly patchId: string;
-      readonly patch: DatabaseBundlePatchUpdate;
-    },
-  ) => Promise<void>;
+  readonly update: (params: {
+    readonly patchId: string;
+    readonly patch: DatabaseBundlePatchUpdate;
+  }) => Promise<void>;
 
-  readonly delete: (
-    params: { readonly patchId: string },
-  ) => Promise<void>;
+  readonly delete: (params: { readonly patchId: string }) => Promise<void>;
 }
 
 export interface BundlePatchResource extends BundlePatchRepository {
-  readonly insert: (
-    params: { readonly patch: DatabaseBundlePatch },
-  ) => Promise<void>;
+  readonly insert: (params: {
+    readonly patch: DatabaseBundlePatch;
+  }) => Promise<void>;
 
-  readonly update: (
-    params: {
-      readonly patchId: string;
-      readonly patch: DatabaseBundlePatchUpdate;
-    },
-  ) => Promise<void>;
+  readonly update: (params: {
+    readonly patchId: string;
+    readonly patch: DatabaseBundlePatchUpdate;
+  }) => Promise<void>;
 
-  readonly delete: (
-    params: { readonly patchId: string },
-  ) => Promise<void>;
+  readonly delete: (params: { readonly patchId: string }) => Promise<void>;
 }
 
 export interface BundlePatchRepository {
-  readonly getById: (
-    params: { readonly patchId: string },
-  ) => Promise<DatabaseBundlePatch | null>;
+  readonly getById: (params: {
+    readonly patchId: string;
+  }) => Promise<DatabaseBundlePatch | null>;
 
   readonly findMany: (
     params: BundlePatchFindManyQuery,
   ) => Promise<readonly DatabaseBundlePatch[]>;
 
-  readonly count: (
-    params: BundlePatchCountQuery,
-  ) => Promise<number>;
+  readonly count: (params: BundlePatchCountQuery) => Promise<number>;
 }
 
 export type DatabaseBundlePatchUpdate = Partial<
@@ -819,15 +832,15 @@ export interface RuntimeBundleEventRepository {
     params: BundleEventListQuery,
   ) => Promise<CursorPage<DatabaseBundleEvent>>;
 
-  readonly append: (
-    params: { readonly event: DatabaseBundleEventInput },
-  ) => Promise<void>;
+  readonly append: (params: {
+    readonly event: DatabaseBundleEventInput;
+  }) => Promise<void>;
 }
 
 export interface BundleEventResource extends BundleEventRepository {
-  readonly append: (
-    params: { readonly event: DatabaseBundleEvent },
-  ) => Promise<void>;
+  readonly append: (params: {
+    readonly event: DatabaseBundleEvent;
+  }) => Promise<void>;
 }
 
 export interface BundleEventRepository {
@@ -835,29 +848,27 @@ export interface BundleEventRepository {
     params: BundleEventFindManyQuery,
   ) => Promise<readonly DatabaseBundleEvent[]>;
 
-  readonly count: (
-    params: BundleEventCountQuery,
-  ) => Promise<number>;
+  readonly count: (params: BundleEventCountQuery) => Promise<number>;
 }
 ```
 
 Table shape:
 
-| Column | Type | Required | Description | Source |
-|---|---:|---:|---|---|
-| `id` | `uuid` | yes | Event id. Generated as UUIDv7 by the server. Also represents server receive/order time. | Server |
-| `kind` | `text` | yes | Event kind. Initial value: `APP_READY`. | Server/client event type |
-| `install_id` | `text` | yes | Opaque app-installation id. Not a user id or raw device id. Stable for one app install, may change after reinstall. | `HotUpdater.getInstallId()` |
-| `active_bundle_id` | `uuid` | yes | Bundle currently running after `notifyAppReady`. Used for Active count. | `HotUpdater.getBundleId()` |
-| `previous_active_bundle_id` | `uuid` | no | Bundle that this `install_id` was running before the current event. Used to count transitions from old bundle to new bundle. | Server from previous event, or client cache |
-| `crashed_bundle_id` | `uuid` | no | Bundle that crashed and caused recovery. Present when status is `RECOVERED`. Used for Recovered count. | `HotUpdater.notifyAppReady().crashedBundleId` |
-| `platform` | `text` | yes | Client platform: `ios` or `android`. | Hot Updater runtime/constants |
-| `channel` | `text` | yes | Current update channel. | `HotUpdater.getChannel()` |
-| `app_version` | `text` | no | Native app version. | `HotUpdater.getAppVersion()` |
-| `fingerprint_hash` | `text` | no | Current native/build fingerprint hash. | `HotUpdater.getFingerprintHash()` |
-| `cohort` | `text` | no | Rollout cohort used for update eligibility. | `HotUpdater.getCohort()` |
-| `user_id` | `text` | no | Optional application user id. Defaults to null until configured by the app. | `HotUpdater.setUserId()` |
-| `payload` | `json` | yes | Event-specific extra data. Do not put core query/group-by fields only in payload. | Client/server |
+| Column                      |   Type | Required | Description                                                                                                                  | Source                                        |
+| --------------------------- | -----: | -------: | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `id`                        | `uuid` |      yes | Event id. Generated as UUIDv7 by the server. Also represents server receive/order time.                                      | Server                                        |
+| `kind`                      | `text` |      yes | Event kind. Initial value: `APP_READY`.                                                                                      | Server/client event type                      |
+| `install_id`                | `text` |      yes | Opaque app-installation id. Not a user id or raw device id. Stable for one app install, may change after reinstall.          | `HotUpdater.getInstallId()`                   |
+| `active_bundle_id`          | `uuid` |      yes | Bundle currently running after `notifyAppReady`. Used for Active count.                                                      | `HotUpdater.getBundleId()`                    |
+| `previous_active_bundle_id` | `uuid` |       no | Bundle that this `install_id` was running before the current event. Used to count transitions from old bundle to new bundle. | Server from previous event, or client cache   |
+| `crashed_bundle_id`         | `uuid` |       no | Bundle that crashed and caused recovery. Present when status is `RECOVERED`. Used for Recovered count.                       | `HotUpdater.notifyAppReady().crashedBundleId` |
+| `platform`                  | `text` |      yes | Client platform: `ios` or `android`.                                                                                         | Hot Updater runtime/constants                 |
+| `channel`                   | `text` |      yes | Current update channel.                                                                                                      | `HotUpdater.getChannel()`                     |
+| `app_version`               | `text` |       no | Native app version.                                                                                                          | `HotUpdater.getAppVersion()`                  |
+| `fingerprint_hash`          | `text` |       no | Current native/build fingerprint hash.                                                                                       | `HotUpdater.getFingerprintHash()`             |
+| `cohort`                    | `text` |       no | Rollout cohort used for update eligibility.                                                                                  | `HotUpdater.getCohort()`                      |
+| `user_id`                   | `text` |       no | Optional application user id. Defaults to null until configured by the app.                                                  | `HotUpdater.setUserId()`                      |
+| `payload`                   | `json` |      yes | Event-specific extra data. Do not put core query/group-by fields only in payload.                                            | Client/server                                 |
 
 Type shape:
 
@@ -957,9 +968,7 @@ querying `bundles` and `bundlePatches`.
 
 ```ts
 export interface UpdateInfoRepository {
-  readonly get: (
-    params: GetBundlesArgs,
-  ) => Promise<UpdateInfo | null>;
+  readonly get: (params: GetBundlesArgs) => Promise<UpdateInfo | null>;
 }
 ```
 
@@ -1049,15 +1058,15 @@ Commit semantics:
 
 Commit ordering:
 
-| Order | Staged mutation | Provider primitive | Runtime rule |
-|---:|---|---|---|
-| 1 | `bundlePatch.delete` | `core.bundlePatches.delete` | Runs before deleting a bundle or rewriting a target bundle's patch set. |
-| 2 | `bundle.delete` | `core.bundles.delete` | Deletes only the bundle row/document. Patch cleanup must be explicit in the staged batch. |
-| 3 | `bundle.insert` | `core.bundles.insert` | Inserts bundle metadata without inline patch data. |
-| 4 | `bundle.update` | `core.bundles.update` | Updates bundle columns only. |
-| 5 | `bundlePatch.insert` | `core.bundlePatches.insert` | Inserts patch resources after the target bundle exists. |
-| 6 | `bundlePatch.update` | `core.bundlePatches.update` | Updates an existing patch resource after deletes/inserts are resolved. |
-| 7 | `bundleEvent.append` | `core.bundleEvents.append` | Runs only when `bundleEvents` exists; event mutation is rejected before staging otherwise. |
+| Order | Staged mutation      | Provider primitive          | Runtime rule                                                                               |
+| ----: | -------------------- | --------------------------- | ------------------------------------------------------------------------------------------ |
+|     1 | `bundlePatch.delete` | `core.bundlePatches.delete` | Runs before deleting a bundle or rewriting a target bundle's patch set.                    |
+|     2 | `bundle.delete`      | `core.bundles.delete`       | Deletes only the bundle row/document. Patch cleanup must be explicit in the staged batch.  |
+|     3 | `bundle.insert`      | `core.bundles.insert`       | Inserts bundle metadata without inline patch data.                                         |
+|     4 | `bundle.update`      | `core.bundles.update`       | Updates bundle columns only.                                                               |
+|     5 | `bundlePatch.insert` | `core.bundlePatches.insert` | Inserts patch resources after the target bundle exists.                                    |
+|     6 | `bundlePatch.update` | `core.bundlePatches.update` | Updates an existing patch resource after deletes/inserts are resolved.                     |
+|     7 | `bundleEvent.append` | `core.bundleEvents.append`  | Runs only when `bundleEvents` exists; event mutation is rejected before staging otherwise. |
 
 The runtime may coalesce multiple staged mutations for the same resource key
 before applying them, but the externally observable result must match this
@@ -1103,43 +1112,44 @@ migration must move workflow orchestration out of providers and into
 
 Legacy-to-v2 mapping:
 
-| Legacy surface | v2 runtime/provider shape |
-|---|---|
-| `appendBundle(bundle)` | Core bundle orchestration calls `runtime.bundles.insert({ bundle: bundleRecord })`, then stages each patch artifact through `runtime.bundlePatches.insert({ patch })`. |
+| Legacy surface            | v2 runtime/provider shape                                                                                                                                                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `appendBundle(bundle)`    | Core bundle orchestration calls `runtime.bundles.insert({ bundle: bundleRecord })`, then stages each patch artifact through `runtime.bundlePatches.insert({ patch })`.                                                                                        |
 | `updateBundle(id, patch)` | Core bundle orchestration calls `runtime.bundles.update({ bundleId: id, patch: bundlePatch })`; when patch artifacts change, it lists existing patch resources for the bundle, stages per-patch deletes, then stages per-patch inserts for the new patch set. |
-| `deleteBundle(id)` | Core bundle orchestration lists patch resources where `bundleId` or `baseBundleId` is `id`, stages per-patch deletes, then stages `runtime.bundles.delete({ bundleId: id })`. |
-| `commitBundle()` | `runtime.commit()` or `runtime.commit({ batch })`. Provider code no longer owns the cross-resource workflow commit. |
+| `deleteBundle(id)`        | Core bundle orchestration lists patch resources where `bundleId` or `baseBundleId` is `id`, stages per-patch deletes, then stages `runtime.bundles.delete({ bundleId: id })`.                                                                                 |
+| `commitBundle()`          | `runtime.commit()` or `runtime.commit({ batch })`. Provider code no longer owns the cross-resource workflow commit.                                                                                                                                           |
 
 First migration wave expectations:
 
-| Provider family | `beginTransaction` | `bundleEvents` |
-|---|---|---|
-| D1 / Cloudflare Worker SQL | Optional. Declare only if the implementation exposes a real transaction handle; otherwise runtime commit is best-effort ordered writes. | Required for telemetry-capable D1 paths. |
-| Postgres / Kysely / Drizzle / Prisma | Required when backed by a transactional SQL client. | Required. |
-| Supabase | Optional. Declare only if the implementation can execute the whole commit inside one real transaction, for example via a transaction RPC/client. | Required. |
-| MongoDB | Optional. Declare when the deployment supports sessions/transactions; otherwise runtime commit is best-effort ordered writes. | Optional in the first wave unless a `bundle_events` collection is added. |
-| Firebase / Firestore | Optional. Declare only if all touched resources can participate in the same transaction/batch. | Optional in the first wave unless a `bundle_events` collection is added. |
-| S3 / blob-backed database | Omitted. | Omitted. |
-| Standalone HTTP repository | Mirrors the remote provider. It must preserve the existing HTTP route contract while translating payloads to v2 batches. | Mirrors the remote provider. |
+| Provider family                      | `beginTransaction`                                                                                                                               | `bundleEvents`                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| D1 / Cloudflare Worker SQL           | Optional. Declare only if the implementation exposes a real transaction handle; otherwise runtime commit is best-effort ordered writes.          | Required for telemetry-capable D1 paths.                                 |
+| Postgres / Kysely / Drizzle / Prisma | Required when backed by a transactional SQL client.                                                                                              | Required.                                                                |
+| Supabase                             | Optional. Declare only if the implementation can execute the whole commit inside one real transaction, for example via a transaction RPC/client. | Required.                                                                |
+| MongoDB                              | Optional. Declare when the deployment supports sessions/transactions; otherwise runtime commit is best-effort ordered writes.                    | Optional in the first wave unless a `bundle_events` collection is added. |
+| Firebase / Firestore                 | Optional. Declare only if all touched resources can participate in the same transaction/batch.                                                   | Optional in the first wave unless a `bundle_events` collection is added. |
+| S3 / blob-backed database            | Omitted.                                                                                                                                         | Omitted.                                                                 |
+| Standalone HTTP repository           | Mirrors the remote provider. It must preserve the existing HTTP route contract while translating payloads to v2 batches.                         | Mirrors the remote provider.                                             |
 
 These expectations are migration gates, not long-term capability flags. Future
 providers still declare only the resources and transaction hook they actually
 implement.
 
-## `createDatabasePlugin` Helper
+## Internal `createDatabasePlugin` Helper
 
-`createDatabasePlugin` is the provider-author helper. It should preserve the
-spec shape and return the public plugin entry point that Hot Updater config uses.
-The helper owns spec validation, lazy connection, and hook wiring; provider
-authors only supply the current spec. The provider-authored core has
-resource-local primitive write methods; the returned runtime has one public
-commit.
+`createDatabasePlugin` is the internal helper behind plugin-core runtime
+normalization and classified legacy/native implementations. It should preserve
+the spec shape and return the plugin entry point that Hot Updater config uses,
+but normal public authoring should happen through Kysely, Drizzle, Prisma, or a
+documented native option. The helper owns spec validation, lazy connection, and
+hook wiring. The internal connection declaration has resource-local storage
+methods; the returned runtime has one public commit.
 
 ```ts
 export interface DatabasePluginCreator {
   readonly name: string;
 
-  (config: unknown): MaybePromise<DatabasePluginRuntime>;
+  (config: unknown): MaybePromise<DatabasePluginHandle>;
 }
 
 export function createDatabasePlugin(
@@ -1148,10 +1158,10 @@ export function createDatabasePlugin(
 ```
 
 The TypeScript implementation can infer a concrete config type from
-`connect(config)`, but provider docs and examples must not require explicit
-generic arguments.
+`connect(config)`, but public docs and examples must not require explicit
+generic arguments or expose this helper as the ordinary path.
 
-Provider example:
+Internal implementation example:
 
 This is intentionally written inline so the provider implementation shape is
 visible. Real providers can still extract row mappers and query builders after
@@ -1230,7 +1240,10 @@ export const d1Database = createDatabasePlugin({
 
         async update({ bundleId, patch }) {
           const update = toBundleUpdateStatement(bundleId, patch);
-          await database.prepare(update.sql).bind(...update.params).run();
+          await database
+            .prepare(update.sql)
+            .bind(...update.params)
+            .run();
         },
 
         async delete({ bundleId }) {
@@ -1241,41 +1254,26 @@ export const d1Database = createDatabasePlugin({
         },
       },
 
-      bundlePatches: {
-        async getById({ patchId }) {
+      patches: {
+        storage: "rows",
+        async findRows() {
+          const { results } = await database
+            .prepare("SELECT * FROM bundle_patches ORDER BY order_index ASC")
+            .all<BundlePatchRow>();
+
+          return results;
+        },
+
+        async getRowById({ patchId }) {
           const { results } = await database
             .prepare("SELECT * FROM bundle_patches WHERE id = ?")
             .bind(patchId)
             .all<BundlePatchRow>();
 
-          return results[0] ? toBundlePatch(results[0]) : null;
+          return results[0] ?? null;
         },
 
-        async findMany({ where, orderBy, window }) {
-          const query = toD1WindowQuery("bundle_patches", {
-            where,
-            orderBy: orderBy ?? { field: "orderIndex", direction: "asc" },
-            window,
-          });
-          const { results } = await database
-            .prepare(query.sql)
-            .bind(...query.params)
-            .all<BundlePatchRow>();
-
-          return results.map(toBundlePatch);
-        },
-
-        async count({ where }) {
-          const query = toD1CountQuery("bundle_patches", { where });
-          const row = await database
-            .prepare(query.sql)
-            .bind(...query.params)
-            .first<{ count: number }>();
-
-          return row?.count ?? 0;
-        },
-
-        async insert({ patch }) {
+        async insertRow({ row }) {
           await database
             .prepare(
               `INSERT INTO bundle_patches (
@@ -1288,16 +1286,26 @@ export const d1Database = createDatabasePlugin({
                 order_index
               ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
             )
-            .bind(...toBundlePatchInsertValues(patch))
+            .bind(
+              row.id,
+              row.bundle_id,
+              row.base_bundle_id,
+              row.base_file_hash,
+              row.patch_file_hash,
+              row.patch_storage_uri,
+              row.order_index,
+            )
             .run();
         },
 
-        async update({ patchId, patch }) {
-          const update = toBundlePatchUpdateStatement(patchId, patch);
-          await database.prepare(update.sql).bind(...update.params).run();
+        async updateRow({ patchId, sqlSet }) {
+          await database
+            .prepare(`UPDATE bundle_patches SET ${sqlSet.sql} WHERE id = ?`)
+            .bind(...sqlSet.values, patchId)
+            .run();
         },
 
-        async delete({ patchId }) {
+        async deleteRow({ patchId }) {
           await database
             .prepare("DELETE FROM bundle_patches WHERE id = ?")
             .bind(patchId)
@@ -1364,8 +1372,12 @@ export const s3Database = createDatabasePlugin({
 
   connect(config: S3DatabaseConfig) {
     return {
-      bundles: createS3BundleResource(config),
-      bundlePatches: createS3BundlePatchResource(config),
+      storage: "blob",
+      listObjects: (prefix) => listObjects(config, prefix),
+      loadObject: (key) => loadJsonObject(config, key),
+      uploadObject: (key, data) => uploadJsonObject(config, key, data),
+      deleteObject: (key) => deleteObject(config, key),
+      invalidatePaths: (paths) => invalidateCloudFront(config, paths),
     };
   },
 });
@@ -1377,20 +1389,20 @@ Because `bundleEvents` is omitted, the returned runtime type exposes no
 Config usage:
 
 ```ts
-import { env } from "cloudflare:workers";
+import { d1Database } from "@hot-updater/cloudflare/worker";
 
 export default {
-  database: d1Database({
-    database: env.HOT_UPDATER_D1,
-  }),
+  database: d1Database(),
 };
 ```
 
-This usage belongs in a Worker-only module. Node-based deploy, console, and
-database setup flows must keep using explicit provider configuration instead of
-importing `cloudflare:workers`.
+This usage belongs in a Worker-only module. The helper resolves the D1 binding
+from the request context, so ordinary config examples do not expose the Kysely
+D1 dialect or the low-level database factory.
 
-## Runtime Usage
+## Runtime Consumer Usage
+
+This is CLI/server usage of an opened runtime, not the provider authoring API.
 
 ```ts
 const database = await d1Database(config);

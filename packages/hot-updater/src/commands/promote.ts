@@ -1,13 +1,8 @@
 import { loadConfig, p, promoteBundle } from "@hot-updater/cli-tools";
-import type {
-  Bundle,
-  DatabasePluginRuntime,
-  NodeStoragePlugin,
-} from "@hot-updater/plugin-core";
-import {
-  assertNodeStoragePlugin,
-  readDatabaseRuntimeBundle,
-} from "@hot-updater/plugin-core";
+import type { Bundle, NodeStoragePlugin } from "@hot-updater/plugin-core";
+import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
+import { readDatabaseRuntimeBundle } from "@hot-updater/server/db";
 
 import { printBanner } from "@/utils/printBanner";
 

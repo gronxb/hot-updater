@@ -7,9 +7,9 @@ import type {
   CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginRuntime,
 } from "@hot-updater/plugin-core";
 import { splitDatabaseBundle } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it, vi } from "vitest";
 
 import { getBundleChildCounts, getBundleChildren } from "./getBundleChildren";

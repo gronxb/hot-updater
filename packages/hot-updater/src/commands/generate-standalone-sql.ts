@@ -2,7 +2,21 @@ import { access, mkdir, writeFile } from "fs/promises";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import { Kysely, MysqlDialect, PostgresDialect, SqliteDialect } from "kysely";
+import type { HotUpdaterKyselyDatabase } from "@hot-updater/server/adapters/kysely";
+import {
+  DummyDriver,
+  Kysely,
+  MysqlAdapter,
+  MysqlIntrospector,
+  MysqlQueryCompiler,
+  PostgresAdapter,
+  PostgresIntrospector,
+  PostgresQueryCompiler,
+  SqliteAdapter,
+  SqliteIntrospector,
+  SqliteQueryCompiler,
+  type Dialect,
+} from "kysely";
 import {
   formatDialect,
   mysql as mysqlDialect,
@@ -18,64 +32,29 @@ type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
 const isSupportedProvider = (provider: string): provider is SupportedProvider =>
   SUPPORTED_PROVIDERS.includes(provider as SupportedProvider);
 
-const createDummyPostgresPool = () => ({
-  connect: async () => ({
-    query: async () => ({
-      rows: [],
-      command: "SELECT" as const,
-      rowCount: 0,
-    }),
-    release: () => {},
-  }),
-  end: async () => {},
-});
-
-const createDummyMysqlPool = () => ({
-  getConnection: (
-    callback: (
-      error: Error | null,
-      connection?: {
-        query: (
-          sql: string,
-          parameters: readonly unknown[],
-          queryCallback: (error: Error | null, result?: unknown[]) => void,
-        ) => void;
-        release: () => void;
-      },
-    ) => void,
-  ) => {
-    callback(null, {
-      query: (_sql, _parameters, queryCallback) => {
-        queryCallback(null, []);
-      },
-      release: () => {},
-    });
-  },
-  end: (callback: (error?: Error) => void) => {
-    callback();
-  },
-});
-
-const createDummySqliteDatabase = () => ({
-  close: async () => {},
-  prepare: () => ({
-    all: async () => [],
-    get: async () => undefined,
-    run: async () => ({ changes: 0 }),
-    finalize: async () => {},
-  }),
-});
-
-const createDialect = (provider: SupportedProvider) => {
+const createDialect = (provider: SupportedProvider): Dialect => {
   switch (provider) {
     case "postgresql":
-      return new PostgresDialect({ pool: createDummyPostgresPool() as never });
+      return {
+        createAdapter: () => new PostgresAdapter(),
+        createDriver: () => new DummyDriver(),
+        createIntrospector: (db) => new PostgresIntrospector(db),
+        createQueryCompiler: () => new PostgresQueryCompiler(),
+      };
     case "mysql":
-      return new MysqlDialect({ pool: createDummyMysqlPool() as never });
+      return {
+        createAdapter: () => new MysqlAdapter(),
+        createDriver: () => new DummyDriver(),
+        createIntrospector: (db) => new MysqlIntrospector(db),
+        createQueryCompiler: () => new MysqlQueryCompiler(),
+      };
     case "sqlite":
-      return new SqliteDialect({
-        database: createDummySqliteDatabase() as never,
-      });
+      return {
+        createAdapter: () => new SqliteAdapter(),
+        createDriver: () => new DummyDriver(),
+        createIntrospector: (db) => new SqliteIntrospector(db),
+        createQueryCompiler: () => new SqliteQueryCompiler(),
+      };
   }
 };
 
@@ -131,15 +110,17 @@ export async function generateStandaloneSQL(options: {
     const s = p.spinner();
     s.start("Generating SQL from database schema");
 
-    const db = new Kysely({ dialect: createDialect(dbType) });
-    const [{ createHotUpdater }, { createMigrator }, { kyselyAdapter }] =
+    const db = new Kysely<HotUpdaterKyselyDatabase>({
+      dialect: createDialect(dbType),
+    });
+    const [{ createHotUpdater }, { createMigrator }, { kyselyDatabase }] =
       await Promise.all([
         import("@hot-updater/server"),
         import("@hot-updater/server/db"),
         import("@hot-updater/server/adapters/kysely"),
       ]);
 
-    const adapter = kyselyAdapter({
+    const adapter = kyselyDatabase({
       db,
       provider: dbType,
     });

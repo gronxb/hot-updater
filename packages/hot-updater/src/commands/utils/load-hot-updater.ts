@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing config loader module; splitting belongs to a dedicated command cleanup.
 import { existsSync, statSync } from "fs";
 import path from "path";
 
@@ -163,9 +164,9 @@ export async function loadHotUpdater(
       'Could not find "hotUpdater" export in the config file.\n\n' +
         "Your config file should export a hotUpdater instance:\n\n" +
         "  import { createHotUpdater } from '@hot-updater/server';\n" +
-        "  import { kyselyAdapter } from '@hot-updater/server/adapters/kysely';\n\n" +
+        "  import { kyselyDatabase } from '@hot-updater/server/adapters/kysely';\n\n" +
         "  export const hotUpdater = createHotUpdater({\n" +
-        "    database: kyselyAdapter({ db: kysely, provider: 'postgresql' }),\n" +
+        "    database: kyselyDatabase({ db: kysely, provider: 'postgresql' }),\n" +
         "    storages: [...],\n" +
         "  });",
     );

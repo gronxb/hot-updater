@@ -1,13 +1,15 @@
 import type { Bundle } from "@hot-updater/core";
 import type {
-  BundleEventFindManyQuery,
   DatabaseBundleEvent,
   DatabaseBundleEventInput,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginCore,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabasePluginDeclaration,
+  DatabasePluginRuntime,
+} from "@hot-updater/plugin-core/internal";
+import { createDatabasePlugin } from "@hot-updater/plugin-core/internal";
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
@@ -64,35 +66,11 @@ const createMemoryDatabase = (
   const database = createDatabasePlugin({
     name: "memory-v2",
     connect: () => {
-      const core = {
+      const connection = {
         bundles: {
           getById: async ({ bundleId }) => bundles.get(bundleId) ?? null,
-          findMany: async ({ where, window }) => {
-            return Array.from(bundles.values())
-              .filter((bundle) => {
-                return (
-                  !where ||
-                  ((where.id?.eq === undefined || bundle.id === where.id.eq) &&
-                    (where.channel === undefined ||
-                      bundle.channel === where.channel) &&
-                    (where.platform === undefined ||
-                      bundle.platform === where.platform))
-                );
-              })
-              .sort((left, right) => right.id.localeCompare(left.id))
-              .slice(window.offset, window.offset + window.limit);
-          },
-          count: async ({ where }) => {
-            return Array.from(bundles.values()).filter((bundle) => {
-              return (
-                !where ||
-                ((where.id?.eq === undefined || bundle.id === where.id.eq) &&
-                  (where.channel === undefined ||
-                    bundle.channel === where.channel) &&
-                  (where.platform === undefined ||
-                    bundle.platform === where.platform))
-              );
-            }).length;
+          findRecords: async () => {
+            return Array.from(bundles.values());
           },
           insert: async ({ bundle }) => {
             bundles.set(bundle.id, bundle);
@@ -107,89 +85,49 @@ const createMemoryDatabase = (
             bundles.delete(bundleId);
           },
         },
-        bundlePatches: {
-          findMany: async ({ where, window }) => {
-            return Array.from(patches.values())
-              .filter(
-                (patch) =>
-                  !where ||
-                  ((where.bundleId === undefined ||
-                    patch.bundleId === where.bundleId) &&
-                    (where.baseBundleId === undefined ||
-                      patch.baseBundleId === where.baseBundleId) &&
-                    (where.bundleIdIn === undefined ||
-                      where.bundleIdIn.includes(patch.bundleId))),
-              )
-              .sort((left, right) => left.orderIndex - right.orderIndex)
-              .slice(window.offset, window.offset + window.limit);
-          },
-          count: async ({ where }) => {
-            return Array.from(patches.values()).filter(
-              (patch) =>
-                !where ||
-                ((where.bundleId === undefined ||
-                  patch.bundleId === where.bundleId) &&
-                  (where.baseBundleId === undefined ||
-                    patch.baseBundleId === where.baseBundleId) &&
-                  (where.bundleIdIn === undefined ||
-                    where.bundleIdIn.includes(patch.bundleId))),
-            ).length;
-          },
-          getById: async ({ patchId }) => patches.get(patchId) ?? null,
-          insert: async ({ patch }) => {
-            patches.set(patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`, {
-              ...patch,
-              id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
-            });
-          },
-          update: async ({ patchId, patch }) => {
-            const current = patches.get(patchId);
-            if (current) {
-              patches.set(patchId, { ...current, ...patch, id: patchId });
+        patches: {
+          storage: "embedded",
+          findPatches: async () => Array.from(patches.values()),
+          getBundlePatches: async ({ bundleId }) =>
+            Array.from(patches.values()).filter(
+              (patch) => patch.bundleId === bundleId,
+            ),
+          replaceBundlePatches: async ({ bundleId, patches: nextPatches }) => {
+            for (const [patchId, patch] of patches) {
+              if (patch.bundleId === bundleId) {
+                patches.delete(patchId);
+              }
+            }
+            for (const patch of nextPatches) {
+              patches.set(
+                patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+                {
+                  ...patch,
+                  id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+                },
+              );
             }
           },
-          delete: async ({ patchId }) => {
-            patches.delete(patchId);
-          },
         },
-      } satisfies DatabasePluginCore;
+      } satisfies DatabasePluginDeclaration;
 
       if (options.withBundleEvents === false) {
-        return core;
+        return connection;
       }
 
       return {
-        ...core,
+        ...connection,
         bundleEvents: {
-          findMany: async ({ where, window }: BundleEventFindManyQuery) => {
-            const data = Array.from(events.values())
-              .filter(
-                (event) =>
-                  !where ||
-                  ((where.kind === undefined || event.kind === where.kind) &&
-                    (where.activeBundleId === undefined ||
-                      event.activeBundleId === where.activeBundleId)),
-              )
-              .sort((left, right) => right.id.localeCompare(left.id))
-              .slice(window.offset, window.offset + window.limit);
-            return data;
-          },
-          count: async ({ where }) => {
-            return Array.from(events.values()).filter(
-              (event) =>
-                !where ||
-                ((where.kind === undefined || event.kind === where.kind) &&
-                  (where.activeBundleId === undefined ||
-                    event.activeBundleId === where.activeBundleId)),
-            ).length;
+          findEvents: async () => {
+            return Array.from(events.values());
           },
           append: async ({ event }) => {
             events.set(event.id, event);
           },
         },
-      } satisfies DatabasePluginCore;
+      } satisfies DatabasePluginDeclaration;
     },
-  })({});
+  })({}) as DatabasePluginRuntime;
 
   return { bundles, database, events, patches };
 };

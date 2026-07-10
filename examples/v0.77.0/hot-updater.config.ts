@@ -42,8 +42,7 @@ export default defineConfig({
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    connectionString: process.env.HOT_UPDATER_SUPABASE_DATABASE_URL!,
   }),
   updateStrategy: "fingerprint",
 });

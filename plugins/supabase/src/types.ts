@@ -71,6 +71,8 @@ export type Database = {
     Views: {
       [_ in never]: never;
     };
-    Functions: any;
+    Functions: {
+      [_ in never]: never;
+    };
   };
 };

@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing S3 provider module; splitting belongs to a dedicated provider cleanup.
 import {
   CloudFrontClient,
   CreateInvalidationCommand,
@@ -12,7 +13,7 @@ import {
   S3Client,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
+import { createLegacyDatabasePlugin } from "@hot-updater/plugin-core/internal";
 import mime from "mime";
 
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
@@ -39,7 +40,6 @@ export interface S3DatabaseConfig extends S3ClientConfig {
    * instead of being logged and ignored.
    */
   shouldWaitForInvalidation?: boolean;
-  apiBasePath?: string;
 }
 
 const DEFAULT_INVALIDATION_POLL_INTERVAL_MS = 2_000;
@@ -390,14 +390,13 @@ async function invalidateCloudFront(
   }
 }
 
-export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
+export const s3Database = createLegacyDatabasePlugin<S3DatabaseConfig>({
   name: "s3Database",
   connect: (config) => {
     const {
       basePath,
       bucketName,
       cloudfrontDistributionId,
-      apiBasePath = "/api/check-update",
       shouldWaitForInvalidation = false,
       ...s3Config
     } = config;
@@ -413,7 +412,7 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
       : undefined;
 
     return {
-      apiBasePath,
+      storage: "blob" as const,
       listObjects: (prefix: string) =>
         listObjectsInS3(
           client,
@@ -421,13 +420,13 @@ export const s3Database = createBlobDatabasePlugin<S3DatabaseConfig>({
           toStorageKey(prefix),
           rootPrefix,
         ).then((keys) => keys.map(fromStorageKey)),
-      loadObject: (key: string) =>
-        loadJsonFromS3(client, bucketName, toStorageKey(key)),
-      uploadObject: (key: string, data) =>
+      loadObject: <T>(key: string) =>
+        loadJsonFromS3<T>(client, bucketName, toStorageKey(key)),
+      uploadObject: <T>(key: string, data: T) =>
         uploadJsonToS3(client, bucketName, toStorageKey(key), data),
       deleteObject: (key: string) =>
         deleteObjectInS3(client, bucketName, toStorageKey(key)),
-      shouldSkipLoadObjectError: (error) =>
+      shouldSkipLoadObjectError: (error: unknown) =>
         error instanceof Error && error.name === "S3ArchivedObjectError",
       invalidatePaths: (pathsToInvalidate: string[]) => {
         if (

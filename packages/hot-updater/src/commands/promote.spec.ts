@@ -1,10 +1,11 @@
+// noqa: SIZE_OK - Existing promote command regression suite; splitting belongs to a dedicated test-structure cleanup.
 import type {
   Bundle,
   CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginRuntime,
 } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -179,7 +180,7 @@ const stubLoadedConfig = () => {
   mockCli.loadConfig.mockResolvedValue({
     database: vi.fn().mockResolvedValue(mockDatabasePlugin),
     storage: vi.fn().mockResolvedValue(mockStoragePlugin),
-  } as never);
+  });
 };
 
 const expectExit = (code: number) => {

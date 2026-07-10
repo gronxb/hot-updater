@@ -4,7 +4,10 @@ import { fileURLToPath } from "url";
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import {
+  kyselyDatabase,
+  type HotUpdaterKyselyDatabase,
+} from "@hot-updater/server/adapters/kysely";
 import { config } from "dotenv";
 import { Kysely, MysqlDialect } from "kysely";
 import { createPool } from "mysql2";
@@ -29,14 +32,11 @@ const connectionConfig = {
 
 // Create MySQL connection pool
 const pool = createPool(connectionConfig);
-const dialectPool = pool as unknown as ConstructorParameters<
-  typeof MysqlDialect
->[0]["pool"];
 
 // Initialize Kysely with MySQL dialect
-export const kysely = new Kysely({
+export const kysely = new Kysely<HotUpdaterKyselyDatabase>({
   dialect: new MysqlDialect({
-    pool: dialectPool,
+    pool,
   }),
 });
 
@@ -44,7 +44,7 @@ let closeDatabasePromise: Promise<void> | null = null;
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({
+  database: kyselyDatabase({
     db: kysely,
     provider: "mysql",
   }),

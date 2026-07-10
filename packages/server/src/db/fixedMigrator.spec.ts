@@ -1,5 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
-import { Kysely } from "kysely";
+import {
+  DummyDriver,
+  Kysely,
+  MysqlAdapter,
+  MysqlIntrospector,
+  MysqlQueryCompiler,
+  type Dialect,
+} from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -11,6 +18,13 @@ interface SettingsDatabase {
     readonly value: string;
   };
 }
+
+const mysqlDummyDialect: Dialect = {
+  createAdapter: () => new MysqlAdapter(),
+  createDriver: () => new DummyDriver(),
+  createIntrospector: (db) => new MysqlIntrospector(db),
+  createQueryCompiler: () => new MysqlQueryCompiler(),
+};
 
 describe("createKyselyMigrator", () => {
   const databases: PGlite[] = [];
@@ -85,5 +99,27 @@ describe("createKyselyMigrator", () => {
       "select value from private_hot_updater_settings where key = 'version'",
     );
     expect(version.rows[0]?.value).toBe("0.20.0");
+  });
+
+  it("quotes the MySQL settings key column when reading schema version", async () => {
+    const queries: string[] = [];
+    const kysely = new Kysely<SettingsDatabase>({
+      dialect: mysqlDummyDialect,
+      log(event) {
+        if (event.level === "query") queries.push(event.query.sql);
+      },
+    });
+    kyselyInstances.push(kysely);
+    const migrator = createKyselyMigrator({
+      db: kysely,
+      provider: "mysql",
+    });
+
+    await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: false,
+    });
+
+    expect(queries[0]).toContain("where `key` = 'version'");
   });
 });

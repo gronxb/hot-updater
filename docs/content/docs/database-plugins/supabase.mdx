@@ -26,8 +26,7 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface SupabaseDatabaseConfig {
-  supabaseUrl: string;             // Your Supabase project URL
-  supabaseServiceRoleKey: string;  // Your Supabase service role or secret key
+  connectionString: string; // Supabase PostgreSQL connection string
 }
 ```
 
@@ -39,8 +38,7 @@ import { defineConfig } from 'hot-updater';
 
 export default defineConfig({
   database: supabaseDatabase({
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
+    connectionString: process.env.SUPABASE_DATABASE_URL
   }),
   // ... other config
 });
@@ -61,8 +59,7 @@ export default defineConfig({
     bucketName: 'hot-updater-bundles'
   }),
   database: supabaseDatabase({
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
+    connectionString: process.env.SUPABASE_DATABASE_URL
   }),
   // ... other config
 });

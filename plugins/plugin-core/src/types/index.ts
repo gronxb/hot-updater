@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing public type surface; splitting belongs to a dedicated type-surface cleanup.
 import type {
   Bundle,
   GetBundlesArgs,
@@ -346,21 +347,6 @@ export interface UpdateInfoRepository {
   readonly get: (params: GetBundlesArgs) => Promise<UpdateInfo | null>;
 }
 
-export interface DatabaseTransaction {
-  readonly core: DatabasePluginCore;
-  readonly commit: () => Promise<void>;
-  readonly rollback: () => Promise<void>;
-}
-
-export interface DatabasePluginCore {
-  readonly beginTransaction?: () => Promise<DatabaseTransaction>;
-  readonly bundles: BundleResource;
-  readonly bundlePatches: BundlePatchResource;
-  readonly bundleEvents?: BundleEventResource;
-  readonly updateInfo?: UpdateInfoRepository;
-  readonly close?: () => Promise<void>;
-}
-
 export interface DatabaseCommitBatch {
   readonly mutations: readonly DatabaseMutation[];
 }
@@ -412,6 +398,16 @@ export interface BuildPluginConfig {
 }
 
 export interface DatabasePluginHooks {
+  onDatabaseUpdated?: () => Promise<void>;
+}
+
+declare const databasePluginHandleSymbol: unique symbol;
+
+export interface DatabasePluginHandle {
+  readonly [databasePluginHandleSymbol]: never;
+}
+
+export interface DatabasePluginLifecycleHooks {
   onDatabaseUpdated?: () => Promise<void>;
 }
 
@@ -895,8 +891,8 @@ export type ConfigInput = {
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
   database:
-    | MaybePromise<DatabasePluginRuntime>
-    | (() => MaybePromise<DatabasePluginRuntime>);
+    | MaybePromise<DatabasePluginHandle>
+    | (() => MaybePromise<DatabasePluginHandle>);
 };
 
 export interface NativeBuildOptions {

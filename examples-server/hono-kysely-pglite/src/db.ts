@@ -5,7 +5,10 @@ import { PGlite } from "@electric-sql/pglite";
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import {
+  kyselyDatabase,
+  type HotUpdaterKyselyDatabase,
+} from "@hot-updater/server/adapters/kysely";
 import { config } from "dotenv";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -24,11 +27,13 @@ const db = new PGlite(dbPath);
 await db.waitReady;
 
 // Initialize Kysely with PGlite dialect
-const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+const kysely = new Kysely<HotUpdaterKyselyDatabase>({
+  dialect: new PGliteDialect(db),
+});
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({
+  database: kyselyDatabase({
     db: kysely,
     provider: "postgresql",
   }),

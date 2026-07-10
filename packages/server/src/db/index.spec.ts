@@ -1,26 +1,26 @@
+// noqa: SIZE_OK - Existing integration regression suite; splitting belongs to a dedicated test-structure cleanup.
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginCore,
-  DatabasePluginRuntime,
   RuntimeStoragePlugin,
   StorageResolveContext,
 } from "@hot-updater/plugin-core";
-import {
-  createDatabasePlugin,
-  markDatabaseRuntimeOpener,
-  splitDatabaseBundle,
-} from "@hot-updater/plugin-core";
+import { splitDatabaseBundle } from "@hot-updater/plugin-core";
+import type {
+  DatabasePluginDeclaration,
+  DatabasePluginRuntime,
+} from "@hot-updater/plugin-core/internal";
+import { createDatabasePlugin } from "@hot-updater/plugin-core/internal";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import type { MongoClient } from "mongodb";
+import { MongoClient } from "mongodb";
 import {
   afterAll,
   afterEach,
@@ -33,7 +33,10 @@ import {
 } from "vitest";
 
 import { drizzleAdapter } from "../adapters/drizzle";
-import { kyselyAdapter } from "../adapters/kysely";
+import {
+  kyselyAdapter,
+  type HotUpdaterKyselyDatabase,
+} from "../adapters/kysely";
 import { mongoAdapter } from "../adapters/mongodb";
 import { prismaAdapter } from "../adapters/prisma";
 import { createHotUpdater } from "../index";
@@ -47,6 +50,8 @@ import { createMigrator, generateSchema } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
 import type { DatabaseAdapterCapabilities, ORMProvider } from "./types";
 
+const createRuntimeOpener = (opener: () => DatabasePluginRuntime) => opener;
+
 const insertRuntimeBundlePatches = async (
   runtime: DatabasePluginRuntime,
   patches: readonly DatabaseBundlePatch[],
@@ -55,6 +60,10 @@ const insertRuntimeBundlePatches = async (
     await runtime.bundlePatches.insert({ patch });
   }
 };
+
+const createMongoClientFixture = <TClient extends object>(
+  client: TClient,
+): MongoClient => Object.assign(new MongoClient("mongodb://localhost"), client);
 
 const RAW_PRISMA_SCHEMA = `model bundles {
   id String @id
@@ -189,7 +198,10 @@ function createTestStoragePlugin(
 
 type CreateRuntimeOnlyDatabaseOptions = {
   readonly name: string;
-  readonly onBeforeInsert?: DatabasePluginCore["bundles"]["insert"];
+  readonly onBeforeInsert?: Extract<
+    DatabasePluginDeclaration,
+    { readonly bundles: unknown }
+  >["bundles"]["insert"];
 };
 
 const createRuntimeOnlyDatabase = ({
@@ -200,15 +212,10 @@ const createRuntimeOnlyDatabase = ({
   const patches = new Map<string, DatabaseBundlePatch>();
   return createDatabasePlugin({
     name,
-    connect: (): DatabasePluginCore => ({
+    connect: (): DatabasePluginDeclaration => ({
       bundles: {
         getById: async ({ bundleId }) => bundles.get(bundleId) ?? null,
-        findMany: async ({ window }) =>
-          Array.from(bundles.values()).slice(
-            window.offset,
-            window.offset + window.limit,
-          ),
-        count: async () => bundles.size,
+        findRecords: async () => Array.from(bundles.values()),
         insert: async (params) => {
           await onBeforeInsert?.(params);
           const bundle = params.bundle;
@@ -224,32 +231,29 @@ const createRuntimeOnlyDatabase = ({
           bundles.delete(bundleId);
         },
       },
-      bundlePatches: {
-        getById: async ({ patchId }) => patches.get(patchId) ?? null,
-        findMany: async ({ window }) =>
-          Array.from(patches.values()).slice(
-            window.offset,
-            window.offset + window.limit,
+      patches: {
+        storage: "embedded",
+        findPatches: async () => Array.from(patches.values()),
+        getBundlePatches: async ({ bundleId }) =>
+          Array.from(patches.values()).filter(
+            (patch) => patch.bundleId === bundleId,
           ),
-        count: async () => patches.size,
-        insert: async ({ patch }) => {
-          patches.set(patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`, {
-            ...patch,
-            id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
-          });
-        },
-        update: async ({ patchId, patch }) => {
-          const current = patches.get(patchId);
-          if (current) {
-            patches.set(patchId, { ...current, ...patch, id: patchId });
+        replaceBundlePatches: async ({ bundleId, patches: nextPatches }) => {
+          for (const [patchId, patch] of patches) {
+            if (patch.bundleId === bundleId) {
+              patches.delete(patchId);
+            }
           }
-        },
-        delete: async ({ patchId }) => {
-          patches.delete(patchId);
+          for (const patch of nextPatches) {
+            patches.set(patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`, {
+              ...patch,
+              id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+            });
+          }
         },
       },
     }),
-  })({});
+  })({}) as DatabasePluginRuntime;
 };
 
 function createSchemaOnlyAdapter({
@@ -323,7 +327,9 @@ const fingerprintFastPathBundle: Bundle = {
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();
 
-  const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+  const kysely = new Kysely<HotUpdaterKyselyDatabase>({
+    dialect: new PGliteDialect(db),
+  });
   const storageTexts = new Map<string, string | Error>();
   const readStoredText = async (storageUri: string) => {
     const text = storageTexts.get(storageUri);
@@ -589,7 +595,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("adds custom indexes and constraints to generated SQL", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<HotUpdaterKyselyDatabase>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -633,7 +639,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("migrates existing 0.21.0 Kysely schemas incrementally", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<HotUpdaterKyselyDatabase>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -701,7 +707,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("honors soft relation mode by omitting SQL foreign keys", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<HotUpdaterKyselyDatabase>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -734,7 +740,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("omits unsupported SQLite alter constraint statements", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<HotUpdaterKyselyDatabase>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -769,11 +775,11 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const collection = {
         findOne: vi.fn(async () => null),
       };
-      const client = {
+      const client = createMongoClientFixture({
         db: () => ({
           collection: () => collection,
         }),
-      } as unknown as MongoClient;
+      });
       const mongoHotUpdater = createHotUpdater({
         database: mongoAdapter({ client }),
       });
@@ -804,7 +810,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("rejects from-database migrations explicitly", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<HotUpdaterKyselyDatabase>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -830,7 +836,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("rejects runtime access when a Kysely schema is not initialized", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<HotUpdaterKyselyDatabase>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -854,7 +860,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("rejects runtime access when a Kysely schema is stale", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<HotUpdaterKyselyDatabase>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -895,7 +901,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const patches = {
         find: vi.fn(),
       };
-      const client = {
+      const client = createMongoClientFixture({
         db: () => ({
           collection: (name: string) => {
             if (name === "private_hot_updater_settings") return settings;
@@ -903,7 +909,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             return bundles;
           },
         }),
-      } as unknown as MongoClient;
+      });
       const mongoHotUpdater = createHotUpdater({
         database: mongoAdapter({ client }),
       });
@@ -933,12 +939,31 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("combines Prisma targetAppVersion filters without overwriting", async () => {
+      const matchingRow = bundleToRow({
+        ...transactionBundle,
+        id: "00000000-0000-0000-0000-000000000781",
+        targetAppVersion: "1.0.x",
+      });
+      const nullTargetRow = bundleToRow({
+        ...transactionBundle,
+        id: "00000000-0000-0000-0000-000000000782",
+        targetAppVersion: null,
+      });
+      const emptyTargetRow = bundleToRow({
+        ...transactionBundle,
+        id: "00000000-0000-0000-0000-000000000783",
+        targetAppVersion: "",
+      });
       const bundles = {
         count: vi.fn(async () => 0),
         createMany: vi.fn(),
         deleteMany: vi.fn(),
         findFirst: vi.fn(),
-        findMany: vi.fn(async () => []),
+        findMany: vi.fn(async () => [
+          matchingRow,
+          nullTargetRow,
+          emptyTargetRow,
+        ]),
         upsert: vi.fn(),
       };
       const patches = {
@@ -954,7 +979,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       });
 
-      await plugin.bundles.list({
+      const page = await plugin.bundles.list({
         limit: 10,
         where: {
           targetAppVersion: "1.0.x",
@@ -962,25 +987,36 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         },
       });
 
-      expect(bundles.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            AND: [
-              { target_app_version: "1.0.x" },
-              { target_app_version: { not: null } },
-            ],
-          }),
-        }),
-      );
+      expect(page.data.map((bundle) => bundle.id)).toEqual([matchingRow.id]);
+      expect(bundles.findMany).toHaveBeenCalledWith();
     });
 
     it("combines MongoDB targetAppVersion filters without overwriting", async () => {
-      const toArray = vi.fn(async () => []);
+      const matchingRow = bundleToRow({
+        ...transactionBundle,
+        id: "00000000-0000-0000-0000-000000000784",
+        targetAppVersion: "1.0.x",
+      });
+      const nullTargetRow = bundleToRow({
+        ...transactionBundle,
+        id: "00000000-0000-0000-0000-000000000785",
+        targetAppVersion: null,
+      });
+      const emptyTargetRow = bundleToRow({
+        ...transactionBundle,
+        id: "00000000-0000-0000-0000-000000000786",
+        targetAppVersion: "",
+      });
+      const toArray = vi.fn(async () => [
+        matchingRow,
+        nullTargetRow,
+        emptyTargetRow,
+      ]);
       const sort = vi.fn(() => ({ toArray }));
       const bundles = {
         countDocuments: vi.fn(async () => 0),
         distinct: vi.fn(),
-        find: vi.fn(() => ({ sort })),
+        find: vi.fn(() => ({ sort, toArray })),
         findOne: vi.fn(),
       };
       const patches = {
@@ -990,15 +1026,15 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         })),
         insertMany: vi.fn(),
       };
-      const client = {
+      const client = createMongoClientFixture({
         db: () => ({
           collection: (name: string) =>
             name === "bundle_patches" ? patches : bundles,
         }),
-      } as unknown as MongoClient;
+      });
       const plugin = mongoAdapter({ client });
 
-      await plugin.bundles.list({
+      const page = await plugin.bundles.list({
         limit: 10,
         where: {
           targetAppVersion: "1.0.x",
@@ -1006,12 +1042,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         },
       });
 
-      expect(bundles.find).toHaveBeenCalledWith({
-        $and: [
-          { target_app_version: "1.0.x" },
-          { target_app_version: { $exists: true, $nin: [null, ""] } },
-        ],
-      });
+      expect(page.data.map((bundle) => bundle.id)).toEqual([matchingRow.id]);
+      expect(bundles.find).toHaveBeenCalledWith({});
     });
 
     it("uses Prisma update-check queries without generic list pagination", async () => {
@@ -1233,12 +1265,12 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         })),
         insertMany: vi.fn(),
       };
-      const client = {
+      const client = createMongoClientFixture({
         db: () => ({
           collection: (name: string) =>
             name === "bundle_patches" ? patches : bundles,
         }),
-      } as unknown as MongoClient;
+      });
       const plugin = mongoAdapter({ client });
 
       await expect(
@@ -1632,8 +1664,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       readonly insertInto: ReturnType<typeof vi.fn>;
     }) => ({
       deleteFrom,
+      getExecutor: vi.fn(),
       insertInto,
       selectFrom: vi.fn(),
+      updateTable: vi.fn(),
     });
 
     const createKyselyInsertInto = (
@@ -1663,6 +1697,33 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         })),
       }));
 
+    const createKyselyTestDatabase = ({
+      deleteFrom,
+      insertInto,
+      transaction,
+    }: {
+      readonly deleteFrom: ReturnType<typeof vi.fn>;
+      readonly insertInto: ReturnType<typeof vi.fn>;
+      readonly transaction: ReturnType<typeof vi.fn>;
+    }) => {
+      const database = new PGlite();
+      const kysely = new Kysely<HotUpdaterKyselyDatabase>({
+        dialect: new PGliteDialect(database),
+      });
+      const db = Object.assign(
+        kysely,
+        createKyselyTransactionExecutor({ deleteFrom, insertInto }),
+        { transaction },
+      );
+      return {
+        db,
+        async close() {
+          await db.destroy();
+          await database.close();
+        },
+      };
+    };
+
     it("commits Kysely bundle changes inside a transaction when available", async () => {
       const rootInsertInto = createKyselyInsertInto(async () => undefined);
       const rootDeleteFrom = createKyselyDeleteFrom(async () => undefined);
@@ -1679,29 +1740,31 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const transaction = vi.fn(() => ({
         execute: transactionExecute,
       }));
-      const db = {
-        ...createKyselyTransactionExecutor({
-          deleteFrom: rootDeleteFrom,
-          insertInto: rootInsertInto,
-        }),
+      const kyselyDatabase = createKyselyTestDatabase({
+        deleteFrom: rootDeleteFrom,
+        insertInto: rootInsertInto,
         transaction,
-      };
-      const plugin = kyselyAdapter({
-        db: db as unknown as Kysely<never>,
-        provider: "postgresql",
       });
+      try {
+        const plugin = kyselyAdapter({
+          db: kyselyDatabase.db,
+          provider: "postgresql",
+        });
 
-      const split = splitDatabaseBundle(transactionBundleWithPatch);
-      await plugin.bundles.insert({ bundle: split.bundle });
-      await insertRuntimeBundlePatches(plugin, split.patches);
-      await plugin.commit();
+        const split = splitDatabaseBundle(transactionBundleWithPatch);
+        await plugin.bundles.insert({ bundle: split.bundle });
+        await insertRuntimeBundlePatches(plugin, split.patches);
+        await plugin.commit();
 
-      expect(transaction).toHaveBeenCalledTimes(1);
-      expect(rootInsertInto).not.toHaveBeenCalled();
-      expect(rootDeleteFrom).not.toHaveBeenCalled();
-      expect(txInsertInto).toHaveBeenCalledWith("bundles");
-      expect(txInsertInto).toHaveBeenCalledWith("bundle_patches");
-      expect(txDeleteFrom).not.toHaveBeenCalled();
+        expect(transaction).toHaveBeenCalledTimes(1);
+        expect(rootInsertInto).not.toHaveBeenCalled();
+        expect(rootDeleteFrom).not.toHaveBeenCalled();
+        expect(txInsertInto).toHaveBeenCalledWith("bundles");
+        expect(txInsertInto).toHaveBeenCalledWith("bundle_patches");
+        expect(txDeleteFrom).not.toHaveBeenCalled();
+      } finally {
+        await kyselyDatabase.close();
+      }
     });
 
     it("aborts the Kysely transaction when a staged write fails", async () => {
@@ -1730,30 +1793,32 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const transaction = vi.fn(() => ({
         execute: transactionExecute,
       }));
-      const db = {
-        ...createKyselyTransactionExecutor({
-          deleteFrom: rootDeleteFrom,
-          insertInto: rootInsertInto,
-        }),
+      const kyselyDatabase = createKyselyTestDatabase({
+        deleteFrom: rootDeleteFrom,
+        insertInto: rootInsertInto,
         transaction,
-      };
-      const plugin = kyselyAdapter({
-        db: db as unknown as Kysely<never>,
-        provider: "postgresql",
       });
+      try {
+        const plugin = kyselyAdapter({
+          db: kyselyDatabase.db,
+          provider: "postgresql",
+        });
 
-      const split = splitDatabaseBundle(transactionBundle);
-      await plugin.bundles.insert({ bundle: split.bundle });
+        const split = splitDatabaseBundle(transactionBundle);
+        await plugin.bundles.insert({ bundle: split.bundle });
 
-      await expect(plugin.commit()).rejects.toThrow(writeError);
+        await expect(plugin.commit()).rejects.toThrow(writeError);
 
-      expect(transaction).toHaveBeenCalledTimes(1);
-      expect(rootInsertInto).not.toHaveBeenCalled();
-      expect(txInsertInto).toHaveBeenCalledWith("bundles");
-      expect(transactionErrors).toHaveLength(1);
-      expect(String(transactionErrors[0])).toContain(
-        "hot-updater-transaction-rollback",
-      );
+        expect(transaction).toHaveBeenCalledTimes(1);
+        expect(rootInsertInto).not.toHaveBeenCalled();
+        expect(txInsertInto).toHaveBeenCalledWith("bundles");
+        expect(transactionErrors).toHaveLength(1);
+        expect(String(transactionErrors[0])).toContain(
+          "hot-updater-transaction-rollback",
+        );
+      } finally {
+        await kyselyDatabase.close();
+      }
     });
 
     it("commits MongoDB bundle changes inside a session transaction when available", async () => {
@@ -1776,13 +1841,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         find: vi.fn(),
         insertMany: vi.fn(),
       };
-      const client = {
+      const client = createMongoClientFixture({
         db: () => ({
           collection: (name: string) =>
             name === "bundle_patches" ? patches : bundles,
         }),
         startSession: vi.fn(() => session),
-      } as unknown as MongoClient;
+      });
       const plugin = mongoAdapter({ client, transactions: "enabled" });
 
       const split = splitDatabaseBundle(transactionBundleWithPatch);
@@ -1837,13 +1902,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         find: vi.fn(),
         insertMany: vi.fn(),
       };
-      const client = {
+      const client = createMongoClientFixture({
         db: () => ({
           collection: (name: string) =>
             name === "bundle_patches" ? patches : bundles,
         }),
         startSession: vi.fn(() => session),
-      } as unknown as MongoClient;
+      });
       const plugin = mongoAdapter({ client, transactions: "enabled" });
 
       const split = splitDatabaseBundle(transactionBundle);
@@ -2322,7 +2387,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
   describe("database runtime openers", () => {
     it("keeps optional maintenance capabilities lazy", () => {
-      const openRuntime = markDatabaseRuntimeOpener(
+      const openRuntime = createRuntimeOpener(
         vi.fn(() => createRuntimeOnlyDatabase({ name: "lazyPlugin" })),
       );
       createHotUpdater({

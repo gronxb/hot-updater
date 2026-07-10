@@ -1,3 +1,4 @@
+import type { DatabasePluginCore } from "./databaseCoreTypes";
 import {
   getCoreBundlePatchById,
   getPatchId,
@@ -9,7 +10,6 @@ import type {
   DatabaseBundlePatchUpdate,
   DatabaseBundleRecord,
   DatabaseMutation,
-  DatabasePluginCore,
 } from "./types";
 
 export type BundleEntry =

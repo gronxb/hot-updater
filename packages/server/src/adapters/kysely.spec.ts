@@ -2,14 +2,18 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../index";
 import {
   HOT_UPDATER_SCHEMA_VERSION,
   HOT_UPDATER_SETTINGS_TABLE,
 } from "../schema/types";
-import { kyselyAdapter } from "./kysely";
+import {
+  kyselyAdapter,
+  kyselyDatabase,
+  type HotUpdaterKyselyDatabase,
+} from "./kysely";
 
 const sqliteJsonBundle: Bundle = {
   id: "00000000-0000-0000-0000-000000000901",
@@ -29,7 +33,7 @@ const sqliteJsonBundle: Bundle = {
 
 describe("kyselyAdapter sqlite provider", () => {
   const databases: PGlite[] = [];
-  const kyselyInstances: Kysely<object>[] = [];
+  const kyselyInstances: Kysely<HotUpdaterKyselyDatabase>[] = [];
 
   afterEach(async () => {
     for (const kysely of kyselyInstances.splice(0)) {
@@ -40,17 +44,61 @@ describe("kyselyAdapter sqlite provider", () => {
     }
   });
 
+  it("exposes Kysely as the official database middle layer with the old alias", () => {
+    expect(kyselyAdapter).toBe(kyselyDatabase);
+  });
+
+  it("uses explicit provider metadata when the caller supplies only a dialect", async () => {
+    const destroySpy = vi.spyOn(Kysely.prototype, "destroy");
+    const db = new PGlite();
+    databases.push(db);
+
+    const adapter = kyselyDatabase({
+      dialect: new PGliteDialect(db),
+      provider: "sqlite",
+    });
+
+    expect(adapter.adapterName).toBe("kysely");
+    expect(adapter.provider).toBe("sqlite");
+    expect(adapter.close).toBeTypeOf("function");
+    await adapter.close?.();
+    expect(destroySpy).toHaveBeenCalledOnce();
+    destroySpy.mockRestore();
+  });
+
+  it("does not destroy caller-owned Kysely instances on close", async () => {
+    const db = new PGlite();
+    databases.push(db);
+    const kysely = new Kysely<HotUpdaterKyselyDatabase>({
+      dialect: new PGliteDialect(db),
+    });
+    kyselyInstances.push(kysely);
+    const destroySpy = vi.spyOn(kysely, "destroy");
+
+    const adapter = kyselyDatabase({
+      db: kysely,
+      provider: "sqlite",
+    });
+
+    expect(adapter.close).toBeTypeOf("function");
+    await adapter.close?.();
+
+    expect(destroySpy).not.toHaveBeenCalled();
+  });
+
   it("stores bundle JSON columns as text and round-trips them", async () => {
     const db = new PGlite();
     databases.push(db);
-    const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+    const kysely = new Kysely<HotUpdaterKyselyDatabase>({
+      dialect: new PGliteDialect(db),
+    });
     kyselyInstances.push(kysely);
     await db.exec(`
       create table bundles (
         id text primary key,
         platform text not null,
-        should_force_update boolean not null,
-        enabled boolean not null,
+        should_force_update integer not null,
+        enabled integer not null,
         file_hash text not null,
         git_commit_hash text,
         message text,

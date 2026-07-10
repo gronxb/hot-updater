@@ -1,13 +1,10 @@
 import type {
-  DatabasePluginRuntime,
   HotUpdaterContext,
   MaybePromise,
-  RuntimeStoragePlugin,
+  StoragePlugin,
 } from "@hot-updater/plugin-core";
-import {
-  assertRuntimeStoragePlugin,
-  isDatabaseRuntimeOpener,
-} from "@hot-updater/plugin-core";
+import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 
 import { createRuntimeDatabaseCore } from "./db/runtimeCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
@@ -16,6 +13,7 @@ import {
   type DatabaseAdapterCapabilities,
   type DatabaseAPI,
   isDatabasePluginRuntime,
+  isDatabaseRuntimeOpener,
   type MaybeDatabaseRuntime,
   openDatabaseRuntime,
   type StoragePluginFactory,
@@ -38,14 +36,14 @@ export type HotUpdaterAPI<TContext = unknown> = RuntimeHotUpdaterAPI<TContext>;
 export interface CreateHotUpdaterOptions<TContext = unknown> {
   readonly database: DatabaseAdapter<TContext>;
   readonly storages?: readonly (
-    | RuntimeStoragePlugin<TContext>
+    | StoragePlugin<TContext>
     | StoragePluginFactory<TContext>
   )[];
   /**
    * @deprecated Use `storages` instead. This field will be removed in a future version.
    */
   readonly storagePlugins?: readonly (
-    | RuntimeStoragePlugin<TContext>
+    | StoragePlugin<TContext>
     | StoragePluginFactory<TContext>
   )[];
   readonly basePath?: string;
@@ -142,7 +140,11 @@ export function createHotUpdaterCore<TContext = unknown>(
   }
   const adapterName =
     adapterCapabilities.adapterName ??
-    (isRuntimePromiseLike ? "database" : (openedDatabase?.name ?? "database"));
+    (!isRuntimePromiseLike &&
+    openedDatabase !== undefined &&
+    isDatabasePluginRuntime(openedDatabase)
+      ? openedDatabase.name
+      : "database");
   const assertSchemaReady = createSchemaReadinessChecker(
     adapterName,
     adapterCapabilities.createMigrator,

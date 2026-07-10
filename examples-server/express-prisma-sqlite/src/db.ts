@@ -1,13 +1,13 @@
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
+import { prismaDatabase } from "@hot-updater/server/adapters/prisma";
 
 import { prisma } from "./prisma";
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
-  database: prismaAdapter({
+  database: prismaDatabase({
     prisma,
     provider: "sqlite",
   }),

@@ -1,87 +1,86 @@
 import {
+  type DatabasePluginDeclaration,
+  normalizeDatabaseDeclaration,
+} from "./databaseConnectionSpec";
+import {
   createDatabaseRuntime,
   databaseRuntimeFactorySymbol,
-  type DatabaseRuntimeFactory,
-  type DatabaseRuntimeWithFactory,
 } from "./databaseRuntime";
 import type {
-  DatabasePluginCore,
-  DatabasePluginHooks,
+  DatabasePluginHandle,
+  DatabasePluginLifecycleHooks,
   DatabasePluginRuntime,
   MaybePromise,
 } from "./types";
 
-type DatabasePluginCoreResult = MaybePromise<DatabasePluginCore>;
+type DatabasePluginDeclarationResult = MaybePromise<DatabasePluginDeclaration>;
+type DatabaseRuntimeFactory = () => MaybePromise<DatabasePluginRuntime>;
+type DatabasePluginRuntimeHandle = DatabasePluginRuntime & DatabasePluginHandle;
 
-export interface DatabasePluginSpec<
-  TConfig = unknown,
-  TCoreResult extends DatabasePluginCoreResult = DatabasePluginCoreResult,
-> {
+export interface DatabasePluginSpec<TConfig = unknown> {
   readonly name: string;
-  readonly connect: (config: TConfig) => TCoreResult;
+  readonly connect: (config: TConfig) => DatabasePluginDeclarationResult;
 }
 
-type AwaitedDatabasePluginCore<TCoreResult extends DatabasePluginCoreResult> =
-  Awaited<TCoreResult> extends DatabasePluginCore
-    ? Awaited<TCoreResult>
-    : never;
+type SyncDatabasePluginSpec<TConfig> = {
+  readonly name: string;
+  readonly connect: (config: TConfig) => DatabasePluginDeclaration;
+};
 
-type RuntimeForConnectResult<TCoreResult extends DatabasePluginCoreResult> =
-  TCoreResult extends PromiseLike<unknown>
-    ? Promise<
-        DatabaseRuntimeWithFactory<AwaitedDatabasePluginCore<TCoreResult>>
-      >
-    : DatabaseRuntimeWithFactory<AwaitedDatabasePluginCore<TCoreResult>>;
+type AsyncDatabasePluginSpec<TConfig> = {
+  readonly name: string;
+  readonly connect: (config: TConfig) => PromiseLike<DatabasePluginDeclaration>;
+};
 
-type DatabasePluginCreator<
-  TConfig,
-  TCoreResult extends DatabasePluginCoreResult,
-> = (
+type DatabasePluginCreator<TConfig> = (
   config: TConfig,
-  hooks?: DatabasePluginHooks,
-) => RuntimeForConnectResult<TCoreResult>;
-
-const toCorePromise = (
-  core: MaybePromise<DatabasePluginCore>,
-): Promise<DatabasePluginCore> => Promise.resolve(core);
+  hooks?: DatabasePluginLifecycleHooks,
+) => DatabasePluginRuntimeHandle | Promise<DatabasePluginRuntimeHandle>;
 
 const isPromiseLike = <TValue>(
   value: TValue | PromiseLike<TValue>,
 ): value is PromiseLike<TValue> =>
   typeof (value as { readonly then?: unknown }).then === "function";
 
-const attachRuntimeFactory = <TCore extends DatabasePluginCore>(
+const attachRuntimeFactory = (
   runtime: DatabasePluginRuntime,
   openRuntime: DatabaseRuntimeFactory,
-): DatabaseRuntimeWithFactory<TCore> => {
+): DatabasePluginRuntime => {
   Object.defineProperty(runtime, databaseRuntimeFactorySymbol, {
     enumerable: false,
     value: openRuntime,
   });
-  return runtime as DatabaseRuntimeWithFactory<TCore>;
+  return runtime;
 };
 
-export function createDatabasePlugin<TConfig, TCore extends DatabasePluginCore>(
-  options: DatabasePluginSpec<TConfig, PromiseLike<TCore>>,
-): (
-  config: TConfig,
-  hooks?: DatabasePluginHooks,
-) => Promise<DatabaseRuntimeWithFactory<TCore>>;
-export function createDatabasePlugin<TConfig, TCore extends DatabasePluginCore>(
-  options: DatabasePluginSpec<TConfig, TCore>,
-): (
-  config: TConfig,
-  hooks?: DatabasePluginHooks,
-) => DatabaseRuntimeWithFactory<TCore>;
 export function createDatabasePlugin<TConfig>(
-  options: DatabasePluginSpec<TConfig, DatabasePluginCoreResult>,
-): DatabasePluginCreator<TConfig, DatabasePluginCoreResult> {
-  return (config: TConfig, hooks?: DatabasePluginHooks) => {
+  options: AsyncDatabasePluginSpec<TConfig>,
+): (
+  config: TConfig,
+  hooks?: DatabasePluginLifecycleHooks,
+) => Promise<DatabasePluginRuntimeHandle>;
+export function createDatabasePlugin<TConfig>(
+  options: SyncDatabasePluginSpec<TConfig>,
+): (
+  config: TConfig,
+  hooks?: DatabasePluginLifecycleHooks,
+) => DatabasePluginRuntimeHandle;
+export function createDatabasePlugin<TConfig>(
+  options: DatabasePluginSpec<TConfig>,
+): DatabasePluginCreator<TConfig> {
+  return createDatabasePluginCreator(options);
+}
+
+const createDatabasePluginCreator = <TConfig>(
+  options: DatabasePluginSpec<TConfig>,
+): DatabasePluginCreator<TConfig> => {
+  return (config: TConfig, hooks?: DatabasePluginLifecycleHooks) => {
     const connectedCore = options.connect(config);
     const createRuntimeForCore = (
-      core: DatabasePluginCore,
-    ): DatabaseRuntimeWithFactory => {
-      const getCore = () => toCorePromise(core);
+      connection: DatabasePluginDeclaration,
+    ): DatabasePluginRuntimeHandle => {
+      const core = normalizeDatabaseDeclaration(connection);
+      const getCore = () => Promise.resolve(core);
       const openRuntime = (): DatabasePluginRuntime =>
         createDatabaseRuntime({
           name: options.name,
@@ -90,7 +89,10 @@ export function createDatabasePlugin<TConfig>(
           hasUpdateInfo: core.updateInfo !== undefined,
           hooks,
         });
-      return attachRuntimeFactory(openRuntime(), openRuntime);
+      return attachRuntimeFactory(
+        openRuntime(),
+        openRuntime,
+      ) as DatabasePluginRuntimeHandle;
     };
 
     if (isPromiseLike(connectedCore)) {
@@ -99,4 +101,22 @@ export function createDatabasePlugin<TConfig>(
 
     return createRuntimeForCore(connectedCore);
   };
+};
+
+export function createLegacyDatabasePlugin<TConfig>(
+  options: AsyncDatabasePluginSpec<TConfig>,
+): (
+  config: TConfig,
+  hooks?: DatabasePluginLifecycleHooks,
+) => Promise<DatabasePluginRuntimeHandle>;
+export function createLegacyDatabasePlugin<TConfig>(
+  options: SyncDatabasePluginSpec<TConfig>,
+): (
+  config: TConfig,
+  hooks?: DatabasePluginLifecycleHooks,
+) => DatabasePluginRuntimeHandle;
+export function createLegacyDatabasePlugin<TConfig>(
+  options: DatabasePluginSpec<TConfig>,
+): DatabasePluginCreator<TConfig> {
+  return createDatabasePluginCreator(options);
 }

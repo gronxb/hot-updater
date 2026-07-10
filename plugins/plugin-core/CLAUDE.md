@@ -42,8 +42,8 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 ## Key Components
 
 ### Database Plugin Creation
-- `createDatabasePlugin()`: Factory for creating SQL-based database plugins
-- `createBlobDatabasePlugin()`: Factory for creating blob-storage-based database plugins (edge-compatible)
+- `createDatabasePlugin()`: Internal runtime helper for first-party middle layers.
+- `createLegacyDatabasePlugin()`: Internal helper for classified legacy/native database providers.
 
 ### Utility Functions
 - `calculatePagination()`: Pagination calculation helper

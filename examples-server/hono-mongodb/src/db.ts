@@ -33,7 +33,11 @@ export const hotUpdater = createHotUpdater({
     // r2Storage({
     //   bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
     //   accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    //   cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+    //   credentials: {
+    //     accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+    //     secretAccessKey:
+    //       process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+    //   },
     // }),
     // firebaseStorage({
     //   projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
@@ -42,7 +46,8 @@ export const hotUpdater = createHotUpdater({
     // }),
     // supabaseStorage({
     //   supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    //   supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    //   supabaseServiceRoleKey:
+    //     process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     //   bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
     // }),
   ],

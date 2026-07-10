@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { type Bundle, NIL_UUID } from "@hot-updater/core";
-import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core/internal";
 import { createHotUpdater } from "@hot-updater/server";
 import { describe, expect, it } from "vitest";
 
@@ -142,10 +142,10 @@ const createMemoryHotUpdater = () => {
   const store = createDatasetStore();
   const keys = Object.keys(store);
 
-  const database = createBlobDatabasePlugin({
+  const database = createDatabasePlugin({
     name: "lambdaMemoryDatabase",
     connect: () => ({
-      apiBasePath: BASE_PATH,
+      storage: "blob" as const,
       listObjects: async (prefix: string) =>
         keys.filter((key) => key.startsWith(prefix)),
       loadObject: async <T>(key: string): Promise<T | null> => {

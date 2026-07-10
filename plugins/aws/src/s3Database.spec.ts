@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing S3 provider regression suite; splitting belongs to a dedicated test-structure cleanup.
 import { Buffer } from "buffer";
 import { Readable } from "stream";
 
@@ -16,7 +17,6 @@ import type {
   Bundle,
   DatabaseBundlePatch,
   DatabaseBundleQueryOptions,
-  DatabasePluginRuntime,
   GetBundlesArgs,
   PaginatedResult,
   UpdateInfo,
@@ -25,6 +25,7 @@ import {
   splitDatabaseBundle,
   toBundleReadModel,
 } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -484,7 +485,7 @@ describe("s3Database plugin", () => {
         ...s3Config,
         cloudfrontDistributionId: "test-distribution-id",
         ...config,
-      }),
+      }) as DatabasePluginRuntime,
     );
 
   let plugin = createPlugin();
@@ -1816,7 +1817,7 @@ describe("s3Database plugin", () => {
           cloudfrontDistributionId: "test-distribution-id",
         },
         { onDatabaseUpdated },
-      ),
+      ) as DatabasePluginRuntime,
     );
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);
@@ -2191,7 +2192,7 @@ describe("s3Database plugin", () => {
         ...s3Config,
         cloudfrontDistributionId: "test-distribution-id",
         shouldWaitForInvalidation: true,
-      }),
+      }) as DatabasePluginRuntime,
     );
     const newBundle = createBundleJson(
       "production",
@@ -2217,7 +2218,7 @@ describe("s3Database plugin", () => {
         ...s3Config,
         cloudfrontDistributionId: "test-distribution-id",
         shouldWaitForInvalidation: true,
-      }),
+      }) as DatabasePluginRuntime,
     );
     const newBundle = createBundleJson(
       "production",

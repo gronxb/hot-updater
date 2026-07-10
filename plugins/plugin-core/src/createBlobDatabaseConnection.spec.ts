@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
+import { createDatabasePlugin } from "./createDatabasePlugin";
 import { splitDatabaseBundle, toBundleReadModel } from "./databaseBundle";
 import { replaceDatabaseRuntimeBundlePatches } from "./databaseRuntimeBundle";
 import { getRequestUpdateBundleSeeds } from "./requestUpdateBundleState";
@@ -264,20 +264,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("blobDatabase plugin", () => {
+describe("blobDatabase connection", () => {
   const createPlugin = () =>
     toLegacyDatabasePlugin(
-      createBlobDatabasePlugin({
+      createDatabasePlugin({
         name: "blobDatabase",
         connect: () => ({
-          apiBasePath: "/api/check-update",
+          storage: "blob" as const,
           listObjects,
           loadObject,
           uploadObject,
           deleteObject,
           invalidatePaths,
         }),
-      })(undefined),
+      })(undefined) as DatabasePluginRuntime,
     );
 
   async function listObjects(prefix: string): Promise<string[]> {
@@ -1183,17 +1183,17 @@ describe("blobDatabase plugin", () => {
     const onDatabaseUpdated = vi.fn();
 
     const pluginWithHook = toLegacyDatabasePlugin(
-      createBlobDatabasePlugin({
+      createDatabasePlugin({
         name: "blobDatabase",
         connect: () => ({
-          apiBasePath: "/api/check-update",
+          storage: "blob" as const,
           listObjects,
           loadObject,
           uploadObject,
           deleteObject,
           invalidatePaths,
         }),
-      })({}, { onDatabaseUpdated }),
+      })({}, { onDatabaseUpdated }) as DatabasePluginRuntime,
     );
     const bundle = createBundleJson("production", "ios", "1.0.0", "hook-test");
     await pluginWithHook.appendBundle(bundle);

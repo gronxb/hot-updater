@@ -1,14 +1,13 @@
+// noqa: SIZE_OK - Existing standalone handler integration suite; splitting belongs to a dedicated test-structure cleanup.
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
-import type { DatabasePluginRuntime } from "@hot-updater/plugin-core";
-import {
-  createBlobDatabasePlugin,
-  stageDatabaseRuntimeBundleDelete,
-  stageDatabaseRuntimeBundleInsert,
-  stageDatabaseRuntimeBundleUpdate,
-  toBundleReadModel,
-} from "@hot-updater/plugin-core";
+import { toBundleReadModel } from "@hot-updater/plugin-core";
+import type {
+  DatabasePluginDeclaration,
+  DatabasePluginRuntime,
+} from "@hot-updater/plugin-core/internal";
+import { createDatabasePlugin } from "@hot-updater/plugin-core/internal";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
@@ -17,8 +16,16 @@ import { uuidv7 } from "uuidv7";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import { standaloneRepository } from "../../../plugins/standalone/src";
-import { kyselyAdapter } from "./adapters/kysely";
+import {
+  kyselyAdapter,
+  type HotUpdaterKyselyDatabase,
+} from "./adapters/kysely";
 import { createMigrator } from "./db";
+import {
+  stageDatabaseRuntimeBundleDelete,
+  stageDatabaseRuntimeBundleInsert,
+  stageDatabaseRuntimeBundleUpdate,
+} from "./db/runtimeBundle";
 import { createHotUpdater } from "./index";
 
 /**
@@ -33,7 +40,9 @@ import { createHotUpdater } from "./index";
 
 // Create in-memory database for testing
 const db = new PGlite();
-const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+const kysely = new Kysely<HotUpdaterKyselyDatabase>({
+  dialect: new PGliteDialect(db),
+});
 
 // Create handler API with in-memory DB
 const api = createHotUpdater({
@@ -125,10 +134,10 @@ const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
 });
 
 const createInMemoryBlobDatabase = (store: Record<string, string>) =>
-  createBlobDatabasePlugin({
+  createDatabasePlugin({
     name: "blob-test",
-    connect: () => ({
-      apiBasePath: "/api/check-update",
+    connect: (): DatabasePluginDeclaration => ({
+      storage: "blob",
       listObjects: async (prefix: string) =>
         Object.keys(store).filter((key) => key.startsWith(prefix)),
       loadObject: async <T>(key: string) => {
@@ -143,7 +152,12 @@ const createInMemoryBlobDatabase = (store: Record<string, string>) =>
       },
       invalidatePaths: async () => {},
     }),
-  })({});
+  })({}) as DatabasePluginRuntime;
+
+const createStandaloneRuntime = (
+  ...args: Parameters<typeof standaloneRepository>
+): DatabasePluginRuntime =>
+  standaloneRepository(...args) as DatabasePluginRuntime;
 
 const readRuntimeBundle = async (
   runtime: DatabasePluginRuntime,
@@ -225,7 +239,7 @@ const getRuntimeChannels = async (
 describe("Handler <-> Standalone Repository Integration", () => {
   it("Real integration: appendBundle + commitBundle → handler POST /bundles", async () => {
     // Create standalone repository pointing to our test server
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/hot-updater`,
     });
 
@@ -265,7 +279,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     await api.insertBundle(bundle);
 
     // Create standalone repository
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/hot-updater`,
     });
 
@@ -292,7 +306,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     expect(beforeDelete).toBeTruthy();
 
     // Create standalone repository
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/hot-updater`,
     });
 
@@ -317,7 +331,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     );
 
     // Create standalone repository
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/hot-updater`,
     });
 
@@ -345,7 +359,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       createTestBundle({ id: uuidv7(), channel: "production" }),
     );
 
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/hot-updater`,
     });
 
@@ -357,7 +371,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   });
 
   it("Full E2E: create → retrieve → update → delete via standalone", async () => {
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/hot-updater`,
     });
 
@@ -392,7 +406,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   });
 
   it("Multiple bundles in single commit (standalone sends array)", async () => {
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/hot-updater`,
     });
 
@@ -463,7 +477,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     );
 
     // Create standalone repository with matching basePath
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/api/v2`,
     });
 
@@ -482,7 +496,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
   });
 
   it("Handler returns 404 when bundle not found (standalone handles gracefully)", async () => {
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/hot-updater`,
     });
 
@@ -533,7 +547,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       ),
     );
 
-    const repo = standaloneRepository({
+    const repo = createStandaloneRuntime({
       baseUrl: `${baseUrl}/blob-hot-updater`,
     });
 

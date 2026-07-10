@@ -1,6 +1,6 @@
 ---
 title: "Overview"
-description: Build a custom backend server for Hot Updater database with any framework and ORM.
+description: Build a custom backend server for Hot Updater database with any framework and middle layer.
 icon: Server
 version: "v0.22.0"
 ---
@@ -80,7 +80,7 @@ plugin that reads from platform bindings.
 **Example with multiple plugins:**
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({ db, provider: "sqlite" }),
+  database: kyselyDatabase({ db, provider: "sqlite" }),
   storages: [
     s3Storage({ /* AWS S3 config */ }),
     supabaseStorage({ /* Supabase config */ }),
@@ -107,7 +107,7 @@ specify both configurable route groups.
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({ db, provider: "sqlite" }),
+  database: kyselyDatabase({ db, provider: "sqlite" }),
   storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
   routes: {
@@ -122,7 +122,7 @@ If you want to hide bundle management endpoints but keep `/version`, disable the
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({ db, provider: "sqlite" }),
+  database: kyselyDatabase({ db, provider: "sqlite" }),
   storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
   routes: {
@@ -155,13 +155,17 @@ This ensures consistency and simplifies configuration. Only use multiple plugins
 - [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
 - [firebaseStorage](../storage-plugins/firebase) - Firebase Cloud Storage
 
-## Database Adapters
+## Database Middle Layers
 
-Start by setting up your database adapter. Choose the ORM that fits your project:
+Choose one of the official middle layers first, then select the database provider or dialect underneath it:
 
-- [Drizzle](./database/drizzle) - TypeScript ORM with SQL-like syntax
-- [Prisma](./database/prisma) - Next-generation ORM with intuitive data modeling
-- [Kysely](./database/kysely) - Type-safe SQL query builder
+- [Drizzle](./database/drizzle) - TypeScript ORM middle layer with SQL-like syntax
+- [Prisma](./database/prisma) - ORM middle layer with intuitive data modeling
+- [Kysely](./database/kysely) - Type-safe query-builder middle layer
+
+Native database options are available when you do not need an ORM or
+query-builder layer:
+
 - [MongoDB](./database/mongodb) - Native MongoDB driver
 - [S3](./database/s3) - S3-compatible object storage for bundle metadata
 
@@ -176,8 +180,9 @@ After configuring your database, choose the framework that fits your stack:
 ## Key Features
 
 - **Framework Agnostic**: Use Hono, Express, Elysia, or any Web Standard framework
-- **ORM choice**: Drizzle, Prisma, Kysely, or native MongoDB driver
-- **Database control**: PostgreSQL, SQLite, or MongoDB on your infrastructure
+- **Official middle layers**: Drizzle, Prisma, and Kysely with provider- or dialect-specific database setup
+- **Native database options**: MongoDB driver or S3-compatible metadata storage
+- **Database control**: PostgreSQL, MySQL, SQLite, MongoDB, or S3-compatible storage on your infrastructure
 - **Cloud storage**: Leverage existing AWS S3, Cloudflare R2, Supabase, or Firebase storage
 - **Type safety**: Full TypeScript support across all adapters
 - **Production ready**: Built-in graceful shutdown and error handling

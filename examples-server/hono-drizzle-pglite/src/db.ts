@@ -1,13 +1,13 @@
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { drizzleDatabase } from "@hot-updater/server/adapters/drizzle";
 
 import { closeClient, getDB, schema } from "./drizzle";
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({
-  database: drizzleAdapter({
+  database: drizzleDatabase({
     db: getDB,
     provider: "postgresql",
     schema,

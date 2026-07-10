@@ -5,9 +5,7 @@
  * @format
  */
 
-import { 
-  useHotUpda rStore,
-} from "@hot-updater/react-native";
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
 import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 

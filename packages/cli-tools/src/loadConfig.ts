@@ -2,12 +2,12 @@ import path from "path";
 
 import type {
   ConfigInput,
-  DatabasePluginRuntime,
+  DatabasePluginHandle,
   MaybePromise,
   Platform,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
-import { databaseRuntimeFactorySymbol } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -130,6 +130,16 @@ export type ConfigResponse = Omit<RequiredDeep<ConfigInput>, "database"> & {
   database: LoadedDatabaseConfig;
 };
 
+const databaseRuntimeFactorySymbol = Symbol.for(
+  "@hot-updater/plugin-core/database-runtime-factory",
+);
+
+type DatabaseRuntimeOrHandle = DatabasePluginRuntime | DatabasePluginHandle;
+
+type DatabaseRuntimeOrHandleWithFactory = DatabaseRuntimeOrHandle & {
+  readonly [databaseRuntimeFactorySymbol]?: LoadedDatabaseConfig;
+};
+
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
 ) => {
@@ -146,24 +156,31 @@ const mergeConfigSources = (
     : { ...mergedConfig, database: databaseConfig };
 };
 
-const openRuntime = (database: DatabasePluginRuntime) => {
-  const openDatabaseRuntime = (
-    database as Partial<
-      Record<typeof databaseRuntimeFactorySymbol, LoadedDatabaseConfig>
-    >
-  )[databaseRuntimeFactorySymbol];
+const isDatabasePluginRuntime = (
+  database: DatabaseRuntimeOrHandle,
+): database is DatabasePluginRuntime =>
+  "bundles" in database && "bundlePatches" in database && "commit" in database;
 
-  return openDatabaseRuntime ? openDatabaseRuntime() : database;
+const openRuntime = (
+  database: DatabaseRuntimeOrHandleWithFactory,
+): MaybePromise<DatabasePluginRuntime> => {
+  const openDatabaseRuntime = database[databaseRuntimeFactorySymbol];
+
+  if (openDatabaseRuntime) return openDatabaseRuntime();
+  if (isDatabasePluginRuntime(database)) return database;
+  throw new Error("Database config could not be opened as a runtime plugin.");
 };
 
 const normalizeDatabaseConfig = (
   database: RequiredDeep<ConfigInput>["database"],
 ): LoadedDatabaseConfig => {
   if (typeof database === "function") {
-    return database;
+    return () =>
+      Promise.resolve(database()).then((runtime) => openRuntime(runtime));
   }
 
-  return () => Promise.resolve(database).then(openRuntime);
+  return () =>
+    Promise.resolve(database).then((runtime) => openRuntime(runtime));
 };
 
 const getConfigLoaderOptions = (

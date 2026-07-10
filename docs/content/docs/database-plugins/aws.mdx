@@ -30,7 +30,6 @@ interface S3DatabaseConfig {
   region: string;                     // AWS region
   bucketName: string;                 // S3 bucket for metadata
   cloudfrontDistributionId?: string;  // CloudFront distribution ID for cache invalidation
-  apiBasePath?: string;               // API path (default: "/api/check-update")
   credentials?: {
     accessKeyId: string;
     secretAccessKey: string;

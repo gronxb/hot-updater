@@ -73,8 +73,12 @@ export const bundleMatches = (
 export const patchMatches = (
   patch: DatabaseBundlePatch,
   query: BundlePatchListQuery,
+): boolean => patchMatchesWhere(patch, query.where);
+
+export const patchMatchesWhere = (
+  patch: DatabaseBundlePatch,
+  where: BundlePatchListQuery["where"],
 ): boolean => {
-  const where = query.where;
   if (!where) {
     return true;
   }
@@ -104,6 +108,34 @@ export const patchMatches = (
     where.baseBundleIdIn !== undefined &&
     !where.baseBundleIdIn.includes(patch.baseBundleId)
   );
+};
+
+type BundlePatchOrderBy = NonNullable<BundlePatchListQuery["orderBy"]>;
+type BundlePatchStringOrderField = Exclude<
+  BundlePatchOrderBy["field"],
+  "orderIndex"
+>;
+
+export const getPatchStringField = (
+  patch: DatabaseBundlePatch,
+  field: BundlePatchStringOrderField,
+): string => (field === "id" ? getPatchId(patch) : patch[field]);
+
+export const compareBundlePatches = (
+  left: DatabaseBundlePatch,
+  right: DatabaseBundlePatch,
+  orderBy?: BundlePatchListQuery["orderBy"],
+): number => {
+  const direction = orderBy?.direction ?? "asc";
+  const field = orderBy?.field ?? "orderIndex";
+  const result =
+    field === "orderIndex"
+      ? left.orderIndex - right.orderIndex ||
+        getPatchId(left).localeCompare(getPatchId(right))
+      : getPatchStringField(left, field).localeCompare(
+          getPatchStringField(right, field),
+        );
+  return direction === "asc" ? result : -result;
 };
 
 export const eventMatches = (

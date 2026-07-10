@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing database runtime module; splitting belongs to a dedicated runtime cleanup.
 import type {
   AppUpdateAvailableInfo,
   AppVersionGetBundlesArgs,
@@ -12,20 +13,22 @@ import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
-  DatabasePluginRuntime,
   HotUpdaterContext,
   MaybePromise,
 } from "@hot-updater/plugin-core";
 import {
   createRequestUpdateBundleResolver,
+  semverSatisfies,
+} from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
+
+import {
   listDatabaseRuntimeBundles,
   readDatabaseRuntimeBundle,
-  semverSatisfies,
   stageDatabaseRuntimeBundleDelete,
   stageDatabaseRuntimeBundleInsert,
   stageDatabaseRuntimeBundleUpdate,
-} from "@hot-updater/plugin-core";
-
+} from "./runtimeBundle";
 import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import { type DatabaseAPI, UnsupportedBundleEventsError } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";

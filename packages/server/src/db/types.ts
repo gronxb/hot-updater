@@ -7,20 +7,34 @@ import type {
 import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleEventInput,
-  DatabaseRuntimeOpener as ContextualDatabaseRuntimeOpener,
-  DatabasePluginRuntime,
-  DatabaseRuntimeWithFactory,
+  DatabasePluginHandle,
   HotUpdaterContext,
   MaybePromise,
-  RuntimeStoragePlugin,
+  StoragePlugin,
 } from "@hot-updater/plugin-core";
-import { databaseRuntimeFactorySymbol } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
+import type {
+  CreateIndexesOptions,
+  Document,
+  IndexSpecification,
+  OptionalUnlessRequiredId,
+  Sort,
+} from "mongodb";
 
 import type { PaginatedResult } from "../types";
 
-export type DatabaseRuntimeOpener<TContext = unknown> =
-  ContextualDatabaseRuntimeOpener<TContext> &
-    Partial<DatabaseAdapterCapabilities>;
+export type DatabaseRuntimeOpener<TContext = unknown> = ((
+  context?: HotUpdaterContext<TContext>,
+) => MaybePromise<DatabasePluginRuntime>) &
+  Partial<DatabaseAdapterCapabilities>;
+
+const databaseRuntimeFactorySymbol = Symbol.for(
+  "@hot-updater/plugin-core/database-runtime-factory",
+);
+
+type DatabaseRuntimeWithFactory = DatabasePluginRuntime & {
+  readonly [databaseRuntimeFactorySymbol]?: () => MaybePromise<DatabasePluginRuntime>;
+};
 
 export const sqlProviders = [
   "sqlite",
@@ -89,6 +103,65 @@ export interface DatabaseAdapterCapabilities {
   generateSchema?: SchemaGenerator;
 }
 
+export type DatabaseAdapterRuntime = DatabaseAdapterCapabilities &
+  DatabasePluginRuntime &
+  DatabasePluginHandle;
+
+export interface MongoSessionRuntime {
+  endSession(): MaybePromise<void>;
+  withTransaction<TResult>(operation: () => Promise<TResult>): Promise<TResult>;
+}
+
+export interface MongoCursorRuntime<TRow extends Document> {
+  sort(sort: Sort): MongoCursorRuntime<TRow>;
+  project<TProjection extends Document>(
+    projection: object,
+  ): MongoCursorRuntime<TProjection>;
+  toArray(): Promise<TRow[]>;
+}
+
+export interface MongoOperationOptions {
+  readonly session?: MongoSessionRuntime;
+  readonly upsert?: boolean;
+}
+
+export interface MongoCollectionRuntime<TRow extends Document> {
+  findOne(
+    filter: object,
+    options?: MongoOperationOptions,
+  ): Promise<TRow | null>;
+  find(
+    filter: object,
+    options?: MongoOperationOptions,
+  ): MongoCursorRuntime<TRow>;
+  updateOne(
+    filter: object,
+    update: object,
+    options?: MongoOperationOptions,
+  ): Promise<unknown>;
+  deleteMany(filter: object, options?: MongoOperationOptions): Promise<unknown>;
+  insertMany(
+    rows: readonly OptionalUnlessRequiredId<TRow>[],
+    options?: MongoOperationOptions,
+  ): Promise<unknown>;
+  createIndex(
+    index: IndexSpecification,
+    options?: CreateIndexesOptions,
+  ): Promise<unknown>;
+}
+
+export interface MongoDatabaseRuntime {
+  collection<TRow extends Document = Document>(
+    name: string,
+  ): MongoCollectionRuntime<TRow>;
+  createCollection(name: string): Promise<unknown>;
+}
+
+export interface MongoClientRuntime {
+  db(): MongoDatabaseRuntime;
+  startSession?(): MongoSessionRuntime;
+}
+
 export class UnsupportedBundleEventsError extends Error {
   constructor() {
     super("Bundle events are not supported by this database provider.");
@@ -98,11 +171,18 @@ export class UnsupportedBundleEventsError extends Error {
 
 export type MaybeDatabaseRuntime =
   | DatabasePluginRuntime
-  | PromiseLike<DatabasePluginRuntime>;
+  | DatabasePluginHandle
+  | PromiseLike<DatabasePluginRuntime | DatabasePluginHandle>;
 
 export type DatabaseAdapter<TContext = unknown> =
   | MaybeDatabaseRuntime
   | DatabaseRuntimeOpener<TContext>;
+
+export function isDatabaseRuntimeOpener<TContext = unknown>(
+  adapter: DatabaseAdapter<TContext>,
+): adapter is DatabaseRuntimeOpener<TContext> {
+  return typeof adapter === "function";
+}
 
 export function isDatabasePluginRuntime<TContext = unknown>(
   adapter: DatabaseAdapter<TContext>,
@@ -117,11 +197,12 @@ export function isDatabasePluginRuntime<TContext = unknown>(
 }
 
 export function openDatabaseRuntime(
-  runtime: DatabasePluginRuntime,
+  runtime: DatabasePluginRuntime | DatabasePluginHandle,
 ): MaybePromise<DatabasePluginRuntime> {
-  const runtimeWithFactory = runtime as DatabaseRuntimeWithFactory;
+  const runtimeValue = runtime as DatabasePluginRuntime;
+  const runtimeWithFactory = runtimeValue as DatabaseRuntimeWithFactory;
   const openRuntime = runtimeWithFactory[databaseRuntimeFactorySymbol];
-  return openRuntime ? openRuntime() : runtime;
+  return openRuntime ? openRuntime() : runtimeValue;
 }
 
 export function getSQLProvider(
@@ -174,4 +255,4 @@ export interface DatabaseAPI<TContext = unknown> {
 }
 
 export type StoragePluginFactory<TContext = unknown> =
-  () => RuntimeStoragePlugin<TContext>;
+  () => StoragePlugin<TContext>;

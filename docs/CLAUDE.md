@@ -202,7 +202,7 @@ Located in `content/docs/custom/`
 - overview.mdx - Self-hosting architecture overview
 - quick-start.mdx - Quick start guide
 - cli-configuration.mdx - CLI configuration
-- database/ - Database adapter guides (Drizzle, Prisma, Kysely, MongoDB)
+- database/ - Database middle-layer guides (Drizzle, Prisma, Kysely) plus native MongoDB and S3 options
 - frameworks/ - Server framework guides (Hono, Express, Elysia)
 - hosting/ - Deployment platform guides (Docker, Cloudflare Workers, Vercel)
 
@@ -291,7 +291,7 @@ When referencing documentation in code, comments, or other docs, use these patte
 
 - **Self-Hosting (Managed)**: `/docs/managed/{provider}` (e.g., `/docs/managed/supabase`)
 - **Self-Hosting (Custom)**: `/docs/custom/{topic}` (e.g., `/docs/custom/quick-start`)
-- **Database adapters**: `/docs/custom/database/{adapter}` (e.g., `/docs/custom/database/drizzle`)
+- **Database middle layers**: `/docs/custom/database/{adapter}` (e.g., `/docs/custom/database/drizzle`)
 - **Server frameworks**: `/docs/custom/frameworks/{framework}` (e.g., `/docs/custom/frameworks/hono`)
 - **Hosting platforms**: `/docs/custom/hosting/{platform}` (e.g., `/docs/custom/hosting/docker`)
 - **Storage plugins**: `/docs/storage-plugins/{provider}` (e.g., `/docs/storage-plugins/aws`)

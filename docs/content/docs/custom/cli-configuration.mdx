@@ -120,7 +120,8 @@ Your server must implement these endpoints (when using default routes):
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
 
-These endpoints are automatically created when you use `@hot-updater/server` with database adapters.
+These endpoints are automatically created when you use `@hot-updater/server`
+with a database middle layer or native database option.
 
 `GET /hot-updater/api/bundles` should return a `Paginated<Bundle[]>` body
 consumed by `standaloneRepository`:
@@ -160,6 +161,6 @@ requests.
 
 **Set up your server:**
 - [Quick Start Guide](./quick-start) - Set up a server in 5 minutes
-- [Database Adapters](./database/drizzle) - Drizzle, Prisma, Kysely, MongoDB
+- [Database Middle Layers](./database/drizzle) - Drizzle, Prisma, Kysely; native MongoDB and S3 options
 - [Server Frameworks](./frameworks/hono) - Hono, Express, Elysia
 - [Overview](./overview) - Learn about the architecture

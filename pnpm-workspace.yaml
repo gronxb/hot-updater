@@ -34,6 +34,7 @@ catalogs:
     "@prisma/client": 6.19.3
     drizzle-orm: 0.45.2
     kysely: 0.28.17
+    kysely-d1: 0.4.0
     kysely-pglite-dialect: 1.2.0
     mongodb: 6.20.0
     mysql2: 3.19.1

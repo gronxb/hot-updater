@@ -1,9 +1,11 @@
+// noqa: SIZE_OK - Existing deploy command regression suite; splitting belongs to a dedicated test-structure cleanup.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockBuildPlugin,
   mockCli,
   mockDatabasePlugin,
+  mockReaddir,
   mockServer,
   mockStoragePlugin,
 } = vi.hoisted(() => {
@@ -13,7 +15,8 @@ const {
   type DatabaseBundleRecord =
     import("@hot-updater/plugin-core").DatabaseBundleRecord;
   type DatabasePluginRuntime =
-    import("@hot-updater/plugin-core").DatabasePluginRuntime;
+    import("@hot-updater/plugin-core/internal").DatabasePluginRuntime;
+  type PathLike = import("fs").PathLike;
 
   const toPage = <TData>(data: readonly TData[] = []) => ({
     data,
@@ -38,6 +41,16 @@ const {
     } = bundle;
     return record;
   };
+  const toPatches = (bundle: Bundle): DatabaseBundlePatch[] =>
+    (bundle.patches ?? []).map((patch, index) => ({
+      id: `${bundle.id}:${patch.baseBundleId}`,
+      baseBundleId: patch.baseBundleId,
+      baseFileHash: patch.baseFileHash,
+      bundleId: bundle.id,
+      orderIndex: index,
+      patchFileHash: patch.patchFileHash,
+      patchStorageUri: patch.patchStorageUri,
+    }));
   const mockBuildPlugin = {
     build: vi.fn(),
     name: "mock-build",
@@ -54,6 +67,13 @@ const {
       },
     },
   };
+  const mockReaddir =
+    vi.fn<
+      (
+        path: PathLike,
+        options?: { readonly recursive?: boolean },
+      ) => Promise<string[]>
+    >();
   const mockDatabasePlugin = {
     appendBundle: vi.fn(),
     commitBundle: vi.fn(),
@@ -121,6 +141,44 @@ const {
   });
   const mockServer = {
     createBundleDiff: vi.fn(),
+    listDatabaseRuntimeBundles: vi.fn(
+      async (runtime: DatabasePluginRuntime, options) => {
+        const page = await runtime.bundles.list(options);
+        const total = page.pagination.total ?? page.data.length;
+        const pageSize = Math.max(page.data.length, 1);
+        return {
+          data: page.data,
+          pagination: {
+            currentPage: page.pagination.currentPage ?? 1,
+            hasNextPage: page.pagination.hasNextPage ?? false,
+            hasPreviousPage: page.pagination.hasPreviousPage ?? false,
+            nextCursor: page.pagination.nextCursor ?? null,
+            previousCursor: page.pagination.previousCursor ?? null,
+            total,
+            totalPages:
+              page.pagination.totalPages ??
+              (total === 0 ? 0 : Math.ceil(total / pageSize)),
+          },
+        };
+      },
+    ),
+    stageDatabaseRuntimeBundleInsert: vi.fn(
+      async (
+        runtime: DatabasePluginRuntime,
+        options: {
+          readonly bundle: Bundle;
+          readonly validate?: (bundle: Bundle) => void;
+        },
+      ) => {
+        options.validate?.(options.bundle);
+        await runtime.bundles.insert({
+          bundle: toRecord(options.bundle),
+        });
+        for (const patch of toPatches(options.bundle)) {
+          await runtime.bundlePatches.insert({ patch });
+        }
+      },
+    ),
   };
   const mockCli = {
     appendToProjectRootGitignore: vi.fn(),
@@ -151,6 +209,7 @@ const {
     mockBuildPlugin,
     mockCli,
     mockDatabasePlugin,
+    mockReaddir,
     mockServer,
     mockStoragePlugin,
   };
@@ -182,6 +241,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
 vi.mock("@hot-updater/server/db", () => ({
   createBundleDiff: mockServer.createBundleDiff,
+  listDatabaseRuntimeBundles: mockServer.listDatabaseRuntimeBundles,
+  stageDatabaseRuntimeBundleInsert: mockServer.stageDatabaseRuntimeBundleInsert,
 }));
 
 vi.mock("fs", async () => {
@@ -198,7 +259,7 @@ vi.mock("fs", async () => {
         copyFile: vi.fn(),
         mkdir: vi.fn(),
         readFile: vi.fn(),
-        readdir: vi.fn(),
+        readdir: mockReaddir,
         rm: vi.fn(),
         writeFile: vi.fn(),
       },
@@ -212,7 +273,7 @@ vi.mock("fs", async () => {
       copyFile: vi.fn(),
       mkdir: vi.fn(),
       readFile: vi.fn(),
-      readdir: vi.fn(),
+      readdir: mockReaddir,
       rm: vi.fn(),
       writeFile: vi.fn(),
     },
@@ -585,9 +646,7 @@ describe("deploy rollout wiring", () => {
     vi.mocked(fs.promises.mkdir).mockResolvedValue(undefined);
     vi.mocked(fs.promises.copyFile).mockResolvedValue(undefined);
     vi.mocked(fs.promises.readFile).mockResolvedValue(Buffer.from("bundle"));
-    vi.mocked(fs.promises.readdir).mockResolvedValue([
-      "index.bundle",
-    ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+    mockReaddir.mockResolvedValue(["index.bundle"]);
     vi.mocked(fs.promises.rm).mockResolvedValue(undefined);
     vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
     vi.mocked(fs.statSync).mockReturnValue({
@@ -1233,7 +1292,8 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.1",
     });
 
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
+    expect(mockServer.listDatabaseRuntimeBundles).toHaveBeenCalledTimes(2);
+    expect(mockDatabasePlugin.bundles.list).toHaveBeenCalledTimes(2);
     expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
       {
         baseBundleId: "bundle-112",

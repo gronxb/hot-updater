@@ -1,12 +1,12 @@
 import {
   DEFAULT_ROLLOUT_COHORT_COUNT,
   getAssetBaseStorageUri,
-  getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
   stripBundleArtifactMetadata,
   type Bundle,
 } from "@hot-updater/core";
+import { toDatabaseBundlePatches } from "@hot-updater/plugin-core";
 
 import type { SupabaseBundlePatchRow, SupabaseBundleRow } from "./types";
 
@@ -20,7 +20,7 @@ const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
 
   if (typeof value === "string") {
     try {
-      const parsed = JSON.parse(value) as unknown;
+      const parsed: unknown = JSON.parse(value);
       return normalizeMetadata(parsed);
     } catch {
       return {};
@@ -28,14 +28,11 @@ const normalizeMetadata = (value: unknown): Bundle["metadata"] => {
   }
 
   if (typeof value === "object" && !Array.isArray(value)) {
-    return value as Bundle["metadata"];
+    return value;
   }
 
   return {};
 };
-
-const buildBundlePatchId = (bundleId: string, baseBundleId: string) =>
-  `${bundleId}:${baseBundleId}`;
 
 export const mapRowToBundle = (
   row: SupabaseBundleRow,
@@ -106,12 +103,12 @@ export const bundleToRow = (bundle: Bundle): SupabaseBundleRow => ({
 });
 
 export const bundleToPatchRows = (bundle: Bundle): SupabaseBundlePatchRow[] =>
-  getBundlePatches(bundle).map((patch, index) => ({
-    id: buildBundlePatchId(bundle.id, patch.baseBundleId),
-    bundle_id: bundle.id,
+  toDatabaseBundlePatches(bundle).map((patch) => ({
+    id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+    bundle_id: patch.bundleId,
     base_bundle_id: patch.baseBundleId,
     base_file_hash: patch.baseFileHash,
     patch_file_hash: patch.patchFileHash,
     patch_storage_uri: patch.patchStorageUri,
-    order_index: index,
+    order_index: patch.orderIndex,
   }));

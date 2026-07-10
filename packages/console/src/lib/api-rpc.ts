@@ -1,13 +1,16 @@
+// noqa: SIZE_OK - Existing console RPC module; splitting belongs to a dedicated console cleanup.
 import {
   isRuntimeStoragePlugin,
+  type Bundle,
+  type DatabaseBundleQueryOptions,
+} from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
+import {
   listDatabaseRuntimeBundles,
   readDatabaseRuntimeBundle,
   stageDatabaseRuntimeBundleInsert,
   stageDatabaseRuntimeBundleUpdate,
-  type Bundle,
-  type DatabaseBundleQueryOptions,
-  type DatabasePluginRuntime,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/server/db";
 import { createServerFn } from "@tanstack/react-start";
 
 import { DEFAULT_PAGE_LIMIT } from "./constants";

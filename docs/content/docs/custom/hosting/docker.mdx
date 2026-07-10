@@ -49,11 +49,11 @@ Create the Hot Updater instance.
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { drizzleDatabase } from "@hot-updater/server/adapters/drizzle";
 import { db } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
-  database: drizzleAdapter({ db, provider: "postgres" }),
+  database: drizzleDatabase({ db, provider: "postgresql" }),
   storages: [
     // Configure your storage plugin - examples:
     // s3Storage({ /* S3 or R2 config */ }),

@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing config merge regression suite; splitting belongs to a dedicated test-structure cleanup.
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -22,15 +23,14 @@ const createSupabaseScaffold = (build: BuildType) => {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   })`,
   };
   const database: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
     configString: `supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!,
+    connectionString: process.env.HOT_UPDATER_SUPABASE_DATABASE_URL!,
   })`,
   };
 
@@ -174,7 +174,10 @@ export default defineConfig({
     );
     expect(updatedConfig).toContain("preserveMe: true");
     expect(updatedConfig).toContain(
-      "supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!",
+      "supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!",
+    );
+    expect(updatedConfig).toContain(
+      "connectionString: process.env.HOT_UPDATER_SUPABASE_DATABASE_URL!",
     );
     expect(updatedConfig).toContain(
       "bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!",

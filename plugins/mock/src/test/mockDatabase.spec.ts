@@ -1,5 +1,7 @@
+// noqa: SIZE_OK - Existing mock database regression suite; splitting belongs to a dedicated test-structure cleanup.
 import type { Bundle } from "@hot-updater/core";
-import { stageDatabaseRuntimeBundleInsert } from "@hot-updater/plugin-core";
+import { splitDatabaseBundle } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setupGetUpdateInfoTestSuite } from "../../../../packages/test-utils/src/index";
@@ -40,13 +42,21 @@ const DEFAULT_BUNDLES: Bundle[] = [
 
 const DEFAULT_LATENCY = { min: 0, max: 0 };
 
-type MockRuntime = ReturnType<typeof mockDatabase>;
+type MockRuntime = DatabasePluginRuntime;
+
+const createMockRuntime = (
+  ...args: Parameters<typeof mockDatabase>
+): MockRuntime => mockDatabase(...args) as MockRuntime;
 
 const stageBundleInsert = async (
   runtime: MockRuntime,
   bundle: Bundle,
 ): Promise<void> => {
-  await stageDatabaseRuntimeBundleInsert(runtime, { bundle });
+  const split = splitDatabaseBundle(bundle);
+  await runtime.bundles.insert({ bundle: split.bundle });
+  for (const patch of split.patches) {
+    await runtime.bundlePatches.insert({ patch });
+  }
 };
 
 const getChannels = async (runtime: MockRuntime): Promise<string[]> => {
@@ -63,8 +73,8 @@ describe("mockDatabase", () => {
 
   beforeEach(() => {
     DEFAULT_BUNDLES_MOCK = JSON.parse(JSON.stringify(DEFAULT_BUNDLES));
-    plugin = mockDatabase({ latency: DEFAULT_LATENCY });
-    pluginWithBundles = mockDatabase({
+    plugin = createMockRuntime({ latency: DEFAULT_LATENCY });
+    pluginWithBundles = createMockRuntime({
       latency: DEFAULT_LATENCY,
       initialBundles: DEFAULT_BUNDLES_MOCK,
     });
@@ -72,7 +82,7 @@ describe("mockDatabase", () => {
 
   setupGetUpdateInfoTestSuite({
     getUpdateInfo: async (bundles, args) => {
-      const plugin = mockDatabase({
+      const plugin = createMockRuntime({
         latency: DEFAULT_LATENCY,
         initialBundles: JSON.parse(JSON.stringify(bundles)),
       });
@@ -263,7 +273,7 @@ describe("mockDatabase", () => {
   });
 
   it("should update a bundle", async () => {
-    const singleBundlePlugin = mockDatabase({
+    const singleBundlePlugin = createMockRuntime({
       latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
     });
@@ -297,7 +307,7 @@ describe("mockDatabase", () => {
   });
 
   it("should throw error, if bundle not found during update", async () => {
-    const singleBundlePlugin = mockDatabase({
+    const singleBundlePlugin = createMockRuntime({
       latency: DEFAULT_LATENCY,
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
     });
@@ -372,7 +382,7 @@ describe("mockDatabase", () => {
 
   it("should call onDatabaseUpdated hook when bundle is deleted", async () => {
     const mockHook = vi.fn();
-    const pluginWithHook = mockDatabase(
+    const pluginWithHook = createMockRuntime(
       {
         latency: DEFAULT_LATENCY,
         initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
@@ -428,7 +438,7 @@ describe("mockDatabase", () => {
       },
     ];
 
-    const testPlugin = mockDatabase({
+    const testPlugin = createMockRuntime({
       latency: DEFAULT_LATENCY,
       initialBundles: testBundles,
     });
@@ -462,7 +472,7 @@ describe("mockDatabase", () => {
       },
     ];
 
-    const testPlugin = mockDatabase({
+    const testPlugin = createMockRuntime({
       latency: DEFAULT_LATENCY,
       initialBundles: testBundles,
     });
@@ -482,7 +492,7 @@ describe("mockDatabase", () => {
 
   it("should handle latency simulation during deletion", async () => {
     vi.useFakeTimers();
-    const latencyPlugin = mockDatabase({
+    const latencyPlugin = createMockRuntime({
       latency: { min: 10, max: 10 },
       initialBundles: [DEFAULT_BUNDLES_MOCK[0]],
     });

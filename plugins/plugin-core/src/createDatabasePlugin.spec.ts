@@ -1,11 +1,17 @@
+// noqa: SIZE_OK - Existing runtime regression suite; splitting belongs to a dedicated test-structure cleanup.
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import type {
+  DatabasePluginDeclaration,
+  DatabasePluginResourceDeclaration,
+} from "./databaseConnectionSpec";
+import type {
+  BundlePatchResource,
   DatabaseBundleEvent,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginCore,
+  DatabasePluginRuntime,
 } from "./types";
 
 const patch = (
@@ -38,34 +44,122 @@ const baseBundle: DatabaseBundleRecord = {
   targetCohorts: ["device-1", "device-2"],
 };
 
+type ResourceConnectionInput = Omit<
+  DatabasePluginResourceDeclaration,
+  "patches"
+> & {
+  readonly bundlePatches: BundlePatchResource;
+};
+
+const RESOURCE_QUERY_WINDOW = {
+  offset: 0,
+  limit: Number.MAX_SAFE_INTEGER,
+} as const;
+
+const createResourceConnection = ({
+  bundlePatches,
+  ...connection
+}: ResourceConnectionInput): DatabasePluginDeclaration => ({
+  ...connection,
+  patches: {
+    storage: "embedded",
+    findPatches: () =>
+      bundlePatches.findMany({
+        window: RESOURCE_QUERY_WINDOW,
+      }),
+    getBundlePatches: ({ bundleId }) =>
+      bundlePatches.findMany({
+        where: { bundleId },
+        window: RESOURCE_QUERY_WINDOW,
+      }),
+    replaceBundlePatches: async ({ bundleId, patches }) => {
+      const currentPatches = await bundlePatches.findMany({
+        where: { bundleId },
+        window: RESOURCE_QUERY_WINDOW,
+      });
+      for (const currentPatch of currentPatches) {
+        await bundlePatches.delete({
+          patchId:
+            currentPatch.id ??
+            `${currentPatch.bundleId}:${currentPatch.baseBundleId}`,
+        });
+      }
+      for (const patch of patches) {
+        await bundlePatches.insert({ patch });
+      }
+    },
+  },
+});
+
 describe("createDatabasePlugin", () => {
-  it("creates a resource runtime from name plus connect", async () => {
-    const insertedBundles: DatabaseBundleRecord[] = [];
+  it("accepts a declarative database connection and normalizes patch storage", async () => {
+    const rows = [patch("bundle-1", "base-1", 0)].map((currentPatch) => ({
+      id: `${currentPatch.bundleId}:${currentPatch.baseBundleId}`,
+      bundle_id: currentPatch.bundleId,
+      base_bundle_id: currentPatch.baseBundleId,
+      base_file_hash: currentPatch.baseFileHash,
+      patch_file_hash: currentPatch.patchFileHash,
+      patch_storage_uri: currentPatch.patchStorageUri,
+      order_index: currentPatch.orderIndex,
+    }));
     const plugin = createDatabasePlugin({
       name: "test-plugin",
-      connect: (): DatabasePluginCore => ({
+      connect: (): DatabasePluginDeclaration => ({
         bundles: {
-          getById: async ({ bundleId }) =>
-            insertedBundles.find((bundle) => bundle.id === bundleId) ?? null,
-          findMany: async ({ window }) =>
-            insertedBundles.slice(window.offset, window.offset + window.limit),
-          count: async () => insertedBundles.length,
-          insert: async ({ bundle }) => {
-            insertedBundles.push(bundle);
-          },
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-        bundlePatches: {
-          findMany: async () => [],
-          count: async () => 0,
           getById: async () => null,
+          findRecords: async () => [],
           insert: async () => undefined,
           update: async () => undefined,
           delete: async () => undefined,
         },
+        patches: {
+          storage: "rows",
+          findRows: () => rows,
+          getRowById: ({ patchId }) =>
+            rows.find((row) => row.id === patchId) ?? null,
+          insertRow: () => undefined,
+          updateRow: () => undefined,
+          deleteRow: () => undefined,
+        },
       }),
-    })({});
+    })({}) as DatabasePluginRuntime;
+
+    await expect(
+      plugin.bundlePatches.list({
+        where: { bundleId: "bundle-1" },
+        limit: 10,
+      }),
+    ).resolves.toMatchObject({
+      data: [{ id: "bundle-1:base-1" }],
+    });
+  });
+
+  it("creates a resource runtime from name plus connect", async () => {
+    const insertedBundles: DatabaseBundleRecord[] = [];
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async ({ bundleId }) =>
+              insertedBundles.find((bundle) => bundle.id === bundleId) ?? null,
+            findRecords: async () => insertedBundles,
+            insert: async ({ bundle }) => {
+              insertedBundles.push(bundle);
+            },
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+          bundlePatches: {
+            findMany: async () => [],
+            count: async () => 0,
+            getById: async () => null,
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+        }),
+    })({}) as DatabasePluginRuntime;
 
     await plugin.bundles.insert({ bundle: baseBundle });
 
@@ -85,30 +179,30 @@ describe("createDatabasePlugin", () => {
     let shouldFail = true;
     const plugin = createDatabasePlugin({
       name: "test-plugin",
-      connect: (): DatabasePluginCore => ({
-        bundles: {
-          getById: async () => null,
-          findMany: async () => [],
-          count: async () => 0,
-          insert: async () => {
-            insertAttempts += 1;
-            if (shouldFail) {
-              throw new Error("insert failed");
-            }
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async () => null,
+            findRecords: async () => [],
+            insert: async () => {
+              insertAttempts += 1;
+              if (shouldFail) {
+                throw new Error("insert failed");
+              }
+            },
+            update: async () => undefined,
+            delete: async () => undefined,
           },
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-        bundlePatches: {
-          findMany: async () => [],
-          count: async () => 0,
-          getById: async () => null,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-      }),
-    })({}, { onDatabaseUpdated });
+          bundlePatches: {
+            findMany: async () => [],
+            count: async () => 0,
+            getById: async () => null,
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+        }),
+    })({}, { onDatabaseUpdated }) as DatabasePluginRuntime;
 
     await plugin.bundles.insert({ bundle: baseBundle });
     await expect(
@@ -127,105 +221,13 @@ describe("createDatabasePlugin", () => {
   });
 
   it("returns a promise when connect is async", async () => {
-    const connect = vi.fn(async () => ({
-      bundles: {
-        getById: async () => null,
-        findMany: async () => [],
-        count: async () => 0,
-        insert: async () => undefined,
-        update: async () => undefined,
-        delete: async () => undefined,
-      },
-      bundlePatches: {
-        findMany: async () => [],
-        count: async () => 0,
-        getById: async () => null,
-        insert: async () => undefined,
-        update: async () => undefined,
-        delete: async () => undefined,
-      },
-    }));
-
-    const plugin = await createDatabasePlugin({
-      name: "async-plugin",
-      connect,
-    })({});
-
-    expect(plugin.name).toBe("async-plugin");
-    expect(plugin.bundleEvents).toBeUndefined();
-    expect(connect).toHaveBeenCalledWith({});
-  });
-
-  it("resolves promise-like connect results before creating a runtime", async () => {
-    const core: DatabasePluginCore = {
-      bundles: {
-        getById: async () => null,
-        findMany: async () => [],
-        count: async () => 0,
-        insert: async () => undefined,
-        update: async () => undefined,
-        delete: async () => undefined,
-      },
-      bundlePatches: {
-        findMany: async () => [],
-        count: async () => 0,
-        getById: async () => null,
-        insert: async () => undefined,
-        update: async () => undefined,
-        delete: async () => undefined,
-      },
-    };
-    const connect = (() => ({
-      then: (resolve: (value: DatabasePluginCore) => void) => resolve(core),
-    })) as () => Promise<DatabasePluginCore>;
-
-    const plugin = await createDatabasePlugin({
-      name: "thenable-plugin",
-      connect,
-    })({});
-
-    expect(plugin.name).toBe("thenable-plugin");
-    await expect(
-      plugin.bundles.getById({ bundleId: baseBundle.id }),
-    ).resolves.toBeNull();
-  });
-
-  it("reads staged bundle updates before commit and updates list metadata", async () => {
-    const persistedBundles: DatabaseBundleRecord[] = [baseBundle];
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      connect: (): DatabasePluginCore => ({
+    const connect = vi.fn(async () =>
+      createResourceConnection({
         bundles: {
-          getById: async ({ bundleId }) =>
-            persistedBundles.find((bundle) => bundle.id === bundleId) ?? null,
-          findMany: async ({ where, window }) =>
-            persistedBundles
-              .filter(
-                (bundle) =>
-                  where?.channel === undefined ||
-                  bundle.channel === where.channel,
-              )
-              .slice(window.offset, window.offset + window.limit),
-          count: async ({ where }) =>
-            persistedBundles.filter(
-              (bundle) =>
-                where?.channel === undefined ||
-                bundle.channel === where.channel,
-            ).length,
-          insert: async ({ bundle }) => {
-            persistedBundles.push(bundle);
-          },
-          update: async ({ bundleId, patch }) => {
-            const index = persistedBundles.findIndex(
-              (bundle) => bundle.id === bundleId,
-            );
-            if (index >= 0) {
-              persistedBundles[index] = {
-                ...persistedBundles[index]!,
-                ...patch,
-              };
-            }
-          },
+          getById: async () => null,
+          findRecords: async () => [],
+          insert: async () => undefined,
+          update: async () => undefined,
           delete: async () => undefined,
         },
         bundlePatches: {
@@ -237,7 +239,88 @@ describe("createDatabasePlugin", () => {
           delete: async () => undefined,
         },
       }),
-    })({});
+    );
+
+    const plugin = (await createDatabasePlugin({
+      name: "async-plugin",
+      connect,
+    })({})) as DatabasePluginRuntime;
+
+    expect(plugin.name).toBe("async-plugin");
+    expect(plugin.bundleEvents).toBeUndefined();
+    expect(connect).toHaveBeenCalledWith({});
+  });
+
+  it("resolves promise-like connect results before creating a runtime", async () => {
+    const connection: DatabasePluginDeclaration = createResourceConnection({
+      bundles: {
+        getById: async () => null,
+        findRecords: async () => [],
+        insert: async () => undefined,
+        update: async () => undefined,
+        delete: async () => undefined,
+      },
+      bundlePatches: {
+        findMany: async () => [],
+        count: async () => 0,
+        getById: async () => null,
+        insert: async () => undefined,
+        update: async () => undefined,
+        delete: async () => undefined,
+      },
+    });
+    const connect = (() => ({
+      then: (resolve: (value: DatabasePluginDeclaration) => void) =>
+        resolve(connection),
+    })) as () => Promise<DatabasePluginDeclaration>;
+
+    const plugin = (await createDatabasePlugin({
+      name: "thenable-plugin",
+      connect,
+    })({})) as DatabasePluginRuntime;
+
+    expect(plugin.name).toBe("thenable-plugin");
+    await expect(
+      plugin.bundles.getById({ bundleId: baseBundle.id }),
+    ).resolves.toBeNull();
+  });
+
+  it("reads staged bundle updates before commit and updates list metadata", async () => {
+    const persistedBundles: DatabaseBundleRecord[] = [baseBundle];
+    const plugin = createDatabasePlugin({
+      name: "test-plugin",
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async ({ bundleId }) =>
+              persistedBundles.find((bundle) => bundle.id === bundleId) ?? null,
+            findRecords: async () => persistedBundles,
+            insert: async ({ bundle }) => {
+              persistedBundles.push(bundle);
+            },
+            update: async ({ bundleId, patch }) => {
+              const index = persistedBundles.findIndex(
+                (bundle) => bundle.id === bundleId,
+              );
+              if (index >= 0) {
+                persistedBundles[index] = {
+                  ...persistedBundles[index]!,
+                  ...patch,
+                };
+              }
+            },
+            delete: async () => undefined,
+          },
+          bundlePatches: {
+            findMany: async () => [],
+            count: async () => 0,
+            getById: async () => null,
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+        }),
+    })({}) as DatabasePluginRuntime;
 
     await plugin.bundles.update({
       bundleId: baseBundle.id,
@@ -292,7 +375,7 @@ describe("createDatabasePlugin", () => {
     });
   });
 
-  it("builds runtime bundle pages from provider findMany and count primitives", async () => {
+  it("builds runtime bundle pages from provider records", async () => {
     const persistedBundles: DatabaseBundleRecord[] = [
       baseBundle,
       {
@@ -303,50 +386,38 @@ describe("createDatabasePlugin", () => {
     ];
     const plugin = createDatabasePlugin({
       name: "test-plugin",
-      connect: (): DatabasePluginCore => ({
-        bundles: {
-          getById: async ({ bundleId }) =>
-            persistedBundles.find((bundle) => bundle.id === bundleId) ?? null,
-          findMany: async ({ where, window }) =>
-            persistedBundles
-              .filter(
-                (bundle) =>
-                  where?.channel === undefined ||
-                  bundle.channel === where.channel,
-              )
-              .slice(window.offset, window.offset + window.limit),
-          count: async ({ where }) =>
-            persistedBundles.filter(
-              (bundle) =>
-                where?.channel === undefined ||
-                bundle.channel === where.channel,
-            ).length,
-          insert: async ({ bundle }) => {
-            persistedBundles.push(bundle);
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async ({ bundleId }) =>
+              persistedBundles.find((bundle) => bundle.id === bundleId) ?? null,
+            findRecords: async () => persistedBundles,
+            insert: async ({ bundle }) => {
+              persistedBundles.push(bundle);
+            },
+            update: async ({ bundleId, patch }) => {
+              const index = persistedBundles.findIndex(
+                (bundle) => bundle.id === bundleId,
+              );
+              if (index >= 0) {
+                persistedBundles[index] = {
+                  ...persistedBundles[index]!,
+                  ...patch,
+                };
+              }
+            },
+            delete: async () => undefined,
           },
-          update: async ({ bundleId, patch }) => {
-            const index = persistedBundles.findIndex(
-              (bundle) => bundle.id === bundleId,
-            );
-            if (index >= 0) {
-              persistedBundles[index] = {
-                ...persistedBundles[index]!,
-                ...patch,
-              };
-            }
+          bundlePatches: {
+            findMany: async () => [],
+            count: async () => 0,
+            getById: async () => null,
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
           },
-          delete: async () => undefined,
-        },
-        bundlePatches: {
-          findMany: async () => [],
-          count: async () => 0,
-          getById: async () => null,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-      }),
-    })({});
+        }),
+    })({}) as DatabasePluginRuntime;
 
     await plugin.bundles.update({
       bundleId: baseBundle.id,
@@ -406,27 +477,30 @@ describe("createDatabasePlugin", () => {
       );
     const plugin = createDatabasePlugin({
       name: "test-plugin",
-      connect: (): DatabasePluginCore => ({
-        bundles: {
-          getById: async () => null,
-          findMany: async () => [],
-          count: async () => 0,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-        bundlePatches: {
-          getById: async ({ patchId }) =>
-            persistedPatches.find((item) => item.id === patchId) ?? null,
-          findMany: async ({ window }) =>
-            sortedPatches().slice(window.offset, window.offset + window.limit),
-          count: async () => persistedPatches.length,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-      }),
-    })({});
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async () => null,
+            findRecords: async () => [],
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+          bundlePatches: {
+            getById: async ({ patchId }) =>
+              persistedPatches.find((item) => item.id === patchId) ?? null,
+            findMany: async ({ window }) =>
+              sortedPatches().slice(
+                window.offset,
+                window.offset + window.limit,
+              ),
+            count: async () => persistedPatches.length,
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+        }),
+    })({}) as DatabasePluginRuntime;
 
     await expect(
       plugin.bundlePatches.list({
@@ -475,46 +549,49 @@ describe("createDatabasePlugin", () => {
     const patchId = firstPatch.id ?? `${firstPatch.bundleId}:base-1`;
     const plugin = createDatabasePlugin({
       name: "test-plugin",
-      connect: (): DatabasePluginCore => ({
-        bundles: {
-          getById: async () => null,
-          findMany: async () => [],
-          count: async () => 0,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-        bundlePatches: {
-          getById: async ({ patchId }) =>
-            persistedPatches.find((item) => item.id === patchId) ?? null,
-          findMany: async ({ window }) =>
-            persistedPatches.slice(window.offset, window.offset + window.limit),
-          count: async () => persistedPatches.length,
-          insert: async ({ patch }) => {
-            persistedPatches.push(patch);
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async () => null,
+            findRecords: async () => [],
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
           },
-          update: async ({ patchId, patch }) => {
-            const index = persistedPatches.findIndex(
-              (item) => item.id === patchId,
-            );
-            if (index >= 0) {
-              persistedPatches[index] = {
-                ...persistedPatches[index]!,
-                ...patch,
-              };
-            }
+          bundlePatches: {
+            getById: async ({ patchId }) =>
+              persistedPatches.find((item) => item.id === patchId) ?? null,
+            findMany: async ({ window }) =>
+              persistedPatches.slice(
+                window.offset,
+                window.offset + window.limit,
+              ),
+            count: async () => persistedPatches.length,
+            insert: async ({ patch }) => {
+              persistedPatches.push(patch);
+            },
+            update: async ({ patchId, patch }) => {
+              const index = persistedPatches.findIndex(
+                (item) => item.id === patchId,
+              );
+              if (index >= 0) {
+                persistedPatches[index] = {
+                  ...persistedPatches[index]!,
+                  ...patch,
+                };
+              }
+            },
+            delete: async ({ patchId }) => {
+              const index = persistedPatches.findIndex(
+                (item) => item.id === patchId,
+              );
+              if (index >= 0) {
+                persistedPatches.splice(index, 1);
+              }
+            },
           },
-          delete: async ({ patchId }) => {
-            const index = persistedPatches.findIndex(
-              (item) => item.id === patchId,
-            );
-            if (index >= 0) {
-              persistedPatches.splice(index, 1);
-            }
-          },
-        },
-      }),
-    })({});
+        }),
+    })({}) as DatabasePluginRuntime;
 
     await plugin.bundlePatches.insert({ patch: firstPatch });
 
@@ -566,46 +643,49 @@ describe("createDatabasePlugin", () => {
     ];
     const plugin = createDatabasePlugin({
       name: "test-plugin",
-      connect: (): DatabasePluginCore => ({
-        bundles: {
-          getById: async () => null,
-          findMany: async () => [],
-          count: async () => 0,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-        bundlePatches: {
-          findMany: async ({ where, window }) => {
-            const filtered = persistedPatches.filter((item) => {
-              if (where?.bundleId !== undefined) {
-                return item.bundleId === where.bundleId;
-              }
-              if (where?.baseBundleId !== undefined) {
-                return item.baseBundleId === where.baseBundleId;
-              }
-              return true;
-            });
-            return filtered.slice(window.offset, window.offset + window.limit);
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async () => null,
+            findRecords: async () => [],
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
           },
-          count: async ({ where }) =>
-            persistedPatches.filter((item) => {
-              if (where?.bundleId !== undefined) {
-                return item.bundleId === where.bundleId;
-              }
-              if (where?.baseBundleId !== undefined) {
-                return item.baseBundleId === where.baseBundleId;
-              }
-              return true;
-            }).length,
-          getById: async ({ patchId }) =>
-            persistedPatches.find((item) => item.id === patchId) ?? null,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-      }),
-    })({});
+          bundlePatches: {
+            findMany: async ({ where, window }) => {
+              const filtered = persistedPatches.filter((item) => {
+                if (where?.bundleId !== undefined) {
+                  return item.bundleId === where.bundleId;
+                }
+                if (where?.baseBundleId !== undefined) {
+                  return item.baseBundleId === where.baseBundleId;
+                }
+                return true;
+              });
+              return filtered.slice(
+                window.offset,
+                window.offset + window.limit,
+              );
+            },
+            count: async ({ where }) =>
+              persistedPatches.filter((item) => {
+                if (where?.bundleId !== undefined) {
+                  return item.bundleId === where.bundleId;
+                }
+                if (where?.baseBundleId !== undefined) {
+                  return item.baseBundleId === where.baseBundleId;
+                }
+                return true;
+              }).length,
+            getById: async ({ patchId }) =>
+              persistedPatches.find((item) => item.id === patchId) ?? null,
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+        }),
+    })({}) as DatabasePluginRuntime;
 
     await plugin.bundlePatches.delete({ patchId: "bundle-2:base-2" });
     await plugin.bundlePatches.insert({
@@ -632,46 +712,49 @@ describe("createDatabasePlugin", () => {
     ];
     const plugin = createDatabasePlugin({
       name: "test-plugin",
-      connect: (): DatabasePluginCore => ({
-        bundles: {
-          getById: async () => null,
-          findMany: async () => [],
-          count: async () => 0,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-        bundlePatches: {
-          findMany: async ({ where, window }) => {
-            const filtered = persistedPatches.filter((item) => {
-              if (where?.bundleId !== undefined) {
-                return item.bundleId === where.bundleId;
-              }
-              if (where?.baseBundleId !== undefined) {
-                return item.baseBundleId === where.baseBundleId;
-              }
-              return true;
-            });
-            return filtered.slice(window.offset, window.offset + window.limit);
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async () => null,
+            findRecords: async () => [],
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
           },
-          count: async ({ where }) =>
-            persistedPatches.filter((item) => {
-              if (where?.bundleId !== undefined) {
-                return item.bundleId === where.bundleId;
-              }
-              if (where?.baseBundleId !== undefined) {
-                return item.baseBundleId === where.baseBundleId;
-              }
-              return true;
-            }).length,
-          getById: async ({ patchId }) =>
-            persistedPatches.find((item) => item.id === patchId) ?? null,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-      }),
-    })({});
+          bundlePatches: {
+            findMany: async ({ where, window }) => {
+              const filtered = persistedPatches.filter((item) => {
+                if (where?.bundleId !== undefined) {
+                  return item.bundleId === where.bundleId;
+                }
+                if (where?.baseBundleId !== undefined) {
+                  return item.baseBundleId === where.baseBundleId;
+                }
+                return true;
+              });
+              return filtered.slice(
+                window.offset,
+                window.offset + window.limit,
+              );
+            },
+            count: async ({ where }) =>
+              persistedPatches.filter((item) => {
+                if (where?.bundleId !== undefined) {
+                  return item.bundleId === where.bundleId;
+                }
+                if (where?.baseBundleId !== undefined) {
+                  return item.baseBundleId === where.baseBundleId;
+                }
+                return true;
+              }).length,
+            getById: async ({ patchId }) =>
+              persistedPatches.find((item) => item.id === patchId) ?? null,
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+        }),
+    })({}) as DatabasePluginRuntime;
 
     await plugin.bundlePatches.delete({ patchId: "bundle-2:base-2" });
 
@@ -721,31 +804,29 @@ describe("createDatabasePlugin", () => {
     ];
     const plugin = createDatabasePlugin({
       name: "test-plugin",
-      connect: (): DatabasePluginCore => ({
-        bundles: {
-          getById: async () => null,
-          findMany: async () => [],
-          count: async () => 0,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-        bundlePatches: {
-          findMany: async () => [],
-          count: async () => 0,
-          getById: async () => null,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-        bundleEvents: {
-          findMany: async ({ window }) =>
-            persistedEvents.slice(window.offset, window.offset + window.limit),
-          count: async () => persistedEvents.length,
-          append: async () => undefined,
-        },
-      }),
-    })({});
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async () => null,
+            findRecords: async () => [],
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+          bundlePatches: {
+            findMany: async () => [],
+            count: async () => 0,
+            getById: async () => null,
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+          bundleEvents: {
+            findEvents: async () => persistedEvents,
+            append: async () => undefined,
+          },
+        }),
+    })({}) as DatabasePluginRuntime;
 
     await plugin.bundleEvents?.append({
       event: {
@@ -776,25 +857,25 @@ describe("createDatabasePlugin", () => {
   it("rejects bundle event mutations when the provider omits bundleEvents", async () => {
     const plugin = createDatabasePlugin({
       name: "test-plugin",
-      connect: () => ({
-        bundles: {
-          getById: async () => null,
-          findMany: async () => [],
-          count: async () => 0,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-        bundlePatches: {
-          findMany: async () => [],
-          count: async () => 0,
-          getById: async () => null,
-          insert: async () => undefined,
-          update: async () => undefined,
-          delete: async () => undefined,
-        },
-      }),
-    })({});
+      connect: (): DatabasePluginDeclaration =>
+        createResourceConnection({
+          bundles: {
+            getById: async () => null,
+            findRecords: async () => [],
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+          bundlePatches: {
+            findMany: async () => [],
+            count: async () => 0,
+            getById: async () => null,
+            insert: async () => undefined,
+            update: async () => undefined,
+            delete: async () => undefined,
+          },
+        }),
+    })({}) as DatabasePluginRuntime;
 
     await expect(
       plugin.commit({

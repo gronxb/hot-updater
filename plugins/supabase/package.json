@@ -51,10 +51,12 @@
   "dependencies": {
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/postgres": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@supabase/supabase-js": "catalog:supabase",
     "hono": "catalog:hono",
+    "kysely": "catalog:db",
     "uuidv7": "^1.0.2"
   },
   "devDependencies": {
@@ -63,10 +65,10 @@
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "camelcase-keys": "^9.1.3",
-    "@hot-updater/postgres": "workspace:*",
     "dayjs": "^1.11.13",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
+    "kysely-pglite-dialect": "catalog:db",
     "@types/node": "catalog:",
     "mime": "^4.0.4"
   }

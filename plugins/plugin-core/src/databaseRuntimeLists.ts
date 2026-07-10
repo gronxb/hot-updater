@@ -1,3 +1,4 @@
+import type { DatabasePluginCore } from "./databaseCoreTypes";
 import {
   createCorePagination,
   emptyPage,
@@ -17,7 +18,6 @@ import type {
   DatabaseBundleEvent,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginCore,
 } from "./types";
 
 export const listCoreBundles = async (

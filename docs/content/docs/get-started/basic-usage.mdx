@@ -48,6 +48,7 @@ After initialization, two files will be generated:
 HOT_UPDATER_SUPABASE_URL=https://your-project.supabase.co
 HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY=your-service-role-or-secret-key
 HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
+HOT_UPDATER_SUPABASE_DATABASE_URL=postgresql://postgres:your-database-password@db.your-project.supabase.co:5432/postgres?sslmode=require
 ```
 
 **`hot-updater.config.ts`** - Contains provider integration settings:
@@ -71,9 +72,7 @@ export default defineConfig({
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey:
-      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    connectionString: process.env.HOT_UPDATER_SUPABASE_DATABASE_URL!,
   }),
 });
 ```

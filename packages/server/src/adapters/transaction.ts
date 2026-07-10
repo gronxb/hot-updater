@@ -1,32 +1,36 @@
-import type {
-  DatabasePluginCore,
-  DatabaseTransaction,
-} from "@hot-updater/plugin-core";
+import type { DatabasePluginDeclaration } from "@hot-updater/plugin-core";
 
 const rollbackToken = Symbol("hot-updater-transaction-rollback");
 
 export const createCallbackDatabaseTransaction = async <THandle>({
-  createCore,
+  createConnection,
   onSettled,
   run,
 }: {
-  readonly createCore: (handle: THandle) => DatabasePluginCore;
+  readonly createConnection: (handle: THandle) => DatabasePluginDeclaration;
   readonly onSettled?: () => Promise<void>;
   readonly run: (
     operation: (handle: THandle) => Promise<void>,
   ) => Promise<unknown>;
-}): Promise<DatabaseTransaction> => {
-  let resolveCore: (core: DatabasePluginCore) => void = () => undefined;
-  let rejectCore: (error: unknown) => void = () => undefined;
+}): Promise<{
+  readonly connection: DatabasePluginDeclaration;
+  readonly commit: () => Promise<void>;
+  readonly rollback: () => Promise<void>;
+}> => {
+  let resolveConnection: (connection: DatabasePluginDeclaration) => void = () =>
+    undefined;
+  let rejectConnection: (error: unknown) => void = () => undefined;
   let resolveFinish: () => void = () => undefined;
   let rejectFinish: (error: unknown) => void = () => undefined;
   let finished = false;
   let cleanup: Promise<void> | undefined;
 
-  const coreReady = new Promise<DatabasePluginCore>((resolve, reject) => {
-    resolveCore = resolve;
-    rejectCore = reject;
-  });
+  const connectionReady = new Promise<DatabasePluginDeclaration>(
+    (resolve, reject) => {
+      resolveConnection = resolve;
+      rejectConnection = reject;
+    },
+  );
   const finish = new Promise<void>((resolve, reject) => {
     resolveFinish = resolve;
     rejectFinish = reject;
@@ -36,23 +40,23 @@ export const createCallbackDatabaseTransaction = async <THandle>({
     return cleanup;
   };
   const transaction = run(async (handle) => {
-    resolveCore(createCore(handle));
+    resolveConnection(createConnection(handle));
     await finish;
   });
   void transaction.catch((error) => {
-    rejectCore(error);
+    rejectConnection(error);
   });
 
-  let core: DatabasePluginCore;
+  let connection: DatabasePluginDeclaration;
   try {
-    core = await coreReady;
+    connection = await connectionReady;
   } catch (error) {
     await settle();
     throw error;
   }
 
   return {
-    core,
+    connection,
     commit: async () => {
       if (!finished) {
         finished = true;

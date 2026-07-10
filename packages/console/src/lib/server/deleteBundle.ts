@@ -8,15 +8,13 @@ import {
   getManifestStorageUri,
   getPatchStorageUri,
 } from "@hot-updater/core";
-import type {
-  DatabasePluginRuntime,
-  NodeStoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { NodeStoragePlugin } from "@hot-updater/plugin-core";
+import { isContentAddressedAssetBaseStorageUri } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import {
-  isContentAddressedAssetBaseStorageUri,
   readDatabaseRuntimeBundle,
   stageDatabaseRuntimeBundleDelete,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/server/db";
 
 import { getLegacyBundleAssetCleanupUris } from "./legacyBundleAssetCleanup";
 

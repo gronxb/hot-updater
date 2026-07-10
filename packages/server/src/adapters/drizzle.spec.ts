@@ -2,9 +2,18 @@ import { describe, expect, it, vi } from "vitest";
 
 import { generateSchema } from "../db";
 import { createHotUpdater } from "../index";
-import { drizzleAdapter } from "./drizzle";
+import {
+  createDrizzleDatabase,
+  drizzleAdapter,
+  drizzleDatabase,
+} from "./drizzle";
 
 describe("drizzleAdapter", () => {
+  it("exposes Drizzle as the official database middle layer with the old alias", () => {
+    expect(drizzleDatabase).toBe(createDrizzleDatabase);
+    expect(drizzleAdapter).toBe(drizzleDatabase);
+  });
+
   it("generates schema without resolving a lazy runtime database", () => {
     const getDB = vi.fn(() => {
       throw new Error("runtime database should not be opened");
@@ -39,7 +48,21 @@ describe("drizzleAdapter", () => {
         },
         bundles: {
           findFirst: vi.fn(),
-          findMany: vi.fn(async () => [{ channel: "production" }]),
+          findMany: vi.fn(async () => [
+            {
+              id: "bundle-1",
+              channel: "production",
+              enabled: true,
+              should_force_update: false,
+              file_hash: "file-hash",
+              git_commit_hash: null,
+              message: null,
+              platform: "ios",
+              storage_uri: "s3://bucket/bundle.zip",
+              target_app_version: null,
+              fingerprint_hash: null,
+            },
+          ]),
         },
       },
       select: vi.fn(),

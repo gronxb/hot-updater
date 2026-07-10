@@ -1,3 +1,4 @@
+import type { DatabasePluginCore } from "./databaseCoreTypes";
 import { overlayEvents } from "./databaseRuntimeEventOverlay";
 import {
   listCoreBundleEvents,
@@ -14,11 +15,8 @@ import { RuntimeStage } from "./databaseRuntimeStage";
 import type {
   DatabaseBundleEventInput,
   DatabaseCommitParams,
-  DatabasePluginCore,
   DatabasePluginHooks,
   DatabasePluginRuntime,
-  HotUpdaterContext,
-  MaybePromise,
   RuntimeBundleEventRepository,
 } from "./types";
 import { createUUIDv7 } from "./uuidv7";
@@ -39,43 +37,6 @@ export interface CreateDatabaseRuntimeOptions {
 export const databaseRuntimeFactorySymbol = Symbol.for(
   "@hot-updater/plugin-core/database-runtime-factory",
 );
-
-export type DatabaseRuntimeFactory = () => MaybePromise<DatabasePluginRuntime>;
-
-export const databaseRuntimeOpenerSymbol = Symbol.for(
-  "@hot-updater/plugin-core/database-runtime-opener",
-);
-
-export type DatabaseRuntimeOpener<TContext = unknown> = ((
-  context?: HotUpdaterContext<TContext>,
-) => MaybePromise<DatabasePluginRuntime>) & {
-  readonly [databaseRuntimeOpenerSymbol]: true;
-};
-
-export const markDatabaseRuntimeOpener = <TContext = unknown>(
-  openRuntime: (
-    context?: HotUpdaterContext<TContext>,
-  ) => MaybePromise<DatabasePluginRuntime>,
-): DatabaseRuntimeOpener<TContext> =>
-  Object.defineProperty(openRuntime, databaseRuntimeOpenerSymbol, {
-    enumerable: false,
-    value: true,
-  }) as DatabaseRuntimeOpener<TContext>;
-
-export const isDatabaseRuntimeOpener = <TContext = unknown>(
-  value: unknown,
-): value is DatabaseRuntimeOpener<TContext> =>
-  typeof value === "function" &&
-  (value as Partial<Record<typeof databaseRuntimeOpenerSymbol, boolean>>)[
-    databaseRuntimeOpenerSymbol
-  ] === true;
-
-export type DatabaseRuntimeWithFactory<
-  TCore extends DatabasePluginCore = DatabasePluginCore,
-> = DatabasePluginRuntime & {
-  readonly [databaseRuntimeFactorySymbol]: DatabaseRuntimeFactory;
-  readonly __coreType?: TCore;
-};
 
 export const createDatabaseRuntime = (
   options: CreateDatabaseRuntimeOptions,

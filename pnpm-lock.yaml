@@ -21,6 +21,9 @@ catalogs:
     kysely:
       specifier: 0.28.17
       version: 0.28.17
+    kysely-d1:
+      specifier: 0.4.0
+      version: 0.4.0
     kysely-pglite-dialect:
       specifier: 1.2.0
       version: 1.2.0
@@ -1931,6 +1934,12 @@ importers:
       hono:
         specifier: catalog:hono
         version: 4.12.9
+      kysely:
+        specifier: catalog:db
+        version: 0.28.17
+      kysely-d1:
+        specifier: catalog:db
+        version: 0.4.0(kysely@0.28.17)
       uuidv7:
         specifier: ^1.0.2
         version: 1.2.1
@@ -2163,6 +2172,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       kysely:
         specifier: catalog:db
         version: 0.28.17
@@ -2272,6 +2284,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      '@hot-updater/postgres':
+        specifier: workspace:*
+        version: link:../postgres
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -2281,6 +2296,9 @@ importers:
       hono:
         specifier: catalog:hono
         version: 4.12.9
+      kysely:
+        specifier: catalog:db
+        version: 0.28.17
       uuidv7:
         specifier: ^1.0.2
         version: 1.2.1
@@ -2294,9 +2312,6 @@ importers:
       '@hot-updater/mock':
         specifier: workspace:*
         version: link:../mock
-      '@hot-updater/postgres':
-        specifier: workspace:*
-        version: link:../postgres
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../../packages/test-utils
@@ -2315,6 +2330,9 @@ importers:
       execa:
         specifier: catalog:tools
         version: 9.5.2
+      kysely-pglite-dialect:
+        specifier: catalog:db
+        version: 1.2.0(@electric-sql/pglite@0.4.1)(kysely@0.28.17)
       mime:
         specifier: ^4.0.4
         version: 4.1.0
@@ -14040,6 +14058,11 @@ packages:
   kuler@2.0.0:
     resolution: {integrity: sha512-Xq9nH7KlWZmXAtodXDDRE7vs6DU1gTU8zYDHDiWLSip45Egwq3plLHzPn27NgvzL2r1LMPC1vdqh98sQxtqj4A==}
 
+  kysely-d1@0.4.0:
+    resolution: {integrity: sha512-wUcVvQNtm30OTfuo7Ad5vYJ1qHqPXOCZc+zWchVKNyuvqY3u8OuGw4gmUx1Ypdx2wRVFLHVQC9I7v0pTmF7Nkw==}
+    peerDependencies:
+      kysely: '*'
+
   kysely-pglite-dialect@1.2.0:
     resolution: {integrity: sha512-VYrShTuV0VGVdCm1qNC6imo45KIK1dtVn57Q95DsTcouzhgd0xWcJ6KG9gowXoQ+l+TJSoemh3FUhOsw0KKlAA==}
     peerDependencies:
@@ -18098,6 +18121,7 @@ packages:
   tsconfck@3.1.6:
     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
     engines: {node: ^18 || >=20}
+    deprecated: unmaintained
     hasBin: true
     peerDependencies:
       typescript: ^5.0.0
@@ -35310,6 +35334,10 @@ snapshots:
 
   kuler@2.0.0: {}
 
+  kysely-d1@0.4.0(kysely@0.28.17):
+    dependencies:
+      kysely: 0.28.17
+
   kysely-pglite-dialect@1.2.0(@electric-sql/pglite@0.4.1)(kysely@0.28.17):
     dependencies:
       '@electric-sql/pglite': 0.4.1
@@ -42393,7 +42421,7 @@ snapshots:
 
   xml2js@0.6.2:
     dependencies:
-      sax: 1.2.1
+      sax: 1.6.0
       xmlbuilder: 11.0.1
 
   xmlbuilder2@4.0.3:

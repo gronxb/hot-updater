@@ -1,3 +1,4 @@
+import type { DatabasePluginCore } from "./databaseCoreTypes";
 import {
   compareStrings,
   createOverlayPagination,
@@ -19,7 +20,6 @@ import type {
   CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginCore,
 } from "./types";
 
 export const overlayBundles = async (

@@ -1,5 +1,5 @@
-import type { Kysely } from "kysely";
-import type { MongoClient } from "mongodb";
+// noqa: SIZE_OK - Existing cross-provider migrator module; splitting belongs to a dedicated migration cleanup.
+import { sql, type Kysely } from "kysely";
 
 import {
   HOT_UPDATER_SCHEMA_VERSION,
@@ -25,16 +25,10 @@ import type {
   MigrationOperation,
   MigrationResult,
   Migrator,
+  MongoClientRuntime,
   ORMSQLProvider,
   RelationMode,
 } from "./types";
-
-interface SettingsDatabase {
-  readonly private_hot_updater_settings: {
-    readonly key: string;
-    readonly value: string;
-  };
-}
 
 const getEmptyResult = (): MigrationResult => ({
   operations: [],
@@ -101,22 +95,30 @@ const assertSupportedSchemaVersion = (
   }
 };
 
-export const createKyselyMigrator = ({
+const quoteIdentifier = (
+  provider: ORMSQLProvider,
+  identifier: string,
+): string => (provider === "mysql" ? `\`${identifier}\`` : `"${identifier}"`);
+
+export const createKyselyMigrator = <TDatabase>({
   db,
   provider,
   relationMode = "foreign-keys",
 }: {
-  db: Kysely<SettingsDatabase>;
+  db: Kysely<TDatabase>;
   provider: ORMSQLProvider;
   relationMode?: RelationMode;
 }): Migrator => {
   const getVersion = async (): Promise<string | undefined> => {
     try {
-      const row = await db
-        .selectFrom(HOT_UPDATER_SETTINGS_TABLE)
-        .select("value")
-        .where("key", "=", "version")
-        .executeTakeFirst();
+      const keyColumn = quoteIdentifier(provider, "key");
+      const valueColumn = quoteIdentifier(provider, "value");
+      const result = await sql<{
+        readonly value: string;
+      }>`select ${sql.raw(valueColumn)} as value from ${sql.table(HOT_UPDATER_SETTINGS_TABLE)} where ${sql.raw(keyColumn)} = 'version'`.execute(
+        db,
+      );
+      const row = result.rows[0];
       return typeof row?.value === "string" ? row.value : undefined;
     } catch (error) {
       if (!isMissingSettingsTableError(error)) throw error;
@@ -178,7 +180,6 @@ export const createKyselyMigrator = ({
       operations,
       getSQL: () => statements.map((statement) => `${statement};`).join("\n\n"),
       execute: async () => {
-        const { sql } = await import("kysely");
         for (const statement of statements) {
           await sql.raw(statement).execute(db);
         }
@@ -208,7 +209,7 @@ export const createKyselyMigrator = ({
   };
 };
 
-export const createMongoMigrator = (client: MongoClient): Migrator => {
+export const createMongoMigrator = (client: MongoClientRuntime): Migrator => {
   const settings = client
     .db()
     .collection<{ key: string; value: unknown }>(HOT_UPDATER_SETTINGS_TABLE);

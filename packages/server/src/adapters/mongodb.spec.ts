@@ -1,7 +1,14 @@
 import type { DatabaseBundleRecord } from "@hot-updater/plugin-core";
-import type { ClientSession, MongoClient } from "mongodb";
+import type { Document, OptionalUnlessRequiredId } from "mongodb";
 import { describe, expect, it, vi } from "vitest";
 
+import type {
+  MongoClientRuntime,
+  MongoCollectionRuntime,
+  MongoCursorRuntime,
+  MongoOperationOptions,
+  MongoSessionRuntime,
+} from "../db/types";
 import { mongoAdapter } from "./mongodb";
 
 const bundle: DatabaseBundleRecord = {
@@ -25,33 +32,80 @@ const bundle: DatabaseBundleRecord = {
 };
 
 const createClient = () => {
+  const createCursor = <TRow extends Document>(): MongoCursorRuntime<TRow> => ({
+    project: <TProjection extends Document>() => createCursor<TProjection>(),
+    sort: () => createCursor<TRow>(),
+    toArray: async () => [],
+  });
   const bundles = {
-    updateOne: vi.fn(async () => undefined),
+    updateOne: vi.fn(
+      async (
+        _filter: object,
+        _update: object,
+        _options?: MongoOperationOptions,
+      ) => undefined,
+    ),
   };
   const patches = {
-    deleteMany: vi.fn(async () => undefined),
-    insertMany: vi.fn(async () => undefined),
+    deleteMany: vi.fn(
+      async (_filter: object, _options?: MongoOperationOptions) => undefined,
+    ),
+    insertMany: vi.fn(
+      async (
+        _rows: readonly OptionalUnlessRequiredId<Document>[],
+        _options?: MongoOperationOptions,
+      ) => undefined,
+    ),
   };
   const db = {
-    collection: (name: string) =>
-      name === "bundle_patches" ? patches : bundles,
+    collection: <TRow extends Document>(
+      name: string,
+    ): MongoCollectionRuntime<TRow> => ({
+      createIndex: async () => undefined,
+      deleteMany: async (filter, options) => {
+        if (name === "bundle_patches") {
+          await patches.deleteMany(filter, options);
+        }
+      },
+      find: () => createCursor<TRow>(),
+      findOne: async () => null,
+      insertMany: async (rows, options) => {
+        if (name === "bundle_patches") {
+          await patches.insertMany(rows, options);
+        }
+      },
+      updateOne: async (filter, update, options) => {
+        if (name !== "bundle_patches") {
+          await bundles.updateOne(filter, update, options);
+        }
+      },
+    }),
+    createCollection: async () => undefined,
   };
-  const session = {
+  const session: MongoSessionRuntime = {
     endSession: vi.fn(async () => undefined),
-    withTransaction: vi.fn(async (operation: () => Promise<void>) =>
-      operation(),
-    ),
-  } as unknown as ClientSession;
+    withTransaction: vi.fn(async (operation) => operation()),
+  };
   const startSession = vi.fn(() => session);
-  const client = {
+  const client: MongoClientRuntime = {
     db: () => db,
     startSession,
-  } as unknown as MongoClient;
+  };
 
   return { bundles, client, session, startSession };
 };
 
 describe("mongoAdapter transactions", () => {
+  it("exposes MongoDB as a legacy/native adapter with migrator metadata", () => {
+    const { client } = createClient();
+    const database = mongoAdapter({ client });
+
+    expect(database.adapterName).toBe("mongodb");
+    expect(database.provider).toBe("mongodb");
+    expect(database.createMigrator).toBeTypeOf("function");
+    expect(database.generateSchema).toBeUndefined();
+  });
+
   it("does not use MongoDB sessions by default", async () => {
     const { bundles, client, startSession } = createClient();
     const database = mongoAdapter({ client });

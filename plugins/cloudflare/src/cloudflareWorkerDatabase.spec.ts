@@ -1,4 +1,5 @@
-import type { DatabasePluginRuntime } from "@hot-updater/plugin-core";
+// noqa: SIZE_OK - Existing Cloudflare Worker database regression suite; splitting belongs to a dedicated test-structure cleanup.
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { d1Database, type RequestEnvContext } from "./worker";
@@ -44,6 +45,14 @@ type TestEnv = {
 const rows = new Map<string, WorkerBundleRow>();
 const patchRows = new Map<string, WorkerPatchRow>();
 
+const parseJsonArrayParameter = (value: unknown): unknown[] => {
+  const parsed: unknown = JSON.parse(String(value));
+  if (!Array.isArray(parsed)) {
+    throw new Error("Expected JSON array parameter");
+  }
+  return parsed;
+};
+
 const createBundleRow = (index: number): WorkerBundleRow => {
   const id = `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`;
   return {
@@ -67,43 +76,67 @@ const createBundleRow = (index: number): WorkerBundleRow => {
   };
 };
 
-const normalizeSql = (sql: string) => sql.replace(/\s+/g, " ").trim();
+const normalizeSql = (sql: string) =>
+  sql.replace(/\s+/g, " ").replaceAll('"', "").trim();
 
 const filterRows = (sql: string, params: unknown[]) => {
+  const normalizedSql = normalizeSql(sql).toLowerCase();
   let filteredRows = Array.from(rows.values());
   let index = 0;
+  const orderedConditions = [
+    {
+      token: "channel = ?",
+      apply: () => {
+        const channel = params[index++];
+        filteredRows = filteredRows.filter((row) => row.channel === channel);
+      },
+    },
+    {
+      token: "platform = ?",
+      apply: () => {
+        const platform = params[index++];
+        filteredRows = filteredRows.filter((row) => row.platform === platform);
+      },
+    },
+    {
+      token: "enabled = ?",
+      apply: () => {
+        const enabled = Number(params[index++]);
+        filteredRows = filteredRows.filter((row) => row.enabled === enabled);
+      },
+    },
+    {
+      token: "id >= ?",
+      apply: () => {
+        const id = String(params[index++]);
+        filteredRows = filteredRows.filter(
+          (row) => row.id.localeCompare(id) >= 0,
+        );
+      },
+    },
+  ]
+    .map((condition) => ({
+      ...condition,
+      position: normalizedSql.indexOf(condition.token),
+    }))
+    .filter((condition) => condition.position >= 0)
+    .sort((left, right) => left.position - right.position);
 
-  if (sql.includes("channel = ?")) {
-    const channel = params[index++];
-    filteredRows = filteredRows.filter((row) => row.channel === channel);
+  for (const condition of orderedConditions) {
+    condition.apply();
   }
 
-  if (sql.includes("platform = ?")) {
-    const platform = params[index++];
-    filteredRows = filteredRows.filter((row) => row.platform === platform);
-  }
-
-  if (sql.includes("enabled = ?")) {
-    const enabled = Number(params[index++]);
-    filteredRows = filteredRows.filter((row) => row.enabled === enabled);
-  }
-
-  if (sql.includes("id >= ?")) {
-    const id = String(params[index++]);
-    filteredRows = filteredRows.filter((row) => row.id.localeCompare(id) >= 0);
-  }
-
-  if (sql.includes("target_app_version IS NOT NULL")) {
+  if (normalizedSql.includes("target_app_version is not null")) {
     filteredRows = filteredRows.filter(
       (row) => row.target_app_version !== null,
     );
   }
 
-  const inMatch = sql.match(/target_app_version IN \(([^)]+)\)/);
+  const inMatch = normalizedSql.match(/target_app_version in \(([^)]+)\)/);
   if (inMatch) {
     const body = inMatch[1] ?? "";
     const inValues = body.includes("json_each(")
-      ? (JSON.parse(String(params[index++])) as unknown[])
+      ? parseJsonArrayParameter(params[index++])
       : params.slice(index, index + (body.match(/\?/g) ?? []).length);
     const values = new Set(inValues);
     filteredRows = filteredRows.filter((row) =>
@@ -117,93 +150,141 @@ const filterRows = (sql: string, params: unknown[]) => {
   return { filteredRows, index };
 };
 
-function createD1Binding() {
-  return {
-    prepare(sql: string) {
+function createD1Binding(): D1Database {
+  const createD1Result = <T>(results: T[]): D1Result<T> => ({
+    results,
+    success: true,
+    meta: {
+      changed_db: false,
+      changes: 0,
+      duration: 0,
+      last_row_id: 0,
+      rows_read: results.length,
+      rows_written: 0,
+      size_after: 0,
+    },
+  });
+
+  const createPreparedStatement = (
+    sql: string,
+    boundParams: readonly unknown[] = [],
+  ): D1PreparedStatement => {
+    function raw<T = unknown[]>(options: {
+      columnNames: true;
+    }): Promise<[string[], ...T[]]>;
+    function raw<T = unknown[]>(options?: {
+      columnNames?: false;
+    }): Promise<T[]>;
+    async function raw<T = unknown[]>(options?: { columnNames?: boolean }) {
+      if (options?.columnNames) {
+        return [[]] as [string[], ...T[]];
+      }
+      return [] as T[];
+    }
+
+    return {
+      bind(...params: unknown[]) {
+        return createPreparedStatement(sql, params);
+      },
+      async all<T = Record<string, unknown>>() {
+        const params = [...boundParams];
+        if (params.length > 100) {
+          throw new Error(
+            "D1_ERROR: too many SQL variables at offset 386: SQLITE_ERROR",
+          );
+        }
+
+        const normalizedSql = normalizeSql(sql).toLowerCase();
+
+        if (
+          normalizedSql.startsWith("select target_app_version from bundles")
+        ) {
+          const { filteredRows } = filterRows(sql, params);
+          const targetAppVersions = Array.from(
+            new Set(
+              filteredRows
+                .map((row) => row.target_app_version)
+                .filter(
+                  (targetAppVersion): targetAppVersion is string =>
+                    targetAppVersion !== null,
+                ),
+            ),
+          ).map((targetAppVersion) => ({
+            target_app_version: targetAppVersion,
+          }));
+
+          return createD1Result(targetAppVersions as T[]);
+        }
+
+        if (normalizedSql.startsWith("select count(*) as total from bundles")) {
+          const { filteredRows } = filterRows(sql, params);
+          return createD1Result([{ total: filteredRows.length }] as T[]);
+        }
+
+        if (normalizedSql.startsWith("select * from bundles")) {
+          const { filteredRows, index } = filterRows(sql, params);
+          const limit = Number(params[index] ?? filteredRows.length);
+          const offset = Number(params[index + 1] ?? 0);
+          const result = filteredRows
+            .sort((left, right) => right.id.localeCompare(left.id))
+            .slice(offset, offset + limit);
+
+          return createD1Result(result as T[]);
+        }
+
+        if (
+          normalizedSql.startsWith(
+            "select * from bundle_patches where bundle_id in",
+          )
+        ) {
+          const selectedBundleIds = new Set(
+            normalizedSql.includes("json_each")
+              ? parseJsonArrayParameter(params[0]).map(String)
+              : params.map(String),
+          );
+          const result = Array.from(patchRows.values()).filter((row) =>
+            selectedBundleIds.has(row.bundle_id),
+          );
+
+          return createD1Result(result as T[]);
+        }
+
+        throw new Error(`Unsupported SQL in D1 worker mock: ${sql}`);
+      },
+      async first<T = Record<string, unknown>>(colName?: string) {
+        const row = (await this.all<Record<string, unknown>>()).results[0];
+        if (!row) return null;
+        if (colName) return row[colName] as T;
+        return row as T;
+      },
+      async run<T = Record<string, unknown>>() {
+        return createD1Result<T>([]);
+      },
+      raw,
+    };
+  };
+
+  const binding: D1Database = {
+    prepare: createPreparedStatement,
+    async batch<T = unknown>(_statements: D1PreparedStatement[]) {
+      return [] as D1Result<T>[];
+    },
+    async exec(_query: string) {
+      return { count: 0, duration: 0 };
+    },
+    withSession() {
       return {
-        bind(...params: unknown[]) {
-          if (params.length > 100) {
-            throw new Error(
-              "D1_ERROR: too many SQL variables at offset 386: SQLITE_ERROR",
-            );
-          }
-
-          return {
-            async all<T>() {
-              const normalizedSql = normalizeSql(sql).toLowerCase();
-
-              if (
-                normalizedSql.startsWith(
-                  "select target_app_version from bundles",
-                )
-              ) {
-                const { filteredRows } = filterRows(sql, params);
-                const targetAppVersions = Array.from(
-                  new Set(
-                    filteredRows
-                      .map((row) => row.target_app_version)
-                      .filter(
-                        (targetAppVersion): targetAppVersion is string =>
-                          targetAppVersion !== null,
-                      ),
-                  ),
-                ).map((targetAppVersion) => ({
-                  target_app_version: targetAppVersion,
-                }));
-
-                return { results: targetAppVersions as T[] };
-              }
-
-              if (
-                normalizedSql.startsWith(
-                  "select count(*) as total from bundles",
-                )
-              ) {
-                const { filteredRows } = filterRows(sql, params);
-                return { results: [{ total: filteredRows.length }] as T[] };
-              }
-
-              if (normalizedSql.startsWith("select * from bundles")) {
-                const { filteredRows, index } = filterRows(sql, params);
-                const limit = Number(params[index] ?? filteredRows.length);
-                const offset = Number(params[index + 1] ?? 0);
-                const result = filteredRows
-                  .sort((left, right) => right.id.localeCompare(left.id))
-                  .slice(offset, offset + limit);
-
-                return { results: result as T[] };
-              }
-
-              if (
-                normalizedSql.startsWith(
-                  "select * from bundle_patches where bundle_id in",
-                )
-              ) {
-                const selectedBundleIds = new Set(
-                  normalizedSql.includes("json_each")
-                    ? (JSON.parse(String(params[0])) as unknown[]).map(String)
-                    : params.map(String),
-                );
-                const result = Array.from(patchRows.values()).filter((row) =>
-                  selectedBundleIds.has(row.bundle_id),
-                );
-
-                return { results: result as T[] };
-              }
-
-              throw new Error(`Unsupported SQL in D1 worker mock: ${sql}`);
-            },
-            async first<T>() {
-              return (await this.all<T>()).results?.[0] ?? null;
-            },
-            async run() {
-              return {};
-            },
-          };
-        },
+        prepare: binding.prepare,
+        batch: binding.batch,
+        getBookmark: () => null,
       };
     },
+    async dump() {
+      return new ArrayBuffer(0);
+    },
   };
+
+  return binding;
 }
 
 describe("cloudflare worker d1Database", () => {
@@ -222,7 +303,19 @@ describe("cloudflare worker d1Database", () => {
         },
       },
     };
-    plugin = await d1Database<RequestEnvContext<TestEnv>>()(context);
+    plugin = (await d1Database<RequestEnvContext<TestEnv>>()(
+      context,
+    )) as DatabasePluginRuntime;
+  });
+
+  it("creates a Kysely-backed SQLite runtime", () => {
+    expect("adapterName" in plugin ? plugin.adapterName : undefined).toBe(
+      "kysely",
+    );
+    expect("provider" in plugin ? plugin.provider : undefined).toBe("sqlite");
+    expect(
+      "createMigrator" in plugin ? plugin.createMigrator : undefined,
+    ).toBeTypeOf("function");
   });
 
   it("queries getUpdateInfo with 200 distinct target_app_versions without exceeding D1's 100-bind cap", async () => {

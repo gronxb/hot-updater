@@ -1,17 +1,15 @@
+// noqa: SIZE_OK - Existing bundle command module; splitting belongs to a dedicated command cleanup.
 import { setTimeout as sleep } from "timers/promises";
 
 import { loadConfig, p } from "@hot-updater/cli-tools";
-import type {
-  Bundle,
-  DatabasePluginRuntime,
-  Platform,
-} from "@hot-updater/plugin-core";
+import type { Bundle, Platform } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import {
   listDatabaseRuntimeBundles,
   readDatabaseRuntimeBundle,
   stageDatabaseRuntimeBundleDelete,
   stageDatabaseRuntimeBundleUpdate,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/server/db";
 
 import { printBanner } from "@/utils/printBanner";
 

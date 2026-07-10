@@ -1,8 +1,8 @@
+// noqa: SIZE_OK - Existing Firebase provider integration suite; splitting belongs to a dedicated test-structure cleanup.
 import type {
   Bundle,
   DatabaseBundlePatch,
   DatabaseBundleQueryOptions,
-  DatabasePluginRuntime,
   GetBundlesArgs,
   PaginatedResult,
   UpdateInfo,
@@ -11,6 +11,7 @@ import {
   splitDatabaseBundle,
   toBundleReadModel,
 } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -175,7 +176,7 @@ describe("firebaseDatabase plugin", () => {
       firebaseDatabase({
         projectId: PROJECT_ID,
         storageBucket: `${PROJECT_ID}.appspot.com`,
-      }),
+      }) as DatabasePluginRuntime,
     );
   });
 

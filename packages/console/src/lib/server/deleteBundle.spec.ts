@@ -1,4 +1,5 @@
 // @vitest-environment node
+// noqa: SIZE_OK - Existing console delete-bundle regression suite; splitting belongs to a dedicated test-structure cleanup.
 
 import fs from "node:fs/promises";
 
@@ -8,12 +9,12 @@ import type {
   CursorPage,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginRuntime,
   NodeStoragePlugin,
   NodeStorageProfile,
   RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
 import { splitDatabaseBundle } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { deleteBundle } from "./deleteBundle";

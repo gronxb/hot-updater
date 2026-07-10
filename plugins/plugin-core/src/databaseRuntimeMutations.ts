@@ -1,9 +1,10 @@
+import type { DatabasePluginCore } from "./databaseCoreTypes";
 import {
   deleteCoreBundlePatch,
   insertCoreBundlePatch,
   updateCoreBundlePatch,
 } from "./databaseRuntimePatches";
-import type { DatabaseMutation, DatabasePluginCore } from "./types";
+import type { DatabaseMutation } from "./types";
 
 export const assertSupportedBatch = (
   core: DatabasePluginCore,

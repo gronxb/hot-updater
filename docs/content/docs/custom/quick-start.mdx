@@ -32,16 +32,16 @@ export const db = new Kysely({
 
 ## Hot Updater Configuration
 
-Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](./overview#storage-plugins)).
+Create the Hot Updater instance with your database middle layer and storage plugin (see [Storage Plugins](./overview#storage-plugins)).
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { kyselyDatabase } from "@hot-updater/server/adapters/kysely";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./kysely";
 
 export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({ db, provider: "sqlite" }),
+  database: kyselyDatabase({ db, provider: "sqlite" }),
   storages: [
     s3Storage({
       region: "auto",
@@ -187,5 +187,5 @@ export default HotUpdater.wrap({
 ## Next Steps
 
 - Configure your CLI to use this server (see [Overview](./overview#cli-configuration))
-- Explore other [Database Adapters](./database/drizzle) (Drizzle, Prisma, MongoDB, S3)
+- Explore [Database Middle Layers](./database/drizzle) (Drizzle, Prisma, Kysely) and native MongoDB or S3 options
 - Try different [Server Frameworks](./frameworks/hono) (Express, Elysia)

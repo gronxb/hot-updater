@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing Supabase IAC module; splitting belongs to a dedicated provider cleanup.
 import fs from "fs/promises";
 import { createRequire } from "node:module";
 import path from "path";
@@ -43,8 +44,7 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const databaseConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
     configString: `supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    connectionString: process.env.HOT_UPDATER_SUPABASE_DATABASE_URL!,
   })`,
   };
 
@@ -97,7 +97,8 @@ const assertSkippedConfigDoesNotUseLegacySupabaseKey = async (
   );
   p.log.message(
     "Update it to use 'supabaseServiceRoleKey' with " +
-      "'HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY', then run init again.",
+      "'HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY' for storage and " +
+      "'HOT_UPDATER_SUPABASE_DATABASE_URL' for database, then run init again.",
   );
   process.exit(1);
 };
@@ -114,9 +115,22 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
 
+const createSupabaseDatabaseUrl = ({
+  dbPassword,
+  projectId,
+}: {
+  readonly dbPassword?: string;
+  readonly projectId: string;
+}) => {
+  const passwordSegment = dbPassword
+    ? `:${encodeURIComponent(dbPassword)}`
+    : "";
+  return `postgresql://postgres${passwordSegment}@db.${projectId}.supabase.co:5432/postgres?sslmode=require`;
+};
+
 const resolvePackageExportPath = async (
   packageName: string,
-  exportName: "." | "./runtime" | "./edge",
+  exportName: string,
 ) => {
   const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageJson = JSON.parse(
@@ -238,6 +252,18 @@ const collectBareImportSpecifiers = async (entryPath: string) => {
 const toVendorDirName = (packageName: string) =>
   packageName.replace(/^@/, "").replaceAll("/", "-");
 
+const resolveWorkspacePackageSpecifier = (specifier: string) => {
+  const [scope, name, ...subpath] = specifier.split("/");
+  if (!scope || !name) {
+    throw new Error(`Invalid workspace package specifier: ${specifier}`);
+  }
+
+  return {
+    exportName: subpath.length > 0 ? `./${subpath.join("/")}` : ".",
+    packageName: `${scope}/${name}`,
+  };
+};
+
 const prepareVendoredPackageImport = async ({
   targetDir,
   packageName,
@@ -245,7 +271,7 @@ const prepareVendoredPackageImport = async ({
 }: {
   targetDir: string;
   packageName: string;
-  exportName: "." | "./runtime" | "./edge";
+  exportName: string;
 }) => {
   const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageRoot = path.dirname(packageJsonPath);
@@ -308,7 +334,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
   }: {
     importSpecifier: string;
     packageName: string;
-    exportName: "." | "./runtime" | "./edge";
+    exportName: string;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
     if (visitedWorkspacePackages.has(visitKey)) {
@@ -334,10 +360,12 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       }
 
       if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
+        const workspaceSpecifier =
+          resolveWorkspacePackageSpecifier(nestedSpecifier);
         await addWorkspacePackage({
           importSpecifier: nestedSpecifier,
-          packageName: nestedSpecifier,
-          exportName: ".",
+          packageName: workspaceSpecifier.packageName,
+          exportName: workspaceSpecifier.exportName,
         });
         continue;
       }
@@ -678,6 +706,10 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   await assertSkippedConfigDoesNotUseLegacySupabaseKey(configWriteResult);
 
   await makeEnv({
+    HOT_UPDATER_SUPABASE_DATABASE_URL: createSupabaseDatabaseUrl({
+      dbPassword,
+      projectId: project.id,
+    }),
     HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: serviceRoleApiKey.api_key,
     HOT_UPDATER_SUPABASE_BUCKET_NAME: bucket.name,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,

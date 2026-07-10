@@ -1,9 +1,10 @@
 import { getBundlePatches } from "@hot-updater/core";
-import type { Bundle, DatabasePluginRuntime } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
+import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import {
   listDatabaseRuntimeBundles,
   readDatabaseRuntimeBundle,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/server/db";
 
 const CHILDREN_QUERY_LIMIT = 100;
 

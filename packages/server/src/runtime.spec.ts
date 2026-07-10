@@ -1,25 +1,25 @@
+// noqa: SIZE_OK - Existing runtime regression suite; splitting belongs to a dedicated test-structure cleanup.
 import { readFile } from "fs/promises";
 
 import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import type {
-  BundleListQuery,
-  BundlePatchListQuery,
   DatabaseBundlePatch,
   DatabaseBundleRecord,
-  DatabasePluginCore,
-  DatabasePluginRuntime,
   RequestEnvContext,
   RuntimeStoragePlugin,
   RuntimeStorageProfile,
   UpdateInfoRepository,
 } from "@hot-updater/plugin-core";
 import {
-  createDatabasePlugin,
-  markDatabaseRuntimeOpener,
   toDatabaseBundlePatches,
   toDatabaseBundleRecord,
 } from "@hot-updater/plugin-core";
+import type {
+  DatabasePluginDeclaration,
+  DatabasePluginRuntime,
+} from "@hot-updater/plugin-core/internal";
+import { createDatabasePlugin } from "@hot-updater/plugin-core/internal";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
@@ -47,6 +47,10 @@ type TestEnv = {
 
 type TestContext = RequestEnvContext<TestEnv>;
 
+const createRuntimeOpener = <TContext>(
+  opener: (context?: TContext) => DatabasePluginRuntime,
+) => opener;
+
 const createRuntimeStorage = (
   getDownloadUrl: RuntimeStorageProfile<TestContext>["getDownloadUrl"],
   readText: RuntimeStorageProfile<TestContext>["readText"] = async () => null,
@@ -60,84 +64,6 @@ const createRuntimeStorage = (
     },
   },
 });
-
-const matchesBundleQuery = (
-  bundle: DatabaseBundleRecord,
-  query: BundleListQuery,
-): boolean => {
-  const where = query.where;
-  if (!where) return true;
-  if (where.channel !== undefined && bundle.channel !== where.channel) {
-    return false;
-  }
-  if (where.platform !== undefined && bundle.platform !== where.platform) {
-    return false;
-  }
-  if (where.enabled !== undefined && bundle.enabled !== where.enabled) {
-    return false;
-  }
-  if (
-    where.targetAppVersion !== undefined &&
-    bundle.targetAppVersion !== where.targetAppVersion
-  ) {
-    return false;
-  }
-  if (
-    where.targetAppVersionNotNull === true &&
-    bundle.targetAppVersion === null
-  ) {
-    return false;
-  }
-  if (
-    where.fingerprintHash !== undefined &&
-    bundle.fingerprintHash !== where.fingerprintHash
-  ) {
-    return false;
-  }
-  const id = where.id;
-  if (!id) return true;
-  if (id.eq !== undefined && bundle.id !== id.eq) return false;
-  if (id.gt !== undefined && bundle.id.localeCompare(id.gt) <= 0) {
-    return false;
-  }
-  if (id.gte !== undefined && bundle.id.localeCompare(id.gte) < 0) {
-    return false;
-  }
-  if (id.lt !== undefined && bundle.id.localeCompare(id.lt) >= 0) {
-    return false;
-  }
-  if (id.lte !== undefined && bundle.id.localeCompare(id.lte) > 0) {
-    return false;
-  }
-  return !(id.in !== undefined && !id.in.includes(bundle.id));
-};
-
-const matchesPatchQuery = (
-  patch: DatabaseBundlePatch,
-  query: BundlePatchListQuery,
-): boolean => {
-  const where = query.where;
-  if (!where) return true;
-  if (where.bundleId !== undefined && patch.bundleId !== where.bundleId) {
-    return false;
-  }
-  if (
-    where.baseBundleId !== undefined &&
-    patch.baseBundleId !== where.baseBundleId
-  ) {
-    return false;
-  }
-  if (
-    where.bundleIdIn !== undefined &&
-    !where.bundleIdIn.includes(patch.bundleId)
-  ) {
-    return false;
-  }
-  return !(
-    where.baseBundleIdIn !== undefined &&
-    !where.baseBundleIdIn.includes(patch.baseBundleId)
-  );
-};
 
 const seedBundle = (
   bundles: Map<string, DatabaseBundleRecord>,
@@ -153,7 +79,10 @@ const seedBundle = (
 type CreateTestDatabaseOptions = {
   readonly bundles?: readonly Bundle[];
   readonly name?: string;
-  readonly onBeforeInsert?: DatabasePluginCore["bundles"]["insert"];
+  readonly onBeforeInsert?: Extract<
+    DatabasePluginDeclaration,
+    { readonly bundles: unknown }
+  >["bundles"]["insert"];
   readonly updateInfo?: UpdateInfoRepository["get"];
 };
 
@@ -172,26 +101,10 @@ const createTestDatabase = (
 
   const database = createDatabasePlugin({
     name: options.name ?? "testDatabase",
-    connect: (): DatabasePluginCore => ({
+    connect: (): DatabasePluginDeclaration => ({
       bundles: {
         getById: async ({ bundleId }) => bundles.get(bundleId) ?? null,
-        findMany: async ({ where, orderBy, window }) => {
-          const query = { where, orderBy, limit: window.limit };
-          const direction = query.orderBy?.direction ?? "desc";
-          return Array.from(bundles.values())
-            .filter((nextBundle) => matchesBundleQuery(nextBundle, query))
-            .sort((left, right) => {
-              const result = left.id.localeCompare(right.id);
-              return direction === "asc" ? result : -result;
-            })
-            .slice(window.offset, window.offset + window.limit);
-        },
-        count: async ({ where }) => {
-          const query = { where, limit: Number.MAX_SAFE_INTEGER };
-          return Array.from(bundles.values()).filter((nextBundle) =>
-            matchesBundleQuery(nextBundle, query),
-          ).length;
-        },
+        findRecords: async () => Array.from(bundles.values()),
         insert: async (params) => {
           await options.onBeforeInsert?.(params);
           const nextBundle = params.bundle;
@@ -207,39 +120,25 @@ const createTestDatabase = (
           bundles.delete(bundleId);
         },
       },
-      bundlePatches: {
-        findMany: async ({ where, orderBy, window }) => {
-          const query = { where, orderBy, limit: window.limit };
-          return Array.from(patches.values())
-            .filter((patch) => matchesPatchQuery(patch, query))
-            .sort(
-              (left, right) =>
-                left.orderIndex - right.orderIndex ||
-                left.baseBundleId.localeCompare(right.baseBundleId),
-            )
-            .slice(window.offset, window.offset + window.limit);
-        },
-        count: async ({ where }) => {
-          const query = { where, limit: Number.MAX_SAFE_INTEGER };
-          return Array.from(patches.values()).filter((patch) =>
-            matchesPatchQuery(patch, query),
-          ).length;
-        },
-        getById: async ({ patchId }) => patches.get(patchId) ?? null,
-        insert: async ({ patch }) => {
-          patches.set(patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`, {
-            ...patch,
-            id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
-          });
-        },
-        update: async ({ patchId, patch }) => {
-          const current = patches.get(patchId);
-          if (current) {
-            patches.set(patchId, { ...current, ...patch, id: patchId });
+      patches: {
+        storage: "embedded",
+        findPatches: async () => Array.from(patches.values()),
+        getBundlePatches: async ({ bundleId }) =>
+          Array.from(patches.values()).filter(
+            (patch) => patch.bundleId === bundleId,
+          ),
+        replaceBundlePatches: async ({ bundleId, patches: nextPatches }) => {
+          for (const [patchId, patch] of patches) {
+            if (patch.bundleId === bundleId) {
+              patches.delete(patchId);
+            }
           }
-        },
-        delete: async ({ patchId }) => {
-          patches.delete(patchId);
+          for (const patch of nextPatches) {
+            patches.set(patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`, {
+              ...patch,
+              id: patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`,
+            });
+          }
         },
       },
       ...(options.updateInfo
@@ -250,7 +149,7 @@ const createTestDatabase = (
           }
         : {}),
     }),
-  })({});
+  })({}) as DatabasePluginRuntime;
 
   return { bundles, database, patches };
 };
@@ -363,9 +262,7 @@ describe("runtime createHotUpdater", () => {
     expect(() =>
       createHotUpdater({
         database,
-        storages: [
-          nodeOnlyStorage as unknown as RuntimeStoragePlugin<TestContext>,
-        ],
+        storages: [nodeOnlyStorage],
       }),
     ).toThrow(
       'nodeOnlyStorage does not implement the runtime storage profile for protocol "s3".',
@@ -413,7 +310,7 @@ describe("runtime createHotUpdater", () => {
       };
     });
 
-    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+    const openRuntime = createRuntimeOpener<TestContext>(
       vi.fn(
         () =>
           createTestDatabase({
@@ -491,7 +388,7 @@ describe("runtime createHotUpdater", () => {
       };
     });
 
-    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+    const openRuntime = createRuntimeOpener<TestContext>(
       vi.fn(() => createTestDatabase({ bundles: [bundle] }).database),
     );
     const storage = createRuntimeStorage(getDownloadUrl);
@@ -715,7 +612,7 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("does not inject the request into context unless explicitly provided", async () => {
-    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+    const openRuntime = createRuntimeOpener<TestContext>(
       vi.fn(() => createTestDatabase({ bundles: [bundle] }).database),
     );
     const storage = createRuntimeStorage(async () => {
@@ -753,7 +650,7 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("opens one runtime per contextless handler request", async () => {
-    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+    const openRuntime = createRuntimeOpener<TestContext>(
       vi.fn(
         () =>
           createTestDatabase({
@@ -802,7 +699,7 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("supports stripped base-path requests and ignores extra framework args", async () => {
-    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+    const openRuntime = createRuntimeOpener<TestContext>(
       vi.fn(() => createTestDatabase({ bundles: [bundle] }).database),
     );
     const storage = createRuntimeStorage(async () => {
@@ -886,7 +783,7 @@ describe("runtime createHotUpdater", () => {
   });
 
   it("keeps optional maintenance capabilities lazy", () => {
-    const openRuntime = markDatabaseRuntimeOpener<TestContext>(
+    const openRuntime = createRuntimeOpener<TestContext>(
       vi.fn(
         () =>
           createTestDatabase({

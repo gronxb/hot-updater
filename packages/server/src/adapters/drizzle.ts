@@ -1,18 +1,16 @@
+// noqa: SIZE_OK - Existing Drizzle adapter module; splitting belongs to a dedicated adapter cleanup.
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
-  BundlePatchListQuery,
-  DatabaseBundlePatch,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
-  DatabasePluginCore,
-  DatabasePluginRuntime,
+  DatabasePluginDeclaration,
 } from "@hot-updater/plugin-core";
 import {
-  createDatabasePlugin,
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core/internal";
 import {
   and,
   asc,
@@ -29,16 +27,14 @@ import {
 import type { SQLWrapper } from "drizzle-orm";
 
 import {
-  bundleEventMatchesWhere,
   bundleRecordToRow,
   type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
   databaseBundleEventToRow,
-  databaseBundlePatchToRow,
-  databaseBundlePatchUpdateToRow,
+  parseBundlePatchRow,
+  parseBundlePatchRows,
   rowToDatabaseBundleEvent,
-  rowToDatabaseBundlePatch,
   rowToDatabaseBundleRecord,
   rowToBundle,
 } from "../db/bundleRows";
@@ -48,7 +44,7 @@ import {
 } from "../db/schema/registry";
 import { generateDrizzleSchema } from "../db/schemaGenerators";
 import type {
-  DatabaseAdapterCapabilities,
+  DatabaseAdapterRuntime,
   ORMProvider,
   ORMSQLProvider,
   SchemaGenerator,
@@ -59,32 +55,6 @@ import {
   type DrizzleTable,
 } from "./drizzleLazyDB";
 import { createCallbackDatabaseTransaction } from "./transaction";
-
-const getPatchId = (patch: DatabaseBundlePatch): string =>
-  patch.id ?? `${patch.bundleId}:${patch.baseBundleId}`;
-
-const getPatchStringField = (
-  patch: DatabaseBundlePatch,
-  field: Exclude<
-    NonNullable<BundlePatchListQuery["orderBy"]>["field"],
-    "orderIndex"
-  >,
-): string => (field === "id" ? getPatchId(patch) : patch[field]);
-
-const patchMatchesWhere = (
-  patch: DatabaseBundlePatch,
-  where: BundlePatchListQuery["where"],
-) =>
-  !where ||
-  ((where.id === undefined || getPatchId(patch) === where.id) &&
-    (where.bundleId === undefined || patch.bundleId === where.bundleId) &&
-    (where.baseBundleId === undefined ||
-      patch.baseBundleId === where.baseBundleId) &&
-    (where.idIn === undefined || where.idIn.includes(getPatchId(patch))) &&
-    (where.bundleIdIn === undefined ||
-      where.bundleIdIn.includes(patch.bundleId)) &&
-    (where.baseBundleIdIn === undefined ||
-      where.baseBundleIdIn.includes(patch.baseBundleId)));
 
 export interface DrizzleConfig {
   readonly db: unknown | (() => unknown | Promise<unknown>);
@@ -145,10 +115,12 @@ const buildWhere = (
 
 const createDrizzlePlugin = createDatabasePlugin({
   name: "drizzle",
-  connect: (config: DrizzleConfig): DatabasePluginCore => {
+  connect: (config: DrizzleConfig): DatabasePluginDeclaration => {
     const db = createLazyDB(config);
 
-    const createCore = (activeDB: DrizzleDB): DatabasePluginCore => {
+    const createConnection = (
+      activeDB: DrizzleDB,
+    ): DatabasePluginDeclaration => {
       const bundleTable = () => getTable(activeDB, "bundles");
       const patchTable = () => getTable(activeDB, "bundle_patches");
       const eventTable = () => getTable(activeDB, "bundle_events");
@@ -176,7 +148,7 @@ const createDrizzlePlugin = createDatabasePlugin({
           orderBy: [asc(column(patchTable(), "order_index"))],
         });
         for (const row of rows ?? []) {
-          const patch = row as BundlePatchRow;
+          const patch = parseBundlePatchRow(row);
           const current = patchMap.get(patch.bundle_id) ?? [];
           current.push(patch);
           patchMap.set(patch.bundle_id, current);
@@ -202,27 +174,9 @@ const createDrizzlePlugin = createDatabasePlugin({
             });
             return row ? rowToDatabaseBundleRecord(row as BundleRow) : null;
           },
-          async findMany({ where, orderBy, window }) {
-            const bundleOrder = orderBy ?? {
-              field: "id",
-              direction: "desc",
-            };
-            const queryWhere = buildWhere(bundleTable(), where);
-            const rows = await activeDB.query["bundles"]?.findMany({
-              where: queryWhere,
-              orderBy: [
-                bundleOrder.direction === "asc"
-                  ? asc(column(bundleTable(), "id"))
-                  : desc(column(bundleTable(), "id")),
-              ],
-              offset: window.offset,
-              limit: window.limit,
-            });
+          async findRecords() {
+            const rows = await activeDB.query["bundles"]?.findMany();
             return ((rows ?? []) as BundleRow[]).map(rowToDatabaseBundleRecord);
-          },
-          async count({ where }) {
-            const queryWhere = buildWhere(bundleTable(), where);
-            return activeDB.$count(bundleTable(), queryWhere);
           },
           async insert({ bundle }) {
             await upsertBundleRecord(bundle);
@@ -244,80 +198,43 @@ const createDrizzlePlugin = createDatabasePlugin({
               .where(eq(column(bundleTable(), "id"), bundleId));
           },
         },
-        bundlePatches: {
-          async findMany({ where, orderBy, window }) {
+        patches: {
+          storage: "rows",
+          async findRows() {
             const rows = await activeDB.query["bundle_patches"]?.findMany({
               orderBy: [asc(column(patchTable(), "order_index"))],
             });
-            const patchRows = ((rows ?? []) as BundlePatchRow[])
-              .map(rowToDatabaseBundlePatch)
-              .filter((patch) => patchMatchesWhere(patch, where))
-              .sort((left, right) => {
-                const direction = orderBy?.direction ?? "asc";
-                const field = orderBy?.field ?? "orderIndex";
-                const result =
-                  field === "orderIndex"
-                    ? left.orderIndex - right.orderIndex ||
-                      getPatchId(left).localeCompare(getPatchId(right))
-                    : getPatchStringField(left, field).localeCompare(
-                        getPatchStringField(right, field),
-                      );
-                return direction === "asc" ? result : -result;
-              });
-            return patchRows.slice(window.offset, window.offset + window.limit);
+            return parseBundlePatchRows(rows ?? []);
           },
-          async count({ where }) {
-            const rows = await activeDB.query["bundle_patches"]?.findMany({
-              orderBy: [asc(column(patchTable(), "order_index"))],
-            });
-            return ((rows ?? []) as BundlePatchRow[])
-              .map(rowToDatabaseBundlePatch)
-              .filter((patch) => patchMatchesWhere(patch, where)).length;
-          },
-          async getById({ patchId }) {
+          async getRowById({ patchId }) {
             const row = await activeDB.query["bundle_patches"]?.findFirst({
               where: eq(column(patchTable(), "id"), patchId),
             });
-            return row ? rowToDatabaseBundlePatch(row as BundlePatchRow) : null;
+            return row ? parseBundlePatchRow(row) : null;
           },
-          async insert({ patch }) {
-            const inserted = activeDB
-              .insert(patchTable())
-              .values(databaseBundlePatchToRow(patch));
+          async insertRow({ row }) {
+            const inserted = activeDB.insert(patchTable()).values(row);
             if (inserted.execute) await inserted.execute();
             else await inserted;
           },
-          async update({ patchId, patch }) {
+          async updateRow({ patchId, row }) {
             await activeDB
               .update(patchTable())
-              .set(databaseBundlePatchUpdateToRow(patch))
+              .set(row)
               .where(eq(column(patchTable(), "id"), patchId));
           },
-          async delete({ patchId }) {
+          async deleteRow({ patchId }) {
             await activeDB
               .delete(patchTable())
               .where(eq(column(patchTable(), "id"), patchId));
           },
         },
         bundleEvents: {
-          async findMany({ where, orderBy, window }) {
-            const rows = await activeDB.query["bundle_events"]?.findMany({
-              orderBy: [
-                orderBy?.direction === "asc"
-                  ? asc(column(eventTable(), "id"))
-                  : desc(column(eventTable(), "id")),
-              ],
-            });
-            return ((rows ?? []) as BundleEventRow[])
-              .map(rowToDatabaseBundleEvent)
-              .filter((event) => bundleEventMatchesWhere(event, where))
-              .slice(window.offset, window.offset + window.limit);
-          },
-          async count({ where }) {
+          async findEvents() {
             const rows = await activeDB.query["bundle_events"]?.findMany();
-            return ((rows ?? []) as BundleEventRow[])
-              .map(rowToDatabaseBundleEvent)
-              .filter((event) => bundleEventMatchesWhere(event, where)).length;
+            return ((rows ?? []) as BundleEventRow[]).map(
+              rowToDatabaseBundleEvent,
+            );
           },
           async append({ event }) {
             const inserted = activeDB
@@ -399,26 +316,26 @@ const createDrizzlePlugin = createDatabasePlugin({
       };
     };
 
-    const core = createCore(db);
+    const connection = createConnection(db);
     const runTransaction = db.transaction;
     if (typeof runTransaction !== "function") {
-      return core;
+      return connection;
     }
 
     return {
-      ...core,
+      ...connection,
       beginTransaction: () =>
         createCallbackDatabaseTransaction<DrizzleDB>({
-          createCore,
+          createConnection,
           run: (operation) => runTransaction.call(db, operation),
         }),
     };
   },
 });
 
-export const drizzleAdapter = (
+export const createDrizzleDatabase = (
   config: DrizzleConfig,
-): DatabaseAdapterCapabilities & DatabasePluginRuntime => {
+): DatabaseAdapterRuntime => {
   return Object.assign(createDrizzlePlugin(config), {
     adapterName: "drizzle",
     provider: config.provider,
@@ -433,3 +350,6 @@ export const drizzleAdapter = (
     }),
   });
 };
+
+export const drizzleDatabase = createDrizzleDatabase;
+export const drizzleAdapter = drizzleDatabase;

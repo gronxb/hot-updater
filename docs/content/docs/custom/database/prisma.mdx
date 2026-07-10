@@ -1,6 +1,6 @@
 ---
 title: "Prisma"
-description: Build a self-hosted Hot Updater server with Prisma ORM.
+description: Use Prisma ORM as an official Hot Updater database middle layer.
 icon: prisma
 version: "v0.22.0"
 ---
@@ -20,6 +20,15 @@ npx prisma init
 
 For other databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
 
+Hot Updater treats Prisma as an official database middle layer. The
+`provider` option should match your Prisma datasource provider.
+
+| Database underneath | Prisma datasource provider | Adapter provider |
+|---------------------|----------------------------|------------------|
+| SQLite | `"sqlite"` | `"sqlite"` |
+| PostgreSQL | `"postgresql"` | `"postgresql"` |
+| MySQL | `"mysql"` | `"mysql"` |
+
 ## Setup
 
 Create a database connection file:
@@ -36,12 +45,12 @@ Create the Hot Updater instance:
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
+import { prismaDatabase } from "@hot-updater/server/adapters/prisma";
 import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";
 
 export const hotUpdater = createHotUpdater({
-  database: prismaAdapter({ prisma, provider: "sqlite" }),
+  database: prismaDatabase({ prisma, provider: "sqlite" }),
   storages: [
     s3Storage({
       region: "auto",
@@ -83,7 +92,7 @@ datasource db {
 }
 
 model Bundle {
-  id String @db.Uuid @id
+  id String @id
   platform String
   should_force_update Boolean
   enabled Boolean

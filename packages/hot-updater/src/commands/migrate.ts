@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing migrate command flow; splitting belongs to a dedicated command cleanup.
 import { p } from "@hot-updater/cli-tools";
 import { createMigrator as createHotUpdaterMigrator } from "@hot-updater/server/db";
 
@@ -181,6 +182,8 @@ export function formatOperations(operations: MigrationOperation[]): string[] {
 
 export async function migrate(options: MigrateOptions) {
   const { configPath, skipConfirm = false } = options;
+  let dispose: (() => Promise<void>) | undefined;
+  let failed = false;
 
   try {
     // Start spinner early to show progress during config loading
@@ -188,7 +191,9 @@ export async function migrate(options: MigrateOptions) {
     s.start("Loading configuration and analyzing schema");
 
     // Load hotUpdater instance from config file
-    const { hotUpdater, adapterName } = await loadHotUpdater(configPath);
+    const loadedConfig = await loadHotUpdater(configPath);
+    const { hotUpdater, adapterName } = loadedConfig;
+    dispose = loadedConfig.dispose;
 
     // Execute migration based on adapter type
     switch (adapterName) {
@@ -213,6 +218,7 @@ export async function migrate(options: MigrateOptions) {
         break;
     }
   } catch (error) {
+    failed = true;
     p.log.error("Failed to run migration");
     if (error instanceof Error) {
       p.log.error(error.message);
@@ -220,6 +226,11 @@ export async function migrate(options: MigrateOptions) {
         console.error(error.stack);
       }
     }
+  } finally {
+    await dispose?.();
+  }
+
+  if (failed) {
     process.exit(1);
   }
 }
@@ -259,7 +270,7 @@ async function migrateWithMigrator(
 
   if (!operations || operations.length === 0) {
     p.log.success("Schema is up to date.");
-    process.exit(0);
+    return;
   }
 
   // Format operations into human-readable changes
@@ -268,7 +279,7 @@ async function migrateWithMigrator(
   // Double-check: if operations exist but produce no changes, schema is up to date
   if (changes.length === 0) {
     p.log.success("Schema is up to date.");
-    process.exit(0);
+    return;
   }
 
   p.log.message(
@@ -287,7 +298,7 @@ async function migrateWithMigrator(
 
     if (p.isCancel(shouldContinue) || !shouldContinue) {
       p.cancel("Migration cancelled");
-      process.exit(0);
+      return;
     }
   }
 
@@ -296,9 +307,4 @@ async function migrateWithMigrator(
 
   const newVersion = await migrator.getVersion();
   p.log.success(ui.line(["Migrated to", ui.version(newVersion)]));
-
-  // Exit process to ensure all connections are closed
-  // This is especially important for MongoDB and other databases
-  // that may keep connections open
-  process.exit(0);
 }

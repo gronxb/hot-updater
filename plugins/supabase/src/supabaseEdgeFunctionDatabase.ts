@@ -1,21 +1,8 @@
-import type { DatabasePluginHooks } from "@hot-updater/plugin-core";
+import {
+  supabaseDatabase,
+  type SupabaseDatabaseConfig,
+} from "./supabaseDatabase";
 
-import { supabaseDatabase } from "./supabaseDatabase";
+export type SupabaseEdgeFunctionDatabaseConfig = SupabaseDatabaseConfig;
 
-export interface SupabaseEdgeFunctionDatabaseConfig {
-  supabaseUrl: string;
-  supabaseServiceRoleKey: string;
-}
-
-export const supabaseEdgeFunctionDatabase = (
-  config: SupabaseEdgeFunctionDatabaseConfig,
-  hooks?: DatabasePluginHooks,
-) => {
-  return supabaseDatabase(
-    {
-      supabaseUrl: config.supabaseUrl,
-      supabaseServiceRoleKey: config.supabaseServiceRoleKey,
-    },
-    hooks,
-  );
-};
+export const supabaseEdgeFunctionDatabase = supabaseDatabase;

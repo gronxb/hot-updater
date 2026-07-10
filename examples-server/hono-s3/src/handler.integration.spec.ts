@@ -35,6 +35,26 @@ const REGION = "us-east-1";
 const ACCESS_KEY_ID = "minioadmin";
 const SECRET_ACCESS_KEY = "minioadmin";
 const METADATA_BUCKET = "hot-updater-metadata";
+const databaseRuntimeFactorySymbol = Symbol.for(
+  "@hot-updater/plugin-core/database-runtime-factory",
+);
+
+type StandaloneRepositoryRuntime = {
+  readonly bundles: {
+    readonly insert: (params: { readonly bundle: Bundle }) => Promise<void>;
+    readonly update: (params: {
+      readonly bundleId: string;
+      readonly patch: Partial<Bundle>;
+    }) => Promise<void>;
+  };
+  readonly commit: () => Promise<void>;
+};
+
+type RuntimeFactoryHandle = {
+  readonly [key: symbol]:
+    | (() => StandaloneRepositoryRuntime | Promise<StandaloneRepositoryRuntime>)
+    | undefined;
+};
 
 const sleep = async (ms: number) => {
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -160,12 +180,17 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
   });
 
   it("updates targetAppVersion through standaloneRepository", async () => {
-    const repo = standaloneRepository({
+    const repoHandle = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
       commonHeaders: {
         Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
       },
-    });
+    }) as RuntimeFactoryHandle;
+    const openRepoRuntime = repoHandle[databaseRuntimeFactorySymbol];
+    if (!openRepoRuntime) {
+      throw new Error("standaloneRepository runtime factory not found");
+    }
+    const repo = await openRepoRuntime();
 
     const bundleId = "hono-s3-update-target-app-version";
 
