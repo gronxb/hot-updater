@@ -1,6 +1,8 @@
 package com.hotupdater
 
 import android.content.ContextWrapper
+import android.content.pm.ApplicationInfo
+import android.content.res.Resources
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -41,6 +43,34 @@ class BundleFileStorageServiceTest {
         writeManifest(bundleDir, listOf("dist/foo.android.bundle"))
 
         assertResolvedBundlePath(service, bundleDir, expectedBundleFile)
+    }
+
+    @Test
+    fun `resolveBundleFile rejects corrupted manifest bundle`() {
+        val rootDir = temporaryFolder.newFolder("corrupted-manifest-bundle")
+        val service = createService(rootDir)
+        val bundleDir = createBundleDir(rootDir, "bundle-corrupted")
+        val bundleFile = writeFile(bundleDir, "index.android.bundle")
+        writeManifest(bundleDir, listOf("index.android.bundle"))
+
+        bundleFile.writeText("corrupted-content")
+
+        assertNull(invokeResolveBundleFile(service, bundleDir))
+    }
+
+    @Test
+    fun `getCachedBundleURL clears corrupted manifest bundle`() {
+        val rootDir = temporaryFolder.newFolder("corrupted-cached-bundle")
+        val preferences = InMemoryPreferencesService()
+        val service = createService(rootDir, preferences)
+        val bundleDir = createBundleDir(rootDir, "bundle-corrupted")
+        val bundleFile = writeFile(bundleDir, "index.android.bundle")
+        writeManifest(bundleDir, listOf("index.android.bundle"))
+        preferences.setItem("HotUpdaterBundleURL", bundleFile.absolutePath)
+        bundleFile.writeText("corrupted-content")
+
+        assertNull(service.getCachedBundleURL())
+        assertNull(preferences.getItem("HotUpdaterBundleURL"))
     }
 
     @Test
@@ -150,6 +180,38 @@ class BundleFileStorageServiceTest {
         assertNull(metadata?.stableBundleId)
         assertFalse(metadata?.verificationPending ?: true)
         assertEquals(stableBundleFile.canonicalFile.absolutePath, preferences.getItem("HotUpdaterBundleURL"))
+    }
+
+    @Test
+    fun `prepareLaunch rolls back corrupted staging and selects stable bundle`() {
+        val rootDir = temporaryFolder.newFolder("rollback-corrupted-staging")
+        val service = createService(rootDir)
+
+        val stagingDir = createBundleDir(rootDir, "staging-bundle")
+        val stagingBundleFile = writeFile(stagingDir, "index.android.bundle")
+        writeManifest(stagingDir, listOf("index.android.bundle"))
+        stagingBundleFile.writeText("corrupted-content")
+
+        val stableDir = createBundleDir(rootDir, "stable-bundle")
+        val stableBundleFile = writeFile(stableDir, "index.android.bundle")
+        writeManifest(stableDir, listOf("index.android.bundle"))
+
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = stableDir.name,
+                stagingBundleId = stagingDir.name,
+                verificationPending = true,
+            ),
+        )
+
+        val selection = service.prepareLaunch(null)
+
+        assertEquals(stableBundleFile.canonicalFile.absolutePath, selection.bundleUrl)
+        assertEquals(stableDir.name, selection.launchedBundleId)
+        assertFalse(selection.shouldRollbackOnCrash)
+        assertFalse(stagingDir.exists())
     }
 
     @Test
@@ -295,13 +357,24 @@ class BundleFileStorageServiceTest {
         preferences: InMemoryPreferencesService = InMemoryPreferencesService(),
     ): BundleFileStorageService =
         BundleFileStorageService(
-            ContextWrapper(null),
+            TestContext(),
             TestFileSystemService(rootDir),
             UnusedDownloadService,
             DecompressService(),
             preferences,
             TEST_ISOLATION_KEY,
         )
+
+    private class TestContext : ContextWrapper(null) {
+        @Suppress("DEPRECATION")
+        private val testResources = Resources(null, null, null)
+
+        override fun getResources(): Resources = testResources
+
+        override fun getPackageName(): String = "com.hotupdater.test"
+
+        override fun getApplicationInfo(): ApplicationInfo = ApplicationInfo()
+    }
 
     private fun createBundleDir(
         rootDir: File,
@@ -315,7 +388,14 @@ class BundleFileStorageServiceTest {
         val assets =
             JSONObject().apply {
                 assetPaths.forEach { assetPath ->
-                    put(assetPath, JSONObject().put("fileHash", "$assetPath-hash"))
+                    val assetFile = File(bundleDir, assetPath)
+                    val fileHash =
+                        if (assetFile.isFile) {
+                            HashUtils.calculateSHA256(assetFile)
+                        } else {
+                            "$assetPath-hash"
+                        }
+                    put(assetPath, JSONObject().put("fileHash", fileHash))
                 }
             }
 

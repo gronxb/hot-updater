@@ -540,22 +540,29 @@ class BundleFileStorageService(
 
     private fun extractBundleIdFromCurrentURL(): String? {
         val currentUrl = preferences.getItem("HotUpdaterBundleURL") ?: return null
+        return extractBundleIdFromURL(currentUrl)
+    }
+
+    private fun extractBundleIdFromURL(url: String): String? {
         // "bundle-store/abc123/index.android.bundle" -> "abc123"
         val regex = Regex("bundle-store/([^/]+)/")
-        return regex.find(currentUrl)?.groupValues?.get(1)
+        return regex.find(url)?.groupValues?.get(1)
     }
 
     private fun resolveBundleFile(bundleDir: File): File? {
-        val manifest = readManifestFromBundleDir(bundleDir)
+        val manifestFile = File(bundleDir, "manifest.json")
+        val manifest = parseBundleManifestFromFile(manifestFile)
+        if (manifestFile.isFile && manifest == null) {
+            Log.w(TAG, "Rejecting bundle with invalid manifest: ${manifestFile.absolutePath}")
+            return null
+        }
+
         val manifestBundlePath =
-            (manifest?.get("assets") as? Map<*, *>)
+            manifest
+                ?.assets
                 ?.keys
-                ?.mapNotNull { key ->
-                    (key as? String)
-                        ?.trim()
-                        ?.takeIf { it.isNotEmpty() }
-                        ?.takeIf { File(it).name.endsWith(".android.bundle") }
-                }?.singleOrNull()
+                ?.filter { File(it).name.endsWith(".android.bundle") }
+                ?.singleOrNull()
 
         if (manifestBundlePath != null) {
             try {
@@ -568,6 +575,10 @@ class BundleFileStorageService(
                         canonicalBundleFilePath.startsWith("$canonicalBundleDirPath${File.separator}")
 
                 if (isWithinBundleDir && canonicalBundleFile.isFile) {
+                    val expectedAsset = manifest.assets.getValue(manifestBundlePath)
+                    if (!isManifestBundleFileValid(canonicalBundleFile, expectedAsset)) {
+                        return null
+                    }
                     return canonicalBundleFile
                 }
             } catch (e: Exception) {
@@ -575,7 +586,59 @@ class BundleFileStorageService(
             }
         }
 
-        return File(bundleDir, "index.android.bundle").absoluteFile.takeIf { it.isFile }
+        val fallbackBundleFile = File(bundleDir, "index.android.bundle").absoluteFile.takeIf { it.isFile }
+            ?: return null
+        if (!isFileWithinDirectory(fallbackBundleFile, bundleDir)) {
+            return null
+        }
+        val fallbackAsset = manifest?.assets?.get("index.android.bundle")
+        if (fallbackAsset != null && !isManifestBundleFileValid(fallbackBundleFile, fallbackAsset)) {
+            return null
+        }
+        return fallbackBundleFile
+    }
+
+    private fun isManifestBundleFileValid(
+        bundleFile: File,
+        expectedAsset: ParsedManifestAsset,
+    ): Boolean =
+        try {
+            verifyManifestAssetFile(bundleFile, expectedAsset)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Cached bundle failed integrity verification ${bundleFile.absolutePath}: ${e.message}")
+            false
+        }
+
+    private fun isSameFile(
+        first: File,
+        second: File,
+    ): Boolean =
+        try {
+            first.canonicalFile == second.canonicalFile
+        } catch (_: Exception) {
+            false
+        }
+
+    private fun isFileWithinDirectory(
+        file: File,
+        directory: File,
+    ): Boolean =
+        try {
+            val canonicalFilePath = file.canonicalFile.path
+            val canonicalDirectoryPath = directory.canonicalFile.path
+            canonicalFilePath.startsWith("$canonicalDirectoryPath${File.separator}")
+        } catch (_: Exception) {
+            false
+        }
+
+    private fun isPathWithinDirectory(
+        file: File,
+        directory: File,
+    ): Boolean {
+        val filePath = file.absoluteFile.path
+        val directoryPath = directory.absoluteFile.path
+        return filePath.startsWith("$directoryPath${File.separator}")
     }
 
     private fun findBundleFile(bundleId: String): File? {
@@ -1095,6 +1158,20 @@ class BundleFileStorageService(
             preferences.setItem("HotUpdaterBundleURL", null)
             Log.d(TAG, "getCachedBundleURL: file doesn't exist, cleared preference")
             return null
+        }
+
+        val bundleId = extractBundleIdFromURL(urlString)
+        if (bundleId != null) {
+            val bundleDir = File(getBundleStoreDir(), bundleId)
+            if (isPathWithinDirectory(file, bundleDir)) {
+                val resolvedBundleFile = resolveBundleFile(bundleDir)
+                if (resolvedBundleFile == null || !isSameFile(file, resolvedBundleFile)) {
+                    preferences.setItem("HotUpdaterBundleURL", null)
+                    Log.w(TAG, "getCachedBundleURL: cached bundle failed integrity validation")
+                    return null
+                }
+                return resolvedBundleFile.absolutePath
+            }
         }
         return urlString
     }

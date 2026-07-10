@@ -13,6 +13,101 @@ private func hotUpdaterApplyBsdiffPatchForTest(
 
 struct BundleFileStorageServiceTests {
     @Test
+    func findBundleFileRejectsCorruptedManifestBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let bundleDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "corrupted-bundle"
+        )
+        try writeBundle(in: bundleDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: bundleDirectory, bundleId: "corrupted-bundle")
+        try Data("corrupted-content".utf8).write(
+            to: bundleDirectory.appendingPathComponent("index.ios.bundle")
+        )
+
+        let result = service.findBundleFile(in: bundleDirectory.path)
+
+        guard case .success(let bundlePath) = result else {
+            Issue.record("Expected bundle lookup to complete")
+            return
+        }
+        #expect(bundlePath == nil)
+    }
+
+    @Test
+    func getCachedBundleURLClearsCorruptedManifestBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let preferences = InMemoryPreferencesService()
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            preferences: preferences
+        )
+        let bundleDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "corrupted-bundle"
+        )
+        let bundleURL = bundleDirectory.appendingPathComponent("index.ios.bundle")
+        try writeBundle(in: bundleDirectory, bundleFileName: bundleURL.lastPathComponent)
+        try writeManifest(in: bundleDirectory, bundleId: "corrupted-bundle")
+        try preferences.setItem(bundleURL.absoluteString, forKey: "HotUpdaterBundleURL")
+        try Data("corrupted-content".utf8).write(to: bundleURL)
+
+        #expect(service.getCachedBundleURL() == nil)
+        #expect(try preferences.getItem(forKey: "HotUpdaterBundleURL") == nil)
+    }
+
+    @Test
+    func prepareLaunchRollsBackCorruptedStagingAndSelectsStableBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "staging-bundle"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagingDirectory, bundleId: "staging-bundle")
+        try Data("corrupted-content".utf8).write(
+            to: stagingDirectory.appendingPathComponent("index.ios.bundle")
+        )
+
+        let stableDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "stable-bundle"
+        )
+        try writeBundle(in: stableDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stableDirectory, bundleId: "stable-bundle")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "stable-bundle",
+                stagingBundleId: "staging-bundle",
+                verificationPending: true
+            )
+        )
+
+        let selection = service.prepareLaunch(bundle: .main, pendingRecovery: nil)
+
+        #expect(selection.bundleURL?.path == stableDirectory.appendingPathComponent("index.ios.bundle").path)
+        #expect(selection.launchedBundleId == "stable-bundle")
+        #expect(selection.shouldRollbackOnCrash == false)
+        #expect(FileManager.default.fileExists(atPath: stagingDirectory.path) == false)
+    }
+
+    @Test
     func getBundleIdFallsBackToBuiltInWhileStagingVerificationIsPending() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
@@ -266,8 +361,9 @@ private func writeManifest(
     assetPaths: [String] = ["index.ios.bundle"]
 ) throws {
     let assets = assetPaths.reduce(into: [String: [String: String]]()) { result, path in
+        let assetURL = bundleDirectory.appendingPathComponent(path)
         result[path] = [
-            "fileHash": "bundle-hash",
+            "fileHash": HashUtils.calculateSHA256(fileURL: assetURL) ?? "\(path)-hash",
         ]
     }
     let manifest: [String: Any] = [
