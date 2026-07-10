@@ -14,14 +14,18 @@ declare global {
 
 const functionName = HotUpdater.FUNCTION_NAME;
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+const supabaseDbUrl =
+  Deno.env.get("SUPABASE_DB_URL") ??
+  Deno.env.get("SUPABASE_DATABASE_URL") ??
+  Deno.env.get("HOT_UPDATER_SUPABASE_DATABASE_URL") ??
+  "";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const functionBasePath = `/${functionName}`;
 const hotUpdaterBasePath = "/";
 
 const hotUpdater = createHotUpdater({
   database: supabaseEdgeFunctionDatabase({
-    supabaseUrl,
-    supabaseServiceRoleKey,
+    connectionString: supabaseDbUrl,
   }),
   storages: [
     supabaseEdgeFunctionStorage({

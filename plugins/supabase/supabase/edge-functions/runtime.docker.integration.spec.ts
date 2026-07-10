@@ -14,7 +14,13 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type AppUpdateInfo,
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -127,9 +133,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let storageRepoPath = "";
   let composeFilePath = "";
   let composeProjectName = "";
+  let databasePort = 0;
   let gatewayPort = 0;
   let edgePort = 0;
   let gatewayBaseUrl = "";
+  let seedDatabase: ReturnType<typeof supabaseDatabase> | undefined;
   let edgeRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   let supabaseAdmin: ReturnType<typeof createClient>;
@@ -141,6 +149,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       path.join(WORKSPACE_ROOT, "plugins/supabase/runtime-acceptance-"),
     );
     storageRepoPath = path.join(runtimeRoot, "storage-repo");
+    databasePort = await findOpenPort();
     gatewayPort = await findOpenPort();
     edgePort = await findOpenPort();
     gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
@@ -161,6 +170,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     await writeSupabaseRuntimeFiles({
       runtimeRoot,
+      databasePort,
       gatewayPort,
       storageRepoPath,
     });
@@ -221,11 +231,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
     supabaseAdmin = createClient(gatewayBaseUrl, SERVICE_ROLE_KEY);
     await ensureBucketExists(supabaseAdmin);
 
+    seedDatabase = supabaseDatabase({
+      connectionString: `postgres://postgres:${POSTGRES_PASSWORD}@127.0.0.1:${databasePort}/${POSTGRES_DB}`,
+    });
     seedHotUpdater = createHotUpdater({
-      database: supabaseDatabase({
-        supabaseUrl: gatewayBaseUrl,
-        supabaseAnonKey: SERVICE_ROLE_KEY,
-      }),
+      database: seedDatabase,
       storages: [
         supabaseStorage({
           supabaseUrl: gatewayBaseUrl,
@@ -253,6 +263,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
         `127.0.0.1:${edgePort}:8000`,
         "-e",
         `SUPABASE_URL=http://host.docker.internal:${gatewayPort}`,
+        "-e",
+        `SUPABASE_DB_URL=postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}`,
         "-e",
         `SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}`,
         "-e",
@@ -308,26 +320,23 @@ describe.sequential("supabase edge runtime acceptance", () => {
     if (edgeRuntime) {
       await stopRuntime(edgeRuntime.child);
     }
+    await seedDatabase?.close?.();
 
     if (composeFilePath) {
-      try {
-        runCheckedCommand({
-          command: "docker",
-          args: [
-            "compose",
-            "-p",
-            composeProjectName,
-            "-f",
-            composeFilePath,
-            "down",
-            "-v",
-            "--remove-orphans",
-          ],
-          cwd: WORKSPACE_ROOT,
-        });
-      } catch {
-        // ignore cleanup failures
-      }
+      runCheckedCommand({
+        command: "docker",
+        args: [
+          "compose",
+          "-p",
+          composeProjectName,
+          "-f",
+          composeFilePath,
+          "down",
+          "-v",
+          "--remove-orphans",
+        ],
+        cwd: WORKSPACE_ROOT,
+      });
     }
 
     if (runtimeRoot) {
@@ -341,7 +350,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
     }
   };
 
-  const requestUpdateInfo = async (args: GetBundlesArgs) => {
+  const requestUpdateInfo = async (
+    args: GetBundlesArgs,
+  ): Promise<UpdateInfo | AppUpdateInfo | null> => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
     );
@@ -356,7 +367,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
       );
     }
 
-    return (await response.json()) as any;
+    const updateInfo: UpdateInfo | AppUpdateInfo | null = await response.json();
+    return updateInfo;
   };
 
   const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
@@ -762,9 +774,11 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
 };
 
 const createComposeFile = ({
+  databasePort,
   gatewayPort,
   runtimeRoot,
 }: {
+  databasePort: number;
   gatewayPort: number;
   runtimeRoot: string;
 }) => {
@@ -782,6 +796,8 @@ services:
       retries: 20
     volumes:
       - ${path.join(runtimeRoot, "db-init")}:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:${databasePort}:5432"
 
   rest:
     image: ${POSTGREST_IMAGE}
@@ -894,10 +910,12 @@ http {
 
 const writeSupabaseRuntimeFiles = async ({
   runtimeRoot,
+  databasePort,
   gatewayPort,
   storageRepoPath,
 }: {
   runtimeRoot: string;
+  databasePort: number;
   gatewayPort: number;
   storageRepoPath: string;
 }) => {
@@ -955,7 +973,7 @@ export { supabaseEdgeFunctionStorage } from ${JSON.stringify(pathToFileURL(path.
   );
   await writeFile(
     path.join(runtimeRoot, "docker-compose.yml"),
-    createComposeFile({ runtimeRoot, gatewayPort }),
+    createComposeFile({ runtimeRoot, databasePort, gatewayPort }),
   );
   await writeFile(path.join(runtimeRoot, "nginx.conf"), createNginxConfig());
 };
