@@ -592,8 +592,9 @@ class BundleFileStorageService(
             }
         }
 
-        val fallbackBundleFile = File(bundleDir, "index.android.bundle").absoluteFile.takeIf { it.isFile }
-            ?: return null
+        val fallbackBundleFile =
+            File(bundleDir, "index.android.bundle").absoluteFile.takeIf { it.isFile }
+                ?: return null
         if (!isFileWithinDirectory(fallbackBundleFile, bundleDir)) {
             return null
         }
