@@ -572,8 +572,8 @@ describe("handleBundleDelete", () => {
     await handleBundleDelete(["B1", "B2"], { yes: true });
 
     expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledTimes(2);
-    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(b1);
-    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith(b2);
+    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith({ id: b1.id });
+    expect(mockDatabasePlugin.deleteBundle).toHaveBeenCalledWith({ id: b2.id });
     // One commit for the whole batch, not one per bundle.
     expect(mockDatabasePlugin.commitBundle).toHaveBeenCalledTimes(1);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
