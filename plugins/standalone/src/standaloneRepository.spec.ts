@@ -521,9 +521,7 @@ describe("Standalone Repository Plugin (Default Routes)", () => {
   it("getBundles: rejects removed offset pagination", async () => {
     const legacyOffsetArgs = { limit: 20, offset: 1 };
 
-    await expect(
-      repo.getBundles(legacyOffsetArgs),
-    ).rejects.toThrow(
+    await expect(repo.getBundles(legacyOffsetArgs)).rejects.toThrow(
       "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
     );
   });
