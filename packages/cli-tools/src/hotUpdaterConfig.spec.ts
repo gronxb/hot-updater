@@ -105,6 +105,35 @@ const createAwsScaffold = (
   });
 };
 
+const createCloudflareScaffold = (build: BuildType) => {
+  const storage: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
+    configString: `r2Storage({
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    credentials: {
+      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+    },
+  })`,
+  };
+  const database: ProviderConfig = {
+    imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
+    configString: `d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  })`,
+  };
+
+  return createHotUpdaterConfigScaffoldFromBuilder(
+    new ConfigBuilder()
+      .setBuildType(build)
+      .setStorage(storage)
+      .setDatabase(database),
+  );
+};
+
 afterEach(async () => {
   await Promise.all(
     tempDirs
@@ -183,6 +212,60 @@ export default defineConfig({
       "bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!",
     );
     expect(updatedConfig).not.toContain('updateStrategy: "appVersion"');
+  });
+
+  it("removes the managed Cloudflare Worker import when moving the database to Node", async () => {
+    // Given
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-config-cloudflare-node-"),
+    );
+    tempDirs.push(tempDir);
+    const configPath = path.join(tempDir, "hot-updater.config.ts");
+    await fs.writeFile(
+      configPath,
+      `import { bare } from "@hot-updater/bare";
+import { r2Storage } from "@hot-updater/cloudflare";
+import { d1Database } from "@hot-updater/cloudflare/worker";
+import { config } from "dotenv";
+import { defineConfig } from "hot-updater";
+
+config({ path: ".env.hotupdater" });
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: r2Storage({
+    bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    credentials: {
+      accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+    },
+  }),
+  database: d1Database(),
+});
+`,
+      "utf-8",
+    );
+
+    // When
+    const result = await writeHotUpdaterConfig(
+      createCloudflareScaffold("bare"),
+      configPath,
+    );
+    const updatedConfig = await fs.readFile(configPath, "utf-8");
+
+    // Then
+    expect(result.status).toBe("merged");
+    expect(updatedConfig).toContain(
+      'import { d1Database, r2Storage } from "@hot-updater/cloudflare";',
+    );
+    expect(updatedConfig).not.toContain("@hot-updater/cloudflare/worker");
+    expect(updatedConfig).toContain(
+      "databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!",
+    );
+    expect(updatedConfig).toContain(
+      "cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!",
+    );
   });
 
   it("replaces provider-managed AWS sections when switching to Supabase and keeps unrelated fields", async () => {

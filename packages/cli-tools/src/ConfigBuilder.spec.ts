@@ -97,8 +97,12 @@ const getCloudflareConfigTemplate = (build: BuildType) => {
   })`,
   };
   const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/cloudflare/worker", named: ["d1Database"] }],
-    configString: "d1Database()",
+    imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
+    configString: `d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  })`,
   };
 
   return new ConfigBuilder()
@@ -243,8 +247,7 @@ export default defineConfig({
     const result = getCloudflareConfigTemplate("bare");
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
-import { r2Storage } from "@hot-updater/cloudflare";
-import { d1Database } from "@hot-updater/cloudflare/worker";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
@@ -261,7 +264,11 @@ export default defineConfig({
       secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
     },
   }),
-  database: d1Database(),
+  database: d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  }),
   updateStrategy: "appVersion", // or "fingerprint"
 });`;
 
@@ -271,8 +278,7 @@ export default defineConfig({
   it("should build a Cloudflare config", () => {
     const result = getCloudflareConfigTemplate("rock");
 
-    const expectedConfig = `import { r2Storage } from "@hot-updater/cloudflare";
-import { d1Database } from "@hot-updater/cloudflare/worker";
+    const expectedConfig = `import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { rock } from "@hot-updater/rock";
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
@@ -290,7 +296,11 @@ export default defineConfig({
       secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
     },
   }),
-  database: d1Database(),
+  database: d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  }),
   updateStrategy: "appVersion", // or "fingerprint"
 });`;
 

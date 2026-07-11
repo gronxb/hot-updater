@@ -5,6 +5,7 @@ import { p } from "@hot-updater/cli-tools";
 import {
   createMigrator as createHotUpdaterMigrator,
   generateSchema as generateHotUpdaterSchema,
+  getDatabaseToolingCapabilities,
 } from "@hot-updater/server/db";
 import {
   formatDialect,
@@ -62,53 +63,37 @@ export async function generate(options: GenerateOptions) {
       allowGeneratedSchemaPlaceholder: true,
     });
     const { hotUpdater, adapterName } = loadedConfig;
+    const tooling = getDatabaseToolingCapabilities(hotUpdater);
 
-    // Set default outputDir based on adapter type
-    const defaultOutputDir =
-      adapterName === "kysely"
-        ? "hot-updater_migrations" // SQL migrations
-        : "."; // Schema files
+    const defaultOutputDir = tooling.canCreateMigrator
+      ? "hot-updater_migrations"
+      : ".";
 
     const finalOutputDir = outputDir || defaultOutputDir;
     const absoluteOutputDir = path.resolve(process.cwd(), finalOutputDir);
 
-    // Execute generation based on adapter type
-    switch (adapterName) {
-      case "kysely":
-        // Use createMigrator to generate SQL migration files
-        await generateWithMigrator(
-          hotUpdater,
-          absoluteOutputDir,
-          skipConfirm,
-          s,
-        );
-        break;
-
-      case "drizzle":
-      case "prisma":
-        // Use generateSchema to generate TypeScript schema files
-        await generateWithSchemaGenerator(
-          hotUpdater,
-          adapterName,
-          absoluteOutputDir,
-          skipConfirm,
-          s,
-        );
-        break;
-      case "mongodb":
-        s.stop("Generation not supported");
-        p.log.error(
-          "MongoDB does not support migration file generation. " +
-            "Use `hot-updater db migrate` to create collections and indexes.",
-        );
-        requestGenerateExit(1);
-        break;
-      default:
-        p.log.error(
-          `Unsupported adapter: ${adapterName}. Generation is not supported.`,
-        );
-        requestGenerateExit(1);
-        break;
+    if (tooling.canCreateMigrator && tooling.provider === "mongodb") {
+      s.stop("Generation not supported");
+      p.log.error(
+        "MongoDB does not support migration file generation. " +
+          "Use `hot-updater db migrate` to create collections and indexes.",
+      );
+      requestGenerateExit(1);
+    } else if (tooling.canCreateMigrator) {
+      await generateWithMigrator(hotUpdater, absoluteOutputDir, skipConfirm, s);
+    } else if (tooling.canGenerateSchema) {
+      await generateWithSchemaGenerator(
+        hotUpdater,
+        adapterName,
+        absoluteOutputDir,
+        skipConfirm,
+        s,
+      );
+    } else {
+      p.log.error(
+        `Unsupported adapter: ${adapterName}. Generation is not supported.`,
+      );
+      requestGenerateExit(1);
     }
   } catch (error) {
     if (error instanceof GenerateExit) {

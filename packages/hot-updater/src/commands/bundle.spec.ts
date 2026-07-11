@@ -102,6 +102,9 @@ const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
     await mockDatabasePlugin.onUnmount();
   });
   const mockCli = {
+    disposeLoadedDatabase: vi.fn(async (database: DatabasePluginRuntime) =>
+      database.close?.(),
+    ),
     loadConfig: vi.fn(),
     p: {
       confirm: vi.fn(),
@@ -124,6 +127,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     ...actual,
+    disposeLoadedDatabase: mockCli.disposeLoadedDatabase,
     loadConfig: mockCli.loadConfig,
     p: mockCli.p,
   };
@@ -156,8 +160,9 @@ const stubLoadedConfig = () => {
   });
 };
 
-const expectExit = (code: number) => {
+const expectExit = (code: number, beforeExit?: () => void) => {
   const exitSpy = vi.spyOn(process, "exit").mockImplementation((c) => {
+    beforeExit?.();
     throw new Error(`process.exit(${c})`);
   });
   return { exitSpy, code };
@@ -330,7 +335,9 @@ describe("handleBundleSetEnabled", () => {
   it("exits 1 when bundle id does not exist", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     mockDatabasePlugin.getBundleById.mockResolvedValueOnce(null);
-    const { exitSpy } = expectExit(1);
+    const { exitSpy } = expectExit(1, () => {
+      expect(mockDatabasePlugin.close).toHaveBeenCalledOnce();
+    });
     const { handleBundleSetEnabled } = await import("./bundle");
     await expect(
       handleBundleSetEnabled("missing", true, { yes: true }),

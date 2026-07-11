@@ -1,4 +1,4 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { disposeLoadedDatabase, loadConfig, p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 
@@ -34,12 +34,11 @@ export const createPatch = async (options: PatchOptions) => {
   }
 
   const config = await loadConfig({ channel: options.channel, platform });
-  const [databasePlugin, storagePlugin] = await Promise.all([
-    config.database(),
-    config.storage(),
-  ]);
+  const databasePlugin = await config.database();
+  let failed = false;
 
   try {
+    const storagePlugin = await config.storage();
     p.note(
       [
         `Channel: ${options.channel}`,
@@ -66,9 +65,13 @@ export const createPatch = async (options: PatchOptions) => {
 
     p.outro(`⚡ Patch Ready (${updatedBundle.id})`);
   } catch (error) {
+    failed = true;
     console.error(error);
-    process.exit(1);
   } finally {
-    await databasePlugin.close?.();
+    await disposeLoadedDatabase(databasePlugin);
+  }
+
+  if (failed) {
+    process.exit(1);
   }
 };

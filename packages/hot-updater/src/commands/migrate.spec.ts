@@ -22,6 +22,7 @@ const mockCli = vi.hoisted(() => ({
 }));
 const mockServer = vi.hoisted(() => ({
   createMigrator: vi.fn(),
+  getDatabaseToolingCapabilities: vi.fn(),
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
@@ -50,11 +51,17 @@ vi.mock("./utils/load-hot-updater", () => ({
 
 vi.mock("@hot-updater/server/db", () => ({
   createMigrator: mockServer.createMigrator,
+  getDatabaseToolingCapabilities: mockServer.getDatabaseToolingCapabilities,
 }));
 
 describe("migrate command operation formatting", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockServer.getDatabaseToolingCapabilities.mockReturnValue({
+      canCreateMigrator: true,
+      canGenerateSchema: false,
+      provider: "mongodb",
+    });
   });
 
   afterEach(() => {
@@ -120,6 +127,72 @@ describe("migrate command operation formatting", () => {
     });
     expect(execute).toHaveBeenCalledOnce();
     expect(mockCli.log.success).toHaveBeenCalledWith("Migrated to 0.34.0");
+    expect(loadedConfig.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("disposes an unsupported adapter before exiting", async () => {
+    const loadedConfig: LoadHotUpdaterResult = {
+      absoluteConfigPath: "/repo/src/db.ts",
+      adapterName: "drizzle",
+      dispose: vi.fn(),
+      hotUpdater: { adapterName: "drizzle" },
+    };
+    mockServer.getDatabaseToolingCapabilities.mockReturnValue({
+      canCreateMigrator: false,
+      canGenerateSchema: true,
+      provider: "sqlite",
+    });
+    vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      expect(loadedConfig.dispose).toHaveBeenCalledOnce();
+      throw new Error(`process.exit(${code})`);
+    });
+
+    await expect(
+      migrate({ configPath: "src/db.ts", skipConfirm: true }),
+    ).rejects.toThrow("process.exit(1)");
+  });
+
+  it("runs migrations for a custom adapter name with migrator capability", async () => {
+    // Given
+    const execute = vi.fn(async () => undefined);
+    const getVersion = vi
+      .fn<() => Promise<string | undefined>>()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce("0.35.0");
+    const migrateToLatest = vi.fn(async () => ({
+      execute,
+      operations: [{ type: "custom", sql: "create table bundles" }],
+    }));
+    const loadedConfig: LoadHotUpdaterResult = {
+      absoluteConfigPath: "/repo/src/db.ts",
+      adapterName: "cloudflare-d1",
+      dispose: vi.fn(),
+      hotUpdater: { adapterName: "cloudflare-d1" },
+    };
+    mockServer.getDatabaseToolingCapabilities.mockReturnValue({
+      canCreateMigrator: true,
+      canGenerateSchema: false,
+      provider: "sqlite",
+    });
+    mockServer.createMigrator.mockReturnValue({
+      getVersion,
+      migrateToLatest,
+    });
+    vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit(${code})`);
+    });
+
+    // When
+    await migrate({ configPath: "src/db.ts", skipConfirm: true });
+
+    // Then
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(mockServer.createMigrator).toHaveBeenCalledWith(
+      loadedConfig.hotUpdater,
+    );
+    expect(execute).toHaveBeenCalledOnce();
     expect(loadedConfig.dispose).toHaveBeenCalledOnce();
   });
 });

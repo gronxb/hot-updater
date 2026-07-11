@@ -1,4 +1,4 @@
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { disposeLoadedDatabase, loadConfig, p } from "@hot-updater/cli-tools";
 import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import {
@@ -39,7 +39,7 @@ const safeCloseDatabase = async (
   databasePlugin: DatabasePluginRuntime,
 ): Promise<void> => {
   try {
-    await databasePlugin.close?.();
+    await disposeLoadedDatabase(databasePlugin);
   } catch (err) {
     p.log.warn(
       `Database plugin close failed (cleanup-only, original error preserved): ${
@@ -47,6 +47,14 @@ const safeCloseDatabase = async (
       }`,
     );
   }
+};
+
+const exitAfterDatabaseClose = async (
+  databasePlugin: DatabasePluginRuntime,
+  code: number,
+): Promise<never> => {
+  await safeCloseDatabase(databasePlugin);
+  process.exit(code);
 };
 
 export const handleRollback = async (
@@ -77,19 +85,19 @@ export const handleRollback = async (
       );
       if (!targetBundle) {
         p.log.error(`No bundle with id ${options.target}.`);
-        process.exit(1);
+        return await exitAfterDatabaseClose(databasePlugin, 1);
       }
       if (targetBundle.channel !== channel) {
         p.log.error(
           `Bundle ${options.target} is on channel "${targetBundle.channel}", not "${channel}".`,
         );
-        process.exit(1);
+        return await exitAfterDatabaseClose(databasePlugin, 1);
       }
       if (options.platform && targetBundle.platform !== options.platform) {
         p.log.error(
           `Bundle ${options.target} is on platform "${targetBundle.platform}", not "${options.platform}".`,
         );
-        process.exit(1);
+        return await exitAfterDatabaseClose(databasePlugin, 1);
       }
       if (!targetBundle.enabled) {
         p.log.info(`Bundle ${options.target} is already disabled. No changes.`);
@@ -135,7 +143,7 @@ export const handleRollback = async (
       p.log.error(
         `Nothing to roll back: no enabled bundles for ${channel} on ${platforms.join(", ")}.`,
       );
-      process.exit(1);
+      return await exitAfterDatabaseClose(databasePlugin, 1);
     }
 
     p.log.message(ui.title(`Rollback ${channel}`));
@@ -154,7 +162,7 @@ export const handleRollback = async (
         p.log.error(
           "Cannot prompt for confirmation in a non-interactive shell. Re-run with -y, or use a TTY.",
         );
-        process.exit(1);
+        return await exitAfterDatabaseClose(databasePlugin, 1);
       }
       const confirmed = await p.confirm({
         message: `Apply this rollback plan to ${channel}?`,
@@ -162,7 +170,7 @@ export const handleRollback = async (
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
-        process.exit(2);
+        return await exitAfterDatabaseClose(databasePlugin, 2);
       }
     }
 
@@ -208,7 +216,7 @@ export const handleRollback = async (
       p.log.error(
         `Rollback completed with ${failures.length} failed platform(s) out of ${targets.length}.`,
       );
-      process.exit(1);
+      return await exitAfterDatabaseClose(databasePlugin, 1);
     }
   } finally {
     await safeCloseDatabase(databasePlugin);

@@ -71,6 +71,7 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "@hot-updater/aws",
   "@hot-updater/bare",
   "@hot-updater/cloudflare",
+  "@hot-updater/cloudflare/worker",
   "@hot-updater/expo",
   "@hot-updater/firebase",
   "@hot-updater/rock",
@@ -360,6 +361,10 @@ const buildMergedCallInitializer = (
   const existingCallee = existingCall.expression.getText(existingSourceFile);
   const [existingArg] = existingCall.arguments;
   const [newArg] = newCall.arguments;
+
+  if (existingCall.arguments.length === 0 && newCall.arguments.length > 0) {
+    return newCall.getText(newSourceFile);
+  }
 
   if (
     existingCall.arguments.length === 1 &&

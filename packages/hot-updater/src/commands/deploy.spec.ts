@@ -185,6 +185,9 @@ const {
     createTarBrTargetFiles: vi.fn(),
     createTarGzTargetFiles: vi.fn(),
     createZipTargetFiles: vi.fn(),
+    disposeLoadedDatabase: vi.fn(async (database: DatabasePluginRuntime) =>
+      database.close?.(),
+    ),
     getCwd: vi.fn(),
     loadConfig: vi.fn(),
     p: {
@@ -233,6 +236,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     createTarBrTargetFiles: mockCli.createTarBrTargetFiles,
     createTarGzTargetFiles: mockCli.createTarGzTargetFiles,
     createZipTargetFiles: mockCli.createZipTargetFiles,
+    disposeLoadedDatabase: mockCli.disposeLoadedDatabase,
     getCwd: mockCli.getCwd,
     loadConfig: mockCli.loadConfig,
     p: mockCli.p,
@@ -1022,6 +1026,35 @@ describe("deploy rollout wiring", () => {
       expect.stringContaining("deploy-upload-cache.json"),
       expect.anything(),
     );
+  });
+
+  it("closes the database before exiting when storage acquisition fails", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: async () => mockDatabasePlugin,
+      fingerprint: {},
+      patch: { enabled: true, maxBaseBundles: 3 },
+      signing: { enabled: false },
+      storage: async () => {
+        throw new Error("storage unavailable");
+      },
+      updateStrategy: "appVersion",
+    });
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      expect(mockDatabasePlugin.close).toHaveBeenCalledOnce();
+      throw new Error(`process.exit(${code})`);
+    });
+
+    await expect(
+      deploy({
+        channel: "production",
+        forceUpdate: false,
+        interactive: false,
+        platform: "ios",
+        targetAppVersion: "1.0.x",
+      }),
+    ).rejects.toThrow("process.exit(1)");
   });
 
   it("reports upload progress through 100%", async () => {

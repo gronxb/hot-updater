@@ -13,6 +13,9 @@ const { mockCli, mockDatabasePlugin, mockServer, mockStoragePlugin } =
       createBundleDiff: vi.fn(),
     };
     const mockCli = {
+      disposeLoadedDatabase: vi.fn(
+        async (database: { close?: () => Promise<void> }) => database.close?.(),
+      ),
       loadConfig: vi.fn(),
       p: {
         isCancel: vi.fn(),
@@ -33,6 +36,7 @@ const { mockCli, mockDatabasePlugin, mockServer, mockStoragePlugin } =
   });
 
 vi.mock("@hot-updater/cli-tools", () => ({
+  disposeLoadedDatabase: mockCli.disposeLoadedDatabase,
   loadConfig: mockCli.loadConfig,
   p: mockCli.p,
 }));
@@ -101,5 +105,31 @@ describe("createPatch", () => {
       "⚡ Patch Ready (target-bundle)",
     );
     expect(mockDatabasePlugin.close).toHaveBeenCalledOnce();
+  });
+
+  it("closes the database before exiting when storage acquisition fails", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      database: async () => mockDatabasePlugin,
+      storage: async () => {
+        throw new Error("storage unavailable");
+      },
+    });
+    vi.spyOn(process, "exit").mockImplementation((code) => {
+      expect(mockCli.disposeLoadedDatabase).toHaveBeenCalledWith(
+        mockDatabasePlugin,
+      );
+      expect(mockDatabasePlugin.close).toHaveBeenCalledOnce();
+      throw new Error(`process.exit(${code})`);
+    });
+
+    await expect(
+      createPatch({
+        baseBundleId: "base-bundle",
+        bundleId: "target-bundle",
+        channel: "production",
+        interactive: false,
+        platform: "ios",
+      }),
+    ).rejects.toThrow("process.exit(1)");
   });
 });

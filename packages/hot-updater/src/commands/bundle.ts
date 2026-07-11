@@ -1,7 +1,7 @@
 // noqa: SIZE_OK - Existing bundle command module; splitting belongs to a dedicated command cleanup.
 import { setTimeout as sleep } from "timers/promises";
 
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { disposeLoadedDatabase, loadConfig, p } from "@hot-updater/cli-tools";
 import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
 import {
@@ -132,10 +132,14 @@ const parseTargetCohorts = (value: string | undefined): string[] | null => {
     .filter(Boolean);
 };
 
-const refuseNonInteractiveMutation = (action: string): never => {
+const refuseNonInteractiveMutation = async (
+  action: string,
+  database: DatabasePluginRuntime,
+): Promise<never> => {
   p.log.error(
     `Cannot ${action} a bundle without confirmation in a non-interactive shell. Re-run with -y, or use a TTY.`,
   );
+  await safeCloseDatabase(database);
   process.exit(1);
 };
 
@@ -143,7 +147,7 @@ const safeCloseDatabase = async (
   database: DatabasePluginRuntime,
 ): Promise<void> => {
   try {
-    await database.close?.();
+    await disposeLoadedDatabase(database);
   } catch (err) {
     p.log.warn(
       `Database plugin close failed (cleanup-only, original error preserved): ${
@@ -151,6 +155,14 @@ const safeCloseDatabase = async (
       }`,
     );
   }
+};
+
+const exitAfterDatabaseClose = async (
+  database: DatabasePluginRuntime,
+  code: number,
+): Promise<never> => {
+  await safeCloseDatabase(database);
+  process.exit(code);
 };
 
 export const handleBundleList = async (options: BundleListOptions = {}) => {
@@ -195,7 +207,7 @@ export const handleBundleShow = async (
     const bundle = await readDatabaseRuntimeBundle(database, bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
-      process.exit(1);
+      return await exitAfterDatabaseClose(database, 1);
     }
 
     if (options.json) {
@@ -224,7 +236,7 @@ export const handleBundleSetEnabled = async (
     const bundle = await readDatabaseRuntimeBundle(database, bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
-      process.exit(1);
+      return await exitAfterDatabaseClose(database, 1);
     }
 
     p.log.message(formatBundleSummary(bundle, nextEnabled));
@@ -236,7 +248,7 @@ export const handleBundleSetEnabled = async (
 
     if (!options.yes) {
       if (!process.stdin.isTTY) {
-        refuseNonInteractiveMutation(action);
+        return await refuseNonInteractiveMutation(action, database);
       }
       const confirmed = await p.confirm({
         message: `${nextEnabled ? "Enable" : "Disable"} this bundle?`,
@@ -244,7 +256,7 @@ export const handleBundleSetEnabled = async (
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
-        process.exit(2);
+        return await exitAfterDatabaseClose(database, 2);
       }
     }
 
@@ -263,7 +275,7 @@ export const handleBundleSetEnabled = async (
       p.log.error(
         `Verification failed: ${bundleId} is not ${action}d after update.`,
       );
-      process.exit(1);
+      return await exitAfterDatabaseClose(database, 1);
     } else {
       p.log.success(`${nextEnabled ? "Enabled" : "Disabled"} bundle.`);
       p.log.info(`  ${ui.id(bundleId)}`);
@@ -307,7 +319,7 @@ export const handleBundleUpdate = async (
     const bundle = await readDatabaseRuntimeBundle(database, bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
-      process.exit(1);
+      return await exitAfterDatabaseClose(database, 1);
     }
 
     if (!options.json) {
@@ -316,7 +328,7 @@ export const handleBundleUpdate = async (
 
     if (!options.yes) {
       if (!process.stdin.isTTY) {
-        refuseNonInteractiveMutation("update");
+        return await refuseNonInteractiveMutation("update", database);
       }
       const confirmed = await p.confirm({
         message: "Update this bundle?",
@@ -324,7 +336,7 @@ export const handleBundleUpdate = async (
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
-        process.exit(2);
+        return await exitAfterDatabaseClose(database, 2);
       }
     }
 
@@ -337,7 +349,7 @@ export const handleBundleUpdate = async (
     const refetched = await readDatabaseRuntimeBundle(database, bundleId);
     if (!refetched) {
       p.log.error(`Verification failed: ${bundleId} is missing after update.`);
-      process.exit(1);
+      return await exitAfterDatabaseClose(database, 1);
     }
 
     if (options.json) {
@@ -392,7 +404,7 @@ export const handleBundleDelete = async (
 
     if (!options.yes) {
       if (!process.stdin.isTTY) {
-        refuseNonInteractiveMutation("delete");
+        return await refuseNonInteractiveMutation("delete", database);
       }
       const confirmed = await p.confirm({
         message:
@@ -403,7 +415,7 @@ export const handleBundleDelete = async (
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
-        process.exit(2);
+        return await exitAfterDatabaseClose(database, 2);
       }
     }
 
@@ -423,7 +435,7 @@ export const handleBundleDelete = async (
       p.log.error(
         `Verification failed: ${stillPresent.length} bundle record(s) still exist (${stillPresent.join(", ")}).`,
       );
-      process.exit(1);
+      return await exitAfterDatabaseClose(database, 1);
     }
 
     if (firstTarget && targets.length === 1) {

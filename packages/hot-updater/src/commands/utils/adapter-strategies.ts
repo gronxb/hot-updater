@@ -15,7 +15,7 @@ export type AdapterName =
 /**
  * Show error message for unsupported migrate operation
  */
-export function showMigrateUnsupportedError(adapterName: string): never {
+export function showMigrateUnsupportedError(adapterName: string): void {
   let hint = "Use the adapter's migration tool.";
 
   switch (adapterName as AdapterName) {
@@ -35,5 +35,4 @@ export function showMigrateUnsupportedError(adapterName: string): never {
   p.log.error(
     ui.line(["migrate is not supported for", ui.warning(adapterName), hint]),
   );
-  process.exit(1);
 }

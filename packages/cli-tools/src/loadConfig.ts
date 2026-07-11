@@ -133,11 +133,19 @@ export type ConfigResponse = Omit<RequiredDeep<ConfigInput>, "database"> & {
 const databaseRuntimeFactorySymbol = Symbol.for(
   "@hot-updater/plugin-core/database-runtime-factory",
 );
+const loadedDatabaseDisposerSymbol = Symbol.for(
+  "@hot-updater/cli-tools/database-disposer",
+);
+const databaseOwnerDisposePromises = new WeakMap<object, Promise<void>>();
 
 type DatabaseRuntimeOrHandle = DatabasePluginRuntime | DatabasePluginHandle;
 
 type DatabaseRuntimeOrHandleWithFactory = DatabaseRuntimeOrHandle & {
   readonly [databaseRuntimeFactorySymbol]?: LoadedDatabaseConfig;
+};
+
+type DatabaseOwnerWithClose = DatabaseRuntimeOrHandleWithFactory & {
+  readonly close: () => MaybePromise<void>;
 };
 
 const mergeConfigSources = (
@@ -161,14 +169,59 @@ const isDatabasePluginRuntime = (
 ): database is DatabasePluginRuntime =>
   "bundles" in database && "bundlePatches" in database && "commit" in database;
 
-const openRuntime = (
+const hasDatabaseClose = (
   database: DatabaseRuntimeOrHandleWithFactory,
-): MaybePromise<DatabasePluginRuntime> => {
-  const openDatabaseRuntime = database[databaseRuntimeFactorySymbol];
+): database is DatabaseOwnerWithClose =>
+  "close" in database && typeof database.close === "function";
 
-  if (openDatabaseRuntime) return openDatabaseRuntime();
-  if (isDatabasePluginRuntime(database)) return database;
-  throw new Error("Database config could not be opened as a runtime plugin.");
+const disposeDatabaseOwner = (
+  database: DatabaseRuntimeOrHandleWithFactory,
+): Promise<void> => {
+  const existingDispose = databaseOwnerDisposePromises.get(database);
+  if (existingDispose) {
+    return existingDispose;
+  }
+
+  if (!hasDatabaseClose(database)) {
+    return Promise.resolve();
+  }
+
+  const dispose = Promise.resolve().then(() => database.close());
+  databaseOwnerDisposePromises.set(database, dispose);
+  return dispose;
+};
+
+const openRuntime = async (
+  database: DatabaseRuntimeOrHandleWithFactory,
+): Promise<DatabasePluginRuntime> => {
+  const openDatabaseRuntime = database[databaseRuntimeFactorySymbol];
+  const runtime = openDatabaseRuntime
+    ? await openDatabaseRuntime()
+    : isDatabasePluginRuntime(database)
+      ? database
+      : null;
+
+  if (!runtime) {
+    throw new Error("Database config could not be opened as a runtime plugin.");
+  }
+
+  Object.defineProperty(runtime, loadedDatabaseDisposerSymbol, {
+    configurable: true,
+    enumerable: false,
+    value: () => disposeDatabaseOwner(database),
+  });
+  return runtime;
+};
+
+export const disposeLoadedDatabase = async (
+  database: DatabasePluginRuntime,
+): Promise<void> => {
+  const dispose: unknown = Reflect.get(database, loadedDatabaseDisposerSymbol);
+  if (typeof dispose === "function") {
+    await dispose();
+    return;
+  }
+  await disposeDatabaseOwner(database);
 };
 
 const normalizeDatabaseConfig = (

@@ -1,4 +1,9 @@
-import { loadConfig, p, promoteBundle } from "@hot-updater/cli-tools";
+import {
+  disposeLoadedDatabase,
+  loadConfig,
+  p,
+  promoteBundle,
+} from "@hot-updater/cli-tools";
 import type { Bundle, NodeStoragePlugin } from "@hot-updater/plugin-core";
 import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
 import type { DatabasePluginRuntime } from "@hot-updater/plugin-core/internal";
@@ -20,7 +25,7 @@ const safeCloseDatabase = async (
   databasePlugin: DatabasePluginRuntime,
 ): Promise<void> => {
   try {
-    await databasePlugin.close?.();
+    await disposeLoadedDatabase(databasePlugin);
   } catch (err) {
     p.log.warn(
       `Database plugin close failed (cleanup-only, original error preserved): ${
@@ -28,6 +33,14 @@ const safeCloseDatabase = async (
       }`,
     );
   }
+};
+
+const exitAfterDatabaseClose = async (
+  databasePlugin: DatabasePluginRuntime,
+  code: number,
+): Promise<never> => {
+  await safeCloseDatabase(databasePlugin);
+  process.exit(code);
 };
 
 const summarizePlan = (params: {
@@ -77,11 +90,11 @@ export const handlePromote = async (
     const bundle = await readDatabaseRuntimeBundle(databasePlugin, bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
-      process.exit(1);
+      return await exitAfterDatabaseClose(databasePlugin, 1);
     }
     if (bundle.channel === target) {
       p.log.error(`Bundle ${bundleId} is already on channel "${target}".`);
-      process.exit(1);
+      return await exitAfterDatabaseClose(databasePlugin, 1);
     }
 
     p.log.message(summarizePlan({ target, action, bundle }));
@@ -91,7 +104,7 @@ export const handlePromote = async (
         p.log.error(
           "Cannot prompt for confirmation in a non-interactive shell. Re-run with -y, or use a TTY.",
         );
-        process.exit(1);
+        return await exitAfterDatabaseClose(databasePlugin, 1);
       }
       const confirmed = await p.confirm({
         message: `${action === "copy" ? "Copy" : "Move"} ${bundle.id} from ${bundle.channel} to ${target}?`,
@@ -99,7 +112,7 @@ export const handlePromote = async (
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
-        process.exit(2);
+        return await exitAfterDatabaseClose(databasePlugin, 2);
       }
     }
 

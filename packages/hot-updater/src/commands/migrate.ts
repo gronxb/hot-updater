@@ -1,6 +1,9 @@
 // noqa: SIZE_OK - Existing migrate command flow; splitting belongs to a dedicated command cleanup.
 import { p } from "@hot-updater/cli-tools";
-import { createMigrator as createHotUpdaterMigrator } from "@hot-updater/server/db";
+import {
+  createMigrator as createHotUpdaterMigrator,
+  getDatabaseToolingCapabilities,
+} from "@hot-updater/server/db";
 
 import { ui } from "../utils/cli-ui";
 import { showMigrateUnsupportedError } from "./utils/adapter-strategies";
@@ -195,27 +198,13 @@ export async function migrate(options: MigrateOptions) {
     const { hotUpdater, adapterName } = loadedConfig;
     dispose = loadedConfig.dispose;
 
-    // Execute migration based on adapter type
-    switch (adapterName) {
-      case "kysely":
-      case "mongodb":
-        // Use createMigrator to run migrations
-        await migrateWithMigrator(hotUpdater, skipConfirm, s);
-        break;
-
-      case "drizzle":
-      case "prisma":
-        // These adapters have their own migration systems
-        s.stop("Migration not supported");
-        showMigrateUnsupportedError(adapterName);
-        break;
-
-      default:
-        p.log.error(
-          `Unsupported adapter: ${adapterName}. Migration is not supported.`,
-        );
-        process.exit(1);
-        break;
+    const tooling = getDatabaseToolingCapabilities(hotUpdater);
+    if (tooling.canCreateMigrator) {
+      await migrateWithMigrator(hotUpdater, skipConfirm, s);
+    } else {
+      s.stop("Migration not supported");
+      showMigrateUnsupportedError(adapterName);
+      failed = true;
     }
   } catch (error) {
     failed = true;

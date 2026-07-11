@@ -120,6 +120,9 @@ const {
     },
   };
   const mockCli = {
+    disposeLoadedDatabase: vi.fn(async (database: DatabasePluginRuntime) =>
+      database.close?.(),
+    ),
     loadConfig: vi.fn(),
     p: {
       confirm: vi.fn(),
@@ -149,6 +152,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     ...actual,
+    disposeLoadedDatabase: mockCli.disposeLoadedDatabase,
     loadConfig: mockCli.loadConfig,
     p: mockCli.p,
     promoteBundle: mockPromoteBundle,
@@ -183,8 +187,9 @@ const stubLoadedConfig = () => {
   });
 };
 
-const expectExit = (code: number) => {
+const expectExit = (code: number, beforeExit?: () => void) => {
   const exitSpy = vi.spyOn(process, "exit").mockImplementation((c) => {
+    beforeExit?.();
     throw new Error(`process.exit(${c})`);
   });
   return { exitSpy, code };
@@ -277,7 +282,9 @@ describe("handlePromote", () => {
     mockDatabasePlugin.getBundleById.mockResolvedValue(
       buildBundle({ id: "src-1", channel: "beta" }),
     );
-    const { exitSpy } = expectExit(1);
+    const { exitSpy } = expectExit(1, () => {
+      expect(mockDatabasePlugin.close).toHaveBeenCalledOnce();
+    });
     const { handlePromote } = await import("./promote");
     await expect(
       handlePromote("src-1", { target: "beta", yes: true }),

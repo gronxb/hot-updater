@@ -1,4 +1,12 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  stat,
+  writeFile,
+} from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -30,6 +38,7 @@ const mockCli = vi.hoisted(() => ({
 const mockServer = vi.hoisted(() => ({
   createMigrator: vi.fn(),
   generateSchema: vi.fn(),
+  getDatabaseToolingCapabilities: vi.fn(),
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
@@ -59,11 +68,17 @@ vi.mock("./utils/load-hot-updater", () => ({
 vi.mock("@hot-updater/server/db", () => ({
   createMigrator: mockServer.createMigrator,
   generateSchema: mockServer.generateSchema,
+  getDatabaseToolingCapabilities: mockServer.getDatabaseToolingCapabilities,
 }));
 
 describe("generate command", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockServer.getDatabaseToolingCapabilities.mockReturnValue({
+      canCreateMigrator: false,
+      canGenerateSchema: true,
+      provider: "postgresql",
+    });
     mockServer.createMigrator.mockReturnValue({
       migrateToLatest: vi.fn(async () => ({
         getSQL: () =>
@@ -91,6 +106,11 @@ describe("generate command", () => {
         adapterName: "mongodb",
       },
     };
+    mockServer.getDatabaseToolingCapabilities.mockReturnValue({
+      canCreateMigrator: true,
+      canGenerateSchema: false,
+      provider: "mongodb",
+    });
 
     vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
@@ -139,6 +159,48 @@ describe("generate command", () => {
       expect(sql).toContain("CREATE TABLE IF NOT EXISTS bundles");
       expect(sql).toContain("`key` varchar(255) PRIMARY KEY");
       expect(sql).toContain("ON DUPLICATE KEY UPDATE");
+    } finally {
+      await rm(outputDir, { recursive: true, force: true });
+    }
+  });
+
+  it("generates migrations for a custom adapter name with migrator capability", async () => {
+    // Given
+    const outputDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-custom-migrator-"),
+    );
+    const loadedConfig: LoadHotUpdaterResult = {
+      absoluteConfigPath: "/repo/src/db.ts",
+      adapterName: "cloudflare-d1",
+      dispose: vi.fn(),
+      hotUpdater: { adapterName: "cloudflare-d1" },
+    };
+    mockServer.getDatabaseToolingCapabilities.mockReturnValue({
+      canCreateMigrator: true,
+      canGenerateSchema: false,
+      provider: "sqlite",
+    });
+    vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
+      throw new Error(`process.exit(${code})`);
+    });
+
+    try {
+      // When
+      await generate({
+        configPath: "src/db.ts",
+        outputDir,
+        skipConfirm: true,
+      });
+
+      // Then
+      expect(exitSpy).not.toHaveBeenCalled();
+      const files = await readdir(outputDir);
+      expect(files.some((file) => file.endsWith(".sql"))).toBe(true);
+      expect(mockServer.createMigrator).toHaveBeenCalledWith(
+        loadedConfig.hotUpdater,
+      );
+      expect(loadedConfig.dispose).toHaveBeenCalledOnce();
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }

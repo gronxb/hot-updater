@@ -5,6 +5,7 @@ import { pipeline } from "stream/promises";
 import { createBrotliCompress, constants as zlibConstants } from "zlib";
 
 import {
+  disposeLoadedDatabase,
   createTarBrTargetFiles,
   createTarGzTargetFiles,
   createZipTargetFiles,
@@ -732,16 +733,16 @@ const deployPlatform = async ({
     p.note(deploymentContext, deploymentTitle);
   }
 
-  const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
-    config.build({
-      cwd,
-    }),
-    config.storage(),
-    config.database(),
-  ]);
-  assertNodeStoragePlugin(storagePlugin);
-
+  const databasePlugin = await config.database();
   try {
+    const [buildPlugin, storagePlugin] = await Promise.all([
+      config.build({
+        cwd,
+      }),
+      config.storage(),
+    ]);
+    assertNodeStoragePlugin(storagePlugin);
+
     const taskRef: {
       buildResult: {
         buildPath: string;
@@ -1153,13 +1154,13 @@ const deployPlatform = async ({
     p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
     return { bundleId: confirmedBundleId, platform };
   } catch (e) {
-    await databasePlugin.close?.();
     await fs.promises.rm(bundlePath, { force: true });
     console.error(e);
-    process.exit(1);
   } finally {
-    await databasePlugin.close?.();
+    await disposeLoadedDatabase(databasePlugin);
   }
+
+  process.exit(1);
 };
 
 export const deploy = async (options: DeployOptions) => {
