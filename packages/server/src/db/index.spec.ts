@@ -988,7 +988,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       expect(page.data.map((bundle) => bundle.id)).toEqual([matchingRow.id]);
-      expect(bundles.findMany).toHaveBeenCalledWith();
+      expect(bundles.findMany).toHaveBeenCalledWith({
+        orderBy: { id: "desc" },
+        skip: 0,
+        take: 10,
+        where: {
+          target_app_version: {
+            equals: "1.0.x",
+            not: null,
+          },
+        },
+      });
     });
 
     it("combines MongoDB targetAppVersion filters without overwriting", async () => {
@@ -1458,10 +1468,16 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         },
       };
       const rootInsert = vi.fn(() => ({
-        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
+        values: vi.fn(() => ({
+          execute: vi.fn(async () => undefined),
+          onConflictDoUpdate: vi.fn(async () => undefined),
+        })),
       }));
       const txInsert = vi.fn(() => ({
-        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
+        values: vi.fn(() => ({
+          execute: vi.fn(async () => undefined),
+          onConflictDoUpdate: vi.fn(async () => undefined),
+        })),
       }));
       const createDb = (insert: typeof rootInsert) => ({
         _: { fullSchema: tables },
@@ -1510,7 +1526,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(txInsert).toHaveBeenCalledTimes(2);
     });
 
-    it("commits lazy Drizzle bundle changes inside the resolved db transaction", async () => {
+    it("uses ordered writes when a lazy Drizzle database cannot declare transaction support", async () => {
       const tables = {
         bundle_patches: {
           bundle_id: "bundle_id",
@@ -1522,10 +1538,16 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         },
       };
       const rootInsert = vi.fn(() => ({
-        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
+        values: vi.fn(() => ({
+          execute: vi.fn(async () => undefined),
+          onConflictDoUpdate: vi.fn(async () => undefined),
+        })),
       }));
       const txInsert = vi.fn(() => ({
-        values: vi.fn(() => ({ execute: vi.fn(async () => undefined) })),
+        values: vi.fn(() => ({
+          execute: vi.fn(async () => undefined),
+          onConflictDoUpdate: vi.fn(async () => undefined),
+        })),
       }));
       const createDb = (insert: typeof rootInsert) => ({
         _: { fullSchema: tables },
@@ -1571,9 +1593,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       await plugin.commit();
 
       expect(dbFactory).toHaveBeenCalledTimes(1);
-      expect(transaction).toHaveBeenCalledTimes(1);
-      expect(rootInsert).not.toHaveBeenCalled();
-      expect(txInsert).toHaveBeenCalledTimes(2);
+      expect(transaction).not.toHaveBeenCalled();
+      expect(rootInsert).toHaveBeenCalledTimes(2);
+      expect(txInsert).not.toHaveBeenCalled();
     });
 
     it("aborts the Drizzle transaction when a staged write fails", async () => {

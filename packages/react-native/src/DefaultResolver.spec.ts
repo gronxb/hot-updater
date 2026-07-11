@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing resolver unit suite; splitting belongs to a dedicated test-structure cleanup.
 import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -242,15 +243,18 @@ describe("createDefaultResolver", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:3007/hot-updater/bundle-events/app-ready",
       expect.objectContaining({
-        headers: {
+        headers: expect.objectContaining({
           "Content-Type": "application/json",
           authorization: "Bearer token",
           "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-        },
+        }),
         method: "POST",
       }),
     );
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(new Headers(request.headers).get("Hot-Updater-Event-ID")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
     expect(JSON.parse(String(request.body))).toEqual({
       activeBundleId: "bundle-id",
       appVersion: "1.0.0",
@@ -267,5 +271,46 @@ describe("createDefaultResolver", () => {
       status: "RECOVERED",
       userId: null,
     });
+  });
+
+  it.each([404, 501])(
+    "treats app-ready status %i as an unsupported no-op",
+    async (status) => {
+      // Given
+      const fetchMock = vi.fn<
+        (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+      >(async () => new Response(null, { status, statusText: "Unavailable" }));
+      vi.stubGlobal("fetch", fetchMock);
+      const resolver = createDefaultResolver(
+        "http://localhost:3007/hot-updater",
+      );
+
+      // When
+      const result = resolver.notifyAppReady?.(createNotifyParams());
+
+      // Then
+      await expect(result).resolves.toEqual({ status: "STABLE" });
+    },
+  );
+
+  it("rejects app-ready server failures", async () => {
+    // Given
+    const fetchMock = vi.fn<
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    >(
+      async () =>
+        new Response(null, {
+          status: 500,
+          statusText: "Internal Server Error",
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const resolver = createDefaultResolver("http://localhost:3007/hot-updater");
+
+    // When
+    const result = resolver.notifyAppReady?.(createNotifyParams());
+
+    // Then
+    await expect(result).rejects.toThrow("Internal Server Error");
   });
 });

@@ -38,6 +38,11 @@ export interface RuntimeStageOverlayState {
   readonly eventAppends: readonly DatabaseBundleEvent[];
 }
 
+export interface RuntimeStageSnapshot {
+  readonly mutations: readonly DatabaseMutation[];
+  readonly prefixSize: number;
+}
+
 const resolveBundleEntry = (
   entry: BundleEntry | undefined,
 ): DatabaseBundleRecord | null | undefined => {
@@ -196,8 +201,19 @@ export class RuntimeStage {
     };
   }
 
-  snapshot(): readonly DatabaseMutation[] {
-    return this.mutations.slice();
+  snapshot(): RuntimeStageSnapshot {
+    return {
+      mutations: this.mutations.slice(),
+      prefixSize: this.mutations.length,
+    };
+  }
+
+  acknowledge(snapshot: RuntimeStageSnapshot): void {
+    const remaining = this.mutations.slice(snapshot.prefixSize);
+    this.clear();
+    for (const mutation of remaining) {
+      this.stage(mutation);
+    }
   }
 
   clear(): void {

@@ -12,10 +12,6 @@ import {
   toUpdateRow,
   type BundlePatchRow,
 } from "./databaseBundlePatchRows";
-import {
-  createOneShotReadSnapshot,
-  shouldRememberReadSnapshot,
-} from "./databaseReadSnapshot";
 import { materializePatch } from "./databaseRuntimePatches";
 import type {
   BundlePatchListQuery,
@@ -52,43 +48,48 @@ export interface BundlePatchSetStore {
   }) => MaybePromise<void>;
 }
 
+const bundlePatchResourceOverrides = new WeakMap<
+  BundlePatchRowStore,
+  BundlePatchResource
+>();
+
+export const setBundlePatchResourceOverride = (
+  store: BundlePatchRowStore,
+  resource: BundlePatchResource,
+): BundlePatchRowStore => {
+  bundlePatchResourceOverrides.set(store, resource);
+  return store;
+};
+
 export const buildBundlePatchRowResource = (
   store: BundlePatchRowStore,
 ): BundlePatchResource => {
-  const rowsSnapshot = createOneShotReadSnapshot<BundlePatchRow>();
-
-  const findRows = async () => {
-    return rowsSnapshot.take() ?? (await store.findRows());
-  };
+  const resourceOverride = bundlePatchResourceOverrides.get(store);
+  if (resourceOverride) {
+    return resourceOverride;
+  }
 
   return {
     async findMany(query) {
       const rows = await store.findRows();
-      const data = list(rows, query);
-      if (shouldRememberReadSnapshot(data, query.window)) {
-        rowsSnapshot.remember(rows);
-      }
-      return data;
+      return list(rows, query);
     },
     async count({ where }) {
-      return count(await findRows(), where);
+      return count(await store.findRows(), where);
     },
     async getById({ patchId }) {
       const row = await store.getRowById({ patchId });
       return row ? toPatch(row) : null;
     },
     async insert({ patch }) {
-      rowsSnapshot.clear();
       await store.insertRow({ row: toRow(patch) });
     },
     async update({ patchId, patch }) {
       const row = toUpdateRow(patch);
       if (Object.keys(row).length === 0) return;
-      rowsSnapshot.clear();
       await store.updateRow({ patchId, row });
     },
     async delete({ patchId }) {
-      rowsSnapshot.clear();
       await store.deleteRow({ patchId });
     },
   };
@@ -104,8 +105,6 @@ const scopedBundleIds = (where: BundlePatchListQuery["where"]) => {
 export const buildBundlePatchSetResource = (
   store: BundlePatchSetStore,
 ): BundlePatchResource => {
-  const patchesSnapshot = createOneShotReadSnapshot<DatabaseBundlePatch>();
-
   const findPatches = async (where: BundlePatchListQuery["where"]) => {
     const bundleIds = scopedBundleIds(where);
     if (bundleIds !== undefined) {
@@ -114,17 +113,13 @@ export const buildBundlePatchSetResource = (
       );
       return patchSets.flatMap((patches) => patches ?? []);
     }
-    return patchesSnapshot.take() ?? (await store.findPatches());
+    return store.findPatches();
   };
 
   return {
     async findMany(query) {
       const patches = await findPatches(query.where);
-      const data = listPatches(patches, query);
-      if (shouldRememberReadSnapshot(data, query.window)) {
-        patchesSnapshot.remember(patches);
-      }
-      return data;
+      return listPatches(patches, query);
     },
     async count({ where }) {
       return countPatches(await findPatches(where), where);
@@ -143,7 +138,6 @@ export const buildBundlePatchSetResource = (
       const patches = currentPatches
         .map(materializePatch)
         .filter((currentPatch) => currentPatch.id !== nextPatch.id);
-      patchesSnapshot.clear();
       await store.replaceBundlePatches({
         bundleId: nextPatch.bundleId,
         patches: sortPatches([...patches, nextPatch]),
@@ -161,7 +155,6 @@ export const buildBundlePatchSetResource = (
         ...patch,
         id: patchId,
       });
-      patchesSnapshot.clear();
       await store.replaceBundlePatches({
         bundleId: currentPatch.bundleId,
         patches: currentPatches
@@ -178,7 +171,6 @@ export const buildBundlePatchSetResource = (
         bundleId: currentPatch.bundleId,
       });
       if (!currentPatches) return;
-      patchesSnapshot.clear();
       await store.replaceBundlePatches({
         bundleId: currentPatch.bundleId,
         patches: currentPatches

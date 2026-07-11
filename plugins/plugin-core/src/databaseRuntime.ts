@@ -23,15 +23,17 @@ import { createUUIDv7 } from "./uuidv7";
 
 const createEvent = (event: DatabaseBundleEventInput) => ({
   ...event,
-  id: createUUIDv7(),
+  id: event.id ?? createUUIDv7(),
 });
 
 export interface CreateDatabaseRuntimeOptions {
   readonly name: string;
   readonly getCore: () => Promise<DatabasePluginCore>;
   readonly hasBundleEvents: boolean;
+  readonly hasBundleEventRetention: boolean;
   readonly hasUpdateInfo: boolean;
   readonly hooks?: DatabasePluginHooks;
+  readonly close?: () => Promise<void>;
 }
 
 export const databaseRuntimeFactorySymbol = Symbol.for(
@@ -42,16 +44,19 @@ export const createDatabaseRuntime = (
   options: CreateDatabaseRuntimeOptions,
 ): DatabasePluginRuntime => {
   const stage = new RuntimeStage();
+  let commitQueue: Promise<void> = Promise.resolve();
 
-  const commit = async (params: DatabaseCommitParams = {}): Promise<void> => {
+  const performCommit = async (
+    params: DatabaseCommitParams = {},
+  ): Promise<void> => {
     const core = await options.getCore();
     const batchMutations = params.batch?.mutations ?? [];
     assertSupportedBatch(core, batchMutations);
     for (const mutation of batchMutations) {
       stage.stage(mutation);
     }
-    const mutations = stage.snapshot();
-    if (mutations.length === 0) {
+    const snapshot = stage.snapshot();
+    if (snapshot.mutations.length === 0) {
       return;
     }
 
@@ -59,15 +64,32 @@ export const createDatabaseRuntime = (
       ? await core.beginTransaction()
       : null;
     try {
-      await applyMutations(transaction?.core ?? core, mutations);
+      await applyMutations(transaction?.core ?? core, snapshot.mutations);
       await transaction?.commit();
     } catch (error) {
-      await transaction?.rollback();
+      if (!transaction) {
+        throw error;
+      }
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          "Database mutation and rollback both failed.",
+          { cause: error },
+        );
+      }
       throw error;
     }
 
-    stage.clear();
+    stage.acknowledge(snapshot);
     await options.hooks?.onDatabaseUpdated?.();
+  };
+
+  const commit = (params: DatabaseCommitParams = {}): Promise<void> => {
+    const queuedCommit = commitQueue.then(() => performCommit(params));
+    commitQueue = queuedCommit.catch(() => undefined);
+    return queuedCommit;
   };
 
   const runtime: DatabasePluginRuntime = {
@@ -121,15 +143,15 @@ export const createDatabaseRuntime = (
       },
     },
     commit,
-    close: async () => {
-      const core = await options.getCore();
-      await core.close?.();
-    },
   };
+
+  const ownedRuntime: DatabasePluginRuntime = options.close
+    ? { ...runtime, close: options.close }
+    : runtime;
 
   const runtimeWithUpdateInfo: DatabasePluginRuntime = options.hasUpdateInfo
     ? {
-        ...runtime,
+        ...ownedRuntime,
         updateInfo: {
           get: async (params) => {
             const core = await options.getCore();
@@ -137,7 +159,7 @@ export const createDatabaseRuntime = (
           },
         },
       }
-    : runtime;
+    : ownedRuntime;
 
   if (options.hasBundleEvents) {
     const bundleEvents: RuntimeBundleEventRepository = {
@@ -152,6 +174,14 @@ export const createDatabaseRuntime = (
           event: createEvent(event),
         });
       },
+      ...(options.hasBundleEventRetention
+        ? {
+            deleteBeforeId: async (params) => {
+              const core = await options.getCore();
+              await core.bundleEvents?.deleteBeforeId?.(params);
+            },
+          }
+        : {}),
     };
     return {
       ...runtimeWithUpdateInfo,

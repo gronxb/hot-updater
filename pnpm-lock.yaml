@@ -1737,7 +1737,7 @@ importers:
         specifier: workspace:*
         version: link:../../plugins/plugin-core
       '@prisma/client':
-        specifier: '*'
+        specifier: '>=6.19.3'
         version: 6.19.3(prisma@6.19.3(typescript@6.0.2))(typescript@6.0.2)
       rou3:
         specifier: 0.7.9

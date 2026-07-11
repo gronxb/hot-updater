@@ -20,6 +20,41 @@ const resolveBaseURL = async (baseURL: HotUpdaterBaseURL): Promise<string> => {
   return resolvedBaseURL;
 };
 
+type RuntimeCrypto = {
+  readonly getRandomValues?: (values: Uint8Array) => Uint8Array;
+};
+
+const createEventId = (): string => {
+  const randomBytes = new Uint8Array(10);
+  const runtimeCrypto = (globalThis as { readonly crypto?: RuntimeCrypto })
+    .crypto;
+  if (runtimeCrypto?.getRandomValues) {
+    runtimeCrypto.getRandomValues(randomBytes);
+  } else {
+    for (let index = 0; index < randomBytes.length; index += 1) {
+      randomBytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  const randomHex = Array.from(randomBytes)
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+  const timestampHex = Date.now().toString(16).padStart(12, "0");
+  const randA = randomHex.slice(0, 3);
+  const randB = randomHex.slice(3, 19);
+  const variantByte = (0x80 | (Number.parseInt(randB.slice(0, 2), 16) & 0x3f))
+    .toString(16)
+    .padStart(2, "0");
+
+  return [
+    timestampHex.slice(0, 8),
+    timestampHex.slice(8),
+    `7${randA}`,
+    `${variantByte}${randB.slice(2, 4)}`,
+    randB.slice(4, 16),
+  ].join("-");
+};
+
 /**
  * Creates a default resolver that uses baseURL for network operations.
  * This encapsulates the existing baseURL logic into a resolver.
@@ -74,6 +109,7 @@ export function createDefaultResolver(
       const timeoutId = setTimeout(() => {
         controller.abort();
       }, params.requestTimeout ?? 5000);
+      const eventId = createEventId();
 
       try {
         const response = await fetch(
@@ -84,6 +120,7 @@ export function createDefaultResolver(
             headers: {
               "Content-Type": "application/json",
               ...params.requestHeaders,
+              "Hot-Updater-Event-ID": eventId,
               "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
             },
             body: JSON.stringify({
@@ -104,6 +141,15 @@ export function createDefaultResolver(
             }),
           },
         );
+
+        if (response.status === 404 || response.status === 501) {
+          return {
+            status: params.status,
+            ...(params.crashedBundleId
+              ? { crashedBundleId: params.crashedBundleId }
+              : {}),
+          };
+        }
 
         if (response.status < 200 || response.status >= 300) {
           throw new Error(response.statusText);

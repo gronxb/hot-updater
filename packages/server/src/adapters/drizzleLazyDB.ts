@@ -10,6 +10,7 @@ export type DrizzleDB = {
   };
   readonly insert: (table: DrizzleTable) => {
     values: (value: unknown) => {
+      onConflictDoNothing?: () => Promise<unknown>;
       onConflictDoUpdate?: (args: unknown) => Promise<unknown>;
       onDuplicateKeyUpdate?: (args: unknown) => Promise<unknown>;
       execute?: () => Promise<unknown>;
@@ -41,6 +42,14 @@ export type DrizzleDB = {
     operation: (tx: DrizzleDB) => Promise<T>,
   ) => Promise<T>;
 };
+
+type TransactionalDrizzleDB = DrizzleDB & {
+  readonly transaction: NonNullable<DrizzleDB["transaction"]>;
+};
+
+export const hasDrizzleTransaction = (
+  db: DrizzleDB,
+): db is TransactionalDrizzleDB => typeof db.transaction === "function";
 
 const asDB = (db: unknown): DrizzleDB => {
   const typed = db as DrizzleDB;
@@ -108,6 +117,15 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
             }
             return inserted.onConflictDoUpdate(args);
           }),
+        onConflictDoNothing: async () =>
+          runInserted(table, value, async (inserted) => {
+            if (typeof inserted.onConflictDoNothing !== "function") {
+              throw new Error(
+                "[hot-updater] Drizzle insert does not support onConflictDoNothing.",
+              );
+            }
+            return inserted.onConflictDoNothing();
+          }),
         onDuplicateKeyUpdate: async (args) =>
           runInserted(table, value, async (inserted) => {
             if (typeof inserted.onDuplicateKeyUpdate !== "function") {
@@ -142,10 +160,5 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
           (await getDB()).update(table).set(values).where(condition),
       }),
     }),
-    transaction: async (operation) => {
-      const db = await getDB();
-      if (typeof db.transaction !== "function") return operation(db);
-      return db.transaction(operation);
-    },
   };
 };

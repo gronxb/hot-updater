@@ -5,6 +5,7 @@ import {
   HOT_UPDATER_SCHEMA_VERSION,
   HOT_UPDATER_SETTINGS_TABLE,
 } from "../schema/types";
+import type { MongoClientRuntime } from "./mongoTypes";
 import { createMongoMigrationOperations } from "./schema/mongodb";
 import {
   hotUpdaterSchema,
@@ -25,7 +26,6 @@ import type {
   MigrationOperation,
   MigrationResult,
   Migrator,
-  MongoClientRuntime,
   ORMSQLProvider,
   RelationMode,
 } from "./types";

@@ -8,7 +8,7 @@ import type {
   MongoCursorRuntime,
   MongoOperationOptions,
   MongoSessionRuntime,
-} from "../db/types";
+} from "../db/mongoTypes";
 import { mongoAdapter } from "./mongodb";
 
 const bundle: DatabaseBundleRecord = {

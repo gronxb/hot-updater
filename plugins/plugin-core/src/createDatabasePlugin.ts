@@ -16,6 +16,19 @@ import type {
 type DatabasePluginDeclarationResult = MaybePromise<DatabasePluginDeclaration>;
 type DatabaseRuntimeFactory = () => MaybePromise<DatabasePluginRuntime>;
 type DatabasePluginRuntimeHandle = DatabasePluginRuntime & DatabasePluginHandle;
+type RuntimeOwnerState = "open" | "closing" | "closed";
+
+class DatabaseRuntimeOwnerClosedError extends Error {
+  constructor(
+    readonly pluginName: string,
+    readonly ownerState: Exclude<RuntimeOwnerState, "open">,
+  ) {
+    super(
+      `Database runtime "${pluginName}" cannot be opened while its owner is ${ownerState}.`,
+    );
+    this.name = "DatabaseRuntimeOwnerClosedError";
+  }
+}
 
 export interface DatabasePluginSpec<TConfig = unknown> {
   readonly name: string;
@@ -46,9 +59,31 @@ const attachRuntimeFactory = (
   runtime: DatabasePluginRuntime,
   openRuntime: DatabaseRuntimeFactory,
 ): DatabasePluginRuntime => {
+  const initialRuntimeKeys = new Set(Reflect.ownKeys(runtime));
+  initialRuntimeKeys.add(databaseRuntimeFactorySymbol);
+  const copyExtensionMetadata = (
+    openedRuntime: DatabasePluginRuntime,
+  ): DatabasePluginRuntime => {
+    for (const key of Reflect.ownKeys(runtime)) {
+      if (initialRuntimeKeys.has(key)) {
+        continue;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(runtime, key);
+      if (descriptor) {
+        Object.defineProperty(openedRuntime, key, descriptor);
+      }
+    }
+    return openedRuntime;
+  };
+  const openRuntimeWithMetadata = (): MaybePromise<DatabasePluginRuntime> => {
+    const openedRuntime = openRuntime();
+    return isPromiseLike(openedRuntime)
+      ? Promise.resolve(openedRuntime).then(copyExtensionMetadata)
+      : copyExtensionMetadata(openedRuntime);
+  };
   Object.defineProperty(runtime, databaseRuntimeFactorySymbol, {
     enumerable: false,
-    value: openRuntime,
+    value: openRuntimeWithMetadata,
   });
   return runtime;
 };
@@ -81,17 +116,44 @@ const createDatabasePluginCreator = <TConfig>(
     ): DatabasePluginRuntimeHandle => {
       const core = normalizeDatabaseDeclaration(connection);
       const getCore = () => Promise.resolve(core);
-      const openRuntime = (): DatabasePluginRuntime =>
+      let ownerState: RuntimeOwnerState = "open";
+      let closePromise: Promise<void> | undefined;
+      const createRuntime = (
+        close?: () => Promise<void>,
+      ): DatabasePluginRuntime =>
         createDatabaseRuntime({
           name: options.name,
           getCore,
           hasBundleEvents: core.bundleEvents !== undefined,
+          hasBundleEventRetention:
+            core.bundleEvents?.deleteBeforeId !== undefined,
           hasUpdateInfo: core.updateInfo !== undefined,
           hooks,
+          ...(close ? { close } : {}),
         });
+      const closeOwner = (): Promise<void> => {
+        if (closePromise) {
+          return closePromise;
+        }
+
+        ownerState = "closing";
+        closePromise = Promise.resolve()
+          .then(() => core.close?.())
+          .then(() => undefined)
+          .finally(() => {
+            ownerState = "closed";
+          });
+        return closePromise;
+      };
+      const openBorrowedRuntime = (): DatabasePluginRuntime => {
+        if (ownerState !== "open") {
+          throw new DatabaseRuntimeOwnerClosedError(options.name, ownerState);
+        }
+        return createRuntime();
+      };
       return attachRuntimeFactory(
-        openRuntime(),
-        openRuntime,
+        createRuntime(closeOwner),
+        openBorrowedRuntime,
       ) as DatabasePluginRuntimeHandle;
     };
 

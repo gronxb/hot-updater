@@ -1,7 +1,3 @@
-import {
-  createOneShotReadSnapshot,
-  shouldRememberReadSnapshot,
-} from "./databaseReadSnapshot";
 import { eventMatches } from "./databaseRuntimeFilters";
 import type {
   BundleEventFindManyQuery,
@@ -16,7 +12,23 @@ export interface BundleEventStore {
   readonly append: (params: {
     readonly event: DatabaseBundleEvent;
   }) => MaybePromise<void>;
+  readonly deleteBeforeId?: (params: {
+    readonly beforeId: string;
+  }) => MaybePromise<void>;
 }
+
+const bundleEventResourceOverrides = new WeakMap<
+  BundleEventStore,
+  BundleEventResource
+>();
+
+export const setBundleEventResourceOverride = (
+  store: BundleEventStore,
+  resource: BundleEventResource,
+): BundleEventStore => {
+  bundleEventResourceOverrides.set(store, resource);
+  return store;
+};
 
 const listEvents = (
   events: readonly DatabaseBundleEvent[],
@@ -40,28 +52,30 @@ const eventMatchesWhere = (
 export const createBundleEventResource = (
   store: BundleEventStore,
 ): BundleEventResource => {
-  const eventsSnapshot = createOneShotReadSnapshot<DatabaseBundleEvent>();
+  const resourceOverride = bundleEventResourceOverrides.get(store);
+  if (resourceOverride) {
+    return resourceOverride;
+  }
 
-  const findEvents = async () => {
-    return eventsSnapshot.take() ?? (await store.findEvents());
-  };
-
-  return {
+  const resource: BundleEventResource = {
     async findMany(query) {
       const events = await store.findEvents();
-      const data = listEvents(events, query);
-      if (shouldRememberReadSnapshot(data, query.window)) {
-        eventsSnapshot.remember(events);
-      }
-      return data;
+      return listEvents(events, query);
     },
     async count({ where }) {
-      const events = await findEvents();
+      const events = await store.findEvents();
       return events.filter((event) => eventMatchesWhere(event, where)).length;
     },
     async append(params) {
-      eventsSnapshot.clear();
       await store.append(params);
     },
   };
+  return store.deleteBeforeId
+    ? {
+        ...resource,
+        async deleteBeforeId(params) {
+          await store.deleteBeforeId?.(params);
+        },
+      }
+    : resource;
 };

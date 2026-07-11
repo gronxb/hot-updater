@@ -1,7 +1,3 @@
-import {
-  createOneShotReadSnapshot,
-  shouldRememberReadSnapshot,
-} from "./databaseReadSnapshot";
 import { bundleMatchesQueryWhere } from "./queryBundles";
 import type {
   BundleFindManyQuery,
@@ -78,13 +74,7 @@ export const createBundleResource = (store: BundleStore): BundleResource => {
     return resourceOverride;
   }
 
-  const recordsSnapshot = createOneShotReadSnapshot<DatabaseBundleRecord>();
-
   const findRecords = async (where?: DatabaseBundleQueryWhere) => {
-    const snapshot = recordsSnapshot.take();
-    if (snapshot) {
-      return snapshot;
-    }
     const hintedRead = bundleStoreReadHints.get(store);
     return hintedRead ? await hintedRead({ where }) : await store.findRecords();
   };
@@ -93,11 +83,7 @@ export const createBundleResource = (store: BundleStore): BundleResource => {
     getById: (params) => Promise.resolve(store.getById(params)),
     async findMany(query) {
       const records = await findRecords(query.where);
-      const data = listRecords(records, query);
-      if (shouldRememberReadSnapshot(data, query.window)) {
-        recordsSnapshot.remember(records);
-      }
-      return data;
+      return listRecords(records, query);
     },
     async count({ where }) {
       const records = await findRecords(where);
@@ -105,15 +91,12 @@ export const createBundleResource = (store: BundleStore): BundleResource => {
         .length;
     },
     async insert(params) {
-      recordsSnapshot.clear();
       await store.insert(params);
     },
     async update(params) {
-      recordsSnapshot.clear();
       await store.update(params);
     },
     async delete(params) {
-      recordsSnapshot.clear();
       await store.delete(params);
     },
   };

@@ -3,7 +3,7 @@ import {
   type RuntimeHotUpdaterAPI,
 } from "../createHotUpdaterCore";
 import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
-import { type Migrator, type SchemaGenerator } from "./types";
+import { type Migrator, type ORMProvider, type SchemaGenerator } from "./types";
 
 export * from "./createBundleDiff";
 export * from "./runtimeBundle";
@@ -38,6 +38,25 @@ const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
 export function createMigrator(hotUpdater: HotUpdaterDBTarget): Migrator {
   const { adapterCapabilities, core } = getDBMetadata(hotUpdater);
   return (adapterCapabilities.createMigrator ?? core.createMigrator)();
+}
+
+export type DatabaseToolingCapabilities = {
+  readonly canCreateMigrator: boolean;
+  readonly canGenerateSchema: boolean;
+  readonly provider?: ORMProvider;
+};
+
+export function getDatabaseToolingCapabilities(
+  hotUpdater: HotUpdaterDBTarget,
+): DatabaseToolingCapabilities {
+  const { adapterCapabilities } = getDBMetadata(hotUpdater);
+  return {
+    canCreateMigrator: adapterCapabilities.createMigrator !== undefined,
+    canGenerateSchema: adapterCapabilities.generateSchema !== undefined,
+    ...(adapterCapabilities.provider
+      ? { provider: adapterCapabilities.provider }
+      : {}),
+  };
 }
 
 export function generateSchema(

@@ -124,6 +124,13 @@ const createMemoryDatabase = (
           append: async ({ event }) => {
             events.set(event.id, event);
           },
+          deleteBeforeId: async ({ beforeId }) => {
+            for (const eventId of events.keys()) {
+              if (eventId.localeCompare(beforeId) < 0) {
+                events.delete(eventId);
+              }
+            }
+          },
         },
       } satisfies DatabasePluginDeclaration;
     },
@@ -199,5 +206,29 @@ describe("createRuntimeDatabaseCore", () => {
     await expect(appendBundleEvent(appReadyEvent)).rejects.toThrow(
       "Bundle events are not supported by this database provider.",
     );
+  });
+
+  it("bridges event retention deletes through the public runtime API", async () => {
+    // Given
+    const { database, events } = createMemoryDatabase();
+    const hotUpdater = createHotUpdater({ database });
+    events.set("018f0000-0000-7000-8000-000000000000", {
+      ...appReadyEvent,
+      id: "018f0000-0000-7000-8000-000000000000",
+    });
+    events.set("01900000-0000-7000-8000-000000000000", {
+      ...appReadyEvent,
+      id: "01900000-0000-7000-8000-000000000000",
+    });
+
+    // When
+    await hotUpdater.deleteBundleEventsBefore({
+      beforeId: "01900000-0000-7000-8000-000000000000",
+    });
+
+    // Then
+    expect(Array.from(events.keys())).toEqual([
+      "01900000-0000-7000-8000-000000000000",
+    ]);
   });
 });

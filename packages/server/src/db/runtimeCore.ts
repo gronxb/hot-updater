@@ -406,6 +406,12 @@ export function createRuntimeDatabaseCore<TContext = unknown>(
       await runtime.bundleEvents.append({ event });
       await runtime.commit();
     },
+
+    async deleteBundleEventsBefore({ beforeId }, context) {
+      await options?.beforeOperation?.();
+      const runtime = await openRuntime(context);
+      await runtime.bundleEvents?.deleteBeforeId?.({ beforeId });
+    },
   };
 
   return {

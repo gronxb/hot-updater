@@ -10,11 +10,21 @@ import type {
   DatabaseBundleEventInput,
   DatabaseBundleQueryOptions,
   HotUpdaterContext,
+  MaybePromise,
+} from "@hot-updater/plugin-core";
+import {
+  createUUIDv7,
+  extractTimestampFromUUIDv7,
 } from "@hot-updater/plugin-core";
 import semver from "semver";
 
 import {
+  createRetentionBoundaryId,
+  DEFAULT_BUNDLE_EVENT_MAX_BODY_BYTES,
+  isUUIDv7,
+  MAX_BUNDLE_EVENT_FUTURE_SKEW_MS,
   parseAppReadyBundleEvent,
+  readBundleEventBody,
   UNSUPPORTED_BUNDLE_EVENTS_MESSAGE,
 } from "./bundleEvents";
 import { UnsupportedBundleEventsError } from "./db/types";
@@ -53,15 +63,33 @@ export interface HandlerAPI<TContext = unknown> {
     event: DatabaseBundleEventInput,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
+  deleteBundleEventsBefore?: (
+    params: {
+      readonly beforeId: string;
+    },
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
 }
 
-export interface HandlerOptions {
+export interface HandlerBundleEventsOptions<TContext = unknown> {
+  readonly maxBodyBytes?: number;
+  readonly policy?: (
+    request: Request,
+    context: HotUpdaterContext<TContext>,
+  ) => MaybePromise<Response | undefined>;
+  readonly retention?: {
+    readonly maxAgeMs: number;
+  };
+}
+
+export interface HandlerOptions<TContext = unknown> {
   /**
    * Base path for all routes
    * @default "/api"
    */
   basePath?: string;
+  bundleEvents?: HandlerBundleEventsOptions<TContext>;
   /**
    * Route groups to mount. Omit this option to use the default route groups.
    * When provided, both route groups must be specified explicitly.
@@ -90,6 +118,7 @@ type RouteHandler<TContext = unknown> = (
   request: Request,
   api: HandlerAPI<TContext>,
   context?: HotUpdaterContext<TContext>,
+  bundleEvents?: HandlerBundleEventsOptions<TContext>,
 ) => Promise<Response>;
 
 class HandlerBadRequestError extends Error {
@@ -99,10 +128,40 @@ class HandlerBadRequestError extends Error {
   }
 }
 
+class HandlerPayloadTooLargeError extends Error {
+  constructor() {
+    super("App-ready event payload exceeds the configured size limit");
+    this.name = "HandlerPayloadTooLargeError";
+  }
+}
+
 const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
 const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.31.0";
 const DEFAULT_BUNDLE_LIST_LIMIT = 50;
 const MAX_BUNDLE_LIST_LIMIT = 100;
+
+const assertPositiveSafeInteger = (value: number, name: string): void => {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive safe integer`);
+  }
+};
+
+const validateBundleEventsOptions = <TContext>(
+  options: HandlerBundleEventsOptions<TContext> | undefined,
+): void => {
+  if (options?.maxBodyBytes !== undefined) {
+    assertPositiveSafeInteger(
+      options.maxBodyBytes,
+      "bundleEvents.maxBodyBytes",
+    );
+  }
+  if (options?.retention !== undefined) {
+    assertPositiveSafeInteger(
+      options.retention.maxAgeMs,
+      "bundleEvents.retention.maxAgeMs",
+    );
+  }
+};
 
 const supportsExplicitNoUpdateResponse = (request: Request) => {
   const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();
@@ -333,19 +392,29 @@ const handleAppReadyBundleEvent: RouteHandler = async (
   request,
   api,
   context,
+  bundleEvents,
 ) => {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new HandlerBadRequestError("Invalid app-ready event payload");
+  if (!bundleEvents) {
+    throw new HandlerBadRequestError("Bundle events are not enabled");
+  }
+
+  const policyResponse = await bundleEvents.policy?.(request, context);
+  if (policyResponse) {
+    return policyResponse;
+  }
+
+  const maxBodyBytes =
+    bundleEvents.maxBodyBytes ?? DEFAULT_BUNDLE_EVENT_MAX_BODY_BYTES;
+  const body = await readBundleEventBody(request, maxBodyBytes);
+  if (!body.ok) {
+    if (body.reason === "too-large") {
+      throw new HandlerPayloadTooLargeError();
     }
-    throw error;
+    throw new HandlerBadRequestError("Invalid app-ready event payload");
   }
 
   const parsedEvent = parseAppReadyBundleEvent(
-    body,
+    body.value,
     request.headers.get(SDK_VERSION_HEADER),
   );
   if (!parsedEvent.ok) {
@@ -355,7 +424,35 @@ const handleAppReadyBundleEvent: RouteHandler = async (
     throw new UnsupportedBundleEventsError();
   }
 
-  await api.appendBundleEvent(parsedEvent.event, context);
+  const requestEventId = request.headers
+    .get("Hot-Updater-Event-ID")
+    ?.trim()
+    .toLowerCase();
+  const serverTimestamp = Date.now();
+  if (
+    requestEventId &&
+    (!isUUIDv7(requestEventId) ||
+      extractTimestampFromUUIDv7(requestEventId) >
+        serverTimestamp + MAX_BUNDLE_EVENT_FUTURE_SKEW_MS)
+  ) {
+    throw new HandlerBadRequestError("Invalid Hot-Updater-Event-ID header");
+  }
+  const maxAgeMs = bundleEvents.retention?.maxAgeMs;
+  const eventId =
+    requestEventId ?? (maxAgeMs === undefined ? undefined : createUUIDv7());
+  if (maxAgeMs !== undefined && api.deleteBundleEventsBefore) {
+    await api.deleteBundleEventsBefore(
+      {
+        beforeId: createRetentionBoundaryId(serverTimestamp, maxAgeMs),
+      },
+      context,
+    );
+  }
+
+  await api.appendBundleEvent(
+    eventId ? { ...parsedEvent.event, id: eventId } : parsedEvent.event,
+    context,
+  );
 
   return new Response(JSON.stringify({ success: true }), {
     status: 201,
@@ -596,12 +693,13 @@ const routes: Record<string, RouteHandler<any>> = {
  */
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
-  options: HandlerOptions = {},
+  options: HandlerOptions<TContext> = {},
 ): (
   request: Request,
   context?: HotUpdaterContext<TContext>,
 ) => Promise<Response> {
   const basePath = options.basePath ?? "/api";
+  validateBundleEventsOptions(options.bundleEvents);
   const routeOptions = {
     updateCheck: options.routes?.updateCheck ?? true,
     bundles: options.routes?.bundles ?? false,
@@ -638,6 +736,9 @@ export function createHandler<TContext = unknown>(
       "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
       "appVersionUpdateWithCohort",
     );
+  }
+
+  if (options.bundleEvents) {
     addRoute(router, "POST", "/bundle-events/app-ready", "appReadyBundleEvent");
   }
 
@@ -684,8 +785,21 @@ export function createHandler<TContext = unknown>(
       }
 
       const requestContext = context ?? ({} as HotUpdaterContext<TContext>);
-      return await handler(match.params || {}, request, api, requestContext);
+      return await handler(
+        match.params || {},
+        request,
+        api,
+        requestContext,
+        options.bundleEvents,
+      );
     } catch (error) {
+      if (error instanceof HandlerPayloadTooLargeError) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 413,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       if (error instanceof HandlerBadRequestError) {
         return new Response(JSON.stringify({ error: error.message }), {
           status: 400,

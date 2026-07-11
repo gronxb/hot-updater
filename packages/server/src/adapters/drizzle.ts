@@ -2,6 +2,8 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
+  BundleEventFindManyQuery,
+  BundlePatchFindManyQuery,
   DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
   DatabasePluginDeclaration,
@@ -10,7 +12,19 @@ import {
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core/internal";
+import {
+  buildBundlePatchRowResource,
+  createBundleEventResource,
+  createBundleResource,
+  createDatabasePlugin,
+  setBundleEventResourceOverride,
+  setBundlePatchResourceOverride,
+  setBundleResourceOverride,
+  toPatch,
+  type BundleEventStore,
+  type BundlePatchRowStore,
+  type BundleStore,
+} from "@hot-updater/plugin-core/internal";
 import {
   and,
   asc,
@@ -53,6 +67,7 @@ import {
   createLazyDB,
   type DrizzleDB,
   type DrizzleTable,
+  hasDrizzleTransaction,
 } from "./drizzleLazyDB";
 import { createCallbackDatabaseTransaction } from "./transaction";
 
@@ -104,14 +119,105 @@ const buildWhere = (
   if (where?.targetAppVersionNotNull) {
     conditions.push(isNotNull(column(table, "target_app_version")));
   }
-  if (where?.id?.eq) conditions.push(eq(column(table, "id"), where.id.eq));
-  if (where?.id?.gt) conditions.push(gt(column(table, "id"), where.id.gt));
-  if (where?.id?.gte) conditions.push(gte(column(table, "id"), where.id.gte));
-  if (where?.id?.lt) conditions.push(lt(column(table, "id"), where.id.lt));
-  if (where?.id?.lte) conditions.push(lte(column(table, "id"), where.id.lte));
-  if (where?.id?.in) conditions.push(inArray(column(table, "id"), where.id.in));
+  if (where?.id?.eq !== undefined)
+    conditions.push(eq(column(table, "id"), where.id.eq));
+  if (where?.id?.gt !== undefined)
+    conditions.push(gt(column(table, "id"), where.id.gt));
+  if (where?.id?.gte !== undefined)
+    conditions.push(gte(column(table, "id"), where.id.gte));
+  if (where?.id?.lt !== undefined)
+    conditions.push(lt(column(table, "id"), where.id.lt));
+  if (where?.id?.lte !== undefined)
+    conditions.push(lte(column(table, "id"), where.id.lte));
+  if (where?.id?.in !== undefined)
+    conditions.push(inArray(column(table, "id"), where.id.in));
   return conditions.length > 0 ? and(...conditions) : undefined;
 };
+
+const hasEmptyBundleFilter = (where: DatabaseBundleQueryWhere | undefined) =>
+  where?.id?.in?.length === 0 || where?.targetAppVersionIn?.length === 0;
+
+const buildPatchWhere = (
+  table: DrizzleTable,
+  where: BundlePatchFindManyQuery["where"],
+) => {
+  const conditions = [];
+  if (where?.id !== undefined)
+    conditions.push(eq(column(table, "id"), where.id));
+  if (where?.bundleId !== undefined)
+    conditions.push(eq(column(table, "bundle_id"), where.bundleId));
+  if (where?.baseBundleId !== undefined)
+    conditions.push(eq(column(table, "base_bundle_id"), where.baseBundleId));
+  if (where?.idIn?.length)
+    conditions.push(inArray(column(table, "id"), [...where.idIn]));
+  if (where?.bundleIdIn?.length)
+    conditions.push(inArray(column(table, "bundle_id"), [...where.bundleIdIn]));
+  if (where?.baseBundleIdIn?.length) {
+    conditions.push(
+      inArray(column(table, "base_bundle_id"), [...where.baseBundleIdIn]),
+    );
+  }
+  return conditions.length > 0 ? and(...conditions) : undefined;
+};
+
+const hasEmptyPatchFilter = (where: BundlePatchFindManyQuery["where"]) =>
+  where?.idIn?.length === 0 ||
+  where?.bundleIdIn?.length === 0 ||
+  where?.baseBundleIdIn?.length === 0;
+
+const buildEventWhere = (
+  table: DrizzleTable,
+  where: BundleEventFindManyQuery["where"],
+) => {
+  const conditions = [];
+  if (where?.kind !== undefined)
+    conditions.push(eq(column(table, "kind"), where.kind));
+  if (where?.installId !== undefined)
+    conditions.push(eq(column(table, "install_id"), where.installId));
+  if (where?.activeBundleId !== undefined)
+    conditions.push(
+      eq(column(table, "active_bundle_id"), where.activeBundleId),
+    );
+  if (where?.previousActiveBundleId !== undefined) {
+    conditions.push(
+      eq(
+        column(table, "previous_active_bundle_id"),
+        where.previousActiveBundleId,
+      ),
+    );
+  }
+  if (where?.crashedBundleId !== undefined)
+    conditions.push(
+      eq(column(table, "crashed_bundle_id"), where.crashedBundleId),
+    );
+  if (where?.platform !== undefined)
+    conditions.push(eq(column(table, "platform"), where.platform));
+  if (where?.channel !== undefined)
+    conditions.push(eq(column(table, "channel"), where.channel));
+  if (where?.appVersion !== undefined)
+    conditions.push(eq(column(table, "app_version"), where.appVersion));
+  if (where?.fingerprintHash !== undefined)
+    conditions.push(
+      eq(column(table, "fingerprint_hash"), where.fingerprintHash),
+    );
+  if (where?.cohort !== undefined)
+    conditions.push(eq(column(table, "cohort"), where.cohort));
+  if (where?.userId !== undefined)
+    conditions.push(eq(column(table, "user_id"), where.userId));
+  return conditions.length > 0 ? and(...conditions) : undefined;
+};
+
+const patchOrderColumns = {
+  id: "id",
+  bundleId: "bundle_id",
+  baseBundleId: "base_bundle_id",
+  orderIndex: "order_index",
+} as const;
+
+const drizzleOrder = (
+  value: SQLWrapper,
+  direction: "asc" | "desc" | undefined,
+) => (direction === "asc" ? asc(value) : desc(value));
 
 const createDrizzlePlugin = createDatabasePlugin({
   name: "drizzle",
@@ -166,84 +272,196 @@ const createDrizzlePlugin = createDatabasePlugin({
         );
       };
 
+      const bundleStore: BundleStore = {
+        async getById({ bundleId }) {
+          const row = await activeDB.query["bundles"]?.findFirst({
+            where: eq(column(bundleTable(), "id"), bundleId),
+          });
+          return row ? rowToDatabaseBundleRecord(row as BundleRow) : null;
+        },
+        async findRecords() {
+          const rows = await activeDB.query["bundles"]?.findMany();
+          return ((rows ?? []) as BundleRow[]).map(rowToDatabaseBundleRecord);
+        },
+        async insert({ bundle }) {
+          await upsertBundleRecord(bundle);
+        },
+        async update({ bundleId, patch }) {
+          const row = await activeDB.query["bundles"]?.findFirst({
+            where: eq(column(bundleTable(), "id"), bundleId),
+          });
+          if (!row) throw new Error("targetBundleId not found");
+          await upsertBundleRecord({
+            ...rowToDatabaseBundleRecord(row as BundleRow),
+            ...patch,
+            id: bundleId,
+          });
+        },
+        async delete({ bundleId }) {
+          await activeDB
+            .delete(bundleTable())
+            .where(eq(column(bundleTable(), "id"), bundleId));
+        },
+      };
+      setBundleResourceOverride(bundleStore, {
+        ...createBundleResource(bundleStore),
+        async findMany({ where, window, orderBy }) {
+          if (hasEmptyBundleFilter(where)) return [];
+          const rows = await activeDB.query["bundles"]?.findMany({
+            where: buildWhere(bundleTable(), where),
+            orderBy: [
+              drizzleOrder(column(bundleTable(), "id"), orderBy?.direction),
+            ],
+            limit: window.limit,
+            offset: window.offset,
+          });
+          return ((rows ?? []) as BundleRow[]).map(rowToDatabaseBundleRecord);
+        },
+        async count({ where }) {
+          if (hasEmptyBundleFilter(where)) return 0;
+          return activeDB.$count(
+            bundleTable(),
+            buildWhere(bundleTable(), where),
+          );
+        },
+      });
+
+      const patchStore: BundlePatchRowStore & { readonly storage: "rows" } = {
+        storage: "rows",
+        async findRows() {
+          const rows = await activeDB.query["bundle_patches"]?.findMany({
+            orderBy: [asc(column(patchTable(), "order_index"))],
+          });
+          return parseBundlePatchRows(rows ?? []);
+        },
+        async getRowById({ patchId }) {
+          const row = await activeDB.query["bundle_patches"]?.findFirst({
+            where: eq(column(patchTable(), "id"), patchId),
+          });
+          return row ? parseBundlePatchRow(row) : null;
+        },
+        async insertRow({ row }) {
+          const { id: _id, ...updateRow } = row;
+          const inserted = activeDB.insert(patchTable()).values(row);
+          if (config.provider === "mysql") {
+            if (!inserted.onDuplicateKeyUpdate) {
+              throw new Error(
+                "Drizzle MySQL insert does not support duplicate-key handling.",
+              );
+            }
+            await inserted.onDuplicateKeyUpdate({ set: updateRow });
+          } else {
+            if (!inserted.onConflictDoUpdate) {
+              throw new Error(
+                "Drizzle insert does not support conflict updates.",
+              );
+            }
+            await inserted.onConflictDoUpdate({
+              target: column(patchTable(), "id"),
+              set: updateRow,
+            });
+          }
+        },
+        async updateRow({ patchId, row }) {
+          await activeDB
+            .update(patchTable())
+            .set(row)
+            .where(eq(column(patchTable(), "id"), patchId));
+        },
+        async deleteRow({ patchId }) {
+          await activeDB
+            .delete(patchTable())
+            .where(eq(column(patchTable(), "id"), patchId));
+        },
+      };
+      setBundlePatchResourceOverride(patchStore, {
+        ...buildBundlePatchRowResource(patchStore),
+        async findMany({ where, window, orderBy }) {
+          if (hasEmptyPatchFilter(where)) return [];
+          const direction = orderBy?.direction ?? "asc";
+          const orderField = patchOrderColumns[orderBy?.field ?? "orderIndex"];
+          const rows = await activeDB.query["bundle_patches"]?.findMany({
+            where: buildPatchWhere(patchTable(), where),
+            orderBy: [
+              drizzleOrder(column(patchTable(), orderField), direction),
+              ...(orderField === "id"
+                ? []
+                : [drizzleOrder(column(patchTable(), "id"), direction)]),
+            ],
+            limit: window.limit,
+            offset: window.offset,
+          });
+          return parseBundlePatchRows(rows ?? []).map(toPatch);
+        },
+        async count({ where }) {
+          if (hasEmptyPatchFilter(where)) return 0;
+          return activeDB.$count(
+            patchTable(),
+            buildPatchWhere(patchTable(), where),
+          );
+        },
+      });
+
+      const eventStore: BundleEventStore = {
+        async findEvents() {
+          const rows = await activeDB.query["bundle_events"]?.findMany();
+          return ((rows ?? []) as BundleEventRow[]).map(
+            rowToDatabaseBundleEvent,
+          );
+        },
+        async append({ event }) {
+          const inserted = activeDB
+            .insert(eventTable())
+            .values(databaseBundleEventToRow(event));
+          if (config.provider === "mysql") {
+            if (!inserted.onDuplicateKeyUpdate) {
+              throw new Error(
+                "Drizzle MySQL insert does not support duplicate-key handling.",
+              );
+            }
+            await inserted.onDuplicateKeyUpdate({ set: { id: event.id } });
+          } else {
+            if (!inserted.onConflictDoNothing) {
+              throw new Error(
+                "Drizzle insert does not support conflict handling.",
+              );
+            }
+            await inserted.onConflictDoNothing();
+          }
+        },
+        async deleteBeforeId({ beforeId }) {
+          await activeDB
+            .delete(eventTable())
+            .where(lt(column(eventTable(), "id"), beforeId));
+        },
+      };
+      setBundleEventResourceOverride(eventStore, {
+        ...createBundleEventResource(eventStore),
+        async findMany({ where, window, orderBy }) {
+          const rows = await activeDB.query["bundle_events"]?.findMany({
+            where: buildEventWhere(eventTable(), where),
+            orderBy: [
+              drizzleOrder(column(eventTable(), "id"), orderBy?.direction),
+            ],
+            limit: window.limit,
+            offset: window.offset,
+          });
+          return ((rows ?? []) as BundleEventRow[]).map(
+            rowToDatabaseBundleEvent,
+          );
+        },
+        async count({ where }) {
+          return activeDB.$count(
+            eventTable(),
+            buildEventWhere(eventTable(), where),
+          );
+        },
+      });
+
       return {
-        bundles: {
-          async getById({ bundleId }) {
-            const row = await activeDB.query["bundles"]?.findFirst({
-              where: eq(column(bundleTable(), "id"), bundleId),
-            });
-            return row ? rowToDatabaseBundleRecord(row as BundleRow) : null;
-          },
-          async findRecords() {
-            const rows = await activeDB.query["bundles"]?.findMany();
-            return ((rows ?? []) as BundleRow[]).map(rowToDatabaseBundleRecord);
-          },
-          async insert({ bundle }) {
-            await upsertBundleRecord(bundle);
-          },
-          async update({ bundleId, patch }) {
-            const row = await activeDB.query["bundles"]?.findFirst({
-              where: eq(column(bundleTable(), "id"), bundleId),
-            });
-            if (!row) throw new Error("targetBundleId not found");
-            await upsertBundleRecord({
-              ...rowToDatabaseBundleRecord(row as BundleRow),
-              ...patch,
-              id: bundleId,
-            });
-          },
-          async delete({ bundleId }) {
-            await activeDB
-              .delete(bundleTable())
-              .where(eq(column(bundleTable(), "id"), bundleId));
-          },
-        },
-        patches: {
-          storage: "rows",
-          async findRows() {
-            const rows = await activeDB.query["bundle_patches"]?.findMany({
-              orderBy: [asc(column(patchTable(), "order_index"))],
-            });
-            return parseBundlePatchRows(rows ?? []);
-          },
-          async getRowById({ patchId }) {
-            const row = await activeDB.query["bundle_patches"]?.findFirst({
-              where: eq(column(patchTable(), "id"), patchId),
-            });
-            return row ? parseBundlePatchRow(row) : null;
-          },
-          async insertRow({ row }) {
-            const inserted = activeDB.insert(patchTable()).values(row);
-            if (inserted.execute) await inserted.execute();
-            else await inserted;
-          },
-          async updateRow({ patchId, row }) {
-            await activeDB
-              .update(patchTable())
-              .set(row)
-              .where(eq(column(patchTable(), "id"), patchId));
-          },
-          async deleteRow({ patchId }) {
-            await activeDB
-              .delete(patchTable())
-              .where(eq(column(patchTable(), "id"), patchId));
-          },
-        },
-        bundleEvents: {
-          async findEvents() {
-            const rows = await activeDB.query["bundle_events"]?.findMany();
-            return ((rows ?? []) as BundleEventRow[]).map(
-              rowToDatabaseBundleEvent,
-            );
-          },
-          async append({ event }) {
-            const inserted = activeDB
-              .insert(eventTable())
-              .values(databaseBundleEventToRow(event));
-            if (inserted.execute) await inserted.execute();
-            else await inserted;
-          },
-        },
+        bundles: bundleStore,
+        patches: patchStore,
+        bundleEvents: eventStore,
         updateInfo: {
           async get(args) {
             if (args._updateStrategy === "appVersion") {
@@ -317,10 +535,10 @@ const createDrizzlePlugin = createDatabasePlugin({
     };
 
     const connection = createConnection(db);
-    const runTransaction = db.transaction;
-    if (typeof runTransaction !== "function") {
+    if (!hasDrizzleTransaction(db)) {
       return connection;
     }
+    const runTransaction = db.transaction;
 
     return {
       ...connection,

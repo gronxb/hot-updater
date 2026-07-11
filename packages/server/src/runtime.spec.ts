@@ -22,6 +22,7 @@ import type {
 import { createDatabasePlugin } from "@hot-updater/plugin-core/internal";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
+import { getDatabaseToolingCapabilities } from "./db";
 import type { DatabaseAdapterCapabilities, Migrator } from "./db/types";
 import { createHotUpdater } from "./index";
 import type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./index";
@@ -206,6 +207,29 @@ describe("runtime createHotUpdater", () => {
     expect(packageJson.exports["./runtime"]).toBeUndefined();
   });
 
+  it("publishes the ORM versions verified by the server test matrix", async () => {
+    // Given
+    const packageJson = JSON.parse(
+      await readFile(new URL("../package.json", import.meta.url), "utf-8"),
+    ) as {
+      peerDependencies: Record<string, string>;
+    };
+
+    // When
+    const ormPeers = {
+      "@prisma/client": packageJson.peerDependencies["@prisma/client"],
+      "drizzle-orm": packageJson.peerDependencies["drizzle-orm"],
+      kysely: packageJson.peerDependencies["kysely"],
+    };
+
+    // Then
+    expect(ormPeers).toEqual({
+      "@prisma/client": ">=6.19.3",
+      "drizzle-orm": ">=0.45.2",
+      kysely: ">=0.28.17",
+    });
+  });
+
   it("exports runtime-safe handler types from the root entry", () => {
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<HandlerOptions>().toHaveProperty("routes");
@@ -213,6 +237,35 @@ describe("runtime createHotUpdater", () => {
       updateCheck: boolean;
       bundles: boolean;
     }>();
+  });
+
+  it("discovers migrator tooling for a custom adapter name", () => {
+    const hotUpdater = createHotUpdater({
+      database: createSchemaManagedDatabase("cloudflare-d1", undefined),
+    });
+
+    expect(getDatabaseToolingCapabilities(hotUpdater)).toEqual({
+      canCreateMigrator: true,
+      canGenerateSchema: false,
+    });
+  });
+
+  it("forwards bundle event opt-in to the runtime handler", async () => {
+    // Given
+    const { database } = createTestDatabase();
+    const hotUpdater = createHotUpdater({ bundleEvents: {}, database });
+
+    // When
+    const response = await hotUpdater.handler(
+      new Request("http://localhost/api/bundle-events/app-ready", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+    );
+
+    // Then
+    expect(response.status).toBe(400);
   });
 
   it("exports the root runtime API without database capabilities", () => {
@@ -242,6 +295,32 @@ describe("runtime createHotUpdater", () => {
       id: bundle.id,
     });
     expect(hotUpdater.adapterName).toBe("database");
+  });
+
+  it("reopens promise-like direct handles for each contextless operation", async () => {
+    // Given
+    const owner = createTestDatabase({ bundles: [bundle] }).database;
+    const directHandle: DatabasePluginRuntime = { ...owner };
+    const openBorrowedRuntime = vi.fn(
+      () => createTestDatabase({ bundles: [bundle] }).database,
+    );
+    Object.defineProperty(
+      directHandle,
+      Symbol.for("@hot-updater/plugin-core/database-runtime-factory"),
+      { value: openBorrowedRuntime },
+    );
+    const thenableHandle: PromiseLike<DatabasePluginRuntime> = {
+      then: (resolve, reject) =>
+        Promise.resolve(directHandle).then(resolve, reject),
+    };
+    const hotUpdater = createHotUpdater({ database: thenableHandle });
+
+    // When
+    await hotUpdater.getBundleById(bundle.id);
+    await hotUpdater.getBundleById(bundle.id);
+
+    // Then
+    expect(openBorrowedRuntime).toHaveBeenCalledTimes(2);
   });
 
   it("requires storages to implement the runtime profile", () => {

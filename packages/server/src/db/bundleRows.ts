@@ -21,6 +21,7 @@ import {
   bundlePatchRowToPatchArtifact,
   type BundlePatchRow,
 } from "./bundlePatchRows";
+import type { ORMSQLProvider } from "./types";
 import { parseBundleMetadata } from "./updateArtifacts";
 
 export {
@@ -178,6 +179,16 @@ export const databaseBundleEventToRow = (
   user_id: event.userId ?? null,
   payload: event.payload,
 });
+
+export const databaseBundleEventToProviderRow = (
+  event: DatabaseBundleEvent,
+  provider: ORMSQLProvider,
+): BundleEventRow => {
+  const row = databaseBundleEventToRow(event);
+  return provider === "mysql" || provider === "sqlite"
+    ? { ...row, payload: JSON.stringify(row.payload) }
+    : row;
+};
 
 export const bundleEventMatchesWhere = (
   event: DatabaseBundleEvent,

@@ -1,5 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/core";
+import type { DatabaseBundleEventInput } from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +31,26 @@ const sqliteJsonBundle: Bundle = {
   metadata: { app_version: "1.0.0" },
   targetCohorts: ["17", "qa-group"],
 };
+
+const sqliteBundleEvent = {
+  kind: "APP_READY",
+  installId: "install-sqlite-json",
+  activeBundleId: sqliteJsonBundle.id,
+  previousActiveBundleId: null,
+  crashedBundleId: null,
+  platform: "ios",
+  channel: "production",
+  appVersion: "1.0.0",
+  fingerprintHash: null,
+  cohort: "17",
+  userId: null,
+  payload: {
+    status: "STABLE",
+    sdkVersion: "1.2.3",
+    defaultChannel: "production",
+    isChannelSwitched: false,
+  },
+} satisfies DatabaseBundleEventInput;
 
 describe("kyselyAdapter sqlite provider", () => {
   const databases: PGlite[] = [];
@@ -151,5 +172,57 @@ describe("kyselyAdapter sqlite provider", () => {
     });
     expect(restored?.metadata).toEqual({ app_version: "1.0.0" });
     expect(restored?.targetCohorts).toEqual(["17", "qa-group"]);
+  });
+
+  it("stores SQLite event payload JSON as raw text and round-trips it", async () => {
+    // Given
+    const db = new PGlite();
+    databases.push(db);
+    const kysely = new Kysely<HotUpdaterKyselyDatabase>({
+      dialect: new PGliteDialect(db),
+    });
+    kyselyInstances.push(kysely);
+    await db.exec(`
+      create table bundle_events (
+        id text primary key,
+        kind text not null,
+        install_id text not null,
+        active_bundle_id text not null,
+        previous_active_bundle_id text,
+        crashed_bundle_id text,
+        platform text not null,
+        channel text not null,
+        app_version text,
+        fingerprint_hash text,
+        cohort text,
+        user_id text,
+        payload text not null
+      );
+    `);
+    const adapter = kyselyAdapter({
+      db: kysely,
+      provider: "sqlite",
+    });
+    if (!adapter.bundleEvents) {
+      throw new Error("Kysely adapter must expose bundle events.");
+    }
+
+    // When
+    await adapter.bundleEvents.append({ event: sqliteBundleEvent });
+    await adapter.commit();
+    const stored = await db.query<{ payload: string }>(
+      "select payload from bundle_events",
+    );
+    const restored = await adapter.bundleEvents.list({
+      limit: 10,
+      where: { installId: sqliteBundleEvent.installId },
+    });
+
+    // Then
+    expect(stored.rows).toEqual([
+      { payload: JSON.stringify(sqliteBundleEvent.payload) },
+    ]);
+    expect(restored.data).toHaveLength(1);
+    expect(restored.data[0]?.payload).toEqual(sqliteBundleEvent.payload);
   });
 });

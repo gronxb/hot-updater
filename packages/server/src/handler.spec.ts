@@ -1,3 +1,4 @@
+// noqa: SIZE_OK - Existing handler unit suite; splitting belongs to a dedicated test-structure cleanup.
 import { type Bundle, NIL_UUID } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -347,10 +348,15 @@ describe("createHandler", () => {
     expect(updateResponse.status).toBe(200);
   });
 
-  it("persists app-ready bundle events on update-check routes", async () => {
+  it("persists app-ready bundle events when telemetry is enabled", async () => {
+    // Given
     const api = createApi();
-    const handler = createHandler(api, { basePath: "/api" });
+    const handler = createHandler(api, {
+      basePath: "/api",
+      bundleEvents: {},
+    });
 
+    // When
     const response = await handler(
       new Request("http://localhost/api/bundle-events/app-ready", {
         method: "POST",
@@ -378,6 +384,7 @@ describe("createHandler", () => {
       },
     );
 
+    // Then
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({ success: true });
     expect(api.appendBundleEvent).toHaveBeenCalledWith(
@@ -409,9 +416,14 @@ describe("createHandler", () => {
   });
 
   it("returns unsupported when app-ready events are not implemented", async () => {
+    // Given
     const { appendBundleEvent: _appendBundleEvent, ...api } = createApi();
-    const handler = createHandler(api, { basePath: "/api" });
+    const handler = createHandler(api, {
+      basePath: "/api",
+      bundleEvents: {},
+    });
 
+    // When
     const response = await handler(
       new Request("http://localhost/api/bundle-events/app-ready", {
         method: "POST",
@@ -431,6 +443,7 @@ describe("createHandler", () => {
       }),
     );
 
+    // Then
     expect(response.status).toBe(501);
     await expect(response.json()).resolves.toEqual({
       error: "Bundle events are not supported by this database provider.",

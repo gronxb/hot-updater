@@ -190,6 +190,7 @@ export interface AppReadyBundleEventPayload {
 export type BundleEventPayload = AppReadyBundleEventPayload;
 
 export interface DatabaseBundleEventInput {
+  readonly id?: string;
   readonly kind: BundleEventKind;
   readonly installId: string;
   readonly activeBundleId: string;
@@ -335,11 +336,17 @@ export interface RuntimeBundleEventRepository {
   readonly append: (params: {
     readonly event: DatabaseBundleEventInput;
   }) => Promise<void>;
+  readonly deleteBeforeId?: (params: {
+    readonly beforeId: string;
+  }) => Promise<void>;
 }
 
 export interface BundleEventResource extends BundleEventRepository {
   readonly append: (params: {
     readonly event: DatabaseBundleEvent;
+  }) => Promise<void>;
+  readonly deleteBeforeId?: (params: {
+    readonly beforeId: string;
   }) => Promise<void>;
 }
 

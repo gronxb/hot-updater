@@ -19,11 +19,8 @@ import {
   rowToBundle,
 } from "../db/bundleRows";
 import { createMongoMigrator } from "../db/fixedMigrator";
-import type {
-  DatabaseAdapterRuntime,
-  MongoClientRuntime,
-  MongoSessionRuntime,
-} from "../db/types";
+import type { MongoClientRuntime, MongoSessionRuntime } from "../db/mongoTypes";
+import type { DatabaseAdapterRuntime } from "../db/types";
 import { createCallbackDatabaseTransaction } from "./transaction";
 
 export interface MongoDBConfig {

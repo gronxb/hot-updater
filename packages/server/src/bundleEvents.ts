@@ -4,6 +4,94 @@ import type { DatabaseBundleEventInput } from "@hot-updater/plugin-core";
 export const UNSUPPORTED_BUNDLE_EVENTS_MESSAGE =
   "Bundle events are not supported by this database provider.";
 
+export const DEFAULT_BUNDLE_EVENT_MAX_BODY_BYTES = 16 * 1024;
+export const MAX_BUNDLE_EVENT_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
+const MAX_PERSISTED_STRING_LENGTH = 1024;
+const PERSISTED_STRING_FIELDS = [
+  "activeBundleId",
+  "previousActiveBundleId",
+  "crashedBundleId",
+  "installId",
+  "channel",
+  "appVersion",
+  "fingerprintHash",
+  "cohort",
+  "userId",
+  "defaultChannel",
+  "sdkVersion",
+] as const;
+const UUID_V7_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type ReadBundleEventBodyResult =
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false; readonly reason: "invalid" | "too-large" };
+
+export const readBundleEventBody = async (
+  request: Request,
+  maxBodyBytes: number,
+): Promise<ReadBundleEventBodyResult> => {
+  const contentLength = request.headers.get("Content-Length");
+  if (
+    contentLength !== null &&
+    Number.isFinite(Number(contentLength)) &&
+    Number(contentLength) > maxBodyBytes
+  ) {
+    return { ok: false, reason: "too-large" };
+  }
+
+  if (!request.body) {
+    return { ok: false, reason: "invalid" };
+  }
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let byteLength = 0;
+  let text = "";
+
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) {
+        text += decoder.decode();
+        break;
+      }
+
+      byteLength += result.value.byteLength;
+      if (byteLength > maxBodyBytes) {
+        await reader.cancel();
+        return { ok: false, reason: "too-large" };
+      }
+      text += decoder.decode(result.value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false, reason: "invalid" };
+  }
+};
+
+export const isUUIDv7 = (value: string): boolean => UUID_V7_PATTERN.test(value);
+
+export const createRetentionBoundaryId = (
+  serverTimestamp: number,
+  maxAgeMs: number,
+): string => {
+  const boundaryTimestamp = Math.max(0, serverTimestamp - maxAgeMs);
+  const boundaryHex = Math.trunc(boundaryTimestamp)
+    .toString(16)
+    .padStart(12, "0");
+
+  return `${boundaryHex.slice(0, 8)}-${boundaryHex.slice(
+    8,
+  )}-7000-8000-000000000000`;
+};
+
 type ParseAppReadyBundleEventResult =
   | {
       readonly ok: true;
@@ -22,7 +110,11 @@ const getRequiredString = (
   key: string,
 ): string | null => {
   const value = record[key];
-  if (typeof value !== "string" || !value.trim()) {
+  if (
+    typeof value !== "string" ||
+    !value.trim() ||
+    value.length > MAX_PERSISTED_STRING_LENGTH
+  ) {
     return null;
   }
   return value;
@@ -36,7 +128,10 @@ const getOptionalStringOrNull = (
   if (value === undefined || value === null) {
     return null;
   }
-  return typeof value === "string" ? value : null;
+  return typeof value === "string" &&
+    value.length <= MAX_PERSISTED_STRING_LENGTH
+    ? value
+    : null;
 };
 
 const getOptionalTrimmedStringOrNull = (
@@ -51,7 +146,9 @@ const getOptionalTrimmedStringOrNull = (
     return null;
   }
   const trimmed = value.trim();
-  return trimmed || null;
+  return trimmed && trimmed.length <= MAX_PERSISTED_STRING_LENGTH
+    ? trimmed
+    : null;
 };
 
 const getRequiredBoolean = (
@@ -79,6 +176,20 @@ export const parseAppReadyBundleEvent = (
   sdkVersionHeader: string | null,
 ): ParseAppReadyBundleEventResult => {
   if (!isRecord(payload)) {
+    return { ok: false, error: "Invalid app-ready event payload" };
+  }
+
+  const hasOversizedPersistedString = PERSISTED_STRING_FIELDS.some((key) => {
+    const value = payload[key];
+    return (
+      typeof value === "string" && value.length > MAX_PERSISTED_STRING_LENGTH
+    );
+  });
+  if (
+    hasOversizedPersistedString ||
+    (sdkVersionHeader !== null &&
+      sdkVersionHeader.trim().length > MAX_PERSISTED_STRING_LENGTH)
+  ) {
     return { ok: false, error: "Invalid app-ready event payload" };
   }
 

@@ -18,7 +18,11 @@ import {
   openDatabaseRuntime,
   type StoragePluginFactory,
 } from "./db/types";
-import { createHandler, type HandlerRoutes } from "./handler";
+import {
+  createHandler,
+  type HandlerBundleEventsOptions,
+  type HandlerRoutes,
+} from "./handler";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
@@ -47,6 +51,7 @@ export interface CreateHotUpdaterOptions<TContext = unknown> {
     | StoragePluginFactory<TContext>
   )[];
   readonly basePath?: string;
+  readonly bundleEvents?: HandlerBundleEventsOptions<TContext>;
   readonly cwd?: string;
   readonly routes?: HandlerRoutes;
 }
@@ -130,7 +135,9 @@ export function createHotUpdaterCore<TContext = unknown>(
           isDatabasePluginRuntime(openedDatabase))
       ? () =>
           isRuntimePromiseLike
-            ? Promise.resolve(openedDatabase)
+            ? Promise.resolve(openedDatabase).then((runtime) =>
+                openDatabaseRuntime(runtime),
+              )
             : openDatabaseRuntime(openedDatabase)
       : undefined;
   if (!runtimeOpener) {
@@ -159,6 +166,7 @@ export function createHotUpdaterCore<TContext = unknown>(
 
   const internalHandler = createHandler(core.api, {
     basePath,
+    bundleEvents: options.bundleEvents,
     routes: options.routes,
   });
 

@@ -5,6 +5,11 @@ export {
   type DatabasePluginSpec,
 } from "./createDatabasePlugin";
 export {
+  createBundleEventResource,
+  setBundleEventResourceOverride,
+  type BundleEventStore,
+} from "./databaseBundleEventResources";
+export {
   createBundleResource,
   setBundleResourceOverride,
   setBundleStoreReadHint,
@@ -20,6 +25,7 @@ export {
 export {
   buildBundlePatchSetResource,
   buildBundlePatchRowResource,
+  setBundlePatchResourceOverride,
   type BundlePatchSetStore,
   type BundlePatchRowStore,
 } from "./databaseBundlePatchResources";

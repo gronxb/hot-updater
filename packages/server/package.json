@@ -62,9 +62,9 @@
     "semver": "^7.7.2"
   },
   "peerDependencies": {
-    "@prisma/client": "*",
-    "drizzle-orm": "*",
-    "kysely": "*",
+    "@prisma/client": ">=6.19.3",
+    "drizzle-orm": ">=0.45.2",
+    "kysely": ">=0.28.17",
     "mongodb": "*"
   },
   "peerDependenciesMeta": {

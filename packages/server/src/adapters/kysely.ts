@@ -2,6 +2,9 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
   Bundle,
+  BundleEventFindManyQuery,
+  BundlePatchFindManyQuery,
+  DatabaseBundleQueryWhere,
   DatabaseBundleRecord,
   DatabasePluginDeclaration,
 } from "@hot-updater/plugin-core";
@@ -9,12 +12,27 @@ import {
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core/internal";
+import {
+  buildBundlePatchRowResource,
+  createBundleEventResource,
+  createBundleResource,
+  createDatabasePlugin,
+  setBundleEventResourceOverride,
+  setBundlePatchResourceOverride,
+  setBundleResourceOverride,
+  toPatch,
+  type BundleEventStore,
+  type BundlePatchRowStore,
+  type BundleStore,
+} from "@hot-updater/plugin-core/internal";
 import {
   Kysely,
   sql,
   type Dialect,
+  type Expression,
+  type ExpressionBuilder,
   type RawBuilder,
+  type SqlBool,
   type Transaction,
 } from "kysely";
 
@@ -23,7 +41,7 @@ import {
   type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
-  databaseBundleEventToRow,
+  databaseBundleEventToProviderRow,
   rowToDatabaseBundleEvent,
   rowToDatabaseBundleRecord,
   rowToBundle,
@@ -126,6 +144,131 @@ const stringInValues = (
 ): readonly string[] | RawBuilder<string> =>
   provider === "sqlite" ? sqliteJsonEachValues(values) : [...values];
 
+const hasEmptyBundleFilter = (where: DatabaseBundleQueryWhere | undefined) =>
+  where?.id?.in?.length === 0 || where?.targetAppVersionIn?.length === 0;
+
+const buildKyselyBundleWhere =
+  (where: DatabaseBundleQueryWhere | undefined, provider: KyselySQLProvider) =>
+  (eb: ExpressionBuilder<HotUpdaterKyselyDatabase, "bundles">) => {
+    const conditions: Expression<SqlBool>[] = [];
+    if (where?.channel !== undefined)
+      conditions.push(eb("channel", "=", where.channel));
+    if (where?.platform !== undefined)
+      conditions.push(eb("platform", "=", where.platform));
+    if (where?.enabled !== undefined)
+      conditions.push(eb("enabled", "=", where.enabled));
+    if (where?.fingerprintHash !== undefined) {
+      conditions.push(
+        where.fingerprintHash === null
+          ? eb("fingerprint_hash", "is", null)
+          : eb("fingerprint_hash", "=", where.fingerprintHash),
+      );
+    }
+    if (where?.targetAppVersion !== undefined) {
+      conditions.push(
+        where.targetAppVersion === null
+          ? eb("target_app_version", "is", null)
+          : eb("target_app_version", "=", where.targetAppVersion),
+      );
+    }
+    if (where?.targetAppVersionIn?.length) {
+      conditions.push(
+        eb(
+          "target_app_version",
+          "in",
+          stringInValues(where.targetAppVersionIn, provider),
+        ),
+      );
+    }
+    if (where?.targetAppVersionNotNull) {
+      conditions.push(eb("target_app_version", "is not", null));
+    }
+    if (where?.id?.eq !== undefined)
+      conditions.push(eb("id", "=", where.id.eq));
+    if (where?.id?.gt !== undefined)
+      conditions.push(eb("id", ">", where.id.gt));
+    if (where?.id?.gte !== undefined)
+      conditions.push(eb("id", ">=", where.id.gte));
+    if (where?.id?.lt !== undefined)
+      conditions.push(eb("id", "<", where.id.lt));
+    if (where?.id?.lte !== undefined)
+      conditions.push(eb("id", "<=", where.id.lte));
+    if (where?.id?.in?.length) {
+      conditions.push(eb("id", "in", stringInValues(where.id.in, provider)));
+    }
+    return eb.and(conditions);
+  };
+
+const hasEmptyPatchFilter = (where: BundlePatchFindManyQuery["where"]) =>
+  where?.idIn?.length === 0 ||
+  where?.bundleIdIn?.length === 0 ||
+  where?.baseBundleIdIn?.length === 0;
+
+const buildKyselyPatchWhere =
+  (where: BundlePatchFindManyQuery["where"], provider: KyselySQLProvider) =>
+  (eb: ExpressionBuilder<HotUpdaterKyselyDatabase, "bundle_patches">) => {
+    const conditions: Expression<SqlBool>[] = [];
+    if (where?.id !== undefined) conditions.push(eb("id", "=", where.id));
+    if (where?.bundleId !== undefined)
+      conditions.push(eb("bundle_id", "=", where.bundleId));
+    if (where?.baseBundleId !== undefined)
+      conditions.push(eb("base_bundle_id", "=", where.baseBundleId));
+    if (where?.idIn?.length)
+      conditions.push(eb("id", "in", stringInValues(where.idIn, provider)));
+    if (where?.bundleIdIn?.length) {
+      conditions.push(
+        eb("bundle_id", "in", stringInValues(where.bundleIdIn, provider)),
+      );
+    }
+    if (where?.baseBundleIdIn?.length) {
+      conditions.push(
+        eb(
+          "base_bundle_id",
+          "in",
+          stringInValues(where.baseBundleIdIn, provider),
+        ),
+      );
+    }
+    return eb.and(conditions);
+  };
+
+const buildKyselyEventWhere =
+  (where: BundleEventFindManyQuery["where"]) =>
+  (eb: ExpressionBuilder<HotUpdaterKyselyDatabase, "bundle_events">) => {
+    const conditions: Expression<SqlBool>[] = [];
+    if (where?.kind !== undefined) conditions.push(eb("kind", "=", where.kind));
+    if (where?.installId !== undefined)
+      conditions.push(eb("install_id", "=", where.installId));
+    if (where?.activeBundleId !== undefined)
+      conditions.push(eb("active_bundle_id", "=", where.activeBundleId));
+    if (where?.previousActiveBundleId !== undefined)
+      conditions.push(
+        eb("previous_active_bundle_id", "=", where.previousActiveBundleId),
+      );
+    if (where?.crashedBundleId !== undefined)
+      conditions.push(eb("crashed_bundle_id", "=", where.crashedBundleId));
+    if (where?.platform !== undefined)
+      conditions.push(eb("platform", "=", where.platform));
+    if (where?.channel !== undefined)
+      conditions.push(eb("channel", "=", where.channel));
+    if (where?.appVersion !== undefined)
+      conditions.push(eb("app_version", "=", where.appVersion));
+    if (where?.fingerprintHash !== undefined)
+      conditions.push(eb("fingerprint_hash", "=", where.fingerprintHash));
+    if (where?.cohort !== undefined)
+      conditions.push(eb("cohort", "=", where.cohort));
+    if (where?.userId !== undefined)
+      conditions.push(eb("user_id", "=", where.userId));
+    return eb.and(conditions);
+  };
+
+const patchOrderColumns = {
+  id: "id",
+  bundleId: "bundle_id",
+  baseBundleId: "base_bundle_id",
+  orderIndex: "order_index",
+} as const;
+
 const createDestroyOnce = (
   db: Kysely<HotUpdaterKyselyDatabase>,
 ): (() => Promise<void>) => {
@@ -210,109 +353,208 @@ const createKyselyPlugin = createDatabasePlugin({
         return rows.map((row) => rowToBundle(row, patchMap.get(row.id) ?? []));
       };
 
-      return {
-        bundles: {
-          async getById({ bundleId }) {
-            const row = await executor
-              .selectFrom("bundles")
-              .selectAll()
-              .where("id", "=", bundleId)
-              .executeTakeFirst();
-            return row ? rowToDatabaseBundleRecord(row) : null;
-          },
-          async findRecords() {
-            const rows = await executor
-              .selectFrom("bundles")
-              .selectAll()
-              .execute();
-            return rows.map(rowToDatabaseBundleRecord);
-          },
-          async insert({ bundle }) {
-            await upsertBundleRecord(executor, bundle);
-          },
-          async update({ bundleId, patch }) {
-            const row = await executor
-              .selectFrom("bundles")
-              .selectAll()
-              .where("id", "=", bundleId)
-              .executeTakeFirst();
-            if (!row) throw new Error("targetBundleId not found");
-            await upsertBundleRecord(executor, {
-              ...rowToDatabaseBundleRecord(row),
-              ...patch,
-              id: bundleId,
-            });
-          },
-          async delete({ bundleId }) {
-            await executor
-              .deleteFrom("bundles")
-              .where("id", "=", bundleId)
-              .execute();
-          },
+      const bundleStore: BundleStore = {
+        async getById({ bundleId }) {
+          const row = await executor
+            .selectFrom("bundles")
+            .selectAll()
+            .where("id", "=", bundleId)
+            .executeTakeFirst();
+          return row ? rowToDatabaseBundleRecord(row) : null;
         },
-        patches: {
-          storage: "rows",
-          async findRows() {
-            return await executor
+        async findRecords() {
+          const rows = await executor
+            .selectFrom("bundles")
+            .selectAll()
+            .execute();
+          return rows.map(rowToDatabaseBundleRecord);
+        },
+        async insert({ bundle }) {
+          await upsertBundleRecord(executor, bundle);
+        },
+        async update({ bundleId, patch }) {
+          const row = await executor
+            .selectFrom("bundles")
+            .selectAll()
+            .where("id", "=", bundleId)
+            .executeTakeFirst();
+          if (!row) throw new Error("targetBundleId not found");
+          await upsertBundleRecord(executor, {
+            ...rowToDatabaseBundleRecord(row),
+            ...patch,
+            id: bundleId,
+          });
+        },
+        async delete({ bundleId }) {
+          await executor
+            .deleteFrom("bundles")
+            .where("id", "=", bundleId)
+            .execute();
+        },
+      };
+      setBundleResourceOverride(bundleStore, {
+        ...createBundleResource(bundleStore),
+        async findMany({ where, window, orderBy }) {
+          if (hasEmptyBundleFilter(where)) return [];
+          const rows = await executor
+            .selectFrom("bundles")
+            .selectAll()
+            .where(buildKyselyBundleWhere(where, provider))
+            .orderBy("id", orderBy?.direction ?? "desc")
+            .limit(window.limit)
+            .offset(window.offset)
+            .execute();
+          return rows.map(rowToDatabaseBundleRecord);
+        },
+        async count({ where }) {
+          if (hasEmptyBundleFilter(where)) return 0;
+          const result = await executor
+            .selectFrom("bundles")
+            .select(sql<number>`count(*)`.as("count"))
+            .where(buildKyselyBundleWhere(where, provider))
+            .executeTakeFirst();
+          return Number(result?.count ?? 0);
+        },
+      });
+
+      const patchStore: BundlePatchRowStore & { readonly storage: "rows" } = {
+        storage: "rows",
+        async findRows() {
+          return await executor
+            .selectFrom("bundle_patches")
+            .selectAll()
+            .orderBy("order_index", "asc")
+            .execute();
+        },
+        async getRowById({ patchId }) {
+          return (
+            (await executor
               .selectFrom("bundle_patches")
               .selectAll()
-              .orderBy("order_index", "asc")
-              .execute();
-          },
-          async getRowById({ patchId }) {
-            return (
-              (await executor
-                .selectFrom("bundle_patches")
-                .selectAll()
-                .where("id", "=", patchId)
-                .executeTakeFirst()) ?? null
-            );
-          },
-          async insertRow({ row }) {
-            const { id: _id, ...updateRow } = row;
-            if (provider === "mysql") {
-              await executor
-                .insertInto("bundle_patches")
-                .values(row)
-                .onDuplicateKeyUpdate(updateRow)
-                .execute();
-            } else {
-              await executor
-                .insertInto("bundle_patches")
-                .values(row)
-                .onConflict((oc) => oc.column("id").doUpdateSet(updateRow))
-                .execute();
-            }
-          },
-          async updateRow({ patchId, row }) {
-            await executor
-              .updateTable("bundle_patches")
-              .set(row)
               .where("id", "=", patchId)
-              .execute();
-          },
-          async deleteRow({ patchId }) {
-            await executor
-              .deleteFrom("bundle_patches")
-              .where("id", "=", patchId)
-              .execute();
-          },
+              .executeTakeFirst()) ?? null
+          );
         },
-        bundleEvents: {
-          async findEvents() {
-            const rows = await executor
-              .selectFrom("bundle_events")
-              .selectAll()
+        async insertRow({ row }) {
+          const { id: _id, ...updateRow } = row;
+          if (provider === "mysql") {
+            await executor
+              .insertInto("bundle_patches")
+              .values(row)
+              .onDuplicateKeyUpdate(updateRow)
               .execute();
-            return rows.map(rowToDatabaseBundleEvent);
-          },
-          async append({ event }) {
+          } else {
+            await executor
+              .insertInto("bundle_patches")
+              .values(row)
+              .onConflict((oc) => oc.column("id").doUpdateSet(updateRow))
+              .execute();
+          }
+        },
+        async updateRow({ patchId, row }) {
+          await executor
+            .updateTable("bundle_patches")
+            .set(row)
+            .where("id", "=", patchId)
+            .execute();
+        },
+        async deleteRow({ patchId }) {
+          await executor
+            .deleteFrom("bundle_patches")
+            .where("id", "=", patchId)
+            .execute();
+        },
+      };
+      setBundlePatchResourceOverride(patchStore, {
+        ...buildBundlePatchRowResource(patchStore),
+        async findMany({ where, window, orderBy }) {
+          if (hasEmptyPatchFilter(where)) return [];
+          const direction = orderBy?.direction ?? "asc";
+          const orderField = patchOrderColumns[orderBy?.field ?? "orderIndex"];
+          const orderedQuery = executor
+            .selectFrom("bundle_patches")
+            .selectAll()
+            .where(buildKyselyPatchWhere(where, provider))
+            .orderBy(orderField, direction);
+          const rows = await (
+            orderField === "id"
+              ? orderedQuery
+              : orderedQuery.orderBy("id", direction)
+          )
+            .limit(window.limit)
+            .offset(window.offset)
+            .execute();
+          return rows.map(toPatch);
+        },
+        async count({ where }) {
+          if (hasEmptyPatchFilter(where)) return 0;
+          const result = await executor
+            .selectFrom("bundle_patches")
+            .select(sql<number>`count(*)`.as("count"))
+            .where(buildKyselyPatchWhere(where, provider))
+            .executeTakeFirst();
+          return Number(result?.count ?? 0);
+        },
+      });
+
+      const eventStore: BundleEventStore = {
+        async findEvents() {
+          const rows = await executor
+            .selectFrom("bundle_events")
+            .selectAll()
+            .execute();
+          return rows.map(rowToDatabaseBundleEvent);
+        },
+        async append({ event }) {
+          const row = databaseBundleEventToProviderRow(event, provider);
+          if (provider === "mysql") {
             await executor
               .insertInto("bundle_events")
-              .values(databaseBundleEventToRow(event))
+              .values(row)
+              .onDuplicateKeyUpdate({ id: event.id })
               .execute();
-          },
+          } else {
+            await executor
+              .insertInto("bundle_events")
+              .values(row)
+              .onConflict((oc) => oc.column("id").doNothing())
+              .execute();
+          }
         },
+        async deleteBeforeId({ beforeId }) {
+          await executor
+            .deleteFrom("bundle_events")
+            .where("id", "<", beforeId)
+            .execute();
+        },
+      };
+      setBundleEventResourceOverride(eventStore, {
+        ...createBundleEventResource(eventStore),
+        async findMany({ where, window, orderBy }) {
+          const rows = await executor
+            .selectFrom("bundle_events")
+            .selectAll()
+            .where(buildKyselyEventWhere(where))
+            .orderBy("id", orderBy?.direction ?? "desc")
+            .limit(window.limit)
+            .offset(window.offset)
+            .execute();
+          return rows.map(rowToDatabaseBundleEvent);
+        },
+        async count({ where }) {
+          const result = await executor
+            .selectFrom("bundle_events")
+            .select(sql<number>`count(*)`.as("count"))
+            .where(buildKyselyEventWhere(where))
+            .executeTakeFirst();
+          return Number(result?.count ?? 0);
+        },
+      });
+
+      return {
+        bundles: bundleStore,
+        patches: patchStore,
+        bundleEvents: eventStore,
         updateInfo: {
           async get(args) {
             if (args._updateStrategy === "appVersion") {
