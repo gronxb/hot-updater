@@ -3,7 +3,9 @@ import { fileURLToPath } from "url";
 
 import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
+import { kyselyDatabase } from "@hot-updater/server/adapters/kysely";
 import {
+  setupBundleEventPersistenceTest,
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -18,6 +20,8 @@ import {
 import { execa } from "execa";
 import { afterAll, beforeAll, describe } from "vitest";
 
+import { startMySQLTestDatabase } from "./mysqlTestDatabase";
+
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,7 +34,13 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let hotUpdater: HotUpdaterAPI;
+  let eventDatabase: ReturnType<typeof kyselyDatabase>;
   let closeDatabase: (() => Promise<void>) | null = null;
+  let countEventRows: () => Promise<number>;
+  let countEventRowsById: (id: string) => Promise<number>;
+  let mysqlTestDatabase: Awaited<
+    ReturnType<typeof startMySQLTestDatabase>
+  > | null = null;
   const port = 13579;
 
   beforeAll(async () => {
@@ -39,19 +49,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
     baseUrl = `http://localhost:${port}`;
 
-    // Ensure Docker MySQL is running
-    console.log("Starting MySQL Docker container...");
-    await execa("docker", ["compose", "up", "-d", "--wait"], {
-      cwd: projectRoot,
-    });
-
-    // Wait for MySQL to be healthy
-    console.log("Waiting for MySQL to be ready...");
-    await waitForMySQLReady(projectRoot, 30);
-
-    // Additional delay to ensure MySQL is fully stabilized
-    console.log("Waiting for MySQL to stabilize...");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    mysqlTestDatabase = await startMySQLTestDatabase(projectRoot);
 
     const db = await import("./db.js");
     const { createMigrator } = await import("@hot-updater/server/db");
@@ -63,25 +61,45 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     await result.execute();
 
     hotUpdater = db.hotUpdater;
+    eventDatabase = kyselyDatabase({ db: db.kysely, provider: "mysql" });
     closeDatabase = db.closeDatabase;
+    countEventRows = async () => {
+      const row = await db.kysely
+        .selectFrom("bundle_events")
+        .select(({ fn }) => fn.countAll().as("count"))
+        .executeTakeFirstOrThrow();
+      return Number(row.count);
+    };
+    countEventRowsById = async (id) => {
+      const row = await db.kysely
+        .selectFrom("bundle_events")
+        .select(({ fn }) => fn.countAll().as("count"))
+        .where("id", "=", id)
+        .executeTakeFirstOrThrow();
+      return Number(row.count);
+    };
 
     serverProcess = spawnServerProcess({
       serverCommand: ["npx", "tsx", "src/index.ts"],
       port,
       testDbPath: "", // Not needed for MySQL
       projectRoot,
+      env: { MYSQL_DATABASE: mysqlTestDatabase.databaseName },
     });
 
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
   }, 120000);
 
   afterAll(async () => {
-    await cleanupServer(baseUrl, serverProcess, "");
-    await closeDatabase?.();
-
-    // Clean up database after tests
-    console.log("Cleaning up test database...");
-    await cleanupMySQLDatabase(projectRoot);
+    try {
+      await cleanupServer(baseUrl, serverProcess, "");
+    } finally {
+      try {
+        await closeDatabase?.();
+      } finally {
+        await mysqlTestDatabase?.restore();
+      }
+    }
   }, 60000);
 
   const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
@@ -105,53 +123,10 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
   });
+
+  setupBundleEventPersistenceTest({
+    getRuntime: () => eventDatabase,
+    countEventRows: () => countEventRows(),
+    countEventRowsById: (id) => countEventRowsById(id),
+  });
 });
-
-// Helper function to wait for MySQL to be ready
-async function waitForMySQLReady(
-  projectRoot: string,
-  maxAttempts: number,
-): Promise<void> {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      // Check Docker container health status
-      const healthResult = await execa(
-        "docker",
-        ["inspect", "--format={{.State.Health.Status}}", "hono-kysely-mysql"],
-        { cwd: projectRoot },
-      );
-      if (healthResult.stdout.trim() === "healthy") {
-        console.log("MySQL is ready!");
-        return;
-      }
-    } catch {
-      // Container not ready yet
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  throw new Error("MySQL failed to become ready");
-}
-
-// Helper function to clean up test database
-async function cleanupMySQLDatabase(projectRoot: string): Promise<void> {
-  try {
-    // Drop and recreate database for clean state
-    await execa(
-      "docker",
-      [
-        "compose",
-        "exec",
-        "-T",
-        "mysql",
-        "mysql",
-        "-uhot_updater",
-        "-phot_updater_dev",
-        "-e",
-        "DROP DATABASE IF EXISTS hot_updater; CREATE DATABASE hot_updater;",
-      ],
-      { cwd: projectRoot },
-    );
-  } catch (error) {
-    console.error("Error cleaning up database:", error);
-  }
-}

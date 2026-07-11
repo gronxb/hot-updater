@@ -1,6 +1,12 @@
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+
 import { NIL_UUID, type Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
+import { drizzleDatabase } from "@hot-updater/server/adapters/drizzle";
 import {
+  setupBundleEventPersistenceTest,
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -13,10 +19,8 @@ import {
   TEST_MANAGEMENT_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
+import { eq } from "drizzle-orm";
 import { execa } from "execa";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
@@ -29,6 +33,10 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
   let baseUrl: string;
   let testDbPath: string;
   let hotUpdater: HotUpdaterAPI;
+  let eventDatabase: ReturnType<typeof drizzleDatabase>;
+  let closeDatabase: (() => Promise<void>) | null = null;
+  let countEventRows: () => Promise<number>;
+  let countEventRowsById: (id: string) => Promise<number>;
   const port = 13582;
 
   beforeAll(async () => {
@@ -75,11 +83,29 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
 
     const db = await import("./db.js");
+    const drizzle = await import("./drizzle.js");
+    const drizzleDB = await drizzle.getDB();
     hotUpdater = db.hotUpdater;
+    eventDatabase = drizzleDatabase({
+      db: drizzle.getDB,
+      provider: "postgresql",
+      schema: drizzle.schema,
+    });
+    closeDatabase = db.closeDatabase;
+    countEventRows = () => drizzleDB.$count(drizzle.schema.bundle_events);
+    countEventRowsById = (id) =>
+      drizzleDB.$count(
+        drizzle.schema.bundle_events,
+        eq(drizzle.schema.bundle_events.id, id),
+      );
   }, 120000);
 
   afterAll(async () => {
-    await cleanupServer(baseUrl, serverProcess, testDbPath);
+    try {
+      await closeDatabase?.();
+    } finally {
+      await cleanupServer(baseUrl, serverProcess, testDbPath);
+    }
   }, 60000);
 
   const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
@@ -104,6 +130,12 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  setupBundleEventPersistenceTest({
+    getRuntime: () => eventDatabase,
+    countEventRows: () => countEventRows(),
+    countEventRowsById: (id) => countEventRowsById(id),
   });
 
   it("protects bundle management routes without hiding public update routes", async () => {

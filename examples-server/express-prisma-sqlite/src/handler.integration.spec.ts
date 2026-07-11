@@ -1,6 +1,12 @@
+import fs from "fs/promises";
+import path from "path";
+import { fileURLToPath } from "url";
+
 import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
+import { prismaDatabase } from "@hot-updater/server/adapters/prisma";
 import {
+  setupBundleEventPersistenceTest,
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -13,9 +19,6 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
@@ -28,6 +31,10 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
   let baseUrl: string;
   let testDbPath: string;
   let hotUpdater: HotUpdaterAPI;
+  let eventDatabase: ReturnType<typeof prismaDatabase>;
+  let closeDatabase: (() => Promise<void>) | null = null;
+  let countEventRows: () => Promise<number>;
+  let countEventRowsById: (id: string) => Promise<number>;
   const port = 13581;
 
   beforeAll(async () => {
@@ -106,11 +113,20 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
     await waitForServer(baseUrl, 180); // 180 attempts * 200ms = 36 seconds
 
     const db = await import("./db.js");
+    const { prisma } = await import("./prisma.js");
     hotUpdater = db.hotUpdater;
+    eventDatabase = prismaDatabase({ prisma, provider: "sqlite" });
+    closeDatabase = db.closeDatabase;
+    countEventRows = () => prisma.bundle_events.count();
+    countEventRowsById = (id) => prisma.bundle_events.count({ where: { id } });
   }, 60000);
 
   afterAll(async () => {
-    await cleanupServer(baseUrl, serverProcess, testDbPath);
+    try {
+      await closeDatabase?.();
+    } finally {
+      await cleanupServer(baseUrl, serverProcess, testDbPath);
+    }
   }, 60000);
 
   const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
@@ -133,6 +149,12 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  setupBundleEventPersistenceTest({
+    getRuntime: () => eventDatabase,
+    countEventRows: () => countEventRows(),
+    countEventRowsById: (id) => countEventRowsById(id),
   });
 
   it("should preserve User model and add hot-updater models in schema.prisma", async () => {
