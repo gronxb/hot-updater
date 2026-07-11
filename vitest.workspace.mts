@@ -1,12 +1,14 @@
+import { fileURLToPath } from "node:url";
+
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig, defineProject } from "vitest/config";
 
-const rootExclude = [
+const commonExclude = [
   "**/dist/**",
-  "**/lib/**",
   "**/node_modules/**",
   "**/runtime-acceptance-*/**",
 ];
+const rootExclude = [...commonExclude, "**/lib/**"];
 const unitInclude = [
   "packages/**/*.spec.ts",
   "packages/**/*.test.ts",
@@ -14,6 +16,8 @@ const unitInclude = [
   "plugins/**/*.test.ts",
   "examples-server/**/*.spec.ts",
   "examples-server/**/*.test.ts",
+  "docs/**/*.spec.ts",
+  "docs/**/*.test.ts",
 ];
 const e2eUnitInclude = ["e2e/**/*.spec.ts", "e2e/**/*.test.ts"];
 const integrationInclude = [
@@ -54,14 +58,23 @@ export default defineConfig({
         },
       }),
       defineProject({
+        resolve: {
+          alias: {
+            "@": fileURLToPath(
+              new URL("./packages/console/src", import.meta.url),
+            ),
+          },
+        },
         test: {
           name: "unit:console",
           environment: "jsdom",
           include: [
             "packages/console/**/*.spec.ts",
+            "packages/console/**/*.spec.tsx",
             "packages/console/**/*.test.ts",
+            "packages/console/**/*.test.tsx",
           ],
-          exclude: [...rootExclude, "**/*.integration.spec.ts"],
+          exclude: [...commonExclude, "**/*.integration.spec.ts"],
         },
       }),
       defineProject({
@@ -71,7 +84,7 @@ export default defineConfig({
           include: integrationInclude,
           exclude: [
             ...rootExclude,
-            "plugins/cloudflare/**/*.integration.spec.ts",
+            "plugins/cloudflare/worker/**/*.integration.spec.ts",
             "packages/bsdiff/tests/runtime/*.manual.*",
           ],
           fileParallelism: false,

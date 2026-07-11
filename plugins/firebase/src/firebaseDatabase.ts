@@ -29,6 +29,11 @@ import {
 import { createLegacyDatabasePlugin } from "@hot-updater/plugin-core/internal";
 import admin from "firebase-admin";
 
+import {
+  beginFirebaseDatabaseTransaction,
+  getTargetAppVersionDocId,
+} from "./firebaseDatabaseTransaction";
+
 type FirestoreBundleData = Omit<SnakeCaseBundle, "patches"> & {
   readonly patches?: Bundle["patches"] | null;
 };
@@ -37,11 +42,6 @@ type BundleIndexReference = Pick<
   DatabaseBundleRecord,
   "channel" | "platform" | "targetAppVersion"
 >;
-
-const getTargetAppVersionDocId = (bundle: BundleIndexReference) =>
-  bundle.targetAppVersion
-    ? `${bundle.platform}_${bundle.channel}_${bundle.targetAppVersion}`
-    : null;
 
 const chunkValues = <T>(values: T[], size: number) => {
   const chunks: T[][] = [];
@@ -257,6 +257,64 @@ export const firebaseDatabase = createLegacyDatabasePlugin({
     };
 
     return {
+      beginTransaction: () =>
+        beginFirebaseDatabaseTransaction({
+          runTransaction: (callback) =>
+            db.runTransaction(async (transaction) => {
+              await callback({
+                readBundles: async () => {
+                  const snapshot = await transaction.get(bundlesCollection);
+                  return snapshot.docs.map((document) => ({
+                    id: document.id,
+                    data: document.data(),
+                  }));
+                },
+                setBundle: (bundleId, data) => {
+                  transaction.set(bundlesCollection.doc(bundleId), data, {
+                    merge: true,
+                  });
+                },
+                deleteBundle: (bundleId) => {
+                  transaction.delete(bundlesCollection.doc(bundleId));
+                },
+                setChannel: (channel) => {
+                  transaction.set(
+                    channelsCollection.doc(channel),
+                    { name: channel },
+                    { merge: true },
+                  );
+                },
+                deleteChannel: (channel) => {
+                  transaction.delete(channelsCollection.doc(channel));
+                },
+                setTargetAppVersion: (docId, bundle) => {
+                  transaction.set(
+                    targetAppVersionsCollection.doc(docId),
+                    {
+                      channel: bundle.channel,
+                      platform: bundle.platform,
+                      target_app_version: bundle.targetAppVersion,
+                    },
+                    { merge: true },
+                  );
+                },
+                deleteTargetAppVersion: (docId) => {
+                  transaction.delete(targetAppVersionsCollection.doc(docId));
+                },
+              });
+            }),
+          decodeBundle: (data) => {
+            const bundle = convertToBundle(data as FirestoreBundleData);
+            return {
+              record: toDatabaseBundleRecord(bundle),
+              patches: toDatabaseBundlePatches(bundle),
+            };
+          },
+          encodeBundle: ({ record, patches }) => ({
+            ...databaseBundleRecordToFirestoreData(record),
+            ...patchesToFirestoreFields(patches),
+          }),
+        }),
       bundles: {
         async getById({ bundleId }) {
           const bundleSnap = await bundlesCollection.doc(bundleId).get();

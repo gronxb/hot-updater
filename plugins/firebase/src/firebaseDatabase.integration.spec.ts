@@ -23,6 +23,20 @@ import { firebaseDatabase } from "./firebaseDatabase";
 
 const PROJECT_ID = "firebase-database-test";
 
+const atomicBundle = {
+  id: "atomic-bundle",
+  channel: "atomic-channel",
+  enabled: true,
+  shouldForceUpdate: false,
+  fileHash: "atomic-file-hash",
+  gitCommitHash: "atomic-commit-hash",
+  message: "atomic bundle",
+  platform: "ios",
+  targetAppVersion: "1.2.3",
+  storageUri: "gs://test-bucket/atomic-bundle",
+  fingerprintHash: null,
+} as const;
+
 const { firestore, bundlesCollection, channelsCollection, clearCollections } =
   createFirestoreMock(PROJECT_ID);
 
@@ -466,6 +480,67 @@ describe("firebaseDatabase plugin", () => {
       .get();
     expect(newTargetDoc.exists).toBeTruthy();
     expect(newTargetDoc.data()?.channel).toBe("production");
+  });
+
+  it("writes the bundle and both indexes on a successful commit", async () => {
+    // Given
+    const runtime = firebaseDatabase({
+      projectId: PROJECT_ID,
+      storageBucket: `${PROJECT_ID}.appspot.com`,
+    });
+    const { bundle } = splitDatabaseBundle(atomicBundle);
+    await runtime.bundles.insert({ bundle });
+
+    // When
+    await runtime.commit();
+
+    // Then
+    const [bundleDoc, channelDoc, targetAppVersionDoc] = await Promise.all([
+      bundlesCollection.doc(atomicBundle.id).get(),
+      channelsCollection.doc(atomicBundle.channel).get(),
+      firestore
+        .collection("target_app_versions")
+        .doc("ios_atomic-channel_1.2.3")
+        .get(),
+    ]);
+    expect([
+      bundleDoc.exists,
+      channelDoc.exists,
+      targetAppVersionDoc.exists,
+    ]).toEqual([true, true, true]);
+  });
+
+  it("rolls back the bundle and both indexes when a later mutation fails", async () => {
+    // Given
+    const runtime = firebaseDatabase({
+      projectId: PROJECT_ID,
+      storageBucket: `${PROJECT_ID}.appspot.com`,
+    });
+    const { bundle } = splitDatabaseBundle(atomicBundle);
+    await runtime.bundles.insert({ bundle });
+    await runtime.bundles.update({
+      bundleId: "missing-bundle",
+      patch: { enabled: false },
+    });
+
+    // When
+    const commit = runtime.commit();
+
+    // Then
+    await expect(commit).rejects.toThrow("targetBundleId not found");
+    const [bundleDoc, channelDoc, targetAppVersionDoc] = await Promise.all([
+      bundlesCollection.doc(atomicBundle.id).get(),
+      channelsCollection.doc(atomicBundle.channel).get(),
+      firestore
+        .collection("target_app_versions")
+        .doc("ios_atomic-channel_1.2.3")
+        .get(),
+    ]);
+    expect([
+      bundleDoc.exists,
+      channelDoc.exists,
+      targetAppVersionDoc.exists,
+    ]).toEqual([false, false, false]);
   });
 
   it("should retrieve all bundles without filtering in descending order", async () => {

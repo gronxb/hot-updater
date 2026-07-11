@@ -221,6 +221,11 @@ function createD1Binding(): D1Database {
           return createD1Result([{ total: filteredRows.length }] as T[]);
         }
 
+        if (normalizedSql.startsWith("select count(*) as count from bundles")) {
+          const { filteredRows } = filterRows(sql, params);
+          return createD1Result([{ count: filteredRows.length }] as T[]);
+        }
+
         if (normalizedSql.startsWith("select * from bundles")) {
           const { filteredRows, index } = filterRows(sql, params);
           const limit = Number(params[index] ?? filteredRows.length);

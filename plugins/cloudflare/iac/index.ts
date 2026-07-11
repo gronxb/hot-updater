@@ -37,8 +37,12 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   })`,
   };
   const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/cloudflare/worker", named: ["d1Database"] }],
-    configString: "d1Database()",
+    imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],
+    configString: `d1Database({
+    databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+    accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+    cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
+  })`,
   };
 
   return createHotUpdaterConfigScaffoldFromBuilder(
