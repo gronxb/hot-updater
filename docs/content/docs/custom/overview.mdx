@@ -18,6 +18,7 @@ npm install @hot-updater/server @hot-updater/standalone --save-dev
 Self-hosted mode lets you control the database layer while using existing cloud storage plugins.
 
 **How it works:**
+
 - **CLI**: Uses `standaloneRepository` in hot-updater.config.ts to send requests to your server
 - **Server**: Handles database operations with `@hot-updater/server`
 - **Storage**: Uses existing plugins (AWS S3, Supabase, Cloudflare R2, Firebase)
@@ -73,18 +74,32 @@ plugin that reads from platform bindings.
 `storages` is an array, allowing you to configure multiple storage providers simultaneously. Each plugin acts as a decoder for its specific storage URI format.
 
 **Use cases:**
+
 - Bundles stored across different storage providers
 - Migrating between storage providers (old and new bundles coexist)
 - Multi-region deployments with different storage backends
 
 **Example with multiple plugins:**
+
 ```typescript title="src/hotUpdater.ts"
-export const hotUpdater = createHotUpdater({
+type RuntimeContext = {
+  readonly env?: {
+    readonly HOT_UPDATER_EVENT_TOKEN?: string;
+  };
+};
+
+export const hotUpdater = createHotUpdater<RuntimeContext>({
   database: kyselyDatabase({ db, provider: "sqlite" }),
   storages: [
-    s3Storage({ /* AWS S3 config */ }),
-    supabaseStorage({ /* Supabase config */ }),
-    myCustomStorage({ /* My Custom Storage */})
+    s3Storage({
+      /* AWS S3 config */
+    }),
+    supabaseStorage({
+      /* Supabase config */
+    }),
+    myCustomStorage({
+      /* My Custom Storage */
+    }),
   ],
   basePath: "/hot-updater",
 });
@@ -108,7 +123,11 @@ specify both configurable route groups.
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyDatabase({ db, provider: "sqlite" }),
-  storages: [s3Storage({ /* storage config */ })],
+  storages: [
+    s3Storage({
+      /* storage config */
+    }),
+  ],
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
@@ -123,7 +142,11 @@ If you want to hide bundle management endpoints but keep `/version`, disable the
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyDatabase({ db, provider: "sqlite" }),
-  storages: [s3Storage({ /* storage config */ })],
+  storages: [
+    s3Storage({
+      /* storage config */
+    }),
+  ],
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
@@ -132,25 +155,73 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+## App-ready Telemetry
+
+The `/bundle-events/app-ready` endpoint is not mounted by default. Enable it
+with `bundleEvents` only when the selected database implements bundle events,
+and enforce authentication, authorization, rate limits, or quotas in the
+deployment-owned `policy` hook.
+
+```typescript title="src/hotUpdater.ts"
+export const hotUpdater = createHotUpdater({
+  database: kyselyDatabase({ db, provider: "sqlite" }),
+  storages: [
+    s3Storage({
+      /* storage config */
+    }),
+  ],
+  bundleEvents: {
+    maxBodyBytes: 16 * 1024,
+    policy: (request, context) => {
+      const authorization = request.headers.get("authorization");
+      const token =
+        context.env?.HOT_UPDATER_EVENT_TOKEN ??
+        process.env.HOT_UPDATER_EVENT_TOKEN;
+      if (token && authorization === `Bearer ${token}`) {
+        return undefined;
+      }
+
+      return new Response("Unauthorized", {
+        status: 401,
+        headers: { "WWW-Authenticate": "Bearer" },
+      });
+    },
+    retention: { maxAgeMs: 30 * 24 * 60 * 60 * 1000 },
+  },
+});
+```
+
+Use a durable deployment service for shared rate and quota state; an in-memory
+counter does not coordinate across server instances. The policy receives the
+current runtime context, so Workers can use KV, Durable Objects, rate-limit
+bindings, and secrets from `context.env`. Kysely, Drizzle, and Prisma adapters
+support cutoff-based event retention. The React Native client treats `404` and
+`501` from this optional endpoint as a no-op, while other failures remain
+visible.
+
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**
 
 For most use cases, use only the storage plugin that matches your CLI's `hot-updater.config.ts`.
 
 **CLI (hot-updater.config.ts):**
+
 ```typescript
 storage: s3Storage({ ... })
 ```
 
 **Server (src/hotUpdater.ts):**
+
 ```typescript
 storages: [s3Storage({ ... })]
 ```
 
 This ensures consistency and simplifies configuration. Only use multiple plugins when you need to support bundles from different storage providers.
+
 </Callout>
 
 **Available official plugins:**
+
 - [s3Storage](../storage-plugins/aws) - AWS S3 and Cloudflare R2
 - [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
 - [firebaseStorage](../storage-plugins/firebase) - Firebase Cloud Storage

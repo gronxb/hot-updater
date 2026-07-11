@@ -27,7 +27,10 @@ For manual configuration, use the settings below.
 
 ```typescript
 interface D1DatabaseConfig {
-  dialect: Dialect; // Kysely dialect for the D1 binding
+  accountId: string;
+  cloudflareApiToken: string;
+  databaseId: string;
+  relationMode?: "foreign-keys" | "fumadb";
 }
 ```
 
@@ -46,16 +49,22 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-If you are composing the database manually, pass a Kysely D1 dialect yourself.
+In Node.js, including the Hot Updater CLI and infrastructure commands, use the
+default package entrypoint. It connects to D1 through the Cloudflare REST API,
+so it does not depend on a Worker binding.
 
 ```typescript
 import { d1Database } from "@hot-updater/cloudflare";
-import { D1Dialect } from "kysely-d1";
 
 export const database = d1Database({
-  dialect: new D1Dialect({ database: env.DB }),
+  databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!,
+  accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+  cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
 });
 ```
+
+Advanced integrations may also pass an existing Kysely `Dialect` to the root
+entrypoint. Worker bindings must use `@hot-updater/cloudflare/worker` instead.
 
 ## Complete Example
 

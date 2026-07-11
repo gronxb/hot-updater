@@ -19,7 +19,8 @@ The v2 contract treats these as first-class database resources and behaviors:
 - bundles
 - bundle patches
 - runtime-owned cursor pagination for list queries
-- optional bundle events as an append-only event sourcing log
+- optional bundle events as an append-only event sourcing log during normal
+  workflows, with explicit cutoff-based retention
 
 Transaction support is not modeled as a capability flag. Providers that can
 open an explicit transaction expose `beginTransaction`.
@@ -55,7 +56,8 @@ are satisfied:
   patches for base bundle" are core orchestration over patch resources, not
   provider-facing patch methods.
 - Telemetry-capable providers add `bundle_events` as the append-only event
-  sourcing resource for client telemetry.
+  sourcing resource for client telemetry. Providers may expose administrative
+  cutoff deletion for bounded retention.
 - Providers that cannot support telemetry, such as `s3Database`, omit
   `bundleEvents` from the plugin core and surface telemetry as unsupported
   through the missing runtime field.
@@ -816,8 +818,10 @@ the runtime object.
 
 `s3Database` does not implement `bundleEvents`.
 
-The table is append-only. Providers should not update or delete bundle events as
-part of normal Hot Updater workflows. Event summaries are derived read models,
+The table is append-only during normal Hot Updater workflows. Providers should
+not update individual bundle events. They may expose `deleteBeforeId` as an
+explicit administrative retention primitive; this deletes only the UUIDv7
+prefix older than a configured cutoff. Event summaries are derived read models,
 not provider-authored source-of-truth APIs.
 
 `install_id` identifies one native app installation. `user_id` is a separate,
@@ -835,11 +839,19 @@ export interface RuntimeBundleEventRepository {
   readonly append: (params: {
     readonly event: DatabaseBundleEventInput;
   }) => Promise<void>;
+
+  readonly deleteBeforeId?: (params: {
+    readonly beforeId: string;
+  }) => Promise<void>;
 }
 
 export interface BundleEventResource extends BundleEventRepository {
   readonly append: (params: {
     readonly event: DatabaseBundleEvent;
+  }) => Promise<void>;
+
+  readonly deleteBeforeId?: (params: {
+    readonly beforeId: string;
   }) => Promise<void>;
 }
 
@@ -854,21 +866,21 @@ export interface BundleEventRepository {
 
 Table shape:
 
-| Column                      |   Type | Required | Description                                                                                                                  | Source                                        |
-| --------------------------- | -----: | -------: | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `id`                        | `uuid` |      yes | Event id. Generated as UUIDv7 by the server. Also represents server receive/order time.                                      | Server                                        |
-| `kind`                      | `text` |      yes | Event kind. Initial value: `APP_READY`.                                                                                      | Server/client event type                      |
-| `install_id`                | `text` |      yes | Opaque app-installation id. Not a user id or raw device id. Stable for one app install, may change after reinstall.          | `HotUpdater.getInstallId()`                   |
-| `active_bundle_id`          | `uuid` |      yes | Bundle currently running after `notifyAppReady`. Used for Active count.                                                      | `HotUpdater.getBundleId()`                    |
-| `previous_active_bundle_id` | `uuid` |       no | Bundle that this `install_id` was running before the current event. Used to count transitions from old bundle to new bundle. | Server from previous event, or client cache   |
-| `crashed_bundle_id`         | `uuid` |       no | Bundle that crashed and caused recovery. Present when status is `RECOVERED`. Used for Recovered count.                       | `HotUpdater.notifyAppReady().crashedBundleId` |
-| `platform`                  | `text` |      yes | Client platform: `ios` or `android`.                                                                                         | Hot Updater runtime/constants                 |
-| `channel`                   | `text` |      yes | Current update channel.                                                                                                      | `HotUpdater.getChannel()`                     |
-| `app_version`               | `text` |       no | Native app version.                                                                                                          | `HotUpdater.getAppVersion()`                  |
-| `fingerprint_hash`          | `text` |       no | Current native/build fingerprint hash.                                                                                       | `HotUpdater.getFingerprintHash()`             |
-| `cohort`                    | `text` |       no | Rollout cohort used for update eligibility.                                                                                  | `HotUpdater.getCohort()`                      |
-| `user_id`                   | `text` |       no | Optional application user id. Defaults to null until configured by the app.                                                  | `HotUpdater.setUserId()`                      |
-| `payload`                   | `json` |      yes | Event-specific extra data. Do not put core query/group-by fields only in payload.                                            | Client/server                                 |
+| Column                      |   Type | Required | Description                                                                                                                                      | Source                                        |
+| --------------------------- | -----: | -------: | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| `id`                        | `uuid` |      yes | Event id. A validated request UUIDv7 is preserved for retry idempotency; otherwise the server generates one. Also represents receive/order time. | Client request or server                      |
+| `kind`                      | `text` |      yes | Event kind. Initial value: `APP_READY`.                                                                                                          | Server/client event type                      |
+| `install_id`                | `text` |      yes | Opaque app-installation id. Not a user id or raw device id. Stable for one app install, may change after reinstall.                              | `HotUpdater.getInstallId()`                   |
+| `active_bundle_id`          | `uuid` |      yes | Bundle currently running after `notifyAppReady`. Used for Active count.                                                                          | `HotUpdater.getBundleId()`                    |
+| `previous_active_bundle_id` | `uuid` |       no | Bundle that this `install_id` was running before the current event. Used to count transitions from old bundle to new bundle.                     | Server from previous event, or client cache   |
+| `crashed_bundle_id`         | `uuid` |       no | Bundle that crashed and caused recovery. Present when status is `RECOVERED`. Used for Recovered count.                                           | `HotUpdater.notifyAppReady().crashedBundleId` |
+| `platform`                  | `text` |      yes | Client platform: `ios` or `android`.                                                                                                             | Hot Updater runtime/constants                 |
+| `channel`                   | `text` |      yes | Current update channel.                                                                                                                          | `HotUpdater.getChannel()`                     |
+| `app_version`               | `text` |       no | Native app version.                                                                                                                              | `HotUpdater.getAppVersion()`                  |
+| `fingerprint_hash`          | `text` |       no | Current native/build fingerprint hash.                                                                                                           | `HotUpdater.getFingerprintHash()`             |
+| `cohort`                    | `text` |       no | Rollout cohort used for update eligibility.                                                                                                      | `HotUpdater.getCohort()`                      |
+| `user_id`                   | `text` |       no | Optional application user id. Defaults to null until configured by the app.                                                                      | `HotUpdater.setUserId()`                      |
+| `payload`                   | `json` |      yes | Event-specific extra data. Do not put core query/group-by fields only in payload.                                                                | Client/server                                 |
 
 Type shape:
 
@@ -876,6 +888,7 @@ Type shape:
 export type BundleEventKind = "APP_READY";
 
 export interface DatabaseBundleEventInput {
+  readonly id?: string;
   readonly kind: BundleEventKind;
   readonly installId: string;
   readonly activeBundleId: string;
@@ -939,10 +952,16 @@ export interface BundleEventCountQuery {
 }
 ```
 
-`RuntimeBundleEventRepository.append` accepts `DatabaseBundleEventInput`.
-`createDatabasePlugin` generates the UUIDv7 `id` before staging the
-`bundleEvent.append` mutation. It may also fill `previousActiveBundleId` from
-the previous event for the same `installId` when the client did not provide it.
+`RuntimeBundleEventRepository.append` accepts `DatabaseBundleEventInput`. A
+validated, lowercase-normalized request UUIDv7 may be supplied as `id` so
+retries address the same event. Request IDs whose timestamp exceeds the
+server's allowed future clock skew are rejected. Otherwise
+`createDatabasePlugin` generates the UUIDv7 before staging the
+`bundleEvent.append` mutation. Provider adapters treat an existing primary id
+as an idempotent append. Retention boundaries are derived from server time, not
+from the client-supplied UUID timestamp. The runtime may also fill
+`previousActiveBundleId` from the previous event for the same `installId` when
+the client did not provide it.
 
 Initial event kind:
 
@@ -1049,12 +1068,14 @@ Commit semantics:
 - `bundlePatch.delete` deletes one patch resource by deterministic patch id.
 - `runtime.bundleEvents` exists only when the provider core declares
   `bundleEvents`.
-- `runtime.bundleEvents.append` accepts event input without an id; runtime
-  generates a UUIDv7 id before staging the mutation.
+- `runtime.bundleEvents.append` accepts an optional UUIDv7 id for idempotent
+  request retries; runtime generates one when it is absent.
 - `commit({ batch })` rejects `bundleEvent.append` mutations when the
   provider core omits `bundleEvents`.
 - `bundleEvent.append` appends one server-enriched bundle event to the
   append-only `bundle_events` log.
+- `runtime.bundleEvents.deleteBeforeId`, when declared, is an explicit retention
+  operation and deletes only events older than the UUIDv7 cutoff.
 
 Commit ordering:
 
@@ -1448,6 +1469,8 @@ await database.close?.();
 - `s3Database` intentionally omits `bundleEvents`.
 - When present, `bundle_events` is the source-of-truth event log; Active,
   Recovered, and transition counts are derived read models.
+- Normal event writes are append-only. Providers may optionally expose
+  UUIDv7 cutoff deletion for explicit retention policies.
 - Transactions are expressed by `beginTransaction`, not by metadata.
 - Providers without `beginTransaction` run best-effort ordered writes; partial
   durability on failure is possible.

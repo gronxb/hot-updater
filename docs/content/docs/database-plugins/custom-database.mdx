@@ -7,7 +7,8 @@ icon: Hammer
 ## Installation
 
 ```package-install
-npm install @hot-updater/server kysely --save-dev
+npm install hot-updater @hot-updater/server @hot-updater/aws @hot-updater/bare kysely pg
+npm install --save-dev @types/pg
 ```
 
 ## Overview
@@ -24,41 +25,117 @@ the low-level runtime factory from normal provider authoring. A provider should
 focus on the database capability it owns, such as a Kysely dialect, connection
 factory, migration path, and explicit Hot Updater provider metadata.
 
-## Provider Shape
+## Implement the Provider
 
-A custom provider is expected to expose a configured database function from its
-package, then pass the result to Hot Updater configuration.
+Wrap the database driver's Kysely dialect with `createKyselyDatabase`. The
+wrapper owns connection creation; Hot Updater owns closing the resulting
+runtime after CLI and server operations.
+
+```typescript title="src/customKyselyDatabase.ts"
+import {
+  createKyselyDatabase,
+  type RelationMode,
+} from "@hot-updater/server/adapters/kysely";
+import { PostgresDialect } from "kysely";
+import pg, { type PoolConfig } from "pg";
+
+export interface CustomKyselyDatabaseConfig extends PoolConfig {
+  readonly relationMode?: RelationMode;
+}
+
+export const customKyselyDatabase = (config: CustomKyselyDatabaseConfig) => {
+  const { relationMode, ...poolConfig } = config;
+
+  return createKyselyDatabase({
+    adapterName: "custom-postgres",
+    dialect: new PostgresDialect({ pool: new pg.Pool(poolConfig) }),
+    provider: "postgresql",
+    ...(relationMode ? { relationMode } : {}),
+  });
+};
+```
+
+`provider` selects Hot Updater's SQL schema and migration behavior.
+`adapterName` identifies your package in diagnostics; it does not change which
+middle layer powers migration or schema generation.
+
+## CLI Configuration
+
+Pass the configured provider to the Hot Updater CLI:
 
 ```typescript
-import { defineConfig } from "@hot-updater/core";
+import { s3Storage } from "@hot-updater/aws";
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
 import { customKyselyDatabase } from "./customKyselyDatabase";
 
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL is required");
+}
+
 export default defineConfig({
-  database: customKyselyDatabase({
-    connectionString: process.env.DATABASE_URL,
+  build: bare({ enableHermes: true }),
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
   }),
+  database: customKyselyDatabase({ connectionString }),
+  updateStrategy: "appVersion",
 });
 ```
 
-Use the same configured provider with `createHotUpdater` for self-hosted
-servers:
+The deployment CLI reuses this provider for bundle writes. Database schema
+tooling loads the exported `createHotUpdater` instance shown below.
+
+## Server Configuration
+
+Use the same provider factory with `createHotUpdater` for self-hosted servers:
 
 ```typescript
 import { createHotUpdater } from "@hot-updater/server";
 import { customKyselyDatabase } from "./customKyselyDatabase";
 
-const hotUpdater = createHotUpdater({
-  database: customKyselyDatabase({
-    connectionString: process.env.DATABASE_URL,
-  }),
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL is required");
+}
+
+const database = customKyselyDatabase({ connectionString });
+
+export const hotUpdater = createHotUpdater({
+  database,
 });
+
+export const closeDatabase = async () => {
+  await database.close?.();
+};
 ```
+
+`hot-updater db generate` and `hot-updater db migrate` discover the Kysely
+capabilities from this runtime even though its diagnostic adapter name is
+`custom-postgres`.
+
+Generate reviewable SQL migrations, then apply the current Hot Updater schema:
+
+```bash
+npx hot-updater db generate src/hotUpdater.ts --yes
+npx hot-updater db migrate src/hotUpdater.ts
+```
+
+The database commands call the exported `closeDatabase` hook after loading the
+module, so the provider-owned pool does not keep the Node process alive.
 
 ## Database Responsibilities
 
 Custom providers should keep these responsibilities explicit:
 
-- Provider identity and CLI adapter names stay Hot Updater metadata.
+- Provider identity and CLI adapter names stay diagnostic metadata.
 - Kysely dialects describe database communication, not Hot Updater provider
   identity.
 - Migration and schema generation behavior must be documented by the provider.

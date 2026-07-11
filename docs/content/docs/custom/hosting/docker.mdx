@@ -38,9 +38,11 @@ Create the database connection file.
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import * as schema from "./hot-updater-schema";
 
 const client = postgres(process.env.DATABASE_URL!);
-export const db = drizzle(client);
+export const db = drizzle(client, { schema });
+export { schema };
 ```
 
 ## Hot Updater Configuration
@@ -50,10 +52,10 @@ Create the Hot Updater instance.
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleDatabase } from "@hot-updater/server/adapters/drizzle";
-import { db } from "./drizzle";
+import { db, schema } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
-  database: drizzleDatabase({ db, provider: "postgresql" }),
+  database: drizzleDatabase({ db, provider: "postgresql", schema }),
   storages: [
     // Configure your storage plugin - examples:
     // s3Storage({ /* S3 or R2 config */ }),
@@ -95,10 +97,42 @@ exposed for React Native clients, but that is a deployment choice.
 
 ## Schema Generation
 
-Generate the Drizzle schema for Hot Updater tables.
+Generate the Drizzle schema for Hot Updater tables into `src`.
 
 ```bash
-npx hot-updater db generate src/hotUpdater.ts --yes
+npx hot-updater db generate src/hotUpdater.ts src --yes
+```
+
+Create the Drizzle Kit configuration:
+
+```typescript title="drizzle.config.ts"
+import { defineConfig } from "drizzle-kit";
+
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is required.");
+}
+
+export default defineConfig({
+  dialect: "postgresql",
+  schema: "./src/hot-updater-schema.ts",
+  out: "./drizzle",
+  dbCredentials: {
+    url: databaseUrl,
+  },
+});
+```
+
+Generate a migration for review:
+
+```bash
+npx drizzle-kit generate
+```
+
+Alternatively, push the schema directly to a development database:
+
+```bash
+npx drizzle-kit push
 ```
 
 ## Dockerfile
@@ -198,16 +232,24 @@ volumes:
 
 ## Run with Docker Compose
 
-Start all services.
+Start PostgreSQL first.
 
 ```bash
-docker-compose up -d
+docker-compose up -d postgres
 ```
 
-Run database migrations.
+Push the generated schema from the development checkout, where `drizzle-kit`
+is installed. Use the host-mapped PostgreSQL port for this command.
 
 ```bash
-docker-compose exec hot-updater npx hot-updater db generate src/hotUpdater.ts --yes
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/hot_updater" \
+  npx drizzle-kit push
+```
+
+Build and start the Hot Updater service after the schema is ready.
+
+```bash
+docker-compose up -d --build hot-updater
 ```
 
 View logs.

@@ -12,7 +12,8 @@ Install all required dependencies at once.
 ```package-install
 npm install @hot-updater/server @hot-updater/aws
 npm install hono @hono/node-server
-npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
+npm install kysely better-sqlite3
+npm install --save-dev @types/better-sqlite3
 ```
 
 ## Database Setup
@@ -20,10 +21,13 @@ npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
 Create the database connection file.
 
 ```typescript title="src/kysely.ts"
+import {
+  type HotUpdaterKyselyDatabase,
+} from "@hot-updater/server/adapters/kysely";
 import { Kysely, SqliteDialect } from "kysely";
 import Database from "better-sqlite3";
 
-export const db = new Kysely({
+export const db = new Kysely<HotUpdaterKyselyDatabase>({
   dialect: new SqliteDialect({
     database: new Database("./data/database.db"),
   }),

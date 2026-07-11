@@ -7,15 +7,18 @@ version: "v0.22.0"
 
 ## Installation
 
-Install Prisma and initialize your project.
+Install Prisma Client as a runtime dependency and the Prisma CLI as a
+development dependency.
 
 ```package-install
-npm install prisma @prisma/client --save-dev
+npm install @prisma/client
+npm install --save-dev prisma
 ```
 
-Initialize Prisma:
+Initialize Prisma for SQLite:
+
 ```bash
-npx prisma init
+npx prisma init --datasource-provider sqlite
 ```
 
 For other databases, see [Prisma's database documentation](https://www.prisma.io/docs/orm/overview/databases).
@@ -28,6 +31,99 @@ Hot Updater treats Prisma as an official database middle layer. The
 | SQLite | `"sqlite"` | `"sqlite"` |
 | PostgreSQL | `"postgresql"` | `"postgresql"` |
 | MySQL | `"mysql"` | `"mysql"` |
+
+## Initial Schema
+
+Before importing `PrismaClient`, put the complete Hot Updater schema in
+`prisma/schema.prisma`. The following is the generated SQLite schema for the
+current Hot Updater schema version. Keep the lower-case model names because
+they are the delegates consumed by the adapter.
+
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
+model bundles {
+  id                     String           @id
+  platform               String
+  should_force_update    Boolean
+  enabled                Boolean
+  file_hash              String
+  git_commit_hash        String?
+  message                String?
+  channel                String           @default("production")
+  storage_uri            String
+  target_app_version     String?
+  fingerprint_hash       String?
+  metadata               Json
+  rollout_cohort_count   Int              @default(1000)
+  target_cohorts         Json?
+  manifest_storage_uri   String?
+  manifest_file_hash     String?
+  asset_base_storage_uri String?
+  patches                bundle_patches[] @relation("bundle_patches_bundles_patches")
+  baseForPatches         bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
+
+  @@index([target_app_version], map: "bundles_target_app_version_idx")
+  @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
+  @@index([channel], map: "bundles_channel_idx")
+  @@index([rollout_cohort_count], map: "bundles_rollout_idx")
+}
+
+model bundle_patches {
+  id                String  @id
+  bundle_id         String
+  base_bundle_id    String
+  base_file_hash    String
+  patch_file_hash   String
+  patch_storage_uri String
+  order_index       Int     @default(0)
+  bundle            bundles @relation("bundle_patches_bundles_patches", fields: [bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
+  baseBundle        bundles @relation("bundle_patches_bundles_baseForPatches", fields: [base_bundle_id], references: [id], onUpdate: Restrict, onDelete: Cascade)
+
+  @@index([bundle_id], map: "bundle_patches_bundle_id_idx")
+  @@index([base_bundle_id], map: "bundle_patches_base_bundle_id_idx")
+}
+
+model bundle_events {
+  id                        String  @id
+  kind                      String
+  install_id                String
+  active_bundle_id          String
+  previous_active_bundle_id String?
+  crashed_bundle_id         String?
+  platform                  String
+  channel                   String
+  app_version               String?
+  fingerprint_hash          String?
+  cohort                    String?
+  user_id                   String?
+  payload                   Json
+
+  @@index([install_id], map: "bundle_events_install_id_idx")
+  @@index([active_bundle_id], map: "bundle_events_active_bundle_id_idx")
+  @@index([platform, channel], map: "bundle_events_platform_channel_idx")
+}
+
+model private_hot_updater_settings {
+  key   String @id
+  value String @default("0.32.0")
+}
+// --- END HOT-UPDATER MODELS ---
+```
+
+Generate Prisma Client before loading your application configuration:
+
+```bash
+npx prisma generate
+```
 
 ## Setup
 
@@ -66,56 +162,26 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-## Schema Generation
+## Schema Updates
 
-Generate the Prisma schema for Hot Updater tables.
+After creating `src/hotUpdater.ts`, let Hot Updater refresh all adapter-owned
+models in `prisma/schema.prisma`. The command preserves your own Prisma models
+outside the Hot Updater markers.
 
 ```bash
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-This command generates the schema. Copy it into your `prisma/schema.prisma` file.
+Regenerate Prisma Client and apply the schema:
+
+```bash
+npx prisma generate
+npx prisma migrate dev --name hot-updater
+```
 
 <Callout>
 Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-export) for standalone SQL generation with the `--sql` flag.
 </Callout>
-
-**Example schema.prisma:**
-```prisma
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
-}
-
-model Bundle {
-  id String @id
-  platform String
-  should_force_update Boolean
-  enabled Boolean
-  file_hash String
-  git_commit_hash String?
-  message String?
-  channel String
-  storage_uri String
-  target_app_version String?
-  fingerprint_hash String?
-  metadata Json
-}
-```
-
-Run migrations:
-```bash
-npx prisma migrate dev --name init
-```
-
-Generate Prisma Client:
-```bash
-npx prisma generate
-```
 
 ## CLI Configuration
 

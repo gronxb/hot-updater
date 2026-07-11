@@ -38,8 +38,10 @@ Create the database connection file.
 ```typescript title="src/drizzle.ts"
 import { drizzle } from "drizzle-orm/vercel-postgres";
 import { sql } from "@vercel/postgres";
+import * as schema from "./hot-updater-schema";
 
-export const db = drizzle(sql);
+export const db = drizzle(sql, { schema });
+export { schema };
 ```
 
 ## Hot Updater Configuration
@@ -49,10 +51,10 @@ Create the Hot Updater instance.
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { drizzleDatabase } from "@hot-updater/server/adapters/drizzle";
-import { db } from "./drizzle";
+import { db, schema } from "./drizzle";
 
 export const hotUpdater = createHotUpdater({
-  database: drizzleDatabase({ db, provider: "postgresql" }),
+  database: drizzleDatabase({ db, provider: "postgresql", schema }),
   storages: [
     // Configure your storage plugin - examples:
     // s3Storage({ /* S3 or R2 config */ }),
@@ -88,10 +90,42 @@ diagnostics. Always protect `/hot-updater/api/*` when `routes.bundles: true`.
 
 ## Schema Generation
 
-Generate the Drizzle schema for Hot Updater tables.
+Generate the Drizzle schema for Hot Updater tables into `src`.
 
 ```bash
-npx hot-updater db generate src/hotUpdater.ts --yes
+npx hot-updater db generate src/hotUpdater.ts src --yes
+```
+
+Configure Drizzle Kit to use the generated schema:
+
+```typescript title="drizzle.config.ts"
+import { defineConfig } from "drizzle-kit";
+
+const databaseUrl = process.env.POSTGRES_URL;
+if (!databaseUrl) {
+  throw new Error("POSTGRES_URL is required.");
+}
+
+export default defineConfig({
+  dialect: "postgresql",
+  schema: "./src/hot-updater-schema.ts",
+  out: "./drizzle",
+  dbCredentials: {
+    url: databaseUrl,
+  },
+});
+```
+
+Generate a migration for review:
+
+```bash
+npx drizzle-kit generate
+```
+
+Alternatively, push the schema directly to a development database:
+
+```bash
+npx drizzle-kit push
 ```
 
 ## Development
