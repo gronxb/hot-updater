@@ -2,6 +2,8 @@ import { execa } from "execa";
 
 type ComposeServiceState = "absent" | "running" | "stopped";
 
+const RETRYABLE_MYSQL_CONNECTION_ERROR = /(?:^|\n)ERROR 2002 \(HY000\):/;
+
 interface ComposeState {
   readonly service: ComposeServiceState;
   readonly volumeExists: boolean;
@@ -77,20 +79,37 @@ const waitForMySQLReady = async (
   throw new Error("MySQL failed to become ready.");
 };
 
-const executeRootSQL = (
+const executeRootSQL = async (
   projectRoot: string,
   statement: string,
-): Promise<unknown> =>
-  compose(projectRoot, [
-    "exec",
-    "-T",
-    "mysql",
-    "mysql",
-    "-uroot",
-    "-phot_updater_root",
-    "-e",
-    statement,
-  ]);
+): Promise<void> => {
+  let attemptsRemaining = 30;
+  while (true) {
+    try {
+      await compose(projectRoot, [
+        "exec",
+        "-T",
+        "mysql",
+        "mysql",
+        "-uroot",
+        "-phot_updater_root",
+        "-e",
+        statement,
+      ]);
+      return;
+    } catch (error) {
+      attemptsRemaining -= 1;
+      if (
+        attemptsRemaining === 0 ||
+        !(error instanceof Error) ||
+        !RETRYABLE_MYSQL_CONNECTION_ERROR.test(error.message)
+      ) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+};
 
 const restoreComposeState = async (
   projectRoot: string,
