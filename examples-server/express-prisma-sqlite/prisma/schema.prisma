@@ -21,6 +21,10 @@ model User {
 }
 
 // --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
+model channels {
+  id String @id
+  bundles bundles[] @relation("channels_bundles_channel")
+}
 model bundles {
   id String @id
   platform String
@@ -41,6 +45,7 @@ model bundles {
   asset_base_storage_uri String?
   patches bundle_patches[] @relation("bundle_patches_bundles_patches")
   baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
+  channelRef channels @relation("channels_bundles_channel", fields: [channel], references: [id], onUpdate: Restrict, onDelete: Restrict)
   @@index([target_app_version], map: "bundles_target_app_version_idx")
   @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
   @@index([channel], map: "bundles_channel_idx")
@@ -61,6 +66,6 @@ model bundle_patches {
 }
 model private_hot_updater_settings {
   key String @id
-  value String @default("0.31.0")
+  value String @default("0.36.0")
 }
 // --- END HOT-UPDATER MODELS ---

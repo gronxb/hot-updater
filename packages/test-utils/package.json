@@ -1,27 +1,17 @@
 {
   "name": "@hot-updater/test-utils",
-  "private": true,
   "version": "0.35.1",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.cts",
+  "types": "./dist/index.d.mts",
   "exports": {
-    ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
-    },
-    "./node": {
-      "import": "./dist/node.mjs",
-      "require": "./dist/node.cjs"
-    },
+    ".": "./dist/index.mjs",
+    "./node": "./dist/node.mjs",
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
-    "src",
     "package.json"
   ],
   "license": "MIT",
@@ -36,11 +26,14 @@
   },
   "peerDependencies": {
     "@hot-updater/core": "*",
+    "@hot-updater/plugin-core": "*",
     "execa": "*",
     "vitest": "*"
   },
   "devDependencies": {
     "@hot-updater/core": "workspace:*",
+    "@hot-updater/js": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
     "@types/node": "catalog:",
     "execa": "catalog:tools",
     "typescript": "6.0.2",

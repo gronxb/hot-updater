@@ -1,4 +1,8 @@
-import { isRuntimeStoragePlugin, type Bundle } from "@hot-updater/plugin-core";
+import {
+  isRuntimeStoragePlugin,
+  type Bundle,
+  type DatabaseBundleQueryOptions,
+} from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
 import { DEFAULT_PAGE_LIMIT } from "./constants";
@@ -75,8 +79,8 @@ export const getConfig = createServerFn().handler(async () => {
 export const getChannels = createServerFn().handler(async () => {
   try {
     const { prepareConfig } = await import("./server/config.server");
-    const { databasePlugin } = await prepareConfig();
-    const channels = await databasePlugin.getChannels();
+    const { databaseClient } = await prepareConfig();
+    const channels = await databaseClient.getChannels();
     return channels ?? [];
   } catch (error) {
     console.error("Error during channel retrieval:", error);
@@ -116,8 +120,8 @@ export const getBundles = createServerFn({ method: "GET" })
         before: data?.before ?? undefined,
       };
 
-      const { databasePlugin } = await prepareConfig();
-      const bundleQueryOptions = {
+      const { databaseClient } = await prepareConfig();
+      const bundleQueryOptions: DatabaseBundleQueryOptions = {
         where: {
           channel: query.channel,
           platform: query.platform,
@@ -131,8 +135,8 @@ export const getBundles = createServerFn({ method: "GET" })
                 before: query.before,
               }
             : undefined,
-      } as Parameters<typeof databasePlugin.getBundles>[0];
-      const bundles = await databasePlugin.getBundles(bundleQueryOptions);
+      };
+      const bundles = await databaseClient.getBundles(bundleQueryOptions);
 
       return (
         bundles ?? {
@@ -158,8 +162,8 @@ export const getBundle = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
-      const { databasePlugin } = await prepareConfig();
-      const bundle = await databasePlugin.getBundleById(data.bundleId);
+      const { databaseClient } = await prepareConfig();
+      const bundle = await databaseClient.getBundleById(data.bundleId);
       return bundle ?? null;
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
@@ -174,10 +178,10 @@ export const getBundleChildren = createServerFn({ method: "GET" })
       const { prepareConfig } = await import("./server/config.server");
       const { getBundleChildren: getBundleChildrenWithConfig } =
         await import("./server/getBundleChildren");
-      const { databasePlugin } = await prepareConfig();
+      const { databaseClient } = await prepareConfig();
 
       return await getBundleChildrenWithConfig(data, {
-        databasePlugin,
+        databaseClient,
       });
     } catch (error) {
       console.error("Error during bundle children retrieval:", error);
@@ -192,10 +196,10 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
       const { prepareConfig } = await import("./server/config.server");
       const { getBundleChildCounts: getBundleChildCountsWithConfig } =
         await import("./server/getBundleChildren");
-      const { databasePlugin } = await prepareConfig();
+      const { databaseClient } = await prepareConfig();
 
       return await getBundleChildCountsWithConfig(data.bundleIds, {
-        databasePlugin,
+        databaseClient,
       });
     } catch (error) {
       console.error("Error during bundle child count retrieval:", error);
@@ -208,8 +212,8 @@ export const getBundleDownloadUrl = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
-      const { databasePlugin, storagePlugin } = await prepareConfig();
-      const bundle = await databasePlugin.getBundleById(data.bundleId);
+      const { databaseClient, storagePlugin } = await prepareConfig();
+      const bundle = await databaseClient.getBundleById(data.bundleId);
 
       if (!bundle) {
         throw new Error("Bundle not found");
@@ -262,10 +266,9 @@ export const updateBundle = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
-      const { databasePlugin } = await prepareConfig();
-      await databasePlugin.updateBundle(data.bundleId, data.bundle);
-      await databasePlugin.commitBundle();
-      const updatedBundle = await databasePlugin.getBundleById(data.bundleId);
+      const { databaseClient } = await prepareConfig();
+      await databaseClient.updateBundleById(data.bundleId, data.bundle);
+      const updatedBundle = await databaseClient.getBundleById(data.bundleId);
 
       if (!updatedBundle) {
         throw new Error("Updated bundle not found");
@@ -285,10 +288,10 @@ export const promoteBundle = createServerFn({ method: "POST" })
       const { prepareConfig } = await import("./server/config.server");
       const { promoteBundle: promoteBundleWithConfig } =
         await import("@hot-updater/cli-tools");
-      const { config, databasePlugin, storagePlugin } = await prepareConfig();
+      const { config, databaseClient, storagePlugin } = await prepareConfig();
       const bundle = await promoteBundleWithConfig(data, {
         config,
-        databasePlugin,
+        databaseClient,
         storagePlugin,
       });
 
@@ -305,9 +308,8 @@ export const createBundle = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
-      const { databasePlugin } = await prepareConfig();
-      await databasePlugin.appendBundle(data);
-      await databasePlugin.commitBundle();
+      const { databaseClient } = await prepareConfig();
+      await databaseClient.insertBundle(data);
       return { success: true, bundleId: data.id };
     } catch (error) {
       console.error("Error during bundle creation:", error);
@@ -323,10 +325,10 @@ export const deleteBundle = createServerFn({ method: "POST" })
       const { prepareConfig } = await import("./server/config.server");
       const { deleteBundle: deleteBundleWithStorage } =
         await import("./server/deleteBundle");
-      const { databasePlugin, storagePlugin } = await prepareConfig();
+      const { databaseClient, storagePlugin } = await prepareConfig();
 
       await deleteBundleWithStorage(data, {
-        databasePlugin,
+        databaseClient,
         storagePlugin,
         waitForStorageCleanup: false,
       });

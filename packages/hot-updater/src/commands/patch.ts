@@ -34,10 +34,8 @@ export const createPatch = async (options: PatchOptions) => {
   }
 
   const config = await loadConfig({ channel: options.channel, platform });
-  const [databasePlugin, storagePlugin] = await Promise.all([
-    config.database(),
-    config.storage(),
-  ]);
+  const databasePlugin = config.database;
+  const storagePlugin = await config.storage();
 
   try {
     p.note(

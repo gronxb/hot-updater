@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { sql, type QueryExecutorProvider } from "kysely";
 import type { MongoClient } from "mongodb";
 
 import {
@@ -11,7 +11,11 @@ import {
   schemaIndexAppliesToProvider,
 } from "./schema/registry";
 import { createTableSql } from "./schema/sql";
-import { createV029AlterSql, createV031AlterSql } from "./schema/sqlMigrations";
+import {
+  createV029AlterSql,
+  createV031AlterSql,
+  createV036AlterSql,
+} from "./schema/sqlMigrations";
 import {
   createSqlCreateOperations,
   getSettingsInsertSql,
@@ -24,13 +28,6 @@ import type {
   ORMSQLProvider,
   RelationMode,
 } from "./types";
-
-interface SettingsDatabase {
-  readonly private_hot_updater_settings: {
-    readonly key: string;
-    readonly value: string;
-  };
-}
 
 const getEmptyResult = (): MigrationResult => ({
   operations: [],
@@ -88,7 +85,8 @@ const assertSupportedSchemaVersion = (
   if (
     currentVersion !== undefined &&
     currentVersion !== "0.21.0" &&
-    currentVersion !== "0.29.0"
+    currentVersion !== "0.29.0" &&
+    currentVersion !== "0.31.0"
   ) {
     throw new Error(
       `Unsupported Hot Updater schema version: ${currentVersion}`,
@@ -101,17 +99,18 @@ export const createKyselyMigrator = ({
   provider,
   relationMode = "foreign-keys",
 }: {
-  db: Kysely<SettingsDatabase>;
+  db: QueryExecutorProvider;
   provider: ORMSQLProvider;
   relationMode?: RelationMode;
 }): Migrator => {
   const getVersion = async (): Promise<string | undefined> => {
     try {
-      const row = await db
-        .selectFrom(HOT_UPDATER_SETTINGS_TABLE)
-        .select("value")
-        .where("key", "=", "version")
-        .executeTakeFirst();
+      const result = await sql<{ readonly value: string }>`select ${sql.ref(
+        "value",
+      )} from ${sql.table(HOT_UPDATER_SETTINGS_TABLE)} where ${sql.ref(
+        "key",
+      )} = ${"version"} limit 1`.execute(db);
+      const row = result.rows[0];
       return typeof row?.value === "string" ? row.value : undefined;
     } catch (error) {
       if (!isMissingSettingsTableError(error)) throw error;
@@ -150,6 +149,11 @@ export const createKyselyMigrator = ({
             ...(currentVersion === "0.21.0" || currentVersion === "0.29.0"
               ? createV031AlterSql(provider, relationMode)
               : []),
+            ...(currentVersion === "0.21.0" ||
+            currentVersion === "0.29.0" ||
+            currentVersion === "0.31.0"
+              ? createV036AlterSql(provider, relationMode)
+              : []),
             ...executableSettingsStatements,
           ];
     const operations =
@@ -163,6 +167,11 @@ export const createKyselyMigrator = ({
               ...(currentVersion === "0.21.0" || currentVersion === "0.29.0"
                 ? createV031AlterSql(provider, relationMode)
                 : []),
+              ...(currentVersion === "0.21.0" ||
+              currentVersion === "0.29.0" ||
+              currentVersion === "0.31.0"
+                ? createV036AlterSql(provider, relationMode)
+                : []),
             ],
             settingsOperation,
           );
@@ -171,7 +180,6 @@ export const createKyselyMigrator = ({
       operations,
       getSQL: () => statements.map((statement) => `${statement};`).join("\n\n"),
       execute: async () => {
-        const { sql } = await import("kysely");
         for (const statement of statements) {
           await sql.raw(statement).execute(db);
         }
@@ -214,9 +222,11 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
   ): Promise<MigrationResult> => {
     assertSupportedMigrationMode(options);
 
-    if ((await getVersion()) === HOT_UPDATER_SCHEMA_VERSION) {
+    const currentVersion = await getVersion();
+    if (currentVersion === HOT_UPDATER_SCHEMA_VERSION) {
       return getEmptyResult();
     }
+    assertSupportedSchemaVersion(currentVersion);
     const settingsOperation =
       options.updateSettings === false
         ? undefined
@@ -234,6 +244,20 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
           await db
             .createCollection(table.ormName)
             .catch(ignoreExistingCollection);
+        }
+        const channelRows = await db
+          .collection<{ readonly channel: string }>("bundles")
+          .aggregate<{ readonly _id: string }>([
+            { $group: { _id: "$channel" } },
+          ])
+          .toArray();
+        const channels = db.collection<{ readonly id: string }>("channels");
+        for (const row of channelRows) {
+          await channels.updateOne(
+            { id: row._id },
+            { $setOnInsert: { id: row._id } },
+            { upsert: true },
+          );
         }
         await db.collection("bundles").createIndex(
           { id: 1 },

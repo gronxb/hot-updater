@@ -1,0 +1,121 @@
+import { NIL_UUID } from "@hot-updater/core";
+import {
+  type DatabasePlugin,
+  resolveUpdateInfoFromBundles,
+  rowToBundle,
+} from "@hot-updater/plugin-core";
+import { describe, expect, it } from "vitest";
+
+import type { DatabaseAdapterTestState } from "./databaseAdapterTestRunner";
+import {
+  createBundleRowFixture,
+  createChannelRowFixture,
+} from "./databaseTestFixtures";
+
+type CapabilityTestState<TContext> = DatabaseAdapterTestState<
+  DatabasePlugin<TContext>,
+  TContext
+>;
+
+class TransactionFixtureError extends Error {
+  constructor() {
+    super("rollback fixture");
+    this.name = "TransactionFixtureError";
+  }
+}
+
+export const registerDatabaseAdapterCapabilityTests = <TContext>(
+  state: CapabilityTestState<TContext>,
+): void => {
+  describe("optional capabilities", () => {
+    it.runIf(state.capabilities.transaction === true)(
+      "commits transaction writes and returns the callback value",
+      async () => {
+        const adapter = state.getAdapter();
+        expect(adapter.transaction).toBeTypeOf("function");
+        if (adapter.transaction === undefined) return;
+        const bundle = createBundleRowFixture("91");
+
+        const result = await adapter.transaction(async (transaction) => {
+          await transaction.create({
+            model: "channels",
+            data: createChannelRowFixture("production"),
+          });
+          await transaction.create({ model: "bundles", data: bundle });
+          return "committed" as const;
+        }, state.context);
+
+        expect(result).toBe("committed");
+        await expect(
+          adapter.findOne(
+            {
+              model: "bundles",
+              where: [{ field: "id", value: bundle.id }],
+            },
+            state.context,
+          ),
+        ).resolves.toEqual(bundle);
+      },
+    );
+
+    it.runIf(state.capabilities.transaction === true)(
+      "rolls back when the transaction callback rejects",
+      async () => {
+        const adapter = state.getAdapter();
+        expect(adapter.transaction).toBeTypeOf("function");
+        if (adapter.transaction === undefined) return;
+
+        await expect(
+          adapter.transaction(async (transaction) => {
+            await transaction.create({
+              model: "channels",
+              data: createChannelRowFixture("rollback"),
+            });
+            throw new TransactionFixtureError();
+          }, state.context),
+        ).rejects.toBeInstanceOf(TransactionFixtureError);
+        await expect(
+          adapter.findOne(
+            {
+              model: "channels",
+              where: [{ field: "id", value: "rollback" }],
+            },
+            state.context,
+          ),
+        ).resolves.toBeNull();
+      },
+    );
+
+    it.runIf(state.capabilities.getUpdateInfo === true)(
+      "matches the generic update resolver through the fast path",
+      async () => {
+        const adapter = state.getAdapter();
+        expect(adapter.getUpdateInfo).toBeTypeOf("function");
+        if (adapter.getUpdateInfo === undefined) return;
+        const bundle = createBundleRowFixture("99");
+        await adapter.create(
+          {
+            model: "channels",
+            data: createChannelRowFixture("production"),
+          },
+          state.context,
+        );
+        await adapter.create({ model: "bundles", data: bundle }, state.context);
+
+        const args = {
+          appVersion: "1.0.0",
+          bundleId: NIL_UUID,
+          platform: "ios",
+          _updateStrategy: "appVersion",
+        } as const;
+        const update = await adapter.getUpdateInfo(args, state.context);
+        const genericUpdate = await resolveUpdateInfoFromBundles({
+          args,
+          bundles: [rowToBundle(bundle)],
+        });
+
+        expect(update).toEqual(genericUpdate);
+      },
+    );
+  });
+};

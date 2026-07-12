@@ -302,9 +302,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
-        "es-toolkit": `npm:es-toolkit@${resolvePackageVersion("es-toolkit", {
-          searchFrom: path.resolve("plugins/plugin-core"),
-        })}`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,

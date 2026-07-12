@@ -7,6 +7,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import type { Bundle } from "@hot-updater/core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
@@ -62,12 +63,18 @@ async function ensureBucketExists(bucketName: string) {
       await client.send(new HeadBucketCommand({ Bucket: bucketName }));
       return;
     } catch (headError) {
+      if (!(headError instanceof Error)) {
+        throw headError;
+      }
       lastError = headError;
 
       try {
         await client.send(new CreateBucketCommand({ Bucket: bucketName }));
         return;
       } catch (createError) {
+        if (!(createError instanceof Error)) {
+          throw createError;
+        }
         lastError = createError;
       }
     }
@@ -159,17 +166,18 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
       hotUpdater.deleteBundleById(bundleId),
   });
 
-  it("updates targetAppVersion through standaloneRepository", async () => {
-    const repo = standaloneRepository({
+  it("updates targetAppVersion through the standalone database adapter", async () => {
+    const database = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
       commonHeaders: {
         Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
       },
-    })();
+    });
+    const client = createDatabaseClient(database);
 
     const bundleId = "hono-s3-update-target-app-version";
 
-    await repo.appendBundle({
+    await client.insertBundle({
       id: bundleId,
       platform: "ios",
       shouldForceUpdate: false,
@@ -183,12 +191,9 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
       fingerprintHash: null,
       rolloutCohortCount: 1000,
     });
-    await repo.commitBundle();
-
-    await repo.updateBundle(bundleId, {
+    await client.updateBundleById(bundleId, {
       targetAppVersion: "1.0.2",
     });
-    await repo.commitBundle();
 
     expect(await hotUpdater.getBundleById(bundleId)).toMatchObject({
       id: bundleId,

@@ -111,7 +111,7 @@ export const getPatchBaseBundleId = (
     | "patchStorageUri"
     | "metadata"
   >,
-) => bundle.patchBaseBundleId ?? getPrimaryPatch(bundle)?.baseBundleId ?? null;
+) => getPrimaryPatch(bundle)?.baseBundleId ?? bundle.patchBaseBundleId ?? null;
 
 export const getPatchBaseFileHash = (
   bundle: Pick<
@@ -123,7 +123,7 @@ export const getPatchBaseFileHash = (
     | "patchStorageUri"
     | "metadata"
   >,
-) => bundle.patchBaseFileHash ?? getPrimaryPatch(bundle)?.baseFileHash ?? null;
+) => getPrimaryPatch(bundle)?.baseFileHash ?? bundle.patchBaseFileHash ?? null;
 
 export const getPatchFileHash = (
   bundle: Pick<
@@ -135,7 +135,7 @@ export const getPatchFileHash = (
     | "patchStorageUri"
     | "metadata"
   >,
-) => bundle.patchFileHash ?? getPrimaryPatch(bundle)?.patchFileHash ?? null;
+) => getPrimaryPatch(bundle)?.patchFileHash ?? bundle.patchFileHash ?? null;
 
 export const getPatchStorageUri = (
   bundle: Pick<
@@ -147,4 +147,4 @@ export const getPatchStorageUri = (
     | "patchStorageUri"
     | "metadata"
   >,
-) => bundle.patchStorageUri ?? getPrimaryPatch(bundle)?.patchStorageUri ?? null;
+) => getPrimaryPatch(bundle)?.patchStorageUri ?? bundle.patchStorageUri ?? null;

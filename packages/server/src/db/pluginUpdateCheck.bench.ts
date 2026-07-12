@@ -1,25 +1,16 @@
 import { bench, describe } from "vitest";
 
-import type {
-  DatabaseBundleQueryOptions,
-  DatabaseBundleQueryWhere,
-  DatabasePlugin,
-} from "../../../../plugins/plugin-core/src";
 import {
-  paginateBundles,
-  semverSatisfies,
+  bundleToRow,
+  createDatabasePlugin,
+  type DatabasePlugin,
 } from "../../../../plugins/plugin-core/src";
-import type {
-  AppVersionGetBundlesArgs,
-  Bundle,
-  Platform,
-  UpdateInfo,
-} from "../../../core/src";
+import type { AppVersionGetBundlesArgs, Bundle } from "../../../core/src";
+import { DEFAULT_ROLLOUT_COHORT_COUNT, NIL_UUID } from "../../../core/src";
 import {
-  DEFAULT_ROLLOUT_COHORT_COUNT,
-  isCohortEligibleForUpdate,
-  NIL_UUID,
-} from "../../../core/src";
+  matchesAll,
+  queryRows,
+} from "../../../test-utils/test/inMemoryDatabaseQuery";
 import { createPluginDatabaseCore } from "./pluginCore";
 
 const BUNDLE_COUNT = 20_000;
@@ -27,201 +18,89 @@ const BENCH_APP_VERSION = "1.0.0";
 const BENCH_PLATFORM = "ios" as const;
 const BENCH_CHANNEL = "production";
 
-const cloneBundle = (bundle: Bundle): Bundle => ({
-  ...bundle,
-  metadata: bundle.metadata
-    ? structuredClone(bundle.metadata)
-    : bundle.metadata,
-  targetCohorts: bundle.targetCohorts ? [...bundle.targetCohorts] : null,
-});
+class BenchmarkMutationError extends Error {
+  readonly name = "BenchmarkMutationError";
 
-const bundleMatchesWhere = (
-  bundle: Bundle,
-  where: DatabaseBundleQueryWhere | undefined,
-) => {
-  if (!where) return true;
-  if (where.channel !== undefined && bundle.channel !== where.channel)
-    return false;
-  if (where.platform !== undefined && bundle.platform !== where.platform)
-    return false;
-  if (where.enabled !== undefined && bundle.enabled !== where.enabled)
-    return false;
-  if (where.id?.eq !== undefined && bundle.id !== where.id.eq) return false;
-  if (where.id?.gt !== undefined && bundle.id.localeCompare(where.id.gt) <= 0)
-    return false;
-  if (where.id?.gte !== undefined && bundle.id.localeCompare(where.id.gte) < 0)
-    return false;
-  if (where.id?.lt !== undefined && bundle.id.localeCompare(where.id.lt) >= 0)
-    return false;
-  if (where.id?.lte !== undefined && bundle.id.localeCompare(where.id.lte) > 0)
-    return false;
-  if (where.id?.in && !where.id.in.includes(bundle.id)) return false;
-  if (where.targetAppVersionNotNull && bundle.targetAppVersion === null) {
-    return false;
+  constructor() {
+    super("The update-check benchmark adapter is read-only.");
   }
-  if (
-    where.targetAppVersion !== undefined &&
-    bundle.targetAppVersion !== where.targetAppVersion
-  ) {
-    return false;
-  }
-  if (
-    where.targetAppVersionIn &&
-    !where.targetAppVersionIn.includes(bundle.targetAppVersion ?? "")
-  ) {
-    return false;
-  }
-  if (
-    where.fingerprintHash !== undefined &&
-    bundle.fingerprintHash !== where.fingerprintHash
-  ) {
-    return false;
-  }
-  return true;
-};
+}
 
-const createBundle = (
-  index: number,
-  {
-    platform = BENCH_PLATFORM,
-    channel = BENCH_CHANNEL,
-    targetAppVersion = "*",
-    enabled = true,
-  }: {
-    platform?: Platform;
-    channel?: string;
-    targetAppVersion?: string | null;
-    enabled?: boolean;
-  } = {},
-): Bundle => ({
+const createBundle = (index: number): Bundle => ({
   id: `00000000-0000-0000-0000-${String(index).padStart(12, "0")}`,
-  platform,
+  platform: BENCH_PLATFORM,
   shouldForceUpdate: false,
-  enabled,
+  enabled: true,
   fileHash: `hash-${index}`,
   gitCommitHash: `commit-${index}`,
   message: `bundle-${index}`,
-  channel,
+  channel: BENCH_CHANNEL,
   storageUri: `s3://bench/bundles/${index}.zip`,
-  targetAppVersion,
+  targetAppVersion: "*",
   fingerprintHash: `fingerprint-${index % 10}`,
   metadata: { app_version: String(index) },
   rolloutCohortCount: DEFAULT_ROLLOUT_COHORT_COUNT,
   targetCohorts: null,
 });
 
-const createBenchPlugin = (bundles: Bundle[]): DatabasePlugin => {
-  const bundlesById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
-
-  const sortByDirection = (direction: "asc" | "desc" | undefined): Bundle[] => {
-    const sorted = bundles.slice().sort((a, b) => a.id.localeCompare(b.id));
-    return direction === "asc" ? sorted : sorted.reverse();
-  };
-
-  return {
-    name: "bench-plugin",
-    async getBundleById(bundleId) {
-      return bundlesById.get(bundleId) ?? null;
-    },
-    async getBundles(options: DatabaseBundleQueryOptions) {
-      const { where, limit, cursor, orderBy } = options;
-      const source = sortByDirection(orderBy?.direction);
-      const matched = source.filter((bundle) =>
-        bundleMatchesWhere(bundle, where),
-      );
-      const paginated = paginateBundles({
-        bundles: matched.map(cloneBundle),
-        limit,
-        cursor,
-        orderBy,
-      });
-
-      return paginated;
-    },
-    async getChannels() {
-      return [...new Set(bundles.map((bundle) => bundle.channel))];
-    },
-    async updateBundle() {
-      throw new Error("Not implemented for benchmark");
-    },
-    async appendBundle() {
-      throw new Error("Not implemented for benchmark");
-    },
-    async commitBundle() {},
-    async deleteBundle() {
-      throw new Error("Not implemented for benchmark");
-    },
-  };
-};
-
-const oldPluginCoreGetUpdateInfo = async (
-  plugin: DatabasePlugin,
-  args: AppVersionGetBundlesArgs,
-): Promise<UpdateInfo | null> => {
-  const where: DatabaseBundleQueryWhere = {
-    channel: args.channel ?? BENCH_CHANNEL,
-    platform: args.platform,
-  };
-
-  const { pagination } = await plugin.getBundles({
-    where,
-    limit: 1,
-  });
-
-  if (pagination.total === 0) {
-    return null;
-  }
-
-  const { data } = await plugin.getBundles({
-    where,
-    limit: pagination.total,
-  });
-
-  for (const bundle of data) {
-    if (!bundle.enabled) {
-      continue;
-    }
-    if (bundle.platform !== args.platform) {
-      continue;
-    }
-    if (bundle.channel !== (args.channel ?? BENCH_CHANNEL)) {
-      continue;
-    }
-    if (!bundle.targetAppVersion) {
-      continue;
-    }
-    if (!semverSatisfies(bundle.targetAppVersion, args.appVersion)) {
-      continue;
-    }
-    if (
-      !isCohortEligibleForUpdate(
-        bundle.id,
-        args.cohort,
-        bundle.rolloutCohortCount,
-        bundle.targetCohorts,
-      )
-    ) {
-      continue;
-    }
-
-    return {
-      id: bundle.id,
-      message: bundle.message,
-      shouldForceUpdate: bundle.shouldForceUpdate,
-      status: "UPDATE",
-      storageUri: bundle.storageUri,
-      fileHash: bundle.fileHash,
-    };
-  }
-
-  return null;
+const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
+  const rows = bundles.map(bundleToRow);
+  return createDatabasePlugin({
+    name: "bench-v2-adapter",
+    factory: () => ({
+      async create() {
+        throw new BenchmarkMutationError();
+      },
+      async update() {
+        throw new BenchmarkMutationError();
+      },
+      async delete() {
+        throw new BenchmarkMutationError();
+      },
+      async count(input) {
+        return rows.filter((row) => matchesAll<"bundles">(row, input.where))
+          .length;
+      },
+      async findOne(input) {
+        switch (input.model) {
+          case "bundles":
+            return (
+              rows.find((row) => matchesAll<"bundles">(row, input.where)) ??
+              null
+            );
+          case "channels":
+            return input.where?.every(({ value }) => value === BENCH_CHANNEL)
+              ? { id: BENCH_CHANNEL }
+              : null;
+        }
+      },
+      async findMany(input) {
+        switch (input.model) {
+          case "bundles":
+            return queryRows<"bundles">(
+              rows,
+              input.where,
+              input.sortBy,
+              input.offset,
+              input.limit,
+            );
+          case "bundle_patches":
+            return [];
+          case "channels":
+            return [{ id: BENCH_CHANNEL }].slice(
+              input.offset,
+              input.offset + input.limit,
+            );
+        }
+      },
+    }),
+  })({});
 };
 
 describe("plugin update check benchmark", () => {
   const bundles = Array.from({ length: BUNDLE_COUNT }, (_, index) =>
     createBundle(index + 1),
   );
-
   const args: AppVersionGetBundlesArgs = {
     _updateStrategy: "appVersion",
     appVersion: BENCH_APP_VERSION,
@@ -229,25 +108,15 @@ describe("plugin update check benchmark", () => {
     platform: BENCH_PLATFORM,
     channel: BENCH_CHANNEL,
   };
-
-  const plugin = createBenchPlugin(bundles);
-  const currentApi = createPluginDatabaseCore(
-    () => plugin,
+  const api = createPluginDatabaseCore(
+    createBenchPlugin(bundles),
     async () => null,
   ).api;
 
   bench(
-    "pluginCore legacy full fetch",
+    "v2 low adapter paged update check",
     async () => {
-      await oldPluginCoreGetUpdateInfo(plugin, args);
-    },
-    { warmupIterations: 5, iterations: 20 },
-  );
-
-  bench(
-    "pluginCore current paged fetch",
-    async () => {
-      await currentApi.getUpdateInfo(args);
+      await api.getUpdateInfo(args);
     },
     { warmupIterations: 5, iterations: 20 },
   );

@@ -1,107 +1,102 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { Bundle } from "@hot-updater/core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createHotUpdater } from "../index";
+import { createBundleRowFixture } from "../../../test-utils/src/databaseTestFixtures";
+import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
+import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import {
-  HOT_UPDATER_SCHEMA_VERSION,
-  HOT_UPDATER_SETTINGS_TABLE,
-} from "../schema/types";
+  DATABASE_ADAPTER_TEST_RESET_SQL,
+  DATABASE_ADAPTER_TEST_SCHEMA_SQL,
+} from "./databaseAdapterTestDatabase";
 import { kyselyAdapter } from "./kysely";
 
-const sqliteJsonBundle: Bundle = {
-  id: "00000000-0000-0000-0000-000000000901",
-  platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
-  fileHash: "sqlite-json-hash",
-  gitCommitHash: null,
-  message: "sqlite json bundle",
-  channel: "production",
-  storageUri: "s3://bucket/sqlite-json.zip",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  metadata: { app_version: "1.0.0" },
-  targetCohorts: ["17", "qa-group"],
+class KyselyTestStateError extends Error {
+  readonly name = "KyselyTestStateError";
+}
+
+let client: PGlite | undefined;
+let database: Kysely<object> | undefined;
+
+const getClient = (): PGlite => {
+  if (client === undefined) throw new KyselyTestStateError();
+  return client;
 };
 
-describe("kyselyAdapter sqlite provider", () => {
-  const databases: PGlite[] = [];
-  const kyselyInstances: Kysely<object>[] = [];
+const getDatabase = (): Kysely<object> => {
+  if (database === undefined) throw new KyselyTestStateError();
+  return database;
+};
 
-  afterEach(async () => {
-    for (const kysely of kyselyInstances.splice(0)) {
-      await kysely.destroy();
-    }
-    for (const db of databases.splice(0)) {
-      await db.close();
-    }
-  });
+setupDatabaseAdapterTestSuite({
+  name: "kyselyAdapter PostgreSQL",
+  capabilities: { getUpdateInfo: true, transaction: true },
+  migrate: async () => {
+    client = new PGlite();
+    database = new Kysely({ dialect: new PGliteDialect(client) });
+    await client.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+  },
+  createAdapter: (): DatabaseAdapterWithCapabilities =>
+    kyselyAdapter({ db: getDatabase(), provider: "postgresql" }),
+  reset: async () => {
+    await getClient().exec(DATABASE_ADAPTER_TEST_RESET_SQL);
+  },
+  dispose: async () => {
+    await getDatabase().destroy();
+    await getClient().close();
+    database = undefined;
+    client = undefined;
+  },
+});
 
-  it("stores bundle JSON columns as text and round-trips them", async () => {
-    const db = new PGlite();
-    databases.push(db);
-    const kysely = new Kysely({ dialect: new PGliteDialect(db) });
-    kyselyInstances.push(kysely);
-    await db.exec(`
-      create table bundles (
-        id text primary key,
-        platform text not null,
-        should_force_update boolean not null,
-        enabled boolean not null,
-        file_hash text not null,
-        git_commit_hash text,
-        message text,
-        channel text not null,
-        storage_uri text not null,
-        target_app_version text,
-        fingerprint_hash text,
-        metadata text not null,
-        manifest_storage_uri text,
-        manifest_file_hash text,
-        asset_base_storage_uri text,
-        rollout_cohort_count integer not null,
-        target_cohorts text
-      );
-      create table bundle_patches (
-        id text primary key,
-        bundle_id text not null,
-        base_bundle_id text not null,
-        base_file_hash text not null,
-        patch_file_hash text not null,
-        patch_storage_uri text not null,
-        order_index integer not null
-      );
-      create table ${HOT_UPDATER_SETTINGS_TABLE} (
-        key text primary key,
-        value text not null
-      );
-      insert into ${HOT_UPDATER_SETTINGS_TABLE} (key, value)
-      values ('version', '${HOT_UPDATER_SCHEMA_VERSION}');
-    `);
-    const hotUpdater = createHotUpdater({
-      database: kyselyAdapter({
-        db: kysely,
-        provider: "sqlite",
-      }),
+describe("kyselyAdapter SQLite JSON storage", () => {
+  it("round-trips JSON values through text columns", async () => {
+    // Given
+    const sqliteClient = new PGlite();
+    const sqliteDatabase = new Kysely({
+      dialect: new PGliteDialect(sqliteClient),
     });
+    await sqliteClient.exec(
+      DATABASE_ADAPTER_TEST_SCHEMA_SQL.replace(
+        "metadata jsonb not null default '{}'::jsonb",
+        "metadata text not null",
+      ).replace("target_cohorts jsonb", "target_cohorts text"),
+    );
+    const adapter = kyselyAdapter({
+      db: sqliteDatabase,
+      provider: "sqlite",
+    });
+    const bundle = {
+      ...createBundleRowFixture("901"),
+      metadata: { app_version: "1.0.0" },
+      target_cohorts: ["17", "qa-group"],
+    };
 
-    await hotUpdater.insertBundle(sqliteJsonBundle);
-    const stored = await db.query<{
+    // When
+    await adapter.create({
+      model: "channels",
+      data: { id: "production" },
+    });
+    await adapter.create({ model: "bundles", data: bundle });
+    const stored = await sqliteClient.query<{
       metadata: string;
       target_cohorts: string;
     }>("select metadata, target_cohorts from bundles where id = $1", [
-      sqliteJsonBundle.id,
+      bundle.id,
     ]);
-    const restored = await hotUpdater.getBundleById(sqliteJsonBundle.id);
-
-    expect(stored.rows[0]).toEqual({
-      metadata: JSON.stringify({ app_version: "1.0.0" }),
-      target_cohorts: JSON.stringify(["17", "qa-group"]),
+    const restored = await adapter.findOne({
+      model: "bundles",
+      where: [{ field: "id", value: bundle.id }],
     });
-    expect(restored?.metadata).toEqual({ app_version: "1.0.0" });
-    expect(restored?.targetCohorts).toEqual(["17", "qa-group"]);
+
+    // Then
+    expect(stored.rows[0]).toEqual({
+      metadata: JSON.stringify(bundle.metadata),
+      target_cohorts: JSON.stringify(bundle.target_cohorts),
+    });
+    expect(restored).toEqual(bundle);
+    await sqliteDatabase.destroy();
+    await sqliteClient.close();
   });
 });

@@ -1,151 +1,190 @@
+import type { BundlePatchRow, ChannelRow } from "@hot-updater/plugin-core";
+
+import type { StoredBundleRow } from "./databaseAdapterUtils";
 import type { DrizzleConfig } from "./drizzle";
 
 export type DrizzleTable = Record<string, unknown>;
+
+type DrizzleMutation = {
+  readonly execute: () => Promise<unknown>;
+};
+
+type DrizzleQuery<TRow> = {
+  readonly findFirst: (args?: unknown) => Promise<TRow | undefined>;
+  readonly findMany: (args?: unknown) => Promise<TRow[]>;
+};
 
 export type DrizzleDB = {
   readonly _: { readonly fullSchema: Record<string, DrizzleTable> };
   readonly $count: (table: DrizzleTable, where?: unknown) => Promise<number>;
   readonly delete: (table: DrizzleTable) => {
-    where: (condition: unknown) => Promise<unknown>;
+    where: (condition: unknown) => DrizzleMutation;
   };
   readonly insert: (table: DrizzleTable) => {
-    values: (value: unknown) => {
-      onConflictDoUpdate?: (args: unknown) => Promise<unknown>;
-      onDuplicateKeyUpdate?: (args: unknown) => Promise<unknown>;
-      execute?: () => Promise<unknown>;
-    };
+    values: (value: unknown) => DrizzleMutation;
   };
-  readonly query: Record<
-    string,
-    {
-      findFirst: (
-        args?: unknown,
-      ) => Promise<Record<string, unknown> | undefined>;
-      findMany: (args?: unknown) => Promise<Record<string, unknown>[]>;
-    }
-  >;
-  readonly select: (fields?: unknown) => {
-    from: (table: DrizzleTable) => {
-      where?: (condition: unknown) => unknown;
-      orderBy?: (order: unknown) => unknown;
-      limit?: (limit: number) => unknown;
-      offset?: (offset: number) => Promise<Record<string, unknown>[]>;
-    };
+  readonly query: {
+    readonly bundles: DrizzleQuery<StoredBundleRow>;
+    readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
+    readonly channels: DrizzleQuery<ChannelRow>;
   };
   readonly update: (table: DrizzleTable) => {
     set: (values: unknown) => {
-      where: (condition: unknown) => Promise<unknown>;
+      where: (condition: unknown) => DrizzleMutation;
     };
   };
-  readonly transaction?: <T>(
-    operation: (tx: DrizzleDB) => Promise<T>,
-  ) => Promise<T>;
+  readonly transaction?: <TResult>(
+    operation: (transaction: DrizzleDB) => Promise<TResult>,
+  ) => Promise<TResult>;
+};
+
+class InvalidDrizzleDatabaseError extends Error {
+  readonly name = "InvalidDrizzleDatabaseError";
+
+  constructor(readonly reason: string) {
+    super(`[hot-updater] ${reason}`);
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const hasFunction = (value: Record<string, unknown>, key: string): boolean =>
+  typeof value[key] === "function";
+
+const isDrizzleQuery = (value: unknown): boolean =>
+  isRecord(value) &&
+  hasFunction(value, "findFirst") &&
+  hasFunction(value, "findMany");
+
+const isDrizzleDB = (value: unknown): value is DrizzleDB => {
+  if (!isRecord(value)) return false;
+  const metadata = value["_"];
+  if (!isRecord(metadata) || !isRecord(metadata["fullSchema"])) return false;
+  const query = value["query"];
+  if (
+    !isRecord(query) ||
+    !isDrizzleQuery(query["bundle_patches"]) ||
+    !isDrizzleQuery(query["bundles"]) ||
+    !isDrizzleQuery(query["channels"])
+  ) {
+    return false;
+  }
+  if (
+    value["transaction"] !== undefined &&
+    !hasFunction(value, "transaction")
+  ) {
+    return false;
+  }
+  return (
+    hasFunction(value, "$count") &&
+    hasFunction(value, "delete") &&
+    hasFunction(value, "insert") &&
+    hasFunction(value, "update")
+  );
 };
 
 const asDB = (db: unknown): DrizzleDB => {
-  const typed = db as DrizzleDB;
-  if (!typed._?.fullSchema) {
-    throw new Error(
-      "[hot-updater] Drizzle adapter requires query mode with schema.",
+  if (!isDrizzleDB(db)) {
+    throw new InvalidDrizzleDatabaseError(
+      "Drizzle adapter requires query mode with schema.",
     );
   }
-  return typed;
+  return db;
 };
 
 const isDBFactory = (
   db: DrizzleConfig["db"],
 ): db is () => unknown | Promise<unknown> => typeof db === "function";
 
-export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
-  const dbSource = config.db;
-  if (!isDBFactory(dbSource)) return asDB(dbSource);
+const parseSchema = (
+  schema: Record<string, unknown>,
+): Record<string, DrizzleTable> => {
+  const parsed: Record<string, DrizzleTable> = {};
+  for (const [name, table] of Object.entries(schema)) {
+    if (!isRecord(table)) {
+      throw new InvalidDrizzleDatabaseError(
+        `Drizzle schema table "${name}" is invalid.`,
+      );
+    }
+    parsed[name] = table;
+  }
+  return parsed;
+};
 
+export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
+  if (!isDBFactory(config.db)) return asDB(config.db);
   if (!config.schema) {
-    throw new Error(
-      "[hot-updater] Drizzle adapter requires schema when db is lazy.",
+    throw new InvalidDrizzleDatabaseError(
+      "Drizzle adapter requires schema when db is lazy.",
     );
   }
 
+  const source = config.db;
   let resolvedDB: Promise<DrizzleDB> | undefined;
-  const getDB = async () => {
-    resolvedDB ??= Promise.resolve(dbSource()).then(asDB);
+  const getDB = (): Promise<DrizzleDB> => {
+    resolvedDB ??= Promise.resolve(source()).then(asDB);
     return resolvedDB;
   };
-  const fullSchema = config.schema as Record<string, DrizzleTable>;
-  const runInserted = async (
-    table: DrizzleTable,
-    value: unknown,
-    operation: (
-      inserted: ReturnType<ReturnType<DrizzleDB["insert"]>["values"]>,
-    ) => Promise<unknown> | unknown,
-  ) => {
-    const db = await getDB();
-    return operation(db.insert(table).values(value));
-  };
-
   return {
-    _: { fullSchema },
+    _: { fullSchema: parseSchema(config.schema) },
     $count: async (table, where) => (await getDB()).$count(table, where),
     delete: (table) => ({
-      where: async (condition) =>
-        (await getDB()).delete(table).where(condition),
+      where: (condition) => ({
+        execute: async () =>
+          (await getDB()).delete(table).where(condition).execute(),
+      }),
     }),
     insert: (table) => ({
       values: (value) => ({
         execute: async () =>
-          runInserted(table, value, async (inserted) => {
-            if (typeof inserted.execute === "function") {
-              return inserted.execute();
-            }
-            return inserted;
-          }),
-        onConflictDoUpdate: async (args) =>
-          runInserted(table, value, async (inserted) => {
-            if (typeof inserted.onConflictDoUpdate !== "function") {
-              throw new Error(
-                "[hot-updater] Drizzle insert does not support onConflictDoUpdate.",
-              );
-            }
-            return inserted.onConflictDoUpdate(args);
-          }),
-        onDuplicateKeyUpdate: async (args) =>
-          runInserted(table, value, async (inserted) => {
-            if (typeof inserted.onDuplicateKeyUpdate !== "function") {
-              throw new Error(
-                "[hot-updater] Drizzle insert does not support onDuplicateKeyUpdate.",
-              );
-            }
-            return inserted.onDuplicateKeyUpdate(args);
-          }),
+          (await getDB()).insert(table).values(value).execute(),
       }),
     }),
-    query: new Proxy(
-      {},
-      {
-        get: (_target, tableName) => ({
-          findFirst: async (args?: unknown) =>
-            (await getDB()).query[String(tableName)]?.findFirst(args),
-          findMany: async (args?: unknown) =>
-            (await getDB()).query[String(tableName)]?.findMany(args) ?? [],
-        }),
+    query: {
+      bundle_patches: {
+        findFirst: async (args) =>
+          (await getDB()).query.bundle_patches.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.bundle_patches.findMany(args),
       },
-    ) as DrizzleDB["query"],
-    select: (fields) => ({
-      from: (table) => ({
-        offset: async (offset) =>
-          (await getDB()).select(fields).from(table).offset?.(offset) ?? [],
-      }),
-    }),
+      bundles: {
+        findFirst: async (args) =>
+          (await getDB()).query.bundles.findFirst(args),
+        findMany: async (args) => (await getDB()).query.bundles.findMany(args),
+      },
+      channels: {
+        findFirst: async (args) =>
+          (await getDB()).query.channels.findFirst(args),
+        findMany: async (args) => (await getDB()).query.channels.findMany(args),
+      },
+    },
     update: (table) => ({
       set: (values) => ({
-        where: async (condition) =>
-          (await getDB()).update(table).set(values).where(condition),
+        where: (condition) => ({
+          execute: async () =>
+            (await getDB())
+              .update(table)
+              .set(values)
+              .where(condition)
+              .execute(),
+        }),
       }),
     }),
-    transaction: async (operation) => {
-      const db = await getDB();
-      if (typeof db.transaction !== "function") return operation(db);
-      return db.transaction(operation);
-    },
+    ...(config.transaction === true
+      ? {
+          transaction: async <TResult>(
+            operation: (transaction: DrizzleDB) => Promise<TResult>,
+          ): Promise<TResult> => {
+            const db = await getDB();
+            if (db.transaction === undefined) {
+              throw new InvalidDrizzleDatabaseError(
+                "The resolved Drizzle database does not support transactions.",
+              );
+            }
+            return db.transaction(operation);
+          },
+        }
+      : {}),
   };
 };

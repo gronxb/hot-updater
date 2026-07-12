@@ -1,9 +1,4 @@
-import type {
-  Bundle,
-  GetBundlesArgs,
-  Platform,
-  UpdateInfo,
-} from "@hot-updater/core";
+import type { Bundle, Platform } from "@hot-updater/core";
 
 export type {
   AppVersionGetBundlesArgs,
@@ -15,6 +10,8 @@ export type {
 } from "@hot-updater/core";
 
 export * from "./utils";
+export * from "./database";
+export * from "./databaseFields";
 
 export interface BasePluginArgs {
   cwd: string;
@@ -94,42 +91,6 @@ export interface DatabaseBundleQueryOptions {
 
 export interface BuildPluginConfig {
   outDir?: string;
-}
-
-export interface DatabasePlugin<TContext = unknown> {
-  getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
-  getBundleById: (
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Bundle | null>;
-  getUpdateInfo?: (
-    args: GetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<UpdateInfo | null>;
-  getBundles: (
-    options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<Paginated<Bundle[]>>;
-  updateBundle: (
-    targetBundleId: string,
-    newBundle: Partial<Bundle>,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  appendBundle: (
-    insertBundle: Bundle,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-  commitBundle: (context?: HotUpdaterContext<TContext>) => Promise<void>;
-  onUnmount?: () => Promise<void>;
-  name: string;
-  deleteBundle: (
-    deleteBundle: Bundle,
-    context?: HotUpdaterContext<TContext>,
-  ) => Promise<void>;
-}
-
-export interface DatabasePluginHooks {
-  onDatabaseUpdated?: () => Promise<void>;
 }
 
 export interface BuildPlugin {
@@ -611,7 +572,7 @@ export type ConfigInput = {
   signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
   storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
-  database: () => Promise<DatabasePlugin> | DatabasePlugin;
+  database: import("./database").DatabasePlugin;
 };
 
 export interface NativeBuildOptions {

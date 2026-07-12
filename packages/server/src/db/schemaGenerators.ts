@@ -80,11 +80,14 @@ const prismaField = (
 const relationTargetFields = (
   table: HotUpdaterTableSchema,
   schema: HotUpdaterVersionedSchema,
-): readonly HotUpdaterRelationSchema[] =>
+): readonly {
+  readonly relation: HotUpdaterRelationSchema;
+  readonly sourceTable: HotUpdaterTableSchema;
+}[] =>
   schema.tables.flatMap((sourceTable) =>
-    (sourceTable.relations ?? []).filter(
-      (relation) => relation.referencedTable === table.ormName,
-    ),
+    (sourceTable.relations ?? [])
+      .filter((relation) => relation.referencedTable === table.ormName)
+      .map((relation) => ({ relation, sourceTable })),
   );
 
 const prismaRelationFields = (
@@ -92,14 +95,26 @@ const prismaRelationFields = (
   schema: HotUpdaterVersionedSchema,
 ): string[] => {
   const lines = relationTargetFields(table, schema).map(
-    (relation) =>
-      `${relation.fieldName} ${relation.referencedTable === table.ormName ? "bundle_patches" : relation.referencedTable}[] @relation(${literal(relation.relationName)})`,
+    ({ relation, sourceTable }) =>
+      `${relation.fieldName} ${sourceTable.ormName}[] @relation(${literal(relation.relationName)})`,
   );
 
   for (const relation of table.relations ?? []) {
     const targetType = toPascalCase(relation.referencedTable);
+    const foreignKey = table.foreignKeys?.find(
+      (item) =>
+        item.referencedTable === relation.referencedTable &&
+        item.columns.join("\0") === relation.columns.join("\0") &&
+        item.referencedColumns.join("\0") ===
+          relation.referencedColumns.join("\0"),
+    );
+    if (!foreignKey) {
+      throw new Error(
+        `Missing foreign key metadata for relation ${table.ormName}.${relation.name}`,
+      );
+    }
     lines.push(
-      `${relation.targetFieldName} ${targetType === "Bundles" ? "bundles" : relation.referencedTable} @relation(${literal(relation.relationName)}, fields: [${relation.columns.join(", ")}], references: [${relation.referencedColumns.join(", ")}], onUpdate: Restrict, onDelete: Cascade)`,
+      `${relation.targetFieldName} ${targetType === "Bundles" ? "bundles" : relation.referencedTable} @relation(${literal(relation.relationName)}, fields: [${relation.columns.join(", ")}], references: [${relation.referencedColumns.join(", ")}], onUpdate: Restrict, onDelete: ${foreignKey.onDelete === "cascade" ? "Cascade" : "Restrict"})`,
     );
   }
 
@@ -310,9 +325,16 @@ const drizzleTable = (
   )})`;
 };
 
-const drizzleRelations = (table: HotUpdaterTableSchema): string | undefined => {
-  if (!table.relations || table.relations.length === 0) return undefined;
-  const lines = table.relations.map(
+const drizzleRelations = (
+  table: HotUpdaterTableSchema,
+  schema: HotUpdaterVersionedSchema,
+): string | undefined => {
+  const sourceRelations = table.relations ?? [];
+  const targetRelations = relationTargetFields(table, schema);
+  if (sourceRelations.length === 0 && targetRelations.length === 0) {
+    return undefined;
+  }
+  const lines = sourceRelations.map(
     (
       relation,
     ) => `  ${relation.targetFieldName}: one(${relation.referencedTable}, {
@@ -323,7 +345,19 @@ const drizzleRelations = (table: HotUpdaterTableSchema): string | undefined => {
       .join(", ")}]
   })`,
   );
-  return `export const ${table.ormName}Relations = relations(${table.ormName}, ({ one }) => ({
+  lines.push(
+    ...targetRelations.map(
+      ({ relation, sourceTable }) =>
+        `  ${relation.fieldName}: many(${sourceTable.ormName}, {
+    relationName: ${literal(relation.relationName)}
+  })`,
+    ),
+  );
+  const callbacks = [
+    ...(sourceRelations.length > 0 ? ["one"] : []),
+    ...(targetRelations.length > 0 ? ["many"] : []),
+  ];
+  return `export const ${table.ormName}Relations = relations(${table.ormName}, ({ ${callbacks.join(", ")} }) => ({
 ${lines.join(",\n")}
 }))`;
 };
@@ -337,7 +371,7 @@ export const generateDrizzleSchema = (
 
   for (const table of schema.tables) {
     body.push(drizzleTable(table, provider, imports));
-    const relations = drizzleRelations(table);
+    const relations = drizzleRelations(table, schema);
     if (relations) body.push(relations);
   }
 

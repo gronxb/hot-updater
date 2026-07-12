@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 const rlsMigrationPath = path.resolve(
   "plugins/supabase/supabase/migrations/20260520014100_hot-updater_rls.sql",
 );
+const databaseV2MigrationPath = path.resolve(
+  "plugins/supabase/supabase/migrations/20260713000000_hot-updater_0.36.0.sql",
+);
 const migrationsDir = path.dirname(rlsMigrationPath);
 
 describe("Supabase RLS migration", () => {
@@ -14,7 +17,7 @@ describe("Supabase RLS migration", () => {
       .filter((file) => file.endsWith(".sql"))
       .sort();
 
-    expect(migrations.at(-1)).toBe(path.basename(rlsMigrationPath));
+    expect(migrations.at(-1)).toBe(path.basename(databaseV2MigrationPath));
   });
 
   it("enables RLS on Hot Updater tables", async () => {
@@ -63,5 +66,21 @@ describe("Supabase RLS migration", () => {
 
     expect(sql).not.toContain("REVOKE EXECUTE");
     expect(sql).not.toContain("GRANT EXECUTE");
+  });
+
+  it("backfills channels before adding a restrictive bundle relation", async () => {
+    const sql = await fs.readFile(databaseV2MigrationPath, "utf8");
+
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.channels");
+    expect(sql).toContain("SELECT DISTINCT channel FROM public.bundles");
+    expect(sql).toContain("REFERENCES public.channels(id) ON DELETE RESTRICT");
+    expect(
+      sql.indexOf("SELECT DISTINCT channel FROM public.bundles"),
+    ).toBeLessThan(
+      sql.indexOf("REFERENCES public.channels(id) ON DELETE RESTRICT"),
+    );
+    expect(sql).toContain(
+      "ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;",
+    );
   });
 });

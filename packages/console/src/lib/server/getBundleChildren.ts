@@ -1,5 +1,5 @@
 import { getBundlePatches } from "@hot-updater/core";
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type { Bundle, DatabaseClient } from "@hot-updater/plugin-core";
 
 const CHILDREN_QUERY_LIMIT = 100;
 
@@ -8,7 +8,7 @@ interface GetBundleChildrenInput {
 }
 
 interface GetBundleChildrenDeps {
-  databasePlugin: DatabasePlugin;
+  databaseClient: DatabaseClient;
 }
 
 type CursorPaginationInfo = {
@@ -28,7 +28,7 @@ async function collectBundleChildrenByBaseIds(
   const baseBundles = (
     await Promise.all(
       uniqueBaseBundleIds.map((bundleId) =>
-        deps.databasePlugin.getBundleById(bundleId),
+        deps.databaseClient.getBundleById(bundleId),
       ),
     )
   ).filter((bundle): bundle is Bundle => Boolean(bundle));
@@ -60,14 +60,14 @@ async function collectBundleChildrenByBaseIds(
     let after: string | undefined;
 
     while (true) {
-      const page = await deps.databasePlugin.getBundles({
+      const page = await deps.databaseClient.getBundles({
         where: {
           channel: group.channel,
           platform: group.platform,
         },
         limit: CHILDREN_QUERY_LIMIT,
         cursor: after ? { after } : undefined,
-      } as Parameters<DatabasePlugin["getBundles"]>[0]);
+      });
 
       for (const bundle of page.data) {
         const parentBundleIds = getBundlePatches(bundle).map(

@@ -25,7 +25,7 @@ npm install @hot-updater/standalone --save-dev
 Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
+import { defineConfig } from "hot-updater";
 import { standaloneRepository } from "@hot-updater/standalone";
 
 export default defineConfig({
@@ -46,6 +46,7 @@ interface StandaloneRepositoryConfig {
   baseUrl: string;                        // Your server URL
   commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
   routes?: Routes;                        // Optional custom route configuration
+  getUpdateInfo?: boolean;                // Enable the optional server fast path
 }
 ```
 
@@ -58,12 +59,7 @@ interface RouteConfig {
 }
 
 interface Routes {
-  create?: () => RouteConfig;
-  update?: (bundleId: string) => RouteConfig;
-  list?: () => RouteConfig;
-  channels?: () => RouteConfig;
-  retrieve?: (bundleId: string) => RouteConfig;
-  delete?: (bundleId: string) => RouteConfig;
+  database?: () => RouteConfig;
 }
 ```
 
@@ -92,168 +88,78 @@ database: standaloneRepository({
 database: standaloneRepository({
   baseUrl: "https://api.example.com",
   routes: {
-    create: () => ({
-      path: "/v1/hot-updater/api/bundles",
-      headers: { "X-Custom-Header": "value" }
+    database: () => ({
+      path: "/v2/hot-updater/database",
+      headers: { "X-Custom-Header": "value" },
     }),
-    update: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`,
-      headers: { "X-Custom-Header": "value" }
-    }),
-    list: () => ({
-      path: "/v1/hot-updater/api/bundles"
-    }),
-    channels: () => ({
-      path: "/v1/hot-updater/api/bundles/channels"
-    }),
-    retrieve: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
-    }),
-    delete: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
-    })
-  }
+  },
 })
 ```
 
 ## Server Contract
 
 `standaloneRepository` is an HTTP client. If you are building a custom
-backend, your server must implement the bundle-management contract below.
+backend, your server must implement the fixed-model database adapter protocol
+below. The default endpoint is:
+
+```text
+POST {baseUrl}/api/database/v2/:model/:operation
+```
 
 <Callout type="info">
 If you use `@hot-updater/server`, you do **not** need to implement these
 endpoints manually. `createHotUpdater()` provides this contract when bundle
-routes are explicitly enabled and authorized, including
-`GET /api/bundles/channels`.
+routes are explicitly enabled and authorized.
 </Callout>
 
-### Contract Types
+### Operations
 
-```typescript
-interface PaginationInfo {
-  total: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-  currentPage: number;
-  totalPages: number;
-  nextCursor?: string | null;
-  previousCursor?: string | null;
-}
+The model and operation URL segments are allowlisted. Request bodies use the
+same snake-case rows, predicates, projection, sorting, and pagination as the
+[custom database adapter](./custom-database) contract.
 
-interface DataResponse<TData> {
-  data: TData;
-}
+| Model | Operation | Request body | Response `data` |
+|-------|-----------|--------------|-----------------|
+| `bundles` | `create` | `{ data, select? }` | one row |
+| `bundles` | `update` | `{ where, update, select? }` | one row or `null` |
+| `bundles` | `delete` | `{ where }` | `null` |
+| `bundles` | `count` | `{ where? }` | non-negative integer |
+| `bundles` | `findOne` | `{ where?, select? }` | one row or `null` |
+| `bundles` | `findMany` | `{ where?, sortBy?, limit, offset, select? }` | row array |
+| `bundle_patches` | `create` | `{ data, select? }` | one row |
+| `bundle_patches` | `delete` | `{ where }` | `null` |
+| `bundle_patches` | `findMany` | `{ where?, sortBy?, limit, offset, select? }` | row array |
+| `channels` | `create` | `{ data, select? }` | one row |
+| `channels` | `findOne` | `{ where?, select? }` | one row or `null` |
+| `channels` | `findMany` | `{ where?, sortBy?, limit, offset, select? }` | row array |
 
-interface Paginated<TData> extends DataResponse<TData> {
-  pagination: PaginationInfo;
-}
-
-type PaginatedResult = Paginated<Bundle[]>;
-type ChannelsResponse = DataResponse<{ channels: string[] }>;
-```
-
-### Default Routes
-
-These are the default routes used by `standaloneRepository`. You can remap
-them with the `routes` option shown above.
-
-| Method | Default route | Request body | Success response |
-|--------|---------------|--------------|------------------|
-| POST | `/api/bundles` | `Bundle[]` | `{ "success": true }` |
-| PATCH | `/api/bundles/:id` | `Partial<Bundle>` | `{ "success": true }` |
-| GET | `/api/bundles` | none | `Paginated<Bundle[]>` |
-| GET | `/api/bundles/:id` | none | `Bundle` |
-| DELETE | `/api/bundles/:id` | none | `{ "success": true }` |
-| GET | `/api/bundles/channels` | none | `ChannelsResponse` |
-
-### Bundle Shape
-
-Create requests send full `Bundle` objects. Update requests send
-`Partial<Bundle>` and, if an `id` is present in the body, it must match the
-`:id` route parameter.
-
-```typescript
-interface Bundle {
-  id: string;
-  platform: "ios" | "android";
-  shouldForceUpdate: boolean;
-  enabled: boolean;
-  fileHash: string;
-  storageUri: string;
-  gitCommitHash: string | null;
-  message: string | null;
-  channel: string;
-  targetAppVersion: string | null;
-  fingerprintHash: string | null;
-  metadata?: {
-    app_version?: string;
-  };
-  rolloutCohortCount?: number | null;
-  targetCohorts?: string[] | null;
-}
-```
-
-### List Bundles Contract
-
-`GET /api/bundles` must accept the pagination and filter query params used by
-the console and `standaloneRepository`, and return a paginated JSON body.
-
-Cursor-based pagination is the official contract. `page` is an optional
-positive integer used alongside cursors when the caller needs stable page
-numbers.
-
-Supported query params:
-
-| Query param | Type | Notes |
-|-------------|------|-------|
-| `channel` | `string` | Exact match |
-| `platform` | `"ios" \| "android"` | Exact match |
-| `limit` | `number` | Window size |
-| `page` | `number` | Optional positive page number for stable page-aligned requests |
-| `after` | `string` | Fetch the next window after this bundle ID |
-| `before` | `string` | Fetch the previous window before this bundle ID |
-
-Expected response:
+Every successful response is JSON with a `data` field:
 
 ```json
 {
-  "data": [{ "id": "bundle-id", "channel": "production" }],
-  "pagination": {
-    "total": 1,
-    "hasNextPage": false,
-    "hasPreviousPage": false,
-    "currentPage": 1,
-    "totalPages": 1,
-    "nextCursor": null,
-    "previousCursor": null
+  "data": [{ "id": "production" }]
+}
+```
+
+Protocol errors use an `error` field with a stable code and message:
+
+```json
+{
+  "error": {
+    "code": "unsupported-operation",
+    "message": "Unsupported database operation: channels.delete."
   }
 }
 ```
 
-`standaloneRepository` reads pagination metadata from the response body. It
-does not derive pagination from headers. `currentPage` and `totalPages` are
-kept for backwards compatibility; `nextCursor` and `previousCursor` are the
-preferred navigation fields.
+### Optional update-check fast path
 
-If your standalone server is backed by object storage or manifest files, keep
-`GET /api/bundles` on an index-backed path once the index is warm. Cursor
-pages should not require rescanning all manifests, and this should be covered
-by deterministic read-counter regression tests.
+Set `getUpdateInfo: true` only when the server adapter implements the optional
+capability. The client then sends `GetBundlesArgs` to
+`bundles/getUpdateInfo`. A server without that capability returns `501`.
 
-### Retrieve And Channels Contract
-
-- `GET /api/bundles/:id` should return `200` with a `Bundle` body or `404` if
-  the bundle does not exist.
-- `GET /api/bundles/channels` must return:
-
-```json
-{
-  "data": {
-    "channels": ["production", "staging"]
-  }
-}
-```
+The HTTP protocol does not expose transactions. Multi-row aggregate writes
+therefore use the shared client's documented sequential, non-atomic fallback.
 
 ### Minimal `@hot-updater/server` Example
 
@@ -274,10 +180,11 @@ const hotUpdater = createHotUpdater({
 });
 ```
 
-This mounts the bundle routes consumed by `standaloneRepository` under
-`/hot-updater/api/bundles*`. `routes.bundles: true` is the explicit opt-in for
-those management APIs; protect them at the framework or reverse proxy layer,
-and configure matching `commonHeaders` in `standaloneRepository`.
+This mounts the database route consumed by `standaloneRepository` under
+`/hot-updater/api/database/v2/*`. `routes.bundles: true` is the explicit
+opt-in for this write-capable API; protect it at the framework or reverse
+proxy layer, and configure matching `commonHeaders` in
+`standaloneRepository`.
 
 ## Next Steps
 

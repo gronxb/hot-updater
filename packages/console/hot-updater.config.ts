@@ -1,7 +1,15 @@
 import { createHash } from "node:crypto";
 
-import { mockDatabase, mockStorage } from "@hot-updater/mock";
-import type { Bundle } from "@hot-updater/plugin-core";
+import {
+  createMockDatabaseData,
+  mockDatabase,
+  mockStorage,
+} from "@hot-updater/mock";
+import {
+  bundleToPatchRows,
+  bundleToRow,
+  type Bundle,
+} from "@hot-updater/plugin-core";
 
 type BundleSeed = Omit<Bundle, "storageUri"> &
   Partial<
@@ -640,6 +648,15 @@ const bundles: Bundle[] = [
   iosProdCoreBase,
 ];
 
+const databaseData = createMockDatabaseData();
+for (const bundle of bundles) {
+  databaseData.channels.set(bundle.channel, { id: bundle.channel });
+  databaseData.bundles.set(bundle.id, bundleToRow(bundle));
+  for (const patch of bundleToPatchRows(bundle)) {
+    databaseData.bundlePatches.set(patch.id, patch);
+  }
+}
+
 export default {
   projectPath: __dirname,
   updateStrategy: "fingerprint" as const,
@@ -647,7 +664,7 @@ export default {
   storage: mockStorage({}),
   database: mockDatabase({
     latency: { min: 150, max: 320 },
-    initialBundles: bundles,
+    data: databaseData,
   }),
   console: {
     gitUrl: "https://github.com/gronxb/hot-updater",

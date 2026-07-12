@@ -112,7 +112,7 @@ const createAddedTableSql = (
   provider: ORMSQLProvider,
   relationMode: RelationMode,
 ): readonly string[] => [
-  createTableStatement(table, provider),
+  createTableStatement(table, provider, relationMode),
   ...(table.indexes ?? [])
     .filter((index) => schemaIndexAppliesToProvider(index, provider))
     .map((index) => createIndexSql(table, index, provider)),
@@ -125,6 +125,65 @@ const createAddedTableSql = (
       )
     : []),
 ];
+
+const createV036MigrationSql = (
+  provider: ORMSQLProvider,
+  relationMode: RelationMode,
+): readonly string[] => {
+  const next = hotUpdaterSchemaVersions.find(
+    (schema) => schema.version === "0.36.0",
+  );
+  if (!next) {
+    throw new Error("Hot Updater schema version 0.36.0 is not registered.");
+  }
+  const channels = next.tables.find((table) => table.ormName === "channels");
+  const bundles = next.tables.find((table) => table.ormName === "bundles");
+  if (!channels || !bundles) {
+    throw new Error("Hot Updater schema version 0.36.0 is incomplete.");
+  }
+
+  const createChannels = createTableStatement(channels, provider, relationMode);
+  const backfillChannels =
+    "insert into channels (id) select distinct channel from bundles";
+
+  if (provider !== "sqlite") {
+    const alterChannelType =
+      provider === "mysql"
+        ? "alter table bundles modify column channel varchar(255) not null default 'production'"
+        : "alter table bundles alter column channel type varchar(255)";
+    const channelForeignKey = bundles.foreignKeys?.find(
+      (foreignKey) => foreignKey.name === "bundles_channel_fk",
+    );
+    return [
+      createChannels,
+      alterChannelType,
+      backfillChannels,
+      ...(relationMode === "foreign-keys" && channelForeignKey
+        ? [createForeignKeySql(bundles, channelForeignKey)]
+        : []),
+    ];
+  }
+
+  const temporaryBundles: HotUpdaterTableSchema = {
+    ...bundles,
+    ormName: "bundles_v036",
+  };
+  const columns = bundles.columns.map((column) => column.ormName).join(", ");
+  return [
+    createChannels,
+    backfillChannels,
+    "pragma foreign_keys = off",
+    createTableStatement(temporaryBundles, provider, relationMode),
+    `insert into bundles_v036 (${columns}) select ${columns} from bundles`,
+    "drop table bundles",
+    "alter table bundles_v036 rename to bundles",
+    ...(bundles.indexes ?? [])
+      .filter((index) => schemaIndexAppliesToProvider(index, provider))
+      .map((index) => createIndexSql(bundles, index, provider)),
+    "pragma foreign_keys = on",
+    "pragma foreign_key_check",
+  ];
+};
 
 const createChangedTableSql = (
   previous: HotUpdaterTableSchema,
@@ -192,6 +251,10 @@ export const createSchemaMigrationSql = (
   for (let index = fromIndex + 1; index <= toIndex; index += 1) {
     const previous = hotUpdaterSchemaVersions[index - 1]!;
     const next = hotUpdaterSchemaVersions[index]!;
+    if (previous.version === "0.31.0" && next.version === "0.36.0") {
+      statements.push(...createV036MigrationSql(provider, relationMode));
+      continue;
+    }
     const previousTables = new Map(
       previous.tables.map((table) => [table.ormName, table]),
     );
@@ -217,3 +280,9 @@ export const createV031AlterSql = (
   relationMode: RelationMode = "foreign-keys",
 ): readonly string[] =>
   createSchemaMigrationSql("0.29.0", "0.31.0", provider, relationMode);
+
+export const createV036AlterSql = (
+  provider: ORMSQLProvider,
+  relationMode: RelationMode = "foreign-keys",
+): readonly string[] =>
+  createSchemaMigrationSql("0.31.0", "0.36.0", provider, relationMode);

@@ -7,7 +7,7 @@ import { brotliDecompressSync } from "node:zlib";
 
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabaseClient,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import JSZip from "jszip";
@@ -207,6 +207,44 @@ async function createSourceArchive(
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe("promoteBundle", () => {
+  it("updates the existing bundle through DatabaseClient when moving channels", async () => {
+    // Given
+    const movedBundle = { ...baseBundle, channel: "beta" };
+    const databaseClient = {
+      insertBundle: vi.fn(),
+      deleteBundleById: vi.fn(),
+      getBundleById: vi
+        .fn()
+        .mockResolvedValueOnce(baseBundle)
+        .mockResolvedValueOnce(movedBundle),
+      getBundles: vi.fn(),
+      getChannels: vi.fn(),
+      getUpdateInfo: vi.fn(),
+      updateBundleById: vi.fn(),
+      mutate: vi.fn(),
+    } satisfies DatabaseClient;
+
+    // When
+    const result = await promoteBundle(
+      {
+        action: "move",
+        bundleId: baseBundle.id,
+        targetChannel: "beta",
+      },
+      { config, databaseClient, storagePlugin: null },
+    );
+
+    // Then
+    expect(databaseClient.updateBundleById).toHaveBeenCalledWith(
+      baseBundle.id,
+      { channel: "beta" },
+    );
+    expect(databaseClient.insertBundle).not.toHaveBeenCalled();
+    expect(result).toEqual(movedBundle);
+  });
 });
 
 describe("createCopiedBundleArchive", () => {
@@ -472,7 +510,7 @@ describe("createCopiedBundleArchive", () => {
     }
   });
 
-  it("cleans up manifest artifacts when appendBundle fails after copy upload", async () => {
+  it("cleans up manifest artifacts when insertBundle fails after copy upload", async () => {
     const { archivePath, cleanup } = await createSourceArchive("zip", {
       "assets/logo.png": "logo",
       "index.js": "console.log('hello');",
@@ -509,18 +547,18 @@ describe("createCopiedBundleArchive", () => {
         },
       },
     };
-    const databasePlugin = {
-      name: "mockDatabase",
-      appendBundle: vi.fn(async () => {
-        throw new Error("append failed");
+    const databaseClient = {
+      insertBundle: vi.fn(async () => {
+        throw new Error("insert failed");
       }),
-      commitBundle: vi.fn(),
-      deleteBundle: vi.fn(),
+      deleteBundleById: vi.fn(),
       getBundleById: vi.fn(async () => baseBundle),
       getBundles: vi.fn(),
       getChannels: vi.fn(),
-      updateBundle: vi.fn(),
-    } satisfies DatabasePlugin;
+      getUpdateInfo: vi.fn(),
+      updateBundleById: vi.fn(),
+      mutate: vi.fn(),
+    } satisfies DatabaseClient;
 
     vi.stubGlobal(
       "fetch",
@@ -540,11 +578,11 @@ describe("createCopiedBundleArchive", () => {
           },
           {
             config,
-            databasePlugin,
+            databaseClient,
             storagePlugin,
           },
         ),
-      ).rejects.toThrow("append failed");
+      ).rejects.toThrow("insert failed");
 
       expect(deleteFromStorage).toHaveBeenCalledWith(
         "s3://bucket/bundle-copy-id/bundle.zip",

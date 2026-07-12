@@ -1,99 +1,42 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { Bundle } from "@hot-updater/core";
-import { NIL_UUID } from "@hot-updater/core";
-import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
+import { setupDatabaseAdapterTestSuite } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
-import { uuidv7 } from "uuidv7";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { standaloneRepository } from "../../../plugins/standalone/src";
 import { kyselyAdapter } from "./adapters/kysely";
 import { createMigrator } from "./db";
 import { createHotUpdater } from "./index";
 
-/**
- * Integration tests between @hot-updater/server handler and @hot-updater/standalone repository
- *
- * This test suite verifies real-world compatibility by:
- * 1. Using actual standaloneRepository (not mocks)
- * 2. Using actual handler (not mocks)
- * 3. Simulating HTTP communication via MSW
- * 4. Testing end-to-end flows: standalone → HTTP → handler → database
- */
-
-// Create in-memory database for testing
 const db = new PGlite();
 const kysely = new Kysely({ dialect: new PGliteDialect(db) });
-
-// Create handler API with in-memory DB
+const database = kyselyAdapter({ db: kysely, provider: "postgresql" });
 const api = createHotUpdater({
-  database: kyselyAdapter({
-    db: kysely,
-    provider: "postgresql",
-  }),
+  database,
   basePath: "/hot-updater",
-  routes: {
-    updateCheck: true,
-    bundles: true,
-  },
+  routes: { updateCheck: true, bundles: true },
 });
-
-// Setup MSW server to intercept HTTP requests
 const baseUrl = "http://localhost:3000";
-const server = setupServer();
+const server = setupServer(
+  http.all(`${baseUrl}/hot-updater/*`, async ({ request }) => {
+    const response = await api.handler(request);
+    return new HttpResponse(await response.text(), {
+      status: response.status,
+      headers: response.headers,
+    });
+  }),
+);
 
 beforeAll(async () => {
-  // Initialize database
-  const migrator = createMigrator(api);
-  const result = await migrator.migrateToLatest({
+  const result = await createMigrator(api).migrateToLatest({
     mode: "from-schema",
     updateSettings: true,
   });
   await result.execute();
-
-  // Start MSW server
   server.listen({ onUnhandledRequest: "error" });
-
-  // Route all requests to our handler
-  const handleRequest = async (request: Request) => {
-    const response = await api.handler(request);
-    const data = (await response.json()) as Record<string, unknown>;
-    return HttpResponse.json(data, {
-      status: response.status,
-      headers: response.headers,
-    });
-  };
-
-  server.use(
-    // Specific routes
-    http.get(`${baseUrl}/hot-updater/api/bundles`, ({ request }) =>
-      handleRequest(request),
-    ),
-    http.get(`${baseUrl}/hot-updater/api/bundles/channels`, ({ request }) =>
-      handleRequest(request),
-    ),
-    http.get(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
-      handleRequest(request),
-    ),
-    http.post(`${baseUrl}/hot-updater/api/bundles`, ({ request }) =>
-      handleRequest(request),
-    ),
-    http.patch(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
-      handleRequest(request),
-    ),
-    http.delete(`${baseUrl}/hot-updater/api/bundles/:id`, ({ request }) =>
-      handleRequest(request),
-    ),
-  );
-});
-
-afterEach(async () => {
-  // Clean up database after each test
-  await db.exec("DELETE FROM bundle_patches");
-  await db.exec("DELETE FROM bundles");
 });
 
 afterAll(async () => {
@@ -102,392 +45,94 @@ afterAll(async () => {
   await db.close();
 });
 
-const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
-  id: NIL_UUID,
-  platform: "ios",
-  channel: "production",
-  enabled: true,
-  shouldForceUpdate: false,
-  fileHash: "test-hash",
-  gitCommitHash: null,
-  message: null,
-  targetAppVersion: "*",
-  storageUri: "test://storage",
-  fingerprintHash: null,
-  ...overrides,
+const resetDatabase = async (): Promise<void> => {
+  await db.exec("DELETE FROM bundle_patches");
+  await db.exec("DELETE FROM bundles");
+  await db.exec("DELETE FROM channels");
+};
+
+beforeEach(resetDatabase);
+
+setupDatabaseAdapterTestSuite({
+  name: "standalone HTTP database adapter v2",
+  createAdapter: () =>
+    standaloneRepository({
+      baseUrl: `${baseUrl}/hot-updater`,
+      getUpdateInfo: true,
+    }),
+  migrate: () => {},
+  reset: resetDatabase,
+  dispose: () => {},
+  capabilities: { getUpdateInfo: true },
 });
 
-const createInMemoryBlobDatabase = (store: Record<string, string>) =>
-  createBlobDatabasePlugin({
-    name: "blob-test",
-    factory: () => ({
-      apiBasePath: "/api/check-update",
-      listObjects: async (prefix: string) =>
-        Object.keys(store).filter((key) => key.startsWith(prefix)),
-      loadObject: async <T>(key: string) => {
-        const value = store[key];
-        return value ? (JSON.parse(value) as T) : null;
-      },
-      uploadObject: async <T>(key: string, data: T) => {
-        store[key] = JSON.stringify(data);
-      },
-      deleteObject: async (key: string) => {
-        delete store[key];
-      },
-      invalidatePaths: async () => {},
-    }),
-  })({});
+const postProtocol = (model: string, operation: string, body: unknown) =>
+  fetch(`${baseUrl}/hot-updater/api/database/v2/${model}/${operation}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 
-describe("Handler <-> Standalone Repository Integration", () => {
-  it("Real integration: appendBundle + commitBundle → handler POST /bundles", async () => {
-    // Create standalone repository pointing to our test server
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
-    })();
+describe("standalone database protocol boundary", () => {
+  it("rejects an unknown model", async () => {
+    const response = await postProtocol("users", "findMany", {});
 
-    const bundleId = uuidv7();
-    const bundle = createTestBundle({
-      id: bundleId,
-      fileHash: "integration-hash-1",
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "unsupported-operation",
+        message: "Unsupported database operation: users.findMany.",
+      },
+    });
+  });
+
+  it("rejects an unsupported model and method pair", async () => {
+    const response = await postProtocol("channels", "delete", {
+      where: [{ field: "id", value: "production" }],
     });
 
-    // Standalone repository operations
-    await repo.appendBundle(bundle);
-    await repo.commitBundle(); // Triggers actual commit
-
-    // Verify via handler that bundle was created
-    const request = new Request(
-      `${baseUrl}/hot-updater/api/bundles/${bundleId}`,
-      {
-        method: "GET",
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "unsupported-operation",
+        message: "Unsupported database operation: channels.delete.",
       },
-    );
+    });
+  });
 
-    const response = await api.handler(request);
+  it("rejects unknown fields and operators", async () => {
+    const response = await postProtocol("bundles", "findMany", {
+      where: [{ field: "id", operator: "matches", value: ".*" }],
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "invalid-request" },
+    });
+  });
+
+  it("exposes the optional fast path without exposing transactions", async () => {
+    const response = await postProtocol("bundles", "getUpdateInfo", {
+      _updateStrategy: "appVersion",
+      platform: "ios",
+      bundleId: "00000000-0000-0000-0000-000000000000",
+      appVersion: "1.0.0",
+    });
+
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: null });
 
-    const retrieved = (await response.json()) as Bundle;
-    expect(retrieved.id).toBe(bundleId);
-    expect(retrieved.fileHash).toBe("integration-hash-1");
+    const transaction = await postProtocol("bundles", "transaction", {});
+    expect(transaction.status).toBe(400);
   });
 
-  it("Real integration: getBundleById → handler GET /bundles/:id", async () => {
-    // First, create a bundle directly via handler
-    const bundleId = uuidv7();
-    const bundle = createTestBundle({
-      id: bundleId,
-      fileHash: "get-hash-1",
+  it("preserves the aggregate bundle routes", async () => {
+    const response = await fetch(`${baseUrl}/hot-updater/api/bundles?limit=10`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
+      pagination: { total: 0 },
     });
-
-    await api.insertBundle(bundle);
-
-    // Create standalone repository
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
-    })();
-
-    // Use standalone repository to retrieve
-    const retrieved = await repo.getBundleById(bundleId);
-
-    expect(retrieved).toBeTruthy();
-    expect(retrieved?.id).toBe(bundleId);
-    expect(retrieved?.fileHash).toBe("get-hash-1");
-  });
-
-  it("Real integration: deleteBundle + commitBundle → handler DELETE /bundles/:id", async () => {
-    // Create a bundle via handler
-    const bundleId = uuidv7();
-    const bundle = createTestBundle({
-      id: bundleId,
-      fileHash: "delete-hash-1",
-    });
-
-    await api.insertBundle(bundle);
-
-    // Verify it exists
-    const beforeDelete = await api.getBundleById(bundleId);
-    expect(beforeDelete).toBeTruthy();
-
-    // Create standalone repository
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
-    })();
-
-    // Delete via standalone repository
-    await repo.deleteBundle(bundle);
-    await repo.commitBundle();
-
-    // Verify it was deleted
-    const afterDelete = await api.getBundleById(bundleId);
-    expect(afterDelete).toBeNull();
-  });
-
-  it("Real integration: getBundles → handler GET /bundles", async () => {
-    // Create multiple bundles
-    await api.insertBundle(
-      createTestBundle({ id: uuidv7(), channel: "production" }),
-    );
-    await api.insertBundle(
-      createTestBundle({ id: uuidv7(), channel: "production" }),
-    );
-    await api.insertBundle(
-      createTestBundle({ id: uuidv7(), channel: "staging" }),
-    );
-
-    // Create standalone repository
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
-    })();
-
-    // Get all bundles
-    const result = await repo.getBundles({ limit: 50 });
-
-    expect(result.data).toHaveLength(3);
-    expect(result.pagination.total).toBe(3);
-
-    // Filter by channel
-    const prodResult = await repo.getBundles({
-      where: { channel: "production" },
-      limit: 50,
-    });
-
-    expect(prodResult.data).toHaveLength(2);
-  });
-
-  it("Real integration: getChannels → handler GET /bundles/channels", async () => {
-    await api.insertBundle(
-      createTestBundle({ id: uuidv7(), channel: "production" }),
-    );
-    await api.insertBundle(createTestBundle({ id: uuidv7(), channel: "beta" }));
-    await api.insertBundle(
-      createTestBundle({ id: uuidv7(), channel: "production" }),
-    );
-
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
-    })();
-
-    const channels = await repo.getChannels();
-
-    expect(channels).toHaveLength(2);
-    expect(channels).toContain("production");
-    expect(channels).toContain("beta");
-  });
-
-  it("Full E2E: create → retrieve → update → delete via standalone", async () => {
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
-    })();
-
-    // Step 1: Create bundle via standalone
-    const bundleId = uuidv7();
-    const bundle = createTestBundle({
-      id: bundleId,
-      fileHash: "e2e-hash",
-      enabled: true,
-    });
-
-    await repo.appendBundle(bundle);
-    await repo.commitBundle();
-
-    // Step 2: Retrieve via standalone
-    const retrieved = await repo.getBundleById(bundleId);
-    expect(retrieved).toBeTruthy();
-    expect(retrieved?.enabled).toBe(true);
-
-    // Step 3: Update via standalone
-    await repo.updateBundle(bundleId, { enabled: false });
-    await repo.commitBundle();
-
-    // Verify update
-    const updated = await repo.getBundleById(bundleId);
-    expect(updated?.enabled).toBe(false);
-
-    // Step 4: Delete via standalone
-    await repo.deleteBundle(bundle);
-    await repo.commitBundle();
-
-    // Verify deletion
-    const deleted = await repo.getBundleById(bundleId);
-    expect(deleted).toBeNull();
-  });
-
-  it("Multiple bundles in single commit (standalone sends array)", async () => {
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
-    })();
-
-    // Append multiple bundles
-    const bundleId1 = uuidv7();
-    const bundleId2 = uuidv7();
-    const bundleId3 = uuidv7();
-    await repo.appendBundle(createTestBundle({ id: bundleId1 }));
-    await repo.appendBundle(createTestBundle({ id: bundleId2 }));
-    await repo.appendBundle(createTestBundle({ id: bundleId3 }));
-
-    // Commit all at once (standalone sends array in POST)
-    await repo.commitBundle();
-
-    // Verify all were created
-    const bundle1 = await api.getBundleById(bundleId1);
-    const bundle2 = await api.getBundleById(bundleId2);
-    const bundle3 = await api.getBundleById(bundleId3);
-
-    expect(bundle1).toBeTruthy();
-    expect(bundle2).toBeTruthy();
-    expect(bundle3).toBeTruthy();
-  });
-
-  it("Works with custom basePath configuration", async () => {
-    // Create handler with custom basePath
-    const customApi = createHotUpdater({
-      database: kyselyAdapter({
-        db: kysely,
-        provider: "postgresql",
-      }),
-      basePath: "/api/v2",
-      routes: {
-        updateCheck: true,
-        bundles: true,
-      },
-    });
-
-    // Setup MSW for custom basePath
-    server.use(
-      http.get(`${baseUrl}/api/v2/*`, async ({ request }) => {
-        const response = await customApi.handler(request);
-        return HttpResponse.json(
-          (await response.json()) as Record<string, unknown>,
-          {
-            status: response.status,
-          },
-        );
-      }),
-      http.post(`${baseUrl}/api/v2/*`, async ({ request }) => {
-        const response = await customApi.handler(request);
-        return HttpResponse.json(
-          (await response.json()) as Record<string, unknown>,
-          {
-            status: response.status,
-          },
-        );
-      }),
-      http.patch(`${baseUrl}/api/v2/*`, async ({ request }) => {
-        const response = await customApi.handler(request);
-        return HttpResponse.json(
-          (await response.json()) as Record<string, unknown>,
-          {
-            status: response.status,
-          },
-        );
-      }),
-    );
-
-    // Create standalone repository with matching basePath
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/api/v2`,
-    })();
-
-    // Test create and retrieve
-    const bundleId = uuidv7();
-    const bundle = createTestBundle({
-      id: bundleId,
-      fileHash: "custom-hash",
-    });
-
-    await repo.appendBundle(bundle);
-    await repo.commitBundle();
-
-    const retrieved = await repo.getBundleById(bundleId);
-    expect(retrieved).toBeTruthy();
-    expect(retrieved?.fileHash).toBe("custom-hash");
-  });
-
-  it("Handler returns 404 when bundle not found (standalone handles gracefully)", async () => {
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/hot-updater`,
-    })();
-
-    // Try to get non-existent bundle
-    const result = await repo.getBundleById("non-existent-bundle");
-
-    // Standalone should return null gracefully
-    expect(result).toBeNull();
-  });
-
-  it("updates targetAppVersion through standalone without creating a duplicate blob entry", async () => {
-    const store: Record<string, string> = {};
-    const blobApi = createHotUpdater({
-      database: createInMemoryBlobDatabase(store),
-      basePath: "/blob-hot-updater",
-      routes: {
-        updateCheck: true,
-        bundles: true,
-      },
-    });
-    const handleBlobRequest = async (request: Request) => {
-      const response = await blobApi.handler(request);
-      return HttpResponse.json(
-        (await response.json()) as Record<string, unknown>,
-        {
-          status: response.status,
-          headers: response.headers,
-        },
-      );
-    };
-
-    server.use(
-      http.get(`${baseUrl}/blob-hot-updater/api/bundles`, ({ request }) =>
-        handleBlobRequest(request),
-      ),
-      http.get(`${baseUrl}/blob-hot-updater/api/bundles/:id`, ({ request }) =>
-        handleBlobRequest(request),
-      ),
-      http.post(`${baseUrl}/blob-hot-updater/api/bundles`, ({ request }) =>
-        handleBlobRequest(request),
-      ),
-      http.patch(`${baseUrl}/blob-hot-updater/api/bundles/:id`, ({ request }) =>
-        handleBlobRequest(request),
-      ),
-      http.delete(
-        `${baseUrl}/blob-hot-updater/api/bundles/:id`,
-        ({ request }) => handleBlobRequest(request),
-      ),
-    );
-
-    const repo = standaloneRepository({
-      baseUrl: `${baseUrl}/blob-hot-updater`,
-    })();
-
-    const bundleId = uuidv7();
-    await repo.appendBundle(
-      createTestBundle({
-        id: bundleId,
-        platform: "ios",
-        targetAppVersion: "1.x.x",
-        storageUri: "s3://test-bucket/original.zip",
-      }),
-    );
-    await repo.commitBundle();
-
-    await repo.updateBundle(bundleId, { targetAppVersion: "1.0.2" });
-    await repo.commitBundle();
-
-    const updatedBundle = await repo.getBundleById(bundleId);
-    expect(updatedBundle?.targetAppVersion).toBe("1.0.2");
-
-    expect(store["production/ios/1.x.x/update.json"]).toBeUndefined();
-
-    const nextBundles = JSON.parse(
-      store["production/ios/1.0.2/update.json"] ?? "[]",
-    ) as Bundle[];
-    expect(nextBundles).toHaveLength(1);
-    expect(nextBundles[0]?.id).toBe(bundleId);
-    expect(nextBundles[0]?.targetAppVersion).toBe("1.0.2");
-
-    const targetVersions = JSON.parse(
-      store["production/ios/target-app-versions.json"] ?? "[]",
-    ) as string[];
-    expect(targetVersions).toEqual(["1.0.2"]);
   });
 });

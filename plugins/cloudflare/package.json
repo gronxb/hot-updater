@@ -74,7 +74,6 @@
     "dayjs": "^1.11.13",
     "execa": "catalog:tools",
     "mime": "^4.0.4",
-    "pg-minify": "^1.6.5",
     "semver": "^7.6.3",
     "toml": "^3.0.0",
     "typescript": "^6.0.2",

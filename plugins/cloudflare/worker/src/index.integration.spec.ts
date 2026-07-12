@@ -1,8 +1,10 @@
 import {
+  type AppUpdateInfo,
   getBundlePatches,
   type Bundle,
   type GetBundlesArgs,
   NIL_UUID,
+  type UpdateInfo,
 } from "@hot-updater/core";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -129,6 +131,9 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 
 const seedBundles = async (bundles: Bundle[]) => {
   for (const bundle of bundles.map(toRuntimeBundle)) {
+    await env.DB.prepare("INSERT OR IGNORE INTO channels (id) VALUES (?)")
+      .bind(bundle.channel)
+      .run();
     await env.DB.prepare(createInsertBundleQuery(bundle)).run();
     for (const patchSql of createInsertBundlePatchQueries(bundle)) {
       await env.DB.prepare(patchSql).run();
@@ -166,6 +171,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
   beforeEach(async () => {
     await env.DB.prepare("DELETE FROM bundle_patches").run();
     await env.DB.prepare("DELETE FROM bundles").run();
+    await env.DB.prepare("DELETE FROM channels").run();
   });
 
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
@@ -174,7 +180,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       env,
     );
 
-    return (await response.json()) as any;
+    return response.json() as Promise<UpdateInfo | AppUpdateInfo | null>;
   };
 
   const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {

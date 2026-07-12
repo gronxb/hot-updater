@@ -2,7 +2,7 @@ import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { getUpdateInfo as getManifestUpdateInfo } from "@hot-updater/js";
 
-import { seedRequestUpdateBundles } from "./requestUpdateBundleState";
+import { seedRequestBundles } from "./requestBundleCache";
 import type { Bundle, HotUpdaterContext } from "./types";
 
 export interface ResolveUpdateInfoFromBundlesOptions<TContext = unknown> {
@@ -24,7 +24,7 @@ export const resolveUpdateInfoFromBundles = async <TContext = unknown>({
     return null;
   }
 
-  seedRequestUpdateBundles(context, [
+  seedRequestBundles(context, [
     findSeedBundle(bundles, info.id),
     args.bundleId === NIL_UUID ? null : findSeedBundle(bundles, args.bundleId),
   ]);

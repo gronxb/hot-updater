@@ -2,6 +2,12 @@
 
 CREATE TYPE platforms AS ENUM ('ios', 'android');
 
+CREATE TABLE channels (
+    id text PRIMARY KEY
+);
+
+INSERT INTO channels (id) VALUES ('production');
+
 CREATE TABLE bundles (
     id uuid PRIMARY KEY,
     platform platforms NOT NULL,
@@ -10,7 +16,8 @@ CREATE TABLE bundles (
     file_hash text NOT NULL,
     git_commit_hash text,
     message text,
-    channel text NOT NULL DEFAULT 'production',
+    channel text NOT NULL DEFAULT 'production'
+      REFERENCES channels(id) ON DELETE RESTRICT,
     storage_uri text NOT NULL,
     target_app_version text,
     fingerprint_hash text,

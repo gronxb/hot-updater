@@ -1,118 +1,28 @@
 import type {
   AppUpdateAvailableInfo,
-  AppVersionGetBundlesArgs,
   Bundle,
-  FingerprintGetBundlesArgs,
   GetBundlesArgs,
-  Platform,
   UpdateInfo,
 } from "@hot-updater/core";
-import { isCohortEligibleForUpdate, NIL_UUID } from "@hot-updater/core";
+import { NIL_UUID } from "@hot-updater/core";
 import {
-  type DatabaseBundleQueryOptions,
-  type DatabaseBundleQueryOrder,
-  type DatabaseBundleQueryWhere,
+  createDatabaseClient,
+  createRequestBundleResolver,
   type DatabasePlugin,
-  createRequestUpdateBundleResolver,
   type HotUpdaterContext,
-  semverSatisfies,
 } from "@hot-updater/plugin-core";
 
 import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
 
-const PAGE_SIZE = 100;
-const DESC_ORDER = { field: "id", direction: "desc" } as const;
-
-const bundleMatchesQueryWhere = (
-  bundle: Bundle,
-  where: DatabaseBundleQueryWhere | undefined,
-) => {
-  if (!where) return true;
-  if (where.channel !== undefined && bundle.channel !== where.channel)
-    return false;
-  if (where.platform !== undefined && bundle.platform !== where.platform)
-    return false;
-  if (where.enabled !== undefined && bundle.enabled !== where.enabled)
-    return false;
-  if (where.id?.eq !== undefined && bundle.id !== where.id.eq) return false;
-  if (where.id?.gt !== undefined && bundle.id.localeCompare(where.id.gt) <= 0)
-    return false;
-  if (where.id?.gte !== undefined && bundle.id.localeCompare(where.id.gte) < 0)
-    return false;
-  if (where.id?.lt !== undefined && bundle.id.localeCompare(where.id.lt) >= 0)
-    return false;
-  if (where.id?.lte !== undefined && bundle.id.localeCompare(where.id.lte) > 0)
-    return false;
-  if (where.id?.in && !where.id.in.includes(bundle.id)) return false;
-  if (where.targetAppVersionNotNull && bundle.targetAppVersion === null) {
-    return false;
-  }
-  if (
-    where.targetAppVersion !== undefined &&
-    bundle.targetAppVersion !== where.targetAppVersion
-  ) {
-    return false;
-  }
-  if (
-    where.targetAppVersionIn &&
-    !where.targetAppVersionIn.includes(bundle.targetAppVersion ?? "")
-  ) {
-    return false;
-  }
-  if (
-    where.fingerprintHash !== undefined &&
-    bundle.fingerprintHash !== where.fingerprintHash
-  ) {
-    return false;
-  }
-  return true;
-};
-
-const sortBundles = (
-  bundles: Bundle[],
-  orderBy: DatabaseBundleQueryOrder | undefined,
-) => {
-  const direction = orderBy?.direction ?? "desc";
-  return bundles.slice().sort((a, b) => {
-    const result = a.id.localeCompare(b.id);
-    return direction === "asc" ? result : -result;
-  });
-};
-
-const makeResponse = (
-  bundle: Bundle,
-  status: "UPDATE" | "ROLLBACK",
-): UpdateInfo => ({
-  id: bundle.id,
-  message: bundle.message,
-  shouldForceUpdate: status === "ROLLBACK" ? true : bundle.shouldForceUpdate,
-  status,
-  storageUri: bundle.storageUri,
-  fileHash: bundle.fileHash,
-});
-
-const INIT_BUNDLE_ROLLBACK_UPDATE_INFO: UpdateInfo = {
-  message: null,
-  id: NIL_UUID,
-  shouldForceUpdate: true,
-  status: "ROLLBACK",
-  storageUri: null,
-  fileHash: null,
-};
-
 export function createPluginDatabaseCore<TContext = unknown>(
-  getPlugin: () => DatabasePlugin<TContext>,
+  database: DatabasePlugin<TContext>,
   resolveFileUrl: (
     storageUri: string | null,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<string | null>,
   options?: {
-    createMutationPlugin?: () => DatabasePlugin<TContext>;
-    cleanupMutationPlugin?: (
-      plugin: DatabasePlugin<TContext>,
-    ) => Promise<void> | void;
     beforeOperation?: () => Promise<void>;
     readStorageText?: (
       storageUri: string,
@@ -125,223 +35,24 @@ export function createPluginDatabaseCore<TContext = unknown>(
   createMigrator: () => never;
   generateSchema: () => never;
 } {
-  const coreOptions = options;
-  const runWithMutationPlugin = async <T>(
-    operation: (plugin: DatabasePlugin<TContext>) => Promise<T>,
-  ): Promise<T> => {
-    const plugin = coreOptions?.createMutationPlugin?.() ?? getPlugin();
-
-    try {
-      return await operation(plugin);
-    } finally {
-      if (coreOptions?.createMutationPlugin) {
-        await coreOptions.cleanupMutationPlugin?.(plugin);
-      }
-    }
-  };
-
-  const getSortedBundlePage = async (
-    options: DatabaseBundleQueryOptions,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<Awaited<ReturnType<DatabasePlugin<TContext>["getBundles"]>>> => {
-    const result = await getPlugin().getBundles(
-      {
-        ...options,
-        orderBy: options.orderBy ?? DESC_ORDER,
-      },
-      context,
-    );
-
-    return {
-      ...result,
-      data: sortBundles(result.data, options.orderBy ?? DESC_ORDER),
-    };
-  };
-
-  const isEligibleForUpdate = (
-    bundle: Bundle,
-    cohort: string | undefined,
-  ): boolean => {
-    return isCohortEligibleForUpdate(
-      bundle.id,
-      cohort,
-      bundle.rolloutCohortCount,
-      bundle.targetCohorts,
-    );
-  };
-
-  const findUpdateInfoByScanning = async ({
-    args,
-    queryWhere,
-    isCandidate,
-    context,
-  }: {
-    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs;
-    queryWhere: DatabaseBundleQueryWhere;
-    isCandidate: (bundle: Bundle) => boolean;
-    context?: HotUpdaterContext<TContext>;
-  }): Promise<UpdateInfo | null> => {
-    let after: string | undefined;
-
-    while (true) {
-      const { data, pagination } = await getSortedBundlePage(
-        {
-          where: queryWhere,
-          limit: PAGE_SIZE,
-          orderBy: DESC_ORDER,
-          ...(after
-            ? {
-                cursor: {
-                  after,
-                },
-              }
-            : {}),
-        },
-        context,
-      );
-
-      for (const bundle of data) {
-        if (
-          !bundleMatchesQueryWhere(bundle, queryWhere) ||
-          !isCandidate(bundle)
-        ) {
-          continue;
-        }
-
-        if (args.bundleId === NIL_UUID) {
-          if (isEligibleForUpdate(bundle, args.cohort)) {
-            return makeResponse(bundle, "UPDATE");
-          }
-          continue;
-        }
-
-        const compareResult = bundle.id.localeCompare(args.bundleId);
-
-        if (compareResult > 0) {
-          if (isEligibleForUpdate(bundle, args.cohort)) {
-            return makeResponse(bundle, "UPDATE");
-          }
-          continue;
-        }
-
-        if (compareResult === 0) {
-          if (isEligibleForUpdate(bundle, args.cohort)) {
-            return null;
-          }
-          continue;
-        }
-
-        return makeResponse(bundle, "ROLLBACK");
-      }
-
-      if (!pagination.hasNextPage) {
-        break;
-      }
-
-      after = data.at(-1)?.id;
-      if (!after) {
-        break;
-      }
-    }
-
-    if (args.bundleId === NIL_UUID) {
-      return null;
-    }
-
-    if (
-      args.minBundleId &&
-      args.bundleId.localeCompare(args.minBundleId) <= 0
-    ) {
-      return null;
-    }
-
-    return INIT_BUNDLE_ROLLBACK_UPDATE_INFO;
-  };
-
-  const getBaseWhere = ({
-    platform,
-    channel,
-    minBundleId,
-  }: {
-    platform: Platform;
-    channel: string;
-    minBundleId: string;
-  }): DatabaseBundleQueryWhere => ({
-    platform,
-    channel,
-    enabled: true,
-    id: {
-      gte: minBundleId,
-    },
-  });
+  const client = createDatabaseClient(database);
+  const beforeOperation = options?.beforeOperation;
 
   const api: DatabaseAPI<TContext> = {
     async getBundleById(
       id: string,
       context?: HotUpdaterContext<TContext>,
     ): Promise<Bundle | null> {
-      await coreOptions?.beforeOperation?.();
-      return getPlugin().getBundleById(id, context);
+      await beforeOperation?.();
+      return client.getBundleById(id, context);
     },
 
     async getUpdateInfo(
       args: GetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
     ): Promise<UpdateInfo | null> {
-      await coreOptions?.beforeOperation?.();
-      const plugin = getPlugin();
-      const directGetUpdateInfo = plugin.getUpdateInfo;
-      if (directGetUpdateInfo) {
-        return context === undefined
-          ? await directGetUpdateInfo(args)
-          : await directGetUpdateInfo(args, context);
-      }
-
-      const channel = args.channel ?? "production";
-      const minBundleId = args.minBundleId ?? NIL_UUID;
-      const baseWhere = getBaseWhere({
-        platform: args.platform,
-        channel,
-        minBundleId,
-      });
-
-      if (args._updateStrategy === "fingerprint") {
-        return findUpdateInfoByScanning({
-          args,
-          queryWhere: {
-            ...baseWhere,
-            fingerprintHash: args.fingerprintHash,
-          },
-          context,
-          isCandidate: (bundle) => {
-            return (
-              bundle.enabled &&
-              bundle.platform === args.platform &&
-              bundle.channel === channel &&
-              bundle.id.localeCompare(minBundleId) >= 0 &&
-              bundle.fingerprintHash === args.fingerprintHash
-            );
-          },
-        });
-      }
-
-      return findUpdateInfoByScanning({
-        args,
-        queryWhere: {
-          ...baseWhere,
-        },
-        context,
-        isCandidate: (bundle) => {
-          return (
-            bundle.enabled &&
-            bundle.platform === args.platform &&
-            bundle.channel === channel &&
-            bundle.id.localeCompare(minBundleId) >= 0 &&
-            !!bundle.targetAppVersion &&
-            semverSatisfies(bundle.targetAppVersion, args.appVersion)
-          );
-        },
-      });
+      await beforeOperation?.();
+      return client.getUpdateInfo(args, context);
     },
 
     async getAppUpdateInfo(
@@ -349,38 +60,29 @@ export function createPluginDatabaseCore<TContext = unknown>(
       context?: HotUpdaterContext<TContext>,
     ): Promise<AppUpdateAvailableInfo | null> {
       const info = await this.getUpdateInfo(args, context);
-      if (!info) {
-        return null;
-      }
+      if (!info) return null;
+
       const { storageUri, ...rest } = info;
-
-      const readStorageText = coreOptions?.readStorageText;
+      const readStorageText = options?.readStorageText;
       if (info.id === NIL_UUID || !readStorageText) {
-        const fileUrl = await resolveFileUrl(storageUri ?? null, context);
-        const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
-        return baseResponse;
+        return {
+          ...rest,
+          fileUrl: await resolveFileUrl(storageUri ?? null, context),
+        };
       }
 
-      const requestBundles = createRequestUpdateBundleResolver(context);
+      const requestBundles = createRequestBundleResolver(context);
+      const getBundleById = (id: string) =>
+        requestBundles.getById(id, () => client.getBundleById(id, context));
       const getCurrentBundle = () => {
-        if (args.bundleId === NIL_UUID) {
-          return null;
-        }
-
-        const seededCurrentBundle = requestBundles.peek(args.bundleId);
-        if (seededCurrentBundle || requestBundles.hasSeededBundles()) {
-          return seededCurrentBundle;
-        }
-
-        return requestBundles.getById(args.bundleId, () =>
-          getPlugin().getBundleById(args.bundleId, context),
-        );
+        if (args.bundleId === NIL_UUID) return null;
+        const seeded = requestBundles.peek(args.bundleId);
+        if (seeded || requestBundles.hasSeededBundles()) return seeded;
+        return getBundleById(args.bundleId);
       };
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
         resolveFileUrl(storageUri ?? null, context),
-        requestBundles.getById(info.id, () =>
-          getPlugin().getBundleById(info.id, context),
-        ),
+        getBundleById(info.id),
         getCurrentBundle(),
       ]);
       const baseResponse: AppUpdateAvailableInfo = { ...rest, fileUrl };
@@ -391,76 +93,61 @@ export function createPluginDatabaseCore<TContext = unknown>(
         targetBundle,
         context,
       });
-      if (!manifestArtifacts) {
-        return baseResponse;
-      }
-
-      return {
-        ...baseResponse,
-        ...manifestArtifacts,
-      };
+      return manifestArtifacts
+        ? { ...baseResponse, ...manifestArtifacts }
+        : baseResponse;
     },
 
     async getChannels(
       context?: HotUpdaterContext<TContext>,
     ): Promise<string[]> {
-      await coreOptions?.beforeOperation?.();
-      return getPlugin().getChannels(context);
+      await beforeOperation?.();
+      return client.getChannels(context);
     },
 
     async getBundles(options, context?: HotUpdaterContext<TContext>) {
-      await coreOptions?.beforeOperation?.();
-      return getPlugin().getBundles(options, context);
+      await beforeOperation?.();
+      return client.getBundles(options, context);
     },
 
     async insertBundle(
       bundle: Bundle,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
-      await coreOptions?.beforeOperation?.();
+      await beforeOperation?.();
       assertBundlePersistenceConstraints(bundle);
-      await runWithMutationPlugin(async (plugin) => {
-        await plugin.appendBundle(bundle, context);
-        await plugin.commitBundle(context);
-      });
+      await client.insertBundle(bundle, context);
     },
 
     async updateBundleById(
       bundleId: string,
-      newBundle: Partial<Bundle>,
+      update: Partial<Bundle>,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
-      await coreOptions?.beforeOperation?.();
-      await runWithMutationPlugin(async (plugin) => {
-        const current = await plugin.getBundleById(bundleId, context);
-        if (!current) {
-          throw new Error("targetBundleId not found");
-        }
-        assertBundlePersistenceConstraints({ ...current, ...newBundle });
-        await plugin.updateBundle(bundleId, newBundle, context);
-        await plugin.commitBundle(context);
-      });
+      await beforeOperation?.();
+      const current = await client.getBundleById(bundleId, context);
+      if (!current) throw new Error("targetBundleId not found");
+      const nextBundle: Bundle = {
+        ...current,
+        ...update,
+        id: bundleId,
+      };
+      assertBundlePersistenceConstraints(nextBundle);
+      await client.updateBundleById(bundleId, update, context);
     },
 
     async deleteBundleById(
       bundleId: string,
       context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
-      await coreOptions?.beforeOperation?.();
-      await runWithMutationPlugin(async (plugin) => {
-        const bundle = await plugin.getBundleById(bundleId, context);
-        if (!bundle) {
-          return;
-        }
-        await plugin.deleteBundle(bundle, context);
-        await plugin.commitBundle(context);
-      });
+      await beforeOperation?.();
+      await client.deleteBundleById(bundleId, context);
     },
   };
 
   return {
     api,
-    adapterName: getPlugin().name,
+    adapterName: database.name,
     createMigrator: () => {
       throw new Error(
         "createMigrator is only available for Kysely/MongoDB database adapters.",

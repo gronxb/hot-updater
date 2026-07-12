@@ -157,12 +157,19 @@ const inlineSqlChecks = (
 export const createTableStatement = (
   table: HotUpdaterTableSchema,
   provider: ORMSQLProvider,
+  relationMode: RelationMode = "foreign-keys",
 ): string => {
   const lines = [
     ...table.columns.map((column) =>
       sqlColumnDefinition(table, column, provider),
     ),
     ...inlineSqlChecks(table, provider),
+    ...(provider === "sqlite" && relationMode === "foreign-keys"
+      ? (table.foreignKeys ?? []).map(
+          (foreignKey) =>
+            `constraint ${foreignKey.name} foreign key (${foreignKey.columns.join(", ")}) references ${foreignKey.referencedTable}(${foreignKey.referencedColumns.join(", ")}) on update ${foreignKey.onUpdate} on delete ${foreignKey.onDelete}`,
+        )
+      : []),
   ];
   return `create table if not exists ${table.ormName} (\n${lines.join(",\n")}\n)`;
 };
@@ -184,7 +191,7 @@ export const createTableSql = (
   relationMode: RelationMode = "foreign-keys",
 ): readonly string[] => [
   ...hotUpdaterSchema.tables.map((table) =>
-    createTableStatement(table, provider),
+    createTableStatement(table, provider, relationMode),
   ),
   ...hotUpdaterSchema.tables.flatMap((table) =>
     (table.indexes ?? [])

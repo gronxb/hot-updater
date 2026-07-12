@@ -1,75 +1,59 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  mockBuildPlugin,
-  mockCli,
-  mockDatabasePlugin,
-  mockServer,
-  mockStoragePlugin,
-} = vi.hoisted(() => {
-  const mockBuildPlugin = {
-    build: vi.fn(),
-    name: "mock-build",
-  };
-  const mockStoragePlugin = {
-    name: "mock-storage",
-    supportedProtocol: "s3",
-    profiles: {
-      node: {
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-        exists: vi.fn(),
-        upload: vi.fn(),
+const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
+  () => {
+    const mockBuildPlugin = {
+      build: vi.fn(),
+      name: "mock-build",
+    };
+    const mockStoragePlugin = {
+      name: "mock-storage",
+      supportedProtocol: "s3",
+      profiles: {
+        node: {
+          delete: vi.fn(),
+          downloadFile: vi.fn(),
+          exists: vi.fn(),
+          upload: vi.fn(),
+        },
       },
-    },
-  };
-  const mockDatabasePlugin = {
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
-    name: "mock-database",
-    onUnmount: vi.fn(),
-    updateBundle: vi.fn(),
-  };
-  const mockServer = {
-    createBundleDiff: vi.fn(),
-  };
-  const mockCli = {
-    appendToProjectRootGitignore: vi.fn(),
-    createTarBrTargetFiles: vi.fn(),
-    createTarGzTargetFiles: vi.fn(),
-    createZipTargetFiles: vi.fn(),
-    getCwd: vi.fn(),
-    loadConfig: vi.fn(),
-    p: {
-      confirm: vi.fn(),
-      isCancel: vi.fn(),
-      log: {
-        error: vi.fn(),
-        info: vi.fn(),
-        step: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
+    };
+    const mockServer = {
+      createBundleDiff: vi.fn(),
+    };
+    const mockCli = {
+      appendToProjectRootGitignore: vi.fn(),
+      createTarBrTargetFiles: vi.fn(),
+      createTarGzTargetFiles: vi.fn(),
+      createZipTargetFiles: vi.fn(),
+      getCwd: vi.fn(),
+      loadConfig: vi.fn(),
+      p: {
+        confirm: vi.fn(),
+        isCancel: vi.fn(),
+        log: {
+          error: vi.fn(),
+          info: vi.fn(),
+          step: vi.fn(),
+          success: vi.fn(),
+          warn: vi.fn(),
+        },
+        note: vi.fn(),
+        outro: vi.fn(),
+        spinner: vi.fn(),
+        tasks: vi.fn(),
+        text: vi.fn(),
       },
-      note: vi.fn(),
-      outro: vi.fn(),
-      spinner: vi.fn(),
-      tasks: vi.fn(),
-      text: vi.fn(),
-    },
-  };
+    };
 
-  return {
-    mockBuildPlugin,
-    mockCli,
-    mockDatabasePlugin,
-    mockServer,
-    mockStoragePlugin,
-  };
-});
+    return {
+      mockBuildPlugin,
+      mockCli,
+      mockServer,
+      mockStoragePlugin,
+    };
+  },
+);
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -138,6 +122,11 @@ vi.mock("fs", async () => {
 vi.mock("is-port-reachable", () => ({
   default: vi.fn(),
 }));
+
+import { createDatabaseAdapterHarness } from "./databaseAdapter.testFixtures";
+
+const databaseHarness = createDatabaseAdapterHarness();
+const databasePlugin = databaseHarness.adapter;
 
 vi.mock("open", () => ({
   default: vi.fn(),
@@ -211,7 +200,8 @@ vi.mock("./console", () => ({
 import fs from "fs";
 import path from "path";
 
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
+import { BLOB_DATABASE_SNAPSHOT_KEY } from "@hot-updater/plugin-core";
 
 import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
@@ -232,111 +222,23 @@ import {
 } from "./deploy";
 
 type BundleFixture = Pick<Bundle, "id"> & Partial<Bundle>;
-type GetBundlesOptions = Parameters<DatabasePlugin["getBundles"]>[0];
-
-const compareBundleIds = (a: string, b: string): number => a.localeCompare(b);
-
-const matchesIdFilter = (
-  id: string,
-  filter: NonNullable<GetBundlesOptions["where"]>["id"],
-): boolean => {
-  if (!filter) return true;
-  if (filter.eq !== undefined && id !== filter.eq) return false;
-  if (filter.lt !== undefined && compareBundleIds(id, filter.lt) >= 0) {
-    return false;
-  }
-  if (filter.lte !== undefined && compareBundleIds(id, filter.lte) > 0) {
-    return false;
-  }
-  if (filter.gt !== undefined && compareBundleIds(id, filter.gt) <= 0) {
-    return false;
-  }
-  if (filter.gte !== undefined && compareBundleIds(id, filter.gte) < 0) {
-    return false;
-  }
-  if (filter.in !== undefined && !filter.in.includes(id)) return false;
-  return true;
-};
 
 const mockGetBundlesWithFixtures = (fixtures: BundleFixture[]) => {
-  mockDatabasePlugin.getBundles.mockImplementation(
-    async (options: GetBundlesOptions) => {
-      const { cursor, limit, orderBy, where = {} } = options;
-      const sortedBundles = fixtures
-        .map((fixture) => ({
-          channel: "production",
-          enabled: true,
-          fingerprintHash: null,
-          platform: "ios",
-          targetAppVersion: null,
-          ...fixture,
-        }))
-        .filter((bundle) => {
-          if (where.channel !== undefined && bundle.channel !== where.channel) {
-            return false;
-          }
-          if (
-            where.platform !== undefined &&
-            bundle.platform !== where.platform
-          ) {
-            return false;
-          }
-          if (where.enabled !== undefined && bundle.enabled !== where.enabled) {
-            return false;
-          }
-          if (!matchesIdFilter(bundle.id, where.id)) return false;
-          if (
-            where.targetAppVersion !== undefined &&
-            bundle.targetAppVersion !== where.targetAppVersion
-          ) {
-            return false;
-          }
-          if (
-            where.targetAppVersionNotNull &&
-            bundle.targetAppVersion === null
-          ) {
-            return false;
-          }
-          if (
-            where.fingerprintHash !== undefined &&
-            bundle.fingerprintHash !== where.fingerprintHash
-          ) {
-            return false;
-          }
-          return true;
-        })
-        .sort((a, b) =>
-          orderBy?.direction === "asc"
-            ? compareBundleIds(a.id, b.id)
-            : compareBundleIds(b.id, a.id),
-        );
-
-      const cursorIndex = cursor?.after
-        ? sortedBundles.findIndex((bundle) => bundle.id === cursor.after)
-        : -1;
-      const startIndex = cursorIndex >= 0 ? cursorIndex + 1 : 0;
-      const data = sortedBundles.slice(startIndex, startIndex + limit);
-
-      return {
-        data: data as Bundle[],
-        pagination: {
-          currentPage: Math.floor(startIndex / limit) + 1,
-          hasNextPage: startIndex + data.length < sortedBundles.length,
-          hasPreviousPage: startIndex > 0,
-          total: sortedBundles.length,
-          totalPages:
-            sortedBundles.length === 0
-              ? 0
-              : Math.ceil(sortedBundles.length / limit),
-          ...(startIndex + data.length < sortedBundles.length && data.length > 0
-            ? { nextCursor: data.at(-1)?.id }
-            : {}),
-          ...(startIndex > 0 && data.length > 0
-            ? { previousCursor: data[0]?.id }
-            : {}),
-        },
-      };
-    },
+  databaseHarness.setBundles(
+    fixtures.map((fixture) => ({
+      channel: "production",
+      enabled: true,
+      fileHash: "fixture-hash",
+      fingerprintHash: null,
+      gitCommitHash: null,
+      message: null,
+      platform: "ios",
+      rolloutCohortCount: 1000,
+      shouldForceUpdate: false,
+      storageUri: `storage://${fixture.id}`,
+      targetAppVersion: null,
+      ...fixture,
+    })),
   );
 };
 
@@ -396,6 +298,7 @@ describe("normalizePatchMaxBaseBundles", () => {
 describe("deploy rollout wiring", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    databaseHarness.reset();
 
     mockCli.getCwd.mockReturnValue("/mock/cwd");
     mockCli.appendToProjectRootGitignore.mockReturnValue(false);
@@ -420,19 +323,6 @@ describe("deploy rollout wiring", () => {
       storageUri: "s3://bundles/bundle-123/bundle.tar.br",
     });
     mockStoragePlugin.profiles.node.exists.mockResolvedValue(false);
-    mockDatabasePlugin.appendBundle.mockResolvedValue(undefined);
-    mockDatabasePlugin.commitBundle.mockResolvedValue(undefined);
-    mockDatabasePlugin.getBundles.mockResolvedValue({
-      data: [],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: 0,
-        totalPages: 0,
-      },
-    });
-    mockDatabasePlugin.onUnmount.mockResolvedValue(undefined);
     mockServer.createBundleDiff.mockResolvedValue({
       id: "bundle-123",
     });
@@ -440,7 +330,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: async () => mockDatabasePlugin,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -516,11 +406,9 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rolloutCohortCount: 1000,
-      }),
-    );
+    expect((await databaseHarness.bundles())[0]).toMatchObject({
+      rolloutCohortCount: 1000,
+    });
   });
 
   it("stores an explicit rolloutCohortCount on the created bundle", async () => {
@@ -533,11 +421,9 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rolloutCohortCount: 0,
-      }),
-    );
+    expect((await databaseHarness.bundles())[0]).toMatchObject({
+      rolloutCohortCount: 0,
+    });
   });
 
   it("converts rollout percentages to rollout cohort counts before storing", async () => {
@@ -550,11 +436,9 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        rolloutCohortCount: 550,
-      }),
-    );
+    expect((await databaseHarness.bundles())[0]).toMatchObject({
+      rolloutCohortCount: 550,
+    });
   });
 
   it("prints deployment context and success outro", async () => {
@@ -628,6 +512,14 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.outro).toHaveBeenCalledWith(
       "🚀 Deployment Successful (iOS, Android)",
     );
+    expect(
+      (await databaseHarness.bundles()).map(({ id }) => id).sort(),
+    ).toEqual(["bundle-android", "bundle-ios"]);
+    expect(
+      databaseHarness.uploadObject.mock.calls.filter(
+        ([key]) => key === BLOB_DATABASE_SNAPSHOT_KEY,
+      ),
+    ).toHaveLength(1);
   });
 
   it("renders build stdout in a note instead of raw task output", async () => {
@@ -673,16 +565,14 @@ describe("deploy rollout wiring", () => {
     });
 
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(3);
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        assetBaseStorageUri: "s3://bundles/assets",
-        manifestFileHash: "file-hash",
-        manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
-        metadata: expect.objectContaining({
-          app_version: "1.0",
-        }),
+    expect((await databaseHarness.bundles())[0]).toMatchObject({
+      assetBaseStorageUri: "s3://bundles/assets",
+      manifestFileHash: "file-hash",
+      manifestStorageUri: "s3://bundles/bundle-123/manifest.json",
+      metadata: expect.objectContaining({
+        app_version: "1.0",
       }),
-    );
+    });
   });
 
   it("limits concurrent manifest asset uploads", async () => {
@@ -807,7 +697,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       cacheDir: "node_modules/.hot-updater",
       compressStrategy: "tar.br",
-      database: async () => mockDatabasePlugin,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -948,7 +838,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: async () => mockDatabasePlugin,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1000,7 +890,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: async () => mockDatabasePlugin,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1010,25 +900,10 @@ describe("deploy rollout wiring", () => {
       storage: async () => mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockDatabasePlugin.getBundles.mockResolvedValue({
-      data: [
-        {
-          id: "bundle-122",
-          targetAppVersion: "1.0.x",
-        },
-        {
-          id: "bundle-121",
-          targetAppVersion: "1.0.x",
-        },
-      ],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: 2,
-        totalPages: 1,
-      },
-    });
+    mockGetBundlesWithFixtures([
+      { id: "bundle-122", targetAppVersion: "1.0.x" },
+      { id: "bundle-121", targetAppVersion: "1.0.x" },
+    ]);
 
     await deploy({
       channel: "production",
@@ -1045,7 +920,7 @@ describe("deploy rollout wiring", () => {
         bundleId: "bundle-123",
       },
       {
-        databasePlugin: mockDatabasePlugin,
+        databasePlugin,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1059,7 +934,7 @@ describe("deploy rollout wiring", () => {
         bundleId: "bundle-123",
       },
       {
-        databasePlugin: mockDatabasePlugin,
+        databasePlugin,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1072,7 +947,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: async () => mockDatabasePlugin,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1103,7 +978,7 @@ describe("deploy rollout wiring", () => {
         bundleId: "bundle-123",
       },
       {
-        databasePlugin: mockDatabasePlugin,
+        databasePlugin,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1116,7 +991,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: async () => mockDatabasePlugin,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1145,14 +1020,13 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.1",
     });
 
-    expect(mockDatabasePlugin.getBundles).toHaveBeenCalledTimes(2);
     expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
       {
         baseBundleId: "bundle-112",
         bundleId: "bundle-123",
       },
       {
-        databasePlugin: mockDatabasePlugin,
+        databasePlugin,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1165,7 +1039,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: async () => mockDatabasePlugin,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1175,21 +1049,9 @@ describe("deploy rollout wiring", () => {
       storage: async () => mockStoragePlugin,
       updateStrategy: "appVersion",
     });
-    mockDatabasePlugin.getBundles.mockResolvedValue({
-      data: [
-        {
-          id: "bundle-122",
-          targetAppVersion: "1.0.x",
-        },
-      ],
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: 1,
-        totalPages: 1,
-      },
-    });
+    mockGetBundlesWithFixtures([
+      { id: "bundle-122", targetAppVersion: "1.0.x" },
+    ]);
     mockServer.createBundleDiff.mockRejectedValueOnce(
       new Error("storage unavailable"),
     );
@@ -1220,11 +1082,9 @@ describe("deploy rollout wiring", () => {
       platform: "ios",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        targetAppVersion: "1.5.0",
-      }),
-    );
+    expect((await databaseHarness.bundles())[0]).toMatchObject({
+      targetAppVersion: "1.5.0",
+    });
   });
 
   it("errors out in non-interactive mode when -t is omitted and the native config is unreadable", async () => {
@@ -1240,7 +1100,7 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.log.error).toHaveBeenCalledWith(
       expect.stringContaining("Target app version not found in native files"),
     );
-    expect(mockDatabasePlugin.appendBundle).not.toHaveBeenCalled();
+    expect(await databaseHarness.bundles()).toEqual([]);
   });
 
   it("uses the explicit -t value over the auto-detected default", async () => {
@@ -1254,11 +1114,9 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.2.0",
     });
 
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        targetAppVersion: "1.2.0",
-      }),
-    );
+    expect((await databaseHarness.bundles())[0]).toMatchObject({
+      targetAppVersion: "1.2.0",
+    });
   });
 
   it("uses the interactive prompt with the auto-detected value as placeholder/initialValue", async () => {
@@ -1279,10 +1137,8 @@ describe("deploy rollout wiring", () => {
         initialValue: "1.5.0",
       }),
     );
-    expect(mockDatabasePlugin.appendBundle).toHaveBeenCalledWith(
-      expect.objectContaining({
-        targetAppVersion: "1.7.0",
-      }),
-    );
+    expect((await databaseHarness.bundles())[0]).toMatchObject({
+      targetAppVersion: "1.7.0",
+    });
   });
 });

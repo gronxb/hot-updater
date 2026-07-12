@@ -17,7 +17,10 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { resolveManifestAssetStorageUri } from "@hot-updater/plugin-core";
+import {
+  createDatabaseClient,
+  resolveManifestAssetStorageUri,
+} from "@hot-updater/plugin-core";
 
 type BundleManifest = {
   bundleId: string;
@@ -144,9 +147,7 @@ async function fetchManifest(
     storagePlugin,
   );
 
-  const payload = JSON.parse(
-    new TextDecoder().decode(manifestBytes),
-  ) as unknown;
+  const payload: unknown = JSON.parse(new TextDecoder().decode(manifestBytes));
   if (!isBundleManifest(payload)) {
     throw new Error(`Invalid manifest payload for bundle ${bundle.id}`);
   }
@@ -199,8 +200,9 @@ async function fetchAssetBytes(
         compressedAssetStorageUri,
         storagePlugin,
       );
-    } catch {
-      // Older deployments stored manifest assets uncompressed.
+    } catch (error) {
+      if (!(error instanceof Error)) throw error;
+      compressedBytes = null;
     }
 
     if (compressedBytes) {
@@ -249,6 +251,8 @@ export async function createBundleDiff(
   deps: CreateBundleDiffDependencies,
   options: CreateBundleDiffOptions = {},
 ) {
+  const database = createDatabaseClient(deps.databasePlugin);
+
   if (!deps.storagePlugin) {
     throw new Error("Storage plugin is not configured");
   }
@@ -257,8 +261,8 @@ export async function createBundleDiff(
     throw new Error("Base bundle must be different from the target bundle");
   }
 
-  const baseBundle = await deps.databasePlugin.getBundleById(baseBundleId);
-  const targetBundle = await deps.databasePlugin.getBundleById(bundleId);
+  const baseBundle = await database.getBundleById(baseBundleId);
+  const targetBundle = await database.getBundleById(bundleId);
 
   if (!baseBundle || !targetBundle) {
     throw new Error("Bundle not found");
@@ -347,14 +351,15 @@ export async function createBundleDiff(
       makePrimary: options.makePrimary ?? true,
     });
 
-    await deps.databasePlugin.updateBundle(targetBundle.id, {
+    const updatedBundle: Bundle = {
+      ...targetBundle,
       patches: nextState.patches,
       patchBaseBundleId: nextState.primaryPatch.baseBundleId,
       patchBaseFileHash: nextState.primaryPatch.baseFileHash,
       patchFileHash: nextState.primaryPatch.patchFileHash,
       patchStorageUri: nextState.primaryPatch.patchStorageUri,
-    });
-    await deps.databasePlugin.commitBundle();
+    };
+    await database.updateBundleById(targetBundle.id, updatedBundle);
 
     if (
       previousPatch?.patchStorageUri &&
@@ -365,13 +370,6 @@ export async function createBundleDiff(
         .catch(() => {
           return;
         });
-    }
-
-    const updatedBundle = await deps.databasePlugin.getBundleById(
-      targetBundle.id,
-    );
-    if (!updatedBundle) {
-      throw new Error("Updated bundle not found");
     }
 
     return updatedBundle;

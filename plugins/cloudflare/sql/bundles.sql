@@ -1,4 +1,8 @@
--- HotUpdater.bundles
+CREATE TABLE channels (
+    id TEXT PRIMARY KEY
+);
+
+INSERT INTO channels (id) VALUES ('production');
 
 CREATE TABLE bundles (
     id TEXT PRIMARY KEY,
@@ -19,6 +23,7 @@ CREATE TABLE bundles (
     rollout_cohort_count INTEGER DEFAULT 1000
       CHECK (rollout_cohort_count >= 0 AND rollout_cohort_count <= 1000),
     target_cohorts TEXT,
+    FOREIGN KEY (channel) REFERENCES channels(id) ON DELETE RESTRICT,
     CHECK ((target_app_version IS NOT NULL) OR (fingerprint_hash IS NOT NULL))
 );
 

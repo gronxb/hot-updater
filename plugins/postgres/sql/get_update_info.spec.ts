@@ -19,6 +19,9 @@ const createInsertBundleQuery = (bundle: Bundle) => {
     : "NULL";
 
   return `
+    INSERT INTO channels (id) VALUES ('${bundle.channel}')
+    ON CONFLICT (id) DO NOTHING;
+
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
       should_force_update, enabled, git_commit_hash, message, channel, storage_uri, fingerprint_hash,

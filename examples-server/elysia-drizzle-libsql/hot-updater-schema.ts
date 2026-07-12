@@ -2,6 +2,16 @@ import { blob, foreignKey, index, integer, sqliteTable, text } from "drizzle-orm
 
 import { relations } from "drizzle-orm"
 
+export const channels = sqliteTable("channels", {
+  id: text("id", { length: 255 }).primaryKey().notNull()
+})
+
+export const channelsRelations = relations(channels, ({ many }) => ({
+  bundles: many(bundles, {
+    relationName: "channels_bundles_channel"
+  })
+}))
+
 export const bundles = sqliteTable("bundles", {
   id: text("id").primaryKey().notNull(),
   platform: text("platform").notNull(),
@@ -10,7 +20,7 @@ export const bundles = sqliteTable("bundles", {
   file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
-  channel: text("channel").notNull().default("production"),
+  channel: text("channel", { length: 255 }).notNull().default("production"),
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
@@ -21,11 +31,30 @@ export const bundles = sqliteTable("bundles", {
   manifest_file_hash: text("manifest_file_hash"),
   asset_base_storage_uri: text("asset_base_storage_uri")
 }, (table) => [
+  foreignKey({
+    columns: [table.channel],
+    foreignColumns: [channels.id],
+    name: "bundles_channel_fk"
+  }).onUpdate("restrict").onDelete("restrict"),
   index("bundles_target_app_version_idx").on(table.target_app_version),
   index("bundles_fingerprint_hash_idx").on(table.fingerprint_hash),
   index("bundles_channel_idx").on(table.channel),
   index("bundles_rollout_idx").on(table.rollout_cohort_count)
 ])
+
+export const bundlesRelations = relations(bundles, ({ one, many }) => ({
+  channelRef: one(channels, {
+    relationName: "channels_bundles_channel",
+    fields: [bundles.channel],
+    references: [channels.id]
+  }),
+  patches: many(bundle_patches, {
+    relationName: "bundle_patches_bundles_patches"
+  }),
+  baseForPatches: many(bundle_patches, {
+    relationName: "bundle_patches_bundles_baseForPatches"
+  })
+}))
 
 export const bundle_patches = sqliteTable("bundle_patches", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
@@ -65,5 +94,5 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
 
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
-  version: text("version", { length: 255 }).notNull().default("0.31.0")
+  version: text("version", { length: 255 }).notNull().default("0.36.0")
 })

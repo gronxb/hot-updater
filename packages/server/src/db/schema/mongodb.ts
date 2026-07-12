@@ -8,6 +8,10 @@ export const createMongoMigrationOperations = (
   ...hotUpdaterCreateTableOperations,
   {
     type: "custom",
+    sql: "backfill channels from bundles.channel",
+  },
+  {
+    type: "custom",
     sql: "create index bundles_id_idx on bundles(id)",
   },
   ...hotUpdaterSchema.tables.flatMap((table) =>

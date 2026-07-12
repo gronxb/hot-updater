@@ -112,13 +112,16 @@ export const foreignKey = (
   columns: readonly string[],
   referencedTable: string,
   referencedColumns: readonly string[],
+  options: {
+    readonly onDelete?: HotUpdaterForeignKeySchema["onDelete"];
+  } = {},
 ): HotUpdaterForeignKeySchema => ({
   name,
   columns,
   referencedTable,
   referencedColumns,
   onUpdate: "restrict",
-  onDelete: "cascade",
+  onDelete: options.onDelete ?? "cascade",
 });
 
 export const check = (config: HotUpdaterCheckSchema): HotUpdaterCheckSchema =>

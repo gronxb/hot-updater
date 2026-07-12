@@ -1,0 +1,127 @@
+import type { DatabaseRow, DatabaseWhere } from "./types";
+
+type BlobDatabaseModel = "bundle_patches" | "bundles" | "channels";
+
+const compare = (left: unknown, right: unknown): number => {
+  if (typeof left === "number" && typeof right === "number") {
+    return left - right;
+  }
+  return String(left).localeCompare(String(right));
+};
+
+const stringComparison = (
+  actual: unknown,
+  expected: string,
+  mode: unknown,
+  predicate: (value: string, query: string) => boolean,
+): boolean => {
+  if (typeof actual !== "string") return false;
+  return mode === "insensitive"
+    ? predicate(actual.toLocaleLowerCase(), expected.toLocaleLowerCase())
+    : predicate(actual, expected);
+};
+
+const matchesCondition = <TModel extends BlobDatabaseModel>(
+  row: DatabaseRow<TModel>,
+  condition: DatabaseWhere<TModel>,
+): boolean => {
+  const actual = Reflect.get(row, condition.field);
+  const expected = Reflect.get(condition, "value");
+  const operator = Reflect.get(condition, "operator") ?? "eq";
+  switch (operator) {
+    case "eq":
+      return actual === expected;
+    case "ne":
+      return actual !== expected;
+    case "gt":
+      return compare(actual, expected) > 0;
+    case "gte":
+      return compare(actual, expected) >= 0;
+    case "lt":
+      return compare(actual, expected) < 0;
+    case "lte":
+      return compare(actual, expected) <= 0;
+    case "in":
+      return (
+        Array.isArray(expected) &&
+        expected.some((candidate: unknown) => candidate === actual)
+      );
+    case "not_in":
+      return (
+        Array.isArray(expected) &&
+        expected.every((candidate: unknown) => candidate !== actual)
+      );
+    case "contains":
+      return typeof expected === "string"
+        ? stringComparison(
+            actual,
+            expected,
+            Reflect.get(condition, "mode"),
+            (value, query) => value.includes(query),
+          )
+        : false;
+    case "starts_with":
+      return typeof expected === "string"
+        ? stringComparison(
+            actual,
+            expected,
+            Reflect.get(condition, "mode"),
+            (value, query) => value.startsWith(query),
+          )
+        : false;
+    case "ends_with":
+      return typeof expected === "string"
+        ? stringComparison(
+            actual,
+            expected,
+            Reflect.get(condition, "mode"),
+            (value, query) => value.endsWith(query),
+          )
+        : false;
+    default:
+      return false;
+  }
+};
+
+export const matchesBlobDatabaseWhere = <TModel extends BlobDatabaseModel>(
+  row: DatabaseRow<TModel>,
+  where: readonly DatabaseWhere<TModel>[] | undefined,
+): boolean => {
+  if (!where || where.length === 0) return true;
+  let result = matchesCondition(row, where[0]);
+  for (const condition of where.slice(1)) {
+    const current = matchesCondition(row, condition);
+    result =
+      condition.connector === "OR" ? result || current : result && current;
+  }
+  return result;
+};
+
+export const queryBlobDatabaseRows = <TModel extends BlobDatabaseModel>(
+  rows: readonly DatabaseRow<TModel>[],
+  input: {
+    readonly where?: readonly DatabaseWhere<TModel>[];
+    readonly sortBy?: {
+      readonly field: keyof DatabaseRow<TModel>;
+      readonly direction: "asc" | "desc";
+    };
+    readonly offset?: number;
+    readonly limit?: number;
+  },
+): DatabaseRow<TModel>[] => {
+  const filtered = rows.filter((row) =>
+    matchesBlobDatabaseWhere(row, input.where),
+  );
+  if (input.sortBy) {
+    const direction = input.sortBy.direction === "asc" ? 1 : -1;
+    filtered.sort(
+      (left, right) =>
+        compare(
+          Reflect.get(left, input.sortBy?.field ?? "id"),
+          Reflect.get(right, input.sortBy?.field ?? "id"),
+        ) * direction,
+    );
+  }
+  const offset = input.offset ?? 0;
+  return filtered.slice(offset, offset + (input.limit ?? 100));
+};

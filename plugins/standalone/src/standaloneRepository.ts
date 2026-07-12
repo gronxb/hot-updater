@@ -1,51 +1,44 @@
 import type {
-  Bundle,
-  DatabaseBundleIdFilter,
-  PaginatedResult,
+  DatabaseImplementationResult,
+  DatabaseModel,
+  DatabasePluginImplementation,
+  UpdateInfo,
 } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
+import {
+  isPartialDatabaseRow,
+  isUpdateInfo,
+  requestStandaloneDatabase,
+  StandaloneDatabaseError,
+} from "./standaloneDatabaseProtocol";
+
+export { StandaloneDatabaseError } from "./standaloneDatabaseProtocol";
+
 export interface RouteConfig {
-  path: string;
-  headers?: Record<string, string>;
+  readonly path: string;
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 export interface Routes {
-  create?: () => RouteConfig;
-  update?: (bundleId: string) => RouteConfig;
-  list?: () => RouteConfig;
-  channels?: () => RouteConfig;
-  retrieve?: (bundleId: string) => RouteConfig;
-  delete?: (bundleId: string) => RouteConfig;
+  readonly database?: () => RouteConfig;
 }
 
-const defaultRoutes = {
-  create: () => ({
-    path: "/api/bundles",
-  }),
-  update: (bundleId: string) => ({
-    path: `/api/bundles/${bundleId}`,
-  }),
-  list: () => ({
-    path: "/api/bundles",
-    headers: { "Cache-Control": "no-cache" },
-  }),
-  channels: () => ({
-    path: "/api/bundles/channels",
-    headers: { "Cache-Control": "no-cache" },
-  }),
-  retrieve: (bundleId: string) => ({
-    path: `/api/bundles/${bundleId}`,
-    headers: { Accept: "application/json" },
-  }),
-  delete: (bundleId: string) => ({
-    path: `/api/bundles/${bundleId}`,
-  }),
-};
+export interface StandaloneRepositoryConfig {
+  readonly baseUrl: string;
+  readonly commonHeaders?: Readonly<Record<string, string>>;
+  readonly routes?: Routes;
+  readonly getUpdateInfo?: boolean;
+}
+
+const DEFAULT_DATABASE_ROUTE = {
+  path: "/api/database/v2",
+  headers: { "Cache-Control": "no-cache" },
+} as const satisfies RouteConfig;
 
 const createRoute = (
   defaultRoute: RouteConfig,
-  customRoute?: Partial<RouteConfig>,
+  customRoute?: RouteConfig,
 ): RouteConfig => ({
   path: customRoute?.path ?? defaultRoute.path,
   headers: {
@@ -54,323 +47,119 @@ const createRoute = (
   },
 });
 
-export interface StandaloneRepositoryConfig {
-  baseUrl: string;
-  commonHeaders?: Record<string, string>;
-  routes?: Routes;
-}
-
-const appendPathSegment = (path: string, segment: string) =>
-  `${path.replace(/\/+$/, "")}/${segment}`;
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const isStringArray = (value: unknown): value is string[] =>
-  Array.isArray(value) && value.every((item) => typeof item === "string");
-
-const isPaginatedResult = (value: unknown): value is PaginatedResult =>
-  isRecord(value) && Array.isArray(value.data) && isRecord(value.pagination);
-
-const hasDataChannels = (
+const parseRow = (
+  model: DatabaseModel,
   value: unknown,
-): value is {
-  data: {
-    channels: string[];
+): DatabaseImplementationResult => {
+  if (!isPartialDatabaseRow(model, value)) {
+    throw new StandaloneDatabaseError(
+      "invalid-response",
+      `Invalid ${model} response row.`,
+    );
+  }
+  return value;
+};
+
+const createImplementation = (
+  config: StandaloneRepositoryConfig,
+): DatabasePluginImplementation => {
+  const route = createRoute(
+    DEFAULT_DATABASE_ROUTE,
+    config.routes?.database?.(),
+  );
+  const endpoint = `${config.baseUrl}${route.path}`;
+  const headers = {
+    "Content-Type": "application/json",
+    ...config.commonHeaders,
+    ...route.headers,
   };
-} =>
-  isRecord(value) && isRecord(value.data) && isStringArray(value.data.channels);
+  const request = (model: string, operation: string, input: unknown) =>
+    requestStandaloneDatabase({ endpoint, headers, input, model, operation });
 
-const setBooleanSearchParam = (
-  url: URL,
-  key: string,
-  value: boolean | undefined,
-) => {
-  if (value !== undefined) {
-    url.searchParams.set(key, String(value));
-  }
-};
-
-const setNullableStringSearchParam = (
-  url: URL,
-  key: string,
-  value: string | null | undefined,
-) => {
-  if (value !== undefined) {
-    url.searchParams.set(key, value === null ? "null" : value);
-  }
-};
-
-const appendStringArraySearchParams = (
-  url: URL,
-  key: string,
-  values: string[] | undefined,
-) => {
-  for (const value of values ?? []) {
-    url.searchParams.append(key, value);
-  }
-};
-
-const setBundleIdFilterSearchParams = (
-  url: URL,
-  filter: DatabaseBundleIdFilter | undefined,
-) => {
-  if (!filter) {
-    return;
-  }
-
-  if (filter.eq !== undefined) {
-    url.searchParams.set("idEq", filter.eq);
-  }
-  if (filter.gt !== undefined) {
-    url.searchParams.set("idGt", filter.gt);
-  }
-  if (filter.gte !== undefined) {
-    url.searchParams.set("idGte", filter.gte);
-  }
-  if (filter.lt !== undefined) {
-    url.searchParams.set("idLt", filter.lt);
-  }
-  if (filter.lte !== undefined) {
-    url.searchParams.set("idLte", filter.lte);
-  }
-
-  appendStringArraySearchParams(url, "idIn", filter.in);
+  return {
+    async create(input) {
+      const data = await request(input.model, "create", {
+        data: input.data,
+        ...(input.select ? { select: input.select } : {}),
+      });
+      return parseRow(input.model, data);
+    },
+    async update(input) {
+      const data = await request("bundles", "update", {
+        where: input.where,
+        update: input.update,
+        ...(input.select ? { select: input.select } : {}),
+      });
+      return data === null ? null : parseRow("bundles", data);
+    },
+    async delete(input) {
+      const data = await request(input.model, "delete", {
+        where: input.where,
+      });
+      if (data !== null) {
+        throw new StandaloneDatabaseError(
+          "invalid-response",
+          "Delete response data must be null.",
+        );
+      }
+    },
+    async count(input) {
+      const data = await request(
+        "bundles",
+        "count",
+        input.where ? { where: input.where } : {},
+      );
+      if (!Number.isInteger(data) || typeof data !== "number" || data < 0) {
+        throw new StandaloneDatabaseError(
+          "invalid-response",
+          "Count response data must be a non-negative integer.",
+        );
+      }
+      return data;
+    },
+    async findOne(input) {
+      const data = await request(input.model, "findOne", {
+        ...(input.where ? { where: input.where } : {}),
+        ...(input.select ? { select: input.select } : {}),
+      });
+      return data === null ? null : parseRow(input.model, data);
+    },
+    async findMany(input) {
+      const data = await request(input.model, "findMany", {
+        ...(input.where ? { where: input.where } : {}),
+        limit: input.limit,
+        offset: input.offset,
+        ...(input.sortBy ? { sortBy: input.sortBy } : {}),
+        ...(input.select ? { select: input.select } : {}),
+      });
+      if (!Array.isArray(data)) {
+        throw new StandaloneDatabaseError(
+          "invalid-response",
+          "Find-many response data must be an array.",
+        );
+      }
+      return data.map((row) => parseRow(input.model, row));
+    },
+    ...(config.getUpdateInfo
+      ? {
+          async getUpdateInfo(args) {
+            const data = await request("bundles", "getUpdateInfo", args);
+            if (data === null) return null;
+            if (!isUpdateInfo(data)) {
+              throw new StandaloneDatabaseError(
+                "invalid-response",
+                "Invalid update-info response.",
+              );
+            }
+            return data satisfies UpdateInfo;
+          },
+        }
+      : {}),
+  };
 };
 
 export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
     name: "standalone-repository",
-    factory: (config) => {
-      const customListRoute = config.routes?.list?.();
-      const routes = {
-        list: () => createRoute(defaultRoutes.list(), customListRoute),
-        channels: () => {
-          const defaultChannelsRoute = customListRoute
-            ? {
-                path: appendPathSegment(customListRoute.path, "channels"),
-                headers: {
-                  ...defaultRoutes.channels().headers,
-                  ...customListRoute.headers,
-                },
-              }
-            : defaultRoutes.channels();
-
-          return createRoute(defaultChannelsRoute, config.routes?.channels?.());
-        },
-        create: () =>
-          createRoute(defaultRoutes.create(), config.routes?.create?.()),
-        update: (bundleId: string) =>
-          createRoute(
-            defaultRoutes.update(bundleId),
-            config.routes?.update?.(bundleId),
-          ),
-        retrieve: (bundleId: string) =>
-          createRoute(
-            defaultRoutes.retrieve(bundleId),
-            config.routes?.retrieve?.(bundleId),
-          ),
-        delete: (bundleId: string) =>
-          createRoute(
-            defaultRoutes.delete(bundleId),
-            config.routes?.delete?.(bundleId),
-          ),
-      };
-
-      const buildUrl = (path: string) => `${config.baseUrl}${path}`;
-
-      const getHeaders = (routeHeaders?: Record<string, string>) => ({
-        "Content-Type": "application/json",
-        ...config.commonHeaders,
-        ...routeHeaders,
-      });
-
-      return {
-        supportsCursorPagination: true,
-        async getBundleById(bundleId: string): Promise<Bundle | null> {
-          try {
-            const { path, headers: routeHeaders } = routes.retrieve(bundleId);
-            const response = await fetch(buildUrl(path), {
-              method: "GET",
-              headers: getHeaders(routeHeaders),
-            });
-
-            if (!response.ok) {
-              return null;
-            }
-
-            return (await response.json()) as Bundle;
-          } catch {
-            return null;
-          }
-        },
-        async getBundles(options) {
-          const { where, limit, cursor, page } = options ?? {};
-          const internalOffset =
-            options &&
-            typeof options === "object" &&
-            "offset" in options &&
-            typeof options.offset === "number"
-              ? options.offset
-              : undefined;
-          const { path, headers: routeHeaders } = routes.list();
-          const url = new URL(buildUrl(path));
-          const resolvedPage =
-            page ??
-            (internalOffset !== undefined && limit > 0
-              ? Math.floor(internalOffset / limit) + 1
-              : undefined);
-
-          if (where?.channel !== undefined) {
-            url.searchParams.set("channel", where.channel);
-          }
-
-          if (where?.platform !== undefined) {
-            url.searchParams.set("platform", where.platform);
-          }
-
-          setBooleanSearchParam(url, "enabled", where?.enabled);
-          setBundleIdFilterSearchParams(url, where?.id);
-          setNullableStringSearchParam(
-            url,
-            "targetAppVersion",
-            where?.targetAppVersion,
-          );
-          appendStringArraySearchParams(
-            url,
-            "targetAppVersionIn",
-            where?.targetAppVersionIn,
-          );
-          setBooleanSearchParam(
-            url,
-            "targetAppVersionNotNull",
-            where?.targetAppVersionNotNull,
-          );
-          setNullableStringSearchParam(
-            url,
-            "fingerprintHash",
-            where?.fingerprintHash,
-          );
-
-          if (limit !== undefined) {
-            url.searchParams.set("limit", String(limit));
-          }
-
-          if (resolvedPage !== undefined) {
-            url.searchParams.set("page", String(resolvedPage));
-          }
-
-          if (cursor?.after !== undefined) {
-            url.searchParams.set("after", cursor.after);
-          }
-
-          if (cursor?.before !== undefined) {
-            url.searchParams.set("before", cursor.before);
-          }
-
-          const response = await fetch(url.toString(), {
-            method: "GET",
-            headers: getHeaders(routeHeaders),
-          });
-          if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
-          }
-
-          const result = (await response.json()) as unknown;
-
-          if (isPaginatedResult(result)) {
-            return result;
-          }
-
-          throw new Error("API Error: Invalid bundle list response");
-        },
-        async getChannels(): Promise<string[]> {
-          const { path, headers: routeHeaders } = routes.channels();
-
-          const response = await fetch(buildUrl(path), {
-            method: "GET",
-            headers: getHeaders(routeHeaders),
-          });
-
-          if (!response.ok) {
-            throw new Error(`API Error: ${response.statusText}`);
-          }
-
-          const result = (await response.json()) as unknown;
-
-          if (hasDataChannels(result)) {
-            return result.data.channels;
-          }
-
-          throw new Error("API Error: Invalid channels response");
-        },
-        async commitBundle({ changedSets }) {
-          if (changedSets.length === 0) {
-            return;
-          }
-
-          for (const op of changedSets) {
-            if (op.operation === "delete") {
-              const { path, headers: routeHeaders } = routes.delete(op.data.id);
-              const response = await fetch(buildUrl(path), {
-                method: "DELETE",
-                headers: getHeaders(routeHeaders),
-              });
-
-              if (!response.ok) {
-                if (response.status === 404) {
-                  throw new Error(`Bundle with id ${op.data.id} not found`);
-                }
-                throw new Error(
-                  `API Error: ${response.status} ${response.statusText}`,
-                );
-              }
-
-              const contentType = response.headers.get("content-type");
-              if (contentType?.includes("application/json")) {
-                try {
-                  await response.json();
-                } catch {
-                  if (!response.ok) {
-                    throw new Error("Failed to parse response");
-                  }
-                }
-              }
-            } else if (op.operation === "insert") {
-              const { path, headers: routeHeaders } = routes.create();
-              const response = await fetch(buildUrl(path), {
-                method: "POST",
-                headers: getHeaders(routeHeaders),
-                body: JSON.stringify([op.data]),
-              });
-
-              if (!response.ok) {
-                throw new Error(`API Error: ${response.statusText}`);
-              }
-
-              const result = (await response.json()) as { success: boolean };
-              if (!result.success) {
-                throw new Error("Failed to commit bundle");
-              }
-            } else if (op.operation === "update") {
-              const { path, headers: routeHeaders } = routes.update(op.data.id);
-              const response = await fetch(buildUrl(path), {
-                method: "PATCH",
-                headers: getHeaders(routeHeaders),
-                body: JSON.stringify(op.data),
-              });
-
-              if (!response.ok) {
-                throw new Error(`API Error: ${response.statusText}`);
-              }
-
-              const result = (await response.json()) as { success: boolean };
-              if (!result.success) {
-                throw new Error("Failed to commit bundle");
-              }
-            }
-          }
-        },
-      };
-    },
+    factory: createImplementation,
   });

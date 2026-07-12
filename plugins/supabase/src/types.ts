@@ -1,54 +1,79 @@
-import type { Bundle } from "@hot-updater/core";
+import type {
+  BundlePatchRow,
+  BundleRow,
+  ChannelRow,
+  Platform,
+} from "@hot-updater/plugin-core";
 
-export interface SupabaseBundleRow {
-  id: string;
-  channel: string;
-  enabled: boolean;
-  should_force_update: boolean;
-  file_hash: string;
-  git_commit_hash: string | null;
-  message: string | null;
-  platform: Bundle["platform"];
-  target_app_version: string | null;
-  fingerprint_hash: string | null;
-  storage_uri: string;
-  metadata: Bundle["metadata"] | null;
-  manifest_storage_uri: string | null;
-  manifest_file_hash: string | null;
-  asset_base_storage_uri: string | null;
-  rollout_cohort_count: number | null;
-  target_cohorts: string[] | null;
-}
+export type SupabaseBundleRow = {
+  [TField in keyof BundleRow]: BundleRow[TField];
+};
 
-export interface SupabaseBundlePatchRow {
-  id: string;
-  bundle_id: string;
-  base_bundle_id: string;
-  base_file_hash: string;
-  patch_file_hash: string;
-  patch_storage_uri: string;
-  order_index: number;
-}
+export type SupabaseBundlePatchRow = {
+  [TField in keyof BundlePatchRow]: BundlePatchRow[TField];
+};
+
+export type SupabaseChannelRow = {
+  [TField in keyof ChannelRow]: ChannelRow[TField];
+};
+
+type Table<TRow> = {
+  Row: TRow;
+  Insert: TRow;
+  Update: Partial<TRow>;
+  Relationships: [];
+};
+
+type UpdateInfoRow = {
+  readonly id: string;
+  readonly should_force_update: boolean;
+  readonly message: string | null;
+  readonly status: "UPDATE" | "ROLLBACK";
+  readonly storage_uri: string | null;
+  readonly file_hash: string | null;
+};
 
 export type Database = {
   public: {
     Tables: {
-      bundles: {
-        Row: SupabaseBundleRow;
-        Insert: SupabaseBundleRow;
-        Update: SupabaseBundleRow;
-        Relationships: [];
+      bundles: Table<SupabaseBundleRow>;
+      bundle_patches: Table<SupabaseBundlePatchRow>;
+      channels: Table<SupabaseChannelRow>;
+    };
+    Views: { [_ in never]: never };
+    Functions: {
+      get_target_app_version_list: {
+        Args: {
+          app_platform: Platform;
+          min_bundle_id: string;
+        };
+        Returns: {
+          target_app_version: string | null;
+        }[];
       };
-      bundle_patches: {
-        Row: SupabaseBundlePatchRow;
-        Insert: SupabaseBundlePatchRow;
-        Update: SupabaseBundlePatchRow;
-        Relationships: [];
+      get_update_info_by_app_version: {
+        Args: {
+          app_platform: Platform;
+          app_version: string;
+          bundle_id: string;
+          min_bundle_id: string;
+          target_channel: string;
+          target_app_version_list: string[];
+          cohort: string | null;
+        };
+        Returns: UpdateInfoRow[];
+      };
+      get_update_info_by_fingerprint_hash: {
+        Args: {
+          app_platform: Platform;
+          bundle_id: string;
+          min_bundle_id: string;
+          target_channel: string;
+          target_fingerprint_hash: string;
+          cohort: string | null;
+        };
+        Returns: UpdateInfoRow[];
       };
     };
-    Views: {
-      [_ in never]: never;
-    };
-    Functions: any;
   };
 };

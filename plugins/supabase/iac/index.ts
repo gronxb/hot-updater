@@ -116,7 +116,7 @@ export default HotUpdater.wrap({
 
 const resolvePackageExportPath = async (
   packageName: string,
-  exportName: "." | "./runtime" | "./edge",
+  exportName: string,
 ) => {
   const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageJson = JSON.parse(
@@ -238,6 +238,17 @@ const collectBareImportSpecifiers = async (entryPath: string) => {
 const toVendorDirName = (packageName: string) =>
   packageName.replace(/^@/, "").replaceAll("/", "-");
 
+const parseWorkspacePackageSpecifier = (specifier: string) => {
+  const parts = specifier.split("/");
+  const packageName = parts.slice(0, 2).join("/");
+  const subpath = parts.slice(2).join("/");
+
+  return {
+    packageName,
+    exportName: subpath ? `./${subpath}` : ".",
+  };
+};
+
 const prepareVendoredPackageImport = async ({
   targetDir,
   packageName,
@@ -245,7 +256,7 @@ const prepareVendoredPackageImport = async ({
 }: {
   targetDir: string;
   packageName: string;
-  exportName: "." | "./runtime" | "./edge";
+  exportName: string;
 }) => {
   const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageRoot = path.dirname(packageJsonPath);
@@ -308,7 +319,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
   }: {
     importSpecifier: string;
     packageName: string;
-    exportName: "." | "./runtime" | "./edge";
+    exportName: string;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
     if (visitedWorkspacePackages.has(visitKey)) {
@@ -334,10 +345,12 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       }
 
       if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
+        const workspacePackage =
+          parseWorkspacePackageSpecifier(nestedSpecifier);
         await addWorkspacePackage({
           importSpecifier: nestedSpecifier,
-          packageName: nestedSpecifier,
-          exportName: ".",
+          packageName: workspacePackage.packageName,
+          exportName: workspacePackage.exportName,
         });
         continue;
       }

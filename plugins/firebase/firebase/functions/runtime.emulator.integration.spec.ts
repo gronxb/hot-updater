@@ -291,9 +291,9 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   beforeEach(async () => {
     cdnObjects.clear();
     await clearStorageBucket(storageBucket);
+    await clearFirestoreCollection("bundle_patches");
     await clearFirestoreCollection("bundles");
     await clearFirestoreCollection("channels");
-    await clearFirestoreCollection("target_app_versions");
   });
 
   afterAll(async () => {
@@ -326,7 +326,12 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     for (const bundle of bundles.map((bundle) =>
       toRuntimeBundle(bundle, storageBucket),
     )) {
-      await seedHotUpdater.insertBundle(bundle);
+      const existing = await seedHotUpdater.getBundleById(bundle.id);
+      if (existing) {
+        await seedHotUpdater.updateBundleById(bundle.id, bundle);
+      } else {
+        await seedHotUpdater.insertBundle(bundle);
+      }
     }
   };
 

@@ -13,9 +13,6 @@ import type {
 
 import type { PaginatedResult } from "../types";
 
-export type DatabasePluginFactory<TContext = unknown> =
-  (() => DatabasePlugin<TContext>) & Partial<DatabaseAdapterCapabilities>;
-
 export const sqlProviders = [
   "sqlite",
   "cockroachdb",
@@ -87,25 +84,28 @@ export type DatabaseAdapterWithCapabilities<TContext = unknown> =
   DatabasePlugin<TContext> & DatabaseAdapterCapabilities;
 
 export type DatabaseAdapter<TContext = unknown> =
-  | DatabaseAdapterWithCapabilities<TContext>
-  | DatabasePlugin<TContext>
-  | DatabasePluginFactory<TContext>;
-
-export function isDatabasePluginFactory<TContext = unknown>(
-  adapter: DatabaseAdapter<TContext>,
-): adapter is DatabasePluginFactory<TContext> {
-  return typeof adapter === "function";
-}
+  DatabaseAdapterWithCapabilities<TContext>;
 
 export function isDatabasePlugin<TContext = unknown>(
-  adapter: DatabaseAdapter<TContext>,
+  adapter: unknown,
 ): adapter is DatabasePlugin<TContext> {
   return (
     typeof adapter === "object" &&
     adapter !== null &&
-    "getBundleById" in adapter &&
-    "getBundles" in adapter &&
-    "getChannels" in adapter
+    "name" in adapter &&
+    typeof adapter.name === "string" &&
+    "create" in adapter &&
+    typeof adapter.create === "function" &&
+    "update" in adapter &&
+    typeof adapter.update === "function" &&
+    "delete" in adapter &&
+    typeof adapter.delete === "function" &&
+    "count" in adapter &&
+    typeof adapter.count === "function" &&
+    "findOne" in adapter &&
+    typeof adapter.findOne === "function" &&
+    "findMany" in adapter &&
+    typeof adapter.findMany === "function"
   );
 }
 
