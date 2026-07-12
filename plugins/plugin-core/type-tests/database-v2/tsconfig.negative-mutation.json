@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.positive.json",
+  "include": ["contract-negative-mutation.ts"]
+}

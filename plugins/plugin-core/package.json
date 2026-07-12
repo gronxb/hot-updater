@@ -12,6 +12,16 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./database-v2": {
+      "import": {
+        "types": "./dist/database-v2/index.d.mts",
+        "default": "./dist/database-v2/index.mjs"
+      },
+      "require": {
+        "types": "./dist/database-v2/index.d.cts",
+        "default": "./dist/database-v2/index.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
