@@ -1,5 +1,22 @@
 # @hot-updater/expo
 
+## 0.35.3
+
+### Patch Changes
+
+- 4c13662: fix(expo): disable minify when Hermes is enabled
+  - @hot-updater/cli-tools@0.35.3
+  - @hot-updater/bare@0.35.3
+  - @hot-updater/plugin-core@0.35.3
+
+## 0.35.2
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.35.2
+- @hot-updater/bare@0.35.2
+- @hot-updater/plugin-core@0.35.2
+
 ## 0.35.1
 
 ### Patch Changes

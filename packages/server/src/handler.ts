@@ -8,13 +8,11 @@ import type {
 } from "@hot-updater/core";
 import type {
   DatabaseBundleQueryOptions,
-  DatabasePlugin,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 import semver from "semver";
 
 import { addRoute, createRouter, findRoute } from "./internalRouter";
-import { handleStandaloneDatabaseOperation } from "./standaloneDatabaseRoute";
 import type { ChannelsResponse, PaginatedResult } from "./types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
@@ -48,7 +46,7 @@ export interface HandlerAPI<TContext = unknown> {
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
 }
 
-export interface HandlerOptions<TContext = unknown> {
+export interface HandlerOptions {
   /**
    * Base path for all routes
    * @default "/api"
@@ -60,7 +58,6 @@ export interface HandlerOptions<TContext = unknown> {
    * The `/version` endpoint is always mounted for diagnostics.
    */
   routes?: HandlerRoutes;
-  database?: DatabasePlugin<TContext>;
 }
 
 export interface HandlerRoutes {
@@ -83,7 +80,6 @@ type RouteHandler<TContext = unknown> = (
   request: Request,
   api: HandlerAPI<TContext>,
   context?: HotUpdaterContext<TContext>,
-  database?: DatabasePlugin<TContext>,
 ) => Promise<Response>;
 
 class HandlerBadRequestError extends Error {
@@ -516,21 +512,6 @@ const handleGetChannels: RouteHandler = async (
   });
 };
 
-const handleStandaloneDatabase: RouteHandler = async (
-  params,
-  request,
-  _api,
-  context,
-  database,
-) =>
-  handleStandaloneDatabaseOperation(
-    request,
-    database,
-    requireRouteParam(params, "model"),
-    requireRouteParam(params, "operation"),
-    context,
-  );
-
 // Route handlers map
 const routes: Record<string, RouteHandler<any>> = {
   version: handleVersion,
@@ -542,7 +523,6 @@ const routes: Record<string, RouteHandler<any>> = {
   updateBundle: handleUpdateBundle,
   deleteBundle: handleDeleteBundle,
   getChannels: handleGetChannels,
-  standaloneDatabase: handleStandaloneDatabase,
 };
 
 /**
@@ -552,7 +532,7 @@ const routes: Record<string, RouteHandler<any>> = {
  */
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
-  options: HandlerOptions<TContext> = {},
+  options: HandlerOptions = {},
 ): (
   request: Request,
   context?: HotUpdaterContext<TContext>,
@@ -597,12 +577,6 @@ export function createHandler<TContext = unknown>(
   }
 
   if (routeOptions.bundles) {
-    addRoute(
-      router,
-      "POST",
-      "/api/database/v2/:model/:operation",
-      "standaloneDatabase",
-    );
     addRoute(router, "GET", "/api/bundles/channels", "getChannels");
     addRoute(router, "GET", "/api/bundles/:id", "getBundle");
     addRoute(router, "GET", "/api/bundles", "getBundles");
@@ -644,13 +618,7 @@ export function createHandler<TContext = unknown>(
         });
       }
 
-      return await handler(
-        match.params || {},
-        request,
-        api,
-        context,
-        options.database,
-      );
+      return await handler(match.params || {}, request, api, context);
     } catch (error) {
       if (error instanceof HandlerBadRequestError) {
         return new Response(JSON.stringify({ error: error.message }), {

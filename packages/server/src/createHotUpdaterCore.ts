@@ -114,7 +114,6 @@ export function createHotUpdaterCore<TContext = undefined>(
 
   const internalHandler = createHandler(core.api, {
     basePath,
-    database: plugin,
     routes: options.routes,
   });
 

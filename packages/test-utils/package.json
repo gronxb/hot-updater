@@ -1,17 +1,26 @@
 {
   "name": "@hot-updater/test-utils",
-  "version": "0.35.1",
+  "version": "0.35.3",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
-  "types": "./dist/index.d.mts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
   "exports": {
-    ".": "./dist/index.mjs",
-    "./node": "./dist/node.mjs",
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./node": {
+      "import": "./dist/node.mjs",
+      "require": "./dist/node.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
+    "src",
     "package.json"
   ],
   "license": "MIT",

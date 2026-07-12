@@ -208,41 +208,6 @@ describe("runtime createHotUpdater", () => {
     expect(findMany).toHaveBeenCalledWith(expect.any(Object), context);
   });
 
-  it("exposes the direct v2 adapter through the standalone database route", async () => {
-    // Given
-    const database = createRuntimeDatabase();
-    const create = vi.spyOn(database, "create");
-    const hotUpdater = createHotUpdater({
-      database,
-      basePath: "/",
-      routes: { updateCheck: false, bundles: true },
-    });
-    const context: TestContext = {
-      env: { assetHost: "https://assets.example.com" },
-    };
-    const request = new Request(
-      "https://updates.example.com/api/database/v2/channels/create",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: { id: "preview" } }),
-      },
-    );
-
-    // When
-    const response = await hotUpdater.handler(request, context);
-
-    // Then
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      data: { id: "preview" },
-    });
-    expect(create).toHaveBeenCalledWith(
-      { model: "channels", data: { id: "preview" } },
-      context,
-    );
-  });
-
   it("ignores framework bindings when an extra execution argument is passed", async () => {
     // Given
     const getUpdateInfo = vi.fn(async () => ({

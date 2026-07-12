@@ -69,6 +69,8 @@ export interface BundleUpdateOptions extends BundleMutationOptions {
   targetCohorts?: string;
 }
 
+export type BundleDeleteOptions = BundleMutationOptions;
+
 const DEFAULT_LIMIT = 20;
 const DELETE_VERIFY_ATTEMPTS = 12;
 const DELETE_VERIFY_DELAY_MS = 1000;
@@ -342,29 +344,54 @@ export const handleBundleUpdate = async (
 };
 
 export const handleBundleDelete = async (
-  bundleId: string,
-  options: BundleMutationOptions = {},
+  bundleIds: string[],
+  options: BundleDeleteOptions = {},
 ) => {
   printBanner();
+
+  const ids = bundleIds ?? [];
+  if (ids.length === 0) {
+    p.log.error("Provide at least one bundle id.");
+    process.exit(1);
+  }
 
   const config = await loadConfig(null);
   const databasePlugin = config.database;
   const database = createDatabaseClient(databasePlugin);
   try {
-    const bundle = await database.getBundleById(bundleId);
-    if (!bundle) {
-      p.log.info(`No bundle with id ${bundleId}. No changes.`);
+    // Resolve the target set from the given ids.
+    const fetched = await Promise.all(
+      ids.map((id) => database.getBundleById(id)),
+    );
+    const targets: Bundle[] = [];
+    fetched.forEach((bundle, index) => {
+      if (bundle) {
+        targets.push(bundle);
+      } else {
+        p.log.info(`No bundle with id ${ids[index]}. Skipping.`);
+      }
+    });
+    if (targets.length === 0) {
+      p.log.info("No matching bundle records. No changes.");
       return;
     }
 
-    p.log.message(formatBundleSummary(bundle));
+    const [firstTarget] = targets;
+    if (firstTarget && targets.length === 1) {
+      p.log.message(formatBundleSummary(firstTarget));
+    } else {
+      p.log.message(`${targets.length} bundle records will be deleted.`);
+    }
 
     if (!options.yes) {
       if (!process.stdin.isTTY) {
         refuseNonInteractiveMutation("delete");
       }
       const confirmed = await p.confirm({
-        message: "Delete this bundle record?",
+        message:
+          targets.length === 1
+            ? "Delete this bundle record?"
+            : `Delete ${targets.length} bundle records?`,
         initialValue: false,
       });
       if (p.isCancel(confirmed) || !confirmed) {
@@ -373,16 +400,32 @@ export const handleBundleDelete = async (
       }
     }
 
-    await database.deleteBundleById(bundle.id);
+    await database.mutate(async (mutation) => {
+      for (const bundle of targets) {
+        await mutation.deleteBundleById(bundle.id);
+      }
+    });
 
-    const deleted = await waitForDeletedBundle(database, bundleId);
-    if (!deleted) {
-      p.log.error(`Verification failed: ${bundleId} still exists.`);
+    const stillPresent: string[] = [];
+    for (const bundle of targets) {
+      const deleted = await waitForDeletedBundle(database, bundle.id);
+      if (!deleted) {
+        stillPresent.push(bundle.id);
+      }
+    }
+    if (stillPresent.length > 0) {
+      p.log.error(
+        `Verification failed: ${stillPresent.length} bundle record(s) still exist (${stillPresent.join(", ")}).`,
+      );
       process.exit(1);
     }
 
-    p.log.success("Deleted bundle record.");
-    p.log.info(`  ${ui.id(bundleId)}`);
+    if (firstTarget && targets.length === 1) {
+      p.log.success("Deleted bundle record.");
+      p.log.info(`  ${ui.id(firstTarget.id)}`);
+    } else {
+      p.log.success(`Deleted ${targets.length} bundle records.`);
+    }
   } finally {
     await safeOnUnmount(databasePlugin);
   }

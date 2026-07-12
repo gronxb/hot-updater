@@ -1,5 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
-import { setupDatabaseAdapterTestSuite } from "@hot-updater/test-utils";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
+import { setupDatabaseClientTestSuite } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
@@ -53,79 +54,19 @@ const resetDatabase = async (): Promise<void> => {
 
 beforeEach(resetDatabase);
 
-setupDatabaseAdapterTestSuite({
-  name: "standalone HTTP database adapter v2",
+setupDatabaseClientTestSuite({
+  name: "standalone existing-route aggregate client",
   createAdapter: () =>
     standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
-      getUpdateInfo: true,
     }),
+  createClient: createDatabaseClient,
   migrate: () => {},
   reset: resetDatabase,
   dispose: () => {},
-  capabilities: { getUpdateInfo: true },
 });
 
-const postProtocol = (model: string, operation: string, body: unknown) =>
-  fetch(`${baseUrl}/hot-updater/api/database/v2/${model}/${operation}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-describe("standalone database protocol boundary", () => {
-  it("rejects an unknown model", async () => {
-    const response = await postProtocol("users", "findMany", {});
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        code: "unsupported-operation",
-        message: "Unsupported database operation: users.findMany.",
-      },
-    });
-  });
-
-  it("rejects an unsupported model and method pair", async () => {
-    const response = await postProtocol("channels", "delete", {
-      where: [{ field: "id", value: "production" }],
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        code: "unsupported-operation",
-        message: "Unsupported database operation: channels.delete.",
-      },
-    });
-  });
-
-  it("rejects unknown fields and operators", async () => {
-    const response = await postProtocol("bundles", "findMany", {
-      where: [{ field: "id", operator: "matches", value: ".*" }],
-    });
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: "invalid-request" },
-    });
-  });
-
-  it("exposes the optional fast path without exposing transactions", async () => {
-    const response = await postProtocol("bundles", "getUpdateInfo", {
-      _updateStrategy: "appVersion",
-      platform: "ios",
-      bundleId: "00000000-0000-0000-0000-000000000000",
-      appVersion: "1.0.0",
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ data: null });
-
-    const transaction = await postProtocol("bundles", "transaction", {});
-    expect(transaction.status).toBe(400);
-  });
-
+describe("standalone HTTP surface", () => {
   it("preserves the aggregate bundle routes", async () => {
     const response = await fetch(`${baseUrl}/hot-updater/api/bundles?limit=10`);
 
@@ -134,5 +75,14 @@ describe("standalone database protocol boundary", () => {
       data: [],
       pagination: { total: 0 },
     });
+  });
+
+  it("does not mount a fixed-model database route", async () => {
+    const response = await fetch(
+      `${baseUrl}/hot-updater/api/database/v2/bundles/findMany`,
+      { method: "POST" },
+    );
+
+    expect(response.status).toBe(404);
   });
 });

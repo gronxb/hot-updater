@@ -29,7 +29,7 @@ This approach gives you full control over metadata while leveraging reliable clo
 Configure your Hot Updater CLI to use the self-hosted database.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
+import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
@@ -97,12 +97,11 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 `createHotUpdater` exposes two configurable route groups:
 
 - `updateCheck`: update-check endpoints used by React Native clients
-- `bundles`: write-capable database and bundle management endpoints
+- `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin
 
 `updateCheck` is mounted by default. `bundles` is disabled by default and must
-be enabled explicitly when the CLI needs the `standaloneRepository` database
-API. When `bundles: true`, protect `/api/database/v2/*` and `/api/bundles*`
-with framework middleware. The
+be enabled explicitly when the CLI needs bundle-management APIs. When
+`bundles: true`, protect `/api/bundles*` with framework middleware. The
 `/version` endpoint is always mounted for diagnostics. If you provide `routes`,
 specify both configurable route groups.
 

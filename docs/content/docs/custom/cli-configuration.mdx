@@ -14,7 +14,7 @@ Your CLI configuration (`hot-updater.config.ts`) connects your React Native proj
 Create a `hot-updater.config.ts` file in your React Native project root:
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
+import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
@@ -55,7 +55,6 @@ interface StandaloneRepositoryConfig {
   baseUrl: string;                        // Your server URL
   commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
   routes?: Routes;                        // Optional custom route configuration
-  getUpdateInfo?: boolean;                // Enable the optional server fast path
 }
 ```
 
@@ -84,30 +83,74 @@ database: standaloneRepository({
 database: standaloneRepository({
   baseUrl: "https://api.example.com",
   routes: {
-    database: () => ({
-      path: "/v2/hot-updater/database",
-      headers: { "X-Custom-Header": "value" },
+    create: () => ({
+      path: "/v1/hot-updater/api/bundles",
+      headers: { "X-Custom-Header": "value" }
     }),
-  },
+    update: (bundleId) => ({
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
+      headers: { "X-Custom-Header": "value" }
+    }),
+    list: () => ({
+      path: "/v1/hot-updater/api/bundles"
+    }),
+    channels: () => ({
+      path: "/v1/hot-updater/api/bundles/channels"
+    }),
+    retrieve: (bundleId) => ({
+      path: `/v1/hot-updater/api/bundles/${bundleId}`
+    }),
+    delete: (bundleId) => ({
+      path: `/v1/hot-updater/api/bundles/${bundleId}`
+    })
+  }
 })
 ```
 
 ## API Endpoints
 
-With the default `baseUrl`, the CLI sends fixed-model operations to:
+Your server must implement these endpoints (when using default routes):
 
-```text
-POST /hot-updater/api/database/v2/:model/:operation
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |
+
+These endpoints are automatically created when you use `@hot-updater/server` with database adapters.
+
+`GET /hot-updater/api/bundles` should return a `Paginated<Bundle[]>` body
+consumed by `standaloneRepository`:
+
+Cursor pagination is the official contract. `page` is an optional positive
+integer that keeps page numbers stable for console and standalone repository
+requests.
+
+```json
+{
+  "data": [{ "id": "bundle-id", "channel": "production" }],
+  "pagination": {
+    "total": 1,
+    "hasNextPage": false,
+    "hasPreviousPage": false,
+    "currentPage": 1,
+    "totalPages": 1
+  }
+}
 ```
 
-`@hot-updater/server` creates this endpoint when `routes.bundles` is enabled.
-It accepts only the public operation matrix for `bundles`, `bundle_patches`,
-and `channels`; every successful response contains a `data` field. Protect
-the endpoint with authentication because it permits database writes.
+`GET /hot-updater/api/bundles/channels` should return:
 
-See the [Standalone Database contract](../database-plugins/standalone) for the
-request bodies, result cardinality, optional update-check fast path, and error
-format.
+```json
+{
+  "data": {
+    "channels": ["production", "staging"]
+  }
+}
+```
 
 ## Next Steps
 

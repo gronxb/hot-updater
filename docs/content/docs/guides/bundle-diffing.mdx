@@ -32,8 +32,8 @@ What the device downloads depends on what changed:
 | Later OTA, changed regular asset | Complete new asset file |
 | Later OTA, changed Hermes bundle file | `.bsdiff` patch when available, otherwise the complete new Hermes bundle file |
 
-For example, an update that would otherwise download a **20 MB archive** might
-only need to download a **500 KB patch file** when the byte-level Hermes changes
+For example, an update that would otherwise download a **10 MB archive** might
+only need to download a **600 KB patch file** when the byte-level Hermes changes
 are small.
 
 Those numbers are only an example. The archive and the patch file are different

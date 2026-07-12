@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+import { BLOB_DATABASE_SNAPSHOT_KEY } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockPrintBanner } = vi.hoisted(() => {
@@ -356,7 +357,7 @@ describe("handleBundleDelete", () => {
     databaseHarness.setBundles([bundle]);
 
     const { handleBundleDelete } = await import("./bundle");
-    await handleBundleDelete("B1", { yes: true });
+    await handleBundleDelete(["B1"], { yes: true });
 
     expect(await databaseHarness.bundles()).toEqual([]);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
@@ -373,7 +374,7 @@ describe("handleBundleDelete", () => {
 
     try {
       const { handleBundleDelete } = await import("./bundle");
-      const deletePromise = handleBundleDelete("B1", { yes: true });
+      const deletePromise = handleBundleDelete(["B1"], { yes: true });
       await vi.advanceTimersByTimeAsync(1000);
       await deletePromise;
 
@@ -384,5 +385,34 @@ describe("handleBundleDelete", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("deletes multiple ids with a single commit", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const b1 = buildBundle({ id: "B1" });
+    const b2 = buildBundle({ id: "B2" });
+    databaseHarness.setBundles([b1, b2]);
+
+    const { handleBundleDelete } = await import("./bundle");
+    await handleBundleDelete(["B1", "B2"], { yes: true });
+
+    expect(await databaseHarness.bundles()).toEqual([]);
+    expect(
+      databaseHarness.uploadObject.mock.calls.filter(
+        ([key]) => key === BLOB_DATABASE_SNAPSHOT_KEY,
+      ),
+    ).toHaveLength(1);
+    expect(mockCli.p.log.success).toHaveBeenCalledWith(
+      "Deleted 2 bundle records.",
+    );
+  });
+
+  it("exits 1 when no ids are provided", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { exitSpy } = expectExit(1);
+    const { handleBundleDelete } = await import("./bundle");
+    await expect(handleBundleDelete([], {})).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(mockCli.loadConfig).not.toHaveBeenCalled();
   });
 });

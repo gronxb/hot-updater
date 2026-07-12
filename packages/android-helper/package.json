@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/android-helper",
-  "version": "0.35.1",
+  "version": "0.35.3",
   "type": "module",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
