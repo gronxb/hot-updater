@@ -1,16 +1,29 @@
 CREATE TABLE IF NOT EXISTS channels (
-  id varchar(255) PRIMARY KEY NOT NULL
+  id varchar(255) PRIMARY KEY NOT NULL,
+  name varchar(255) NOT NULL
 );
 
-ALTER TABLE bundles
-ALTER COLUMN channel TYPE varchar(255);
+CREATE UNIQUE INDEX channels_name_key ON channels(name);
 
-INSERT INTO channels (id)
-SELECT DISTINCT channel
+ALTER TABLE bundles ADD COLUMN channel_id varchar(255);
+
+INSERT INTO channels (id, name)
+SELECT DISTINCT channel, channel
 FROM bundles;
 
+UPDATE bundles
+SET channel_id = channels.id
+FROM channels
+WHERE channels.name = bundles.channel;
+
+ALTER TABLE bundles ALTER COLUMN channel_id SET NOT NULL;
+
+CREATE INDEX bundles_channel_id_idx ON bundles(channel_id);
+
 ALTER TABLE bundles
-ADD CONSTRAINT bundles_channel_fk FOREIGN KEY (channel) REFERENCES channels (id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ADD CONSTRAINT bundles_channel_id_fk FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+ALTER TABLE bundles DROP COLUMN channel;
 
 INSERT INTO
   private_hot_updater_settings (key, value)

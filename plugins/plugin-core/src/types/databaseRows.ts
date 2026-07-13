@@ -16,7 +16,7 @@ export interface BundleRow {
   readonly file_hash: string;
   readonly git_commit_hash: string | null;
   readonly message: string | null;
-  readonly channel: string;
+  readonly channel_id: string;
   readonly storage_uri: string;
   readonly target_app_version: string | null;
   readonly fingerprint_hash: string | null;
@@ -40,6 +40,7 @@ export interface BundlePatchRow {
 
 export interface ChannelRow {
   readonly id: string;
+  readonly name: string;
 }
 
 export interface DatabaseModelMap {

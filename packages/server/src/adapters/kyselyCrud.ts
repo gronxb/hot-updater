@@ -77,6 +77,19 @@ export const findKyselyBundles = async (
   return [...result.rows];
 };
 
+export const findKyselyChannel = async (
+  executor: QueryExecutorProvider,
+  provider: Exclude<ORMSQLProvider, "mssql">,
+  name: string,
+): Promise<ChannelRow | null> => {
+  const result = await sql<ChannelRow>`select * from ${sql.table(
+    "channels",
+  )}${whereClause(
+    buildKyselyWhere<"channels">(provider, [{ field: "name", value: name }]),
+  )} limit 1`.execute(executor);
+  return result.rows[0] ?? null;
+};
+
 export const findKyselyPatches = async (
   executor: QueryExecutorProvider,
   bundleIds: readonly string[],
@@ -158,9 +171,11 @@ export const createKyselyCrud = (
     return Number(result.rows[0]?.total ?? 0);
   },
   async findOne(input) {
-    const where = whereClause(buildKyselyWhere(provider, input.where ?? []));
     switch (input.model) {
       case "bundles": {
+        const where = whereClause(
+          buildKyselyWhere(provider, input.where ?? []),
+        );
         const result = await sql<StoredBundleRow>`select * from ${sql.table(
           "bundles",
         )}${where} limit 1`.execute(executor);
@@ -168,6 +183,9 @@ export const createKyselyCrud = (
         return row === undefined ? null : fromStoredBundleRow(row);
       }
       case "channels": {
+        const where = whereClause(
+          buildKyselyWhere(provider, input.where ?? []),
+        );
         const result = await sql<ChannelRow>`select * from ${sql.table(
           "channels",
         )}${where} limit 1`.execute(executor);

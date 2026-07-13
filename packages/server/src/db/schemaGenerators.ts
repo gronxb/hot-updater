@@ -129,7 +129,7 @@ const prismaIndexes = (
     .filter((index) => schemaIndexAppliesToProvider(index, provider))
     .map(
       (index) =>
-        `@@index([${index.columns.join(", ")}], map: ${literal(index.name)})`,
+        `@@${index.unique ? "unique" : "index"}([${index.columns.join(", ")}], map: ${literal(index.name)})`,
     );
 
 export const generatePrismaSchema = (
@@ -304,9 +304,10 @@ const drizzleTable = (
   for (const index of (table.indexes ?? []).filter((item) =>
     schemaIndexAppliesToProvider(item, provider),
   )) {
-    imports.add("index");
+    const indexFunction = index.unique ? "uniqueIndex" : "index";
+    imports.add(indexFunction);
     callbacks.push(
-      `index(${literal(index.name)}).on(${index.columns
+      `${indexFunction}(${literal(index.name)}).on(${index.columns
         .map((column) => `table.${column}`)
         .join(", ")})`,
     );

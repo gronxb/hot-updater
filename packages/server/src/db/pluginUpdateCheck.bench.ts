@@ -17,6 +17,10 @@ const BUNDLE_COUNT = 20_000;
 const BENCH_APP_VERSION = "1.0.0";
 const BENCH_PLATFORM = "ios" as const;
 const BENCH_CHANNEL = "production";
+const BENCH_CHANNEL_ROW = {
+  id: "channel-production",
+  name: BENCH_CHANNEL,
+} as const;
 
 class BenchmarkMutationError extends Error {
   readonly name = "BenchmarkMutationError";
@@ -44,7 +48,9 @@ const createBundle = (index: number): Bundle => ({
 });
 
 const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
-  const rows = bundles.map(bundleToRow);
+  const rows = bundles.map((bundle) =>
+    bundleToRow(bundle, BENCH_CHANNEL_ROW.id),
+  );
   return createDatabasePlugin({
     name: "bench-v2-adapter",
     factory: () => ({
@@ -69,8 +75,8 @@ const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
               null
             );
           case "channels":
-            return input.where?.every(({ value }) => value === BENCH_CHANNEL)
-              ? { id: BENCH_CHANNEL }
+            return matchesAll<"channels">(BENCH_CHANNEL_ROW, input.where)
+              ? BENCH_CHANNEL_ROW
               : null;
         }
       },
@@ -87,7 +93,7 @@ const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
           case "bundle_patches":
             return [];
           case "channels":
-            return [{ id: BENCH_CHANNEL }].slice(
+            return [BENCH_CHANNEL_ROW].slice(
               input.offset,
               input.offset + input.limit,
             );

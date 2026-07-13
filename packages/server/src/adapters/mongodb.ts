@@ -50,15 +50,15 @@ const createCollections = (client: MongoClient): MongoCollections => {
 
 const assertChannelExists = async (
   channels: Collection<ChannelRow>,
-  channel: string,
+  channelId: string,
 ): Promise<void> => {
   const row = await channels.findOne(
-    { id: channel },
+    { id: channelId },
     { projection: WITHOUT_MONGO_ID },
   );
   if (row === null) {
     throw new MongoAdapterConstraintError(
-      `channel "${channel}" does not exist`,
+      `channel "${channelId}" does not exist`,
     );
   }
 };
@@ -127,7 +127,7 @@ const createMongoImplementation = (
   create: async (input) => {
     switch (input.model) {
       case "bundles":
-        await assertChannelExists(collections.channels, input.data.channel);
+        await assertChannelExists(collections.channels, input.data.channel_id);
         await collections.bundles.insertOne(input.data);
         return input.data;
       case "bundle_patches":
@@ -140,8 +140,8 @@ const createMongoImplementation = (
     }
   },
   update: async (input) => {
-    if (input.update.channel !== undefined) {
-      await assertChannelExists(collections.channels, input.update.channel);
+    if (input.update.channel_id !== undefined) {
+      await assertChannelExists(collections.channels, input.update.channel_id);
     }
     return collections.bundles.findOneAndUpdate(
       createMongoBundleWhere(input.where),

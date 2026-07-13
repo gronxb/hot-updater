@@ -1,6 +1,7 @@
 export const DATABASE_ADAPTER_TEST_SCHEMA_SQL = `
   create table channels (
-    id varchar(255) primary key
+    id varchar(255) primary key,
+    name varchar(255) not null unique
   );
   create table bundles (
     id text primary key,
@@ -10,7 +11,7 @@ export const DATABASE_ADAPTER_TEST_SCHEMA_SQL = `
     file_hash text not null,
     git_commit_hash text,
     message text,
-    channel varchar(255) not null references channels(id) on delete restrict,
+    channel_id varchar(255) not null references channels(id) on delete restrict,
     storage_uri text not null,
     target_app_version text,
     fingerprint_hash text,

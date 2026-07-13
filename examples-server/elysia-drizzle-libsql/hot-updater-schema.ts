@@ -1,10 +1,13 @@
-import { blob, foreignKey, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { blob, foreignKey, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 import { relations } from "drizzle-orm"
 
 export const channels = sqliteTable("channels", {
-  id: text("id", { length: 255 }).primaryKey().notNull()
-})
+  id: text("id", { length: 255 }).primaryKey().notNull(),
+  name: text("name", { length: 255 }).notNull()
+}, (table) => [
+  uniqueIndex("channels_name_key").on(table.name)
+])
 
 export const channelsRelations = relations(channels, ({ many }) => ({
   bundles: many(bundles, {
@@ -20,7 +23,7 @@ export const bundles = sqliteTable("bundles", {
   file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
-  channel: text("channel", { length: 255 }).notNull().default("production"),
+  channel_id: text("channel_id", { length: 255 }).notNull(),
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
@@ -32,20 +35,20 @@ export const bundles = sqliteTable("bundles", {
   asset_base_storage_uri: text("asset_base_storage_uri")
 }, (table) => [
   foreignKey({
-    columns: [table.channel],
+    columns: [table.channel_id],
     foreignColumns: [channels.id],
-    name: "bundles_channel_fk"
+    name: "bundles_channel_id_fk"
   }).onUpdate("restrict").onDelete("restrict"),
   index("bundles_target_app_version_idx").on(table.target_app_version),
   index("bundles_fingerprint_hash_idx").on(table.fingerprint_hash),
-  index("bundles_channel_idx").on(table.channel),
+  index("bundles_channel_id_idx").on(table.channel_id),
   index("bundles_rollout_idx").on(table.rollout_cohort_count)
 ])
 
 export const bundlesRelations = relations(bundles, ({ one, many }) => ({
   channelRef: one(channels, {
     relationName: "channels_bundles_channel",
-    fields: [bundles.channel],
+    fields: [bundles.channel_id],
     references: [channels.id]
   }),
   patches: many(bundle_patches, {

@@ -143,24 +143,52 @@ const createV036MigrationSql = (
   }
 
   const createChannels = createTableStatement(channels, provider, relationMode);
+  const channelNameIndex = channels.indexes?.find(
+    (index) => index.name === "channels_name_key",
+  );
+  if (!channelNameIndex) {
+    throw new Error("Hot Updater channels schema is missing its name index.");
+  }
+  const createChannelNameIndex = createIndexSql(
+    channels,
+    channelNameIndex,
+    provider,
+  );
   const backfillChannels =
-    "insert into channels (id) select distinct channel from bundles";
+    "insert into channels (id, name) select distinct channel, channel from bundles";
+  const channelForeignKey = bundles.foreignKeys?.find(
+    (foreignKey) => foreignKey.name === "bundles_channel_id_fk",
+  );
+  const channelIdIndex = bundles.indexes?.find(
+    (index) => index.name === "bundles_channel_id_idx",
+  );
+  if (!channelIdIndex) {
+    throw new Error("Hot Updater bundles schema is missing its channel index.");
+  }
 
   if (provider !== "sqlite") {
-    const alterChannelType =
+    const addChannelId =
+      "alter table bundles add column channel_id varchar(255)";
+    const backfillBundleChannelIds =
       provider === "mysql"
-        ? "alter table bundles modify column channel varchar(255) not null default 'production'"
-        : "alter table bundles alter column channel type varchar(255)";
-    const channelForeignKey = bundles.foreignKeys?.find(
-      (foreignKey) => foreignKey.name === "bundles_channel_fk",
-    );
+        ? "update bundles join channels on channels.name = bundles.channel set bundles.channel_id = channels.id"
+        : "update bundles set channel_id = channels.id from channels where channels.name = bundles.channel";
+    const requireChannelId =
+      provider === "mysql"
+        ? "alter table bundles modify column channel_id varchar(255) not null"
+        : "alter table bundles alter column channel_id set not null";
     return [
       createChannels,
-      alterChannelType,
+      createChannelNameIndex,
+      addChannelId,
       backfillChannels,
+      backfillBundleChannelIds,
+      requireChannelId,
+      createIndexSql(bundles, channelIdIndex, provider),
       ...(relationMode === "foreign-keys" && channelForeignKey
         ? [createForeignKeySql(bundles, channelForeignKey)]
         : []),
+      "alter table bundles drop column channel",
     ];
   }
 
@@ -169,12 +197,20 @@ const createV036MigrationSql = (
     ormName: "bundles_v036",
   };
   const columns = bundles.columns.map((column) => column.ormName).join(", ");
+  const sourceColumns = bundles.columns
+    .map((column) =>
+      column.ormName === "channel_id"
+        ? "channels.id"
+        : `bundles.${column.ormName}`,
+    )
+    .join(", ");
   return [
     createChannels,
+    createChannelNameIndex,
     backfillChannels,
     "pragma foreign_keys = off",
     createTableStatement(temporaryBundles, provider, relationMode),
-    `insert into bundles_v036 (${columns}) select ${columns} from bundles`,
+    `insert into bundles_v036 (${columns}) select ${sourceColumns} from bundles join channels on channels.name = bundles.channel`,
     "drop table bundles",
     "alter table bundles_v036 rename to bundles",
     ...(bundles.indexes ?? [])

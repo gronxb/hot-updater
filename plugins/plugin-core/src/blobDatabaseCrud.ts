@@ -40,6 +40,9 @@ export const createBlobSnapshotCrud = (
     switch (input.model) {
       case "channels": {
         requireUniqueId(snapshot.channels, input.data.id, input.model);
+        if (snapshot.channels.some(({ name }) => name === input.data.name)) {
+          throw new BlobDatabaseConstraintError("channels.name.unique");
+        }
         state.snapshot = normalizeBlobDatabaseSnapshot({
           ...snapshot,
           channels: [...snapshot.channels, input.data],
@@ -48,8 +51,10 @@ export const createBlobSnapshotCrud = (
       }
       case "bundles": {
         requireUniqueId(snapshot.bundles, input.data.id, input.model);
-        if (!snapshot.channels.some(({ id }) => id === input.data.channel)) {
-          throw new BlobDatabaseConstraintError("bundles.channel.foreign-key");
+        if (!snapshot.channels.some(({ id }) => id === input.data.channel_id)) {
+          throw new BlobDatabaseConstraintError(
+            "bundles.channel_id.foreign-key",
+          );
         }
         state.snapshot = normalizeBlobDatabaseSnapshot({
           ...snapshot,
@@ -84,8 +89,8 @@ export const createBlobSnapshotCrud = (
     );
     if (!match) return null;
     const updated = { ...match, ...input.update };
-    if (!state.snapshot.channels.some(({ id }) => id === updated.channel)) {
-      throw new BlobDatabaseConstraintError("bundles.channel.foreign-key");
+    if (!state.snapshot.channels.some(({ id }) => id === updated.channel_id)) {
+      throw new BlobDatabaseConstraintError("bundles.channel_id.foreign-key");
     }
     state.snapshot = normalizeBlobDatabaseSnapshot({
       ...state.snapshot,

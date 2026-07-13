@@ -392,9 +392,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     it("includes relations, defaults, and indexes in Prisma output", () => {
       const code = generateSchema(prismaSchemaHotUpdater, "latest").code;
 
-      expect(code).toContain(
-        'channel String @db.VarChar(255) @default("production")',
-      );
+      expect(code).toContain("name String @db.VarChar(255)");
+      expect(code).toContain('@@unique([name], map: "channels_name_key")');
+      expect(code).toContain("channel_id String @db.VarChar(255)");
       expect(code).toContain('metadata Json @default("{}")');
       expect(code).toContain('value String @default("0.36.0")');
       expect(code).toContain(
@@ -412,7 +412,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(code).toContain(
         'baseBundle bundles @relation("bundle_patches_bundles_baseForPatches"',
       );
-      expect(code).toContain('@@index([channel], map: "bundles_channel_idx")');
+      expect(code).toContain(
+        '@@index([channel_id], map: "bundles_channel_id_idx")',
+      );
       expect(code).not.toContain("bundles_platform_idx");
       expect(code).toContain(
         '@@index([bundle_id], map: "bundle_patches_bundle_id_idx")',
@@ -444,17 +446,18 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       )?.[0];
 
       expect(code).toContain(
-        'channel: varchar("channel", { length: 255 }).notNull().default("production")',
+        'channel_id: varchar("channel_id", { length: 255 }).notNull()',
       );
+      expect(code).toContain('uniqueIndex("channels_name_key").on(table.name)');
       expect(code).toContain(
         'metadata: json("metadata").notNull().default({})',
       );
       expect(code).toContain('name: "bundle_patches_bundle_id_fk"');
       expect(code).toContain('name: "bundle_patches_base_bundle_id_fk"');
-      expect(code).toContain('name: "bundles_channel_fk"');
+      expect(code).toContain('name: "bundles_channel_id_fk"');
       expect(code).toContain('.onDelete("restrict")');
       expect(bundlesBlock).toContain(
-        'index("bundles_channel_idx").on(table.channel)',
+        'index("bundles_channel_id_idx").on(table.channel_id)',
       );
       expect(bundlesBlock).not.toContain("bundles_platform_idx");
       expect(bundlesBlock).toContain(
@@ -519,19 +522,18 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       );
       expect(v036Sql).toContain("create table if not exists channels");
       expect(v036Sql).toContain(
-        "insert into channels (id) select distinct channel from bundles",
+        "insert into channels (id, name) select distinct channel, channel from bundles",
       );
       expect(v036Sql).toContain(
-        "add constraint bundles_channel_fk foreign key",
+        "add constraint bundles_channel_id_fk foreign key",
       );
     });
 
     it("omits MySQL defaults for text and JSON columns", () => {
       const sql = createTableSql("mysql").join("\n");
 
-      expect(sql).toContain(
-        "channel varchar(255) not null default 'production'",
-      );
+      expect(sql).toContain("channel_id varchar(255) not null");
+      expect(sql).not.toContain("channel_id varchar(255) not null default");
       expect(sql).toContain("metadata json not null");
       expect(sql).not.toContain("metadata json not null default");
       expect(sql).toContain("`key` varchar(255) primary key");
@@ -562,7 +564,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         });
         const sql = result.getSQL?.() ?? "";
 
-        expect(sql).toContain("create index bundles_channel_idx on bundles");
+        expect(sql).toContain("create index bundles_channel_id_idx on bundles");
         expect(sql).toContain(
           "add constraint check_version_or_fingerprint check",
         );
@@ -905,8 +907,19 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         findMany: vi.fn(async () => []),
         update: vi.fn(),
       };
+      const channels = {
+        count: vi.fn(),
+        create: vi.fn(),
+        deleteMany: vi.fn(),
+        findFirst: vi.fn(async () => ({
+          id: "channel-production",
+          name: "production",
+        })),
+        findMany: vi.fn(),
+        update: vi.fn(),
+      };
       const plugin = prismaAdapter({
-        prisma: { bundles, bundle_patches: patches },
+        prisma: { bundles, bundle_patches: patches, channels },
         provider: "postgresql",
       });
 
@@ -974,8 +987,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("uses Prisma update-check queries without generic list pagination", async () => {
-      const appVersionRow = bundleToRow(appVersionFastPathBundle);
-      const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
+      const appVersionRow = bundleToRow(
+        appVersionFastPathBundle,
+        "channel-production",
+      );
+      const fingerprintRow = bundleToRow(
+        fingerprintFastPathBundle,
+        "channel-production",
+      );
       const bundles = {
         count: vi.fn(async () => {
           throw new Error("unexpected generic Prisma count");
@@ -998,8 +1017,19 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         findMany: vi.fn(async () => []),
         update: vi.fn(),
       };
+      const channels = {
+        findFirst: vi.fn(async () => ({
+          id: "channel-production",
+          name: "production",
+        })),
+        count: vi.fn(),
+        create: vi.fn(),
+        deleteMany: vi.fn(),
+        findMany: vi.fn(),
+        update: vi.fn(),
+      };
       const plugin = prismaAdapter({
-        prisma: { bundles, bundle_patches: patches },
+        prisma: { bundles, bundle_patches: patches, channels },
         provider: "postgresql",
       });
 
@@ -1031,7 +1061,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         1,
         expect.objectContaining({
           where: expect.objectContaining({
-            channel: "production",
+            channel_id: "channel-production",
             id: { gte: NIL_UUID },
             target_app_version: { not: null },
           }),
@@ -1057,8 +1087,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("uses Drizzle update-check queries without generic list pagination", async () => {
-      const appVersionRow = bundleToRow(appVersionFastPathBundle);
-      const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
+      const appVersionRow = bundleToRow(
+        appVersionFastPathBundle,
+        "channel-production",
+      );
+      const fingerprintRow = bundleToRow(
+        fingerprintFastPathBundle,
+        "channel-production",
+      );
       const tables = {
         bundle_patches: {
           bundle_id: sql.raw("bundle_id"),
@@ -1066,14 +1102,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           order_index: sql.raw("order_index"),
         },
         bundles: {
-          channel: sql.raw("channel"),
+          channel_id: sql.raw("channel_id"),
           enabled: sql.raw("enabled"),
           fingerprint_hash: sql.raw("fingerprint_hash"),
           id: sql.raw("id"),
           platform: sql.raw("platform"),
           target_app_version: sql.raw("target_app_version"),
         },
-        channels: { id: sql.raw("id") },
+        channels: { id: sql.raw("id"), name: sql.raw("name") },
       };
       const bundleFindMany = vi
         .fn()
@@ -1102,7 +1138,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             findMany: bundleFindMany,
           },
           channels: {
-            findFirst: vi.fn(),
+            findFirst: vi.fn(async () => ({
+              id: "channel-production",
+              name: "production",
+            })),
             findMany: vi.fn(),
           },
         },
@@ -1148,9 +1187,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const fingerprintWhere = JSON.stringify(
         bundleFindMany.mock.calls[2]?.[0],
       );
-      expect(appVersionWhere).toContain("production");
+      expect(appVersionWhere).toContain("channel-production");
       expect(appVersionWhere).toContain(NIL_UUID);
-      expect(fingerprintWhere).toContain("production");
+      expect(fingerprintWhere).toContain("channel-production");
       expect(fingerprintWhere).toContain(NIL_UUID);
       expect(fingerprintWhere).toContain("fingerprint-fast-path");
       expect(bundleFindMany).toHaveBeenCalledTimes(3);
@@ -1158,8 +1197,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     });
 
     it("uses MongoDB update-check queries without generic list pagination", async () => {
-      const appVersionRow = bundleToRow(appVersionFastPathBundle);
-      const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
+      const appVersionRow = bundleToRow(
+        appVersionFastPathBundle,
+        "channel-production",
+      );
+      const fingerprintRow = bundleToRow(
+        fingerprintFastPathBundle,
+        "channel-production",
+      );
       let bundleFindCount = 0;
       const bundles = {
         countDocuments: vi.fn(async () => {
@@ -1189,10 +1234,19 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         find: vi.fn(() => createMongoCursor([])),
         insertMany: vi.fn(),
       };
+      const channels = {
+        findOne: vi.fn(async () => ({
+          id: "channel-production",
+          name: "production",
+        })),
+      };
       const client = {
         db: () => ({
-          collection: (name: string) =>
-            name === "bundle_patches" ? patches : bundles,
+          collection: (name: string) => {
+            if (name === "bundle_patches") return patches;
+            if (name === "channels") return channels;
+            return bundles;
+          },
         }),
       } as unknown as MongoClient;
       const plugin = mongoAdapter({ client });
@@ -1224,7 +1278,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(bundles.find).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({
-          channel: "production",
+          channel_id: "channel-production",
           id: { $gte: NIL_UUID },
           target_app_version: { $ne: null },
         }),
@@ -1303,7 +1357,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       await plugin.transaction((transaction) =>
         transaction.create({
           model: "bundles",
-          data: bundleToRow(transactionBundle),
+          data: bundleToRow(transactionBundle, "channel-production"),
         }),
       );
 
@@ -1378,7 +1432,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       await plugin.transaction((transaction) =>
         transaction.create({
           model: "bundles",
-          data: bundleToRow(transactionBundle),
+          data: bundleToRow(transactionBundle, "channel-production"),
         }),
       );
 

@@ -69,6 +69,18 @@ export const parseFirebaseBundleRow = (
   source: string,
 ): BundleRow => {
   const input = record(value, source);
+  return parseFirebaseBundleInput(
+    input,
+    string(property(input, "channel_id"), source),
+    source,
+  );
+};
+
+const parseFirebaseBundleInput = (
+  input: object,
+  channelId: string,
+  source: string,
+): BundleRow => {
   return {
     id: string(property(input, "id"), source),
     platform: platform(property(input, "platform"), source),
@@ -80,7 +92,7 @@ export const parseFirebaseBundleRow = (
     file_hash: string(property(input, "file_hash"), source),
     git_commit_hash: nullableString(property(input, "git_commit_hash"), source),
     message: nullableString(property(input, "message"), source),
-    channel: string(property(input, "channel"), source),
+    channel_id: channelId,
     storage_uri: string(property(input, "storage_uri"), source),
     target_app_version: nullableString(
       property(input, "target_app_version"),
@@ -111,6 +123,21 @@ export const parseFirebaseBundleRow = (
   };
 };
 
+export const parseFirebaseMigratingBundleRow = (
+  value: unknown,
+  source: string,
+): BundleRow => {
+  const input = record(value, source);
+  const channelId = property(input, "channel_id");
+  return parseFirebaseBundleInput(
+    input,
+    typeof channelId === "string"
+      ? channelId
+      : string(property(input, "channel"), source),
+    source,
+  );
+};
+
 export const parseFirebasePatchRow = (
   value: unknown,
   source: string,
@@ -132,15 +159,24 @@ export const parseFirebaseChannelRow = (
   documentId: string,
 ): ChannelRow => {
   const input = record(value, `channels/${documentId}`);
-  const id = property(input, "id");
-  const legacyName = property(input, "name");
   return {
-    id:
-      typeof id === "string"
-        ? id
-        : typeof legacyName === "string"
-          ? legacyName
-          : documentId,
+    id: string(property(input, "id"), `channels/${documentId}`),
+    name: string(property(input, "name"), `channels/${documentId}`),
+  };
+};
+
+export const parseFirebaseMigratingChannelRow = (
+  value: unknown,
+  documentId: string,
+): ChannelRow => {
+  const source = `channels/${documentId}`;
+  const input = record(value, source);
+  const id = property(input, "id");
+  const normalizedId = typeof id === "string" ? id : documentId;
+  const name = property(input, "name");
+  return {
+    id: normalizedId,
+    name: typeof name === "string" ? name : normalizedId,
   };
 };
 

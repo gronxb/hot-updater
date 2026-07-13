@@ -20,6 +20,7 @@ import { drizzleAdapter } from "./drizzle";
 
 const channels = pgTable("channels", {
   id: varchar("id", { length: 255 }).primaryKey(),
+  name: varchar("name", { length: 255 }).notNull().unique(),
 });
 const bundles = pgTable("bundles", {
   id: text("id").primaryKey(),
@@ -29,7 +30,7 @@ const bundles = pgTable("bundles", {
   file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
-  channel: varchar("channel", { length: 255 }).notNull(),
+  channel_id: varchar("channel_id", { length: 255 }).notNull(),
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),

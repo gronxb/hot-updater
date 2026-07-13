@@ -3,6 +3,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import type {
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   DatabaseWhere,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
@@ -14,6 +15,7 @@ import {
 import { rowToBundle } from "../db/bundleRows";
 
 type UpdateInfoDatabaseReader = {
+  readonly findChannel: (name: string) => Promise<ChannelRow | null>;
   readonly findBundles: (
     where: readonly DatabaseWhere<"bundles">[],
   ) => Promise<readonly BundleRow[]>;
@@ -25,6 +27,7 @@ type UpdateInfoDatabaseReader = {
 const hydrateBundles = (
   rows: readonly BundleRow[],
   patches: readonly BundlePatchRow[],
+  channelName: string,
 ) => {
   const patchesByBundleId = new Map<string, BundlePatchRow[]>();
   for (const patch of patches) {
@@ -33,7 +36,7 @@ const hydrateBundles = (
     patchesByBundleId.set(patch.bundle_id, current);
   }
   return rows.map((row) =>
-    rowToBundle(row, patchesByBundleId.get(row.id) ?? []),
+    rowToBundle(row, channelName, patchesByBundleId.get(row.id) ?? []),
   );
 };
 
@@ -42,12 +45,20 @@ export const getDatabaseAdapterUpdateInfo = async <TContext>(
   args: GetBundlesArgs,
   context?: HotUpdaterContext<TContext>,
 ): Promise<UpdateInfo | null> => {
-  const channel = args.channel ?? "production";
+  const channelName = args.channel ?? "production";
   const minBundleId = args.minBundleId ?? NIL_UUID;
+  const channel = await reader.findChannel(channelName);
+  if (channel === null) {
+    return resolveUpdateInfoFromBundles({
+      args: { ...args, channel: channelName, minBundleId },
+      bundles: [],
+      context,
+    });
+  }
   const commonWhere = [
     { field: "enabled", value: true },
     { field: "platform", value: args.platform },
-    { field: "channel", value: channel },
+    { field: "channel_id", value: channel.id },
     { field: "id", operator: "gte", value: minBundleId },
   ] satisfies readonly DatabaseWhere<"bundles">[];
 
@@ -85,8 +96,8 @@ export const getDatabaseAdapterUpdateInfo = async <TContext>(
 
   const patches = await reader.findPatches(rows.map((row) => row.id));
   return resolveUpdateInfoFromBundles({
-    args: { ...args, channel, minBundleId },
-    bundles: hydrateBundles(rows, patches),
+    args: { ...args, channel: channelName, minBundleId },
+    bundles: hydrateBundles(rows, patches, channelName),
     context,
   });
 };

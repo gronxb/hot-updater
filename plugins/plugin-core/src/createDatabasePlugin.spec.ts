@@ -178,7 +178,7 @@ describe("createDatabasePlugin", () => {
     const emptyDelete = adapter.delete({ model: "bundles", where: [] });
     const nonIdUpdate = adapter.update({
       model: "bundles",
-      where: [{ field: "channel", value: "production" }],
+      where: [{ field: "channel_id", value: "channel-production" }],
       update: { enabled: false },
     });
 

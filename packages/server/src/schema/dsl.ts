@@ -107,6 +107,17 @@ export const index = (
   ...(providers ? { providers } : {}),
 });
 
+export const uniqueIndex = (
+  name: string,
+  columns: readonly string[],
+  providers?: HotUpdaterIndexSchema["providers"],
+): HotUpdaterIndexSchema => ({
+  name,
+  columns,
+  ...(providers ? { providers } : {}),
+  unique: true,
+});
+
 export const foreignKey = (
   name: string,
   columns: readonly string[],

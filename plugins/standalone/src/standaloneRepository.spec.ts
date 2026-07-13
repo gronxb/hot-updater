@@ -146,15 +146,54 @@ describe("standaloneRepository", () => {
   it("persists an empty channel through the existing bundle routes", async () => {
     const repository = createRepository();
 
-    await repository.create({ model: "channels", data: { id: "preview" } });
+    await repository.create({
+      model: "channels",
+      data: { id: "generated-preview-id", name: "preview" },
+    });
 
     await expect(repository.findMany({ model: "channels" })).resolves.toEqual([
-      { id: "preview" },
+      { id: "preview", name: "preview" },
     ]);
     expect(bundles.size).toBe(0);
     expect(requestPaths).not.toContainEqual(
       expect.stringContaining("/database/"),
     );
+  });
+
+  it("rejects a duplicate channel name through the existing channels route", async () => {
+    channels.add("preview");
+    const repository = createRepository();
+
+    await expect(
+      repository.create({
+        model: "channels",
+        data: { id: "another-id", name: "preview" },
+      }),
+    ).rejects.toEqual(
+      new StandaloneDatabaseError(
+        "request-failed",
+        "Channel preview already exists.",
+        409,
+      ),
+    );
+  });
+
+  it("normalizes aggregate bundle channels to low channel ids", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000021", {
+      channel: "preview",
+    });
+    bundles.set(value.id, value);
+    channels.add("preview");
+
+    await expect(
+      createRepository().findOne({
+        model: "bundles",
+        where: [{ field: "id", value: value.id }],
+      }),
+    ).resolves.toMatchObject({
+      id: value.id,
+      channel_id: "preview",
+    });
   });
 
   it("queries patch rows from aggregate bundle responses", async () => {
@@ -207,7 +246,7 @@ describe("standaloneRepository", () => {
     });
 
     await expect(repository.findMany({ model: "channels" })).resolves.toEqual([
-      { id: "custom" },
+      { id: "custom", name: "custom" },
     ]);
     expect(authorization).toBe("Bearer token");
   });

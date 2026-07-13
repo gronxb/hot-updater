@@ -49,7 +49,7 @@ it("projects selected fields after querying physical bundle columns", async () =
     file_hash: "hash",
     git_commit_hash: null,
     message: "Alpha Release",
-    channel: "production",
+    channel_id: "channel-production",
     storage_uri: "storage://bundle",
     target_app_version: "1.0.0",
     fingerprint_hash: null,
@@ -88,18 +88,21 @@ it("projects selected fields after querying physical bundle columns", async () =
   expect(state.queries[0]?.sql).toContain("ORDER BY id DESC");
 });
 
-it("encodes create values as JSON-bound parameters", async () => {
-  state.results.push({ id: "production" });
+it("encodes channel ids and names as JSON-bound parameters", async () => {
+  state.results.push({ id: "channel-production", name: "production" });
   const adapter = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
   });
 
-  await adapter.create({ model: "channels", data: { id: "production" } });
+  await adapter.create({
+    model: "channels",
+    data: { id: "channel-production", name: "production" },
+  });
 
   expect(state.queries[0]).toMatchObject({
-    params: ['"production"'],
+    params: ['"channel-production"', '"production"'],
   });
-  expect(state.queries[0]?.sql).toContain("INSERT INTO channels");
+  expect(state.queries[0]?.sql).toContain("INSERT INTO channels (id, name)");
 });

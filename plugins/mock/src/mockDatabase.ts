@@ -65,6 +65,7 @@ export const mockDatabase = createDatabasePlugin<MockDatabaseConfig>({
               [...data.bundles.values()],
               [...data.bundlePatches.values()],
               [...data.bundles.values()],
+              [...data.channels.values()],
             ),
             context,
           }),

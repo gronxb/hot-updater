@@ -88,26 +88,35 @@ describe("blob snapshot persistence", () => {
     ]);
     expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toMatchObject({
       version: 2,
-      channels: [{ id: "production" }],
+      channels: [{ name: "production" }],
     });
   });
 
   it("writes deterministic fixed-model snapshots and preserves empty channels", async () => {
     const adapter = createMemoryAdapter(config());
-    await adapter.create({ model: "channels", data: { id: "unused" } });
-    await adapter.create({ model: "channels", data: { id: "production" } });
+    await adapter.create({
+      model: "channels",
+      data: { id: "channel-unused", name: "unused" },
+    });
+    await adapter.create({
+      model: "channels",
+      data: { id: "channel-production", name: "production" },
+    });
     await adapter.create({ model: "bundles", data: bundleRow("2") });
     await adapter.create({ model: "bundles", data: bundleRow("1") });
     await adapter.delete({
       model: "bundles",
-      where: [{ field: "channel", value: "production" }],
+      where: [{ field: "channel_id", value: "channel-production" }],
     });
 
     expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toEqual({
       version: 2,
       bundles: [],
       bundle_patches: [],
-      channels: [{ id: "production" }, { id: "unused" }],
+      channels: [
+        { id: "channel-production", name: "production" },
+        { id: "channel-unused", name: "unused" },
+      ],
     });
   });
 
@@ -146,7 +155,10 @@ describe("blob snapshot persistence", () => {
 
   it("invalidates exact, range, and fingerprint update routes", async () => {
     const adapter = createMemoryAdapter(config());
-    await adapter.create({ model: "channels", data: { id: "production" } });
+    await adapter.create({
+      model: "channels",
+      data: { id: "channel-production", name: "production" },
+    });
     await adapter.create({ model: "bundles", data: bundleRow("1") });
     await adapter.create({
       model: "bundles",
@@ -178,7 +190,10 @@ describe("blob snapshot persistence", () => {
   it("reloads the latest snapshot written by another adapter instance", async () => {
     const first = createMemoryAdapter(config());
     const second = createMemoryAdapter(config());
-    await first.create({ model: "channels", data: { id: "production" } });
+    await first.create({
+      model: "channels",
+      data: { id: "channel-production", name: "production" },
+    });
 
     await second.create({ model: "bundles", data: bundleRow("1") });
 
@@ -191,7 +206,7 @@ describe("blob snapshot persistence", () => {
       version: 2 as const,
       bundles: [],
       bundle_patches: [],
-      channels: [{ id: "external" }],
+      channels: [{ id: "channel-external", name: "external" }],
     };
     const adapter = createMemoryAdapter({
       ...config(),
@@ -204,7 +219,10 @@ describe("blob snapshot persistence", () => {
     });
 
     await expect(
-      adapter.create({ model: "channels", data: { id: "local" } }),
+      adapter.create({
+        model: "channels",
+        data: { id: "channel-local", name: "local" },
+      }),
     ).rejects.toThrow("changed while a mutation was in progress");
 
     expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toBe(externalSnapshot);
@@ -222,7 +240,7 @@ const bundleRow = (suffix: string) => ({
   file_hash: `hash-${suffix}`,
   git_commit_hash: null,
   message: `bundle-${suffix}`,
-  channel: "production",
+  channel_id: "channel-production",
   storage_uri: `storage://bundles/${suffix}.zip`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

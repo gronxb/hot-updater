@@ -71,6 +71,7 @@ const loadLegacySnapshot = async (
     string,
     BlobDatabaseSnapshot["bundle_patches"][number]
   >();
+  const channels = new Map<string, BlobDatabaseSnapshot["channels"][number]>();
   for (const key of keys) {
     const value = await loadOptionalObject(operations, key);
     if (value === null) continue;
@@ -80,7 +81,15 @@ const loadLegacySnapshot = async (
     }
     for (const item of value) {
       const parsed = parseLegacyBundle(item, key);
-      bundles.set(parsed.bundle.id, parsed.bundle);
+      const channel = channels.get(parsed.channelName) ?? {
+        id: parsed.channelName,
+        name: parsed.channelName,
+      };
+      channels.set(channel.name, channel);
+      bundles.set(parsed.bundle.id, {
+        ...parsed.bundle,
+        channel_id: channel.id,
+      });
       for (const [patchId, patch] of patches) {
         if (patch.bundle_id === parsed.bundle.id) patches.delete(patchId);
       }
@@ -92,9 +101,7 @@ const loadLegacySnapshot = async (
       version: 2,
       bundles: [...bundles.values()],
       bundle_patches: [...patches.values()],
-      channels: [
-        ...new Set([...bundles.values()].map(({ channel }) => channel)),
-      ].map((id) => ({ id })),
+      channels: [...channels.values()],
     },
     "legacy update.json manifests",
   );
@@ -196,6 +203,7 @@ export const createBlobDatabaseAdapter = <TConfig, TContext = unknown>({
             snapshot.bundles,
             snapshot.bundle_patches,
             snapshot.bundles,
+            snapshot.channels,
           ),
           context,
         });

@@ -72,13 +72,20 @@ describe("Supabase RLS migration", () => {
     const sql = await fs.readFile(databaseV2MigrationPath, "utf8");
 
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.channels");
-    expect(sql).toContain("SELECT DISTINCT channel FROM public.bundles");
+    expect(sql).toContain(
+      "SELECT DISTINCT channel, channel FROM public.bundles",
+    );
+    expect(sql).toContain("name text NOT NULL UNIQUE");
+    expect(sql).toContain("SET channel_id = channel");
     expect(sql).toContain("REFERENCES public.channels(id) ON DELETE RESTRICT");
     expect(
-      sql.indexOf("SELECT DISTINCT channel FROM public.bundles"),
+      sql.indexOf("SELECT DISTINCT channel, channel FROM public.bundles"),
     ).toBeLessThan(
       sql.indexOf("REFERENCES public.channels(id) ON DELETE RESTRICT"),
     );
+    expect(sql).toContain("DROP COLUMN channel");
+    expect(sql).toContain("JOIN channels c ON c.id = b.channel_id");
+    expect(sql).toContain("c.name = target_channel");
     expect(sql).toContain(
       "ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;",
     );

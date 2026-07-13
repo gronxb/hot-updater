@@ -24,6 +24,10 @@ const createBundle = (id: string): Bundle => ({
   fingerprintHash: null,
 });
 
+const CHANNEL_ID = "channel-production";
+const CHANNEL_ROWS = [{ id: CHANNEL_ID, name: "production" }] as const;
+const toRow = (bundle: Bundle): BundleRow => bundleToRow(bundle, CHANNEL_ID);
+
 const createPatchRow = (
   id: string,
   bundleId: string,
@@ -62,11 +66,14 @@ describe("bundle row conversion", () => {
     };
 
     // When
-    const row = bundleToRow(bundle);
+    const row = toRow(bundle);
     const patchRows = bundleToPatchRows(bundle);
-    const hydratedBundles = rowsToBundles([row], patchRows, [
-      bundleToRow(baseBundle),
-    ]);
+    const hydratedBundles = rowsToBundles(
+      [row],
+      patchRows,
+      [toRow(baseBundle)],
+      CHANNEL_ROWS,
+    );
 
     // Then
     expect(row).not.toHaveProperty("patches");
@@ -86,7 +93,7 @@ describe("bundle row conversion", () => {
     const oldest = createBundle("oldest");
     const newest = createBundle("newest");
     const target = createBundle("target");
-    const rows: readonly BundleRow[] = [bundleToRow(target)];
+    const rows: readonly BundleRow[] = [toRow(target)];
     const later = createPatchRow("later", target.id, newest.id, 1);
     const firstById = createPatchRow("a-first", target.id, oldest.id, 0);
     const secondById = createPatchRow("z-second", target.id, newest.id, 0);
@@ -95,7 +102,8 @@ describe("bundle row conversion", () => {
     const [hydrated] = rowsToBundles(
       rows,
       [later, secondById, firstById],
-      [bundleToRow(oldest), bundleToRow(newest)],
+      [toRow(oldest), toRow(newest)],
+      CHANNEL_ROWS,
     );
 
     // Then
@@ -115,7 +123,7 @@ describe("bundle row conversion", () => {
     const bundle = createBundle("without-patches");
 
     // When
-    const [hydrated] = rowsToBundles([bundleToRow(bundle)], []);
+    const [hydrated] = rowsToBundles([toRow(bundle)], [], [], CHANNEL_ROWS);
 
     // Then
     expect(hydrated).toMatchObject({
@@ -130,12 +138,12 @@ describe("bundle row conversion", () => {
   it("normalizes malformed metadata at the row boundary", () => {
     // Given
     const row: BundleRow = {
-      ...bundleToRow(createBundle("malformed-json")),
+      ...toRow(createBundle("malformed-json")),
       metadata: "not-json",
     };
 
     // When
-    const [hydrated] = rowsToBundles([row], []);
+    const [hydrated] = rowsToBundles([row], [], [], CHANNEL_ROWS);
 
     // Then
     expect(hydrated).toMatchObject({
@@ -155,9 +163,10 @@ describe("bundle row conversion", () => {
     // When
     const hydrate = () =>
       rowsToBundles(
-        [bundleToRow(target)],
+        [toRow(target)],
         [patch, duplicate],
-        [bundleToRow(base)],
+        [toRow(base)],
+        CHANNEL_ROWS,
       );
 
     // Then
@@ -176,7 +185,8 @@ describe("bundle row conversion", () => {
     const patch = createPatchRow("orphan-owner", "missing", base.id, 0);
 
     // When
-    const hydrate = () => rowsToBundles([], [patch], [bundleToRow(base)]);
+    const hydrate = () =>
+      rowsToBundles([], [patch], [toRow(base)], CHANNEL_ROWS);
 
     // Then
     expect(hydrate).toThrowError(
@@ -194,7 +204,8 @@ describe("bundle row conversion", () => {
     const patch = createPatchRow("orphan-base", target.id, "missing", 0);
 
     // When
-    const hydrate = () => rowsToBundles([bundleToRow(target)], [patch]);
+    const hydrate = () =>
+      rowsToBundles([toRow(target)], [patch], [], CHANNEL_ROWS);
 
     // Then
     expect(hydrate).toThrowError(

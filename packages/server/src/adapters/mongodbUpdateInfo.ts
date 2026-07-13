@@ -2,6 +2,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import type {
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import {
@@ -15,6 +16,7 @@ import { rowToBundle } from "../db/bundleRows";
 type MongoUpdateCollections = {
   readonly bundles: Collection<BundleRow>;
   readonly bundlePatches: Collection<BundlePatchRow>;
+  readonly channels: Collection<ChannelRow>;
 };
 
 const WITHOUT_MONGO_ID = { _id: 0 } as const;
@@ -24,8 +26,19 @@ export const createMongoGetUpdateInfo = (
   collections: MongoUpdateCollections,
 ): GetUpdateInfo => {
   return async (args, context) => {
-    const channel = args.channel ?? "production";
+    const channelName = args.channel ?? "production";
     const minBundleId = args.minBundleId ?? NIL_UUID;
+    const channel = await collections.channels.findOne(
+      { name: channelName },
+      { projection: WITHOUT_MONGO_ID },
+    );
+    if (channel === null) {
+      return resolveUpdateInfoFromBundles({
+        args: { ...args, channel: channelName, minBundleId },
+        bundles: [],
+        context,
+      });
+    }
     let rows: BundleRow[];
     if (args._updateStrategy === "appVersion") {
       const candidates = await collections.bundles
@@ -33,7 +46,7 @@ export const createMongoGetUpdateInfo = (
           {
             enabled: true,
             platform: args.platform,
-            channel,
+            channel_id: channel.id,
             id: { $gte: minBundleId },
             target_app_version: { $ne: null },
           },
@@ -58,7 +71,7 @@ export const createMongoGetUpdateInfo = (
                 {
                   enabled: true,
                   platform: args.platform,
-                  channel,
+                  channel_id: channel.id,
                   id: { $gte: minBundleId },
                   target_app_version: { $in: compatibleVersions },
                 },
@@ -72,7 +85,7 @@ export const createMongoGetUpdateInfo = (
           {
             enabled: true,
             platform: args.platform,
-            channel,
+            channel_id: channel.id,
             id: { $gte: minBundleId },
             fingerprint_hash: args.fingerprintHash,
           },
@@ -92,10 +105,11 @@ export const createMongoGetUpdateInfo = (
             .sort({ order_index: 1 })
             .toArray();
     return resolveUpdateInfoFromBundles({
-      args: { ...args, channel, minBundleId },
+      args: { ...args, channel: channelName, minBundleId },
       bundles: rows.map((row) =>
         rowToBundle(
           row,
+          channelName,
           patches.filter(({ bundle_id: bundleId }) => bundleId === row.id),
         ),
       ),

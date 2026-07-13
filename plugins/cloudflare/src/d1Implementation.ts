@@ -33,7 +33,7 @@ const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.file_hash,
   row.git_commit_hash,
   row.message,
-  row.channel,
+  row.channel_id,
   row.storage_uri,
   row.target_app_version,
   row.fingerprint_hash,
@@ -66,7 +66,7 @@ const insertQuery = (input: CreateDatabaseImplementationInput) => {
         "file_hash",
         "git_commit_hash",
         "message",
-        "channel",
+        "channel_id",
         "storage_uri",
         "target_app_version",
         "fingerprint_hash",
@@ -100,9 +100,9 @@ const insertQuery = (input: CreateDatabaseImplementationInput) => {
       };
     }
     case "channels": {
-      const values = [input.data.id];
+      const values = [input.data.id, input.data.name];
       return {
-        sql: `INSERT INTO channels (id) VALUES (${d1Placeholders(1)}) RETURNING *`,
+        sql: `INSERT INTO channels (id, name) VALUES (${d1Placeholders(values.length)}) RETURNING *`,
         params: encodeD1Values(values),
       };
     }

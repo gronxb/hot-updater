@@ -82,6 +82,7 @@ export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
             [...snapshot.bundles.values()],
             [...snapshot.bundlePatches.values()],
             [...snapshot.bundles.values()],
+            [...snapshot.channels.values()],
           ),
           context,
         });

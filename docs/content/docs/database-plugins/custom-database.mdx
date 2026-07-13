@@ -59,7 +59,9 @@ import type {
 
 `BundleRow` never contains patch artifacts. Patch ownership and base-bundle
 references are represented by `BundlePatchRow.bundle_id` and
-`BundlePatchRow.base_bundle_id`. `ChannelRow` is exactly `{ id: string }`.
+`BundlePatchRow.base_bundle_id`. `ChannelRow` is exactly
+`{ id: string; name: string }`, and `BundleRow.channel_id` references its
+stable `id`. The public `Bundle.channel` value remains the channel name.
 
 ## Create an adapter
 
@@ -148,9 +150,9 @@ the public result type.
 ```typescript
 const rows = await adapter.findMany({
   model: "bundles",
-  select: ["id", "channel"],
+  select: ["id", "channel_id"],
 });
-// Array<{ id: string; channel: string }>
+// Array<{ id: string; channel_id: string }>
 ```
 
 An empty `select` is invalid. Do not hydrate a projected result through a
@@ -165,7 +167,7 @@ Each predicate contains `field`, `value`, and an optional `operator`,
 const rows = await adapter.findMany({
   model: "bundles",
   where: [
-    { field: "channel", value: "production" },
+    { field: "channel_id", value: "channel-production" },
     { field: "enabled", value: true, connector: "AND" },
     {
       field: "platform",
@@ -199,12 +201,16 @@ field's type. String comparisons can use `mode: "sensitive"` or
 Persist three independent model collections or tables and enforce these
 rules:
 
-- A bundle's `channel` must reference an existing channel.
+- A channel's `name` must be unique.
+- A bundle's `channel_id` must reference an existing channel `id`.
 - A patch's `bundle_id` and `base_bundle_id` must reference existing bundles.
 - Deleting a bundle removes patches that reference it in either direction.
 - Deleting a bundle never deletes its channel.
 - Referenced channel deletion must be rejected. The public adapter deliberately
   exposes no channel delete method.
+
+Channel IDs and names are immutable through the v2 low API; create a distinct
+channel row for a different name.
 
 The shared aggregate client ensures a channel before creating or moving a
 bundle. Concurrent channel creation may race, so duplicate creation can be
@@ -341,11 +347,15 @@ const hotUpdater = createHotUpdater({
 Database plugin v2 is a full replacement. There is no v1 compatibility mode.
 
 1. Replace whole-bundle methods with the fixed row operation matrix.
-2. Split stored patches into `bundle_patches` and create `channels { id }`.
-3. Backfill one channel row for every distinct existing bundle channel.
-4. For relational databases, add `bundles.channel -> channels.id` with
-   `ON DELETE RESTRICT`. For non-relational databases, enforce the equivalent
-   relationship in adapter writes.
+2. Split stored patches into `bundle_patches` and create
+   `channels { id, name }` with a unique `name`.
+3. Backfill one channel row for every distinct existing bundle channel, using
+   the previous channel value as both `id` and `name`.
+4. Replace the stored bundle string with
+   `bundles.channel_id -> channels.id ON DELETE RESTRICT`. Keep translating the
+   referenced channel `name` to the public `Bundle.channel` string. For
+   non-relational databases, enforce the equivalent relationship in adapter
+   writes.
 5. Replace `config.database()` and direct bundle mutation calls with the
    adapter object or `createDatabaseClient(adapter)`.
 6. Remove `appendBundle`, `updateBundle`, `deleteBundle`, and `commitBundle`.

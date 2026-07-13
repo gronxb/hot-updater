@@ -92,6 +92,15 @@ const createCollection = (tables: Tables, model: keyof Tables) => ({
     if (tables[model].some(({ id }) => id === row.id)) {
       throw new MongoTestConstraintError("duplicate id");
     }
+    if (
+      model === "channels" &&
+      "name" in row &&
+      tables.channels.some(
+        (current) => "name" in current && current.name === row.name,
+      )
+    ) {
+      throw new MongoTestConstraintError("duplicate channel name");
+    }
     tables[model].push(structuredClone(row));
   },
 });

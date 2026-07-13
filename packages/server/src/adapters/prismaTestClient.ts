@@ -111,8 +111,8 @@ const assertReferences = (
   model: keyof Tables,
   row: Row,
 ): void => {
-  if (model === "bundles" && "channel" in row) {
-    if (!tables.channels.some(({ id }) => id === row.channel)) {
+  if (model === "bundles" && "channel_id" in row) {
+    if (!tables.channels.some(({ id }) => id === row.channel_id)) {
       throw new PrismaTestConstraintError("missing channel");
     }
   }
@@ -130,6 +130,13 @@ const createDelegate = (tables: Tables, model: keyof Tables) => ({
   create: async ({ data }: CreateArgs): Promise<Row> => {
     if (tables[model].some(({ id }) => id === data.id)) {
       throw new PrismaTestConstraintError("duplicate id");
+    }
+    if (
+      model === "channels" &&
+      "name" in data &&
+      tables.channels.some((row) => "name" in row && row.name === data.name)
+    ) {
+      throw new PrismaTestConstraintError("duplicate channel name");
     }
     assertReferences(tables, model, data);
     tables[model].push(structuredClone(data));

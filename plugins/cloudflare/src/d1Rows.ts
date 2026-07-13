@@ -84,7 +84,7 @@ const bundleRow = (row: Record<string, unknown>): BundleRow => {
     file_hash: stringValue(row, "file_hash", "bundles"),
     git_commit_hash: nullableString(row, "git_commit_hash", "bundles"),
     message: nullableString(row, "message", "bundles"),
-    channel: stringValue(row, "channel", "bundles"),
+    channel_id: stringValue(row, "channel_id", "bundles"),
     storage_uri: stringValue(row, "storage_uri", "bundles"),
     target_app_version: nullableString(row, "target_app_version", "bundles"),
     fingerprint_hash: nullableString(row, "fingerprint_hash", "bundles"),
@@ -117,6 +117,7 @@ const patchRow = (row: Record<string, unknown>): BundlePatchRow => ({
 
 const channelRow = (row: Record<string, unknown>): ChannelRow => ({
   id: stringValue(row, "id", "channels"),
+  name: stringValue(row, "name", "channels"),
 });
 
 export function parseD1Row(model: "bundles", value: unknown): BundleRow;

@@ -8,7 +8,7 @@ export const createMongoMigrationOperations = (
   ...hotUpdaterCreateTableOperations,
   {
     type: "custom",
-    sql: "backfill channels from bundles.channel",
+    sql: "backfill channels(id, name) and bundles.channel_id from bundles.channel",
   },
   {
     type: "custom",
@@ -20,7 +20,7 @@ export const createMongoMigrationOperations = (
       .map(
         (index): MigrationOperation => ({
           type: "custom",
-          sql: `create index ${index.name} on ${table.ormName}(${index.columns.join(
+          sql: `create ${index.unique ? "unique " : ""}index ${index.name} on ${table.ormName}(${index.columns.join(
             ", ",
           )})`,
         }),

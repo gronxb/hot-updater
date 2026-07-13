@@ -254,8 +254,20 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
         return { count: null, data: null, error: { message: "duplicate id" } };
       }
       if (
+        this.table === "channels" &&
+        [...rows.channels.values()].some(
+          (channel) => channel.name === payload.name,
+        )
+      ) {
+        return {
+          count: null,
+          data: null,
+          error: { message: "duplicate name" },
+        };
+      }
+      if (
         (this.table === "bundles" &&
-          !rows.channels.has(String(payload.channel))) ||
+          !rows.channels.has(String(payload.channel_id))) ||
         (this.table === "bundle_patches" &&
           (!rows.bundles.has(String(payload.bundle_id)) ||
             !rows.bundles.has(String(payload.base_bundle_id))))

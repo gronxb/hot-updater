@@ -125,10 +125,14 @@ const sqlIndexColumn = (
 
 export const createIndexSql = (
   table: HotUpdaterTableSchema,
-  index: { readonly name: string; readonly columns: readonly string[] },
+  index: {
+    readonly name: string;
+    readonly columns: readonly string[];
+    readonly unique?: true;
+  },
   provider: ORMSQLProvider,
 ): string =>
-  `create index ${index.name} on ${table.ormName}(${index.columns
+  `create ${index.unique ? "unique " : ""}index ${index.name} on ${table.ormName}(${index.columns
     .map((column) => sqlIndexColumn(table, column, provider))
     .join(", ")})`;
 

@@ -6,7 +6,7 @@ import {
   type DatabasePlugin,
   type DatabasePluginImplementation,
   resolveUpdateInfoFromBundles,
-  rowToBundle,
+  rowsToBundles,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 
@@ -39,7 +39,9 @@ const assertReferences = (
 ): void => {
   switch (input.model) {
     case "bundles":
-      if (!tables.channels.rows.some(({ id }) => id === input.data.channel)) {
+      if (
+        !tables.channels.rows.some(({ id }) => id === input.data.channel_id)
+      ) {
         throw new MemoryConstraintError("Bundle channel does not exist");
       }
       return;
@@ -74,7 +76,12 @@ const createCrudImplementation = (
         tables.bundle_patches.rows.push(structuredClone(input.data));
         return input.data;
       case "channels":
-        if (tables.channels.rows.some(({ id }) => id === input.data.id)) break;
+        if (
+          tables.channels.rows.some(
+            ({ id, name }) => id === input.data.id || name === input.data.name,
+          )
+        )
+          break;
         tables.channels.rows.push(structuredClone(input.data));
         return input.data;
     }
@@ -87,7 +94,7 @@ const createCrudImplementation = (
     const current = tables.bundles.rows[index];
     if (current === undefined) return null;
     const updated = { ...current, ...input.update };
-    if (!tables.channels.rows.some(({ id }) => id === updated.channel)) {
+    if (!tables.channels.rows.some(({ id }) => id === updated.channel_id)) {
       throw new MemoryConstraintError("Bundle channel does not exist");
     }
     tables.bundles.rows[index] = updated;
@@ -160,13 +167,11 @@ const createImplementation = (
   getUpdateInfo: async (args) =>
     resolveUpdateInfoFromBundles({
       args,
-      bundles: tables.bundles.rows.map((bundle) =>
-        rowToBundle(
-          bundle,
-          tables.bundle_patches.rows.filter(
-            ({ bundle_id }) => bundle_id === bundle.id,
-          ),
-        ),
+      bundles: rowsToBundles(
+        tables.bundles.rows,
+        tables.bundle_patches.rows,
+        tables.bundles.rows,
+        tables.channels.rows,
       ),
     }),
   transaction: async (callback) => {

@@ -97,7 +97,7 @@ describe("createKyselyMigrator", () => {
     expect(version.rows[0]?.value).toBe("0.20.0");
   });
 
-  it("backfills channels before enforcing the v0.36.0 PostgreSQL foreign key", async () => {
+  it("normalizes channels before enforcing the v0.36.0 PostgreSQL foreign key", async () => {
     const db = new PGlite();
     databases.push(db);
     const kysely = new Kysely<SettingsDatabase>({
@@ -138,13 +138,21 @@ describe("createKyselyMigrator", () => {
     });
     await migration.execute();
 
-    const channels = await db.query<{ id: string }>(
-      "select id from channels order by id",
+    const channels = await db.query<{ id: string; name: string }>(
+      "select id, name from channels order by id",
     );
-    expect(channels.rows).toEqual([{ id: "production" }, { id: "staging" }]);
+    expect(channels.rows).toEqual([
+      { id: "production", name: "production" },
+      { id: "staging", name: "staging" },
+    ]);
     await expect(
       db.query(
-        "insert into bundles (id, channel) values ('00000000-0000-0000-0000-000000000004', 'missing')",
+        "insert into bundles (id, channel_id) values ('00000000-0000-0000-0000-000000000004', 'missing')",
+      ),
+    ).rejects.toThrow();
+    await expect(
+      db.query(
+        "insert into channels (id, name) values ('duplicate', 'production')",
       ),
     ).rejects.toThrow();
     await expect(
@@ -167,6 +175,15 @@ describe("createKyselyMigrator", () => {
       "select id from channels where id = 'staging'",
     );
     expect(staging.rows).toEqual([{ id: "staging" }]);
+    const columns = await db.query<{ column_name: string }>(
+      "select column_name from information_schema.columns where table_name = 'bundles'",
+    );
+    expect(columns.rows.map(({ column_name }) => column_name)).toContain(
+      "channel_id",
+    );
+    expect(columns.rows.map(({ column_name }) => column_name)).not.toContain(
+      "channel",
+    );
   });
 
   it("rebuilds SQLite bundles so the channel and patch foreign keys remain enforced", () => {
@@ -195,20 +212,27 @@ describe("createKyselyMigrator", () => {
       db.exec(statement);
     }
 
-    expect(db.prepare("select id from channels order by id").all()).toEqual([
-      { id: "production" },
-      { id: "staging" },
+    expect(
+      db.prepare("select id, name from channels order by id").all(),
+    ).toEqual([
+      { id: "production", name: "production" },
+      { id: "staging", name: "staging" },
     ]);
     expect(() =>
       db.exec(`
         insert into bundles (
-          id, platform, should_force_update, enabled, file_hash, channel,
+          id, platform, should_force_update, enabled, file_hash, channel_id,
           storage_uri, target_app_version
         ) values (
           'bundle-4', 'ios', 0, 1, 'hash-4', 'missing', 's3://bundle-4',
           '1.0.0'
         )
       `),
+    ).toThrow();
+    expect(() =>
+      db.exec(
+        "insert into channels (id, name) values ('duplicate', 'production')",
+      ),
     ).toThrow();
     expect(() =>
       db.exec("delete from channels where id = 'production'"),
@@ -256,12 +280,12 @@ describe("createKyselyMigrator", () => {
       db.exec(statement);
     }
 
-    expect(db.prepare("select id from channels").all()).toEqual([
-      { id: "production" },
+    expect(db.prepare("select id, name from channels").all()).toEqual([
+      { id: "production", name: "production" },
     ]);
     expect(db.prepare("pragma foreign_key_list('bundles')").all()).toEqual([
       expect.objectContaining({
-        from: "channel",
+        from: "channel_id",
         on_delete: "RESTRICT",
         table: "channels",
         to: "id",

@@ -90,7 +90,10 @@ describe("s3Database storage behavior", () => {
   it("writes the v2 snapshot below the configured base path", async () => {
     const adapter = s3Database({ bucketName, basePath: "/metadata/" });
 
-    await adapter.create({ model: "channels", data: { id: "production" } });
+    await adapter.create({
+      model: "channels",
+      data: { id: "production", name: "production" },
+    });
 
     expect(
       JSON.parse(
@@ -100,7 +103,7 @@ describe("s3Database storage behavior", () => {
       version: 2,
       bundles: [],
       bundle_patches: [],
-      channels: [{ id: "production" }],
+      channels: [{ id: "production", name: "production" }],
     });
     const call = s3Mock.commandCalls(PutObjectCommand).at(-1);
     expect(call?.args[0].input).toMatchObject({
@@ -115,7 +118,10 @@ describe("s3Database storage behavior", () => {
       bucketName,
       cloudfrontDistributionId: "distribution-1",
     });
-    await adapter.create({ model: "channels", data: { id: "production" } });
+    await adapter.create({
+      model: "channels",
+      data: { id: "production", name: "production" },
+    });
 
     await adapter.create({ model: "bundles", data: bundleRow("1") });
 
@@ -144,7 +150,10 @@ describe("s3Database storage behavior", () => {
     const adapter = s3Database({
       bucketName,
     });
-    await adapter.create({ model: "channels", data: { id: "production" } });
+    await adapter.create({
+      model: "channels",
+      data: { id: "production", name: "production" },
+    });
 
     await adapter.create({ model: "bundles", data: bundleRow("1") });
 
@@ -165,7 +174,7 @@ const bundleRow = (suffix: string) => ({
   file_hash: `hash-${suffix}`,
   git_commit_hash: null,
   message: `bundle-${suffix}`,
-  channel: "production",
+  channel_id: "production",
   storage_uri: `s3://${bucketName}/bundles/${suffix}.zip`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

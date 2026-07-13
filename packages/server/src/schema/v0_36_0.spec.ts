@@ -18,10 +18,25 @@ describe("v0.36.0 schema", () => {
     expect(v0_36_0.version).toBe("0.36.0");
     expect(channelsV036.columns).toEqual([
       expect.objectContaining({ ormName: "id", primaryKey: true }),
+      expect.objectContaining({ ormName: "name" }),
     ]);
+    expect(channelsV036.indexes).toContainEqual({
+      name: "channels_name_key",
+      columns: ["name"],
+      unique: true,
+    });
+    expect(bundlesV036.columns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ormName: "channel_id" }),
+      ]),
+    );
+    expect(bundlesV036.columns).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ ormName: "channel" })]),
+    );
     expect(bundlesV036.foreignKeys).toEqual([
       expect.objectContaining({
-        name: "bundles_channel_fk",
+        name: "bundles_channel_id_fk",
+        columns: ["channel_id"],
         onDelete: "restrict",
         referencedTable: "channels",
       }),
@@ -41,16 +56,24 @@ describe("v0.36.0 schema", () => {
     const createChannelIndex = statements.findIndex((statement) =>
       statement.includes("create table if not exists channels"),
     );
-    const backfillIndex = statements.findIndex((statement) =>
-      statement.includes("select distinct channel from bundles"),
+    const backfillChannelsIndex = statements.findIndex((statement) =>
+      statement.includes("select distinct channel, channel from bundles"),
+    );
+    const backfillBundlesIndex = statements.findIndex((statement) =>
+      statement.includes("set channel_id = channels.id"),
     );
     const constraintIndex = statements.findIndex((statement) =>
-      statement.includes("add constraint bundles_channel_fk"),
+      statement.includes("add constraint bundles_channel_id_fk"),
+    );
+    const dropLegacyChannelIndex = statements.findIndex((statement) =>
+      statement.includes("drop column channel"),
     );
 
     expect(createChannelIndex).toBeGreaterThanOrEqual(0);
-    expect(backfillIndex).toBeGreaterThan(createChannelIndex);
-    expect(constraintIndex).toBeGreaterThan(backfillIndex);
+    expect(backfillChannelsIndex).toBeGreaterThan(createChannelIndex);
+    expect(backfillBundlesIndex).toBeGreaterThan(backfillChannelsIndex);
+    expect(constraintIndex).toBeGreaterThan(backfillBundlesIndex);
+    expect(dropLegacyChannelIndex).toBeGreaterThan(constraintIndex);
     expect(statements[constraintIndex]).toContain("on delete restrict");
   });
 
@@ -66,19 +89,36 @@ describe("v0.36.0 schema", () => {
 
     expect(statements).not.toEqual(
       expect.arrayContaining([
-        expect.stringContaining("add constraint bundles_channel_fk"),
+        expect.stringContaining("add constraint bundles_channel_id_fk"),
       ]),
     );
     expect(prisma).toContain(
       'channelRef channels @relation("channels_bundles_channel"',
     );
+    expect(prisma).toContain("fields: [channel_id]");
+    expect(prisma).toContain('@@unique([name], map: "channels_name_key")');
     expect(prisma).toContain(
       'bundles bundles[] @relation("channels_bundles_channel")',
     );
     expect(prisma).toContain("onDelete: Restrict");
-    expect(drizzle).toContain('name: "bundles_channel_fk"');
+    expect(drizzle).toContain('name: "bundles_channel_id_fk"');
     expect(drizzle).toContain('.onDelete("restrict")');
+    expect(drizzle).toContain(
+      'uniqueIndex("channels_name_key").on(table.name)',
+    );
     expect(drizzle).toContain("bundles: many(bundles");
+  });
+
+  it("uses the MySQL join update before requiring the normalized key", () => {
+    const statements = createSchemaMigrationSql("0.31.0", "0.36.0", "mysql");
+
+    expect(statements).toContain(
+      "update bundles join channels on channels.name = bundles.channel set bundles.channel_id = channels.id",
+    );
+    expect(statements).toContain(
+      "alter table bundles modify column channel_id varchar(255) not null",
+    );
+    expect(statements.at(-1)).toBe("alter table bundles drop column channel");
   });
 
   it("orders MongoDB channel creation and backfill before the version write", () => {
@@ -96,11 +136,16 @@ describe("v0.36.0 schema", () => {
       (operation) =>
         operation.type === "custom" &&
         "sql" in operation &&
-        operation.sql === "backfill channels from bundles.channel",
+        operation.sql ===
+          "backfill channels(id, name) and bundles.channel_id from bundles.channel",
     );
 
     expect(createChannelsIndex).toBeGreaterThanOrEqual(0);
     expect(backfillIndex).toBeGreaterThan(createChannelsIndex);
     expect(backfillIndex).toBeLessThan(operations.length - 1);
+    expect(operations).toContainEqual({
+      type: "custom",
+      sql: "create unique index channels_name_key on channels(name)",
+    });
   });
 });

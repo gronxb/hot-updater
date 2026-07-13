@@ -9,7 +9,9 @@ type TestContext = {
 const db: D1Like = {
   prepare: () => ({
     bind: () => ({
-      all: async () => ({ results: [{ id: "production" }] }),
+      all: async () => ({
+        results: [{ id: "channel-production", name: "production" }],
+      }),
     }),
   }),
 };
@@ -19,10 +21,13 @@ it("resolves the D1 binding from each request context", async () => {
 
   await expect(
     adapter.findOne(
-      { model: "channels", where: [{ field: "id", value: "production" }] },
+      {
+        model: "channels",
+        where: [{ field: "id", value: "channel-production" }],
+      },
       { env: { DB: db } },
     ),
-  ).resolves.toEqual({ id: "production" });
+  ).resolves.toEqual({ id: "channel-production", name: "production" });
 });
 
 it("rejects calls without a request D1 binding", async () => {

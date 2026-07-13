@@ -70,13 +70,13 @@ const findMany = async (
 
 const assertChannelExists = async (
   client: object,
-  channel: string,
+  channelId: string,
 ): Promise<void> => {
   const row = await getPrismaDelegate(client, "channels").findFirst({
-    where: { id: channel },
+    where: { id: channelId },
   });
   if (row === null) {
-    throw new PrismaAdapterError(`channel "${channel}" does not exist`);
+    throw new PrismaAdapterError(`channel "${channelId}" does not exist`);
   }
 };
 
@@ -99,7 +99,7 @@ const createCrudImplementation = (
 ): TransactionDatabasePluginImplementation => ({
   create: async (input) => {
     if (input.model === "bundles") {
-      await assertChannelExists(client, input.data.channel);
+      await assertChannelExists(client, input.data.channel_id);
     }
     if (input.model === "bundle_patches") {
       await assertPatchReferences(
@@ -125,8 +125,8 @@ const createCrudImplementation = (
     if (typeof id !== "string") {
       throw new PrismaAdapterError("bundle update requires a string id");
     }
-    if (input.update.channel !== undefined) {
-      await assertChannelExists(client, input.update.channel);
+    if (input.update.channel_id !== undefined) {
+      await assertChannelExists(client, input.update.channel_id);
     }
     const delegate = getPrismaDelegate(client, "bundles");
     const existing = await delegate.findFirst({ where: { id } });

@@ -50,13 +50,20 @@ export const createFirebaseDatabaseState = (
     switch (input.model) {
       case "channels":
         requireUnique(snapshot.channels, input.data.id, input.model);
+        if (
+          [...snapshot.channels.values()].some(
+            ({ name }) => name === input.data.name,
+          )
+        ) {
+          throw new FirebaseDatabaseConstraintError("channels.name.unique");
+        }
         snapshot.channels.set(input.data.id, input.data);
         return input.data;
       case "bundles":
         requireUnique(snapshot.bundles, input.data.id, input.model);
-        if (!snapshot.channels.has(input.data.channel)) {
+        if (!snapshot.channels.has(input.data.channel_id)) {
           throw new FirebaseDatabaseConstraintError(
-            "bundles.channel.foreign-key",
+            "bundles.channel_id.foreign-key",
           );
         }
         snapshot.bundles.set(input.data.id, input.data);
@@ -83,8 +90,10 @@ export const createFirebaseDatabaseState = (
     );
     if (!current) return null;
     const updated = { ...current, ...input.update };
-    if (!snapshot.channels.has(updated.channel)) {
-      throw new FirebaseDatabaseConstraintError("bundles.channel.foreign-key");
+    if (!snapshot.channels.has(updated.channel_id)) {
+      throw new FirebaseDatabaseConstraintError(
+        "bundles.channel_id.foreign-key",
+      );
     }
     snapshot.bundles.set(current.id, updated);
     return updated;

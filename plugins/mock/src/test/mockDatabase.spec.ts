@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/core";
 import {
   createDatabaseClient,
+  type BundleRow,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,7 +74,7 @@ describe("mock database provider", () => {
       adapter.transaction?.(async (transaction) => {
         await transaction.create({
           model: "channels",
-          data: { id: "rollback" },
+          data: { id: "channel-rollback", name: "rollback" },
         });
         throw new Error("rollback fixture");
       }),
@@ -82,9 +83,55 @@ describe("mock database provider", () => {
     await expect(
       adapter.findOne({
         model: "channels",
-        where: [{ field: "id", value: "rollback" }],
+        where: [{ field: "id", value: "channel-rollback" }],
       }),
     ).resolves.toBeNull();
+  });
+
+  it("rejects duplicate channel names", async () => {
+    const adapter = createAdapter();
+    await adapter.create({
+      model: "channels",
+      data: { id: "channel-production", name: "production" },
+    });
+
+    await expect(
+      adapter.create({
+        model: "channels",
+        data: { id: "channel-production-copy", name: "production" },
+      }),
+    ).rejects.toMatchObject({
+      constraint: "channels.name.unique",
+    });
+  });
+
+  it("rejects bundles whose channel id does not exist", async () => {
+    const adapter = createAdapter();
+    const bundle = {
+      id: "00000000-0000-0000-0000-000000000001",
+      platform: "ios",
+      should_force_update: false,
+      enabled: true,
+      file_hash: "hash",
+      git_commit_hash: null,
+      message: null,
+      channel_id: "missing-channel",
+      storage_uri: "storage://bundle.zip",
+      target_app_version: "1.0.0",
+      fingerprint_hash: null,
+      metadata: {},
+      rollout_cohort_count: 1000,
+      target_cohorts: null,
+      manifest_storage_uri: null,
+      manifest_file_hash: null,
+      asset_base_storage_uri: null,
+    } satisfies BundleRow;
+
+    await expect(
+      adapter.create({ model: "bundles", data: bundle }),
+    ).rejects.toMatchObject({
+      constraint: "bundles.channel_id.foreign-key",
+    });
   });
 
   it("runs the update hook once after an aggregate mutation", async () => {

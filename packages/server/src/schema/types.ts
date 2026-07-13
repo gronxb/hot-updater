@@ -27,6 +27,7 @@ export interface HotUpdaterIndexSchema {
   readonly name: string;
   readonly columns: readonly string[];
   readonly providers?: readonly ORMProvider[];
+  readonly unique?: true;
 }
 
 export interface HotUpdaterCheckSchema {

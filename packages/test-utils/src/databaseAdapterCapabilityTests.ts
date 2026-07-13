@@ -78,7 +78,7 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
           adapter.findOne(
             {
               model: "channels",
-              where: [{ field: "id", value: "rollback" }],
+              where: [{ field: "id", value: "channel-rollback" }],
             },
             state.context,
           ),
@@ -111,7 +111,7 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
         const update = await adapter.getUpdateInfo(args, state.context);
         const genericUpdate = await resolveUpdateInfoFromBundles({
           args,
-          bundles: [rowToBundle(bundle)],
+          bundles: [rowToBundle(bundle, "production")],
         });
 
         expect(update).toEqual(genericUpdate);

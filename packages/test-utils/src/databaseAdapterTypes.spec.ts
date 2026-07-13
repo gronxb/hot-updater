@@ -40,10 +40,10 @@ describe("database adapter operation matrix", () => {
 
   it("narrows selected result fields", () => {
     expectTypeOf<
-      SelectedDatabaseRow<"channels", readonly ["id"]>
+      SelectedDatabaseRow<"channels", readonly ["id", "name"]>
     >().toEqualTypeOf<ChannelRow>();
     expectTypeOf<
-      SelectedDatabaseRow<"bundles", readonly ["id", "channel"]>
-    >().toEqualTypeOf<Pick<BundleRow, "id" | "channel">>();
+      SelectedDatabaseRow<"bundles", readonly ["id", "channel_id"]>
+    >().toEqualTypeOf<Pick<BundleRow, "id" | "channel_id">>();
   });
 });

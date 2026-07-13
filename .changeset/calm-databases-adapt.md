@@ -20,5 +20,9 @@ direct adapter object, aggregate bundle behavior is provided by the shared
 database client, callback transactions and optimized update checks are
 optional capabilities, and the v1 staged mutation API has been removed.
 
+Normalize channel storage as `channels { id, name }` with unique names and
+`bundles.channel_id -> channels.id`, while preserving channel names in the
+public bundle and standalone HTTP APIs.
+
 Publish `@hot-updater/test-utils` with reusable low-adapter and aggregate-client
 conformance suites for custom database adapter authors.

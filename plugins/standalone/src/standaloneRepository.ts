@@ -12,8 +12,8 @@ import {
   bundleToPatchRows,
   bundleToRow,
   createDatabasePlugin,
-  rowToBundle,
   createUUIDv7,
+  rowToBundle,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -168,7 +168,9 @@ const createImplementation = (
       } else if (isRecord(body) && typeof body.error === "string") {
         message = body.error;
       }
-    } catch {}
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
     throw new StandaloneDatabaseError(
       "request-failed",
       message,
@@ -289,19 +291,19 @@ const createImplementation = (
     model: DatabaseModel,
   ): Promise<DatabaseImplementationResult[]> {
     if (model === "channels") {
-      return (await loadChannels()).map((id) => ({ id }));
+      return (await loadChannels()).map((name) => ({ id: name, name }));
     }
     const bundles = await loadBundles();
     return model === "bundles"
-      ? bundles.map(bundleToRow)
+      ? bundles.map((bundle) => bundleToRow(bundle, bundle.channel))
       : bundles.flatMap(bundleToPatchRows);
   }
 
-  const persistChannel = async (channel: string): Promise<void> => {
-    if ((await loadChannels()).includes(channel)) {
+  const persistChannel = async (name: string): Promise<ChannelRow> => {
+    if ((await loadChannels()).includes(name)) {
       throw new StandaloneDatabaseError(
         "request-failed",
-        `Channel ${channel} already exists.`,
+        `Channel ${name} already exists.`,
         409,
       );
     }
@@ -311,34 +313,34 @@ const createImplementation = (
       platform: "ios",
       shouldForceUpdate: false,
       enabled: false,
-      fileHash: `channel:${channel}`,
+      fileHash: `channel:${name}`,
       gitCommitHash: null,
       message: null,
-      channel,
-      storageUri: `channel://${encodeURIComponent(channel)}`,
+      channel: name,
+      storageUri: `channel://${encodeURIComponent(name)}`,
       targetAppVersion: "*",
       fingerprintHash: null,
       metadata: {},
     };
     await createBundle(sentinel);
     await deleteBundle(sentinelId);
+    return { id: name, name };
   };
 
   return {
     async create(input) {
       switch (input.model) {
         case "channels":
-          await persistChannel(input.data.id);
-          return input.data;
+          return persistChannel(input.data.name);
         case "bundles":
-          if (!(await loadChannels()).includes(input.data.channel)) {
+          if (!(await loadChannels()).includes(input.data.channel_id)) {
             throw new StandaloneDatabaseError(
               "request-failed",
-              `Channel ${input.data.channel} was not found.`,
+              `Channel ${input.data.channel_id} was not found.`,
               409,
             );
           }
-          await createBundle(rowToBundle(input.data));
+          await createBundle(rowToBundle(input.data, input.data.channel_id));
           return input.data;
         case "bundle_patches": {
           const owner = await loadBundle(input.data.bundle_id);
@@ -368,7 +370,10 @@ const createImplementation = (
             );
           }
           await updateBundle(
-            rowToBundle(bundleToRow(owner), [...patches, input.data]),
+            rowToBundle(bundleToRow(owner, owner.channel), owner.channel, [
+              ...patches,
+              input.data,
+            ]),
           );
           return input.data;
         }
@@ -378,8 +383,22 @@ const createImplementation = (
       const bundleId = String(input.where[0]?.value ?? "");
       const current = await loadBundle(bundleId);
       if (!current) return null;
-      const nextRow = { ...bundleToRow(current), ...input.update };
-      const next = rowToBundle(nextRow, bundleToPatchRows(current));
+      const nextRow = {
+        ...bundleToRow(current, current.channel),
+        ...input.update,
+      };
+      if (!(await loadChannels()).includes(nextRow.channel_id)) {
+        throw new StandaloneDatabaseError(
+          "request-failed",
+          `Channel ${nextRow.channel_id} was not found.`,
+          409,
+        );
+      }
+      const next = rowToBundle(
+        nextRow,
+        nextRow.channel_id,
+        bundleToPatchRows(current),
+      );
       await updateBundle(next);
       return nextRow;
     },
@@ -398,7 +417,13 @@ const createImplementation = (
           (row) => !matchesStandaloneWhere(row, input.where),
         );
         if (remaining.length !== patches.length) {
-          await updateBundle(rowToBundle(bundleToRow(bundle), remaining));
+          await updateBundle(
+            rowToBundle(
+              bundleToRow(bundle, bundle.channel),
+              bundle.channel,
+              remaining,
+            ),
+          );
         }
       }
     },

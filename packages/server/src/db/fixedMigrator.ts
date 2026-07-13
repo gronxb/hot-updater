@@ -251,14 +251,23 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
             { $group: { _id: "$channel" } },
           ])
           .toArray();
-        const channels = db.collection<{ readonly id: string }>("channels");
+        const channels = db.collection<{
+          readonly id: string;
+          readonly name: string;
+        }>("channels");
         for (const row of channelRows) {
           await channels.updateOne(
             { id: row._id },
-            { $setOnInsert: { id: row._id } },
+            { $setOnInsert: { id: row._id, name: row._id } },
             { upsert: true },
           );
         }
+        await db
+          .collection("bundles")
+          .updateMany({ channel: { $exists: true } }, [
+            { $set: { channel_id: "$channel" } },
+            { $unset: "channel" },
+          ]);
         await db.collection("bundles").createIndex(
           { id: 1 },
           {
@@ -274,7 +283,10 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
               .collection(table.ormName)
               .createIndex(
                 Object.fromEntries(index.columns.map((column) => [column, 1])),
-                { name: index.name },
+                {
+                  name: index.name,
+                  ...(index.unique ? { unique: true } : {}),
+                },
               );
           }
         }

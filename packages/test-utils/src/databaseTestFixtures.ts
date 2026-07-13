@@ -8,11 +8,14 @@ import type {
 const fixtureId = (suffix: string): string =>
   `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`;
 
-export const createChannelRowFixture = (id: string): ChannelRow => ({ id });
+export const createChannelRowFixture = (
+  name: string,
+  id = `channel-${name}`,
+): ChannelRow => ({ id, name });
 
 export const createBundleRowFixture = (
   suffix: string,
-  channel = "production",
+  channelId = "channel-production",
 ): BundleRow => ({
   id: fixtureId(suffix),
   platform: "ios",
@@ -21,7 +24,7 @@ export const createBundleRowFixture = (
   file_hash: `hash-${suffix}`,
   git_commit_hash: null,
   message: `bundle-${suffix}`,
-  channel,
+  channel_id: channelId,
   storage_uri: `storage://bundles/${suffix}.zip`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

@@ -17,8 +17,8 @@ const seedBundlePair = async <TContext>(
   state: RelationTestState<TContext>,
 ): Promise<readonly [string, string]> => {
   const channel = createChannelRowFixture("production");
-  const base = createBundleRowFixture("61");
-  const target = createBundleRowFixture("62");
+  const base = createBundleRowFixture("61", channel.id);
+  const target = createBundleRowFixture("62", channel.id);
   await state
     .getAdapter()
     .create({ model: "channels", data: channel }, state.context);
@@ -49,7 +49,7 @@ export const registerDatabaseAdapterRelationTests = <TContext>(
         state.getAdapter().findOne(
           {
             model: "channels",
-            where: [{ field: "id", value: "production" }],
+            where: [{ field: "name", value: "production" }],
           },
           state.context,
         ),
@@ -58,14 +58,14 @@ export const registerDatabaseAdapterRelationTests = <TContext>(
         state.getAdapter().findMany(
           {
             model: "channels",
-            sortBy: { field: "id", direction: "asc" },
+            sortBy: { field: "name", direction: "asc" },
           },
           state.context,
         ),
       ).resolves.toEqual([production, staging]);
     });
 
-    it("rejects duplicate channel ids", async () => {
+    it("rejects duplicate channel ids and names", async () => {
       const channel = createChannelRowFixture("production");
       await state
         .getAdapter()
@@ -75,6 +75,16 @@ export const registerDatabaseAdapterRelationTests = <TContext>(
         state
           .getAdapter()
           .create({ model: "channels", data: channel }, state.context),
+      ).rejects.toThrow();
+
+      await expect(
+        state.getAdapter().create(
+          {
+            model: "channels",
+            data: createChannelRowFixture("production", "another-id"),
+          },
+          state.context,
+        ),
       ).rejects.toThrow();
     });
   });

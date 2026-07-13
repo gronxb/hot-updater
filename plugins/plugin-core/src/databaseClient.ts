@@ -2,18 +2,14 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 
-import {
-  bundleToPatchRows,
-  bundleToRow,
-  rowToBundle,
-  rowsToBundles,
-} from "./databaseRows";
+import { bundleToPatchRows, bundleToRow, rowsToBundles } from "./databaseRows";
 import { paginateBundles } from "./paginateBundles";
 import { bundleMatchesQueryWhere } from "./queryBundles";
 import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
   BundlePatchRow,
   BundleRow,
+  ChannelRow,
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
   DatabasePlugin,
@@ -21,6 +17,7 @@ import type {
   PaginatedResult,
   TransactionDatabasePlugin,
 } from "./types";
+import { createUUIDv7 } from "./uuidv7";
 
 const PAGE_SIZE = 100;
 
@@ -84,11 +81,17 @@ const transactionAdapter = (
 
 const toBundleWhere = (
   where: DatabaseBundleQueryWhere | undefined,
+  channelId?: string,
 ): readonly DatabaseWhere<"bundles">[] => {
   if (!where) return [];
   const filters: DatabaseWhere<"bundles">[] = [];
-  if (where.channel !== undefined)
-    filters.push({ field: "channel", value: where.channel });
+  if (where.channel !== undefined) {
+    if (channelId === undefined) {
+      filters.push({ field: "id", operator: "in", value: [] });
+    } else {
+      filters.push({ field: "channel_id", value: channelId });
+    }
+  }
   if (where.platform !== undefined)
     filters.push({ field: "platform", value: where.platform });
   if (where.enabled !== undefined)
@@ -165,6 +168,17 @@ const loadPatchRows = async (
   }
 };
 
+const loadChannelRows = async (
+  database: TransactionDatabasePlugin,
+  channelIds: readonly string[],
+): Promise<ChannelRow[]> => {
+  if (channelIds.length === 0) return [];
+  return database.findMany({
+    model: "channels",
+    where: [{ field: "id", operator: "in", value: channelIds }],
+  });
+};
+
 const hydrateRows = async (
   database: TransactionDatabasePlugin,
   ownerRows: readonly BundleRow[],
@@ -187,26 +201,36 @@ const hydrateRows = async (
       : await loadBundleRows(database, [
           { field: "id", operator: "in", value: referencedIds },
         ]);
-  return rowsToBundles(ownerRows, patchRows, referencedRows);
+  const channelRows = await loadChannelRows(database, [
+    ...new Set(ownerRows.map(({ channel_id }) => channel_id)),
+  ]);
+  return rowsToBundles(ownerRows, patchRows, referencedRows, channelRows);
 };
+
+const findChannelByName = (
+  database: TransactionDatabasePlugin,
+  name: string,
+): Promise<ChannelRow | null> =>
+  database.findOne({
+    model: "channels",
+    where: [{ field: "name", value: name }],
+  });
 
 const ensureChannel = async (
   database: TransactionDatabasePlugin,
-  channelId: string,
-): Promise<void> => {
-  const existing = await database.findOne({
-    model: "channels",
-    where: [{ field: "id", value: channelId }],
-  });
-  if (existing) return;
+  name: string,
+): Promise<ChannelRow> => {
+  const existing = await findChannelByName(database, name);
+  if (existing) return existing;
   try {
-    await database.create({ model: "channels", data: { id: channelId } });
-  } catch (error) {
-    const converged = await database.findOne({
+    return await database.create({
       model: "channels",
-      where: [{ field: "id", value: channelId }],
+      data: { id: createUUIDv7(), name },
     });
-    if (!converged) throw error;
+  } catch (error) {
+    const converged = await findChannelByName(database, name);
+    if (converged) return converged;
+    throw error;
   }
 };
 
@@ -214,13 +238,17 @@ const responsePage = async (
   database: TransactionDatabasePlugin,
   options: DatabaseBundleQueryOptions,
 ): Promise<PaginatedResult> => {
-  const where = toBundleWhere(options.where);
+  const channel =
+    options.where?.channel === undefined
+      ? null
+      : await findChannelByName(database, options.where.channel);
+  const where = toBundleWhere(options.where, channel?.id);
   const [rows, total] = await Promise.all([
     loadBundleRows(database, where),
     database.count({ model: "bundles", where }),
   ]);
   const rawPage = paginateBundles({
-    bundles: rows.map((row) => rowToBundle(row)),
+    bundles: await hydrateRows(database, rows),
     limit: options.limit,
     ...(options.page
       ? { offset: Math.max(0, options.page - 1) * options.limit }
@@ -296,9 +324,9 @@ export const createDatabaseClient = <TContext = unknown>(
           model: "channels",
           limit: PAGE_SIZE,
           offset,
-          sortBy: { field: "id", direction: "asc" },
+          sortBy: { field: "name", direction: "asc" },
         });
-        channels.push(...rows.map(({ id }) => id));
+        channels.push(...rows.map(({ name }) => name));
         if (rows.length < PAGE_SIZE) return channels;
       }
     },
@@ -320,7 +348,11 @@ export const createDatabaseClient = <TContext = unknown>(
           : { targetAppVersionNotNull: true }),
       };
       const database = bindContext(adapter, context);
-      const rows = await loadBundleRows(database, toBundleWhere(where));
+      const channelRow = await findChannelByName(database, channel);
+      const rows = await loadBundleRows(
+        database,
+        toBundleWhere(where, channelRow?.id),
+      );
       const bundles = (await hydrateRows(database, rows)).filter((bundle) =>
         bundleMatchesQueryWhere(bundle, where),
       );
@@ -328,8 +360,11 @@ export const createDatabaseClient = <TContext = unknown>(
     },
     async insertBundle(bundle, context) {
       await mutate(async (database) => {
-        await ensureChannel(database, bundle.channel);
-        await database.create({ model: "bundles", data: bundleToRow(bundle) });
+        const channel = await ensureChannel(database, bundle.channel);
+        await database.create({
+          model: "bundles",
+          data: bundleToRow(bundle, channel.id),
+        });
         for (const patch of bundleToPatchRows(bundle)) {
           await database.create({ model: "bundle_patches", data: patch });
         }
@@ -345,10 +380,11 @@ export const createDatabaseClient = <TContext = unknown>(
         const [current] = await hydrateRows(database, [currentRow]);
         if (!current) throw new DatabaseBundleNotFoundError(bundleId);
         const next: Bundle = { ...current, ...update, id: bundleId };
-        if (next.channel !== current.channel) {
-          await ensureChannel(database, next.channel);
-        }
-        const { id: ignoredId, ...rowUpdate } = bundleToRow(next);
+        const channelId =
+          next.channel === current.channel
+            ? currentRow.channel_id
+            : (await ensureChannel(database, next.channel)).id;
+        const { id: ignoredId, ...rowUpdate } = bundleToRow(next, channelId);
         void ignoredId;
         const updated = await database.update({
           model: "bundles",

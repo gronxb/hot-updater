@@ -35,10 +35,11 @@ BEGIN
             b.rollout_cohort_count,
             b.target_cohorts
         FROM bundles b
+        JOIN channels c ON c.id = b.channel_id
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id >= min_bundle_id
-          AND b.channel = target_channel
+          AND c.name = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
     ),
     current_candidate AS (

@@ -81,10 +81,10 @@ export const createDatabaseAdapterHarness = () => {
     setBundles: (bundles: readonly Bundle[]): void => {
       storedSnapshot = {
         version: 2,
-        bundles: bundles.map(bundleToRow),
+        bundles: bundles.map((bundle) => bundleToRow(bundle, bundle.channel)),
         bundle_patches: bundles.flatMap(bundleToPatchRows),
         channels: [...new Set(bundles.map(({ channel }) => channel))].map(
-          (id) => ({ id }),
+          (name) => ({ id: name, name }),
         ),
       };
     },

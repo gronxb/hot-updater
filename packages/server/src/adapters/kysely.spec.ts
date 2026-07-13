@@ -76,7 +76,7 @@ describe("kyselyAdapter SQLite JSON storage", () => {
     // When
     await adapter.create({
       model: "channels",
-      data: { id: "production" },
+      data: { id: "channel-production", name: "production" },
     });
     await adapter.create({ model: "bundles", data: bundle });
     const stored = await sqliteClient.query<{

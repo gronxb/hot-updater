@@ -4,7 +4,6 @@ import type {
   ChannelRow,
 } from "@hot-updater/plugin-core";
 import {
-  FieldValue,
   type CollectionReference,
   type DocumentData,
   type Firestore,
@@ -17,6 +16,8 @@ import {
   parseFirebaseBundleRow,
   parseFirebaseChannelRow,
   parseFirebaseLegacyPatchRows,
+  parseFirebaseMigratingBundleRow,
+  parseFirebaseMigratingChannelRow,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
 import type { FirebaseDatabaseSnapshot } from "./firebaseDatabaseState";
@@ -167,14 +168,6 @@ export const persistFirebaseDatabaseSnapshot = ({
   });
 };
 
-const LEGACY_PATCH_FIELDS = [
-  "patches",
-  "patch_base_bundle_id",
-  "patch_base_file_hash",
-  "patch_file_hash",
-  "patch_storage_uri",
-] as const;
-
 export const migrateFirebaseDatabase = async (
   db: Firestore,
   collections: FirebaseDatabaseCollections,
@@ -187,7 +180,9 @@ export const migrateFirebaseDatabase = async (
     ]);
     const bundleIds = new Set(bundles.docs.map(({ id }) => id));
     const patchIds = new Set(patches.docs.map(({ id }) => id));
-    const channelIds = new Set(channels.docs.map(({ id }) => id));
+    const channelIds = new Set<string>();
+    const channelNames = new Set<string>();
+    const channelIdsByName = new Map<string, string>();
 
     for (const document of patches.docs) {
       const patch = parseFirebasePatchRow(
@@ -207,19 +202,47 @@ export const migrateFirebaseDatabase = async (
     }
 
     for (const document of channels.docs) {
-      if (!hasFirebaseProperty(document.data(), "id")) {
-        transaction.set(document.ref, { id: document.id });
+      const channel = parseFirebaseMigratingChannelRow(
+        document.data(),
+        document.id,
+      );
+      if (channelIds.has(channel.id)) {
+        throw new FirebaseDatabaseConstraintError("channels.id.unique");
       }
+      if (channelNames.has(channel.name)) {
+        throw new FirebaseDatabaseConstraintError("channels.name.unique");
+      }
+      channelIds.add(channel.id);
+      channelNames.add(channel.name);
+      channelIdsByName.set(channel.name, channel.id);
+      transaction.set(document.ref, channel);
     }
 
     for (const document of bundles.docs) {
       const value: unknown = document.data();
-      const bundle = parseFirebaseBundleRow(value, `bundles/${document.id}`);
-      if (!channelIds.has(bundle.channel)) {
-        transaction.set(collections.channels.doc(bundle.channel), {
-          id: bundle.channel,
+      const migratingBundle = parseFirebaseMigratingBundleRow(
+        value,
+        `bundles/${document.id}`,
+      );
+      const isLegacyBundle = !hasFirebaseProperty(value, "channel_id");
+      const channelId = isLegacyBundle
+        ? (channelIdsByName.get(migratingBundle.channel_id) ??
+          migratingBundle.channel_id)
+        : migratingBundle.channel_id;
+      const bundle = { ...migratingBundle, channel_id: channelId };
+      if (!channelIds.has(bundle.channel_id)) {
+        if (!isLegacyBundle) {
+          throw new FirebaseDatabaseConstraintError(
+            "bundles.channel_id.foreign-key",
+          );
+        }
+        transaction.set(collections.channels.doc(bundle.channel_id), {
+          id: bundle.channel_id,
+          name: bundle.channel_id,
         });
-        channelIds.add(bundle.channel);
+        channelIds.add(bundle.channel_id);
+        channelNames.add(bundle.channel_id);
+        channelIdsByName.set(bundle.channel_id, bundle.channel_id);
       }
       const legacyPatches = parseFirebaseLegacyPatchRows(
         value,
@@ -237,15 +260,7 @@ export const migrateFirebaseDatabase = async (
           patchIds.add(patch.id);
         }
       }
-      if (LEGACY_PATCH_FIELDS.some((key) => hasFirebaseProperty(value, key))) {
-        transaction.update(document.ref, {
-          patches: FieldValue.delete(),
-          patch_base_bundle_id: FieldValue.delete(),
-          patch_base_file_hash: FieldValue.delete(),
-          patch_file_hash: FieldValue.delete(),
-          patch_storage_uri: FieldValue.delete(),
-        });
-      }
+      transaction.set(document.ref, bundle);
     }
   });
 };

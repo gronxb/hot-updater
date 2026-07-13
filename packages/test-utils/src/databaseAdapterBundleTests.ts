@@ -35,11 +35,14 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
       const created = await state
         .getAdapter()
         .create(
-          { model: "bundles", data: bundle, select: ["id", "channel"] },
+          { model: "bundles", data: bundle, select: ["id", "channel_id"] },
           state.context,
         );
 
-      expect(created).toEqual({ id: bundle.id, channel: bundle.channel });
+      expect(created).toEqual({
+        id: bundle.id,
+        channel_id: bundle.channel_id,
+      });
       await expect(
         state.getAdapter().findOne(
           {
@@ -97,7 +100,7 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
       await seedChannel(state);
       await seedChannel(state, "staging");
       const first = { ...createBundleRowFixture("11"), enabled: false };
-      const second = createBundleRowFixture("12", "staging");
+      const second = createBundleRowFixture("12", "channel-staging");
       const third = createBundleRowFixture("13");
       for (const bundle of [first, second, third]) {
         await state
@@ -111,8 +114,8 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
           where: [
             { field: "enabled", value: true },
             {
-              field: "channel",
-              value: "staging",
+              field: "channel_id",
+              value: "channel-staging",
               operator: "ne",
               connector: "AND",
             },
@@ -182,7 +185,7 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
       await state.getAdapter().delete(
         {
           model: "bundles",
-          where: [{ field: "channel", value: "production" }],
+          where: [{ field: "channel_id", value: "channel-production" }],
         },
         state.context,
       );

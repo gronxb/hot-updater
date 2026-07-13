@@ -1,4 +1,3 @@
-import type { BundleRow } from "@hot-updater/plugin-core";
 import {
   createDatabaseClient,
   type DatabasePlugin,
@@ -58,7 +57,7 @@ setupGetUpdateInfoTestSuite({
   },
 });
 
-const legacyRow = (id: string, channel = "production"): BundleRow => ({
+const legacyRow = (id: string, channel = "production") => ({
   id,
   platform: "ios",
   should_force_update: false,
@@ -113,12 +112,57 @@ describe("firebase v1 data migration", () => {
     ]);
     await expect(
       channelsCollection.doc("production").get(),
-    ).resolves.toMatchObject({ exists: true });
+    ).resolves.toMatchObject({
+      exists: true,
+      data: expect.any(Function),
+    });
+    const migratedChannel = await channelsCollection.doc("production").get();
+    expect(migratedChannel.data()).toEqual({
+      id: "production",
+      name: "production",
+    });
     await expect(
       bundlePatchesCollection.doc(`${target.id}:${base.id}`).get(),
     ).resolves.toMatchObject({ exists: true });
     const migratedTarget = await bundlesCollection.doc(target.id).get();
+    expect(migratedTarget.data()).toMatchObject({ channel_id: "production" });
+    expect(migratedTarget.data()).not.toHaveProperty("channel");
     expect(migratedTarget.data()).not.toHaveProperty("patches");
+  });
+
+  it("normalizes existing channel documents with names", async () => {
+    await channelsCollection.doc("release").set({ id: "release" });
+    const bundle = legacyRow("legacy-release", "release");
+    await bundlesCollection.doc(bundle.id).set(bundle);
+
+    const adapter = createAdapter();
+    await adapter.findMany({ model: "bundles" });
+
+    const channel = await channelsCollection.doc("release").get();
+    expect(channel.data()).toEqual({ id: "release", name: "release" });
+    const migratedBundle = await bundlesCollection.doc(bundle.id).get();
+    expect(migratedBundle.data()).toMatchObject({ channel_id: "release" });
+    expect(migratedBundle.data()).not.toHaveProperty("channel");
+  });
+
+  it("resolves legacy bundle channel names to existing channel ids", async () => {
+    await channelsCollection.doc("channel-release").set({
+      id: "channel-release",
+      name: "release",
+    });
+    const bundle = legacyRow("legacy-named-release", "release");
+    await bundlesCollection.doc(bundle.id).set(bundle);
+
+    const adapter = createAdapter();
+    await adapter.findMany({ model: "bundles" });
+
+    const migratedBundle = await bundlesCollection.doc(bundle.id).get();
+    expect(migratedBundle.data()).toMatchObject({
+      channel_id: "channel-release",
+    });
+    await expect(
+      channelsCollection.doc("release").get(),
+    ).resolves.toMatchObject({ exists: false });
   });
 
   it("rejects an existing patch whose owner or base bundle is missing", async () => {

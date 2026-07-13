@@ -57,12 +57,14 @@ export const parseLegacyBundle = (
   value: unknown,
   source: string,
 ): {
-  readonly bundle: BundleRow;
+  readonly bundle: Omit<BundleRow, "channel_id">;
+  readonly channelName: string;
   readonly patches: readonly BundlePatchRow[];
 } => {
   const input = blobRecord(value, source);
   const id = blobString(blobProperty(input, "id"), source);
-  const bundle: BundleRow = {
+  const channelName = blobString(blobProperty(input, "channel"), source);
+  const bundle: Omit<BundleRow, "channel_id"> = {
     id,
     platform: blobPlatform(blobProperty(input, "platform"), source),
     should_force_update: blobBoolean(
@@ -76,7 +78,6 @@ export const parseLegacyBundle = (
       source,
     ),
     message: blobNullableString(blobProperty(input, "message"), source),
-    channel: blobString(blobProperty(input, "channel"), source),
     storage_uri: blobString(blobProperty(input, "storageUri"), source),
     target_app_version: blobNullableString(
       blobProperty(input, "targetAppVersion"),
@@ -114,5 +115,5 @@ export const parseLegacyBundle = (
         parseLegacyPatch(blobRecord(patch, source), id, index, source),
       )
     : legacyScalarPatch(input, id, source);
-  return { bundle, patches };
+  return { bundle, channelName, patches };
 };

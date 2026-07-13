@@ -63,6 +63,15 @@ const requireUnique = (
   }
 };
 
+const requireUniqueChannelName = (
+  channels: ReadonlyMap<string, ChannelRow>,
+  name: string,
+): void => {
+  if ([...channels.values()].some((channel) => channel.name === name)) {
+    throw new MockDatabaseConstraintError("channels.name.unique");
+  }
+};
+
 export const createMockDatabaseState = (
   data: MockDatabaseData,
 ): TransactionDatabasePluginImplementation => ({
@@ -70,12 +79,15 @@ export const createMockDatabaseState = (
     switch (input.model) {
       case "channels":
         requireUnique(data.channels, input.data.id, input.model);
+        requireUniqueChannelName(data.channels, input.data.name);
         data.channels.set(input.data.id, input.data);
         return input.data;
       case "bundles":
         requireUnique(data.bundles, input.data.id, input.model);
-        if (!data.channels.has(input.data.channel)) {
-          throw new MockDatabaseConstraintError("bundles.channel.foreign-key");
+        if (!data.channels.has(input.data.channel_id)) {
+          throw new MockDatabaseConstraintError(
+            "bundles.channel_id.foreign-key",
+          );
         }
         data.bundles.set(input.data.id, input.data);
         return input.data;
@@ -101,8 +113,8 @@ export const createMockDatabaseState = (
     );
     if (!current) return null;
     const updated = { ...current, ...input.update };
-    if (!data.channels.has(updated.channel)) {
-      throw new MockDatabaseConstraintError("bundles.channel.foreign-key");
+    if (!data.channels.has(updated.channel_id)) {
+      throw new MockDatabaseConstraintError("bundles.channel_id.foreign-key");
     }
     data.bundles.set(current.id, updated);
     return updated;
