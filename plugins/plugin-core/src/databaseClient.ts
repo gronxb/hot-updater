@@ -248,7 +248,7 @@ const responsePage = async (
     database.count({ model: "bundles", where }),
   ]);
   const rawPage = paginateBundles({
-    bundles: await hydrateRows(database, rows),
+    bundles: rows,
     limit: options.limit,
     ...(options.page
       ? { offset: Math.max(0, options.page - 1) * options.limit }
@@ -256,13 +256,8 @@ const responsePage = async (
     ...(options.cursor ? { cursor: options.cursor } : {}),
     ...(options.orderBy ? { orderBy: options.orderBy } : {}),
   });
-  const rowsById = new Map(rows.map((row) => [row.id, row]));
-  const pageRows = rawPage.data.flatMap(({ id }) => {
-    const row = rowsById.get(id);
-    return row ? [row] : [];
-  });
   return {
-    data: await hydrateRows(database, pageRows),
+    data: await hydrateRows(database, rawPage.data),
     pagination: { ...rawPage.pagination, total },
   };
 };

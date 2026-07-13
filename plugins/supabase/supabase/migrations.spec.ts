@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { PGlite } from "@electric-sql/pglite";
+import { afterEach, describe, expect, it } from "vitest";
 
 const rlsMigrationPath = path.resolve(
   "plugins/supabase/supabase/migrations/20260520014100_hot-updater_rls.sql",
@@ -12,12 +13,27 @@ const databaseV2MigrationPath = path.resolve(
 const migrationsDir = path.dirname(rlsMigrationPath);
 
 describe("Supabase RLS migration", () => {
-  it("runs after Supabase function redefinition migrations", async () => {
+  const databases: PGlite[] = [];
+
+  afterEach(async () => {
+    for (const database of databases.splice(0)) {
+      await database.close();
+    }
+  });
+
+  it("runs database v2 after RLS hardening and reapplies function security", async () => {
     const migrations = (await fs.readdir(migrationsDir))
       .filter((file) => file.endsWith(".sql"))
       .sort();
 
     expect(migrations.at(-1)).toBe(path.basename(databaseV2MigrationPath));
+
+    const sql = await fs.readFile(databaseV2MigrationPath, "utf8");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.get_channels");
+    expect(sql).toContain("SET search_path = public, pg_catalog");
+    expect(sql).not.toContain(
+      "DROP FUNCTION IF EXISTS get_update_info_by_app_version",
+    );
   });
 
   it("enables RLS on Hot Updater tables", async () => {
@@ -84,10 +100,124 @@ describe("Supabase RLS migration", () => {
       sql.indexOf("REFERENCES public.channels(id) ON DELETE RESTRICT"),
     );
     expect(sql).toContain("DROP COLUMN channel");
-    expect(sql).toContain("JOIN channels c ON c.id = b.channel_id");
+    expect(sql).toContain("JOIN public.channels c ON c.id = b.channel_id");
     expect(sql).toContain("c.name = target_channel");
+    expect(sql).toContain("SELECT c.name");
     expect(sql).toContain(
       "ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;",
     );
+  });
+
+  it("keeps hardened ACLs while replacing channel-aware functions", async () => {
+    const database = new PGlite();
+    databases.push(database);
+    await database.exec(`
+      create type public.platforms as enum ('ios', 'android');
+      create table public.bundles (
+        id uuid primary key,
+        platform public.platforms not null,
+        enabled boolean not null,
+        should_force_update boolean not null,
+        message text,
+        storage_uri text not null,
+        file_hash text not null,
+        rollout_cohort_count integer not null default 1000,
+        target_cohorts text[],
+        fingerprint_hash text,
+        target_app_version text,
+        channel text not null
+      );
+      insert into public.bundles (
+        id, platform, enabled, should_force_update, storage_uri, file_hash,
+        fingerprint_hash, channel
+      ) values (
+        '00000000-0000-0000-0000-000000000001', 'ios', true, false,
+        's3://bundle', 'hash', 'fingerprint', 'production'
+      );
+      create role hot_updater_reader;
+      create function public.get_channels()
+      returns table(channel text)
+      language sql
+      set search_path = public, pg_catalog
+      as 'select distinct b.channel from public.bundles b';
+      create function public.is_cohort_eligible(uuid, text, integer, text[])
+      returns boolean
+      language sql
+      immutable
+      as 'select true';
+      create function public.get_update_info_by_fingerprint_hash(
+        public.platforms, uuid, uuid, text, text, text
+      )
+      returns table (
+        id uuid, should_force_update boolean, message text, status text,
+        storage_uri text, file_hash text
+      )
+      language sql
+      set search_path = public, pg_catalog
+      as 'select null::uuid, false, null::text, null::text, null::text, null::text where false';
+      create function public.get_update_info_by_app_version(
+        public.platforms, text, uuid, uuid, text, text[], text
+      )
+      returns table (
+        id uuid, should_force_update boolean, message text, status text,
+        storage_uri text, file_hash text
+      )
+      language sql
+      set search_path = public, pg_catalog
+      as 'select null::uuid, false, null::text, null::text, null::text, null::text where false';
+      revoke all on function public.get_channels() from public;
+      revoke all on function public.get_update_info_by_fingerprint_hash(
+        public.platforms, uuid, uuid, text, text, text
+      ) from public;
+      revoke all on function public.get_update_info_by_app_version(
+        public.platforms, text, uuid, uuid, text, text[], text
+      ) from public;
+      grant execute on function public.get_channels() to hot_updater_reader;
+      grant execute on function public.get_update_info_by_fingerprint_hash(
+        public.platforms, uuid, uuid, text, text, text
+      ) to hot_updater_reader;
+      grant execute on function public.get_update_info_by_app_version(
+        public.platforms, text, uuid, uuid, text, text[], text
+      ) to hot_updater_reader;
+    `);
+
+    await database.exec(await fs.readFile(databaseV2MigrationPath, "utf8"));
+
+    const channels = await database.query<{ channel: string }>(
+      "select channel from public.get_channels()",
+    );
+    expect(channels.rows).toEqual([{ channel: "production" }]);
+
+    const functions = [
+      "public.get_channels()",
+      "public.get_update_info_by_fingerprint_hash(public.platforms,uuid,uuid,text,text,text)",
+      "public.get_update_info_by_app_version(public.platforms,text,uuid,uuid,text,text[],text)",
+    ];
+    for (const functionName of functions) {
+      const privileges = await database.query<{
+        reader: boolean;
+        everyone: boolean;
+      }>(`
+        select
+          has_function_privilege('hot_updater_reader', '${functionName}', 'execute') as reader,
+          has_function_privilege('public', '${functionName}', 'execute') as everyone
+      `);
+      expect(privileges.rows).toEqual([{ reader: true, everyone: false }]);
+    }
+
+    const configurations = await database.query<{ configuration: string[] }>(`
+      select coalesce(proconfig, '{}') as configuration
+      from pg_proc
+      where pronamespace = 'public'::regnamespace
+        and proname in (
+          'get_channels',
+          'get_update_info_by_fingerprint_hash',
+          'get_update_info_by_app_version'
+        )
+    `);
+    expect(configurations.rows).toHaveLength(3);
+    for (const { configuration } of configurations.rows) {
+      expect(configuration).toContain("search_path=public, pg_catalog");
+    }
   });
 });

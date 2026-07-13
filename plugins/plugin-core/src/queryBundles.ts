@@ -104,14 +104,14 @@ export function bundleMatchesQueryWhere(
   return true;
 }
 
-export function sortBundles(
-  bundles: Bundle[],
+export function sortBundles<TBundle extends { readonly id: string }>(
+  bundles: readonly TBundle[],
   orderBy: DatabaseBundleQueryOrder | undefined,
-): Bundle[] {
+): TBundle[] {
   const direction = orderBy?.direction ?? "desc";
 
   if (orderBy && orderBy.field !== "id") {
-    return bundles;
+    return [...bundles];
   }
 
   return bundles.slice().sort((a, b) => {

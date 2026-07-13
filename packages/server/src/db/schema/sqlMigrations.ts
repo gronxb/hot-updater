@@ -154,8 +154,7 @@ const createV036MigrationSql = (
     channelNameIndex,
     provider,
   );
-  const backfillChannels =
-    "insert into channels (id, name) select distinct channel, channel from bundles";
+  const backfillChannels = `${provider === "mysql" ? "insert ignore" : "insert"} into channels (id, name) select distinct channel, channel from bundles`;
   const channelForeignKey = bundles.foreignKeys?.find(
     (foreignKey) => foreignKey.name === "bundles_channel_id_fk",
   );

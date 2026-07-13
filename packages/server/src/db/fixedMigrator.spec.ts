@@ -1,7 +1,7 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type SqliteValue } from "node:sqlite";
 
 import { PGlite } from "@electric-sql/pglite";
-import { Kysely } from "kysely";
+import { Kysely, SqliteDialect } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -9,6 +9,11 @@ import { bundlesV021 } from "../schema/v0_21_0";
 import { bundlesV029 } from "../schema/v0_29_0";
 import { bundlePatchesV031, bundlesV031 } from "../schema/v0_31_0";
 import { createKyselyMigrator } from "./fixedMigrator";
+import {
+  executeMongoMigration,
+  MONGO_CHANNEL_ID_PIPELINE,
+  type MongoMigrationBackend,
+} from "./mongoMigrationExecution";
 import { createTableStatement } from "./schema/sql";
 import {
   createSchemaMigrationSql,
@@ -21,6 +26,34 @@ interface SettingsDatabase {
     readonly value: string;
   };
 }
+
+const createNodeSqliteKysely = (
+  database: DatabaseSync,
+): Kysely<SettingsDatabase> =>
+  new Kysely<SettingsDatabase>({
+    dialect: new SqliteDialect({
+      database: {
+        close: () => database.close(),
+        prepare: (sqlText) => {
+          const statement = database.prepare(sqlText);
+          return {
+            reader: statement.columns().length > 0,
+            all: (parameters) =>
+              statement.all(...(parameters as SqliteValue[])),
+            run: (parameters) => {
+              const result = statement.run(...(parameters as SqliteValue[]));
+              return {
+                changes: result.changes,
+                lastInsertRowid: result.lastInsertRowid,
+              };
+            },
+            iterate: (parameters) =>
+              statement.iterate(...(parameters as SqliteValue[])),
+          };
+        },
+      },
+    }),
+  });
 
 describe("createKyselyMigrator", () => {
   const databases: PGlite[] = [];
@@ -186,6 +219,133 @@ describe("createKyselyMigrator", () => {
     );
   });
 
+  it("rolls back an interrupted PostgreSQL migration before retrying", async () => {
+    const db = new PGlite();
+    databases.push(db);
+    const kysely = new Kysely<SettingsDatabase>({
+      dialect: new PGliteDialect(db),
+    });
+    kyselyInstances.push(kysely);
+    await db.exec(`
+      create table bundles (
+        id uuid primary key,
+        channel text not null
+      );
+      create table channels (
+        id varchar(255) primary key,
+        name varchar(255) not null
+      );
+      create table private_hot_updater_settings (
+        key text primary key,
+        value text not null
+      );
+      insert into bundles (id, channel) values
+        ('00000000-0000-0000-0000-000000000001', 'production');
+      insert into channels (id, name) values ('production', 'renamed');
+      insert into private_hot_updater_settings (key, value)
+      values ('version', '0.31.0');
+    `);
+    const migrator = createKyselyMigrator({
+      db: kysely,
+      provider: "postgresql",
+    });
+
+    const interrupted = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    await expect(interrupted.execute()).rejects.toThrow();
+
+    const columnsAfterFailure = await db.query<{ column_name: string }>(`
+      select column_name
+      from information_schema.columns
+      where table_name = 'bundles'
+    `);
+    expect(
+      columnsAfterFailure.rows.map(({ column_name }) => column_name),
+    ).not.toContain("channel_id");
+    const indexesAfterFailure = await db.query<{ indexname: string }>(`
+      select indexname from pg_indexes where indexname = 'channels_name_key'
+    `);
+    expect(indexesAfterFailure.rows).toEqual([]);
+    expect(await migrator.getVersion()).toBe("0.31.0");
+
+    await db.exec("delete from channels where id = 'production'");
+    const retry = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    await retry.execute();
+
+    expect(await migrator.getVersion()).toBe("0.36.0");
+    const migrated = await db.query<{ channel_id: string }>(
+      "select channel_id from bundles",
+    );
+    expect(migrated.rows).toEqual([{ channel_id: "production" }]);
+  });
+
+  it("restores SQLite foreign keys and rolls back an interrupted rebuild", async () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("pragma foreign_keys = on");
+    db.exec(createTableStatement(bundlesV031, "sqlite"));
+    db.exec(createTableStatement(bundlePatchesV031, "sqlite"));
+    db.exec(`
+      create table private_hot_updater_settings (
+        key text primary key,
+        value text not null
+      );
+      create table bundles_v036 (id text primary key);
+      insert into bundles (
+        id, platform, should_force_update, enabled, file_hash, channel,
+        storage_uri, target_app_version
+      ) values (
+        'bundle-1', 'ios', 0, 1, 'hash-1', 'production', 's3://bundle-1',
+        '1.0.0'
+      );
+      insert into private_hot_updater_settings (key, value)
+      values ('version', '0.31.0');
+    `);
+    const kysely = createNodeSqliteKysely(db);
+    kyselyInstances.push(kysely);
+    const migrator = createKyselyMigrator({ db: kysely, provider: "sqlite" });
+
+    const interrupted = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    await expect(interrupted.execute()).rejects.toThrow();
+
+    expect(db.prepare("pragma foreign_keys").get()).toEqual({
+      foreign_keys: 1,
+    });
+    expect(
+      db
+        .prepare(
+          "select name from sqlite_master where type = 'table' and name = 'channels'",
+        )
+        .get(),
+    ).toBeUndefined();
+    expect(db.prepare("select channel from bundles").all()).toEqual([
+      { channel: "production" },
+    ]);
+    expect(await migrator.getVersion()).toBe("0.31.0");
+
+    db.exec("drop table bundles_v036");
+    const retry = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    await retry.execute();
+
+    expect(await migrator.getVersion()).toBe("0.36.0");
+    expect(db.prepare("pragma foreign_keys").get()).toEqual({
+      foreign_keys: 1,
+    });
+    expect(db.prepare("select channel_id from bundles").all()).toEqual([
+      { channel_id: "production" },
+    ]);
+  });
+
   it("rebuilds SQLite bundles so the channel and patch foreign keys remain enforced", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("pragma foreign_keys = on");
@@ -292,5 +452,86 @@ describe("createKyselyMigrator", () => {
       }),
     ]);
     db.close();
+  });
+});
+
+describe("MongoDB channel migration", () => {
+  it("resumes from channel_id without creating null channels after interruption", async () => {
+    type BundleDocument = {
+      channel?: unknown;
+      channel_id?: unknown;
+    };
+    const bundles: BundleDocument[] = [
+      { channel: "production" },
+      { channel: null },
+      {},
+    ];
+    const channels = new Map<string, string>();
+    const channelReads: string[][] = [];
+    let failIndexCreation = true;
+    let version = "0.31.0";
+    const backend: MongoMigrationBackend = {
+      ensureCollections: async () => {},
+      findChannelIds: async () => {
+        const ids = [
+          ...new Set(
+            bundles
+              .map(({ channel, channel_id }) => channel_id ?? channel)
+              .filter(
+                (value): value is string =>
+                  typeof value === "string" && value.length > 0,
+              ),
+          ),
+        ];
+        channelReads.push(ids);
+        return ids;
+      },
+      upsertChannel: async (id) => {
+        if (!channels.has(id)) channels.set(id, id);
+      },
+      normalizeLegacyBundles: async () => {
+        for (const bundle of bundles) {
+          if (typeof bundle.channel !== "string" || !bundle.channel) continue;
+          bundle.channel_id = bundle.channel;
+          delete bundle.channel;
+        }
+      },
+      ensureIndexes: async () => {
+        if (!failIndexCreation) return;
+        failIndexCreation = false;
+        throw new Error("injected index creation failure");
+      },
+      updateVersion: async () => {
+        version = "0.36.0";
+      },
+    };
+
+    await expect(
+      executeMongoMigration({ backend, updateSettings: true }),
+    ).rejects.toThrow("injected index creation failure");
+    expect(bundles[0]).toEqual({ channel_id: "production" });
+    expect(version).toBe("0.31.0");
+
+    await executeMongoMigration({ backend, updateSettings: true });
+
+    expect(channelReads).toEqual([["production"], ["production"]]);
+    expect([...channels.entries()]).toEqual([["production", "production"]]);
+    expect(version).toBe("0.36.0");
+  });
+
+  it("filters missing channels and falls back to normalized channel ids", () => {
+    expect(MONGO_CHANNEL_ID_PIPELINE).toEqual([
+      {
+        $project: {
+          channelId: { $ifNull: ["$channel_id", "$channel"] },
+        },
+      },
+      {
+        $match: {
+          channelId: { $type: "string", $ne: "" },
+        },
+      },
+      { $group: { _id: "$channelId" } },
+    ]);
   });
 });

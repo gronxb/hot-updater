@@ -1,3 +1,5 @@
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS public.channels (
   id text PRIMARY KEY,
   name text NOT NULL UNIQUE
@@ -27,8 +29,22 @@ ALTER TABLE public.bundles
 
 ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;
 
-CREATE OR REPLACE FUNCTION get_update_info_by_fingerprint_hash (
-    app_platform   platforms,
+CREATE OR REPLACE FUNCTION public.get_channels ()
+RETURNS TABLE (
+    channel text
+)
+LANGUAGE sql
+STABLE
+SET search_path = public, pg_catalog
+AS
+$$
+    SELECT c.name AS channel
+    FROM public.channels c
+    ORDER BY c.name
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_update_info_by_fingerprint_hash (
+    app_platform   public.platforms,
     bundle_id  uuid,
     min_bundle_id uuid,
     target_channel text,
@@ -44,6 +60,7 @@ RETURNS TABLE (
     file_hash     text
 )
 LANGUAGE plpgsql
+SET search_path = public, pg_catalog
 AS
 $$
 DECLARE
@@ -59,8 +76,8 @@ BEGIN
             b.file_hash,
             b.rollout_cohort_count,
             b.target_cohorts
-        FROM bundles b
-        JOIN channels c ON c.id = b.channel_id
+        FROM public.bundles b
+        JOIN public.channels c ON c.id = b.channel_id
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id >= min_bundle_id
@@ -70,7 +87,7 @@ BEGIN
     current_candidate AS (
         SELECT
             cb.id,
-            is_cohort_eligible(
+            public.is_cohort_eligible(
                 cb.id,
                 cohort,
                 cb.rollout_cohort_count,
@@ -90,7 +107,7 @@ BEGIN
             cb.file_hash
         FROM candidate_bundles cb
         WHERE cb.id > bundle_id
-          AND is_cohort_eligible(
+          AND public.is_cohort_eligible(
               cb.id,
               cohort,
               cb.rollout_cohort_count,
@@ -150,10 +167,8 @@ BEGIN
 END;
 $$;
 
-DROP FUNCTION IF EXISTS get_update_info_by_app_version;
-
-CREATE OR REPLACE FUNCTION get_update_info_by_app_version (
-    app_platform   platforms,
+CREATE OR REPLACE FUNCTION public.get_update_info_by_app_version (
+    app_platform   public.platforms,
     app_version text,
     bundle_id  uuid,
     min_bundle_id uuid,
@@ -170,6 +185,7 @@ RETURNS TABLE (
     file_hash     text
 )
 LANGUAGE plpgsql
+SET search_path = public, pg_catalog
 AS
 $$
 DECLARE
@@ -185,18 +201,20 @@ BEGIN
             b.file_hash,
             b.rollout_cohort_count,
             b.target_cohorts
-        FROM bundles b
-        JOIN channels c ON c.id = b.channel_id
+        FROM public.bundles b
+        JOIN public.channels c ON c.id = b.channel_id
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id >= min_bundle_id
-          AND b.target_app_version IN (SELECT unnest(target_app_version_list))
+          AND b.target_app_version IN (
+              SELECT pg_catalog.unnest(target_app_version_list)
+          )
           AND c.name = target_channel
     ),
     current_candidate AS (
         SELECT
             cb.id,
-            is_cohort_eligible(
+            public.is_cohort_eligible(
                 cb.id,
                 cohort,
                 cb.rollout_cohort_count,
@@ -216,7 +234,7 @@ BEGIN
             cb.file_hash
         FROM candidate_bundles cb
         WHERE cb.id > bundle_id
-          AND is_cohort_eligible(
+          AND public.is_cohort_eligible(
               cb.id,
               cohort,
               cb.rollout_cohort_count,
@@ -275,3 +293,5 @@ BEGIN
       AND NOT EXISTS (SELECT 1 FROM rollback_candidate);
 END;
 $$;
+
+COMMIT;

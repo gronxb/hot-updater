@@ -5,6 +5,10 @@ import {
   HOT_UPDATER_SCHEMA_VERSION,
   HOT_UPDATER_SETTINGS_TABLE,
 } from "../schema/types";
+import {
+  executeMongoMigration,
+  MONGO_CHANNEL_ID_PIPELINE,
+} from "./mongoMigrationExecution";
 import { createMongoMigrationOperations } from "./schema/mongodb";
 import {
   hotUpdaterSchema,
@@ -20,6 +24,7 @@ import {
   createSqlCreateOperations,
   getSettingsInsertSql,
 } from "./schema/sqlOperations";
+import { executeMigrationStatements } from "./sqlMigrationExecution";
 import type {
   MigrateOptions,
   MigrationOperation,
@@ -179,11 +184,7 @@ export const createKyselyMigrator = ({
     return {
       operations,
       getSQL: () => statements.map((statement) => `${statement};`).join("\n\n"),
-      execute: async () => {
-        for (const statement of statements) {
-          await sql.raw(statement).execute(db);
-        }
-      },
+      execute: () => executeMigrationStatements({ db, provider, statements }),
     };
   };
 
@@ -239,64 +240,76 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
       operations: createMongoMigrationOperations(settingsOperation),
       execute: async () => {
         const db = client.db();
-        for (const table of hotUpdaterSchema.tables) {
-          if (table.internal) continue;
-          await db
-            .createCollection(table.ormName)
-            .catch(ignoreExistingCollection);
-        }
-        const channelRows = await db
-          .collection<{ readonly channel: string }>("bundles")
-          .aggregate<{ readonly _id: string }>([
-            { $group: { _id: "$channel" } },
-          ])
-          .toArray();
+        const bundles = db.collection("bundles");
         const channels = db.collection<{
           readonly id: string;
           readonly name: string;
         }>("channels");
-        for (const row of channelRows) {
-          await channels.updateOne(
-            { id: row._id },
-            { $setOnInsert: { id: row._id, name: row._id } },
-            { upsert: true },
-          );
-        }
-        await db
-          .collection("bundles")
-          .updateMany({ channel: { $exists: true } }, [
-            { $set: { channel_id: "$channel" } },
-            { $unset: "channel" },
-          ]);
-        await db.collection("bundles").createIndex(
-          { id: 1 },
-          {
-            name: "bundles_id_idx",
-          },
-        );
-        for (const table of hotUpdaterSchema.tables) {
-          if (table.internal) continue;
-          for (const index of (table.indexes ?? []).filter((item) =>
-            schemaIndexAppliesToProvider(item, "mongodb"),
-          )) {
-            await db
-              .collection(table.ormName)
-              .createIndex(
-                Object.fromEntries(index.columns.map((column) => [column, 1])),
+        await executeMongoMigration({
+          updateSettings: options.updateSettings !== false,
+          backend: {
+            ensureCollections: async () => {
+              for (const table of hotUpdaterSchema.tables) {
+                if (table.internal) continue;
+                await db
+                  .createCollection(table.ormName)
+                  .catch(ignoreExistingCollection);
+              }
+            },
+            findChannelIds: async () => {
+              const rows = await bundles
+                .aggregate<{ readonly _id: string }>(MONGO_CHANNEL_ID_PIPELINE)
+                .toArray();
+              return rows.map(({ _id }) => _id);
+            },
+            upsertChannel: async (id) => {
+              await channels.updateOne(
+                { id },
+                { $setOnInsert: { id, name: id } },
+                { upsert: true },
+              );
+            },
+            normalizeLegacyBundles: async () => {
+              await bundles.updateMany(
+                { channel: { $type: "string", $ne: "" } },
+                [{ $set: { channel_id: "$channel" } }, { $unset: "channel" }],
+              );
+            },
+            ensureIndexes: async () => {
+              await bundles.createIndex(
+                { id: 1 },
                 {
-                  name: index.name,
-                  ...(index.unique ? { unique: true } : {}),
+                  name: "bundles_id_idx",
                 },
               );
-          }
-        }
-        if (options.updateSettings !== false) {
-          await settings.updateOne(
-            { key: "version" },
-            { $set: { value: HOT_UPDATER_SCHEMA_VERSION } },
-            { upsert: true },
-          );
-        }
+              for (const table of hotUpdaterSchema.tables) {
+                if (table.internal) continue;
+                for (const index of (table.indexes ?? []).filter((item) =>
+                  schemaIndexAppliesToProvider(item, "mongodb"),
+                )) {
+                  await db
+                    .collection(table.ormName)
+                    .createIndex(
+                      Object.fromEntries(
+                        index.columns.map((column) => [column, 1]),
+                      ),
+                      {
+                        name: index.name,
+                        ...(index.unique ? { unique: true } : {}),
+                      },
+                    );
+                }
+              }
+            },
+            updateVersion: async () => {
+              await settings.updateOne(
+                { key: "version" },
+                { $set: { value: HOT_UPDATER_SCHEMA_VERSION } },
+                { upsert: true },
+              );
+            },
+          },
+        });
       },
     };
   };

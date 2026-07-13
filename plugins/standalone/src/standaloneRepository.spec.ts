@@ -143,16 +143,17 @@ describe("standaloneRepository", () => {
     ).toBe(true);
   });
 
-  it("persists an empty channel through the existing bundle routes", async () => {
+  it("aliases a supplied channel id to its legacy name deterministically", async () => {
     const repository = createRepository();
 
-    await repository.create({
+    const created = await repository.create({
       model: "channels",
       data: { id: "generated-preview-id", name: "preview" },
     });
 
+    expect(created).toEqual({ id: "preview", name: "preview" });
     await expect(repository.findMany({ model: "channels" })).resolves.toEqual([
-      { id: "preview", name: "preview" },
+      created,
     ]);
     expect(bundles.size).toBe(0);
     expect(requestPaths).not.toContainEqual(

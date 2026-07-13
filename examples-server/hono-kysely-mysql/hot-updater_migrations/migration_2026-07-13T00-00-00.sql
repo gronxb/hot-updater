@@ -7,7 +7,7 @@ CREATE UNIQUE INDEX channels_name_key ON channels(name);
 
 ALTER TABLE bundles ADD COLUMN channel_id varchar(255);
 
-INSERT INTO channels (id, name)
+INSERT IGNORE INTO channels (id, name)
 SELECT DISTINCT channel, channel
 FROM bundles;
 

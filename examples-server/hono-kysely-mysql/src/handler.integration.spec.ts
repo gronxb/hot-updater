@@ -2,7 +2,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import type { Bundle } from "@hot-updater/core";
-import type { HotUpdaterAPI } from "@hot-updater/server";
+import { createHotUpdater, type HotUpdaterAPI } from "@hot-updater/server";
+import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { createMigrator } from "@hot-updater/server/db";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -16,7 +18,9 @@ import {
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
-import { afterAll, beforeAll, describe } from "vitest";
+import { Kysely, MysqlDialect, sql } from "kysely";
+import { createPool } from "mysql2";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -105,7 +109,128 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
   });
+
+  it("resumes a partially applied MySQL channel migration", async () => {
+    const database = `hot_updater_retry_${process.pid}`;
+    const admin = createPool({
+      host: process.env.MYSQL_HOST || "localhost",
+      port: Number(process.env.MYSQL_PORT) || 3307,
+      user: "root",
+      password: process.env.MYSQL_ROOT_PASSWORD || "hot_updater_root",
+    }).promise();
+    await admin.query(`drop database if exists \`${database}\``);
+    await admin.query(`create database \`${database}\``);
+    await admin.query(
+      `grant all privileges on \`${database}\`.* to 'hot_updater'@'%'`,
+    );
+
+    const pool = createPool({
+      host: process.env.MYSQL_HOST || "localhost",
+      port: Number(process.env.MYSQL_PORT) || 3307,
+      user: process.env.MYSQL_USER || "hot_updater",
+      password: process.env.MYSQL_PASSWORD || "hot_updater_dev",
+      database,
+    });
+    const dialectPool = pool as unknown as ConstructorParameters<
+      typeof MysqlDialect
+    >[0]["pool"];
+    const db = new Kysely<SettingsDatabase>({
+      dialect: new MysqlDialect({ pool: dialectPool }),
+    });
+
+    try {
+      await sql
+        .raw(`
+        create table bundles (
+          id varchar(255) primary key,
+          channel varchar(255) not null
+        )
+      `)
+        .execute(db);
+      await sql
+        .raw(`
+        create table channels (
+          id varchar(255) primary key,
+          name varchar(255) not null
+        )
+      `)
+        .execute(db);
+      await sql
+        .raw(`
+        create table private_hot_updater_settings (
+          \`key\` varchar(255) primary key,
+          value varchar(255) not null
+        )
+      `)
+        .execute(db);
+      await sql
+        .raw(
+          "insert into bundles (id, channel) values ('bundle-1', 'production')",
+        )
+        .execute(db);
+      await sql
+        .raw("insert into channels (id, name) values ('production', 'renamed')")
+        .execute(db);
+      await sql
+        .raw(
+          "insert into private_hot_updater_settings (`key`, value) values ('version', '0.31.0')",
+        )
+        .execute(db);
+
+      const migrationHotUpdater = createHotUpdater({
+        database: kyselyAdapter({ db, provider: "mysql" }),
+      });
+      const migrator = createMigrator(migrationHotUpdater);
+      const interrupted = await migrator.migrateToLatest({
+        mode: "from-schema",
+        updateSettings: true,
+      });
+      await expect(interrupted.execute()).rejects.toThrow();
+
+      const partialColumns = await sql<{ readonly name: string }>`
+        select column_name as name
+        from information_schema.columns
+        where table_schema = ${database} and table_name = 'bundles'
+      `.execute(db);
+      expect(partialColumns.rows.map(({ name }) => name)).toEqual(
+        expect.arrayContaining(["channel", "channel_id"]),
+      );
+      expect(await migrator.getVersion()).toBe("0.31.0");
+
+      await sql`delete from channels where id = ${"production"}`.execute(db);
+      const retry = await migrator.migrateToLatest({
+        mode: "from-schema",
+        updateSettings: true,
+      });
+      await retry.execute();
+
+      expect(await migrator.getVersion()).toBe("0.36.0");
+      const migrated = await sql<{ readonly channel_id: string }>`
+        select channel_id from bundles
+      `.execute(db);
+      expect(migrated.rows).toEqual([{ channel_id: "production" }]);
+      const finalColumns = await sql<{ readonly name: string }>`
+        select column_name as name
+        from information_schema.columns
+        where table_schema = ${database} and table_name = 'bundles'
+      `.execute(db);
+      expect(finalColumns.rows.map(({ name }) => name)).not.toContain(
+        "channel",
+      );
+    } finally {
+      await db.destroy();
+      await admin.query(`drop database if exists \`${database}\``);
+      await admin.end();
+    }
+  });
 });
+
+interface SettingsDatabase {
+  readonly private_hot_updater_settings: {
+    readonly key: string;
+    readonly value: string;
+  };
+}
 
 // Helper function to wait for MySQL to be ready
 async function waitForMySQLReady(

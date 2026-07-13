@@ -33,6 +33,7 @@ export const emptyBlobDatabaseSnapshot = (): BlobDatabaseSnapshot => ({
 
 const parseBundleRow = (value: unknown, source: string): BundleRow => {
   const input = blobRecord(value, source);
+  const channelId = blobProperty(input, "channel_id");
   return {
     id: blobString(blobProperty(input, "id"), source),
     platform: blobPlatform(blobProperty(input, "platform"), source),
@@ -47,7 +48,10 @@ const parseBundleRow = (value: unknown, source: string): BundleRow => {
       source,
     ),
     message: blobNullableString(blobProperty(input, "message"), source),
-    channel_id: blobString(blobProperty(input, "channel_id"), source),
+    channel_id: blobString(
+      channelId === undefined ? blobProperty(input, "channel") : channelId,
+      source,
+    ),
     storage_uri: blobString(blobProperty(input, "storage_uri"), source),
     target_app_version: blobNullableString(
       blobProperty(input, "target_app_version"),
@@ -116,9 +120,11 @@ export const parseBlobDatabaseSnapshot = (
     ).map((row) => parsePatchRow(row, source)),
     channels: blobArray(blobProperty(input, "channels"), source).map((row) => {
       const channel = blobRecord(row, source);
+      const id = blobString(blobProperty(channel, "id"), source);
+      const name = blobProperty(channel, "name");
       return {
-        id: blobString(blobProperty(channel, "id"), source),
-        name: blobString(blobProperty(channel, "name"), source),
+        id,
+        name: blobString(name === undefined ? id : name, source),
       };
     }),
   });

@@ -116,7 +116,7 @@ const hasChannels = (
   Array.isArray(value.data.channels) &&
   value.data.channels.every((channel) => typeof channel === "string");
 
-const createImplementation = (
+const createLegacyCompatibilityImplementation = (
   config: StandaloneRepositoryConfig,
 ): DatabasePluginImplementation => {
   const customListRoute = config.routes?.list?.();
@@ -476,8 +476,16 @@ const createImplementation = (
   };
 };
 
+/**
+ * Compatibility bridge over the legacy aggregate `/api/bundles` HTTP API.
+ *
+ * The channel endpoint exposes names only, so this bridge deterministically
+ * aliases each channel name as its low-row `id`. It cannot preserve an
+ * independently supplied `ChannelRow.id` and is therefore outside the strict
+ * fixed-model v2 adapter conformance contract.
+ */
 export const standaloneRepository =
   createDatabasePlugin<StandaloneRepositoryConfig>({
     name: "standalone-repository",
-    factory: createImplementation,
+    factory: createLegacyCompatibilityImplementation,
   });
