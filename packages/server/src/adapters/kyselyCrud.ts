@@ -1,12 +1,13 @@
 import type {
   BundlePatchRow,
+  BundleRow,
   ChannelRow,
   DatabaseWhere,
   TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 import { sql, type QueryExecutorProvider, type RawBuilder } from "kysely";
 
-import type { ORMSQLProvider } from "../db/types";
+import type { ORMSQLProvider, RelationMode } from "../db/types";
 import {
   fromStoredBundleRow,
   type StoredBundleRow,
@@ -17,9 +18,19 @@ import { buildKyselyWhere } from "./kyselyQuery";
 
 class KyselyAdapterInvariantError extends Error {
   readonly name = "KyselyAdapterInvariantError";
+
+  constructor(readonly reason: string) {
+    super(`Kysely adapter invariant failed: ${reason}`);
+  }
 }
 
 const empty = sql``;
+
+const lockClause = (
+  provider: Exclude<ORMSQLProvider, "mssql">,
+  relationMode: RelationMode,
+): RawBuilder<unknown> =>
+  relationMode === "fumadb" && provider !== "sqlite" ? sql` for update` : empty;
 
 const whereClause = (
   where: RawBuilder<boolean> | undefined,
@@ -54,6 +65,7 @@ const updateBundle = async (
   executor: QueryExecutorProvider,
   id: string,
   update: object,
+  targetPredicate: RawBuilder<boolean> | undefined,
 ): Promise<void> => {
   const assignments = Object.entries(update)
     .filter(([, value]) => value !== undefined)
@@ -61,7 +73,75 @@ const updateBundle = async (
   if (assignments.length === 0) return;
   await sql`update ${sql.table("bundles")} set ${sql.join(
     assignments,
-  )} where ${sql.ref("id")} = ${id}`.execute(executor);
+  )} where ${sql.ref("id")} = ${id}${
+    targetPredicate === undefined ? empty : sql` and ${targetPredicate}`
+  }`.execute(executor);
+};
+
+const createBundleTargetPredicate = (
+  update: Partial<BundleRow>,
+): RawBuilder<boolean> | undefined => {
+  if (update.target_app_version === null && update.fingerprint_hash === null) {
+    throw new KyselyAdapterInvariantError("bundles.update.target");
+  }
+  if (
+    update.target_app_version === null &&
+    update.fingerprint_hash === undefined
+  ) {
+    return sql<boolean>`${sql.ref("fingerprint_hash")} is not null`;
+  }
+  if (
+    update.fingerprint_hash === null &&
+    update.target_app_version === undefined
+  ) {
+    return sql<boolean>`${sql.ref("target_app_version")} is not null`;
+  }
+  return undefined;
+};
+
+const assertChannelReference = async (
+  executor: QueryExecutorProvider,
+  channelId: string,
+  channel: string,
+): Promise<void> => {
+  const result = await sql<{
+    readonly name: string;
+  }>`select ${sql.ref("name")} from ${sql.table(
+    "channels",
+  )} where ${sql.ref("id")} = ${channelId} limit 1`.execute(executor);
+  if (result.rows[0]?.name !== channel) {
+    throw new KyselyAdapterInvariantError("bundles.channel_id.foreign-key");
+  }
+};
+
+const assertBundleReferences = async (
+  executor: QueryExecutorProvider,
+  provider: Exclude<ORMSQLProvider, "mssql">,
+  relationMode: RelationMode,
+  bundleId: string,
+  baseBundleId: string,
+): Promise<void> => {
+  const ids = [...new Set([bundleId, baseBundleId])].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  const result = await sql<{
+    readonly id: string;
+  }>`select ${sql.ref("id")} from ${sql.table(
+    "bundles",
+  )} where ${sql.ref("id")} in (${sql.join(ids)}) order by ${sql.ref(
+    "id",
+  )}${lockClause(provider, relationMode)}`.execute(executor);
+  const storedIds = new Set(result.rows.map(({ id }) => id));
+  if (!storedIds.has(bundleId)) {
+    throw new KyselyAdapterInvariantError(
+      "bundle_patches.bundle_id.foreign-key",
+    );
+  }
+  if (!storedIds.has(baseBundleId)) {
+    throw new KyselyAdapterInvariantError(
+      "bundle_patches.base_bundle_id.foreign-key",
+    );
+  }
 };
 
 export const findKyselyBundles = async (
@@ -106,10 +186,16 @@ export const findKyselyPatches = async (
 export const createKyselyCrud = (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
+  relationMode: RelationMode = "foreign-keys",
 ): TransactionDatabaseAdapterImplementation => ({
   async create(input) {
     switch (input.model) {
       case "bundles":
+        await assertChannelReference(
+          executor,
+          input.data.channel_id,
+          input.data.channel,
+        );
         await insertRow(
           executor,
           "bundles",
@@ -117,6 +203,13 @@ export const createKyselyCrud = (
         );
         return input.data;
       case "bundle_patches":
+        await assertBundleReferences(
+          executor,
+          provider,
+          relationMode,
+          input.data.bundle_id,
+          input.data.base_bundle_id,
+        );
         await insertRow(executor, "bundle_patches", input.data);
         return input.data;
       case "channels":
@@ -127,25 +220,61 @@ export const createKyselyCrud = (
   async update(input) {
     const selector = input.where[0];
     if (selector === undefined || typeof selector.value !== "string") {
-      throw new KyselyAdapterInvariantError();
+      throw new KyselyAdapterInvariantError("bundles.update.selector");
     }
-    const currentResult = await sql<StoredBundleRow>`select * from ${sql.table(
-      "bundles",
-    )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(executor);
-    const current = currentResult.rows[0];
-    if (current === undefined) return null;
+    if (
+      input.update.channel_id !== undefined &&
+      input.update.channel !== undefined
+    ) {
+      await assertChannelReference(
+        executor,
+        input.update.channel_id,
+        input.update.channel,
+      );
+    }
     await updateBundle(
       executor,
       selector.value,
       toStoredBundleUpdate(input.update, provider),
+      createBundleTargetPredicate(input.update),
     );
-    return { ...fromStoredBundleRow(current), ...input.update };
+    const result = await sql<StoredBundleRow>`select * from ${sql.table(
+      "bundles",
+    )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(executor);
+    const stored = result.rows[0];
+    if (stored === undefined) return null;
+    const updated = fromStoredBundleRow(stored);
+    if (
+      (input.update.target_app_version !== undefined &&
+        updated.target_app_version !== input.update.target_app_version) ||
+      (input.update.fingerprint_hash !== undefined &&
+        updated.fingerprint_hash !== input.update.fingerprint_hash)
+    ) {
+      throw new KyselyAdapterInvariantError("bundles.update.target");
+    }
+    return updated;
   },
   async delete(input) {
     switch (input.model) {
       case "bundles": {
         const where = buildKyselyWhere(provider, input.where);
-        if (where === undefined) throw new KyselyAdapterInvariantError();
+        if (where === undefined) {
+          throw new KyselyAdapterInvariantError("bundles.delete.where");
+        }
+        const matchingBundles = await sql<{
+          readonly id: string;
+        }>`select ${sql.ref(
+          "id",
+        )} from ${sql.table("bundles")} where ${where} order by ${sql.ref(
+          "id",
+        )}${lockClause(provider, relationMode)}`.execute(executor);
+        const bundleIds = matchingBundles.rows.map(({ id }) => id);
+        if (bundleIds.length === 0) return;
+        await sql`delete from ${sql.table("bundle_patches")} where ${sql.ref(
+          "bundle_id",
+        )} in (${sql.join(bundleIds)}) or ${sql.ref(
+          "base_bundle_id",
+        )} in (${sql.join(bundleIds)})`.execute(executor);
         await sql`delete from ${sql.table("bundles")} where ${where}`.execute(
           executor,
         );
@@ -153,7 +282,9 @@ export const createKyselyCrud = (
       }
       case "bundle_patches": {
         const where = buildKyselyWhere(provider, input.where);
-        if (where === undefined) throw new KyselyAdapterInvariantError();
+        if (where === undefined) {
+          throw new KyselyAdapterInvariantError("bundle_patches.delete.where");
+        }
         await sql`delete from ${sql.table(
           "bundle_patches",
         )} where ${where}`.execute(executor);

@@ -61,6 +61,14 @@ export const createFirebaseDatabaseState = (
         return input.data;
       case "bundles":
         requireUnique(snapshot.bundles, input.data.id, input.model);
+        if (
+          input.data.target_app_version === null &&
+          input.data.fingerprint_hash === null
+        ) {
+          throw new FirebaseDatabaseConstraintError(
+            "bundles.version-or-fingerprint.check",
+          );
+        }
         if (!snapshot.channels.has(input.data.channel_id)) {
           throw new FirebaseDatabaseConstraintError(
             "bundles.channel_id.foreign-key",
@@ -90,6 +98,14 @@ export const createFirebaseDatabaseState = (
     );
     if (!current) return null;
     const updated = { ...current, ...input.update };
+    if (
+      updated.target_app_version === null &&
+      updated.fingerprint_hash === null
+    ) {
+      throw new FirebaseDatabaseConstraintError(
+        "bundles.version-or-fingerprint.check",
+      );
+    }
     if (!snapshot.channels.has(updated.channel_id)) {
       throw new FirebaseDatabaseConstraintError(
         "bundles.channel_id.foreign-key",

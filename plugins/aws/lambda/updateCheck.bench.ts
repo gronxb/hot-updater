@@ -150,6 +150,7 @@ const createBenchHotUpdater = () => {
         return parsed;
       },
       uploadObject: async () => {},
+      compareAndSwapObject: async () => true,
       invalidatePaths: async () => {},
     }),
   });

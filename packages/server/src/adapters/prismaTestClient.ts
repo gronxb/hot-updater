@@ -12,6 +12,12 @@ type Tables = {
   channels: Table;
 };
 
+type Hooks = {
+  beforeNextBundleUpdateMany: (() => void) | undefined;
+  failNextBundleDelete: boolean;
+  transactionOptions: ({ readonly isolationLevel?: string } | undefined)[];
+};
+
 type QueryArgs = {
   readonly orderBy?: unknown;
   readonly skip?: number;
@@ -52,14 +58,24 @@ const matchesCondition = (current: unknown, condition: unknown): boolean => {
     return Object.is(value, normalize(condition["equals"], insensitive));
   }
   if ("not" in condition) {
-    return !Object.is(value, normalize(condition["not"], insensitive));
+    return (
+      value !== null &&
+      value !== undefined &&
+      !Object.is(value, normalize(condition["not"], insensitive))
+    );
   }
   if (Array.isArray(condition["in"])) {
     return condition["in"].some((item) => Object.is(value, item));
   }
   if (Array.isArray(condition["notIn"])) {
-    return condition["notIn"].every((item) => !Object.is(value, item));
+    return (
+      condition["notIn"].length === 0 ||
+      (value !== null &&
+        value !== undefined &&
+        condition["notIn"].every((item) => !Object.is(value, item)))
+    );
   }
+  if (value === null || value === undefined) return false;
   if ("gt" in condition) return compare(value, condition["gt"]) > 0;
   if ("gte" in condition) return compare(value, condition["gte"]) >= 0;
   if ("lt" in condition) return compare(value, condition["lt"]) < 0;
@@ -124,7 +140,7 @@ const assertReferences = (
   }
 };
 
-const createDelegate = (tables: Tables, model: keyof Tables) => ({
+const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
   count: async (args?: QueryArgs): Promise<number> =>
     tables[model].filter((row) => matchesWhere(row, args?.where)).length,
   create: async ({ data }: CreateArgs): Promise<Row> => {
@@ -143,6 +159,10 @@ const createDelegate = (tables: Tables, model: keyof Tables) => ({
     return structuredClone(data);
   },
   deleteMany: async (args?: QueryArgs): Promise<void> => {
+    if (model === "bundles" && hooks.failNextBundleDelete) {
+      hooks.failNextBundleDelete = false;
+      throw new PrismaTestConstraintError("injected bundle delete failure");
+    }
     const selected = tables[model].filter((row) =>
       matchesWhere(row, args?.where),
     );
@@ -183,23 +203,49 @@ const createDelegate = (tables: Tables, model: keyof Tables) => ({
     tables[model][index] = updated;
     return structuredClone(updated);
   },
+  updateMany: async ({
+    data,
+    where,
+  }: UpdateArgs): Promise<{ count: number }> => {
+    if (model === "bundles") {
+      const hook = hooks.beforeNextBundleUpdateMany;
+      hooks.beforeNextBundleUpdateMany = undefined;
+      hook?.();
+    }
+    let count = 0;
+    tables[model] = tables[model].map((row) => {
+      if (!matchesWhere(row, where)) return row;
+      const updated = { ...row, ...data };
+      assertReferences(tables, model, updated);
+      count += 1;
+      return updated;
+    });
+    return { count };
+  },
 });
 
-const createClient = (tables: Tables) => ({
-  bundle_patches: createDelegate(tables, "bundle_patches"),
-  bundles: createDelegate(tables, "bundles"),
-  channels: createDelegate(tables, "channels"),
+const createClient = (tables: Tables, hooks: Hooks) => ({
+  bundle_patches: createDelegate(tables, "bundle_patches", hooks),
+  bundles: createDelegate(tables, "bundles", hooks),
+  channels: createDelegate(tables, "channels", hooks),
 });
 
 export const createPrismaTestHarness = () => {
   let tables: Tables = { bundle_patches: [], bundles: [], channels: [] };
+  const hooks: Hooks = {
+    beforeNextBundleUpdateMany: undefined,
+    failNextBundleDelete: false,
+    transactionOptions: [],
+  };
   const client = {
-    ...createClient(tables),
+    ...createClient(tables, hooks),
     $transaction: async <TResult>(
       callback: (transaction: object) => Promise<TResult>,
+      options?: { readonly isolationLevel?: string },
     ): Promise<TResult> => {
+      hooks.transactionOptions.push(options);
       const transactionTables = structuredClone(tables);
-      const result = await callback(createClient(transactionTables));
+      const result = await callback(createClient(transactionTables, hooks));
       tables.bundle_patches = transactionTables.bundle_patches;
       tables.bundles = transactionTables.bundles;
       tables.channels = transactionTables.channels;
@@ -208,7 +254,28 @@ export const createPrismaTestHarness = () => {
   };
   return {
     client,
+    clearTargetBeforeNextBundleUpdate: (
+      id: string,
+      field: "fingerprint_hash" | "target_app_version",
+    ): void => {
+      hooks.beforeNextBundleUpdateMany = () => {
+        const index = tables.bundles.findIndex(
+          (candidate) => candidate.id === id,
+        );
+        const row = tables.bundles[index];
+        if (row !== undefined && "target_app_version" in row) {
+          tables.bundles[index] = { ...row, [field]: null };
+        }
+      };
+    },
+    failNextBundleDelete: (): void => {
+      hooks.failNextBundleDelete = true;
+    },
+    getTransactionOptions: () => structuredClone(hooks.transactionOptions),
     reset: (): void => {
+      hooks.failNextBundleDelete = false;
+      hooks.beforeNextBundleUpdateMany = undefined;
+      hooks.transactionOptions.length = 0;
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.channels = [];

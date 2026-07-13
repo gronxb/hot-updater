@@ -51,6 +51,14 @@ export const createBlobSnapshotCrud = (
       }
       case "bundles": {
         requireUniqueId(snapshot.bundles, input.data.id, input.model);
+        if (
+          input.data.target_app_version === null &&
+          input.data.fingerprint_hash === null
+        ) {
+          throw new BlobDatabaseConstraintError(
+            "bundles.version-or-fingerprint.check",
+          );
+        }
         if (!snapshot.channels.some(({ id }) => id === input.data.channel_id)) {
           throw new BlobDatabaseConstraintError(
             "bundles.channel_id.foreign-key",
@@ -89,6 +97,14 @@ export const createBlobSnapshotCrud = (
     );
     if (!match) return null;
     const updated = { ...match, ...input.update };
+    if (
+      updated.target_app_version === null &&
+      updated.fingerprint_hash === null
+    ) {
+      throw new BlobDatabaseConstraintError(
+        "bundles.version-or-fingerprint.check",
+      );
+    }
     if (!state.snapshot.channels.some(({ id }) => id === updated.channel_id)) {
       throw new BlobDatabaseConstraintError("bundles.channel_id.foreign-key");
     }

@@ -30,6 +30,7 @@ const bundles = pgTable("bundles", {
   file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
+  channel: text("channel").notNull().default("production"),
   channel_id: varchar("channel_id", { length: 255 }).notNull(),
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),

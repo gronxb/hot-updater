@@ -84,6 +84,7 @@ const bundleRow = (row: Record<string, unknown>): BundleRow => {
     file_hash: stringValue(row, "file_hash", "bundles"),
     git_commit_hash: nullableString(row, "git_commit_hash", "bundles"),
     message: nullableString(row, "message", "bundles"),
+    channel: stringValue(row, "channel", "bundles"),
     channel_id: stringValue(row, "channel_id", "bundles"),
     storage_uri: stringValue(row, "storage_uri", "bundles"),
     target_app_version: nullableString(row, "target_app_version", "bundles"),

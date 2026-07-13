@@ -100,7 +100,7 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
       await seedChannel(state);
       await seedChannel(state, "staging");
       const first = { ...createBundleRowFixture("11"), enabled: false };
-      const second = createBundleRowFixture("12", "channel-staging");
+      const second = createBundleRowFixture("12", "channel-staging", "staging");
       const third = createBundleRowFixture("13");
       for (const bundle of [first, second, third]) {
         await state

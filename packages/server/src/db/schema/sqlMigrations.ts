@@ -187,7 +187,6 @@ const createV036MigrationSql = (
       ...(relationMode === "foreign-keys" && channelForeignKey
         ? [createForeignKeySql(bundles, channelForeignKey)]
         : []),
-      "alter table bundles drop column channel",
     ];
   }
 

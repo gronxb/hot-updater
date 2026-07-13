@@ -8,6 +8,7 @@ import {
 import {
   executeMongoMigration,
   MONGO_CHANNEL_ID_PIPELINE,
+  MONGO_NORMALIZE_CHANNEL_FIELDS_PIPELINE,
 } from "./mongoMigrationExecution";
 import { createMongoMigrationOperations } from "./schema/mongodb";
 import {
@@ -271,33 +272,49 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
             },
             normalizeLegacyBundles: async () => {
               await bundles.updateMany(
-                { channel: { $type: "string", $ne: "" } },
-                [{ $set: { channel_id: "$channel" } }, { $unset: "channel" }],
+                {
+                  $or: [
+                    { channel: { $type: "string", $ne: "" } },
+                    { channel_id: { $type: "string", $ne: "" } },
+                  ],
+                },
+                MONGO_NORMALIZE_CHANNEL_FIELDS_PIPELINE,
               );
+              const storedChannels = await channels.find().toArray();
+              for (const channel of storedChannels) {
+                await bundles.updateMany(
+                  { channel_id: channel.id },
+                  { $set: { channel: channel.name } },
+                );
+              }
             },
             ensureIndexes: async () => {
-              await bundles.createIndex(
-                { id: 1 },
-                {
-                  name: "bundles_id_idx",
-                },
-              );
               for (const table of hotUpdaterSchema.tables) {
                 if (table.internal) continue;
+                const collection = db.collection(table.ormName);
+                const idIndexName = `${table.ormName}_id_idx`;
+                const existingIdIndex = (
+                  await collection.listIndexes().toArray()
+                ).find(({ name }) => name === idIndexName);
+                if (existingIdIndex && existingIdIndex.unique !== true) {
+                  await collection.dropIndex(idIndexName);
+                }
+                await collection.createIndex(
+                  { id: 1 },
+                  { name: idIndexName, unique: true },
+                );
                 for (const index of (table.indexes ?? []).filter((item) =>
                   schemaIndexAppliesToProvider(item, "mongodb"),
                 )) {
-                  await db
-                    .collection(table.ormName)
-                    .createIndex(
-                      Object.fromEntries(
-                        index.columns.map((column) => [column, 1]),
-                      ),
-                      {
-                        name: index.name,
-                        ...(index.unique ? { unique: true } : {}),
-                      },
-                    );
+                  await collection.createIndex(
+                    Object.fromEntries(
+                      index.columns.map((column) => [column, 1]),
+                    ),
+                    {
+                      name: index.name,
+                      ...(index.unique ? { unique: true } : {}),
+                    },
+                  );
                 }
               }
             },

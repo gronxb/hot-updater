@@ -39,6 +39,7 @@ export const bundlesV036 = table(
     file_hash: stringColumn("file_hash"),
     git_commit_hash: stringColumn("git_commit_hash").nullable(),
     message: stringColumn("message").nullable(),
+    channel: stringColumn("channel").defaultTo("production"),
     channel_id: column("channel_id", varchar(255)),
     storage_uri: stringColumn("storage_uri"),
     target_app_version: stringColumn("target_app_version").nullable(),
@@ -54,6 +55,7 @@ export const bundlesV036 = table(
     indexes: [
       index("bundles_target_app_version_idx", ["target_app_version"]),
       index("bundles_fingerprint_hash_idx", ["fingerprint_hash"]),
+      index("bundles_channel_idx", ["channel"]),
       index("bundles_channel_id_idx", ["channel_id"]),
       index("bundles_platform_idx", ["platform"], ["mongodb"]),
       index("bundles_rollout_idx", ["rollout_cohort_count"]),

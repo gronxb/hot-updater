@@ -197,6 +197,142 @@ describe("standaloneRepository", () => {
     });
   });
 
+  it("uses the configured retrieve route for exact bundle ids", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000022");
+    let retrieveCalls = 0;
+    server.use(
+      http.get(`http://localhost/custom/bundles/${value.id}`, () => {
+        retrieveCalls += 1;
+        return HttpResponse.json(value);
+      }),
+    );
+    const repository = standaloneRepository({
+      baseUrl: "http://localhost",
+      routes: {
+        retrieve: (bundleId) => ({ path: `/custom/bundles/${bundleId}` }),
+      },
+    });
+
+    await expect(
+      repository.findOne({
+        model: "bundles",
+        where: [{ field: "id", value: value.id }],
+      }),
+    ).resolves.toMatchObject({ id: value.id, channel: "production" });
+    expect(retrieveCalls).toBe(1);
+  });
+
+  it("forwards supported bundle filters and page-aligned offsets", async () => {
+    let requestedUrl: URL | undefined;
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [],
+          pagination: {
+            total: 0,
+            hasNextPage: false,
+            hasPreviousPage: true,
+            currentPage: 3,
+            totalPages: 3,
+          },
+        });
+      }),
+    );
+
+    await createRepository().findMany({
+      model: "bundles",
+      where: [
+        { field: "channel_id", value: "preview" },
+        { field: "platform", value: "ios" },
+        { field: "enabled", value: true },
+        { field: "id", operator: "gte", value: "bundle-20" },
+      ],
+      sortBy: { field: "id", direction: "desc" },
+      limit: 10,
+      offset: 20,
+    });
+
+    expect(requestedUrl?.searchParams.get("channel")).toBe("preview");
+    expect(requestedUrl?.searchParams.get("platform")).toBe("ios");
+    expect(requestedUrl?.searchParams.get("enabled")).toBe("true");
+    expect(requestedUrl?.searchParams.get("idGte")).toBe("bundle-20");
+    expect(requestedUrl?.searchParams.get("limit")).toBe("10");
+    expect(requestedUrl?.searchParams.get("page")).toBe("3");
+  });
+
+  it("returns an empty bundle window without sending an invalid zero limit", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000023");
+    bundles.set(value.id, value);
+
+    await expect(
+      createRepository().findMany({ model: "bundles", limit: 0 }),
+    ).resolves.toEqual([]);
+    expect(requestPaths).toEqual([]);
+  });
+
+  it("preserves repeated filter semantics through the local fallback", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000024");
+    bundles.set(value.id, value);
+    let requestedUrl: URL | undefined;
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [...bundles.values()],
+          pagination: {
+            total: bundles.size,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        });
+      }),
+    );
+
+    await expect(
+      createRepository().findMany({
+        model: "bundles",
+        where: [
+          { field: "channel", value: "production" },
+          { field: "channel", value: "preview" },
+        ],
+      }),
+    ).resolves.toEqual([]);
+    expect(requestedUrl?.searchParams.has("channel")).toBe(false);
+  });
+
+  it("preserves empty-set filters through the local fallback", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000025");
+    bundles.set(value.id, value);
+    channels.add("production");
+    let requestedUrl: URL | undefined;
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [...bundles.values()],
+          pagination: {
+            total: bundles.size,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        });
+      }),
+    );
+
+    await expect(
+      createDatabaseClient(createRepository()).getBundles({
+        limit: 50,
+        where: { channel: "missing" },
+      }),
+    ).resolves.toMatchObject({ data: [], pagination: { total: 0 } });
+    expect(requestedUrl?.searchParams.has("idIn")).toBe(false);
+  });
+
   it("queries patch rows from aggregate bundle responses", async () => {
     const base = bundle("00000000-0000-0000-0000-000000000011");
     const target = bundle("00000000-0000-0000-0000-000000000012", {
@@ -256,6 +392,24 @@ describe("standaloneRepository", () => {
     server.use(
       http.get(`${BASE_URL}/api/bundles`, () =>
         HttpResponse.json({ data: "invalid" }),
+      ),
+    );
+
+    await expect(
+      createRepository().findMany({ model: "bundles" }),
+    ).rejects.toEqual(
+      new StandaloneDatabaseError(
+        "invalid-response",
+        "Invalid bundle list response.",
+        200,
+      ),
+    );
+  });
+
+  it("rejects incomplete pagination metadata", async () => {
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, () =>
+        HttpResponse.json({ data: [], pagination: {} }),
       ),
     );
 

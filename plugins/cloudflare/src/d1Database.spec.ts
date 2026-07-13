@@ -49,6 +49,7 @@ it("projects selected fields after querying physical bundle columns", async () =
     file_hash: "hash",
     git_commit_hash: null,
     message: "Alpha Release",
+    channel: "production",
     channel_id: "channel-production",
     storage_uri: "storage://bundle",
     target_app_version: "1.0.0",

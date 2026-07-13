@@ -34,9 +34,34 @@ const createImplementation = <TDatabase extends object, TContext>(
   config: KyselyAdapterConfig<TDatabase>,
 ): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> => {
   const db = config.db;
-  const crud = createKyselyCrud(db, config.provider);
+  const relationMode = config.relationMode ?? "foreign-keys";
+  const crud = createKyselyCrud(db, config.provider, relationMode);
   return {
     ...crud,
+    create: (input) =>
+      db
+        .transaction()
+        .execute((transaction) =>
+          createKyselyCrud(transaction, config.provider, relationMode).create(
+            input,
+          ),
+        ),
+    update: (input) =>
+      db
+        .transaction()
+        .execute((transaction) =>
+          createKyselyCrud(transaction, config.provider, relationMode).update(
+            input,
+          ),
+        ),
+    delete: (input) =>
+      db
+        .transaction()
+        .execute((transaction) =>
+          createKyselyCrud(transaction, config.provider, relationMode).delete(
+            input,
+          ),
+        ),
     getUpdateInfo: (args, context) =>
       getDatabaseAdapterUpdateInfo(
         {
@@ -54,7 +79,9 @@ const createImplementation = <TDatabase extends object, TContext>(
       db
         .transaction()
         .execute((transaction) =>
-          callback(createKyselyCrud(transaction, config.provider)),
+          callback(
+            createKyselyCrud(transaction, config.provider, relationMode),
+          ),
         ),
   };
 };

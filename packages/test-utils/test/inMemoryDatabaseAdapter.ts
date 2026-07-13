@@ -102,11 +102,22 @@ const createCrudImplementation = (
   },
   delete: async (input) => {
     switch (input.model) {
-      case "bundles":
+      case "bundles": {
+        const removedIds = new Set(
+          tables.bundles.rows
+            .filter((row) => matchesAll(row, input.where))
+            .map(({ id }) => id),
+        );
         tables.bundles.rows = tables.bundles.rows.filter(
-          (row) => !matchesAll(row, input.where),
+          ({ id }) => !removedIds.has(id),
+        );
+        tables.bundle_patches.rows = tables.bundle_patches.rows.filter(
+          (row) =>
+            !removedIds.has(row.bundle_id) &&
+            !removedIds.has(row.base_bundle_id),
         );
         return;
+      }
       case "bundle_patches":
         tables.bundle_patches.rows = tables.bundle_patches.rows.filter(
           (row) => !matchesAll(row, input.where),

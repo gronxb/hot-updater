@@ -32,16 +32,38 @@ const matchesCondition = <TModel extends DatabaseModel>(
   const operator = Reflect.get(condition, "operator") ?? "eq";
   switch (operator) {
     case "eq":
+      if (typeof expected === "string") {
+        return compareString(
+          actual,
+          expected,
+          Reflect.get(condition, "mode"),
+          (value, query) => value === query,
+        );
+      }
       return actual === expected;
-    case "ne":
+    case "ne": {
+      if (actual === null || actual === undefined) return false;
+      if (typeof expected === "string") {
+        return !compareString(
+          actual,
+          expected,
+          Reflect.get(condition, "mode"),
+          (value, query) => value === query,
+        );
+      }
       return actual !== expected;
+    }
     case "gt":
+      if (actual === null || actual === undefined) return false;
       return compare(actual, expected) > 0;
     case "gte":
+      if (actual === null || actual === undefined) return false;
       return compare(actual, expected) >= 0;
     case "lt":
+      if (actual === null || actual === undefined) return false;
       return compare(actual, expected) < 0;
     case "lte":
+      if (actual === null || actual === undefined) return false;
       return compare(actual, expected) <= 0;
     case "in":
       return (
@@ -51,7 +73,10 @@ const matchesCondition = <TModel extends DatabaseModel>(
     case "not_in":
       return (
         Array.isArray(expected) &&
-        expected.every((candidate: unknown) => candidate !== actual)
+        (expected.length === 0 ||
+          (actual !== null &&
+            actual !== undefined &&
+            expected.every((candidate: unknown) => candidate !== actual)))
       );
     case "contains":
       return typeof expected === "string"

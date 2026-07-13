@@ -1,9 +1,4 @@
-import type {
-  DatabaseField,
-  DatabaseJsonValue,
-  DatabaseModel,
-  DatabaseRow,
-} from "./databaseRows";
+import type { DatabaseField, DatabaseModel, DatabaseRow } from "./databaseRows";
 
 export type DatabaseWhereOperator =
   | "eq"
@@ -53,12 +48,16 @@ type SetWhere<
   readonly value: readonly TValue[];
 };
 
-type JsonWhereValue<TValue> = unknown extends TValue
-  ? DatabaseJsonValue
-  : TValue;
+type ScalarWhereValue<TValue> = unknown extends TValue
+  ? never
+  : Extract<TValue, readonly unknown[] | object> extends never
+    ? Extract<TValue, boolean | number | string | null>
+    : never;
 
 type FieldWhere<TField extends string, TValue> =
-  | EqualityWhere<TField, JsonWhereValue<TValue>>
+  | ([ScalarWhereValue<TValue>] extends [never]
+      ? never
+      : EqualityWhere<TField, ScalarWhereValue<TValue>>)
   | (Extract<TValue, string> extends never ? never : StringWhere<TField>)
   | (Extract<TValue, number | string> extends never
       ? never
@@ -85,7 +84,16 @@ export type SelectedDatabaseRow<
     ? Pick<DatabaseRow<TModel>, TSelect[number]>
     : DatabaseRow<TModel>;
 
+type DatabaseSortableField<TModel extends DatabaseModel> = {
+  readonly [TField in DatabaseField<TModel>]: Exclude<
+    DatabaseRow<TModel>[TField],
+    null
+  > extends number | string
+    ? TField
+    : never;
+}[DatabaseField<TModel>];
+
 export interface DatabaseSortBy<TModel extends DatabaseModel> {
-  readonly field: DatabaseField<TModel>;
+  readonly field: DatabaseSortableField<TModel>;
   readonly direction: "asc" | "desc";
 }

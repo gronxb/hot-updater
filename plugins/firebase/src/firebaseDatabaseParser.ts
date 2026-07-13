@@ -81,6 +81,7 @@ const parseFirebaseBundleInput = (
   channelId: string,
   source: string,
 ): BundleRow => {
+  const channel = property(input, "channel");
   return {
     id: string(property(input, "id"), source),
     platform: platform(property(input, "platform"), source),
@@ -92,6 +93,7 @@ const parseFirebaseBundleInput = (
     file_hash: string(property(input, "file_hash"), source),
     git_commit_hash: nullableString(property(input, "git_commit_hash"), source),
     message: nullableString(property(input, "message"), source),
+    channel: typeof channel === "string" ? channel : channelId,
     channel_id: channelId,
     storage_uri: string(property(input, "storage_uri"), source),
     target_app_version: nullableString(

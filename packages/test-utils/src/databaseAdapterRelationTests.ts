@@ -156,5 +156,61 @@ export const registerDatabaseAdapterRelationTests = <TContext>(
           ),
       ).rejects.toThrow();
     });
+
+    it("deletes patches whose base bundle is deleted", async () => {
+      const [baseId, targetId] = await seedBundlePair(state);
+      const patch = createBundlePatchRowFixture("91", targetId, baseId);
+      await state
+        .getAdapter()
+        .create({ model: "bundle_patches", data: patch }, state.context);
+
+      await state.getAdapter().delete(
+        {
+          model: "bundles",
+          where: [{ field: "id", value: baseId }],
+        },
+        state.context,
+      );
+
+      await expect(
+        state.getAdapter().findMany({ model: "bundle_patches" }, state.context),
+      ).resolves.toEqual([]);
+      await expect(
+        state
+          .getAdapter()
+          .findOne(
+            { model: "bundles", where: [{ field: "id", value: targetId }] },
+            state.context,
+          ),
+      ).resolves.not.toBeNull();
+    });
+
+    it("deletes patches whose owner bundle is deleted", async () => {
+      const [baseId, targetId] = await seedBundlePair(state);
+      const patch = createBundlePatchRowFixture("92", targetId, baseId);
+      await state
+        .getAdapter()
+        .create({ model: "bundle_patches", data: patch }, state.context);
+
+      await state.getAdapter().delete(
+        {
+          model: "bundles",
+          where: [{ field: "id", value: targetId }],
+        },
+        state.context,
+      );
+
+      await expect(
+        state.getAdapter().findMany({ model: "bundle_patches" }, state.context),
+      ).resolves.toEqual([]);
+      await expect(
+        state
+          .getAdapter()
+          .findOne(
+            { model: "bundles", where: [{ field: "id", value: baseId }] },
+            state.context,
+          ),
+      ).resolves.not.toBeNull();
+    });
   });
 };

@@ -114,6 +114,7 @@ describe("mock database provider", () => {
       file_hash: "hash",
       git_commit_hash: null,
       message: null,
+      channel: "missing",
       channel_id: "missing-channel",
       storage_uri: "storage://bundle.zip",
       target_app_version: "1.0.0",
@@ -129,7 +130,7 @@ describe("mock database provider", () => {
     await expect(
       adapter.create({ model: "bundles", data: bundle }),
     ).rejects.toMatchObject({
-      constraint: "bundles.channel_id.foreign-key",
+      code: "channel-reference-mismatch",
     });
   });
 });

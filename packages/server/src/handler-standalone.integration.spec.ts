@@ -94,6 +94,12 @@ const createInMemoryBlobDatabase = (store: Record<string, string>) =>
       uploadObject: async (key: string, data: unknown) => {
         store[key] = JSON.stringify(data);
       },
+      compareAndSwapObject: async (key, expected, data) => {
+        const current = store[key] ? (JSON.parse(store[key]) as unknown) : null;
+        if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
+        store[key] = JSON.stringify(data);
+        return true;
+      },
       invalidatePaths: async () => {},
     }),
   });
@@ -232,7 +238,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
   it("returns null when the bundle endpoint returns 404", async () => {
     await expect(
-      createStandaloneClient().getBundleById("non-existent-bundle"),
+      createStandaloneClient().getBundleById(uuidv7()),
     ).resolves.toBeNull();
   });
 
@@ -268,7 +274,11 @@ describe("Handler <-> Standalone Repository Integration", () => {
       id: bundleId,
       targetAppVersion: "1.0.2",
     });
-    const snapshot = JSON.parse(store[BLOB_DATABASE_SNAPSHOT_KEY] ?? "{}") as {
+    const pointer = JSON.parse(store[BLOB_DATABASE_SNAPSHOT_KEY] ?? "{}") as {
+      active_revision?: string;
+    };
+    const snapshotKey = `_hot-updater/database/revisions/${pointer.active_revision}/snapshot.json`;
+    const snapshot = JSON.parse(store[snapshotKey] ?? "{}") as {
       bundles?: Array<{ id: string; target_app_version: string }>;
     };
     expect(snapshot.bundles).toEqual([

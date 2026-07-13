@@ -58,27 +58,43 @@ const predicate = (where: AnyDatabaseWhere): Document => {
               }
             : { $eq: [field, where.value] },
       };
-    case "ne":
-      return {
-        $expr:
-          "mode" in where && where.mode === "insensitive"
-            ? {
-                $ne: [
-                  { $toLower: { $ifNull: [field, ""] } },
-                  where.value.toLocaleLowerCase(),
-                ],
-              }
-            : { $ne: [field, where.value] },
-      };
+    case "ne": {
+      const comparison =
+        "mode" in where && where.mode === "insensitive"
+          ? {
+              $ne: [
+                { $toLower: { $ifNull: [field, ""] } },
+                where.value.toLocaleLowerCase(),
+              ],
+            }
+          : { $ne: [field, where.value] };
+      return where.value === null
+        ? { $expr: comparison }
+        : {
+            $and: [{ $expr: { $ne: [field, null] } }, { $expr: comparison }],
+          };
+    }
     case "gt":
     case "gte":
     case "lt":
     case "lte":
-      return { $expr: { [`$${where.operator}`]: [field, where.value] } };
+      return {
+        $and: [
+          { $expr: { $ne: [field, null] } },
+          { $expr: { [`$${where.operator}`]: [field, where.value] } },
+        ],
+      };
     case "in":
       return { $expr: { $in: [field, where.value] } };
     case "not_in":
-      return { $expr: { $not: [{ $in: [field, where.value] }] } };
+      return where.value.length === 0
+        ? { $expr: { $not: [{ $in: [field, where.value] }] } }
+        : {
+            $and: [
+              { $expr: { $ne: [field, null] } },
+              { $expr: { $not: [{ $in: [field, where.value] }] } },
+            ],
+          };
     case "contains":
     case "starts_with":
     case "ends_with":

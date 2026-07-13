@@ -27,17 +27,30 @@ const matchesCondition = <
   const actual = Reflect.get(row, condition.field);
   const expected = condition.value;
   switch (condition.operator ?? "eq") {
-    case "eq":
-      return actual === expected;
-    case "ne":
-      return actual !== expected;
+    case "eq": {
+      if (typeof expected !== "string") return actual === expected;
+      const mode = "mode" in condition ? condition.mode : undefined;
+      const comparison = normalizeStringComparison(actual, expected, mode);
+      return comparison !== null && comparison[0] === comparison[1];
+    }
+    case "ne": {
+      if (actual === null || actual === undefined) return false;
+      if (typeof expected !== "string") return actual !== expected;
+      const mode = "mode" in condition ? condition.mode : undefined;
+      const comparison = normalizeStringComparison(actual, expected, mode);
+      return comparison === null || comparison[0] !== comparison[1];
+    }
     case "gt":
+      if (actual === null || actual === undefined) return false;
       return compare(actual, expected) > 0;
     case "gte":
+      if (actual === null || actual === undefined) return false;
       return compare(actual, expected) >= 0;
     case "lt":
+      if (actual === null || actual === undefined) return false;
       return compare(actual, expected) < 0;
     case "lte":
+      if (actual === null || actual === undefined) return false;
       return compare(actual, expected) <= 0;
     case "in": {
       if (!Array.isArray(expected)) return false;
@@ -47,7 +60,12 @@ const matchesCondition = <
     case "not_in": {
       if (!Array.isArray(expected)) return false;
       const values: readonly unknown[] = expected;
-      return values.every((candidate) => candidate !== actual);
+      return (
+        values.length === 0 ||
+        (actual !== null &&
+          actual !== undefined &&
+          values.every((candidate) => candidate !== actual))
+      );
     }
     case "contains": {
       if (typeof expected !== "string") return false;

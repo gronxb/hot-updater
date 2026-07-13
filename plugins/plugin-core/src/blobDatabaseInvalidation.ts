@@ -1,16 +1,8 @@
 import semver from "semver";
 
+import { normalizeBlobTargetAppVersion } from "./blobDatabaseManifests";
 import type { BlobDatabaseSnapshot } from "./blobDatabaseSnapshot";
 import type { BundleRow } from "./types";
-
-const normalizeTargetAppVersion = (version: string): string =>
-  version
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(
-      /([><=~^]+)\s+(\d)/g,
-      (_match, operator, digit) => `${operator}${digit}`,
-    );
 
 const exactVersionPaths = (
   apiBasePath: string,
@@ -18,7 +10,7 @@ const exactVersionPaths = (
   channelName: string,
   version: string,
 ): readonly string[] => {
-  const normalized = normalizeTargetAppVersion(version);
+  const normalized = normalizeBlobTargetAppVersion(version);
   if (semver.valid(normalized) === null) {
     return [`${apiBasePath}/app-version/${bundle.platform}/*`];
   }

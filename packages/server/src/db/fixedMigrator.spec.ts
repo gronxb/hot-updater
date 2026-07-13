@@ -12,6 +12,7 @@ import { createKyselyMigrator } from "./fixedMigrator";
 import {
   executeMongoMigration,
   MONGO_CHANNEL_ID_PIPELINE,
+  MONGO_NORMALIZE_CHANNEL_FIELDS_PIPELINE,
   type MongoMigrationBackend,
 } from "./mongoMigrationExecution";
 import { createTableStatement } from "./schema/sql";
@@ -214,7 +215,7 @@ describe("createKyselyMigrator", () => {
     expect(columns.rows.map(({ column_name }) => column_name)).toContain(
       "channel_id",
     );
-    expect(columns.rows.map(({ column_name }) => column_name)).not.toContain(
+    expect(columns.rows.map(({ column_name }) => column_name)).toContain(
       "channel",
     );
   });
@@ -341,9 +342,9 @@ describe("createKyselyMigrator", () => {
     expect(db.prepare("pragma foreign_keys").get()).toEqual({
       foreign_keys: 1,
     });
-    expect(db.prepare("select channel_id from bundles").all()).toEqual([
-      { channel_id: "production" },
-    ]);
+    expect(db.prepare("select channel, channel_id from bundles").all()).toEqual(
+      [{ channel: "production", channel_id: "production" }],
+    );
   });
 
   it("rebuilds SQLite bundles so the channel and patch foreign keys remain enforced", () => {
@@ -463,10 +464,11 @@ describe("MongoDB channel migration", () => {
     };
     const bundles: BundleDocument[] = [
       { channel: "production" },
+      { channel_id: "channel-staging" },
       { channel: null },
       {},
     ];
-    const channels = new Map<string, string>();
+    const channels = new Map<string, string>([["channel-staging", "staging"]]);
     const channelReads: string[][] = [];
     let failIndexCreation = true;
     let version = "0.31.0";
@@ -491,9 +493,25 @@ describe("MongoDB channel migration", () => {
       },
       normalizeLegacyBundles: async () => {
         for (const bundle of bundles) {
-          if (typeof bundle.channel !== "string" || !bundle.channel) continue;
-          bundle.channel_id = bundle.channel;
-          delete bundle.channel;
+          const channel =
+            typeof bundle.channel === "string" && bundle.channel
+              ? bundle.channel
+              : bundle.channel_id;
+          const channelId =
+            typeof bundle.channel_id === "string" && bundle.channel_id
+              ? bundle.channel_id
+              : bundle.channel;
+          if (typeof channel === "string" && channel) {
+            bundle.channel = channel;
+          }
+          if (typeof channelId === "string" && channelId) {
+            bundle.channel_id = channelId;
+          }
+        }
+        for (const bundle of bundles) {
+          if (typeof bundle.channel_id !== "string") continue;
+          const channelName = channels.get(bundle.channel_id);
+          if (channelName !== undefined) bundle.channel = channelName;
         }
       },
       ensureIndexes: async () => {
@@ -509,13 +527,26 @@ describe("MongoDB channel migration", () => {
     await expect(
       executeMongoMigration({ backend, updateSettings: true }),
     ).rejects.toThrow("injected index creation failure");
-    expect(bundles[0]).toEqual({ channel_id: "production" });
+    expect(bundles[0]).toEqual({
+      channel: "production",
+      channel_id: "production",
+    });
+    expect(bundles[1]).toEqual({
+      channel: "staging",
+      channel_id: "channel-staging",
+    });
     expect(version).toBe("0.31.0");
 
     await executeMongoMigration({ backend, updateSettings: true });
 
-    expect(channelReads).toEqual([["production"], ["production"]]);
-    expect([...channels.entries()]).toEqual([["production", "production"]]);
+    expect(channelReads).toEqual([
+      ["production", "channel-staging"],
+      ["production", "channel-staging"],
+    ]);
+    expect([...channels.entries()]).toEqual([
+      ["channel-staging", "staging"],
+      ["production", "production"],
+    ]);
     expect(version).toBe("0.36.0");
   });
 
@@ -532,6 +563,39 @@ describe("MongoDB channel migration", () => {
         },
       },
       { $group: { _id: "$channelId" } },
+    ]);
+  });
+
+  it("restores either channel field after a partially applied migration", () => {
+    expect(MONGO_NORMALIZE_CHANNEL_FIELDS_PIPELINE).toEqual([
+      {
+        $set: {
+          channel: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: [{ $type: "$channel" }, "string"] },
+                  { $ne: ["$channel", ""] },
+                ],
+              },
+              "$channel",
+              "$channel_id",
+            ],
+          },
+          channel_id: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: [{ $type: "$channel_id" }, "string"] },
+                  { $ne: ["$channel_id", ""] },
+                ],
+              },
+              "$channel_id",
+              "$channel",
+            ],
+          },
+        },
+      },
     ]);
   });
 });

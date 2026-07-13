@@ -14,7 +14,7 @@
 "hot-updater": minor
 ---
 
-Replace database plugin v1 with the fixed-model database adapter API for
+Replace the legacy database adapter API with the fixed-model adapter API for
 `bundles`, `bundle_patches`, and `channels`. Database providers now return a
 direct adapter object, aggregate bundle behavior is provided by the shared
 database client, callback transactions and optimized update checks are
@@ -23,8 +23,9 @@ Provider functions now receive their configuration directly and close over it
 inside `createDatabaseAdapter({ name, adapter })`.
 
 Normalize channel storage as `channels { id, name }` with unique names and
-`bundles.channel_id -> channels.id`, while preserving channel names in the
-public bundle and standalone HTTP APIs.
+`bundles.channel_id -> channels.id`, while double-writing the channel name to
+the legacy `bundles.channel` field for backwards-compatible readers and
+preserving channel names in the public bundle and standalone HTTP APIs.
 
 Publish `@hot-updater/test-utils` with reusable low-adapter and aggregate-client
 conformance suites for custom database adapter authors.

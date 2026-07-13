@@ -11,6 +11,7 @@ export const DATABASE_ADAPTER_TEST_SCHEMA_SQL = `
     file_hash text not null,
     git_commit_hash text,
     message text,
+    channel text not null default 'production',
     channel_id varchar(255) not null references channels(id) on delete restrict,
     storage_uri text not null,
     target_app_version text,

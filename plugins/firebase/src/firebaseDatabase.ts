@@ -2,11 +2,14 @@ import {
   createDatabaseAdapter,
   type DatabaseAdapterImplementation,
   resolveUpdateInfoFromBundles,
-  rowsToBundles,
   type TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 import admin from "firebase-admin";
 
+import {
+  parseFirebaseBundleRow,
+  parseFirebaseChannelRow,
+} from "./firebaseDatabaseParser";
 import {
   createFirebaseDatabaseCollections,
   loadFirebaseDatabaseSnapshot,
@@ -18,10 +21,23 @@ import {
   cloneFirebaseDatabaseSnapshot,
   createFirebaseDatabaseState,
 } from "./firebaseDatabaseState";
+import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabaseAdapterImplementation,
 ) => Promise<TResult>;
+
+const exactId = (
+  input: Parameters<DatabaseAdapterImplementation["findOne"]>[0],
+): string | undefined => {
+  if (input.where?.length !== 1) return undefined;
+  const [condition] = input.where;
+  return condition.field === "id" &&
+    (condition.operator === undefined || condition.operator === "eq") &&
+    typeof condition.value === "string"
+    ? condition.value
+    : undefined;
+};
 
 export const firebaseDatabase = (config: admin.AppOptions) =>
   createDatabaseAdapter({
@@ -34,7 +50,12 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
       let migration: Promise<void> | undefined;
 
       const ensureMigrated = (): Promise<void> => {
-        migration ??= migrateFirebaseDatabase(db, collections);
+        migration ??= migrateFirebaseDatabase(db, collections).catch(
+          (error) => {
+            migration = undefined;
+            throw error;
+          },
+        );
         return migration;
       };
 
@@ -72,19 +93,32 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
         update: (input) => mutate((database) => database.update(input)),
         delete: (input) => mutate((database) => database.delete(input)),
         count: (input) => read((database) => database.count(input)),
-        findOne: (input) => read((database) => database.findOne(input)),
+        findOne: async (input) => {
+          const id = exactId(input);
+          if (id === undefined) {
+            return read((database) => database.findOne(input));
+          }
+          await ensureMigrated();
+          if (input.model === "bundles") {
+            const document = await collections.bundles.doc(id).get();
+            return document.exists
+              ? parseFirebaseBundleRow(
+                  document.data(),
+                  `bundles/${document.id}`,
+                )
+              : null;
+          }
+          const document = await collections.channels.doc(id).get();
+          return document.exists
+            ? parseFirebaseChannelRow(document.data(), document.id)
+            : null;
+        },
         findMany: (input) => read((database) => database.findMany(input)),
         getUpdateInfo: async (args, context) => {
           await ensureMigrated();
-          const snapshot = await loadFirebaseDatabaseSnapshot(collections);
           return resolveUpdateInfoFromBundles({
             args,
-            bundles: rowsToBundles(
-              [...snapshot.bundles.values()],
-              [...snapshot.bundlePatches.values()],
-              [...snapshot.bundles.values()],
-              [...snapshot.channels.values()],
-            ),
+            bundles: await loadFirebaseUpdateBundles(collections, args),
             context,
           });
         },

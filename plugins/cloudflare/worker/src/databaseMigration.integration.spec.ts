@@ -60,14 +60,17 @@ it("backfills channel names and bundle channel ids while preserving patches", as
     "SELECT id, name FROM channels WHERE id = 'production'",
   ).first();
   const bundle = await env.DB.prepare(
-    "SELECT channel_id FROM bundles WHERE id = 'target'",
+    "SELECT channel, channel_id FROM bundles WHERE id = 'target'",
   ).first();
   const patch = await env.DB.prepare(
     "SELECT id FROM bundle_patches WHERE id = 'patch'",
   ).first();
 
   expect(channel).toEqual({ id: "production", name: "production" });
-  expect(bundle).toEqual({ channel_id: "production" });
+  expect(bundle).toEqual({
+    channel: "production",
+    channel_id: "production",
+  });
   expect(patch).toEqual({ id: "patch" });
 });
 

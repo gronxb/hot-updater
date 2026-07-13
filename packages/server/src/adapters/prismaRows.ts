@@ -14,6 +14,7 @@ export type PrismaDelegate = {
   readonly findFirst: (args?: PrismaQuery) => Promise<unknown>;
   readonly findMany: (args?: PrismaQuery) => Promise<readonly unknown[]>;
   readonly update: (args: PrismaQuery) => Promise<unknown>;
+  readonly updateMany?: (args: PrismaQuery) => Promise<unknown>;
 };
 
 export class PrismaAdapterError extends Error {
@@ -101,6 +102,7 @@ export const parsePrismaBundleRow = (value: unknown): BundleRow => {
     file_hash: readString(value, "file_hash"),
     git_commit_hash: readNullableString(value, "git_commit_hash"),
     message: readNullableString(value, "message"),
+    channel: readString(value, "channel"),
     channel_id: readString(value, "channel_id"),
     storage_uri: readString(value, "storage_uri"),
     target_app_version: readNullableString(value, "target_app_version"),

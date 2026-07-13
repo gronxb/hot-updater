@@ -15,4 +15,16 @@ describe("buildSupabaseFilter", () => {
 
     expect(filter).toBe('message.not.ilike."Release"');
   });
+
+  it("escapes PostgREST wildcards for insensitive equality", () => {
+    const filter = buildSupabaseFilter([
+      {
+        field: "message",
+        value: "release_100%*",
+        mode: "insensitive",
+      },
+    ]);
+
+    expect(filter).toBe(String.raw`message.ilike."release\\_100\\%\\*"`);
+  });
 });

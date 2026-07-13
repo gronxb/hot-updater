@@ -155,6 +155,7 @@ const createMemoryHotUpdater = () => {
         return parsed;
       },
       uploadObject: async () => {},
+      compareAndSwapObject: async () => true,
       invalidatePaths: async () => {},
     }),
   });

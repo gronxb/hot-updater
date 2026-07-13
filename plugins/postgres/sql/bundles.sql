@@ -17,6 +17,7 @@ CREATE TABLE bundles (
     file_hash text NOT NULL,
     git_commit_hash text,
     message text,
+    channel text NOT NULL DEFAULT 'production',
     channel_id text NOT NULL
       REFERENCES channels(id) ON DELETE RESTRICT,
     storage_uri text NOT NULL,
@@ -46,6 +47,7 @@ CREATE TABLE bundle_patches (
 
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
+CREATE INDEX bundles_channel_idx ON bundles(channel);
 CREATE INDEX bundles_channel_id_idx ON bundles(channel_id);
 CREATE INDEX bundles_rollout_idx ON bundles(rollout_cohort_count);
 CREATE INDEX bundles_target_cohorts_idx ON bundles USING GIN (target_cohorts);

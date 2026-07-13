@@ -7,6 +7,16 @@ export type StoredBundleRow = Omit<BundleRow, "metadata" | "target_cohorts"> & {
   readonly target_cohorts: unknown;
 };
 
+class StoredBundleRowError extends Error {
+  readonly name = "StoredBundleRowError";
+}
+
+const parseStoredBoolean = (value: unknown, field: string): boolean => {
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
+  throw new StoredBundleRowError(`Invalid boolean value for ${field}.`);
+};
+
 const parseJson = (value: string): unknown => {
   try {
     return JSON.parse(value);
@@ -17,13 +27,24 @@ const parseJson = (value: string): unknown => {
 };
 
 const parseTargetCohorts = (value: unknown): readonly string[] | null => {
+  if (value === null) return null;
   const parsed = typeof value === "string" ? parseJson(value) : value;
-  if (!Array.isArray(parsed)) return null;
-  return parsed.filter((item): item is string => typeof item === "string");
+  if (
+    !Array.isArray(parsed) ||
+    !parsed.every((item) => typeof item === "string")
+  ) {
+    throw new StoredBundleRowError("Invalid target_cohorts field.");
+  }
+  return parsed;
 };
 
 export const fromStoredBundleRow = (row: StoredBundleRow): BundleRow => ({
   ...row,
+  should_force_update: parseStoredBoolean(
+    row.should_force_update,
+    "should_force_update",
+  ),
+  enabled: parseStoredBoolean(row.enabled, "enabled"),
   metadata:
     typeof row.metadata === "string" ? parseJson(row.metadata) : row.metadata,
   target_cohorts: parseTargetCohorts(row.target_cohorts),

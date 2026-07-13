@@ -1,5 +1,14 @@
 import type { TransactionDatabaseAdapterImplementation } from "@hot-updater/plugin-core";
-import { asc, desc, eq, type SQLWrapper } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  or,
+  type SQLWrapper,
+} from "drizzle-orm";
 
 import {
   fromStoredBundleRow,
@@ -74,21 +83,60 @@ export const createDrizzleCrud = (
       if (selector === undefined || typeof selector.value !== "string") {
         throw new DrizzleAdapterInvariantError();
       }
-      const predicate = eq(getDrizzleColumn(bundles, "id"), selector.value);
-      const current = await db.query.bundles.findFirst({ where: predicate });
-      if (current === undefined) return null;
+      if (
+        input.update.target_app_version === null &&
+        input.update.fingerprint_hash === null
+      ) {
+        throw new DrizzleAdapterInvariantError();
+      }
+      const idPredicate = eq(getDrizzleColumn(bundles, "id"), selector.value);
+      const targetPredicate =
+        input.update.target_app_version === null &&
+        input.update.fingerprint_hash === undefined
+          ? isNotNull(getDrizzleColumn(bundles, "fingerprint_hash"))
+          : input.update.fingerprint_hash === null &&
+              input.update.target_app_version === undefined
+            ? isNotNull(getDrizzleColumn(bundles, "target_app_version"))
+            : undefined;
+      const predicate =
+        targetPredicate === undefined
+          ? idPredicate
+          : and(idPredicate, targetPredicate);
+      if (predicate === undefined) throw new DrizzleAdapterInvariantError();
       await db
         .update(bundles)
         .set(toStoredBundleUpdate(input.update, provider))
         .where(predicate)
         .execute();
-      return { ...fromStoredBundleRow(current), ...input.update };
+      const stored = await db.query.bundles.findFirst({ where: idPredicate });
+      if (stored === undefined) return null;
+      const updated = fromStoredBundleRow(stored);
+      if (
+        (input.update.target_app_version !== undefined &&
+          updated.target_app_version !== input.update.target_app_version) ||
+        (input.update.fingerprint_hash !== undefined &&
+          updated.fingerprint_hash !== input.update.fingerprint_hash)
+      ) {
+        throw new DrizzleAdapterInvariantError();
+      }
+      return updated;
     },
     async delete(input) {
       switch (input.model) {
         case "bundles": {
           const where = buildDrizzleWhere(provider, bundles, input.where);
           if (where === undefined) throw new DrizzleAdapterInvariantError();
+          const matchingBundles = await db.query.bundles.findMany({ where });
+          const bundleIds = matchingBundles.map(({ id }) => id);
+          if (bundleIds.length === 0) return;
+          const patchWhere = or(
+            inArray(getDrizzleColumn(patches, "bundle_id"), bundleIds),
+            inArray(getDrizzleColumn(patches, "base_bundle_id"), bundleIds),
+          );
+          if (patchWhere === undefined) {
+            throw new DrizzleAdapterInvariantError();
+          }
+          await db.delete(patches).where(patchWhere).execute();
           await db.delete(bundles).where(where).execute();
           return;
         }

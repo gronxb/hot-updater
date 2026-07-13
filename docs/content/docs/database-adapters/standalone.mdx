@@ -32,7 +32,7 @@ npm install @hot-updater/standalone --save-dev
 Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
+import { defineConfig } from "hot-updater";
 import { standaloneRepository } from "@hot-updater/standalone";
 
 export default defineConfig({
@@ -196,6 +196,19 @@ interface Bundle {
   metadata?: {
     app_version?: string;
   };
+  manifestStorageUri?: string | null;
+  manifestFileHash?: string | null;
+  assetBaseStorageUri?: string | null;
+  patches?: Array<{
+    baseBundleId: string;
+    baseFileHash: string;
+    patchFileHash: string;
+    patchStorageUri: string;
+  }> | null;
+  patchBaseBundleId?: string | null; // Deprecated; use patches
+  patchBaseFileHash?: string | null; // Deprecated; use patches
+  patchFileHash?: string | null;     // Deprecated; use patches
+  patchStorageUri?: string | null;   // Deprecated; use patches
   rolloutCohortCount?: number | null;
   targetCohorts?: string[] | null;
 }
@@ -216,6 +229,15 @@ Supported query params:
 |-------------|------|-------|
 | `channel` | `string` | Exact match |
 | `platform` | `"ios" \| "android"` | Exact match |
+| `enabled` | `boolean` | Exact match |
+| `idEq` | `string` | Exact bundle ID |
+| `idGt`, `idGte` | `string` | Bundle ID lower bound |
+| `idLt`, `idLte` | `string` | Bundle ID upper bound |
+| `idIn` | repeated `string` | Match any listed bundle ID |
+| `targetAppVersion` | `string \| "null"` | Exact app version or null |
+| `targetAppVersionNotNull` | `"true"` | Require a non-null app version |
+| `targetAppVersionIn` | repeated `string` | Match any listed app version |
+| `fingerprintHash` | `string \| "null"` | Exact fingerprint or null |
 | `limit` | `number` | Window size |
 | `page` | `number` | Optional positive page number for stable page-aligned requests |
 | `after` | `string` | Fetch the next window after this bundle ID |

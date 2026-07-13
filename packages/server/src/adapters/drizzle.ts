@@ -49,6 +49,16 @@ const createImplementation = <TContext>(
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
+    ...(transaction
+      ? {
+          delete: (input: Parameters<typeof crud.delete>[0]) =>
+            transaction((transactionDatabase) =>
+              createDrizzleCrud(transactionDatabase, config.provider).delete(
+                input,
+              ),
+            ),
+        }
+      : {}),
     getUpdateInfo: (args, context) =>
       getDatabaseAdapterUpdateInfo(
         {

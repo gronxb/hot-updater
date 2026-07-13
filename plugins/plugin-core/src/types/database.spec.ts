@@ -56,6 +56,44 @@ describe("database adapter types", () => {
     }>();
   });
 
+  it("keeps structured fields outside portable predicates and sorting", () => {
+    type MetadataWhere = {
+      readonly model: "bundles";
+      readonly where: readonly [
+        {
+          readonly field: "metadata";
+          readonly value: { readonly release: "stable" };
+        },
+      ];
+    };
+    type CohortWhere = {
+      readonly model: "bundles";
+      readonly where: readonly [
+        {
+          readonly field: "target_cohorts";
+          readonly value: readonly ["qa"];
+        },
+      ];
+    };
+    type MetadataSort = {
+      readonly model: "bundles";
+      readonly sortBy: {
+        readonly field: "metadata";
+        readonly direction: "asc";
+      };
+    };
+
+    expectTypeOf<MetadataWhere>().not.toMatchTypeOf<
+      FindManyDatabaseInput<"bundles">
+    >();
+    expectTypeOf<CohortWhere>().not.toMatchTypeOf<
+      FindManyDatabaseInput<"bundles">
+    >();
+    expectTypeOf<MetadataSort>().not.toMatchTypeOf<
+      FindManyDatabaseInput<"bundles">
+    >();
+  });
+
   it("keeps transaction operations input-only", () => {
     // Given / When / Then
     expectTypeOf<

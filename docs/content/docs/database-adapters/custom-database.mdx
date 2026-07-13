@@ -60,8 +60,9 @@ import type {
 `BundleRow` never contains patch artifacts. Patch ownership and base-bundle
 references are represented by `BundlePatchRow.bundle_id` and
 `BundlePatchRow.base_bundle_id`. `ChannelRow` is exactly
-`{ id: string; name: string }`, and `BundleRow.channel_id` references its
-stable `id`. The public `Bundle.channel` value remains the channel name.
+`{ id: string; name: string }`. `BundleRow.channel` keeps the channel name for
+legacy readers, while `BundleRow.channel_id` references the channel's stable
+`id`. Bundle creates and channel changes must write both fields together.
 
 ## Create an adapter
 
@@ -342,20 +343,20 @@ const hotUpdater = createHotUpdater({
 });
 ```
 
-## Migrating from database plugin v1
+## Migrating from the legacy database adapter
 
-The database adapter API is a full replacement for database plugin v1. There is no v1 compatibility mode.
+The fixed-model database adapter API fully replaces the legacy adapter API. There is no legacy compatibility mode.
 
 1. Replace whole-bundle methods with the fixed row operation matrix.
 2. Split stored patches into `bundle_patches` and create
    `channels { id, name }` with a unique `name`.
 3. Backfill one channel row for every distinct existing bundle channel, using
    the previous channel value as both `id` and `name`.
-4. Replace the stored bundle string with
-   `bundles.channel_id -> channels.id ON DELETE RESTRICT`. Keep translating the
-   referenced channel `name` to the public `Bundle.channel` string. For
-   non-relational databases, enforce the equivalent relationship in adapter
-   writes.
+4. Add `bundles.channel_id -> channels.id ON DELETE RESTRICT` without removing
+   the existing `bundles.channel` string. Double-write the channel name to
+   `channel` and the referenced stable ID to `channel_id` on every bundle
+   create or channel change. For non-relational databases, enforce the
+   equivalent relationship in adapter writes.
 5. Replace `config.database()` and direct bundle mutation calls with the
    adapter object or `createDatabaseClient(adapter)`.
 6. Remove `appendBundle`, `updateBundle`, `deleteBundle`, and `commitBundle`.

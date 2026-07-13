@@ -249,7 +249,7 @@ describe("handleBundleSetEnabled", () => {
   it("exits 1 when verification reads a state mismatch after commit", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     databaseHarness.setBundles([buildBundle({ id: "B1", enabled: true })]);
-    databaseHarness.uploadObject.mockImplementation(async () => {});
+    databaseHarness.compareAndSwapObject.mockResolvedValue(true);
 
     const { exitSpy } = expectExit(1);
     const { handleBundleSetEnabled } = await import("./bundle");
@@ -398,7 +398,7 @@ describe("handleBundleDelete", () => {
 
     expect(await databaseHarness.bundles()).toEqual([]);
     expect(
-      databaseHarness.uploadObject.mock.calls.filter(
+      databaseHarness.compareAndSwapObject.mock.calls.filter(
         ([key]) => key === BLOB_DATABASE_SNAPSHOT_KEY,
       ),
     ).toHaveLength(1);

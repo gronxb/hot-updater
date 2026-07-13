@@ -16,6 +16,7 @@ export const createChannelRowFixture = (
 export const createBundleRowFixture = (
   suffix: string,
   channelId = "channel-production",
+  channel = "production",
 ): BundleRow => ({
   id: fixtureId(suffix),
   platform: "ios",
@@ -24,6 +25,7 @@ export const createBundleRowFixture = (
   file_hash: `hash-${suffix}`,
   git_commit_hash: null,
   message: `bundle-${suffix}`,
+  channel,
   channel_id: channelId,
   storage_uri: `storage://bundles/${suffix}.zip`,
   target_app_version: "1.0.0",

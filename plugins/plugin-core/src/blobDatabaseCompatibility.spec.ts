@@ -1,5 +1,11 @@
+import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
+import {
+  blobDatabaseRevisionSnapshotKey,
+  parseBlobDatabasePointer,
+} from "./blobDatabaseRevision";
+import { parseBlobDatabaseSnapshot } from "./blobDatabaseSnapshot";
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
   createBlobDatabaseAdapter,
@@ -27,6 +33,20 @@ const commonBundleRow = {
 };
 
 describe("blob snapshot compatibility", () => {
+  it("restores the legacy channel name from a normalized channel id", () => {
+    const snapshot = parseBlobDatabaseSnapshot({
+      version: 2,
+      bundles: [{ ...commonBundleRow, channel_id: "channel-production" }],
+      bundle_patches: [],
+      channels: [{ id: "channel-production", name: "production" }],
+    });
+
+    expect(snapshot.bundles[0]).toMatchObject({
+      channel: "production",
+      channel_id: "channel-production",
+    });
+  });
+
   it("reads and rewrites the pre-normalization v2 shape", async () => {
     // Given
     const store = new Map<string, unknown>([
@@ -48,6 +68,15 @@ describe("blob snapshot compatibility", () => {
           [...store.keys()].filter((key) => key.startsWith(prefix)),
         loadObject: async (key) => store.get(key) ?? null,
         uploadObject: async (key, value) => void store.set(key, value),
+        compareAndSwapObject: async (key, expected, value) => {
+          if (
+            JSON.stringify(store.get(key) ?? null) !== JSON.stringify(expected)
+          ) {
+            return false;
+          }
+          store.set(key, value);
+          return true;
+        },
         invalidatePaths: async () => undefined,
       }),
     });
@@ -61,14 +90,76 @@ describe("blob snapshot compatibility", () => {
 
     // Then
     expect(bundle?.channel).toBe("production");
-    expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toEqual({
+    const pointer = parseBlobDatabasePointer(
+      store.get(BLOB_DATABASE_SNAPSHOT_KEY),
+    );
+    expect(
+      store.get(blobDatabaseRevisionSnapshotKey(pointer.active_revision)),
+    ).toEqual({
       version: 2,
-      bundles: [{ ...commonBundleRow, channel_id: "production" }],
+      bundles: [
+        {
+          ...commonBundleRow,
+          channel: "production",
+          channel_id: "production",
+        },
+      ],
       bundle_patches: [],
       channels: [
         { id: "channel-staging", name: "staging" },
         { id: "production", name: "production" },
       ],
     });
+  });
+
+  it("serves update checks from flat legacy manifests", async () => {
+    const legacyBundle = {
+      id: bundleId,
+      platform: "ios",
+      shouldForceUpdate: false,
+      enabled: true,
+      fileHash: "hash-1",
+      gitCommitHash: null,
+      message: "bundle-1",
+      channel: "production",
+      storageUri: "storage://bundles/1.zip",
+      targetAppVersion: "1.0.0",
+      fingerprintHash: null,
+      metadata: {},
+    } satisfies Bundle;
+    const store = new Map<string, unknown>([
+      ["production/ios/target-app-versions.json", ["1.0.0"]],
+      ["production/ios/1.0.0/update.json", [legacyBundle]],
+    ]);
+    const adapter = createBlobDatabaseAdapter({
+      name: "legacy-manifest-memory",
+      adapter: () => ({
+        apiBasePath: "/api/check-update",
+        listObjects: async (prefix) =>
+          [...store.keys()].filter((key) => key.startsWith(prefix)),
+        loadObject: async (key) => store.get(key) ?? null,
+        uploadObject: async (key, value) => void store.set(key, value),
+        compareAndSwapObject: async (key, expected, value) => {
+          if (
+            JSON.stringify(store.get(key) ?? null) !== JSON.stringify(expected)
+          ) {
+            return false;
+          }
+          store.set(key, value);
+          return true;
+        },
+        invalidatePaths: async () => undefined,
+      }),
+    });
+
+    await expect(
+      adapter.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        channel: "production",
+        platform: "ios",
+      }),
+    ).resolves.toMatchObject({ id: bundleId, status: "UPDATE" });
   });
 });

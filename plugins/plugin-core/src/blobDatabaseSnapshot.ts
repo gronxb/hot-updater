@@ -31,9 +31,26 @@ export const emptyBlobDatabaseSnapshot = (): BlobDatabaseSnapshot => ({
   channels: [],
 });
 
-const parseBundleRow = (value: unknown, source: string): BundleRow => {
+const parseBundleRow = (
+  value: unknown,
+  source: string,
+  channelNameById: ReadonlyMap<string, string>,
+  channelIdByName: ReadonlyMap<string, string>,
+): BundleRow => {
   const input = blobRecord(value, source);
-  const channelId = blobProperty(input, "channel_id");
+  const channelValue = blobProperty(input, "channel");
+  const channelIdValue = blobProperty(input, "channel_id");
+  const storedChannel =
+    channelValue === undefined ? undefined : blobString(channelValue, source);
+  const storedChannelId =
+    channelIdValue === undefined
+      ? undefined
+      : blobString(channelIdValue, source);
+  const channel =
+    storedChannel ??
+    channelNameById.get(blobString(channelIdValue, source)) ??
+    blobString(channelIdValue, source);
+  const channelId = storedChannelId ?? channelIdByName.get(channel) ?? channel;
   return {
     id: blobString(blobProperty(input, "id"), source),
     platform: blobPlatform(blobProperty(input, "platform"), source),
@@ -48,10 +65,8 @@ const parseBundleRow = (value: unknown, source: string): BundleRow => {
       source,
     ),
     message: blobNullableString(blobProperty(input, "message"), source),
-    channel_id: blobString(
-      channelId === undefined ? blobProperty(input, "channel") : channelId,
-      source,
-    ),
+    channel,
+    channel_id: channelId,
     storage_uri: blobString(blobProperty(input, "storage_uri"), source),
     target_app_version: blobNullableString(
       blobProperty(input, "target_app_version"),
@@ -109,16 +124,8 @@ export const parseBlobDatabaseSnapshot = (
   if (blobProperty(input, "version") !== 2) {
     throw new BlobDatabaseSnapshotError(source);
   }
-  const snapshot = normalizeBlobDatabaseSnapshot({
-    version: 2,
-    bundles: blobArray(blobProperty(input, "bundles"), source).map((row) =>
-      parseBundleRow(row, source),
-    ),
-    bundle_patches: blobArray(
-      blobProperty(input, "bundle_patches"),
-      source,
-    ).map((row) => parsePatchRow(row, source)),
-    channels: blobArray(blobProperty(input, "channels"), source).map((row) => {
+  const channels = blobArray(blobProperty(input, "channels"), source).map(
+    (row) => {
       const channel = blobRecord(row, source);
       const id = blobString(blobProperty(channel, "id"), source);
       const name = blobProperty(channel, "name");
@@ -126,7 +133,24 @@ export const parseBlobDatabaseSnapshot = (
         id,
         name: blobString(name === undefined ? id : name, source),
       };
-    }),
+    },
+  );
+  const channelNameById = new Map(
+    channels.map(({ id, name }) => [id, name] as const),
+  );
+  const channelIdByName = new Map(
+    channels.map(({ id, name }) => [name, id] as const),
+  );
+  const snapshot = normalizeBlobDatabaseSnapshot({
+    version: 2,
+    bundles: blobArray(blobProperty(input, "bundles"), source).map((row) =>
+      parseBundleRow(row, source, channelNameById, channelIdByName),
+    ),
+    bundle_patches: blobArray(
+      blobProperty(input, "bundle_patches"),
+      source,
+    ).map((row) => parsePatchRow(row, source)),
+    channels,
   });
   validateSnapshotRelations(snapshot, source);
   return snapshot;
@@ -136,7 +160,10 @@ const validateSnapshotRelations = (
   snapshot: BlobDatabaseSnapshot,
   source: string,
 ): void => {
-  const channelIds = new Set(snapshot.channels.map(({ id }) => id));
+  const channelNamesById = new Map(
+    snapshot.channels.map(({ id, name }) => [id, name] as const),
+  );
+  const channelIds = new Set(channelNamesById.keys());
   const channelNames = new Set(snapshot.channels.map(({ name }) => name));
   const bundleIds = new Set(snapshot.bundles.map(({ id }) => id));
   const patchIds = new Set(snapshot.bundle_patches.map(({ id }) => id));
@@ -145,7 +172,11 @@ const validateSnapshotRelations = (
     channelNames.size !== snapshot.channels.length ||
     bundleIds.size !== snapshot.bundles.length ||
     patchIds.size !== snapshot.bundle_patches.length ||
-    snapshot.bundles.some(({ channel_id }) => !channelIds.has(channel_id)) ||
+    snapshot.bundles.some(
+      ({ channel, channel_id }) =>
+        !channelIds.has(channel_id) ||
+        channelNamesById.get(channel_id) !== channel,
+    ) ||
     snapshot.bundle_patches.some(
       ({ base_bundle_id, bundle_id }) =>
         !bundleIds.has(bundle_id) || !bundleIds.has(base_bundle_id),

@@ -27,7 +27,10 @@ export const invalidateCloudFront = async (
         DistributionId: distributionId,
         InvalidationBatch: {
           CallerReference: `invalidation-${Date.now()}`,
-          Paths: { Quantity: paths.length, Items: [...paths] },
+          Paths: {
+            Quantity: paths.length,
+            Items: paths.map((path) => encodeURI(path)),
+          },
         },
       }),
     );

@@ -20,7 +20,9 @@ const encodeValue = (value: boolean | number | string): string => {
 };
 
 const encodePattern = (value: string): string =>
-  encodeValue(value.replaceAll("*", "\\*").replaceAll("%", "\\%"));
+  encodeValue(
+    value.replaceAll("*", "\\*").replaceAll("%", "\\%").replaceAll("_", "\\_"),
+  );
 
 const predicate = (condition: SupabaseWhere): string => {
   const operator = condition.operator ?? "eq";

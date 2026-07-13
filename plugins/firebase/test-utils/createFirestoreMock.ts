@@ -11,12 +11,16 @@ export function createFirestoreMock(projectId: string) {
   const bundlesCollection = firestore.collection("bundles");
   const bundlePatchesCollection = firestore.collection("bundle_patches");
   const channelsCollection = firestore.collection("channels");
+  const settingsCollection = firestore.collection(
+    "private_hot_updater_settings",
+  );
 
   async function clearCollections() {
     const collections = [
       bundlesCollection,
       bundlePatchesCollection,
       channelsCollection,
+      settingsCollection,
     ];
     for (const coll of collections) {
       const snapshot = await coll.get();
@@ -33,6 +37,7 @@ export function createFirestoreMock(projectId: string) {
     bundlesCollection,
     bundlePatchesCollection,
     channelsCollection,
+    settingsCollection,
     clearCollections,
   };
 }

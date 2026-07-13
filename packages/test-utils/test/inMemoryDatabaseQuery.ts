@@ -27,22 +27,46 @@ const matchesWhere = <TModel extends DatabaseModel>(
   const current = row[where.field];
   switch (where.operator) {
     case undefined:
-    case "eq":
+    case "eq": {
+      if (typeof current === "string" && typeof where.value === "string") {
+        const mode = "mode" in where ? where.mode : undefined;
+        return (
+          normalizeString(current, mode) === normalizeString(where.value, mode)
+        );
+      }
       return Object.is(current, where.value);
-    case "ne":
+    }
+    case "ne": {
+      if (current === null || current === undefined) return false;
+      if (typeof current === "string" && typeof where.value === "string") {
+        const mode = "mode" in where ? where.mode : undefined;
+        return (
+          normalizeString(current, mode) !== normalizeString(where.value, mode)
+        );
+      }
       return !Object.is(current, where.value);
+    }
     case "gt":
+      if (current === null || current === undefined) return false;
       return compareOrdered(current, where.value) > 0;
     case "gte":
+      if (current === null || current === undefined) return false;
       return compareOrdered(current, where.value) >= 0;
     case "lt":
+      if (current === null || current === undefined) return false;
       return compareOrdered(current, where.value) < 0;
     case "lte":
+      if (current === null || current === undefined) return false;
       return compareOrdered(current, where.value) <= 0;
     case "in":
       return where.value.some((value) => Object.is(current, value));
     case "not_in":
-      return where.value.every((value) => !Object.is(current, value));
+      return (
+        where.value.length === 0 ||
+        (current !== null &&
+          current !== undefined &&
+          where.value.every((value) => !Object.is(current, value)))
+      );
     case "contains":
       return (
         typeof current === "string" &&

@@ -21,6 +21,15 @@ const createMemoryAdapter = () =>
       uploadObject: async (key, data) => {
         store.set(key, data);
       },
+      compareAndSwapObject: async (key, expected, data) => {
+        if (
+          JSON.stringify(store.get(key) ?? null) !== JSON.stringify(expected)
+        ) {
+          return false;
+        }
+        store.set(key, data);
+        return true;
+      },
       invalidatePaths: async (paths) => {
         invalidations.push([...paths]);
       },

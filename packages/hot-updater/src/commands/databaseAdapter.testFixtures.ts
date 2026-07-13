@@ -19,10 +19,13 @@ const emptySnapshot = (): BlobDatabaseSnapshot => ({
 
 export const createDatabaseAdapterHarness = () => {
   let storedSnapshot: unknown = emptySnapshot();
+  const storedObjects = new Map<string, unknown>();
   let pendingSnapshot: unknown = null;
   let pendingReadCount = 0;
   const readObject = async (key: string): Promise<unknown | null> => {
-    if (key !== BLOB_DATABASE_SNAPSHOT_KEY) return null;
+    if (key !== BLOB_DATABASE_SNAPSHOT_KEY) {
+      return structuredClone(storedObjects.get(key) ?? null);
+    }
     if (pendingSnapshot !== null) {
       if (pendingReadCount === 0) {
         storedSnapshot = pendingSnapshot;
@@ -34,16 +37,26 @@ export const createDatabaseAdapterHarness = () => {
     return structuredClone(storedSnapshot);
   };
   const writeObject = async (key: string, data: unknown): Promise<void> => {
-    if (key === BLOB_DATABASE_SNAPSHOT_KEY) {
-      if (pendingReadCount > 0) {
-        pendingSnapshot = structuredClone(data);
-      } else {
-        storedSnapshot = structuredClone(data);
-      }
+    if (key !== BLOB_DATABASE_SNAPSHOT_KEY) {
+      storedObjects.set(key, structuredClone(data));
+      return;
+    }
+    if (pendingReadCount > 0) {
+      pendingSnapshot = structuredClone(data);
+    } else {
+      storedSnapshot = structuredClone(data);
     }
   };
   const loadObject = vi.fn(readObject);
   const uploadObject = vi.fn(writeObject);
+  const compareAndSwapObject = vi.fn(
+    async (key: string, expected: unknown, data: unknown): Promise<boolean> => {
+      const current = await readObject(key);
+      if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
+      await writeObject(key, data);
+      return true;
+    },
+  );
   const onUnmount = vi.fn(async (): Promise<void> => {});
   const baseAdapter = createBlobDatabaseAdapter({
     name: "test-database-v2",
@@ -53,12 +66,14 @@ export const createDatabaseAdapterHarness = () => {
       listObjects: async () => [],
       loadObject,
       uploadObject,
+      compareAndSwapObject,
     }),
   });
   const adapter: DatabaseAdapter = { ...baseAdapter, onUnmount };
 
   return {
     adapter,
+    compareAndSwapObject,
     loadObject,
     onUnmount,
     uploadObject,
@@ -73,12 +88,22 @@ export const createDatabaseAdapterHarness = () => {
     },
     reset: (): void => {
       storedSnapshot = emptySnapshot();
+      storedObjects.clear();
       pendingSnapshot = null;
       pendingReadCount = 0;
       loadObject.mockImplementation(readObject);
       uploadObject.mockImplementation(writeObject);
+      compareAndSwapObject.mockImplementation(async (key, expected, data) => {
+        const current = await readObject(key);
+        if (JSON.stringify(current) !== JSON.stringify(expected)) {
+          return false;
+        }
+        await writeObject(key, data);
+        return true;
+      });
     },
     setBundles: (bundles: readonly Bundle[]): void => {
+      storedObjects.clear();
       storedSnapshot = {
         version: 2,
         bundles: bundles.map((bundle) => bundleToRow(bundle, bundle.channel)),

@@ -7,7 +7,7 @@ import {
   setupDatabaseClientTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
 import { firebaseDatabase } from "./firebaseDatabase";
@@ -19,6 +19,8 @@ const {
   bundlesCollection,
   channelsCollection,
   clearCollections,
+  firestore,
+  settingsCollection,
 } = createFirestoreMock(PROJECT_ID);
 
 const createAdapter = (): DatabaseAdapter =>
@@ -77,6 +79,21 @@ const legacyRow = (id: string, channel = "production") => ({
   asset_base_storage_uri: null,
 });
 
+const bundleFixture = (suffix: string) => ({
+  id: `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`,
+  platform: "ios" as const,
+  shouldForceUpdate: false,
+  enabled: true,
+  fileHash: `hash-${suffix}`,
+  gitCommitHash: null,
+  message: `bundle-${suffix}`,
+  channel: "production",
+  storageUri: `storage://bundles/${suffix}.zip`,
+  targetAppVersion: "1.0.0",
+  fingerprintHash: null,
+  metadata: { app_version: suffix },
+});
+
 describe("firebase v1 data migration", () => {
   beforeEach(clearCollections);
 
@@ -125,8 +142,10 @@ describe("firebase v1 data migration", () => {
       bundlePatchesCollection.doc(`${target.id}:${base.id}`).get(),
     ).resolves.toMatchObject({ exists: true });
     const migratedTarget = await bundlesCollection.doc(target.id).get();
-    expect(migratedTarget.data()).toMatchObject({ channel_id: "production" });
-    expect(migratedTarget.data()).not.toHaveProperty("channel");
+    expect(migratedTarget.data()).toMatchObject({
+      channel: "production",
+      channel_id: "production",
+    });
     expect(migratedTarget.data()).not.toHaveProperty("patches");
   });
 
@@ -141,8 +160,40 @@ describe("firebase v1 data migration", () => {
     const channel = await channelsCollection.doc("release").get();
     expect(channel.data()).toEqual({ id: "release", name: "release" });
     const migratedBundle = await bundlesCollection.doc(bundle.id).get();
-    expect(migratedBundle.data()).toMatchObject({ channel_id: "release" });
-    expect(migratedBundle.data()).not.toHaveProperty("channel");
+    expect(migratedBundle.data()).toMatchObject({
+      channel: "release",
+      channel_id: "release",
+    });
+  });
+
+  it("migrates legacy rows with bounded batches instead of a transaction", async () => {
+    const bundle = legacyRow("legacy-batched");
+    await bundlesCollection.doc(bundle.id).set(bundle);
+    const runTransaction = vi.spyOn(firestore, "runTransaction");
+
+    await createAdapter().findMany({ model: "bundles" });
+
+    expect(runTransaction).not.toHaveBeenCalled();
+    await expect(
+      settingsCollection.doc("database_adapter_version").get(),
+    ).resolves.toMatchObject({ exists: true });
+    runTransaction.mockRestore();
+  });
+
+  it("converges concurrent cold-start migrations", async () => {
+    const bundle = legacyRow("legacy-concurrent");
+    await bundlesCollection.doc(bundle.id).set(bundle);
+
+    await Promise.all([
+      createAdapter().findMany({ model: "bundles" }),
+      createAdapter().findMany({ model: "bundles" }),
+    ]);
+
+    const migrated = await bundlesCollection.doc(bundle.id).get();
+    expect(migrated.data()).toMatchObject({
+      channel: "production",
+      channel_id: "production",
+    });
   });
 
   it("resolves legacy bundle channel names to existing channel ids", async () => {
@@ -158,6 +209,7 @@ describe("firebase v1 data migration", () => {
 
     const migratedBundle = await bundlesCollection.doc(bundle.id).get();
     expect(migratedBundle.data()).toMatchObject({
+      channel: "release",
       channel_id: "channel-release",
     });
     await expect(
@@ -181,5 +233,80 @@ describe("firebase v1 data migration", () => {
     await expect(adapter.findMany({ model: "bundle_patches" })).rejects.toThrow(
       "bundle_patches.bundle_id.foreign-key",
     );
+  });
+});
+
+describe("firebase bounded reads", () => {
+  beforeEach(clearCollections);
+
+  it("ignores unrelated malformed documents during an update check", async () => {
+    const adapter = createAdapter();
+    const client = createDatabaseClient(adapter);
+    const value = {
+      ...bundleFixture("991"),
+      fingerprintHash: "fingerprint-991",
+      targetAppVersion: null,
+    };
+    await client.insertBundle(value);
+    await bundlesCollection.doc("unrelated-malformed").set({
+      channel: "other",
+      channel_id: "other",
+      platform: "android",
+      enabled: true,
+      fingerprint_hash: "other-fingerprint",
+    });
+
+    await expect(
+      adapter.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        platform: "ios",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        channel: "production",
+        fingerprintHash: "fingerprint-991",
+      }),
+    ).resolves.toMatchObject({ id: value.id, status: "UPDATE" });
+  });
+
+  it("uses an exact document read without parsing unrelated bundles", async () => {
+    const adapter = createAdapter();
+    const client = createDatabaseClient(adapter);
+    const value = bundleFixture("992");
+    await client.insertBundle(value);
+    await bundlesCollection.doc("unrelated-malformed").set({
+      channel: "other",
+      channel_id: "other",
+    });
+
+    await expect(
+      createAdapter().findOne({
+        model: "bundles",
+        where: [{ field: "id", value: value.id }],
+      }),
+    ).resolves.toMatchObject({ id: value.id, channel: "production" });
+  });
+
+  it("loads update-check relations from one read-only snapshot", async () => {
+    const adapter = createAdapter();
+    const client = createDatabaseClient(adapter);
+    const value = bundleFixture("993");
+    await client.insertBundle(value);
+    const runTransaction = vi.spyOn(firestore, "runTransaction");
+
+    try {
+      await expect(
+        adapter.getUpdateInfo?.({
+          _updateStrategy: "appVersion",
+          platform: "ios",
+          bundleId: "00000000-0000-0000-0000-000000000000",
+          channel: "production",
+          appVersion: "1.0.0",
+        }),
+      ).resolves.toMatchObject({ id: value.id, status: "UPDATE" });
+      expect(runTransaction).toHaveBeenCalledWith(expect.any(Function), {
+        readOnly: true,
+      });
+    } finally {
+      runTransaction.mockRestore();
+    }
   });
 });

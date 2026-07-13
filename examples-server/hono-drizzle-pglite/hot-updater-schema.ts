@@ -23,6 +23,7 @@ export const bundles = pgTable("bundles", {
   file_hash: text("file_hash").notNull(),
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
+  channel: text("channel").notNull().default("production"),
   channel_id: varchar("channel_id", { length: 255 }).notNull(),
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
@@ -41,6 +42,7 @@ export const bundles = pgTable("bundles", {
   }).onUpdate("restrict").onDelete("restrict"),
   index("bundles_target_app_version_idx").on(table.target_app_version),
   index("bundles_fingerprint_hash_idx").on(table.fingerprint_hash),
+  index("bundles_channel_idx").on(table.channel),
   index("bundles_channel_id_idx").on(table.channel_id),
   index("bundles_rollout_idx").on(table.rollout_cohort_count)
 ])

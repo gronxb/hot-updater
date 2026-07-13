@@ -2,6 +2,11 @@ import type { Bundle } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  blobDatabaseRevisionManifestPrefix,
+  blobDatabaseRevisionSnapshotKey,
+  parseBlobDatabasePointer,
+} from "./blobDatabaseRevision";
+import {
   BLOB_DATABASE_SNAPSHOT_KEY,
   createBlobDatabaseAdapter,
 } from "./createBlobDatabaseAdapter";
@@ -11,6 +16,7 @@ type MemoryConfig = {
   readonly store: Map<string, unknown>;
   readonly failNextUpload: () => boolean;
   readonly invalidations: string[][];
+  readonly onLoadObject?: (key: string) => void;
   readonly onSnapshotRead?: () => void;
 };
 
@@ -26,6 +32,7 @@ const createMemoryAdapter = (
       listObjects: async (prefix) =>
         [...config.store.keys()].filter((key) => key.startsWith(prefix)),
       loadObject: async (key) => {
+        config.onLoadObject?.(key);
         if (key === BLOB_DATABASE_SNAPSHOT_KEY) config.onSnapshotRead?.();
         return config.store.get(key) ?? null;
       },
@@ -34,6 +41,16 @@ const createMemoryAdapter = (
           throw new Error("fixture upload failure");
         }
         config.store.set(key, data);
+      },
+      compareAndSwapObject: async (key, expected, data) => {
+        if (key === BLOB_DATABASE_SNAPSHOT_KEY) config.onSnapshotRead?.();
+        if (config.failNextUpload()) {
+          throw new Error("fixture upload failure");
+        }
+        const current = config.store.get(key) ?? null;
+        if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
+        config.store.set(key, data);
+        return true;
       },
       invalidatePaths: async (paths) => {
         config.invalidations.push([...paths]);
@@ -61,6 +78,16 @@ beforeEach(() => {
   uploadShouldFail = false;
 });
 
+const activeRevision = (): string =>
+  parseBlobDatabasePointer(store.get(BLOB_DATABASE_SNAPSHOT_KEY))
+    .active_revision;
+
+const activeSnapshot = (): unknown =>
+  store.get(blobDatabaseRevisionSnapshotKey(activeRevision()));
+
+const activeManifest = (key: string): unknown =>
+  store.get(`${blobDatabaseRevisionManifestPrefix(activeRevision())}/${key}`);
+
 describe("blob snapshot persistence", () => {
   it("migrates legacy manifests including scalar patch fields", async () => {
     const base = legacyBundle("1");
@@ -87,7 +114,7 @@ describe("blob snapshot persistence", () => {
         order_index: 0,
       },
     ]);
-    expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toMatchObject({
+    expect(activeSnapshot()).toMatchObject({
       version: 2,
       channels: [{ name: "production" }],
     });
@@ -110,7 +137,7 @@ describe("blob snapshot persistence", () => {
       where: [{ field: "channel_id", value: "channel-production" }],
     });
 
-    expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toEqual({
+    expect(activeSnapshot()).toEqual({
       version: 2,
       bundles: [],
       bundle_patches: [],
@@ -188,6 +215,104 @@ describe("blob snapshot persistence", () => {
     );
   });
 
+  it("serves app-version update checks from the active revision", async () => {
+    const snapshotRead = vi.fn();
+    const adapter = createMemoryAdapter({
+      ...config(),
+      onSnapshotRead: snapshotRead,
+    });
+    await createDatabaseClient(adapter).insertBundle(legacyBundle("1"));
+    snapshotRead.mockClear();
+
+    await expect(
+      adapter.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        channel: "production",
+        platform: "ios",
+      }),
+    ).resolves.toMatchObject({
+      id: fixtureId("1"),
+      status: "UPDATE",
+    });
+    expect(snapshotRead).toHaveBeenCalledTimes(1);
+    expect(activeManifest("production/ios/target-app-versions.json")).toEqual([
+      "1.0.0",
+    ]);
+    expect(activeManifest("production/ios/1.0.0/update.json")).toEqual([
+      expect.objectContaining({
+        channel: "production",
+        id: fixtureId("1"),
+      }),
+    ]);
+  });
+
+  it("serves fingerprint update checks from the exact manifest", async () => {
+    const snapshotRead = vi.fn();
+    const adapter = createMemoryAdapter({
+      ...config(),
+      onSnapshotRead: snapshotRead,
+    });
+    const bundle = {
+      ...legacyBundle("2"),
+      targetAppVersion: null,
+      fingerprintHash: "fingerprint-2",
+    };
+    await createDatabaseClient(adapter).insertBundle(bundle);
+    snapshotRead.mockClear();
+
+    await expect(
+      adapter.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        channel: "production",
+        fingerprintHash: "fingerprint-2",
+        platform: "ios",
+      }),
+    ).resolves.toMatchObject({ id: bundle.id, status: "UPDATE" });
+    expect(snapshotRead).toHaveBeenCalledTimes(1);
+    expect(activeManifest("production/ios/fingerprint-2/update.json")).toEqual([
+      expect.objectContaining({ id: bundle.id }),
+    ]);
+  });
+
+  it("pins one immutable revision for an update check", async () => {
+    const writer = createMemoryAdapter(config());
+    const client = createDatabaseClient(writer);
+    const firstBundle = legacyBundle("1");
+    await client.insertBundle(firstBundle);
+    const firstPointer = store.get(BLOB_DATABASE_SNAPSHOT_KEY);
+    await client.insertBundle(legacyBundle("2"));
+    const secondPointer = store.get(BLOB_DATABASE_SNAPSHOT_KEY);
+    const firstRevision =
+      parseBlobDatabasePointer(firstPointer).active_revision;
+    store.set(BLOB_DATABASE_SNAPSHOT_KEY, firstPointer);
+
+    const reader = createMemoryAdapter({
+      ...config(),
+      onLoadObject: (key) => {
+        if (
+          key ===
+          `${blobDatabaseRevisionManifestPrefix(firstRevision)}/production/ios/target-app-versions.json`
+        ) {
+          store.set(BLOB_DATABASE_SNAPSHOT_KEY, secondPointer);
+        }
+      },
+    });
+
+    await expect(
+      reader.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        channel: "production",
+        platform: "ios",
+      }),
+    ).resolves.toMatchObject({ id: firstBundle.id, status: "UPDATE" });
+    expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toBe(secondPointer);
+  });
+
   it("reloads the latest snapshot written by another adapter instance", async () => {
     const first = createMemoryAdapter(config());
     const second = createMemoryAdapter(config());
@@ -241,6 +366,7 @@ const bundleRow = (suffix: string) => ({
   file_hash: `hash-${suffix}`,
   git_commit_hash: null,
   message: `bundle-${suffix}`,
+  channel: "production",
   channel_id: "channel-production",
   storage_uri: `storage://bundles/${suffix}.zip`,
   target_app_version: "1.0.0",

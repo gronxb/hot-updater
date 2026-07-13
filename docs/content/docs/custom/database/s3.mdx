@@ -25,8 +25,8 @@ S3_BUCKET_NAME=hot-updater
 ```
 
 <Callout>
-For S3-compatible services like Cloudflare R2, MinIO, and DigitalOcean Spaces,
-set `S3_ENDPOINT` and use the region expected by that provider.
+  For S3-compatible services like Cloudflare R2, MinIO, and DigitalOcean Spaces,
+  set `S3_ENDPOINT` and use the region expected by that provider.
 </Callout>
 
 ## Hot Updater Configuration
@@ -51,6 +51,10 @@ export const hotUpdater = createHotUpdater({
   database: s3Database(s3Config),
   storages: [s3Storage(s3Config)],
   basePath: "/hot-updater",
+  routes: {
+    updateCheck: true,
+    bundles: true,
+  },
 });
 ```
 
@@ -60,8 +64,8 @@ No schema generation or migration command is required. `s3Database` stores
 bundle metadata as JSON objects in your S3 bucket.
 
 <Callout type="warn">
-Make sure the server credentials can list, read, write, and delete objects in
-the metadata bucket.
+  Make sure the server credentials can list, read, write, and delete objects in
+  the metadata bucket.
 </Callout>
 
 ## CLI Configuration
@@ -92,21 +96,22 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+  The `storage` plugin must match the `storages` in your server's
+  `createHotUpdater`. Both use `s3Storage` in this example.
 </Callout>
 
 ## API Endpoints
 
 The server automatically creates these endpoints:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/hot-updater/version` | Get server version |
-| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
-| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
-| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
-| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
-| POST | `/hot-updater/api/bundles` | Create bundles |
-| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
-| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
-| GET | `/hot-updater/api/bundles/channels` | List all channels |
+| Method | Endpoint                                                                              | Description                                                         |
+| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
+| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
+| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
+| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
+| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
+| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
+| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
+| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
+| GET    | `/hot-updater/api/bundles/channels`                                                   | List all channels                                                   |

@@ -14,6 +14,23 @@ export const MONGO_CHANNEL_ID_PIPELINE: Document[] = [
   { $group: { _id: "$channelId" } },
 ];
 
+const nonEmptyString = (field: string): Document => ({
+  $and: [{ $eq: [{ $type: field }, "string"] }, { $ne: [field, ""] }],
+});
+
+export const MONGO_NORMALIZE_CHANNEL_FIELDS_PIPELINE: Document[] = [
+  {
+    $set: {
+      channel: {
+        $cond: [nonEmptyString("$channel"), "$channel", "$channel_id"],
+      },
+      channel_id: {
+        $cond: [nonEmptyString("$channel_id"), "$channel_id", "$channel"],
+      },
+    },
+  },
+];
+
 export interface MongoMigrationBackend {
   ensureCollections(): Promise<void>;
   findChannelIds(): Promise<readonly string[]>;

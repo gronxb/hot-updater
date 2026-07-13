@@ -78,6 +78,10 @@ describe("bundle row conversion", () => {
     // Then
     expect(row).not.toHaveProperty("patches");
     expect(row).not.toHaveProperty("patch_file_hash");
+    expect(row).toMatchObject({
+      channel: bundle.channel,
+      channel_id: CHANNEL_ID,
+    });
     expect(hydratedBundles).toHaveLength(1);
     expect(hydratedBundles[0]).toEqual({
       ...bundle,

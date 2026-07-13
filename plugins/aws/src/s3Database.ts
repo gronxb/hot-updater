@@ -9,6 +9,7 @@ import { invalidateCloudFront } from "./cloudFrontInvalidation";
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
 import {
   ArchivedS3DatabaseObjectError,
+  compareAndSwapJsonInS3,
   listS3DatabaseObjects,
   loadJsonFromS3,
   uploadJsonToS3,
@@ -77,9 +78,18 @@ export const s3Database = (
           loadJsonFromS3(client, bucketName, keys.toStorageKey(key)),
         uploadObject: (key, data) =>
           uploadJsonToS3(client, bucketName, keys.toStorageKey(key), data),
+        compareAndSwapObject: (key, expected, data) =>
+          compareAndSwapJsonInS3(
+            client,
+            bucketName,
+            keys.toStorageKey(key),
+            expected,
+            data,
+          ),
         shouldSkipLoadObjectError: (error, key) =>
           error instanceof ArchivedS3DatabaseObjectError &&
-          key.endsWith("/update.json"),
+          key.endsWith("/update.json") &&
+          !key.startsWith("_hot-updater/database/"),
         invalidatePaths: (paths) =>
           cloudFront && cloudfrontDistributionId
             ? invalidateCloudFront(

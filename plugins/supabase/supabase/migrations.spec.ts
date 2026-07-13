@@ -88,24 +88,75 @@ describe("Supabase RLS migration", () => {
     const sql = await fs.readFile(databaseV2MigrationPath, "utf8");
 
     expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.channels");
+    expect(sql).toContain("SELECT DISTINCT b.channel, b.channel");
+    expect(sql).toContain("WHERE c.name = b.channel");
     expect(sql).toContain(
-      "SELECT DISTINCT channel, channel FROM public.bundles",
+      "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name",
     );
     expect(sql).toContain("name text NOT NULL UNIQUE");
-    expect(sql).toContain("SET channel_id = channel");
+    expect(sql).toContain("SET channel_id = c.id");
     expect(sql).toContain("REFERENCES public.channels(id) ON DELETE RESTRICT");
-    expect(
-      sql.indexOf("SELECT DISTINCT channel, channel FROM public.bundles"),
-    ).toBeLessThan(
+    expect(sql.indexOf("SELECT DISTINCT b.channel, b.channel")).toBeLessThan(
       sql.indexOf("REFERENCES public.channels(id) ON DELETE RESTRICT"),
     );
-    expect(sql).toContain("DROP COLUMN channel");
+    expect(sql).not.toContain("DROP COLUMN channel");
     expect(sql).toContain("JOIN public.channels c ON c.id = b.channel_id");
     expect(sql).toContain("c.name = target_channel");
     expect(sql).toContain("SELECT c.name");
     expect(sql).toContain(
       "ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;",
     );
+  });
+
+  it("reuses an existing stable channel id for a legacy bundle name", async () => {
+    const database = new PGlite();
+    databases.push(database);
+    await database.exec(`
+      create table public.bundles (
+        id uuid primary key,
+        channel text not null
+      );
+      create table public.channels (
+        id text primary key,
+        name text not null unique
+      );
+      insert into public.bundles (id, channel)
+      values ('00000000-0000-0000-0000-000000000001', 'production');
+      insert into public.channels (id, name)
+      values ('channel-production', 'production');
+    `);
+
+    await database.exec(`
+      insert into public.channels (id, name)
+      select distinct b.channel, b.channel
+      from public.bundles b
+      where not exists (
+        select 1 from public.channels c where c.name = b.channel
+      )
+      on conflict (id) do update set name = excluded.name;
+      alter table public.bundles add column channel_id text;
+      update public.bundles b
+      set channel_id = c.id
+      from public.channels c
+      where c.name = b.channel;
+    `);
+
+    const rows = await database.query<{
+      channel: string;
+      channel_id: string;
+      name: string;
+    }>(`
+      select b.channel, b.channel_id, c.name
+      from public.bundles b
+      join public.channels c on c.id = b.channel_id
+    `);
+    expect(rows.rows).toEqual([
+      {
+        channel: "production",
+        channel_id: "channel-production",
+        name: "production",
+      },
+    ]);
   });
 
   it("keeps hardened ACLs while replacing channel-aware functions", async () => {

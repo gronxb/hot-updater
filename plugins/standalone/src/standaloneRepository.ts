@@ -6,6 +6,8 @@ import type {
   DatabaseImplementationResult,
   DatabaseModel,
   DatabaseAdapterImplementation,
+  DatabaseSortBy,
+  DatabaseWhere,
   PaginatedResult,
 } from "@hot-updater/plugin-core";
 import {
@@ -102,11 +104,27 @@ const isBundle = (value: unknown): value is Bundle =>
   typeof value.channel === "string" &&
   typeof value.storageUri === "string";
 
+const isPaginationInfo = (
+  value: unknown,
+): value is PaginatedResult["pagination"] =>
+  isRecord(value) &&
+  typeof value.total === "number" &&
+  Number.isInteger(value.total) &&
+  value.total >= 0 &&
+  typeof value.hasNextPage === "boolean" &&
+  typeof value.hasPreviousPage === "boolean" &&
+  typeof value.currentPage === "number" &&
+  Number.isInteger(value.currentPage) &&
+  value.currentPage >= 1 &&
+  typeof value.totalPages === "number" &&
+  Number.isInteger(value.totalPages) &&
+  value.totalPages >= 0;
+
 const isPaginatedResult = (value: unknown): value is PaginatedResult =>
   isRecord(value) &&
   Array.isArray(value.data) &&
   value.data.every(isBundle) &&
-  isRecord(value.pagination);
+  isPaginationInfo(value.pagination);
 
 const hasChannels = (
   value: unknown,
@@ -218,6 +236,171 @@ const createLegacyCompatibilityImplementation = (
         return bundles;
       }
     }
+  };
+
+  type BundleWindowInput = {
+    readonly where?: readonly DatabaseWhere<"bundles">[];
+    readonly limit: number;
+    readonly offset: number;
+    readonly sortBy?: DatabaseSortBy<"bundles">;
+  };
+
+  const appendBundleWhere = (
+    url: URL,
+    where: readonly DatabaseWhere<"bundles">[] | undefined,
+  ): boolean => {
+    const usedParameters = new Set<string>();
+    const setParameter = (parameter: string, value: string): boolean => {
+      if (usedParameters.has(parameter)) return false;
+      usedParameters.add(parameter);
+      url.searchParams.set(parameter, value);
+      return true;
+    };
+    const appendParameter = (parameter: string, values: readonly string[]) => {
+      if (values.length === 0) return false;
+      if (usedParameters.has(parameter)) return false;
+      usedParameters.add(parameter);
+      for (const value of values) url.searchParams.append(parameter, value);
+      return true;
+    };
+
+    for (const [index, condition] of (where ?? []).entries()) {
+      if (index > 0 && condition.connector === "OR") return false;
+      const operator = condition.operator ?? "eq";
+      switch (condition.field) {
+        case "channel":
+        case "channel_id":
+          if (operator !== "eq" || typeof condition.value !== "string") {
+            return false;
+          }
+          if (!setParameter("channel", condition.value)) return false;
+          break;
+        case "platform":
+          if (operator !== "eq" || typeof condition.value !== "string") {
+            return false;
+          }
+          if (!setParameter("platform", condition.value)) return false;
+          break;
+        case "enabled":
+          if (operator !== "eq" || typeof condition.value !== "boolean") {
+            return false;
+          }
+          if (!setParameter("enabled", String(condition.value))) return false;
+          break;
+        case "id": {
+          let parameter: string | undefined;
+          switch (operator) {
+            case "eq":
+              parameter = "idEq";
+              break;
+            case "gt":
+              parameter = "idGt";
+              break;
+            case "gte":
+              parameter = "idGte";
+              break;
+            case "lt":
+              parameter = "idLt";
+              break;
+            case "lte":
+              parameter = "idLte";
+              break;
+          }
+          if (parameter && typeof condition.value === "string") {
+            if (!setParameter(parameter, condition.value)) return false;
+            break;
+          }
+          if (operator === "in" && Array.isArray(condition.value)) {
+            if (!condition.value.every((value) => typeof value === "string")) {
+              return false;
+            }
+            if (!appendParameter("idIn", condition.value)) return false;
+            break;
+          }
+          return false;
+        }
+        case "target_app_version":
+          if (operator === "eq") {
+            const value = condition.value;
+            if (value !== null && typeof value !== "string") return false;
+            if (!setParameter("targetAppVersion", value ?? "null")) {
+              return false;
+            }
+            break;
+          }
+          if (operator === "ne" && condition.value === null) {
+            if (!setParameter("targetAppVersionNotNull", "true")) {
+              return false;
+            }
+            break;
+          }
+          if (operator === "in" && Array.isArray(condition.value)) {
+            if (!condition.value.every((value) => typeof value === "string")) {
+              return false;
+            }
+            if (!appendParameter("targetAppVersionIn", condition.value)) {
+              return false;
+            }
+            break;
+          }
+          return false;
+        case "fingerprint_hash": {
+          if (operator !== "eq") return false;
+          const value = condition.value;
+          if (value !== null && typeof value !== "string") return false;
+          if (!setParameter("fingerprintHash", value ?? "null")) return false;
+          break;
+        }
+        default:
+          return false;
+      }
+    }
+    return true;
+  };
+
+  const loadBundleWindow = async (
+    input: BundleWindowInput,
+  ): Promise<{ readonly rows: BundleRow[]; readonly total: number } | null> => {
+    if (input.limit === 0) return { rows: [], total: 0 };
+    if (
+      input.sortBy &&
+      (input.sortBy.field !== "id" || input.sortBy.direction !== "desc")
+    ) {
+      return null;
+    }
+    const route = routes.list();
+    const url = new URL(buildUrl(route.path));
+    if (!appendBundleWhere(url, input.where)) return null;
+    const pageAligned = input.limit > 0 && input.offset % input.limit === 0;
+    const remoteLimit = pageAligned ? input.limit : input.offset + input.limit;
+    if (remoteLimit > PAGE_SIZE) return null;
+    url.searchParams.set("limit", String(remoteLimit));
+    url.searchParams.set(
+      "page",
+      String(pageAligned ? input.offset / input.limit + 1 : 1),
+    );
+    const response = await fetch(url, {
+      method: "GET",
+      headers: headers(route.headers),
+    });
+    const value = await parseJson(response);
+    if (!isPaginatedResult(value)) {
+      throw new StandaloneDatabaseError(
+        "invalid-response",
+        "Invalid bundle list response.",
+        response.status,
+      );
+    }
+    const bundles = pageAligned
+      ? value.data
+      : value.data.slice(input.offset, input.offset + input.limit);
+    return {
+      rows: bundles.map((bundle) => bundleToRow(bundle, bundle.channel)),
+      total:
+        typeof value.pagination.total === "number"
+          ? value.pagination.total
+          : bundles.length,
+    };
   };
 
   const loadChannels = async (): Promise<string[]> => {
@@ -428,12 +611,32 @@ const createLegacyCompatibilityImplementation = (
       }
     },
     async count(input) {
+      const remote = await loadBundleWindow({
+        where: input.where,
+        limit: 1,
+        offset: 0,
+      });
+      if (remote) return remote.total;
       return queryStandaloneRows(await loadRows("bundles"), {
         where: input.where,
       }).length;
     },
     async findOne(input) {
       if (input.model === "bundles") {
+        const idSelector =
+          input.where?.length === 1 ? input.where[0] : undefined;
+        if (
+          idSelector?.field === "id" &&
+          (idSelector.operator === undefined || idSelector.operator === "eq") &&
+          typeof idSelector.value === "string"
+        ) {
+          const bundle = await loadBundle(idSelector.value);
+          const row = bundle ? bundleToRow(bundle, bundle.channel) : null;
+          if (row && matchesStandaloneWhere(row, input.where)) {
+            return row;
+          }
+          return null;
+        }
         return (
           queryStandaloneRows(await loadRows("bundles"), {
             where: input.where,
@@ -450,13 +653,16 @@ const createLegacyCompatibilityImplementation = (
     },
     async findMany(input) {
       switch (input.model) {
-        case "bundles":
+        case "bundles": {
+          const remote = await loadBundleWindow(input);
+          if (remote) return remote.rows;
           return queryStandaloneRows(await loadRows("bundles"), {
             where: input.where,
             limit: input.limit,
             offset: input.offset,
             sortBy: input.sortBy,
           });
+        }
         case "bundle_patches":
           return queryStandaloneRows(await loadRows("bundle_patches"), {
             where: input.where,

@@ -21,7 +21,11 @@ const seedQueryRows = async <TContext>(state: QueryTestState<TContext>) => {
       fingerprint_hash: "fingerprint-501",
     },
     { ...createBundleRowFixture("502"), message: "beta release" },
-    { ...createBundleRowFixture("503"), message: "Gamma Preview" },
+    {
+      ...createBundleRowFixture("503"),
+      message: "Gamma Preview",
+      target_app_version: "2.0.0",
+    },
   ];
   await state
     .getAdapter()
@@ -132,6 +136,42 @@ export const registerDatabaseAdapterQueryTests = <TContext>(
       expect(endsWith.map(({ id }) => id)).toEqual([rows[2].id]);
     });
 
+    it("supports insensitive equality operators", async () => {
+      const rows = await seedQueryRows(state);
+
+      const equal = await state.getAdapter().findMany(
+        {
+          model: "bundles",
+          where: [
+            {
+              field: "message",
+              value: "ALPHA RELEASE",
+              mode: "insensitive",
+            },
+          ],
+        },
+        state.context,
+      );
+      const notEqual = await state.getAdapter().findMany(
+        {
+          model: "bundles",
+          where: [
+            {
+              field: "message",
+              operator: "ne",
+              value: "ALPHA RELEASE",
+              mode: "insensitive",
+            },
+          ],
+          sortBy: { field: "id", direction: "asc" },
+        },
+        state.context,
+      );
+
+      expect(equal.map(({ id }) => id)).toEqual([rows[0].id]);
+      expect(notEqual.map(({ id }) => id)).toEqual([rows[1].id, rows[2].id]);
+    });
+
     it("composes connectors left to right and defaults to AND", async () => {
       const rows = await seedQueryRows(state);
 
@@ -172,9 +212,51 @@ export const registerDatabaseAdapterQueryTests = <TContext>(
         },
         state.context,
       );
+      const otherVersionRows = await state.getAdapter().findMany(
+        {
+          model: "bundles",
+          where: [
+            {
+              field: "target_app_version",
+              operator: "ne",
+              value: "1.0.0",
+            },
+          ],
+        },
+        state.context,
+      );
+      const versionsOutsideSet = await state.getAdapter().findMany(
+        {
+          model: "bundles",
+          where: [
+            {
+              field: "target_app_version",
+              operator: "not_in",
+              value: ["1.0.0"],
+            },
+          ],
+        },
+        state.context,
+      );
+      const earlierVersions = await state.getAdapter().findMany(
+        {
+          model: "bundles",
+          where: [
+            {
+              field: "target_app_version",
+              operator: "lt",
+              value: "2.0.0",
+            },
+          ],
+        },
+        state.context,
+      );
 
       expect(nullRows.map(({ id }) => id)).toEqual([rows[0].id]);
       expect(nonNullRows).toHaveLength(2);
+      expect(otherVersionRows.map(({ id }) => id)).toEqual([rows[2].id]);
+      expect(versionsOutsideSet.map(({ id }) => id)).toEqual([rows[2].id]);
+      expect(earlierVersions.map(({ id }) => id)).toEqual([rows[1].id]);
     });
 
     it("rejects invalid paging, selection, and mutation predicates", async () => {

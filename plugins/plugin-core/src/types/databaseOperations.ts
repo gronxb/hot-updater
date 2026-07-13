@@ -27,9 +27,25 @@ export type UpdateBundleDatabaseInput<
 > = {
   readonly model: "bundles";
   readonly where: readonly DatabaseWhere<"bundles">[];
-  readonly update: Partial<Omit<BundleRow, "id">>;
+  readonly update: BundleRowUpdate;
   readonly select?: TSelect;
 };
+
+type BundleRowUpdateFields = Partial<
+  Omit<BundleRow, "channel" | "channel_id" | "id">
+>;
+
+export type BundleRowUpdate = BundleRowUpdateFields &
+  (
+    | {
+        readonly channel?: never;
+        readonly channel_id?: never;
+      }
+    | {
+        readonly channel: string;
+        readonly channel_id: string;
+      }
+  );
 
 export type DatabaseDeleteModel = "bundle_patches" | "bundles";
 export type DeleteDatabaseInput<TModel extends DatabaseDeleteModel> = {

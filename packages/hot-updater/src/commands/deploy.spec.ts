@@ -516,7 +516,7 @@ describe("deploy rollout wiring", () => {
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
     expect(
-      databaseHarness.uploadObject.mock.calls.filter(
+      databaseHarness.compareAndSwapObject.mock.calls.filter(
         ([key]) => key === BLOB_DATABASE_SNAPSHOT_KEY,
       ),
     ).toHaveLength(1);

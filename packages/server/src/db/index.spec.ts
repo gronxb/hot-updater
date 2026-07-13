@@ -742,7 +742,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(result.operations).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            sql: "create index bundles_id_idx on bundles(id)",
+            sql: "create unique index bundles_id_idx on bundles(id)",
+          }),
+          expect.objectContaining({
+            sql: "create unique index bundle_patches_id_idx on bundle_patches(id)",
+          }),
+          expect.objectContaining({
+            sql: "create unique index channels_id_idx on channels(id)",
           }),
           expect.objectContaining({
             sql: "create index bundles_target_app_version_idx on bundles(target_app_version)",
@@ -977,11 +983,16 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(bundles.find).toHaveBeenCalledWith(
         {
           $and: [
-            { $expr: { $eq: ["$target_app_version", "1.0.x"] } },
-            { $expr: { $ne: ["$target_app_version", null] } },
+            {
+              $and: [
+                { $expr: { $eq: ["$target_app_version", "1.0.x"] } },
+                { $expr: { $ne: ["$target_app_version", null] } },
+              ],
+            },
+            { _hot_updater_deletion_token: { $exists: false } },
           ],
         },
-        { projection: { _id: 0 } },
+        { projection: { _hot_updater_deletion_token: 0, _id: 0 } },
       );
       expect(bundles.countDocuments).not.toHaveBeenCalled();
     });
@@ -1113,9 +1124,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       };
       const bundleFindMany = vi
         .fn()
-        .mockResolvedValueOnce([
-          { target_app_version: appVersionRow.target_app_version },
-        ])
+        .mockResolvedValueOnce([appVersionRow])
         .mockResolvedValueOnce([appVersionRow])
         .mockResolvedValueOnce([fingerprintRow]);
       const patchFindMany = vi.fn(async () => []);
@@ -1282,21 +1291,21 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           id: { $gte: NIL_UUID },
           target_app_version: { $ne: null },
         }),
-        { projection: { _id: 0 } },
+        { projection: { _hot_updater_deletion_token: 0, _id: 0 } },
       );
       expect(bundles.find).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({
           target_app_version: { $in: ["1.0.0"] },
         }),
-        { projection: { _id: 0 } },
+        { projection: { _hot_updater_deletion_token: 0, _id: 0 } },
       );
       expect(bundles.find).toHaveBeenNthCalledWith(
         3,
         expect.objectContaining({
           fingerprint_hash: "fingerprint-fast-path",
         }),
-        { projection: { _id: 0 } },
+        { projection: { _hot_updater_deletion_token: 0, _id: 0 } },
       );
       expect(patches.find).toHaveBeenCalledTimes(2);
     });
@@ -1333,7 +1342,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const txPatches = { ...rootPatches };
       const txChannels = {
         ...rootChannels,
-        findFirst: vi.fn(async () => ({ id: transactionBundle.channel })),
+        findFirst: vi.fn(async () => ({
+          id: "channel-production",
+          name: transactionBundle.channel,
+        })),
       };
       const $transaction = vi.fn(
         async (operation: (tx: Record<string, unknown>) => Promise<unknown>) =>
@@ -1377,7 +1389,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           id: "id",
         },
         channels: {
-          id: "id",
+          id: sql.raw("id"),
         },
       };
       const rootInsert = vi.fn(() => ({
@@ -1403,7 +1415,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             findMany: vi.fn(),
           },
           channels: {
-            findFirst: vi.fn(async () => undefined),
+            findFirst: vi.fn(async () => ({
+              id: "channel-production",
+              name: transactionBundle.channel,
+            })),
             findMany: vi.fn(),
           },
         },

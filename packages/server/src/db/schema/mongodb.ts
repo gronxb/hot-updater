@@ -10,10 +10,14 @@ export const createMongoMigrationOperations = (
     type: "custom",
     sql: "backfill channels(id, name) and bundles.channel_id from bundles.channel",
   },
-  {
-    type: "custom",
-    sql: "create index bundles_id_idx on bundles(id)",
-  },
+  ...hotUpdaterSchema.tables
+    .filter((table) => !table.internal)
+    .map(
+      (table): MigrationOperation => ({
+        type: "custom",
+        sql: `create unique index ${table.ormName}_id_idx on ${table.ormName}(id)`,
+      }),
+    ),
   ...hotUpdaterSchema.tables.flatMap((table) =>
     (table.indexes ?? [])
       .filter((index) => schemaIndexAppliesToProvider(index, "mongodb"))

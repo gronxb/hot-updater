@@ -6,7 +6,7 @@ import type {
   DatabaseAdapterImplementation,
   FindManyDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabaseAdapter, createUUIDv7 } from "@hot-updater/plugin-core";
 import type { Collection, MongoClient } from "mongodb";
 
 import { createMongoMigrator } from "../db/fixedMigrator";
@@ -32,9 +32,23 @@ class MongoAdapterConstraintError extends Error {
 }
 
 const WITHOUT_MONGO_ID = { _id: 0 } as const;
+const DELETION_TOKEN_FIELD = "_hot_updater_deletion_token" as const;
+
+type MongoBundleDocument = BundleRow & {
+  readonly [DELETION_TOKEN_FIELD]?: string;
+};
+
+const WITHOUT_INTERNAL_FIELDS = {
+  ...WITHOUT_MONGO_ID,
+  [DELETION_TOKEN_FIELD]: 0,
+} as const;
+
+const activeBundleFilter = (where: object) => ({
+  $and: [where, { [DELETION_TOKEN_FIELD]: { $exists: false } }],
+});
 
 type MongoCollections = {
-  readonly bundles: Collection<BundleRow>;
+  readonly bundles: Collection<MongoBundleDocument>;
   readonly bundlePatches: Collection<BundlePatchRow>;
   readonly channels: Collection<ChannelRow>;
 };
@@ -42,7 +56,7 @@ type MongoCollections = {
 const createCollections = (client: MongoClient): MongoCollections => {
   const database = client.db();
   return {
-    bundles: database.collection<BundleRow>("bundles"),
+    bundles: database.collection<MongoBundleDocument>("bundles"),
     bundlePatches: database.collection<BundlePatchRow>("bundle_patches"),
     channels: database.collection<ChannelRow>("channels"),
   };
@@ -64,16 +78,46 @@ const assertChannelExists = async (
 };
 
 const assertPatchReferences = async (
-  bundles: Collection<BundleRow>,
+  bundles: Collection<MongoBundleDocument>,
   patch: BundlePatchRow,
 ): Promise<void> => {
   const ids = Array.from(new Set([patch.bundle_id, patch.base_bundle_id]));
-  const count = await bundles.countDocuments({ id: { $in: ids } });
+  const count = await bundles.countDocuments(
+    activeBundleFilter({ id: { $in: ids } }),
+  );
   if (count !== ids.length) {
     throw new MongoAdapterConstraintError(
       `patch "${patch.id}" references a missing bundle`,
     );
   }
+};
+
+const assertBundleTarget = (
+  bundle: Pick<BundleRow, "fingerprint_hash" | "target_app_version">,
+): void => {
+  if (bundle.target_app_version === null && bundle.fingerprint_hash === null) {
+    throw new MongoAdapterConstraintError(
+      "bundles.version-or-fingerprint.check",
+    );
+  }
+};
+
+const targetConstraintFilter = (
+  update: Parameters<DatabaseAdapterImplementation["update"]>[0]["update"],
+): object => {
+  if (
+    update.target_app_version === null &&
+    update.fingerprint_hash === undefined
+  ) {
+    return { fingerprint_hash: { $ne: null } };
+  }
+  if (
+    update.fingerprint_hash === null &&
+    update.target_app_version === undefined
+  ) {
+    return { target_app_version: { $ne: null } };
+  }
+  return {};
 };
 
 const findMongoRows = async (
@@ -84,8 +128,8 @@ const findMongoRows = async (
   switch (input.model) {
     case "bundles": {
       const cursor = collections.bundles
-        .find(createMongoBundleWhere(input.where), {
-          projection: WITHOUT_MONGO_ID,
+        .find(activeBundleFilter(createMongoBundleWhere(input.where)), {
+          projection: WITHOUT_INTERNAL_FIELDS,
         })
         .skip(input.offset)
         .limit(input.limit);
@@ -127,12 +171,19 @@ const createMongoImplementation = (
   create: async (input) => {
     switch (input.model) {
       case "bundles":
+        assertBundleTarget(input.data);
         await assertChannelExists(collections.channels, input.data.channel_id);
         await collections.bundles.insertOne(input.data);
         return input.data;
       case "bundle_patches":
         await assertPatchReferences(collections.bundles, input.data);
         await collections.bundlePatches.insertOne(input.data);
+        try {
+          await assertPatchReferences(collections.bundles, input.data);
+        } catch (error) {
+          await collections.bundlePatches.deleteMany({ id: input.data.id });
+          throw error;
+        }
         return input.data;
       case "channels":
         await collections.channels.insertOne(input.data);
@@ -140,13 +191,26 @@ const createMongoImplementation = (
     }
   },
   update: async (input) => {
+    if (
+      input.update.target_app_version === null &&
+      input.update.fingerprint_hash === null
+    ) {
+      throw new MongoAdapterConstraintError(
+        "bundles.version-or-fingerprint.check",
+      );
+    }
     if (input.update.channel_id !== undefined) {
       await assertChannelExists(collections.channels, input.update.channel_id);
     }
     return collections.bundles.findOneAndUpdate(
-      createMongoBundleWhere(input.where),
+      activeBundleFilter({
+        $and: [
+          createMongoBundleWhere(input.where),
+          targetConstraintFilter(input.update),
+        ],
+      }),
       { $set: input.update },
-      { projection: WITHOUT_MONGO_ID, returnDocument: "after" },
+      { projection: WITHOUT_INTERNAL_FIELDS, returnDocument: "after" },
     );
   },
   delete: async (input) => {
@@ -157,34 +221,41 @@ const createMongoImplementation = (
         );
         return;
       case "bundles": {
+        const deletionToken = createUUIDv7();
+        await collections.bundles.updateMany(
+          createMongoBundleWhere(input.where),
+          { $set: { [DELETION_TOKEN_FIELD]: deletionToken } },
+        );
         const rows = await collections.bundles
-          .find(createMongoBundleWhere(input.where), {
-            projection: { _id: 0, id: 1 },
-          })
+          .find(
+            { [DELETION_TOKEN_FIELD]: deletionToken },
+            {
+              projection: { _id: 0, id: 1 },
+            },
+          )
           .toArray();
         const ids = rows.map(({ id }) => id);
         if (ids.length === 0) return;
-        const references = await collections.bundlePatches.countDocuments({
+        await collections.bundlePatches.deleteMany({
           $or: [{ bundle_id: { $in: ids } }, { base_bundle_id: { $in: ids } }],
         });
-        if (references > 0) {
-          throw new MongoAdapterConstraintError(
-            "cannot delete a bundle referenced by a patch",
-          );
-        }
-        await collections.bundles.deleteMany({ id: { $in: ids } });
+        await collections.bundles.deleteMany({
+          [DELETION_TOKEN_FIELD]: deletionToken,
+        });
       }
     }
   },
   count: (input) =>
-    collections.bundles.countDocuments(createMongoBundleWhere(input.where)),
+    collections.bundles.countDocuments(
+      activeBundleFilter(createMongoBundleWhere(input.where)),
+    ),
   findOne: async (input) => {
     switch (input.model) {
       case "bundles":
         return collections.bundles.findOne(
-          createMongoBundleWhere(input.where),
+          activeBundleFilter(createMongoBundleWhere(input.where)),
           {
-            projection: WITHOUT_MONGO_ID,
+            projection: WITHOUT_INTERNAL_FIELDS,
           },
         );
       case "channels":

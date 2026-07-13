@@ -3,7 +3,10 @@ import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
 
-import { createBundleRowFixture } from "../../../test-utils/src/databaseTestFixtures";
+import {
+  createBundlePatchRowFixture,
+  createBundleRowFixture,
+} from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import {
@@ -98,5 +101,81 @@ describe("kyselyAdapter SQLite JSON storage", () => {
     expect(restored).toEqual(bundle);
     await sqliteDatabase.destroy();
     await sqliteClient.close();
+  });
+});
+
+describe("kyselyAdapter soft relations", () => {
+  it("rejects orphan patches when the SQL schema omits foreign keys", async () => {
+    const softClient = new PGlite();
+    const queries: string[] = [];
+    const softDatabase = new Kysely({
+      dialect: new PGliteDialect(softClient),
+      log: (event) => {
+        if (event.level === "query") queries.push(event.query.sql);
+      },
+    });
+    await softClient.exec(
+      DATABASE_ADAPTER_TEST_SCHEMA_SQL.replace(
+        " references channels(id) on delete restrict",
+        "",
+      ).replaceAll(" references bundles(id) on delete restrict", ""),
+    );
+    const adapter = kyselyAdapter({
+      db: softDatabase,
+      provider: "postgresql",
+      relationMode: "fumadb",
+    });
+    const base = createBundleRowFixture("951");
+    const owner = createBundleRowFixture("952");
+
+    try {
+      await adapter.create({
+        model: "channels",
+        data: { id: "channel-production", name: "production" },
+      });
+      await adapter.create({ model: "bundles", data: base });
+      await adapter.create({ model: "bundles", data: owner });
+      queries.length = 0;
+
+      await expect(
+        adapter.create({
+          model: "bundle_patches",
+          data: createBundlePatchRowFixture(
+            "missing-owner",
+            "missing-owner",
+            base.id,
+          ),
+        }),
+      ).rejects.toThrow("bundle_patches.bundle_id.foreign-key");
+      expect(queries.some((query) => query.endsWith("for update"))).toBe(true);
+      await expect(
+        adapter.create({
+          model: "bundle_patches",
+          data: createBundlePatchRowFixture(
+            "missing-base",
+            owner.id,
+            "missing-base",
+          ),
+        }),
+      ).rejects.toThrow("bundle_patches.base_bundle_id.foreign-key");
+      await expect(
+        adapter.findMany({ model: "bundle_patches" }),
+      ).resolves.toEqual([]);
+      queries.length = 0;
+      await adapter.delete({
+        model: "bundles",
+        where: [{ field: "id", value: owner.id }],
+      });
+      expect(
+        queries.some(
+          (query) =>
+            query.includes('select "id" from "bundles"') &&
+            query.endsWith("for update"),
+        ),
+      ).toBe(true);
+    } finally {
+      await softDatabase.destroy();
+      await softClient.close();
+    }
   });
 });

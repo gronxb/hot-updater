@@ -78,6 +78,7 @@ export const parseLegacyBundle = (
       source,
     ),
     message: blobNullableString(blobProperty(input, "message"), source),
+    channel: channelName,
     storage_uri: blobString(blobProperty(input, "storageUri"), source),
     target_app_version: blobNullableString(
       blobProperty(input, "targetAppVersion"),

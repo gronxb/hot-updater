@@ -6,14 +6,20 @@ CREATE TABLE IF NOT EXISTS public.channels (
 );
 
 INSERT INTO public.channels (id, name)
-SELECT DISTINCT channel, channel FROM public.bundles
-ON CONFLICT (id) DO NOTHING;
+SELECT DISTINCT b.channel, b.channel
+FROM public.bundles b
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.channels c WHERE c.name = b.channel
+)
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 ALTER TABLE public.bundles
   ADD COLUMN channel_id text;
 
-UPDATE public.bundles
-SET channel_id = channel;
+UPDATE public.bundles b
+SET channel_id = c.id
+FROM public.channels c
+WHERE c.name = b.channel;
 
 ALTER TABLE public.bundles
   ALTER COLUMN channel_id SET NOT NULL,
@@ -21,11 +27,7 @@ ALTER TABLE public.bundles
   FOREIGN KEY (channel_id)
   REFERENCES public.channels(id) ON DELETE RESTRICT;
 
-DROP INDEX IF EXISTS public.bundles_channel_idx;
 CREATE INDEX bundles_channel_id_idx ON public.bundles(channel_id);
-
-ALTER TABLE public.bundles
-  DROP COLUMN channel;
 
 ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;
 

@@ -7,6 +7,7 @@ export const databaseFields = {
     "file_hash",
     "git_commit_hash",
     "message",
+    "channel",
     "channel_id",
     "storage_uri",
     "target_app_version",

@@ -108,6 +108,7 @@ export const bundleToRow = (bundle: Bundle, channelId: string): BundleRow => ({
   file_hash: bundle.fileHash,
   git_commit_hash: bundle.gitCommitHash,
   message: bundle.message,
+  channel: bundle.channel,
   channel_id: channelId,
   storage_uri: bundle.storageUri,
   target_app_version: bundle.targetAppVersion,
@@ -155,8 +156,8 @@ export const rowToBundle = (
   return {
     id: row.id,
     platform: row.platform,
-    shouldForceUpdate: Boolean(row.should_force_update),
-    enabled: Boolean(row.enabled),
+    shouldForceUpdate: row.should_force_update,
+    enabled: row.enabled,
     fileHash: row.file_hash,
     gitCommitHash: row.git_commit_hash ?? null,
     message: row.message ?? null,

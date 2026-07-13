@@ -27,11 +27,21 @@ describe("v0.36.0 schema", () => {
     });
     expect(bundlesV036.columns).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ ormName: "channel" }),
         expect.objectContaining({ ormName: "channel_id" }),
       ]),
     );
-    expect(bundlesV036.columns).not.toEqual(
-      expect.arrayContaining([expect.objectContaining({ ormName: "channel" })]),
+    expect(bundlesV036.indexes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "bundles_channel_idx",
+          columns: ["channel"],
+        }),
+        expect.objectContaining({
+          name: "bundles_channel_id_idx",
+          columns: ["channel_id"],
+        }),
+      ]),
     );
     expect(bundlesV036.foreignKeys).toEqual([
       expect.objectContaining({
@@ -65,15 +75,14 @@ describe("v0.36.0 schema", () => {
     const constraintIndex = statements.findIndex((statement) =>
       statement.includes("add constraint bundles_channel_id_fk"),
     );
-    const dropLegacyChannelIndex = statements.findIndex((statement) =>
-      statement.includes("drop column channel"),
-    );
 
     expect(createChannelIndex).toBeGreaterThanOrEqual(0);
     expect(backfillChannelsIndex).toBeGreaterThan(createChannelIndex);
     expect(backfillBundlesIndex).toBeGreaterThan(backfillChannelsIndex);
     expect(constraintIndex).toBeGreaterThan(backfillBundlesIndex);
-    expect(dropLegacyChannelIndex).toBeGreaterThan(constraintIndex);
+    expect(statements).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("drop column channel")]),
+    );
     expect(statements[constraintIndex]).toContain("on delete restrict");
   });
 
@@ -96,12 +105,18 @@ describe("v0.36.0 schema", () => {
       'channelRef channels @relation("channels_bundles_channel"',
     );
     expect(prisma).toContain("fields: [channel_id]");
+    expect(prisma).toContain('channel String @default("production")');
+    expect(prisma).toContain('@@index([channel], map: "bundles_channel_idx")');
     expect(prisma).toContain('@@unique([name], map: "channels_name_key")');
     expect(prisma).toContain(
       'bundles bundles[] @relation("channels_bundles_channel")',
     );
     expect(prisma).toContain("onDelete: Restrict");
     expect(drizzle).toContain('name: "bundles_channel_id_fk"');
+    expect(drizzle).toContain(
+      'channel: text("channel").notNull().default("production")',
+    );
+    expect(drizzle).toContain('index("bundles_channel_idx").on(table.channel)');
     expect(drizzle).toContain('.onDelete("restrict")');
     expect(drizzle).toContain(
       'uniqueIndex("channels_name_key").on(table.name)',
@@ -118,7 +133,9 @@ describe("v0.36.0 schema", () => {
     expect(statements).toContain(
       "alter table bundles modify column channel_id varchar(255) not null",
     );
-    expect(statements.at(-1)).toBe("alter table bundles drop column channel");
+    expect(statements).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("drop column channel")]),
+    );
   });
 
   it("orders MongoDB channel creation and backfill before the version write", () => {

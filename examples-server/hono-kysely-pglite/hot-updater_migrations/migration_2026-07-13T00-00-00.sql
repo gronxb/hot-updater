@@ -23,8 +23,6 @@ CREATE INDEX bundles_channel_id_idx ON bundles(channel_id);
 ALTER TABLE bundles
 ADD CONSTRAINT bundles_channel_id_fk FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
-ALTER TABLE bundles DROP COLUMN channel;
-
 INSERT INTO
   private_hot_updater_settings (key, value)
 VALUES

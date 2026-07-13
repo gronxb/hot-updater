@@ -1,4 +1,5 @@
 import type {
+  BundleRow,
   DatabaseImplementationResult,
   DatabaseAdapterImplementation,
   FindManyDatabaseImplementationInput,
@@ -29,9 +30,14 @@ import { createPrismaGetUpdateInfo } from "./prismaUpdateInfo";
 
 type PrismaRelationMode = "prisma" | "foreign-keys";
 
+type PrismaTransactionOptions = {
+  readonly isolationLevel: "Serializable";
+};
+
 type PrismaTransactionClient = object & {
   readonly $transaction: <TResult>(
     callback: (client: object) => Promise<TResult>,
+    options?: PrismaTransactionOptions,
   ) => Promise<TResult>;
 };
 
@@ -46,6 +52,15 @@ const hasCallbackTransaction = (
   client: object,
 ): client is PrismaTransactionClient =>
   "$transaction" in client && typeof client.$transaction === "function";
+
+const runPrismaTransaction = <TResult>(
+  client: PrismaTransactionClient,
+  relationMode: PrismaRelationMode,
+  callback: (client: object) => Promise<TResult>,
+): Promise<TResult> =>
+  relationMode === "prisma"
+    ? client.$transaction(callback, { isolationLevel: "Serializable" })
+    : client.$transaction(callback);
 
 const findMany = async (
   client: object,
@@ -94,11 +109,46 @@ const assertPatchReferences = async (
   }
 };
 
+const assertBundleTarget = (
+  bundle: Pick<BundleRow, "fingerprint_hash" | "target_app_version">,
+): void => {
+  if (bundle.target_app_version === null && bundle.fingerprint_hash === null) {
+    throw new PrismaAdapterError(
+      "bundle requires a target app version or fingerprint hash",
+    );
+  }
+};
+
+const createBundleTargetUpdateWhere = (
+  id: string,
+  update: Readonly<Partial<BundleRow>>,
+): Readonly<Record<string, unknown>> => {
+  if (update.target_app_version === null && update.fingerprint_hash === null) {
+    throw new PrismaAdapterError(
+      "bundle requires a target app version or fingerprint hash",
+    );
+  }
+  if (
+    update.target_app_version === null &&
+    update.fingerprint_hash === undefined
+  ) {
+    return { id, fingerprint_hash: { not: null } };
+  }
+  if (
+    update.fingerprint_hash === null &&
+    update.target_app_version === undefined
+  ) {
+    return { id, target_app_version: { not: null } };
+  }
+  return { id };
+};
+
 const createCrudImplementation = (
   client: object,
 ): TransactionDatabaseAdapterImplementation => ({
   create: async (input) => {
     if (input.model === "bundles") {
+      assertBundleTarget(input.data);
       await assertChannelExists(client, input.data.channel_id);
     }
     if (input.model === "bundle_patches") {
@@ -129,11 +179,27 @@ const createCrudImplementation = (
       await assertChannelExists(client, input.update.channel_id);
     }
     const delegate = getPrismaDelegate(client, "bundles");
-    const existing = await delegate.findFirst({ where: { id } });
-    if (existing === null) return null;
-    return parsePrismaBundleRow(
-      await delegate.update({ where: { id }, data: input.update }),
-    );
+    if (delegate.updateMany === undefined) {
+      throw new PrismaAdapterError(
+        'model delegate "bundles" requires updateMany',
+      );
+    }
+    await delegate.updateMany({
+      where: createBundleTargetUpdateWhere(id, input.update),
+      data: input.update,
+    });
+    const stored = await delegate.findFirst({ where: { id } });
+    if (stored === null) return null;
+    const updated = parsePrismaBundleRow(stored);
+    if (
+      (input.update.target_app_version !== undefined &&
+        updated.target_app_version !== input.update.target_app_version) ||
+      (input.update.fingerprint_hash !== undefined &&
+        updated.fingerprint_hash !== input.update.fingerprint_hash)
+    ) {
+      throw new PrismaAdapterError("bundle target update was not applied");
+    }
+    return updated;
   },
   delete: async (input) => {
     if (input.model === "bundles") {
@@ -144,19 +210,11 @@ const createCrudImplementation = (
         ({ id }) => id,
       );
       if (ids.length === 0) return;
-      const references = await getPrismaDelegate(
-        client,
-        "bundle_patches",
-      ).count({
+      await getPrismaDelegate(client, "bundle_patches").deleteMany({
         where: {
           OR: [{ bundle_id: { in: ids } }, { base_bundle_id: { in: ids } }],
         },
       });
-      if (references > 0) {
-        throw new PrismaAdapterError(
-          "cannot delete a bundle referenced by a patch",
-        );
-      }
     }
     await getPrismaDelegate(client, input.model).deleteMany({
       where: createPrismaWhere(input.where),
@@ -183,17 +241,38 @@ const createCrudImplementation = (
 
 const createPrismaImplementation = (
   client: object,
+  relationMode: PrismaRelationMode,
 ): DatabaseAdapterImplementation => {
   const crud = createCrudImplementation(client);
   const implementation: DatabaseAdapterImplementation = {
     ...crud,
+    delete: (input) => {
+      if (input.model !== "bundles" || !hasCallbackTransaction(client)) {
+        return crud.delete(input);
+      }
+      return runPrismaTransaction(client, relationMode, (transactionClient) =>
+        createCrudImplementation(transactionClient).delete(input),
+      );
+    },
     getUpdateInfo: createPrismaGetUpdateInfo(client),
   };
   if (!hasCallbackTransaction(client)) return implementation;
+  if (relationMode === "prisma") {
+    implementation.create = (input) =>
+      input.model === "channels"
+        ? crud.create(input)
+        : runPrismaTransaction(client, relationMode, (transactionClient) =>
+            createCrudImplementation(transactionClient).create(input),
+          );
+    implementation.update = (input) =>
+      runPrismaTransaction(client, relationMode, (transactionClient) =>
+        createCrudImplementation(transactionClient).update(input),
+      );
+  }
   return {
     ...implementation,
     transaction: (callback) =>
-      client.$transaction(async (transactionClient) => {
+      runPrismaTransaction(client, relationMode, async (transactionClient) => {
         getPrismaDelegate(transactionClient, "bundles");
         getPrismaDelegate(transactionClient, "bundle_patches");
         getPrismaDelegate(transactionClient, "channels");
@@ -214,9 +293,21 @@ export const prismaAdapter = (
       `unsupported relation mode "${config.relationMode}"`,
     );
   }
+  if (
+    config.relationMode === "prisma" &&
+    !hasCallbackTransaction(config.prisma)
+  ) {
+    throw new PrismaAdapterError(
+      'relation mode "prisma" requires callback transactions',
+    );
+  }
   const adapter = createDatabaseAdapter({
     name: "prisma",
-    adapter: () => createPrismaImplementation(config.prisma),
+    adapter: () =>
+      createPrismaImplementation(
+        config.prisma,
+        config.relationMode ?? "foreign-keys",
+      ),
   });
   return Object.assign(adapter, {
     adapterName: "prisma",

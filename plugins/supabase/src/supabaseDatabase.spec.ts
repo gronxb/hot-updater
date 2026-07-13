@@ -90,27 +90,28 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
             ? rowValue
             : String(rowValue),
         );
-        return marker === ".in." ? included : !included;
+        return marker === ".in." ? included : rowValue !== null && !included;
       }
       case ".eq.":
         return rowValue === decode(rawValue);
       case ".neq.":
-        return rowValue !== decode(rawValue);
+        return rowValue !== null && rowValue !== decode(rawValue);
       case ".gt.":
-        return compare(rowValue, decode(rawValue)) > 0;
+        return rowValue !== null && compare(rowValue, decode(rawValue)) > 0;
       case ".gte.":
-        return compare(rowValue, decode(rawValue)) >= 0;
+        return rowValue !== null && compare(rowValue, decode(rawValue)) >= 0;
       case ".lt.":
-        return compare(rowValue, decode(rawValue)) < 0;
+        return rowValue !== null && compare(rowValue, decode(rawValue)) < 0;
       case ".lte.":
-        return compare(rowValue, decode(rawValue)) <= 0;
+        return rowValue !== null && compare(rowValue, decode(rawValue)) <= 0;
       case ".like.":
       case ".not.ilike.":
       case ".ilike.": {
         const pattern = String(decode(rawValue));
         const actual = String(rowValue);
-        const left = marker === ".ilike." ? actual.toLowerCase() : actual;
-        const right = marker === ".ilike." ? pattern.toLowerCase() : pattern;
+        const insensitive = marker === ".ilike." || marker === ".not.ilike.";
+        const left = insensitive ? actual.toLowerCase() : actual;
+        const right = insensitive ? pattern.toLowerCase() : pattern;
         const matched =
           right.startsWith("*") && right.endsWith("*")
             ? left.includes(right.slice(1, -1))
@@ -119,7 +120,9 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
               : right.endsWith("*")
                 ? left.startsWith(right.slice(0, -1))
                 : left === right;
-        return marker === ".not.ilike." ? !matched : matched;
+        return marker === ".not.ilike."
+          ? rowValue !== null && !matched
+          : matched;
       }
     }
   };
@@ -223,7 +226,17 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
         for (const row of selected) Object.assign(row, this.payload);
       }
       if (this.mode === "delete") {
-        for (const row of selected) rows[this.table].delete(String(row.id));
+        for (const row of selected) {
+          const id = String(row.id);
+          rows[this.table].delete(id);
+          if (this.table === "bundles") {
+            for (const patch of rows.bundle_patches.values()) {
+              if (patch.bundle_id === id || patch.base_bundle_id === id) {
+                rows.bundle_patches.delete(String(patch.id));
+              }
+            }
+          }
+        }
         return { count: null, data: null, error: null };
       }
       const end =

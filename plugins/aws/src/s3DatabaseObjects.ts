@@ -29,20 +29,30 @@ export class ArchivedS3DatabaseObjectError extends Error {
   }
 }
 
-export const loadJsonFromS3 = async (
+type VersionedS3Json = {
+  readonly data: unknown;
+  readonly etag: string;
+};
+
+const loadVersionedJsonFromS3 = async (
   client: S3Client,
   bucket: string,
   key: string,
-): Promise<unknown | null> => {
+): Promise<VersionedS3Json | null> => {
   try {
     const response = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
     );
     if (!response.Body) return null;
     const text = await streamToString(response.Body);
-    if (text.length === 0) return null;
+    if (text.length === 0) {
+      throw new Error(`S3 database object "${key}" is empty.`);
+    }
+    if (!response.ETag) {
+      throw new Error(`S3 object "${key}" did not include an ETag.`);
+    }
     const parsed: unknown = JSON.parse(text);
-    return parsed;
+    return { data: parsed, etag: response.ETag };
   } catch (error) {
     if (
       error instanceof Error &&
@@ -63,6 +73,75 @@ export const loadJsonFromS3 = async (
         { cause: error },
       );
     }
+    throw error;
+  }
+};
+
+export const loadJsonFromS3 = async (
+  client: S3Client,
+  bucket: string,
+  key: string,
+): Promise<unknown | null> =>
+  (await loadVersionedJsonFromS3(client, bucket, key))?.data ?? null;
+
+const isConditionalWriteConflict = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const metadata = errorProperty(error, "$metadata");
+  const status = errorProperty(metadata, "httpStatusCode");
+  return (
+    error.name === "ConditionalRequestConflict" ||
+    error.name === "PreconditionFailed" ||
+    status === 409 ||
+    status === 412
+  );
+};
+
+export const compareAndSwapJsonInS3 = async (
+  client: S3Client,
+  bucket: string,
+  key: string,
+  expected: unknown | null,
+  data: unknown,
+): Promise<boolean> => {
+  const cacheControl = key.endsWith("_hot-updater/database/v2.json")
+    ? "no-cache"
+    : "max-age=31536000";
+  if (expected === null) {
+    try {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: JSON.stringify(data),
+          ContentType: mime.getType(key) ?? "application/json",
+          CacheControl: cacheControl,
+          IfNoneMatch: "*",
+        }),
+      );
+      return true;
+    } catch (error) {
+      if (isConditionalWriteConflict(error)) return false;
+      throw error;
+    }
+  }
+  const current = await loadVersionedJsonFromS3(client, bucket, key);
+  if (JSON.stringify(current?.data ?? null) !== JSON.stringify(expected)) {
+    return false;
+  }
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: JSON.stringify(data),
+        ContentType: mime.getType(key) ?? "application/json",
+        CacheControl: cacheControl,
+        IfMatch: current?.etag,
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalWriteConflict(error)) return false;
     throw error;
   }
 };
