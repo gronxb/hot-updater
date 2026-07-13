@@ -62,14 +62,12 @@ const createImplementation = <TDatabase extends object, TContext>(
 export const kyselyAdapter = <TDatabase extends object, TContext = unknown>(
   config: KyselyAdapterConfig<TDatabase>,
 ): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
-  const provider = createDatabaseAdapter<
-    KyselyAdapterConfig<TDatabase>,
-    HotUpdaterContext<TContext>
-  >({
+  const adapter = createDatabaseAdapter({
     name: "kysely",
-    factory: createImplementation,
+    adapter: (): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> =>
+      createImplementation<TDatabase, TContext>(config),
   });
-  return Object.assign(provider(config), {
+  return Object.assign(adapter, {
     adapterName: "kysely",
     provider: config.provider,
     createMigrator: () =>

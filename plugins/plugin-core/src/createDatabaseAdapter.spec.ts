@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabaseAdapter } from "./createDatabaseAdapter";
+import type { DatabaseAdapterImplementation } from "./types";
 
 class UnimplementedAdapterMethodError extends Error {}
 
@@ -18,38 +19,37 @@ const createMethods = () => ({
 });
 
 describe("createDatabaseAdapter", () => {
-  it("returns an adapter object when a provider is configured", () => {
+  it("returns an adapter object from a directly configured adapter", () => {
     // Given
-    const provider = createDatabaseAdapter({
-      name: "memory",
-      factory: createMethods,
-    });
+    const createMemoryAdapter = (name = "memory") =>
+      createDatabaseAdapter({
+        name,
+        adapter: createMethods,
+      });
 
     // When
-    const adapter = provider({});
+    const adapter = createMemoryAdapter();
 
     // Then
     expect(typeof adapter).toBe("object");
     expect(adapter.name).toBe("memory");
   });
 
-  it("composes lifecycle capabilities without invoking mutation hooks", async () => {
+  it("composes onUnmount without invoking it", async () => {
     // Given
-    const onDatabaseUpdated = vi.fn(async () => undefined);
     const onUnmount = vi.fn(async () => undefined);
-    const provider = createDatabaseAdapter({
+    const adapter = createDatabaseAdapter({
       name: "memory",
-      factory: () => ({ ...createMethods(), onUnmount }),
+      adapter: () => ({ ...createMethods(), onUnmount }),
     });
 
+    expect(onUnmount).not.toHaveBeenCalled();
+
     // When
-    const adapter = provider({}, { onDatabaseUpdated });
+    const result = adapter.onUnmount?.();
 
     // Then
-    expect(onDatabaseUpdated).not.toHaveBeenCalled();
-    await expect(adapter.onDatabaseUpdated?.()).resolves.toBeUndefined();
-    await expect(adapter.onUnmount?.()).resolves.toBeUndefined();
-    expect(onDatabaseUpdated).toHaveBeenCalledOnce();
+    await expect(result).resolves.toBeUndefined();
     expect(onUnmount).toHaveBeenCalledOnce();
   });
 
@@ -57,22 +57,21 @@ describe("createDatabaseAdapter", () => {
     // Given
     const context = { binding: "request-db" };
     const seenContexts: (typeof context)[] = [];
-    const provider = createDatabaseAdapter<
-      Record<string, never>,
+    const createImplementation = (): DatabaseAdapterImplementation<
       typeof context
-    >({
-      name: "memory",
-      factory: () => ({
-        ...createMethods(),
-        transaction: async (callback, transactionContext) => {
-          if (transactionContext) {
-            seenContexts.push(transactionContext);
-          }
-          return callback(createMethods());
-        },
-      }),
+    > => ({
+      ...createMethods(),
+      transaction: async (callback, transactionContext) => {
+        if (transactionContext) {
+          seenContexts.push(transactionContext);
+        }
+        return callback(createMethods());
+      },
     });
-    const adapter = provider({});
+    const adapter = createDatabaseAdapter({
+      name: "memory",
+      adapter: createImplementation,
+    });
 
     // When
     const result = await adapter.transaction?.(
@@ -87,14 +86,13 @@ describe("createDatabaseAdapter", () => {
 
   it("propagates a transaction callback rejection", async () => {
     // Given
-    const provider = createDatabaseAdapter({
+    const adapter = createDatabaseAdapter({
       name: "memory",
-      factory: () => ({
+      adapter: () => ({
         ...createMethods(),
         transaction: async (callback) => callback(createMethods()),
       }),
     });
-    const adapter = provider({});
     const rejection = new UnimplementedAdapterMethodError();
 
     // When
@@ -109,9 +107,9 @@ describe("createDatabaseAdapter", () => {
   it("passes default paging to findMany", async () => {
     // Given
     const inputs: { readonly limit?: number; readonly offset?: number }[] = [];
-    const provider = createDatabaseAdapter({
+    const adapter = createDatabaseAdapter({
       name: "memory",
-      factory: () => ({
+      adapter: () => ({
         ...createMethods(),
         findMany: async (input) => {
           inputs.push(input);
@@ -119,7 +117,6 @@ describe("createDatabaseAdapter", () => {
         },
       }),
     });
-    const adapter = provider({});
 
     // When
     await adapter.findMany({ model: "channels" });
@@ -131,9 +128,9 @@ describe("createDatabaseAdapter", () => {
   it("passes select to the implementation and returns only selected fields", async () => {
     // Given
     const inputs: object[] = [];
-    const provider = createDatabaseAdapter({
+    const adapter = createDatabaseAdapter({
       name: "memory",
-      factory: () => ({
+      adapter: () => ({
         ...createMethods(),
         findMany: async (input) => {
           inputs.push(input);
@@ -141,7 +138,6 @@ describe("createDatabaseAdapter", () => {
         },
       }),
     });
-    const adapter = provider({});
 
     // When
     const rows = await adapter.findMany({
@@ -161,16 +157,15 @@ describe("createDatabaseAdapter", () => {
     const findMany = vi.fn(unimplemented);
     const deleteRows = vi.fn(unimplemented);
     const update = vi.fn(unimplemented);
-    const provider = createDatabaseAdapter({
+    const adapter = createDatabaseAdapter({
       name: "memory",
-      factory: () => ({
+      adapter: () => ({
         ...createMethods(),
         findMany,
         delete: deleteRows,
         update,
       }),
     });
-    const adapter = provider({});
 
     // When
     const emptySelect = adapter.findMany({ model: "channels", select: [] });

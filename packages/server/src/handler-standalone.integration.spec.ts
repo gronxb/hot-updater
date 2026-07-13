@@ -83,7 +83,7 @@ const createStandaloneClient = (base = `${baseUrl}/hot-updater`) =>
 const createInMemoryBlobDatabase = (store: Record<string, string>) =>
   createBlobDatabaseAdapter({
     name: "blob-test",
-    factory: () => ({
+    adapter: () => ({
       apiBasePath: "/api/check-update",
       listObjects: async (prefix: string) =>
         Object.keys(store).filter((key) => key.startsWith(prefix)),
@@ -96,7 +96,7 @@ const createInMemoryBlobDatabase = (store: Record<string, string>) =>
       },
       invalidatePaths: async () => {},
     }),
-  })({});
+  });
 
 describe("Handler <-> Standalone Repository Integration", () => {
   it("creates a bundle through handler POST /bundles", async () => {

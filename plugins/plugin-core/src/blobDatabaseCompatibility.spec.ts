@@ -42,7 +42,7 @@ describe("blob snapshot compatibility", () => {
     ]);
     const adapter = createBlobDatabaseAdapter({
       name: "compatibility-memory",
-      factory: () => ({
+      adapter: () => ({
         apiBasePath: "/api/check-update",
         listObjects: async (prefix) =>
           [...store.keys()].filter((key) => key.startsWith(prefix)),
@@ -50,7 +50,7 @@ describe("blob snapshot compatibility", () => {
         uploadObject: async (key, value) => void store.set(key, value),
         invalidatePaths: async () => undefined,
       }),
-    })({});
+    });
 
     // When
     const bundle = await createDatabaseClient(adapter).getBundleById(bundleId);

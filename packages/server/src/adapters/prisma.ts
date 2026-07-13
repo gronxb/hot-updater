@@ -202,11 +202,6 @@ const createPrismaImplementation = (
   };
 };
 
-const createPrismaAdapter = createDatabaseAdapter<PrismaConfig>({
-  name: "prisma",
-  factory: ({ prisma }) => createPrismaImplementation(prisma),
-});
-
 export const prismaAdapter = (
   config: PrismaConfig,
 ): DatabaseAdapterWithCapabilities => {
@@ -219,7 +214,10 @@ export const prismaAdapter = (
       `unsupported relation mode "${config.relationMode}"`,
     );
   }
-  const adapter = createPrismaAdapter(config);
+  const adapter = createDatabaseAdapter({
+    name: "prisma",
+    adapter: () => createPrismaImplementation(config.prisma),
+  });
   return Object.assign(adapter, {
     adapterName: "prisma",
     provider: config.provider,

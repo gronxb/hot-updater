@@ -101,14 +101,12 @@ const createImplementation = <TContext>(
 export const drizzleAdapter = <TContext = unknown>(
   config: DrizzleConfig,
 ): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
-  const provider = createDatabaseAdapter<
-    DrizzleConfig,
-    HotUpdaterContext<TContext>
-  >({
+  const adapter = createDatabaseAdapter({
     name: "drizzle",
-    factory: createImplementation,
+    adapter: (): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> =>
+      createImplementation<TContext>(config),
   });
-  return Object.assign(provider(config), {
+  return Object.assign(adapter, {
     adapterName: "drizzle",
     provider: config.provider,
     generateSchema: (version: Parameters<SchemaGenerator>[0]) => ({

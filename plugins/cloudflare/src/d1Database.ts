@@ -9,28 +9,29 @@ export interface D1DatabaseConfig {
   readonly cloudflareApiToken: string;
 }
 
-export const d1Database = createDatabaseAdapter<D1DatabaseConfig>({
-  name: "d1Database",
-  factory: (config) => {
-    const cloudflare = new Cloudflare({
-      apiToken: config.cloudflareApiToken,
-    });
+export const d1Database = (config: D1DatabaseConfig) =>
+  createDatabaseAdapter({
+    name: "d1Database",
+    adapter: () => {
+      const cloudflare = new Cloudflare({
+        apiToken: config.cloudflareApiToken,
+      });
 
-    return createD1Implementation({
-      async query(sql, params) {
-        const page = await cloudflare.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql,
-          params: [...params],
-        });
-        const rows: unknown[] = [];
-        for await (const resultPage of page.iterPages()) {
-          for (const result of resultPage.result) {
-            rows.push(...(result.results ?? []));
+      return createD1Implementation({
+        async query(sql, params) {
+          const page = await cloudflare.d1.database.query(config.databaseId, {
+            account_id: config.accountId,
+            sql,
+            params: [...params],
+          });
+          const rows: unknown[] = [];
+          for await (const resultPage of page.iterPages()) {
+            for (const result of resultPage.result) {
+              rows.push(...(result.results ?? []));
+            }
           }
-        }
-        return rows;
-      },
-    });
-  },
-});
+          return rows;
+        },
+      });
+    },
+  });

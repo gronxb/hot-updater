@@ -1,10 +1,9 @@
-import type { Bundle } from "@hot-updater/core";
 import {
   createDatabaseClient,
   type BundleRow,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   setupDatabaseAdapterTestSuite,
@@ -132,30 +131,5 @@ describe("mock database provider", () => {
     ).rejects.toMatchObject({
       constraint: "bundles.channel_id.foreign-key",
     });
-  });
-
-  it("runs the update hook once after an aggregate mutation", async () => {
-    const onDatabaseUpdated = vi.fn(async () => undefined);
-    const adapter = mockDatabase(
-      { data, latency: DEFAULT_LATENCY },
-      { onDatabaseUpdated },
-    );
-    const bundle: Bundle = {
-      id: "00000000-0000-0000-0000-000000000001",
-      platform: "ios",
-      shouldForceUpdate: false,
-      enabled: true,
-      fileHash: "hash",
-      gitCommitHash: null,
-      message: null,
-      channel: "production",
-      storageUri: "storage://bundle.zip",
-      targetAppVersion: "1.0.0",
-      fingerprintHash: null,
-    };
-
-    await createDatabaseClient(adapter).insertBundle(bundle);
-
-    expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
   });
 });

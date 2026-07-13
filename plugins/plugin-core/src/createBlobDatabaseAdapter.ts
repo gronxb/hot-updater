@@ -107,113 +107,111 @@ const loadLegacySnapshot = async (
   );
 };
 
-export const createBlobDatabaseAdapter = <TConfig, TContext = unknown>({
+export const createBlobDatabaseAdapter = <TContext = unknown>({
   name,
-  factory,
+  adapter,
+  onDatabaseUpdated,
 }: {
   readonly name: string;
-  readonly factory: (config: TConfig) => BlobDatabaseOperations;
+  readonly adapter: () => BlobDatabaseOperations;
+  readonly onDatabaseUpdated?: DatabaseAdapterLifecycleHooks["onDatabaseUpdated"];
 }) => {
-  return (config: TConfig, hooks?: DatabaseAdapterLifecycleHooks) => {
-    const operations = factory(config);
-    let mutationQueue: Promise<void> = Promise.resolve();
+  const operations = adapter();
+  let mutationQueue: Promise<void> = Promise.resolve();
 
-    const loadSnapshot = async (): Promise<BlobDatabaseSnapshot> => {
-      const stored = await loadOptionalObject(
-        operations,
-        BLOB_DATABASE_SNAPSHOT_KEY,
-      );
-      if (stored !== null) return parseBlobDatabaseSnapshot(stored);
-      const legacy = await loadLegacySnapshot(operations);
-      if (legacy.bundles.length > 0) {
-        await operations.uploadObject(BLOB_DATABASE_SNAPSHOT_KEY, legacy);
-      }
-      return legacy;
-    };
-
-    const persistSnapshot = async (
-      before: BlobDatabaseSnapshot,
-      after: BlobDatabaseSnapshot,
-    ): Promise<void> => {
-      if (JSON.stringify(before) === JSON.stringify(after)) return;
-      const current = await loadOptionalObject(
-        operations,
-        BLOB_DATABASE_SNAPSHOT_KEY,
-      );
-      const currentSnapshot =
-        current === null
-          ? emptyBlobDatabaseSnapshot()
-          : parseBlobDatabaseSnapshot(current);
-      if (JSON.stringify(currentSnapshot) !== JSON.stringify(before)) {
-        throw new BlobDatabaseWriteConflictError();
-      }
-      if (current !== null) {
-        await operations.uploadObject(
-          BLOB_DATABASE_BACKUP_KEY,
-          currentSnapshot,
-        );
-      }
-      await operations.uploadObject(BLOB_DATABASE_SNAPSHOT_KEY, after);
-      const paths = changedBundleInvalidationPaths(
-        operations.apiBasePath,
-        before,
-        after,
-      );
-      if (paths.length > 0) await operations.invalidatePaths(paths);
-    };
-
-    const mutate = <TResult>(
-      mutation: SnapshotMutation<TResult>,
-    ): Promise<TResult> => {
-      const run = mutationQueue.then(async () => {
-        const before = await loadSnapshot();
-        const state: BlobSnapshotState = { snapshot: before };
-        const result = await mutation(createBlobSnapshotCrud(state));
-        await persistSnapshot(before, state.snapshot);
-        return result;
-      });
-      mutationQueue = run.then(
-        () => undefined,
-        () => undefined,
-      );
-      return run;
-    };
-
-    const read = async <TResult>(
-      query: SnapshotMutation<TResult>,
-    ): Promise<TResult> => {
-      await mutationQueue;
-      const state: BlobSnapshotState = { snapshot: await loadSnapshot() };
-      return query(createBlobSnapshotCrud(state));
-    };
-
-    const implementation: DatabaseAdapterImplementation<TContext> = {
-      create: (input) => mutate((database) => database.create(input)),
-      update: (input) => mutate((database) => database.update(input)),
-      delete: (input) => mutate((database) => database.delete(input)),
-      count: (input) => read((database) => database.count(input)),
-      findOne: (input) => read((database) => database.findOne(input)),
-      findMany: (input) => read((database) => database.findMany(input)),
-      getUpdateInfo: async (args, context) => {
-        await mutationQueue;
-        const snapshot = await loadSnapshot();
-        return resolveUpdateInfoFromBundles({
-          args,
-          bundles: rowsToBundles(
-            snapshot.bundles,
-            snapshot.bundle_patches,
-            snapshot.bundles,
-            snapshot.channels,
-          ),
-          context,
-        });
-      },
-      transaction: (callback) => mutate(callback),
-    };
-
-    return createDatabaseAdapter<TConfig, TContext>({
-      name,
-      factory: () => implementation,
-    })(config, hooks);
+  const loadSnapshot = async (): Promise<BlobDatabaseSnapshot> => {
+    const stored = await loadOptionalObject(
+      operations,
+      BLOB_DATABASE_SNAPSHOT_KEY,
+    );
+    if (stored !== null) return parseBlobDatabaseSnapshot(stored);
+    const legacy = await loadLegacySnapshot(operations);
+    if (legacy.bundles.length > 0) {
+      await operations.uploadObject(BLOB_DATABASE_SNAPSHOT_KEY, legacy);
+    }
+    return legacy;
   };
+
+  const persistSnapshot = async (
+    before: BlobDatabaseSnapshot,
+    after: BlobDatabaseSnapshot,
+  ): Promise<void> => {
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    const current = await loadOptionalObject(
+      operations,
+      BLOB_DATABASE_SNAPSHOT_KEY,
+    );
+    const currentSnapshot =
+      current === null
+        ? emptyBlobDatabaseSnapshot()
+        : parseBlobDatabaseSnapshot(current);
+    if (JSON.stringify(currentSnapshot) !== JSON.stringify(before)) {
+      throw new BlobDatabaseWriteConflictError();
+    }
+    if (current !== null) {
+      await operations.uploadObject(BLOB_DATABASE_BACKUP_KEY, currentSnapshot);
+    }
+    await operations.uploadObject(BLOB_DATABASE_SNAPSHOT_KEY, after);
+    const paths = changedBundleInvalidationPaths(
+      operations.apiBasePath,
+      before,
+      after,
+    );
+    if (paths.length > 0) await operations.invalidatePaths(paths);
+  };
+
+  const mutate = <TResult>(
+    mutation: SnapshotMutation<TResult>,
+  ): Promise<TResult> => {
+    const run = mutationQueue.then(async () => {
+      const before = await loadSnapshot();
+      const state: BlobSnapshotState = { snapshot: before };
+      const result = await mutation(createBlobSnapshotCrud(state));
+      await persistSnapshot(before, state.snapshot);
+      return result;
+    });
+    mutationQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
+
+  const read = async <TResult>(
+    query: SnapshotMutation<TResult>,
+  ): Promise<TResult> => {
+    await mutationQueue;
+    const state: BlobSnapshotState = { snapshot: await loadSnapshot() };
+    return query(createBlobSnapshotCrud(state));
+  };
+
+  const implementation: DatabaseAdapterImplementation<TContext> = {
+    create: (input) => mutate((database) => database.create(input)),
+    update: (input) => mutate((database) => database.update(input)),
+    delete: (input) => mutate((database) => database.delete(input)),
+    count: (input) => read((database) => database.count(input)),
+    findOne: (input) => read((database) => database.findOne(input)),
+    findMany: (input) => read((database) => database.findMany(input)),
+    getUpdateInfo: async (args, context) => {
+      await mutationQueue;
+      const snapshot = await loadSnapshot();
+      return resolveUpdateInfoFromBundles({
+        args,
+        bundles: rowsToBundles(
+          snapshot.bundles,
+          snapshot.bundle_patches,
+          snapshot.bundles,
+          snapshot.channels,
+        ),
+        context,
+      });
+    },
+    transaction: (callback) => mutate(callback),
+  };
+
+  const database = createDatabaseAdapter({
+    name,
+    adapter: () => implementation,
+  });
+  return onDatabaseUpdated ? { ...database, onDatabaseUpdated } : database;
 };

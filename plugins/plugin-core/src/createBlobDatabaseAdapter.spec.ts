@@ -18,27 +18,28 @@ const createMemoryAdapter = (
   config: MemoryConfig,
   onDatabaseUpdated?: () => Promise<void>,
 ) =>
-  createBlobDatabaseAdapter<MemoryConfig>({
+  createBlobDatabaseAdapter({
     name: "memoryBlobDatabase",
-    factory: (input) => ({
+    onDatabaseUpdated,
+    adapter: () => ({
       apiBasePath: "/api/check-update",
       listObjects: async (prefix) =>
-        [...input.store.keys()].filter((key) => key.startsWith(prefix)),
+        [...config.store.keys()].filter((key) => key.startsWith(prefix)),
       loadObject: async (key) => {
-        if (key === BLOB_DATABASE_SNAPSHOT_KEY) input.onSnapshotRead?.();
-        return input.store.get(key) ?? null;
+        if (key === BLOB_DATABASE_SNAPSHOT_KEY) config.onSnapshotRead?.();
+        return config.store.get(key) ?? null;
       },
       uploadObject: async (key, data) => {
-        if (input.failNextUpload()) {
+        if (config.failNextUpload()) {
           throw new Error("fixture upload failure");
         }
-        input.store.set(key, data);
+        config.store.set(key, data);
       },
       invalidatePaths: async (paths) => {
-        input.invalidations.push([...paths]);
+        config.invalidations.push([...paths]);
       },
     }),
-  })(config, onDatabaseUpdated ? { onDatabaseUpdated } : undefined);
+  });
 
 const store = new Map<string, unknown>();
 const invalidations: string[][] = [];

@@ -162,13 +162,14 @@ const createSupabaseImplementation = (
   getUpdateInfo: createSupabaseGetUpdateInfo(supabase),
 });
 
-export const supabaseDatabase = createDatabaseAdapter<SupabaseDatabaseConfig>({
-  name: "supabaseDatabase",
-  factory: (config) =>
-    createSupabaseImplementation(
-      createClient<Database>(
-        config.supabaseUrl,
-        resolveSupabaseServiceRoleKey(config),
+export const supabaseDatabase = (config: SupabaseDatabaseConfig) =>
+  createDatabaseAdapter({
+    name: "supabaseDatabase",
+    adapter: () =>
+      createSupabaseImplementation(
+        createClient<Database>(
+          config.supabaseUrl,
+          resolveSupabaseServiceRoleKey(config),
+        ),
       ),
-    ),
-});
+  });

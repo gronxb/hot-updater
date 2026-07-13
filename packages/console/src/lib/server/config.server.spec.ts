@@ -15,7 +15,7 @@ vi.mock("@hot-updater/cli-tools", () => ({
 const createTestDatabaseAdapter = (name: string) =>
   createDatabaseAdapter({
     name,
-    factory: () => ({
+    adapter: () => ({
       create: vi.fn(async ({ data }) => data),
       update: vi.fn(async () => null),
       delete: vi.fn(async () => undefined),
@@ -23,7 +23,7 @@ const createTestDatabaseAdapter = (name: string) =>
       findOne: vi.fn(async () => null),
       findMany: vi.fn(async () => []),
     }),
-  })({});
+  });
 
 function createStoragePlugin(): NodeStoragePlugin {
   return {

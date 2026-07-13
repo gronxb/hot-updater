@@ -1,6 +1,9 @@
 import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
 import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
-import { createBlobDatabaseAdapter } from "@hot-updater/plugin-core";
+import {
+  createBlobDatabaseAdapter,
+  type DatabaseAdapterLifecycleHooks,
+} from "@hot-updater/plugin-core";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
@@ -36,48 +39,58 @@ const createKeyBuilder = (basePath: string | undefined) => {
   };
 };
 
-export const s3Database = createBlobDatabaseAdapter<S3DatabaseConfig>({
-  name: "s3Database",
-  factory: (config) => {
-    const {
-      apiBasePath = "/api/check-update",
-      basePath,
-      bucketName,
-      cloudfrontDistributionId,
-      shouldWaitForInvalidation = false,
-      ...clientConfig
-    } = config;
-    const client = new S3Client(applyS3RuntimeAwsConfig(clientConfig));
-    const keys = createKeyBuilder(basePath);
-    const cloudFront = cloudfrontDistributionId
-      ? new CloudFrontClient({
-          credentials: clientConfig.credentials,
-          region: clientConfig.region,
-        })
-      : null;
-    return {
-      apiBasePath,
-      listObjects: async (prefix) =>
-        (
-          await listS3DatabaseObjects(
-            client,
-            bucketName,
-            keys.toStorageKey(prefix),
-          )
-        ).map(keys.fromStorageKey),
-      loadObject: (key) =>
-        loadJsonFromS3(client, bucketName, keys.toStorageKey(key)),
-      uploadObject: (key, data) =>
-        uploadJsonToS3(client, bucketName, keys.toStorageKey(key), data),
-      shouldSkipLoadObjectError: (error, key) =>
-        error instanceof ArchivedS3DatabaseObjectError &&
-        key.endsWith("/update.json"),
-      invalidatePaths: (paths) =>
-        cloudFront && cloudfrontDistributionId
-          ? invalidateCloudFront(cloudFront, cloudfrontDistributionId, paths, {
-              shouldWait: shouldWaitForInvalidation,
-            })
-          : Promise.resolve(),
-    };
-  },
-});
+export const s3Database = (
+  config: S3DatabaseConfig,
+  hooks?: DatabaseAdapterLifecycleHooks,
+) =>
+  createBlobDatabaseAdapter({
+    name: "s3Database",
+    onDatabaseUpdated: hooks?.onDatabaseUpdated,
+    adapter: () => {
+      const {
+        apiBasePath = "/api/check-update",
+        basePath,
+        bucketName,
+        cloudfrontDistributionId,
+        shouldWaitForInvalidation = false,
+        ...clientConfig
+      } = config;
+      const client = new S3Client(applyS3RuntimeAwsConfig(clientConfig));
+      const keys = createKeyBuilder(basePath);
+      const cloudFront = cloudfrontDistributionId
+        ? new CloudFrontClient({
+            credentials: clientConfig.credentials,
+            region: clientConfig.region,
+          })
+        : null;
+      return {
+        apiBasePath,
+        listObjects: async (prefix) =>
+          (
+            await listS3DatabaseObjects(
+              client,
+              bucketName,
+              keys.toStorageKey(prefix),
+            )
+          ).map(keys.fromStorageKey),
+        loadObject: (key) =>
+          loadJsonFromS3(client, bucketName, keys.toStorageKey(key)),
+        uploadObject: (key, data) =>
+          uploadJsonToS3(client, bucketName, keys.toStorageKey(key), data),
+        shouldSkipLoadObjectError: (error, key) =>
+          error instanceof ArchivedS3DatabaseObjectError &&
+          key.endsWith("/update.json"),
+        invalidatePaths: (paths) =>
+          cloudFront && cloudfrontDistributionId
+            ? invalidateCloudFront(
+                cloudFront,
+                cloudfrontDistributionId,
+                paths,
+                {
+                  shouldWait: shouldWaitForInvalidation,
+                },
+              )
+            : Promise.resolve(),
+      };
+    },
+  });

@@ -139,7 +139,7 @@ const createBenchHotUpdater = () => {
 
   const database = createBlobDatabaseAdapter({
     name: "lambdaBenchDatabase",
-    factory: () => ({
+    adapter: () => ({
       apiBasePath: BASE_PATH,
       listObjects: async (prefix: string) =>
         keys.filter((key) => key.startsWith(prefix)),
@@ -152,7 +152,7 @@ const createBenchHotUpdater = () => {
       uploadObject: async () => {},
       invalidatePaths: async () => {},
     }),
-  })({});
+  });
 
   return createHotUpdater({
     database,

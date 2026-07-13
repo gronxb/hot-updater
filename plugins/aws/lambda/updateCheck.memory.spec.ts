@@ -144,7 +144,7 @@ const createMemoryHotUpdater = () => {
 
   const database = createBlobDatabaseAdapter({
     name: "lambdaMemoryDatabase",
-    factory: () => ({
+    adapter: () => ({
       apiBasePath: BASE_PATH,
       listObjects: async (prefix: string) =>
         keys.filter((key) => key.startsWith(prefix)),
@@ -157,7 +157,7 @@ const createMemoryHotUpdater = () => {
       uploadObject: async () => {},
       invalidatePaths: async () => {},
     }),
-  })({});
+  });
 
   return createHotUpdater({
     database,

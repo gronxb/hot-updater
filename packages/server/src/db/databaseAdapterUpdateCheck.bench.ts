@@ -53,7 +53,7 @@ const createBenchAdapter = (bundles: readonly Bundle[]): DatabaseAdapter => {
   );
   return createDatabaseAdapter({
     name: "bench-v2-adapter",
-    factory: () => ({
+    adapter: () => ({
       async create() {
         throw new BenchmarkMutationError();
       },
@@ -100,7 +100,7 @@ const createBenchAdapter = (bundles: readonly Bundle[]): DatabaseAdapter => {
         }
       },
     }),
-  })({});
+  });
 };
 
 describe("database adapter update check benchmark", () => {

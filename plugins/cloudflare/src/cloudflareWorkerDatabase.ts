@@ -35,9 +35,9 @@ export const d1WorkerDatabase = <
   TContext extends RequestEnvContext<CloudflareWorkerDatabaseEnv> =
     RequestEnvContext<CloudflareWorkerDatabaseEnv>,
 >() =>
-  createDatabaseAdapter<undefined, TContext>({
+  createDatabaseAdapter({
     name: "d1WorkerDatabase",
-    factory: () =>
+    adapter: () =>
       createD1Implementation<TContext>({
         async query(sql, params, context) {
           const db = context?.env?.DB;
@@ -49,4 +49,4 @@ export const d1WorkerDatabase = <
           return result.results ?? [];
         },
       }),
-  })(undefined);
+  });

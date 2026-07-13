@@ -19,7 +19,7 @@ export type HotUpdaterConfigOptions = {
 
 const missingDatabase = createDatabaseAdapter({
   name: "missingDatabase",
-  factory: () => ({
+  adapter: () => ({
     create: async () => {
       throw new Error("database adapter is required");
     },
@@ -39,7 +39,7 @@ const missingDatabase = createDatabaseAdapter({
       throw new Error("database adapter is required");
     },
   }),
-})({});
+});
 
 const getDefaultPlatformConfig = (): ConfigInput["platform"] => {
   // Find actual Info.plist files in the ios directory

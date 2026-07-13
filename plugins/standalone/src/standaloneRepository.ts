@@ -484,8 +484,8 @@ const createLegacyCompatibilityImplementation = (
  * independently supplied `ChannelRow.id` and is therefore outside the strict
  * fixed-model v2 adapter conformance contract.
  */
-export const standaloneRepository =
-  createDatabaseAdapter<StandaloneRepositoryConfig>({
+export const standaloneRepository = (config: StandaloneRepositoryConfig) =>
+  createDatabaseAdapter({
     name: "standalone-repository",
-    factory: createLegacyCompatibilityImplementation,
+    adapter: () => createLegacyCompatibilityImplementation(config),
   });

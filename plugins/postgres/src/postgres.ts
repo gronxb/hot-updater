@@ -239,23 +239,21 @@ const createPostgresImplementation = (
   onUnmount: () => db.destroy(),
 });
 
-export const postgres = createDatabaseAdapter<PostgresConfig>({
-  name: "postgres",
-  factory: (config) => {
-    const { dialect: providedDialect, ...poolConfig } = config;
-    const pool =
-      providedDialect === undefined ? new Pool(poolConfig) : undefined;
-    const dialect =
-      providedDialect ??
-      new PostgresDialect({ pool: pool ?? new Pool(poolConfig) });
-    const implementation = createPostgresImplementation(
-      new Kysely<Database>({ dialect }),
-    );
-    return pool === undefined
-      ? implementation
-      : {
-          ...implementation,
-          getUpdateInfo: (args) => getUpdateInfo(pool, args),
-        };
-  },
-});
+export const postgres = (config: PostgresConfig) =>
+  createDatabaseAdapter({
+    name: "postgres",
+    adapter: () => {
+      const { dialect, ...poolConfig } = config;
+      if (dialect !== undefined) {
+        return createPostgresImplementation(new Kysely<Database>({ dialect }));
+      }
+      const pool = new Pool(poolConfig);
+      const implementation = createPostgresImplementation(
+        new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
+      );
+      return {
+        ...implementation,
+        getUpdateInfo: (args) => getUpdateInfo(pool, args),
+      };
+    },
+  });

@@ -47,14 +47,14 @@ export const createDatabaseAdapterHarness = () => {
   const onUnmount = vi.fn(async (): Promise<void> => {});
   const baseAdapter = createBlobDatabaseAdapter({
     name: "test-database-v2",
-    factory: () => ({
+    adapter: () => ({
       apiBasePath: "/api",
       invalidatePaths: async () => {},
       listObjects: async () => [],
       loadObject,
       uploadObject,
     }),
-  })(undefined);
+  });
   const adapter: DatabaseAdapter = { ...baseAdapter, onUnmount };
 
   return {

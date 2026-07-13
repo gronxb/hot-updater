@@ -7,30 +7,25 @@ import { beforeEach } from "vitest";
 import { setupDatabaseAdapterTestSuite } from "./setupDatabaseAdapterTestSuite";
 import { setupDatabaseClientTestSuite } from "./setupDatabaseClientTestSuite";
 
-type MemoryConfig = {
-  readonly store: Map<string, unknown>;
-  readonly invalidations: string[][];
-};
-
 const store = new Map<string, unknown>();
 const invalidations: string[][] = [];
 
 const createMemoryAdapter = () =>
-  createBlobDatabaseAdapter<MemoryConfig>({
+  createBlobDatabaseAdapter({
     name: "memoryBlobDatabase",
-    factory: (input) => ({
+    adapter: () => ({
       apiBasePath: "/api/check-update",
       listObjects: async (prefix) =>
-        [...input.store.keys()].filter((key) => key.startsWith(prefix)),
-      loadObject: async (key) => input.store.get(key) ?? null,
+        [...store.keys()].filter((key) => key.startsWith(prefix)),
+      loadObject: async (key) => store.get(key) ?? null,
       uploadObject: async (key, data) => {
-        input.store.set(key, data);
+        store.set(key, data);
       },
       invalidatePaths: async (paths) => {
-        input.invalidations.push([...paths]);
+        invalidations.push([...paths]);
       },
     }),
-  })({ store, invalidations });
+  });
 
 beforeEach(() => {
   store.clear();

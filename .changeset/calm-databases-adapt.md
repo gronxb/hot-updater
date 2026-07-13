@@ -19,6 +19,8 @@ Replace database plugin v1 with the fixed-model database adapter API for
 direct adapter object, aggregate bundle behavior is provided by the shared
 database client, callback transactions and optimized update checks are
 optional capabilities, and the v1 staged mutation API has been removed.
+Provider functions now receive their configuration directly and close over it
+inside `createDatabaseAdapter({ name, adapter })`.
 
 Normalize channel storage as `channels { id, name }` with unique names and
 `bundles.channel_id -> channels.id`, while preserving channel names in the

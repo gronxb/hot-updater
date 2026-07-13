@@ -200,16 +200,18 @@ const createMongoImplementation = (
   getUpdateInfo: createMongoGetUpdateInfo(collections),
 });
 
-const createMongoAdapter = createDatabaseAdapter<MongoDBConfig>({
-  name: "mongodb",
-  factory: ({ client }) => createMongoImplementation(createCollections(client)),
-});
-
 export const mongoAdapter = (
   config: MongoDBConfig,
 ): DatabaseAdapterWithCapabilities =>
-  Object.assign(createMongoAdapter(config), {
-    adapterName: "mongodb",
-    provider: "mongodb" as const,
-    createMigrator: () => createMongoMigrator(config.client),
-  });
+  Object.assign(
+    createDatabaseAdapter({
+      name: "mongodb",
+      adapter: () =>
+        createMongoImplementation(createCollections(config.client)),
+    }),
+    {
+      adapterName: "mongodb",
+      provider: "mongodb" as const,
+      createMigrator: () => createMongoMigrator(config.client),
+    },
+  );

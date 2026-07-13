@@ -66,7 +66,8 @@ stable `id`. The public `Bundle.channel` value remains the channel name.
 ## Create an adapter
 
 Use `createDatabaseAdapter` to bind configuration and normalize the public
-contract. Its factory returns the low-level implementation:
+contract. The exported adapter receives its configuration directly and closes
+over it in the low-level implementation:
 
 ```typescript title="myDatabase.ts"
 import {
@@ -102,44 +103,45 @@ type MyDatabaseConfig = {
   };
 };
 
-export const myDatabase = createDatabaseAdapter<MyDatabaseConfig>({
-  name: "my-database",
-  factory: ({ db }) => ({
-    create: async ({ model, data, select }) => {
-      return db.insert(model, data, select);
-    },
+export const myDatabase = ({ db }: MyDatabaseConfig) =>
+  createDatabaseAdapter({
+    name: "my-database",
+    adapter: () => ({
+      create: async ({ model, data, select }) => {
+        return db.insert(model, data, select);
+      },
 
-    update: async ({ model, where, update, select }) => {
-      return db.update(model, where, update);
-    },
+      update: async ({ model, where, update, select }) => {
+        return db.update(model, where, update);
+      },
 
-    delete: async ({ model, where }) => {
-      await db.delete(model, where);
-    },
+      delete: async ({ model, where }) => {
+        await db.delete(model, where);
+      },
 
-    count: async ({ model, where }) => {
-      return db.count(model, where);
-    },
+      count: async ({ model, where }) => {
+        return db.count(model, where);
+      },
 
-    findOne: async ({ model, where, select }) => {
-      return db.findOne(model, { where, select });
-    },
+      findOne: async ({ model, where, select }) => {
+        return db.findOne(model, { where, select });
+      },
 
-    findMany: async ({ model, where, sortBy, limit, offset, select }) => {
-      return db.findMany(model, {
-        where,
-        sortBy,
-        limit,
-        offset,
-        select,
-      });
-    },
-  }),
-});
+      findMany: async ({ model, where, sortBy, limit, offset, select }) => {
+        return db.findMany(model, {
+          where,
+          sortBy,
+          limit,
+          offset,
+          select,
+        });
+      },
+    }),
+  });
 ```
 
 The implementation receives only supported model/method combinations. The
-factory validates inputs, applies `findMany` defaults (`limit: 100`,
+adapter wrapper validates inputs, applies `findMany` defaults (`limit: 100`,
 `offset: 0`), validates returned fields, projects selected fields, and narrows
 the public result type.
 
@@ -222,7 +224,7 @@ Add `getUpdateInfo` when the backend can answer runtime update checks more
 efficiently than the generic row-query path:
 
 ```typescript
-factory: ({ db }) => ({
+adapter: () => ({
   // required row methods...
   getUpdateInfo: async (args, context) => {
     return runOptimizedUpdateQuery(db, args, context);
@@ -241,7 +243,7 @@ Expose a transaction only when the backend provides real rollback and
 isolation for the complete callback:
 
 ```typescript
-factory: ({ db }) => ({
+adapter: () => ({
   // required row methods...
   transaction: async (callback, context) => {
     return db.transaction(async (transactionDb) => {
@@ -269,12 +271,10 @@ also attach `onDatabaseUpdated`; Hot Updater calls it once after a complete
 top-level aggregate mutation, never after a failed or partially completed one.
 
 ```typescript
-const adapter = myDatabase(
-  { db },
-  {
-    onDatabaseUpdated: async () => invalidateCache(),
-  },
-);
+const adapter = {
+  ...myDatabase({ db }),
+  onDatabaseUpdated: async () => invalidateCache(),
+};
 ```
 
 ## Test your adapter

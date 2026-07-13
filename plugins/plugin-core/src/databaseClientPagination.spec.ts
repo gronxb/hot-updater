@@ -24,7 +24,7 @@ describe("database client pagination", () => {
     const store = new Map<string, unknown>();
     const adapter = createBlobDatabaseAdapter({
       name: "pagination-memory",
-      factory: () => ({
+      adapter: () => ({
         apiBasePath: "/api/check-update",
         listObjects: async (prefix) =>
           [...store.keys()].filter((key) => key.startsWith(prefix)),
@@ -32,7 +32,7 @@ describe("database client pagination", () => {
         uploadObject: async (key, value) => void store.set(key, value),
         invalidatePaths: async () => undefined,
       }),
-    })({});
+    });
     const client = createDatabaseClient(adapter);
     for (const id of ["001", "002", "003"]) {
       await client.insertBundle(createBundle(id));

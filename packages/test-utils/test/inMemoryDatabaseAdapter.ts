@@ -187,10 +187,10 @@ const createImplementation = (
 export const createInMemoryDatabaseAdapter = (
   tables: Tables = createTables(),
 ): DatabaseAdapter =>
-  createDatabaseAdapter<void>({
+  createDatabaseAdapter({
     name: "in-memory-v2",
-    factory: () => createImplementation(tables),
-  })(undefined);
+    adapter: () => createImplementation(tables),
+  });
 
 export const createInMemoryDatabaseHarness = () => {
   const tables = createTables();
