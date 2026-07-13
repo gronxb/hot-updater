@@ -42,7 +42,7 @@ setupDatabaseAdapterTestSuite({
   migrate: () => undefined,
   reset: resetData,
   dispose: () => undefined,
-  capabilities: { getUpdateInfo: true, transaction: true },
+  capabilities: { transaction: true },
 });
 
 setupDatabaseClientTestSuite({

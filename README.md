@@ -47,7 +47,8 @@
   - **Web Console**: Intuitive update management interface
   - **Bundle Diffing**: Reuse unchanged files and ship compact Hermes patches
     for smaller OTA downloads
-  - **Plugin System**: Support for various storage providers (AWS S3, Cloudflare R2 + D1, etc.)
+  - **Extension System**: Storage plugins for AWS S3 and Cloudflare R2, plus
+    database adapters such as D1
   - **Version Control**: Robust app version management through semantic versioning
   - **New Architecture**: Support for new architecture like React Native
 

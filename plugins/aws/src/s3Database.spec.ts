@@ -72,7 +72,7 @@ setupDatabaseAdapterTestSuite({
     objects.clear();
   },
   dispose: () => undefined,
-  capabilities: { getUpdateInfo: true, transaction: true },
+  capabilities: { transaction: true },
 });
 
 setupDatabaseClientTestSuite({

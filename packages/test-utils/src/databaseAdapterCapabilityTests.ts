@@ -86,36 +86,36 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
       },
     );
 
-    it.runIf(state.capabilities.getUpdateInfo === true)(
-      "matches the generic update resolver through the fast path",
-      async () => {
-        const adapter = state.getAdapter();
-        expect(adapter.getUpdateInfo).toBeTypeOf("function");
-        if (adapter.getUpdateInfo === undefined) return;
-        const bundle = createBundleRowFixture("99");
-        await adapter.create(
-          {
-            model: "channels",
-            data: createChannelRowFixture("production"),
-          },
-          state.context,
-        );
-        await adapter.create({ model: "bundles", data: bundle }, state.context);
+    it("matches the generic update resolver through the fast path", async (context) => {
+      const adapter = state.getAdapter();
+      if (adapter.getUpdateInfo === undefined) {
+        context.skip();
+        return;
+      }
+      expect(adapter.getUpdateInfo).toBeTypeOf("function");
+      const bundle = createBundleRowFixture("99");
+      await adapter.create(
+        {
+          model: "channels",
+          data: createChannelRowFixture("production"),
+        },
+        state.context,
+      );
+      await adapter.create({ model: "bundles", data: bundle }, state.context);
 
-        const args = {
-          appVersion: "1.0.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-        } as const;
-        const update = await adapter.getUpdateInfo(args, state.context);
-        const genericUpdate = await resolveUpdateInfoFromBundles({
-          args,
-          bundles: [rowToBundle(bundle, "production")],
-        });
+      const args = {
+        appVersion: "1.0.0",
+        bundleId: NIL_UUID,
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      } as const;
+      const update = await adapter.getUpdateInfo(args, state.context);
+      const genericUpdate = await resolveUpdateInfoFromBundles({
+        args,
+        bundles: [rowToBundle(bundle, "production")],
+      });
 
-        expect(update).toEqual(genericUpdate);
-      },
-    );
+      expect(update).toEqual(genericUpdate);
+    });
   });
 };

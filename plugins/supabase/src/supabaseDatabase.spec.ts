@@ -327,7 +327,6 @@ vi.mock("@supabase/supabase-js", () => ({
 
 setupDatabaseAdapterTestSuite({
   name: "supabase database adapter v2",
-  capabilities: { getUpdateInfo: true },
   migrate: () => undefined,
   createAdapter: () =>
     supabaseDatabase({

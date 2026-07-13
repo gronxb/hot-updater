@@ -9,7 +9,6 @@ const harness = createMongoTestHarness();
 
 setupDatabaseAdapterTestSuite({
   name: "mongoAdapter v2",
-  capabilities: { getUpdateInfo: true },
   migrate: () => undefined,
   createAdapter: () => mongoAdapter({ client: harness.client }),
   reset: () => harness.reset(),

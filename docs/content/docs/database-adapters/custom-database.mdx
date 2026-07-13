@@ -292,12 +292,12 @@ setupDatabaseAdapterTestSuite({
   dispose: () => closeTestDatabase(db),
   capabilities: {
     transaction: true,
-    getUpdateInfo: true,
   },
 });
 ```
 
-Declare only capabilities the adapter actually implements. The suite covers
+Declare transaction support only when the adapter implements it. The suite
+detects `getUpdateInfo` directly from the adapter. It covers
 the fixed operation matrix, projection, predicates, sorting and pagination,
 constraints, delete cardinality, transaction commit/rollback, and fast-path
 equivalence.

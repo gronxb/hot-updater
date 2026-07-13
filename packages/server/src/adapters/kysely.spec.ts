@@ -31,7 +31,7 @@ const getDatabase = (): Kysely<object> => {
 
 setupDatabaseAdapterTestSuite({
   name: "kyselyAdapter PostgreSQL",
-  capabilities: { getUpdateInfo: true, transaction: true },
+  capabilities: { transaction: true },
   migrate: async () => {
     client = new PGlite();
     database = new Kysely({ dialect: new PGliteDialect(client) });

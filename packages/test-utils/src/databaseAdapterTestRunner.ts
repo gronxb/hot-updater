@@ -3,7 +3,6 @@ import { afterAll, beforeAll, beforeEach, describe } from "vitest";
 type Awaitable<T> = Promise<T> | T;
 
 export type DatabaseAdapterTestCapabilities = {
-  readonly getUpdateInfo?: boolean;
   readonly transaction?: boolean;
 };
 

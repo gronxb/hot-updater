@@ -8,7 +8,7 @@ const harness = createPrismaTestHarness();
 
 setupDatabaseAdapterTestSuite({
   name: "prismaAdapter v2",
-  capabilities: { getUpdateInfo: true, transaction: true },
+  capabilities: { transaction: true },
   migrate: () => undefined,
   createAdapter: () =>
     prismaAdapter({ prisma: harness.client, provider: "postgresql" }),

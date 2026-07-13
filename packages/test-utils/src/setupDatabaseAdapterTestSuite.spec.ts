@@ -9,5 +9,5 @@ setupDatabaseAdapterTestSuite({
   migrate: () => undefined,
   reset: () => harness.reset(),
   dispose: () => undefined,
-  capabilities: { getUpdateInfo: true, transaction: true },
+  capabilities: { transaction: true },
 });
