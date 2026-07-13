@@ -8,7 +8,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
   createRequestBundleResolver,
-  type DatabasePlugin,
+  type DatabaseAdapter,
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
@@ -16,8 +16,8 @@ import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
 
-export function createPluginDatabaseCore<TContext = unknown>(
-  database: DatabasePlugin<TContext>,
+export function createDatabaseAdapterCore<TContext = unknown>(
+  database: DatabaseAdapter<TContext>,
   resolveFileUrl: (
     storageUri: string | null,
     context?: HotUpdaterContext<TContext>,

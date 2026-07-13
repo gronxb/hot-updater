@@ -2,12 +2,12 @@ import type { UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
-  type DatabasePlugin,
+  type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
-import { createPluginDatabaseCore } from "./pluginCore";
+import { createDatabaseAdapterCore } from "./databaseAdapterCore";
 import {
   currentBundle,
   manifests,
@@ -16,13 +16,13 @@ import {
   targetBundle,
   type TestContext,
   updateArgs,
-} from "./pluginCore.testFixtures";
+} from "./databaseAdapterCore.testFixtures";
 
-describe("createPluginDatabaseCore", () => {
+describe("createDatabaseAdapterCore", () => {
   it("uses the optional low-adapter update fast-path", async () => {
     // Given
-    const adapter = createInMemoryDatabaseAdapter();
-    const findMany = vi.spyOn(adapter, "findMany");
+    const baseAdapter = createInMemoryDatabaseAdapter();
+    const findMany = vi.spyOn(baseAdapter, "findMany");
     const expected: UpdateInfo = {
       fileHash: targetBundle.fileHash,
       id: targetBundle.id,
@@ -32,13 +32,13 @@ describe("createPluginDatabaseCore", () => {
       storageUri: targetBundle.storageUri,
     };
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
+      NonNullable<DatabaseAdapter<TestContext>["getUpdateInfo"]>
     >(async () => expected);
-    const plugin: DatabasePlugin<TestContext> = {
-      ...adapter,
+    const adapter: DatabaseAdapter<TestContext> = {
+      ...baseAdapter,
       getUpdateInfo,
     };
-    const core = createPluginDatabaseCore(plugin, resolveFileUrl);
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
     const context: TestContext = {
       env: { assetHost: "https://assets.example.com" },
     };
@@ -54,13 +54,13 @@ describe("createPluginDatabaseCore", () => {
 
   it("does not scan when the optional update fast-path returns null", async () => {
     // Given
-    const adapter = createInMemoryDatabaseAdapter();
-    const findMany = vi.spyOn(adapter, "findMany");
-    const plugin: DatabasePlugin<TestContext> = {
-      ...adapter,
+    const baseAdapter = createInMemoryDatabaseAdapter();
+    const findMany = vi.spyOn(baseAdapter, "findMany");
+    const adapter: DatabaseAdapter<TestContext> = {
+      ...baseAdapter,
       getUpdateInfo: vi.fn(async () => null),
     };
-    const core = createPluginDatabaseCore(plugin, resolveFileUrl);
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
 
     // When
     const result = await core.api.getUpdateInfo(updateArgs);
@@ -72,10 +72,10 @@ describe("createPluginDatabaseCore", () => {
 
   it("derives update info through the fixed low models without a fast-path", async () => {
     // Given
-    const adapter: DatabasePlugin<TestContext> =
+    const adapter: DatabaseAdapter<TestContext> =
       createInMemoryDatabaseAdapter();
     await seedBundles(adapter);
-    const core = createPluginDatabaseCore(adapter, resolveFileUrl);
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
 
     // When
     const result = await core.api.getUpdateInfo(updateArgs);
@@ -93,10 +93,10 @@ describe("createPluginDatabaseCore", () => {
 
   it("resolves manifest assets and patch metadata from v2 rows", async () => {
     // Given
-    const adapter: DatabasePlugin<TestContext> =
+    const adapter: DatabaseAdapter<TestContext> =
       createInMemoryDatabaseAdapter();
     await seedBundles(adapter);
-    const core = createPluginDatabaseCore(adapter, resolveFileUrl, {
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl, {
       readStorageText: async (storageUri) => manifests.get(storageUri) ?? null,
     });
     const context: TestContext = {
@@ -132,10 +132,10 @@ describe("createPluginDatabaseCore", () => {
 
   it("falls back to archive metadata when a manifest cannot be loaded", async () => {
     // Given
-    const adapter: DatabasePlugin<TestContext> =
+    const adapter: DatabaseAdapter<TestContext> =
       createInMemoryDatabaseAdapter();
     await seedBundles(adapter);
-    const core = createPluginDatabaseCore(adapter, resolveFileUrl, {
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl, {
       readStorageText: async () => null,
     });
 
@@ -155,10 +155,10 @@ describe("createPluginDatabaseCore", () => {
 
   it("runs the schema readiness guard before a low adapter operation", async () => {
     // Given
-    const adapter: DatabasePlugin<TestContext> =
+    const adapter: DatabaseAdapter<TestContext> =
       createInMemoryDatabaseAdapter();
     const beforeOperation = vi.fn(async () => {});
-    const core = createPluginDatabaseCore(adapter, resolveFileUrl, {
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl, {
       beforeOperation,
     });
 
@@ -171,10 +171,10 @@ describe("createPluginDatabaseCore", () => {
 
   it("rejects invalid bundles before invoking low create", async () => {
     // Given
-    const adapter: DatabasePlugin<TestContext> =
+    const adapter: DatabaseAdapter<TestContext> =
       createInMemoryDatabaseAdapter();
     const create = vi.spyOn(adapter, "create");
-    const core = createPluginDatabaseCore(adapter, resolveFileUrl);
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
 
     // When
     const result = core.api.insertBundle({
@@ -192,11 +192,11 @@ describe("createPluginDatabaseCore", () => {
 
   it("rejects invalid updates before invoking low update", async () => {
     // Given
-    const adapter: DatabasePlugin<TestContext> =
+    const adapter: DatabaseAdapter<TestContext> =
       createInMemoryDatabaseAdapter();
     await createDatabaseClient(adapter).insertBundle(currentBundle);
     const update = vi.spyOn(adapter, "update");
-    const core = createPluginDatabaseCore(adapter, resolveFileUrl);
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
 
     // When
     const result = core.api.updateBundleById(currentBundle.id, {
@@ -214,9 +214,9 @@ describe("createPluginDatabaseCore", () => {
 
   it("resolves initialization rollbacks without reading manifests", async () => {
     // Given
-    const adapter = createInMemoryDatabaseAdapter();
-    const plugin: DatabasePlugin<TestContext> = {
-      ...adapter,
+    const baseAdapter = createInMemoryDatabaseAdapter();
+    const adapter: DatabaseAdapter<TestContext> = {
+      ...baseAdapter,
       getUpdateInfo: async () => ({
         fileHash: null,
         id: NIL_UUID,
@@ -227,7 +227,7 @@ describe("createPluginDatabaseCore", () => {
       }),
     };
     const readStorageText = vi.fn(async () => null);
-    const core = createPluginDatabaseCore(plugin, resolveFileUrl, {
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl, {
       readStorageText,
     });
 

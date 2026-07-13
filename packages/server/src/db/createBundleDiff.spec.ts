@@ -3,7 +3,7 @@ import { brotliCompressSync } from "node:zlib";
 
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabaseAdapter,
   NodeStoragePlugin,
   NodeStorageProfile,
 } from "@hot-updater/plugin-core";
@@ -36,9 +36,9 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   ...overrides,
 });
 
-const createDatabasePlugin = async (
+const createDatabaseAdapter = async (
   bundles: readonly Bundle[],
-): Promise<DatabasePlugin> => {
+): Promise<DatabaseAdapter> => {
   const adapter = createInMemoryDatabaseAdapter();
   const client = createDatabaseClient(adapter);
   for (const bundle of bundles) await client.insertBundle(bundle);
@@ -83,13 +83,13 @@ describe("createBundleDiff", () => {
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002", {
       message: "target",
     });
-    const adapter = await createDatabasePlugin([baseBundle, targetBundle]);
+    const adapter = await createDatabaseAdapter([baseBundle, targetBundle]);
     const onDatabaseUpdated = vi.fn(async () => {});
-    const databasePlugin: DatabasePlugin = {
+    const databaseAdapter: DatabaseAdapter = {
       ...adapter,
       onDatabaseUpdated,
     };
-    const transaction = vi.spyOn(databasePlugin, "transaction");
+    const transaction = vi.spyOn(databaseAdapter, "transaction");
     const upload = vi.fn<NodeStorageProfile["upload"]>(
       async (key, filePath) => ({
         storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
@@ -154,7 +154,7 @@ describe("createBundleDiff", () => {
           bundleId: targetBundle.id,
         },
         {
-          databasePlugin,
+          databaseAdapter,
           storagePlugin: createStoragePlugin(upload),
         },
       );
@@ -186,7 +186,7 @@ describe("createBundleDiff", () => {
   it("rejects ambiguous Hermes bundle assets in manifests", async () => {
     const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
-    const databasePlugin = await createDatabasePlugin([
+    const databaseAdapter = await createDatabaseAdapter([
       baseBundle,
       targetBundle,
     ]);
@@ -245,7 +245,7 @@ describe("createBundleDiff", () => {
             bundleId: targetBundle.id,
           },
           {
-            databasePlugin,
+            databaseAdapter,
             storagePlugin: createStoragePlugin(upload),
           },
         ),
@@ -277,7 +277,7 @@ describe("createBundleDiff", () => {
       patchFileHash: "hash-primary-patch",
       patchStorageUri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
     });
-    const databasePlugin = await createDatabasePlugin([
+    const databaseAdapter = await createDatabaseAdapter([
       primaryBaseBundle,
       secondaryBaseBundle,
       targetBundle,
@@ -348,7 +348,7 @@ describe("createBundleDiff", () => {
           bundleId: targetBundle.id,
         },
         {
-          databasePlugin,
+          databaseAdapter,
           storagePlugin: createStoragePlugin(upload),
         },
         {

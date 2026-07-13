@@ -1,4 +1,4 @@
-import type { DatabasePluginLifecycleHooks } from "@hot-updater/plugin-core";
+import type { DatabaseAdapterLifecycleHooks } from "@hot-updater/plugin-core";
 
 import { supabaseDatabase } from "./supabaseDatabase";
 
@@ -9,7 +9,7 @@ export interface SupabaseEdgeFunctionDatabaseConfig {
 
 export const supabaseEdgeFunctionDatabase = (
   config: SupabaseEdgeFunctionDatabaseConfig,
-  hooks?: DatabasePluginLifecycleHooks,
+  hooks?: DatabaseAdapterLifecycleHooks,
 ) => {
   return supabaseDatabase(
     {

@@ -3,7 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   ChannelRow,
-  DatabasePluginImplementation,
+  DatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 import {
   filterCompatibleAppVersions,
@@ -20,7 +20,9 @@ type MongoUpdateCollections = {
 };
 
 const WITHOUT_MONGO_ID = { _id: 0 } as const;
-type GetUpdateInfo = NonNullable<DatabasePluginImplementation["getUpdateInfo"]>;
+type GetUpdateInfo = NonNullable<
+  DatabaseAdapterImplementation["getUpdateInfo"]
+>;
 
 export const createMongoGetUpdateInfo = (
   collections: MongoUpdateCollections,

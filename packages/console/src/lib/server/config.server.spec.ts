@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import type { NodeStoragePlugin } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabaseAdapter } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { loadConfigMock } = vi.hoisted(() => ({
@@ -12,8 +12,8 @@ vi.mock("@hot-updater/cli-tools", () => ({
   loadConfig: loadConfigMock,
 }));
 
-const createDatabaseAdapter = (name: string) =>
-  createDatabasePlugin({
+const createTestDatabaseAdapter = (name: string) =>
+  createDatabaseAdapter({
     name,
     factory: () => ({
       create: vi.fn(async ({ data }) => data),
@@ -48,7 +48,7 @@ afterEach(() => {
 
 describe("config.server", () => {
   it("caches the loaded config and reuses its configured database adapter", async () => {
-    const database = createDatabaseAdapter("db");
+    const database = createTestDatabaseAdapter("db");
     const storagePlugin = createStoragePlugin();
     const storage = vi.fn().mockResolvedValue(storagePlugin);
 
@@ -75,7 +75,7 @@ describe("config.server", () => {
   });
 
   it("resets the cached config promise after an initialization failure", async () => {
-    const database = createDatabaseAdapter("db");
+    const database = createTestDatabaseAdapter("db");
     const storagePlugin = createStoragePlugin();
     const storage = vi.fn().mockResolvedValue(storagePlugin);
     const consoleErrorSpy = vi
@@ -103,7 +103,7 @@ describe("config.server", () => {
   });
 
   it("requires the configured storage plugin to implement the node profile", async () => {
-    const database = createDatabaseAdapter("db");
+    const database = createTestDatabaseAdapter("db");
     const storage = vi.fn().mockResolvedValue({
       name: "runtimeOnlyStorage",
       supportedProtocol: "s3",

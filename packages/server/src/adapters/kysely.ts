@@ -1,7 +1,7 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 import {
-  createDatabasePlugin,
-  type DatabasePluginImplementation,
+  createDatabaseAdapter,
+  type DatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 import type { Kysely } from "kysely";
 
@@ -32,7 +32,7 @@ export interface KyselyAdapterConfig<TDatabase extends object = object> {
 
 const createImplementation = <TDatabase extends object, TContext>(
   config: KyselyAdapterConfig<TDatabase>,
-): DatabasePluginImplementation<HotUpdaterContext<TContext>> => {
+): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> => {
   const db = config.db;
   const crud = createKyselyCrud(db, config.provider);
   return {
@@ -62,7 +62,7 @@ const createImplementation = <TDatabase extends object, TContext>(
 export const kyselyAdapter = <TDatabase extends object, TContext = unknown>(
   config: KyselyAdapterConfig<TDatabase>,
 ): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
-  const provider = createDatabasePlugin<
+  const provider = createDatabaseAdapter<
     KyselyAdapterConfig<TDatabase>,
     HotUpdaterContext<TContext>
   >({

@@ -1,7 +1,7 @@
 import type { Bundle, GetBundlesArgs } from "@hot-updater/core";
 import {
   createDatabaseClient,
-  type DatabasePlugin,
+  type DatabaseAdapter,
   type RequestEnvContext,
 } from "@hot-updater/plugin-core";
 
@@ -57,7 +57,7 @@ export const resolveFileUrl = async (storageUri: string | null) => {
 };
 
 export const seedBundles = async (
-  adapter: DatabasePlugin<TestContext>,
+  adapter: DatabaseAdapter<TestContext>,
 ): Promise<void> => {
   const client = createDatabaseClient(adapter);
   await client.insertBundle(currentBundle);

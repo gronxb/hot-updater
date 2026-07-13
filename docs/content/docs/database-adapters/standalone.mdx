@@ -6,7 +6,7 @@ icon: Server
 
 ## Overview
 
-The `standaloneRepository` plugin connects your Hot Updater CLI to a self-hosted backend server. This is the **client-side configuration** for connecting to your server.
+The `standaloneRepository` compatibility adapter connects your Hot Updater CLI to a self-hosted backend server. This is the **client-side configuration** for connecting to your server.
 
 > `standaloneRepository` is a compatibility bridge over the existing aggregate
 > bundle routes, not a strict fixed-model v2 database adapter. The legacy
@@ -46,7 +46,7 @@ export default defineConfig({
 
 ## Configuration
 
-The `standaloneRepository` plugin accepts the following options:
+The `standaloneRepository` adapter accepts the following options:
 
 ```typescript
 interface StandaloneRepositoryConfig {

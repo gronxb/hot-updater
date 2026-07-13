@@ -1,4 +1,4 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { DatabaseAdapter } from "@hot-updater/plugin-core";
 
 import { registerDatabaseAdapterBundleTests } from "./databaseAdapterBundleTests";
 import { registerDatabaseAdapterCapabilityTests } from "./databaseAdapterCapabilityTests";
@@ -10,7 +10,7 @@ import { setupDatabaseAdapterTestRunner } from "./databaseAdapterTestRunner";
 export type { DatabaseAdapterTestCapabilities } from "./databaseAdapterTestRunner";
 
 export type DatabaseAdapterTestSuiteOptions<TContext = unknown> =
-  DatabaseAdapterTestLifecycle<DatabasePlugin<TContext>, TContext>;
+  DatabaseAdapterTestLifecycle<DatabaseAdapter<TContext>, TContext>;
 
 export const setupDatabaseAdapterTestSuite = <TContext = unknown>(
   options: DatabaseAdapterTestSuiteOptions<TContext>,

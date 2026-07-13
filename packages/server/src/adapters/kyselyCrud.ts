@@ -2,7 +2,7 @@ import type {
   BundlePatchRow,
   ChannelRow,
   DatabaseWhere,
-  TransactionDatabasePluginImplementation,
+  TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 import { sql, type QueryExecutorProvider, type RawBuilder } from "kysely";
 
@@ -106,7 +106,7 @@ export const findKyselyPatches = async (
 export const createKyselyCrud = (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
-): TransactionDatabasePluginImplementation => ({
+): TransactionDatabaseAdapterImplementation => ({
   async create(input) {
     switch (input.model) {
       case "bundles":

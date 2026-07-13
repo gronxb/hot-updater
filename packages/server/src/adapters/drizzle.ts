@@ -1,8 +1,8 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 import {
-  createDatabasePlugin,
-  type DatabasePluginImplementation,
-  type TransactionDatabasePluginImplementation,
+  createDatabaseAdapter,
+  type DatabaseAdapterImplementation,
+  type TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 import { asc, desc, inArray } from "drizzle-orm";
 
@@ -40,7 +40,7 @@ export interface DrizzleConfig {
 
 const createImplementation = <TContext>(
   config: DrizzleConfig,
-): DatabasePluginImplementation<HotUpdaterContext<TContext>> => {
+): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
   const bundles = getDrizzleTable(db, "bundles");
@@ -87,7 +87,7 @@ const createImplementation = <TContext>(
       ? {
           transaction: async <TResult>(
             callback: (
-              transaction: TransactionDatabasePluginImplementation,
+              transaction: TransactionDatabaseAdapterImplementation,
             ) => Promise<TResult>,
           ): Promise<TResult> =>
             transaction((transaction) =>
@@ -101,7 +101,7 @@ const createImplementation = <TContext>(
 export const drizzleAdapter = <TContext = unknown>(
   config: DrizzleConfig,
 ): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
-  const provider = createDatabasePlugin<
+  const provider = createDatabaseAdapter<
     DrizzleConfig,
     HotUpdaterContext<TContext>
   >({

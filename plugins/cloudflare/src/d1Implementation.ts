@@ -2,7 +2,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   CreateDatabaseImplementationInput,
-  DatabasePluginImplementation,
+  DatabaseAdapterImplementation,
   DeleteDatabaseImplementationInput,
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
@@ -115,7 +115,7 @@ const updateEntries = (
 
 export const createD1Implementation = <TContext = unknown>(
   executor: D1Executor<TContext>,
-): DatabasePluginImplementation<TContext> => ({
+): DatabaseAdapterImplementation<TContext> => ({
   async create(input, context) {
     const query = insertQuery(input);
     const rows = await executor.query(query.sql, query.params, context);

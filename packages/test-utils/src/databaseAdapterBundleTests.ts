@@ -1,4 +1,4 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type { DatabaseAdapter } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabaseAdapterTestState } from "./databaseAdapterTestRunner";
@@ -8,7 +8,7 @@ import {
 } from "./databaseTestFixtures";
 
 type BundleTestState<TContext> = DatabaseAdapterTestState<
-  DatabasePlugin<TContext>,
+  DatabaseAdapter<TContext>,
   TContext
 >;
 

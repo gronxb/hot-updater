@@ -4,7 +4,7 @@ import { setupDatabaseAdapterTestSuite } from "./setupDatabaseAdapterTestSuite";
 const harness = createInMemoryDatabaseHarness();
 
 setupDatabaseAdapterTestSuite({
-  name: "in-memory database plugin v2",
+  name: "in-memory database adapter",
   createAdapter: () => harness.adapter,
   migrate: () => undefined,
   reset: () => harness.reset(),

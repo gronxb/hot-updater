@@ -1,4 +1,4 @@
-import type { TransactionDatabasePluginImplementation } from "@hot-updater/plugin-core";
+import type { TransactionDatabaseAdapterImplementation } from "@hot-updater/plugin-core";
 import { asc, desc, eq, type SQLWrapper } from "drizzle-orm";
 
 import {
@@ -48,7 +48,7 @@ export const getDrizzleColumn = (
 export const createDrizzleCrud = (
   db: DrizzleDB,
   provider: DrizzleProvider,
-): TransactionDatabasePluginImplementation => {
+): TransactionDatabaseAdapterImplementation => {
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
   const channels = getDrizzleTable(db, "channels");

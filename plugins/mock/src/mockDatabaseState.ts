@@ -3,7 +3,7 @@ import type {
   BundleRow,
   ChannelRow,
   DatabaseImplementationResult,
-  TransactionDatabasePluginImplementation,
+  TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -74,7 +74,7 @@ const requireUniqueChannelName = (
 
 export const createMockDatabaseState = (
   data: MockDatabaseData,
-): TransactionDatabasePluginImplementation => ({
+): TransactionDatabaseAdapterImplementation => ({
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
       case "channels":

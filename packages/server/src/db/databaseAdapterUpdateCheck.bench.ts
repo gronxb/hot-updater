@@ -2,8 +2,8 @@ import { bench, describe } from "vitest";
 
 import {
   bundleToRow,
-  createDatabasePlugin,
-  type DatabasePlugin,
+  createDatabaseAdapter,
+  type DatabaseAdapter,
 } from "../../../../plugins/plugin-core/src";
 import type { AppVersionGetBundlesArgs, Bundle } from "../../../core/src";
 import { DEFAULT_ROLLOUT_COHORT_COUNT, NIL_UUID } from "../../../core/src";
@@ -11,7 +11,7 @@ import {
   matchesAll,
   queryRows,
 } from "../../../test-utils/test/inMemoryDatabaseQuery";
-import { createPluginDatabaseCore } from "./pluginCore";
+import { createDatabaseAdapterCore } from "./databaseAdapterCore";
 
 const BUNDLE_COUNT = 20_000;
 const BENCH_APP_VERSION = "1.0.0";
@@ -47,11 +47,11 @@ const createBundle = (index: number): Bundle => ({
   targetCohorts: null,
 });
 
-const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
+const createBenchAdapter = (bundles: readonly Bundle[]): DatabaseAdapter => {
   const rows = bundles.map((bundle) =>
     bundleToRow(bundle, BENCH_CHANNEL_ROW.id),
   );
-  return createDatabasePlugin({
+  return createDatabaseAdapter({
     name: "bench-v2-adapter",
     factory: () => ({
       async create() {
@@ -103,7 +103,7 @@ const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
   })({});
 };
 
-describe("plugin update check benchmark", () => {
+describe("database adapter update check benchmark", () => {
   const bundles = Array.from({ length: BUNDLE_COUNT }, (_, index) =>
     createBundle(index + 1),
   );
@@ -114,8 +114,8 @@ describe("plugin update check benchmark", () => {
     platform: BENCH_PLATFORM,
     channel: BENCH_CHANNEL,
   };
-  const api = createPluginDatabaseCore(
-    createBenchPlugin(bundles),
+  const api = createDatabaseAdapterCore(
+    createBenchAdapter(bundles),
     async () => null,
   ).api;
 

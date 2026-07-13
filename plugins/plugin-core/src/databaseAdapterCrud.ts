@@ -4,8 +4,8 @@ import type {
   DatabaseFindOneModel,
   DatabaseImplementationResult,
   DatabaseModel,
-  DatabasePlugin,
-  DatabasePluginImplementation,
+  DatabaseAdapter,
+  DatabaseAdapterImplementation,
   DatabaseRow,
   DatabaseSelect,
   DatabaseWhere,
@@ -13,32 +13,32 @@ import type {
   FindManyDatabaseInput,
   FindOneDatabaseInput,
   SelectedDatabaseRow,
-  TransactionDatabasePlugin,
-  TransactionDatabasePluginImplementation,
+  TransactionDatabaseAdapter,
+  TransactionDatabaseAdapterImplementation,
   UpdateBundleDatabaseInput,
 } from "./types";
 import { databaseFields } from "./types/databaseFields";
 
-export type DatabasePluginInputErrorCode =
+export type DatabaseAdapterInputErrorCode =
   | "empty-mutation-where"
   | "empty-select"
   | "invalid-result"
   | "invalid-pagination"
   | "invalid-update-selector";
 
-export class DatabasePluginInputError extends Error {
-  readonly code: DatabasePluginInputErrorCode;
+export class DatabaseAdapterInputError extends Error {
+  readonly code: DatabaseAdapterInputErrorCode;
 
-  constructor(code: DatabasePluginInputErrorCode) {
-    super(`Invalid database plugin input: ${code}`);
-    this.name = "DatabasePluginInputError";
+  constructor(code: DatabaseAdapterInputErrorCode) {
+    super(`Invalid database adapter input: ${code}`);
+    this.name = "DatabaseAdapterInputError";
     this.code = code;
   }
 }
 
 const validateSelect = (select: readonly string[] | undefined): void => {
   if (select?.length === 0) {
-    throw new DatabasePluginInputError("empty-select");
+    throw new DatabaseAdapterInputError("empty-select");
   }
 };
 
@@ -50,7 +50,7 @@ const validatePagination = (
     (limit !== undefined && limit < 0) ||
     (offset !== undefined && offset < 0)
   ) {
-    throw new DatabasePluginInputError("invalid-pagination");
+    throw new DatabaseAdapterInputError("invalid-pagination");
   }
 };
 
@@ -60,7 +60,7 @@ const validateMutationWhere = (
     | readonly DatabaseWhere<"bundles">[],
 ): void => {
   if (where.length === 0) {
-    throw new DatabasePluginInputError("empty-mutation-where");
+    throw new DatabaseAdapterInputError("empty-mutation-where");
   }
 };
 
@@ -74,7 +74,7 @@ const validateUpdateWhere = (
     (selector.operator !== undefined && selector.operator !== "eq") ||
     typeof selector.value !== "string"
   ) {
-    throw new DatabasePluginInputError("invalid-update-selector");
+    throw new DatabaseAdapterInputError("invalid-update-selector");
   }
 };
 
@@ -108,7 +108,7 @@ const validateResult = (
 ): void => {
   const requiredFields = select ?? databaseFields[model];
   if (requiredFields.some((field) => !(field in row))) {
-    throw new DatabasePluginInputError("invalid-result");
+    throw new DatabaseAdapterInputError("invalid-result");
   }
 };
 
@@ -137,14 +137,14 @@ type AnyDeleteInput = {
   readonly [TModel in DatabaseDeleteModel]: DeleteDatabaseInput<TModel>;
 }[DatabaseDeleteModel];
 
-export type DatabasePluginCrud<TContext> = Pick<
-  DatabasePlugin<TContext>,
+export type DatabaseAdapterCrud<TContext> = Pick<
+  DatabaseAdapter<TContext>,
   "count" | "create" | "delete" | "findMany" | "findOne" | "update"
 >;
 
-export const createDatabasePluginCrud = <TContext>(
-  implementation: DatabasePluginImplementation<TContext>,
-): DatabasePluginCrud<TContext> => {
+export const createDatabaseAdapterCrud = <TContext>(
+  implementation: DatabaseAdapterImplementation<TContext>,
+): DatabaseAdapterCrud<TContext> => {
   function create<
     TModel extends DatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
@@ -243,11 +243,11 @@ export const createDatabasePluginCrud = <TContext>(
   };
 };
 
-export const createTransactionDatabasePlugin = (
-  implementation: TransactionDatabasePluginImplementation,
-): TransactionDatabasePlugin => {
-  const contextualImplementation: DatabasePluginImplementation<undefined> = {
+export const createTransactionDatabaseAdapter = (
+  implementation: TransactionDatabaseAdapterImplementation,
+): TransactionDatabaseAdapter => {
+  const contextualImplementation: DatabaseAdapterImplementation<undefined> = {
     ...implementation,
   };
-  return createDatabasePluginCrud(contextualImplementation);
+  return createDatabaseAdapterCrud(contextualImplementation);
 };

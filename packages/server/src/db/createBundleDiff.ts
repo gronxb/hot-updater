@@ -14,7 +14,7 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabaseAdapter,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import {
@@ -33,7 +33,7 @@ export interface CreateBundleDiffInput {
 }
 
 export interface CreateBundleDiffDependencies {
-  databasePlugin: DatabasePlugin;
+  databaseAdapter: DatabaseAdapter;
   storagePlugin: NodeStoragePlugin | null;
 }
 
@@ -251,7 +251,7 @@ export async function createBundleDiff(
   deps: CreateBundleDiffDependencies,
   options: CreateBundleDiffOptions = {},
 ) {
-  const database = createDatabaseClient(deps.databasePlugin);
+  const database = createDatabaseClient(deps.databaseAdapter);
 
   if (!deps.storagePlugin) {
     throw new Error("Storage plugin is not configured");

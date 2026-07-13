@@ -1,10 +1,10 @@
 import {
   createDatabaseClient,
-  type DatabasePlugin,
+  type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 
 import type { DatabaseClientTestContract } from "../src/setupDatabaseClientTestSuite";
 
 export const createInMemoryDatabaseClient = (
-  adapter: DatabasePlugin,
+  adapter: DatabaseAdapter,
 ): DatabaseClientTestContract<unknown> => createDatabaseClient(adapter);

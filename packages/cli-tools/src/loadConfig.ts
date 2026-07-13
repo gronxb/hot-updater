@@ -5,7 +5,7 @@ import type {
   Platform,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabaseAdapter } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -17,26 +17,26 @@ export type HotUpdaterConfigOptions = {
   channel: string;
 } | null;
 
-const missingDatabase = createDatabasePlugin({
+const missingDatabase = createDatabaseAdapter({
   name: "missingDatabase",
   factory: () => ({
     create: async () => {
-      throw new Error("database plugin is required");
+      throw new Error("database adapter is required");
     },
     update: async () => {
-      throw new Error("database plugin is required");
+      throw new Error("database adapter is required");
     },
     delete: async () => {
-      throw new Error("database plugin is required");
+      throw new Error("database adapter is required");
     },
     count: async () => {
-      throw new Error("database plugin is required");
+      throw new Error("database adapter is required");
     },
     findOne: async () => {
-      throw new Error("database plugin is required");
+      throw new Error("database adapter is required");
     },
     findMany: async () => {
-      throw new Error("database plugin is required");
+      throw new Error("database adapter is required");
     },
   }),
 })({});

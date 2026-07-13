@@ -1,6 +1,6 @@
 import {
   createDatabaseClient,
-  type DatabasePlugin,
+  type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 import {
   setupDatabaseAdapterTestSuite,
@@ -21,7 +21,7 @@ const {
   clearCollections,
 } = createFirestoreMock(PROJECT_ID);
 
-const createAdapter = (): DatabasePlugin =>
+const createAdapter = (): DatabaseAdapter =>
   firebaseDatabase({
     projectId: PROJECT_ID,
     storageBucket: `${PROJECT_ID}.appspot.com`,

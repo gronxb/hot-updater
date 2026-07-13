@@ -12,7 +12,7 @@ icon: Cog
 - **Database**: Stores metadata about deployed bundles (version information, etc.) and manages update information.
 - **Server**: Determines whether updates are required based on the app's current state, operating through AWS Lambda@Edge, Cloudflare Workers, Supabase Edge Functions, or Firebase Cloud Functions.
 
-Storage and Database are configured using plugins defined in `hot-updater.config.ts`. The Server is initialized and deployed using the `hot-updater init` command.
+Storage is configured with a plugin and the database with an adapter in `hot-updater.config.ts`. The Server is initialized and deployed using the `hot-updater init` command.
 
 ## Update Decision Logic
 

@@ -3,7 +3,7 @@ import type {
   BundleRow,
   ChannelRow,
   DatabaseImplementationResult,
-  TransactionDatabasePluginImplementation,
+  TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -45,7 +45,7 @@ const requireUnique = (
 
 export const createFirebaseDatabaseState = (
   snapshot: FirebaseDatabaseSnapshot,
-): TransactionDatabasePluginImplementation => ({
+): TransactionDatabaseAdapterImplementation => ({
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
       case "channels":

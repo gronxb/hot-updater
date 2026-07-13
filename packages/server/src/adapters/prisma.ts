@@ -1,10 +1,10 @@
 import type {
   DatabaseImplementationResult,
-  DatabasePluginImplementation,
+  DatabaseAdapterImplementation,
   FindManyDatabaseImplementationInput,
-  TransactionDatabasePluginImplementation,
+  TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabaseAdapter } from "@hot-updater/plugin-core";
 
 import {
   getHotUpdaterSchemaVersion,
@@ -96,7 +96,7 @@ const assertPatchReferences = async (
 
 const createCrudImplementation = (
   client: object,
-): TransactionDatabasePluginImplementation => ({
+): TransactionDatabaseAdapterImplementation => ({
   create: async (input) => {
     if (input.model === "bundles") {
       await assertChannelExists(client, input.data.channel_id);
@@ -183,9 +183,9 @@ const createCrudImplementation = (
 
 const createPrismaImplementation = (
   client: object,
-): DatabasePluginImplementation => {
+): DatabaseAdapterImplementation => {
   const crud = createCrudImplementation(client);
-  const implementation: DatabasePluginImplementation = {
+  const implementation: DatabaseAdapterImplementation = {
     ...crud,
     getUpdateInfo: createPrismaGetUpdateInfo(client),
   };
@@ -202,7 +202,7 @@ const createPrismaImplementation = (
   };
 };
 
-const createPrismaPlugin = createDatabasePlugin<PrismaConfig>({
+const createPrismaAdapter = createDatabaseAdapter<PrismaConfig>({
   name: "prisma",
   factory: ({ prisma }) => createPrismaImplementation(prisma),
 });
@@ -219,7 +219,7 @@ export const prismaAdapter = (
       `unsupported relation mode "${config.relationMode}"`,
     );
   }
-  const adapter = createPrismaPlugin(config);
+  const adapter = createPrismaAdapter(config);
   return Object.assign(adapter, {
     adapterName: "prisma",
     provider: config.provider,

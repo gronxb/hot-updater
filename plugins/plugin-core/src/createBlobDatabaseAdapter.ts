@@ -11,13 +11,13 @@ import {
   parseBlobDatabaseSnapshot,
   type BlobDatabaseSnapshot,
 } from "./blobDatabaseSnapshot";
-import { createDatabasePlugin } from "./createDatabasePlugin";
+import { createDatabaseAdapter } from "./createDatabaseAdapter";
 import { rowsToBundles } from "./databaseRows";
 import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
-  DatabasePluginLifecycleHooks,
-  DatabasePluginImplementation,
-  TransactionDatabasePluginImplementation,
+  DatabaseAdapterLifecycleHooks,
+  DatabaseAdapterImplementation,
+  TransactionDatabaseAdapterImplementation,
 } from "./types";
 
 export {
@@ -45,7 +45,7 @@ export class BlobDatabaseWriteConflictError extends Error {
 }
 
 type SnapshotMutation<TResult> = (
-  implementation: TransactionDatabasePluginImplementation,
+  implementation: TransactionDatabaseAdapterImplementation,
 ) => Promise<TResult>;
 
 const loadOptionalObject = async (
@@ -114,7 +114,7 @@ export const createBlobDatabaseAdapter = <TConfig, TContext = unknown>({
   readonly name: string;
   readonly factory: (config: TConfig) => BlobDatabaseOperations;
 }) => {
-  return (config: TConfig, hooks?: DatabasePluginLifecycleHooks) => {
+  return (config: TConfig, hooks?: DatabaseAdapterLifecycleHooks) => {
     const operations = factory(config);
     let mutationQueue: Promise<void> = Promise.resolve();
 
@@ -187,7 +187,7 @@ export const createBlobDatabaseAdapter = <TConfig, TContext = unknown>({
       return query(createBlobSnapshotCrud(state));
     };
 
-    const implementation: DatabasePluginImplementation<TContext> = {
+    const implementation: DatabaseAdapterImplementation<TContext> = {
       create: (input) => mutate((database) => database.create(input)),
       update: (input) => mutate((database) => database.update(input)),
       delete: (input) => mutate((database) => database.delete(input)),
@@ -211,7 +211,7 @@ export const createBlobDatabaseAdapter = <TConfig, TContext = unknown>({
       transaction: (callback) => mutate(callback),
     };
 
-    return createDatabasePlugin<TConfig, TContext>({
+    return createDatabaseAdapter<TConfig, TContext>({
       name,
       factory: () => implementation,
     })(config, hooks);

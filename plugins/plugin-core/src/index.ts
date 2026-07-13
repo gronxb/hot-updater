@@ -3,7 +3,7 @@ export * from "./compressionFormat";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
 export * from "./createBlobDatabaseAdapter";
-export * from "./createDatabasePlugin";
+export * from "./createDatabaseAdapter";
 export * from "./createStorageKeyBuilder";
 export * from "./createStoragePlugin";
 export * from "./databaseClient";

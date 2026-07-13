@@ -69,7 +69,7 @@ export interface HandlerRoutes {
   /**
    * Controls whether bundle management routes are mounted.
    * This includes `/api/bundles*`, which are used by the
-   * CLI `standaloneRepository` plugin.
+   * CLI `standaloneRepository` adapter.
    * Defaults to `false` only when `routes` is omitted.
    */
   bundles: boolean;

@@ -1,6 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 import type {
-  DatabasePlugin,
+  DatabaseAdapter,
   RequestEnvContext,
   RuntimeStoragePlugin,
   RuntimeStorageProfile,
@@ -61,7 +61,7 @@ const createMigrator = (version: string | undefined): Migrator => ({
   },
 });
 
-export const createRuntimeDatabase = (): DatabasePlugin<TestContext> => ({
+export const createRuntimeDatabase = (): DatabaseAdapter<TestContext> => ({
   ...createInMemoryDatabaseAdapter(),
   name: "testDatabase",
 });
@@ -69,7 +69,7 @@ export const createRuntimeDatabase = (): DatabasePlugin<TestContext> => ({
 export const createSchemaManagedDatabase = (
   adapterName: string,
   version: string | undefined,
-): DatabasePlugin<TestContext> & DatabaseAdapterCapabilities => ({
+): DatabaseAdapter<TestContext> & DatabaseAdapterCapabilities => ({
   ...createRuntimeDatabase(),
   adapterName,
   createMigrator: () => createMigrator(version),

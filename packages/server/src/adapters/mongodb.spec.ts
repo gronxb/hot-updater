@@ -17,7 +17,7 @@ setupDatabaseAdapterTestSuite({
 });
 
 describe("mongoAdapter capabilities", () => {
-  it("returns a plugin object without an unsafe transaction fallback", () => {
+  it("returns an adapter object without an unsafe transaction fallback", () => {
     const adapter = mongoAdapter({ client: harness.client });
 
     expect(adapter).toBeTypeOf("object");

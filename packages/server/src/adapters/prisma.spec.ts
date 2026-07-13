@@ -17,7 +17,7 @@ setupDatabaseAdapterTestSuite({
 });
 
 describe("prismaAdapter capabilities", () => {
-  it("returns a plugin object instead of a callable factory", () => {
+  it("returns an adapter object instead of a callable factory", () => {
     const adapter = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",

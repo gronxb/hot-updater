@@ -68,15 +68,15 @@
   for the full runtime behavior and fallback rules.
 
 
-  ## Plugin System
+  ## Extension System
 
-  Hot Updater provides high extensibility through its plugin system. Each functionality like build, storage, and database is separated into plugins, allowing users to configure them according to their needs.
+  Hot Updater provides high extensibility through build and storage plugins plus database adapters, allowing users to configure each integration according to their needs.
 
-  ### Plugin Types
+  ### Extension Types
 
   - **Build Plugin**: Support for bundlers like Metro, Re.Pack, Expo
   - **Storage Plugin**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage
-  - **Database Plugin**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
+  - **Database Adapter**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
 
   ### Configuration Example
 

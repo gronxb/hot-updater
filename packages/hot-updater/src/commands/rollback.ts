@@ -1,7 +1,7 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabaseAdapter,
   Platform,
 } from "@hot-updater/plugin-core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
@@ -34,13 +34,15 @@ const summarizeTarget = (target: RollbackTarget): string =>
 const formatRetryHint = (channel: string, target: RollbackTarget): string =>
   `Re-run with: hot-updater rollback ${channel} -p ${target.platform} --target ${target.bundle.id}`;
 
-const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
+const safeOnUnmount = async (
+  databaseAdapter: DatabaseAdapter,
+): Promise<void> => {
   try {
-    await databasePlugin.onUnmount?.();
+    await databaseAdapter.onUnmount?.();
   } catch (err) {
     // Cleanup errors must never mask the originating mutation error.
     p.log.warn(
-      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
+      `Database adapter onUnmount failed (cleanup-only, original error preserved): ${
         (err as Error)?.message ?? String(err)
       }`,
     );
@@ -62,8 +64,8 @@ export const handleRollback = async (
 
   const platforms = options.platform ? [options.platform] : PLATFORMS;
 
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
+  const databaseAdapter = config.database;
+  const database = createDatabaseClient(databaseAdapter);
   try {
     const targets: RollbackTarget[] = [];
     const skippedPlatforms: Platform[] = [];
@@ -205,6 +207,6 @@ export const handleRollback = async (
       process.exit(1);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeOnUnmount(databaseAdapter);
   }
 };

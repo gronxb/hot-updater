@@ -1,4 +1,4 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabaseAdapter } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 
 import { createD1Implementation } from "./d1Implementation";
@@ -9,7 +9,7 @@ export interface D1DatabaseConfig {
   readonly cloudflareApiToken: string;
 }
 
-export const d1Database = createDatabasePlugin<D1DatabaseConfig>({
+export const d1Database = createDatabaseAdapter<D1DatabaseConfig>({
   name: "d1Database",
   factory: (config) => {
     const cloudflare = new Cloudflare({

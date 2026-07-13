@@ -62,7 +62,7 @@ export const hotUpdater = createHotUpdater({
 ```
 
 By default, `createHotUpdater` mounts update-check routes and `/version`.
-The write-capable database route used by the CLI `standaloneRepository` plugin
+The write-capable database route used by the CLI `standaloneRepository` adapter
 must be enabled explicitly and protected by framework middleware before
 mounting the handler. When you provide `routes`, specify both configurable
 route groups explicitly.

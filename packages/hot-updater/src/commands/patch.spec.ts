@@ -86,7 +86,7 @@ describe("createPatch", () => {
         bundleId: "target-bundle",
       },
       {
-        databasePlugin: databaseHarness.adapter,
+        databaseAdapter: databaseHarness.adapter,
         storagePlugin: mockStoragePlugin,
       },
       {

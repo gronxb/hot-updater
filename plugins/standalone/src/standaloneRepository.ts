@@ -5,13 +5,13 @@ import type {
   ChannelRow,
   DatabaseImplementationResult,
   DatabaseModel,
-  DatabasePluginImplementation,
+  DatabaseAdapterImplementation,
   PaginatedResult,
 } from "@hot-updater/plugin-core";
 import {
   bundleToPatchRows,
   bundleToRow,
-  createDatabasePlugin,
+  createDatabaseAdapter,
   createUUIDv7,
   rowToBundle,
 } from "@hot-updater/plugin-core";
@@ -118,7 +118,7 @@ const hasChannels = (
 
 const createLegacyCompatibilityImplementation = (
   config: StandaloneRepositoryConfig,
-): DatabasePluginImplementation => {
+): DatabaseAdapterImplementation => {
   const customListRoute = config.routes?.list?.();
   const routes = {
     list: () => createRoute(defaultRoutes.list(), customListRoute),
@@ -485,7 +485,7 @@ const createLegacyCompatibilityImplementation = (
  * fixed-model v2 adapter conformance contract.
  */
 export const standaloneRepository =
-  createDatabasePlugin<StandaloneRepositoryConfig>({
+  createDatabaseAdapter<StandaloneRepositoryConfig>({
     name: "standalone-repository",
     factory: createLegacyCompatibilityImplementation,
   });

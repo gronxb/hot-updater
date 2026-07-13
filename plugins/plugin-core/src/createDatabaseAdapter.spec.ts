@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDatabasePlugin } from "./createDatabasePlugin";
+import { createDatabaseAdapter } from "./createDatabaseAdapter";
 
 class UnimplementedAdapterMethodError extends Error {}
 
@@ -17,10 +17,10 @@ const createMethods = () => ({
   findMany: unimplemented,
 });
 
-describe("createDatabasePlugin", () => {
+describe("createDatabaseAdapter", () => {
   it("returns an adapter object when a provider is configured", () => {
     // Given
-    const provider = createDatabasePlugin({
+    const provider = createDatabaseAdapter({
       name: "memory",
       factory: createMethods,
     });
@@ -37,7 +37,7 @@ describe("createDatabasePlugin", () => {
     // Given
     const onDatabaseUpdated = vi.fn(async () => undefined);
     const onUnmount = vi.fn(async () => undefined);
-    const provider = createDatabasePlugin({
+    const provider = createDatabaseAdapter({
       name: "memory",
       factory: () => ({ ...createMethods(), onUnmount }),
     });
@@ -57,7 +57,7 @@ describe("createDatabasePlugin", () => {
     // Given
     const context = { binding: "request-db" };
     const seenContexts: (typeof context)[] = [];
-    const provider = createDatabasePlugin<
+    const provider = createDatabaseAdapter<
       Record<string, never>,
       typeof context
     >({
@@ -87,7 +87,7 @@ describe("createDatabasePlugin", () => {
 
   it("propagates a transaction callback rejection", async () => {
     // Given
-    const provider = createDatabasePlugin({
+    const provider = createDatabaseAdapter({
       name: "memory",
       factory: () => ({
         ...createMethods(),
@@ -109,7 +109,7 @@ describe("createDatabasePlugin", () => {
   it("passes default paging to findMany", async () => {
     // Given
     const inputs: { readonly limit?: number; readonly offset?: number }[] = [];
-    const provider = createDatabasePlugin({
+    const provider = createDatabaseAdapter({
       name: "memory",
       factory: () => ({
         ...createMethods(),
@@ -131,7 +131,7 @@ describe("createDatabasePlugin", () => {
   it("passes select to the implementation and returns only selected fields", async () => {
     // Given
     const inputs: object[] = [];
-    const provider = createDatabasePlugin({
+    const provider = createDatabaseAdapter({
       name: "memory",
       factory: () => ({
         ...createMethods(),
@@ -161,7 +161,7 @@ describe("createDatabasePlugin", () => {
     const findMany = vi.fn(unimplemented);
     const deleteRows = vi.fn(unimplemented);
     const update = vi.fn(unimplemented);
-    const provider = createDatabasePlugin({
+    const provider = createDatabaseAdapter({
       name: "memory",
       factory: () => ({
         ...createMethods(),

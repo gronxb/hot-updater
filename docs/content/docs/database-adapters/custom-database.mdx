@@ -1,5 +1,5 @@
 ---
-title: "Custom Database Plugin"
+title: "Custom Database Adapter"
 description: Implement the fixed Hot Updater database adapter API
 icon: Hammer
 ---
@@ -18,7 +18,7 @@ npm install @hot-updater/test-utils vitest --save-dev
 
 ## Overview
 
-Database plugins expose a small row-level adapter. The models are fixed:
+Database adapters expose a small row-level API. The models are fixed:
 `bundles`, `bundle_patches`, and `channels`. Hot Updater's shared database
 client composes those rows into bundles, so an adapter does not implement
 bundle staging or patch orchestration.
@@ -65,7 +65,7 @@ stable `id`. The public `Bundle.channel` value remains the channel name.
 
 ## Create an adapter
 
-Use `createDatabasePlugin` to bind configuration and normalize the public
+Use `createDatabaseAdapter` to bind configuration and normalize the public
 contract. Its factory returns the low-level implementation:
 
 ```typescript title="myDatabase.ts"
@@ -74,7 +74,7 @@ import {
   type ChannelRow,
   type DatabaseImplementationResult,
   type DatabaseModel,
-  createDatabasePlugin,
+  createDatabaseAdapter,
 } from "@hot-updater/plugin-core";
 
 type MyDatabaseConfig = {
@@ -102,7 +102,7 @@ type MyDatabaseConfig = {
   };
 };
 
-export const myDatabase = createDatabasePlugin<MyDatabaseConfig>({
+export const myDatabase = createDatabaseAdapter<MyDatabaseConfig>({
   name: "my-database",
   factory: ({ db }) => ({
     create: async ({ model, data, select }) => {
@@ -344,7 +344,7 @@ const hotUpdater = createHotUpdater({
 
 ## Migrating from database plugin v1
 
-Database plugin v2 is a full replacement. There is no v1 compatibility mode.
+The database adapter API is a full replacement for database plugin v1. There is no v1 compatibility mode.
 
 1. Replace whole-bundle methods with the fixed row operation matrix.
 2. Split stored patches into `bundle_patches` and create

@@ -1,4 +1,4 @@
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type { Bundle, DatabaseAdapter } from "@hot-updater/plugin-core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -110,7 +110,7 @@ beforeEach(() => {
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-const createRepository = (): DatabasePlugin =>
+const createRepository = (): DatabaseAdapter =>
   standaloneRepository({ baseUrl: BASE_URL });
 
 describe("standaloneRepository", () => {

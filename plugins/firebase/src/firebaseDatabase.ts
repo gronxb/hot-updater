@@ -1,9 +1,9 @@
 import {
-  createDatabasePlugin,
-  type DatabasePluginImplementation,
+  createDatabaseAdapter,
+  type DatabaseAdapterImplementation,
   resolveUpdateInfoFromBundles,
   rowsToBundles,
-  type TransactionDatabasePluginImplementation,
+  type TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 import admin from "firebase-admin";
 
@@ -20,12 +20,12 @@ import {
 } from "./firebaseDatabaseState";
 
 type FirebaseMutation<TResult> = (
-  database: TransactionDatabasePluginImplementation,
+  database: TransactionDatabaseAdapterImplementation,
 ) => Promise<TResult>;
 
-export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
+export const firebaseDatabase = createDatabaseAdapter<admin.AppOptions>({
   name: "firebaseDatabase",
-  factory: (config): DatabasePluginImplementation => {
+  factory: (config): DatabaseAdapterImplementation => {
     const existingApp = admin.apps.find((app) => app !== null);
     const app = existingApp ?? admin.initializeApp(config);
     const db = admin.firestore(app);

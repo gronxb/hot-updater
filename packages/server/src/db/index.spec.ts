@@ -918,12 +918,12 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         findMany: vi.fn(),
         update: vi.fn(),
       };
-      const plugin = prismaAdapter({
+      const adapter = prismaAdapter({
         prisma: { bundles, bundle_patches: patches, channels },
         provider: "postgresql",
       });
 
-      await plugin.findMany({
+      await adapter.findMany({
         model: "bundles",
         limit: 10,
         where: [
@@ -963,9 +963,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             name === "bundle_patches" ? patches : bundles,
         }),
       } as unknown as MongoClient;
-      const plugin = mongoAdapter({ client });
+      const adapter = mongoAdapter({ client });
 
-      await plugin.findMany({
+      await adapter.findMany({
         model: "bundles",
         limit: 10,
         where: [
@@ -1028,13 +1028,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         findMany: vi.fn(),
         update: vi.fn(),
       };
-      const plugin = prismaAdapter({
+      const adapter = prismaAdapter({
         prisma: { bundles, bundle_patches: patches, channels },
         provider: "postgresql",
       });
 
       await expect(
-        plugin.getUpdateInfo?.({
+        adapter.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1045,7 +1045,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.getUpdateInfo?.({
+        adapter.getUpdateInfo?.({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1148,13 +1148,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         select: vi.fn(),
         update: vi.fn(),
       };
-      const plugin = drizzleAdapter({
+      const adapter = drizzleAdapter({
         db,
         provider: "postgresql",
       });
 
       await expect(
-        plugin.getUpdateInfo?.({
+        adapter.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1165,7 +1165,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.getUpdateInfo?.({
+        adapter.getUpdateInfo?.({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1249,10 +1249,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           },
         }),
       } as unknown as MongoClient;
-      const plugin = mongoAdapter({ client });
+      const adapter = mongoAdapter({ client });
 
       await expect(
-        plugin.getUpdateInfo?.({
+        adapter.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           appVersion: "1.0.0",
           bundleId: NIL_UUID,
@@ -1263,7 +1263,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         status: "UPDATE",
       });
       await expect(
-        plugin.getUpdateInfo?.({
+        adapter.getUpdateInfo?.({
           _updateStrategy: "fingerprint",
           bundleId: NIL_UUID,
           fingerprintHash: "fingerprint-fast-path",
@@ -1343,7 +1343,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             channels: txChannels,
           }),
       );
-      const plugin = prismaAdapter({
+      const adapter = prismaAdapter({
         prisma: {
           $transaction,
           bundle_patches: rootPatches,
@@ -1353,8 +1353,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       });
 
-      if (!plugin.transaction) throw new Error("transaction is required");
-      await plugin.transaction((transaction) =>
+      if (!adapter.transaction) throw new Error("transaction is required");
+      await adapter.transaction((transaction) =>
         transaction.create({
           model: "bundles",
           data: bundleToRow(transactionBundle, "channel-production"),
@@ -1423,13 +1423,13 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         ...createDb(rootInsert),
         transaction,
       };
-      const plugin = drizzleAdapter({
+      const adapter = drizzleAdapter({
         db,
         provider: "postgresql",
       });
 
-      if (!plugin.transaction) throw new Error("transaction is required");
-      await plugin.transaction((transaction) =>
+      if (!adapter.transaction) throw new Error("transaction is required");
+      await adapter.transaction((transaction) =>
         transaction.create({
           model: "bundles",
           data: bundleToRow(transactionBundle, "channel-production"),
@@ -1461,9 +1461,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             name === "bundle_patches" ? patches : bundles,
         }),
       } as unknown as MongoClient;
-      const plugin = mongoAdapter({ client });
+      const adapter = mongoAdapter({ client });
 
-      expect(plugin.transaction).toBeUndefined();
+      expect(adapter.transaction).toBeUndefined();
     });
   });
 

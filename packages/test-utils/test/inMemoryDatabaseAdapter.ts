@@ -1,13 +1,13 @@
 import {
-  createDatabasePlugin,
+  createDatabaseAdapter,
   type CreateDatabaseImplementationInput,
   type DatabaseModel,
   type DatabaseModelMap,
-  type DatabasePlugin,
-  type DatabasePluginImplementation,
+  type DatabaseAdapter,
+  type DatabaseAdapterImplementation,
   resolveUpdateInfoFromBundles,
   rowsToBundles,
-  type TransactionDatabasePluginImplementation,
+  type TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 
 import { matchesAll, queryRows } from "./inMemoryDatabaseQuery";
@@ -62,7 +62,7 @@ const assertReferences = (
 
 const createCrudImplementation = (
   tables: Tables,
-): TransactionDatabasePluginImplementation => ({
+): TransactionDatabaseAdapterImplementation => ({
   create: async (input) => {
     assertReferences(tables, input);
     switch (input.model) {
@@ -162,7 +162,7 @@ const createCrudImplementation = (
 
 const createImplementation = (
   tables: Tables,
-): DatabasePluginImplementation => ({
+): DatabaseAdapterImplementation => ({
   ...createCrudImplementation(tables),
   getUpdateInfo: async (args) =>
     resolveUpdateInfoFromBundles({
@@ -186,8 +186,8 @@ const createImplementation = (
 
 export const createInMemoryDatabaseAdapter = (
   tables: Tables = createTables(),
-): DatabasePlugin =>
-  createDatabasePlugin<void>({
+): DatabaseAdapter =>
+  createDatabaseAdapter<void>({
     name: "in-memory-v2",
     factory: () => createImplementation(tables),
   })(undefined);

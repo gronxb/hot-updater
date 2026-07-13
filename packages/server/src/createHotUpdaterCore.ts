@@ -1,17 +1,16 @@
 import type {
-  DatabasePlugin,
   HotUpdaterContext,
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 
-import { createPluginDatabaseCore } from "./db/pluginCore";
+import { createDatabaseAdapterCore } from "./db/databaseAdapterCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
   type DatabaseAdapter,
   type DatabaseAdapterCapabilities,
   type DatabaseAPI,
-  isDatabasePlugin,
+  isDatabaseAdapter,
   type StoragePluginFactory,
 } from "./db/types";
 import { createHandler, type HandlerRoutes } from "./handler";
@@ -49,7 +48,7 @@ export interface CreateHotUpdaterOptions<TContext = undefined> {
   readonly routes?: HandlerRoutes;
 }
 
-type PluginDatabaseCore<TContext> = {
+type DatabaseAdapterCore<TContext> = {
   readonly api: DatabaseAPI<TContext>;
   readonly adapterName: string;
   readonly createMigrator: () => never;
@@ -62,13 +61,13 @@ export const hotUpdaterCoreMetadata = Symbol.for(
 
 export type HotUpdaterCoreMetadata<TContext = undefined> = {
   readonly adapterCapabilities: DatabaseAdapterCapabilities;
-  readonly core: PluginDatabaseCore<TContext>;
+  readonly core: DatabaseAdapterCore<TContext>;
 };
 
 export type HotUpdaterCore<TContext = undefined> = {
   readonly api: RuntimeHotUpdaterAPI<TContext>;
   readonly adapterCapabilities: DatabaseAdapterCapabilities;
-  readonly core: PluginDatabaseCore<TContext>;
+  readonly core: DatabaseAdapterCore<TContext>;
 };
 
 export function getHotUpdaterCoreMetadata<TContext = undefined>(
@@ -97,17 +96,17 @@ export function createHotUpdaterCore<TContext = undefined>(
     createStorageAccess(storagePlugins);
   const adapterCapabilities: DatabaseAdapterCapabilities = database;
 
-  if (!isDatabasePlugin(database)) {
-    throw new Error("@hot-updater/server only supports database plugins.");
+  if (!isDatabaseAdapter(database)) {
+    throw new Error("@hot-updater/server only supports database adapters.");
   }
 
-  const plugin: DatabasePlugin<TContext> = database;
-  const adapterName = adapterCapabilities.adapterName ?? plugin.name;
+  const adapter: DatabaseAdapter<TContext> = database;
+  const adapterName = adapterCapabilities.adapterName ?? adapter.name;
   const assertSchemaReady = createSchemaReadinessChecker(
     adapterName,
     adapterCapabilities.createMigrator,
   );
-  const core = createPluginDatabaseCore<TContext>(plugin, resolveFileUrl, {
+  const core = createDatabaseAdapterCore<TContext>(adapter, resolveFileUrl, {
     beforeOperation: assertSchemaReady,
     readStorageText,
   });

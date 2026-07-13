@@ -1,5 +1,5 @@
 import type { RequestEnvContext } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabaseAdapter } from "@hot-updater/plugin-core";
 
 import { createD1Implementation } from "./d1Implementation";
 
@@ -35,7 +35,7 @@ export const d1WorkerDatabase = <
   TContext extends RequestEnvContext<CloudflareWorkerDatabaseEnv> =
     RequestEnvContext<CloudflareWorkerDatabaseEnv>,
 >() =>
-  createDatabasePlugin<undefined, TContext>({
+  createDatabaseAdapter<undefined, TContext>({
     name: "d1WorkerDatabase",
     factory: () =>
       createD1Implementation<TContext>({

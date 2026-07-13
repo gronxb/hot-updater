@@ -21,7 +21,7 @@ import {
   createDatabaseClient,
   type DatabaseClient,
 } from "../../../plugins/plugin-core/dist/index.mjs";
-import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
+import type { DatabaseAdapter } from "../../../plugins/plugin-core/src/types/index.ts";
 import {
   createCrashRecoveryArtifactNames,
   waitForCrashRecoveryState,
@@ -1319,7 +1319,7 @@ async function withDatabaseClient<T>(
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
+      loadConfig: (options: null) => Promise<{ database: DatabaseAdapter }>;
     };
   const originalCwd = process.cwd();
 

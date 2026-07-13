@@ -2,7 +2,7 @@ import type { Bundle } from "@hot-updater/core";
 import {
   createDatabaseClient,
   type BundleRow,
-  type DatabasePlugin,
+  type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,7 +27,7 @@ const resetData = (): void => {
   data.channels.clear();
 };
 
-const createAdapter = (): DatabasePlugin =>
+const createAdapter = (): DatabaseAdapter =>
   mockDatabase({ data, latency: DEFAULT_LATENCY });
 
 beforeEach(() => {

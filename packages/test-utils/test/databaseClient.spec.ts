@@ -2,7 +2,7 @@ import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
-  type DatabasePlugin,
+  type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,7 +24,7 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
 });
 
 describe("database client", () => {
-  let adapter: DatabasePlugin;
+  let adapter: DatabaseAdapter;
 
   beforeEach(() => {
     adapter = createInMemoryDatabaseAdapter();
@@ -229,7 +229,7 @@ describe("database client", () => {
     const seenContexts: (TestContext | undefined)[] = [];
     const { transaction: ignoredTransaction, ...sequentialAdapter } = adapter;
     void ignoredTransaction;
-    const contextualAdapter: DatabasePlugin<TestContext> = {
+    const contextualAdapter: DatabaseAdapter<TestContext> = {
       ...sequentialAdapter,
       name: adapter.name,
       create: (input, operationContext) => {

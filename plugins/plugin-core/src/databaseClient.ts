@@ -12,10 +12,10 @@ import type {
   ChannelRow,
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
-  DatabasePlugin,
+  DatabaseAdapter,
   DatabaseWhere,
   PaginatedResult,
-  TransactionDatabasePlugin,
+  TransactionDatabaseAdapter,
 } from "./types";
 import { createUUIDv7 } from "./uuidv7";
 
@@ -61,9 +61,9 @@ export class DatabaseBundleNotFoundError extends Error {
 }
 
 const bindContext = <TContext>(
-  adapter: DatabasePlugin<TContext>,
+  adapter: DatabaseAdapter<TContext>,
   context: TContext | undefined,
-): TransactionDatabasePlugin => ({
+): TransactionDatabaseAdapter => ({
   create: (input) => adapter.create(input, context),
   update: (input) => adapter.update(input, context),
   delete: (input) => adapter.delete(input, context),
@@ -73,8 +73,8 @@ const bindContext = <TContext>(
 });
 
 const transactionAdapter = (
-  database: TransactionDatabasePlugin,
-): DatabasePlugin<undefined> => ({
+  database: TransactionDatabaseAdapter,
+): DatabaseAdapter<undefined> => ({
   name: "transaction",
   ...database,
 });
@@ -134,7 +134,7 @@ const toBundleWhere = (
 };
 
 const loadBundleRows = async (
-  database: TransactionDatabasePlugin,
+  database: TransactionDatabaseAdapter,
   where?: readonly DatabaseWhere<"bundles">[],
 ): Promise<BundleRow[]> => {
   const rows: BundleRow[] = [];
@@ -151,7 +151,7 @@ const loadBundleRows = async (
 };
 
 const loadPatchRows = async (
-  database: TransactionDatabasePlugin,
+  database: TransactionDatabaseAdapter,
   ownerIds: readonly string[],
 ): Promise<BundlePatchRow[]> => {
   if (ownerIds.length === 0) return [];
@@ -169,7 +169,7 @@ const loadPatchRows = async (
 };
 
 const loadChannelRows = async (
-  database: TransactionDatabasePlugin,
+  database: TransactionDatabaseAdapter,
   channelIds: readonly string[],
 ): Promise<ChannelRow[]> => {
   if (channelIds.length === 0) return [];
@@ -180,7 +180,7 @@ const loadChannelRows = async (
 };
 
 const hydrateRows = async (
-  database: TransactionDatabasePlugin,
+  database: TransactionDatabaseAdapter,
   ownerRows: readonly BundleRow[],
 ): Promise<Bundle[]> => {
   const patchRows = await loadPatchRows(
@@ -208,7 +208,7 @@ const hydrateRows = async (
 };
 
 const findChannelByName = (
-  database: TransactionDatabasePlugin,
+  database: TransactionDatabaseAdapter,
   name: string,
 ): Promise<ChannelRow | null> =>
   database.findOne({
@@ -217,7 +217,7 @@ const findChannelByName = (
   });
 
 const ensureChannel = async (
-  database: TransactionDatabasePlugin,
+  database: TransactionDatabaseAdapter,
   name: string,
 ): Promise<ChannelRow> => {
   const existing = await findChannelByName(database, name);
@@ -235,7 +235,7 @@ const ensureChannel = async (
 };
 
 const responsePage = async (
-  database: TransactionDatabasePlugin,
+  database: TransactionDatabaseAdapter,
   options: DatabaseBundleQueryOptions,
 ): Promise<PaginatedResult> => {
   const channel =
@@ -263,10 +263,10 @@ const responsePage = async (
 };
 
 export const createDatabaseClient = <TContext = unknown>(
-  adapter: DatabasePlugin<TContext>,
+  adapter: DatabaseAdapter<TContext>,
 ): DatabaseClient<TContext> => {
   const mutate = async (
-    operation: (database: TransactionDatabasePlugin) => Promise<void>,
+    operation: (database: TransactionDatabaseAdapter) => Promise<void>,
     context: TContext | undefined,
   ): Promise<void> => {
     if (adapter.transaction) {
@@ -299,7 +299,7 @@ export const createDatabaseClient = <TContext = unknown>(
     operation: (client: DatabaseMutationClient) => Promise<TResult>,
     context: TContext | undefined,
   ): Promise<TResult> => {
-    const run = (database: TransactionDatabasePlugin) =>
+    const run = (database: TransactionDatabaseAdapter) =>
       operation(createDatabaseClient(transactionAdapter(database)));
     const result = adapter.transaction
       ? await adapter.transaction(run, context)

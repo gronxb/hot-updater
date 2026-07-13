@@ -1,7 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
-  type DatabasePlugin,
+  type DatabaseAdapter,
   type RuntimeStoragePlugin,
   type RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
@@ -51,7 +51,7 @@ describe("runtime createHotUpdater", () => {
 
   it("accepts a direct v2 adapter object without exposing maintenance methods", () => {
     // Given
-    const database: DatabasePlugin<undefined> = {
+    const database: DatabaseAdapter<undefined> = {
       ...createInMemoryDatabaseAdapter(),
       name: "contextlessTestDatabase",
     };
@@ -131,7 +131,7 @@ describe("runtime createHotUpdater", () => {
     // Given
     const request = new Request(updateUrl);
     const getUpdateInfo = vi.fn<
-      NonNullable<DatabasePlugin<TestContext>["getUpdateInfo"]>
+      NonNullable<DatabaseAdapter<TestContext>["getUpdateInfo"]>
     >(async () => ({
       fileHash: runtimeBundle.fileHash,
       id: runtimeBundle.id,
@@ -140,7 +140,7 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE",
       storageUri: runtimeBundle.storageUri,
     }));
-    const database: DatabasePlugin<TestContext> = {
+    const database: DatabaseAdapter<TestContext> = {
       ...createRuntimeDatabase(),
       getUpdateInfo,
     };
@@ -218,7 +218,7 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE" as const,
       storageUri: runtimeBundle.storageUri,
     }));
-    const database: DatabasePlugin<TestContext> = {
+    const database: DatabaseAdapter<TestContext> = {
       ...createRuntimeDatabase(),
       getUpdateInfo,
     };

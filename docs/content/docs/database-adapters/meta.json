@@ -1,6 +1,6 @@
 {
-  "title": "Database Plugins",
-  "description": "Database provider plugins",
+  "title": "Database Adapters",
+  "description": "Database provider adapters",
   "icon": "Table",
   "pages": [
     "supabase",

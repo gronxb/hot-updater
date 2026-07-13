@@ -3,15 +3,15 @@ import { describe, expectTypeOf, it } from "vitest";
 import type {
   BundleRow,
   CountBundlesDatabaseInput,
-  DatabasePlugin,
+  DatabaseAdapter,
   DeleteDatabaseInput,
   FindManyDatabaseInput,
   FindOneDatabaseInput,
-  TransactionDatabasePlugin,
+  TransactionDatabaseAdapter,
   UpdateBundleDatabaseInput,
 } from "./database";
 
-describe("database plugin types", () => {
+describe("database adapter types", () => {
   it("keeps unsupported model and operation pairs outside the contract", () => {
     // Given
     type ChannelCount = { readonly model: "channels" };
@@ -32,7 +32,7 @@ describe("database plugin types", () => {
 
   it("correlates physical fields and projected results with the model", () => {
     // Given
-    const exerciseProjection = async (adapter: DatabasePlugin) => {
+    const exerciseProjection = async (adapter: DatabaseAdapter) => {
       // When
       const row = await adapter.findOne({
         model: "bundles",
@@ -58,8 +58,8 @@ describe("database plugin types", () => {
 
   it("keeps transaction operations input-only", () => {
     // Given / When / Then
-    expectTypeOf<TransactionDatabasePlugin["count"]>().parameters.toEqualTypeOf<
-      [CountBundlesDatabaseInput]
-    >();
+    expectTypeOf<
+      TransactionDatabaseAdapter["count"]
+    >().parameters.toEqualTypeOf<[CountBundlesDatabaseInput]>();
   });
 });

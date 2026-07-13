@@ -6,7 +6,7 @@ import {
   createBlobDatabaseAdapter,
   createDatabaseClient,
   type BlobDatabaseSnapshot,
-  type DatabasePlugin,
+  type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 import { vi } from "vitest";
 
@@ -55,7 +55,7 @@ export const createDatabaseAdapterHarness = () => {
       uploadObject,
     }),
   })(undefined);
-  const adapter: DatabasePlugin = { ...baseAdapter, onUnmount };
+  const adapter: DatabaseAdapter = { ...baseAdapter, onUnmount };
 
   return {
     adapter,

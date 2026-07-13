@@ -6,7 +6,7 @@ import type {
 } from "@hot-updater/core";
 import type {
   DatabaseBundleQueryOptions,
-  DatabasePlugin,
+  DatabaseAdapter as DatabaseAdapterContract,
   HotUpdaterContext,
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
@@ -81,14 +81,14 @@ export interface DatabaseAdapterCapabilities {
 }
 
 export type DatabaseAdapterWithCapabilities<TContext = unknown> =
-  DatabasePlugin<TContext> & DatabaseAdapterCapabilities;
+  DatabaseAdapterContract<TContext> & DatabaseAdapterCapabilities;
 
 export type DatabaseAdapter<TContext = unknown> =
   DatabaseAdapterWithCapabilities<TContext>;
 
-export function isDatabasePlugin<TContext = unknown>(
+export function isDatabaseAdapter<TContext = unknown>(
   adapter: unknown,
-): adapter is DatabasePlugin<TContext> {
+): adapter is DatabaseAdapter<TContext> {
   return (
     typeof adapter === "object" &&
     adapter !== null &&

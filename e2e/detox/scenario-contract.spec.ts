@@ -1784,7 +1784,7 @@ describe("Detox scenario contract", () => {
   it("resolves auto patch metadata from the provider-visible bundle record", async () => {
     // Given: standalone providers can expose a just-deployed bundle through the
     // same CLI surface used by provider assertions before a direct database
-    // plugin read observes it.
+    // adapter read observes it.
     const controllerSource = await fs.readFile(
       detoxControlServerControllerPath,
       "utf8",

@@ -3,10 +3,10 @@ import type {
   BundleRow,
   ChannelRow,
   DatabaseImplementationResult,
-  DatabasePluginImplementation,
+  DatabaseAdapterImplementation,
   FindManyDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabaseAdapter } from "@hot-updater/plugin-core";
 import type { Collection, MongoClient } from "mongodb";
 
 import { createMongoMigrator } from "../db/fixedMigrator";
@@ -123,7 +123,7 @@ const findMongoRows = async (
 
 const createMongoImplementation = (
   collections: MongoCollections,
-): DatabasePluginImplementation => ({
+): DatabaseAdapterImplementation => ({
   create: async (input) => {
     switch (input.model) {
       case "bundles":
@@ -200,7 +200,7 @@ const createMongoImplementation = (
   getUpdateInfo: createMongoGetUpdateInfo(collections),
 });
 
-const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
+const createMongoAdapter = createDatabaseAdapter<MongoDBConfig>({
   name: "mongodb",
   factory: ({ client }) => createMongoImplementation(createCollections(client)),
 });
@@ -208,7 +208,7 @@ const createMongoPlugin = createDatabasePlugin<MongoDBConfig>({
 export const mongoAdapter = (
   config: MongoDBConfig,
 ): DatabaseAdapterWithCapabilities =>
-  Object.assign(createMongoPlugin(config), {
+  Object.assign(createMongoAdapter(config), {
     adapterName: "mongodb",
     provider: "mongodb" as const,
     createMigrator: () => createMongoMigrator(config.client),

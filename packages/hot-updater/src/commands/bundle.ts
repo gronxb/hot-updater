@@ -3,7 +3,7 @@ import { setTimeout as sleep } from "timers/promises";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabaseAdapter,
   Platform,
 } from "@hot-updater/plugin-core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
@@ -136,12 +136,14 @@ const refuseNonInteractiveMutation = (action: string): never => {
   process.exit(1);
 };
 
-const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
+const safeOnUnmount = async (
+  databaseAdapter: DatabaseAdapter,
+): Promise<void> => {
   try {
-    await databasePlugin.onUnmount?.();
+    await databaseAdapter.onUnmount?.();
   } catch (err) {
     p.log.warn(
-      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
+      `Database adapter onUnmount failed (cleanup-only, original error preserved): ${
         (err as Error)?.message ?? String(err)
       }`,
     );
@@ -155,8 +157,8 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
 
   const config = await loadConfig(null);
 
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
+  const databaseAdapter = config.database;
+  const database = createDatabaseClient(databaseAdapter);
   try {
     const limit =
       Number.isInteger(options.limit) && options.limit! > 0
@@ -173,7 +175,7 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
       options.json ? JSON.stringify(result, null, 2) : tabulate(result.data),
     );
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeOnUnmount(databaseAdapter);
   }
 };
 
@@ -186,8 +188,8 @@ export const handleBundleShow = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
+  const databaseAdapter = config.database;
+  const database = createDatabaseClient(databaseAdapter);
   try {
     const bundle = await database.getBundleById(bundleId);
     if (!bundle) {
@@ -202,7 +204,7 @@ export const handleBundleShow = async (
 
     p.log.message(formatBundleSummary(bundle));
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeOnUnmount(databaseAdapter);
   }
 };
 
@@ -216,8 +218,8 @@ export const handleBundleSetEnabled = async (
 
   const config = await loadConfig(null);
 
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
+  const databaseAdapter = config.database;
+  const database = createDatabaseClient(databaseAdapter);
   try {
     const bundle = await database.getBundleById(bundleId);
     if (!bundle) {
@@ -263,7 +265,7 @@ export const handleBundleSetEnabled = async (
       p.log.info(`  ${ui.id(bundleId)}`);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeOnUnmount(databaseAdapter);
   }
 };
 
@@ -296,8 +298,8 @@ export const handleBundleUpdate = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
+  const databaseAdapter = config.database;
+  const database = createDatabaseClient(databaseAdapter);
   try {
     const bundle = await database.getBundleById(bundleId);
     if (!bundle) {
@@ -339,7 +341,7 @@ export const handleBundleUpdate = async (
     p.log.success("Updated bundle.");
     p.log.info(`  ${ui.id(bundleId)}`);
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeOnUnmount(databaseAdapter);
   }
 };
 
@@ -356,8 +358,8 @@ export const handleBundleDelete = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin = config.database;
-  const database = createDatabaseClient(databasePlugin);
+  const databaseAdapter = config.database;
+  const database = createDatabaseClient(databaseAdapter);
   try {
     // Resolve the target set from the given ids.
     const fetched = await Promise.all(
@@ -427,7 +429,7 @@ export const handleBundleDelete = async (
       p.log.success(`Deleted ${targets.length} bundle records.`);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeOnUnmount(databaseAdapter);
   }
 };
 

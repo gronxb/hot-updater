@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
-import { isDatabasePlugin } from "./types";
+import { isDatabaseAdapter } from "./types";
 
-describe("isDatabasePlugin", () => {
+describe("isDatabaseAdapter", () => {
   it("accepts a direct v2 low adapter object", () => {
     // Given
     const adapter = createInMemoryDatabaseAdapter();
 
     // When
-    const result = isDatabasePlugin(adapter);
+    const result = isDatabaseAdapter(adapter);
 
     // Then
     expect(result).toBe(true);
@@ -22,8 +22,8 @@ describe("isDatabasePlugin", () => {
     const malformed = { ...adapter, findMany: null };
 
     // When
-    const factoryResult = isDatabasePlugin(factory);
-    const malformedResult = isDatabasePlugin(malformed);
+    const factoryResult = isDatabaseAdapter(factory);
+    const malformedResult = isDatabaseAdapter(malformed);
 
     // Then
     expect(factoryResult).toBe(false);

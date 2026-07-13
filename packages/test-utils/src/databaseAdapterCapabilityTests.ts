@@ -1,6 +1,6 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
-  type DatabasePlugin,
+  type DatabaseAdapter,
   resolveUpdateInfoFromBundles,
   rowToBundle,
 } from "@hot-updater/plugin-core";
@@ -13,7 +13,7 @@ import {
 } from "./databaseTestFixtures";
 
 type CapabilityTestState<TContext> = DatabaseAdapterTestState<
-  DatabasePlugin<TContext>,
+  DatabaseAdapter<TContext>,
   TContext
 >;
 
