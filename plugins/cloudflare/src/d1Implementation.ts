@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   CreateDatabaseImplementationInput,
@@ -56,6 +57,24 @@ const patchValues = (row: BundlePatchRow): readonly unknown[] => [
   row.order_index,
 ];
 
+const bundleEventValues = (row: BundleEventRow): readonly unknown[] => [
+  row.id,
+  row.type,
+  row.install_id,
+  row.user_id,
+  row.username,
+  row.from_bundle_id,
+  row.to_bundle_id,
+  row.platform,
+  row.app_version,
+  row.channel,
+  row.cohort,
+  row.update_strategy,
+  row.fingerprint_hash,
+  row.sdk_version,
+  row.received_at_ms,
+];
+
 const insertQuery = (input: CreateDatabaseImplementationInput) => {
   switch (input.model) {
     case "bundles": {
@@ -108,6 +127,30 @@ const insertQuery = (input: CreateDatabaseImplementationInput) => {
         params: encodeD1Values(values),
       };
     }
+    case "bundle_events": {
+      const columns = [
+        "id",
+        "type",
+        "install_id",
+        "user_id",
+        "username",
+        "from_bundle_id",
+        "to_bundle_id",
+        "platform",
+        "app_version",
+        "channel",
+        "cohort",
+        "update_strategy",
+        "fingerprint_hash",
+        "sdk_version",
+        "received_at_ms",
+      ];
+      const values = bundleEventValues(input.data);
+      return {
+        sql: `INSERT INTO bundle_events (${columns.join(", ")}) VALUES (${d1Placeholders(values.length)}) RETURNING *`,
+        params: encodeD1Values(values),
+      };
+    }
   }
 };
 
@@ -128,6 +171,8 @@ export const createD1Implementation = <TContext = unknown>(
         return parseD1Row("bundle_patches", rows[0]);
       case "channels":
         return parseD1Row("channels", rows[0]);
+      case "bundle_events":
+        return parseD1Row("bundle_events", rows[0]);
     }
   },
   async update(input, context) {
@@ -163,7 +208,7 @@ export const createD1Implementation = <TContext = unknown>(
   async count(input, context) {
     const where = buildD1Where(input.where);
     const rows = await executor.query(
-      `SELECT COUNT(*) AS count FROM bundles${where.sql}`,
+      `SELECT COUNT(*) AS count FROM ${input.model}${where.sql}`,
       where.params,
       context,
     );
@@ -182,8 +227,12 @@ export const createD1Implementation = <TContext = unknown>(
     switch (input.model) {
       case "bundles":
         return parseD1Row("bundles", rows[0]);
+      case "bundle_patches":
+        return parseD1Row("bundle_patches", rows[0]);
       case "channels":
         return parseD1Row("channels", rows[0]);
+      case "bundle_events":
+        return parseD1Row("bundle_events", rows[0]);
     }
   },
   async findMany(input: FindManyDatabaseImplementationInput, context) {
@@ -202,6 +251,8 @@ export const createD1Implementation = <TContext = unknown>(
         return rows.map((row) => parseD1Row("bundle_patches", row));
       case "channels":
         return rows.map((row) => parseD1Row("channels", row));
+      case "bundle_events":
+        return rows.map((row) => parseD1Row("bundle_events", row));
     }
   },
 });

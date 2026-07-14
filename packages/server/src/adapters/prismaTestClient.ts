@@ -1,12 +1,14 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
 } from "@hot-updater/plugin-core";
 
-type Row = BundlePatchRow | BundleRow | ChannelRow;
+type Row = BundleEventRow | BundlePatchRow | BundleRow | ChannelRow;
 type Table = Row[];
 type Tables = {
+  bundle_events: Table;
   bundle_patches: Table;
   bundles: Table;
   channels: Table;
@@ -112,13 +114,23 @@ const matchesWhere = (row: Row, where: unknown): boolean => {
 };
 
 const sortRows = (rows: Row[], orderBy: unknown): Row[] => {
-  if (!isRecord(orderBy)) return rows;
-  const entry = Object.entries(orderBy)[0];
-  if (entry === undefined) return rows;
-  const [field, direction] = entry;
+  const clauses = Array.isArray(orderBy)
+    ? orderBy.filter(isRecord)
+    : isRecord(orderBy)
+      ? [orderBy]
+      : [];
+  if (clauses.length === 0) return rows;
   return rows.toSorted((left, right) => {
-    const result = compare(readField(left, field), readField(right, field));
-    return direction === "desc" ? -result : result;
+    for (const clause of clauses) {
+      const entry = Object.entries(clause)[0];
+      if (entry === undefined) continue;
+      const [field, direction] = entry;
+      const result = compare(readField(left, field), readField(right, field));
+      if (result !== 0) {
+        return direction === "desc" ? -result : result;
+      }
+    }
+    return 0;
   });
 };
 
@@ -225,13 +237,19 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
 });
 
 const createClient = (tables: Tables, hooks: Hooks) => ({
+  bundle_events: createDelegate(tables, "bundle_events", hooks),
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
   channels: createDelegate(tables, "channels", hooks),
 });
 
 export const createPrismaTestHarness = () => {
-  let tables: Tables = { bundle_patches: [], bundles: [], channels: [] };
+  let tables: Tables = {
+    bundle_events: [],
+    bundle_patches: [],
+    bundles: [],
+    channels: [],
+  };
   const hooks: Hooks = {
     beforeNextBundleUpdateMany: undefined,
     failNextBundleDelete: false,
@@ -246,6 +264,7 @@ export const createPrismaTestHarness = () => {
       hooks.transactionOptions.push(options);
       const transactionTables = structuredClone(tables);
       const result = await callback(createClient(transactionTables, hooks));
+      tables.bundle_events = transactionTables.bundle_events;
       tables.bundle_patches = transactionTables.bundle_patches;
       tables.bundles = transactionTables.bundles;
       tables.channels = transactionTables.channels;
@@ -276,6 +295,7 @@ export const createPrismaTestHarness = () => {
       hooks.failNextBundleDelete = false;
       hooks.beforeNextBundleUpdateMany = undefined;
       hooks.transactionOptions.length = 0;
+      tables.bundle_events = [];
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.channels = [];

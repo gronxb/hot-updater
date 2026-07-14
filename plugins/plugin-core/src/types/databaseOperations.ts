@@ -1,33 +1,82 @@
 import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 
 import type {
+  DatabaseDistinctFields,
+  DatabaseDistinctOn,
+  DatabaseOrderBy,
   DatabaseSelect,
   DatabaseSortBy,
   DatabaseWhere,
   SelectedDatabaseRow,
 } from "./databaseQuery";
-import type {
-  BundleRow,
-  ChannelRow,
-  DatabaseModel,
-  DatabaseRow,
-} from "./databaseRows";
+import type { BundleRow, DatabaseModel, DatabaseRow } from "./databaseRows";
+
+export type DatabaseCapability =
+  | "create"
+  | "update"
+  | "delete"
+  | "count"
+  | "findOne"
+  | "findMany";
+
+export type DatabaseModelCapabilities = {
+  readonly bundles: {
+    readonly create: true;
+    readonly update: true;
+    readonly delete: true;
+    readonly count: true;
+    readonly findOne: true;
+    readonly findMany: true;
+  };
+  readonly bundle_patches: {
+    readonly create: true;
+    readonly update: false;
+    readonly delete: true;
+    readonly count: true;
+    readonly findOne: true;
+    readonly findMany: true;
+  };
+  readonly channels: {
+    readonly create: true;
+    readonly update: false;
+    readonly delete: false;
+    readonly count: true;
+    readonly findOne: true;
+    readonly findMany: true;
+  };
+  readonly bundle_events: {
+    readonly create: true;
+    readonly update: false;
+    readonly delete: false;
+    readonly count: true;
+    readonly findOne: true;
+    readonly findMany: true;
+  };
+};
+
+export type DatabaseModelsWithCapability<
+  TCapability extends DatabaseCapability,
+> = {
+  readonly [TModel in DatabaseModel]: DatabaseModelCapabilities[TModel][TCapability] extends true
+    ? TModel
+    : never;
+}[DatabaseModel];
+
+export type CreateDatabaseModel = DatabaseModelsWithCapability<"create">;
+export type UpdateDatabaseModel = DatabaseModelsWithCapability<"update">;
+export type DeleteDatabaseModel = DatabaseModelsWithCapability<"delete">;
+export type CountDatabaseModel = DatabaseModelsWithCapability<"count">;
+export type FindOneDatabaseModel = DatabaseModelsWithCapability<"findOne">;
+export type FindManyDatabaseModel = DatabaseModelsWithCapability<"findMany">;
+export type DatabaseDeleteModel = DeleteDatabaseModel;
+export type DatabaseFindOneModel = FindOneDatabaseModel;
 
 export type CreateDatabaseInput<
-  TModel extends DatabaseModel,
+  TModel extends CreateDatabaseModel,
   TSelect extends DatabaseSelect<TModel> | undefined = undefined,
 > = {
   readonly model: TModel;
   readonly data: DatabaseRow<TModel>;
-  readonly select?: TSelect;
-};
-
-export type UpdateBundleDatabaseInput<
-  TSelect extends DatabaseSelect<"bundles"> | undefined = undefined,
-> = {
-  readonly model: "bundles";
-  readonly where: readonly DatabaseWhere<"bundles">[];
-  readonly update: BundleRowUpdate;
   readonly select?: TSelect;
 };
 
@@ -47,20 +96,37 @@ export type BundleRowUpdate = BundleRowUpdateFields &
       }
   );
 
-export type DatabaseDeleteModel = "bundle_patches" | "bundles";
-export type DeleteDatabaseInput<TModel extends DatabaseDeleteModel> = {
+export type DatabaseRowUpdate<TModel extends UpdateDatabaseModel> = {
+  readonly bundles: BundleRowUpdate;
+}[TModel];
+
+export type UpdateDatabaseInput<
+  TModel extends UpdateDatabaseModel,
+  TSelect extends DatabaseSelect<TModel> | undefined = undefined,
+> = {
+  readonly model: TModel;
+  readonly where: readonly DatabaseWhere<TModel>[];
+  readonly update: DatabaseRowUpdate<TModel>;
+  readonly select?: TSelect;
+};
+export type UpdateBundleDatabaseInput<
+  TSelect extends DatabaseSelect<"bundles"> | undefined = undefined,
+> = UpdateDatabaseInput<"bundles", TSelect>;
+
+export type DeleteDatabaseInput<TModel extends DeleteDatabaseModel> = {
   readonly model: TModel;
   readonly where: readonly DatabaseWhere<TModel>[];
 };
 
-export type CountBundlesDatabaseInput = {
-  readonly model: "bundles";
-  readonly where?: readonly DatabaseWhere<"bundles">[];
+export type CountDatabaseInput<TModel extends CountDatabaseModel> = {
+  readonly model: TModel;
+  readonly where?: readonly DatabaseWhere<TModel>[];
+  readonly distinct?: DatabaseDistinctFields<TModel>;
 };
+export type CountBundlesDatabaseInput = CountDatabaseInput<"bundles">;
 
-export type DatabaseFindOneModel = "bundles" | "channels";
 export type FindOneDatabaseInput<
-  TModel extends DatabaseFindOneModel,
+  TModel extends FindOneDatabaseModel,
   TSelect extends DatabaseSelect<TModel> | undefined = undefined,
 > = {
   readonly model: TModel;
@@ -69,39 +135,46 @@ export type FindOneDatabaseInput<
 };
 
 export type FindManyDatabaseInput<
-  TModel extends DatabaseModel,
+  TModel extends FindManyDatabaseModel,
   TSelect extends DatabaseSelect<TModel> | undefined = undefined,
 > = {
   readonly model: TModel;
   readonly where?: readonly DatabaseWhere<TModel>[];
   readonly limit?: number;
   readonly offset?: number;
+  readonly orderBy?: DatabaseOrderBy<TModel>;
   readonly sortBy?: DatabaseSortBy<TModel>;
+  readonly distinctOn?: DatabaseDistinctOn<TModel>;
   readonly select?: TSelect;
 };
 
 export interface TransactionDatabaseAdapter {
   create<
-    TModel extends DatabaseModel,
+    TModel extends CreateDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: CreateDatabaseInput<TModel, TSelect>,
   ): Promise<SelectedDatabaseRow<TModel, TSelect>>;
-  update<TSelect extends DatabaseSelect<"bundles"> | undefined = undefined>(
-    input: UpdateBundleDatabaseInput<TSelect>,
-  ): Promise<SelectedDatabaseRow<"bundles", TSelect> | null>;
-  delete<TModel extends DatabaseDeleteModel>(
+  update<
+    TModel extends UpdateDatabaseModel,
+    TSelect extends DatabaseSelect<TModel> | undefined = undefined,
+  >(
+    input: UpdateDatabaseInput<TModel, TSelect>,
+  ): Promise<SelectedDatabaseRow<TModel, TSelect> | null>;
+  delete<TModel extends DeleteDatabaseModel>(
     input: DeleteDatabaseInput<TModel>,
   ): Promise<void>;
-  count(input: CountBundlesDatabaseInput): Promise<number>;
+  count<TModel extends CountDatabaseModel>(
+    input: CountDatabaseInput<TModel>,
+  ): Promise<number>;
   findOne<
-    TModel extends DatabaseFindOneModel,
+    TModel extends FindOneDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindOneDatabaseInput<TModel, TSelect>,
   ): Promise<SelectedDatabaseRow<TModel, TSelect> | null>;
   findMany<
-    TModel extends DatabaseModel,
+    TModel extends FindManyDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindManyDatabaseInput<TModel, TSelect>,
@@ -111,30 +184,36 @@ export interface TransactionDatabaseAdapter {
 export interface DatabaseAdapter<TContext = unknown> {
   readonly name: string;
   create<
-    TModel extends DatabaseModel,
+    TModel extends CreateDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: CreateDatabaseInput<TModel, TSelect>,
     context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect>>;
-  update<TSelect extends DatabaseSelect<"bundles"> | undefined = undefined>(
-    input: UpdateBundleDatabaseInput<TSelect>,
+  update<
+    TModel extends UpdateDatabaseModel,
+    TSelect extends DatabaseSelect<TModel> | undefined = undefined,
+  >(
+    input: UpdateDatabaseInput<TModel, TSelect>,
     context?: TContext,
-  ): Promise<SelectedDatabaseRow<"bundles", TSelect> | null>;
-  delete<TModel extends DatabaseDeleteModel>(
+  ): Promise<SelectedDatabaseRow<TModel, TSelect> | null>;
+  delete<TModel extends DeleteDatabaseModel>(
     input: DeleteDatabaseInput<TModel>,
     context?: TContext,
   ): Promise<void>;
-  count(input: CountBundlesDatabaseInput, context?: TContext): Promise<number>;
+  count<TModel extends CountDatabaseModel>(
+    input: CountDatabaseInput<TModel>,
+    context?: TContext,
+  ): Promise<number>;
   findOne<
-    TModel extends DatabaseFindOneModel,
+    TModel extends FindOneDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindOneDatabaseInput<TModel, TSelect>,
     context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect> | null>;
   findMany<
-    TModel extends DatabaseModel,
+    TModel extends FindManyDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindManyDatabaseInput<TModel, TSelect>,
@@ -157,49 +236,62 @@ export type DatabaseImplementationResult = {
 }[DatabaseModel];
 
 export type CreateDatabaseImplementationInput = {
-  readonly [TModel in DatabaseModel]: CreateDatabaseInput<
+  readonly [TModel in CreateDatabaseModel]: CreateDatabaseInput<
     TModel,
     DatabaseSelect<TModel> | undefined
   >;
-}[DatabaseModel];
+}[CreateDatabaseModel];
 
-export type UpdateBundleDatabaseImplementationInput = UpdateBundleDatabaseInput<
-  DatabaseSelect<"bundles"> | undefined
->;
+export type UpdateDatabaseImplementationInput = {
+  readonly [TModel in UpdateDatabaseModel]: UpdateDatabaseInput<
+    TModel,
+    DatabaseSelect<TModel> | undefined
+  >;
+}[UpdateDatabaseModel];
 
 export type DeleteDatabaseImplementationInput = {
-  readonly [TModel in DatabaseDeleteModel]: DeleteDatabaseInput<TModel>;
-}[DatabaseDeleteModel];
+  readonly [TModel in DeleteDatabaseModel]: DeleteDatabaseInput<TModel>;
+}[DeleteDatabaseModel];
+
+export type CountDatabaseImplementationInput = {
+  readonly [TModel in CountDatabaseModel]: CountDatabaseInput<TModel>;
+}[CountDatabaseModel];
+export type UpdateBundleDatabaseImplementationInput = UpdateDatabaseInput<
+  "bundles",
+  DatabaseSelect<"bundles"> | undefined
+>;
+export type CountBundlesDatabaseImplementationInput =
+  CountDatabaseInput<"bundles">;
 
 export type FindOneDatabaseImplementationInput = {
-  readonly [TModel in DatabaseFindOneModel]: FindOneDatabaseInput<
+  readonly [TModel in FindOneDatabaseModel]: FindOneDatabaseInput<
     TModel,
     DatabaseSelect<TModel> | undefined
   >;
-}[DatabaseFindOneModel];
+}[FindOneDatabaseModel];
 
 export type FindManyDatabaseImplementationInput = {
-  readonly [TModel in DatabaseModel]: Omit<
+  readonly [TModel in FindManyDatabaseModel]: Omit<
     FindManyDatabaseInput<TModel, DatabaseSelect<TModel> | undefined>,
     "limit" | "offset"
   > & {
     readonly limit: number;
     readonly offset: number;
   };
-}[DatabaseModel];
+}[FindManyDatabaseModel];
 
 export interface TransactionDatabaseAdapterImplementation {
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;
   update(
-    input: UpdateBundleDatabaseImplementationInput,
-  ): Promise<Partial<BundleRow> | null>;
+    input: UpdateDatabaseImplementationInput,
+  ): Promise<DatabaseImplementationResult | null>;
   delete(input: DeleteDatabaseImplementationInput): Promise<void>;
-  count(input: CountBundlesDatabaseInput): Promise<number>;
+  count(input: CountDatabaseImplementationInput): Promise<number>;
   findOne(
     input: FindOneDatabaseImplementationInput,
-  ): Promise<Partial<BundleRow> | Partial<ChannelRow> | null>;
+  ): Promise<DatabaseImplementationResult | null>;
   findMany(
     input: FindManyDatabaseImplementationInput,
   ): Promise<readonly DatabaseImplementationResult[]>;
@@ -211,18 +303,21 @@ export interface DatabaseAdapterImplementation<TContext = unknown> {
     context?: TContext,
   ): Promise<DatabaseImplementationResult>;
   update(
-    input: UpdateBundleDatabaseImplementationInput,
+    input: UpdateDatabaseImplementationInput,
     context?: TContext,
-  ): Promise<Partial<BundleRow> | null>;
+  ): Promise<DatabaseImplementationResult | null>;
   delete(
     input: DeleteDatabaseImplementationInput,
     context?: TContext,
   ): Promise<void>;
-  count(input: CountBundlesDatabaseInput, context?: TContext): Promise<number>;
+  count(
+    input: CountDatabaseImplementationInput,
+    context?: TContext,
+  ): Promise<number>;
   findOne(
     input: FindOneDatabaseImplementationInput,
     context?: TContext,
-  ): Promise<Partial<BundleRow> | Partial<ChannelRow> | null>;
+  ): Promise<DatabaseImplementationResult | null>;
   findMany(
     input: FindManyDatabaseImplementationInput,
     context?: TContext,

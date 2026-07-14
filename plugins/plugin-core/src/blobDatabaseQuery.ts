@@ -1,10 +1,20 @@
-import type { DatabaseRow, DatabaseWhere } from "./types";
-
-type BlobDatabaseModel = "bundle_patches" | "bundles" | "channels";
+import type {
+  DatabaseDistinctOn,
+  DatabaseModel,
+  DatabaseOrderBy,
+  DatabaseRow,
+  DatabaseWhere,
+} from "./types";
 
 const compare = (left: unknown, right: unknown): number => {
   if (typeof left === "number" && typeof right === "number") {
     return left - right;
+  }
+  if (left === null || left === undefined) {
+    return right === null || right === undefined ? 0 : -1;
+  }
+  if (right === null || right === undefined) {
+    return 1;
   }
   return String(left).localeCompare(String(right));
 };
@@ -21,7 +31,7 @@ const stringComparison = (
     : predicate(actual, expected);
 };
 
-const matchesCondition = <TModel extends BlobDatabaseModel>(
+const matchesCondition = <TModel extends DatabaseModel>(
   row: DatabaseRow<TModel>,
   condition: DatabaseWhere<TModel>,
 ): boolean => {
@@ -108,7 +118,7 @@ const matchesCondition = <TModel extends BlobDatabaseModel>(
   }
 };
 
-export const matchesBlobDatabaseWhere = <TModel extends BlobDatabaseModel>(
+export const matchesBlobDatabaseWhere = <TModel extends DatabaseModel>(
   row: DatabaseRow<TModel>,
   where: readonly DatabaseWhere<TModel>[] | undefined,
 ): boolean => {
@@ -122,14 +132,43 @@ export const matchesBlobDatabaseWhere = <TModel extends BlobDatabaseModel>(
   return result;
 };
 
-export const queryBlobDatabaseRows = <TModel extends BlobDatabaseModel>(
+const compareRows = <TModel extends DatabaseModel>(
+  left: DatabaseRow<TModel>,
+  right: DatabaseRow<TModel>,
+  orderBy: DatabaseOrderBy<TModel>,
+): number => {
+  for (const clause of orderBy) {
+    const leftValue = Reflect.get(left, clause.field);
+    const rightValue = Reflect.get(right, clause.field);
+    if (leftValue == null || rightValue == null) {
+      if (leftValue == null && rightValue == null) {
+        continue;
+      }
+      const nulls =
+        clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
+      const order = leftValue == null ? -1 : 1;
+      return nulls === "first" ? order : -order;
+    }
+    const order = compare(leftValue, rightValue);
+    if (order !== 0) {
+      return clause.direction === "asc" ? order : -order;
+    }
+  }
+  return 0;
+};
+
+const distinctKey = <TModel extends DatabaseModel>(
+  row: DatabaseRow<TModel>,
+  distinctOn: DatabaseDistinctOn<TModel>,
+): string =>
+  JSON.stringify(distinctOn.fields.map((field) => Reflect.get(row, field)));
+
+export const queryBlobDatabaseRows = <TModel extends DatabaseModel>(
   rows: readonly DatabaseRow<TModel>[],
   input: {
     readonly where?: readonly DatabaseWhere<TModel>[];
-    readonly sortBy?: {
-      readonly field: keyof DatabaseRow<TModel>;
-      readonly direction: "asc" | "desc";
-    };
+    readonly orderBy?: DatabaseOrderBy<TModel>;
+    readonly distinctOn?: DatabaseDistinctOn<TModel>;
     readonly offset?: number;
     readonly limit?: number;
   },
@@ -137,16 +176,24 @@ export const queryBlobDatabaseRows = <TModel extends BlobDatabaseModel>(
   const filtered = rows.filter((row) =>
     matchesBlobDatabaseWhere(row, input.where),
   );
-  if (input.sortBy) {
-    const direction = input.sortBy.direction === "asc" ? 1 : -1;
-    filtered.sort(
-      (left, right) =>
-        compare(
-          Reflect.get(left, input.sortBy?.field ?? "id"),
-          Reflect.get(right, input.sortBy?.field ?? "id"),
-        ) * direction,
-    );
-  }
+  const ordered = input.orderBy
+    ? filtered.toSorted((left, right) =>
+        compareRows(left, right, input.orderBy!),
+      )
+    : filtered;
+  const distinct = input.distinctOn
+    ? (() => {
+        const seen = new Set<string>();
+        const unique: DatabaseRow<TModel>[] = [];
+        for (const row of ordered) {
+          const key = distinctKey(row, input.distinctOn);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          unique.push(row);
+        }
+        return unique;
+      })()
+    : ordered;
   const offset = input.offset ?? 0;
-  return filtered.slice(offset, offset + (input.limit ?? 100));
+  return distinct.slice(offset, offset + (input.limit ?? 100));
 };

@@ -87,7 +87,7 @@ describe("createKyselyMigrator", () => {
     });
 
     expect(migration.getSQL?.()).toContain(
-      "insert into private_hot_updater_settings (key, value) values ('version', '0.36.0')",
+      "insert into private_hot_updater_settings (key, value) values ('version', '0.37.0')",
     );
     expect(migration.operations).not.toContainEqual(
       expect.objectContaining({
@@ -278,7 +278,7 @@ describe("createKyselyMigrator", () => {
     });
     await retry.execute();
 
-    expect(await migrator.getVersion()).toBe("0.36.0");
+    expect(await migrator.getVersion()).toBe("0.37.0");
     const migrated = await db.query<{ channel_id: string }>(
       "select channel_id from bundles",
     );
@@ -338,7 +338,7 @@ describe("createKyselyMigrator", () => {
     });
     await retry.execute();
 
-    expect(await migrator.getVersion()).toBe("0.36.0");
+    expect(await migrator.getVersion()).toBe("0.37.0");
     expect(db.prepare("pragma foreign_keys").get()).toEqual({
       foreign_keys: 1,
     });
@@ -419,7 +419,7 @@ describe("createKyselyMigrator", () => {
     ["0.21.0", bundlesV021],
     ["0.29.0", bundlesV029],
     ["0.31.0", bundlesV031],
-  ])("upgrades a SQLite %s schema to v0.36.0", (version, bundlesTable) => {
+  ])("upgrades a SQLite %s schema to v0.37.0", (version, bundlesTable) => {
     const db = new DatabaseSync(":memory:");
     db.exec("pragma foreign_keys = on");
     db.exec(createTableStatement(bundlesTable, "sqlite"));
@@ -435,7 +435,7 @@ describe("createKyselyMigrator", () => {
 
     for (const statement of createSchemaMigrationSql(
       version,
-      "0.36.0",
+      "0.37.0",
       "sqlite",
     )) {
       db.exec(statement);
@@ -520,7 +520,7 @@ describe("MongoDB channel migration", () => {
         throw new Error("injected index creation failure");
       },
       updateVersion: async () => {
-        version = "0.36.0";
+        version = "0.37.0";
       },
     };
 
@@ -547,7 +547,7 @@ describe("MongoDB channel migration", () => {
       ["channel-staging", "staging"],
       ["production", "production"],
     ]);
-    expect(version).toBe("0.36.0");
+    expect(version).toBe("0.37.0");
   });
 
   it("filters missing channels and falls back to normalized channel ids", () => {

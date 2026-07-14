@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HotUpdater as HotUpdaterValue } from "./index";
+import type { NotifyAppReadyResult } from "./native";
 import type { HotUpdaterInitOptions, HotUpdaterOptions } from "./wrap";
 
 const mocks = vi.hoisted(() => {
@@ -23,14 +24,19 @@ const mocks = vi.hoisted(() => {
     getCrashHistory: vi.fn(() => []),
     getDefaultChannel: vi.fn(() => "production"),
     getFingerprintHash: vi.fn(() => null),
+    getInstallId: vi.fn(() => "install-id"),
     getManifest: vi.fn(() => null),
     getMinBundleId: vi.fn(() => "min-bundle-id"),
     init: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
+    notifyAppReady: vi.fn<() => NotifyAppReadyResult>(() => ({
+      status: "UNCHANGED",
+    })),
     reload: vi.fn(),
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
     setReloadBehavior: vi.fn(),
+    setUser: vi.fn(),
     updateBundle: vi.fn(),
     wrap: vi.fn(),
   };
@@ -55,13 +61,16 @@ vi.mock("./native", () => ({
   getCrashHistory: mocks.getCrashHistory,
   getDefaultChannel: mocks.getDefaultChannel,
   getFingerprintHash: mocks.getFingerprintHash,
+  getInstallId: mocks.getInstallId,
   getManifest: mocks.getManifest,
   getMinBundleId: mocks.getMinBundleId,
   isChannelSwitched: mocks.isChannelSwitched,
+  notifyAppReady: mocks.notifyAppReady,
   reload: mocks.reload,
   resetChannel: mocks.resetChannel,
   setCohort: mocks.setCohort,
   setReloadBehavior: mocks.setReloadBehavior,
+  setUser: mocks.setUser,
   updateBundle: mocks.updateBundle,
 }));
 
@@ -91,7 +100,9 @@ describe("HotUpdater client initialization", () => {
       notifyAppReady: vi.fn(),
     }));
     mocks.getBaseURL.mockReturnValue(null);
+    mocks.getInstallId.mockReturnValue("install-id");
     mocks.init.mockReturnValue(undefined);
+    mocks.notifyAppReady.mockReturnValue({ status: "UNCHANGED" });
     mocks.wrap.mockReturnValue((Component: unknown) => Component);
   });
 
@@ -322,6 +333,36 @@ describe("HotUpdater client initialization", () => {
       requestTimeout: 1000,
       resolver,
       updateStrategy: "appVersion",
+    });
+  });
+
+  it("exposes install identity and user setters from native", async () => {
+    const HotUpdater = await importHotUpdater();
+
+    expect(HotUpdater.getInstallId()).toBe("install-id");
+
+    HotUpdater.setUser({ userId: "user-123", username: "alice" });
+
+    expect(mocks.getInstallId).toHaveBeenCalledWith();
+    expect(mocks.setUser).toHaveBeenCalledWith({
+      userId: "user-123",
+      username: "alice",
+    });
+  });
+
+  it("exposes notifyAppReady from native", async () => {
+    mocks.notifyAppReady.mockReturnValue({
+      fromBundleId: "bundle-a",
+      status: "UPDATE_APPLIED",
+      toBundleId: "bundle-b",
+    });
+
+    const HotUpdater = await importHotUpdater();
+
+    expect(HotUpdater.notifyAppReady()).toEqual({
+      fromBundleId: "bundle-a",
+      status: "UPDATE_APPLIED",
+      toBundleId: "bundle-b",
     });
   });
 

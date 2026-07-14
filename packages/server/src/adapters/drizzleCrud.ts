@@ -7,6 +7,7 @@ import {
   inArray,
   isNotNull,
   or,
+  sql,
   type SQLWrapper,
 } from "drizzle-orm";
 
@@ -54,6 +55,60 @@ export const getDrizzleColumn = (
   return value;
 };
 
+const toOrderBy = (
+  table: DrizzleTable,
+  input: {
+    orderBy?: readonly {
+      field: string;
+      direction: "asc" | "desc";
+      nulls?: "first" | "last";
+    }[];
+    sortBy?: {
+      field: string;
+      direction: "asc" | "desc";
+      nulls?: "first" | "last";
+    };
+  },
+) => {
+  const clauses = input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined);
+  return clauses?.flatMap((clause) => {
+    const column = getDrizzleColumn(table, clause.field);
+    const nulls =
+      clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
+    return [
+      nulls === "first"
+        ? sql`${column} is null desc`
+        : sql`${column} is null asc`,
+      clause.direction === "asc" ? asc(column) : desc(column),
+    ];
+  });
+};
+
+const createDistinctKey = (row: object, fields: readonly string[]): string =>
+  JSON.stringify(fields.map((field) => Reflect.get(row, field) ?? null));
+
+const applyDistinctOnRows = <TRow extends object>(
+  rows: readonly TRow[],
+  fields: readonly string[],
+  offset: number,
+  limit: number,
+): TRow[] => {
+  const seen = new Set<string>();
+  const distinctRows: TRow[] = [];
+  for (const row of rows) {
+    const key = createDistinctKey(row, fields);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    distinctRows.push(row);
+  }
+  return distinctRows.slice(offset, offset + limit);
+};
+
+const countDistinctRows = (
+  rows: readonly object[],
+  fields: readonly string[],
+): number => new Set(rows.map((row) => createDistinctKey(row, fields))).size;
+
 export const createDrizzleCrud = (
   db: DrizzleDB,
   provider: DrizzleProvider,
@@ -61,6 +116,7 @@ export const createDrizzleCrud = (
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
   const channels = getDrizzleTable(db, "channels");
+  const bundleEvents = getDrizzleTable(db, "bundle_events");
   return {
     async create(input) {
       switch (input.model) {
@@ -75,6 +131,9 @@ export const createDrizzleCrud = (
           return input.data;
         case "channels":
           await db.insert(channels).values(input.data).execute();
+          return input.data;
+        case "bundle_events":
+          await db.insert(bundleEvents).values(input.data).execute();
           return input.data;
       }
     },
@@ -124,7 +183,11 @@ export const createDrizzleCrud = (
     async delete(input) {
       switch (input.model) {
         case "bundles": {
-          const where = buildDrizzleWhere(provider, bundles, input.where);
+          const where = buildDrizzleWhere(
+            provider,
+            bundles,
+            input.where as never,
+          );
           if (where === undefined) throw new DrizzleAdapterInvariantError();
           const matchingBundles = await db.query.bundles.findMany({ where });
           const bundleIds = matchingBundles.map(({ id }) => id);
@@ -141,45 +204,98 @@ export const createDrizzleCrud = (
           return;
         }
         case "bundle_patches": {
-          const where = buildDrizzleWhere(provider, patches, input.where);
+          const where = buildDrizzleWhere(
+            provider,
+            patches,
+            input.where as never,
+          );
           if (where === undefined) throw new DrizzleAdapterInvariantError();
           await db.delete(patches).where(where).execute();
+          return;
         }
       }
     },
-    count: (input) =>
-      db.$count(
-        bundles,
-        buildDrizzleWhere(provider, bundles, input.where ?? []),
-      ),
+    async count(input) {
+      switch (input.model) {
+        case "bundles":
+          return db.$count(
+            bundles,
+            buildDrizzleWhere(provider, bundles, input.where as never),
+          );
+        case "bundle_patches":
+          return db.$count(
+            patches,
+            buildDrizzleWhere(provider, patches, input.where as never),
+          );
+        case "channels":
+          return db.$count(
+            channels,
+            buildDrizzleWhere(provider, channels, input.where as never),
+          );
+        case "bundle_events": {
+          if (input.distinct && input.distinct.length > 0) {
+            const rows = (await (db as any)
+              .select()
+              .from(bundleEvents)
+              .where(
+                buildDrizzleWhere(
+                  provider,
+                  bundleEvents,
+                  input.where as never,
+                ) ?? undefined,
+              )) as Record<string, unknown>[];
+            return countDistinctRows(rows, input.distinct);
+          }
+          return db.$count(
+            bundleEvents,
+            buildDrizzleWhere(provider, bundleEvents, input.where as never),
+          );
+        }
+      }
+    },
     async findOne(input) {
       switch (input.model) {
         case "bundles": {
           const row = await db.query.bundles.findFirst({
-            where: buildDrizzleWhere(provider, bundles, input.where ?? []),
+            where: buildDrizzleWhere(provider, bundles, input.where as never),
           });
           return row === undefined ? null : fromStoredBundleRow(row);
         }
+        case "bundle_patches":
+          return (
+            (await db.query.bundle_patches.findFirst({
+              where: buildDrizzleWhere(provider, patches, input.where as never),
+            })) ?? null
+          );
         case "channels":
           return (
             (await db.query.channels.findFirst({
-              where: buildDrizzleWhere(provider, channels, input.where ?? []),
+              where: buildDrizzleWhere(
+                provider,
+                channels,
+                input.where as never,
+              ),
             })) ?? null
           );
+        case "bundle_events": {
+          const rows = await (db as any)
+            .select()
+            .from(bundleEvents)
+            .where(
+              buildDrizzleWhere(provider, bundleEvents, input.where as never) ??
+                undefined,
+            )
+            .limit(1);
+          return rows[0] ?? null;
+        }
       }
     },
     async findMany(input) {
       switch (input.model) {
         case "bundles": {
           const rows = await db.query.bundles.findMany({
-            where: buildDrizzleWhere(provider, bundles, input.where ?? []),
-            orderBy: input.sortBy
-              ? [
-                  input.sortBy.direction === "asc"
-                    ? asc(getDrizzleColumn(bundles, input.sortBy.field))
-                    : desc(getDrizzleColumn(bundles, input.sortBy.field)),
-                ]
-              : undefined,
+            where: buildDrizzleWhere(provider, bundles, input.where as never),
+            orderBy: toOrderBy(bundles, input as never),
             limit: input.limit,
             offset: input.offset,
           });
@@ -187,30 +303,41 @@ export const createDrizzleCrud = (
         }
         case "bundle_patches":
           return db.query.bundle_patches.findMany({
-            where: buildDrizzleWhere(provider, patches, input.where ?? []),
-            orderBy: input.sortBy
-              ? [
-                  input.sortBy.direction === "asc"
-                    ? asc(getDrizzleColumn(patches, input.sortBy.field))
-                    : desc(getDrizzleColumn(patches, input.sortBy.field)),
-                ]
-              : undefined,
+            where: buildDrizzleWhere(provider, patches, input.where as never),
+            orderBy: toOrderBy(patches, input as never),
             limit: input.limit,
             offset: input.offset,
           });
         case "channels":
           return db.query.channels.findMany({
-            where: buildDrizzleWhere(provider, channels, input.where ?? []),
-            orderBy: input.sortBy
-              ? [
-                  input.sortBy.direction === "asc"
-                    ? asc(getDrizzleColumn(channels, input.sortBy.field))
-                    : desc(getDrizzleColumn(channels, input.sortBy.field)),
-                ]
-              : undefined,
+            where: buildDrizzleWhere(provider, channels, input.where as never),
+            orderBy: toOrderBy(channels, input as never),
             limit: input.limit,
             offset: input.offset,
           });
+        case "bundle_events": {
+          const baseQuery = (db as any)
+            .select()
+            .from(bundleEvents)
+            .where(
+              buildDrizzleWhere(provider, bundleEvents, input.where as never) ??
+                undefined,
+            );
+          const orderBy = toOrderBy(bundleEvents, input as never);
+          if (input.distinctOn) {
+            const rows = (
+              orderBy ? await baseQuery.orderBy(...orderBy) : await baseQuery
+            ) as Record<string, unknown>[];
+            return applyDistinctOnRows(
+              rows,
+              input.distinctOn.fields,
+              input.offset,
+              input.limit,
+            );
+          }
+          const query = baseQuery.limit(input.limit).offset(input.offset);
+          return orderBy ? query.orderBy(...orderBy) : query;
+        }
       }
     },
   };

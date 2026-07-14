@@ -6,7 +6,17 @@ import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
 import { type Migrator, type SchemaGenerator } from "./types";
 
 export * from "./createBundleDiff";
-export type { Migrator, SchemaGenerator } from "./types";
+export type {
+  BundleEventAnalyticsResult,
+  BundleEventAnalyticsWindow,
+  BundleEventSummary,
+  CreateBundleEventRequest,
+  InstallationHistoryRow,
+  InstallationSearchRow,
+  Migrator,
+  OffsetPaginationResult,
+  SchemaGenerator,
+} from "./types";
 export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 

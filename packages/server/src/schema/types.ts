@@ -1,6 +1,6 @@
 import type { ORMProvider } from "../db/types";
 
-export const HOT_UPDATER_SCHEMA_VERSION = "0.36.0";
+export const HOT_UPDATER_SCHEMA_VERSION = "0.37.0";
 export const HOT_UPDATER_SETTINGS_TABLE = "private_hot_updater_settings";
 
 export type HotUpdaterColumnType =
@@ -71,4 +71,9 @@ export interface HotUpdaterVersionedSchema {
   readonly tables: readonly HotUpdaterTableSchema[];
 }
 
-export type HotUpdaterSchemaVersion = "0.21.0" | "0.29.0" | "0.31.0" | "0.36.0";
+export type HotUpdaterSchemaVersion =
+  | "0.21.0"
+  | "0.29.0"
+  | "0.31.0"
+  | "0.36.0"
+  | "0.37.0";

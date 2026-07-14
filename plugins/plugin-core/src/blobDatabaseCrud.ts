@@ -32,6 +32,18 @@ const requireUniqueId = (
   }
 };
 
+const distinctCount = <TRow extends object>(
+  rows: readonly TRow[],
+  fields: readonly string[] | undefined,
+): number => {
+  if (fields === undefined) return rows.length;
+  return new Set(
+    rows.map((row) =>
+      JSON.stringify(fields.map((field) => Reflect.get(row, field))),
+    ),
+  ).size;
+};
+
 export const createBlobSnapshotCrud = (
   state: BlobSnapshotState,
 ): TransactionDatabaseAdapterImplementation => ({
@@ -89,6 +101,14 @@ export const createBlobSnapshotCrud = (
         });
         return input.data;
       }
+      case "bundle_events": {
+        requireUniqueId(snapshot.bundle_events, input.data.id, input.model);
+        state.snapshot = normalizeBlobDatabaseSnapshot({
+          ...snapshot,
+          bundle_events: [...snapshot.bundle_events, input.data],
+        });
+        return input.data;
+      }
     }
   },
   async update(input): Promise<Partial<BundleRow> | null> {
@@ -141,9 +161,36 @@ export const createBlobSnapshotCrud = (
     });
   },
   async count(input): Promise<number> {
-    return state.snapshot.bundles.filter((row) =>
-      matchesBlobDatabaseWhere(row, input.where),
-    ).length;
+    switch (input.model) {
+      case "bundles":
+        return distinctCount(
+          state.snapshot.bundles.filter((row) =>
+            matchesBlobDatabaseWhere(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
+      case "bundle_patches":
+        return distinctCount(
+          state.snapshot.bundle_patches.filter((row) =>
+            matchesBlobDatabaseWhere(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
+      case "channels":
+        return distinctCount(
+          state.snapshot.channels.filter((row) =>
+            matchesBlobDatabaseWhere(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
+      case "bundle_events":
+        return distinctCount(
+          state.snapshot.bundle_events.filter((row) =>
+            matchesBlobDatabaseWhere(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
+    }
   },
   async findOne(input): Promise<DatabaseImplementationResult | null> {
     switch (input.model) {
@@ -153,9 +200,21 @@ export const createBlobSnapshotCrud = (
             matchesBlobDatabaseWhere(row, input.where),
           ) ?? null
         );
+      case "bundle_patches":
+        return (
+          state.snapshot.bundle_patches.find((row) =>
+            matchesBlobDatabaseWhere(row, input.where),
+          ) ?? null
+        );
       case "channels":
         return (
           state.snapshot.channels.find((row) =>
+            matchesBlobDatabaseWhere(row, input.where),
+          ) ?? null
+        );
+      case "bundle_events":
+        return (
+          state.snapshot.bundle_events.find((row) =>
             matchesBlobDatabaseWhere(row, input.where),
           ) ?? null
         );
@@ -169,6 +228,8 @@ export const createBlobSnapshotCrud = (
         return queryBlobDatabaseRows(state.snapshot.bundle_patches, input);
       case "channels":
         return queryBlobDatabaseRows(state.snapshot.channels, input);
+      case "bundle_events":
+        return queryBlobDatabaseRows(state.snapshot.bundle_events, input);
     }
   },
 });

@@ -1,19 +1,19 @@
 import type {
   AppUpdateAvailableInfo,
+  AppVersionGetBundlesArgs,
   Bundle,
-  GetBundlesArgs,
-  UpdateInfo,
+  FingerprintGetBundlesArgs,
 } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
   createRequestBundleResolver,
-  type DatabaseAdapter,
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
+import { createBundleEventService } from "./bundleEvents";
 import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
-import type { DatabaseAPI } from "./types";
+import type { DatabaseAPI, DatabaseAdapter } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
 
 export function createDatabaseAdapterCore<TContext = unknown>(
@@ -37,6 +37,7 @@ export function createDatabaseAdapterCore<TContext = unknown>(
 } {
   const client = createDatabaseClient(database);
   const beforeOperation = options?.beforeOperation;
+  const bundleEvents = createBundleEventService(database);
 
   const api: DatabaseAPI<TContext> = {
     async getBundleById(
@@ -48,15 +49,15 @@ export function createDatabaseAdapterCore<TContext = unknown>(
     },
 
     async getUpdateInfo(
-      args: GetBundlesArgs,
+      args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
-    ): Promise<UpdateInfo | null> {
+    ): Promise<import("@hot-updater/core").UpdateInfo | null> {
       await beforeOperation?.();
       return client.getUpdateInfo(args, context);
     },
 
     async getAppUpdateInfo(
-      args: GetBundlesArgs,
+      args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
       context?: HotUpdaterContext<TContext>,
     ): Promise<AppUpdateAvailableInfo | null> {
       const info = await this.getUpdateInfo(args, context);
@@ -142,6 +143,42 @@ export function createDatabaseAdapterCore<TContext = unknown>(
     ): Promise<void> {
       await beforeOperation?.();
       await client.deleteBundleById(bundleId, context);
+    },
+
+    async appendBundleEvent(input, context) {
+      await beforeOperation?.();
+      await bundleEvents.appendBundleEvent(input, context);
+    },
+
+    async getBundleEventSummary(bundleId, context) {
+      await beforeOperation?.();
+      return bundleEvents.getBundleEventSummary(bundleId, context);
+    },
+
+    async getBundleEventAnalytics(bundleId, window, limit, offset, context) {
+      await beforeOperation?.();
+      return bundleEvents.getBundleEventAnalytics(
+        bundleId,
+        window,
+        limit,
+        offset,
+        context,
+      );
+    },
+
+    async searchInstallations(query, limit, offset, context) {
+      await beforeOperation?.();
+      return bundleEvents.searchInstallations(query, limit, offset, context);
+    },
+
+    async getInstallationHistory(installId, limit, offset, context) {
+      await beforeOperation?.();
+      return bundleEvents.getInstallationHistory(
+        installId,
+        limit,
+        offset,
+        context,
+      );
     },
   };
 

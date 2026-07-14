@@ -10,7 +10,12 @@ import {
   blobString,
   blobStringArray,
 } from "./blobDatabaseValue";
-import type { BundlePatchRow, BundleRow, ChannelRow } from "./types";
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ChannelRow,
+} from "./types";
 
 export const BLOB_DATABASE_SNAPSHOT_KEY =
   "_hot-updater/database/v2.json" as const;
@@ -22,6 +27,7 @@ export type BlobDatabaseSnapshot = {
   readonly bundles: readonly BundleRow[];
   readonly bundle_patches: readonly BundlePatchRow[];
   readonly channels: readonly ChannelRow[];
+  readonly bundle_events: readonly BundleEventRow[];
 };
 
 export const emptyBlobDatabaseSnapshot = (): BlobDatabaseSnapshot => ({
@@ -29,6 +35,7 @@ export const emptyBlobDatabaseSnapshot = (): BlobDatabaseSnapshot => ({
   bundles: [],
   bundle_patches: [],
   channels: [],
+  bundle_events: [],
 });
 
 const parseBundleRow = (
@@ -116,6 +123,44 @@ const parsePatchRow = (value: unknown, source: string): BundlePatchRow => {
   };
 };
 
+const parseBundleEventRow = (
+  value: unknown,
+  source: string,
+): BundleEventRow => {
+  const input = blobRecord(value, source);
+  const type = blobString(blobProperty(input, "type"), source);
+  const updateStrategy = blobString(
+    blobProperty(input, "update_strategy"),
+    source,
+  );
+  if (type !== "UPDATE_APPLIED" && type !== "RECOVERED") {
+    throw new BlobDatabaseSnapshotError(source);
+  }
+  if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
+    throw new BlobDatabaseSnapshotError(source);
+  }
+  return {
+    id: blobString(blobProperty(input, "id"), source),
+    type,
+    install_id: blobString(blobProperty(input, "install_id"), source),
+    user_id: blobNullableString(blobProperty(input, "user_id"), source),
+    username: blobNullableString(blobProperty(input, "username"), source),
+    from_bundle_id: blobString(blobProperty(input, "from_bundle_id"), source),
+    to_bundle_id: blobString(blobProperty(input, "to_bundle_id"), source),
+    platform: blobPlatform(blobProperty(input, "platform"), source),
+    app_version: blobString(blobProperty(input, "app_version"), source),
+    channel: blobString(blobProperty(input, "channel"), source),
+    cohort: blobString(blobProperty(input, "cohort"), source),
+    update_strategy: updateStrategy,
+    fingerprint_hash: blobNullableString(
+      blobProperty(input, "fingerprint_hash"),
+      source,
+    ),
+    sdk_version: blobNullableString(blobProperty(input, "sdk_version"), source),
+    received_at_ms: blobNumber(blobProperty(input, "received_at_ms"), source),
+  };
+};
+
 export const parseBlobDatabaseSnapshot = (
   value: unknown,
   source: string = BLOB_DATABASE_SNAPSHOT_KEY,
@@ -151,6 +196,10 @@ export const parseBlobDatabaseSnapshot = (
       source,
     ).map((row) => parsePatchRow(row, source)),
     channels,
+    bundle_events: blobArray(
+      blobProperty(input, "bundle_events") ?? [],
+      source,
+    ).map((row) => parseBundleEventRow(row, source)),
   });
   validateSnapshotRelations(snapshot, source);
   return snapshot;
@@ -167,11 +216,13 @@ const validateSnapshotRelations = (
   const channelNames = new Set(snapshot.channels.map(({ name }) => name));
   const bundleIds = new Set(snapshot.bundles.map(({ id }) => id));
   const patchIds = new Set(snapshot.bundle_patches.map(({ id }) => id));
+  const eventIds = new Set(snapshot.bundle_events.map(({ id }) => id));
   if (
     channelIds.size !== snapshot.channels.length ||
     channelNames.size !== snapshot.channels.length ||
     bundleIds.size !== snapshot.bundles.length ||
     patchIds.size !== snapshot.bundle_patches.length ||
+    eventIds.size !== snapshot.bundle_events.length ||
     snapshot.bundles.some(
       ({ channel, channel_id }) =>
         !channelIds.has(channel_id) ||
@@ -201,5 +252,10 @@ export const normalizeBlobDatabaseSnapshot = (
   ),
   channels: [...snapshot.channels].sort((left, right) =>
     left.id.localeCompare(right.id),
+  ),
+  bundle_events: [...snapshot.bundle_events].sort(
+    (left, right) =>
+      left.received_at_ms - right.received_at_ms ||
+      left.id.localeCompare(right.id),
   ),
 });

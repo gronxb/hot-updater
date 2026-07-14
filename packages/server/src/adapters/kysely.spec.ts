@@ -52,6 +52,28 @@ setupDatabaseAdapterTestSuite({
   },
 });
 
+const createBundleEventRow = (
+  id: string,
+  installId: string,
+  receivedAtMs: number,
+) => ({
+  id,
+  type: "UPDATE_APPLIED" as const,
+  install_id: installId,
+  user_id: null,
+  username: null,
+  from_bundle_id: `from-${installId}`,
+  to_bundle_id: `to-${installId}`,
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "stable",
+  update_strategy: "appVersion" as const,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: receivedAtMs,
+});
+
 describe("kyselyAdapter SQLite JSON storage", () => {
   it("round-trips JSON values through text columns", async () => {
     // Given
@@ -175,6 +197,101 @@ describe("kyselyAdapter soft relations", () => {
     } finally {
       await softDatabase.destroy();
       await softClient.close();
+    }
+  });
+});
+
+describe("kyselyAdapter bundle_events distinct semantics", () => {
+  it("counts distinct installs and keeps the latest row per install", async () => {
+    const localClient = new PGlite();
+    const localDatabase = new Kysely({
+      dialect: new PGliteDialect(localClient),
+    });
+    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    const adapter = kyselyAdapter({
+      db: localDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-a-1", "install-a", 100),
+      });
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-a-2", "install-a", 200),
+      });
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-b-1", "install-b", 150),
+      });
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-b-2", "install-b", 150),
+      });
+
+      await expect(
+        adapter.count({ model: "bundle_events", distinct: ["install_id"] }),
+      ).resolves.toBe(2);
+      await expect(
+        adapter.findMany({
+          model: "bundle_events",
+          distinctOn: { fields: ["install_id"] },
+          orderBy: [
+            { field: "install_id", direction: "asc" },
+            { field: "received_at_ms", direction: "desc" },
+            { field: "id", direction: "desc" },
+          ],
+        }),
+      ).resolves.toMatchObject([
+        { id: "event-a-2", install_id: "install-a", received_at_ms: 200 },
+        { id: "event-b-2", install_id: "install-b", received_at_ms: 150 },
+      ]);
+    } finally {
+      await localDatabase.destroy();
+      await localClient.close();
+    }
+  });
+  it("honors explicit null ordering for bundle event queries", async () => {
+    const localClient = new PGlite();
+    const localDatabase = new Kysely({
+      dialect: new PGliteDialect(localClient),
+    });
+    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    const adapter = kyselyAdapter({
+      db: localDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-null", "install-a", 100),
+      });
+      await adapter.create({
+        model: "bundle_events",
+        data: {
+          ...createBundleEventRow("event-user", "install-b", 200),
+          user_id: "user-123",
+        },
+      });
+
+      await expect(
+        adapter.findMany({
+          model: "bundle_events",
+          orderBy: [
+            { field: "user_id", direction: "asc", nulls: "first" },
+            { field: "id", direction: "asc" },
+          ],
+        }),
+      ).resolves.toMatchObject([
+        { id: "event-null", user_id: null },
+        { id: "event-user", user_id: "user-123" },
+      ]);
+    } finally {
+      await localDatabase.destroy();
+      await localClient.close();
     }
   });
 });

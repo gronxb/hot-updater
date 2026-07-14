@@ -32,9 +32,27 @@ export const DATABASE_ADAPTER_TEST_SCHEMA_SQL = `
     patch_storage_uri text not null,
     order_index integer not null default 0
   );
+  create table bundle_events (
+    id text primary key,
+    type text not null,
+    install_id text not null,
+    user_id text,
+    username text,
+    from_bundle_id text not null,
+    to_bundle_id text not null,
+    platform text not null,
+    app_version text not null,
+    channel text not null,
+    cohort text not null,
+    update_strategy text not null,
+    fingerprint_hash text,
+    sdk_version text,
+    received_at_ms integer not null
+  );
 `;
 
 export const DATABASE_ADAPTER_TEST_RESET_SQL = `
+  delete from bundle_events;
   delete from bundle_patches;
   delete from bundles;
   delete from channels;

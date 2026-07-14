@@ -1,114 +1,125 @@
 import { hotUpdaterSchemaVersions } from "../../schema";
-import type {
-  HotUpdaterCheckSchema,
-  HotUpdaterForeignKeySchema,
-  HotUpdaterTableSchema,
-} from "../../schema/types";
-import type { ORMSQLProvider, RelationMode } from "../types";
+import type { RelationMode } from "../types";
+import type { ORMSQLProvider } from "../types";
+import { schemaIndexAppliesToProvider } from "./registry";
 import {
-  getSchemaVersionIndex,
-  schemaIndexAppliesToProvider,
-} from "./registry";
-import {
+  createCheckSql,
+  createForeignKeySql,
   createIndexSql,
   createTableStatement,
   sqlColumnDefinition,
 } from "./sql";
 
-const nameMap = <T extends { readonly name: string }>(
-  items: readonly T[] | undefined,
-): Map<string, T> => new Map((items ?? []).map((item) => [item.name, item]));
+const getSchemaVersionIndex = (version: string): number =>
+  hotUpdaterSchemaVersions.findIndex((schema) => schema.version === version);
 
-const columnMap = (
-  table: HotUpdaterTableSchema,
-): Map<string, { readonly ormName: string }> =>
-  new Map(table.columns.map((column) => [column.ormName, column]));
-
-const stableStringify = (value: unknown): string => JSON.stringify(value);
-
-const assertSameSchemaValue = (
-  location: string,
-  left: unknown,
-  right: unknown,
-) => {
-  if (stableStringify(left) !== stableStringify(right)) {
-    throw new Error(
-      `Unsupported Hot Updater schema change at ${location}. Add an explicit migration step before changing existing schema metadata.`,
-    );
-  }
-};
-
-const compareNamedItems = <T extends { readonly name: string }>(
-  location: string,
-  previousItems: readonly T[] | undefined,
-  nextItems: readonly T[] | undefined,
-) => {
-  const nextItemsByName = nameMap(nextItems);
-  for (const previousItem of previousItems ?? []) {
-    const nextItem = nextItemsByName.get(previousItem.name);
-    if (!nextItem) {
-      throw new Error(
-        `Unsupported Hot Updater schema change at ${location}.${previousItem.name}. Removing schema metadata requires an explicit migration step.`,
-      );
-    }
-    assertSameSchemaValue(
-      `${location}.${previousItem.name}`,
-      previousItem,
-      nextItem,
-    );
-  }
-};
-
-const assertNoUnsupportedTableChanges = (
-  previous: HotUpdaterTableSchema,
-  next: HotUpdaterTableSchema,
+const createV036MigrationSql = (
   provider: ORMSQLProvider,
-) => {
-  const nextColumns = columnMap(next);
-  for (const previousColumn of previous.columns) {
-    const nextColumn = nextColumns.get(previousColumn.ormName);
-    if (!nextColumn) {
-      throw new Error(
-        `Unsupported Hot Updater schema change at ${previous.ormName}.${previousColumn.ormName}. Dropping columns requires an explicit migration step.`,
-      );
-    }
-    assertSameSchemaValue(
-      `${previous.ormName}.${previousColumn.ormName}`,
-      previousColumn,
-      nextColumn,
+  relationMode: RelationMode,
+): readonly string[] => {
+  const previous = hotUpdaterSchemaVersions.find(
+    (schema) => schema.version === "0.31.0",
+  );
+  const next = hotUpdaterSchemaVersions.find(
+    (schema) => schema.version === "0.36.0",
+  );
+  if (!previous || !next) {
+    throw new Error("Hot Updater schema version 0.36.0 is incomplete.");
+  }
+  const channels = next.tables.find((table) => table.ormName === "channels");
+  const bundles = next.tables.find((table) => table.ormName === "bundles");
+  const previousBundles = previous.tables.find(
+    (table) => table.ormName === "bundles",
+  );
+  if (!channels || !bundles || !previousBundles) {
+    throw new Error("Hot Updater schema version 0.36.0 is incomplete.");
+  }
+  const previousBundleIndexes = new Set(
+    (previousBundles.indexes ?? []).map((index) => index.name),
+  );
+  const createChannels = createTableStatement(channels, provider, relationMode);
+  const channelIndexSql = (channels.indexes ?? [])
+    .filter((index) => schemaIndexAppliesToProvider(index, provider))
+    .map((index) => createIndexSql(channels, index, provider));
+  const bundleIndexSql = (bundles.indexes ?? [])
+    .filter((index) => schemaIndexAppliesToProvider(index, provider))
+    .filter((index) => !previousBundleIndexes.has(index.name))
+    .map((index) => createIndexSql(bundles, index, provider));
+  const channelIdColumn = bundles.columns.find(
+    (column) => column.ormName === "channel_id",
+  );
+  if (!channelIdColumn) {
+    throw new Error(
+      "Hot Updater schema version 0.36.0 bundles.channel_id is missing.",
     );
   }
-  compareNamedItems(
-    `${previous.ormName}.indexes`,
-    previous.indexes?.filter((index) =>
-      schemaIndexAppliesToProvider(index, provider),
-    ),
-    next.indexes?.filter((index) =>
-      schemaIndexAppliesToProvider(index, provider),
-    ),
-  );
-  compareNamedItems(`${previous.ormName}.checks`, previous.checks, next.checks);
-  compareNamedItems(
-    `${previous.ormName}.foreignKeys`,
-    previous.foreignKeys,
-    next.foreignKeys,
-  );
+  const nullableChannelIdColumn = sqlColumnDefinition(
+    bundles,
+    channelIdColumn,
+    provider,
+  ).replace(/\s+not null(?=(?:\s+default|$))/i, "");
+  if (provider === "sqlite") {
+    const bundleColumns = bundles.columns.map((column) => column.ormName);
+    const createBundlesV036 = createTableStatement(
+      bundles,
+      provider,
+      relationMode,
+    ).replace(
+      /^create table if not exists bundles/i,
+      "create table bundles_v036",
+    );
+    const selectColumns = bundleColumns.map((column) =>
+      column === "channel_id"
+        ? "coalesce((select channels.id from channels where channels.name = bundles.channel), bundles.channel) as channel_id"
+        : column,
+    );
+    return [
+      createChannels,
+      ...channelIndexSql,
+      "insert into channels (id, name) select distinct channel, channel from bundles where channel is not null on conflict do nothing",
+      createBundlesV036,
+      `insert into bundles_v036 (${bundleColumns.join(", ")}) select ${selectColumns.join(", ")} from bundles`,
+      "drop table bundles",
+      "alter table bundles_v036 rename to bundles",
+      ...bundleIndexSql,
+      "pragma foreign_key_check",
+    ];
+  }
+  const addChannelIdColumn = `alter table bundles add column ${nullableChannelIdColumn}`;
+  if (provider === "mysql") {
+    return [
+      createChannels,
+      ...channelIndexSql,
+      addChannelIdColumn,
+      "insert into channels (id, name) select distinct channel, channel from bundles where channel is not null",
+      "update bundles join channels on channels.name = bundles.channel set bundles.channel_id = channels.id",
+      "alter table bundles modify column channel_id varchar(255) not null",
+      ...bundleIndexSql,
+      ...(relationMode === "foreign-keys"
+        ? (bundles.foreignKeys ?? []).map((foreignKey) =>
+            createForeignKeySql(bundles, foreignKey),
+          )
+        : []),
+    ];
+  }
+  return [
+    createChannels,
+    ...channelIndexSql,
+    addChannelIdColumn,
+    "insert into channels (id, name) select distinct channel, channel from bundles where channel is not null on conflict do nothing",
+    "update bundles set channel_id = channels.id from channels where channels.name = bundles.channel",
+    "alter table bundles alter column channel_id set not null",
+    ...bundleIndexSql,
+    ...(relationMode === "foreign-keys"
+      ? (bundles.foreignKeys ?? []).map((foreignKey) =>
+          createForeignKeySql(bundles, foreignKey),
+        )
+      : []),
+  ];
 };
-
-const createForeignKeySql = (
-  table: HotUpdaterTableSchema,
-  foreignKey: HotUpdaterForeignKeySchema,
-): string =>
-  `alter table ${table.ormName} add constraint ${foreignKey.name} foreign key (${foreignKey.columns.join(", ")}) references ${foreignKey.referencedTable}(${foreignKey.referencedColumns.join(", ")}) on update ${foreignKey.onUpdate} on delete ${foreignKey.onDelete}`;
-
-const createCheckSql = (
-  table: HotUpdaterTableSchema,
-  check: HotUpdaterCheckSchema,
-): string =>
-  `alter table ${table.ormName} add constraint ${check.name} check (${check.expression})`;
 
 const createAddedTableSql = (
-  table: HotUpdaterTableSchema,
+  table: (typeof hotUpdaterSchemaVersions)[number]["tables"][number],
   provider: ORMSQLProvider,
   relationMode: RelationMode,
 ): readonly string[] => [
@@ -126,125 +137,30 @@ const createAddedTableSql = (
     : []),
 ];
 
-const createV036MigrationSql = (
-  provider: ORMSQLProvider,
-  relationMode: RelationMode,
-): readonly string[] => {
-  const next = hotUpdaterSchemaVersions.find(
-    (schema) => schema.version === "0.36.0",
-  );
-  if (!next) {
-    throw new Error("Hot Updater schema version 0.36.0 is not registered.");
-  }
-  const channels = next.tables.find((table) => table.ormName === "channels");
-  const bundles = next.tables.find((table) => table.ormName === "bundles");
-  if (!channels || !bundles) {
-    throw new Error("Hot Updater schema version 0.36.0 is incomplete.");
-  }
-
-  const createChannels = createTableStatement(channels, provider, relationMode);
-  const channelNameIndex = channels.indexes?.find(
-    (index) => index.name === "channels_name_key",
-  );
-  if (!channelNameIndex) {
-    throw new Error("Hot Updater channels schema is missing its name index.");
-  }
-  const createChannelNameIndex = createIndexSql(
-    channels,
-    channelNameIndex,
-    provider,
-  );
-  const backfillChannels = `${provider === "mysql" ? "insert ignore" : "insert"} into channels (id, name) select distinct channel, channel from bundles`;
-  const channelForeignKey = bundles.foreignKeys?.find(
-    (foreignKey) => foreignKey.name === "bundles_channel_id_fk",
-  );
-  const channelIdIndex = bundles.indexes?.find(
-    (index) => index.name === "bundles_channel_id_idx",
-  );
-  if (!channelIdIndex) {
-    throw new Error("Hot Updater bundles schema is missing its channel index.");
-  }
-
-  if (provider !== "sqlite") {
-    const addChannelId =
-      "alter table bundles add column channel_id varchar(255)";
-    const backfillBundleChannelIds =
-      provider === "mysql"
-        ? "update bundles join channels on channels.name = bundles.channel set bundles.channel_id = channels.id"
-        : "update bundles set channel_id = channels.id from channels where channels.name = bundles.channel";
-    const requireChannelId =
-      provider === "mysql"
-        ? "alter table bundles modify column channel_id varchar(255) not null"
-        : "alter table bundles alter column channel_id set not null";
-    return [
-      createChannels,
-      createChannelNameIndex,
-      addChannelId,
-      backfillChannels,
-      backfillBundleChannelIds,
-      requireChannelId,
-      createIndexSql(bundles, channelIdIndex, provider),
-      ...(relationMode === "foreign-keys" && channelForeignKey
-        ? [createForeignKeySql(bundles, channelForeignKey)]
-        : []),
-    ];
-  }
-
-  const temporaryBundles: HotUpdaterTableSchema = {
-    ...bundles,
-    ormName: "bundles_v036",
-  };
-  const columns = bundles.columns.map((column) => column.ormName).join(", ");
-  const sourceColumns = bundles.columns
-    .map((column) =>
-      column.ormName === "channel_id"
-        ? "channels.id"
-        : `bundles.${column.ormName}`,
-    )
-    .join(", ");
-  return [
-    createChannels,
-    createChannelNameIndex,
-    backfillChannels,
-    "pragma foreign_keys = off",
-    createTableStatement(temporaryBundles, provider, relationMode),
-    `insert into bundles_v036 (${columns}) select ${sourceColumns} from bundles join channels on channels.name = bundles.channel`,
-    "drop table bundles",
-    "alter table bundles_v036 rename to bundles",
-    ...(bundles.indexes ?? [])
-      .filter((index) => schemaIndexAppliesToProvider(index, provider))
-      .map((index) => createIndexSql(bundles, index, provider)),
-    "pragma foreign_keys = on",
-    "pragma foreign_key_check",
-  ];
-};
-
 const createChangedTableSql = (
-  previous: HotUpdaterTableSchema,
-  next: HotUpdaterTableSchema,
+  previous: (typeof hotUpdaterSchemaVersions)[number]["tables"][number],
+  next: (typeof hotUpdaterSchemaVersions)[number]["tables"][number],
   provider: ORMSQLProvider,
   relationMode: RelationMode,
 ): readonly string[] => {
-  assertNoUnsupportedTableChanges(previous, next, provider);
-  const previousColumns = columnMap(previous);
-  const previousIndexes = nameMap(
-    previous.indexes?.filter((index) =>
-      schemaIndexAppliesToProvider(index, provider),
-    ),
+  const previousColumns = new Set(
+    previous.columns.map((column) => column.ormName),
   );
-  const previousChecks = nameMap(previous.checks);
-  const previousForeignKeys = nameMap(previous.foreignKeys);
-
+  const previousIndexes = new Set(
+    (previous.indexes ?? []).map((index) => index.name),
+  );
+  const previousChecks = new Set(
+    (previous.checks ?? []).map((check) => check.name),
+  );
+  const previousForeignKeys = new Set(
+    (previous.foreignKeys ?? []).map((foreignKey) => foreignKey.name),
+  );
   return [
     ...next.columns
       .filter((column) => !previousColumns.has(column.ormName))
       .map(
         (column) =>
-          `alter table ${next.ormName} add column ${sqlColumnDefinition(
-            next,
-            column,
-            provider,
-          )}`,
+          `alter table ${next.ormName} add column ${sqlColumnDefinition(next, column, provider)}`,
       ),
     ...(next.indexes ?? [])
       .filter((index) => schemaIndexAppliesToProvider(index, provider))
@@ -271,15 +187,12 @@ export const createSchemaMigrationSql = (
 ): readonly string[] => {
   const fromIndex = getSchemaVersionIndex(fromVersion);
   const toIndex = getSchemaVersionIndex(toVersion);
-  if (fromIndex === -1) {
+  if (fromIndex === -1)
     throw new Error(`Unsupported Hot Updater schema version: ${fromVersion}`);
-  }
-  if (toIndex === -1) {
+  if (toIndex === -1)
     throw new Error(`Unsupported Hot Updater schema version: ${toVersion}`);
-  }
-  if (fromIndex > toIndex) {
+  if (fromIndex > toIndex)
     throw new Error(`Cannot migrate Hot Updater schema down to ${toVersion}.`);
-  }
 
   const statements: string[] = [];
   for (let index = fromIndex + 1; index <= toIndex; index += 1) {
@@ -320,3 +233,9 @@ export const createV036AlterSql = (
   relationMode: RelationMode = "foreign-keys",
 ): readonly string[] =>
   createSchemaMigrationSql("0.31.0", "0.36.0", provider, relationMode);
+
+export const createV037AlterSql = (
+  provider: ORMSQLProvider,
+  relationMode: RelationMode = "foreign-keys",
+): readonly string[] =>
+  createSchemaMigrationSql("0.36.0", "0.37.0", provider, relationMode);

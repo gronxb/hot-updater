@@ -12,6 +12,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import semver from "semver";
 
+import type { CreateBundleEventRequest } from "./db/types";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
@@ -41,6 +42,10 @@ export interface HandlerAPI<TContext = unknown> {
   ) => Promise<void>;
   deleteBundleById: (
     bundleId: string,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
+  appendBundleEvent: (
+    input: CreateBundleEventRequest,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
@@ -244,6 +249,92 @@ const requireBundlePatchPayload = (
 
   const { id: _ignoredId, ...rest } = bundlePatch;
   return rest;
+};
+const requireStringField = (
+  payload: Record<string, unknown>,
+  key: string,
+): string => {
+  const value = payload[key];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new HandlerBadRequestError(`Invalid event field: ${key}`);
+  }
+  return value;
+};
+
+const requireNullableStringField = (
+  payload: Record<string, unknown>,
+  key: string,
+): string | null => {
+  const value = payload[key];
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "string") {
+    throw new HandlerBadRequestError(`Invalid event field: ${key}`);
+  }
+  return value;
+};
+
+const requireBundleEventPayload = (
+  payload: unknown,
+): CreateBundleEventRequest => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new HandlerBadRequestError("Invalid event payload");
+  }
+  const record = payload as Record<string, unknown>;
+  const type = requireStringField(record, "type");
+  if (type !== "UPDATE_APPLIED" && type !== "RECOVERED") {
+    throw new HandlerBadRequestError("Invalid event field: type");
+  }
+  const platform = requireStringField(record, "platform");
+  if (!isPlatform(platform)) {
+    throw new HandlerBadRequestError("Invalid event field: platform");
+  }
+  const updateStrategy = requireStringField(record, "updateStrategy");
+  if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
+    throw new HandlerBadRequestError("Invalid event field: updateStrategy");
+  }
+  return {
+    type,
+    installId: requireStringField(record, "installId"),
+    fromBundleId: requireStringField(record, "fromBundleId"),
+    toBundleId: requireStringField(record, "toBundleId"),
+    ...(record.userId === undefined
+      ? {}
+      : { userId: requireStringField(record, "userId") }),
+    ...(record.username === undefined
+      ? {}
+      : { username: requireStringField(record, "username") }),
+    platform,
+    appVersion: requireStringField(record, "appVersion"),
+    channel: requireStringField(record, "channel"),
+    cohort: requireStringField(record, "cohort"),
+    updateStrategy,
+    fingerprintHash: requireNullableStringField(record, "fingerprintHash"),
+  };
+};
+
+const handleAppendBundleEvent: RouteHandler = async (
+  _params,
+  request,
+  api,
+  context,
+) => {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    throw new HandlerBadRequestError("Invalid event payload");
+  }
+  const payload = requireBundleEventPayload(body);
+  await api.appendBundleEvent(
+    {
+      ...payload,
+      sdkVersion: request.headers.get(SDK_VERSION_HEADER),
+    } as CreateBundleEventRequest,
+    context,
+  );
+  return new Response(null, { status: 204 });
 };
 
 const handleFingerprintUpdateWithCohort: RouteHandler = async (
@@ -523,6 +614,7 @@ const routes: Record<string, RouteHandler<any>> = {
   updateBundle: handleUpdateBundle,
   deleteBundle: handleDeleteBundle,
   getChannels: handleGetChannels,
+  appendBundleEvent: handleAppendBundleEvent,
 };
 
 /**
@@ -574,6 +666,7 @@ export function createHandler<TContext = unknown>(
       "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
       "appVersionUpdateWithCohort",
     );
+    addRoute(router, "POST", "/events", "appendBundleEvent");
   }
 
   if (routeOptions.bundles) {
@@ -628,16 +721,10 @@ export function createHandler<TContext = unknown>(
       }
 
       console.error("Hot Updater handler error:", error);
-      return new Response(
-        JSON.stringify({
-          error: "Internal server error",
-          message: error instanceof Error ? error.message : "Unknown error",
-        }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
   };
 }

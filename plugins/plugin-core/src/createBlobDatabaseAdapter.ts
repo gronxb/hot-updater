@@ -126,6 +126,7 @@ const loadLegacySnapshot = async (
       bundles: [...bundles.values()],
       bundle_patches: [...patches.values()],
       channels: [...channels.values()],
+      bundle_events: [],
     },
     "legacy update.json manifests",
   );

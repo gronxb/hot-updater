@@ -7,8 +7,10 @@ import {
 import admin from "firebase-admin";
 
 import {
+  parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
   parseFirebaseChannelRow,
+  parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
 import {
   createFirebaseDatabaseCollections,
@@ -99,19 +101,41 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
             return read((database) => database.findOne(input));
           }
           await ensureMigrated();
-          if (input.model === "bundles") {
-            const document = await collections.bundles.doc(id).get();
-            return document.exists
-              ? parseFirebaseBundleRow(
-                  document.data(),
-                  `bundles/${document.id}`,
-                )
-              : null;
+          switch (input.model) {
+            case "bundles": {
+              const document = await collections.bundles.doc(id).get();
+              return document.exists
+                ? parseFirebaseBundleRow(
+                    document.data(),
+                    `bundles/${document.id}`,
+                  )
+                : null;
+            }
+            case "bundle_patches": {
+              const document = await collections.bundlePatches.doc(id).get();
+              return document.exists
+                ? parseFirebasePatchRow(
+                    document.data(),
+                    `bundle_patches/${document.id}`,
+                  )
+                : null;
+            }
+            case "channels": {
+              const document = await collections.channels.doc(id).get();
+              return document.exists
+                ? parseFirebaseChannelRow(document.data(), document.id)
+                : null;
+            }
+            case "bundle_events": {
+              const document = await collections.bundleEvents.doc(id).get();
+              return document.exists
+                ? parseFirebaseBundleEventRow(
+                    document.data(),
+                    `bundle_events/${document.id}`,
+                  )
+                : null;
+            }
           }
-          const document = await collections.channels.doc(id).get();
-          return document.exists
-            ? parseFirebaseChannelRow(document.data(), document.id)
-            : null;
         },
         findMany: (input) => read((database) => database.findMany(input)),
         getUpdateInfo: async (args, context) => {

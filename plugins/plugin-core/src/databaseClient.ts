@@ -373,7 +373,7 @@ export const createDatabaseClient = <TContext = unknown>(
           model: "channels",
           limit: PAGE_SIZE,
           offset,
-          sortBy: { field: "name", direction: "asc" },
+          orderBy: [{ field: "name", direction: "asc" }],
         });
         channels.push(...rows.map(({ name }) => name));
         if (rows.length < PAGE_SIZE) return channels;

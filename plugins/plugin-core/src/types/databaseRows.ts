@@ -44,10 +44,29 @@ export interface ChannelRow {
   readonly name: string;
 }
 
+export interface BundleEventRow {
+  readonly id: string;
+  readonly type: "UPDATE_APPLIED" | "RECOVERED";
+  readonly install_id: string;
+  readonly user_id: string | null;
+  readonly username: string | null;
+  readonly from_bundle_id: string;
+  readonly to_bundle_id: string;
+  readonly platform: Platform;
+  readonly app_version: string;
+  readonly channel: string;
+  readonly cohort: string;
+  readonly update_strategy: "fingerprint" | "appVersion";
+  readonly fingerprint_hash: string | null;
+  readonly sdk_version: string | null;
+  readonly received_at_ms: number;
+}
+
 export interface DatabaseModelMap {
   readonly bundles: BundleRow;
   readonly bundle_patches: BundlePatchRow;
   readonly channels: ChannelRow;
+  readonly bundle_events: BundleEventRow;
 }
 
 export type DatabaseModel = keyof DatabaseModelMap;

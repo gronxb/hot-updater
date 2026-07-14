@@ -15,6 +15,7 @@ export type DatabaseWhereOperator =
 
 export type DatabaseWhereConnector = "AND" | "OR";
 export type DatabaseStringComparisonMode = "sensitive" | "insensitive";
+export type DatabaseSortNulls = "first" | "last";
 
 type WhereBase<TField extends string> = {
   readonly field: TField;
@@ -93,7 +94,25 @@ type DatabaseSortableField<TModel extends DatabaseModel> = {
     : never;
 }[DatabaseField<TModel>];
 
-export interface DatabaseSortBy<TModel extends DatabaseModel> {
+export interface DatabaseSortClause<TModel extends DatabaseModel> {
   readonly field: DatabaseSortableField<TModel>;
   readonly direction: "asc" | "desc";
+  readonly nulls?: DatabaseSortNulls;
+}
+
+export type DatabaseSortBy<TModel extends DatabaseModel> =
+  DatabaseSortClause<TModel>;
+
+export type DatabaseOrderBy<TModel extends DatabaseModel> = readonly [
+  DatabaseSortClause<TModel>,
+  ...DatabaseSortClause<TModel>[],
+];
+
+export type DatabaseDistinctFields<TModel extends DatabaseModel> = readonly [
+  DatabaseField<TModel>,
+  ...DatabaseField<TModel>[],
+];
+
+export interface DatabaseDistinctOn<TModel extends DatabaseModel> {
+  readonly fields: DatabaseDistinctFields<TModel>;
 }

@@ -1,8 +1,8 @@
 import type {
-  CountBundlesDatabaseInput,
+  CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
-  DatabaseModel,
   DatabaseAdapterImplementation,
+  DatabaseModel,
   DatabaseWhere,
   DeleteDatabaseImplementationInput,
   FindManyDatabaseImplementationInput,
@@ -151,6 +151,12 @@ const createPostgresImplementation = (
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
+      case "bundle_events":
+        return db
+          .insertInto("bundle_events")
+          .values(input.data)
+          .returningAll()
+          .executeTakeFirstOrThrow();
     }
   },
   async update(input: UpdateBundleDatabaseImplementationInput) {
@@ -177,14 +183,42 @@ const createPostgresImplementation = (
       }
     }
   },
-  async count(input: CountBundlesDatabaseInput) {
+  async count(input: CountDatabaseImplementationInput) {
     const where = buildWhere(input.where);
-    let query = db
-      .selectFrom("bundles")
-      .select(({ fn }) => fn.countAll<string>().as("count"));
-    if (where !== undefined) query = query.where(where);
-    const result = await query.executeTakeFirstOrThrow();
-    return Number(result.count);
+    switch (input.model) {
+      case "bundles": {
+        let query = db
+          .selectFrom("bundles")
+          .select(({ fn }) => fn.countAll<string>().as("count"));
+        if (where !== undefined) query = query.where(where);
+        const result = await query.executeTakeFirstOrThrow();
+        return Number(result.count);
+      }
+      case "bundle_patches": {
+        let query = db
+          .selectFrom("bundle_patches")
+          .select(({ fn }) => fn.countAll<string>().as("count"));
+        if (where !== undefined) query = query.where(where);
+        const result = await query.executeTakeFirstOrThrow();
+        return Number(result.count);
+      }
+      case "channels": {
+        let query = db
+          .selectFrom("channels")
+          .select(({ fn }) => fn.countAll<string>().as("count"));
+        if (where !== undefined) query = query.where(where);
+        const result = await query.executeTakeFirstOrThrow();
+        return Number(result.count);
+      }
+      case "bundle_events": {
+        let query = db
+          .selectFrom("bundle_events")
+          .select(({ fn }) => fn.countAll<string>().as("count"));
+        if (where !== undefined) query = query.where(where);
+        const result = await query.executeTakeFirstOrThrow();
+        return Number(result.count);
+      }
+    }
   },
   async findOne(input: FindOneDatabaseImplementationInput) {
     const where = buildWhere(input.where);
@@ -194,8 +228,18 @@ const createPostgresImplementation = (
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
+      case "bundle_patches": {
+        let query = db.selectFrom("bundle_patches").selectAll();
+        if (where !== undefined) query = query.where(where);
+        return (await query.executeTakeFirst()) ?? null;
+      }
       case "channels": {
         let query = db.selectFrom("channels").selectAll();
+        if (where !== undefined) query = query.where(where);
+        return (await query.executeTakeFirst()) ?? null;
+      }
+      case "bundle_events": {
+        let query = db.selectFrom("bundle_events").selectAll();
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
@@ -222,6 +266,14 @@ const createPostgresImplementation = (
       }
       case "channels": {
         let query = db.selectFrom("channels").selectAll();
+        if (where !== undefined) query = query.where(where);
+        if (input.sortBy !== undefined) {
+          query = query.orderBy(input.sortBy.field, input.sortBy.direction);
+        }
+        return query.limit(input.limit).offset(input.offset).execute();
+      }
+      case "bundle_events": {
+        let query = db.selectFrom("bundle_events").selectAll();
         if (where !== undefined) query = query.where(where);
         if (input.sortBy !== undefined) {
           query = query.orderBy(input.sortBy.field, input.sortBy.direction);

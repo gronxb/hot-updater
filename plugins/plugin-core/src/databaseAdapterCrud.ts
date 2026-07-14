@@ -1,21 +1,18 @@
 import type {
+  CountDatabaseInput,
   CreateDatabaseInput,
-  DatabaseDeleteModel,
-  DatabaseFindOneModel,
-  DatabaseImplementationResult,
-  DatabaseModel,
   DatabaseAdapter,
   DatabaseAdapterImplementation,
-  DatabaseRow,
+  DatabaseImplementationResult,
+  DatabaseModel,
   DatabaseSelect,
-  DatabaseWhere,
   DeleteDatabaseInput,
   FindManyDatabaseInput,
   FindOneDatabaseInput,
   SelectedDatabaseRow,
   TransactionDatabaseAdapter,
   TransactionDatabaseAdapterImplementation,
-  UpdateBundleDatabaseInput,
+  UpdateDatabaseInput,
 } from "./types";
 import { databaseFields } from "./types/databaseFields";
 
@@ -26,6 +23,7 @@ export type DatabaseAdapterInputErrorCode =
   | "incomplete-channel-create"
   | "incomplete-channel-update"
   | "invalid-data"
+  | "invalid-distinct"
   | "invalid-field"
   | "invalid-model"
   | "invalid-operation"
@@ -35,53 +33,176 @@ export type DatabaseAdapterInputErrorCode =
   | "invalid-update-selector";
 
 export class DatabaseAdapterInputError extends Error {
-  readonly code: DatabaseAdapterInputErrorCode;
+  readonly name = "DatabaseAdapterInputError";
 
-  constructor(code: DatabaseAdapterInputErrorCode) {
+  constructor(readonly code: DatabaseAdapterInputErrorCode) {
     super(`Invalid database adapter input: ${code}`);
-    this.name = "DatabaseAdapterInputError";
-    this.code = code;
   }
 }
+
+type ValidatorMap = Record<
+  DatabaseModel,
+  Record<string, (value: unknown) => boolean>
+>;
+type OrderByClause = {
+  readonly field: string;
+  readonly direction: "asc" | "desc";
+  readonly nulls?: "first" | "last";
+};
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const validateSelect = (model: DatabaseModel, select: unknown): void => {
-  if (select === undefined) return;
-  if (
-    !Array.isArray(select) ||
-    !select.every((field) => typeof field === "string")
-  ) {
-    throw new DatabaseAdapterInputError("invalid-query");
-  }
-  if (select.length === 0) {
-    throw new DatabaseAdapterInputError("empty-select");
-  }
-  validateFields(model, select);
+const modelValidators: ValidatorMap = {
+  bundles: {
+    id: (value) => typeof value === "string",
+    platform: (value) => value === "ios" || value === "android",
+    should_force_update: (value) => typeof value === "boolean",
+    enabled: (value) => typeof value === "boolean",
+    file_hash: (value) => typeof value === "string",
+    git_commit_hash: (value) => value === null || typeof value === "string",
+    message: (value) => value === null || typeof value === "string",
+    channel: (value) => typeof value === "string",
+    channel_id: (value) => typeof value === "string",
+    storage_uri: (value) => typeof value === "string",
+    target_app_version: (value) => value === null || typeof value === "string",
+    fingerprint_hash: (value) => value === null || typeof value === "string",
+    metadata: () => true,
+    rollout_cohort_count: (value) =>
+      typeof value === "number" && Number.isFinite(value),
+    target_cohorts: (value) =>
+      value === null ||
+      (Array.isArray(value) && value.every((item) => typeof item === "string")),
+    manifest_storage_uri: (value) =>
+      value === null || typeof value === "string",
+    manifest_file_hash: (value) => value === null || typeof value === "string",
+    asset_base_storage_uri: (value) =>
+      value === null || typeof value === "string",
+  },
+  bundle_patches: {
+    id: (value) => typeof value === "string",
+    bundle_id: (value) => typeof value === "string",
+    base_bundle_id: (value) => typeof value === "string",
+    base_file_hash: (value) => typeof value === "string",
+    patch_file_hash: (value) => typeof value === "string",
+    patch_storage_uri: (value) => typeof value === "string",
+    order_index: (value) => typeof value === "number" && Number.isFinite(value),
+  },
+  channels: {
+    id: (value) => typeof value === "string",
+    name: (value) => typeof value === "string",
+  },
+  bundle_events: {
+    id: (value) => typeof value === "string",
+    type: (value) => value === "UPDATE_APPLIED" || value === "RECOVERED",
+    install_id: (value) => typeof value === "string",
+    user_id: (value) => value === null || typeof value === "string",
+    username: (value) => value === null || typeof value === "string",
+    from_bundle_id: (value) => typeof value === "string",
+    to_bundle_id: (value) => typeof value === "string",
+    platform: (value) => value === "ios" || value === "android",
+    app_version: (value) => typeof value === "string",
+    channel: (value) => typeof value === "string",
+    cohort: (value) => typeof value === "string",
+    update_strategy: (value) =>
+      value === "fingerprint" || value === "appVersion",
+    fingerprint_hash: (value) => value === null || typeof value === "string",
+    sdk_version: (value) => value === null || typeof value === "string",
+    received_at_ms: (value) =>
+      typeof value === "number" && Number.isFinite(value),
+  },
 };
 
-const validateModel = (model: DatabaseModel): void => {
-  if (!Object.hasOwn(databaseFields, model)) {
+const stringFields = new Set<string>([
+  "id",
+  "platform",
+  "file_hash",
+  "git_commit_hash",
+  "message",
+  "channel",
+  "channel_id",
+  "storage_uri",
+  "target_app_version",
+  "fingerprint_hash",
+  "bundle_id",
+  "base_bundle_id",
+  "base_file_hash",
+  "patch_file_hash",
+  "patch_storage_uri",
+  "name",
+  "type",
+  "install_id",
+  "user_id",
+  "username",
+  "from_bundle_id",
+  "to_bundle_id",
+  "app_version",
+  "cohort",
+  "update_strategy",
+  "sdk_version",
+]);
+const numberFields = new Set<string>([
+  "rollout_cohort_count",
+  "order_index",
+  "received_at_ms",
+]);
+const booleanFields = new Set<string>(["should_force_update", "enabled"]);
+const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
+  bundles: new Set([
+    "id",
+    "platform",
+    "file_hash",
+    "git_commit_hash",
+    "message",
+    "channel",
+    "channel_id",
+    "storage_uri",
+    "target_app_version",
+    "fingerprint_hash",
+    "rollout_cohort_count",
+    "manifest_storage_uri",
+    "manifest_file_hash",
+    "asset_base_storage_uri",
+  ]),
+  bundle_patches: new Set([
+    "id",
+    "bundle_id",
+    "base_bundle_id",
+    "base_file_hash",
+    "patch_file_hash",
+    "patch_storage_uri",
+    "order_index",
+  ]),
+  channels: new Set(["id", "name"]),
+  bundle_events: new Set([
+    "id",
+    "type",
+    "install_id",
+    "user_id",
+    "username",
+    "from_bundle_id",
+    "to_bundle_id",
+    "platform",
+    "app_version",
+    "channel",
+    "cohort",
+    "update_strategy",
+    "fingerprint_hash",
+    "sdk_version",
+    "received_at_ms",
+  ]),
+};
+
+const validateModel: (model: unknown) => asserts model is DatabaseModel = (
+  model,
+) => {
+  if (typeof model !== "string" || !(model in databaseFields)) {
     throw new DatabaseAdapterInputError("invalid-model");
   }
 };
 
-const validateOperationModel = (
-  model: unknown,
-  allowedModels: readonly DatabaseModel[],
-): void => {
-  if (
-    typeof model !== "string" ||
-    !allowedModels.some((candidate) => candidate === model)
-  ) {
-    throw new DatabaseAdapterInputError("invalid-operation");
-  }
-};
-
 const validateField = (model: DatabaseModel, field: string): void => {
-  validateModel(model);
-  if (!databaseFields[model].some((candidate) => candidate === field)) {
+  if (!(databaseFields[model] as readonly string[]).includes(field)) {
     throw new DatabaseAdapterInputError("invalid-field");
   }
 };
@@ -93,309 +214,159 @@ const validateFields = (
   for (const field of fields) validateField(model, field);
 };
 
-const databaseWhereOperators = new Set([
-  "eq",
-  "ne",
-  "lt",
-  "lte",
-  "gt",
-  "gte",
-  "in",
-  "not_in",
-  "contains",
-  "starts_with",
-  "ends_with",
-]);
+const isStringField = (field: string): boolean => stringFields.has(field);
+const isNumberField = (field: string): boolean => numberFields.has(field);
+const isBooleanField = (field: string): boolean => booleanFields.has(field);
 
-const validateQueryFields = (model: DatabaseModel, input: unknown): void => {
-  validateModel(model);
-  if (!isRecord(input)) {
+const validateSelect = (model: DatabaseModel, select: unknown): void => {
+  if (select === undefined) return;
+  if (!Array.isArray(select) || select.length === 0) {
+    throw new DatabaseAdapterInputError("empty-select");
+  }
+  if (!select.every((field) => typeof field === "string")) {
     throw new DatabaseAdapterInputError("invalid-query");
   }
-  validateSelect(model, input.select);
-
-  if (input.where !== undefined) {
-    if (!Array.isArray(input.where)) {
-      throw new DatabaseAdapterInputError("invalid-query");
-    }
-    for (const condition of input.where) {
-      if (
-        !isRecord(condition) ||
-        typeof condition.field !== "string" ||
-        !Object.hasOwn(condition, "value") ||
-        condition.value === undefined ||
-        (condition.operator !== undefined &&
-          (typeof condition.operator !== "string" ||
-            !databaseWhereOperators.has(condition.operator))) ||
-        (condition.connector !== undefined &&
-          condition.connector !== "AND" &&
-          condition.connector !== "OR") ||
-        (condition.mode !== undefined &&
-          condition.mode !== "sensitive" &&
-          condition.mode !== "insensitive") ||
-        ((condition.operator === "in" || condition.operator === "not_in") &&
-          !Array.isArray(condition.value))
-      ) {
-        throw new DatabaseAdapterInputError("invalid-query");
-      }
-      validateField(model, condition.field);
-      validateWhereValue(model, condition);
-    }
-  }
-
-  if (input.sortBy !== undefined) {
-    if (
-      !isRecord(input.sortBy) ||
-      typeof input.sortBy.field !== "string" ||
-      (input.sortBy.direction !== "asc" && input.sortBy.direction !== "desc")
-    ) {
-      throw new DatabaseAdapterInputError("invalid-query");
-    }
-    validateField(model, input.sortBy.field);
-    if (
-      !isStringField(model, input.sortBy.field) &&
-      !isNumberField(model, input.sortBy.field)
-    ) {
-      throw new DatabaseAdapterInputError("invalid-query");
-    }
-  }
+  validateFields(model, select);
 };
-
-const isNullableString = (value: unknown): boolean =>
-  value === null || typeof value === "string";
-
-const isStringArrayOrNull = (value: unknown): boolean =>
-  value === null ||
-  (Array.isArray(value) && value.every((item) => typeof item === "string"));
-
-const isValidBundleField = (field: string, value: unknown): boolean => {
-  switch (field) {
-    case "id":
-    case "file_hash":
-    case "channel":
-    case "channel_id":
-    case "storage_uri":
-      return typeof value === "string";
-    case "platform":
-      return value === "ios" || value === "android";
-    case "should_force_update":
-    case "enabled":
-      return typeof value === "boolean";
-    case "git_commit_hash":
-    case "message":
-    case "target_app_version":
-    case "fingerprint_hash":
-    case "manifest_storage_uri":
-    case "manifest_file_hash":
-    case "asset_base_storage_uri":
-      return isNullableString(value);
-    case "metadata":
-      return value !== undefined;
-    case "rollout_cohort_count":
-      return (
-        typeof value === "number" &&
-        Number.isInteger(value) &&
-        value >= 0 &&
-        value <= 1000
-      );
-    case "target_cohorts":
-      return isStringArrayOrNull(value);
-    default:
-      return false;
-  }
-};
-
-const isValidFieldValue = (
-  model: DatabaseModel,
-  field: string,
-  value: unknown,
-): boolean => {
-  switch (model) {
-    case "bundles":
-      return isValidBundleField(field, value);
-    case "bundle_patches":
-      if (field === "order_index") {
-        return (
-          typeof value === "number" && Number.isInteger(value) && value >= 0
-        );
-      }
-      return typeof value === "string";
-    case "channels":
-      return typeof value === "string";
-  }
-};
-
-const nonStringBundleFields = new Set([
-  "should_force_update",
-  "enabled",
-  "metadata",
-  "rollout_cohort_count",
-  "target_cohorts",
-]);
-
-const isStringField = (model: DatabaseModel, field: string): boolean => {
-  switch (model) {
-    case "bundles":
-      return !nonStringBundleFields.has(field);
-    case "bundle_patches":
-      return field !== "order_index";
-    case "channels":
-      return true;
-  }
-};
-
-const isNumberField = (model: DatabaseModel, field: string): boolean =>
-  (model === "bundles" && field === "rollout_cohort_count") ||
-  (model === "bundle_patches" && field === "order_index");
-
-const isBooleanField = (model: DatabaseModel, field: string): boolean =>
-  model === "bundles" &&
-  (field === "should_force_update" || field === "enabled");
-
-const isValidEqualityValue = (
-  model: DatabaseModel,
-  field: string,
-  value: unknown,
-): boolean =>
-  (isStringField(model, field) ||
-    isNumberField(model, field) ||
-    isBooleanField(model, field)) &&
-  isValidFieldValue(model, field, value);
 
 const validateWhereValue = (
   model: DatabaseModel,
   condition: Readonly<Record<string, unknown>>,
 ): void => {
   const field = condition.field;
-  if (typeof field !== "string") {
+  if (typeof field !== "string")
     throw new DatabaseAdapterInputError("invalid-query");
-  }
-  const operator = condition.operator ?? "eq";
+  validateField(model, field);
+  const operator = (condition.operator ?? "eq") as string;
   const value = condition.value;
-  let valid = false;
   switch (operator) {
     case "eq":
     case "ne":
-      valid = isValidEqualityValue(model, field, value);
-      break;
-    case "lt":
-    case "lte":
+      if (!modelValidators[model][field]?.(value)) {
+        throw new DatabaseAdapterInputError("invalid-query");
+      }
+      return;
     case "gt":
     case "gte":
-      valid =
-        (isStringField(model, field) || isNumberField(model, field)) &&
-        value !== null &&
-        isValidFieldValue(model, field, value);
-      break;
+    case "lt":
+    case "lte":
+      if (!(isStringField(field) || isNumberField(field))) {
+        throw new DatabaseAdapterInputError("invalid-query");
+      }
+      if (typeof value !== "string" && typeof value !== "number") {
+        throw new DatabaseAdapterInputError("invalid-query");
+      }
+      return;
     case "in":
     case "not_in":
-      valid =
-        Array.isArray(value) &&
-        (isStringField(model, field) ||
-          isNumberField(model, field) ||
-          isBooleanField(model, field)) &&
-        value.every((item) => isValidFieldValue(model, field, item));
-      break;
+      if (!Array.isArray(value))
+        throw new DatabaseAdapterInputError("invalid-query");
+      if (
+        !(isStringField(field) || isNumberField(field) || isBooleanField(field))
+      ) {
+        throw new DatabaseAdapterInputError("invalid-query");
+      }
+      if (
+        !value.every(
+          (item) =>
+            typeof item === "string" ||
+            typeof item === "number" ||
+            typeof item === "boolean",
+        )
+      ) {
+        throw new DatabaseAdapterInputError("invalid-query");
+      }
+      return;
     case "contains":
     case "starts_with":
     case "ends_with":
-      valid =
-        isStringField(model, field) &&
-        typeof value === "string" &&
-        isValidFieldValue(model, field, value);
-      break;
+      if (!isStringField(field) || typeof value !== "string") {
+        throw new DatabaseAdapterInputError("invalid-query");
+      }
+      if (
+        condition.mode !== undefined &&
+        condition.mode !== "sensitive" &&
+        condition.mode !== "insensitive"
+      ) {
+        throw new DatabaseAdapterInputError("invalid-query");
+      }
+      return;
+    default:
+      throw new DatabaseAdapterInputError("invalid-query");
   }
-  if (
-    condition.mode !== undefined &&
-    (!isStringField(model, field) ||
-      typeof value !== "string" ||
-      (operator !== "eq" &&
-        operator !== "ne" &&
-        operator !== "contains" &&
-        operator !== "starts_with" &&
-        operator !== "ends_with"))
-  ) {
-    valid = false;
+};
+
+const validateWhere = (model: DatabaseModel, where: unknown): void => {
+  if (where === undefined) return;
+  if (!Array.isArray(where))
+    throw new DatabaseAdapterInputError("invalid-query");
+  for (const item of where) {
+    if (!isRecord(item)) throw new DatabaseAdapterInputError("invalid-query");
+    validateWhereValue(model, item);
   }
-  if (!valid) {
+};
+
+const validateDistinctFields = (
+  model: DatabaseModel,
+  fields: unknown,
+): readonly string[] | undefined => {
+  if (fields === undefined) return undefined;
+  if (!Array.isArray(fields) || fields.length === 0) {
+    throw new DatabaseAdapterInputError("invalid-distinct");
+  }
+  if (!fields.every((field) => typeof field === "string")) {
+    throw new DatabaseAdapterInputError("invalid-distinct");
+  }
+  validateFields(model, fields);
+  return fields;
+};
+
+const validateOrderBy = (
+  model: DatabaseModel,
+  orderBy: unknown,
+): readonly OrderByClause[] | undefined => {
+  if (orderBy === undefined) return undefined;
+  if (!Array.isArray(orderBy) || orderBy.length === 0) {
     throw new DatabaseAdapterInputError("invalid-query");
   }
+  return orderBy.map((clause) => {
+    if (!isRecord(clause) || typeof clause.field !== "string") {
+      throw new DatabaseAdapterInputError("invalid-query");
+    }
+    validateField(model, clause.field);
+    if (!sortableFields[model].has(clause.field)) {
+      throw new DatabaseAdapterInputError("invalid-query");
+    }
+    if (clause.direction !== "asc" && clause.direction !== "desc") {
+      throw new DatabaseAdapterInputError("invalid-query");
+    }
+    if (
+      clause.nulls !== undefined &&
+      clause.nulls !== "first" &&
+      clause.nulls !== "last"
+    ) {
+      throw new DatabaseAdapterInputError("invalid-query");
+    }
+    return clause as OrderByClause;
+  });
 };
 
-const validateCreateData = (model: DatabaseModel, data: unknown): void => {
-  if (!isRecord(data)) {
-    throw new DatabaseAdapterInputError("invalid-data");
+const validateDistinctOn = (
+  model: DatabaseModel,
+  distinctOn: unknown,
+  orderBy: readonly OrderByClause[] | undefined,
+): void => {
+  if (distinctOn === undefined) return;
+  if (!isRecord(distinctOn))
+    throw new DatabaseAdapterInputError("invalid-distinct");
+  const fields = validateDistinctFields(model, distinctOn.fields);
+  if (fields === undefined || orderBy === undefined) {
+    throw new DatabaseAdapterInputError("invalid-distinct");
   }
-  const fields = Object.keys(data);
-  validateFields(model, fields);
-  if (
-    databaseFields[model].some((field) => !Object.hasOwn(data, field)) ||
-    fields.some((field) => !isValidFieldValue(model, field, data[field])) ||
-    (model === "bundles" &&
-      data.target_app_version === null &&
-      data.fingerprint_hash === null)
-  ) {
-    throw new DatabaseAdapterInputError("invalid-data");
-  }
-};
-
-const validateBundleTargetUpdate = async <TContext>(
-  implementation: DatabaseAdapterImplementation<TContext>,
-  input: UpdateBundleDatabaseInput<DatabaseSelect<"bundles"> | undefined>,
-  context: TContext | undefined,
-): Promise<void> => {
-  if (
-    !Object.hasOwn(input.update, "target_app_version") &&
-    !Object.hasOwn(input.update, "fingerprint_hash")
-  ) {
-    return;
-  }
-  const id = input.where[0]?.value;
-  if (typeof id !== "string") return;
-  const current = await implementation.findOne(
-    {
-      model: "bundles",
-      where: [{ field: "id", value: id }],
-      select: ["target_app_version", "fingerprint_hash"],
-    },
-    context,
-  );
-  if (current === null) return;
-  if (!isRecord(current)) {
-    throw new DatabaseAdapterInputError("invalid-result");
-  }
-  const currentTargetAppVersion = Reflect.get(current, "target_app_version");
-  const currentFingerprintHash = Reflect.get(current, "fingerprint_hash");
-  if (
-    !Object.hasOwn(current, "target_app_version") ||
-    !Object.hasOwn(current, "fingerprint_hash") ||
-    !isNullableString(currentTargetAppVersion) ||
-    !isNullableString(currentFingerprintHash)
-  ) {
-    throw new DatabaseAdapterInputError("invalid-result");
-  }
-  const targetAppVersion = Object.hasOwn(input.update, "target_app_version")
-    ? input.update.target_app_version
-    : currentTargetAppVersion;
-  const fingerprintHash = Object.hasOwn(input.update, "fingerprint_hash")
-    ? input.update.fingerprint_hash
-    : currentFingerprintHash;
-  if (targetAppVersion === null && fingerprintHash === null) {
-    throw new DatabaseAdapterInputError("invalid-data");
-  }
-};
-
-const validateBundleUpdateData = (update: unknown): void => {
-  if (!isRecord(update)) {
-    throw new DatabaseAdapterInputError("invalid-data");
-  }
-  const fields = Object.keys(update);
-  validateFields("bundles", fields);
-  if (
-    fields.includes("id") ||
-    fields.some((field) => !isValidBundleField(field, update[field]))
-  ) {
-    throw new DatabaseAdapterInputError("invalid-data");
+  for (const [index, field] of fields.entries()) {
+    if (orderBy[index]?.field !== field) {
+      throw new DatabaseAdapterInputError("invalid-distinct");
+    }
   }
 };
 
@@ -411,32 +382,34 @@ const validatePagination = (
   }
 };
 
-const validateMutationWhere = (
-  where:
-    | readonly DatabaseWhere<"bundle_patches">[]
-    | readonly DatabaseWhere<"bundles">[],
+const validateCreateData = (model: DatabaseModel, data: unknown): void => {
+  if (!isRecord(data)) throw new DatabaseAdapterInputError("invalid-data");
+  for (const field of databaseFields[model]) {
+    const validator = modelValidators[model][field];
+    if (!validator || !validator(Reflect.get(data, field))) {
+      throw new DatabaseAdapterInputError("invalid-data");
+    }
+  }
+};
+
+const validateBundleCreateChannel = (
+  input: CreateDatabaseInput<"bundles", DatabaseSelect<"bundles"> | undefined>,
 ): void => {
+  const hasChannel = Object.hasOwn(input.data, "channel");
+  const hasChannelId = Object.hasOwn(input.data, "channel_id");
+  if (hasChannel !== hasChannelId) {
+    throw new DatabaseAdapterInputError("incomplete-channel-create");
+  }
+};
+
+const validateMutationWhere = (where: readonly unknown[]): void => {
   if (where.length === 0) {
     throw new DatabaseAdapterInputError("empty-mutation-where");
   }
 };
 
-const validateUpdateWhere = (
-  where: readonly DatabaseWhere<"bundles">[],
-): void => {
-  const selector = where[0];
-  if (
-    where.length !== 1 ||
-    selector?.field !== "id" ||
-    (selector.operator !== undefined && selector.operator !== "eq") ||
-    typeof selector.value !== "string"
-  ) {
-    throw new DatabaseAdapterInputError("invalid-update-selector");
-  }
-};
-
 const validateChannelUpdate = (
-  update: UpdateBundleDatabaseInput["update"],
+  update: UpdateDatabaseInput<"bundles">["update"],
 ): void => {
   const hasChannel = Object.hasOwn(update, "channel");
   const hasChannelId = Object.hasOwn(update, "channel_id");
@@ -445,91 +418,53 @@ const validateChannelUpdate = (
   }
 };
 
-const validateBundleCreateChannel = (input: AnyCreateInput): void => {
-  if (input.model !== "bundles") return;
+const validateBundleUpdateData = (update: unknown): void => {
+  if (!isRecord(update)) throw new DatabaseAdapterInputError("invalid-data");
+  for (const [field, value] of Object.entries(update)) {
+    if (field === "id") {
+      throw new DatabaseAdapterInputError("invalid-data");
+    }
+    validateField("bundles", field);
+    const validator = modelValidators.bundles[field];
+    if (!validator || !validator(value)) {
+      throw new DatabaseAdapterInputError("invalid-data");
+    }
+  }
   if (
-    !isRecord(input.data) ||
-    !Object.hasOwn(input.data, "channel") ||
-    !Object.hasOwn(input.data, "channel_id")
+    Reflect.get(update, "target_app_version") === null &&
+    Reflect.get(update, "fingerprint_hash") === null
   ) {
-    throw new DatabaseAdapterInputError("incomplete-channel-create");
+    throw new DatabaseAdapterInputError("invalid-data");
   }
 };
 
-function selectRow<
+const selectRow = <
   TModel extends DatabaseModel,
   TSelect extends DatabaseSelect<TModel> | undefined,
 >(
-  row: DatabaseRow<TModel>,
-  select: TSelect,
-): SelectedDatabaseRow<TModel, TSelect>;
-function selectRow(
   row: DatabaseImplementationResult,
-  select: readonly string[] | undefined,
-): object;
-function selectRow(
-  row: DatabaseImplementationResult,
-  select: readonly string[] | undefined,
-): object {
-  if (!select) {
-    return row;
-  }
+  select: DatabaseSelect<TModel> | undefined,
+): SelectedDatabaseRow<TModel, TSelect> => {
+  if (!select) return row as SelectedDatabaseRow<TModel, TSelect>;
   return Object.fromEntries(
-    Object.entries(row).filter(([field]) => select.includes(field)),
-  );
-}
+    select.map((field) => [field, Reflect.get(row, field)]),
+  ) as SelectedDatabaseRow<TModel, TSelect>;
+};
 
 const validateResult = (
   model: DatabaseModel,
   row: DatabaseImplementationResult,
   select: readonly string[] | undefined,
 ): void => {
-  const requiredFields = select ?? databaseFields[model];
-  if (
-    !isRecord(row) ||
-    requiredFields.some(
-      (field) =>
-        !Object.hasOwn(row, field) ||
-        !isValidFieldValue(model, field, Reflect.get(row, field)),
-    )
-  ) {
-    throw new DatabaseAdapterInputError("invalid-result");
-  }
-  if (
-    model === "bundles" &&
-    Object.hasOwn(row, "target_app_version") &&
-    Object.hasOwn(row, "fingerprint_hash") &&
-    Reflect.get(row, "target_app_version") === null &&
-    Reflect.get(row, "fingerprint_hash") === null
-  ) {
-    throw new DatabaseAdapterInputError("invalid-result");
+  if (!isRecord(row)) throw new DatabaseAdapterInputError("invalid-result");
+  const fields = select ?? databaseFields[model];
+  for (const field of fields) {
+    const validator = modelValidators[model][field];
+    if (!validator || !validator(Reflect.get(row, field))) {
+      throw new DatabaseAdapterInputError("invalid-result");
+    }
   }
 };
-
-type AnyCreateInput = {
-  readonly [TModel in DatabaseModel]: CreateDatabaseInput<
-    TModel,
-    DatabaseSelect<TModel> | undefined
-  >;
-}[DatabaseModel];
-
-type AnyFindOneInput = {
-  readonly [TModel in DatabaseFindOneModel]: FindOneDatabaseInput<
-    TModel,
-    DatabaseSelect<TModel> | undefined
-  >;
-}[DatabaseFindOneModel];
-
-type AnyFindManyInput = {
-  readonly [TModel in DatabaseModel]: FindManyDatabaseInput<
-    TModel,
-    DatabaseSelect<TModel> | undefined
-  >;
-}[DatabaseModel];
-
-type AnyDeleteInput = {
-  readonly [TModel in DatabaseDeleteModel]: DeleteDatabaseInput<TModel>;
-}[DatabaseDeleteModel];
 
 export type DatabaseAdapterCrud<TContext> = Pick<
   DatabaseAdapter<TContext>,
@@ -539,174 +474,169 @@ export type DatabaseAdapterCrud<TContext> = Pick<
 export const createDatabaseAdapterCrud = <TContext>(
   implementation: DatabaseAdapterImplementation<TContext>,
 ): DatabaseAdapterCrud<TContext> => {
-  const validateChannelReference = async (
-    channel: string,
-    channelId: string,
-    context: TContext | undefined,
-  ): Promise<void> => {
-    const stored = await implementation.findOne(
-      {
-        model: "channels",
-        where: [{ field: "id", value: channelId }],
-        select: ["name"],
-      },
-      context,
-    );
-    if (stored === null) {
-      throw new DatabaseAdapterInputError("channel-reference-mismatch");
-    }
-    if (!isRecord(stored)) {
-      throw new DatabaseAdapterInputError("invalid-result");
-    }
-    const storedName = Reflect.get(stored, "name");
-    if (typeof storedName !== "string") {
-      throw new DatabaseAdapterInputError("invalid-result");
-    }
-    if (storedName !== channel) {
-      throw new DatabaseAdapterInputError("channel-reference-mismatch");
-    }
-  };
-
-  function create<
+  async function create<
     TModel extends DatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: CreateDatabaseInput<TModel, TSelect>,
     context?: TContext,
-  ): Promise<SelectedDatabaseRow<TModel, TSelect>>;
-  async function create(
-    input: AnyCreateInput,
-    context?: TContext,
-  ): Promise<object> {
-    validateQueryFields(input.model, input);
-    validateBundleCreateChannel(input);
+  ): Promise<SelectedDatabaseRow<TModel, TSelect>> {
+    validateModel(input.model);
     validateCreateData(input.model, input.data);
     if (input.model === "bundles") {
-      await validateChannelReference(
-        input.data.channel,
-        input.data.channel_id,
-        context,
+      validateBundleCreateChannel(
+        input as CreateDatabaseInput<
+          "bundles",
+          DatabaseSelect<"bundles"> | undefined
+        >,
       );
     }
-    const row = await implementation.create(input, context);
-    validateResult(input.model, row, input.select);
-    return selectRow(row, input.select);
+    validateSelect(input.model, input.select);
+    const row = await implementation.create(input as never, context);
+    validateResult(
+      input.model,
+      row,
+      input.select as readonly string[] | undefined,
+    );
+    return selectRow<TModel, TSelect>(row, input.select);
   }
 
-  function update<
-    TSelect extends DatabaseSelect<"bundles"> | undefined = undefined,
+  async function update<
+    TModel extends DatabaseModel,
+    TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
-    input: UpdateBundleDatabaseInput<TSelect>,
+    input: UpdateDatabaseInput<any, any>,
     context?: TContext,
-  ): Promise<SelectedDatabaseRow<"bundles", TSelect> | null>;
-  async function update(
-    input: UpdateBundleDatabaseInput<DatabaseSelect<"bundles"> | undefined>,
-    context?: TContext,
-  ): Promise<object | null> {
-    validateOperationModel(input.model, ["bundles"]);
-    validateQueryFields(input.model, input);
-    validateBundleUpdateData(input.update);
-    validateUpdateWhere(input.where);
-    validateChannelUpdate(input.update);
-    await validateBundleTargetUpdate(implementation, input, context);
-    if (
-      input.update.channel !== undefined &&
-      input.update.channel_id !== undefined
-    ) {
-      await validateChannelReference(
-        input.update.channel,
-        input.update.channel_id,
-        context,
-      );
+  ): Promise<SelectedDatabaseRow<TModel, TSelect> | null> {
+    validateModel(input.model);
+    if (input.model !== "bundles") {
+      throw new DatabaseAdapterInputError("invalid-operation");
     }
-    const row = await implementation.update(input, context);
+    validateWhere(input.model, input.where);
+    validateMutationWhere(input.where);
+    if (input.where.length !== 1 || input.where[0]?.field !== "id") {
+      throw new DatabaseAdapterInputError("invalid-update-selector");
+    }
+    validateBundleUpdateData(input.update);
+    validateChannelUpdate(input.update);
+    validateSelect(input.model, input.select);
+    const row = await implementation.update(input as never, context);
     if (row === null) return null;
-    validateResult(input.model, row, input.select);
-    return selectRow(row, input.select);
+    validateResult(
+      input.model,
+      row,
+      input.select as readonly string[] | undefined,
+    );
+    return selectRow<TModel, TSelect>(row, input.select);
   }
 
-  function findOne<
-    TModel extends DatabaseFindOneModel,
+  async function deleteRows(
+    input: DeleteDatabaseInput<any>,
+    context?: TContext,
+  ): Promise<void> {
+    validateModel(input.model);
+    if (input.model !== "bundles" && input.model !== "bundle_patches") {
+      throw new DatabaseAdapterInputError("invalid-operation");
+    }
+    validateWhere(input.model, input.where);
+    validateMutationWhere(input.where);
+    await implementation.delete(input as never, context);
+  }
+
+  async function count(
+    input: CountDatabaseInput<any>,
+    context?: TContext,
+  ): Promise<number> {
+    validateModel(input.model);
+    validateWhere(input.model, input.where);
+    validateDistinctFields(
+      input.model,
+      (input as { distinct?: readonly string[] }).distinct,
+    );
+    const value = await implementation.count(input as never, context);
+    if (!Number.isInteger(value) || value < 0) {
+      throw new DatabaseAdapterInputError("invalid-result");
+    }
+    return value;
+  }
+
+  async function findOne<
+    TModel extends DatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindOneDatabaseInput<TModel, TSelect>,
     context?: TContext,
-  ): Promise<SelectedDatabaseRow<TModel, TSelect> | null>;
-  async function findOne(
-    input: AnyFindOneInput,
-    context?: TContext,
-  ): Promise<object | null> {
-    validateOperationModel(input.model, ["bundles", "channels"]);
-    validateQueryFields(input.model, input);
-    const row = await implementation.findOne(input, context);
+  ): Promise<SelectedDatabaseRow<TModel, TSelect> | null> {
+    validateModel(input.model);
+    validateWhere(input.model, input.where);
+    validateSelect(input.model, input.select);
+    const row = await implementation.findOne(input as never, context);
     if (row === null) return null;
-    validateResult(input.model, row, input.select);
-    return selectRow(row, input.select);
+    validateResult(
+      input.model,
+      row,
+      input.select as readonly string[] | undefined,
+    );
+    return selectRow<TModel, TSelect>(row, input.select);
   }
 
-  function findMany<
+  async function findMany<
     TModel extends DatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindManyDatabaseInput<TModel, TSelect>,
     context?: TContext,
-  ): Promise<SelectedDatabaseRow<TModel, TSelect>[]>;
-  async function findMany(
-    input: AnyFindManyInput,
-    context?: TContext,
-  ): Promise<object[]> {
-    validateQueryFields(input.model, input);
+  ): Promise<SelectedDatabaseRow<TModel, TSelect>[]> {
+    validateModel(input.model);
+    validateWhere(input.model, input.where);
     validatePagination(input.limit, input.offset);
+    validateSelect(input.model, input.select);
+    const explicitOrderBy = (input as { orderBy?: readonly OrderByClause[] })
+      .orderBy;
+    const legacySortBy = (input as { sortBy?: OrderByClause }).sortBy;
+    const orderBy = validateOrderBy(
+      input.model,
+      explicitOrderBy ?? (legacySortBy ? [legacySortBy] : undefined),
+    );
+    validateDistinctOn(
+      input.model,
+      (input as { distinctOn?: unknown }).distinctOn,
+      orderBy,
+    );
     const rows = await implementation.findMany(
-      { ...input, limit: input.limit ?? 100, offset: input.offset ?? 0 },
+      {
+        ...input,
+        limit: input.limit ?? 100,
+        offset: input.offset ?? 0,
+      } as never,
       context,
     );
     if (!Array.isArray(rows)) {
       throw new DatabaseAdapterInputError("invalid-result");
     }
-    return rows.map((row) => {
-      validateResult(input.model, row, input.select);
-      return selectRow(row, input.select);
-    });
-  }
-
-  function deleteRows<TModel extends DatabaseDeleteModel>(
-    input: DeleteDatabaseInput<TModel>,
-    context?: TContext,
-  ): Promise<void>;
-  async function deleteRows(
-    input: AnyDeleteInput,
-    context?: TContext,
-  ): Promise<void> {
-    validateOperationModel(input.model, ["bundles", "bundle_patches"]);
-    validateQueryFields(input.model, input);
-    validateMutationWhere(input.where);
-    return implementation.delete(input, context);
+    rows.forEach((row) =>
+      validateResult(
+        input.model,
+        row,
+        input.select as readonly string[] | undefined,
+      ),
+    );
+    return rows.map((row) => selectRow<TModel, TSelect>(row, input.select));
   }
 
   return {
-    create,
-    update,
-    delete: deleteRows,
-    count: async (input, context) => {
-      validateOperationModel(input.model, ["bundles"]);
-      validateQueryFields(input.model, input);
-      const result = await implementation.count(input, context);
-      if (!Number.isSafeInteger(result) || result < 0) {
-        throw new DatabaseAdapterInputError("invalid-result");
-      }
-      return result;
-    },
-    findOne,
-    findMany,
+    create: create as DatabaseAdapter<TContext>["create"],
+    update: update as DatabaseAdapter<TContext>["update"],
+    delete: deleteRows as DatabaseAdapter<TContext>["delete"],
+    count: count as DatabaseAdapter<TContext>["count"],
+    findOne: findOne as DatabaseAdapter<TContext>["findOne"],
+    findMany: findMany as DatabaseAdapter<TContext>["findMany"],
   };
 };
 
 export const createTransactionDatabaseAdapter = (
   implementation: TransactionDatabaseAdapterImplementation,
-): TransactionDatabaseAdapter => {
-  const contextualImplementation: DatabaseAdapterImplementation<undefined> = {
-    ...implementation,
-  };
-  return createDatabaseAdapterCrud(contextualImplementation);
-};
+): TransactionDatabaseAdapter =>
+  createDatabaseAdapterCrud(
+    implementation as unknown as DatabaseAdapterImplementation<unknown>,
+  ) as TransactionDatabaseAdapter;

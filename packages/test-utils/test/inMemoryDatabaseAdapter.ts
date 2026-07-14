@@ -1,10 +1,10 @@
 import {
   createDatabaseAdapter,
   type CreateDatabaseImplementationInput,
-  type DatabaseModel,
-  type DatabaseModelMap,
   type DatabaseAdapter,
   type DatabaseAdapterImplementation,
+  type DatabaseModel,
+  type DatabaseModelMap,
   resolveUpdateInfoFromBundles,
   rowsToBundles,
   type TransactionDatabaseAdapterImplementation,
@@ -31,6 +31,7 @@ const createTables = (): Tables => ({
   bundles: { rows: [] },
   bundle_patches: { rows: [] },
   channels: { rows: [] },
+  bundle_events: { rows: [] },
 });
 
 const assertReferences = (
@@ -56,8 +57,22 @@ const assertReferences = (
       }
       return;
     case "channels":
+    case "bundle_events":
       return;
   }
+};
+
+const distinctCount = <TRow extends object>(
+  rows: readonly TRow[],
+  fields: readonly string[] | undefined,
+): number => {
+  if (fields === undefined) return rows.length;
+  const seen = new Set(
+    rows.map((row) =>
+      JSON.stringify(fields.map((field) => Reflect.get(row, field))),
+    ),
+  );
+  return seen.size;
 };
 
 const createCrudImplementation = (
@@ -80,9 +95,15 @@ const createCrudImplementation = (
           tables.channels.rows.some(
             ({ id, name }) => id === input.data.id || name === input.data.name,
           )
-        )
+        ) {
           break;
+        }
         tables.channels.rows.push(structuredClone(input.data));
+        return input.data;
+      case "bundle_events":
+        if (tables.bundle_events.rows.some(({ id }) => id === input.data.id))
+          break;
+        tables.bundle_events.rows.push(structuredClone(input.data));
         return input.data;
     }
     throw new MemoryConstraintError(`Duplicate ${input.model} id`);
@@ -125,8 +146,46 @@ const createCrudImplementation = (
         return;
     }
   },
-  count: async (input) =>
-    tables.bundles.rows.filter((row) => matchesAll(row, input.where)).length,
+  count: async (input) => {
+    switch (input.model) {
+      case "bundles": {
+        const rows = tables.bundles.rows.filter((row) =>
+          matchesAll(row, input.where),
+        );
+        return distinctCount(
+          rows,
+          input.distinct as readonly string[] | undefined,
+        );
+      }
+      case "bundle_patches": {
+        const rows = tables.bundle_patches.rows.filter((row) =>
+          matchesAll(row, input.where),
+        );
+        return distinctCount(
+          rows,
+          input.distinct as readonly string[] | undefined,
+        );
+      }
+      case "channels": {
+        const rows = tables.channels.rows.filter((row) =>
+          matchesAll(row, input.where),
+        );
+        return distinctCount(
+          rows,
+          input.distinct as readonly string[] | undefined,
+        );
+      }
+      case "bundle_events": {
+        const rows = tables.bundle_events.rows.filter((row) =>
+          matchesAll(row, input.where),
+        );
+        return distinctCount(
+          rows,
+          input.distinct as readonly string[] | undefined,
+        );
+      }
+    }
+  },
   findOne: async (input) => {
     switch (input.model) {
       case "bundles":
@@ -134,10 +193,22 @@ const createCrudImplementation = (
           tables.bundles.rows.find((row) => matchesAll(row, input.where)) ??
           null
         );
+      case "bundle_patches":
+        return (
+          tables.bundle_patches.rows.find((row) =>
+            matchesAll(row, input.where),
+          ) ?? null
+        );
       case "channels":
         return (
           tables.channels.rows.find((row) => matchesAll(row, input.where)) ??
           null
+        );
+      case "bundle_events":
+        return (
+          tables.bundle_events.rows.find((row) =>
+            matchesAll(row, input.where),
+          ) ?? null
         );
     }
   },
@@ -147,7 +218,8 @@ const createCrudImplementation = (
         return queryRows(
           tables.bundles.rows,
           input.where,
-          input.sortBy,
+          input.orderBy,
+          input.distinctOn,
           input.offset,
           input.limit,
         );
@@ -155,7 +227,8 @@ const createCrudImplementation = (
         return queryRows(
           tables.bundle_patches.rows,
           input.where,
-          input.sortBy,
+          input.orderBy,
+          input.distinctOn,
           input.offset,
           input.limit,
         );
@@ -163,7 +236,17 @@ const createCrudImplementation = (
         return queryRows(
           tables.channels.rows,
           input.where,
-          input.sortBy,
+          input.orderBy,
+          input.distinctOn,
+          input.offset,
+          input.limit,
+        );
+      case "bundle_events":
+        return queryRows(
+          tables.bundle_events.rows,
+          input.where,
+          input.orderBy,
+          input.distinctOn,
           input.offset,
           input.limit,
         );
@@ -191,6 +274,7 @@ const createImplementation = (
     tables.bundles.rows = transactionTables.bundles.rows;
     tables.bundle_patches.rows = transactionTables.bundle_patches.rows;
     tables.channels.rows = transactionTables.channels.rows;
+    tables.bundle_events.rows = transactionTables.bundle_events.rows;
     return result;
   },
 });
@@ -211,6 +295,7 @@ export const createInMemoryDatabaseHarness = () => {
       tables.bundles.rows = [];
       tables.bundle_patches.rows = [];
       tables.channels.rows = [];
+      tables.bundle_events.rows = [];
     },
   };
 };

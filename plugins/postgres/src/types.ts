@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -8,4 +9,5 @@ export interface Database {
   readonly bundles: BundleRow;
   readonly bundle_patches: BundlePatchRow;
   readonly channels: ChannelRow;
+  readonly bundle_events: BundleEventRow;
 }

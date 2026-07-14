@@ -560,6 +560,12 @@ const createLegacyCompatibilityImplementation = (
           );
           return input.data;
         }
+        case "bundle_events":
+          throw new StandaloneDatabaseError(
+            "request-failed",
+            "bundle_events are not supported by the standalone repository.",
+            501,
+          );
       }
     },
     async update(input) {
@@ -612,13 +618,13 @@ const createLegacyCompatibilityImplementation = (
     },
     async count(input) {
       const remote = await loadBundleWindow({
-        where: input.where,
+        where: input.where as readonly DatabaseWhere<"bundles">[] | undefined,
         limit: 1,
         offset: 0,
       });
       if (remote) return remote.total;
       return queryStandaloneRows(await loadRows("bundles"), {
-        where: input.where,
+        where: input.where as readonly DatabaseWhere<"bundles">[] | undefined,
       }).length;
     },
     async findOne(input) {
@@ -644,9 +650,14 @@ const createLegacyCompatibilityImplementation = (
           })[0] ?? null
         );
       }
+      if (input.model === "bundle_events") {
+        return null;
+      }
       return (
         queryStandaloneRows(await loadRows("channels"), {
-          where: input.where,
+          where: input.where as
+            | readonly DatabaseWhere<"channels">[]
+            | undefined,
           limit: 1,
         })[0] ?? null
       );
@@ -654,10 +665,17 @@ const createLegacyCompatibilityImplementation = (
     async findMany(input) {
       switch (input.model) {
         case "bundles": {
-          const remote = await loadBundleWindow(input);
+          const remote = await loadBundleWindow({
+            ...input,
+            where: input.where as
+              | readonly DatabaseWhere<"bundles">[]
+              | undefined,
+          });
           if (remote) return remote.rows;
           return queryStandaloneRows(await loadRows("bundles"), {
-            where: input.where,
+            where: input.where as
+              | readonly DatabaseWhere<"bundles">[]
+              | undefined,
             limit: input.limit,
             offset: input.offset,
             sortBy: input.sortBy,
@@ -665,18 +683,24 @@ const createLegacyCompatibilityImplementation = (
         }
         case "bundle_patches":
           return queryStandaloneRows(await loadRows("bundle_patches"), {
-            where: input.where,
+            where: input.where as
+              | readonly DatabaseWhere<"bundle_patches">[]
+              | undefined,
             limit: input.limit,
             offset: input.offset,
             sortBy: input.sortBy,
           });
         case "channels":
           return queryStandaloneRows(await loadRows("channels"), {
-            where: input.where,
+            where: input.where as
+              | readonly DatabaseWhere<"channels">[]
+              | undefined,
             limit: input.limit,
             offset: input.offset,
             sortBy: input.sortBy,
           });
+        case "bundle_events":
+          return [];
       }
     },
   };

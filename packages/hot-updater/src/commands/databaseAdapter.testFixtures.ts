@@ -15,6 +15,7 @@ const emptySnapshot = (): BlobDatabaseSnapshot => ({
   bundles: [],
   bundle_patches: [],
   channels: [],
+  bundle_events: [],
 });
 
 export const createDatabaseAdapterHarness = () => {
@@ -111,6 +112,7 @@ export const createDatabaseAdapterHarness = () => {
         channels: [...new Set(bundles.map(({ channel }) => channel))].map(
           (name) => ({ id: name, name }),
         ),
+        bundle_events: [],
       };
     },
   };

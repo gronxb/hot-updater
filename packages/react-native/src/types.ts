@@ -1,7 +1,5 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
 
-import type { NotifyAppReadyResult } from "./native";
-
 export type HotUpdaterBaseURL = string | (() => string | Promise<string>);
 
 /**
@@ -64,16 +62,64 @@ export interface ResolverCheckUpdateParams {
  */
 export interface ResolverNotifyAppReadyParams {
   /**
-   * The bundle state from native notifyAppReady
-   * - "RECOVERED": App recovered from crash, rollback occurred
-   * - "STABLE": No changes, bundle is stable
+   * Transition event type to append.
    */
-  status: "RECOVERED" | "STABLE";
+  type: "UPDATE_APPLIED" | "RECOVERED";
 
   /**
-   * Present only when status is "RECOVERED"
+   * Stable install identity for the current app installation.
    */
-  crashedBundleId?: string;
+  installId: string;
+
+  /**
+   * Bundle replaced or rolled back from.
+   */
+  fromBundleId: string;
+
+  /**
+   * Bundle now active after the transition.
+   */
+  toBundleId: string;
+
+  /**
+   * Optional persisted user identity associated with this install.
+   */
+  userId?: string;
+
+  /**
+   * Optional persisted username associated with this install.
+   */
+  username?: string;
+
+  /**
+   * The platform the app is running on.
+   */
+  platform: "ios" | "android";
+
+  /**
+   * The current app version.
+   */
+  appVersion: string;
+
+  /**
+   * The current channel.
+   */
+  channel: string;
+
+  /**
+   * Cohort identifier used for server-side rollout decisions.
+   */
+  cohort: string;
+
+  /**
+   * Persisted update strategy for the qualifying transition.
+   */
+  updateStrategy: "fingerprint" | "appVersion";
+
+  /**
+   * Current fingerprint hash when available.
+   */
+  fingerprintHash: string | null;
 
   /**
    * Request headers from global config (for optional use)
@@ -121,23 +167,19 @@ export interface HotUpdaterResolver {
    * Note: Native rollback/promotion semantics are already finalized before this callback runs.
    *
    * @param params - All parameters about the current app state
-   * @returns Notification result
+   * @returns Promise that resolves when transport completes successfully
    *
    * @example
    * ```typescript
    * notifyAppReady: async (params) => {
-   *   await fetch(`https://api.custom.com/notify`, {
+   *   await fetch(`https://api.custom.com/events`, {
    *     method: 'POST',
    *     body: JSON.stringify(params),
    *   });
-   *
-   *   return { status: "STABLE" };
    * }
    * ```
    */
-  notifyAppReady?: (
-    params: ResolverNotifyAppReadyParams,
-  ) => Promise<NotifyAppReadyResult | undefined>;
+  notifyAppReady?: (params: ResolverNotifyAppReadyParams) => Promise<void>;
 }
 
 /**

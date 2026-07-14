@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -37,15 +38,39 @@ const whereClause = (
 ): RawBuilder<unknown> => (where === undefined ? empty : sql` where ${where}`);
 
 const orderClause = (
-  sortBy:
-    | { readonly direction: "asc" | "desc"; readonly field: string }
+  input:
+    | {
+        readonly orderBy?: readonly {
+          readonly direction: "asc" | "desc";
+          readonly field: string;
+          readonly nulls?: "first" | "last";
+        }[];
+        readonly sortBy?: {
+          readonly direction: "asc" | "desc";
+          readonly field: string;
+          readonly nulls?: "first" | "last";
+        };
+      }
     | undefined,
 ): RawBuilder<unknown> => {
-  if (sortBy === undefined) return empty;
-  const field = sql.ref(sortBy.field);
-  return sortBy.direction === "asc"
-    ? sql` order by ${field} asc`
-    : sql` order by ${field} desc`;
+  const clauses =
+    input?.orderBy ?? (input?.sortBy ? [input.sortBy] : undefined);
+  if (clauses === undefined || clauses.length === 0) return empty;
+  return sql` order by ${sql.join(
+    clauses.map((clause) => {
+      const field = sql.ref(clause.field);
+      const nulls =
+        clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
+      const nullOrder =
+        nulls === "first"
+          ? sql`${field} is null desc`
+          : sql`${field} is null asc`;
+      const valueOrder =
+        clause.direction === "asc" ? sql`${field} asc` : sql`${field} desc`;
+      return sql`${nullOrder}, ${valueOrder}`;
+    }),
+    sql`, `,
+  )}`;
 };
 
 const insertRow = async (
@@ -104,11 +129,11 @@ const assertChannelReference = async (
   channelId: string,
   channel: string,
 ): Promise<void> => {
-  const result = await sql<{
-    readonly name: string;
-  }>`select ${sql.ref("name")} from ${sql.table(
-    "channels",
-  )} where ${sql.ref("id")} = ${channelId} limit 1`.execute(executor);
+  const result = await sql<{ readonly name: string }>`select ${sql.ref(
+    "name",
+  )} from ${sql.table("channels")} where ${sql.ref("id")} = ${channelId} limit 1`.execute(
+    executor,
+  );
   if (result.rows[0]?.name !== channel) {
     throw new KyselyAdapterInvariantError("bundles.channel_id.foreign-key");
   }
@@ -124,13 +149,13 @@ const assertBundleReferences = async (
   const ids = [...new Set([bundleId, baseBundleId])].sort((left, right) =>
     left.localeCompare(right),
   );
-  const result = await sql<{
-    readonly id: string;
-  }>`select ${sql.ref("id")} from ${sql.table(
-    "bundles",
-  )} where ${sql.ref("id")} in (${sql.join(ids)}) order by ${sql.ref(
+  const result = await sql<{ readonly id: string }>`select ${sql.ref(
     "id",
-  )}${lockClause(provider, relationMode)}`.execute(executor);
+  )} from ${sql.table("bundles")} where ${sql.ref("id")} in (${sql.join(
+    ids,
+  )}) order by ${sql.ref("id")}${lockClause(provider, relationMode)}`.execute(
+    executor,
+  );
   const storedIds = new Set(result.rows.map(({ id }) => id));
   if (!storedIds.has(bundleId)) {
     throw new KyselyAdapterInvariantError(
@@ -183,6 +208,53 @@ export const findKyselyPatches = async (
   return [...result.rows];
 };
 
+const createDistinctKey = (row: object, fields: readonly string[]): string =>
+  JSON.stringify(fields.map((field) => Reflect.get(row, field) ?? null));
+
+const applyDistinctOnRows = <TRow extends object>(
+  rows: readonly TRow[],
+  fields: readonly string[],
+  offset: number,
+  limit: number,
+): TRow[] => {
+  const seen = new Set<string>();
+  const distinctRows: TRow[] = [];
+  for (const row of rows) {
+    const key = createDistinctKey(row, fields);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    distinctRows.push(row);
+  }
+  return distinctRows.slice(offset, offset + limit);
+};
+
+const countDistinctRows = <TRow extends object>(
+  rows: readonly TRow[],
+  fields: readonly string[],
+): number => new Set(rows.map((row) => createDistinctKey(row, fields))).size;
+
+const countRows = async (
+  executor: QueryExecutorProvider,
+  table: string,
+  where: RawBuilder<boolean> | undefined,
+  distinct?: readonly string[],
+): Promise<number> => {
+  if (distinct && distinct.length > 0) {
+    const result = await sql<Record<string, unknown>>`select * from ${sql.table(
+      table,
+    )}${whereClause(where)}`.execute(executor);
+    return countDistinctRows(result.rows, distinct);
+  }
+  const result = await sql<{
+    readonly total: bigint | number | string;
+  }>`select count(${sql.ref(
+    "id",
+  )}) as ${sql.ref("total")} from ${sql.table(table)}${whereClause(where)}`.execute(
+    executor,
+  );
+  return Number(result.rows[0]?.total ?? 0);
+};
+
 export const createKyselyCrud = (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
@@ -214,6 +286,9 @@ export const createKyselyCrud = (
         return input.data;
       case "channels":
         await insertRow(executor, "channels", input.data);
+        return input.data;
+      case "bundle_events":
+        await insertRow(executor, "bundle_events", input.data);
         return input.data;
     }
   },
@@ -257,7 +332,7 @@ export const createKyselyCrud = (
   async delete(input) {
     switch (input.model) {
       case "bundles": {
-        const where = buildKyselyWhere(provider, input.where);
+        const where = buildKyselyWhere(provider, input.where as never);
         if (where === undefined) {
           throw new KyselyAdapterInvariantError("bundles.delete.where");
         }
@@ -272,40 +347,60 @@ export const createKyselyCrud = (
         if (bundleIds.length === 0) return;
         await sql`delete from ${sql.table("bundle_patches")} where ${sql.ref(
           "bundle_id",
-        )} in (${sql.join(bundleIds)}) or ${sql.ref(
-          "base_bundle_id",
-        )} in (${sql.join(bundleIds)})`.execute(executor);
+        )} in (${sql.join(bundleIds)}) or ${sql.ref("base_bundle_id")} in (${sql.join(
+          bundleIds,
+        )})`.execute(executor);
         await sql`delete from ${sql.table("bundles")} where ${where}`.execute(
           executor,
         );
         return;
       }
       case "bundle_patches": {
-        const where = buildKyselyWhere(provider, input.where);
+        const where = buildKyselyWhere(provider, input.where as never);
         if (where === undefined) {
           throw new KyselyAdapterInvariantError("bundle_patches.delete.where");
         }
-        await sql`delete from ${sql.table(
-          "bundle_patches",
-        )} where ${where}`.execute(executor);
+        await sql`delete from ${sql.table("bundle_patches")} where ${where}`.execute(
+          executor,
+        );
+        return;
       }
     }
   },
   async count(input) {
-    const result = await sql<{
-      readonly total: bigint | number | string;
-    }>`select count(${sql.ref(
-      "id",
-    )}) as ${sql.ref("total")} from ${sql.table("bundles")}${whereClause(
-      buildKyselyWhere(provider, input.where ?? []),
-    )}`.execute(executor);
-    return Number(result.rows[0]?.total ?? 0);
+    switch (input.model) {
+      case "bundles":
+        return countRows(
+          executor,
+          "bundles",
+          buildKyselyWhere(provider, input.where as never),
+        );
+      case "bundle_patches":
+        return countRows(
+          executor,
+          "bundle_patches",
+          buildKyselyWhere(provider, input.where as never),
+        );
+      case "channels":
+        return countRows(
+          executor,
+          "channels",
+          buildKyselyWhere(provider, input.where as never),
+        );
+      case "bundle_events":
+        return countRows(
+          executor,
+          "bundle_events",
+          buildKyselyWhere(provider, input.where as never),
+          input.distinct,
+        );
+    }
   },
   async findOne(input) {
     switch (input.model) {
       case "bundles": {
         const where = whereClause(
-          buildKyselyWhere(provider, input.where ?? []),
+          buildKyselyWhere(provider, input.where as never),
         );
         const result = await sql<StoredBundleRow>`select * from ${sql.table(
           "bundles",
@@ -313,12 +408,30 @@ export const createKyselyCrud = (
         const row = result.rows[0];
         return row === undefined ? null : fromStoredBundleRow(row);
       }
+      case "bundle_patches": {
+        const where = whereClause(
+          buildKyselyWhere(provider, input.where as never),
+        );
+        const result = await sql<BundlePatchRow>`select * from ${sql.table(
+          "bundle_patches",
+        )}${where} limit 1`.execute(executor);
+        return result.rows[0] ?? null;
+      }
       case "channels": {
         const where = whereClause(
-          buildKyselyWhere(provider, input.where ?? []),
+          buildKyselyWhere(provider, input.where as never),
         );
         const result = await sql<ChannelRow>`select * from ${sql.table(
           "channels",
+        )}${where} limit 1`.execute(executor);
+        return result.rows[0] ?? null;
+      }
+      case "bundle_events": {
+        const where = whereClause(
+          buildKyselyWhere(provider, input.where as never),
+        );
+        const result = await sql<BundleEventRow>`select * from ${sql.table(
+          "bundle_events",
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
@@ -329,9 +442,9 @@ export const createKyselyCrud = (
     switch (input.model) {
       case "bundles": {
         const where = whereClause(
-          buildKyselyWhere(provider, input.where ?? []),
+          buildKyselyWhere(provider, input.where as never),
         );
-        const order = orderClause(input.sortBy);
+        const order = orderClause(input as never);
         const result = await sql<StoredBundleRow>`select * from ${sql.table(
           "bundles",
         )}${where}${order}${pagination}`.execute(executor);
@@ -339,9 +452,9 @@ export const createKyselyCrud = (
       }
       case "bundle_patches": {
         const where = whereClause(
-          buildKyselyWhere(provider, input.where ?? []),
+          buildKyselyWhere(provider, input.where as never),
         );
-        const order = orderClause(input.sortBy);
+        const order = orderClause(input as never);
         const result = await sql<BundlePatchRow>`select * from ${sql.table(
           "bundle_patches",
         )}${where}${order}${pagination}`.execute(executor);
@@ -349,11 +462,33 @@ export const createKyselyCrud = (
       }
       case "channels": {
         const where = whereClause(
-          buildKyselyWhere(provider, input.where ?? []),
+          buildKyselyWhere(provider, input.where as never),
         );
-        const order = orderClause(input.sortBy);
+        const order = orderClause(input as never);
         const result = await sql<ChannelRow>`select * from ${sql.table(
           "channels",
+        )}${where}${order}${pagination}`.execute(executor);
+        return [...result.rows];
+      }
+      case "bundle_events": {
+        const where = whereClause(
+          buildKyselyWhere(provider, input.where as never),
+        );
+        const order = orderClause(input as never);
+        const baseQuery = sql<BundleEventRow>`select * from ${sql.table(
+          "bundle_events",
+        )}${where}${order}`;
+        if (input.distinctOn) {
+          const result = await baseQuery.execute(executor);
+          return applyDistinctOnRows(
+            [...result.rows],
+            input.distinctOn.fields,
+            input.offset,
+            input.limit,
+          );
+        }
+        const result = await sql<BundleEventRow>`select * from ${sql.table(
+          "bundle_events",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }

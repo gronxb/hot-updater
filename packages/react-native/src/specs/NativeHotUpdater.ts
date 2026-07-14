@@ -92,13 +92,14 @@ export interface Spec extends TurboModule {
    * Reads the launch report for the current process.
    * This is a read-only API; native launch state has already been finalized.
    *
-   * @returns Object with status and optional crashedBundleId
-   * - `status: "RECOVERED"` - App recovered from crash, rollback occurred (ROLLBACK event)
-   * - `status: "STABLE"` - No changes, already stable
-   * - `crashedBundleId` - Present only when status is "RECOVERED"
+   * @returns Object describing whether launch state changed and, for qualifying
+   * transitions, the relevant bundle ids plus persisted transition metadata.
    */
   notifyAppReady(): {
-    status: "RECOVERED" | "STABLE";
+    status: "UNCHANGED" | "UPDATE_APPLIED" | "RECOVERED";
+    fromBundleId?: string;
+    toBundleId?: string;
+    updateStrategy?: "fingerprint" | "appVersion";
     crashedBundleId?: string;
   };
 
@@ -164,6 +165,26 @@ export interface Spec extends TurboModule {
    * persists it before returning.
    */
   getCohort: () => string;
+
+  /**
+   * Gets the persisted install id for this app installation.
+   */
+  getInstallId: () => string;
+
+  /**
+   * Gets the persisted nullable user id associated with this installation.
+   */
+  getUserId: () => string | null;
+
+  /**
+   * Gets the persisted nullable username associated with this installation.
+   */
+  getUsername: () => string | null;
+
+  /**
+   * Persists nullable user identity fields associated with this installation.
+   */
+  setUser: (userId: string | null, username: string | null) => void;
 
   // EventEmitter
   addListener(eventName: string): void;

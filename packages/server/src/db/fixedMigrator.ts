@@ -16,11 +16,7 @@ import {
   schemaIndexAppliesToProvider,
 } from "./schema/registry";
 import { createTableSql } from "./schema/sql";
-import {
-  createV029AlterSql,
-  createV031AlterSql,
-  createV036AlterSql,
-} from "./schema/sqlMigrations";
+import { createSchemaMigrationSql } from "./schema/sqlMigrations";
 import {
   createSqlCreateOperations,
   getSettingsInsertSql,
@@ -92,7 +88,8 @@ const assertSupportedSchemaVersion = (
     currentVersion !== undefined &&
     currentVersion !== "0.21.0" &&
     currentVersion !== "0.29.0" &&
-    currentVersion !== "0.31.0"
+    currentVersion !== "0.31.0" &&
+    currentVersion !== "0.36.0"
   ) {
     throw new Error(
       `Unsupported Hot Updater schema version: ${currentVersion}`,
@@ -149,36 +146,24 @@ export const createKyselyMigrator = ({
       currentVersion === undefined
         ? [...createTableSql(provider, relationMode), settingsStatement]
         : [
-            ...(currentVersion === "0.21.0"
-              ? createV029AlterSql(provider)
-              : []),
-            ...(currentVersion === "0.21.0" || currentVersion === "0.29.0"
-              ? createV031AlterSql(provider, relationMode)
-              : []),
-            ...(currentVersion === "0.21.0" ||
-            currentVersion === "0.29.0" ||
-            currentVersion === "0.31.0"
-              ? createV036AlterSql(provider, relationMode)
-              : []),
+            ...createSchemaMigrationSql(
+              currentVersion,
+              HOT_UPDATER_SCHEMA_VERSION,
+              provider,
+              relationMode,
+            ),
             ...executableSettingsStatements,
           ];
     const operations =
       currentVersion === undefined
         ? createSqlCreateOperations(provider, relationMode, settingsOperation)
         : toCustomOperations(
-            [
-              ...(currentVersion === "0.21.0"
-                ? createV029AlterSql(provider)
-                : []),
-              ...(currentVersion === "0.21.0" || currentVersion === "0.29.0"
-                ? createV031AlterSql(provider, relationMode)
-                : []),
-              ...(currentVersion === "0.21.0" ||
-              currentVersion === "0.29.0" ||
-              currentVersion === "0.31.0"
-                ? createV036AlterSql(provider, relationMode)
-                : []),
-            ],
+            createSchemaMigrationSql(
+              currentVersion,
+              HOT_UPDATER_SCHEMA_VERSION,
+              provider,
+              relationMode,
+            ),
             settingsOperation,
           );
 

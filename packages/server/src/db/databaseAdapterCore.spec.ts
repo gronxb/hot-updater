@@ -18,6 +18,149 @@ import {
   updateArgs,
 } from "./databaseAdapterCore.testFixtures";
 
+type TestEventRow = {
+  id: string;
+  type: "UPDATE_APPLIED" | "RECOVERED";
+  install_id: string;
+  user_id: string | null;
+  username: string | null;
+  from_bundle_id: string;
+  to_bundle_id: string;
+  platform: "ios" | "android";
+  app_version: string;
+  channel: string;
+  cohort: string;
+  update_strategy: "fingerprint" | "appVersion";
+  fingerprint_hash: string | null;
+  sdk_version: string | null;
+  received_at_ms: number;
+};
+
+const createBundleEventAdapter = (): DatabaseAdapter<TestContext> => {
+  const rows: TestEventRow[] = [];
+  const matches = (
+    row: TestEventRow,
+    where: readonly Record<string, unknown>[] | undefined,
+  ): boolean => {
+    if (!where || where.length === 0) return true;
+    const evaluate = (condition: Record<string, unknown>): boolean => {
+      const actual = Reflect.get(row, condition.field as string);
+      const operator = (condition.operator ?? "eq") as string;
+      const expected = condition.value;
+      if (
+        operator === "contains" &&
+        typeof actual === "string" &&
+        typeof expected === "string"
+      ) {
+        return actual.toLowerCase().includes(expected.toLowerCase());
+      }
+      if (operator === "in" && Array.isArray(expected)) {
+        return expected.includes(actual);
+      }
+      return actual === expected;
+    };
+    let result = evaluate(where[0]!);
+    for (const condition of where.slice(1)) {
+      const current = evaluate(condition);
+      result =
+        condition.connector === "OR" ? result || current : result && current;
+    }
+    return result;
+  };
+  const ordered = (input: {
+    where?: readonly Record<string, unknown>[];
+    orderBy?: readonly { field: string; direction: "asc" | "desc" }[];
+    distinctOn?: { fields: readonly string[] };
+    limit: number;
+    offset: number;
+  }) => {
+    let result = rows.filter((row) => matches(row, input.where));
+    if (input.orderBy) {
+      const orderBy = input.orderBy;
+      result = result.toSorted((left, right) => {
+        for (const clause of orderBy) {
+          const leftValue = Reflect.get(left, clause.field) as
+            | string
+            | number
+            | null;
+          const rightValue = Reflect.get(right, clause.field) as
+            | string
+            | number
+            | null;
+          const order =
+            typeof leftValue === "number" && typeof rightValue === "number"
+              ? leftValue - rightValue
+              : String(leftValue).localeCompare(String(rightValue));
+          if (order !== 0) {
+            return clause.direction === "asc" ? order : -order;
+          }
+        }
+        return 0;
+      });
+    }
+    if (input.distinctOn) {
+      const seen = new Set<string>();
+      result = result.filter((row) => {
+        const key = JSON.stringify(
+          input.distinctOn?.fields.map((field) => Reflect.get(row, field)),
+        );
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+    return result.slice(input.offset, input.offset + input.limit);
+  };
+  return {
+    name: "bundle-event-test",
+    create: async (input) => {
+      if (input.model === "bundle_events") {
+        rows.push(input.data as TestEventRow);
+        return input.data as never;
+      }
+      throw new Error("unused");
+    },
+    update: async () => {
+      throw new Error("unused");
+    },
+    delete: async () => {
+      throw new Error("unused");
+    },
+    count: async (input) => {
+      if (input.model !== "bundle_events") throw new Error("unused");
+      const filtered = rows.filter((row) =>
+        matches(
+          row,
+          input.where as readonly Record<string, unknown>[] | undefined,
+        ),
+      );
+      if (!input.distinct) return filtered.length;
+      return new Set(
+        filtered.map((row) =>
+          JSON.stringify(
+            input.distinct?.map((field) => Reflect.get(row, field)),
+          ),
+        ),
+      ).size;
+    },
+    findOne: async () => null,
+    findMany: async (input) => {
+      if (input.model !== "bundle_events") return [] as never[];
+      return ordered({
+        where: input.where as readonly Record<string, unknown>[] | undefined,
+        orderBy: input.orderBy as
+          | readonly { field: string; direction: "asc" | "desc" }[]
+          | undefined,
+        distinctOn: input.distinctOn as
+          | { fields: readonly string[] }
+          | undefined,
+        limit: input.limit ?? 100,
+        offset: input.offset ?? 0,
+      }) as never[];
+    },
+  } as DatabaseAdapter<TestContext>;
+};
+
 describe("createDatabaseAdapterCore", () => {
   it("uses the optional low-adapter update fast-path", async () => {
     // Given
@@ -244,5 +387,203 @@ describe("createDatabaseAdapterCore", () => {
       status: "ROLLBACK",
     });
     expect(readStorageText).not.toHaveBeenCalled();
+  });
+
+  it("appends bundle events and derives summary/search/history methods", async () => {
+    // Given
+    const adapter = createBundleEventAdapter();
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
+    const context: TestContext = {
+      env: { assetHost: "https://assets.example.com" },
+    };
+    const nowValues = [
+      1_725_000_000_000, 1_725_000_000_000, 1_725_000_003_000,
+      1_725_000_003_000, 1_725_000_006_000, 1_725_000_006_000,
+    ];
+    const now = vi
+      .spyOn(Date, "now")
+      .mockImplementation(() => nowValues.shift() ?? 0);
+
+    // When
+    await core.api.appendBundleEvent(
+      {
+        type: "UPDATE_APPLIED",
+        installId: "install-1",
+        fromBundleId: currentBundle.id,
+        toBundleId: targetBundle.id,
+        userId: "user-1",
+        username: "alice",
+        platform: "ios",
+        appVersion: "1.0.0",
+        channel: "production",
+        cohort: "default",
+        updateStrategy: "appVersion",
+        fingerprintHash: null,
+      },
+      context,
+    );
+    await core.api.appendBundleEvent(
+      {
+        type: "RECOVERED",
+        installId: "install-2",
+        fromBundleId: targetBundle.id,
+        toBundleId: currentBundle.id,
+        userId: "user-2",
+        username: "bob",
+        platform: "android",
+        appVersion: "1.0.1",
+        channel: "production",
+        cohort: "beta",
+        updateStrategy: "fingerprint",
+        fingerprintHash: "fp-2",
+      },
+      context,
+    );
+    await core.api.appendBundleEvent(
+      {
+        type: "UPDATE_APPLIED",
+        installId: "install-1",
+        fromBundleId: targetBundle.id,
+        toBundleId: targetBundle.id,
+        userId: "user-1",
+        username: "alice",
+        platform: "ios",
+        appVersion: "1.0.2",
+        channel: "production",
+        cohort: "default",
+        updateStrategy: "appVersion",
+        fingerprintHash: null,
+      },
+      context,
+    );
+    const summary = await core.api.getBundleEventSummary(
+      targetBundle.id,
+      context,
+    );
+    const search = await core.api.searchInstallations("ali", 10, 0, context);
+    const history = await core.api.getInstallationHistory(
+      "install-1",
+      10,
+      0,
+      context,
+    );
+
+    // Then
+    expect(summary).toEqual({ installed: 1, recovered: 1 });
+    expect(search).toEqual({
+      data: [
+        {
+          installId: "install-1",
+          username: "alice",
+          userId: "user-1",
+          lastKnownBundleId: targetBundle.id,
+          latestStatus: "UPDATE_APPLIED",
+          platform: "ios",
+          appVersion: "1.0.2",
+          channel: "production",
+          cohort: "default",
+          receivedAtMs: 1_725_000_006_000,
+        },
+      ],
+      pagination: { total: 1, limit: 10, offset: 0 },
+    });
+    expect(history.data).toHaveLength(2);
+    expect(history.data[0]).toMatchObject({
+      type: "UPDATE_APPLIED",
+      toBundleId: targetBundle.id,
+      receivedAtMs: 1_725_000_006_000,
+    });
+    expect(history.data[1]).toMatchObject({
+      type: "UPDATE_APPLIED",
+      fromBundleId: currentBundle.id,
+      receivedAtMs: 1_725_000_000_000,
+    });
+    expect(history.pagination).toEqual({ total: 2, limit: 10, offset: 0 });
+    now.mockRestore();
+  });
+
+  it("builds bundle event analytics with cumulative series and recent events", async () => {
+    // Given
+    const adapter = createBundleEventAdapter();
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
+    const nowValues = [
+      Date.UTC(2026, 0, 1, 0, 5, 0),
+      Date.UTC(2026, 0, 1, 0, 5, 0),
+      Date.UTC(2026, 0, 1, 0, 10, 0),
+      Date.UTC(2026, 0, 1, 0, 10, 0),
+      Date.UTC(2026, 0, 1, 0, 15, 0),
+      Date.UTC(2026, 0, 1, 0, 15, 0),
+      Date.UTC(2026, 0, 1, 0, 30, 0),
+    ];
+    const now = vi
+      .spyOn(Date, "now")
+      .mockImplementation(() => nowValues.shift() ?? 0);
+
+    // When
+    await core.api.appendBundleEvent({
+      type: "UPDATE_APPLIED",
+      installId: "install-a",
+      fromBundleId: currentBundle.id,
+      toBundleId: targetBundle.id,
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "alpha",
+      updateStrategy: "appVersion",
+      fingerprintHash: null,
+    });
+    await core.api.appendBundleEvent({
+      type: "UPDATE_APPLIED",
+      installId: "install-b",
+      fromBundleId: currentBundle.id,
+      toBundleId: targetBundle.id,
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "beta",
+      updateStrategy: "appVersion",
+      fingerprintHash: null,
+    });
+    await core.api.appendBundleEvent({
+      type: "RECOVERED",
+      installId: "install-c",
+      fromBundleId: targetBundle.id,
+      toBundleId: currentBundle.id,
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "beta",
+      updateStrategy: "appVersion",
+      fingerprintHash: null,
+    });
+    const analytics = await core.api.getBundleEventAnalytics(
+      targetBundle.id,
+      "24h",
+      10,
+      0,
+    );
+
+    // Then
+    expect(analytics.summary).toEqual({ installed: 2, recovered: 1 });
+    expect(analytics.series.installed.at(-1)).toEqual({
+      bucketStartMs: Date.UTC(2026, 0, 1, 0, 0, 0),
+      value: 2,
+    });
+    expect(analytics.series.recovered.at(-1)).toEqual({
+      bucketStartMs: Date.UTC(2026, 0, 1, 0, 0, 0),
+      value: 1,
+    });
+    expect(analytics.cohorts.installed).toEqual([
+      { cohort: "alpha", value: 1 },
+      { cohort: "beta", value: 1 },
+    ]);
+    expect(analytics.cohorts.recovered).toEqual([{ cohort: "beta", value: 1 }]);
+    expect(analytics.recentEvents.pagination).toEqual({
+      total: 3,
+      limit: 10,
+      offset: 0,
+    });
+    expect(analytics.recentEvents.data[0]).toMatchObject({ type: "RECOVERED" });
+    now.mockRestore();
   });
 });

@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -121,12 +122,48 @@ const channelRow = (row: Record<string, unknown>): ChannelRow => ({
   name: stringValue(row, "name", "channels"),
 });
 
+const bundleEventRow = (row: Record<string, unknown>): BundleEventRow => {
+  const type = stringValue(row, "type", "bundle_events");
+  const updateStrategy = stringValue(row, "update_strategy", "bundle_events");
+  const platform = stringValue(row, "platform", "bundle_events");
+  if (type !== "UPDATE_APPLIED" && type !== "RECOVERED") {
+    throw new InvalidD1RowError("bundle_events");
+  }
+  if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
+    throw new InvalidD1RowError("bundle_events");
+  }
+  if (platform !== "ios" && platform !== "android") {
+    throw new InvalidD1RowError("bundle_events");
+  }
+  return {
+    id: stringValue(row, "id", "bundle_events"),
+    type,
+    install_id: stringValue(row, "install_id", "bundle_events"),
+    user_id: nullableString(row, "user_id", "bundle_events"),
+    username: nullableString(row, "username", "bundle_events"),
+    from_bundle_id: stringValue(row, "from_bundle_id", "bundle_events"),
+    to_bundle_id: stringValue(row, "to_bundle_id", "bundle_events"),
+    platform,
+    app_version: stringValue(row, "app_version", "bundle_events"),
+    channel: stringValue(row, "channel", "bundle_events"),
+    cohort: stringValue(row, "cohort", "bundle_events"),
+    update_strategy: updateStrategy,
+    fingerprint_hash: nullableString(row, "fingerprint_hash", "bundle_events"),
+    sdk_version: nullableString(row, "sdk_version", "bundle_events"),
+    received_at_ms: numberValue(row, "received_at_ms", "bundle_events"),
+  };
+};
+
 export function parseD1Row(model: "bundles", value: unknown): BundleRow;
 export function parseD1Row(
   model: "bundle_patches",
   value: unknown,
 ): BundlePatchRow;
 export function parseD1Row(model: "channels", value: unknown): ChannelRow;
+export function parseD1Row(
+  model: "bundle_events",
+  value: unknown,
+): BundleEventRow;
 export function parseD1Row(
   model: DatabaseModel,
   value: unknown,
@@ -143,5 +180,7 @@ export function parseD1Row(
       return patchRow(value);
     case "channels":
       return channelRow(value);
+    case "bundle_events":
+      return bundleEventRow(value);
   }
 }

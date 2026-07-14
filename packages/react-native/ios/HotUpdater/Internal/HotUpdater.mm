@@ -599,6 +599,26 @@ RCT_EXPORT_MODULE();
     return @(result);
 }
 
+- (NSString *)getInstallId {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getInstallId];
+}
+
+- (NSString * _Nullable)getUserId {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getUserId];
+}
+
+- (NSString * _Nullable)getUsername {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getUsername];
+}
+
+- (void)setUser:(NSString * _Nullable)userId username:(NSString * _Nullable)username {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl setUser:userId username:username];
+}
+
 - (NSString * _Nullable)getBaseURL {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -710,6 +730,26 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(clearCrashHistory) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     BOOL result = [impl clearCrashHistory];
     return @(result);
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getInstallId) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getInstallId];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUserId) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getUserId];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getUsername) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    return [impl getUsername];
+}
+
+RCT_EXPORT_METHOD(setUser:(NSString * _Nullable)userId username:(NSString * _Nullable)username) {
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl setUser:userId username:username];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {

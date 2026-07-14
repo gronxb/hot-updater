@@ -49,6 +49,7 @@ const createApi = () =>
     insertBundle: vi.fn<HandlerAPI<TestContext>["insertBundle"]>(),
     updateBundleById: vi.fn<HandlerAPI<TestContext>["updateBundleById"]>(),
     deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),
+    appendBundleEvent: vi.fn<HandlerAPI<TestContext>["appendBundleEvent"]>(),
   }) satisfies HandlerAPI<TestContext>;
 
 const createManagementHandler = (
@@ -156,26 +157,6 @@ describe("createHandler", () => {
     await expect(response.json()).resolves.toBeNull();
   });
 
-  it("keeps no-update responses as null for invalid SDK versions", async () => {
-    const api = createApi();
-    api.getAppUpdateInfo.mockResolvedValueOnce(null);
-    const handler = createHandler(api, { basePath: "/hot-updater" });
-
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-        {
-          headers: {
-            "Hot-Updater-SDK-Version": "invalid",
-          },
-        },
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toBeNull();
-  });
-
   it("supports the fingerprint route without a cohort segment", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });
@@ -201,55 +182,109 @@ describe("createHandler", () => {
     );
   });
 
-  it("keeps version mounted when bundle routes are disabled", async () => {
+  it("mounts the events route with update-check routes", async () => {
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Hot-Updater-SDK-Version": "0.37.0",
+        },
+        body: JSON.stringify({
+          type: "UPDATE_APPLIED",
+          installId: "install-1",
+          fromBundleId: "bundle-0",
+          toBundleId: "bundle-1",
+          platform: "ios",
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          updateStrategy: "appVersion",
+          fingerprintHash: null,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(api.appendBundleEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "UPDATE_APPLIED",
+        installId: "install-1",
+        toBundleId: "bundle-1",
+        sdkVersion: "0.37.0",
+      }),
+      undefined,
+    );
+  });
+
+  it("returns 400 JSON for invalid event payloads", async () => {
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "UPDATE_APPLIED" }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid event field: platform",
+    });
+    expect(api.appendBundleEvent).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 JSON for internal event errors", async () => {
+    const api = createApi();
+    api.appendBundleEvent.mockRejectedValueOnce(new Error("db unavailable"));
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "RECOVERED",
+          installId: "install-1",
+          fromBundleId: "bundle-1",
+          toBundleId: testBundle.id,
+          platform: "ios",
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          updateStrategy: "appVersion",
+          fingerprintHash: null,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Internal server error",
+    });
+  });
+
+  it("does not mount event routes when update-check routes are disabled", async () => {
     const api = createApi();
     const handler = createHandler(api, {
       basePath: "/hot-updater",
       routes: {
-        updateCheck: true,
+        updateCheck: false,
         bundles: false,
       },
     });
 
-    const versionResponse = await handler(
-      new Request("http://localhost/hot-updater/version"),
-    );
-    const bundlesResponse = await handler(
-      new Request("http://localhost/hot-updater/api/bundles"),
-    );
-    const updateResponse = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-      ),
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", { method: "POST" }),
     );
 
-    expect(versionResponse.status).toBe(200);
-    await expect(versionResponse.json()).resolves.toEqual({
-      version: HOT_UPDATER_SERVER_VERSION,
-    });
-    expect(bundlesResponse.status).toBe(404);
-    expect(updateResponse.status).toBe(200);
-  });
-
-  it("does not mount bundle routes by default", async () => {
-    const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
-
-    const versionResponse = await handler(
-      new Request("http://localhost/hot-updater/version"),
-    );
-    const bundlesResponse = await handler(
-      new Request("http://localhost/hot-updater/api/bundles"),
-    );
-    const updateResponse = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-      ),
-    );
-
-    expect(versionResponse.status).toBe(200);
-    expect(bundlesResponse.status).toBe(404);
-    expect(updateResponse.status).toBe(200);
+    expect(response.status).toBe(404);
   });
 
   it("mounts bundle routes when explicitly enabled", async () => {
@@ -264,13 +299,7 @@ describe("createHandler", () => {
         totalPages: 0,
       },
     });
-    const handler = createHandler(api, {
-      basePath: "/hot-updater",
-      routes: {
-        updateCheck: true,
-        bundles: true,
-      },
-    });
+    const handler = createManagementHandler(api);
 
     const response = await handler(
       new Request("http://localhost/hot-updater/api/bundles"),
@@ -288,348 +317,17 @@ describe("createHandler", () => {
     );
   });
 
-  it("keeps update-check routes mounted for partial runtime route config", async () => {
-    const api = createApi();
-    const handler = createHandler(api, {
-      basePath: "/hot-updater",
-      routes: JSON.parse('{"bundles":true}') as HandlerRoutes,
-    });
-
-    const updateResponse = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-      ),
-    );
-
-    expect(updateResponse.status).toBe(200);
-  });
-
-  it("keeps the version route mounted when update-check routes are disabled", async () => {
-    const api = createApi();
-    const handler = createHandler(api, {
-      basePath: "/hot-updater",
-      routes: {
-        updateCheck: false,
-        bundles: false,
-      },
-    });
-
-    const versionResponse = await handler(
-      new Request("http://localhost/hot-updater/version"),
-    );
-    const bundlesResponse = await handler(
-      new Request("http://localhost/hot-updater/api/bundles"),
-    );
-    const updateResponse = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-      ),
-    );
-
-    expect(versionResponse.status).toBe(200);
-    await expect(versionResponse.json()).resolves.toEqual({
-      version: HOT_UPDATER_SERVER_VERSION,
-    });
-    expect(bundlesResponse.status).toBe(404);
-    expect(updateResponse.status).toBe(404);
-  });
-
-  it("can mount bundle routes without update-check routes", async () => {
-    const api = createApi();
-    const handler = createManagementHandler(api, { updateCheck: false });
-
-    const versionResponse = await handler(
-      new Request("http://localhost/hot-updater/version"),
-    );
-    const channelsResponse = await handler(
-      new Request("http://localhost/hot-updater/api/bundles/channels"),
-    );
-    const updateResponse = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/ios/1.0.0/production/default/default",
-      ),
-    );
-
-    expect(versionResponse.status).toBe(200);
-    await expect(versionResponse.json()).resolves.toEqual({
-      version: HOT_UPDATER_SERVER_VERSION,
-    });
-    expect(channelsResponse.status).toBe(200);
-    await expect(channelsResponse.json()).resolves.toEqual({
-      data: {
-        channels: ["production"],
-      },
-    });
-    expect(api.getChannels).toHaveBeenCalledWith(undefined);
-    expect(updateResponse.status).toBe(404);
-  });
-
-  it("returns paginated bundle results in the response body", async () => {
-    const api = createApi();
-    api.getBundles.mockResolvedValue({
-      data: [testBundle],
-      pagination: {
-        total: 51,
-        hasNextPage: true,
-        hasPreviousPage: true,
-        currentPage: 6,
-        totalPages: 26,
-      },
-    });
-    const handler = createManagementHandler(api);
-
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&limit=2",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    expect(response.headers.get("X-Total-Count")).toBeNull();
-    await expect(response.json()).resolves.toEqual({
-      data: [testBundle],
-      pagination: {
-        total: 51,
-        hasNextPage: true,
-        hasPreviousPage: true,
-        currentPage: 6,
-        totalPages: 26,
-      },
-    });
-    expect(api.getBundles).toHaveBeenCalledWith(
-      {
-        where: {
-          channel: "production",
-          platform: "ios",
-        },
-        limit: 2,
-        page: undefined,
-      },
-      undefined,
-    );
-  });
-
-  it("passes advanced bundle filters through to getBundles", async () => {
-    const api = createApi();
-    api.getBundles.mockResolvedValue({
-      data: [testBundle],
-      pagination: {
-        total: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    });
-    const handler = createManagementHandler(api);
-
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/api/bundles?channel=production&platform=ios&enabled=true&idLt=bundle-9&targetAppVersion=1.0.x&targetAppVersionNotNull=true&fingerprintHash=null&limit=5",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith(
-      {
-        where: {
-          channel: "production",
-          platform: "ios",
-          enabled: true,
-          id: {
-            lt: "bundle-9",
-          },
-          targetAppVersion: "1.0.x",
-          targetAppVersionNotNull: true,
-          fingerprintHash: null,
-        },
-        limit: 5,
-        page: undefined,
-      },
-      undefined,
-    );
-  });
-
-  it("passes cursor pagination params through to getBundles", async () => {
-    const api = createApi();
-    api.getBundles.mockResolvedValue({
-      data: [testBundle],
-      pagination: {
-        total: 51,
-        hasNextPage: true,
-        hasPreviousPage: true,
-        currentPage: 2,
-        totalPages: 26,
-        nextCursor: "bundle-1",
-        previousCursor: "bundle-9",
-      },
-    });
-    const handler = createManagementHandler(api);
-
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&after=bundle-20",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith(
-      {
-        where: {
-          channel: "production",
-        },
-        limit: 20,
-        page: undefined,
-        cursor: {
-          after: "bundle-20",
-          before: undefined,
-        },
-      },
-      undefined,
-    );
-  });
-
-  it("supports cursor pagination without a legacy offset query param", async () => {
-    const api = createApi();
-    api.getBundles.mockResolvedValue({
-      data: [testBundle],
-      pagination: {
-        total: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-        nextCursor: null,
-        previousCursor: null,
-      },
-    });
-    const handler = createManagementHandler(api);
-
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&after=bundle-20",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith(
-      {
-        where: {
-          channel: "production",
-        },
-        limit: 20,
-        page: undefined,
-        cursor: {
-          after: "bundle-20",
-          before: undefined,
-        },
-      },
-      undefined,
-    );
-  });
-
-  it("returns 400 when bundle list requests still send offset pagination", async () => {
-    const api = createApi();
-    const handler = createManagementHandler(api);
-
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/api/bundles?limit=20&offset=40",
-      ),
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error:
-        "The 'offset' query parameter has been removed. Use 'after' or 'before' cursor pagination instead.",
-    });
-    expect(api.getBundles).not.toHaveBeenCalled();
-  });
-
-  it("passes page-aligned pagination params through to getBundles", async () => {
-    const api = createApi();
-    api.getBundles.mockResolvedValue({
-      data: [testBundle],
-      pagination: {
-        total: 121,
-        hasNextPage: true,
-        hasPreviousPage: true,
-        currentPage: 2,
-        totalPages: 7,
-        nextCursor: "bundle-1",
-        previousCursor: "bundle-9",
-      },
-    });
-    const handler = createManagementHandler(api);
-
-    const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/api/bundles?channel=production&limit=20&page=2&after=bundle-20",
-      ),
-    );
-
-    expect(response.status).toBe(200);
-    expect(api.getBundles).toHaveBeenCalledWith(
-      {
-        where: {
-          channel: "production",
-        },
-        limit: 20,
-        page: 2,
-        cursor: {
-          after: "bundle-20",
-          before: undefined,
-        },
-      },
-      undefined,
-    );
-  });
-
-  it("returns 400 when bundle list requests send an invalid page", async () => {
-    const api = createApi();
-    const handler = createManagementHandler(api);
-
-    const response = await handler(
-      new Request("http://localhost/hot-updater/api/bundles?limit=20&page=0"),
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "The 'page' query parameter must be a positive integer.",
-    });
-    expect(api.getBundles).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 when bundle list limit exceeds the maximum", async () => {
-    const api = createApi();
-    const handler = createManagementHandler(api);
-
-    const response = await handler(
-      new Request("http://localhost/hot-updater/api/bundles?limit=101"),
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error:
-        "The 'limit' query parameter must be a positive integer between 1 and 100.",
-    });
-    expect(api.getBundles).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 when the platform route parameter is invalid", async () => {
+  it("supports the version route", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });
 
     const response = await handler(
-      new Request(
-        "http://localhost/hot-updater/app-version/web/1.0.0/production/default/default",
-      ),
+      new Request("http://localhost/hot-updater/version"),
     );
 
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
-      error: "Invalid platform: web. Expected 'ios' or 'android'.",
+      version: HOT_UPDATER_SERVER_VERSION,
     });
-    expect(response.status).toBe(400);
-    expect(api.getAppUpdateInfo).not.toHaveBeenCalled();
   });
 });

@@ -17,9 +17,11 @@ import type {
   ORMProvider,
   SchemaGenerator,
 } from "../db/types";
+import { hasNullOrderOverrides, sortRowsByOrder } from "./databaseAdapterUtils";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
 import {
   getPrismaDelegate,
+  parsePrismaBundleEventRow,
   parsePrismaBundleRow,
   parsePrismaChannelRow,
   parsePrismaPatchRow,
@@ -62,17 +64,77 @@ const runPrismaTransaction = <TResult>(
     ? client.$transaction(callback, { isolationLevel: "Serializable" })
     : client.$transaction(callback);
 
+const createDistinctKey = (
+  row: Record<string, unknown>,
+  fields: readonly string[],
+): string => JSON.stringify(fields.map((field) => row[field] ?? null));
+
+const applyDistinctOnRows = <TRow extends Record<string, unknown>>(
+  rows: readonly TRow[],
+  fields: readonly string[],
+  offset: number,
+  limit: number,
+): TRow[] => {
+  const seen = new Set<string>();
+  const distinctRows: TRow[] = [];
+  for (const row of rows) {
+    const key = createDistinctKey(row, fields);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    distinctRows.push(row);
+  }
+  return distinctRows.slice(offset, offset + limit);
+};
+
+const countDistinctRows = (
+  rows: readonly Record<string, unknown>[],
+  fields: readonly string[],
+): number => new Set(rows.map((row) => createDistinctKey(row, fields))).size;
+
 const findMany = async (
   client: object,
   input: FindManyDatabaseImplementationInput,
 ): Promise<readonly DatabaseImplementationResult[]> => {
-  const args = {
-    where: createPrismaWhere(input.where),
-    ...(input.sortBy ? { orderBy: createPrismaOrderBy(input.sortBy) } : {}),
-    skip: input.offset,
-    take: input.limit,
-  };
-  const rows = await getPrismaDelegate(client, input.model).findMany(args);
+  const rawOrderBy =
+    "orderBy" in input && input.orderBy
+      ? input.orderBy
+      : "sortBy" in input && input.sortBy
+        ? [input.sortBy]
+        : undefined;
+  const orderBy = createPrismaOrderBy(rawOrderBy as never);
+  const shouldSortInMemory =
+    rawOrderBy !== undefined && hasNullOrderOverrides(rawOrderBy as never);
+  const rows =
+    input.model === "bundle_events" && "distinctOn" in input && input.distinctOn
+      ? applyDistinctOnRows(
+          shouldSortInMemory
+            ? sortRowsByOrder(
+                (await getPrismaDelegate(client, input.model).findMany({
+                  where: createPrismaWhere(input.where as never),
+                })) as Record<string, unknown>[],
+                rawOrderBy as never,
+              )
+            : ((await getPrismaDelegate(client, input.model).findMany({
+                where: createPrismaWhere(input.where as never),
+                ...(orderBy ? { orderBy } : {}),
+              })) as Record<string, unknown>[]),
+          input.distinctOn.fields,
+          input.offset,
+          input.limit,
+        )
+      : shouldSortInMemory
+        ? sortRowsByOrder(
+            (await getPrismaDelegate(client, input.model).findMany({
+              where: createPrismaWhere(input.where as never),
+            })) as Record<string, unknown>[],
+            rawOrderBy as never,
+          ).slice(input.offset, input.offset + input.limit)
+        : await getPrismaDelegate(client, input.model).findMany({
+            where: createPrismaWhere(input.where as never),
+            ...(orderBy ? { orderBy } : {}),
+            skip: input.offset,
+            take: input.limit,
+          });
   switch (input.model) {
     case "bundles":
       return parsePrismaRows(rows, parsePrismaBundleRow);
@@ -80,6 +142,8 @@ const findMany = async (
       return parsePrismaRows(rows, parsePrismaPatchRow);
     case "channels":
       return parsePrismaRows(rows, parsePrismaChannelRow);
+    case "bundle_events":
+      return parsePrismaRows(rows, parsePrismaBundleEventRow);
   }
 };
 
@@ -168,6 +232,8 @@ const createCrudImplementation = (
         return parsePrismaPatchRow(row);
       case "channels":
         return parsePrismaChannelRow(row);
+      case "bundle_events":
+        return parsePrismaBundleEventRow(row);
     }
   },
   update: async (input) => {
@@ -204,7 +270,7 @@ const createCrudImplementation = (
   delete: async (input) => {
     if (input.model === "bundles") {
       const rows = await getPrismaDelegate(client, "bundles").findMany({
-        where: createPrismaWhere(input.where),
+        where: createPrismaWhere(input.where as never),
       });
       const ids = parsePrismaRows(rows, parsePrismaBundleRow).map(
         ({ id }) => id,
@@ -217,23 +283,34 @@ const createCrudImplementation = (
       });
     }
     await getPrismaDelegate(client, input.model).deleteMany({
-      where: createPrismaWhere(input.where),
+      where: createPrismaWhere(input.where as never),
     });
   },
-  count: async (input) =>
-    getPrismaDelegate(client, "bundles").count({
-      where: createPrismaWhere(input.where),
-    }),
+  count: async (input) => {
+    if (input.model === "bundle_events" && input.distinct) {
+      const rows = (await getPrismaDelegate(client, input.model).findMany({
+        where: createPrismaWhere(input.where as never),
+      })) as Record<string, unknown>[];
+      return countDistinctRows(rows, input.distinct);
+    }
+    return getPrismaDelegate(client, input.model).count({
+      where: createPrismaWhere(input.where as never),
+    });
+  },
   findOne: async (input) => {
     const row = await getPrismaDelegate(client, input.model).findFirst({
-      where: createPrismaWhere(input.where),
+      where: createPrismaWhere(input.where as never),
     });
     if (row === null) return null;
     switch (input.model) {
       case "bundles":
         return parsePrismaBundleRow(row);
+      case "bundle_patches":
+        return parsePrismaPatchRow(row);
       case "channels":
         return parsePrismaChannelRow(row);
+      case "bundle_events":
+        return parsePrismaBundleEventRow(row);
     }
   },
   findMany: (input) => findMany(client, input),
@@ -256,10 +333,15 @@ const createPrismaImplementation = (
     },
     getUpdateInfo: createPrismaGetUpdateInfo(client),
   };
+  if (relationMode === "prisma" && !hasCallbackTransaction(client)) {
+    throw new PrismaAdapterError(
+      'relation mode "prisma" requires callback transactions',
+    );
+  }
   if (!hasCallbackTransaction(client)) return implementation;
   if (relationMode === "prisma") {
     implementation.create = (input) =>
-      input.model === "channels"
+      input.model === "channels" || input.model === "bundle_events"
         ? crud.create(input)
         : runPrismaTransaction(client, relationMode, (transactionClient) =>
             createCrudImplementation(transactionClient).create(input),
@@ -276,6 +358,7 @@ const createPrismaImplementation = (
         getPrismaDelegate(transactionClient, "bundles");
         getPrismaDelegate(transactionClient, "bundle_patches");
         getPrismaDelegate(transactionClient, "channels");
+        getPrismaDelegate(transactionClient, "bundle_events");
         return callback(createCrudImplementation(transactionClient));
       }),
   };
@@ -283,43 +366,27 @@ const createPrismaImplementation = (
 
 export const prismaAdapter = (
   config: PrismaConfig,
-): DatabaseAdapterWithCapabilities => {
-  if (
-    config.relationMode !== undefined &&
-    config.relationMode !== "prisma" &&
-    config.relationMode !== "foreign-keys"
-  ) {
-    throw new PrismaAdapterError(
-      `unsupported relation mode "${config.relationMode}"`,
-    );
-  }
-  if (
-    config.relationMode === "prisma" &&
-    !hasCallbackTransaction(config.prisma)
-  ) {
-    throw new PrismaAdapterError(
-      'relation mode "prisma" requires callback transactions',
-    );
-  }
-  const adapter = createDatabaseAdapter({
-    name: "prisma",
-    adapter: () =>
-      createPrismaImplementation(
-        config.prisma,
-        config.relationMode ?? "foreign-keys",
-      ),
-  });
-  return Object.assign(adapter, {
-    adapterName: "prisma",
-    provider: config.provider,
-    generateSchema: (version: Parameters<SchemaGenerator>[0]) => ({
-      code: generatePrismaSchema(
-        config.provider,
-        version === "latest"
-          ? hotUpdaterSchema
-          : getHotUpdaterSchemaVersion(version),
-      ),
-      path: "./prisma/schema/hot_updater.prisma",
+): DatabaseAdapterWithCapabilities =>
+  Object.assign(
+    createDatabaseAdapter({
+      name: "prisma",
+      adapter: () =>
+        createPrismaImplementation(
+          config.prisma,
+          config.relationMode ?? "foreign-keys",
+        ),
     }),
-  });
-};
+    {
+      adapterName: "prisma",
+      provider: config.provider,
+      generateSchema: ((version) => ({
+        code: generatePrismaSchema(
+          config.provider,
+          version === "latest"
+            ? hotUpdaterSchema
+            : getHotUpdaterSchemaVersion(version),
+        ),
+        path: "./prisma/schema/hot_updater.prisma",
+      })) satisfies SchemaGenerator,
+    },
+  );

@@ -3,6 +3,7 @@ import {
   type Bundle,
   type DatabaseBundleQueryOptions,
 } from "@hot-updater/plugin-core";
+import type { BundleEventAnalyticsWindow } from "@hot-updater/server/db";
 import { createServerFn } from "@tanstack/react-start";
 
 import { DEFAULT_PAGE_LIMIT } from "./constants";
@@ -18,6 +19,25 @@ type GetBundlesInput = {
 
 type GetBundleInput = {
   bundleId: string;
+};
+
+type GetBundleEventAnalyticsInput = {
+  bundleId: string;
+  window: BundleEventAnalyticsWindow;
+  limit?: number;
+  offset?: number;
+};
+
+type SearchInstallationsInput = {
+  query: string;
+  limit?: number;
+  offset?: number;
+};
+
+type GetInstallationHistoryInput = {
+  installId: string;
+  limit?: number;
+  offset?: number;
 };
 
 type GetBundleChildrenInput = {
@@ -167,6 +187,70 @@ export const getBundle = createServerFn({ method: "GET" })
       return bundle ?? null;
     } catch (error) {
       console.error("Error during bundle retrieval:", error);
+      throw error;
+    }
+  });
+
+export const getBundleEventSummary = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundleInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { getBundleEventSummary: getBundleEventSummaryWithRuntime } =
+        await import("./server/runtime.server");
+      const { hotUpdater } = await prepareConfig();
+
+      return await getBundleEventSummaryWithRuntime(hotUpdater, data.bundleId);
+    } catch (error) {
+      console.error("Error during bundle event summary retrieval:", error);
+      throw error;
+    }
+  });
+
+export const getBundleEventAnalytics = createServerFn({ method: "GET" })
+  .inputValidator((input: GetBundleEventAnalyticsInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { getBundleEventAnalytics: getBundleEventAnalyticsWithRuntime } =
+        await import("./server/runtime.server");
+      const { hotUpdater } = await prepareConfig();
+
+      return await getBundleEventAnalyticsWithRuntime(hotUpdater, data);
+    } catch (error) {
+      console.error("Error during bundle event analytics retrieval:", error);
+      throw error;
+    }
+  });
+
+export const searchInstallations = createServerFn({ method: "GET" })
+  .inputValidator((input: SearchInstallationsInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { searchInstallations: searchInstallationsWithRuntime } =
+        await import("./server/runtime.server");
+      const { hotUpdater } = await prepareConfig();
+
+      return await searchInstallationsWithRuntime(hotUpdater, data);
+    } catch (error) {
+      console.error("Error during installation search:", error);
+      throw error;
+    }
+  });
+
+export const getInstallationHistory = createServerFn({ method: "GET" })
+  .inputValidator((input: GetInstallationHistoryInput) => input)
+  .handler(async ({ data }) => {
+    try {
+      const { prepareConfig } = await import("./server/config.server");
+      const { getInstallationHistory: getInstallationHistoryWithRuntime } =
+        await import("./server/runtime.server");
+      const { hotUpdater } = await prepareConfig();
+
+      return await getInstallationHistoryWithRuntime(hotUpdater, data);
+    } catch (error) {
+      console.error("Error during installation history retrieval:", error);
       throw error;
     }
   });

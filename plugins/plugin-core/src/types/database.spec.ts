@@ -1,45 +1,40 @@
 import { describe, expectTypeOf, it } from "vitest";
 
 import type {
+  BundleEventRow,
   BundleRow,
-  CountBundlesDatabaseInput,
+  CountDatabaseInput,
   DatabaseAdapter,
   DeleteDatabaseInput,
   FindManyDatabaseInput,
   FindOneDatabaseInput,
   TransactionDatabaseAdapter,
-  UpdateBundleDatabaseInput,
+  UpdateDatabaseInput,
 } from "./database";
 
 describe("database adapter types", () => {
   it("keeps unsupported model and operation pairs outside the contract", () => {
-    // Given
-    type ChannelCount = { readonly model: "channels" };
-    type PatchUpdate = { readonly model: "bundle_patches" };
-    type PatchFindOne = { readonly model: "bundle_patches" };
-    type ChannelDelete = { readonly model: "channels" };
+    type ChannelUpdate = { readonly model: "channels" };
+    type EventDelete = { readonly model: "bundle_events" };
 
-    // When / Then
-    expectTypeOf<ChannelCount>().not.toMatchTypeOf<CountBundlesDatabaseInput>();
-    expectTypeOf<PatchUpdate>().not.toMatchTypeOf<UpdateBundleDatabaseInput>();
-    expectTypeOf<PatchFindOne>().not.toMatchTypeOf<
-      FindOneDatabaseInput<"bundles" | "channels">
+    expectTypeOf<ChannelUpdate>().not.toMatchTypeOf<
+      UpdateDatabaseInput<"bundles">
     >();
-    expectTypeOf<ChannelDelete>().not.toMatchTypeOf<
-      DeleteDatabaseInput<"bundle_patches" | "bundles">
+    expectTypeOf<EventDelete>().not.toMatchTypeOf<
+      DeleteDatabaseInput<"bundles" | "bundle_patches">
+    >();
+    expectTypeOf<{ readonly model: "bundle_events" }>().toMatchTypeOf<
+      CountDatabaseInput<"bundle_events">
     >();
   });
 
   it("correlates physical fields and projected results with the model", () => {
-    // Given
     const exerciseProjection = async (adapter: DatabaseAdapter) => {
-      // When
       const row = await adapter.findOne({
         model: "bundles",
         select: ["id", "file_hash"],
       });
 
-      // Then
       expectTypeOf(row).toEqualTypeOf<Pick<
         BundleRow,
         "file_hash" | "id"
@@ -47,16 +42,36 @@ describe("database adapter types", () => {
     };
 
     expectTypeOf(exerciseProjection).toBeFunction();
-    expectTypeOf<FindManyDatabaseInput<"bundle_patches">>().not.toMatchTypeOf<{
-      readonly model: "bundle_patches";
-      readonly sortBy: {
-        readonly field: "file_hash";
-        readonly direction: "asc";
-      };
+    expectTypeOf<FindManyDatabaseInput<"bundle_events">>().not.toMatchTypeOf<{
+      readonly model: "bundle_events";
+      readonly orderBy: readonly [
+        { readonly field: "metadata"; readonly direction: "asc" },
+      ];
     }>();
   });
 
-  it("keeps structured fields outside portable predicates and sorting", () => {
+  it("supports latest-per-install distinctOn ordering for bundle events", () => {
+    const exerciseLatestPerInstall = async (adapter: DatabaseAdapter) => {
+      const rows = await adapter.findMany({
+        model: "bundle_events",
+        distinctOn: { fields: ["install_id"] },
+        orderBy: [
+          { field: "install_id", direction: "asc" },
+          { field: "received_at_ms", direction: "desc" },
+          { field: "id", direction: "desc" },
+        ],
+        select: ["id", "install_id", "received_at_ms"],
+      });
+
+      expectTypeOf(rows).toEqualTypeOf<
+        Pick<BundleEventRow, "id" | "install_id" | "received_at_ms">[]
+      >();
+    };
+
+    expectTypeOf(exerciseLatestPerInstall).toBeFunction();
+  });
+
+  it("keeps structured fields outside portable predicates and ordering", () => {
     type MetadataWhere = {
       readonly model: "bundles";
       readonly where: readonly [
@@ -75,13 +90,6 @@ describe("database adapter types", () => {
         },
       ];
     };
-    type MetadataSort = {
-      readonly model: "bundles";
-      readonly sortBy: {
-        readonly field: "metadata";
-        readonly direction: "asc";
-      };
-    };
 
     expectTypeOf<MetadataWhere>().not.toMatchTypeOf<
       FindManyDatabaseInput<"bundles">
@@ -89,15 +97,20 @@ describe("database adapter types", () => {
     expectTypeOf<CohortWhere>().not.toMatchTypeOf<
       FindManyDatabaseInput<"bundles">
     >();
-    expectTypeOf<MetadataSort>().not.toMatchTypeOf<
-      FindManyDatabaseInput<"bundles">
-    >();
   });
 
   it("keeps transaction operations input-only", () => {
-    // Given / When / Then
     expectTypeOf<
       TransactionDatabaseAdapter["count"]
-    >().parameters.toEqualTypeOf<[CountBundlesDatabaseInput]>();
+    >().parameters.toEqualTypeOf<
+      [
+        CountDatabaseInput<
+          "bundles" | "bundle_patches" | "channels" | "bundle_events"
+        >,
+      ]
+    >();
+    expectTypeOf<FindOneDatabaseInput<"bundle_patches">>().toMatchTypeOf<{
+      readonly model: "bundle_patches";
+    }>();
   });
 });

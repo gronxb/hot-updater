@@ -13,9 +13,11 @@ data class BundleMetadata(
     val isolationKey: String? = null,
     val stableBundleId: String? = null,
     val stagingBundleId: String? = null,
+    val pendingUpdateStrategy: String? = null,
     val verificationPending: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
+
     companion object {
         private const val TAG = "BundleMetadata"
         const val SCHEMA_VERSION = "metadata-v1"
@@ -42,8 +44,10 @@ data class BundleMetadata(
                     } else {
                         null
                     },
+                pendingUpdateStrategy = json.optNullableString("pendingUpdateStrategy"),
                 verificationPending = json.optBoolean("verificationPending", false),
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
+
             )
 
         fun loadFromFile(
@@ -85,6 +89,7 @@ data class BundleMetadata(
             put("isolationKey", isolationKey ?: JSONObject.NULL)
             put("stableBundleId", stableBundleId ?: JSONObject.NULL)
             put("stagingBundleId", stagingBundleId ?: JSONObject.NULL)
+            put("pendingUpdateStrategy", pendingUpdateStrategy ?: JSONObject.NULL)
             put("verificationPending", verificationPending)
             put("updatedAt", updatedAt)
         }
@@ -247,8 +252,10 @@ data class LaunchSelection(
 )
 
 data class LaunchReport(
-    val status: String = "STABLE",
-    val crashedBundleId: String? = null,
+    val status: String = "UNCHANGED",
+    val fromBundleId: String? = null,
+    val toBundleId: String? = null,
+    val updateStrategy: String? = null,
 ) {
     companion object {
         private const val TAG = "LaunchReport"
@@ -256,13 +263,10 @@ data class LaunchReport(
 
         fun fromJson(json: JSONObject): LaunchReport =
             LaunchReport(
-                status = json.optString("status", "STABLE"),
-                crashedBundleId =
-                    if (json.has("crashedBundleId") && !json.isNull("crashedBundleId")) {
-                        json.getString("crashedBundleId").takeIf { it.isNotEmpty() }
-                    } else {
-                        null
-                    },
+                status = json.optString("status", "UNCHANGED"),
+                fromBundleId = json.optNullableString("fromBundleId"),
+                toBundleId = json.optNullableString("toBundleId"),
+                updateStrategy = json.optNullableString("updateStrategy"),
             )
 
         fun loadFromFile(file: File): LaunchReport? =
@@ -281,7 +285,9 @@ data class LaunchReport(
     fun toJson(): JSONObject =
         JSONObject().apply {
             put("status", status)
-            put("crashedBundleId", crashedBundleId ?: JSONObject.NULL)
+            put("fromBundleId", fromBundleId ?: JSONObject.NULL)
+            put("toBundleId", toBundleId ?: JSONObject.NULL)
+            put("updateStrategy", updateStrategy ?: JSONObject.NULL)
         }
 
     fun saveToFile(file: File): Boolean =
@@ -294,3 +300,57 @@ data class LaunchReport(
             false
         }
 }
+
+data class InstallationIdentity(
+    val installId: String,
+    val userId: String? = null,
+    val username: String? = null,
+) {
+    companion object {
+        private const val TAG = "InstallationIdentity"
+        const val IDENTITY_FILENAME = "identity.json"
+
+        fun fromJson(json: JSONObject): InstallationIdentity =
+            InstallationIdentity(
+                installId = json.getString("installId"),
+                userId = json.optNullableString("userId"),
+                username = json.optNullableString("username"),
+            )
+
+        fun loadFromFile(file: File): InstallationIdentity? =
+            try {
+                if (!file.exists()) {
+                    null
+                } else {
+                    fromJson(JSONObject(file.readText()))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to load installation identity", e)
+                null
+            }
+    }
+
+    fun toJson(): JSONObject =
+        JSONObject().apply {
+            put("installId", installId)
+            put("userId", userId ?: JSONObject.NULL)
+            put("username", username ?: JSONObject.NULL)
+        }
+
+    fun saveToFile(file: File): Boolean =
+        try {
+            file.parentFile?.mkdirs()
+            file.writeText(toJson().toString(2))
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save installation identity", e)
+            false
+        }
+}
+
+private fun JSONObject.optNullableString(key: String): String? =
+    if (has(key) && !isNull(key)) {
+        getString(key).takeIf { it.isNotEmpty() }
+    } else {
+        null
+    }

@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -12,6 +13,7 @@ import {
 } from "./mongodbTestFilter";
 
 type Tables = {
+  bundle_events: MongoTestRow[];
   bundle_patches: MongoTestRow[];
   bundles: MongoTestRow[];
   channels: MongoTestRow[];
@@ -152,6 +154,8 @@ const createCollection = (
 const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
   collection: (name: string) => {
     switch (name) {
+      case "bundle_events":
+        return createCollection(tables, "bundle_events", hooks);
       case "bundles":
         return createCollection(tables, "bundles", hooks);
       case "bundle_patches":
@@ -165,7 +169,12 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
 });
 
 export const createMongoTestHarness = () => {
-  const tables: Tables = { bundle_patches: [], bundles: [], channels: [] };
+  const tables: Tables = {
+    bundle_events: [],
+    bundle_patches: [],
+    bundles: [],
+    channels: [],
+  };
   const hooks: MongoTestHooks = { failNextBundleTombstone: false };
   const client = new MongoClient("mongodb://127.0.0.1:27017/hot_updater_test");
   Object.defineProperty(client, "db", {
@@ -176,6 +185,7 @@ export const createMongoTestHarness = () => {
     close: () => client.close(),
     reset: (): void => {
       hooks.failNextBundleTombstone = false;
+      tables.bundle_events = [];
       tables.bundle_patches = [];
       tables.bundles = [];
       tables.channels = [];
@@ -197,5 +207,6 @@ export const createMongoTestHarness = () => {
 };
 
 export type MongoTestBundleRow = BundleRow;
+export type MongoTestBundleEventRow = BundleEventRow;
 export type MongoTestBundlePatchRow = BundlePatchRow;
 export type MongoTestChannelRow = ChannelRow;

@@ -17,6 +17,9 @@ private func hotUpdaterUpdateSignalLaunchStateSymbol(
 @_silgen_name("HotUpdaterPerformRecoveryReload")
 private func hotUpdaterPerformRecoveryReloadSymbol() -> ObjCBool
 
+@_silgen_name("HotUpdaterGetMinBundleId")
+private func hotUpdaterGetMinBundleIdSymbol() -> NSString
+
 private func hotUpdaterInstallSignalHandlers(_ crashMarkerPath: String) {
     hotUpdaterInstallSignalHandlersSymbol(crashMarkerPath as NSString)
 }
@@ -27,6 +30,10 @@ private func hotUpdaterUpdateSignalLaunchState(_ bundleId: String?, shouldRollba
 
 private func hotUpdaterPerformRecoveryReload() -> Bool {
     return hotUpdaterPerformRecoveryReloadSymbol().boolValue
+}
+
+private func hotUpdaterGetMinBundleId() -> String {
+    hotUpdaterGetMinBundleIdSymbol() as String
 }
 
 @objcMembers public class HotUpdaterImpl: NSObject {
@@ -56,7 +63,8 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
             downloadService: downloadService,
             decompressService: decompressService,
             preferences: preferences,
-            isolationKey: isolationKey
+            isolationKey: isolationKey,
+            builtInBundleIdProvider: { HotUpdaterImpl.minBundleId() }
         )
         let recoveryManager = HotUpdaterRecoveryManager.shared
 
@@ -97,6 +105,10 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
             return override
         }
         return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
+    }
+
+    public static func minBundleId() -> String {
+        hotUpdaterGetMinBundleId()
     }
     
     /**
@@ -409,6 +421,22 @@ private func hotUpdaterPerformRecoveryReload() -> Bool {
      */
     public func clearCrashHistory() -> Bool {
         return bundleStorage.clearCrashHistory()
+    }
+
+    public func getInstallId() -> String {
+        return bundleStorage.getInstallId()
+    }
+
+    public func getUserId() -> String? {
+        return bundleStorage.getUserId()
+    }
+
+    public func getUsername() -> String? {
+        return bundleStorage.getUsername()
+    }
+
+    public func setUser(_ userId: String?, username: String?) {
+        bundleStorage.setUser(userId: userId, username: username)
     }
 
     /**

@@ -51,6 +51,8 @@
     database adapters such as D1
   - **Version Control**: Robust app version management through semantic versioning
   - **New Architecture**: Support for new architecture like React Native
+  - **Transition Analytics**: Optional Installed/Recovered OTA evidence plus per-install last-known bundle history
+
 
 
   ## Bundle Diffing
@@ -67,6 +69,12 @@
 
   See the [Bundle Diffing guide](https://hot-updater.dev/docs/guides/bundle-diffing)
   for the full runtime behavior and fallback rules.
+
+  ## OTA Transition Analytics
+
+  Hot Updater can optionally record successful OTA applications and automatic recoveries as append-only transition events. The runtime keeps this opt-in behind `HotUpdater.init({ analytics: true })`, the server stores immutable `bundle_events`, and the Console surfaces lifetime Installed/Recovered counts plus per-install last-known bundle history.
+
+  See the React Native/runtime docs and Console/server guides at https://hot-updater.dev for full setup.
 
 
   ## Extension System

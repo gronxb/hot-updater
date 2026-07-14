@@ -1,5 +1,10 @@
 # @hot-updater/console
 
+## Unreleased
+
+### Minor Changes
+
+- Add bundle transition analytics summary, runtime-backed installation search/history, and a dedicated Console installations route for last-known bundle evidence.
 ## 0.35.3
 
 ### Patch Changes

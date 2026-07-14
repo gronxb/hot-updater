@@ -107,6 +107,31 @@ class HotUpdaterImplTest {
         assertNull(impl.getBaseURL())
     }
 
+    @Test
+    fun `notifyAppReady delegates native launch report unchanged`() {
+        val impl = createImpl(storageBundleId = null)
+
+        assertEquals(mapOf("status" to "UNCHANGED"), impl.notifyAppReady())
+    }
+
+    @Test
+    fun `getInstallId and setUser delegate to bundle storage`() {
+        val storage = FakeBundleStorageService(bundleId = null)
+        val impl = allocateWithoutConstructor<HotUpdaterImpl>()
+        setField(impl, "bundleStorage", storage)
+
+        assertEquals("test-install-id", impl.getInstallId())
+
+        impl.setUser("user-123", "alice")
+        assertEquals("user-123", storage.lastUserId)
+        assertEquals("alice", storage.lastUsername)
+
+        impl.setUser(null, null)
+        assertNull(storage.lastUserId)
+        assertNull(storage.lastUsername)
+    }
+
+
     private fun createImpl(
         storageBundleId: String?,
         storageManifest: Map<String, Any?> = emptyMap(),
@@ -162,6 +187,9 @@ class HotUpdaterImplTest {
             emptyMap(),
         private val launchedBundleBaseURLs: Map<String, String> = emptyMap(),
     ) : BundleStorageService {
+        var lastUserId: String? = null
+        var lastUsername: String? = null
+
         override fun setBundleURL(localPath: String?): Boolean = true
 
         override fun getCachedBundleURL(): String? = null
@@ -187,7 +215,21 @@ class HotUpdaterImplTest {
 
         override fun markLaunchCompleted(currentBundleId: String?) = Unit
 
-        override fun notifyAppReady(): Map<String, Any?> = mapOf("status" to "STABLE")
+        override fun notifyAppReady(): Map<String, Any?> = mapOf("status" to "UNCHANGED")
+
+        override fun getInstallId(): String = "test-install-id"
+
+        override fun getUserId(): String? = lastUserId
+
+        override fun getUsername(): String? = lastUsername
+
+        override fun setUser(
+            userId: String?,
+            username: String?,
+        ) {
+            lastUserId = userId
+            lastUsername = username
+        }
 
         override fun getCrashHistory(): CrashedHistory = CrashedHistory()
 

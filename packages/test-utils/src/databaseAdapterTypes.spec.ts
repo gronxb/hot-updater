@@ -2,6 +2,7 @@ import type {
   BundleRow,
   ChannelRow,
   CountBundlesDatabaseInput,
+  CountDatabaseModel,
   DatabaseDeleteModel,
   DatabaseFindOneModel,
   DatabaseModel,
@@ -13,7 +14,7 @@ import { describe, expectTypeOf, it } from "vitest";
 describe("database adapter operation matrix", () => {
   it("exposes create and findMany for all fixed models", () => {
     expectTypeOf<DatabaseModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches" | "channels"
+      "bundles" | "bundle_patches" | "channels" | "bundle_events"
     >();
   });
 
@@ -23,13 +24,16 @@ describe("database adapter operation matrix", () => {
     >();
   });
 
-  it("limits findOne to bundles and channels", () => {
+  it("limits findOne to models with read-by-selector support", () => {
     expectTypeOf<DatabaseFindOneModel>().toEqualTypeOf<
-      "bundles" | "channels"
+      "bundles" | "bundle_patches" | "channels" | "bundle_events"
     >();
   });
 
-  it("limits update and count to bundles", () => {
+  it("allows count across all readable models while preserving bundle aliases", () => {
+    expectTypeOf<CountDatabaseModel>().toEqualTypeOf<
+      "bundles" | "bundle_patches" | "channels" | "bundle_events"
+    >();
     expectTypeOf<
       UpdateBundleDatabaseInput["model"]
     >().toEqualTypeOf<"bundles">();

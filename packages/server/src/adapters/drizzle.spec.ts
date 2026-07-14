@@ -51,7 +51,29 @@ const bundlePatches = pgTable("bundle_patches", {
   patch_storage_uri: text("patch_storage_uri").notNull(),
   order_index: integer("order_index").notNull(),
 });
-const schema = { bundle_patches: bundlePatches, bundles, channels };
+const bundleEvents = pgTable("bundle_events", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  install_id: text("install_id").notNull(),
+  user_id: text("user_id"),
+  username: text("username"),
+  from_bundle_id: text("from_bundle_id").notNull(),
+  to_bundle_id: text("to_bundle_id").notNull(),
+  platform: text("platform").notNull(),
+  app_version: text("app_version").notNull(),
+  channel: text("channel").notNull(),
+  cohort: text("cohort").notNull(),
+  update_strategy: text("update_strategy").notNull(),
+  fingerprint_hash: text("fingerprint_hash"),
+  sdk_version: text("sdk_version"),
+  received_at_ms: integer("received_at_ms").notNull(),
+});
+const schema = {
+  bundle_events: bundleEvents,
+  bundle_patches: bundlePatches,
+  bundles,
+  channels,
+};
 
 class DrizzleTestStateError extends Error {
   readonly name = "DrizzleTestStateError";
@@ -89,6 +111,28 @@ setupDatabaseAdapterTestSuite({
   },
 });
 
+const createBundleEventRow = (
+  id: string,
+  installId: string,
+  receivedAtMs: number,
+) => ({
+  id,
+  type: "UPDATE_APPLIED" as const,
+  install_id: installId,
+  user_id: null,
+  username: null,
+  from_bundle_id: `from-${installId}`,
+  to_bundle_id: `to-${installId}`,
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "stable",
+  update_strategy: "appVersion" as const,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: receivedAtMs,
+});
+
 describe("drizzleAdapter schema requirements", () => {
   it("does not resolve a lazy database while generating a schema", () => {
     const getDB = vi.fn(() => {
@@ -106,8 +150,12 @@ describe("drizzleAdapter schema requirements", () => {
     expect(getDB).not.toHaveBeenCalled();
   });
 
-  it("requires all three fixed table objects", () => {
-    const incompleteSchema = { bundle_patches: bundlePatches, bundles };
+  it("requires all four fixed table objects", () => {
+    const incompleteSchema = {
+      bundle_events: bundleEvents,
+      bundle_patches: bundlePatches,
+      bundles,
+    };
 
     expect(() =>
       drizzleAdapter({
@@ -116,5 +164,94 @@ describe("drizzleAdapter schema requirements", () => {
         schema: incompleteSchema,
       }),
     ).toThrow('Drizzle schema is missing table "channels".');
+  });
+});
+
+describe("drizzleAdapter bundle_events distinct semantics", () => {
+  it("counts distinct installs and keeps the latest row per install", async () => {
+    const localClient = new PGlite();
+    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    const localDatabase = drizzle(localClient, { schema });
+    const adapter = drizzleAdapter({
+      db: localDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-a-1", "install-a", 100),
+      });
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-a-2", "install-a", 200),
+      });
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-b-1", "install-b", 150),
+      });
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-b-2", "install-b", 150),
+      });
+
+      await expect(
+        adapter.count({ model: "bundle_events", distinct: ["install_id"] }),
+      ).resolves.toBe(2);
+      await expect(
+        adapter.findMany({
+          model: "bundle_events",
+          distinctOn: { fields: ["install_id"] },
+          orderBy: [
+            { field: "install_id", direction: "asc" },
+            { field: "received_at_ms", direction: "desc" },
+            { field: "id", direction: "desc" },
+          ],
+        }),
+      ).resolves.toMatchObject([
+        { id: "event-a-2", install_id: "install-a", received_at_ms: 200 },
+        { id: "event-b-2", install_id: "install-b", received_at_ms: 150 },
+      ]);
+    } finally {
+      await localClient.close();
+    }
+  });
+  it("honors explicit null ordering for bundle event queries", async () => {
+    const localClient = new PGlite();
+    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    const localDatabase = drizzle(localClient, { schema });
+    const adapter = drizzleAdapter({
+      db: localDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-null", "install-a", 100),
+      });
+      await adapter.create({
+        model: "bundle_events",
+        data: {
+          ...createBundleEventRow("event-user", "install-b", 200),
+          user_id: "user-123",
+        },
+      });
+
+      await expect(
+        adapter.findMany({
+          model: "bundle_events",
+          orderBy: [
+            { field: "user_id", direction: "asc", nulls: "first" },
+            { field: "id", direction: "asc" },
+          ],
+        }),
+      ).resolves.toMatchObject([
+        { id: "event-null", user_id: null },
+        { id: "event-user", user_id: "user-123" },
+      ]);
+    } finally {
+      await localClient.close();
+    }
   });
 });

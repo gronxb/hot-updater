@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -164,6 +165,42 @@ export const parseFirebaseChannelRow = (
   return {
     id: string(property(input, "id"), `channels/${documentId}`),
     name: string(property(input, "name"), `channels/${documentId}`),
+  };
+};
+
+export const parseFirebaseBundleEventRow = (
+  value: unknown,
+  source: string,
+): BundleEventRow => {
+  const input = record(value, source);
+  const type = string(property(input, "type"), source);
+  const updateStrategy = string(property(input, "update_strategy"), source);
+  const rowPlatform = platform(property(input, "platform"), source);
+  if (type !== "UPDATE_APPLIED" && type !== "RECOVERED") {
+    throw new FirebaseDatabaseDataError(source);
+  }
+  if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
+    throw new FirebaseDatabaseDataError(source);
+  }
+  return {
+    id: string(property(input, "id"), source),
+    type,
+    install_id: string(property(input, "install_id"), source),
+    user_id: nullableString(property(input, "user_id"), source),
+    username: nullableString(property(input, "username"), source),
+    from_bundle_id: string(property(input, "from_bundle_id"), source),
+    to_bundle_id: string(property(input, "to_bundle_id"), source),
+    platform: rowPlatform,
+    app_version: string(property(input, "app_version"), source),
+    channel: string(property(input, "channel"), source),
+    cohort: string(property(input, "cohort"), source),
+    update_strategy: updateStrategy,
+    fingerprint_hash: nullableString(
+      property(input, "fingerprint_hash"),
+      source,
+    ),
+    sdk_version: nullableString(property(input, "sdk_version"), source),
+    received_at_ms: number(property(input, "received_at_ms"), source),
   };
 };
 

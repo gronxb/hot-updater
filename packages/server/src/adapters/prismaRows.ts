@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -136,6 +137,45 @@ export const parsePrismaPatchRow = (value: unknown): BundlePatchRow => {
 export const parsePrismaChannelRow = (value: unknown): ChannelRow => {
   if (!isRecord(value)) throw new PrismaAdapterError("invalid channel row");
   return { id: readString(value, "id"), name: readString(value, "name") };
+};
+
+export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
+  if (!isRecord(value)) {
+    throw new PrismaAdapterError("invalid bundle event row");
+  }
+  const type = readString(value, "type");
+  const platform = readString(value, "platform");
+  const updateStrategy = readString(value, "update_strategy");
+  const receivedAtMs = value["received_at_ms"];
+  if (type !== "UPDATE_APPLIED" && type !== "RECOVERED") {
+    throw new PrismaAdapterError("invalid bundle event type");
+  }
+  if (platform !== "android" && platform !== "ios") {
+    throw new PrismaAdapterError("invalid bundle event platform");
+  }
+  if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
+    throw new PrismaAdapterError("invalid bundle event strategy");
+  }
+  if (typeof receivedAtMs !== "number") {
+    throw new PrismaAdapterError("invalid bundle event timestamp");
+  }
+  return {
+    id: readString(value, "id"),
+    type,
+    install_id: readString(value, "install_id"),
+    user_id: readNullableString(value, "user_id"),
+    username: readNullableString(value, "username"),
+    from_bundle_id: readString(value, "from_bundle_id"),
+    to_bundle_id: readString(value, "to_bundle_id"),
+    platform,
+    app_version: readString(value, "app_version"),
+    channel: readString(value, "channel"),
+    cohort: readString(value, "cohort"),
+    update_strategy: updateStrategy,
+    fingerprint_hash: readNullableString(value, "fingerprint_hash"),
+    sdk_version: readNullableString(value, "sdk_version"),
+    received_at_ms: receivedAtMs,
+  };
 };
 
 export const parsePrismaRows = <TRow>(

@@ -109,9 +109,9 @@ const predicate = <TModel extends DatabaseModel>(
 
 export const buildKyselyWhere = <TModel extends DatabaseModel>(
   provider: ORMSQLProvider,
-  where: readonly DatabaseWhere<TModel>[],
+  where: readonly DatabaseWhere<TModel>[] | undefined,
 ): RawBuilder<boolean> | undefined => {
-  const [first, ...rest] = where;
+  const [first, ...rest] = where ?? [];
   if (first === undefined) return undefined;
   let expression = predicate(provider, first);
   for (const condition of rest) {

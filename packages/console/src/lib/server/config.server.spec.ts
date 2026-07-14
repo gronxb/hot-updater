@@ -4,12 +4,22 @@ import type { NodeStoragePlugin } from "@hot-updater/plugin-core";
 import { createDatabaseAdapter } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { loadConfigMock } = vi.hoisted(() => ({
+const { createHotUpdaterMock, loadConfigMock } = vi.hoisted(() => ({
+  createHotUpdaterMock: vi.fn(() => ({
+    getBundleEventSummary: vi.fn(),
+    getBundleEventAnalytics: vi.fn(),
+    searchInstallations: vi.fn(),
+    getInstallationHistory: vi.fn(),
+  })),
   loadConfigMock: vi.fn(),
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
   loadConfig: loadConfigMock,
+}));
+
+vi.mock("@hot-updater/server", () => ({
+  createHotUpdater: createHotUpdaterMock,
 }));
 
 const createTestDatabaseAdapter = (name: string) =>
@@ -43,11 +53,12 @@ function createStoragePlugin(): NodeStoragePlugin {
 afterEach(() => {
   vi.resetModules();
   vi.restoreAllMocks();
+  createHotUpdaterMock.mockClear();
   loadConfigMock.mockReset();
 });
 
 describe("config.server", () => {
-  it("caches the loaded config and reuses its configured database adapter", async () => {
+  it("caches the loaded config and reuses its database and runtime clients", async () => {
     const database = createTestDatabaseAdapter("db");
     const storagePlugin = createStoragePlugin();
     const storage = vi.fn().mockResolvedValue(storagePlugin);
@@ -66,8 +77,11 @@ describe("config.server", () => {
     const second = await prepareConfig();
 
     expect(loadConfigMock).toHaveBeenCalledTimes(1);
+    expect(createHotUpdaterMock).toHaveBeenCalledTimes(1);
+    expect(createHotUpdaterMock).toHaveBeenCalledWith({ database });
     expect(storage).toHaveBeenCalledTimes(1);
     expect(first.databaseClient).toBe(second.databaseClient);
+    expect(first.hotUpdater).toBe(second.hotUpdater);
     expect(first.config.database).toBe(database);
     expect(first.storagePlugin).toBe(storagePlugin);
     expect(second.storagePlugin).toBe(storagePlugin);
@@ -97,6 +111,7 @@ describe("config.server", () => {
     const recovered = await prepareConfig();
 
     expect(loadConfigMock).toHaveBeenCalledTimes(2);
+    expect(createHotUpdaterMock).toHaveBeenCalledTimes(1);
     expect(recovered.config.database).toBe(database);
     expect(recovered.storagePlugin).toBe(storagePlugin);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);

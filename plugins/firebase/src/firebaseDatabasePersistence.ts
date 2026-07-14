@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -16,6 +17,7 @@ import {
 
 import {
   hasFirebaseProperty,
+  parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
   parseFirebaseChannelRow,
   parseFirebaseLegacyPatchRows,
@@ -30,6 +32,7 @@ export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
   readonly bundlePatches: CollectionReference<DocumentData>;
   readonly channels: CollectionReference<DocumentData>;
+  readonly bundleEvents: CollectionReference<DocumentData>;
   readonly settings: CollectionReference<DocumentData>;
 }
 
@@ -39,10 +42,11 @@ export const createFirebaseDatabaseCollections = (
   bundles: db.collection("bundles"),
   bundlePatches: db.collection("bundle_patches"),
   channels: db.collection("channels"),
+  bundleEvents: db.collection("bundle_events"),
   settings: db.collection("private_hot_updater_settings"),
 });
 
-type FixedRow = BundlePatchRow | BundleRow | ChannelRow;
+type FixedRow = BundleEventRow | BundlePatchRow | BundleRow | ChannelRow;
 
 type FirebaseMigrationWrite =
   | {
@@ -103,7 +107,21 @@ const channelMap = (
     }),
   );
 
+const bundleEventMap = (
+  snapshot: QuerySnapshot<DocumentData>,
+): Map<string, BundleEventRow> =>
+  new Map(
+    snapshot.docs.map((document) => {
+      const row = parseFirebaseBundleEventRow(
+        document.data(),
+        `bundle_events/${document.id}`,
+      );
+      return [row.id, row];
+    }),
+  );
+
 type SnapshotDocuments = readonly [
+  QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
@@ -115,6 +133,7 @@ const toSnapshot = (
   bundles: bundleMap(documents[0]),
   bundlePatches: patchMap(documents[1]),
   channels: channelMap(documents[2]),
+  bundleEvents: bundleEventMap(documents[3]),
 });
 
 export const loadFirebaseDatabaseSnapshot = async (
@@ -125,6 +144,7 @@ export const loadFirebaseDatabaseSnapshot = async (
       collections.bundles.get(),
       collections.bundlePatches.get(),
       collections.channels.get(),
+      collections.bundleEvents.get(),
     ]),
   );
 
@@ -137,6 +157,7 @@ export const loadFirebaseTransactionSnapshot = async (
       transaction.get(collections.bundles),
       transaction.get(collections.bundlePatches),
       transaction.get(collections.channels),
+      transaction.get(collections.bundleEvents),
     ]),
   );
 
@@ -193,6 +214,12 @@ export const persistFirebaseDatabaseSnapshot = ({
     collection: collections.channels,
     before: before.channels,
     after: after.channels,
+  });
+  persistCollection({
+    transaction,
+    collection: collections.bundleEvents,
+    before: before.bundleEvents,
+    after: after.bundleEvents,
   });
 };
 

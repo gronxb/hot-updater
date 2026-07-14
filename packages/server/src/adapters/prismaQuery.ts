@@ -1,5 +1,6 @@
 import type {
   DatabaseModel,
+  DatabaseOrderBy,
   DatabaseSortBy,
   DatabaseWhere,
 } from "@hot-updater/plugin-core";
@@ -10,6 +11,9 @@ type AnyDatabaseWhere = {
 }[DatabaseModel];
 type AnyDatabaseSortBy = {
   readonly [TModel in DatabaseModel]: DatabaseSortBy<TModel>;
+}[DatabaseModel];
+type AnyDatabaseOrderBy = {
+  readonly [TModel in DatabaseModel]: DatabaseOrderBy<TModel>;
 }[DatabaseModel];
 
 const stringFilter = (
@@ -83,6 +87,9 @@ export const createPrismaWhere = (
 };
 
 export const createPrismaOrderBy = (
-  sortBy: AnyDatabaseSortBy | undefined,
-): PrismaQuery | undefined =>
-  sortBy === undefined ? undefined : { [sortBy.field]: sortBy.direction };
+  orderBy: AnyDatabaseOrderBy | readonly AnyDatabaseSortBy[] | undefined,
+): PrismaQuery | PrismaQuery[] | undefined => {
+  if (orderBy === undefined) return undefined;
+  const clauses = Array.isArray(orderBy) ? orderBy : [orderBy];
+  return clauses.map((clause) => ({ [clause.field]: clause.direction }));
+};

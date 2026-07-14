@@ -1,4 +1,5 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -15,6 +16,10 @@ export type SupabaseBundlePatchRow = {
 
 export type SupabaseChannelRow = {
   [TField in keyof ChannelRow]: ChannelRow[TField];
+};
+
+export type SupabaseBundleEventRow = {
+  [TField in keyof BundleEventRow]: BundleEventRow[TField];
 };
 
 type Table<TRow> = {
@@ -39,6 +44,7 @@ export type Database = {
       bundles: Table<SupabaseBundleRow>;
       bundle_patches: Table<SupabaseBundlePatchRow>;
       channels: Table<SupabaseChannelRow>;
+      bundle_events: Table<SupabaseBundleEventRow>;
     };
     Views: { [_ in never]: never };
     Functions: {

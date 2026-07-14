@@ -1,16 +1,28 @@
 import React, { useEffect, useState } from "react";
+import { Platform } from "react-native";
 
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
 import { useEventCallback } from "./hooks/useEventCallback";
 import {
+  getAppVersion,
   getBundleId,
+  getChannel,
+  getCohort,
+  getFingerprintHash,
+  getInstallId,
+  getPersistedUserIdentity,
+  type NotifyAppReadyAnalyticsEvent,
   type NotifyAppReadyResult,
-  notifyAppReady as nativeNotifyAppReady,
+  readNotifyAppReady,
   reload,
 } from "./native";
 import { type HotUpdaterState, useHotUpdaterStore } from "./store";
-import type { HotUpdaterBaseURL, HotUpdaterResolver } from "./types";
+import type {
+  HotUpdaterBaseURL,
+  HotUpdaterResolver,
+  ResolverNotifyAppReadyParams,
+} from "./types";
 
 export interface RunUpdateProcessResponse {
   status: "ROLLBACK" | "UPDATE" | "UP_TO_DATE";
@@ -51,21 +63,17 @@ interface CommonHotUpdaterOptions {
 
   /**
    * Callback invoked when the app is ready and the native launch report is available.
-   * Provides information about rollback recovery or stable state.
+   * Provides information about OTA transitions finalized before JS started.
    *
    * @param result - Bundle state information
-   * @param result.status - Current bundle state:
-   *   - "RECOVERED": App recovered from a crash, rollback occurred
-   *   - "STABLE": No changes, bundle is stable
-   * @param result.crashedBundleId - Present only when status is "RECOVERED"
    *
    * @example
    * ```tsx
    * HotUpdater.init({
    *   baseURL: "https://api.example.com",
-   *   onNotifyAppReady: ({ status, crashedBundleId }) => {
-   *     if (status === "RECOVERED") {
-   *       analytics.track("bundle_rollback", { crashedBundleId });
+   *   onNotifyAppReady: (result) => {
+   *     if (result.status === "RECOVERED") {
+   *       console.log(result.fromBundleId, result.toBundleId);
    *     }
    *   },
    * });
@@ -196,7 +204,14 @@ export type ManualUpdateOptions = CommonHotUpdaterOptions &
     updateMode: "manual";
   };
 
-export type HotUpdaterInitOptions = CommonHotUpdaterOptions & NetworkConfig;
+export type HotUpdaterInitOptions = CommonHotUpdaterOptions &
+  NetworkConfig & {
+    /**
+     * Enables best-effort automatic OTA transition analytics transport.
+     * Only `HotUpdater.init({ analytics: true })` owns this automatic delivery path.
+     */
+    analytics?: boolean;
+  };
 
 export type HotUpdaterOptions = AutoUpdateOptions | ManualUpdateOptions;
 
@@ -225,7 +240,9 @@ type InternalManualUpdateOptions = InternalCommonOptions & {
   updateMode: "manual";
 };
 
-export type InternalInitOptions = InternalCommonOptions;
+export type InternalInitOptions = InternalCommonOptions & {
+  analytics?: boolean;
+};
 
 export type InternalWrapOptions =
   | InternalAutoUpdateOptions
@@ -234,6 +251,7 @@ export type InternalWrapOptions =
 type RequestAnimationFrame = (callback: (timestamp: number) => void) => number;
 
 let didWarnManualWrapDeprecation = false;
+let didAttemptAutomaticAnalytics = false;
 
 const warnManualWrapDeprecation = () => {
   if (didWarnManualWrapDeprecation) {
@@ -266,10 +284,83 @@ const waitForNextFrame = () =>
     void Promise.resolve().then(resolve);
   });
 
+const buildNotifyAppReadyAnalyticsParams = (
+  analyticsEvent: NotifyAppReadyAnalyticsEvent,
+  options: {
+    requestHeaders?: Record<string, string>;
+    requestTimeout?: number;
+  },
+): ResolverNotifyAppReadyParams => {
+  const appVersion = getAppVersion();
+
+  if (!appVersion) {
+    throw new Error(
+      "[HotUpdater] Automatic analytics requires a non-null native app version.",
+    );
+  }
+
+  const { userId, username } = getPersistedUserIdentity();
+
+  return {
+    appVersion,
+    channel: getChannel(),
+    cohort: getCohort(),
+    fingerprintHash: getFingerprintHash(),
+    fromBundleId: analyticsEvent.fromBundleId,
+    installId: getInstallId(),
+    platform: Platform.OS === "android" ? "android" : "ios",
+    requestHeaders: options.requestHeaders,
+    requestTimeout: options.requestTimeout,
+    toBundleId: analyticsEvent.toBundleId,
+    type: analyticsEvent.type,
+    updateStrategy: analyticsEvent.updateStrategy,
+    ...(userId != null ? { userId } : {}),
+    ...(username != null ? { username } : {}),
+  };
+};
+
+const maybeSendAutomaticAnalytics = async (
+  options: {
+    analytics?: boolean;
+    resolver?: HotUpdaterResolver;
+    requestHeaders?: Record<string, string>;
+    requestTimeout?: number;
+  },
+  nativeResult: NotifyAppReadyResult,
+  analyticsEvent: NotifyAppReadyAnalyticsEvent | null,
+): Promise<void> => {
+  if (!options.analytics || nativeResult.status === "UNCHANGED") {
+    return;
+  }
+
+  if (didAttemptAutomaticAnalytics) {
+    return;
+  }
+
+  didAttemptAutomaticAnalytics = true;
+
+  if (!options.resolver?.notifyAppReady) {
+    throw new Error(
+      "[HotUpdater] Automatic analytics requires resolver.notifyAppReady().",
+    );
+  }
+
+  if (!analyticsEvent) {
+    throw new Error(
+      "[HotUpdater] Native launch report is missing persisted transition metadata required for automatic analytics.",
+    );
+  }
+
+  await options.resolver.notifyAppReady(
+    buildNotifyAppReadyAnalyticsParams(analyticsEvent, options),
+  );
+};
+
 /**
  * Helper function to handle notifyAppReady flow
  */
 const handleNotifyAppReady = async (options: {
+  analytics?: boolean;
   resolver?: HotUpdaterResolver;
   requestHeaders?: Record<string, string>;
   requestTimeout?: number;
@@ -279,27 +370,22 @@ const handleNotifyAppReady = async (options: {
   await waitForNextFrame();
 
   try {
-    const nativeResult = nativeNotifyAppReady();
+    const { analyticsEvent, result: nativeResult } = readNotifyAppReady();
 
-    // If resolver.notifyAppReady exists, call it with simplified params
-    if (options.resolver?.notifyAppReady) {
-      await options.resolver
-        .notifyAppReady({
-          status: nativeResult.status,
-          crashedBundleId: nativeResult.crashedBundleId,
-          requestHeaders: options.requestHeaders,
-          requestTimeout: options.requestTimeout,
-        })
-        .catch((e: unknown) => {
-          options.onError?.(e);
-          console.warn("[HotUpdater] Resolver notifyAppReady failed:", e);
-        });
+    try {
+      await maybeSendAutomaticAnalytics(options, nativeResult, analyticsEvent);
+    } catch (error) {
+      options.onError?.(error);
+      console.warn(
+        "[HotUpdater] Automatic notifyAppReady analytics failed:",
+        error,
+      );
     }
 
     options.onNotifyAppReady?.(nativeResult);
-  } catch (e) {
-    options.onError?.(e);
-    console.warn("[HotUpdater] Failed to notify app ready:", e);
+  } catch (error) {
+    options.onError?.(error);
+    console.warn("[HotUpdater] Failed to notify app ready:", error);
   }
 };
 

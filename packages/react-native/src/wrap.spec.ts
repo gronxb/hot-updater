@@ -1,13 +1,45 @@
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type {
+  NotifyAppReadyAnalyticsEvent,
+  NotifyAppReadyResult,
+} from "./native";
 import type { HotUpdaterOptions } from "./wrap";
+
+vi.mock("react-native", () => ({
+  Platform: {
+    OS: "ios",
+  },
+}));
+
+const createNotifyReadResult = (
+  result: NotifyAppReadyResult = { status: "UNCHANGED" },
+  analyticsEvent: NotifyAppReadyAnalyticsEvent | null = null,
+): {
+  analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
+  result: NotifyAppReadyResult;
+} => ({
+  analyticsEvent,
+  result,
+});
 
 const mocks = vi.hoisted(() => ({
   addListener: vi.fn(() => () => {}),
   checkForUpdate: vi.fn(),
+  getAppVersion: vi.fn(() => "1.0.0"),
   getBundleId: vi.fn(() => "bundle-id"),
-  notifyAppReady: vi.fn(() => ({ status: "STABLE" })),
+  getChannel: vi.fn(() => "production"),
+  getCohort: vi.fn(() => "123"),
+  getFingerprintHash: vi.fn(() => "fingerprint-hash"),
+  getInstallId: vi.fn(() => "install-id"),
+  getPersistedUserIdentity: vi.fn(() => ({})),
+  readNotifyAppReady: vi.fn<
+    () => {
+      analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
+      result: NotifyAppReadyResult;
+    }
+  >(() => createNotifyReadResult()),
   reload: vi.fn(),
 }));
 
@@ -17,8 +49,14 @@ vi.mock("./checkForUpdate", () => ({
 
 vi.mock("./native", () => ({
   addListener: mocks.addListener,
+  getAppVersion: mocks.getAppVersion,
   getBundleId: mocks.getBundleId,
-  notifyAppReady: mocks.notifyAppReady,
+  getChannel: mocks.getChannel,
+  getCohort: mocks.getCohort,
+  getFingerprintHash: mocks.getFingerprintHash,
+  getInstallId: mocks.getInstallId,
+  getPersistedUserIdentity: mocks.getPersistedUserIdentity,
+  readNotifyAppReady: mocks.readNotifyAppReady,
   reload: mocks.reload,
 }));
 
@@ -34,8 +72,14 @@ describe("HotUpdater wrap initialization", () => {
 
     mocks.checkForUpdate.mockResolvedValue(null);
     mocks.addListener.mockReturnValue(() => {});
+    mocks.getAppVersion.mockReturnValue("1.0.0");
+    mocks.getPersistedUserIdentity.mockReturnValue({});
     mocks.getBundleId.mockReturnValue("bundle-id");
-    mocks.notifyAppReady.mockReturnValue({ status: "STABLE" });
+    mocks.getChannel.mockReturnValue("production");
+    mocks.getCohort.mockReturnValue("123");
+    mocks.getFingerprintHash.mockReturnValue("fingerprint-hash");
+    mocks.getInstallId.mockReturnValue("install-id");
+    mocks.readNotifyAppReady.mockReturnValue(createNotifyReadResult());
   });
 
   it("returns void from init and defers notifyAppReady to the next frame", async () => {
@@ -64,37 +108,155 @@ describe("HotUpdater wrap initialization", () => {
     });
 
     expect(result).toBeUndefined();
-    expect(mocks.notifyAppReady).not.toHaveBeenCalled();
+    expect(mocks.readNotifyAppReady).not.toHaveBeenCalled();
     expect(resolver.notifyAppReady).not.toHaveBeenCalled();
 
     expect(requestAnimationFrame).toHaveBeenCalled();
 
     await vi.runOnlyPendingTimersAsync();
 
-    expect(mocks.notifyAppReady).toHaveBeenCalledWith();
-    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
-      status: "STABLE",
-      crashedBundleId: undefined,
+    expect(mocks.readNotifyAppReady).toHaveBeenCalledWith();
+    expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+  });
+
+  it("sends automatic analytics only from init when enabled", async () => {
+    vi.useFakeTimers();
+
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: (timestamp: number) => void) => {
+        setTimeout(() => callback(0), 0);
+        return 1;
+      }),
+    );
+
+    mocks.readNotifyAppReady.mockReturnValue(
+      createNotifyReadResult(
+        {
+          fromBundleId: "bundle-a",
+          status: "UPDATE_APPLIED",
+          toBundleId: "bundle-b",
+        },
+        {
+          fromBundleId: "bundle-a",
+          toBundleId: "bundle-b",
+          type: "UPDATE_APPLIED",
+          updateStrategy: "fingerprint",
+        },
+      ),
+    );
+
+    mocks.getPersistedUserIdentity.mockReturnValue({
+      userId: "user-123",
+      username: "alice",
+    });
+
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn().mockResolvedValue(undefined),
+    };
+    const { init } = await import("./wrap");
+
+    init({
+      analytics: true,
       requestHeaders: {
         Authorization: "Bearer token",
       },
       requestTimeout: 1000,
+      resolver,
+    });
+
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "123",
+      fingerprintHash: "fingerprint-hash",
+      fromBundleId: "bundle-a",
+      installId: "install-id",
+      platform: "ios",
+      requestHeaders: {
+        Authorization: "Bearer token",
+      },
+      requestTimeout: 1000,
+      toBundleId: "bundle-b",
+      type: "UPDATE_APPLIED",
+      updateStrategy: "fingerprint",
+      userId: "user-123",
+      username: "alice",
     });
   });
 
-  it("calls init onError when app-ready notification fails", async () => {
+  it("guards automatic analytics to a single delivery attempt per runtime", async () => {
+    vi.useFakeTimers();
+
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: (timestamp: number) => void) => {
+        setTimeout(() => callback(0), 0);
+        return 1;
+      }),
+    );
+
+    mocks.readNotifyAppReady.mockReturnValue(
+      createNotifyReadResult(
+        {
+          fromBundleId: "bundle-a",
+          status: "RECOVERED",
+          toBundleId: "bundle-b",
+        },
+        {
+          fromBundleId: "bundle-a",
+          toBundleId: "bundle-b",
+          type: "RECOVERED",
+          updateStrategy: "appVersion",
+        },
+      ),
+    );
+
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn().mockResolvedValue(undefined),
+    };
+    const { init } = await import("./wrap");
+
+    init({ analytics: true, resolver });
+    init({ analytics: true, resolver });
+
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls init onError when automatic analytics transport fails", async () => {
     vi.useFakeTimers();
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const error = new Error("notify failed");
     const onError = vi.fn();
-    const requestAnimationFrame = vi.fn(
-      (callback: (timestamp: number) => void) => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: (timestamp: number) => void) => {
         setTimeout(() => callback(0), 0);
         return 1;
-      },
+      }),
     );
-    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+    mocks.readNotifyAppReady.mockReturnValue(
+      createNotifyReadResult(
+        {
+          fromBundleId: "bundle-a",
+          status: "UPDATE_APPLIED",
+          toBundleId: "bundle-b",
+        },
+        {
+          fromBundleId: "bundle-a",
+          toBundleId: "bundle-b",
+          type: "UPDATE_APPLIED",
+          updateStrategy: "appVersion",
+        },
+      ),
+    );
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockRejectedValue(error),
@@ -102,8 +264,9 @@ describe("HotUpdater wrap initialization", () => {
     const { init } = await import("./wrap");
 
     init({
-      resolver,
+      analytics: true,
       onError,
+      resolver,
     });
 
     await vi.runOnlyPendingTimersAsync();

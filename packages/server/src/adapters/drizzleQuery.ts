@@ -144,9 +144,10 @@ const predicate = <TModel extends DatabaseModel>(
 export const buildDrizzleWhere = <TModel extends DatabaseModel>(
   provider: ORMSQLProvider,
   table: DrizzleTable,
-  where: readonly DatabaseWhere<TModel>[],
+  where: readonly DatabaseWhere<TModel>[] | undefined,
 ): SQL | undefined => {
-  const [first, ...rest] = where;
+  const items = Array.isArray(where) ? where : [];
+  const [first, ...rest] = items;
   if (first === undefined) return undefined;
   let expression = predicate(provider, table, first);
   for (const condition of rest) {

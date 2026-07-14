@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Moon, Package, Sun } from "lucide-react";
+import { History, Moon, Package, Sun } from "lucide-react";
 
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -22,6 +22,7 @@ export function AppSidebar() {
   const currentPath = routerState.location.pathname;
 
   const isBundlesActive = currentPath === "/";
+  const isInstallationsActive = currentPath === "/installations";
 
   return (
     <Sidebar collapsible="icon">
@@ -76,6 +77,24 @@ export function AppSidebar() {
                   >
                     <Package />
                     <span>Bundles</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isInstallationsActive}
+                  tooltip="Installations"
+                >
+                  <Link
+                    to="/installations"
+                    search={{
+                      query: undefined,
+                      installId: undefined,
+                    }}
+                  >
+                    <History />
+                    <span>Installations</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

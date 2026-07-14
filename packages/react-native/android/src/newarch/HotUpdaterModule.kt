@@ -284,6 +284,19 @@ class HotUpdaterModule internal constructor(
 
     override fun getManifest(): WritableNativeMap = getInstance().getManifest().toWritableNativeMap()
 
+    fun getInstallId(): String = getInstance().getInstallId()
+
+    fun getUserId(): String? = getInstance().getUserId()
+
+    fun getUsername(): String? = getInstance().getUsername()
+
+    fun setUser(
+        userId: String?,
+        username: String?,
+    ) {
+        getInstance().setUser(userId, username)
+    }
+
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {
             try {

@@ -1,5 +1,10 @@
 # @hot-updater/server
 
+## Unreleased
+
+### Minor Changes
+
+- Add append-only `bundle_events`, `/events` ingestion, runtime analytics/search/history APIs, and provider-neutral bundle transition analytics/search primitives for OTA transition evidence.
 ## 0.35.3
 
 ### Patch Changes

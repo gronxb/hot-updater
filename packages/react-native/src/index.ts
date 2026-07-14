@@ -15,13 +15,16 @@ import {
   getCrashHistory,
   getDefaultChannel,
   getFingerprintHash,
+  getInstallId,
   getManifest,
   getMinBundleId,
   isChannelSwitched,
+  notifyAppReady,
   reload,
   resetChannel,
   setCohort,
   setReloadBehavior,
+  setUser,
   type UpdateParams,
   updateBundle,
 } from "./native";
@@ -48,6 +51,7 @@ export type {
   NotifyAppReadyResult,
   ReloadBehavior,
   ReloadBehaviorSetting,
+  SetUserParams,
 } from "./native";
 export * from "./store";
 export { createDefaultResolver } from "./DefaultResolver";
@@ -544,6 +548,21 @@ function createHotUpdaterClient() {
      * ```
      */
     getFingerprintHash,
+
+    /**
+     * Fetches the persisted install id for this app installation.
+     */
+    getInstallId,
+
+    /**
+     * Persists nullable user identity fields associated with this installation.
+     */
+    setUser,
+
+    /**
+     * Reads the native launch report for the current process.
+     */
+    notifyAppReady,
 
     /**
      * Gets the list of bundle IDs that have been marked as crashed.

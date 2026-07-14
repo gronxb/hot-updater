@@ -64,6 +64,7 @@ const createBenchAdapter = (bundles: readonly Bundle[]): DatabaseAdapter => {
         throw new BenchmarkMutationError();
       },
       async count(input) {
+        if (input.model !== "bundles") return 0;
         return rows.filter((row) => matchesAll<"bundles">(row, input.where))
           .length;
       },
@@ -78,6 +79,9 @@ const createBenchAdapter = (bundles: readonly Bundle[]): DatabaseAdapter => {
             return matchesAll<"channels">(BENCH_CHANNEL_ROW, input.where)
               ? BENCH_CHANNEL_ROW
               : null;
+          case "bundle_patches":
+          case "bundle_events":
+            return null;
         }
       },
       async findMany(input) {
@@ -86,11 +90,13 @@ const createBenchAdapter = (bundles: readonly Bundle[]): DatabaseAdapter => {
             return queryRows<"bundles">(
               rows,
               input.where,
-              input.sortBy,
+              input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined),
+              input.distinctOn,
               input.offset,
               input.limit,
             );
           case "bundle_patches":
+          case "bundle_events":
             return [];
           case "channels":
             return [BENCH_CHANNEL_ROW].slice(
