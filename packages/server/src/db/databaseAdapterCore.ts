@@ -8,6 +8,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
   createRequestBundleResolver,
+  databaseBundleEventService,
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
@@ -37,7 +38,8 @@ export function createDatabaseAdapterCore<TContext = unknown>(
 } {
   const client = createDatabaseClient(database);
   const beforeOperation = options?.beforeOperation;
-  const bundleEvents = createBundleEventService(database);
+  const bundleEvents =
+    database[databaseBundleEventService] ?? createBundleEventService(database);
 
   const api: DatabaseAPI<TContext> = {
     async getBundleById(

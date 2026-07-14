@@ -50,6 +50,32 @@ const createApi = () =>
     updateBundleById: vi.fn<HandlerAPI<TestContext>["updateBundleById"]>(),
     deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),
     appendBundleEvent: vi.fn<HandlerAPI<TestContext>["appendBundleEvent"]>(),
+    getBundleEventSummary: vi
+      .fn<HandlerAPI<TestContext>["getBundleEventSummary"]>()
+      .mockResolvedValue({ installed: 0, recovered: 0 }),
+    getBundleEventAnalytics: vi
+      .fn<HandlerAPI<TestContext>["getBundleEventAnalytics"]>()
+      .mockResolvedValue({
+        summary: { installed: 0, recovered: 0 },
+        series: { installed: [], recovered: [] },
+        cohorts: { installed: [], recovered: [] },
+        recentEvents: {
+          data: [],
+          pagination: { total: 0, limit: 50, offset: 0 },
+        },
+      }),
+    searchInstallations: vi
+      .fn<HandlerAPI<TestContext>["searchInstallations"]>()
+      .mockResolvedValue({
+        data: [],
+        pagination: { total: 0, limit: 50, offset: 0 },
+      }),
+    getInstallationHistory: vi
+      .fn<HandlerAPI<TestContext>["getInstallationHistory"]>()
+      .mockResolvedValue({
+        data: [],
+        pagination: { total: 0, limit: 50, offset: 0 },
+      }),
   }) satisfies HandlerAPI<TestContext>;
 
 const createManagementHandler = (
@@ -313,6 +339,82 @@ describe("createHandler", () => {
         page: undefined,
         where: {},
       },
+      undefined,
+    );
+  });
+
+  it("serves bundle event summaries through management routes", async () => {
+    const api = createApi();
+    api.getBundleEventSummary.mockResolvedValueOnce({
+      installed: 3,
+      recovered: 1,
+    });
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles/bundle-1/events/summary",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      installed: 3,
+      recovered: 1,
+    });
+    expect(api.getBundleEventSummary).toHaveBeenCalledWith(
+      "bundle-1",
+      undefined,
+    );
+  });
+
+  it("forwards bounded analytics pagination and window parameters", async () => {
+    const api = createApi();
+    const handler = createManagementHandler(api);
+
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles/bundle-1/events/analytics?window=7d&limit=25&offset=10",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(api.getBundleEventAnalytics).toHaveBeenCalledWith(
+      "bundle-1",
+      "7d",
+      25,
+      10,
+      undefined,
+    );
+  });
+
+  it("serves installation search and append-only history", async () => {
+    const api = createApi();
+    const handler = createManagementHandler(api);
+
+    const searchResponse = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/installations?query=hot-updater-e2e&limit=20&offset=4",
+      ),
+    );
+    const historyResponse = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/installations/install-1/events?limit=30&offset=2",
+      ),
+    );
+
+    expect(searchResponse.status).toBe(200);
+    expect(historyResponse.status).toBe(200);
+    expect(api.searchInstallations).toHaveBeenCalledWith(
+      "hot-updater-e2e",
+      20,
+      4,
+      undefined,
+    );
+    expect(api.getInstallationHistory).toHaveBeenCalledWith(
+      "install-1",
+      30,
+      2,
       undefined,
     );
   });

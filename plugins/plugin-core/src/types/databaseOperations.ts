@@ -1,5 +1,9 @@
 import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 
+import {
+  databaseBundleEventService,
+  type DatabaseBundleEventService,
+} from "./databaseBundleEvents";
 import type {
   DatabaseDistinctFields,
   DatabaseDistinctOn,
@@ -183,6 +187,7 @@ export interface TransactionDatabaseAdapter {
 
 export interface DatabaseAdapter<TContext = unknown> {
   readonly name: string;
+  readonly [databaseBundleEventService]?: DatabaseBundleEventService<TContext>;
   create<
     TModel extends CreateDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,

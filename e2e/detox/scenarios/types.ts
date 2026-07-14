@@ -11,6 +11,7 @@ export type DetoxAssertTextOptions = {
 };
 
 export type DetoxAppDriver = {
+  readonly assertStableLaunch: (stage: string) => Promise<void>;
   readonly assertText: (
     stage: string,
     testID: string,

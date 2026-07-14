@@ -2,7 +2,9 @@ import type { UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
+  databaseBundleEventService,
   type DatabaseAdapter,
+  type DatabaseBundleEventService,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -162,6 +164,32 @@ const createBundleEventAdapter = (): DatabaseAdapter<TestContext> => {
 };
 
 describe("createDatabaseAdapterCore", () => {
+  it("uses a database-provided bundle event service", async () => {
+    const service = {
+      appendBundleEvent: vi.fn(),
+      getBundleEventSummary: vi
+        .fn<DatabaseBundleEventService["getBundleEventSummary"]>()
+        .mockResolvedValue({ installed: 2, recovered: 1 }),
+      getBundleEventAnalytics: vi.fn(),
+      searchInstallations: vi.fn(),
+      getInstallationHistory: vi.fn(),
+    } satisfies DatabaseBundleEventService;
+    const adapter: DatabaseAdapter = Object.assign(
+      createInMemoryDatabaseAdapter(),
+      { [databaseBundleEventService]: service },
+    );
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
+
+    await expect(core.api.getBundleEventSummary("bundle-1")).resolves.toEqual({
+      installed: 2,
+      recovered: 1,
+    });
+    expect(service.getBundleEventSummary).toHaveBeenCalledWith(
+      "bundle-1",
+      undefined,
+    );
+  });
+
   it("uses the optional low-adapter update fast-path", async () => {
     // Given
     const baseAdapter = createInMemoryDatabaseAdapter();

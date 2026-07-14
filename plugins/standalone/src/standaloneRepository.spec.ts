@@ -1,5 +1,8 @@
 import type { Bundle, DatabaseAdapter } from "@hot-updater/plugin-core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import {
+  createDatabaseClient,
+  databaseBundleEventService,
+} from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import {
@@ -141,6 +144,80 @@ describe("standaloneRepository", () => {
     expect(
       requestPaths.every((path) => path.startsWith("/hot-updater/api/bundles")),
     ).toBe(true);
+  });
+
+  it("delegates transition analytics to standalone management routes", async () => {
+    const event = {
+      id: "event-1",
+      type: "UPDATE_APPLIED" as const,
+      fromBundleId: "bundle-0",
+      toBundleId: "bundle-1",
+      username: "hot-updater-e2e",
+      userId: "detox-e2e",
+      platform: "android" as const,
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "782",
+      receivedAtMs: 1_700_000_000_000,
+    };
+    server.use(
+      http.get(`${BASE_URL}/api/bundles/bundle-1/events/summary`, () =>
+        HttpResponse.json({ installed: 1, recovered: 0 }),
+      ),
+      http.get(`${BASE_URL}/api/bundles/bundle-1/events/analytics`, () =>
+        HttpResponse.json({
+          summary: { installed: 1, recovered: 0 },
+          series: { installed: [], recovered: [] },
+          cohorts: { installed: [], recovered: [] },
+          recentEvents: {
+            data: [event],
+            pagination: { total: 1, limit: 20, offset: 0 },
+          },
+        }),
+      ),
+      http.get(`${BASE_URL}/api/installations`, () =>
+        HttpResponse.json({
+          data: [
+            {
+              installId: "install-1",
+              username: event.username,
+              userId: event.userId,
+              lastKnownBundleId: event.toBundleId,
+              latestStatus: event.type,
+              platform: event.platform,
+              appVersion: event.appVersion,
+              channel: event.channel,
+              cohort: event.cohort,
+              receivedAtMs: event.receivedAtMs,
+            },
+          ],
+          pagination: { total: 1, limit: 20, offset: 0 },
+        }),
+      ),
+      http.get(`${BASE_URL}/api/installations/install-1/events`, () =>
+        HttpResponse.json({
+          data: [event],
+          pagination: { total: 1, limit: 20, offset: 0 },
+        }),
+      ),
+    );
+    const repository = createRepository();
+    const analytics = repository[databaseBundleEventService];
+    if (!analytics) throw new Error("Missing standalone analytics service");
+
+    await expect(analytics.getBundleEventSummary("bundle-1")).resolves.toEqual({
+      installed: 1,
+      recovered: 0,
+    });
+    await expect(
+      analytics.getBundleEventAnalytics("bundle-1", "24h", 20, 0),
+    ).resolves.toMatchObject({ summary: { installed: 1, recovered: 0 } });
+    await expect(
+      analytics.searchInstallations("detox-e2e", 20, 0),
+    ).resolves.toMatchObject({ data: [{ installId: "install-1" }] });
+    await expect(
+      analytics.getInstallationHistory("install-1", 20, 0),
+    ).resolves.toMatchObject({ data: [event] });
   });
 
   it("aliases a supplied channel id to its legacy name deterministically", async () => {

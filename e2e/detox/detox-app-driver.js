@@ -35,6 +35,27 @@ class DetoxAppDriver {
     this.stageValues = { ...initialValues };
   }
 
+  async assertStableLaunch(stage) {
+    await this.runStage(stage, async () => {
+      await withSynchronizationDisabledForAssertion(async () => {
+        const target = await findVisibleTestID(
+          this.controlClient,
+          "launch-status-result",
+        );
+        const text = textFromAttributes(await target.getAttributes());
+        const stableStatuses = [
+          "Current Launch Status: UPDATE_APPLIED",
+          "Current Launch Status: UNCHANGED",
+        ];
+        if (!stableStatuses.some((status) => text.includes(status))) {
+          throw new Error(
+            `${stage} expected a stable launch status, received "${text}"`,
+          );
+        }
+      });
+    });
+  }
+
   async assertText(stage, testID, contains, options = {}) {
     await this.runStage(stage, async () => {
       const expectedText = String(this.resolvePlaceholders(contains));

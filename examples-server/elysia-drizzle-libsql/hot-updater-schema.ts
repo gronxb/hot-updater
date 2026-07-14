@@ -1,4 +1,4 @@
-import { blob, foreignKey, index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { blob, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 import { relations } from "drizzle-orm"
 
@@ -112,7 +112,7 @@ export const bundle_events = sqliteTable("bundle_events", {
   update_strategy: text("update_strategy").notNull(),
   fingerprint_hash: text("fingerprint_hash"),
   sdk_version: text("sdk_version"),
-  received_at_ms: integer("received_at_ms").notNull()
+  received_at_ms: real("received_at_ms").notNull()
 }, (table) => [
   index("bundle_events_installed_bundle_idx").on(table.type, table.to_bundle_id, table.received_at_ms, table.id),
   index("bundle_events_recovered_bundle_idx").on(table.type, table.from_bundle_id, table.received_at_ms, table.id),

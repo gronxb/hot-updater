@@ -83,7 +83,7 @@ model bundle_events {
   update_strategy String
   fingerprint_hash String?
   sdk_version String?
-  received_at_ms Int
+  received_at_ms Float
   @@index([type, to_bundle_id, received_at_ms, id], map: "bundle_events_installed_bundle_idx")
   @@index([type, from_bundle_id, received_at_ms, id], map: "bundle_events_recovered_bundle_idx")
   @@index([install_id, received_at_ms, id], map: "bundle_events_install_idx")

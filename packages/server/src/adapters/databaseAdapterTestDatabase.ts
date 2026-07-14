@@ -47,7 +47,7 @@ export const DATABASE_ADAPTER_TEST_SCHEMA_SQL = `
     update_strategy text not null,
     fingerprint_hash text,
     sdk_version text,
-    received_at_ms integer not null
+    received_at_ms double precision not null
   );
 `;
 

@@ -6,9 +6,26 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import type {
+  BundleEventAnalyticsResult,
+  BundleEventAnalyticsWindow,
+  BundleEventSummary,
+  CreateBundleEventRequest,
   DatabaseAdapter as DatabaseAdapterContract,
   HotUpdaterContext,
+  InstallationHistoryRow,
+  InstallationSearchRow,
+  OffsetPaginationResult,
   RuntimeStoragePlugin,
+} from "@hot-updater/plugin-core";
+
+export type {
+  BundleEventAnalyticsResult,
+  BundleEventAnalyticsWindow,
+  BundleEventSummary,
+  CreateBundleEventRequest,
+  InstallationHistoryRow,
+  InstallationSearchRow,
+  OffsetPaginationResult,
 } from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "../types";
@@ -119,77 +136,6 @@ export function getSQLProvider(
   return (sqlProviders as readonly string[]).includes(provider)
     ? (provider as ORMSQLProvider)
     : undefined;
-}
-
-export interface CreateBundleEventRequest {
-  type: "UPDATE_APPLIED" | "RECOVERED";
-  installId: string;
-  fromBundleId: string;
-  toBundleId: string;
-  userId?: string;
-  username?: string;
-  platform: "ios" | "android";
-  appVersion: string;
-  channel: string;
-  cohort: string;
-  updateStrategy: "fingerprint" | "appVersion";
-  fingerprintHash: string | null;
-}
-
-export interface BundleEventSummary {
-  installed: number;
-  recovered: number;
-}
-
-export type BundleEventAnalyticsWindow = "24h" | "7d" | "30d" | "all";
-
-export interface InstallationSearchRow {
-  installId: string;
-  username: string | null;
-  userId: string | null;
-  lastKnownBundleId: string;
-  latestStatus: "UPDATE_APPLIED" | "RECOVERED";
-  platform: "ios" | "android";
-  appVersion: string;
-  channel: string;
-  cohort: string;
-  receivedAtMs: number;
-}
-
-export interface InstallationHistoryRow {
-  id: string;
-  type: "UPDATE_APPLIED" | "RECOVERED";
-  fromBundleId: string;
-  toBundleId: string;
-  username: string | null;
-  userId: string | null;
-  platform: "ios" | "android";
-  appVersion: string;
-  channel: string;
-  cohort: string;
-  receivedAtMs: number;
-}
-
-export interface OffsetPaginationResult<TData> {
-  data: TData[];
-  pagination: {
-    total: number;
-    limit: number;
-    offset: number;
-  };
-}
-
-export interface BundleEventAnalyticsResult {
-  summary: BundleEventSummary;
-  series: {
-    installed: { bucketStartMs: number; value: number }[];
-    recovered: { bucketStartMs: number; value: number }[];
-  };
-  cohorts: {
-    installed: { cohort: string; value: number }[];
-    recovered: { cohort: string; value: number }[];
-  };
-  recentEvents: OffsetPaginationResult<InstallationHistoryRow>;
 }
 
 export interface DatabaseAPI<TContext = unknown> {

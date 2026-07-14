@@ -141,6 +141,15 @@ async function recordScenarioCalls(
 ): Promise<readonly RecordedScenarioCall[]> {
   const calls: RecordedScenarioCall[] = [];
   const app: DetoxAppDriver = {
+    assertStableLaunch: (stage) => {
+      calls.push({
+        contains: "UPDATE_APPLIED or UNCHANGED",
+        kind: "assertText",
+        stage,
+        testID: "launch-status-result",
+      });
+      return Promise.resolve();
+    },
     assertText: (stage, testID, contains, options) => {
       calls.push({ contains, kind: "assertText", options, stage, testID });
       return Promise.resolve();

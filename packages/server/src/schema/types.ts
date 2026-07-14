@@ -5,6 +5,7 @@ export const HOT_UPDATER_SETTINGS_TABLE = "private_hot_updater_settings";
 
 export type HotUpdaterColumnType =
   | "bool"
+  | "float"
   | "integer"
   | "json"
   | "string"

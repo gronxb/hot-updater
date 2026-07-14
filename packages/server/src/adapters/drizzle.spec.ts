@@ -1,6 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import {
   boolean,
+  doublePrecision,
   integer,
   jsonb,
   pgTable,
@@ -66,7 +67,7 @@ const bundleEvents = pgTable("bundle_events", {
   update_strategy: text("update_strategy").notNull(),
   fingerprint_hash: text("fingerprint_hash"),
   sdk_version: text("sdk_version"),
-  received_at_ms: integer("received_at_ms").notNull(),
+  received_at_ms: doublePrecision("received_at_ms").notNull(),
 });
 const schema = {
   bundle_events: bundleEvents,

@@ -85,7 +85,7 @@ model bundle_events {
   update_strategy String
   fingerprint_hash String?
   sdk_version String?
-  received_at_ms Int
+  received_at_ms Float
 }
 model private_hot_updater_settings {
   key String @id
@@ -100,6 +100,7 @@ import {
   boolean,
   json,
   integer,
+  doublePrecision,
   varchar,
   foreignKey,
 } from "drizzle-orm/pg-core";
@@ -168,7 +169,7 @@ export const bundle_events = pgTable("bundle_events", {
   update_strategy: text("update_strategy").notNull(),
   fingerprint_hash: text("fingerprint_hash"),
   sdk_version: text("sdk_version"),
-  received_at_ms: integer("received_at_ms").notNull(),
+  received_at_ms: doublePrecision("received_at_ms").notNull(),
 })
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
@@ -460,6 +461,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(code).toContain(
         '@@index([bundle_id], map: "bundle_patches_bundle_id_idx")',
       );
+      expect(code).toContain("received_at_ms Float");
     });
 
     it("omits the metadata JSON default for SQLite Prisma output", () => {
@@ -512,6 +514,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       );
       expect(bundlePatchesBlock).not.toContain(
         'index("bundles_target_app_version_idx").on(table.target_app_version)',
+      );
+      expect(code).toContain(
+        'received_at_ms: doublePrecision("received_at_ms").notNull()',
       );
       const generatedCode = generateDrizzleSchema("postgresql");
       expect(generatedCode).toContain(
@@ -570,6 +575,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       ).join("\n");
 
       expect(v037Sql).toContain("create table if not exists bundle_events");
+      expect(v037Sql).toContain("received_at_ms double precision not null");
       expect(v037Sql).toContain("bundle_events_installed_bundle_idx");
       expect(v036Sql).toContain(
         "insert into channels (id, name) select distinct channel, channel from bundles",
@@ -592,6 +598,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
       );
       expect(sql).not.toContain("bundle_id(255)");
+      expect(sql).toContain("received_at_ms double not null");
     });
 
     it("adds custom indexes and constraints to generated SQL", async () => {

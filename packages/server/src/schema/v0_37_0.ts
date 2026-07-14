@@ -1,8 +1,8 @@
 import {
   check,
+  float,
   idColumn,
   index,
-  integer,
   schema,
   stringColumn,
   table,
@@ -29,7 +29,7 @@ export const bundleEventsV037 = table(
     update_strategy: stringColumn("update_strategy"),
     fingerprint_hash: stringColumn("fingerprint_hash").nullable(),
     sdk_version: stringColumn("sdk_version").nullable(),
-    received_at_ms: integer("received_at_ms"),
+    received_at_ms: float("received_at_ms"),
   },
   {
     indexes: [

@@ -12,7 +12,10 @@ import type {
 } from "@hot-updater/plugin-core";
 import semver from "semver";
 
-import type { CreateBundleEventRequest } from "./db/types";
+import type {
+  BundleEventAnalyticsWindow,
+  CreateBundleEventRequest,
+} from "./db/types";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
@@ -48,6 +51,29 @@ export interface HandlerAPI<TContext = unknown> {
     input: CreateBundleEventRequest,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
+  getBundleEventSummary: (
+    bundleId: string,
+    context?: HotUpdaterContext<TContext>,
+  ) => ReturnType<import("./db/types").DatabaseAPI["getBundleEventSummary"]>;
+  getBundleEventAnalytics: (
+    bundleId: string,
+    window: BundleEventAnalyticsWindow,
+    limit: number,
+    offset: number,
+    context?: HotUpdaterContext<TContext>,
+  ) => ReturnType<import("./db/types").DatabaseAPI["getBundleEventAnalytics"]>;
+  searchInstallations: (
+    query: string,
+    limit: number,
+    offset: number,
+    context?: HotUpdaterContext<TContext>,
+  ) => ReturnType<import("./db/types").DatabaseAPI["searchInstallations"]>;
+  getInstallationHistory: (
+    installId: string,
+    limit: number,
+    offset: number,
+    context?: HotUpdaterContext<TContext>,
+  ) => ReturnType<import("./db/types").DatabaseAPI["getInstallationHistory"]>;
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
 }
 
@@ -98,6 +124,8 @@ const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
 const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.31.0";
 const DEFAULT_BUNDLE_LIST_LIMIT = 50;
 const MAX_BUNDLE_LIST_LIMIT = 100;
+const DEFAULT_EVENT_LIST_LIMIT = 50;
+const MAX_EVENT_LIST_LIMIT = 100;
 
 const supportsExplicitNoUpdateResponse = (request: Request) => {
   const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();
@@ -216,6 +244,39 @@ const parsePositiveIntegerSearchParam = (
   }
 
   return parsed;
+};
+
+const parseNonNegativeIntegerSearchParam = (
+  url: URL,
+  key: string,
+  defaultValue: number,
+): number => {
+  const value = url.searchParams.get(key);
+  if (value === null) {
+    return defaultValue;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new HandlerBadRequestError(
+      `The '${key}' query parameter must be a non-negative integer.`,
+    );
+  }
+
+  return parsed;
+};
+
+const parseBundleEventAnalyticsWindow = (
+  url: URL,
+): BundleEventAnalyticsWindow => {
+  const value = url.searchParams.get("window") ?? "24h";
+  if (value === "24h" || value === "7d" || value === "30d" || value === "all") {
+    return value;
+  }
+
+  throw new HandlerBadRequestError(
+    "The 'window' query parameter must be one of '24h', '7d', '30d', or 'all'.",
+  );
 };
 
 const requirePlatformParam = (params: Record<string, string>): Platform => {
@@ -603,6 +664,95 @@ const handleGetChannels: RouteHandler = async (
   });
 };
 
+const handleGetBundleEventSummary: RouteHandler = async (
+  params,
+  _request,
+  api,
+  context,
+) => {
+  const result = await api.getBundleEventSummary(
+    requireRouteParam(params, "id"),
+    context,
+  );
+  return new Response(JSON.stringify(result), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleGetBundleEventAnalytics: RouteHandler = async (
+  params,
+  request,
+  api,
+  context,
+) => {
+  const url = new URL(request.url);
+  const result = await api.getBundleEventAnalytics(
+    requireRouteParam(params, "id"),
+    parseBundleEventAnalyticsWindow(url),
+    parsePositiveIntegerSearchParam(
+      url,
+      "limit",
+      DEFAULT_EVENT_LIST_LIMIT,
+      MAX_EVENT_LIST_LIMIT,
+    ),
+    parseNonNegativeIntegerSearchParam(url, "offset", 0),
+    context,
+  );
+  return new Response(JSON.stringify(result), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleSearchInstallations: RouteHandler = async (
+  _params,
+  request,
+  api,
+  context,
+) => {
+  const url = new URL(request.url);
+  const result = await api.searchInstallations(
+    url.searchParams.get("query")?.trim() ?? "",
+    parsePositiveIntegerSearchParam(
+      url,
+      "limit",
+      DEFAULT_EVENT_LIST_LIMIT,
+      MAX_EVENT_LIST_LIMIT,
+    ),
+    parseNonNegativeIntegerSearchParam(url, "offset", 0),
+    context,
+  );
+  return new Response(JSON.stringify(result), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+const handleGetInstallationHistory: RouteHandler = async (
+  params,
+  request,
+  api,
+  context,
+) => {
+  const url = new URL(request.url);
+  const result = await api.getInstallationHistory(
+    requireRouteParam(params, "installId"),
+    parsePositiveIntegerSearchParam(
+      url,
+      "limit",
+      DEFAULT_EVENT_LIST_LIMIT,
+      MAX_EVENT_LIST_LIMIT,
+    ),
+    parseNonNegativeIntegerSearchParam(url, "offset", 0),
+    context,
+  );
+  return new Response(JSON.stringify(result), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
 // Route handlers map
 const routes: Record<string, RouteHandler<any>> = {
   version: handleVersion,
@@ -615,6 +765,10 @@ const routes: Record<string, RouteHandler<any>> = {
   deleteBundle: handleDeleteBundle,
   getChannels: handleGetChannels,
   appendBundleEvent: handleAppendBundleEvent,
+  getBundleEventSummary: handleGetBundleEventSummary,
+  getBundleEventAnalytics: handleGetBundleEventAnalytics,
+  searchInstallations: handleSearchInstallations,
+  getInstallationHistory: handleGetInstallationHistory,
 };
 
 /**
@@ -670,6 +824,25 @@ export function createHandler<TContext = unknown>(
   }
 
   if (routeOptions.bundles) {
+    addRoute(
+      router,
+      "GET",
+      "/api/bundles/:id/events/summary",
+      "getBundleEventSummary",
+    );
+    addRoute(
+      router,
+      "GET",
+      "/api/bundles/:id/events/analytics",
+      "getBundleEventAnalytics",
+    );
+    addRoute(router, "GET", "/api/installations", "searchInstallations");
+    addRoute(
+      router,
+      "GET",
+      "/api/installations/:installId/events",
+      "getInstallationHistory",
+    );
     addRoute(router, "GET", "/api/bundles/channels", "getChannels");
     addRoute(router, "GET", "/api/bundles/:id", "getBundle");
     addRoute(router, "GET", "/api/bundles", "getBundles");

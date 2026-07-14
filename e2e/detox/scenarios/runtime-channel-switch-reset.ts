@@ -75,11 +75,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "runtime-scenario-marker",
       "runtime-channel-beta-detox",
     );
-    await app.assertText(
-      "assert runtime channel launch status",
-      "launch-status-result",
-      "Current Launch Status: STABLE",
-    );
+    await app.assertStableLaunch("assert runtime channel launch status");
     await app.assertText(
       "assert runtime channel switched current",
       "runtime-current-channel",
@@ -112,11 +108,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
       "runtime-scenario-marker",
       "$initialMarker",
     );
-    await app.assertText(
-      "assert reset launch status",
-      "launch-status-result",
-      "Current Launch Status: STABLE",
-    );
+    await app.assertStableLaunch("assert reset launch status");
     await app.assertText(
       "assert reset current channel",
       "runtime-current-channel",

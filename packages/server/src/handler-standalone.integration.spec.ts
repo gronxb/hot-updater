@@ -52,6 +52,7 @@ beforeAll(async () => {
 
 afterEach(async () => {
   await db.exec("DELETE FROM bundle_patches");
+  await db.exec("DELETE FROM bundle_events");
   await db.exec("DELETE FROM bundles");
   await db.exec("DELETE FROM channels");
 });
@@ -178,6 +179,76 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     expect(channels).toEqual(expect.arrayContaining(["production", "beta"]));
     expect(channels).toHaveLength(2);
+  });
+
+  it("proxies transition analytics through the standalone repository", async () => {
+    const bundleId = uuidv7();
+    const installId = "standalone-analytics-install";
+    await api.insertBundle(createTestBundle({ id: bundleId }));
+    await api.appendBundleEvent({
+      type: "UPDATE_APPLIED",
+      installId,
+      fromBundleId: NIL_UUID,
+      toBundleId: bundleId,
+      userId: "integration-user",
+      username: "Integration User",
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      updateStrategy: "appVersion",
+      fingerprintHash: null,
+    });
+    await api.appendBundleEvent({
+      type: "RECOVERED",
+      installId,
+      fromBundleId: bundleId,
+      toBundleId: NIL_UUID,
+      userId: "integration-user",
+      username: "Integration User",
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      updateStrategy: "appVersion",
+      fingerprintHash: null,
+    });
+    const consoleApi = createHotUpdater({
+      database: standaloneRepository({
+        baseUrl: `${baseUrl}/hot-updater`,
+      }),
+      basePath: "/console",
+      routes: { updateCheck: true, bundles: true },
+    });
+
+    await expect(consoleApi.getBundleEventSummary(bundleId)).resolves.toEqual({
+      installed: 1,
+      recovered: 1,
+    });
+    await expect(
+      consoleApi.getBundleEventAnalytics(bundleId, "24h", 50, 0),
+    ).resolves.toMatchObject({
+      summary: { installed: 1, recovered: 1 },
+      recentEvents: { pagination: { total: 2 } },
+    });
+    await expect(
+      consoleApi.searchInstallations("integration-user", 50, 0),
+    ).resolves.toMatchObject({
+      data: [
+        {
+          installId,
+          latestStatus: "RECOVERED",
+          userId: "integration-user",
+        },
+      ],
+      pagination: { total: 1 },
+    });
+    await expect(
+      consoleApi.getInstallationHistory(installId, 50, 0),
+    ).resolves.toMatchObject({
+      data: [{ type: "RECOVERED" }, { type: "UPDATE_APPLIED" }],
+      pagination: { total: 2 },
+    });
   });
 
   it("creates, retrieves, updates, and deletes through existing routes", async () => {

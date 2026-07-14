@@ -1,13 +1,19 @@
 import type {
   Bundle,
+  BundleEventAnalyticsResult,
+  BundleEventSummary,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
+  DatabaseAdapterImplementation,
+  DatabaseBundleEventService,
   DatabaseImplementationResult,
   DatabaseModel,
-  DatabaseAdapterImplementation,
   DatabaseSortBy,
   DatabaseWhere,
+  InstallationHistoryRow,
+  InstallationSearchRow,
+  OffsetPaginationResult,
   PaginatedResult,
 } from "@hot-updater/plugin-core";
 import {
@@ -15,6 +21,7 @@ import {
   bundleToRow,
   createDatabaseAdapter,
   createUUIDv7,
+  databaseBundleEventService,
   rowToBundle,
 } from "@hot-updater/plugin-core";
 
@@ -29,10 +36,15 @@ export interface RouteConfig {
 }
 
 export interface Routes {
+  readonly appendEvent?: () => RouteConfig;
+  readonly bundleEventAnalytics?: (bundleId: string) => RouteConfig;
+  readonly bundleEventSummary?: (bundleId: string) => RouteConfig;
   readonly create?: () => RouteConfig;
   readonly update?: (bundleId: string) => RouteConfig;
   readonly list?: () => RouteConfig;
   readonly channels?: () => RouteConfig;
+  readonly installationHistory?: (installId: string) => RouteConfig;
+  readonly installations?: () => RouteConfig;
   readonly retrieve?: (bundleId: string) => RouteConfig;
   readonly delete?: (bundleId: string) => RouteConfig;
 }
@@ -60,6 +72,15 @@ export class StandaloneDatabaseError extends Error {
 const PAGE_SIZE = 100;
 
 const defaultRoutes = {
+  appendEvent: () => ({ path: "/events" }),
+  bundleEventAnalytics: (bundleId: string) => ({
+    path: `/api/bundles/${encodeURIComponent(bundleId)}/events/analytics`,
+    headers: { "Cache-Control": "no-cache" },
+  }),
+  bundleEventSummary: (bundleId: string) => ({
+    path: `/api/bundles/${encodeURIComponent(bundleId)}/events/summary`,
+    headers: { "Cache-Control": "no-cache" },
+  }),
   create: () => ({ path: "/api/bundles" }),
   update: (bundleId: string) => ({ path: `/api/bundles/${bundleId}` }),
   list: () => ({
@@ -75,6 +96,14 @@ const defaultRoutes = {
     headers: { Accept: "application/json" },
   }),
   delete: (bundleId: string) => ({ path: `/api/bundles/${bundleId}` }),
+  installationHistory: (installId: string) => ({
+    path: `/api/installations/${encodeURIComponent(installId)}/events`,
+    headers: { "Cache-Control": "no-cache" },
+  }),
+  installations: () => ({
+    path: "/api/installations",
+    headers: { "Cache-Control": "no-cache" },
+  }),
 };
 
 const appendPathSegment = (path: string, segment: string): string =>
@@ -126,6 +155,113 @@ const isPaginatedResult = (value: unknown): value is PaginatedResult =>
   value.data.every(isBundle) &&
   isPaginationInfo(value.pagination);
 
+const isBundleEventSummary = (value: unknown): value is BundleEventSummary =>
+  isRecord(value) &&
+  Number.isInteger(value.installed) &&
+  Number(value.installed) >= 0 &&
+  Number.isInteger(value.recovered) &&
+  Number(value.recovered) >= 0;
+
+const isNullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === "string";
+
+const isEventType = (value: unknown): value is "RECOVERED" | "UPDATE_APPLIED" =>
+  value === "RECOVERED" || value === "UPDATE_APPLIED";
+
+const isInstallationHistoryRow = (
+  value: unknown,
+): value is InstallationHistoryRow =>
+  isRecord(value) &&
+  typeof value.id === "string" &&
+  isEventType(value.type) &&
+  typeof value.fromBundleId === "string" &&
+  typeof value.toBundleId === "string" &&
+  isNullableString(value.username) &&
+  isNullableString(value.userId) &&
+  (value.platform === "ios" || value.platform === "android") &&
+  typeof value.appVersion === "string" &&
+  typeof value.channel === "string" &&
+  typeof value.cohort === "string" &&
+  typeof value.receivedAtMs === "number" &&
+  Number.isFinite(value.receivedAtMs);
+
+const isInstallationSearchRow = (
+  value: unknown,
+): value is InstallationSearchRow =>
+  isRecord(value) &&
+  typeof value.installId === "string" &&
+  isNullableString(value.username) &&
+  isNullableString(value.userId) &&
+  typeof value.lastKnownBundleId === "string" &&
+  isEventType(value.latestStatus) &&
+  (value.platform === "ios" || value.platform === "android") &&
+  typeof value.appVersion === "string" &&
+  typeof value.channel === "string" &&
+  typeof value.cohort === "string" &&
+  typeof value.receivedAtMs === "number" &&
+  Number.isFinite(value.receivedAtMs);
+
+const isOffsetPagination = (
+  value: unknown,
+): value is OffsetPaginationResult<unknown>["pagination"] =>
+  isRecord(value) &&
+  Number.isInteger(value.total) &&
+  Number(value.total) >= 0 &&
+  Number.isInteger(value.limit) &&
+  Number(value.limit) >= 0 &&
+  Number.isInteger(value.offset) &&
+  Number(value.offset) >= 0;
+
+const isOffsetPaginationResult = <TData>(
+  value: unknown,
+  isData: (item: unknown) => item is TData,
+): value is OffsetPaginationResult<TData> =>
+  isRecord(value) &&
+  Array.isArray(value.data) &&
+  value.data.every(isData) &&
+  isOffsetPagination(value.pagination);
+
+const isBundleEventAnalytics = (
+  value: unknown,
+): value is BundleEventAnalyticsResult => {
+  if (
+    !isRecord(value) ||
+    !isBundleEventSummary(value.summary) ||
+    !isRecord(value.series) ||
+    !isRecord(value.cohorts) ||
+    !isOffsetPaginationResult(value.recentEvents, isInstallationHistoryRow)
+  ) {
+    return false;
+  }
+
+  const isSeries = (candidate: unknown) =>
+    Array.isArray(candidate) &&
+    candidate.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.bucketStartMs === "number" &&
+        Number.isFinite(item.bucketStartMs) &&
+        typeof item.value === "number" &&
+        Number.isFinite(item.value),
+    );
+  const isCohorts = (candidate: unknown) =>
+    Array.isArray(candidate) &&
+    candidate.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.cohort === "string" &&
+        typeof item.value === "number" &&
+        Number.isFinite(item.value),
+    );
+
+  return (
+    isSeries(value.series.installed) &&
+    isSeries(value.series.recovered) &&
+    isCohorts(value.cohorts.installed) &&
+    isCohorts(value.cohorts.recovered)
+  );
+};
+
 const hasChannels = (
   value: unknown,
 ): value is { readonly data: { readonly channels: readonly string[] } } =>
@@ -133,6 +269,138 @@ const hasChannels = (
   isRecord(value.data) &&
   Array.isArray(value.data.channels) &&
   value.data.channels.every((channel) => typeof channel === "string");
+
+const createBundleEventService = (
+  config: StandaloneRepositoryConfig,
+): DatabaseBundleEventService => {
+  const routes = {
+    appendEvent: () =>
+      createRoute(defaultRoutes.appendEvent(), config.routes?.appendEvent?.()),
+    bundleEventAnalytics: (bundleId: string) =>
+      createRoute(
+        defaultRoutes.bundleEventAnalytics(bundleId),
+        config.routes?.bundleEventAnalytics?.(bundleId),
+      ),
+    bundleEventSummary: (bundleId: string) =>
+      createRoute(
+        defaultRoutes.bundleEventSummary(bundleId),
+        config.routes?.bundleEventSummary?.(bundleId),
+      ),
+    installationHistory: (installId: string) =>
+      createRoute(
+        defaultRoutes.installationHistory(installId),
+        config.routes?.installationHistory?.(installId),
+      ),
+    installations: () =>
+      createRoute(
+        defaultRoutes.installations(),
+        config.routes?.installations?.(),
+      ),
+  };
+  const headers = (routeHeaders?: Readonly<Record<string, string>>) => ({
+    "Content-Type": "application/json",
+    ...config.commonHeaders,
+    ...routeHeaders,
+  });
+  const requestFailed = async (response: Response): Promise<never> => {
+    let message = `Database request failed with status ${response.status}.`;
+    try {
+      const body: unknown = await response.json();
+      if (isRecord(body) && typeof body.message === "string") {
+        message = body.message;
+      } else if (isRecord(body) && typeof body.error === "string") {
+        message = body.error;
+      }
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
+    throw new StandaloneDatabaseError(
+      "request-failed",
+      message,
+      response.status,
+    );
+  };
+  const load = async <TResult>(
+    route: RouteConfig,
+    searchParams: Readonly<Record<string, string>>,
+    isResult: (value: unknown) => value is TResult,
+    invalidMessage: string,
+  ): Promise<TResult> => {
+    const url = new URL(`${config.baseUrl}${route.path}`);
+    for (const [key, value] of Object.entries(searchParams)) {
+      url.searchParams.set(key, value);
+    }
+    const response = await fetch(url, {
+      method: "GET",
+      headers: headers(route.headers),
+    });
+    if (!response.ok) return requestFailed(response);
+    let value: unknown;
+    try {
+      value = await response.json();
+    } catch {
+      throw new StandaloneDatabaseError(
+        "invalid-response",
+        "Database response must contain JSON.",
+        response.status,
+      );
+    }
+    if (!isResult(value)) {
+      throw new StandaloneDatabaseError(
+        "invalid-response",
+        invalidMessage,
+        response.status,
+      );
+    }
+    return value;
+  };
+
+  return {
+    async appendBundleEvent(input) {
+      const route = routes.appendEvent();
+      const response = await fetch(`${config.baseUrl}${route.path}`, {
+        method: "POST",
+        headers: headers(route.headers),
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) await requestFailed(response);
+    },
+    getBundleEventSummary(bundleId) {
+      return load(
+        routes.bundleEventSummary(bundleId),
+        {},
+        isBundleEventSummary,
+        "Invalid bundle event summary response.",
+      );
+    },
+    getBundleEventAnalytics(bundleId, window, limit, offset) {
+      return load(
+        routes.bundleEventAnalytics(bundleId),
+        { window, limit: String(limit), offset: String(offset) },
+        isBundleEventAnalytics,
+        "Invalid bundle event analytics response.",
+      );
+    },
+    searchInstallations(query, limit, offset) {
+      return load(
+        routes.installations(),
+        { query, limit: String(limit), offset: String(offset) },
+        (value): value is OffsetPaginationResult<InstallationSearchRow> =>
+          isOffsetPaginationResult(value, isInstallationSearchRow),
+        "Invalid installation search response.",
+      );
+    },
+    getInstallationHistory(installId, limit, offset) {
+      return load(
+        routes.installationHistory(installId),
+        { limit: String(limit), offset: String(offset) },
+        (value): value is OffsetPaginationResult<InstallationHistoryRow> =>
+          isOffsetPaginationResult(value, isInstallationHistoryRow),
+        "Invalid installation history response.",
+      );
+    },
+  };
+};
 
 const createLegacyCompatibilityImplementation = (
   config: StandaloneRepositoryConfig,
@@ -714,8 +982,12 @@ const createLegacyCompatibilityImplementation = (
  * independently supplied `ChannelRow.id` and is therefore outside the strict
  * fixed-model v2 adapter conformance contract.
  */
-export const standaloneRepository = (config: StandaloneRepositoryConfig) =>
-  createDatabaseAdapter({
+export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
+  const repository = createDatabaseAdapter({
     name: "standalone-repository",
     adapter: () => createLegacyCompatibilityImplementation(config),
   });
+  return Object.assign(repository, {
+    [databaseBundleEventService]: createBundleEventService(config),
+  });
+};

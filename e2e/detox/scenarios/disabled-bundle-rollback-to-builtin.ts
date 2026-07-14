@@ -65,11 +65,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         "runtime-scenario-marker",
         "disabled-current-detox",
       );
-      await app.assertText(
-        "assert current bundle launch status",
-        "launch-status-result",
-        "Current Launch Status: STABLE",
-      );
+      await app.assertStableLaunch("assert current bundle launch status");
       await app.control(
         "assert current bundle active",
         "/e2e/assert-metadata-active",
@@ -106,11 +102,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
         "runtime-scenario-marker",
         "$initialMarker",
       );
-      await app.assertText(
-        "assert rollback launch status",
-        "launch-status-result",
-        "Current Launch Status: STABLE",
-      );
+      await app.assertStableLaunch("assert rollback launch status");
       await app.assertText(
         "assert no crashed bundle",
         "launch-crashed-bundle-result",
