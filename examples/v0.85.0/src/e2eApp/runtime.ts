@@ -37,7 +37,13 @@ type UpdateProgressDetails = {
   }[];
 };
 
+HotUpdater.setUser({
+  userId: "detox-e2e",
+  username: "hot-updater-e2e",
+});
+
 HotUpdater.init({
+  analytics: true,
   baseURL: resolveHotUpdaterBaseURL,
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
