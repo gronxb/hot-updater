@@ -24,6 +24,7 @@ import {
 import type { DatabaseAdapter } from "../../../plugins/plugin-core/src/types/index.ts";
 import {
   createCrashRecoveryArtifactNames,
+  getLaunchReportState,
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
@@ -2117,7 +2118,8 @@ function assertMetadataReset(metadata: Record<string, unknown>) {
 function assertLaunchReport(
   filePath: string,
   expectedStatus: string,
-  expectedCrashBundleId = "",
+  expectedFromBundleId = "",
+  expectedToBundleId = "",
 ) {
   const report = readJson(filePath);
 
@@ -2127,12 +2129,15 @@ function assertLaunchReport(
     );
   }
 
-  if (
-    expectedCrashBundleId &&
-    report.crashedBundleId !== expectedCrashBundleId
-  ) {
+  if (expectedFromBundleId && report.fromBundleId !== expectedFromBundleId) {
     throw new Error(
-      `Expected crashedBundleId ${expectedCrashBundleId} but received ${String(report.crashedBundleId)}`,
+      `Expected fromBundleId ${expectedFromBundleId} but received ${String(report.fromBundleId)}`,
+    );
+  }
+
+  if (expectedToBundleId && report.toBundleId !== expectedToBundleId) {
+    throw new Error(
+      `Expected toBundleId ${expectedToBundleId} but received ${String(report.toBundleId)}`,
     );
   }
 }
@@ -2294,8 +2299,9 @@ function isExpectedCrashRecoveryReached(
     verificationPending: boolean | null;
   },
   launchReportState: {
-    crashedBundleId: string | null;
+    fromBundleId: string | null;
     status: string | null;
+    toBundleId: string | null;
   },
   crashedBundleId: string,
   stableBundleId: string | undefined,
@@ -2305,7 +2311,8 @@ function isExpectedCrashRecoveryReached(
     metadataState.stagingBundleId === stableBundleId &&
     metadataState.verificationPending === false &&
     launchReportState.status === "RECOVERED" &&
-    launchReportState.crashedBundleId === crashedBundleId
+    launchReportState.fromBundleId === crashedBundleId &&
+    launchReportState.toBundleId === stableBundleId
   );
 }
 
@@ -2695,16 +2702,6 @@ function readFirstOtaArchiveState(bundleId: string) {
     bundleFile,
     diagnostics,
     metadataState,
-  };
-}
-
-function getLaunchReportState(report: Record<string, unknown> | null) {
-  return {
-    crashedBundleId:
-      (report?.crashedBundleId as string | undefined) ??
-      (report?.crashed_bundle_id as string | undefined) ??
-      null,
-    status: (report?.status as string | undefined) ?? null,
   };
 }
 
@@ -3806,9 +3803,9 @@ function createWaitForRecoveryTimeoutError(args: {
   const launchReportState = getLaunchReportState(args.launchReport.value);
   const message = [
     "Timed out waiting for crash recovery state.",
-    `Expected stagingBundleId=${args.stableBundleId}, verificationPending=false, launchReport.status=RECOVERED, crashedBundleId=${args.crashedBundleId}.`,
+    `Expected stagingBundleId=${args.stableBundleId}, verificationPending=false, launchReport.status=RECOVERED, fromBundleId=${args.crashedBundleId}, toBundleId=${args.stableBundleId}.`,
     `${formatObservedMetadataState(metadataState)}.`,
-    `Observed launchReport.status=${String(launchReportState.status)} and crashedBundleId=${String(launchReportState.crashedBundleId)}.`,
+    `Observed launchReport.status=${String(launchReportState.status)}, fromBundleId=${String(launchReportState.fromBundleId)}, and toBundleId=${String(launchReportState.toBundleId)}.`,
     `Metadata path: ${args.metadata.path}`,
   ].join("\n");
 
@@ -5691,7 +5688,12 @@ async function assertLaunchReportState({
     throw new Error("launch-report.json is missing");
   }
 
-  assertLaunchReport(launchReportPath, status, crashedBundleId ?? "");
+  assertLaunchReport(
+    launchReportPath,
+    status,
+    crashedBundleId ?? "",
+    stableBundleId ?? "",
+  );
   return {};
 }
 
