@@ -12,7 +12,6 @@ import java.io.FileOutputStream
 import java.net.URL
 import java.util.UUID
 
-
 data class ChangedAssetDescriptor(
     val fileUrl: String?,
     val fileHash: String,
@@ -181,7 +180,6 @@ interface BundleStorageService {
      * @return true if the reset was successful
      */
     suspend fun resetChannel(): Boolean
-
 }
 
 /**
@@ -568,12 +566,9 @@ class BundleFileStorageService(
             "appVersion"
         }
 
+    private fun loadInstallationIdentity(): InstallationIdentity? = InstallationIdentity.loadFromFile(getInstallationIdentityFile())
 
-    private fun loadInstallationIdentity(): InstallationIdentity? =
-        InstallationIdentity.loadFromFile(getInstallationIdentityFile())
-
-    private fun saveInstallationIdentity(identity: InstallationIdentity): Boolean =
-        identity.saveToFile(getInstallationIdentityFile())
+    private fun saveInstallationIdentity(identity: InstallationIdentity): Boolean = identity.saveToFile(getInstallationIdentityFile())
 
     private fun getOrCreateInstallationIdentity(): InstallationIdentity {
         loadInstallationIdentity()?.let { return it }
@@ -995,7 +990,6 @@ class BundleFileStorageService(
             verificationPending = true,
             updatedAt = System.currentTimeMillis(),
         )
-
     }
 
     private fun rollbackPendingBundle(stagingBundleId: String): Boolean {
@@ -1037,8 +1031,6 @@ class BundleFileStorageService(
                 toBundleId = fallbackBundleId ?: HotUpdaterImpl.getMinBundleId(),
                 updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
             ),
-
-
         )
         return true
     }
@@ -1131,7 +1123,6 @@ class BundleFileStorageService(
                 verificationPending = false,
                 updatedAt = System.currentTimeMillis(),
             ),
-
         )
         saveLaunchReport(
             LaunchReport(
@@ -1140,8 +1131,6 @@ class BundleFileStorageService(
                 toBundleId = stagingBundleId,
                 updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
             ),
-
-
         )
     }
 
@@ -1156,6 +1145,7 @@ class BundleFileStorageService(
             report.updateStrategy?.let { put("updateStrategy", it) }
         }
     }
+
     override fun getInstallId(): String = getOrCreateInstallationIdentity().installId
 
     override fun getUserId(): String? = getOrCreateInstallationIdentity().userId

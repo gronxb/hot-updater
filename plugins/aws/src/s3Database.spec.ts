@@ -156,6 +156,7 @@ describe("s3Database storage behavior", () => {
       bundles: [],
       bundle_patches: [],
       channels: [{ id: "production", name: "production" }],
+      bundle_events: [],
     });
     const call = s3Mock.commandCalls(PutObjectCommand).at(-1);
     expect(call?.args[0].input).toMatchObject({

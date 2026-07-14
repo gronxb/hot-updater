@@ -145,6 +145,7 @@ describe("blob snapshot persistence", () => {
         { id: "channel-production", name: "production" },
         { id: "channel-unused", name: "unused" },
       ],
+      bundle_events: [],
     });
   });
 

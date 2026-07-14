@@ -251,32 +251,36 @@ const createPostgresImplementation = (
       case "bundles": {
         let query = db.selectFrom("bundles").selectAll();
         if (where !== undefined) query = query.where(where);
-        if (input.sortBy !== undefined) {
-          query = query.orderBy(input.sortBy.field, input.sortBy.direction);
+        for (const clause of input.orderBy ??
+          (input.sortBy ? [input.sortBy] : [])) {
+          query = query.orderBy(clause.field, clause.direction);
         }
         return query.limit(input.limit).offset(input.offset).execute();
       }
       case "bundle_patches": {
         let query = db.selectFrom("bundle_patches").selectAll();
         if (where !== undefined) query = query.where(where);
-        if (input.sortBy !== undefined) {
-          query = query.orderBy(input.sortBy.field, input.sortBy.direction);
+        for (const clause of input.orderBy ??
+          (input.sortBy ? [input.sortBy] : [])) {
+          query = query.orderBy(clause.field, clause.direction);
         }
         return query.limit(input.limit).offset(input.offset).execute();
       }
       case "channels": {
         let query = db.selectFrom("channels").selectAll();
         if (where !== undefined) query = query.where(where);
-        if (input.sortBy !== undefined) {
-          query = query.orderBy(input.sortBy.field, input.sortBy.direction);
+        for (const clause of input.orderBy ??
+          (input.sortBy ? [input.sortBy] : [])) {
+          query = query.orderBy(clause.field, clause.direction);
         }
         return query.limit(input.limit).offset(input.offset).execute();
       }
       case "bundle_events": {
         let query = db.selectFrom("bundle_events").selectAll();
         if (where !== undefined) query = query.where(where);
-        if (input.sortBy !== undefined) {
-          query = query.orderBy(input.sortBy.field, input.sortBy.direction);
+        for (const clause of input.orderBy ??
+          (input.sortBy ? [input.sortBy] : [])) {
+          query = query.orderBy(clause.field, clause.direction);
         }
         return query.limit(input.limit).offset(input.offset).execute();
       }

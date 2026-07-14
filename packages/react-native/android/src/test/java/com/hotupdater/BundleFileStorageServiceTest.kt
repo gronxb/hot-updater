@@ -146,8 +146,6 @@ class BundleFileStorageServiceTest {
         assertEquals(stableDir.name, report["toBundleId"])
         assertEquals("appVersion", report["updateStrategy"])
 
-
-
         val metadata = loadMetadata(rootDir)
         assertNotNull(metadata)
         assertEquals(stableDir.name, metadata?.stagingBundleId)
@@ -188,8 +186,6 @@ class BundleFileStorageServiceTest {
         assertEquals(stagingDir.name, report["fromBundleId"])
         assertEquals(HotUpdaterImpl.getMinBundleId(), report["toBundleId"])
         assertEquals("appVersion", report["updateStrategy"])
-
-
     }
 
     @Test
@@ -308,7 +304,6 @@ class BundleFileStorageServiceTest {
             loadInstallationIdentity(rootDir),
         )
     }
-
 
     @Test
     fun `manifest driven install is disabled before first OTA`() {

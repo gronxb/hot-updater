@@ -284,13 +284,13 @@ class HotUpdaterModule internal constructor(
 
     override fun getManifest(): WritableNativeMap = getInstance().getManifest().toWritableNativeMap()
 
-    fun getInstallId(): String = getInstance().getInstallId()
+    override fun getInstallId(): String = getInstance().getInstallId()
 
-    fun getUserId(): String? = getInstance().getUserId()
+    override fun getUserId(): String? = getInstance().getUserId()
 
-    fun getUsername(): String? = getInstance().getUsername()
+    override fun getUsername(): String? = getInstance().getUsername()
 
-    fun setUser(
+    override fun setUser(
         userId: String?,
         username: String?,
     ) {

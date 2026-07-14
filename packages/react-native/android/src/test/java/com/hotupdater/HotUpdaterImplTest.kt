@@ -131,7 +131,6 @@ class HotUpdaterImplTest {
         assertNull(storage.lastUsername)
     }
 
-
     private fun createImpl(
         storageBundleId: String?,
         storageManifest: Map<String, Any?> = emptyMap(),

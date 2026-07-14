@@ -105,7 +105,7 @@ export const registerDatabaseAdapterRelationTests = <TContext>(
           model: "bundle_patches",
           where: [{ field: "bundle_id", value: targetId }],
           select: ["id", "order_index"],
-          sortBy: { field: "order_index", direction: "asc" },
+          orderBy: [{ field: "order_index", direction: "asc" }],
         },
         state.context,
       );

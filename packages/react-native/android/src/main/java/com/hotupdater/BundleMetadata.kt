@@ -17,7 +17,6 @@ data class BundleMetadata(
     val verificationPending: Boolean = false,
     val updatedAt: Long = System.currentTimeMillis(),
 ) {
-
     companion object {
         private const val TAG = "BundleMetadata"
         const val SCHEMA_VERSION = "metadata-v1"
@@ -47,7 +46,6 @@ data class BundleMetadata(
                 pendingUpdateStrategy = json.optNullableString("pendingUpdateStrategy"),
                 verificationPending = json.optBoolean("verificationPending", false),
                 updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
-
             )
 
         fun loadFromFile(

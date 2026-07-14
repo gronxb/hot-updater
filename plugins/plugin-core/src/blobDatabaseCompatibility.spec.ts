@@ -109,6 +109,7 @@ describe("blob snapshot compatibility", () => {
         { id: "channel-staging", name: "staging" },
         { id: "production", name: "production" },
       ],
+      bundle_events: [],
     });
   });
 
