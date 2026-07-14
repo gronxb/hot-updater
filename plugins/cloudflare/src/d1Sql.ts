@@ -20,6 +20,7 @@ type D1Predicate = {
 type D1Sort = {
   readonly field: string;
   readonly direction: "asc" | "desc";
+  readonly nulls?: "first" | "last";
 };
 
 class InvalidD1PredicateError extends Error {
@@ -141,10 +142,17 @@ export const buildD1Where = (
   return { sql: ` WHERE ${sql}`, params };
 };
 
-export const buildD1Order = (sortBy: D1Sort | undefined): string =>
-  sortBy === undefined
+export const buildD1Order = (orderBy: readonly D1Sort[] | undefined): string =>
+  orderBy === undefined
     ? ""
-    : ` ORDER BY ${sortBy.field} ${sortBy.direction.toUpperCase()}`;
+    : ` ORDER BY ${orderBy
+        .map(
+          (clause) =>
+            `${clause.field} ${clause.direction.toUpperCase()}${
+              clause.nulls ? ` NULLS ${clause.nulls.toUpperCase()}` : ""
+            }`,
+        )
+        .join(", ")}`;
 
 export const d1Placeholders = (count: number): string =>
   Array.from({ length: count }, () => "json_extract(?, '$')").join(", ");

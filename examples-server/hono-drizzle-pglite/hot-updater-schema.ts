@@ -97,7 +97,33 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
   })
 }))
 
+export const bundle_events = pgTable("bundle_events", {
+  id: uuid("id").primaryKey().notNull(),
+  type: text("type").notNull(),
+  install_id: text("install_id").notNull(),
+  user_id: text("user_id"),
+  username: text("username"),
+  from_bundle_id: uuid("from_bundle_id").notNull(),
+  to_bundle_id: uuid("to_bundle_id").notNull(),
+  platform: text("platform").notNull(),
+  app_version: text("app_version").notNull(),
+  channel: text("channel").notNull(),
+  cohort: text("cohort").notNull(),
+  update_strategy: text("update_strategy").notNull(),
+  fingerprint_hash: text("fingerprint_hash"),
+  sdk_version: text("sdk_version"),
+  received_at_ms: integer("received_at_ms").notNull()
+}, (table) => [
+  index("bundle_events_installed_bundle_idx").on(table.type, table.to_bundle_id, table.received_at_ms, table.id),
+  index("bundle_events_recovered_bundle_idx").on(table.type, table.from_bundle_id, table.received_at_ms, table.id),
+  index("bundle_events_install_idx").on(table.install_id, table.received_at_ms, table.id),
+  index("bundle_events_user_id_idx").on(table.user_id, table.received_at_ms, table.id),
+  index("bundle_events_username_idx").on(table.username, table.received_at_ms, table.id),
+  index("bundle_events_cohort_idx").on(table.cohort, table.type, table.received_at_ms, table.id),
+  index("bundle_events_received_at_idx").on(table.received_at_ms, table.id)
+])
+
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
-  version: varchar("version", { length: 255 }).notNull().default("0.36.0")
+  version: varchar("version", { length: 255 }).notNull().default("0.37.0")
 })

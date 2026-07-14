@@ -77,7 +77,10 @@ it("projects selected fields after querying physical bundle columns", async () =
         mode: "insensitive",
       },
     ],
-    sortBy: { field: "id", direction: "desc" },
+    orderBy: [
+      { field: "channel", direction: "asc", nulls: "last" },
+      { field: "id", direction: "desc" },
+    ],
     select: ["id", "enabled"],
     limit: 10,
   });
@@ -86,7 +89,9 @@ it("projects selected fields after querying physical bundle columns", async () =
   expect(state.queries[0]?.sql).toContain(
     "lower(message) LIKE lower(json_extract(?, '$'))",
   );
-  expect(state.queries[0]?.sql).toContain("ORDER BY id DESC");
+  expect(state.queries[0]?.sql).toContain(
+    "ORDER BY channel ASC NULLS LAST, id DESC",
+  );
 });
 
 it("encodes channel ids and names as JSON-bound parameters", async () => {

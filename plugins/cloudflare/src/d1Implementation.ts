@@ -237,7 +237,9 @@ export const createD1Implementation = <TContext = unknown>(
   },
   async findMany(input: FindManyDatabaseImplementationInput, context) {
     const where = buildD1Where(input.where);
-    const order = buildD1Order(input.sortBy);
+    const order = buildD1Order(
+      input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined),
+    );
     const pageParams = encodeD1Values([input.limit, input.offset]);
     const rows = await executor.query(
       `SELECT * FROM ${input.model}${where.sql}${order} LIMIT json_extract(?, '$') OFFSET json_extract(?, '$')`,
