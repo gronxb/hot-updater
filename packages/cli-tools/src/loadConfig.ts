@@ -149,10 +149,13 @@ export type ConfigResponse = RequiredDeep<ConfigInput>;
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
 ) => {
-  return sources.reduceRight<ConfigInput>(
+  const mergedConfig = sources.reduceRight<ConfigInput>(
     (mergedConfig, source) => merge(mergedConfig, source ?? {}),
     {} as ConfigInput,
   );
+
+  const database = sources.find((source) => source?.database)?.database;
+  return database ? { ...mergedConfig, database } : mergedConfig;
 };
 
 const getConfigLoaderOptions = (
