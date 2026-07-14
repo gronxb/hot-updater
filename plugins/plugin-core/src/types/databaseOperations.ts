@@ -2,6 +2,7 @@ import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 
 import {
   databaseBundleEventService,
+  databaseBundleEventSupport,
   type DatabaseBundleEventService,
 } from "./databaseBundleEvents";
 import type {
@@ -188,6 +189,7 @@ export interface TransactionDatabaseAdapter {
 export interface DatabaseAdapter<TContext = unknown> {
   readonly name: string;
   readonly [databaseBundleEventService]?: DatabaseBundleEventService<TContext>;
+  readonly [databaseBundleEventSupport]?: true;
   create<
     TModel extends CreateDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,

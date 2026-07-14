@@ -72,7 +72,7 @@
 
   ## OTA Transition Analytics
 
-  Hot Updater can optionally record successful OTA applications and automatic recoveries as append-only transition events. The runtime keeps this opt-in behind `HotUpdater.init({ analytics: true })`, the server stores immutable `bundle_events`, and the Console surfaces lifetime Installed/Recovered counts plus per-install last-known bundle history.
+  Hot Updater can optionally record successful OTA applications and automatic recoveries as append-only transition events. The runtime keeps this opt-in behind `HotUpdater.init({ analytics: true })`; when the configured database adapter supports transition analytics, the server stores immutable `bundle_events` and the Console surfaces lifetime Installed/Recovered counts plus per-install last-known bundle history. Snapshot databases such as `s3Database` do not enable this capability because concurrent event writes can conflict.
 
   See the React Native/runtime docs and Console/server guides at https://hot-updater.dev for full setup.
 

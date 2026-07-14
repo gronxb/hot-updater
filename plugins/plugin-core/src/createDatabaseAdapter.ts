@@ -2,7 +2,11 @@ import {
   createDatabaseAdapterCrud,
   createTransactionDatabaseAdapter,
 } from "./databaseAdapterCrud";
-import type { DatabaseAdapter, DatabaseAdapterImplementation } from "./types";
+import {
+  databaseBundleEventSupport,
+  type DatabaseAdapter,
+  type DatabaseAdapterImplementation,
+} from "./types";
 
 export {
   DatabaseAdapterInputError,
@@ -11,6 +15,7 @@ export {
 
 export interface CreateDatabaseAdapterOptions<TContext = unknown> {
   readonly name: string;
+  readonly supportsBundleEvents?: true;
   readonly adapter: () => DatabaseAdapterImplementation<TContext>;
 }
 
@@ -22,6 +27,9 @@ export const createDatabaseAdapter = <TContext = unknown>(
   return {
     ...createDatabaseAdapterCrud(implementation),
     name: options.name,
+    ...(options.supportsBundleEvents
+      ? { [databaseBundleEventSupport]: true as const }
+      : {}),
     ...(implementation.getUpdateInfo
       ? { getUpdateInfo: implementation.getUpdateInfo }
       : {}),

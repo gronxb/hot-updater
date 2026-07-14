@@ -3,6 +3,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
   databaseBundleEventService,
+  databaseBundleEventSupport,
   type DatabaseAdapter,
   type DatabaseBundleEventService,
 } from "@hot-updater/plugin-core";
@@ -19,6 +20,7 @@ import {
   type TestContext,
   updateArgs,
 } from "./databaseAdapterCore.testFixtures";
+import { supportsBundleEvents } from "./types";
 
 type TestEventRow = {
   id: string;
@@ -38,13 +40,17 @@ type TestEventRow = {
   received_at_ms: number;
 };
 
-const createBundleEventAdapter = (): DatabaseAdapter<TestContext> => {
+const createBundleEventAdapter = (
+  supportsBundleEvents = true,
+): DatabaseAdapter<TestContext> => {
   const rows: TestEventRow[] = [];
   const matches = (
     row: TestEventRow,
     where: readonly Record<string, unknown>[] | undefined,
   ): boolean => {
     if (!where || where.length === 0) return true;
+    const [firstCondition, ...remainingConditions] = where;
+    if (!firstCondition) return true;
     const evaluate = (condition: Record<string, unknown>): boolean => {
       const actual = Reflect.get(row, condition.field as string);
       const operator = (condition.operator ?? "eq") as string;
@@ -61,8 +67,8 @@ const createBundleEventAdapter = (): DatabaseAdapter<TestContext> => {
       }
       return actual === expected;
     };
-    let result = evaluate(where[0]!);
-    for (const condition of where.slice(1)) {
+    let result = evaluate(firstCondition);
+    for (const condition of remainingConditions) {
       const current = evaluate(condition);
       result =
         condition.connector === "OR" ? result || current : result && current;
@@ -115,6 +121,7 @@ const createBundleEventAdapter = (): DatabaseAdapter<TestContext> => {
   };
   return {
     name: "bundle-event-test",
+    ...(supportsBundleEvents ? { [databaseBundleEventSupport]: true } : {}),
     create: async (input) => {
       if (input.model === "bundle_events") {
         rows.push(input.data as TestEventRow);
@@ -164,6 +171,21 @@ const createBundleEventAdapter = (): DatabaseAdapter<TestContext> => {
 };
 
 describe("createDatabaseAdapterCore", () => {
+  it("omits bundle event methods when the adapter does not opt in", () => {
+    // Given
+    const adapter = createBundleEventAdapter(false);
+
+    // When
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
+
+    // Then
+    expect(core.api.appendBundleEvent).toBeUndefined();
+    expect(core.api.getBundleEventSummary).toBeUndefined();
+    expect(core.api.getBundleEventAnalytics).toBeUndefined();
+    expect(core.api.searchInstallations).toBeUndefined();
+    expect(core.api.getInstallationHistory).toBeUndefined();
+  });
+
   it("uses a database-provided bundle event service", async () => {
     const service = {
       appendBundleEvent: vi.fn(),
@@ -179,6 +201,9 @@ describe("createDatabaseAdapterCore", () => {
       { [databaseBundleEventService]: service },
     );
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
+    if (!supportsBundleEvents(core.api)) {
+      throw new Error("Expected the database-provided bundle event service.");
+    }
 
     await expect(core.api.getBundleEventSummary("bundle-1")).resolves.toEqual({
       installed: 2,
@@ -421,6 +446,9 @@ describe("createDatabaseAdapterCore", () => {
     // Given
     const adapter = createBundleEventAdapter();
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
+    if (!supportsBundleEvents(core.api)) {
+      throw new Error("Expected bundle event support.");
+    }
     const context: TestContext = {
       env: { assetHost: "https://assets.example.com" },
     };
@@ -534,6 +562,9 @@ describe("createDatabaseAdapterCore", () => {
     // Given
     const adapter = createBundleEventAdapter();
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
+    if (!supportsBundleEvents(core.api)) {
+      throw new Error("Expected bundle event support.");
+    }
     const nowValues = [
       Date.UTC(2026, 0, 1, 0, 5, 0),
       Date.UTC(2026, 0, 1, 0, 5, 0),

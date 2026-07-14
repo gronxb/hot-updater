@@ -9,6 +9,7 @@ import {
   createDatabaseClient,
   createRequestBundleResolver,
   databaseBundleEventService,
+  databaseBundleEventSupport,
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
@@ -39,7 +40,10 @@ export function createDatabaseAdapterCore<TContext = unknown>(
   const client = createDatabaseClient(database);
   const beforeOperation = options?.beforeOperation;
   const bundleEvents =
-    database[databaseBundleEventService] ?? createBundleEventService(database);
+    database[databaseBundleEventService] ??
+    (database[databaseBundleEventSupport]
+      ? createBundleEventService(database)
+      : undefined);
 
   const api: DatabaseAPI<TContext> = {
     async getBundleById(
@@ -147,41 +151,56 @@ export function createDatabaseAdapterCore<TContext = unknown>(
       await client.deleteBundleById(bundleId, context);
     },
 
-    async appendBundleEvent(input, context) {
-      await beforeOperation?.();
-      await bundleEvents.appendBundleEvent(input, context);
-    },
+    ...(bundleEvents
+      ? {
+          async appendBundleEvent(input, context) {
+            await beforeOperation?.();
+            await bundleEvents.appendBundleEvent(input, context);
+          },
 
-    async getBundleEventSummary(bundleId, context) {
-      await beforeOperation?.();
-      return bundleEvents.getBundleEventSummary(bundleId, context);
-    },
+          async getBundleEventSummary(bundleId, context) {
+            await beforeOperation?.();
+            return bundleEvents.getBundleEventSummary(bundleId, context);
+          },
 
-    async getBundleEventAnalytics(bundleId, window, limit, offset, context) {
-      await beforeOperation?.();
-      return bundleEvents.getBundleEventAnalytics(
-        bundleId,
-        window,
-        limit,
-        offset,
-        context,
-      );
-    },
+          async getBundleEventAnalytics(
+            bundleId,
+            window,
+            limit,
+            offset,
+            context,
+          ) {
+            await beforeOperation?.();
+            return bundleEvents.getBundleEventAnalytics(
+              bundleId,
+              window,
+              limit,
+              offset,
+              context,
+            );
+          },
 
-    async searchInstallations(query, limit, offset, context) {
-      await beforeOperation?.();
-      return bundleEvents.searchInstallations(query, limit, offset, context);
-    },
+          async searchInstallations(query, limit, offset, context) {
+            await beforeOperation?.();
+            return bundleEvents.searchInstallations(
+              query,
+              limit,
+              offset,
+              context,
+            );
+          },
 
-    async getInstallationHistory(installId, limit, offset, context) {
-      await beforeOperation?.();
-      return bundleEvents.getInstallationHistory(
-        installId,
-        limit,
-        offset,
-        context,
-      );
-    },
+          async getInstallationHistory(installId, limit, offset, context) {
+            await beforeOperation?.();
+            return bundleEvents.getInstallationHistory(
+              installId,
+              limit,
+              offset,
+              context,
+            );
+          },
+        }
+      : {}),
   };
 
   return {

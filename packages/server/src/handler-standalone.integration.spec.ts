@@ -16,6 +16,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { standaloneRepository } from "../../../plugins/standalone/src";
 import { kyselyAdapter } from "./adapters/kysely";
 import { createMigrator } from "./db";
+import { supportsBundleEvents } from "./db/types";
 import { createHotUpdater } from "./index";
 
 const db = new PGlite();
@@ -81,6 +82,8 @@ const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
 const createStandaloneClient = (base = `${baseUrl}/hot-updater`) =>
   createDatabaseClient(standaloneRepository({ baseUrl: base }));
 
+const parseStoredJson = (value: string): unknown => JSON.parse(value);
+
 const createInMemoryBlobDatabase = (store: Record<string, string>) =>
   createBlobDatabaseAdapter({
     name: "blob-test",
@@ -90,13 +93,13 @@ const createInMemoryBlobDatabase = (store: Record<string, string>) =>
         Object.keys(store).filter((key) => key.startsWith(prefix)),
       loadObject: async (key: string) => {
         const value = store[key];
-        return value ? (JSON.parse(value) as unknown) : null;
+        return value ? parseStoredJson(value) : null;
       },
       uploadObject: async (key: string, data: unknown) => {
         store[key] = JSON.stringify(data);
       },
       compareAndSwapObject: async (key, expected, data) => {
-        const current = store[key] ? (JSON.parse(store[key]) as unknown) : null;
+        const current = store[key] ? parseStoredJson(store[key]) : null;
         if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
         store[key] = JSON.stringify(data);
         return true;
@@ -182,6 +185,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
   });
 
   it("proxies transition analytics through the standalone repository", async () => {
+    if (!supportsBundleEvents(api)) {
+      throw new Error("Expected Kysely bundle event support.");
+    }
     const bundleId = uuidv7();
     const installId = "standalone-analytics-install";
     await api.insertBundle(createTestBundle({ id: bundleId }));
@@ -220,6 +226,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
       basePath: "/console",
       routes: { updateCheck: true, bundles: true },
     });
+    if (!supportsBundleEvents(consoleApi)) {
+      throw new Error("Expected standalone bundle event support.");
+    }
 
     await expect(consoleApi.getBundleEventSummary(bundleId)).resolves.toEqual({
       installed: 1,

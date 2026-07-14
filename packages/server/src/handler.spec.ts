@@ -49,12 +49,13 @@ const createApi = () =>
     insertBundle: vi.fn<HandlerAPI<TestContext>["insertBundle"]>(),
     updateBundleById: vi.fn<HandlerAPI<TestContext>["updateBundleById"]>(),
     deleteBundleById: vi.fn<HandlerAPI<TestContext>["deleteBundleById"]>(),
-    appendBundleEvent: vi.fn<HandlerAPI<TestContext>["appendBundleEvent"]>(),
+    appendBundleEvent:
+      vi.fn<NonNullable<HandlerAPI<TestContext>["appendBundleEvent"]>>(),
     getBundleEventSummary: vi
-      .fn<HandlerAPI<TestContext>["getBundleEventSummary"]>()
+      .fn<NonNullable<HandlerAPI<TestContext>["getBundleEventSummary"]>>()
       .mockResolvedValue({ installed: 0, recovered: 0 }),
     getBundleEventAnalytics: vi
-      .fn<HandlerAPI<TestContext>["getBundleEventAnalytics"]>()
+      .fn<NonNullable<HandlerAPI<TestContext>["getBundleEventAnalytics"]>>()
       .mockResolvedValue({
         summary: { installed: 0, recovered: 0 },
         series: { installed: [], recovered: [] },
@@ -65,13 +66,13 @@ const createApi = () =>
         },
       }),
     searchInstallations: vi
-      .fn<HandlerAPI<TestContext>["searchInstallations"]>()
+      .fn<NonNullable<HandlerAPI<TestContext>["searchInstallations"]>>()
       .mockResolvedValue({
         data: [],
         pagination: { total: 0, limit: 50, offset: 0 },
       }),
     getInstallationHistory: vi
-      .fn<HandlerAPI<TestContext>["getInstallationHistory"]>()
+      .fn<NonNullable<HandlerAPI<TestContext>["getInstallationHistory"]>>()
       .mockResolvedValue({
         data: [],
         pagination: { total: 0, limit: 50, offset: 0 },
@@ -245,6 +246,47 @@ describe("createHandler", () => {
       }),
       undefined,
     );
+  });
+
+  it("does not mount event routes when the database omits the capability", async () => {
+    // Given
+    const {
+      appendBundleEvent: _appendBundleEvent,
+      getBundleEventSummary: _getBundleEventSummary,
+      getBundleEventAnalytics: _getBundleEventAnalytics,
+      searchInstallations: _searchInstallations,
+      getInstallationHistory: _getInstallationHistory,
+      ...api
+    } = createApi();
+    api.getBundles.mockResolvedValueOnce({
+      data: [],
+      pagination: {
+        total: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+        currentPage: 1,
+        totalPages: 0,
+      },
+    });
+    const handler = createManagementHandler(api);
+
+    // When
+    const appendResponse = await handler(
+      new Request("http://localhost/hot-updater/events", { method: "POST" }),
+    );
+    const summaryResponse = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles/bundle-1/events/summary",
+      ),
+    );
+    const bundlesResponse = await handler(
+      new Request("http://localhost/hot-updater/api/bundles"),
+    );
+
+    // Then
+    expect(appendResponse.status).toBe(404);
+    expect(summaryResponse.status).toBe(404);
+    expect(bundlesResponse.status).toBe(200);
   });
 
   it("returns 400 JSON for invalid event payloads", async () => {

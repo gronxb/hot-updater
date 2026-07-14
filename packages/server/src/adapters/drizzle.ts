@@ -113,6 +113,7 @@ export const drizzleAdapter = <TContext = unknown>(
 ): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
   const adapter = createDatabaseAdapter({
     name: "drizzle",
+    supportsBundleEvents: true,
     adapter: (): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> =>
       createImplementation<TContext>(config),
   });

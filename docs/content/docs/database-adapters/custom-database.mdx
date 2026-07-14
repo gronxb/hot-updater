@@ -219,6 +219,31 @@ The shared aggregate client ensures a channel before creating or moving a
 bundle. Concurrent channel creation may race, so duplicate creation can be
 followed by a successful re-read.
 
+## Optional transition analytics
+
+Transition-event storage is an opt-in database capability. Enable it only when
+each `bundle_events` insert is an independent, concurrency-safe write:
+
+```typescript
+createDatabaseAdapter({
+  name: "my-database",
+  supportsBundleEvents: true,
+  adapter: () => ({
+    // required row methods...
+  }),
+});
+```
+
+Without `supportsBundleEvents: true`, the server does not expose `POST /events`
+or the transition analytics and installation-history routes. This is the
+correct default for adapters that rewrite one shared snapshot or object for
+every mutation. Concurrent app reports can conflict in those backends even if
+the adapter can technically create a `bundle_events` row.
+
+Do not opt in blob or snapshot databases such as `s3Database`. Use a
+row-oriented or document database with atomic inserts when transition
+analytics are required.
+
 ## Optional update-check fast path
 
 Add `getUpdateInfo` when the backend can answer runtime update checks more

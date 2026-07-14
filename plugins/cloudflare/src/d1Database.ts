@@ -12,6 +12,7 @@ export interface D1DatabaseConfig {
 export const d1Database = (config: D1DatabaseConfig) =>
   createDatabaseAdapter({
     name: "d1Database",
+    supportsBundleEvents: true,
     adapter: () => {
       const cloudflare = new Cloudflare({
         apiToken: config.cloudflareApiToken,

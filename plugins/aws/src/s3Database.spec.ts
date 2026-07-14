@@ -14,6 +14,7 @@ import {
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
   createDatabaseClient,
+  databaseBundleEventSupport,
 } from "@hot-updater/plugin-core";
 import {
   setupDatabaseAdapterTestSuite,
@@ -135,6 +136,14 @@ setupDatabaseClientTestSuite({
 });
 
 describe("s3Database storage behavior", () => {
+  it("does not opt in to concurrent bundle event writes", () => {
+    // Given / When
+    const adapter = s3Database({ bucketName });
+
+    // Then
+    expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+  });
+
   it("writes an immutable revision below the configured base path", async () => {
     const adapter = s3Database({ bucketName, basePath: "/metadata/" });
 

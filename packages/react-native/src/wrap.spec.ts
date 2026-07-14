@@ -276,12 +276,13 @@ describe("HotUpdater wrap initialization", () => {
     expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
   });
 
-  it("calls init onError when automatic analytics transport fails", async () => {
+  it("warns without interrupting app readiness when analytics transport fails", async () => {
     vi.useFakeTimers();
 
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const error = new Error("notify failed");
+    const error = new Error("Expected HTTP 204 from /events, received 404");
     const onError = vi.fn();
+    const onNotifyAppReady = vi.fn();
     vi.stubGlobal(
       "requestAnimationFrame",
       vi.fn((callback: (timestamp: number) => void) => {
@@ -313,12 +314,22 @@ describe("HotUpdater wrap initialization", () => {
     init({
       analytics: true,
       onError,
+      onNotifyAppReady,
       resolver,
     });
 
     await vi.runOnlyPendingTimersAsync();
 
     expect(onError).toHaveBeenCalledWith(error);
+    expect(warn).toHaveBeenCalledWith(
+      "[HotUpdater] Automatic notifyAppReady analytics failed:",
+      error,
+    );
+    expect(onNotifyAppReady).toHaveBeenCalledWith({
+      fromBundleId: "bundle-a",
+      status: "UPDATE_APPLIED",
+      toBundleId: "bundle-b",
+    });
     warn.mockRestore();
   });
 

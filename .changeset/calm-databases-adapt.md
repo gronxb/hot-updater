@@ -33,4 +33,6 @@ conformance suites for custom database adapter authors.
 Expose transition-event analytics as an optional database capability and proxy
 the management summary, analytics, installation search, and installation history
 routes through the standalone repository so `hot-updater console` reports real
-installed and recovered counts for standalone backends.
+installed and recovered counts for standalone backends. Snapshot-backed
+`s3Database` deliberately leaves this capability disabled because concurrent
+event writes can conflict.

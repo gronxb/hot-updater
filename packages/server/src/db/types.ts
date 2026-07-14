@@ -138,7 +138,48 @@ export function getSQLProvider(
     : undefined;
 }
 
-export interface DatabaseAPI<TContext = unknown> {
+export interface BundleEventAPI<TContext = unknown> {
+  appendBundleEvent(
+    input: CreateBundleEventRequest,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<void>;
+  getBundleEventSummary(
+    bundleId: string,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<BundleEventSummary>;
+  getBundleEventAnalytics(
+    bundleId: string,
+    window: BundleEventAnalyticsWindow,
+    limit: number,
+    offset: number,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<BundleEventAnalyticsResult>;
+  searchInstallations(
+    query: string,
+    limit: number,
+    offset: number,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<OffsetPaginationResult<InstallationSearchRow>>;
+  getInstallationHistory(
+    installId: string,
+    limit: number,
+    offset: number,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<OffsetPaginationResult<InstallationHistoryRow>>;
+}
+
+export const supportsBundleEvents = <TContext>(
+  api: object,
+): api is BundleEventAPI<TContext> =>
+  typeof Reflect.get(api, "appendBundleEvent") === "function" &&
+  typeof Reflect.get(api, "getBundleEventSummary") === "function" &&
+  typeof Reflect.get(api, "getBundleEventAnalytics") === "function" &&
+  typeof Reflect.get(api, "searchInstallations") === "function" &&
+  typeof Reflect.get(api, "getInstallationHistory") === "function";
+
+export interface DatabaseAPI<TContext = unknown> extends Partial<
+  BundleEventAPI<TContext>
+> {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
     context?: HotUpdaterContext<TContext>,
@@ -169,33 +210,6 @@ export interface DatabaseAPI<TContext = unknown> {
     bundleId: string,
     context?: HotUpdaterContext<TContext>,
   ): Promise<void>;
-  appendBundleEvent(
-    input: CreateBundleEventRequest,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<void>;
-  getBundleEventSummary(
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<BundleEventSummary>;
-  getBundleEventAnalytics(
-    bundleId: string,
-    window: BundleEventAnalyticsWindow,
-    limit: number,
-    offset: number,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<BundleEventAnalyticsResult>;
-  searchInstallations(
-    query: string,
-    limit: number,
-    offset: number,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<OffsetPaginationResult<InstallationSearchRow>>;
-  getInstallationHistory(
-    installId: string,
-    limit: number,
-    offset: number,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<OffsetPaginationResult<InstallationHistoryRow>>;
 }
 
 export type StoragePluginFactory<TContext = unknown> =

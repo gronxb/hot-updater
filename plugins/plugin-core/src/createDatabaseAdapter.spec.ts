@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabaseAdapter } from "./createDatabaseAdapter";
-import type { DatabaseAdapterImplementation } from "./types";
+import {
+  databaseBundleEventSupport,
+  type DatabaseAdapterImplementation,
+} from "./types";
 
 class UnimplementedAdapterMethodError extends Error {}
 
@@ -66,6 +69,25 @@ describe("createDatabaseAdapter", () => {
 
     expect(typeof adapter).toBe("object");
     expect(adapter.name).toBe("memory");
+  });
+
+  it("requires adapters to opt in to bundle event storage", () => {
+    // Given
+    const unsupportedAdapter = createDatabaseAdapter({
+      name: "unsupported-memory",
+      adapter: createMethods,
+    });
+
+    // When
+    const supportedAdapter = createDatabaseAdapter({
+      name: "supported-memory",
+      supportsBundleEvents: true,
+      adapter: createMethods,
+    });
+
+    // Then
+    expect(unsupportedAdapter[databaseBundleEventSupport]).toBeUndefined();
+    expect(supportedAdapter[databaseBundleEventSupport]).toBe(true);
   });
 
   it("composes onUnmount without invoking it", async () => {

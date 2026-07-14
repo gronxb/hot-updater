@@ -91,6 +91,7 @@ export const kyselyAdapter = <TDatabase extends object, TContext = unknown>(
 ): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
   const adapter = createDatabaseAdapter({
     name: "kysely",
+    supportsBundleEvents: true,
     adapter: (): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> =>
       createImplementation<TDatabase, TContext>(config),
   });

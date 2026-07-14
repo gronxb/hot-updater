@@ -1,13 +1,12 @@
 import type { ConfigResponse } from "@hot-updater/cli-tools";
+import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import type {
-  BundleEventAnalyticsResult,
-  BundleEventAnalyticsWindow,
-  BundleEventSummary,
-  CreateBundleEventRequest,
-  InstallationHistoryRow,
-  InstallationSearchRow,
-  OffsetPaginationResult,
+import {
+  type BundleEventAnalyticsWindow,
+  type InstallationHistoryRow,
+  type InstallationSearchRow,
+  type OffsetPaginationResult,
+  supportsBundleEvents,
 } from "@hot-updater/server/db";
 
 export type InstallationSearchResult =
@@ -15,50 +14,34 @@ export type InstallationSearchResult =
 export type InstallationHistoryResult =
   OffsetPaginationResult<InstallationHistoryRow>;
 
-export interface RuntimeHotUpdaterClient<TContext = unknown> {
-  appendBundleEvent: (
-    input: CreateBundleEventRequest,
-    context?: TContext,
-  ) => Promise<void>;
-  getBundleEventSummary: (
-    bundleId: string,
-    context?: TContext,
-  ) => Promise<BundleEventSummary>;
-  getBundleEventAnalytics: (
-    bundleId: string,
-    window: BundleEventAnalyticsWindow,
-    limit?: number,
-    offset?: number,
-    context?: TContext,
-  ) => Promise<BundleEventAnalyticsResult>;
-  searchInstallations: (
-    query: string,
-    limit?: number,
-    offset?: number,
-    context?: TContext,
-  ) => Promise<InstallationSearchResult>;
-  getInstallationHistory: (
-    installId: string,
-    limit?: number,
-    offset?: number,
-    context?: TContext,
-  ) => Promise<InstallationHistoryResult>;
-}
-
 export function createRuntimeHotUpdater(config: ConfigResponse) {
   return createHotUpdater({
     database: config.database,
-  }) as unknown as RuntimeHotUpdaterClient;
+  });
 }
+
+const requireBundleEventSupport = <TContext>(hotUpdater: unknown) => {
+  if (
+    typeof hotUpdater !== "object" ||
+    hotUpdater === null ||
+    !supportsBundleEvents<TContext>(hotUpdater)
+  ) {
+    throw new Error(
+      "Transition analytics are not supported by the configured database adapter.",
+    );
+  }
+  return hotUpdater;
+};
 
 export async function getBundleEventSummary<TContext = unknown>(
   hotUpdater: unknown,
   bundleId: string,
-  context?: TContext,
+  context?: HotUpdaterContext<TContext>,
 ) {
-  return (
-    hotUpdater as RuntimeHotUpdaterClient<TContext>
-  ).getBundleEventSummary(bundleId, context);
+  return requireBundleEventSupport<TContext>(hotUpdater).getBundleEventSummary(
+    bundleId,
+    context,
+  );
 }
 
 export async function getBundleEventAnalytics<TContext = unknown>(
@@ -69,15 +52,15 @@ export async function getBundleEventAnalytics<TContext = unknown>(
     limit?: number;
     offset?: number;
   },
-  context?: TContext,
+  context?: HotUpdaterContext<TContext>,
 ) {
-  return (
-    hotUpdater as RuntimeHotUpdaterClient<TContext>
+  return requireBundleEventSupport<TContext>(
+    hotUpdater,
   ).getBundleEventAnalytics(
     input.bundleId,
     input.window,
-    input.limit,
-    input.offset,
+    input.limit ?? 50,
+    input.offset ?? 0,
     context,
   );
 }
@@ -89,12 +72,12 @@ export async function searchInstallations<TContext = unknown>(
     limit?: number;
     offset?: number;
   },
-  context?: TContext,
+  context?: HotUpdaterContext<TContext>,
 ) {
-  return (hotUpdater as RuntimeHotUpdaterClient<TContext>).searchInstallations(
+  return requireBundleEventSupport<TContext>(hotUpdater).searchInstallations(
     input.query,
-    input.limit,
-    input.offset,
+    input.limit ?? 50,
+    input.offset ?? 0,
     context,
   );
 }
@@ -106,9 +89,12 @@ export async function getInstallationHistory<TContext = unknown>(
     limit?: number;
     offset?: number;
   },
-  context?: TContext,
+  context?: HotUpdaterContext<TContext>,
 ) {
-  return (
-    hotUpdater as RuntimeHotUpdaterClient<TContext>
-  ).getInstallationHistory(input.installId, input.limit, input.offset, context);
+  return requireBundleEventSupport<TContext>(hotUpdater).getInstallationHistory(
+    input.installId,
+    input.limit ?? 50,
+    input.offset ?? 0,
+    context,
+  );
 }

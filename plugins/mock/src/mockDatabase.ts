@@ -25,6 +25,7 @@ export interface MockDatabaseConfig {
 export const mockDatabase = (config: MockDatabaseConfig) =>
   createDatabaseAdapter({
     name: "mockDatabase",
+    supportsBundleEvents: true,
     adapter: (): DatabaseAdapterImplementation => {
       const data = config.data ?? createMockDatabaseData();
       const state = createMockDatabaseState(data);
