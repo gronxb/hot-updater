@@ -1137,7 +1137,14 @@ class BundleFileStorageService(
     // MARK: - notifyAppReady
 
     override fun notifyAppReady(): Map<String, Any?> {
-        val report = loadLaunchReport() ?: return mapOf("status" to "UNCHANGED")
+        val report = loadLaunchReport()
+        if (report == null) {
+            val metadata = loadMetadataOrNull()
+            if (metadata?.verificationPending == true && metadata.stagingBundleId != null) {
+                return mapOf("status" to "PENDING")
+            }
+            return mapOf("status" to "UNCHANGED")
+        }
         return buildMap {
             put("status", report.status)
             report.fromBundleId?.let { put("fromBundleId", it) }

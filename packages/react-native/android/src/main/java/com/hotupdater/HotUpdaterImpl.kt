@@ -363,10 +363,7 @@ class HotUpdaterImpl {
         }
     }
 
-    fun notifyAppReady(): Map<String, Any?> {
-        bundleStorage.markLaunchCompleted(currentLaunchSelection?.launchedBundleId)
-        return bundleStorage.notifyAppReady()
-    }
+    fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
 
     fun getInstallId(): String = bundleStorage.getInstallId()
 

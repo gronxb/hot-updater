@@ -367,10 +367,14 @@ const handleNotifyAppReady = async (options: {
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
   onError?: (error: HotUpdaterError | Error | unknown) => void;
 }): Promise<void> => {
-  await waitForNextFrame();
-
   try {
-    const { analyticsEvent, result: nativeResult } = readNotifyAppReady();
+    let nativeReadResult: ReturnType<typeof readNotifyAppReady>;
+    do {
+      await waitForNextFrame();
+      nativeReadResult = readNotifyAppReady();
+    } while (nativeReadResult.pending);
+
+    const { analyticsEvent, result: nativeResult } = nativeReadResult;
 
     try {
       await maybeSendAutomaticAnalytics(options, nativeResult, analyticsEvent);

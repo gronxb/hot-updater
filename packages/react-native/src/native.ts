@@ -820,12 +820,14 @@ const normalizeNotifyAppReadyResult = (
 export const readNotifyAppReady = (): {
   result: NotifyAppReadyResult;
   analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
+  pending: boolean;
 } => {
   const rawResult = readRawNotifyAppReadyResult();
 
   return {
     result: normalizeNotifyAppReadyResult(rawResult),
     analyticsEvent: getNotifyAppReadyAnalyticsEvent(rawResult),
+    pending: rawResult.status === "PENDING",
   };
 };
 

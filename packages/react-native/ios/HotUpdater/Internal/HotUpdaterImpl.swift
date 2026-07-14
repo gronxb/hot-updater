@@ -400,7 +400,6 @@ private func hotUpdaterGetMinBundleId() -> String {
     // MARK: - Rollback Support
 
     public func notifyAppReady() -> [String: Any] {
-        bundleStorage.markLaunchCompleted(bundleId: currentLaunchSelection?.launchedBundleId)
         return bundleStorage.notifyAppReady()
     }
 

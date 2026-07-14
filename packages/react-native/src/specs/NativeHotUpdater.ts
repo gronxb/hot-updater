@@ -96,7 +96,7 @@ export interface Spec extends TurboModule {
    * transitions, the relevant bundle ids plus persisted transition metadata.
    */
   notifyAppReady(): {
-    status: "UNCHANGED" | "UPDATE_APPLIED" | "RECOVERED";
+    status: "PENDING" | "UNCHANGED" | "UPDATE_APPLIED" | "RECOVERED";
     fromBundleId?: string;
     toBundleId?: string;
     updateStrategy?: "fingerprint" | "appVersion";

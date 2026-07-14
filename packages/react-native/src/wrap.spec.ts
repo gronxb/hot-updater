@@ -16,11 +16,14 @@ vi.mock("react-native", () => ({
 const createNotifyReadResult = (
   result: NotifyAppReadyResult = { status: "UNCHANGED" },
   analyticsEvent: NotifyAppReadyAnalyticsEvent | null = null,
+  pending = false,
 ): {
   analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
+  pending: boolean;
   result: NotifyAppReadyResult;
 } => ({
   analyticsEvent,
+  pending,
   result,
 });
 
@@ -37,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   readNotifyAppReady: vi.fn<
     () => {
       analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
+      pending: boolean;
       result: NotifyAppReadyResult;
     }
   >(() => createNotifyReadResult()),
@@ -117,6 +121,49 @@ describe("HotUpdater wrap initialization", () => {
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledWith();
     expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+  });
+
+  it("waits for native launch verification before sending analytics", async () => {
+    vi.useFakeTimers();
+
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: (timestamp: number) => void) => {
+        setTimeout(() => callback(0), 0);
+        return 1;
+      }),
+    );
+
+    mocks.readNotifyAppReady
+      .mockReturnValueOnce(createNotifyReadResult(undefined, null, true))
+      .mockReturnValueOnce(
+        createNotifyReadResult(
+          {
+            fromBundleId: "bundle-a",
+            status: "UPDATE_APPLIED",
+            toBundleId: "bundle-b",
+          },
+          {
+            fromBundleId: "bundle-a",
+            toBundleId: "bundle-b",
+            type: "UPDATE_APPLIED",
+            updateStrategy: "appVersion",
+          },
+        ),
+      );
+
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn().mockResolvedValue(undefined),
+    };
+    const { init } = await import("./wrap");
+
+    init({ analytics: true, resolver });
+
+    await vi.runAllTimersAsync();
+
+    expect(mocks.readNotifyAppReady).toHaveBeenCalledTimes(2);
+    expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
   });
 
   it("sends automatic analytics only from init when enabled", async () => {

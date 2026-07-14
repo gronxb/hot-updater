@@ -125,6 +125,7 @@ describe("notifyAppReady", () => {
         type: "RECOVERED",
         updateStrategy: "appVersion",
       },
+      pending: false,
       result: {
         fromBundleId: "bundle-123",
         status: "RECOVERED",
@@ -146,6 +147,7 @@ describe("notifyAppReady", () => {
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
       analyticsEvent: null,
+      pending: false,
       result: { status: "UNCHANGED" },
     });
   });
@@ -160,6 +162,7 @@ describe("notifyAppReady", () => {
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
       analyticsEvent: null,
+      pending: false,
       result: { status: "UNCHANGED" },
     });
   });
@@ -172,6 +175,20 @@ describe("notifyAppReady", () => {
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
       analyticsEvent: null,
+      pending: false,
+      result: { status: "UNCHANGED" },
+    });
+  });
+
+  it("keeps the internal pending state out of the public result", async () => {
+    nativeModuleMock.notifyAppReady.mockReturnValue({ status: "PENDING" });
+
+    const { notifyAppReady, readNotifyAppReady } = await import("./native");
+
+    expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
+    expect(readNotifyAppReady()).toEqual({
+      analyticsEvent: null,
+      pending: true,
       result: { status: "UNCHANGED" },
     });
   });

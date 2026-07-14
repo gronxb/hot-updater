@@ -123,6 +123,8 @@ struct BundleFileStorageServiceTests {
             )
         )
 
+        #expect(service.notifyAppReady()["status"] as? String == "PENDING")
+
         service.markLaunchCompleted(bundleId: "next-bundle")
         let report = service.notifyAppReady()
 

@@ -108,7 +108,7 @@ class HotUpdaterImplTest {
     }
 
     @Test
-    fun `notifyAppReady marks the current launch before reading its report`() {
+    fun `notifyAppReady reads the report without completing the current launch`() {
         val storage = FakeBundleStorageService(bundleId = null)
         val impl = allocateWithoutConstructor<HotUpdaterImpl>()
         setField(impl, "bundleStorage", storage)
@@ -122,7 +122,7 @@ class HotUpdaterImplTest {
         )
 
         assertEquals(mapOf("status" to "UNCHANGED"), impl.notifyAppReady())
-        assertEquals("launched-bundle", storage.lastCompletedBundleId)
+        assertNull(storage.lastCompletedBundleId)
     }
 
     @Test

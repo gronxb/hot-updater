@@ -2545,6 +2545,11 @@ class BundleFileStorageService: BundleStorageService {
 
     func notifyAppReady() -> [String: Any] {
         guard let report = loadLaunchReport() else {
+            if let metadata = loadMetadataOrNull(),
+               metadata.verificationPending,
+               metadata.stagingBundleId != nil {
+                return ["status": "PENDING"]
+            }
             return ["status": LaunchReportStatus.unchanged.rawValue]
         }
 

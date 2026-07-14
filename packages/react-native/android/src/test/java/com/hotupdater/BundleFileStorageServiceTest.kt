@@ -260,6 +260,8 @@ class BundleFileStorageServiceTest {
             ),
         )
 
+        assertEquals(mapOf("status" to "PENDING"), service.notifyAppReady())
+
         service.markLaunchCompleted(stagingDir.name)
 
         assertEquals(
