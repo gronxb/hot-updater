@@ -50,7 +50,6 @@ setupDatabaseAdapterTestSuite({
     invalidations.length = 0;
   },
   dispose: () => undefined,
-  capabilities: { transaction: true },
 });
 
 setupDatabaseClientTestSuite({

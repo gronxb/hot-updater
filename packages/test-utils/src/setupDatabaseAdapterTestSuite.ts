@@ -7,8 +7,6 @@ import { registerDatabaseAdapterRelationTests } from "./databaseAdapterRelationT
 import type { DatabaseAdapterTestLifecycle } from "./databaseAdapterTestRunner";
 import { setupDatabaseAdapterTestRunner } from "./databaseAdapterTestRunner";
 
-export type { DatabaseAdapterTestCapabilities } from "./databaseAdapterTestRunner";
-
 export type DatabaseAdapterTestSuiteOptions<TContext = unknown> =
   DatabaseAdapterTestLifecycle<DatabaseAdapter<TContext>, TContext>;
 

@@ -1,7 +1,10 @@
+import { afterAll, expect, vi } from "vitest";
+
 import { createInMemoryDatabaseHarness } from "../test/inMemoryDatabaseAdapter";
 import { setupDatabaseAdapterTestSuite } from "./setupDatabaseAdapterTestSuite";
 
 const harness = createInMemoryDatabaseHarness();
+const transaction = vi.spyOn(harness.adapter, "transaction");
 
 setupDatabaseAdapterTestSuite({
   name: "in-memory database adapter",
@@ -9,5 +12,8 @@ setupDatabaseAdapterTestSuite({
   migrate: () => undefined,
   reset: () => harness.reset(),
   dispose: () => undefined,
-  capabilities: { transaction: true },
+});
+
+afterAll(() => {
+  expect(transaction).toHaveBeenCalledTimes(2);
 });

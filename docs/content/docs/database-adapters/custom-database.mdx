@@ -291,14 +291,11 @@ setupDatabaseAdapterTestSuite({
   migrate: () => migrateTestDatabase(db),
   reset: () => resetTestDatabase(db),
   dispose: () => closeTestDatabase(db),
-  capabilities: {
-    transaction: true,
-  },
 });
 ```
 
-Declare transaction support only when the adapter implements it. The suite
-detects `getUpdateInfo` directly from the adapter. It covers
+The suite detects optional `transaction` and `getUpdateInfo` methods directly
+from the adapter. It covers
 the fixed operation matrix, projection, predicates, sorting and pagination,
 constraints, delete cardinality, transaction commit/rollback, and fast-path
 equivalence.

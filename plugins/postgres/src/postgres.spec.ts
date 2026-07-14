@@ -22,7 +22,6 @@ const getClient = (): PGlite => {
 
 setupDatabaseAdapterTestSuite({
   name: "postgres database adapter v2",
-  capabilities: { transaction: true },
   migrate: async () => {
     client = new PGlite();
     const schema = await fs.readFile(

@@ -28,63 +28,63 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
   state: CapabilityTestState<TContext>,
 ): void => {
   describe("optional capabilities", () => {
-    it.runIf(state.capabilities.transaction === true)(
-      "commits transaction writes and returns the callback value",
-      async () => {
-        const adapter = state.getAdapter();
-        expect(adapter.transaction).toBeTypeOf("function");
-        if (adapter.transaction === undefined) return;
-        const bundle = createBundleRowFixture("91");
+    it("commits transaction writes and returns the callback value", async (context) => {
+      const adapter = state.getAdapter();
+      if (adapter.transaction === undefined) {
+        context.skip();
+        return;
+      }
+      expect(adapter.transaction).toBeTypeOf("function");
+      const bundle = createBundleRowFixture("91");
 
-        const result = await adapter.transaction(async (transaction) => {
+      const result = await adapter.transaction(async (transaction) => {
+        await transaction.create({
+          model: "channels",
+          data: createChannelRowFixture("production"),
+        });
+        await transaction.create({ model: "bundles", data: bundle });
+        return "committed" as const;
+      }, state.context);
+
+      expect(result).toBe("committed");
+      await expect(
+        adapter.findOne(
+          {
+            model: "bundles",
+            where: [{ field: "id", value: bundle.id }],
+          },
+          state.context,
+        ),
+      ).resolves.toEqual(bundle);
+    });
+
+    it("rolls back when the transaction callback rejects", async (context) => {
+      const adapter = state.getAdapter();
+      if (adapter.transaction === undefined) {
+        context.skip();
+        return;
+      }
+      expect(adapter.transaction).toBeTypeOf("function");
+
+      await expect(
+        adapter.transaction(async (transaction) => {
           await transaction.create({
             model: "channels",
-            data: createChannelRowFixture("production"),
+            data: createChannelRowFixture("rollback"),
           });
-          await transaction.create({ model: "bundles", data: bundle });
-          return "committed" as const;
-        }, state.context);
-
-        expect(result).toBe("committed");
-        await expect(
-          adapter.findOne(
-            {
-              model: "bundles",
-              where: [{ field: "id", value: bundle.id }],
-            },
-            state.context,
-          ),
-        ).resolves.toEqual(bundle);
-      },
-    );
-
-    it.runIf(state.capabilities.transaction === true)(
-      "rolls back when the transaction callback rejects",
-      async () => {
-        const adapter = state.getAdapter();
-        expect(adapter.transaction).toBeTypeOf("function");
-        if (adapter.transaction === undefined) return;
-
-        await expect(
-          adapter.transaction(async (transaction) => {
-            await transaction.create({
-              model: "channels",
-              data: createChannelRowFixture("rollback"),
-            });
-            throw new TransactionFixtureError();
-          }, state.context),
-        ).rejects.toBeInstanceOf(TransactionFixtureError);
-        await expect(
-          adapter.findOne(
-            {
-              model: "channels",
-              where: [{ field: "id", value: "channel-rollback" }],
-            },
-            state.context,
-          ),
-        ).resolves.toBeNull();
-      },
-    );
+          throw new TransactionFixtureError();
+        }, state.context),
+      ).rejects.toBeInstanceOf(TransactionFixtureError);
+      await expect(
+        adapter.findOne(
+          {
+            model: "channels",
+            where: [{ field: "id", value: "channel-rollback" }],
+          },
+          state.context,
+        ),
+      ).resolves.toBeNull();
+    });
 
     it("matches the generic update resolver through the fast path", async (context) => {
       const adapter = state.getAdapter();

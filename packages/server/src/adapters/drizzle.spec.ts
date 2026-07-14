@@ -72,7 +72,6 @@ const getDatabase = (): ReturnType<typeof drizzle<typeof schema>> => {
 
 setupDatabaseAdapterTestSuite({
   name: "drizzleAdapter PostgreSQL",
-  capabilities: { transaction: true },
   migrate: async () => {
     client = new PGlite();
     await client.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);

@@ -2,10 +2,6 @@ import { afterAll, beforeAll, beforeEach, describe } from "vitest";
 
 type Awaitable<T> = Promise<T> | T;
 
-export type DatabaseAdapterTestCapabilities = {
-  readonly transaction?: boolean;
-};
-
 export type DatabaseAdapterTestLifecycle<TAdapter, TContext> = {
   readonly name: string;
   readonly createAdapter: () => Awaitable<TAdapter>;
@@ -13,11 +9,9 @@ export type DatabaseAdapterTestLifecycle<TAdapter, TContext> = {
   readonly reset: (adapter: TAdapter) => Awaitable<void>;
   readonly dispose: (adapter: TAdapter) => Awaitable<void>;
   readonly context?: TContext;
-  readonly capabilities?: DatabaseAdapterTestCapabilities;
 };
 
 export type DatabaseAdapterTestState<TAdapter, TContext> = {
-  readonly capabilities: DatabaseAdapterTestCapabilities;
   readonly context: TContext | undefined;
   readonly getAdapter: () => TAdapter;
 };
@@ -58,7 +52,6 @@ export const setupDatabaseAdapterTestRunner = <TAdapter, TContext>(
     });
 
     registerTests({
-      capabilities: lifecycle.capabilities ?? {},
       context: lifecycle.context,
       getAdapter,
     });

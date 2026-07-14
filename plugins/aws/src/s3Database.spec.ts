@@ -44,7 +44,7 @@ const invalidation = (id: string, status: string) => ({
 const objectEtag = (value: string): string =>
   `"${Buffer.from(value).toString("base64")}"`;
 const readActiveRevision = (pointerKey: string): string => {
-  const value = JSON.parse(objects.get(pointerKey) ?? "null") as unknown;
+  const value: unknown = JSON.parse(objects.get(pointerKey) ?? "null");
   if (
     typeof value !== "object" ||
     value === null ||
@@ -121,7 +121,6 @@ setupDatabaseAdapterTestSuite({
     objects.clear();
   },
   dispose: () => undefined,
-  capabilities: { transaction: true },
 });
 
 setupDatabaseClientTestSuite({
