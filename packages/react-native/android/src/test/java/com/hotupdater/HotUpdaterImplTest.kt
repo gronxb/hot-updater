@@ -108,10 +108,21 @@ class HotUpdaterImplTest {
     }
 
     @Test
-    fun `notifyAppReady delegates native launch report unchanged`() {
-        val impl = createImpl(storageBundleId = null)
+    fun `notifyAppReady marks the current launch before reading its report`() {
+        val storage = FakeBundleStorageService(bundleId = null)
+        val impl = allocateWithoutConstructor<HotUpdaterImpl>()
+        setField(impl, "bundleStorage", storage)
+        setCurrentLaunchSelection(
+            impl,
+            LaunchSelection(
+                bundleUrl = "file:///bundle-store/launched-bundle/index.android.bundle",
+                launchedBundleId = "launched-bundle",
+                shouldRollbackOnCrash = false,
+            ),
+        )
 
         assertEquals(mapOf("status" to "UNCHANGED"), impl.notifyAppReady())
+        assertEquals("launched-bundle", storage.lastCompletedBundleId)
     }
 
     @Test
@@ -186,6 +197,7 @@ class HotUpdaterImplTest {
             emptyMap(),
         private val launchedBundleBaseURLs: Map<String, String> = emptyMap(),
     ) : BundleStorageService {
+        var lastCompletedBundleId: String? = null
         var lastUserId: String? = null
         var lastUsername: String? = null
 
@@ -212,7 +224,9 @@ class HotUpdaterImplTest {
             progressCallback: (UpdateProgressPayload) -> Unit,
         ) = Unit
 
-        override fun markLaunchCompleted(currentBundleId: String?) = Unit
+        override fun markLaunchCompleted(currentBundleId: String?) {
+            lastCompletedBundleId = currentBundleId
+        }
 
         override fun notifyAppReady(): Map<String, Any?> = mapOf("status" to "UNCHANGED")
 

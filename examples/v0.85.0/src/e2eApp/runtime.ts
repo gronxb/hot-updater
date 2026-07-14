@@ -48,7 +48,8 @@ HotUpdater.init({
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
     notify.status = result.status;
-    notify.crashedBundleId = result.crashedBundleId;
+    notify.crashedBundleId =
+      result.status === "RECOVERED" ? result.fromBundleId : undefined;
   },
   onError: (error) => {
     console.error(error);

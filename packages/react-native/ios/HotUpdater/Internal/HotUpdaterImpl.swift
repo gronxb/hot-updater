@@ -399,11 +399,8 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     // MARK: - Rollback Support
 
-    /**
-     * Returns the native launch report for the current process.
-     * This is read-only; startup success and rollback are finalized before JS reads it.
-     */
     public func notifyAppReady() -> [String: Any] {
+        bundleStorage.markLaunchCompleted(bundleId: currentLaunchSelection?.launchedBundleId)
         return bundleStorage.notifyAppReady()
     }
 

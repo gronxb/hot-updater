@@ -363,11 +363,10 @@ class HotUpdaterImpl {
         }
     }
 
-    /**
-     * Returns the launch report for the current process.
-     * Startup success and rollback are finalized before JS reads it.
-     */
-    fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
+    fun notifyAppReady(): Map<String, Any?> {
+        bundleStorage.markLaunchCompleted(currentLaunchSelection?.launchedBundleId)
+        return bundleStorage.notifyAppReady()
+    }
 
     fun getInstallId(): String = bundleStorage.getInstallId()
 
