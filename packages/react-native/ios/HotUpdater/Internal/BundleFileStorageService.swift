@@ -1302,7 +1302,16 @@ class BundleFileStorageService: BundleStorageService {
             try? fileSystem.removeItem(atPath: stagingDir)
         }
 
-        saveLaunchReport(launchReport(for: .recovered, transition: pendingTransition))
+        saveLaunchReport(
+            LaunchReport(
+                status: .recovered,
+                fromBundleId: stagingId,
+                toBundleId: fallbackBundleId
+                    ?? pendingTransition?.fromBundleId
+                    ?? resolveBuiltInBundleId(),
+                updateStrategy: pendingTransition?.updateStrategy ?? updateStrategyProvider()
+            )
+        )
         return true
     }
 

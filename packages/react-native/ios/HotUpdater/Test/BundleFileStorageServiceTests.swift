@@ -185,9 +185,58 @@ struct BundleFileStorageServiceTests {
 
         #expect(selection.launchedBundleId == "stable-bundle")
         #expect(report["status"] as? String == "RECOVERED")
-        #expect(report["fromBundleId"] as? String == "stable-bundle")
-        #expect(report["toBundleId"] as? String == "next-bundle")
+        #expect(report["fromBundleId"] as? String == "next-bundle")
+        #expect(report["toBundleId"] as? String == "stable-bundle")
         #expect(report["updateStrategy"] as? String == "appVersion")
+    }
+
+    @Test
+    func prepareLaunchRecordsRecoveredTransitionToBuiltInBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            builtInBundleId: "builtin-bundle"
+        )
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "next-bundle"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagingDirectory, bundleId: "next-bundle")
+
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: nil,
+                stagingBundleId: "next-bundle",
+                verificationPending: true,
+                pendingTransition: PendingBundleTransition(
+                    fromBundleId: "builtin-bundle",
+                    toBundleId: "next-bundle",
+                    updateStrategy: .fingerprint
+                )
+            )
+        )
+
+        let selection = service.prepareLaunch(
+            bundle: .main,
+            pendingRecovery: PendingCrashRecovery(
+                launchedBundleId: "next-bundle",
+                shouldRollback: true
+            )
+        )
+        let report = service.notifyAppReady()
+
+        #expect(selection.launchedBundleId == nil)
+        #expect(report["status"] as? String == "RECOVERED")
+        #expect(report["fromBundleId"] as? String == "next-bundle")
+        #expect(report["toBundleId"] as? String == "builtin-bundle")
+        #expect(report["updateStrategy"] as? String == "fingerprint")
     }
 
     @Test
