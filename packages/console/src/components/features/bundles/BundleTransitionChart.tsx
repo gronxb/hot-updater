@@ -83,7 +83,7 @@ export function BundleTransitionChart({
 
       {hasWindowActivity ? (
         <ChartContainer
-          aria-label="Cumulative OTA transition counts over the last 30 days"
+          aria-label="Cumulative OTA analytics counts over the last 30 days"
           className="h-44 w-full aspect-auto"
           config={chartConfig}
         >

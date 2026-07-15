@@ -129,7 +129,7 @@ describe("createDefaultResolver", () => {
     });
   });
 
-  it("posts transition analytics to /events and requires HTTP 204", async () => {
+  it("posts analytics to /events and requires HTTP 204", async () => {
     const resolver = createDefaultResolver(
       "http://localhost:3007/hot-updater///",
     );

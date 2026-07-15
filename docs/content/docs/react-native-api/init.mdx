@@ -63,7 +63,7 @@ if (updateInfo.shouldForceUpdate) {
 | `resolver`         | `HotUpdaterResolver`                        | Yes*     | Custom network operations                                                |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications         |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                          |
-| `analytics`        | `boolean`                                   | No       | Enables best-effort OTA transition reporting (default: `false`)          |
+| `analytics`        | `boolean`                                   | No       | Enables best-effort OTA analytics reporting (default: `false`)           |
 | `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read                    |
 | `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks               |
 
@@ -73,8 +73,8 @@ if (updateInfo.shouldForceUpdate) {
 `HotUpdater.init` for that specific update check.
 
 <Callout type="warn">
-  Transition analytics also require support from the server's database
-  adapter. This storage capability is optional.
+  Analytics also require support from the server's database adapter. This
+  storage capability is optional.
 </Callout>
 
 ## When to Use init

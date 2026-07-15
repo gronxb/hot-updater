@@ -27,7 +27,7 @@ const requireBundleEventSupport = <TContext>(hotUpdater: unknown) => {
     !supportsBundleEvents<TContext>(hotUpdater)
   ) {
     throw new Error(
-      "Transition analytics are not supported by the configured database adapter.",
+      "Analytics are not supported by the configured database adapter.",
     );
   }
   return hotUpdater;

@@ -184,7 +184,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     expect(channels).toHaveLength(2);
   });
 
-  it("proxies transition analytics through the standalone repository", async () => {
+  it("proxies analytics through the standalone repository", async () => {
     if (!supportsBundleEvents(api)) {
       throw new Error("Expected Kysely bundle event support.");
     }

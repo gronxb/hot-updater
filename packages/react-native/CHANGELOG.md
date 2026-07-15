@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- Add opt-in OTA transition analytics with the exact `UNCHANGED | UPDATE_APPLIED | RECOVERED` app-ready contract, persisted install/user identity helpers, and `/events` transition reporting from `HotUpdater.init({ analytics: true })`.
+- Add opt-in OTA analytics with the exact `UNCHANGED | UPDATE_APPLIED | RECOVERED` app-ready contract, persisted install/user identity helpers, and `/events` reporting from `HotUpdater.init({ analytics: true })`.
 ## 0.35.3
 
 ### Patch Changes

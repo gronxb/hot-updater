@@ -2,9 +2,9 @@
 
 React Native runtime for Hot Updater.
 
-## OTA transition analytics
+## OTA analytics
 
-`HotUpdater.init({ analytics: true })` enables best-effort transition reporting.
+`HotUpdater.init({ analytics: true })` enables best-effort analytics reporting.
 
 - Automatic reporting is owned only by `HotUpdater.init({ analytics: true })`
 - `HotUpdater.wrap()` does not activate analytics transport

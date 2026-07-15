@@ -126,14 +126,14 @@ describe("BundleAnalyticsSummary", () => {
   it("renders analytics failures as an alert", () => {
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: undefined,
-      error: new Error("Transition analytics are not supported."),
+      error: new Error("Analytics are not supported."),
       isLoading: false,
     });
 
     render(<BundleAnalyticsSummary bundle={bundle} />);
 
     expect(screen.getByRole("alert").textContent).toContain(
-      "Transition analytics are not supported.",
+      "Analytics are not supported.",
     );
   });
 });

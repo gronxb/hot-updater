@@ -146,7 +146,7 @@ describe("standaloneRepository", () => {
     ).toBe(true);
   });
 
-  it("delegates transition analytics to standalone management routes", async () => {
+  it("delegates analytics to standalone management routes", async () => {
     const event = {
       id: "event-1",
       type: "UPDATE_APPLIED" as const,

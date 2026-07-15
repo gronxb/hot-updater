@@ -81,7 +81,7 @@ export function BundleAnalyticsSummary({
             <AlertDescription>
               {error instanceof Error
                 ? error.message
-                : "Failed to load bundle transition analytics."}
+                : "Failed to load bundle analytics."}
             </AlertDescription>
           </Alert>
         ) : (

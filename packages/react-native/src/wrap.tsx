@@ -207,7 +207,7 @@ export type ManualUpdateOptions = CommonHotUpdaterOptions &
 export type HotUpdaterInitOptions = CommonHotUpdaterOptions &
   NetworkConfig & {
     /**
-     * Enables best-effort automatic OTA transition analytics transport.
+     * Enables best-effort automatic OTA analytics transport.
      * Only `HotUpdater.init({ analytics: true })` owns this automatic delivery path.
      */
     analytics?: boolean;

@@ -116,7 +116,7 @@ const hotUpdater = createHotUpdater({
 For complete server setup guides, see [S3 Database Adapter](/docs/custom/database/s3).
 
 <Callout type="warn">
-  `s3Database` does not support OTA transition analytics. Event reports are
+  `s3Database` does not support OTA analytics. Event reports are
   writes to shared metadata, and concurrent reports can conflict because the
   adapter replaces an S3 snapshot for each mutation. The server therefore does
   not mount the event, analytics, or installation-history routes for this
