@@ -9,6 +9,7 @@ icon: Terminal
 - Rollback
 - Force update flag
 - Quick access to git history for updates
+- OTA transition metrics and installation history on supported databases
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
@@ -91,3 +92,15 @@ export default defineConfig({
 When you set the git URL, the commit hash will be clickable and redirect you to the corresponding commit in your repository.
 
 <img src={"/docs/console/git_url.png"} />
+
+## OTA Transition Analytics
+
+Database adapters that support transition events expose Lifetime Installed and
+Lifetime Recovered counts in bundle details.
+
+<img src={"/docs/console/ota-transition-analytics.jpg"} />
+
+Use the Installations page to search by username, user ID, or installation ID
+and inspect the append-only transition history for a selected installation.
+
+<img src={"/docs/console/installation-history.jpg"} />

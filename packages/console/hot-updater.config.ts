@@ -9,6 +9,7 @@ import {
   bundleToPatchRows,
   bundleToRow,
   type Bundle,
+  type BundleEventRow,
 } from "@hot-updater/plugin-core";
 
 type BundleSeed = Omit<Bundle, "storageUri"> &
@@ -658,6 +659,81 @@ for (const bundle of bundles) {
   for (const patch of bundleToPatchRows(bundle)) {
     databaseData.bundlePatches.set(patch.id, patch);
   }
+}
+
+const bundleEvents: readonly BundleEventRow[] = [
+  {
+    id: "019f635e-0001-7000-8000-000000000001",
+    type: "UPDATE_APPLIED",
+    install_id: "019f635d-0001-7000-8000-000000000001",
+    user_id: "detox-e2e",
+    username: "hot-updater-e2e",
+    from_bundle_id: iosProdCorePatchA.id,
+    to_bundle_id: iosProdCorePatchB.id,
+    platform: "ios",
+    app_version: "1.4.2",
+    channel: "production",
+    cohort: "staff-ios",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: "0.37.0",
+    received_at_ms: Date.UTC(2026, 6, 15, 1, 20),
+  },
+  {
+    id: "019f635e-0002-7000-8000-000000000002",
+    type: "RECOVERED",
+    install_id: "019f635d-0001-7000-8000-000000000001",
+    user_id: "detox-e2e",
+    username: "hot-updater-e2e",
+    from_bundle_id: iosProdCorePatchB.id,
+    to_bundle_id: iosProdCorePatchA.id,
+    platform: "ios",
+    app_version: "1.4.2",
+    channel: "production",
+    cohort: "staff-ios",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: "0.37.0",
+    received_at_ms: Date.UTC(2026, 6, 15, 1, 24),
+  },
+  {
+    id: "019f635e-0003-7000-8000-000000000003",
+    type: "UPDATE_APPLIED",
+    install_id: "019f635d-0002-7000-8000-000000000002",
+    user_id: "detox-e2e-beta",
+    username: "hot-updater-e2e-beta",
+    from_bundle_id: iosProdCorePatchA.id,
+    to_bundle_id: iosProdCorePatchB.id,
+    platform: "ios",
+    app_version: "1.4.2",
+    channel: "production",
+    cohort: "default",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: "0.37.0",
+    received_at_ms: Date.UTC(2026, 6, 15, 1, 28),
+  },
+  {
+    id: "019f635e-0004-7000-8000-000000000004",
+    type: "UPDATE_APPLIED",
+    install_id: "019f635d-0002-7000-8000-000000000002",
+    user_id: "detox-e2e-beta",
+    username: "hot-updater-e2e-beta",
+    from_bundle_id: iosProdCorePatchB.id,
+    to_bundle_id: iosProdCoreHotfix.id,
+    platform: "ios",
+    app_version: "1.4.2",
+    channel: "production",
+    cohort: "default",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: "0.37.0",
+    received_at_ms: Date.UTC(2026, 6, 15, 1, 32),
+  },
+];
+
+for (const event of bundleEvents) {
+  databaseData.bundleEvents.set(event.id, event);
 }
 
 export default {
