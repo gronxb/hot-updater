@@ -58,7 +58,7 @@ export function BundleAnalyticsSummary({
     <Card>
       <CardHeader className="gap-1.5">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-sm font-medium">OTA transitions</CardTitle>
+          <CardTitle className="text-sm font-medium">Update activity</CardTitle>
           <Badge variant="outline">Lifetime</Badge>
         </div>
         <CardDescription>

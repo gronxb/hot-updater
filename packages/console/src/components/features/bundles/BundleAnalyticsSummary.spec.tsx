@@ -81,7 +81,7 @@ describe("BundleAnalyticsSummary", () => {
 
     render(<BundleAnalyticsSummary bundle={bundle} />);
 
-    expect(screen.getByText("OTA transitions")).toBeDefined();
+    expect(screen.getByText("Update activity")).toBeDefined();
     expect(screen.getByText("Installed")).toBeDefined();
     expect(screen.getByText("Recovered")).toBeDefined();
     expect(screen.getByText("2")).toBeDefined();
