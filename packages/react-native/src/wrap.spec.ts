@@ -320,7 +320,7 @@ describe("HotUpdater wrap initialization", () => {
 
     await vi.runOnlyPendingTimersAsync();
 
-    expect(onError).toHaveBeenCalledWith(error);
+    expect(onError).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
       "[HotUpdater] Automatic notifyAppReady analytics failed:",
       error,

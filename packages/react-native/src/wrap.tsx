@@ -379,7 +379,6 @@ const handleNotifyAppReady = async (options: {
     try {
       await maybeSendAutomaticAnalytics(options, nativeResult, analyticsEvent);
     } catch (error) {
-      options.onError?.(error);
       console.warn(
         "[HotUpdater] Automatic notifyAppReady analytics failed:",
         error,
