@@ -91,10 +91,20 @@ const createHotUpdaterStore = () => {
 
   const listeners = new Set<() => void>();
 
+  const EMIT_INTERVAL_MS = 32;
+  let isEmitScheduled = false;
+
   const emitChange = () => {
-    for (const listener of listeners) {
-      listener();
+    if (isEmitScheduled) {
+      return;
     }
+    isEmitScheduled = true;
+    setTimeout(() => {
+      isEmitScheduled = false;
+      for (const listener of listeners) {
+        listener();
+      }
+    }, EMIT_INTERVAL_MS);
   };
 
   const normalizeDiffDetails = (

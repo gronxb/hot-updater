@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const listeners = vi.hoisted(
   () => new Map<string, (event: Record<string, unknown>) => void>(),
@@ -24,6 +24,11 @@ describe("hotUpdaterStore", () => {
   beforeEach(() => {
     listeners.clear();
     vi.resetModules();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("does not notify subscribers when state values are unchanged", async () => {
@@ -36,12 +41,13 @@ describe("hotUpdaterStore", () => {
     store.setState({ progress: 0 });
     store.setState({ isUpdateDownloaded: false });
 
+    vi.runAllTimers();
     expect(listener).not.toHaveBeenCalled();
 
     unsubscribe();
   });
 
-  it("notifies subscribers only when progress events change the snapshot", async () => {
+  it("notifies subscribers when progress events change the snapshot", async () => {
     const store = await importStore();
     const listener = vi.fn();
     const emitProgress = listeners.get("onProgress");
@@ -54,15 +60,18 @@ describe("hotUpdaterStore", () => {
       artifactType: "archive",
       progress: 0.5,
     });
+    vi.runAllTimers();
     emitProgress?.({
       artifactType: "archive",
       progress: 0.5,
     });
+    vi.runAllTimers();
     emitProgress?.({
       artifactType: "archive",
       progress: 1,
     });
     store.setState({ isUpdateDownloaded: true });
+    vi.runAllTimers();
 
     expect(listener).toHaveBeenCalledTimes(2);
     expect(store.getSnapshot()).toEqual({
@@ -90,12 +99,14 @@ describe("hotUpdaterStore", () => {
       progress: 0.5,
       totalBytes: 1_000,
     });
+    vi.runAllTimers();
     emitProgress?.({
       artifactType: "archive",
       downloadedBytes: 250,
       progress: 0.5,
       totalBytes: 1_000,
     });
+    vi.runAllTimers();
 
     expect(listener).toHaveBeenCalledTimes(2);
     expect(store.getSnapshot()).toEqual({
@@ -105,6 +116,40 @@ describe("hotUpdaterStore", () => {
       isUpdateDownloaded: false,
       progress: 0.5,
       totalBytes: 1_000,
+    });
+
+    unsubscribe();
+  });
+
+  it("coalesces bursts of distinct progress events into a single notification", async () => {
+    const store = await importStore();
+    const listener = vi.fn();
+    const emitProgress = listeners.get("onProgress");
+
+    const unsubscribe = store.subscribe(listener);
+
+    for (let i = 1; i <= 200; i++) {
+      emitProgress?.({
+        artifactType: "archive",
+        downloadedBytes: i * 5_000,
+        progress: i / 200,
+        totalBytes: 1_000_000,
+      });
+    }
+
+    expect(store.getSnapshot().progress).toBe(1);
+    expect(listener).not.toHaveBeenCalled();
+
+    vi.runAllTimers();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(store.getSnapshot()).toEqual({
+      artifactType: "archive",
+      details: null,
+      downloadedBytes: 1_000_000,
+      isUpdateDownloaded: true,
+      progress: 1,
+      totalBytes: 1_000_000,
     });
 
     unsubscribe();
