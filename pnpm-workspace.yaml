@@ -5,6 +5,9 @@ packages:
   - examples/*
   - examples-server/*
 
+overrides:
+  "recharts@3.8.0>es-toolkit": 1.46.0
+
 allowBuilds:
   '@firebase/util': true
   '@prisma/client': true
