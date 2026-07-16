@@ -233,7 +233,7 @@ function InstallationsPage() {
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
               Search by username, user ID, or installation ID to inspect the
-              latest known installation state and recorded bundle-event history.
+              latest known installation state and recorded update history.
             </CardContent>
           </Card>
         ) : isSearchLoading ? (
@@ -254,7 +254,7 @@ function InstallationsPage() {
                         <TableHead>Installation</TableHead>
                         <TableHead>User</TableHead>
                         <TableHead>Last known bundle</TableHead>
-                        <TableHead>Last Event</TableHead>
+                        <TableHead>Last event</TableHead>
                         <TableHead>Updated (UTC)</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -450,8 +450,7 @@ function InstallationsPage() {
                   )
                 ) : (
                   <div className="p-6 text-sm text-muted-foreground">
-                    Choose an installation to inspect its append-only event
-                    history.
+                    Choose an installation to inspect its update history.
                   </div>
                 )}
               </CardContent>

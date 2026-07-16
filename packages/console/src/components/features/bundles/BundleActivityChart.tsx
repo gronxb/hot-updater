@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import {
@@ -71,6 +72,7 @@ export function BundleActivityChart({
   installed,
   recovered,
 }: BundleActivityChartProps) {
+  const captionId = useId();
   const chartData = mergeActivitySeries(installed, recovered);
   const hasWindowActivity = chartData.some(
     (point) => point.installed > 0 || point.recovered > 0,
@@ -87,9 +89,11 @@ export function BundleActivityChart({
   return (
     <div className="border-t pt-4">
       <ChartContainer
+        aria-describedby={captionId}
         aria-label="Cumulative update activity over the last 30 days"
         className="h-32 w-full aspect-auto"
         config={chartConfig}
+        role="img"
       >
         <AreaChart
           accessibilityLayer
@@ -140,6 +144,28 @@ export function BundleActivityChart({
           />
         </AreaChart>
       </ChartContainer>
+      <table className="sr-only">
+        <caption id={captionId}>
+          Cumulative update activity values over the last 30 days. Dates are
+          shown in UTC.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Installed</th>
+            <th scope="col">Recovered</th>
+          </tr>
+        </thead>
+        <tbody>
+          {chartData.map((point) => (
+            <tr key={point.bucketStartMs}>
+              <th scope="row">{formatBucket(point.bucketStartMs)}</th>
+              <td>{point.installed}</td>
+              <td>{point.recovered}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

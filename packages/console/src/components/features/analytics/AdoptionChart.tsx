@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
+import { Button } from "@/components/ui/button";
 import {
   type ChartConfig,
   ChartContainer,
@@ -29,13 +31,34 @@ const percentage = (share: number): string =>
     style: "percent",
   }).format(share);
 
+const CHART_ITEM_LIMIT = 8;
+const ADOPTION_PAGE_SIZE = 8;
+
 export function AdoptionChart({
   adoption,
 }: {
   readonly adoption: readonly BundleAdoption[];
 }) {
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(
+    1,
+    Math.ceil(adoption.length / ADOPTION_PAGE_SIZE),
+  );
+  const currentPage = Math.min(page, totalPages);
+  const rangeStart = (currentPage - 1) * ADOPTION_PAGE_SIZE;
+  const rangeEnd = Math.min(rangeStart + ADOPTION_PAGE_SIZE, adoption.length);
+  const visibleAdoption = adoption.slice(rangeStart, rangeEnd);
+  const chartAdoption = adoption.slice(0, CHART_ITEM_LIMIT);
+
   return (
     <div className="flex flex-col gap-5">
+      {adoption.length > CHART_ITEM_LIMIT ? (
+        <p className="text-sm text-muted-foreground">
+          Showing top {Math.min(CHART_ITEM_LIMIT, adoption.length)} of{" "}
+          {adoption.length.toLocaleString()} observed bundles by tracked
+          installations.
+        </p>
+      ) : null}
       <ChartContainer
         aria-label="Observed bundle adoption"
         className="h-56 w-full aspect-auto"
@@ -43,7 +66,7 @@ export function AdoptionChart({
       >
         <BarChart
           accessibilityLayer
-          data={adoption}
+          data={chartAdoption}
           layout="vertical"
           margin={{ left: 8, right: 12 }}
         >
@@ -80,7 +103,7 @@ export function AdoptionChart({
         </BarChart>
       </ChartContainer>
 
-      <Table>
+      <Table aria-label="Observed adoption details">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead>Bundle</TableHead>
@@ -88,7 +111,7 @@ export function AdoptionChart({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {adoption.map((item) => (
+          {visibleAdoption.map((item) => (
             <TableRow key={item.bundleId}>
               <TableCell className="max-w-56 whitespace-normal">
                 <div className="flex flex-col gap-1">
@@ -112,6 +135,35 @@ export function AdoptionChart({
           ))}
         </TableBody>
       </Table>
+
+      {adoption.length > ADOPTION_PAGE_SIZE ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground tabular-nums">
+            Showing {adoption.length === 0 ? 0 : rangeStart + 1}–{rangeEnd} of{" "}
+            {adoption.length.toLocaleString()} observed bundles
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              aria-label="Previous observed bundles page"
+              disabled={currentPage === 1}
+              onClick={() => setPage(currentPage - 1)}
+              type="button"
+              variant="outline"
+            >
+              Previous
+            </Button>
+            <Button
+              aria-label="Next observed bundles page"
+              disabled={currentPage === totalPages}
+              onClick={() => setPage(currentPage + 1)}
+              type="button"
+              variant="outline"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

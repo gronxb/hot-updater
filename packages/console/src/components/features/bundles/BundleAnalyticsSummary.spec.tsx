@@ -126,15 +126,21 @@ describe("BundleAnalyticsSummary", () => {
     render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
 
     expect(screen.getByText("Update activity")).toBeDefined();
-    expect(screen.getByText("Installed")).toBeDefined();
-    expect(screen.getByText("Recovered")).toBeDefined();
-    expect(screen.getByText("2")).toBeDefined();
-    expect(screen.getByText("1")).toBeDefined();
-    expect(
-      screen.getByTestId("activity-chart").getAttribute("aria-label"),
-    ).toBe("Cumulative update activity over the last 30 days");
+    expect(screen.getAllByText("Installed")).toBeDefined();
+    expect(screen.getAllByText("Recovered")).toBeDefined();
+    expect(screen.getAllByText("2")).toBeDefined();
+    expect(screen.getAllByText("1")).toBeDefined();
+    const chart = screen.getByRole("img", {
+      name: "Cumulative update activity over the last 30 days",
+    });
+    const caption = screen.getByText(
+      "Cumulative update activity values over the last 30 days. Dates are shown in UTC.",
+    );
+
+    expect(chart.getAttribute("aria-describedby")).toBe(caption.id);
+    expect(screen.getByRole("row", { name: "Jul 14 1 0" })).toBeDefined();
+    expect(screen.getByRole("row", { name: "Jul 15 2 1" })).toBeDefined();
     expect(screen.queryByText("Lifetime")).toBeNull();
-    expect(screen.queryByText("UTC")).toBeNull();
     expect(screen.queryByText("30-day activity")).toBeNull();
     expect(useBundleEventAnalyticsQueryMock).toHaveBeenCalledWith(
       {
