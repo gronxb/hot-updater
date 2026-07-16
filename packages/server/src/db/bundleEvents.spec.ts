@@ -104,6 +104,65 @@ describe("bundle event installation search", () => {
     ]);
   });
 
+  it("bounds later identity-search pages before fetching latest rows", async () => {
+    // Given
+    const database = createInMemoryDatabaseAdapter();
+    const rows = ["install-a", "install-b", "install-c", "install-d"].flatMap(
+      (installId, index) => [
+        {
+          ...createEvent(installId, index + 1, `old-${installId}`),
+          username: `historical-match-${installId}`,
+        },
+        createEvent(installId, 100 - index, `latest-${installId}`),
+      ],
+    );
+    await Promise.all(
+      rows.map((row) => database.create({ model: "bundle_events", data: row })),
+    );
+    const findMany = vi.spyOn(database, "findMany");
+    const service = createBundleEventService(database);
+
+    // When
+    const result = await service.searchInstallations("historical-match", 2, 2);
+
+    // Then
+    expect(result.pagination).toEqual({ total: 4, limit: 2, offset: 2 });
+    expect(result.data.map(({ installId }) => installId)).toEqual([
+      "install-c",
+      "install-d",
+    ]);
+    expect(
+      result.data.map(({ lastKnownBundleId }) => lastKnownBundleId),
+    ).toEqual(["latest-install-c", "latest-install-d"]);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        model: "bundle_events",
+        limit: 2,
+        offset: 2,
+        distinctOn: { fields: ["install_id"] },
+      }),
+      undefined,
+    );
+    expect(findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        model: "bundle_events",
+        limit: 2,
+        offset: 0,
+        where: [
+          {
+            field: "install_id",
+            operator: "in",
+            value: ["install-c", "install-d"],
+          },
+        ],
+      }),
+      undefined,
+    );
+  });
+
   it("aggregates latest installations in one domain-owned scan", async () => {
     // Given
     const database = createInMemoryDatabaseAdapter();
@@ -115,11 +174,13 @@ describe("bundle event installation search", () => {
         createEvent("install-c", 2, "bundle-a"),
       ].map((row) => database.create({ model: "bundle_events", data: row })),
     );
+    const count = vi.spyOn(database, "count");
     const findMany = vi.spyOn(database, "findMany");
     const service = createBundleEventService(database);
+    const context = { requestId: "overview-request" };
 
     // When
-    const overview = await service.getBundleEventOverview();
+    const overview = await service.getBundleEventOverview(context);
 
     // Then
     expect(overview).toEqual({
@@ -129,7 +190,17 @@ describe("bundle event installation search", () => {
         { bundleId: "bundle-b", installations: 1 },
       ],
     });
+    expect(count).not.toHaveBeenCalled();
     expect(findMany).toHaveBeenCalledOnce();
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: "bundle_events",
+        distinctOn: { fields: ["install_id"] },
+        limit: Number.MAX_SAFE_INTEGER,
+        offset: 0,
+      }),
+      context,
+    );
   });
 });
 

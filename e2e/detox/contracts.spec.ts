@@ -16,6 +16,18 @@ const detoxControlServerPath = path.join(
   repoDir,
   "e2e/detox/scripts/control-server.ts",
 );
+const hotUpdaterConfigPath = path.join(
+  repoDir,
+  "examples/v0.85.0/hot-updater.config.ts",
+);
+
+const standaloneProfileCapabilityFixtures = [
+  { profile: "standalone-s3", supportsBundleEvents: false },
+  { profile: "standalone-drizzle", supportsBundleEvents: true },
+  { profile: "standalone-prisma", supportsBundleEvents: true },
+  { profile: "standalone-mongodb", supportsBundleEvents: true },
+  { profile: "standalone-kysely", supportsBundleEvents: true },
+] as const;
 
 async function readRootPackageJson(): Promise<{
   readonly devDependencies?: Record<string, string>;
@@ -46,7 +58,53 @@ function runDetoxRunnerWithEnv(
   );
 }
 
+function loadExampleBundleEventCapability(
+  supportsBundleEvents: boolean,
+): ReturnType<typeof spawnSync> {
+  return spawnSync(
+    "pnpm",
+    [
+      "exec",
+      "tsx",
+      "-e",
+      [
+        `import config from ${JSON.stringify(hotUpdaterConfigPath)};`,
+        "const capability = Symbol.for('@hot-updater/plugin-core/database-bundle-event-service');",
+        "process.stdout.write(String(Reflect.has(config.database, capability)));",
+      ].join(" "),
+    ],
+    {
+      cwd: repoDir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOT_UPDATER_E2E_ENV_TARGET_PATH: "/dev/null",
+        HOT_UPDATER_STANDALONE_STORAGE_BASE_URL:
+          "http://127.0.0.1:3007/storage",
+        HOT_UPDATER_CONTROL_BASE_URL: "http://127.0.0.1:3007/hot-updater",
+        HOT_UPDATER_E2E_SUPPORTS_BUNDLE_EVENTS: supportsBundleEvents
+          ? "true"
+          : undefined,
+      },
+    },
+  );
+}
+
 describe("Detox E2E harness contract", () => {
+  it.each(standaloneProfileCapabilityFixtures)(
+    "$profile exposes only its declared bundle-event capability",
+    ({ supportsBundleEvents }) => {
+      // Given: the standalone profile fixture declares only the neutral capability.
+      // When: the real example config is loaded with that fixture contract.
+      const result = loadExampleBundleEventCapability(supportsBundleEvents);
+
+      // Then: unsupported configs omit the capability and supported profiles opt in.
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toBe(String(supportsBundleEvents));
+    },
+  );
+
   it("exposes Detox as the root E2E command surface", async () => {
     // Given: root scripts are the dashboard bot command surface.
     const rootPackage = await readRootPackageJson();

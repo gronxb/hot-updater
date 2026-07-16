@@ -86,7 +86,9 @@ export default defineConfig({
         }),
   database: standaloneRepository({
     baseUrl: standaloneRepositoryBaseUrl ?? "http://localhost:3007/hot-updater",
-    supportsBundleEvents: true,
+    ...(process.env.HOT_UPDATER_E2E_SUPPORTS_BUNDLE_EVENTS === "true"
+      ? { supportsBundleEvents: true }
+      : {}),
     ...(managementHeaders ? { commonHeaders: managementHeaders } : {}),
   }),
   fingerprint: {

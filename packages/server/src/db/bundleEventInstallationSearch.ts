@@ -6,9 +6,6 @@ import type {
   OffsetPaginationResult,
 } from "./types";
 
-const compareCodePoints = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
-
 const toSearchRow = (row: BundleEventRow): InstallationSearchRow => ({
   installId: row.install_id,
   username: row.username,
@@ -22,7 +19,8 @@ const toSearchRow = (row: BundleEventRow): InstallationSearchRow => ({
   receivedAtMs: row.received_at_ms,
 });
 
-const latestPerInstallOrder = [
+// `distinctOn` keeps the first row, so install ID is the cross-adapter page order.
+const stableLatestPerInstallOrder = [
   { field: "install_id", direction: "asc" },
   { field: "received_at_ms", direction: "desc" },
   { field: "id", direction: "desc" },
@@ -63,17 +61,17 @@ const fetchLatestRowsForInstalls = async <TContext>(
       model: "bundle_events",
       where: [{ field: "install_id", operator: "in", value: installIds }],
       distinctOn: { fields: ["install_id"] },
-      orderBy: latestPerInstallOrder,
+      orderBy: stableLatestPerInstallOrder,
       limit: installIds.length,
       offset: 0,
     },
     context,
   );
-  return rows.toSorted(
-    (left, right) =>
-      right.received_at_ms - left.received_at_ms ||
-      compareCodePoints(right.id, left.id),
-  );
+  const rowsByInstallId = new Map(rows.map((row) => [row.install_id, row]));
+  return installIds.flatMap((installId) => {
+    const row = rowsByInstallId.get(installId);
+    return row ? [row] : [];
+  });
 };
 
 export const searchBundleEventInstallations = async <TContext>(
@@ -92,29 +90,27 @@ export const searchBundleEventInstallations = async <TContext>(
     return { data: [], pagination: { total, limit, offset } };
   }
 
-  const matchingRows = await database.findMany(
+  const pageRows = await database.findMany(
     {
       model: "bundle_events",
       where,
       distinctOn: { fields: ["install_id"] },
-      orderBy: latestPerInstallOrder,
-      limit: query.length === 0 ? limit : total,
-      offset: query.length === 0 ? offset : 0,
+      orderBy: stableLatestPerInstallOrder,
+      limit,
+      offset,
     },
     context,
   );
   const latestRows =
     query.length === 0
-      ? matchingRows
+      ? pageRows
       : await fetchLatestRowsForInstalls(
           database,
-          matchingRows.map((row) => row.install_id),
+          pageRows.map((row) => row.install_id),
           context,
         );
-  const pageRows =
-    query.length === 0 ? latestRows : latestRows.slice(offset, offset + limit);
   return {
-    data: pageRows.map(toSearchRow),
+    data: latestRows.map(toSearchRow),
     pagination: { total, limit, offset },
   };
 };

@@ -329,13 +329,6 @@ export const createBundleEventService = <TContext>(
   async getBundleEventOverview(
     context?: TContext,
   ): Promise<BundleEventOverview> {
-    const total = await database.count(
-      { model: "bundle_events", distinct: ["install_id"] },
-      context,
-    );
-    if (total === 0) {
-      return { trackedInstallations: 0, bundles: [] };
-    }
     const rows = await database.findMany(
       {
         model: "bundle_events",
@@ -344,7 +337,7 @@ export const createBundleEventService = <TContext>(
           { field: "install_id", direction: "asc" },
           ...getEventOrderBy(),
         ],
-        limit: total,
+        limit: Number.MAX_SAFE_INTEGER,
         offset: 0,
       },
       context,
@@ -354,7 +347,7 @@ export const createBundleEventService = <TContext>(
       counts.set(row.to_bundle_id, (counts.get(row.to_bundle_id) ?? 0) + 1);
     }
     return {
-      trackedInstallations: total,
+      trackedInstallations: rows.length,
       bundles: [...counts]
         .map(([bundleId, installations]) => ({ bundleId, installations }))
         .sort(
