@@ -129,7 +129,7 @@ describe("mock database provider", () => {
     await expect(
       adapter.create({ model: "bundles", data: bundle }),
     ).rejects.toMatchObject({
-      constraint: "bundles.channel_id.foreign-key",
+      code: "channel-reference-mismatch",
     });
   });
 });
