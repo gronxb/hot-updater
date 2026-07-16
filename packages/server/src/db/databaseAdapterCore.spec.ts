@@ -72,6 +72,13 @@ const createBundleEventAdapter = (
       ) {
         return actual >= expected;
       }
+      if (
+        operator === "lt" &&
+        typeof actual === "number" &&
+        typeof expected === "number"
+      ) {
+        return actual < expected;
+      }
       return actual === expected;
     };
     let result = evaluate(firstCondition);
@@ -464,6 +471,7 @@ describe("createDatabaseAdapterCore", () => {
     const nowValues = [
       1_725_000_000_000, 1_725_000_000_000, 1_725_000_003_000,
       1_725_000_003_000, 1_725_000_006_000, 1_725_000_006_000,
+      1_725_000_006_001, 1_725_000_006_001, 1_725_000_006_001,
     ];
     const now = vi
       .spyOn(Date, "now")

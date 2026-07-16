@@ -11,7 +11,15 @@ import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { uuidv7 } from "uuidv7";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { standaloneRepository } from "../../../plugins/standalone/src";
 import { kyselyAdapter } from "./adapters/kysely";
@@ -213,6 +221,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
     }
     const bundleId = uuidv7();
     const installId = "standalone-analytics-install";
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.UTC(2026, 6, 17, 12));
     await api.insertBundle(createTestBundle({ id: bundleId }));
     await api.appendBundleEvent({
       type: "UPDATE_APPLIED",
@@ -228,6 +239,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       updateStrategy: "appVersion",
       fingerprintHash: null,
     });
+    now.mockReturnValue(Date.UTC(2026, 6, 17, 12, 0, 0, 1));
     await api.appendBundleEvent({
       type: "RECOVERED",
       installId,
@@ -242,6 +254,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       updateStrategy: "appVersion",
       fingerprintHash: null,
     });
+    now.mockReturnValue(Date.UTC(2026, 6, 17, 12, 0, 0, 2));
     const consoleApi = createHotUpdater({
       database: standaloneRepository({
         baseUrl: `${baseUrl}/hot-updater`,
@@ -286,6 +299,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       data: [{ type: "RECOVERED" }, { type: "UPDATE_APPLIED" }],
       pagination: { total: 2 },
     });
+    now.mockRestore();
   });
 
   it("creates, retrieves, updates, and deletes through existing routes", async () => {

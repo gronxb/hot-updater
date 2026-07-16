@@ -2,7 +2,10 @@ import { hotUpdaterSchemaVersions } from "../../schema";
 import type { RelationMode } from "../types";
 import type { ORMSQLProvider } from "../types";
 import { schemaIndexAppliesToProvider } from "./registry";
-import { assertExistingSchemaMetadataIsPreserved } from "./schemaDriftValidator";
+import {
+  assertExistingSchemaMetadataIsPreserved,
+  assertV036MigrationSchemaDriftIsAllowlisted,
+} from "./schemaDriftValidator";
 import {
   createCheckSql,
   createForeignKeySql,
@@ -205,6 +208,7 @@ export const createSchemaMigrationSql = (
     const previous = hotUpdaterSchemaVersions[index - 1]!;
     const next = hotUpdaterSchemaVersions[index]!;
     if (previous.version === "0.31.0" && next.version === "0.36.0") {
+      assertV036MigrationSchemaDriftIsAllowlisted(previous, next, provider);
       statements.push(...createV036MigrationSql(provider, relationMode));
       continue;
     }

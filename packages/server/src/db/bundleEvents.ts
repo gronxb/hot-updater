@@ -2,14 +2,16 @@ import { createUUIDv7 } from "@hot-updater/plugin-core";
 import type { BundleEventRow } from "@hot-updater/plugin-core";
 
 import { searchBundleEventInstallations } from "./bundleEventInstallationSearch";
+import { scanRecentBundleEvents } from "./bundleEventRecentScan";
 import {
   latestInstallOrder,
   newestEventOrder,
   scanBundleEventActivity,
   scanBundleEventRows,
   scanDistinctInstallations,
-  scanRecentBundleEvents,
+  withBundleEventCutoff,
 } from "./bundleEventScan";
+import type { BundleEventScanScope } from "./bundleEventScan";
 import type {
   BundleEventAnalyticsResult,
   BundleEventAnalyticsWindow,
@@ -106,10 +108,15 @@ export const createBundleEventService = <TContext>(
     bundleId: string,
     context?: TContext,
   ): Promise<BundleEventSummary> {
+    const scope: BundleEventScanScope<TContext> = {
+      database,
+      cutoffMs: Date.now(),
+      context,
+    };
     const where = createWhereForBundle(bundleId);
     const [installed, recovered] = await Promise.all([
-      scanDistinctInstallations(database, where.installed, context),
-      scanDistinctInstallations(database, where.recovered, context),
+      scanDistinctInstallations(scope, { where: where.installed }),
+      scanDistinctInstallations(scope, { where: where.recovered }),
     ]);
     return { installed, recovered };
   },
@@ -122,18 +129,20 @@ export const createBundleEventService = <TContext>(
     context?: TContext,
   ): Promise<BundleEventAnalyticsResult> {
     const where = createWhereForBundle(bundleId);
-    const now = Date.now();
+    const scope: BundleEventScanScope<TContext> = {
+      database,
+      cutoffMs: Date.now(),
+      context,
+    };
     const [installed, recovered, recent] = await Promise.all([
-      scanBundleEventActivity(database, where.installed, window, now, context),
-      scanBundleEventActivity(database, where.recovered, window, now, context),
-      scanRecentBundleEvents(
-        database,
-        where.installed,
-        where.recovered,
+      scanBundleEventActivity(scope, { where: where.installed, window }),
+      scanBundleEventActivity(scope, { where: where.recovered, window }),
+      scanRecentBundleEvents(scope, {
+        installedWhere: where.installed,
+        recoveredWhere: where.recovered,
         limit,
         offset,
-        context,
-      ),
+      }),
     ]);
     return {
       summary: {
@@ -162,14 +171,17 @@ export const createBundleEventService = <TContext>(
   async getBundleEventOverview(
     context?: TContext,
   ): Promise<BundleEventOverview> {
+    const scope: BundleEventScanScope<TContext> = {
+      database,
+      cutoffMs: Date.now(),
+      context,
+    };
     const counts = new Map<string, number>();
     let previousInstallId: string | undefined;
     let trackedInstallations = 0;
-    for await (const row of scanBundleEventRows(
-      database,
-      { orderBy: latestInstallOrder },
-      context,
-    )) {
+    for await (const row of scanBundleEventRows(scope, {
+      orderBy: latestInstallOrder,
+    })) {
       if (row.install_id === previousInstallId) continue;
       previousInstallId = row.install_id;
       trackedInstallations += 1;
@@ -193,13 +205,16 @@ export const createBundleEventService = <TContext>(
     offset: number,
     context?: TContext,
   ): Promise<OffsetPaginationResult<InstallationSearchRow>> {
-    return searchBundleEventInstallations(
+    const scope: BundleEventScanScope<TContext> = {
       database,
+      cutoffMs: Date.now(),
+      context,
+    };
+    return searchBundleEventInstallations(scope, {
       query,
       limit,
       offset,
-      context,
-    );
+    });
   },
 
   async getInstallationHistory(
@@ -208,10 +223,18 @@ export const createBundleEventService = <TContext>(
     offset: number,
     context?: TContext,
   ): Promise<OffsetPaginationResult<InstallationHistoryRow>> {
-    const where = [{ field: "install_id", value: installId }] as const;
+    const scope: BundleEventScanScope<TContext> = {
+      database,
+      cutoffMs: Date.now(),
+      context,
+    };
+    const where = withBundleEventCutoff(
+      [{ field: "install_id", value: installId }],
+      scope.cutoffMs,
+    );
     const [total, rows] = await Promise.all([
-      database.count({ model: "bundle_events", where }, context),
-      database.findMany(
+      scope.database.count({ model: "bundle_events", where }, scope.context),
+      scope.database.findMany(
         {
           model: "bundle_events",
           where,
@@ -219,7 +242,7 @@ export const createBundleEventService = <TContext>(
           limit,
           offset,
         },
-        context,
+        scope.context,
       ),
     ]);
     return {

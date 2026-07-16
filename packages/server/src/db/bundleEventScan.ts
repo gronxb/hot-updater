@@ -1,31 +1,41 @@
-import type { BundleEventRow, DatabaseWhere } from "@hot-updater/plugin-core";
+import type {
+  BundleEventRow,
+  DatabaseOrderBy,
+  DatabaseWhere,
+} from "@hot-updater/plugin-core";
 
 import type { BundleEventAnalyticsWindow, DatabaseAdapter } from "./types";
 
 export const BUNDLE_EVENT_SCAN_PAGE_SIZE = 100;
+export const BUNDLE_EVENT_SCAN_MAX_ROWS = 50_000;
+export const BUNDLE_EVENT_SCAN_MAX_PAGES =
+  BUNDLE_EVENT_SCAN_MAX_ROWS / BUNDLE_EVENT_SCAN_PAGE_SIZE + 1;
 
-type ScanOrderField = {
-  readonly [TField in keyof BundleEventRow]: BundleEventRow[TField] extends
-    | string
-    | number
-    ? TField
-    : never;
-}[keyof BundleEventRow];
+export class BundleEventScanLimitExceededError extends Error {
+  readonly name = "BundleEventScanLimitExceededError";
 
-type ScanOrderBy = readonly [
-  {
-    readonly field: ScanOrderField;
-    readonly direction: "asc" | "desc";
-  },
-  ...{
-    readonly field: ScanOrderField;
-    readonly direction: "asc" | "desc";
-  }[],
-];
+  constructor(readonly limit: number) {
+    super(`Bundle event scan exceeded ${limit} rows.`);
+  }
+}
 
-type ScanInput = {
+export type BundleEventScanScope<TContext> = {
+  readonly database: DatabaseAdapter<TContext>;
+  readonly cutoffMs: number;
+  readonly context?: TContext;
+};
+
+type BundleEventScanRequest = {
   readonly where?: readonly DatabaseWhere<"bundle_events">[];
-  readonly orderBy: ScanOrderBy;
+  readonly orderBy: DatabaseOrderBy<"bundle_events">;
+};
+
+type DistinctInstallationsRequest = {
+  readonly where: readonly DatabaseWhere<"bundle_events">[];
+};
+
+type BundleEventActivityRequest = DistinctInstallationsRequest & {
+  readonly window: BundleEventAnalyticsWindow;
 };
 
 export const newestEventOrder = [
@@ -54,56 +64,41 @@ const cohortInstallOrder = [
 const compareCodePoints = (left: string, right: string): number =>
   left < right ? -1 : left > right ? 1 : 0;
 
-const compareScanValues = (
-  left: string | number,
-  right: string | number,
-): number => {
-  if (typeof left === "number") {
-    return typeof right === "number" ? left - right : -1;
-  }
-  return typeof right === "string" ? compareCodePoints(left, right) : 1;
-};
-
-const compareScanRows = (
-  left: BundleEventRow,
-  right: BundleEventRow,
-  orderBy: ScanOrderBy,
-): number => {
-  for (const clause of orderBy) {
-    const order = compareScanValues(left[clause.field], right[clause.field]);
-    if (order !== 0) {
-      return clause.direction === "asc" ? order : -order;
-    }
-  }
-  return 0;
-};
+export const withBundleEventCutoff = (
+  where: readonly DatabaseWhere<"bundle_events">[] | undefined,
+  cutoffMs: number,
+): readonly DatabaseWhere<"bundle_events">[] => [
+  ...(where ?? []),
+  {
+    field: "received_at_ms",
+    operator: "lt",
+    value: cutoffMs,
+  },
+];
 
 export async function* scanBundleEventRows<TContext>(
-  database: DatabaseAdapter<TContext>,
-  input: ScanInput,
-  context?: TContext,
+  scope: BundleEventScanScope<TContext>,
+  request: BundleEventScanRequest,
 ): AsyncGenerator<BundleEventRow> {
   let offset = 0;
-  let lastYielded: BundleEventRow | undefined;
-  while (true) {
-    const rows = await database.findMany(
+  let yielded = 0;
+  const where = withBundleEventCutoff(request.where, scope.cutoffMs);
+  for (let page = 0; page < BUNDLE_EVENT_SCAN_MAX_PAGES; page += 1) {
+    const rows = await scope.database.findMany(
       {
         model: "bundle_events",
-        where: input.where,
-        orderBy: input.orderBy,
+        where,
+        orderBy: request.orderBy,
         limit: BUNDLE_EVENT_SCAN_PAGE_SIZE,
         offset,
       },
-      context,
+      scope.context,
     );
     for (const row of rows) {
-      if (
-        lastYielded !== undefined &&
-        compareScanRows(row, lastYielded, input.orderBy) <= 0
-      ) {
-        continue;
+      if (yielded === BUNDLE_EVENT_SCAN_MAX_ROWS) {
+        throw new BundleEventScanLimitExceededError(BUNDLE_EVENT_SCAN_MAX_ROWS);
       }
-      lastYielded = row;
+      yielded += 1;
       yield row;
     }
     offset += rows.length;
@@ -149,17 +144,15 @@ const bucketStart = (receivedAtMs: number, sizeMs: number): number =>
     : startOfUtcDay(receivedAtMs);
 
 export const scanDistinctInstallations = async <TContext>(
-  database: DatabaseAdapter<TContext>,
-  where: readonly DatabaseWhere<"bundle_events">[],
-  context?: TContext,
+  scope: BundleEventScanScope<TContext>,
+  request: DistinctInstallationsRequest,
 ): Promise<number> => {
   let previousInstallId: string | undefined;
   let total = 0;
-  for await (const row of scanBundleEventRows(
-    database,
-    { where, orderBy: earliestInstallOrder },
-    context,
-  )) {
+  for await (const row of scanBundleEventRows(scope, {
+    where: request.where,
+    orderBy: earliestInstallOrder,
+  })) {
     if (row.install_id === previousInstallId) continue;
     previousInstallId = row.install_id;
     total += 1;
@@ -168,18 +161,16 @@ export const scanDistinctInstallations = async <TContext>(
 };
 
 const scanCohorts = async <TContext>(
-  database: DatabaseAdapter<TContext>,
-  where: readonly DatabaseWhere<"bundle_events">[],
-  context?: TContext,
+  scope: BundleEventScanScope<TContext>,
+  request: DistinctInstallationsRequest,
 ): Promise<{ readonly cohort: string; readonly value: number }[]> => {
   const counts = new Map<string, number>();
   let previousCohort: string | undefined;
   let previousInstallId: string | undefined;
-  for await (const row of scanBundleEventRows(
-    database,
-    { where, orderBy: cohortInstallOrder },
-    context,
-  )) {
+  for await (const row of scanBundleEventRows(scope, {
+    where: request.where,
+    orderBy: cohortInstallOrder,
+  })) {
     if (row.cohort === previousCohort && row.install_id === previousInstallId) {
       continue;
     }
@@ -193,23 +184,23 @@ const scanCohorts = async <TContext>(
 };
 
 const scanSeries = async <TContext>(
-  database: DatabaseAdapter<TContext>,
-  where: readonly DatabaseWhere<"bundle_events">[],
-  window: BundleEventAnalyticsWindow,
-  now: number,
-  context?: TContext,
+  scope: BundleEventScanScope<TContext>,
+  request: BundleEventActivityRequest,
 ): Promise<{ readonly bucketStartMs: number; readonly value: number }[]> => {
-  const range = window === "all" ? undefined : finiteRange(window, now);
+  const range =
+    request.window === "all"
+      ? undefined
+      : finiteRange(request.window, scope.cutoffMs);
   const seriesWhere: readonly DatabaseWhere<"bundle_events">[] = range
     ? [
-        ...where,
+        ...request.where,
         {
           field: "received_at_ms",
           operator: "gte",
           value: range.rangeStart,
         },
       ]
-    : where;
+    : request.where;
   const counts = new Map<number, number>();
   let previousInstallId: string | undefined;
   let oldestMatchingMs: number | undefined;
@@ -223,23 +214,20 @@ const scanSeries = async <TContext>(
     previousInstallId = row.install_id;
     const sizeMs = range?.sizeMs ?? 24 * 60 * 60 * 1000;
     const start = bucketStart(row.received_at_ms, sizeMs);
-    if (start <= bucketStart(now, sizeMs)) {
+    if (start <= bucketStart(scope.cutoffMs, sizeMs)) {
       counts.set(start, (counts.get(start) ?? 0) + 1);
     }
   };
-  for await (const row of scanBundleEventRows(
-    database,
-    {
-      where: seriesWhere,
-      orderBy: earliestInstallOrder,
-    },
-    context,
-  )) {
+  for await (const row of scanBundleEventRows(scope, {
+    where: seriesWhere,
+    orderBy: earliestInstallOrder,
+  })) {
     collect(row);
   }
   const sizeMs = range?.sizeMs ?? 24 * 60 * 60 * 1000;
-  const first = range?.rangeStart ?? startOfUtcDay(oldestMatchingMs ?? now);
-  const last = bucketStart(now, sizeMs);
+  const first =
+    range?.rangeStart ?? startOfUtcDay(oldestMatchingMs ?? scope.cutoffMs);
+  const last = bucketStart(scope.cutoffMs, sizeMs);
   let cumulative = 0;
   const series: { bucketStartMs: number; value: number }[] = [];
   for (let start = first; start <= last; start += sizeMs) {
@@ -250,56 +238,13 @@ const scanSeries = async <TContext>(
 };
 
 export const scanBundleEventActivity = async <TContext>(
-  database: DatabaseAdapter<TContext>,
-  where: readonly DatabaseWhere<"bundle_events">[],
-  window: BundleEventAnalyticsWindow,
-  now: number,
-  context?: TContext,
+  scope: BundleEventScanScope<TContext>,
+  request: BundleEventActivityRequest,
 ) => {
   const [summary, cohorts, series] = await Promise.all([
-    scanDistinctInstallations(database, where, context),
-    scanCohorts(database, where, context),
-    scanSeries(database, where, window, now, context),
+    scanDistinctInstallations(scope, request),
+    scanCohorts(scope, request),
+    scanSeries(scope, request),
   ]);
   return { summary, cohorts, series };
-};
-
-const compareNewest = (left: BundleEventRow, right: BundleEventRow): number =>
-  right.received_at_ms - left.received_at_ms ||
-  (left.id < right.id ? 1 : left.id > right.id ? -1 : 0);
-
-export const scanRecentBundleEvents = async <TContext>(
-  database: DatabaseAdapter<TContext>,
-  installedWhere: readonly DatabaseWhere<"bundle_events">[],
-  recoveredWhere: readonly DatabaseWhere<"bundle_events">[],
-  limit: number,
-  offset: number,
-  context?: TContext,
-) => {
-  const installed = scanBundleEventRows(
-    database,
-    { where: installedWhere, orderBy: newestEventOrder },
-    context,
-  )[Symbol.asyncIterator]();
-  const recovered = scanBundleEventRows(
-    database,
-    { where: recoveredWhere, orderBy: newestEventOrder },
-    context,
-  )[Symbol.asyncIterator]();
-  let installedNext = await installed.next();
-  let recoveredNext = await recovered.next();
-  let total = 0;
-  const rows: BundleEventRow[] = [];
-  while (!installedNext.done || !recoveredNext.done) {
-    const takeInstalled =
-      recoveredNext.done ||
-      (!installedNext.done &&
-        compareNewest(installedNext.value, recoveredNext.value) <= 0);
-    const row = takeInstalled ? installedNext.value : recoveredNext.value;
-    if (total >= offset && rows.length < limit) rows.push(row);
-    total += 1;
-    if (takeInstalled) installedNext = await installed.next();
-    else recoveredNext = await recovered.next();
-  }
-  return { rows, total };
 };

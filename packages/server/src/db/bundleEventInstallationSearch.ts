@@ -1,11 +1,18 @@
 import type { BundleEventRow, DatabaseWhere } from "@hot-updater/plugin-core";
 
 import { latestInstallOrder, scanBundleEventRows } from "./bundleEventScan";
-import type {
-  DatabaseAdapter,
-  InstallationSearchRow,
-  OffsetPaginationResult,
-} from "./types";
+import type { BundleEventScanScope } from "./bundleEventScan";
+import type { InstallationSearchRow, OffsetPaginationResult } from "./types";
+
+type InstallationSearchRequest = {
+  readonly query: string;
+  readonly limit: number;
+  readonly offset: number;
+};
+
+type LatestRowsRequest = {
+  readonly installIds: readonly string[];
+};
 
 const toSearchRow = (row: BundleEventRow): InstallationSearchRow => ({
   installId: row.install_id,
@@ -46,65 +53,58 @@ const identitySearchWhere = (
 ];
 
 const fetchLatestRowsForInstalls = async <TContext>(
-  database: DatabaseAdapter<TContext>,
-  installIds: readonly string[],
-  context?: TContext,
+  scope: BundleEventScanScope<TContext>,
+  request: LatestRowsRequest,
 ): Promise<readonly BundleEventRow[]> => {
-  if (installIds.length === 0) return [];
+  if (request.installIds.length === 0) return [];
   const rowsByInstallId = new Map<string, BundleEventRow>();
   let previousInstallId: string | undefined;
-  for await (const row of scanBundleEventRows(
-    database,
-    {
-      where: [{ field: "install_id", operator: "in", value: installIds }],
-      orderBy: latestInstallOrder,
-    },
-    context,
-  )) {
+  for await (const row of scanBundleEventRows(scope, {
+    where: [{ field: "install_id", operator: "in", value: request.installIds }],
+    orderBy: latestInstallOrder,
+  })) {
     if (row.install_id === previousInstallId) continue;
     previousInstallId = row.install_id;
     rowsByInstallId.set(row.install_id, row);
   }
-  return installIds.flatMap((installId) => {
+  return request.installIds.flatMap((installId) => {
     const row = rowsByInstallId.get(installId);
     return row ? [row] : [];
   });
 };
 
 export const searchBundleEventInstallations = async <TContext>(
-  database: DatabaseAdapter<TContext>,
-  query: string,
-  limit: number,
-  offset: number,
-  context?: TContext,
+  scope: BundleEventScanScope<TContext>,
+  request: InstallationSearchRequest,
 ): Promise<OffsetPaginationResult<InstallationSearchRow>> => {
-  const where = query.length === 0 ? undefined : identitySearchWhere(query);
-  const pageSize = Math.min(Math.max(limit, 0), 100);
+  const where =
+    request.query.length === 0 ? undefined : identitySearchWhere(request.query);
+  const pageSize = Math.min(Math.max(request.limit, 0), 100);
   const pageInstallIds: string[] = [];
   let previousInstallId: string | undefined;
   let total = 0;
-  for await (const row of scanBundleEventRows(
-    database,
-    { where, orderBy: latestInstallOrder },
-    context,
-  )) {
+  for await (const row of scanBundleEventRows(scope, {
+    where,
+    orderBy: latestInstallOrder,
+  })) {
     if (row.install_id === previousInstallId) continue;
     previousInstallId = row.install_id;
-    if (total >= offset && pageInstallIds.length < pageSize) {
+    if (total >= request.offset && pageInstallIds.length < pageSize) {
       pageInstallIds.push(row.install_id);
     }
     total += 1;
   }
   if (total === 0) {
-    return { data: [], pagination: { total, limit, offset } };
+    return {
+      data: [],
+      pagination: { total, limit: request.limit, offset: request.offset },
+    };
   }
-  const latestRows = await fetchLatestRowsForInstalls(
-    database,
-    pageInstallIds,
-    context,
-  );
+  const latestRows = await fetchLatestRowsForInstalls(scope, {
+    installIds: pageInstallIds,
+  });
   return {
     data: latestRows.map(toSearchRow),
-    pagination: { total, limit, offset },
+    pagination: { total, limit: request.limit, offset: request.offset },
   };
 };
