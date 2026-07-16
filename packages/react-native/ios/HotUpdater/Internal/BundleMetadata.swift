@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - BundleMetadata
 
-/// Strategy used to derive update identities for OTA transitions.
+/// Strategy used to derive update identities for OTA updates.
 public enum UpdateStrategy: String, Codable {
     case appVersion
     case fingerprint

@@ -63,7 +63,7 @@ interface CommonHotUpdaterOptions {
 
   /**
    * Callback invoked when the app is ready and the native launch report is available.
-   * Provides information about OTA transitions finalized before JS started.
+   * Provides information about OTA updates finalized before JS started.
    *
    * @param result - Bundle state information
    *
@@ -347,7 +347,7 @@ const maybeSendAutomaticAnalytics = async (
 
   if (!analyticsEvent) {
     throw new Error(
-      "[HotUpdater] Native launch report is missing persisted transition metadata required for automatic analytics.",
+      "[HotUpdater] Native launch report is missing persisted metadata required for automatic analytics.",
     );
   }
 

@@ -19,9 +19,11 @@ npm install @hot-updater/test-utils vitest --save-dev
 ## Overview
 
 Database adapters expose a small row-level API. The models are fixed:
-`bundles`, `bundle_patches`, and `channels`. Hot Updater's shared database
-client composes those rows into bundles, so an adapter does not implement
-bundle staging or patch orchestration.
+`bundles`, `bundle_patches`, `channels`, and `bundle_events`. Hot Updater's
+shared database client composes bundle, patch, and channel rows into bundles,
+so an adapter does not implement bundle staging or patch orchestration.
+`bundle_events` is the append-only event log used by the optional Analytics
+capability.
 
 The configured value is an adapter object, not a callable database factory:
 
@@ -38,8 +40,9 @@ Only the following model and method combinations are public:
 | Model            | `create` | `update` | `delete` | `count` | `findOne` | `findMany` |
 | ---------------- | -------- | -------- | -------- | ------- | --------- | ---------- |
 | `bundles`        | Yes      | Yes      | Yes      | Yes     | Yes       | Yes        |
-| `bundle_patches` | Yes      | No       | Yes      | No      | No        | Yes        |
-| `channels`       | Yes      | No       | No       | No      | Yes       | Yes        |
+| `bundle_patches` | Yes      | No       | Yes      | Yes     | Yes       | Yes        |
+| `channels`       | Yes      | No       | No       | Yes     | Yes       | Yes        |
+| `bundle_events`  | Yes      | No       | No       | Yes     | Yes       | Yes        |
 
 `delete` removes every row matched by its non-empty predicate. Bundle updates
 use a unique `id = value` predicate and return the updated row or `null`.
@@ -51,6 +54,7 @@ of declaring another mapping:
 
 ```typescript
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   ChannelRow,
@@ -63,6 +67,8 @@ references are represented by `BundlePatchRow.bundle_id` and
 `{ id: string; name: string }`. `BundleRow.channel` keeps the channel name for
 legacy readers, while `BundleRow.channel_id` references the channel's stable
 `id`. Bundle creates and channel changes must write both fields together.
+`BundleEventRow` is immutable after creation and is never updated or deleted
+through the public operation matrix.
 
 ## Create an adapter
 
@@ -73,7 +79,6 @@ over it in the low-level implementation:
 ```typescript title="myDatabase.ts"
 import {
   type BundleRow,
-  type ChannelRow,
   type DatabaseImplementationResult,
   type DatabaseModel,
   createDatabaseAdapter,
@@ -91,14 +96,17 @@ type MyDatabaseConfig = {
       where: unknown,
       data: unknown,
     ) => Promise<Partial<BundleRow> | null>;
-    delete: (model: string, where: unknown) => Promise<void>;
-    count: (model: "bundles", where: unknown) => Promise<number>;
+    delete: (
+      model: "bundles" | "bundle_patches",
+      where: unknown,
+    ) => Promise<void>;
+    count: (model: DatabaseModel, where: unknown) => Promise<number>;
     findOne: (
-      model: "bundles" | "channels",
+      model: DatabaseModel,
       query: unknown,
-    ) => Promise<Partial<BundleRow> | Partial<ChannelRow> | null>;
+    ) => Promise<DatabaseImplementationResult | null>;
     findMany: (
-      model: string,
+      model: DatabaseModel,
       query: unknown,
     ) => Promise<readonly DatabaseImplementationResult[]>;
   };
@@ -201,8 +209,8 @@ field's type. String comparisons can use `mode: "sensitive"` or
 
 ## Relations and channels
 
-Persist three independent model collections or tables and enforce these
-rules:
+Persist independent `bundles`, `bundle_patches`, and `channels` collections or
+tables and enforce these rules:
 
 - A channel's `name` must be unique.
 - A bundle's `channel_id` must reference an existing channel `id`.
@@ -219,10 +227,16 @@ The shared aggregate client ensures a channel before creating or moving a
 bundle. Concurrent channel creation may race, so duplicate creation can be
 followed by a successful re-read.
 
-## Optional analytics
+Adapters that enable Analytics also persist `bundle_events` as a fourth,
+append-only collection or table. Event rows may refer to unknown or deleted
+bundle IDs, so bundle deletion must not cascade into the event log.
 
-Bundle-event storage is an opt-in database capability. Enable it only when
-each `bundle_events` insert is an independent, concurrency-safe write:
+## Optional Analytics
+
+`bundle_events` is part of the fixed row model, but server-facing Analytics is
+an opt-in capability. Merely accepting the row operations in the matrix does
+not enable Analytics. Advertise the capability only when every
+`bundle_events` create is an independent, concurrency-safe append:
 
 ```typescript
 createDatabaseAdapter({
@@ -234,14 +248,15 @@ createDatabaseAdapter({
 });
 ```
 
-Without `supportsBundleEvents: true`, the server does not expose `POST /events`
-or the analytics and installation-history routes. This is the
+Without `supportsBundleEvents: true`, the server does not register
+`POST /events` or the Analytics and installation-history routes. This is the
 correct default for adapters that rewrite one shared snapshot or object for
-every mutation. Concurrent app reports can conflict in those backends even if
-the adapter can technically create a `bundle_events` row.
+every mutation. Concurrent app reports can overwrite each other in those
+backends even if the adapter can technically create a `bundle_events` row.
 
-Do not opt in blob or snapshot databases such as `s3Database`. Use a
-row-oriented or document database with atomic inserts when analytics are
+S3 Database (`s3Database`) must omit `supportsBundleEvents` because each write
+replaces a shared S3 snapshot and cannot provide safe concurrent appends. Use a
+row-oriented or document database with atomic inserts when Analytics is
 required.
 
 Opt-in implementations must preserve the shared bundle-event semantics, not
@@ -258,11 +273,12 @@ The public `POST /events` handler rejects bodies above 16 KiB with `413` and
 string fields above 1024 characters with `400`. Preserve these limits in custom
 HTTP frontends, and apply authentication, rate limiting, and request logging at
 the reverse proxy or framework boundary. React Native reports transport
-failures as warnings so analytics never blocks app readiness.
+failures as warnings so Analytics never blocks app readiness.
 
 Console visibility is capability-only: Analytics navigation, routes, queries,
 and bundle activity appear only when the complete bundle-event capability is
-present. Provider names and adapter identity must never influence visibility.
+present. This generic capability check governs every adapter; provider names,
+including S3, and adapter identity must never influence visibility.
 
 ## Optional update-check fast path
 
@@ -399,10 +415,13 @@ The fixed-model database adapter API fully replaces the legacy adapter API. Ther
    `channel` and the referenced stable ID to `channel_id` on every bundle
    create or channel change. For non-relational databases, enforce the
    equivalent relationship in adapter writes.
-5. Replace `config.database()` and direct bundle mutation calls with the
+5. If the adapter will support Analytics, create the append-only
+   `bundle_events` storage and enable `supportsBundleEvents` only after its
+   writes are concurrency-safe. Otherwise, leave the capability unset.
+6. Replace `config.database()` and direct bundle mutation calls with the
    adapter object or `createDatabaseClient(adapter)`.
-6. Remove `appendBundle`, `updateBundle`, `deleteBundle`, and `commitBundle`.
-7. Run both public conformance suites before deploying the migration.
+7. Remove `appendBundle`, `updateBundle`, `deleteBundle`, and `commitBundle`.
+8. Run both public conformance suites before deploying the migration.
 
 For non-transactional providers, plan the data migration and retry behavior
 around the documented sequential, potentially partial-write fallback.
