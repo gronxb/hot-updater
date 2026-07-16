@@ -182,6 +182,7 @@ describe("createDatabaseAdapterCore", () => {
     expect(core.api.appendBundleEvent).toBeUndefined();
     expect(core.api.getBundleEventSummary).toBeUndefined();
     expect(core.api.getBundleEventAnalytics).toBeUndefined();
+    expect(core.api.getBundleEventOverview).toBeUndefined();
     expect(core.api.searchInstallations).toBeUndefined();
     expect(core.api.getInstallationHistory).toBeUndefined();
   });
@@ -193,6 +194,7 @@ describe("createDatabaseAdapterCore", () => {
         .fn<DatabaseBundleEventService["getBundleEventSummary"]>()
         .mockResolvedValue({ installed: 2, recovered: 1 }),
       getBundleEventAnalytics: vi.fn(),
+      getBundleEventOverview: vi.fn(),
       searchInstallations: vi.fn(),
       getInstallationHistory: vi.fn(),
     } satisfies DatabaseBundleEventService;

@@ -1,10 +1,9 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import type { InstallationSearchRow } from "@hot-updater/server/db";
 import { createServerFn } from "@tanstack/react-start";
 
 import {
   type AnalyticsOverview,
-  createAnalyticsOverviewAccumulator,
+  createAnalyticsOverviewFromCounts,
 } from "./analytics-overview";
 
 const DEFAULT_ANALYTICS_PAGE_SIZE = 100;
@@ -19,15 +18,6 @@ type BundlePage = {
     readonly hasNextPage: boolean;
     readonly currentPage: number;
     readonly totalPages: number;
-  };
-};
-
-type InstallationPage = {
-  readonly data: readonly InstallationSearchRow[];
-  readonly pagination: {
-    readonly total: number;
-    readonly limit: number;
-    readonly offset: number;
   };
 };
 
@@ -91,20 +81,12 @@ export const collectAnalyticsOverview = async ({
   }
 
   const bundles = await collectBundles(getBundles, pageSize);
-  const accumulator = createAnalyticsOverviewAccumulator(bundles);
-  let offset = 0;
-  while (true) {
-    const page: InstallationPage = await runtime.searchInstallations(
-      "",
-      pageSize,
-      offset,
-    );
-    accumulator.addInstallationPage(page.data);
-    offset += page.data.length;
-    if (page.data.length === 0 || offset >= page.pagination.total) {
-      return accumulator.finish();
-    }
-  }
+  const overview = await runtime.getBundleEventOverview();
+  return createAnalyticsOverviewFromCounts(
+    bundles,
+    overview.trackedInstallations,
+    overview.bundles,
+  );
 };
 
 export const getAnalyticsCapabilitiesRpc = createServerFn({

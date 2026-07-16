@@ -244,6 +244,26 @@ Do not opt in blob or snapshot databases such as `s3Database`. Use a
 row-oriented or document database with atomic inserts when analytics are
 required.
 
+Opt-in implementations must preserve the shared bundle-event semantics, not
+only the method shapes. Appends are immutable and concurrency-safe; summaries
+count distinct installations; latest-installation search orders by event time
+and event ID; a historical username or user ID match still resolves to the
+installation's latest row; windowed activity ignores older events without
+suppressing a later event inside the requested window; and overview aggregation
+counts each installation once while retaining unknown bundle IDs. Run the
+public adapter conformance tests and focused bundle-event semantic tests against
+the real backend.
+
+The public `POST /events` handler rejects bodies above 16 KiB with `413` and
+string fields above 1024 characters with `400`. Preserve these limits in custom
+HTTP frontends, and apply authentication, rate limiting, and request logging at
+the reverse proxy or framework boundary. React Native reports transport
+failures as warnings so analytics never blocks app readiness.
+
+Console visibility is capability-only: Analytics navigation, routes, queries,
+and bundle activity appear only when the complete bundle-event capability is
+present. Provider names and adapter identity must never influence visibility.
+
 ## Optional update-check fast path
 
 Add `getUpdateInfo` when the backend can answer runtime update checks more

@@ -1,6 +1,7 @@
 import type {
   Bundle,
   BundleEventAnalyticsResult,
+  BundleEventOverview,
   BundleEventSummary,
   BundlePatchRow,
   BundleRow,
@@ -39,6 +40,7 @@ export interface Routes {
   readonly appendEvent?: () => RouteConfig;
   readonly bundleEventAnalytics?: (bundleId: string) => RouteConfig;
   readonly bundleEventSummary?: (bundleId: string) => RouteConfig;
+  readonly bundleEventOverview?: () => RouteConfig;
   readonly create?: () => RouteConfig;
   readonly update?: (bundleId: string) => RouteConfig;
   readonly list?: () => RouteConfig;
@@ -53,6 +55,7 @@ export interface StandaloneRepositoryConfig {
   readonly baseUrl: string;
   readonly commonHeaders?: Readonly<Record<string, string>>;
   readonly routes?: Routes;
+  readonly supportsBundleEvents?: true;
 }
 
 type StandaloneDatabaseErrorCode = "invalid-response" | "request-failed";
@@ -79,6 +82,10 @@ const defaultRoutes = {
   }),
   bundleEventSummary: (bundleId: string) => ({
     path: `/api/bundles/${encodeURIComponent(bundleId)}/events/summary`,
+    headers: { "Cache-Control": "no-cache" },
+  }),
+  bundleEventOverview: () => ({
+    path: "/api/installations/overview",
     headers: { "Cache-Control": "no-cache" },
   }),
   create: () => ({ path: "/api/bundles" }),
@@ -161,6 +168,19 @@ const isBundleEventSummary = (value: unknown): value is BundleEventSummary =>
   Number(value.installed) >= 0 &&
   Number.isInteger(value.recovered) &&
   Number(value.recovered) >= 0;
+
+const isBundleEventOverview = (value: unknown): value is BundleEventOverview =>
+  isRecord(value) &&
+  Number.isInteger(value.trackedInstallations) &&
+  Number(value.trackedInstallations) >= 0 &&
+  Array.isArray(value.bundles) &&
+  value.bundles.every(
+    (item) =>
+      isRecord(item) &&
+      typeof item.bundleId === "string" &&
+      Number.isInteger(item.installations) &&
+      Number(item.installations) >= 0,
+  );
 
 const isNullableString = (value: unknown): value is string | null =>
   value === null || typeof value === "string";
@@ -286,6 +306,11 @@ const createBundleEventService = (
         defaultRoutes.bundleEventSummary(bundleId),
         config.routes?.bundleEventSummary?.(bundleId),
       ),
+    bundleEventOverview: () =>
+      createRoute(
+        defaultRoutes.bundleEventOverview(),
+        config.routes?.bundleEventOverview?.(),
+      ),
     installationHistory: (installId: string) =>
       createRoute(
         defaultRoutes.installationHistory(installId),
@@ -379,6 +404,14 @@ const createBundleEventService = (
         { window, limit: String(limit), offset: String(offset) },
         isBundleEventAnalytics,
         "Invalid bundle event analytics response.",
+      );
+    },
+    getBundleEventOverview() {
+      return load(
+        routes.bundleEventOverview(),
+        {},
+        isBundleEventOverview,
+        "Invalid bundle event overview response.",
       );
     },
     searchInstallations(query, limit, offset) {
@@ -987,6 +1020,7 @@ export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
     name: "standalone-repository",
     adapter: () => createLegacyCompatibilityImplementation(config),
   });
+  if (!config.supportsBundleEvents) return repository;
   return Object.assign(repository, {
     [databaseBundleEventService]: createBundleEventService(config),
   });

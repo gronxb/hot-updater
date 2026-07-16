@@ -7,12 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   queryKeys,
   useBundleEventSummaryQuery,
+  useBundleEventAnalyticsQuery,
   useDeleteBundleMutation,
   useUpdateBundleMutation,
 } from "./api";
 import {
   deleteBundle as deleteBundleApi,
   getBundleEventSummary as getBundleEventSummaryApi,
+  getBundleEventAnalytics as getBundleEventAnalyticsApi,
   updateBundle as updateBundleApi,
 } from "./api-rpc";
 
@@ -24,6 +26,7 @@ vi.mock("./api-rpc", () => ({
   getBundleChildren: vi.fn(),
   getBundleDownloadUrl: vi.fn(),
   getBundleEventSummary: vi.fn(),
+  getBundleEventAnalytics: vi.fn(),
   getBundles: vi.fn(),
   getChannels: vi.fn(),
   getConfig: vi.fn(),
@@ -73,6 +76,31 @@ describe("protected bundle-event queries", () => {
 
     // Then
     expect(getBundleEventSummaryApi).not.toHaveBeenCalled();
+    queryClient.clear();
+  });
+
+  it("does not request bundle-event analytics when explicitly disabled", async () => {
+    // Given
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    // When
+    renderHook(
+      () =>
+        useBundleEventAnalyticsQuery(
+          { bundleId: bundle.id, window: "30d" },
+          false,
+        ),
+      { wrapper },
+    );
+    await Promise.resolve();
+
+    // Then
+    expect(getBundleEventAnalyticsApi).not.toHaveBeenCalled();
     queryClient.clear();
   });
 });

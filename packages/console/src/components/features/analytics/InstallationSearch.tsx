@@ -3,6 +3,7 @@ import { Search, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -50,10 +51,11 @@ export function InstallationSearch({
   const normalizedInitialQuery = initialQuery.trim();
   const [draftQuery, setDraftQuery] = useState(normalizedInitialQuery);
   const [submittedQuery, setSubmittedQuery] = useState(normalizedInitialQuery);
+  const [offset, setOffset] = useState(0);
   const queryEnabled =
     isAnalyticsQueryEnabled(capability) && submittedQuery.length > 0;
   const { data, error, isLoading } = useInstallationSearchQuery(
-    { query: submittedQuery, limit: SEARCH_LIMIT, offset: 0 },
+    { query: submittedQuery, limit: SEARCH_LIMIT, offset },
     queryEnabled,
   );
 
@@ -74,6 +76,7 @@ export function InstallationSearch({
           onSubmit={(event) => {
             event.preventDefault();
             setSubmittedQuery(draftQuery.trim());
+            setOffset(0);
           }}
           role="search"
         >
@@ -124,25 +127,54 @@ export function InstallationSearch({
             <AlertDescription>{error.message}</AlertDescription>
           </Alert>
         ) : data && data.data.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Installation</TableHead>
-                <TableHead>Last known bundle</TableHead>
-                <TableHead>Reported context</TableHead>
-                <TableHead className="text-right">Details</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.data.map((row) => (
-                <InstallationResultRow
-                  key={row.installId}
-                  query={submittedQuery}
-                  row={row}
-                />
-              ))}
-            </TableBody>
-          </Table>
+          <div className="flex flex-col gap-3">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Installation</TableHead>
+                  <TableHead>Last known bundle</TableHead>
+                  <TableHead>Reported context</TableHead>
+                  <TableHead className="text-right">Details</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.data.map((row) => (
+                  <InstallationResultRow
+                    key={row.installId}
+                    query={submittedQuery}
+                    row={row}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                {offset + 1}–
+                {Math.min(offset + data.data.length, data.pagination.total)} of{" "}
+                {data.pagination.total}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  disabled={offset === 0}
+                  onClick={() => setOffset(Math.max(0, offset - SEARCH_LIMIT))}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Previous
+                </Button>
+                <Button
+                  disabled={offset + data.data.length >= data.pagination.total}
+                  onClick={() => setOffset(offset + SEARCH_LIMIT)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">
             No installations matched that search.
@@ -183,7 +215,12 @@ function InstallationResultRow({
         <Link
           aria-label={`Open ${row.installId}`}
           className="font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-2"
-          search={{ query, installId: row.installId }}
+          search={{
+            query,
+            installId: row.installId,
+            searchOffset: 0,
+            historyOffset: 0,
+          }}
           to="/installations"
         >
           Open

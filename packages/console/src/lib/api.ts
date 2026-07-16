@@ -38,6 +38,8 @@ type BundleFilters = {
 
 type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;
 
+const ANALYTICS_STALE_TIME_MS = 30_000;
+
 export type BundleEventSummary = Awaited<
   ReturnType<typeof getBundleEventSummaryApi>
 >;
@@ -175,7 +177,8 @@ export function useBundleEventSummaryQuery(bundleId: string, enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.bundleEventSummary(bundleId),
     queryFn: () => getBundleEventSummaryApi({ data: { bundleId } }),
-    staleTime: Infinity,
+    staleTime: ANALYTICS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
     enabled: enabled && bundleId.length > 0,
   });
 }
@@ -192,7 +195,8 @@ export function useBundleEventAnalyticsQuery(
   return useQuery({
     queryKey: queryKeys.bundleEventAnalytics(input),
     queryFn: () => getBundleEventAnalyticsApi({ data: input }),
-    staleTime: Infinity,
+    staleTime: ANALYTICS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
     enabled: enabled && input.bundleId.length > 0,
   });
 }
@@ -208,7 +212,8 @@ export function useInstallationSearchQuery(
   return useQuery({
     queryKey: queryKeys.installations.search(input),
     queryFn: () => searchInstallationsApi({ data: input }),
-    staleTime: Infinity,
+    staleTime: ANALYTICS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
     enabled: enabled && input.query.trim().length > 0,
   });
 }
@@ -224,7 +229,8 @@ export function useInstallationHistoryQuery(
   return useQuery({
     queryKey: queryKeys.installations.history(input),
     queryFn: () => getInstallationHistoryApi({ data: input }),
-    staleTime: Infinity,
+    staleTime: ANALYTICS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
     enabled: enabled && input.installId.length > 0,
   });
 }

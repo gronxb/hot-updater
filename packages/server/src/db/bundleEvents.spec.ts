@@ -71,4 +71,98 @@ describe("bundle event installation search", () => {
       undefined,
     );
   });
+
+  it("returns the latest row when a historical identity matches", async () => {
+    // Given
+    const database = createInMemoryDatabaseAdapter();
+    await database.create({
+      model: "bundle_events",
+      data: {
+        ...createEvent("install-a", 1, "old-bundle"),
+        username: "historical-name",
+      },
+    });
+    await database.create({
+      model: "bundle_events",
+      data: {
+        ...createEvent("install-a", 2, "latest-bundle"),
+        username: "current-name",
+      },
+    });
+    const service = createBundleEventService(database);
+
+    // When
+    const result = await service.searchInstallations("historical", 20, 0);
+
+    // Then
+    expect(result.data).toMatchObject([
+      {
+        installId: "install-a",
+        username: "current-name",
+        lastKnownBundleId: "latest-bundle",
+      },
+    ]);
+  });
+
+  it("aggregates latest installations in one domain-owned scan", async () => {
+    // Given
+    const database = createInMemoryDatabaseAdapter();
+    await Promise.all(
+      [
+        createEvent("install-a", 1, "old-a"),
+        createEvent("install-a", 4, "bundle-a"),
+        createEvent("install-b", 3, "bundle-b"),
+        createEvent("install-c", 2, "bundle-a"),
+      ].map((row) => database.create({ model: "bundle_events", data: row })),
+    );
+    const findMany = vi.spyOn(database, "findMany");
+    const service = createBundleEventService(database);
+
+    // When
+    const overview = await service.getBundleEventOverview();
+
+    // Then
+    expect(overview).toEqual({
+      trackedInstallations: 3,
+      bundles: [
+        { bundleId: "bundle-a", installations: 2 },
+        { bundleId: "bundle-b", installations: 1 },
+      ],
+    });
+    expect(findMany).toHaveBeenCalledOnce();
+  });
+});
+
+describe("bundle event activity series", () => {
+  it("counts an in-window event after an older event for the same installation", async () => {
+    // Given
+    const now = Date.UTC(2026, 6, 16, 12);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const database = createInMemoryDatabaseAdapter();
+    await database.create({
+      model: "bundle_events",
+      data: createEvent(
+        "install-a",
+        now - 31 * 24 * 60 * 60 * 1000,
+        "bundle-a",
+      ),
+    });
+    await database.create({
+      model: "bundle_events",
+      data: createEvent("install-a", now - 24 * 60 * 60 * 1000, "bundle-a"),
+    });
+    const service = createBundleEventService(database);
+
+    // When
+    const analytics = await service.getBundleEventAnalytics(
+      "bundle-a",
+      "30d",
+      20,
+      0,
+    );
+
+    // Then
+    expect(analytics.series.installed.at(-1)?.value).toBe(1);
+    vi.restoreAllMocks();
+  });
 });

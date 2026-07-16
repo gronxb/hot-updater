@@ -117,6 +117,15 @@ const createRepository = (): DatabaseAdapter =>
   standaloneRepository({ baseUrl: BASE_URL });
 
 describe("standaloneRepository", () => {
+  it("does not report or request bundle-event support by default", () => {
+    // Given / When
+    const repository = createRepository();
+
+    // Then
+    expect(repository[databaseBundleEventService]).toBeUndefined();
+    expect(requestPaths).toEqual([]);
+  });
+
   it("uses only the existing bundle routes for aggregate mutations", async () => {
     const base = bundle("00000000-0000-0000-0000-000000000001");
     const target = bundle("00000000-0000-0000-0000-000000000002", {
@@ -194,6 +203,12 @@ describe("standaloneRepository", () => {
           pagination: { total: 1, limit: 20, offset: 0 },
         }),
       ),
+      http.get(`${BASE_URL}/api/installations/overview`, () =>
+        HttpResponse.json({
+          trackedInstallations: 1,
+          bundles: [{ bundleId: "bundle-1", installations: 1 }],
+        }),
+      ),
       http.get(`${BASE_URL}/api/installations/install-1/events`, () =>
         HttpResponse.json({
           data: [event],
@@ -201,7 +216,10 @@ describe("standaloneRepository", () => {
         }),
       ),
     );
-    const repository = createRepository();
+    const repository = standaloneRepository({
+      baseUrl: BASE_URL,
+      supportsBundleEvents: true,
+    });
     const analytics = repository[databaseBundleEventService];
     if (!analytics) throw new Error("Missing standalone analytics service");
 
@@ -218,6 +236,10 @@ describe("standaloneRepository", () => {
     await expect(
       analytics.getInstallationHistory("install-1", 20, 0),
     ).resolves.toMatchObject({ data: [event] });
+    await expect(analytics.getBundleEventOverview()).resolves.toEqual({
+      trackedInstallations: 1,
+      bundles: [{ bundleId: "bundle-1", installations: 1 }],
+    });
   });
 
   it("aliases a supplied channel id to its legacy name deterministically", async () => {

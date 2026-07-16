@@ -6,6 +6,9 @@ import type {
   OffsetPaginationResult,
 } from "./types";
 
+const compareCodePoints = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
 const toSearchRow = (row: BundleEventRow): InstallationSearchRow => ({
   installId: row.install_id,
   username: row.username,
@@ -69,7 +72,7 @@ const fetchLatestRowsForInstalls = async <TContext>(
   return rows.toSorted(
     (left, right) =>
       right.received_at_ms - left.received_at_ms ||
-      right.id.localeCompare(left.id),
+      compareCodePoints(right.id, left.id),
   );
 };
 

@@ -97,12 +97,21 @@ class HandlerBadRequestError extends Error {
   }
 }
 
+class HandlerPayloadTooLargeError extends Error {
+  constructor() {
+    super("Event payload exceeds 16384 bytes");
+    this.name = "HandlerPayloadTooLargeError";
+  }
+}
+
 const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
 const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.31.0";
 const DEFAULT_BUNDLE_LIST_LIMIT = 50;
 const MAX_BUNDLE_LIST_LIMIT = 100;
 const DEFAULT_EVENT_LIST_LIMIT = 50;
 const MAX_EVENT_LIST_LIMIT = 100;
+const MAX_EVENT_BODY_BYTES = 16 * 1024;
+const MAX_EVENT_STRING_LENGTH = 1024;
 
 const supportsExplicitNoUpdateResponse = (request: Request) => {
   const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();
@@ -293,7 +302,11 @@ const requireStringField = (
   key: string,
 ): string => {
   const value = payload[key];
-  if (typeof value !== "string" || value.length === 0) {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > MAX_EVENT_STRING_LENGTH
+  ) {
     throw new HandlerBadRequestError(`Invalid event field: ${key}`);
   }
   return value;
@@ -310,7 +323,47 @@ const requireNullableStringField = (
   if (typeof value !== "string") {
     throw new HandlerBadRequestError(`Invalid event field: ${key}`);
   }
+  if (value.length > MAX_EVENT_STRING_LENGTH) {
+    throw new HandlerBadRequestError(`Invalid event field: ${key}`);
+  }
   return value;
+};
+
+const readBundleEventBody = async (request: Request): Promise<unknown> => {
+  const declaredLength = request.headers.get("Content-Length");
+  if (
+    declaredLength !== null &&
+    Number.isFinite(Number(declaredLength)) &&
+    Number(declaredLength) > MAX_EVENT_BODY_BYTES
+  ) {
+    throw new HandlerPayloadTooLargeError();
+  }
+  if (!request.body) {
+    throw new HandlerBadRequestError("Invalid event payload");
+  }
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let byteLength = 0;
+  let text = "";
+  while (true) {
+    const result = await reader.read();
+    if (result.done) break;
+    byteLength += result.value.byteLength;
+    if (byteLength > MAX_EVENT_BODY_BYTES) {
+      await reader.cancel();
+      throw new HandlerPayloadTooLargeError();
+    }
+    text += decoder.decode(result.value, { stream: true });
+  }
+  text += decoder.decode();
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new HandlerBadRequestError("Invalid event payload");
+    }
+    throw error;
+  }
 };
 
 const requireBundleEventPayload = (
@@ -361,12 +414,7 @@ const handleAppendBundleEvent: RouteHandler = async (
   if (!supportsBundleEvents(api)) {
     return new Response(null, { status: 404 });
   }
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    throw new HandlerBadRequestError("Invalid event payload");
-  }
+  const body = await readBundleEventBody(request);
   const payload = requireBundleEventPayload(body);
   await api.appendBundleEvent(
     {
@@ -691,6 +739,22 @@ const handleGetBundleEventAnalytics: RouteHandler = async (
   });
 };
 
+const handleGetBundleEventOverview: RouteHandler = async (
+  _params,
+  _request,
+  api,
+  context,
+) => {
+  if (!supportsBundleEvents(api)) {
+    return new Response(null, { status: 404 });
+  }
+  const result = await api.getBundleEventOverview(context);
+  return new Response(JSON.stringify(result), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
 const handleSearchInstallations: RouteHandler = async (
   _params,
   request,
@@ -759,6 +823,7 @@ const routes: Record<string, RouteHandler<any>> = {
   appendBundleEvent: handleAppendBundleEvent,
   getBundleEventSummary: handleGetBundleEventSummary,
   getBundleEventAnalytics: handleGetBundleEventAnalytics,
+  getBundleEventOverview: handleGetBundleEventOverview,
   searchInstallations: handleSearchInstallations,
   getInstallationHistory: handleGetInstallationHistory,
 };
@@ -836,6 +901,12 @@ export function createHandler<TContext = unknown>(
       addRoute(
         router,
         "GET",
+        "/api/installations/overview",
+        "getBundleEventOverview",
+      );
+      addRoute(
+        router,
+        "GET",
         "/api/installations/:installId/events",
         "getInstallationHistory",
       );
@@ -886,6 +957,13 @@ export function createHandler<TContext = unknown>(
       if (error instanceof HandlerBadRequestError) {
         return new Response(JSON.stringify({ error: error.message }), {
           status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (error instanceof HandlerPayloadTooLargeError) {
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 413,
           headers: { "Content-Type": "application/json" },
         });
       }

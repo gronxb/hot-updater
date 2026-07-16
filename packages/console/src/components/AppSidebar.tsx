@@ -112,6 +112,8 @@ export function AppSidebar({
                         search={{
                           query: undefined,
                           installId: undefined,
+                          searchOffset: 0,
+                          historyOffset: 0,
                         }}
                       >
                         <History />

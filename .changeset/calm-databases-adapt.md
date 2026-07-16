@@ -11,6 +11,7 @@
 "@hot-updater/supabase": minor
 "@hot-updater/cli-tools": minor
 "@hot-updater/console": minor
+"@hot-updater/react-native": minor
 "hot-updater": minor
 ---
 
@@ -30,7 +31,7 @@ preserving channel names in the public bundle and standalone HTTP APIs.
 Publish `@hot-updater/test-utils` with reusable low-adapter and aggregate-client
 conformance suites for custom database adapter authors.
 
-Expose transition-event analytics as an optional database capability and proxy
+Expose Analytics bundle events as an optional database capability and proxy
 the management summary, analytics, installation search, and installation history
 routes through the standalone repository so `hot-updater console` reports real
 installed and recovered counts for standalone backends. Snapshot-backed

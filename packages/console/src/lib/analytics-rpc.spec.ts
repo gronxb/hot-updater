@@ -27,6 +27,7 @@ const createRuntime = () => ({
   appendBundleEvent: vi.fn(),
   getBundleEventSummary: vi.fn(),
   getBundleEventAnalytics: vi.fn(),
+  getBundleEventOverview: vi.fn(),
   searchInstallations: vi.fn(),
   getInstallationHistory: vi.fn(),
 });
@@ -91,19 +92,13 @@ describe("collectAnalyticsOverview", () => {
       createBundle("bundle-c"),
     ];
     const runtime = createRuntime();
-    runtime.searchInstallations.mockImplementation(
-      async (_query: string, limit: number, offset: number) => ({
-        data: [
-          {
-            installId: `install-${offset}`,
-            username: `private-${offset}`,
-            userId: `user-${offset}`,
-            lastKnownBundleId: allBundles[offset]?.id ?? "deleted-bundle",
-          },
-        ].slice(0, Math.max(0, 3 - offset)),
-        pagination: { total: 3, limit, offset },
-      }),
-    );
+    runtime.getBundleEventOverview.mockResolvedValue({
+      trackedInstallations: 3,
+      bundles: allBundles.map((bundle) => ({
+        bundleId: bundle.id,
+        installations: 1,
+      })),
+    });
     const getBundles = vi.fn(async ({ page }: { page: number }) => ({
       data: [allBundles[page - 1]].filter(
         (bundle): bundle is Bundle => bundle !== undefined,
@@ -126,11 +121,8 @@ describe("collectAnalyticsOverview", () => {
 
     // Then
     expect(getBundles).toHaveBeenCalledTimes(3);
-    expect(runtime.searchInstallations.mock.calls).toEqual([
-      ["", 1, 0],
-      ["", 1, 1],
-      ["", 1, 2],
-    ]);
+    expect(runtime.getBundleEventOverview).toHaveBeenCalledOnce();
+    expect(runtime.searchInstallations).not.toHaveBeenCalled();
     expect(overview.trackedInstallations).toBe(3);
     expect(overview.configuredRollouts).toHaveLength(3);
     expect(JSON.stringify(overview)).not.toMatch(/private-|user-|install-/);
@@ -139,9 +131,9 @@ describe("collectAnalyticsOverview", () => {
   it("stops after the first empty source page", async () => {
     // Given
     const runtime = createRuntime();
-    runtime.searchInstallations.mockResolvedValue({
-      data: [],
-      pagination: { total: 0, limit: 25, offset: 0 },
+    runtime.getBundleEventOverview.mockResolvedValue({
+      trackedInstallations: 0,
+      bundles: [],
     });
     const getBundles = vi.fn(async () => ({
       data: [],
@@ -158,7 +150,7 @@ describe("collectAnalyticsOverview", () => {
     const overview = await collectAnalyticsOverview({ runtime, getBundles });
 
     // Then
-    expect(runtime.searchInstallations).toHaveBeenCalledOnce();
+    expect(runtime.getBundleEventOverview).toHaveBeenCalledOnce();
     expect(overview).toMatchObject({
       trackedInstallations: 0,
       mostActiveBundle: null,

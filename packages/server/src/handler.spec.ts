@@ -65,6 +65,9 @@ const createApi = () =>
           pagination: { total: 0, limit: 50, offset: 0 },
         },
       }),
+    getBundleEventOverview: vi
+      .fn<NonNullable<HandlerAPI<TestContext>["getBundleEventOverview"]>>()
+      .mockResolvedValue({ trackedInstallations: 0, bundles: [] }),
     searchInstallations: vi
       .fn<NonNullable<HandlerAPI<TestContext>["searchInstallations"]>>()
       .mockResolvedValue({
@@ -254,6 +257,7 @@ describe("createHandler", () => {
       appendBundleEvent: _appendBundleEvent,
       getBundleEventSummary: _getBundleEventSummary,
       getBundleEventAnalytics: _getBundleEventAnalytics,
+      getBundleEventOverview: _getBundleEventOverview,
       searchInstallations: _searchInstallations,
       getInstallationHistory: _getInstallationHistory,
       ...api
@@ -305,6 +309,55 @@ describe("createHandler", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Invalid event field: platform",
     });
+    expect(api.appendBundleEvent).not.toHaveBeenCalled();
+  });
+
+  it("returns 413 before parsing an oversized event body", async () => {
+    // Given
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    // When
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ padding: "x".repeat(17 * 1024) }),
+      }),
+    );
+
+    // Then
+    expect(response.status).toBe(413);
+    expect(api.appendBundleEvent).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for oversized event string fields", async () => {
+    // Given
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    // When
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "UPDATE_APPLIED",
+          installId: "x".repeat(1025),
+          fromBundleId: "bundle-0",
+          toBundleId: "bundle-1",
+          platform: "ios",
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          updateStrategy: "appVersion",
+          fingerprintHash: null,
+        }),
+      }),
+    );
+
+    // Then
+    expect(response.status).toBe(400);
     expect(api.appendBundleEvent).not.toHaveBeenCalled();
   });
 

@@ -52,6 +52,7 @@ The `standaloneRepository` adapter accepts the following options:
 interface StandaloneRepositoryConfig {
   baseUrl: string;                        // Your server URL
   commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
+  supportsBundleEvents?: true;            // Explicit Analytics capability opt-in
   routes?: Routes;                        // Optional custom route configuration
 }
 ```
@@ -65,12 +66,18 @@ interface RouteConfig {
 }
 
 interface Routes {
+  appendEvent?: () => RouteConfig;
+  bundleEventAnalytics?: (bundleId: string) => RouteConfig;
+  bundleEventSummary?: (bundleId: string) => RouteConfig;
+  bundleEventOverview?: () => RouteConfig;
   create?: () => RouteConfig;
   update?: (bundleId: string) => RouteConfig;
   list?: () => RouteConfig;
   channels?: () => RouteConfig;
   retrieve?: (bundleId: string) => RouteConfig;
   delete?: (bundleId: string) => RouteConfig;
+  installationHistory?: (installId: string) => RouteConfig;
+  installations?: () => RouteConfig;
 }
 ```
 
@@ -118,6 +125,13 @@ database: standaloneRepository({
     }),
     delete: (bundleId) => ({
       path: `/v1/hot-updater/api/bundles/${bundleId}`
+    }),
+    appendEvent: () => ({ path: "/v1/hot-updater/events" }),
+    bundleEventOverview: () => ({
+      path: "/v1/hot-updater/api/installations/overview"
+    }),
+    installations: () => ({
+      path: "/v1/hot-updater/api/installations"
     })
   }
 })
@@ -173,6 +187,30 @@ them with the `routes` option shown above.
 | GET | `/api/bundles/:id` | none | `Bundle` |
 | DELETE | `/api/bundles/:id` | none | `{ "success": true }` |
 | GET | `/api/bundles/channels` | none | `ChannelsResponse` |
+
+When `supportsBundleEvents: true`, the following optional routes are also
+required. Leaving the flag unset or false is the provider-neutral default and
+causes the Console to hide Analytics and installation UI without making event
+requests.
+
+| Method | Default route | Purpose |
+|--------|---------------|---------|
+| POST | `/events` | Append one bundle event |
+| GET | `/api/bundles/:id/events/summary` | Distinct installed/recovered totals |
+| GET | `/api/bundles/:id/events/analytics` | Windowed series, cohorts, and recent events |
+| GET | `/api/installations/overview` | Identity-free latest-installation bundle counts |
+| GET | `/api/installations` | Paginated identity search |
+| GET | `/api/installations/:installId/events` | Paginated installation history |
+
+Only enable the flag when all routes implement the same append-only semantic
+contract as `DatabaseBundleEventService`: event inserts are concurrency-safe,
+latest-installation results use the newest event by timestamp and event ID,
+historical identity matches return that installation's latest row, and overview
+counts include each installation exactly once. Unknown or deleted bundle IDs
+must remain in overview results. The server limits public event bodies to 16
+KiB and individual string fields to 1024 characters; custom route
+implementations should enforce equivalent or stricter limits before parsing or
+persisting input.
 
 ### Bundle Shape
 

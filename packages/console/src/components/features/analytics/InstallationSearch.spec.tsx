@@ -136,6 +136,44 @@ describe("InstallationSearch", () => {
     expect(screen.getAllByText("install-1").length).toBeGreaterThan(0);
   });
 
+  it("pages installation search results and resets on a new search", () => {
+    // Given
+    useInstallationSearchQueryMock.mockReturnValue({
+      data: {
+        data: [result],
+        pagination: { total: 45, limit: 20, offset: 0 },
+      },
+      error: null,
+      isLoading: false,
+    });
+    render(<InstallationSearch capability={supported} initialQuery="ada" />);
+
+    // When
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    // Then
+    expect(useInstallationSearchQueryMock).toHaveBeenLastCalledWith(
+      { query: "ada", limit: 20, offset: 20 },
+      true,
+    );
+    expect(
+      screen.getByRole("button", { name: "Previous" }).hasAttribute("disabled"),
+    ).toBe(false);
+
+    // When
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: /search installations/i }),
+      { target: { value: "grace" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    // Then
+    expect(useInstallationSearchQueryMock).toHaveBeenLastCalledWith(
+      { query: "grace", limit: 20, offset: 0 },
+      true,
+    );
+  });
+
   it("distinguishes loading, empty, and error states", () => {
     const { rerender } = render(
       <InstallationSearch capability={supported} initialQuery="ada" />,

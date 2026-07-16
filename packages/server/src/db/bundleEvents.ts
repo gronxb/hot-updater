@@ -4,6 +4,7 @@ import { searchBundleEventInstallations } from "./bundleEventInstallationSearch"
 import type {
   BundleEventAnalyticsResult,
   BundleEventAnalyticsWindow,
+  BundleEventOverview,
   BundleEventSummary,
   CreateBundleEventRequest,
   DatabaseAdapter,
@@ -13,6 +14,9 @@ import type {
 } from "./types";
 
 const EVENT_HEADER = "Hot-Updater-SDK-Version";
+
+const compareCodePoints = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
 
 type InternalCreateBundleEventRequest = CreateBundleEventRequest & {
   sdkVersion?: string | null;
@@ -165,13 +169,13 @@ const buildCumulativeSeries = (
   );
   const seen = new Set<string>();
   for (const row of rows.toReversed()) {
-    if (seen.has(row.install_id)) continue;
-    seen.add(row.install_id);
     const bucketStart =
       buckets.sizeMs === 60 * 60 * 1000
         ? startOfUtcHour(row.received_at_ms)
         : startOfUtcDay(row.received_at_ms);
     if (bucketStart < buckets.rangeStart || !counts.has(bucketStart)) continue;
+    if (seen.has(row.install_id)) continue;
+    seen.add(row.install_id);
     counts.set(bucketStart, (counts.get(bucketStart) ?? 0) + 1);
   }
   let total = 0;
@@ -196,7 +200,7 @@ const buildCohortCounts = (rows: readonly BundleEventRow[]) =>
       )
       .counts.entries(),
   ]
-    .sort(([left], [right]) => left.localeCompare(right))
+    .sort(([left], [right]) => compareCodePoints(left, right))
     .map(([cohort, value]) => ({ cohort, value }));
 
 const fetchAllBundleEvents = async <TContext>(
@@ -297,7 +301,7 @@ export const createBundleEventService = <TContext>(
     const combinedRows = [...installedRows, ...recoveredRows].toSorted(
       (left, right) =>
         right.received_at_ms - left.received_at_ms ||
-        right.id.localeCompare(left.id),
+        compareCodePoints(right.id, left.id),
     );
     const recentRows = combinedRows.slice(offset, offset + limit);
     const now = Date.now();
@@ -319,6 +323,45 @@ export const createBundleEventService = <TContext>(
           offset,
         },
       },
+    };
+  },
+
+  async getBundleEventOverview(
+    context?: TContext,
+  ): Promise<BundleEventOverview> {
+    const total = await database.count(
+      { model: "bundle_events", distinct: ["install_id"] },
+      context,
+    );
+    if (total === 0) {
+      return { trackedInstallations: 0, bundles: [] };
+    }
+    const rows = await database.findMany(
+      {
+        model: "bundle_events",
+        distinctOn: { fields: ["install_id"] },
+        orderBy: [
+          { field: "install_id", direction: "asc" },
+          ...getEventOrderBy(),
+        ],
+        limit: total,
+        offset: 0,
+      },
+      context,
+    );
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      counts.set(row.to_bundle_id, (counts.get(row.to_bundle_id) ?? 0) + 1);
+    }
+    return {
+      trackedInstallations: total,
+      bundles: [...counts]
+        .map(([bundleId, installations]) => ({ bundleId, installations }))
+        .sort(
+          (left, right) =>
+            right.installations - left.installations ||
+            compareCodePoints(left.bundleId, right.bundleId),
+        ),
     };
   },
 

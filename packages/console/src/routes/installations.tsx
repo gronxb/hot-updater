@@ -25,16 +25,14 @@ import {
   useInstallationSearchQuery,
 } from "@/lib/api";
 
+import { validateInstallationsSearch } from "./installations-search";
+
 const SEARCH_LIMIT = 20;
 const HISTORY_LIMIT = 50;
 
 export const Route = createFileRoute("/installations")({
   component: InstallationsPage,
-  validateSearch: (search: Record<string, unknown>) => ({
-    query: typeof search.query === "string" ? search.query : undefined,
-    installId:
-      typeof search.installId === "string" ? search.installId : undefined,
-  }),
+  validateSearch: validateInstallationsSearch,
 });
 
 function formatDateTime(value: string | number | Date | null | undefined) {
@@ -156,7 +154,7 @@ function InstallationsPage() {
     {
       query,
       limit: SEARCH_LIMIT,
-      offset: 0,
+      offset: search.searchOffset,
     },
     analyticsQueriesEnabled,
   );
@@ -170,7 +168,7 @@ function InstallationsPage() {
     {
       installId: selectedInstallId,
       limit: HISTORY_LIMIT,
-      offset: 0,
+      offset: search.historyOffset,
     },
     analyticsQueriesEnabled,
   );
@@ -184,7 +182,12 @@ function InstallationsPage() {
   );
 
   const updateSearch = (
-    nextSearch: { query?: string; installId?: string },
+    nextSearch: {
+      query?: string;
+      installId?: string;
+      searchOffset?: number;
+      historyOffset?: number;
+    },
     replace = false,
   ) => {
     void navigate({
@@ -192,24 +195,12 @@ function InstallationsPage() {
       search: {
         query: nextSearch.query,
         installId: nextSearch.installId,
+        searchOffset: nextSearch.searchOffset ?? 0,
+        historyOffset: nextSearch.historyOffset ?? 0,
       },
       replace,
     });
   };
-
-  useEffect(() => {
-    if (!selectedInstallId || !results) {
-      return;
-    }
-
-    const installStillVisible = results.data.some(
-      (event: InstallationSearchRow) => event.installId === selectedInstallId,
-    );
-
-    if (!installStillVisible) {
-      updateSearch({ query: search.query, installId: undefined }, true);
-    }
-  }, [results, search.query, selectedInstallId]);
 
   const hasQuery = query.length > 0 || selectedInstallId.length > 0;
 
@@ -220,7 +211,10 @@ function InstallationsPage() {
         onDraftQueryChange={setDraftQuery}
         onSubmit={() => {
           const nextQuery = draftQuery.trim();
-          updateSearch({ query: nextQuery || undefined, installId: undefined });
+          updateSearch({
+            query: nextQuery || undefined,
+            installId: undefined,
+          });
         }}
         onClear={() => {
           setDraftQuery("");
@@ -275,16 +269,22 @@ function InstallationsPage() {
                           <TableRow
                             key={event.installId}
                             data-state={isSelected ? "selected" : undefined}
-                            className="cursor-pointer"
-                            onClick={() =>
-                              updateSearch({
-                                query: search.query,
-                                installId: event.installId,
-                              })
-                            }
                           >
                             <TableCell className="align-top">
-                              <BundleIdDisplay bundleId={event.installId} />
+                              <Button
+                                className="h-auto max-w-full justify-start p-0 font-normal focus-visible:ring-2"
+                                onClick={() =>
+                                  updateSearch({
+                                    query: search.query,
+                                    installId: event.installId,
+                                    searchOffset: search.searchOffset,
+                                  })
+                                }
+                                type="button"
+                                variant="link"
+                              >
+                                <BundleIdDisplay bundleId={event.installId} />
+                              </Button>
                             </TableCell>
                             <TableCell className="align-top text-sm">
                               {getUserLabel(event)}
@@ -320,6 +320,23 @@ function InstallationsPage() {
                     No installations matched that query.
                   </div>
                 )}
+                {results && results.pagination.total > 0 ? (
+                  <PaginationControls
+                    label="Installation results"
+                    limit={SEARCH_LIMIT}
+                    offset={search.searchOffset}
+                    pageLength={results.data.length}
+                    total={results.pagination.total}
+                    onOffsetChange={(searchOffset) =>
+                      updateSearch({
+                        query: search.query,
+                        installId: undefined,
+                        searchOffset,
+                        historyOffset: 0,
+                      })
+                    }
+                  />
+                ) : null}
               </CardContent>
             </Card>
 
@@ -404,6 +421,21 @@ function InstallationsPage() {
                           ))}
                         </TableBody>
                       </Table>
+                      <PaginationControls
+                        label="Installation history"
+                        limit={HISTORY_LIMIT}
+                        offset={search.historyOffset}
+                        pageLength={history.data.length}
+                        total={history.pagination.total}
+                        onOffsetChange={(historyOffset) =>
+                          updateSearch({
+                            query: search.query,
+                            installId: selectedInstallId,
+                            searchOffset: search.searchOffset,
+                            historyOffset,
+                          })
+                        }
+                      />
                     </>
                   ) : historyError ? (
                     <div className="p-6 text-sm text-destructive">
@@ -428,5 +460,52 @@ function InstallationsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+function PaginationControls({
+  label,
+  limit,
+  offset,
+  pageLength,
+  total,
+  onOffsetChange,
+}: {
+  label: string;
+  limit: number;
+  offset: number;
+  pageLength: number;
+  total: number;
+  onOffsetChange: (offset: number) => void;
+}) {
+  return (
+    <nav
+      aria-label={`${label} pagination`}
+      className="flex items-center justify-between gap-3 border-t px-4 py-3"
+    >
+      <span className="text-xs text-muted-foreground">
+        {offset + 1}–{Math.min(offset + pageLength, total)} of {total}
+      </span>
+      <div className="flex gap-2">
+        <Button
+          disabled={offset === 0}
+          onClick={() => onOffsetChange(Math.max(0, offset - limit))}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Previous
+        </Button>
+        <Button
+          disabled={offset + pageLength >= total}
+          onClick={() => onOffsetChange(offset + limit)}
+          size="sm"
+          type="button"
+          variant="outline"
+        >
+          Next
+        </Button>
+      </div>
+    </nav>
   );
 }

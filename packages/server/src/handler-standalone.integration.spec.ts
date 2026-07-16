@@ -28,8 +28,15 @@ const api = createHotUpdater({
 });
 const baseUrl = "http://localhost:3000";
 const server = setupServer();
+let bundleEventRequestCount = 0;
 
 const handleRequest = async (request: Request) => {
+  if (
+    new URL(request.url).pathname.includes("/events") ||
+    new URL(request.url).pathname.includes("/installations")
+  ) {
+    bundleEventRequestCount += 1;
+  }
   const response = await api.handler(request);
   return new HttpResponse(await response.text(), {
     status: response.status,
@@ -52,6 +59,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  bundleEventRequestCount = 0;
   await db.exec("DELETE FROM bundle_patches");
   await db.exec("DELETE FROM bundle_events");
   await db.exec("DELETE FROM bundles");
@@ -109,6 +117,21 @@ const createInMemoryBlobDatabase = (store: Record<string, string>) =>
   });
 
 describe("Handler <-> Standalone Repository Integration", () => {
+  it("keeps unsupported standalone remotes event-free", () => {
+    // Given / When
+    const consoleApi = createHotUpdater({
+      database: standaloneRepository({
+        baseUrl: `${baseUrl}/hot-updater`,
+      }),
+      basePath: "/console",
+      routes: { updateCheck: true, bundles: true },
+    });
+
+    // Then
+    expect(supportsBundleEvents(consoleApi)).toBe(false);
+    expect(bundleEventRequestCount).toBe(0);
+  });
+
   it("creates a bundle through handler POST /bundles", async () => {
     const client = createStandaloneClient();
     const bundleId = uuidv7();
@@ -222,6 +245,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const consoleApi = createHotUpdater({
       database: standaloneRepository({
         baseUrl: `${baseUrl}/hot-updater`,
+        supportsBundleEvents: true,
       }),
       basePath: "/console",
       routes: { updateCheck: true, bundles: true },
@@ -239,6 +263,10 @@ describe("Handler <-> Standalone Repository Integration", () => {
     ).resolves.toMatchObject({
       summary: { installed: 1, recovered: 1 },
       recentEvents: { pagination: { total: 2 } },
+    });
+    await expect(consoleApi.getBundleEventOverview()).resolves.toMatchObject({
+      trackedInstallations: 1,
+      bundles: [{ installations: 1 }],
     });
     await expect(
       consoleApi.searchInstallations("integration-user", 50, 0),

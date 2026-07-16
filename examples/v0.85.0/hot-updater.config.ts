@@ -86,6 +86,7 @@ export default defineConfig({
         }),
   database: standaloneRepository({
     baseUrl: standaloneRepositoryBaseUrl ?? "http://localhost:3007/hot-updater",
+    supportsBundleEvents: true,
     ...(managementHeaders ? { commonHeaders: managementHeaders } : {}),
   }),
   fingerprint: {

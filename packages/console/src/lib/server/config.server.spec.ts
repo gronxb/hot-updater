@@ -8,6 +8,7 @@ const { createHotUpdaterMock, loadConfigMock } = vi.hoisted(() => ({
   createHotUpdaterMock: vi.fn(() => ({
     getBundleEventSummary: vi.fn(),
     getBundleEventAnalytics: vi.fn(),
+    getBundleEventOverview: vi.fn(),
     searchInstallations: vi.fn(),
     getInstallationHistory: vi.fn(),
   })),

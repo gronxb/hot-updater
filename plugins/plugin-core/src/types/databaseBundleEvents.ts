@@ -69,6 +69,11 @@ export interface BundleEventAnalyticsResult {
   recentEvents: OffsetPaginationResult<InstallationHistoryRow>;
 }
 
+export interface BundleEventOverview {
+  trackedInstallations: number;
+  bundles: { bundleId: string; installations: number }[];
+}
+
 export interface DatabaseBundleEventService<TContext = unknown> {
   appendBundleEvent(
     input: CreateBundleEventRequest,
@@ -85,6 +90,7 @@ export interface DatabaseBundleEventService<TContext = unknown> {
     offset: number,
     context?: TContext,
   ): Promise<BundleEventAnalyticsResult>;
+  getBundleEventOverview(context?: TContext): Promise<BundleEventOverview>;
   searchInstallations(
     query: string,
     limit: number,

@@ -28,6 +28,8 @@ export const analyticsQueryKeys = {
   overview: ["analytics", "overview"] as const,
 };
 
+const ANALYTICS_STALE_TIME_MS = 30_000;
+
 export const getAnalyticsCapabilityState = (
   query: AnalyticsCapabilityQueryResult,
 ): AnalyticsCapabilityState => {
@@ -69,12 +71,16 @@ export const useAnalyticsCapabilitiesQuery = () =>
     staleTime: Infinity,
   });
 
+export const getAnalyticsOverviewQueryOptions = (
+  capability: AnalyticsCapabilityState,
+) => ({
+  queryKey: analyticsQueryKeys.overview,
+  queryFn: () => getAnalyticsOverviewRpc(),
+  staleTime: ANALYTICS_STALE_TIME_MS,
+  refetchOnWindowFocus: true,
+  enabled: isAnalyticsQueryEnabled(capability),
+});
+
 export const useAnalyticsOverviewQuery = (
   capability: AnalyticsCapabilityState,
-) =>
-  useQuery({
-    queryKey: analyticsQueryKeys.overview,
-    queryFn: () => getAnalyticsOverviewRpc(),
-    staleTime: Infinity,
-    enabled: isAnalyticsQueryEnabled(capability),
-  });
+) => useQuery(getAnalyticsOverviewQueryOptions(capability));

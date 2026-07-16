@@ -7,6 +7,7 @@ import type {
 } from "@hot-updater/core";
 import type {
   BundleEventAnalyticsResult,
+  BundleEventOverview,
   BundleEventAnalyticsWindow,
   BundleEventSummary,
   CreateBundleEventRequest,
@@ -20,6 +21,7 @@ import type {
 
 export type {
   BundleEventAnalyticsResult,
+  BundleEventOverview,
   BundleEventAnalyticsWindow,
   BundleEventSummary,
   CreateBundleEventRequest,
@@ -154,6 +156,9 @@ export interface BundleEventAPI<TContext = unknown> {
     offset: number,
     context?: HotUpdaterContext<TContext>,
   ): Promise<BundleEventAnalyticsResult>;
+  getBundleEventOverview(
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<BundleEventOverview>;
   searchInstallations(
     query: string,
     limit: number,
@@ -174,6 +179,7 @@ export const supportsBundleEvents = <TContext>(
   typeof Reflect.get(api, "appendBundleEvent") === "function" &&
   typeof Reflect.get(api, "getBundleEventSummary") === "function" &&
   typeof Reflect.get(api, "getBundleEventAnalytics") === "function" &&
+  typeof Reflect.get(api, "getBundleEventOverview") === "function" &&
   typeof Reflect.get(api, "searchInstallations") === "function" &&
   typeof Reflect.get(api, "getInstallationHistory") === "function";
 

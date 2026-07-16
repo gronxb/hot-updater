@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type AnalyticsCapabilityState,
   getAnalyticsCapabilityState,
+  getAnalyticsOverviewQueryOptions,
   getProtectedAnalyticsRouteDecision,
   isAnalyticsQueryEnabled,
   useAnalyticsOverviewQuery,
@@ -88,5 +89,14 @@ describe("analytics overview query", () => {
     // Then
     expect(getAnalyticsOverviewRpc).not.toHaveBeenCalled();
     queryClient.clear();
+  });
+
+  it("refreshes externally written overview data after a finite interval", () => {
+    // Given / When
+    const options = getAnalyticsOverviewQueryOptions({ status: "supported" });
+
+    // Then
+    expect(options.staleTime).toBe(30_000);
+    expect(options.refetchOnWindowFocus).toBe(true);
   });
 });
