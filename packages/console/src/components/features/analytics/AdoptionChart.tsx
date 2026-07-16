@@ -33,6 +33,7 @@ const percentage = (share: number): string =>
 
 const CHART_ITEM_LIMIT = 8;
 const ADOPTION_PAGE_SIZE = 8;
+const AXIS_INTERVAL_LIMIT = 4;
 
 export function AdoptionChart({
   adoption,
@@ -49,6 +50,18 @@ export function AdoptionChart({
   const rangeEnd = Math.min(rangeStart + ADOPTION_PAGE_SIZE, adoption.length);
   const visibleAdoption = adoption.slice(rangeStart, rangeEnd);
   const chartAdoption = adoption.slice(0, CHART_ITEM_LIMIT);
+  const axisMaximum = Math.max(
+    1,
+    ...chartAdoption.map((item) => item.trackedInstallations),
+  );
+  const axisStep = Math.max(1, Math.ceil(axisMaximum / AXIS_INTERVAL_LIMIT));
+  const axisTicks = [
+    ...Array.from(
+      { length: Math.ceil(axisMaximum / axisStep) },
+      (_, index) => index * axisStep,
+    ),
+    axisMaximum,
+  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -71,7 +84,13 @@ export function AdoptionChart({
           margin={{ left: 8, right: 12 }}
         >
           <CartesianGrid horizontal={false} />
-          <XAxis allowDecimals={false} axisLine={false} type="number" />
+          <XAxis
+            allowDecimals={false}
+            axisLine={false}
+            domain={[0, axisMaximum]}
+            ticks={axisTicks}
+            type="number"
+          />
           <YAxis
             axisLine={false}
             dataKey="bundleId"

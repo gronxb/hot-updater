@@ -115,6 +115,18 @@ describe("AnalyticsOverview", () => {
     ).toBeNull();
   });
 
+  it("keeps the adoption card aligned to its own content height", () => {
+    // Given / When
+    render(<AnalyticsOverview status="success" data={overview} />);
+
+    // Then
+    const adoptionCard = screen
+      .getByText("Observed bundle adoption")
+      .closest('[data-slot="card"]');
+    expect(adoptionCard?.className).toContain("self-start");
+    expect(adoptionCard?.parentElement?.className).toContain("items-start");
+  });
+
   it("bounds dense adoption and rollout data with navigable inclusive ranges", () => {
     // Given
     const adoption = Array.from({ length: 1205 }, (_, index) => ({

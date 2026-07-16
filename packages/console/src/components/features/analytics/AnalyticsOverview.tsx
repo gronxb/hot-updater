@@ -55,8 +55,8 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
   const hasTrackedInstallations = data.trackedInstallations > 0;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]">
-      <Card className="min-w-0">
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.8fr)]">
+      <Card className="min-w-0 self-start">
         <CardHeader>
           <CardTitle className="text-sm font-medium">
             Observed bundle adoption
