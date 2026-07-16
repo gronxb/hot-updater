@@ -37,7 +37,6 @@ export const d1WorkerDatabase = <
 >() =>
   createDatabaseAdapter({
     name: "d1WorkerDatabase",
-    supportsBundleEvents: true,
     adapter: () =>
       createD1Implementation<TContext>({
         async query(sql, params, context) {

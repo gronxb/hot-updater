@@ -74,6 +74,7 @@ const createV036MigrationSql = (
         : column,
     );
     return [
+      "pragma foreign_keys = off",
       createChannels,
       ...channelIndexSql,
       "insert into channels (id, name) select distinct channel, channel from bundles where channel is not null on conflict do nothing",
@@ -83,6 +84,7 @@ const createV036MigrationSql = (
       "alter table bundles_v036 rename to bundles",
       ...bundleIndexSql,
       "pragma foreign_key_check",
+      "pragma foreign_keys = on",
     ];
   }
   const addChannelIdColumn = `alter table bundles add column ${nullableChannelIdColumn}`;

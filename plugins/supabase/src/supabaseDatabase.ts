@@ -234,7 +234,6 @@ const createSupabaseImplementation = (
 export const supabaseDatabase = (config: SupabaseDatabaseConfig) =>
   createDatabaseAdapter({
     name: "supabaseDatabase",
-    supportsBundleEvents: true,
     adapter: () =>
       createSupabaseImplementation(
         createClient<Database>(

@@ -1,5 +1,13 @@
 # @hot-updater/firebase
 
+## Unreleased
+
+### Patch Changes
+
+- Analytics is currently unavailable for Firebase until its adapter satisfies
+  the complete bounded distinct/latest bundle-event contract. The Console hides
+  Analytics based only on capability presence.
+
 ## 0.35.3
 
 ### Patch Changes

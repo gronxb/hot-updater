@@ -2,12 +2,18 @@ import type { ConfigResponse } from "@hot-updater/cli-tools";
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
-  type BundleEventAnalyticsWindow,
   type InstallationHistoryRow,
   type InstallationSearchRow,
   type OffsetPaginationResult,
   supportsBundleEvents,
 } from "@hot-updater/server/db";
+
+import {
+  parseBundleEventAnalyticsInput,
+  parseBundleEventSummaryInput,
+  parseInstallationHistoryInput,
+  parseSearchInstallationsInput,
+} from "../analytics-input";
 
 export type InstallationSearchResult =
   OffsetPaginationResult<InstallationSearchRow>;
@@ -35,9 +41,10 @@ const requireBundleEventSupport = <TContext>(hotUpdater: unknown) => {
 
 export async function getBundleEventSummary<TContext = unknown>(
   hotUpdater: unknown,
-  bundleId: string,
+  input: unknown,
   context?: HotUpdaterContext<TContext>,
 ) {
+  const { bundleId } = parseBundleEventSummaryInput(input);
   return requireBundleEventSupport<TContext>(hotUpdater).getBundleEventSummary(
     bundleId,
     context,
@@ -46,55 +53,45 @@ export async function getBundleEventSummary<TContext = unknown>(
 
 export async function getBundleEventAnalytics<TContext = unknown>(
   hotUpdater: unknown,
-  input: {
-    bundleId: string;
-    window: BundleEventAnalyticsWindow;
-    limit?: number;
-    offset?: number;
-  },
+  input: unknown,
   context?: HotUpdaterContext<TContext>,
 ) {
+  const parsed = parseBundleEventAnalyticsInput(input);
   return requireBundleEventSupport<TContext>(
     hotUpdater,
   ).getBundleEventAnalytics(
-    input.bundleId,
-    input.window,
-    input.limit ?? 50,
-    input.offset ?? 0,
+    parsed.bundleId,
+    parsed.window,
+    parsed.limit ?? 50,
+    parsed.offset ?? 0,
     context,
   );
 }
 
 export async function searchInstallations<TContext = unknown>(
   hotUpdater: unknown,
-  input: {
-    query: string;
-    limit?: number;
-    offset?: number;
-  },
+  input: unknown,
   context?: HotUpdaterContext<TContext>,
 ) {
+  const parsed = parseSearchInstallationsInput(input);
   return requireBundleEventSupport<TContext>(hotUpdater).searchInstallations(
-    input.query,
-    input.limit ?? 50,
-    input.offset ?? 0,
+    parsed.query,
+    parsed.limit ?? 50,
+    parsed.offset ?? 0,
     context,
   );
 }
 
 export async function getInstallationHistory<TContext = unknown>(
   hotUpdater: unknown,
-  input: {
-    installId: string;
-    limit?: number;
-    offset?: number;
-  },
+  input: unknown,
   context?: HotUpdaterContext<TContext>,
 ) {
+  const parsed = parseInstallationHistoryInput(input);
   return requireBundleEventSupport<TContext>(hotUpdater).getInstallationHistory(
-    input.installId,
-    input.limit ?? 50,
-    input.offset ?? 0,
+    parsed.installId,
+    parsed.limit ?? 50,
+    parsed.offset ?? 0,
     context,
   );
 }

@@ -4,6 +4,7 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  AnalyticsBundlePaginationError,
   collectAnalyticsOverview,
   getAnalyticsCapabilities,
 } from "./analytics-rpc";
@@ -155,5 +156,143 @@ describe("collectAnalyticsOverview", () => {
       trackedInstallations: 0,
       mostActiveBundle: null,
     });
+  });
+
+  it.each([0, 2])(
+    "rejects a non-advancing current page %i",
+    async (currentPage) => {
+      // Given
+      const runtime = createRuntime();
+      const getBundles = vi.fn(async () => ({
+        data: [],
+        pagination: { currentPage, totalPages: 1, hasNextPage: false },
+      }));
+
+      // When
+      const result = collectAnalyticsOverview({ runtime, getBundles });
+
+      // Then
+      await expect(result).rejects.toBeInstanceOf(
+        AnalyticsBundlePaginationError,
+      );
+      await expect(result).rejects.toMatchObject({
+        name: "AnalyticsBundlePaginationError",
+      });
+      expect(runtime.getBundleEventOverview).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([Number.NaN, 1.5, -1])(
+    "rejects invalid total pages %s",
+    async (totalPages) => {
+      // Given
+      const runtime = createRuntime();
+      const getBundles = vi.fn(async () => ({
+        data: [],
+        pagination: { currentPage: 1, totalPages, hasNextPage: false },
+      }));
+
+      // When
+      const result = collectAnalyticsOverview({ runtime, getBundles });
+
+      // Then
+      await expect(result).rejects.toBeInstanceOf(
+        AnalyticsBundlePaginationError,
+      );
+      expect(runtime.getBundleEventOverview).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    {
+      name: "a next page at the declared last page",
+      pages: [
+        {
+          data: [],
+          pagination: {
+            currentPage: 1,
+            totalPages: 1,
+            hasNextPage: true,
+          },
+        },
+      ],
+    },
+    {
+      name: "total pages lower than the current page",
+      pages: [
+        {
+          data: [],
+          pagination: {
+            currentPage: 1,
+            totalPages: 2,
+            hasNextPage: true,
+          },
+        },
+        {
+          data: [],
+          pagination: {
+            currentPage: 2,
+            totalPages: 1,
+            hasNextPage: false,
+          },
+        },
+      ],
+    },
+  ])("rejects contradictory pagination: $name", async ({ pages }) => {
+    // Given
+    const runtime = createRuntime();
+    const getBundles = vi.fn(
+      async ({ page }: { page: number }) => pages[page - 1],
+    );
+
+    // When
+    const result = collectAnalyticsOverview({ runtime, getBundles });
+
+    // Then
+    await expect(result).rejects.toBeInstanceOf(AnalyticsBundlePaginationError);
+    expect(runtime.getBundleEventOverview).not.toHaveBeenCalled();
+  });
+
+  it("rejects a declared page count above the collection cap", async () => {
+    // Given
+    const runtime = createRuntime();
+    const getBundles = vi.fn(async () => ({
+      data: [],
+      pagination: {
+        currentPage: 1,
+        totalPages: 101,
+        hasNextPage: true,
+      },
+    }));
+
+    // When
+    const result = collectAnalyticsOverview({ runtime, getBundles });
+
+    // Then
+    await expect(result).rejects.toBeInstanceOf(AnalyticsBundlePaginationError);
+    expect(getBundles).toHaveBeenCalledOnce();
+    expect(runtime.getBundleEventOverview).not.toHaveBeenCalled();
+  });
+
+  it("rejects a page that would exceed the bundle collection cap", async () => {
+    // Given
+    const runtime = createRuntime();
+    const bundle = createBundle("bundle-a");
+    const getBundles = vi.fn(async () => ({
+      data: Array.from({ length: 10_001 }, () => bundle),
+      pagination: {
+        currentPage: 1,
+        totalPages: 1,
+        hasNextPage: false,
+      },
+    }));
+
+    // When
+    const result = collectAnalyticsOverview({ runtime, getBundles });
+
+    // Then
+    await expect(result).rejects.toBeInstanceOf(AnalyticsBundlePaginationError);
+    expect(getBundles).toHaveBeenCalledOnce();
+    expect(runtime.getBundleEventOverview).not.toHaveBeenCalled();
   });
 });

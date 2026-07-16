@@ -94,6 +94,7 @@ const countDistinctRows = (
 const findMany = async (
   client: object,
   input: FindManyDatabaseImplementationInput,
+  provider: ORMProvider,
 ): Promise<readonly DatabaseImplementationResult[]> => {
   const rawOrderBy =
     "orderBy" in input && input.orderBy
@@ -110,12 +111,12 @@ const findMany = async (
           shouldSortInMemory
             ? sortRowsByOrder(
                 (await getPrismaDelegate(client, input.model).findMany({
-                  where: createPrismaWhere(input.where as never),
+                  where: createPrismaWhere(input.where as never, provider),
                 })) as Record<string, unknown>[],
                 rawOrderBy as never,
               )
             : ((await getPrismaDelegate(client, input.model).findMany({
-                where: createPrismaWhere(input.where as never),
+                where: createPrismaWhere(input.where as never, provider),
                 ...(orderBy ? { orderBy } : {}),
               })) as Record<string, unknown>[]),
           input.distinctOn.fields,
@@ -125,12 +126,12 @@ const findMany = async (
       : shouldSortInMemory
         ? sortRowsByOrder(
             (await getPrismaDelegate(client, input.model).findMany({
-              where: createPrismaWhere(input.where as never),
+              where: createPrismaWhere(input.where as never, provider),
             })) as Record<string, unknown>[],
             rawOrderBy as never,
           ).slice(input.offset, input.offset + input.limit)
         : await getPrismaDelegate(client, input.model).findMany({
-            where: createPrismaWhere(input.where as never),
+            where: createPrismaWhere(input.where as never, provider),
             ...(orderBy ? { orderBy } : {}),
             skip: input.offset,
             take: input.limit,
@@ -209,6 +210,7 @@ const createBundleTargetUpdateWhere = (
 
 const createCrudImplementation = (
   client: object,
+  provider: ORMProvider,
 ): TransactionDatabaseAdapterImplementation => ({
   create: async (input) => {
     if (input.model === "bundles") {
@@ -270,7 +272,7 @@ const createCrudImplementation = (
   delete: async (input) => {
     if (input.model === "bundles") {
       const rows = await getPrismaDelegate(client, "bundles").findMany({
-        where: createPrismaWhere(input.where as never),
+        where: createPrismaWhere(input.where as never, provider),
       });
       const ids = parsePrismaRows(rows, parsePrismaBundleRow).map(
         ({ id }) => id,
@@ -283,23 +285,23 @@ const createCrudImplementation = (
       });
     }
     await getPrismaDelegate(client, input.model).deleteMany({
-      where: createPrismaWhere(input.where as never),
+      where: createPrismaWhere(input.where as never, provider),
     });
   },
   count: async (input) => {
     if (input.model === "bundle_events" && input.distinct) {
       const rows = (await getPrismaDelegate(client, input.model).findMany({
-        where: createPrismaWhere(input.where as never),
+        where: createPrismaWhere(input.where as never, provider),
       })) as Record<string, unknown>[];
       return countDistinctRows(rows, input.distinct);
     }
     return getPrismaDelegate(client, input.model).count({
-      where: createPrismaWhere(input.where as never),
+      where: createPrismaWhere(input.where as never, provider),
     });
   },
   findOne: async (input) => {
     const row = await getPrismaDelegate(client, input.model).findFirst({
-      where: createPrismaWhere(input.where as never),
+      where: createPrismaWhere(input.where as never, provider),
     });
     if (row === null) return null;
     switch (input.model) {
@@ -313,14 +315,15 @@ const createCrudImplementation = (
         return parsePrismaBundleEventRow(row);
     }
   },
-  findMany: (input) => findMany(client, input),
+  findMany: (input) => findMany(client, input, provider),
 });
 
 const createPrismaImplementation = (
   client: object,
   relationMode: PrismaRelationMode,
+  provider: ORMProvider,
 ): DatabaseAdapterImplementation => {
-  const crud = createCrudImplementation(client);
+  const crud = createCrudImplementation(client, provider);
   const implementation: DatabaseAdapterImplementation = {
     ...crud,
     delete: (input) => {
@@ -328,7 +331,7 @@ const createPrismaImplementation = (
         return crud.delete(input);
       }
       return runPrismaTransaction(client, relationMode, (transactionClient) =>
-        createCrudImplementation(transactionClient).delete(input),
+        createCrudImplementation(transactionClient, provider).delete(input),
       );
     },
     getUpdateInfo: createPrismaGetUpdateInfo(client),
@@ -344,11 +347,11 @@ const createPrismaImplementation = (
       input.model === "channels" || input.model === "bundle_events"
         ? crud.create(input)
         : runPrismaTransaction(client, relationMode, (transactionClient) =>
-            createCrudImplementation(transactionClient).create(input),
+            createCrudImplementation(transactionClient, provider).create(input),
           );
     implementation.update = (input) =>
       runPrismaTransaction(client, relationMode, (transactionClient) =>
-        createCrudImplementation(transactionClient).update(input),
+        createCrudImplementation(transactionClient, provider).update(input),
       );
   }
   return {
@@ -359,7 +362,7 @@ const createPrismaImplementation = (
         getPrismaDelegate(transactionClient, "bundle_patches");
         getPrismaDelegate(transactionClient, "channels");
         getPrismaDelegate(transactionClient, "bundle_events");
-        return callback(createCrudImplementation(transactionClient));
+        return callback(createCrudImplementation(transactionClient, provider));
       }),
   };
 };
@@ -375,6 +378,7 @@ export const prismaAdapter = (
         createPrismaImplementation(
           config.prisma,
           config.relationMode ?? "foreign-keys",
+          config.provider,
         ),
     }),
     {

@@ -416,13 +416,21 @@ const handleAppendBundleEvent: RouteHandler = async (
   }
   const body = await readBundleEventBody(request);
   const payload = requireBundleEventPayload(body);
-  await api.appendBundleEvent(
-    {
-      ...payload,
-      sdkVersion: request.headers.get(SDK_VERSION_HEADER),
-    } as CreateBundleEventRequest,
-    context,
-  );
+  const sdkVersionHeader = request.headers.get(SDK_VERSION_HEADER);
+  const sdkVersion = sdkVersionHeader?.trim() ?? null;
+  if (
+    sdkVersion !== null &&
+    (sdkVersion.length === 0 || sdkVersion.length > MAX_EVENT_STRING_LENGTH)
+  ) {
+    throw new HandlerBadRequestError("Invalid SDK version header");
+  }
+  const event: CreateBundleEventRequest & {
+    readonly sdkVersion: string | null;
+  } = {
+    ...payload,
+    sdkVersion,
+  };
+  await api.appendBundleEvent(event, context);
   return new Response(null, { status: 204 });
 };
 

@@ -2,8 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
+import { databaseBundleEventSupport } from "@hot-updater/plugin-core";
 import { setupDatabaseAdapterTestSuite } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
+import { expect, it } from "vitest";
 
 import { postgres } from "./postgres";
 
@@ -19,6 +21,15 @@ const getClient = (): PGlite => {
   }
   return client;
 };
+
+it("does not advertise bundle event analytics support", async () => {
+  // Given / When
+  const adapter = postgres({ connectionString: "postgres://localhost/test" });
+
+  // Then
+  expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+  await adapter.onUnmount?.();
+});
 
 setupDatabaseAdapterTestSuite({
   name: "postgres database adapter v2",

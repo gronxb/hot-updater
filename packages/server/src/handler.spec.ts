@@ -29,6 +29,19 @@ const testBundle: Bundle = {
   fingerprintHash: null,
 };
 
+const testEventPayload = {
+  type: "UPDATE_APPLIED",
+  installId: "install-1",
+  fromBundleId: "bundle-0",
+  toBundleId: "bundle-1",
+  platform: "ios",
+  appVersion: "1.0.0",
+  channel: "production",
+  cohort: "default",
+  updateStrategy: "appVersion",
+  fingerprintHash: null,
+};
+
 const createApi = () =>
   ({
     getAppUpdateInfo: vi
@@ -221,20 +234,9 @@ describe("createHandler", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Hot-Updater-SDK-Version": "0.37.0",
+          "Hot-Updater-SDK-Version": " 0.37.0 ",
         },
-        body: JSON.stringify({
-          type: "UPDATE_APPLIED",
-          installId: "install-1",
-          fromBundleId: "bundle-0",
-          toBundleId: "bundle-1",
-          platform: "ios",
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          updateStrategy: "appVersion",
-          fingerprintHash: null,
-        }),
+        body: JSON.stringify(testEventPayload),
       }),
     );
 
@@ -250,6 +252,53 @@ describe("createHandler", () => {
       undefined,
     );
   });
+
+  it("preserves a missing SDK version as null when appending an event", async () => {
+    // Given
+    const api = createApi();
+    const handler = createHandler(api, { basePath: "/hot-updater" });
+
+    // When
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(testEventPayload),
+      }),
+    );
+
+    // Then
+    expect(response.status).toBe(204);
+    expect(api.appendBundleEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ sdkVersion: null }),
+      undefined,
+    );
+  });
+
+  it.each(["   ", "x".repeat(1025)])(
+    "returns 400 before appending an invalid SDK version header %#",
+    async (sdkVersion) => {
+      // Given
+      const api = createApi();
+      const handler = createHandler(api, { basePath: "/hot-updater" });
+
+      // When
+      const response = await handler(
+        new Request("http://localhost/hot-updater/events", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Hot-Updater-SDK-Version": sdkVersion,
+          },
+          body: JSON.stringify(testEventPayload),
+        }),
+      );
+
+      // Then
+      expect(response.status).toBe(400);
+      expect(api.appendBundleEvent).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not mount event routes when the database omits the capability", async () => {
     // Given

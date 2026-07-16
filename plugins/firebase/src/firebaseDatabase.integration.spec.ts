@@ -1,5 +1,6 @@
 import {
   createDatabaseClient,
+  databaseBundleEventSupport,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 import {
@@ -28,6 +29,12 @@ const createAdapter = (): DatabaseAdapter =>
     projectId: PROJECT_ID,
     storageBucket: `${PROJECT_ID}.appspot.com`,
   });
+
+it("does not advertise bundle event support", () => {
+  const adapter = createAdapter();
+
+  expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+});
 
 setupDatabaseAdapterTestSuite({
   name: "firebase database adapter v2",

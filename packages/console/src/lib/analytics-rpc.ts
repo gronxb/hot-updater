@@ -7,6 +7,8 @@ import {
 } from "./analytics-overview";
 
 const DEFAULT_ANALYTICS_PAGE_SIZE = 100;
+const MAX_ANALYTICS_BUNDLE_PAGES = 100;
+const MAX_ANALYTICS_BUNDLES = 10_000;
 
 export type AnalyticsCapabilities = {
   readonly supportsBundleEvents: boolean;
@@ -37,6 +39,17 @@ export class AnalyticsNotSupportedError extends Error {
   }
 }
 
+export class AnalyticsBundlePaginationError extends Error {
+  readonly name = "AnalyticsBundlePaginationError";
+
+  constructor(
+    readonly requestedPage: number,
+    readonly reason: string,
+  ) {
+    super(`Invalid bundle pagination for page ${requestedPage}: ${reason}`);
+  }
+}
+
 export const getAnalyticsCapabilities = async (
   runtime: unknown,
 ): Promise<AnalyticsCapabilities> => {
@@ -55,11 +68,59 @@ const collectBundles = async (
   let page = 1;
   while (true) {
     const result = await getBundles({ limit: pageSize, page });
+    const { currentPage, hasNextPage, totalPages } = result.pagination;
+    const isEmptyFirstPage =
+      page === 1 &&
+      currentPage === 1 &&
+      totalPages === 0 &&
+      result.data.length === 0 &&
+      hasNextPage === false;
+
+    if (currentPage !== page) {
+      throw new AnalyticsBundlePaginationError(
+        page,
+        `currentPage must equal ${page}, received ${currentPage}`,
+      );
+    }
+    if (!Number.isFinite(totalPages) || !Number.isInteger(totalPages)) {
+      throw new AnalyticsBundlePaginationError(
+        page,
+        `totalPages must be a finite integer, received ${totalPages}`,
+      );
+    }
+    if (totalPages < 0) {
+      throw new AnalyticsBundlePaginationError(
+        page,
+        `totalPages must be nonnegative, received ${totalPages}`,
+      );
+    }
+    if (totalPages > MAX_ANALYTICS_BUNDLE_PAGES) {
+      throw new AnalyticsBundlePaginationError(
+        page,
+        `totalPages exceeds the ${MAX_ANALYTICS_BUNDLE_PAGES}-page limit`,
+      );
+    }
+    if (!isEmptyFirstPage && totalPages < currentPage) {
+      throw new AnalyticsBundlePaginationError(
+        page,
+        `totalPages ${totalPages} is lower than currentPage ${currentPage}`,
+      );
+    }
+    if (!isEmptyFirstPage && hasNextPage !== currentPage < totalPages) {
+      throw new AnalyticsBundlePaginationError(
+        page,
+        "hasNextPage contradicts currentPage and totalPages",
+      );
+    }
+    if (bundles.length + result.data.length > MAX_ANALYTICS_BUNDLES) {
+      throw new AnalyticsBundlePaginationError(
+        page,
+        `bundle count exceeds the ${MAX_ANALYTICS_BUNDLES}-bundle limit`,
+      );
+    }
+
     bundles.push(...result.data);
-    if (
-      !result.pagination.hasNextPage ||
-      page >= result.pagination.totalPages
-    ) {
+    if (!hasNextPage) {
       return bundles;
     }
     page += 1;

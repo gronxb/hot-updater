@@ -65,6 +65,13 @@ const createBundleEventAdapter = (
       if (operator === "in" && Array.isArray(expected)) {
         return expected.includes(actual);
       }
+      if (
+        operator === "gte" &&
+        typeof actual === "number" &&
+        typeof expected === "number"
+      ) {
+        return actual >= expected;
+      }
       return actual === expected;
     };
     let result = evaluate(firstCondition);
@@ -563,18 +570,20 @@ describe("createDatabaseAdapterCore", () => {
   it("builds bundle event analytics with cumulative series and recent events", async () => {
     // Given
     const adapter = createBundleEventAdapter();
+    const findMany = vi.spyOn(adapter, "findMany");
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
     if (!supportsBundleEvents(core.api)) {
       throw new Error("Expected bundle event support.");
     }
+    const analyticsTime = Date.UTC(2026, 0, 1, 0, 30);
     const nowValues = [
-      Date.UTC(2026, 0, 1, 0, 5, 0),
-      Date.UTC(2026, 0, 1, 0, 5, 0),
-      Date.UTC(2026, 0, 1, 0, 10, 0),
-      Date.UTC(2026, 0, 1, 0, 10, 0),
-      Date.UTC(2026, 0, 1, 0, 15, 0),
-      Date.UTC(2026, 0, 1, 0, 15, 0),
-      Date.UTC(2026, 0, 1, 0, 30, 0),
+      Date.UTC(2025, 11, 1, 0, 5),
+      Date.UTC(2025, 11, 1, 0, 5),
+      Date.UTC(2025, 11, 1, 0, 10),
+      Date.UTC(2025, 11, 1, 0, 10),
+      Date.UTC(2025, 11, 1, 0, 15),
+      Date.UTC(2025, 11, 1, 0, 15),
+      analyticsTime,
     ];
     const now = vi
       .spyOn(Date, "now")
@@ -628,11 +637,11 @@ describe("createDatabaseAdapterCore", () => {
     expect(analytics.summary).toEqual({ installed: 2, recovered: 1 });
     expect(analytics.series.installed.at(-1)).toEqual({
       bucketStartMs: Date.UTC(2026, 0, 1, 0, 0, 0),
-      value: 2,
+      value: 0,
     });
     expect(analytics.series.recovered.at(-1)).toEqual({
       bucketStartMs: Date.UTC(2026, 0, 1, 0, 0, 0),
-      value: 1,
+      value: 0,
     });
     expect(analytics.cohorts.installed).toEqual([
       { cohort: "alpha", value: 1 },
@@ -645,6 +654,23 @@ describe("createDatabaseAdapterCore", () => {
       offset: 0,
     });
     expect(analytics.recentEvents.data[0]).toMatchObject({ type: "RECOVERED" });
+    const finiteSeriesCalls = findMany.mock.calls.filter(([input]) =>
+      input.where?.some((condition) => condition.operator === "gte"),
+    );
+    expect(finiteSeriesCalls).toHaveLength(2);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.arrayContaining([
+          {
+            field: "received_at_ms",
+            operator: "gte",
+            value: Date.UTC(2025, 11, 31, 1),
+          },
+        ]),
+      }),
+      undefined,
+    );
+    expect(findMany).toHaveBeenCalledTimes(8);
     now.mockRestore();
   });
 });

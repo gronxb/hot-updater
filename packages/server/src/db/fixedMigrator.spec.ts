@@ -56,6 +56,45 @@ const createNodeSqliteKysely = (
     }),
   });
 
+const createNodeSqliteV031DatabaseWithPatch = (): DatabaseSync => {
+  const database = new DatabaseSync(":memory:");
+  database.exec("pragma foreign_keys = on");
+  database.exec(createTableStatement(bundlesV031, "sqlite"));
+  database.exec(createTableStatement(bundlePatchesV031, "sqlite"));
+  database.exec(`
+    create table private_hot_updater_settings (
+      key text primary key,
+      value text not null
+    );
+    insert into bundles (
+      id, platform, should_force_update, enabled, file_hash, channel,
+      storage_uri, target_app_version
+    ) values
+      ('bundle-1', 'ios', 0, 1, 'hash-1', 'production', 's3://bundle-1', '1.0.0'),
+      ('bundle-2', 'ios', 0, 1, 'hash-2', 'production', 's3://bundle-2', '1.0.0');
+    insert into bundle_patches (
+      id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
+      patch_storage_uri
+    ) values (
+      'patch-1', 'bundle-2', 'bundle-1', 'hash-1', 'patch-hash',
+      's3://patch-1'
+    );
+    insert into private_hot_updater_settings (key, value)
+    values ('version', '0.31.0');
+  `);
+  return database;
+};
+
+const sqlitePatchRow = {
+  id: "patch-1",
+  bundle_id: "bundle-2",
+  base_bundle_id: "bundle-1",
+  base_file_hash: "hash-1",
+  patch_file_hash: "patch-hash",
+  patch_storage_uri: "s3://patch-1",
+  order_index: 0,
+} as const;
+
 describe("createKyselyMigrator", () => {
   const databases: PGlite[] = [];
   const kyselyInstances: Kysely<SettingsDatabase>[] = [];
@@ -96,6 +135,50 @@ describe("createKyselyMigrator", () => {
         ),
       }),
     );
+  });
+
+  it("preserves SQLite bundle patches in standalone migration SQL", async () => {
+    const db = createNodeSqliteV031DatabaseWithPatch();
+    const kysely = createNodeSqliteKysely(db);
+    kyselyInstances.push(kysely);
+    const migrator = createKyselyMigrator({ db: kysely, provider: "sqlite" });
+
+    const migration = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    const migrationSql = migration.getSQL?.();
+    if (typeof migrationSql !== "string") {
+      throw new TypeError("SQLite migration did not generate standalone SQL.");
+    }
+    db.exec(migrationSql);
+
+    expect(db.prepare("select * from bundle_patches").all()).toEqual([
+      sqlitePatchRow,
+    ]);
+    expect(db.prepare("pragma foreign_keys").get()).toEqual({
+      foreign_keys: 1,
+    });
+  });
+
+  it("preserves SQLite bundle patches and foreign keys when executing", async () => {
+    const db = createNodeSqliteV031DatabaseWithPatch();
+    const kysely = createNodeSqliteKysely(db);
+    kyselyInstances.push(kysely);
+    const migrator = createKyselyMigrator({ db: kysely, provider: "sqlite" });
+
+    const migration = await migrator.migrateToLatest({
+      mode: "from-schema",
+      updateSettings: true,
+    });
+    await migration.execute();
+
+    expect(db.prepare("select * from bundle_patches").all()).toEqual([
+      sqlitePatchRow,
+    ]);
+    expect(db.prepare("pragma foreign_keys").get()).toEqual({
+      foreign_keys: 1,
+    });
   });
 
   it("rejects unknown schema versions before writing settings", async () => {

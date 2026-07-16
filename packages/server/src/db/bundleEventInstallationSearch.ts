@@ -1,5 +1,6 @@
-import type { BundleEventRow } from "@hot-updater/plugin-core";
+import type { BundleEventRow, DatabaseWhere } from "@hot-updater/plugin-core";
 
+import { latestInstallOrder, scanBundleEventRows } from "./bundleEventScan";
 import type {
   DatabaseAdapter,
   InstallationSearchRow,
@@ -19,36 +20,30 @@ const toSearchRow = (row: BundleEventRow): InstallationSearchRow => ({
   receivedAtMs: row.received_at_ms,
 });
 
-// `distinctOn` keeps the first row, so install ID is the cross-adapter page order.
-const stableLatestPerInstallOrder = [
-  { field: "install_id", direction: "asc" },
-  { field: "received_at_ms", direction: "desc" },
-  { field: "id", direction: "desc" },
-] as const;
-
-const identitySearchWhere = (query: string) =>
-  [
-    {
-      field: "username",
-      operator: "contains",
-      value: query,
-      mode: "insensitive",
-    },
-    {
-      field: "user_id",
-      operator: "contains",
-      value: query,
-      mode: "insensitive",
-      connector: "OR",
-    },
-    {
-      field: "install_id",
-      operator: "contains",
-      value: query,
-      mode: "insensitive",
-      connector: "OR",
-    },
-  ] as const;
+const identitySearchWhere = (
+  query: string,
+): readonly DatabaseWhere<"bundle_events">[] => [
+  {
+    field: "username",
+    operator: "contains",
+    value: query,
+    mode: "insensitive",
+  },
+  {
+    field: "user_id",
+    operator: "contains",
+    value: query,
+    mode: "insensitive",
+    connector: "OR",
+  },
+  {
+    field: "install_id",
+    operator: "contains",
+    value: query,
+    mode: "insensitive",
+    connector: "OR",
+  },
+];
 
 const fetchLatestRowsForInstalls = async <TContext>(
   database: DatabaseAdapter<TContext>,
@@ -56,18 +51,20 @@ const fetchLatestRowsForInstalls = async <TContext>(
   context?: TContext,
 ): Promise<readonly BundleEventRow[]> => {
   if (installIds.length === 0) return [];
-  const rows = await database.findMany(
+  const rowsByInstallId = new Map<string, BundleEventRow>();
+  let previousInstallId: string | undefined;
+  for await (const row of scanBundleEventRows(
+    database,
     {
-      model: "bundle_events",
       where: [{ field: "install_id", operator: "in", value: installIds }],
-      distinctOn: { fields: ["install_id"] },
-      orderBy: stableLatestPerInstallOrder,
-      limit: installIds.length,
-      offset: 0,
+      orderBy: latestInstallOrder,
     },
     context,
-  );
-  const rowsByInstallId = new Map(rows.map((row) => [row.install_id, row]));
+  )) {
+    if (row.install_id === previousInstallId) continue;
+    previousInstallId = row.install_id;
+    rowsByInstallId.set(row.install_id, row);
+  }
   return installIds.flatMap((installId) => {
     const row = rowsByInstallId.get(installId);
     return row ? [row] : [];
@@ -82,33 +79,30 @@ export const searchBundleEventInstallations = async <TContext>(
   context?: TContext,
 ): Promise<OffsetPaginationResult<InstallationSearchRow>> => {
   const where = query.length === 0 ? undefined : identitySearchWhere(query);
-  const total = await database.count(
-    { model: "bundle_events", where, distinct: ["install_id"] },
+  const pageSize = Math.min(Math.max(limit, 0), 100);
+  const pageInstallIds: string[] = [];
+  let previousInstallId: string | undefined;
+  let total = 0;
+  for await (const row of scanBundleEventRows(
+    database,
+    { where, orderBy: latestInstallOrder },
     context,
-  );
+  )) {
+    if (row.install_id === previousInstallId) continue;
+    previousInstallId = row.install_id;
+    if (total >= offset && pageInstallIds.length < pageSize) {
+      pageInstallIds.push(row.install_id);
+    }
+    total += 1;
+  }
   if (total === 0) {
     return { data: [], pagination: { total, limit, offset } };
   }
-
-  const pageRows = await database.findMany(
-    {
-      model: "bundle_events",
-      where,
-      distinctOn: { fields: ["install_id"] },
-      orderBy: stableLatestPerInstallOrder,
-      limit,
-      offset,
-    },
+  const latestRows = await fetchLatestRowsForInstalls(
+    database,
+    pageInstallIds,
     context,
   );
-  const latestRows =
-    query.length === 0
-      ? pageRows
-      : await fetchLatestRowsForInstalls(
-          database,
-          pageRows.map((row) => row.install_id),
-          context,
-        );
   return {
     data: latestRows.map(toSearchRow),
     pagination: { total, limit, offset },

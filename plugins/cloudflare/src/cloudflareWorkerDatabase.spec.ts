@@ -1,3 +1,4 @@
+import { databaseBundleEventSupport } from "@hot-updater/plugin-core";
 import { expect, it } from "vitest";
 
 import { d1WorkerDatabase, type D1Like } from "./cloudflareWorkerDatabase";
@@ -15,6 +16,14 @@ const db: D1Like = {
     }),
   }),
 };
+
+it("does not advertise bundle event analytics support", () => {
+  // Given / When
+  const adapter = d1WorkerDatabase<TestContext>();
+
+  // Then
+  expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+});
 
 it("resolves the D1 binding from each request context", async () => {
   const adapter = d1WorkerDatabase<TestContext>();

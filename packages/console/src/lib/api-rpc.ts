@@ -3,9 +3,14 @@ import {
   type Bundle,
   type DatabaseBundleQueryOptions,
 } from "@hot-updater/plugin-core";
-import type { BundleEventAnalyticsWindow } from "@hot-updater/server/db";
 import { createServerFn } from "@tanstack/react-start";
 
+import {
+  parseBundleEventAnalyticsInput,
+  parseBundleEventSummaryInput,
+  parseInstallationHistoryInput,
+  parseSearchInstallationsInput,
+} from "./analytics-input";
 import { DEFAULT_PAGE_LIMIT } from "./constants";
 
 type GetBundlesInput = {
@@ -19,25 +24,6 @@ type GetBundlesInput = {
 
 type GetBundleInput = {
   bundleId: string;
-};
-
-type GetBundleEventAnalyticsInput = {
-  bundleId: string;
-  window: BundleEventAnalyticsWindow;
-  limit?: number;
-  offset?: number;
-};
-
-type SearchInstallationsInput = {
-  query: string;
-  limit?: number;
-  offset?: number;
-};
-
-type GetInstallationHistoryInput = {
-  installId: string;
-  limit?: number;
-  offset?: number;
 };
 
 type GetBundleChildrenInput = {
@@ -192,7 +178,7 @@ export const getBundle = createServerFn({ method: "GET" })
   });
 
 export const getBundleEventSummary = createServerFn({ method: "GET" })
-  .inputValidator((input: GetBundleInput) => input)
+  .inputValidator(parseBundleEventSummaryInput)
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
@@ -200,7 +186,7 @@ export const getBundleEventSummary = createServerFn({ method: "GET" })
         await import("./server/runtime.server");
       const { hotUpdater } = await prepareConfig();
 
-      return await getBundleEventSummaryWithRuntime(hotUpdater, data.bundleId);
+      return await getBundleEventSummaryWithRuntime(hotUpdater, data);
     } catch (error) {
       console.error("Error during bundle event summary retrieval:", error);
       throw error;
@@ -208,7 +194,7 @@ export const getBundleEventSummary = createServerFn({ method: "GET" })
   });
 
 export const getBundleEventAnalytics = createServerFn({ method: "GET" })
-  .inputValidator((input: GetBundleEventAnalyticsInput) => input)
+  .inputValidator(parseBundleEventAnalyticsInput)
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
@@ -224,7 +210,7 @@ export const getBundleEventAnalytics = createServerFn({ method: "GET" })
   });
 
 export const searchInstallations = createServerFn({ method: "GET" })
-  .inputValidator((input: SearchInstallationsInput) => input)
+  .inputValidator(parseSearchInstallationsInput)
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");
@@ -240,7 +226,7 @@ export const searchInstallations = createServerFn({ method: "GET" })
   });
 
 export const getInstallationHistory = createServerFn({ method: "GET" })
-  .inputValidator((input: GetInstallationHistoryInput) => input)
+  .inputValidator(parseInstallationHistoryInput)
   .handler(async ({ data }) => {
     try {
       const { prepareConfig } = await import("./server/config.server");

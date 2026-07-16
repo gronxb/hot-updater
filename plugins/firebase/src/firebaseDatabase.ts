@@ -44,7 +44,6 @@ const exactId = (
 export const firebaseDatabase = (config: admin.AppOptions) =>
   createDatabaseAdapter({
     name: "firebaseDatabase",
-    supportsBundleEvents: true,
     adapter: (): DatabaseAdapterImplementation => {
       const existingApp = admin.apps.find((app) => app !== null);
       const app = existingApp ?? admin.initializeApp(config);

@@ -298,7 +298,6 @@ const createPostgresImplementation = (
 export const postgres = (config: PostgresConfig) =>
   createDatabaseAdapter({
     name: "postgres",
-    supportsBundleEvents: true,
     adapter: () => {
       const { dialect, ...poolConfig } = config;
       if (dialect !== undefined) {

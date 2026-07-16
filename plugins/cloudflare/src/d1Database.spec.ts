@@ -1,3 +1,4 @@
+import { databaseBundleEventSupport } from "@hot-updater/plugin-core";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -38,6 +39,18 @@ vi.mock("cloudflare", () => ({
 beforeEach(() => {
   state.queries.length = 0;
   state.results.length = 0;
+});
+
+it("does not advertise bundle event analytics support", () => {
+  // Given / When
+  const adapter = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+
+  // Then
+  expect(adapter[databaseBundleEventSupport]).toBeUndefined();
 });
 
 it("projects selected fields after querying physical bundle columns", async () => {

@@ -37,3 +37,8 @@ routes through the standalone repository so `hot-updater console` reports real
 installed and recovered counts for standalone backends. Snapshot-backed
 `s3Database` deliberately leaves this capability disabled because concurrent
 event writes can conflict.
+
+Analytics is currently unavailable for Cloudflare D1 and Worker D1, Firebase,
+legacy Postgres, and Supabase because their low-level APIs do not satisfy the
+complete bounded distinct/latest Analytics contract. The Console hides
+Analytics based only on capability presence, without provider-name branching.

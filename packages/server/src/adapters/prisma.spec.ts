@@ -6,6 +6,77 @@ import { createPrismaTestHarness } from "./prismaTestClient";
 
 const harness = createPrismaTestHarness();
 
+const containsMode = (value: unknown): boolean => {
+  if (Array.isArray(value)) return value.some(containsMode);
+  if (typeof value !== "object" || value === null) return false;
+  return Object.entries(value).some(
+    ([key, nested]) => key === "mode" || containsMode(nested),
+  );
+};
+
+const createModeRejectingClient = (capturedWhere: unknown[]) => {
+  const delegate = {
+    count: () => Promise.resolve(0),
+    create: () => Promise.resolve({}),
+    deleteMany: () => Promise.resolve({}),
+    findFirst: () => Promise.resolve(null),
+    findMany: (args: Readonly<Record<string, unknown>>) => {
+      const where = args["where"];
+      capturedWhere.push(where);
+      if (containsMode(where)) {
+        throw new TypeError("connector received unsupported Prisma mode");
+      }
+      return Promise.resolve([]);
+    },
+    update: () => Promise.resolve({}),
+  };
+  const client = {
+    bundles: delegate,
+    bundle_patches: delegate,
+    channels: delegate,
+    bundle_events: delegate,
+    $transaction: <TResult>(
+      callback: (transactionClient: object) => Promise<TResult>,
+    ): Promise<TResult> => callback(client),
+  };
+  return client;
+};
+
+const identityWhere = [
+  {
+    field: "username",
+    operator: "contains",
+    value: "alice",
+    mode: "insensitive",
+  },
+  {
+    field: "user_id",
+    operator: "contains",
+    value: "alice",
+    mode: "insensitive",
+    connector: "OR",
+  },
+  {
+    field: "install_id",
+    operator: "contains",
+    value: "alice",
+    mode: "insensitive",
+    connector: "OR",
+  },
+] as const;
+
+const identityPrismaWhere = {
+  OR: [
+    {
+      OR: [
+        { username: { contains: "alice" } },
+        { user_id: { contains: "alice" } },
+      ],
+    },
+    { install_id: { contains: "alice" } },
+  ],
+};
+
 setupDatabaseAdapterTestSuite({
   name: "prismaAdapter v2",
   migrate: () => undefined,
@@ -38,6 +109,50 @@ const createBundleEventRow = (
 });
 
 describe("prismaAdapter capabilities", () => {
+  it.each(["sqlite", "mysql"] as const)(
+    "omits unsupported mode and keeps identity OR predicates for %s",
+    async (provider) => {
+      // Given
+      const capturedWhere: unknown[] = [];
+      const adapter = prismaAdapter({
+        prisma: createModeRejectingClient(capturedWhere),
+        provider,
+      });
+
+      // When
+      await adapter.findMany({
+        model: "bundle_events",
+        where: identityWhere,
+      });
+
+      // Then
+      expect(capturedWhere).toEqual([identityPrismaWhere]);
+    },
+  );
+
+  it.each(["sqlite", "mysql"] as const)(
+    "threads provider into callback-transaction identity queries for %s",
+    async (provider) => {
+      // Given
+      const capturedWhere: unknown[] = [];
+      const adapter = prismaAdapter({
+        prisma: createModeRejectingClient(capturedWhere),
+        provider,
+      });
+
+      // When
+      await adapter.transaction?.((transaction) =>
+        transaction.findMany({
+          model: "bundle_events",
+          where: identityWhere,
+        }),
+      );
+
+      // Then
+      expect(capturedWhere).toEqual([identityPrismaWhere]);
+    },
+  );
+
   it("returns an adapter object instead of a callable factory", () => {
     const adapter = prismaAdapter({
       prisma: harness.client,
