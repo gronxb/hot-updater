@@ -90,21 +90,24 @@ const createHotUpdaterStore = () => {
   };
 
   const listeners = new Set<() => void>();
-
-  const EMIT_INTERVAL_MS = 32;
   let isEmitScheduled = false;
 
   const emitChange = () => {
     if (isEmitScheduled) {
       return;
     }
+
     isEmitScheduled = true;
-    setTimeout(() => {
+    const scheduleFrame =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame
+        : (callback: (timestamp: number) => void) => callback(0);
+    scheduleFrame(() => {
       isEmitScheduled = false;
       for (const listener of listeners) {
         listener();
       }
-    }, EMIT_INTERVAL_MS);
+    });
   };
 
   const normalizeDiffDetails = (

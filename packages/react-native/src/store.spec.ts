@@ -25,10 +25,18 @@ describe("hotUpdaterStore", () => {
     listeners.clear();
     vi.resetModules();
     vi.useFakeTimers();
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      (callback: (timestamp: number) => void) => {
+        setTimeout(() => callback(0), 0);
+        return 1;
+      },
+    );
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("does not notify subscribers when state values are unchanged", async () => {
