@@ -2,6 +2,7 @@ import { hotUpdaterSchemaVersions } from "../../schema";
 import type { RelationMode } from "../types";
 import type { ORMSQLProvider } from "../types";
 import { schemaIndexAppliesToProvider } from "./registry";
+import { assertExistingSchemaMetadataIsPreserved } from "./schemaDriftValidator";
 import {
   createCheckSql,
   createForeignKeySql,
@@ -145,11 +146,14 @@ const createChangedTableSql = (
   provider: ORMSQLProvider,
   relationMode: RelationMode,
 ): readonly string[] => {
+  assertExistingSchemaMetadataIsPreserved(previous, next, provider);
   const previousColumns = new Set(
     previous.columns.map((column) => column.ormName),
   );
   const previousIndexes = new Set(
-    (previous.indexes ?? []).map((index) => index.name),
+    (previous.indexes ?? [])
+      .filter((index) => schemaIndexAppliesToProvider(index, provider))
+      .map((index) => index.name),
   );
   const previousChecks = new Set(
     (previous.checks ?? []).map((check) => check.name),

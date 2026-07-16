@@ -1,16 +1,31 @@
-import type {
-  BundleEventRow,
-  DatabaseOrderBy,
-  DatabaseWhere,
-} from "@hot-updater/plugin-core";
+import type { BundleEventRow, DatabaseWhere } from "@hot-updater/plugin-core";
 
 import type { BundleEventAnalyticsWindow, DatabaseAdapter } from "./types";
 
 export const BUNDLE_EVENT_SCAN_PAGE_SIZE = 100;
 
+type ScanOrderField = {
+  readonly [TField in keyof BundleEventRow]: BundleEventRow[TField] extends
+    | string
+    | number
+    ? TField
+    : never;
+}[keyof BundleEventRow];
+
+type ScanOrderBy = readonly [
+  {
+    readonly field: ScanOrderField;
+    readonly direction: "asc" | "desc";
+  },
+  ...{
+    readonly field: ScanOrderField;
+    readonly direction: "asc" | "desc";
+  }[],
+];
+
 type ScanInput = {
   readonly where?: readonly DatabaseWhere<"bundle_events">[];
-  readonly orderBy: DatabaseOrderBy<"bundle_events">;
+  readonly orderBy: ScanOrderBy;
 };
 
 export const newestEventOrder = [
@@ -36,12 +51,40 @@ const cohortInstallOrder = [
   { field: "id", direction: "asc" },
 ] as const;
 
+const compareCodePoints = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+const compareScanValues = (
+  left: string | number,
+  right: string | number,
+): number => {
+  if (typeof left === "number") {
+    return typeof right === "number" ? left - right : -1;
+  }
+  return typeof right === "string" ? compareCodePoints(left, right) : 1;
+};
+
+const compareScanRows = (
+  left: BundleEventRow,
+  right: BundleEventRow,
+  orderBy: ScanOrderBy,
+): number => {
+  for (const clause of orderBy) {
+    const order = compareScanValues(left[clause.field], right[clause.field]);
+    if (order !== 0) {
+      return clause.direction === "asc" ? order : -order;
+    }
+  }
+  return 0;
+};
+
 export async function* scanBundleEventRows<TContext>(
   database: DatabaseAdapter<TContext>,
   input: ScanInput,
   context?: TContext,
 ): AsyncGenerator<BundleEventRow> {
   let offset = 0;
+  let lastYielded: BundleEventRow | undefined;
   while (true) {
     const rows = await database.findMany(
       {
@@ -53,9 +96,18 @@ export async function* scanBundleEventRows<TContext>(
       },
       context,
     );
-    for (const row of rows) yield row;
-    if (rows.length < BUNDLE_EVENT_SCAN_PAGE_SIZE) return;
+    for (const row of rows) {
+      if (
+        lastYielded !== undefined &&
+        compareScanRows(row, lastYielded, input.orderBy) <= 0
+      ) {
+        continue;
+      }
+      lastYielded = row;
+      yield row;
+    }
     offset += rows.length;
+    if (rows.length < BUNDLE_EVENT_SCAN_PAGE_SIZE) return;
   }
 }
 
@@ -95,9 +147,6 @@ const bucketStart = (receivedAtMs: number, sizeMs: number): number =>
   sizeMs === 60 * 60 * 1000
     ? startOfUtcHour(receivedAtMs)
     : startOfUtcDay(receivedAtMs);
-
-const compareCodePoints = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
 
 export const scanDistinctInstallations = async <TContext>(
   database: DatabaseAdapter<TContext>,
@@ -180,7 +229,10 @@ const scanSeries = async <TContext>(
   };
   for await (const row of scanBundleEventRows(
     database,
-    { where: seriesWhere, orderBy: earliestInstallOrder },
+    {
+      where: seriesWhere,
+      orderBy: earliestInstallOrder,
+    },
     context,
   )) {
     collect(row);

@@ -48,7 +48,7 @@ describe("createPrismaWhere", () => {
     },
   );
 
-  it.each(["postgresql", "mongodb"] as const)(
+  it.each(["postgresql", "mongodb", "cockroachdb"] as const)(
     "preserves insensitive string mode for %s",
     (provider) => {
       // Given

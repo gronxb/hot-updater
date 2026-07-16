@@ -21,12 +21,9 @@ const hotUpdaterConfigPath = path.join(
   "examples/v0.85.0/hot-updater.config.ts",
 );
 
-const standaloneProfileCapabilityFixtures = [
-  { profile: "standalone-s3", supportsBundleEvents: false },
-  { profile: "standalone-drizzle", supportsBundleEvents: true },
-  { profile: "standalone-prisma", supportsBundleEvents: true },
-  { profile: "standalone-mongodb", supportsBundleEvents: true },
-  { profile: "standalone-kysely", supportsBundleEvents: true },
+const bundleEventCapabilityEnvironmentFixtures = [
+  { environmentValue: undefined, expectedCapability: false },
+  { environmentValue: "true", expectedCapability: true },
 ] as const;
 
 async function readRootPackageJson(): Promise<{
@@ -59,7 +56,7 @@ function runDetoxRunnerWithEnv(
 }
 
 function loadExampleBundleEventCapability(
-  supportsBundleEvents: boolean,
+  environmentValue: string | undefined,
 ): ReturnType<typeof spawnSync> {
   return spawnSync(
     "pnpm",
@@ -82,26 +79,28 @@ function loadExampleBundleEventCapability(
         HOT_UPDATER_STANDALONE_STORAGE_BASE_URL:
           "http://127.0.0.1:3007/storage",
         HOT_UPDATER_CONTROL_BASE_URL: "http://127.0.0.1:3007/hot-updater",
-        HOT_UPDATER_E2E_SUPPORTS_BUNDLE_EVENTS: supportsBundleEvents
-          ? "true"
-          : undefined,
+        HOT_UPDATER_E2E_SUPPORTS_BUNDLE_EVENTS: environmentValue,
       },
     },
   );
 }
 
 describe("Detox E2E harness contract", () => {
-  it.each(standaloneProfileCapabilityFixtures)(
-    "$profile exposes only its declared bundle-event capability",
-    ({ supportsBundleEvents }) => {
-      // Given: the standalone profile fixture declares only the neutral capability.
-      // When: the real example config is loaded with that fixture contract.
-      const result = loadExampleBundleEventCapability(supportsBundleEvents);
+  it.each(bundleEventCapabilityEnvironmentFixtures)(
+    "maps bundle-event environment value $environmentValue to $expectedCapability",
+    ({ environmentValue, expectedCapability }) => {
+      // Given: a neutral bundle-event capability environment value.
+      const capabilityEnvironmentValue = environmentValue;
 
-      // Then: unsupported configs omit the capability and supported profiles opt in.
+      // When: the real example config is loaded with that environment value.
+      const result = loadExampleBundleEventCapability(
+        capabilityEnvironmentValue,
+      );
+
+      // Then: the config exposes exactly the capability selected by the toggle.
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
-      expect(result.stdout).toBe(String(supportsBundleEvents));
+      expect(result.stdout).toBe(String(expectedCapability));
     },
   );
 

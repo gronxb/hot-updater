@@ -215,9 +215,9 @@ describe("bundle event installation search", () => {
 });
 
 describe("bundle event analytics scanner", () => {
-  it("keeps exact aggregates and a late recent page across database pages", async () => {
+  it("skips an offset replay after a concurrent before-cursor append", async () => {
     // Given
-    const now = Date.UTC(2026, 6, 16, 12);
+    const now = Date.UTC(2026, 6, 16, 12, 30);
     vi.spyOn(Date, "now").mockReturnValue(now);
     const database = createInMemoryDatabaseAdapter();
     const repeated = Array.from({ length: 205 }, (_, index) => ({
@@ -235,10 +235,40 @@ describe("bundle event analytics scanner", () => {
     await Promise.all(
       rows.map((row) => database.create({ model: "bundle_events", data: row })),
     );
-    const count = vi.spyOn(database, "count");
-    const findMany = vi.spyOn(database, "findMany");
     const context = { requestId: "analytics-request" };
     const service = createBundleEventService(database);
+    const originalFindMany = database.findMany.bind(database);
+    let appended = false;
+    const findMany = vi
+      .spyOn(database, "findMany")
+      .mockImplementation(async (input, requestContext) => {
+        const page = await originalFindMany(input, requestContext);
+        if (
+          !appended &&
+          input.model === "bundle_events" &&
+          input.offset === 0 &&
+          page.length === 100
+        ) {
+          appended = true;
+          await service.appendBundleEvent(
+            {
+              type: "UPDATE_APPLIED",
+              installId: "install-000",
+              fromBundleId: "old-bundle",
+              toBundleId: "bundle-a",
+              platform: "ios",
+              appVersion: "1.0.0",
+              channel: "production",
+              cohort: "0",
+              updateStrategy: "appVersion",
+              fingerprintHash: null,
+            },
+            context,
+          );
+        }
+        return page;
+      });
+    const count = vi.spyOn(database, "count");
 
     // When
     const analytics = await service.getBundleEventAnalytics(
@@ -250,6 +280,7 @@ describe("bundle event analytics scanner", () => {
     );
 
     // Then
+    expect(appended).toBe(true);
     expect(analytics.summary).toEqual({ installed: 3, recovered: 2 });
     expect(analytics.cohorts).toEqual({
       installed: [
@@ -258,8 +289,20 @@ describe("bundle event analytics scanner", () => {
       ],
       recovered: [{ cohort: "1", value: 2 }],
     });
-    expect(analytics.series.installed.at(-1)?.value).toBe(3);
-    expect(analytics.series.recovered.at(-1)?.value).toBe(2);
+    expect(analytics.series.installed).toEqual(
+      Array.from({ length: 24 }, (_, index) => ({
+        bucketStartMs:
+          Date.UTC(2026, 6, 16, 12) - (23 - index) * 60 * 60 * 1000,
+        value: index < 23 ? 0 : 3,
+      })),
+    );
+    expect(analytics.series.recovered).toEqual(
+      Array.from({ length: 24 }, (_, index) => ({
+        bucketStartMs:
+          Date.UTC(2026, 6, 16, 12) - (23 - index) * 60 * 60 * 1000,
+        value: index < 23 ? 0 : 2,
+      })),
+    );
     expect(analytics.recentEvents.pagination).toEqual({
       total: 210,
       limit: 5,
@@ -278,7 +321,7 @@ describe("bundle event analytics scanner", () => {
           {
             field: "received_at_ms",
             operator: "gte",
-            value: now - 23 * 60 * 60 * 1000,
+            value: Date.UTC(2026, 6, 16, 12) - 23 * 60 * 60 * 1000,
           },
         ]),
       }),

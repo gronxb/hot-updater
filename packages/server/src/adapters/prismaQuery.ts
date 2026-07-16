@@ -36,7 +36,9 @@ const stringFilter = (
 };
 
 const supportsInsensitiveMode = (provider: ORMProvider): boolean =>
-  provider === "postgresql" || provider === "mongodb";
+  provider === "postgresql" ||
+  provider === "mongodb" ||
+  provider === "cockroachdb";
 
 const predicate = (
   where: AnyDatabaseWhere,
