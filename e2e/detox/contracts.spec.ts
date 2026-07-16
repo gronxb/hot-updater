@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { supportsBundleEventsForE2E } from "./bundleEventCapability.ts";
 import { resolveDetoxSuiteScenarioNames } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
@@ -16,11 +17,6 @@ const detoxControlServerPath = path.join(
   repoDir,
   "e2e/detox/scripts/control-server.ts",
 );
-const hotUpdaterConfigPath = path.join(
-  repoDir,
-  "examples/v0.85.0/hot-updater.config.ts",
-);
-
 const bundleEventCapabilityEnvironmentFixtures = [
   { environmentValue: undefined, expectedCapability: false },
   { environmentValue: "true", expectedCapability: true },
@@ -55,36 +51,6 @@ function runDetoxRunnerWithEnv(
   );
 }
 
-function loadExampleBundleEventCapability(
-  environmentValue: string | undefined,
-): ReturnType<typeof spawnSync> {
-  return spawnSync(
-    "pnpm",
-    [
-      "exec",
-      "tsx",
-      "-e",
-      [
-        `import config from ${JSON.stringify(hotUpdaterConfigPath)};`,
-        "const capability = Symbol.for('@hot-updater/plugin-core/database-bundle-event-service');",
-        "process.stdout.write(String(Reflect.has(config.database, capability)));",
-      ].join(" "),
-    ],
-    {
-      cwd: repoDir,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        HOT_UPDATER_E2E_ENV_TARGET_PATH: "/dev/null",
-        HOT_UPDATER_STANDALONE_STORAGE_BASE_URL:
-          "http://127.0.0.1:3007/storage",
-        HOT_UPDATER_CONTROL_BASE_URL: "http://127.0.0.1:3007/hot-updater",
-        HOT_UPDATER_E2E_SUPPORTS_BUNDLE_EVENTS: environmentValue,
-      },
-    },
-  );
-}
-
 describe("Detox E2E harness contract", () => {
   it.each(bundleEventCapabilityEnvironmentFixtures)(
     "maps bundle-event environment value $environmentValue to $expectedCapability",
@@ -92,15 +58,11 @@ describe("Detox E2E harness contract", () => {
       // Given: a neutral bundle-event capability environment value.
       const capabilityEnvironmentValue = environmentValue;
 
-      // When: the real example config is loaded with that environment value.
-      const result = loadExampleBundleEventCapability(
-        capabilityEnvironmentValue,
-      );
+      // When: the example config's capability rule receives that value.
+      const result = supportsBundleEventsForE2E(capabilityEnvironmentValue);
 
       // Then: the config exposes exactly the capability selected by the toggle.
-      expect(result.status).toBe(0);
-      expect(result.stderr).toBe("");
-      expect(result.stdout).toBe(String(expectedCapability));
+      expect(result).toBe(expectedCapability);
     },
   );
 
@@ -145,6 +107,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/update-check-visibility.spec.ts",
       "e2e/detox/control-server/update-check-visibility.ts",
       "e2e/detox/android-native.spec.ts",
+      "e2e/detox/bundleEventCapability.ts",
       "e2e/detox/contracts.spec.ts",
       "e2e/detox/control-client.spec.ts",
       "e2e/detox/control-client.ts",
