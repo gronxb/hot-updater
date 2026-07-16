@@ -260,7 +260,9 @@ row-oriented or document database with atomic inserts when Analytics is
 required.
 
 Opt-in implementations must preserve the shared bundle-event semantics, not
-only the method shapes. Appends are immutable and concurrency-safe; summaries
+only the method shapes. Appends are immutable and concurrency-safe. Every
+bounded Analytics read must also materialize one point-in-time snapshot; a
+cursor that can observe new rows between batches is not sufficient. Summaries
 count distinct installations; latest-installation search orders by event time
 and event ID; a historical username or user ID match still resolves to the
 installation's latest row; windowed activity ignores older events without

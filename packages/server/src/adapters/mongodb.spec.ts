@@ -1,5 +1,8 @@
 import { NIL_UUID } from "@hot-updater/core";
-import { createDatabaseClient } from "@hot-updater/plugin-core";
+import {
+  createDatabaseClient,
+  databaseBundleEventSupport,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -52,6 +55,7 @@ describe("mongoAdapter capabilities", () => {
     expect(adapter.adapterName).toBe("mongodb");
     expect(adapter.provider).toBe("mongodb");
     expect(adapter.transaction).toBeUndefined();
+    expect(Reflect.get(adapter, databaseBundleEventSupport)).toBeUndefined();
   });
 
   it("removes a patch inserted concurrently with bundle deletion", async () => {

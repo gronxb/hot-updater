@@ -437,7 +437,6 @@ export const mongoAdapter = (
   Object.assign(
     createDatabaseAdapter({
       name: "mongodb",
-      supportsBundleEvents: true,
       adapter: () =>
         createMongoImplementation(createCollections(config.client)),
     }),
