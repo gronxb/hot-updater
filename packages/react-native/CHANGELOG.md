@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.35.4
+
+### Patch Changes
+
+- 7cacd77: fix(react-native): coalesce progress store notifications
+  - @hot-updater/cli-tools@0.35.4
+  - @hot-updater/core@0.35.4
+  - @hot-updater/js@0.35.4
+  - @hot-updater/plugin-core@0.35.4
+
 ## 0.35.3
 
 ### Patch Changes
