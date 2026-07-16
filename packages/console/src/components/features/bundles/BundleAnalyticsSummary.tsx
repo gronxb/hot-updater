@@ -2,77 +2,74 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { TriangleAlert } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
 import { useBundleEventAnalyticsQuery } from "@/lib/api";
 
-import { BundleTransitionChart } from "./BundleTransitionChart";
+import { BundleActivityChart } from "./BundleActivityChart";
 
 interface BundleAnalyticsSummaryProps {
-  bundle: Bundle;
+  readonly bundle: Bundle;
+  readonly capability: AnalyticsCapabilityState;
 }
 
-function LifetimeMetric({
+function Metric({
   colorClassName,
   label,
   value,
 }: {
-  colorClassName: string;
-  label: string;
-  value: number;
+  readonly colorClassName: string;
+  readonly label: string;
+  readonly value: number;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <dt className="flex items-center gap-2 text-sm text-muted-foreground">
+    <div className="flex flex-col gap-1">
+      <dt className="flex items-center gap-2 text-xs text-muted-foreground">
         <span
           aria-hidden="true"
           className={`size-2 rounded-full ${colorClassName}`}
         />
         {label}
       </dt>
-      <dd className="text-3xl font-semibold tracking-tight tabular-nums">
+      <dd className="text-2xl font-semibold tracking-tight tabular-nums">
         {value}
       </dd>
     </div>
   );
 }
 
-export function BundleAnalyticsSummary({
+function SupportedBundleAnalyticsSummary({
   bundle,
-}: BundleAnalyticsSummaryProps) {
-  const { data, error, isLoading } = useBundleEventAnalyticsQuery({
-    bundleId: bundle.id,
-    window: "30d",
-    limit: 1,
-    offset: 0,
-  });
+}: {
+  readonly bundle: Bundle;
+}) {
+  const { data, error, isLoading } = useBundleEventAnalyticsQuery(
+    {
+      bundleId: bundle.id,
+      window: "30d",
+      limit: 1,
+      offset: 0,
+    },
+    true,
+  );
 
   return (
     <Card>
-      <CardHeader className="gap-1.5">
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-sm font-medium">Update activity</CardTitle>
-          <Badge variant="outline">Lifetime</Badge>
-        </div>
-        <CardDescription>
-          Distinct installations that reached or recovered from this bundle.
-        </CardDescription>
+      <CardHeader className="pb-4">
+        <CardTitle className="text-sm font-medium">Update activity</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-6">
+      <CardContent className="flex flex-col gap-4">
         {isLoading ? (
-          <div className="flex flex-col gap-6">
-            <div className="grid grid-cols-2 gap-6">
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
+          <div
+            aria-label="Loading update activity"
+            className="flex flex-col gap-4"
+          >
+            <div className="grid grid-cols-2 gap-4">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
             </div>
-            <Skeleton className="h-44 w-full" />
+            <Skeleton className="h-32 w-full" />
           </div>
         ) : error ? (
           <Alert variant="destructive">
@@ -87,23 +84,22 @@ export function BundleAnalyticsSummary({
         ) : (
           <>
             <dl className="grid grid-cols-2 divide-x divide-border/70">
-              <div className="pr-5">
-                <LifetimeMetric
+              <div className="pr-4">
+                <Metric
                   colorClassName="bg-chart-2"
                   label="Installed"
                   value={data?.summary.installed ?? 0}
                 />
               </div>
-              <div className="pl-5">
-                <LifetimeMetric
-                  colorClassName="bg-chart-1"
+              <div className="pl-4">
+                <Metric
+                  colorClassName="bg-muted-foreground"
                   label="Recovered"
                   value={data?.summary.recovered ?? 0}
                 />
               </div>
             </dl>
-
-            <BundleTransitionChart
+            <BundleActivityChart
               installed={data?.series.installed ?? []}
               recovered={data?.series.recovered ?? []}
             />
@@ -112,4 +108,15 @@ export function BundleAnalyticsSummary({
       </CardContent>
     </Card>
   );
+}
+
+export function BundleAnalyticsSummary({
+  bundle,
+  capability,
+}: BundleAnalyticsSummaryProps) {
+  if (capability.status !== "supported") {
+    return null;
+  }
+
+  return <SupportedBundleAnalyticsSummary bundle={bundle} />;
 }

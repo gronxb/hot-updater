@@ -171,52 +171,61 @@ export function useBundleQuery(bundleId: string) {
   });
 }
 
-export function useBundleEventSummaryQuery(bundleId: string) {
+export function useBundleEventSummaryQuery(bundleId: string, enabled: boolean) {
   return useQuery({
     queryKey: queryKeys.bundleEventSummary(bundleId),
     queryFn: () => getBundleEventSummaryApi({ data: { bundleId } }),
     staleTime: Infinity,
-    enabled: !!bundleId,
+    enabled: enabled && bundleId.length > 0,
   });
 }
 
-export function useBundleEventAnalyticsQuery(input: {
-  bundleId: string;
-  window: BundleEventAnalyticsWindow;
-  limit?: number;
-  offset?: number;
-}) {
+export function useBundleEventAnalyticsQuery(
+  input: {
+    bundleId: string;
+    window: BundleEventAnalyticsWindow;
+    limit?: number;
+    offset?: number;
+  },
+  enabled: boolean,
+) {
   return useQuery({
     queryKey: queryKeys.bundleEventAnalytics(input),
     queryFn: () => getBundleEventAnalyticsApi({ data: input }),
     staleTime: Infinity,
-    enabled: !!input.bundleId,
+    enabled: enabled && input.bundleId.length > 0,
   });
 }
 
-export function useInstallationSearchQuery(input: {
-  query: string;
-  limit?: number;
-  offset?: number;
-}) {
+export function useInstallationSearchQuery(
+  input: {
+    query: string;
+    limit?: number;
+    offset?: number;
+  },
+  enabled: boolean,
+) {
   return useQuery({
     queryKey: queryKeys.installations.search(input),
     queryFn: () => searchInstallationsApi({ data: input }),
     staleTime: Infinity,
-    enabled: input.query.trim().length > 0,
+    enabled: enabled && input.query.trim().length > 0,
   });
 }
 
-export function useInstallationHistoryQuery(input: {
-  installId: string;
-  limit?: number;
-  offset?: number;
-}) {
+export function useInstallationHistoryQuery(
+  input: {
+    installId: string;
+    limit?: number;
+    offset?: number;
+  },
+  enabled: boolean,
+) {
   return useQuery({
     queryKey: queryKeys.installations.history(input),
     queryFn: () => getInstallationHistoryApi({ data: input }),
     staleTime: Infinity,
-    enabled: input.installId.length > 0,
+    enabled: enabled && input.installId.length > 0,
   });
 }
 

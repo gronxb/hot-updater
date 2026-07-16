@@ -5,16 +5,24 @@ import {
   HeadContent,
   Outlet,
   Scripts,
+  useNavigate,
+  useRouterState,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/AppSidebar";
+import { AnalyticsCapabilityProvider } from "@/components/features/analytics/AnalyticsCapabilityContext";
+import { AnalyticsRouteGate } from "@/components/features/analytics/AnalyticsRouteGate";
 import { NotFoundPage } from "@/components/NotFoundPage";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import {
+  getAnalyticsCapabilityState,
+  useAnalyticsCapabilitiesQuery,
+} from "@/lib/analytics-api";
 
 import appCss from "../styles.css?url";
 
@@ -111,6 +119,28 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 }
 
 function RootLayout() {
+  const capabilityQuery = useAnalyticsCapabilitiesQuery();
+  const capability = getAnalyticsCapabilityState(capabilityQuery);
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
+  const navigate = useNavigate();
+  const redirectToBundles = useCallback(() => {
+    void navigate({
+      to: "/",
+      search: {
+        channel: undefined,
+        platform: undefined,
+        page: undefined,
+        after: undefined,
+        before: undefined,
+        bundleId: undefined,
+        expandedBundleId: undefined,
+      },
+      replace: true,
+    });
+  }, [navigate]);
+
   useEffect(() => {
     if (
       import.meta.env.DEV &&
@@ -121,11 +151,19 @@ function RootLayout() {
     }
   }, []);
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset className="min-h-0 min-w-0">
-        <Outlet />
-      </SidebarInset>
-    </SidebarProvider>
+    <AnalyticsCapabilityProvider value={capability}>
+      <SidebarProvider>
+        <AppSidebar analyticsCapability={capability} />
+        <SidebarInset className="min-h-0 min-w-0">
+          <AnalyticsRouteGate
+            capability={capability}
+            pathname={pathname}
+            onRedirect={redirectToBundles}
+          >
+            <Outlet />
+          </AnalyticsRouteGate>
+        </SidebarInset>
+      </SidebarProvider>
+    </AnalyticsCapabilityProvider>
   );
 }

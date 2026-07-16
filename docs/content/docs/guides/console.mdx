@@ -95,13 +95,13 @@ When you set the git URL, the commit hash will be clickable and redirect you to 
 
 ## Update activity
 
-Database adapters that support transition events expose Lifetime Installed and
-Lifetime Recovered counts in bundle details, together with a 30-day cumulative
-activity chart.
+Databases that expose the optional bundle-event capability show Installed and
+Recovered counts in bundle details, together with a 30-day cumulative activity
+chart.
 
 <img src={"/docs/console/update-activity.jpg"} />
 
 Use the Installations page to search by username, user ID, or installation ID
-and inspect the append-only transition history for a selected installation.
+and inspect the recorded bundle-event history for a selected installation.
 
 <img src={"/docs/console/installation-history.jpg"} />

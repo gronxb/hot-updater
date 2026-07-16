@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { History, Moon, Package, Sun } from "lucide-react";
+import { ChartNoAxesCombined, History, Moon, Package, Sun } from "lucide-react";
 
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -15,14 +15,21 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
 
-export function AppSidebar() {
+export function AppSidebar({
+  analyticsCapability,
+}: {
+  readonly analyticsCapability: AnalyticsCapabilityState;
+}) {
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
   const isBundlesActive = currentPath === "/";
+  const isAnalyticsActive = currentPath === "/analytics";
   const isInstallationsActive = currentPath === "/installations";
+  const showAnalyticsNavigation = analyticsCapability.status === "supported";
 
   return (
     <Sidebar collapsible="icon">
@@ -80,24 +87,40 @@ export function AppSidebar() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
-                  isActive={isInstallationsActive}
-                  tooltip="Installations"
-                >
-                  <Link
-                    to="/installations"
-                    search={{
-                      query: undefined,
-                      installId: undefined,
-                    }}
-                  >
-                    <History />
-                    <span>Installations</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {showAnalyticsNavigation ? (
+                <>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isAnalyticsActive}
+                      tooltip="Analytics"
+                    >
+                      <Link to="/analytics">
+                        <ChartNoAxesCombined />
+                        <span>Analytics</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isInstallationsActive}
+                      tooltip="Installations"
+                    >
+                      <Link
+                        to="/installations"
+                        search={{
+                          query: undefined,
+                          installId: undefined,
+                        }}
+                      >
+                        <History />
+                        <span>Installations</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </>
+              ) : null}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

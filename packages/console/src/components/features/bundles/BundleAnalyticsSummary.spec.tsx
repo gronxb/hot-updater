@@ -3,18 +3,22 @@ import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
+
 import { BundleAnalyticsSummary } from "./BundleAnalyticsSummary";
 
 const useBundleEventAnalyticsQueryMock = vi.fn();
 
 vi.mock("@/lib/api", () => ({
-  useBundleEventAnalyticsQuery: (input: unknown) =>
-    useBundleEventAnalyticsQueryMock(input),
+  useBundleEventAnalyticsQuery: (input: unknown, enabled: boolean) =>
+    useBundleEventAnalyticsQueryMock(input, enabled),
 }));
 
 vi.mock("@/components/ui/chart", () => ({
-  ChartContainer: ({ children }: { children: ReactNode }) => (
-    <div data-testid="transition-chart">{children}</div>
+  ChartContainer: ({ children, ...props }: { children: ReactNode }) => (
+    <div data-testid="activity-chart" {...props}>
+      {children}
+    </div>
   ),
   ChartTooltip: () => null,
   ChartTooltipContent: () => null,
@@ -63,39 +67,87 @@ const analytics = {
   },
 };
 
+const supported = { status: "supported" } as const;
+
+const capability = (
+  status: AnalyticsCapabilityState["status"],
+): AnalyticsCapabilityState => {
+  switch (status) {
+    case "error":
+      return { status, error: new Error("offline") };
+    case "supported":
+    case "unsupported":
+    case "unresolved":
+      return { status };
+  }
+};
+
 describe("BundleAnalyticsSummary", () => {
   beforeEach(() => {
     useBundleEventAnalyticsQueryMock.mockReset();
   });
 
-  afterEach(() => {
-    cleanup();
+  afterEach(cleanup);
+
+  it.each(["unresolved", "unsupported", "error"] as const)(
+    "mounts no card or query while capability is %s",
+    (status) => {
+      render(
+        <BundleAnalyticsSummary
+          bundle={bundle}
+          capability={capability(status)}
+        />,
+      );
+
+      expect(screen.queryByText("Update activity")).toBeNull();
+      expect(useBundleEventAnalyticsQueryMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("renders compact loading feedback after support is confirmed", () => {
+    useBundleEventAnalyticsQueryMock.mockReturnValue({
+      data: undefined,
+      error: null,
+      isLoading: true,
+    });
+
+    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
+
+    expect(screen.getByLabelText("Loading update activity")).toBeDefined();
   });
 
-  it("renders lifetime metrics and the 30-day cumulative chart", () => {
+  it("renders lifetime metrics and the accessible 30-day cumulative chart", () => {
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: analytics,
       error: null,
       isLoading: false,
     });
 
-    render(<BundleAnalyticsSummary bundle={bundle} />);
+    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
 
     expect(screen.getByText("Update activity")).toBeDefined();
     expect(screen.getByText("Installed")).toBeDefined();
     expect(screen.getByText("Recovered")).toBeDefined();
     expect(screen.getByText("2")).toBeDefined();
     expect(screen.getByText("1")).toBeDefined();
-    expect(screen.getByTestId("transition-chart")).toBeDefined();
-    expect(useBundleEventAnalyticsQueryMock).toHaveBeenCalledWith({
-      bundleId: bundle.id,
-      window: "30d",
-      limit: 1,
-      offset: 0,
-    });
+    expect(
+      screen.getByTestId("activity-chart").getAttribute("aria-label"),
+    ).toBe("Cumulative update activity over the last 30 days");
+    expect(screen.queryByText("Lifetime")).toBeNull();
+    expect(screen.queryByText("UTC")).toBeNull();
+    expect(screen.queryByText("30-day activity")).toBeNull();
+    expect(useBundleEventAnalyticsQueryMock).toHaveBeenCalledWith(
+      {
+        bundleId: bundle.id,
+        window: "30d",
+        limit: 1,
+        offset: 0,
+      },
+      true,
+    );
   });
 
-  it("explains when the selected window has no transition activity", () => {
+  it("explains when the selected window has no activity", () => {
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: {
         ...analytics,
@@ -115,25 +167,23 @@ describe("BundleAnalyticsSummary", () => {
       isLoading: false,
     });
 
-    render(<BundleAnalyticsSummary bundle={bundle} />);
+    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
 
-    expect(
-      screen.getByText("No transition activity in the last 30 days."),
-    ).toBeDefined();
-    expect(screen.queryByTestId("transition-chart")).toBeNull();
+    expect(screen.getByText("No activity in the last 30 days.")).toBeDefined();
+    expect(screen.queryByTestId("activity-chart")).toBeNull();
   });
 
-  it("renders analytics failures as an alert", () => {
+  it("renders supported analytics failures as an alert", () => {
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: undefined,
-      error: new Error("Analytics are not supported."),
+      error: new Error("Analytics request failed."),
       isLoading: false,
     });
 
-    render(<BundleAnalyticsSummary bundle={bundle} />);
+    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
 
     expect(screen.getByRole("alert").textContent).toContain(
-      "Analytics are not supported.",
+      "Analytics request failed.",
     );
   });
 });

@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { isAnalyticsQueryEnabled } from "@/lib/analytics-api";
 import {
   type InstallationHistoryRow,
   type InstallationSearchRow,
@@ -57,7 +59,7 @@ function formatDateTime(value: string | number | Date | null | undefined) {
   }).format(date);
 }
 
-function getCurrentBundleId(
+function getLastKnownBundleId(
   event: InstallationHistoryRow | InstallationSearchRow,
 ) {
   return "lastKnownBundleId" in event
@@ -135,6 +137,8 @@ function ResultsSkeleton() {
 }
 
 function InstallationsPage() {
+  const capability = useAnalyticsCapability();
+  const analyticsQueriesEnabled = isAnalyticsQueryEnabled(capability);
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const [draftQuery, setDraftQuery] = useState(search.query ?? "");
@@ -148,22 +152,28 @@ function InstallationsPage() {
     data: results,
     error: searchError,
     isLoading: isSearchLoading,
-  } = useInstallationSearchQuery({
-    query,
-    limit: SEARCH_LIMIT,
-    offset: 0,
-  });
+  } = useInstallationSearchQuery(
+    {
+      query,
+      limit: SEARCH_LIMIT,
+      offset: 0,
+    },
+    analyticsQueriesEnabled,
+  );
 
   const selectedInstallId = search.installId ?? "";
   const {
     data: history,
     error: historyError,
     isLoading: isHistoryLoading,
-  } = useInstallationHistoryQuery({
-    installId: selectedInstallId,
-    limit: HISTORY_LIMIT,
-    offset: 0,
-  });
+  } = useInstallationHistoryQuery(
+    {
+      installId: selectedInstallId,
+      limit: HISTORY_LIMIT,
+      offset: 0,
+    },
+    analyticsQueriesEnabled,
+  );
 
   const selectedInstallation = useMemo(
     () =>
@@ -229,8 +239,7 @@ function InstallationsPage() {
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
               Search by username, user ID, or installation ID to inspect the
-              latest known installation state and append-only transition
-              history.
+              latest known installation state and recorded bundle-event history.
             </CardContent>
           </Card>
         ) : isSearchLoading ? (
@@ -250,14 +259,14 @@ function InstallationsPage() {
                       <TableRow className="hover:bg-transparent">
                         <TableHead>Installation</TableHead>
                         <TableHead>User</TableHead>
-                        <TableHead>Current Bundle</TableHead>
+                        <TableHead>Last known bundle</TableHead>
                         <TableHead>Last Event</TableHead>
                         <TableHead>Updated (UTC)</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {results.data.map((event: InstallationSearchRow) => {
-                        const currentBundleId = getCurrentBundleId(event);
+                        const currentBundleId = getLastKnownBundleId(event);
 
                         const isSelected =
                           event.installId === selectedInstallId;
@@ -334,7 +343,7 @@ function InstallationsPage() {
                     <>
                       <div className="border-b px-6 py-4 text-sm">
                         <div className="font-medium text-foreground">
-                          Latest known state
+                          Latest reported state
                         </div>
                         <div className="mt-2 space-y-1 text-muted-foreground">
                           <div>
@@ -348,13 +357,13 @@ function InstallationsPage() {
                             )}
                           </div>
                           <div>
-                            Current bundle:{" "}
-                            {getCurrentBundleId(
+                            Last known bundle:{" "}
+                            {getLastKnownBundleId(
                               selectedInstallation ?? history.data[0],
                             ) ? (
                               <BundleIdDisplay
                                 bundleId={
-                                  getCurrentBundleId(
+                                  getLastKnownBundleId(
                                     selectedInstallation ?? history.data[0],
                                   ) as string
                                 }

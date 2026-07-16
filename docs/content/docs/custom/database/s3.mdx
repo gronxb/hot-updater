@@ -110,8 +110,10 @@ export default defineConfig({
 
 The server automatically creates these endpoints:
 
-Transition-event ingestion, analytics, and installation-history endpoints are
-not mounted for `s3Database`.
+Bundle-event ingestion, analytics, and installation-history endpoints are not
+mounted because this snapshot adapter does not expose the optional
+bundle-event capability. Independent append writes are unsafe for its snapshot
+storage model.
 
 | Method | Endpoint                                                                              | Description                                                         |
 | ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |

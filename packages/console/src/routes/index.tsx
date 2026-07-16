@@ -2,6 +2,7 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
+import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
 import { BundleEditorSheet } from "@/components/features/bundles/BundleEditorSheet";
 import { BundlesTable } from "@/components/features/bundles/BundlesTable";
 import { FilterToolbar } from "@/components/features/bundles/FilterToolbar";
@@ -37,6 +38,7 @@ export const Route = createFileRoute("/")({
 });
 
 function BundlesPage() {
+  const analyticsCapability = useAnalyticsCapability();
   const { filters, bundleId, setBundleId } = useFilterParams();
   const [expandedBundleId, setExpandedBundleId] = useState<
     string | undefined
@@ -105,6 +107,7 @@ function BundlesPage() {
       </div>
 
       <BundleEditorSheet
+        capability={analyticsCapability}
         bundleId={bundleId}
         bundle={selectedBundle}
         loading={isSelectedBundleLoading}
