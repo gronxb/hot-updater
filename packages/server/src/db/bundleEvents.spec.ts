@@ -46,14 +46,15 @@ const insertRows = async (rows: readonly BundleEventRow[]) => {
   return database;
 };
 
-const expectBoundedScannerCalls = (
+const expectSingleMaterialization = (
   findMany: ReturnType<typeof vi.fn>,
 ): void => {
-  for (const [input] of findMany.mock.calls) {
-    expect(input).not.toHaveProperty("distinctOn");
-    expect(input.limit).toBeLessThanOrEqual(100);
-    expect(Number.isFinite(input.limit)).toBe(true);
-  }
+  expect(findMany).toHaveBeenCalledOnce();
+  expect(findMany.mock.calls[0]?.[0]).toMatchObject({
+    model: "bundle_events",
+    limit: 50_001,
+    offset: 0,
+  });
 };
 
 describe("bundle event installation search", () => {
@@ -87,7 +88,14 @@ describe("bundle event installation search", () => {
       "install-c",
     ]);
     expect(firstPage.data[0]?.lastKnownBundleId).toBe("latest-a");
-    expectBoundedScannerCalls(findMany);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    for (const [input] of findMany.mock.calls) {
+      expect(input).toMatchObject({
+        model: "bundle_events",
+        limit: 50_001,
+        offset: 0,
+      });
+    }
   });
 
   it("returns the latest row when a historical identity matches", async () => {
@@ -122,7 +130,7 @@ describe("bundle event installation search", () => {
     ]);
   });
 
-  it("finds a late historical-identity page across database pages", async () => {
+  it("finds a late historical-identity page from one materialization", async () => {
     // Given
     const database = createInMemoryDatabaseAdapter();
     const installIds = Array.from(
@@ -165,31 +173,21 @@ describe("bundle event installation search", () => {
     expect(
       result.data.map(({ lastKnownBundleId }) => lastKnownBundleId),
     ).toEqual(installIds.slice(200).map((id) => `latest-${id}`));
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: [
-          {
-            field: "install_id",
-            operator: "in",
-            value: installIds.slice(200),
-          },
-          {
-            field: "received_at_ms",
-            operator: "lt",
-            value: expect.any(Number),
-          },
-        ],
-      }),
-      context,
-    );
+    expectSingleMaterialization(findMany);
+    expect(findMany.mock.calls[0]?.[0].where).toEqual([
+      {
+        field: "received_at_ms",
+        operator: "lt",
+        value: expect.any(Number),
+      },
+    ]);
     expect(count).not.toHaveBeenCalledWith(
       expect.objectContaining({ distinct: expect.anything() }),
       context,
     );
-    expectBoundedScannerCalls(findMany);
   });
 
-  it("aggregates a latest-install group that crosses database pages", async () => {
+  it("aggregates repeated installation rows without adjacency", async () => {
     // Given
     const database = createInMemoryDatabaseAdapter();
     const crossingGroup = Array.from({ length: 205 }, (_, index) =>
@@ -220,15 +218,8 @@ describe("bundle event installation search", () => {
       ],
     });
     expect(count).not.toHaveBeenCalled();
-    expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        model: "bundle_events",
-        limit: 100,
-        offset: 0,
-      }),
-      context,
-    );
-    expectBoundedScannerCalls(findMany);
+    expectSingleMaterialization(findMany);
+    expect(findMany.mock.calls[0]?.[1]).toBe(context);
   });
 });
 
@@ -261,7 +252,7 @@ describe("bundle event activity series", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps deep analytics stable across concurrent cursor appends", async () => {
+  it("keeps analytics stable across an append after materialization", async () => {
     // Given
     const now = Date.UTC(2026, 6, 16, 12, 30);
     vi.spyOn(Date, "now").mockReturnValue(now);
@@ -284,18 +275,14 @@ describe("bundle event activity series", () => {
       .spyOn(database, "findMany")
       .mockImplementation(async (input, context) => {
         const page = await originalFindMany(input, context);
-        if (
-          !appended &&
-          input.model === "bundle_events" &&
-          page.length === 100
-        ) {
+        if (!appended && input.model === "bundle_events") {
           appended = true;
           await Promise.all(
             [
-              createEvent("a-concurrent-installed", now, { cohort: "0" }),
-              createEvent("z-concurrent-installed", now + 1, { cohort: "z" }),
-              createRecoveredEvent("a-concurrent-recovered", now),
-              createRecoveredEvent("z-concurrent-recovered", now + 1),
+              createEvent("a-concurrent-installed", now - 600, { cohort: "0" }),
+              createEvent("z-concurrent-installed", now - 599, { cohort: "z" }),
+              createRecoveredEvent("a-concurrent-recovered", now - 598),
+              createRecoveredEvent("z-concurrent-recovered", now - 597),
             ].map((data) => database.create({ model: "bundle_events", data })),
           );
         }
@@ -337,13 +324,11 @@ describe("bundle event activity series", () => {
     expect(
       analytics.recentEvents.data.map(({ receivedAtMs }) => receivedAtMs),
     ).toEqual([now - 991, now - 992, now - 993, now - 994, now - 995]);
-    for (const [input] of findMany.mock.calls) {
-      if (input.model !== "bundle_events") continue;
-      expect(input.where?.at(-1)).toEqual({
-        field: "received_at_ms",
-        operator: "lt",
-        value: now,
-      });
-    }
+    expectSingleMaterialization(findMany);
+    expect(findMany.mock.calls[0]?.[0].where?.at(-1)).toEqual({
+      field: "received_at_ms",
+      operator: "lt",
+      value: now,
+    });
   });
 });

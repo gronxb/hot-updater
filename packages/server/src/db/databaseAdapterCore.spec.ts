@@ -662,23 +662,21 @@ describe("createDatabaseAdapterCore", () => {
       offset: 0,
     });
     expect(analytics.recentEvents.data[0]).toMatchObject({ type: "RECOVERED" });
-    const finiteSeriesCalls = findMany.mock.calls.filter(([input]) =>
-      input.where?.some((condition) => condition.operator === "gte"),
-    );
-    expect(finiteSeriesCalls).toHaveLength(2);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.arrayContaining([
+        limit: 50_001,
+        offset: 0,
+        where: [
           {
             field: "received_at_ms",
-            operator: "gte",
-            value: Date.UTC(2025, 11, 31, 1),
+            operator: "lt",
+            value: Date.UTC(2026, 0, 1, 0, 30),
           },
-        ]),
+        ],
       }),
       undefined,
     );
-    expect(findMany).toHaveBeenCalledTimes(8);
+    expect(findMany).toHaveBeenCalledOnce();
     now.mockRestore();
   });
 });

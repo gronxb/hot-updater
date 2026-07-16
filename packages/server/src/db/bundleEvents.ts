@@ -1,15 +1,13 @@
 import { createUUIDv7 } from "@hot-updater/plugin-core";
-import type { BundleEventRow } from "@hot-updater/plugin-core";
+import type { BundleEventRow, DatabaseWhere } from "@hot-updater/plugin-core";
 
 import { searchBundleEventInstallations } from "./bundleEventInstallationSearch";
-import { scanRecentBundleEvents } from "./bundleEventRecentScan";
+import { collectRecentBundleEvents } from "./bundleEventRecentScan";
 import {
-  latestInstallOrder,
-  newestEventOrder,
-  scanBundleEventActivity,
-  scanBundleEventRows,
-  scanDistinctInstallations,
-  withBundleEventCutoff,
+  collectBundleEventActivity,
+  compareBundleEventNewest,
+  compareCodePoints,
+  materializeBundleEventRows,
 } from "./bundleEventScan";
 import type { BundleEventScanScope } from "./bundleEventScan";
 import type {
@@ -25,9 +23,6 @@ import type {
 } from "./types";
 
 const EVENT_HEADER = "Hot-Updater-SDK-Version";
-
-const compareCodePoints = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
 
 const toHistoryRow = (row: BundleEventRow): InstallationHistoryRow => ({
   id: row.id,
@@ -51,26 +46,21 @@ const getSdkVersion = (
   if (typeof sdkVersion === "string" || sdkVersion === null) {
     return sdkVersion ?? null;
   }
-  if (typeof context !== "object" || context === null) {
-    return null;
-  }
+  if (typeof context !== "object" || context === null) return null;
   const request = Reflect.get(context, "request");
-  if (!(request instanceof Request)) {
-    return null;
-  }
-  return request.headers.get(EVENT_HEADER);
+  return request instanceof Request ? request.headers.get(EVENT_HEADER) : null;
 };
 
-const createWhereForBundle = (bundleId: string) => ({
-  installed: [
-    { field: "type", value: "UPDATE_APPLIED" as const },
-    { field: "to_bundle_id", value: bundleId },
-  ] as const,
-  recovered: [
-    { field: "type", value: "RECOVERED" as const },
-    { field: "from_bundle_id", value: bundleId },
-  ] as const,
-});
+const isInstalledForBundle = (row: BundleEventRow, bundleId: string): boolean =>
+  row.type === "UPDATE_APPLIED" && row.to_bundle_id === bundleId;
+
+const isRecoveredFromBundle = (
+  row: BundleEventRow,
+  bundleId: string,
+): boolean => row.type === "RECOVERED" && row.from_bundle_id === bundleId;
+
+const countDistinctInstallations = (rows: readonly BundleEventRow[]): number =>
+  new Set(rows.map(({ install_id }) => install_id)).size;
 
 export const createBundleEventService = <TContext>(
   database: DatabaseAdapter<TContext>,
@@ -108,17 +98,19 @@ export const createBundleEventService = <TContext>(
     bundleId: string,
     context?: TContext,
   ): Promise<BundleEventSummary> {
-    const scope: BundleEventScanScope<TContext> = {
+    const rows = await materializeBundleEventRows({
       database,
       cutoffMs: Date.now(),
       context,
+    });
+    return {
+      installed: countDistinctInstallations(
+        rows.filter((row) => isInstalledForBundle(row, bundleId)),
+      ),
+      recovered: countDistinctInstallations(
+        rows.filter((row) => isRecoveredFromBundle(row, bundleId)),
+      ),
     };
-    const where = createWhereForBundle(bundleId);
-    const [installed, recovered] = await Promise.all([
-      scanDistinctInstallations(scope, { where: where.installed }),
-      scanDistinctInstallations(scope, { where: where.recovered }),
-    ]);
-    return { installed, recovered };
   },
 
   async getBundleEventAnalytics(
@@ -128,42 +120,40 @@ export const createBundleEventService = <TContext>(
     offset: number,
     context?: TContext,
   ): Promise<BundleEventAnalyticsResult> {
-    const where = createWhereForBundle(bundleId);
     const scope: BundleEventScanScope<TContext> = {
       database,
       cutoffMs: Date.now(),
       context,
     };
-    const [installed, recovered, recent] = await Promise.all([
-      scanBundleEventActivity(scope, { where: where.installed, window }),
-      scanBundleEventActivity(scope, { where: where.recovered, window }),
-      scanRecentBundleEvents(scope, {
-        installedWhere: where.installed,
-        recoveredWhere: where.recovered,
-        limit,
-        offset,
-      }),
-    ]);
+    const rows = await materializeBundleEventRows(scope);
+    const installedRows = rows.filter((row) =>
+      isInstalledForBundle(row, bundleId),
+    );
+    const recoveredRows = rows.filter((row) =>
+      isRecoveredFromBundle(row, bundleId),
+    );
+    const installed = collectBundleEventActivity({
+      rows: installedRows,
+      window,
+      cutoffMs: scope.cutoffMs,
+    });
+    const recovered = collectBundleEventActivity({
+      rows: recoveredRows,
+      window,
+      cutoffMs: scope.cutoffMs,
+    });
+    const recent = collectRecentBundleEvents({
+      rows: [...installedRows, ...recoveredRows],
+      limit,
+      offset,
+    });
     return {
-      summary: {
-        installed: installed.summary,
-        recovered: recovered.summary,
-      },
-      series: {
-        installed: installed.series,
-        recovered: recovered.series,
-      },
-      cohorts: {
-        installed: installed.cohorts,
-        recovered: recovered.cohorts,
-      },
+      summary: { installed: installed.summary, recovered: recovered.summary },
+      series: { installed: installed.series, recovered: recovered.series },
+      cohorts: { installed: installed.cohorts, recovered: recovered.cohorts },
       recentEvents: {
         data: recent.rows.map(toHistoryRow),
-        pagination: {
-          total: recent.total,
-          limit,
-          offset,
-        },
+        pagination: { total: recent.total, limit, offset },
       },
     };
   },
@@ -171,24 +161,24 @@ export const createBundleEventService = <TContext>(
   async getBundleEventOverview(
     context?: TContext,
   ): Promise<BundleEventOverview> {
-    const scope: BundleEventScanScope<TContext> = {
+    const rows = await materializeBundleEventRows({
       database,
       cutoffMs: Date.now(),
       context,
-    };
+    });
+    const latestByInstall = new Map<string, BundleEventRow>();
+    for (const row of rows) {
+      const current = latestByInstall.get(row.install_id);
+      if (!current || compareBundleEventNewest(row, current) < 0) {
+        latestByInstall.set(row.install_id, row);
+      }
+    }
     const counts = new Map<string, number>();
-    let previousInstallId: string | undefined;
-    let trackedInstallations = 0;
-    for await (const row of scanBundleEventRows(scope, {
-      orderBy: latestInstallOrder,
-    })) {
-      if (row.install_id === previousInstallId) continue;
-      previousInstallId = row.install_id;
-      trackedInstallations += 1;
+    for (const row of latestByInstall.values()) {
       counts.set(row.to_bundle_id, (counts.get(row.to_bundle_id) ?? 0) + 1);
     }
     return {
-      trackedInstallations,
+      trackedInstallations: latestByInstall.size,
       bundles: [...counts]
         .map(([bundleId, installations]) => ({ bundleId, installations }))
         .sort(
@@ -205,16 +195,12 @@ export const createBundleEventService = <TContext>(
     offset: number,
     context?: TContext,
   ): Promise<OffsetPaginationResult<InstallationSearchRow>> {
-    const scope: BundleEventScanScope<TContext> = {
+    const rows = await materializeBundleEventRows({
       database,
       cutoffMs: Date.now(),
       context,
-    };
-    return searchBundleEventInstallations(scope, {
-      query,
-      limit,
-      offset,
     });
+    return searchBundleEventInstallations({ rows, query, limit, offset });
   },
 
   async getInstallationHistory(
@@ -223,31 +209,17 @@ export const createBundleEventService = <TContext>(
     offset: number,
     context?: TContext,
   ): Promise<OffsetPaginationResult<InstallationHistoryRow>> {
-    const scope: BundleEventScanScope<TContext> = {
-      database,
-      cutoffMs: Date.now(),
-      context,
-    };
-    const where = withBundleEventCutoff(
-      [{ field: "install_id", value: installId }],
-      scope.cutoffMs,
+    const where: readonly DatabaseWhere<"bundle_events">[] = [
+      { field: "install_id", value: installId },
+    ];
+    const rows = await materializeBundleEventRows(
+      { database, cutoffMs: Date.now(), context },
+      where,
     );
-    const [total, rows] = await Promise.all([
-      scope.database.count({ model: "bundle_events", where }, scope.context),
-      scope.database.findMany(
-        {
-          model: "bundle_events",
-          where,
-          orderBy: newestEventOrder,
-          limit,
-          offset,
-        },
-        scope.context,
-      ),
-    ]);
+    const ordered = [...rows].sort(compareBundleEventNewest);
     return {
-      data: rows.map(toHistoryRow),
-      pagination: { total, limit, offset },
+      data: ordered.slice(offset, offset + limit).map(toHistoryRow),
+      pagination: { total: ordered.length, limit, offset },
     };
   },
 });

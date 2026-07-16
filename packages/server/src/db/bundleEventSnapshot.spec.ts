@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
 import { createBundleEventService } from "./bundleEvents";
-import { scanBundleEventRows } from "./bundleEventScan";
+import { materializeBundleEventRows } from "./bundleEventScan";
 
 const cutoffMs = Date.UTC(2026, 6, 17, 12);
 
@@ -30,9 +30,7 @@ const createEvent = (
   ...overrides,
 });
 
-const insertRows = async (
-  rows: readonly BundleEventRow[],
-): Promise<ReturnType<typeof createInMemoryDatabaseAdapter>> => {
+const insertRows = async (rows: readonly BundleEventRow[]) => {
   const database = createInMemoryDatabaseAdapter();
   await Promise.all(
     rows.map((data) => database.create({ model: "bundle_events", data })),
@@ -40,8 +38,16 @@ const insertRows = async (
   return database;
 };
 
+const createDeferred = () => {
+  let resolve = (): void => undefined;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+};
+
 describe("bundle event immutable snapshots", () => {
-  it("appends a strict cutoff without mutating the caller input", async () => {
+  it("applies a strict cutoff without mutating the caller input", async () => {
     // Given
     const database = await insertRows([
       createEvent("before", cutoffMs - 1),
@@ -51,41 +57,32 @@ describe("bundle event immutable snapshots", () => {
     const where = Object.freeze([
       Object.freeze({ field: "cohort", value: "m" } as const),
     ]);
-    const request = {
-      where,
-      orderBy: [{ field: "received_at_ms", direction: "asc" }],
-    } as const;
 
     // When
-    const rows: BundleEventRow[] = [];
-    for await (const row of scanBundleEventRows(
+    const rows = await materializeBundleEventRows(
       { database, cutoffMs },
-      request,
-    ))
-      rows.push(row);
+      where,
+    );
 
     // Then
     expect(rows.map(({ install_id }) => install_id)).toEqual(["before"]);
-    expect(request.where).toBe(where);
-    expect(request.where).toEqual([{ field: "cohort", value: "m" }]);
+    expect(where).toEqual([{ field: "cohort", value: "m" }]);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: [
           { field: "cohort", value: "m" },
-          {
-            field: "received_at_ms",
-            operator: "lt",
-            value: cutoffMs,
-          },
+          { field: "received_at_ms", operator: "lt", value: cutoffMs },
         ],
       }),
       undefined,
     );
   });
 
-  it("captures Date.now once for every public read request", async () => {
+  it("captures Date.now once and issues one bounded read per public request", async () => {
     // Given
     const database = createInMemoryDatabaseAdapter();
+    const findMany = vi.spyOn(database, "findMany");
+    const count = vi.spyOn(database, "count");
     const service = createBundleEventService(database);
     const now = vi.spyOn(Date, "now").mockReturnValue(cutoffMs);
     const requests = [
@@ -99,12 +96,21 @@ describe("bundle event immutable snapshots", () => {
     // When / Then
     for (const request of requests) {
       now.mockClear();
+      findMany.mockClear();
+      count.mockClear();
       await request();
-      expect(now).toHaveBeenCalledTimes(1);
+      expect(now).toHaveBeenCalledOnce();
+      expect(findMany).toHaveBeenCalledOnce();
+      expect(count).not.toHaveBeenCalled();
+      expect(findMany.mock.calls[0]?.[0]).toMatchObject({
+        model: "bundle_events",
+        limit: 50_001,
+        offset: 0,
+      });
     }
   });
 
-  it("shares one snapshot across both installation-search passes", async () => {
+  it("excludes a pre-cutoff append suspended after statement materialization", async () => {
     // Given
     vi.spyOn(Date, "now").mockReturnValue(cutoffMs);
     const database = await insertRows([
@@ -115,54 +121,74 @@ describe("bundle event immutable snapshots", () => {
       }),
     ]);
     const originalFindMany = database.findMany.bind(database);
-    let appended = false;
+    const statementMaterialized = createDeferred();
+    const releaseStatement = createDeferred();
     const findMany = vi
       .spyOn(database, "findMany")
       .mockImplementation(async (input, context) => {
-        if (appended || input.model !== "bundle_events") {
-          return originalFindMany(input, context);
-        }
-        const isSecondPass = input.where?.length === 2;
-        if (isSecondPass) {
-          appended = true;
-          await database.create({
-            model: "bundle_events",
-            data: createEvent("install-a", cutoffMs, {
-              username: "concurrent-name",
-              to_bundle_id: "concurrent-bundle",
-            }),
-          });
-        }
-        return originalFindMany(input, context);
+        const rows = await originalFindMany(input, context);
+        statementMaterialized.resolve();
+        await releaseStatement.promise;
+        return rows;
       });
     const service = createBundleEventService(database);
 
     // When
-    const result = await service.searchInstallations("historical", 20, 0);
+    const pending = service.searchInstallations("historical", 20, 0);
+    await statementMaterialized.promise;
+    await database.create({
+      model: "bundle_events",
+      data: createEvent("install-a", cutoffMs - 1, {
+        id: "concurrent-event",
+        username: "concurrent-name",
+        to_bundle_id: "concurrent-bundle",
+      }),
+    });
+    releaseStatement.resolve();
+    const result = await pending;
 
     // Then
-    expect(appended).toBe(true);
     expect(result.data).toMatchObject([
       { username: "current-name", lastKnownBundleId: "current-bundle" },
     ]);
-    expect(findMany.mock.calls[0]?.[0]).toMatchObject({
-      where: [
-        { field: "username" },
-        { field: "user_id", connector: "OR" },
-        { field: "install_id", connector: "OR" },
-        { field: "received_at_ms", operator: "lt", value: cutoffMs },
-      ],
-    });
+    expect(findMany).toHaveBeenCalledOnce();
   });
 
-  it("uses the same strict cutoff for history count and rows", async () => {
+  it("deduplicates mixed-case installation ids without collation adjacency", async () => {
+    // Given
+    vi.spyOn(Date, "now").mockReturnValue(cutoffMs);
+    const database = await insertRows([
+      createEvent("a", cutoffMs - 4, { to_bundle_id: "old-lower" }),
+      createEvent("A", cutoffMs - 3, { to_bundle_id: "old-upper" }),
+      createEvent("a", cutoffMs - 2, { to_bundle_id: "new-lower" }),
+      createEvent("A", cutoffMs - 1, { to_bundle_id: "new-upper" }),
+    ]);
+    const service = createBundleEventService(database);
+
+    // When
+    const search = await service.searchInstallations("", 20, 0);
+    const overview = await service.getBundleEventOverview();
+
+    // Then
+    expect(
+      search.data.map(({ installId, lastKnownBundleId }) => ({
+        installId,
+        lastKnownBundleId,
+      })),
+    ).toEqual([
+      { installId: "A", lastKnownBundleId: "new-upper" },
+      { installId: "a", lastKnownBundleId: "new-lower" },
+    ]);
+    expect(overview.trackedInstallations).toBe(2);
+  });
+
+  it("uses the same strict cutoff for history totals and rows", async () => {
     // Given
     vi.spyOn(Date, "now").mockReturnValue(cutoffMs);
     const database = await insertRows([
       createEvent("install-a", cutoffMs - 1),
       createEvent("install-a", cutoffMs),
     ]);
-    const count = vi.spyOn(database, "count");
     const findMany = vi.spyOn(database, "findMany");
     const service = createBundleEventService(database);
 
@@ -170,15 +196,18 @@ describe("bundle event immutable snapshots", () => {
     const result = await service.getInstallationHistory("install-a", 20, 0);
 
     // Then
-    const expectedWhere = [
-      { field: "install_id", value: "install-a" },
-      { field: "received_at_ms", operator: "lt", value: cutoffMs },
-    ];
     expect(result.pagination.total).toBe(1);
     expect(result.data.map(({ receivedAtMs }) => receivedAtMs)).toEqual([
       cutoffMs - 1,
     ]);
-    expect(count.mock.calls[0]?.[0]).toMatchObject({ where: expectedWhere });
-    expect(findMany.mock.calls[0]?.[0]).toMatchObject({ where: expectedWhere });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: [
+          { field: "install_id", value: "install-a" },
+          { field: "received_at_ms", operator: "lt", value: cutoffMs },
+        ],
+      }),
+      undefined,
+    );
   });
 });
