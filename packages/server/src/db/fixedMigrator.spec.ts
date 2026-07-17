@@ -126,7 +126,7 @@ describe("createKyselyMigrator", () => {
     });
 
     expect(migration.getSQL?.()).toContain(
-      "insert into private_hot_updater_settings (key, value) values ('version', '0.37.0')",
+      "insert into private_hot_updater_settings (key, value) values ('version', '0.38.0')",
     );
     expect(migration.operations).not.toContainEqual(
       expect.objectContaining({
@@ -361,7 +361,7 @@ describe("createKyselyMigrator", () => {
     });
     await retry.execute();
 
-    expect(await migrator.getVersion()).toBe("0.37.0");
+    expect(await migrator.getVersion()).toBe("0.38.0");
     const migrated = await db.query<{ channel_id: string }>(
       "select channel_id from bundles",
     );
@@ -421,7 +421,7 @@ describe("createKyselyMigrator", () => {
     });
     await retry.execute();
 
-    expect(await migrator.getVersion()).toBe("0.37.0");
+    expect(await migrator.getVersion()).toBe("0.38.0");
     expect(db.prepare("pragma foreign_keys").get()).toEqual({
       foreign_keys: 1,
     });

@@ -120,7 +120,9 @@ For complete server setup guides, see [S3 Database Adapter](/docs/custom/databas
   writes to shared metadata, and concurrent reports can conflict because the
   adapter replaces an S3 snapshot for each mutation. The server therefore does
   not mount the event, analytics, or installation-history routes for this
-  adapter. Use a row-oriented database adapter if you need these features.
+  adapter. The Console detects the missing capability and omits the related
+  navigation and requests without checking the adapter name. Use a row-oriented
+  database adapter if you need these features.
 </Callout>
 
 ## CloudFront Cache Invalidation

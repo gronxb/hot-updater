@@ -164,3 +164,80 @@ describe("createSchemaMigrationSql schema drift validation", () => {
     expect(migrate).toThrowError(location);
   });
 });
+
+describe("0.37.0 to 0.38.0 explicit SQL migration", () => {
+  it.each([
+    ["sqlite", "create table bundle_events_v038"],
+    [
+      "postgresql",
+      "alter table bundle_events alter column from_bundle_id drop not null",
+    ],
+    [
+      "cockroachdb",
+      "alter table bundle_events alter column update_strategy drop not null",
+    ],
+    [
+      "mysql",
+      "alter table bundle_events modify column from_bundle_id char(36) null",
+    ],
+    [
+      "mssql",
+      "alter table bundle_events alter column from_bundle_id uniqueidentifier null",
+    ],
+  ] as const)(
+    "generates %s-specific operations",
+    async (provider, expected) => {
+      // Given
+      vi.resetModules();
+      const { createSchemaMigrationSql } = await import("./sqlMigrations");
+
+      // When
+      const statements = createSchemaMigrationSql("0.37.0", "0.38.0", provider);
+
+      // Then
+      expect(
+        statements.some((statement) => statement.startsWith(expected)),
+      ).toBe(true);
+    },
+  );
+
+  it("rebuilds SQLite bundle_events and restores every existing index", async () => {
+    // Given
+    vi.resetModules();
+    const { createSchemaMigrationSql } = await import("./sqlMigrations");
+
+    // When
+    const statements = createSchemaMigrationSql("0.37.0", "0.38.0", "sqlite");
+
+    // Then
+    expect(statements).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("insert into bundle_events_v038"),
+        "drop table bundle_events",
+        "alter table bundle_events_v038 rename to bundle_events",
+        "create index bundle_events_install_idx on bundle_events(install_id, received_at_ms, id)",
+        "pragma foreign_key_check",
+      ]),
+    );
+  });
+
+  it("makes the non-transactional MySQL constraint replacement retryable", async () => {
+    // Given
+    vi.resetModules();
+    const { createSchemaMigrationSql } = await import("./sqlMigrations");
+
+    // When
+    const statements = createSchemaMigrationSql("0.37.0", "0.38.0", "mysql");
+
+    // Then
+    expect(statements).toEqual(
+      expect.arrayContaining([
+        "alter table bundle_events alter check bundle_events_type_check not enforced",
+        "alter table bundle_events alter check bundle_events_update_strategy_check not enforced",
+        expect.stringContaining(
+          "add constraint bundle_events_shape_v038_check check",
+        ),
+      ]),
+    );
+  });
+});

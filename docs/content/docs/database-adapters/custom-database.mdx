@@ -255,13 +255,22 @@ Analytics is required.
 
 Record implementations must preserve the shared bundle-event semantics, not
 only the method shapes. Appends are immutable and concurrency-safe. Summaries
-count distinct installations; latest-installation search orders by event time
-and event ID; a historical username or user ID match still resolves to the
-installation's latest row; windowed activity ignores older events without
-suppressing a later event inside the requested window; and overview aggregation
-counts each installation once while retaining unknown bundle IDs. Run the
-public adapter conformance tests and focused bundle-event semantic tests against
-the real backend.
+count distinct installations and include only applied/recovered transitions;
+latest-installation search orders by event time and event ID; a historical
+username or user ID match still resolves to the installation's latest row;
+and active overview aggregation counts each installation once while retaining
+unknown bundle IDs. All app-ready outcomes, including unchanged launches,
+qualify for active overview. Routine unchanged reports never appear in update
+history or Installed/Recovered totals. Run the public adapter conformance tests
+and focused bundle-event semantic tests against the real backend.
+
+Active windows are half-open server-receipt ranges for 24 hours, 7 days, or
+30 days. The latest row for each installation ID determines its reported
+bundle. An optional user ID is an exact, case-sensitive filter on that latest
+row; it remains metadata and never becomes the distinct key. The shared CRUD
+fallback applies the window predicate before enforcing its 50,000 matching-row
+limit. These metrics describe received app-ready reports, not people, online
+devices, complete fleet state, or rollout completion.
 
 The public `POST /events` handler rejects bodies above 16 KiB with `413` and
 string fields above 1024 characters with `400`. Preserve these limits in custom
@@ -419,3 +428,9 @@ The fixed-model database adapter API fully replaces the legacy adapter API. Ther
 
 For non-transactional providers, plan the data migration and retry behavior
 around the documented sequential, potentially partial-write fallback.
+
+When adding Analytics to an existing server, migrate the event schema and
+deploy the server before enabling client reporting. Schema version 0.38.0
+accepts `UPDATE_APPLIED` and `RECOVERED` with non-null transition fields, and
+`UNCHANGED` with a non-null current `to_bundle_id` plus null
+`from_bundle_id`/`update_strategy`.

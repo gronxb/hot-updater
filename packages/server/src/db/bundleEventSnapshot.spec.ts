@@ -10,8 +10,10 @@ const cutoffMs = Date.UTC(2026, 6, 17, 12);
 const createEvent = (
   installId: string,
   receivedAtMs: number,
-  overrides: Partial<BundleEventRow> = {},
-): BundleEventRow => ({
+  overrides: Partial<
+    Extract<BundleEventRow, { readonly type: "UPDATE_APPLIED" }>
+  > = {},
+): Extract<BundleEventRow, { readonly type: "UPDATE_APPLIED" }> => ({
   id: `${installId}-${receivedAtMs}`,
   type: "UPDATE_APPLIED",
   install_id: installId,
@@ -204,6 +206,11 @@ describe("bundle event immutable snapshots", () => {
       expect.objectContaining({
         where: [
           { field: "install_id", value: "install-a" },
+          {
+            field: "type",
+            operator: "in",
+            value: ["UPDATE_APPLIED", "RECOVERED"],
+          },
           { field: "received_at_ms", operator: "lt", value: cutoffMs },
         ],
       }),

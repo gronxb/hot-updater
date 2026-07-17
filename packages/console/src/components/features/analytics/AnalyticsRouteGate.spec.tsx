@@ -96,7 +96,7 @@ describe("AnalyticsRouteGate", () => {
       return <div>Protected content</div>;
     };
 
-    render(
+    const { container } = render(
       <AnalyticsRouteGate
         pathname="/installations"
         capability={{ status: "error", error: new Error("Network offline") }}
@@ -110,6 +110,7 @@ describe("AnalyticsRouteGate", () => {
     expect(
       screen.getByRole("link", { name: /back to bundles/i }),
     ).toBeDefined();
+    expect(container.querySelector("main")).toBeNull();
     expect(protectedMount).not.toHaveBeenCalled();
   });
 });

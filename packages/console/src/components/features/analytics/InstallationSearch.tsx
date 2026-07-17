@@ -63,7 +63,7 @@ export function InstallationSearch({
     <Card>
       <CardHeader>
         <CardTitle className="text-sm font-medium">
-          Find an installation
+          <h2>Installation inspector</h2>
         </CardTitle>
         <CardDescription>
           Search by username, user ID, or install ID to inspect its last known
@@ -110,7 +110,7 @@ export function InstallationSearch({
 
         {!queryEnabled ? (
           <p className="text-sm text-muted-foreground">
-            Enter a username, user ID, or install ID to search tracked reports.
+            Enter a username, user ID, or install ID to search received reports.
           </p>
         ) : isLoading ? (
           <div

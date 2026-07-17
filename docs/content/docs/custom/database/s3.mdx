@@ -71,7 +71,9 @@ bundle metadata as JSON objects in your S3 bucket.
 <Callout type="warn">
   `s3Database` does not support OTA analytics. It replaces a shared
   metadata snapshot for each mutation, so concurrent event reports can cause
-  write conflicts. Use a row-oriented database adapter for analytics.
+  write conflicts. Use a row-oriented database adapter for analytics. The
+  Console hides Analytics and installation surfaces because the capability is
+  absent, not because it recognizes the S3 adapter name.
 </Callout>
 
 ## CLI Configuration

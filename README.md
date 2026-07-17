@@ -51,7 +51,8 @@
     database adapters such as D1
   - **Version Control**: Robust app version management through semantic versioning
   - **New Architecture**: Support for new architecture like React Native
-  - **Analytics**: Optional Installed/Recovered OTA evidence plus per-install last-known bundle history
+  - **Analytics**: Optional app-ready activity, update outcomes, and
+    per-install last-known bundle history
 
 
 
@@ -72,7 +73,13 @@
 
   ## OTA Analytics
 
-  Hot Updater can optionally record successful OTA applications and automatic recoveries as bundle events. The runtime keeps this opt-in behind `HotUpdater.init({ analytics: true })`; when the configured database exposes the optional Analytics capability, the Console surfaces Installed/Recovered activity plus per-install last-known bundle history.
+  Hot Updater can optionally report app-ready outcomes, including unchanged
+  launches, applied updates, and automatic recoveries. The runtime keeps this
+  opt-in behind `HotUpdater.init({ analytics: true })`. When the configured
+  database exposes the optional Analytics capability, the Console shows recent
+  active installations by install ID, latest reported bundles, update outcomes,
+  and per-install history. Snapshot-backed databases such as S3 leave this
+  capability disabled.
 
   See the React Native/runtime docs and Console/server guides at https://hot-updater.dev for full setup.
 

@@ -1,6 +1,7 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { createServerFn } from "@tanstack/react-start";
 
+import { parseActiveInstallationInput } from "./analytics-input";
 import {
   type AnalyticsOverview,
   createAnalyticsOverviewFromCounts,
@@ -170,3 +171,15 @@ export const getAnalyticsOverviewRpc = createServerFn({
     getBundles: (options) => databaseClient.getBundles(options),
   });
 });
+
+export const getActiveInstallationOverviewRpc = createServerFn({
+  method: "GET",
+})
+  .validator(parseActiveInstallationInput)
+  .handler(async ({ data }) => {
+    const { prepareConfig } = await import("./server/config.server");
+    const { getActiveInstallationOverview } =
+      await import("./server/runtime.server");
+    const { hotUpdater } = await prepareConfig();
+    return getActiveInstallationOverview(hotUpdater, data);
+  });

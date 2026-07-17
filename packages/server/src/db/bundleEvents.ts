@@ -1,20 +1,28 @@
-import { createUUIDv7 } from "@hot-updater/plugin-core";
 import type { BundleEventRow, DatabaseWhere } from "@hot-updater/plugin-core";
 
+import { collectActiveInstallationOverview } from "./bundleEventActiveOverview";
 import { searchBundleEventInstallations } from "./bundleEventInstallationSearch";
+import { createBundleEventRow } from "./bundleEventPersistence";
 import { collectRecentBundleEvents } from "./bundleEventRecentScan";
 import {
   collectBundleEventActivity,
   compareBundleEventNewest,
   compareCodePoints,
+  materializeActiveBundleEventRows,
   materializeBundleEventRows,
 } from "./bundleEventScan";
 import type { BundleEventScanScope } from "./bundleEventScan";
+import {
+  isTransitionBundleEventRow,
+  type TransitionBundleEventRow,
+} from "./bundleEventTransitions";
 import type {
   BundleEventAnalyticsResult,
   BundleEventAnalyticsWindow,
   BundleEventOverview,
   BundleEventSummary,
+  ActiveInstallationOverview,
+  ActiveInstallationWindow,
   CreateBundleEventRequest,
   DatabaseAdapter,
   InstallationHistoryRow,
@@ -22,9 +30,9 @@ import type {
   OffsetPaginationResult,
 } from "./types";
 
-const EVENT_HEADER = "Hot-Updater-SDK-Version";
-
-const toHistoryRow = (row: BundleEventRow): InstallationHistoryRow => ({
+const toHistoryRow = (
+  row: TransitionBundleEventRow,
+): InstallationHistoryRow => ({
   id: row.id,
   type: row.type,
   fromBundleId: row.from_bundle_id,
@@ -38,26 +46,17 @@ const toHistoryRow = (row: BundleEventRow): InstallationHistoryRow => ({
   receivedAtMs: row.received_at_ms,
 });
 
-const getSdkVersion = (
-  input: CreateBundleEventRequest,
-  context: unknown,
-): string | null => {
-  const sdkVersion = Reflect.get(input, "sdkVersion");
-  if (typeof sdkVersion === "string" || sdkVersion === null) {
-    return sdkVersion ?? null;
-  }
-  if (typeof context !== "object" || context === null) return null;
-  const request = Reflect.get(context, "request");
-  return request instanceof Request ? request.headers.get(EVENT_HEADER) : null;
-};
-
-const isInstalledForBundle = (row: BundleEventRow, bundleId: string): boolean =>
+const isInstalledForBundle = (
+  row: BundleEventRow,
+  bundleId: string,
+): row is Extract<BundleEventRow, { readonly type: "UPDATE_APPLIED" }> =>
   row.type === "UPDATE_APPLIED" && row.to_bundle_id === bundleId;
 
 const isRecoveredFromBundle = (
   row: BundleEventRow,
   bundleId: string,
-): boolean => row.type === "RECOVERED" && row.from_bundle_id === bundleId;
+): row is Extract<BundleEventRow, { readonly type: "RECOVERED" }> =>
+  row.type === "RECOVERED" && row.from_bundle_id === bundleId;
 
 const countDistinctInstallations = (rows: readonly BundleEventRow[]): number =>
   new Set(rows.map(({ install_id }) => install_id)).size;
@@ -72,23 +71,7 @@ export const createBundleEventService = <TContext>(
     await database.create(
       {
         model: "bundle_events",
-        data: {
-          id: createUUIDv7(),
-          type: input.type,
-          install_id: input.installId,
-          user_id: input.userId ?? null,
-          username: input.username ?? null,
-          from_bundle_id: input.fromBundleId,
-          to_bundle_id: input.toBundleId,
-          platform: input.platform,
-          app_version: input.appVersion,
-          channel: input.channel,
-          cohort: input.cohort,
-          update_strategy: input.updateStrategy,
-          fingerprint_hash: input.fingerprintHash,
-          sdk_version: getSdkVersion(input, context),
-          received_at_ms: Date.now(),
-        },
+        data: createBundleEventRow(input, context),
       },
       context,
     );
@@ -126,11 +109,15 @@ export const createBundleEventService = <TContext>(
       context,
     };
     const rows = await materializeBundleEventRows(scope);
-    const installedRows = rows.filter((row) =>
-      isInstalledForBundle(row, bundleId),
+    const installedRows = rows.filter(
+      (
+        row,
+      ): row is Extract<BundleEventRow, { readonly type: "UPDATE_APPLIED" }> =>
+        isInstalledForBundle(row, bundleId),
     );
-    const recoveredRows = rows.filter((row) =>
-      isRecoveredFromBundle(row, bundleId),
+    const recoveredRows = rows.filter(
+      (row): row is Extract<BundleEventRow, { readonly type: "RECOVERED" }> =>
+        isRecoveredFromBundle(row, bundleId),
     );
     const installed = collectBundleEventActivity({
       rows: installedRows,
@@ -166,8 +153,8 @@ export const createBundleEventService = <TContext>(
       cutoffMs: Date.now(),
       context,
     });
-    const latestByInstall = new Map<string, BundleEventRow>();
-    for (const row of rows) {
+    const latestByInstall = new Map<string, TransitionBundleEventRow>();
+    for (const row of rows.filter(isTransitionBundleEventRow)) {
       const current = latestByInstall.get(row.install_id);
       if (!current || compareBundleEventNewest(row, current) < 0) {
         latestByInstall.set(row.install_id, row);
@@ -189,6 +176,26 @@ export const createBundleEventService = <TContext>(
     };
   },
 
+  async getActiveInstallationOverview(
+    input: {
+      readonly window: ActiveInstallationWindow;
+      readonly userId?: string;
+    },
+    context?: TContext,
+  ): Promise<ActiveInstallationOverview> {
+    const asOfMs = Date.now();
+    const rows = await materializeActiveBundleEventRows(
+      { database, cutoffMs: asOfMs, context },
+      input.window,
+    );
+    return collectActiveInstallationOverview({
+      rows,
+      asOfMs,
+      window: input.window,
+      ...(input.userId === undefined ? {} : { userId: input.userId }),
+    });
+  },
+
   async searchInstallations(
     query: string,
     limit: number,
@@ -200,7 +207,12 @@ export const createBundleEventService = <TContext>(
       cutoffMs: Date.now(),
       context,
     });
-    return searchBundleEventInstallations({ rows, query, limit, offset });
+    return searchBundleEventInstallations({
+      rows: rows.filter(isTransitionBundleEventRow),
+      query,
+      limit,
+      offset,
+    });
   },
 
   async getInstallationHistory(
@@ -211,12 +223,19 @@ export const createBundleEventService = <TContext>(
   ): Promise<OffsetPaginationResult<InstallationHistoryRow>> {
     const where: readonly DatabaseWhere<"bundle_events">[] = [
       { field: "install_id", value: installId },
+      {
+        field: "type",
+        operator: "in",
+        value: ["UPDATE_APPLIED", "RECOVERED"],
+      },
     ];
     const rows = await materializeBundleEventRows(
       { database, cutoffMs: Date.now(), context },
       where,
     );
-    const ordered = [...rows].sort(compareBundleEventNewest);
+    const ordered = rows
+      .filter(isTransitionBundleEventRow)
+      .toSorted(compareBundleEventNewest);
     return {
       data: ordered.slice(offset, offset + limit).map(toHistoryRow),
       pagination: { total: ordered.length, limit, offset },

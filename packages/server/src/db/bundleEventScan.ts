@@ -1,6 +1,11 @@
 import type { BundleEventRow, DatabaseWhere } from "@hot-updater/plugin-core";
 
+import {
+  ACTIVE_BUNDLE_EVENT_TYPES,
+  getActiveWindowDefinition,
+} from "./bundleEventActiveOverview";
 import type { BundleEventAnalyticsWindow, DatabaseAdapter } from "./types";
+import type { ActiveInstallationWindow } from "./types";
 
 export const BUNDLE_EVENT_SCAN_MAX_ROWS = 50_000;
 export const BUNDLE_EVENT_MATERIALIZATION_LIMIT =
@@ -61,6 +66,26 @@ export const materializeBundleEventRows = async <TContext>(
     throw new BundleEventScanLimitExceededError(BUNDLE_EVENT_SCAN_MAX_ROWS);
   }
   return rows;
+};
+
+export const materializeActiveBundleEventRows = async <TContext>(
+  scope: BundleEventScanScope<TContext>,
+  window: ActiveInstallationWindow,
+): Promise<readonly BundleEventRow[]> => {
+  const definition = getActiveWindowDefinition(window);
+  const durationMs = definition.bucketCount * definition.bucketSizeMs;
+  return materializeBundleEventRows(scope, [
+    {
+      field: "received_at_ms",
+      operator: "gte",
+      value: scope.cutoffMs - durationMs,
+    },
+    {
+      field: "type",
+      operator: "in",
+      value: ACTIVE_BUNDLE_EVENT_TYPES,
+    },
+  ]);
 };
 
 const startOfUtcHour = (value: number): number => {

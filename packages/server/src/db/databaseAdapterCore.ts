@@ -185,6 +185,11 @@ export function createDatabaseAdapterCore<TContext = unknown>(
             return bundleEvents.getBundleEventOverview(context);
           },
 
+          async getActiveInstallationOverview(input, context) {
+            await beforeOperation?.();
+            return bundleEvents.getActiveInstallationOverview(input, context);
+          },
+
           async searchInstallations(query, limit, offset, context) {
             await beforeOperation?.();
             return bundleEvents.searchInstallations(

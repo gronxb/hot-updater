@@ -1,9 +1,8 @@
-import {
-  createDatabaseAdapterCrud,
-  createTransactionDatabaseAdapter,
-} from "./databaseAdapterCrud";
+import { createDatabaseAdapterCrud } from "./databaseAdapterCrud";
+import { createTransactionDatabaseAdapter } from "./databaseAdapterTransaction";
 import {
   databaseAnalyticsSupport,
+  databaseBundleEventService,
   type DatabaseAdapter,
   type DatabaseAdapterImplementation,
 } from "./types";
@@ -18,9 +17,17 @@ export interface CreateDatabaseAdapterOptions<TContext = unknown> {
   readonly adapter: () => DatabaseAdapterImplementation<TContext>;
 }
 
+export type DatabaseAdapterBase<TContext = unknown> = Omit<
+  DatabaseAdapter<TContext>,
+  typeof databaseAnalyticsSupport | typeof databaseBundleEventService
+> & {
+  readonly [databaseAnalyticsSupport]?: never;
+  readonly [databaseBundleEventService]?: never;
+};
+
 export const createDatabaseAdapterBase = <TContext = unknown>(
   options: CreateDatabaseAdapterOptions<TContext>,
-): DatabaseAdapter<TContext> => {
+): DatabaseAdapterBase<TContext> => {
   const implementation = options.adapter();
   const transaction = implementation.transaction;
   return {

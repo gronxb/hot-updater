@@ -63,8 +63,14 @@ describe("InstallationSearch", () => {
     render(<InstallationSearch capability={supported} />);
 
     expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: "Installation inspector",
+      }),
+    ).toBeDefined();
+    expect(
       screen.getByText(
-        "Enter a username, user ID, or install ID to search tracked reports.",
+        "Enter a username, user ID, or install ID to search received reports.",
       ),
     ).toBeDefined();
     expect(useInstallationSearchQueryMock).toHaveBeenCalledWith(

@@ -1,3 +1,4 @@
+import type { ActiveInstallationWindow } from "@hot-updater/plugin-core";
 import type { BundleEventAnalyticsWindow } from "@hot-updater/server/db";
 
 const MAX_ANALYTICS_STRING_LENGTH = 1024;
@@ -23,6 +24,11 @@ export type InstallationHistoryInput = {
   readonly installId: string;
   readonly limit?: number;
   readonly offset?: number;
+};
+
+export type ActiveInstallationInput = {
+  readonly window: ActiveInstallationWindow;
+  readonly userId?: string;
 };
 
 type AnalyticsPagination = {
@@ -106,6 +112,40 @@ const parseWindow = (
     return value;
   }
   throw new AnalyticsInputValidationError("window");
+};
+
+const parseActiveWindow = (
+  input: Record<string, unknown>,
+): ActiveInstallationWindow => {
+  const value = input.window;
+  if (value === "24h" || value === "7d" || value === "30d") {
+    return value;
+  }
+  throw new AnalyticsInputValidationError("window");
+};
+
+const parseOptionalUserId = (
+  input: Record<string, unknown>,
+): string | undefined => {
+  if (input.userId === undefined) return undefined;
+  if (typeof input.userId !== "string") {
+    throw new AnalyticsInputValidationError("userId");
+  }
+  const userId = input.userId.trim();
+  if (userId.length === 0) return undefined;
+  if (userId.length > MAX_ANALYTICS_STRING_LENGTH) {
+    throw new AnalyticsInputValidationError("userId");
+  }
+  return userId;
+};
+
+export const parseActiveInstallationInput = (
+  input: unknown,
+): ActiveInstallationInput => {
+  const record = parseRecord(input);
+  const window = parseActiveWindow(record);
+  const userId = parseOptionalUserId(record);
+  return userId === undefined ? { window } : { window, userId };
 };
 
 export const parseBundleEventSummaryInput = (

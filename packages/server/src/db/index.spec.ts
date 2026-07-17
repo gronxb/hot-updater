@@ -438,7 +438,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(code).toContain('@@unique([name], map: "channels_name_key")');
       expect(code).toContain("channel_id String @db.VarChar(255)");
       expect(code).toContain('metadata Json @default("{}")');
-      expect(code).toContain('value String @default("0.37.0")');
+      expect(code).toContain('value String @default("0.38.0")');
+      expect(code).toContain("from_bundle_id String? @db.Uuid");
+      expect(code).toContain("update_strategy String?");
       expect(code).toContain(
         'channelRef channels @relation("channels_bundles_channel"',
       );
@@ -523,7 +525,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         'id: varchar("id", { length: 255 }).primaryKey().notNull()',
       );
       expect(generatedCode).toContain(
-        'version: varchar("version", { length: 255 }).notNull().default("0.37.0")',
+        'version: varchar("version", { length: 255 }).notNull().default("0.38.0")',
+      );
+      expect(generatedCode).toContain('from_bundle_id: uuid("from_bundle_id")');
+      expect(generatedCode).not.toContain(
+        'from_bundle_id: uuid("from_bundle_id").notNull()',
+      );
+      expect(generatedCode).toContain(
+        'update_strategy: text("update_strategy")',
       );
       expect(generatedCode).not.toContain('key: varchar("key"');
       expect(generatedCode).not.toContain('value: text("value"');
@@ -538,6 +547,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         "0.31.0",
         "0.36.0",
         "0.37.0",
+        "0.38.0",
       ]);
 
       const v029Sql = createSchemaMigrationSql(
@@ -702,7 +712,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         const version = await migrationDb.query<{ value: string }>(
           "select value from private_hot_updater_settings where key = 'version'",
         );
-        expect(version.rows[0]?.value).toBe("0.37.0");
+        expect(version.rows[0]?.value).toBe("0.38.0");
         await migrationDb.query(
           "select rollout_cohort_count, target_cohorts, manifest_storage_uri from bundles limit 0",
         );

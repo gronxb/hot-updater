@@ -103,13 +103,13 @@ export const bundle_events = pgTable("bundle_events", {
   install_id: text("install_id").notNull(),
   user_id: text("user_id"),
   username: text("username"),
-  from_bundle_id: uuid("from_bundle_id").notNull(),
+  from_bundle_id: uuid("from_bundle_id"),
   to_bundle_id: uuid("to_bundle_id").notNull(),
   platform: text("platform").notNull(),
   app_version: text("app_version").notNull(),
   channel: text("channel").notNull(),
   cohort: text("cohort").notNull(),
-  update_strategy: text("update_strategy").notNull(),
+  update_strategy: text("update_strategy"),
   fingerprint_hash: text("fingerprint_hash"),
   sdk_version: text("sdk_version"),
   received_at_ms: doublePrecision("received_at_ms").notNull()
@@ -125,5 +125,5 @@ export const bundle_events = pgTable("bundle_events", {
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
-  version: varchar("version", { length: 255 }).notNull().default("0.37.0")
+  version: varchar("version", { length: 255 }).notNull().default("0.38.0")
 })

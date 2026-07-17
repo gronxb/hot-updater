@@ -9,6 +9,7 @@ import {
 } from "@hot-updater/server/db";
 
 import {
+  parseActiveInstallationInput,
   parseBundleEventAnalyticsInput,
   parseBundleEventSummaryInput,
   parseInstallationHistoryInput,
@@ -19,7 +20,6 @@ export type InstallationSearchResult =
   OffsetPaginationResult<InstallationSearchRow>;
 export type InstallationHistoryResult =
   OffsetPaginationResult<InstallationHistoryRow>;
-
 export function createRuntimeHotUpdater(config: ConfigResponse) {
   return createHotUpdater({
     database: config.database,
@@ -49,6 +49,17 @@ export async function getBundleEventSummary<TContext = unknown>(
     bundleId,
     context,
   );
+}
+
+export async function getActiveInstallationOverview<TContext = unknown>(
+  hotUpdater: unknown,
+  input: unknown,
+  context?: HotUpdaterContext<TContext>,
+) {
+  const parsed = parseActiveInstallationInput(input);
+  return requireAnalyticsSupport<TContext>(
+    hotUpdater,
+  ).getActiveInstallationOverview(parsed, context);
 }
 
 export async function getBundleEventAnalytics<TContext = unknown>(

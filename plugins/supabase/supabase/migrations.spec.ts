@@ -26,7 +26,7 @@ describe("Supabase RLS migration", () => {
       .filter((file) => file.endsWith(".sql"))
       .sort();
 
-    expect(migrations.at(-1)).toBe(path.basename(databaseV2MigrationPath));
+    expect(migrations.at(-1)).toBe("20260717231241_hot-updater_0.38.0_rls.sql");
 
     const sql = await fs.readFile(databaseV2MigrationPath, "utf8");
     expect(sql).toContain("CREATE OR REPLACE FUNCTION public.get_channels");

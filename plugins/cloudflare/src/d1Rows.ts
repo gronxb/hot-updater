@@ -124,34 +124,74 @@ const channelRow = (row: Record<string, unknown>): ChannelRow => ({
 
 const bundleEventRow = (row: Record<string, unknown>): BundleEventRow => {
   const type = stringValue(row, "type", "bundle_events");
-  const updateStrategy = stringValue(row, "update_strategy", "bundle_events");
-  const platform = stringValue(row, "platform", "bundle_events");
-  if (type !== "UPDATE_APPLIED" && type !== "RECOVERED") {
+  const fromBundleId = nullableString(row, "from_bundle_id", "bundle_events");
+  const updateStrategy = nullableString(
+    row,
+    "update_strategy",
+    "bundle_events",
+  );
+  const platformValue = stringValue(row, "platform", "bundle_events");
+  if (platformValue !== "ios" && platformValue !== "android") {
     throw new InvalidD1RowError("bundle_events");
   }
-  if (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion") {
-    throw new InvalidD1RowError("bundle_events");
-  }
-  if (platform !== "ios" && platform !== "android") {
-    throw new InvalidD1RowError("bundle_events");
-  }
-  return {
+  const platform = platformValue === "ios" ? "ios" : "android";
+  const common = {
     id: stringValue(row, "id", "bundle_events"),
-    type,
     install_id: stringValue(row, "install_id", "bundle_events"),
     user_id: nullableString(row, "user_id", "bundle_events"),
     username: nullableString(row, "username", "bundle_events"),
-    from_bundle_id: stringValue(row, "from_bundle_id", "bundle_events"),
     to_bundle_id: stringValue(row, "to_bundle_id", "bundle_events"),
-    platform,
     app_version: stringValue(row, "app_version", "bundle_events"),
     channel: stringValue(row, "channel", "bundle_events"),
     cohort: stringValue(row, "cohort", "bundle_events"),
-    update_strategy: updateStrategy,
     fingerprint_hash: nullableString(row, "fingerprint_hash", "bundle_events"),
     sdk_version: nullableString(row, "sdk_version", "bundle_events"),
     received_at_ms: numberValue(row, "received_at_ms", "bundle_events"),
   };
+
+  switch (type) {
+    case "UNCHANGED":
+      if (fromBundleId !== null || updateStrategy !== null) {
+        throw new InvalidD1RowError("bundle_events");
+      }
+      return {
+        ...common,
+        platform,
+        type: "UNCHANGED",
+        from_bundle_id: null,
+        update_strategy: null,
+      };
+    case "UPDATE_APPLIED":
+      if (
+        fromBundleId === null ||
+        (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion")
+      ) {
+        throw new InvalidD1RowError("bundle_events");
+      }
+      return {
+        ...common,
+        platform,
+        type: "UPDATE_APPLIED",
+        from_bundle_id: fromBundleId,
+        update_strategy: updateStrategy,
+      };
+    case "RECOVERED":
+      if (
+        fromBundleId === null ||
+        (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion")
+      ) {
+        throw new InvalidD1RowError("bundle_events");
+      }
+      return {
+        ...common,
+        platform,
+        type: "RECOVERED",
+        from_bundle_id: fromBundleId,
+        update_strategy: updateStrategy,
+      };
+    default:
+      throw new InvalidD1RowError("bundle_events");
+  }
 };
 
 export function parseD1Row(model: "bundles", value: unknown): BundleRow;

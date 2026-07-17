@@ -1,16 +1,15 @@
-import type { BundleEventRow } from "@hot-updater/plugin-core";
-
 import { compareBundleEventNewest, compareCodePoints } from "./bundleEventScan";
+import type { TransitionBundleEventRow } from "./bundleEventTransitions";
 import type { InstallationSearchRow, OffsetPaginationResult } from "./types";
 
 type InstallationSearchRequest = {
-  readonly rows: readonly BundleEventRow[];
+  readonly rows: readonly TransitionBundleEventRow[];
   readonly query: string;
   readonly limit: number;
   readonly offset: number;
 };
 
-const toSearchRow = (row: BundleEventRow): InstallationSearchRow => ({
+const toSearchRow = (row: TransitionBundleEventRow): InstallationSearchRow => ({
   installId: row.install_id,
   username: row.username,
   userId: row.user_id,
@@ -23,7 +22,10 @@ const toSearchRow = (row: BundleEventRow): InstallationSearchRow => ({
   receivedAtMs: row.received_at_ms,
 });
 
-const matchesIdentity = (row: BundleEventRow, query: string): boolean =>
+const matchesIdentity = (
+  row: TransitionBundleEventRow,
+  query: string,
+): boolean =>
   row.install_id.toLowerCase().includes(query) ||
   row.user_id?.toLowerCase().includes(query) === true ||
   row.username?.toLowerCase().includes(query) === true;
@@ -38,7 +40,7 @@ export const searchBundleEventInstallations = (
       matchingInstallIds.add(row.install_id);
     }
   }
-  const latestByInstall = new Map<string, BundleEventRow>();
+  const latestByInstall = new Map<string, TransitionBundleEventRow>();
   for (const row of request.rows) {
     if (!matchingInstallIds.has(row.install_id)) continue;
     const current = latestByInstall.get(row.install_id);

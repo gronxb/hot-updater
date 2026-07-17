@@ -74,8 +74,34 @@ if (updateInfo.shouldForceUpdate) {
 
 <Callout type="warn">
   Analytics also require support from the server's database adapter. This
-  storage capability is optional.
+  storage capability is optional. When the route is unavailable,
+  `HotUpdater.init` still completes normally and reports the failed request as
+  a warning.
 </Callout>
+
+## App-ready analytics
+
+With `analytics: true`, initialization attempts one best-effort app-ready
+report per JavaScript runtime. Applied updates and recoveries keep their
+directional bundle transition. An unchanged launch reports the current bundle
+with no previous bundle or update strategy, allowing the server to measure
+recent installation activity without inventing a transition.
+
+The report uses the stable installation ID as its aggregate identity. Optional
+`userId` and `username` values set through `HotUpdater.setUser` are metadata for
+search and filtering; they do not replace the installation ID or merge app
+installs.
+
+Transport failures, including `404` from a server whose database does not
+support Analytics, timeouts, and rejected responses, are warning-only. They do
+not crash the app, call the app-level `onError`, or suppress
+`onNotifyAppReady`. This is an app-ready observation, not a warm-foreground
+heartbeat or a generic session event.
+
+When introducing Analytics to an existing deployment, deploy the database
+schema and server first, then enable `analytics: true` in clients. New clients
+remain safe against older or unsupported servers, but their reports cannot be
+stored until the server capability is available.
 
 ## When to Use init
 

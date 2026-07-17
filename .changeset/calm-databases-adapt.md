@@ -31,11 +31,16 @@ preserving channel names in the public bundle and standalone HTTP APIs.
 Publish `@hot-updater/test-utils` with reusable low-adapter and aggregate-client
 conformance suites for custom database adapter authors.
 
-Expose Analytics bundle events for record adapters and proxy the management
-summary, analytics, installation search, and installation history routes
-through the standalone repository so `hot-updater console` reports real
-installed and recovered counts for standalone backends. Snapshot-backed
-adapters created with `createBlobDatabaseAdapter`, including `s3Database`,
-deliberately leave this capability disabled because concurrent event writes can
-conflict. The Console hides Analytics based only on capability presence,
-without provider-name branching.
+Expose app-ready Analytics for record adapters and proxy event ingestion,
+active-installation overview, bundle outcomes, installation search, and
+installation history through the standalone repository. React Native reports
+unchanged launches as well as applied/recovered transitions through the
+existing best-effort `notifyAppReady` boundary. The Console aggregates active
+installations by install ID, supports exact user-ID alias filtering, and keeps
+received-report activity, transition outcomes, and configured rollout
+semantically separate.
+
+Snapshot-backed adapters created with `createBlobDatabaseAdapter`, including
+`s3Database`, deliberately leave Analytics disabled because concurrent event
+writes can conflict. The Console hides Analytics based only on capability
+presence, without provider-name branching.

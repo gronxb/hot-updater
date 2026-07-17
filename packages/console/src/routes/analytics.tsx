@@ -1,19 +1,54 @@
+import type { ActiveInstallationWindow } from "@hot-updater/plugin-core";
 import { createFileRoute } from "@tanstack/react-router";
 import { ChartNoAxesCombined } from "lucide-react";
+import { useState } from "react";
 
 import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
+import { AnalyticsControls } from "@/components/features/analytics/AnalyticsControls";
 import { AnalyticsOverview } from "@/components/features/analytics/AnalyticsOverview";
 import { InstallationSearch } from "@/components/features/analytics/InstallationSearch";
+import type { UpdateOutcomeState } from "@/components/features/analytics/UpdateOutcomes";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useAnalyticsOverviewQuery } from "@/lib/analytics-api";
+import {
+  useActiveInstallationQuery,
+  useAnalyticsOverviewQuery,
+} from "@/lib/analytics-api";
+import { useBundleEventAnalyticsQuery } from "@/lib/api";
 
 export const Route = createFileRoute("/analytics")({
   component: AnalyticsPage,
 });
 
-function AnalyticsPage() {
+export function AnalyticsPage() {
   const capability = useAnalyticsCapability();
-  const overview = useAnalyticsOverviewQuery(capability);
+  const [window, setWindow] = useState<ActiveInstallationWindow>("30d");
+  const [userId, setUserId] = useState<string>();
+  const catalog = useAnalyticsOverviewQuery(capability);
+  const active = useActiveInstallationQuery(capability, { window, userId });
+  const leadingBundleId = active.data?.bundles[0]?.bundleId ?? "";
+  const outcomes = useBundleEventAnalyticsQuery(
+    {
+      bundleId: leadingBundleId,
+      window: "30d",
+      limit: 1,
+      offset: 0,
+    },
+    capability.status === "supported" && leadingBundleId.length > 0,
+  );
+  const outcomeState: UpdateOutcomeState = !leadingBundleId
+    ? { status: "idle" }
+    : outcomes.isLoading
+      ? { status: "loading", bundleId: leadingBundleId }
+      : outcomes.error
+        ? { status: "error", bundleId: leadingBundleId, error: outcomes.error }
+        : outcomes.data
+          ? {
+              status: "success",
+              bundleId: leadingBundleId,
+              data: outcomes.data,
+            }
+          : { status: "loading", bundleId: leadingBundleId };
+  const analyticsError = active.error ?? catalog.error;
 
   return (
     <div className="flex h-svh min-h-0 flex-col">
@@ -27,24 +62,36 @@ function AnalyticsPage() {
           <h1 className="text-sm font-medium">Analytics</h1>
         </div>
         <p className="basis-full pl-9 text-xs text-muted-foreground sm:basis-auto sm:pl-0">
-          Based on the latest reported bundle event per installation.
+          Received app-ready reports by installation.
         </p>
       </header>
 
-      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-          {overview.isLoading ? (
+          <AnalyticsControls
+            onUserIdChange={setUserId}
+            onWindowChange={setWindow}
+            userId={userId}
+            window={window}
+          />
+          {active.isLoading || catalog.isLoading ? (
             <AnalyticsOverview status="loading" />
-          ) : overview.error ? (
-            <AnalyticsOverview status="error" error={overview.error} />
-          ) : overview.data ? (
-            <AnalyticsOverview status="success" data={overview.data} />
+          ) : analyticsError ? (
+            <AnalyticsOverview status="error" error={analyticsError} />
+          ) : active.data && catalog.data ? (
+            <AnalyticsOverview
+              active={active.data}
+              catalog={catalog.data}
+              outcomes={outcomeState}
+              status="success"
+              userId={userId}
+            />
           ) : (
             <AnalyticsOverview status="loading" />
           )}
           <InstallationSearch capability={capability} />
         </div>
-      </main>
+      </div>
     </div>
   );
 }

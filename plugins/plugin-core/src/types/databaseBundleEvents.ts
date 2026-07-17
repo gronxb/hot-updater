@@ -1,17 +1,31 @@
-export interface CreateBundleEventRequest {
-  type: "UPDATE_APPLIED" | "RECOVERED";
-  installId: string;
-  fromBundleId: string;
-  toBundleId: string;
-  userId?: string;
-  username?: string;
-  platform: "ios" | "android";
-  appVersion: string;
-  channel: string;
-  cohort: string;
-  updateStrategy: "fingerprint" | "appVersion";
-  fingerprintHash: string | null;
+interface CreateBundleEventRequestBase {
+  readonly installId: string;
+  readonly toBundleId: string;
+  readonly userId?: string;
+  readonly username?: string;
+  readonly platform: "ios" | "android";
+  readonly appVersion: string;
+  readonly channel: string;
+  readonly cohort: string;
+  readonly fingerprintHash: string | null;
 }
+
+export type CreateBundleEventRequest =
+  | (CreateBundleEventRequestBase & {
+      readonly type: "UPDATE_APPLIED";
+      readonly fromBundleId: string;
+      readonly updateStrategy: "fingerprint" | "appVersion";
+    })
+  | (CreateBundleEventRequestBase & {
+      readonly type: "RECOVERED";
+      readonly fromBundleId: string;
+      readonly updateStrategy: "fingerprint" | "appVersion";
+    })
+  | (CreateBundleEventRequestBase & {
+      readonly type: "UNCHANGED";
+      readonly fromBundleId: null;
+      readonly updateStrategy: null;
+    });
 
 export interface BundleEventSummary {
   installed: number;
@@ -74,6 +88,22 @@ export interface BundleEventOverview {
   bundles: { bundleId: string; installations: number }[];
 }
 
+export type ActiveInstallationWindow = "24h" | "7d" | "30d";
+
+export interface ActiveInstallationOverview {
+  readonly asOfMs: number;
+  readonly window: ActiveInstallationWindow;
+  readonly activeInstallations: number;
+  readonly series: readonly {
+    readonly bucketStartMs: number;
+    readonly value: number;
+  }[];
+  readonly bundles: readonly {
+    readonly bundleId: string;
+    readonly installations: number;
+  }[];
+}
+
 export interface DatabaseBundleEventService<TContext = unknown> {
   appendBundleEvent(
     input: CreateBundleEventRequest,
@@ -91,6 +121,13 @@ export interface DatabaseBundleEventService<TContext = unknown> {
     context?: TContext,
   ): Promise<BundleEventAnalyticsResult>;
   getBundleEventOverview(context?: TContext): Promise<BundleEventOverview>;
+  getActiveInstallationOverview(
+    input: {
+      readonly window: ActiveInstallationWindow;
+      readonly userId?: string;
+    },
+    context?: TContext,
+  ): Promise<ActiveInstallationOverview>;
   searchInstallations(
     query: string,
     limit: number,

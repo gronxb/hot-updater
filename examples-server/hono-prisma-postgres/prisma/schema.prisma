@@ -67,13 +67,13 @@ model bundle_events {
   install_id String
   user_id String?
   username String?
-  from_bundle_id String @db.Uuid
+  from_bundle_id String? @db.Uuid
   to_bundle_id String @db.Uuid
   platform String
   app_version String
   channel String
   cohort String
-  update_strategy String
+  update_strategy String?
   fingerprint_hash String?
   sdk_version String?
   received_at_ms Float
@@ -87,6 +87,6 @@ model bundle_events {
 }
 model private_hot_updater_settings {
   key String @db.VarChar(255) @id
-  value String @default("0.37.0")
+  value String @default("0.38.0")
 }
 // --- END HOT-UPDATER MODELS ---

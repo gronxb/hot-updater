@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
-import { isDatabaseAdapter } from "./types";
+import { isDatabaseAdapter, supportsAnalytics } from "./types";
 
 describe("isDatabaseAdapter", () => {
   it("accepts a direct v2 low adapter object", () => {
@@ -28,5 +28,27 @@ describe("isDatabaseAdapter", () => {
     // Then
     expect(factoryResult).toBe(false);
     expect(malformedResult).toBe(false);
+  });
+});
+
+describe("supportsAnalytics", () => {
+  const analyticsMethods = () => ({
+    appendBundleEvent: () => undefined,
+    getBundleEventSummary: () => undefined,
+    getBundleEventAnalytics: () => undefined,
+    getBundleEventOverview: () => undefined,
+    searchInstallations: () => undefined,
+    getInstallationHistory: () => undefined,
+  });
+
+  it("requires the active-installation overview method", () => {
+    const withoutActiveOverview = analyticsMethods();
+    const withActiveOverview = {
+      ...withoutActiveOverview,
+      getActiveInstallationOverview: () => undefined,
+    };
+
+    expect(supportsAnalytics(withoutActiveOverview)).toBe(false);
+    expect(supportsAnalytics(withActiveOverview)).toBe(true);
   });
 });

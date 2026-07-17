@@ -54,7 +54,7 @@ export function AnalyticsRouteGate({
 
   if (decision === "error" && capability.status === "error") {
     return (
-      <main className="flex h-svh items-start justify-center p-3 pt-20 sm:p-6 sm:pt-24">
+      <div className="flex h-svh items-start justify-center p-3 pt-20 sm:p-6 sm:pt-24">
         <Alert className="max-w-lg" variant="destructive">
           <TriangleAlert aria-hidden="true" />
           <AlertTitle>Analytics capability unavailable</AlertTitle>
@@ -78,7 +78,7 @@ export function AnalyticsRouteGate({
             </Button>
           </AlertDescription>
         </Alert>
-      </main>
+      </div>
     );
   }
 

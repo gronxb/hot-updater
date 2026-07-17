@@ -205,7 +205,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       });
       await retry.execute();
 
-      expect(await migrator.getVersion()).toBe("0.37.0");
+      expect(await migrator.getVersion()).toBe("0.38.0");
       const migrated = await sql<{
         readonly channel: string;
         readonly channel_id: string;

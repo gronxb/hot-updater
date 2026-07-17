@@ -11,6 +11,12 @@ import type {
   TransactionDatabaseAdapter,
   UpdateDatabaseInput,
 } from "./database";
+import type {
+  ActiveInstallationOverview,
+  ActiveInstallationWindow,
+  CreateBundleEventRequest,
+  DatabaseBundleEventService,
+} from "./databaseBundleEvents";
 
 describe("database adapter types", () => {
   it("keeps unsupported model and operation pairs outside the contract", () => {
@@ -112,5 +118,54 @@ describe("database adapter types", () => {
     expectTypeOf<FindOneDatabaseInput<"bundle_patches">>().toMatchTypeOf<{
       readonly model: "bundle_patches";
     }>();
+  });
+
+  it("correlates event variants with transition-only fields", () => {
+    type AppliedRow = Extract<
+      BundleEventRow,
+      { readonly type: "UPDATE_APPLIED" }
+    >;
+    type RecoveredRow = Extract<BundleEventRow, { readonly type: "RECOVERED" }>;
+    type UnchangedRow = Extract<BundleEventRow, { readonly type: "UNCHANGED" }>;
+    type AppliedRequest = Extract<
+      CreateBundleEventRequest,
+      { readonly type: "UPDATE_APPLIED" }
+    >;
+    type UnchangedRequest = Extract<
+      CreateBundleEventRequest,
+      { readonly type: "UNCHANGED" }
+    >;
+
+    expectTypeOf<AppliedRow["from_bundle_id"]>().toEqualTypeOf<string>();
+    expectTypeOf<RecoveredRow["update_strategy"]>().toEqualTypeOf<
+      "fingerprint" | "appVersion"
+    >();
+    expectTypeOf<UnchangedRow["from_bundle_id"]>().toEqualTypeOf<null>();
+    expectTypeOf<UnchangedRow["update_strategy"]>().toEqualTypeOf<null>();
+    expectTypeOf<AppliedRequest["fromBundleId"]>().toEqualTypeOf<string>();
+    expectTypeOf<UnchangedRequest["fromBundleId"]>().toEqualTypeOf<null>();
+    expectTypeOf<UnchangedRequest["updateStrategy"]>().toEqualTypeOf<null>();
+  });
+
+  it("exposes the bounded active installation overview contract", () => {
+    expectTypeOf<ActiveInstallationWindow>().toEqualTypeOf<
+      "24h" | "7d" | "30d"
+    >();
+    expectTypeOf<ActiveInstallationOverview>().toMatchTypeOf<{
+      readonly asOfMs: number;
+      readonly window: ActiveInstallationWindow;
+      readonly activeInstallations: number;
+      readonly series: readonly {
+        readonly bucketStartMs: number;
+        readonly value: number;
+      }[];
+      readonly bundles: readonly {
+        readonly bundleId: string;
+        readonly installations: number;
+      }[];
+    }>();
+    expectTypeOf<
+      DatabaseBundleEventService["getActiveInstallationOverview"]
+    >().toBeFunction();
   });
 });

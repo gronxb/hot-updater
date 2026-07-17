@@ -38,7 +38,7 @@ const insertNormalizedBundle = (
 
 beforeAll(async () => {
   const migrations = inject("d1Migrations");
-  for (const migration of migrations.slice(0, -1)) {
+  for (const migration of migrations.slice(0, -2)) {
     await env.DB.prepare(migration).run();
   }
   await insertLegacyBundle("base", "production").run();
@@ -50,9 +50,13 @@ beforeAll(async () => {
     ) VALUES ('patch', 'target', 'base', 'base-hash', 'patch-hash',
       'storage://patch', 0)
   `).run();
-  const latest = migrations.at(-1);
-  if (latest === undefined) throw new MissingD1MigrationError();
-  await env.DB.prepare(latest).run();
+  const databaseV2 = migrations.at(-2);
+  const analytics = migrations.at(-1);
+  if (databaseV2 === undefined || analytics === undefined) {
+    throw new MissingD1MigrationError();
+  }
+  await env.DB.prepare(databaseV2).run();
+  await env.DB.prepare(analytics).run();
 });
 
 it("backfills channel names and bundle channel ids while preserving patches", async () => {
@@ -78,4 +82,26 @@ it("enforces the bundles channel id foreign key after migration", async () => {
   await expect(
     insertNormalizedBundle("invalid", "missing").run(),
   ).rejects.toThrow();
+});
+
+it("accepts UNCHANGED activity and rejects invalid event variants", async () => {
+  const insert = (type: string, fromBundleId: string | null) =>
+    env.DB.prepare(`
+      INSERT INTO bundle_events (
+        id, type, install_id, from_bundle_id, to_bundle_id, platform,
+        app_version, channel, cohort, update_strategy, received_at_ms
+      ) VALUES (?, ?, 'install', ?, 'target', 'ios', '1.0.0',
+        'production', 'cohort', NULL, 1)
+    `).bind(`event-${type}`, type, fromBundleId);
+
+  await expect(insert("UNCHANGED", null).run()).resolves.toBeDefined();
+  await expect(insert("UNKNOWN", null).run()).rejects.toThrow();
+  await expect(insert("UPDATE_APPLIED", "base").run()).rejects.toThrow();
+});
+
+it("can safely rerun the latest analytics migration", async () => {
+  const latest = inject("d1Migrations").at(-1);
+  if (latest === undefined) throw new MissingD1MigrationError();
+
+  await expect(env.DB.prepare(latest).run()).resolves.toBeDefined();
 });

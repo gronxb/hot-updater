@@ -7,9 +7,10 @@ It uses warm stone neutrals, restrained orange emphasis, quiet borders, and
 dense but readable information layouts. Analytics must feel native to the
 existing bundle table and detail sheet rather than like a separate product.
 
-The primary operator needs to answer three questions quickly: what is tracked,
-which bundle is most active, and where a reported installation currently
-points. Supporting context stays subordinate to exact values and actions.
+The primary operator needs to answer three questions quickly: how many
+installations reported app ready, which bundles they most recently reported,
+and where a reported installation currently points. Supporting context stays
+subordinate to exact values and actions.
 
 ## 2. Foundations
 
@@ -20,7 +21,8 @@ points. Supporting context stays subordinate to exact values and actions.
 - `background`, `card`, `muted`, `border`, and their foreground counterparts
   create the warm-stone surface hierarchy in both themes.
 - Orange `primary`/`accent` is the single emphasis color. In charts,
-  `chart-2` represents the primary Installed or observed-adoption series.
+  `chart-2` represents the primary Installed, app-ready, or latest-reported
+  bundle series.
 - `muted-foreground` or `chart-1` is the neutral secondary-series treatment.
   Labels, values, and tooltips always communicate meaning without color.
 - Destructive color is reserved for genuine errors and destructive actions,
@@ -51,8 +53,9 @@ points. Supporting context stays subordinate to exact values and actions.
 
 - The fixed sidebar and route-owned scrolling shell remain unchanged.
 - Analytics uses one primary content column at 375 px, a balanced intermediate
-  layout at 768 px, and an asymmetric two-column grid at 1280 px. Adoption has
-  primary visual weight; summaries and rollout configuration are subordinate.
+  layout at 768 px, and an asymmetric two-column grid at 1280 px. Latest
+  reported bundle distribution has primary visual weight; summaries and
+  rollout configuration are subordinate.
 - Group with alignment, separators, and whitespace before adding containers.
   Do not nest generic KPI cards inside a larger card or repeat equal KPI tiles.
 - Tables may scroll horizontally inside their own container. The page itself
@@ -72,9 +75,10 @@ points. Supporting context stays subordinate to exact values and actions.
   diagnostic state and a Bundles escape path, with no protected query.
 - Data surfaces define loading, empty, success, and genuine error states.
   Unsupported capability is absence, not an error or empty-state card.
-- Analytics language is evidentiary: use tracked, observed, latest reported,
-  configured rollout, and Last known bundle. Never imply realtime state,
-  complete fleet coverage, or rollout completion.
+- Analytics language is evidentiary: use Active installations, app-ready
+  activity, Latest reported bundles, reported in range, configured rollout,
+  and Last known bundle. Never imply realtime state, complete fleet coverage,
+  or rollout completion.
 
 ## 5. Reusable Primitives
 
@@ -87,7 +91,7 @@ points. Supporting context stays subordinate to exact values and actions.
 - **Chart:** shadcn `ChartContainer` wrapping Recharts, with
   `accessibilityLayer`, an accessible name, semantic token colors, tooltip, and
   exact text/table equivalent in the DOM.
-- **Rollout row:** bundle identity, observed count, exact configured
+- **Rollout row:** bundle identity, reported-in-range count, exact configured
   percentage, and shadcn `Progress`; orange is reserved for the progress
   indicator.
 - **Search form:** shadcn `InputGroup` and `Button`, an explicit label,
@@ -102,15 +106,15 @@ success. Capability-unavailable primitives do not render.
 
 ## 6. Analytics-Specific Composition
 
-- **Update activity:** one compact card with Installed and Recovered lifetime
+- **Update outcomes:** one compact card with Installed and Recovered lifetime
   values followed directly by a short 30-day cumulative chart. Do not repeat
   Lifetime, UTC, or 30-day labels, and do not add explanatory framing already
   carried by the title and accessible chart name.
-- **Adoption:** one dominant observed-adoption chart plus exact bundle count
-  and share rows. Unknown/deleted bundles keep their identifier and a clear
-  unavailable-metadata label.
-- **Overview summary:** tracked installation total and most active observed
-  bundle share one compact block rather than separate KPI tiles.
+- **Latest reported bundles:** one dominant distribution chart plus exact
+  bundle count and share rows. Unknown/deleted bundles keep their identifier
+  and a clear unavailable-metadata label.
+- **Overview summary:** Active installations total and the most common latest
+  reported bundle share one compact block rather than separate KPI tiles.
 - **Configured rollout:** ranked compact rows with progress and exact
   percentage. Configuration is not presented as observed completion.
 - **Installation search:** accepted identity fields are explained before
@@ -142,9 +146,6 @@ success. Capability-unavailable primitives do not render.
 
 ### Accepted debt
 
-- Final screenshot-based reference-fidelity and multi-viewport visual QA are
-  intentionally deferred for G002 implementation handoff because the task
-  explicitly forbids final screenshot capture in this phase.
 - The current card primitive owns its existing single shadow and spacing
   defaults; G002 does not redesign shared shadcn primitives.
 - Installation history remains on the existing route and receives terminology

@@ -6,6 +6,7 @@ export * from "./createBlobDatabaseAdapter";
 export {
   createDatabaseAdapter,
   DatabaseAdapterInputError,
+  type DatabaseAdapterBase,
   type CreateDatabaseAdapterOptions,
   type DatabaseAdapterInputErrorCode,
 } from "./createDatabaseAdapter";

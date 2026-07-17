@@ -26,6 +26,7 @@ const createBundle = (id: string): Bundle => ({
 
 const createRuntime = () => ({
   appendBundleEvent: vi.fn(),
+  getActiveInstallationOverview: vi.fn(),
   getBundleEventSummary: vi.fn(),
   getBundleEventAnalytics: vi.fn(),
   getBundleEventOverview: vi.fn(),

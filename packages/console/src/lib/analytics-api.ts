@@ -1,6 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 
 import {
+  type ActiveInstallationInput,
+  parseActiveInstallationInput,
+} from "./analytics-input";
+import {
+  getActiveInstallationOverviewRpc,
   getAnalyticsCapabilitiesRpc,
   getAnalyticsOverviewRpc,
   type AnalyticsCapabilities,
@@ -26,6 +31,13 @@ export type ProtectedAnalyticsRouteDecision =
 export const analyticsQueryKeys = {
   capabilities: ["analytics", "capabilities"] as const,
   overview: ["analytics", "overview"] as const,
+  activeInstallations: (input: ActiveInstallationInput) =>
+    [
+      "analytics",
+      "active-installations",
+      input.window,
+      input.userId ?? null,
+    ] as const,
 };
 
 const ANALYTICS_STALE_TIME_MS = 30_000;
@@ -84,3 +96,22 @@ export const getAnalyticsOverviewQueryOptions = (
 export const useAnalyticsOverviewQuery = (
   capability: AnalyticsCapabilityState,
 ) => useQuery(getAnalyticsOverviewQueryOptions(capability));
+
+export const getActiveInstallationQueryOptions = (
+  capability: AnalyticsCapabilityState,
+  input: ActiveInstallationInput,
+) => {
+  const normalized = parseActiveInstallationInput(input);
+  return {
+    queryKey: analyticsQueryKeys.activeInstallations(normalized),
+    queryFn: () => getActiveInstallationOverviewRpc({ data: normalized }),
+    staleTime: ANALYTICS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    enabled: isAnalyticsQueryEnabled(capability),
+  };
+};
+
+export const useActiveInstallationQuery = (
+  capability: AnalyticsCapabilityState,
+  input: ActiveInstallationInput,
+) => useQuery(getActiveInstallationQueryOptions(capability, input));

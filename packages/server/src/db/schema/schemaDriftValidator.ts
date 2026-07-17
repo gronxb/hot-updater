@@ -5,7 +5,7 @@ import type {
 import type { ORMSQLProvider } from "../types";
 import { schemaIndexAppliesToProvider } from "./registry";
 
-const assertSameSchemaValue = (
+export const assertSameSchemaValue = (
   location: string,
   previous: unknown,
   next: unknown,

@@ -2,6 +2,21 @@ import { expect, it } from "vitest";
 
 import { parseD1Row } from "./d1Rows";
 
+const bundleEventFields = {
+  id: "event-1",
+  install_id: "install-1",
+  user_id: "user-1",
+  username: "name-1",
+  to_bundle_id: "bundle-1",
+  platform: "ios",
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "default",
+  fingerprint_hash: null,
+  sdk_version: "0.37.0",
+  received_at_ms: 1_725_000_000_000,
+} as const;
+
 it("parses SQLite booleans and JSON columns into public bundle rows", () => {
   const row = parseD1Row("bundles", {
     id: "bundle-1",
@@ -43,4 +58,90 @@ it("parses channel ids and names from D1 rows", () => {
 
   // Then
   expect(channel).toEqual(row);
+});
+
+it("parses all three bundle event variants and nullable transition fields", () => {
+  const unchanged = parseD1Row("bundle_events", {
+    ...bundleEventFields,
+    type: "UNCHANGED",
+    from_bundle_id: null,
+    update_strategy: null,
+  });
+  const applied = parseD1Row("bundle_events", {
+    ...bundleEventFields,
+    type: "UPDATE_APPLIED",
+    from_bundle_id: "bundle-0",
+    update_strategy: "appVersion",
+  });
+  const recovered = parseD1Row("bundle_events", {
+    ...bundleEventFields,
+    type: "RECOVERED",
+    from_bundle_id: "bundle-1",
+    update_strategy: "fingerprint",
+  });
+
+  expect(unchanged).toMatchObject({
+    type: "UNCHANGED",
+    from_bundle_id: null,
+    update_strategy: null,
+  });
+  expect(applied).toMatchObject({
+    type: "UPDATE_APPLIED",
+    from_bundle_id: "bundle-0",
+    update_strategy: "appVersion",
+  });
+  expect(recovered).toMatchObject({
+    type: "RECOVERED",
+    from_bundle_id: "bundle-1",
+    update_strategy: "fingerprint",
+  });
+});
+
+it("rejects mixed bundle event transition shapes", () => {
+  expect(() =>
+    parseD1Row("bundle_events", {
+      ...bundleEventFields,
+      type: "UNCHANGED",
+      from_bundle_id: "bundle-0",
+      update_strategy: null,
+    }),
+  ).toThrow();
+  expect(() =>
+    parseD1Row("bundle_events", {
+      ...bundleEventFields,
+      type: "RECOVERED",
+      from_bundle_id: null,
+      update_strategy: "appVersion",
+    }),
+  ).toThrow();
+  expect(() =>
+    parseD1Row("bundle_events", {
+      ...bundleEventFields,
+      type: "NOT_AN_EVENT",
+      from_bundle_id: null,
+      update_strategy: null,
+    }),
+  ).toThrow();
+});
+
+it("rejects malformed bundle event rows", () => {
+  expect(() =>
+    parseD1Row("bundle_events", {
+      id: "event-1",
+      type: "UNCHANGED",
+      install_id: "install-1",
+      user_id: null,
+      username: null,
+      from_bundle_id: null,
+      to_bundle_id: undefined,
+      platform: "ios",
+      app_version: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      update_strategy: null,
+      fingerprint_hash: null,
+      sdk_version: null,
+      received_at_ms: 1_725_000_000_000,
+    }),
+  ).toThrow();
 });

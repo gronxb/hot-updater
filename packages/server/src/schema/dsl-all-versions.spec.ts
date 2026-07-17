@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { hotUpdaterSchemaVersions } from "./index";
 import { createSettingsTable } from "./settings";
 import { bundlesV021, v0_21_0 } from "./v0_21_0";
 import { bundlesV029, v0_29_0 } from "./v0_29_0";
@@ -26,5 +27,20 @@ describe("versioned schema DSL", () => {
         expect(Object.keys(table)).not.toContain("dsl");
       }
     }
+  });
+
+  it("registers v0.38 after the immutable v0.37 snapshot", () => {
+    // Given / When
+    const versions = hotUpdaterSchemaVersions.map((item) => item.version);
+
+    // Then
+    expect(versions).toEqual([
+      "0.21.0",
+      "0.29.0",
+      "0.31.0",
+      "0.36.0",
+      "0.37.0",
+      "0.38.0",
+    ]);
   });
 });

@@ -6,10 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDefaultResolver } from "./DefaultResolver";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
-import type {
-  ResolverCheckUpdateParams,
-  ResolverNotifyAppReadyParams,
-} from "./types";
+import type { ResolverCheckUpdateParams } from "./types";
 
 const mocks = vi.hoisted(() => {
   (
@@ -37,26 +34,6 @@ const createParams = (
   fingerprintHash: null,
   minBundleId: "min-bundle-id",
   platform: "ios",
-  updateStrategy: "appVersion",
-  ...params,
-});
-
-const createNotifyParams = (
-  params?: Partial<ResolverNotifyAppReadyParams>,
-): ResolverNotifyAppReadyParams => ({
-  appVersion: "1.0.0",
-  channel: "production",
-  cohort: "cohort",
-  fingerprintHash: null,
-  fromBundleId: "bundle-a",
-  installId: "install-id",
-  platform: "ios",
-  requestHeaders: {
-    Authorization: "Bearer token",
-  },
-  requestTimeout: 1500,
-  toBundleId: "bundle-b",
-  type: "UPDATE_APPLIED",
   updateStrategy: "appVersion",
   ...params,
 });
@@ -127,62 +104,6 @@ describe("createDefaultResolver", () => {
       requestTimeout: 1500,
       url: "http://localhost:3007/hot-updater/fingerprint/ios/fingerprint-hash/beta/min-bundle/current-bundle/qa",
     });
-  });
-
-  it("posts analytics to /events and requires HTTP 204", async () => {
-    const resolver = createDefaultResolver(
-      "http://localhost:3007/hot-updater///",
-    );
-
-    await resolver.notifyAppReady?.(
-      createNotifyParams({
-        type: "RECOVERED",
-        updateStrategy: "fingerprint",
-        userId: "user-123",
-        username: "alice",
-      }),
-    );
-
-    expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:3007/hot-updater/events",
-      {
-        body: JSON.stringify({
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "cohort",
-          fingerprintHash: null,
-          fromBundleId: "bundle-a",
-          installId: "install-id",
-          platform: "ios",
-          toBundleId: "bundle-b",
-          type: "RECOVERED",
-          updateStrategy: "fingerprint",
-          userId: "user-123",
-          username: "alice",
-        }),
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer token",
-          "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
-        },
-        method: "POST",
-        signal: expect.any(AbortSignal),
-      },
-    );
-  });
-
-  it("fails notifyAppReady when /events does not return HTTP 204", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        status: 200,
-      }),
-    );
-    const resolver = createDefaultResolver("http://localhost:3007/hot-updater");
-
-    await expect(
-      resolver.notifyAppReady?.(createNotifyParams()),
-    ).rejects.toThrow("Expected HTTP 204 from /events, received 200");
   });
 
   it("keeps SDK version sync from leaving source changes behind", async () => {

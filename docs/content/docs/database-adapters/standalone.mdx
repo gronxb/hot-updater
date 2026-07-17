@@ -70,6 +70,7 @@ interface Routes {
   bundleEventAnalytics?: (bundleId: string) => RouteConfig;
   bundleEventSummary?: (bundleId: string) => RouteConfig;
   bundleEventOverview?: () => RouteConfig;
+  activeInstallationOverview?: () => RouteConfig;
   create?: () => RouteConfig;
   update?: (bundleId: string) => RouteConfig;
   list?: () => RouteConfig;
@@ -129,6 +130,9 @@ database: standaloneRepository({
     appendEvent: () => ({ path: "/v1/hot-updater/events" }),
     bundleEventOverview: () => ({
       path: "/v1/hot-updater/api/installations/overview"
+    }),
+    activeInstallationOverview: () => ({
+      path: "/v1/hot-updater/api/installations/active"
     }),
     installations: () => ({
       path: "/v1/hot-updater/api/installations"
@@ -199,6 +203,7 @@ requests.
 | GET | `/api/bundles/:id/events/summary` | Distinct installed/recovered totals |
 | GET | `/api/bundles/:id/events/analytics` | Windowed series, cohorts, and recent events |
 | GET | `/api/installations/overview` | Identity-free latest-installation bundle counts |
+| GET | `/api/installations/active` | Install-ID activity and latest reported bundles for a `24h`, `7d`, or `30d` server-receipt window |
 | GET | `/api/installations` | Paginated identity search |
 | GET | `/api/installations/:installId/events` | Paginated installation history |
 
@@ -211,6 +216,18 @@ must remain in overview results. The server limits public event bodies to 16
 KiB and individual string fields to 1024 characters; custom route
 implementations should enforce equivalent or stricter limits before parsing or
 persisting input.
+
+The active endpoint accepts `window=24h|7d|30d` and an optional exact,
+case-sensitive `userId`. It first selects the latest in-window report for each
+installation ID, then applies the alias filter. Installation ID remains the
+distinct key even when several installs share one user ID. Every app-ready
+outcome qualifies as activity, while Installed/Recovered summaries and
+installation update history continue to exclude routine unchanged reports.
+
+Activity windows use server receipt time and scan at most 50,000 matching
+event rows in the shared CRUD fallback. The result means “installations that
+reported app ready in this range”; it is not a count of people, online devices,
+the complete fleet, or rollout completion.
 
 ### Bundle Shape
 

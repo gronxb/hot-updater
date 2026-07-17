@@ -50,6 +50,14 @@ export const getSqlType = (
     if (type.startsWith("varchar")) return type;
     return "text";
   }
+  if (provider === "mssql") {
+    if (type === "uuid") return "uniqueidentifier";
+    if (type === "bool") return "bit";
+    if (type === "integer") return "int";
+    if (type === "float") return "float";
+    if (type.startsWith("varchar")) return type;
+    return "nvarchar(max)";
+  }
   if (type === "uuid") return "uuid";
   if (type === "bool") return "boolean";
   if (type === "integer") return "integer";

@@ -1,0 +1,1 @@
+ALTER TABLE public.bundle_events ENABLE ROW LEVEL SECURITY;

@@ -3,11 +3,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  parseActiveInstallationInput,
   parseBundleEventAnalyticsInput,
   parseInstallationHistoryInput,
   parseSearchInstallationsInput,
 } from "../analytics-input";
 import {
+  getActiveInstallationOverview,
   getBundleEventAnalytics,
   getBundleEventSummary,
   getInstallationHistory,
@@ -16,6 +18,7 @@ import {
 
 const createRuntime = () => ({
   appendBundleEvent: vi.fn(),
+  getActiveInstallationOverview: vi.fn(),
   getBundleEventSummary: vi.fn(),
   getBundleEventAnalytics: vi.fn(),
   getBundleEventOverview: vi.fn(),
@@ -84,6 +87,10 @@ describe("analytics runtime input validation", () => {
     });
     await searchInstallations(runtime, { query: " query " });
     await getInstallationHistory(runtime, { installId: " install-1 " });
+    await getActiveInstallationOverview(runtime, {
+      window: "7d",
+      userId: " Alias/B ",
+    });
 
     // Then
     expect(runtime.getBundleEventAnalytics).toHaveBeenCalledWith(
@@ -103,6 +110,10 @@ describe("analytics runtime input validation", () => {
       "install-1",
       50,
       0,
+      undefined,
+    );
+    expect(runtime.getActiveInstallationOverview).toHaveBeenCalledWith(
+      { window: "7d", userId: "Alias/B" },
       undefined,
     );
   });
@@ -162,4 +173,10 @@ describe("analytics server function input parsers", () => {
       expect(parse).toThrow();
     },
   );
+
+  it("normalizes an empty optional active alias out of the request", () => {
+    expect(
+      parseActiveInstallationInput({ window: "30d", userId: "   " }),
+    ).toEqual({ window: "30d" });
+  });
 });

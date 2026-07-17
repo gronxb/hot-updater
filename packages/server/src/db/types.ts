@@ -10,6 +10,8 @@ import type {
   BundleEventOverview,
   BundleEventAnalyticsWindow,
   BundleEventSummary,
+  ActiveInstallationOverview,
+  ActiveInstallationWindow,
   CreateBundleEventRequest,
   DatabaseAdapter as DatabaseAdapterContract,
   HotUpdaterContext,
@@ -24,6 +26,8 @@ export type {
   BundleEventOverview,
   BundleEventAnalyticsWindow,
   BundleEventSummary,
+  ActiveInstallationOverview,
+  ActiveInstallationWindow,
   CreateBundleEventRequest,
   InstallationHistoryRow,
   InstallationSearchRow,
@@ -159,6 +163,13 @@ export interface BundleEventAPI<TContext = unknown> {
   getBundleEventOverview(
     context?: HotUpdaterContext<TContext>,
   ): Promise<BundleEventOverview>;
+  getActiveInstallationOverview(
+    input: {
+      readonly window: ActiveInstallationWindow;
+      readonly userId?: string;
+    },
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<ActiveInstallationOverview>;
   searchInstallations(
     query: string,
     limit: number,
@@ -180,6 +191,7 @@ export const supportsAnalytics = <TContext>(
   typeof Reflect.get(api, "getBundleEventSummary") === "function" &&
   typeof Reflect.get(api, "getBundleEventAnalytics") === "function" &&
   typeof Reflect.get(api, "getBundleEventOverview") === "function" &&
+  typeof Reflect.get(api, "getActiveInstallationOverview") === "function" &&
   typeof Reflect.get(api, "searchInstallations") === "function" &&
   typeof Reflect.get(api, "getInstallationHistory") === "function";
 

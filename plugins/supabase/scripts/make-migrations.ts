@@ -3,7 +3,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import dayjs from "dayjs";
-import pc from "picocolors";
 
 /**
  * Find markers in the format '-- HotUpdater.xxxx' from content and
@@ -90,8 +89,11 @@ async function readNewMigrations(dirPath: string) {
  */
 async function main() {
   // @hot-updater/postgres/sql path
-  const postgresPath = fileURLToPath(
-    import.meta.resolve("@hot-updater/postgres/sql"),
+  const postgresPath = path.join(
+    path.dirname(
+      fileURLToPath(import.meta.resolve("@hot-updater/postgres/package.json")),
+    ),
+    "sql",
   );
 
   // Create migrations directory (skip if exists)
@@ -101,42 +103,34 @@ async function main() {
   // Extract all HotUpdater blocks from existing migration .sql files
   const existingMigrations = await readHotUpdaterBlocksFromDir(migrationsDir);
   console.log(
-    pc.blue("Existing migration contents:"),
+    "Existing migration contents:",
     Array.from(existingMigrations.keys()),
   );
 
   // Extract all HotUpdater blocks from new SQL files
   const newMigrations = await readNewMigrations(postgresPath);
-  console.log(
-    pc.blue("New migration contents:"),
-    Array.from(newMigrations.keys()),
-  );
+  console.log("New migration contents:", Array.from(newMigrations.keys()));
 
-  // Collect blocks that differ from existing ones
-  const changedBlocks: string[] = [];
+  const newBlocks: string[] = [];
   for (const [key, block] of newMigrations.entries()) {
-    const existingBlock = existingMigrations.get(key);
-    if (existingBlock !== block) {
-      changedBlocks.push(block);
+    if (!existingMigrations.has(key)) {
+      newBlocks.push(block);
     }
   }
 
-  // Create new migration file if there are changed blocks
-  if (changedBlocks.length > 0) {
-    const combinedSql = changedBlocks.join("\n\n");
+  if (newBlocks.length > 0) {
+    const combinedSql = newBlocks.join("\n\n");
     const newFileName = `${dayjs().format("YYYYMMDDHHmmss")}.sql`;
 
     await fs.writeFile(path.join(migrationsDir, newFileName), combinedSql);
-    console.log(pc.green("New migration file created:"), pc.bold(newFileName));
+    console.log("New migration file created:", newFileName);
   } else {
-    console.log(
-      pc.yellow("No changes detected. No new migration file created."),
-    );
+    console.log("No changes detected. No new migration file created.");
   }
 }
 
 // Execute main function
 main().catch((err) => {
-  console.error(pc.red("Error during migration creation:"), err);
+  console.error("Error during migration creation:", err);
   process.exit(1);
 });

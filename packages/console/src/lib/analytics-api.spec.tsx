@@ -5,15 +5,21 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   type AnalyticsCapabilityState,
+  getActiveInstallationQueryOptions,
   getAnalyticsCapabilityState,
   getAnalyticsOverviewQueryOptions,
   getProtectedAnalyticsRouteDecision,
   isAnalyticsQueryEnabled,
+  useActiveInstallationQuery,
   useAnalyticsOverviewQuery,
 } from "./analytics-api";
-import { getAnalyticsOverviewRpc } from "./analytics-rpc";
+import {
+  getActiveInstallationOverviewRpc,
+  getAnalyticsOverviewRpc,
+} from "./analytics-rpc";
 
 vi.mock("./analytics-rpc", () => ({
+  getActiveInstallationOverviewRpc: vi.fn(),
   getAnalyticsCapabilitiesRpc: vi.fn(),
   getAnalyticsOverviewRpc: vi.fn(),
 }));
@@ -98,5 +104,56 @@ describe("analytics overview query", () => {
     // Then
     expect(options.staleTime).toBe(30_000);
     expect(options.refetchOnWindowFocus).toBe(true);
+  });
+
+  it("separates active responses by window and normalized exact user ID", () => {
+    const supported = { status: "supported" } as const;
+    const first = getActiveInstallationQueryOptions(supported, {
+      window: "7d",
+      userId: "  Alias/B  ",
+    });
+    const second = getActiveInstallationQueryOptions(supported, {
+      window: "24h",
+      userId: "Alias/B",
+    });
+
+    expect(first.queryKey).toEqual([
+      "analytics",
+      "active-installations",
+      "7d",
+      "Alias/B",
+    ]);
+    expect(second.queryKey).not.toEqual(first.queryKey);
+    expect(first.enabled).toBe(true);
+    expect(
+      getActiveInstallationQueryOptions(
+        { status: "unsupported" },
+        { window: "7d", userId: "Alias/B" },
+      ).enabled,
+    ).toBe(false);
+  });
+});
+
+describe("active installation query", () => {
+  it.each<AnalyticsCapabilityState>([
+    { status: "unresolved" },
+    { status: "unsupported" },
+    { status: "error", error: new Error("offline") },
+  ])("does not execute while capability is $status", async (capability) => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    renderHook(
+      () => useActiveInstallationQuery(capability, { window: "30d" }),
+      { wrapper },
+    );
+    await Promise.resolve();
+
+    expect(getActiveInstallationOverviewRpc).not.toHaveBeenCalled();
+    queryClient.clear();
   });
 });

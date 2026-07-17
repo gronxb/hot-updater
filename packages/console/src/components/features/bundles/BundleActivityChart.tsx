@@ -144,28 +144,30 @@ export function BundleActivityChart({
           />
         </AreaChart>
       </ChartContainer>
-      <table className="sr-only">
-        <caption id={captionId}>
-          Cumulative update activity values over the last 30 days. Dates are
-          shown in UTC.
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Date</th>
-            <th scope="col">Installed</th>
-            <th scope="col">Recovered</th>
-          </tr>
-        </thead>
-        <tbody>
-          {chartData.map((point) => (
-            <tr key={point.bucketStartMs}>
-              <th scope="row">{formatBucket(point.bucketStartMs)}</th>
-              <td>{point.installed}</td>
-              <td>{point.recovered}</td>
+      <div className="sr-only">
+        <table>
+          <caption id={captionId}>
+            Cumulative update activity values over the last 30 days. Dates are
+            shown in UTC.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Installed</th>
+              <th scope="col">Recovered</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {chartData.map((point) => (
+              <tr key={point.bucketStartMs}>
+                <th scope="row">{formatBucket(point.bucketStartMs)}</th>
+                <td>{point.installed}</td>
+                <td>{point.recovered}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
