@@ -15,11 +15,10 @@ export {
 
 export interface CreateDatabaseAdapterOptions<TContext = unknown> {
   readonly name: string;
-  readonly supportsBundleEvents?: true;
   readonly adapter: () => DatabaseAdapterImplementation<TContext>;
 }
 
-export const createDatabaseAdapter = <TContext = unknown>(
+export const createDatabaseAdapterBase = <TContext = unknown>(
   options: CreateDatabaseAdapterOptions<TContext>,
 ): DatabaseAdapter<TContext> => {
   const implementation = options.adapter();
@@ -27,9 +26,6 @@ export const createDatabaseAdapter = <TContext = unknown>(
   return {
     ...createDatabaseAdapterCrud(implementation),
     name: options.name,
-    ...(options.supportsBundleEvents
-      ? { [databaseBundleEventSupport]: true as const }
-      : {}),
     ...(implementation.getUpdateInfo
       ? { getUpdateInfo: implementation.getUpdateInfo }
       : {}),
@@ -48,3 +44,10 @@ export const createDatabaseAdapter = <TContext = unknown>(
       : {}),
   };
 };
+
+export const createDatabaseAdapter = <TContext = unknown>(
+  options: CreateDatabaseAdapterOptions<TContext>,
+): DatabaseAdapter<TContext> => ({
+  ...createDatabaseAdapterBase(options),
+  [databaseBundleEventSupport]: true,
+});

@@ -41,7 +41,7 @@ beforeEach(() => {
   state.results.length = 0;
 });
 
-it("does not advertise bundle event analytics support", () => {
+it("advertises bundle event analytics support", () => {
   // Given / When
   const adapter = d1Database({
     accountId: "account",
@@ -50,7 +50,7 @@ it("does not advertise bundle event analytics support", () => {
   });
 
   // Then
-  expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+  expect(adapter[databaseBundleEventSupport]).toBe(true);
 });
 
 it("projects selected fields after querying physical bundle columns", async () => {

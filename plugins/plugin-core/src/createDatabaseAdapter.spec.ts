@@ -71,23 +71,18 @@ describe("createDatabaseAdapter", () => {
     expect(adapter.name).toBe("memory");
   });
 
-  it("requires adapters to opt in to bundle event storage", () => {
+  it("advertises bundle event storage for record adapters", () => {
     // Given
-    const unsupportedAdapter = createDatabaseAdapter({
-      name: "unsupported-memory",
+    const adapter = createDatabaseAdapter({
+      name: "memory",
       adapter: createMethods,
     });
 
     // When
-    const supportedAdapter = createDatabaseAdapter({
-      name: "supported-memory",
-      supportsBundleEvents: true,
-      adapter: createMethods,
-    });
+    const capability = adapter[databaseBundleEventSupport];
 
     // Then
-    expect(unsupportedAdapter[databaseBundleEventSupport]).toBeUndefined();
-    expect(supportedAdapter[databaseBundleEventSupport]).toBe(true);
+    expect(capability).toBe(true);
   });
 
   it("composes onUnmount without invoking it", async () => {

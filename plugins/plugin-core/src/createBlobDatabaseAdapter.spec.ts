@@ -11,6 +11,7 @@ import {
   createBlobDatabaseAdapter,
 } from "./createBlobDatabaseAdapter";
 import { createDatabaseClient } from "./databaseClient";
+import { databaseBundleEventSupport } from "./types";
 
 type MemoryConfig = {
   readonly store: Map<string, unknown>;
@@ -89,6 +90,14 @@ const activeManifest = (key: string): unknown =>
   store.get(`${blobDatabaseRevisionManifestPrefix(activeRevision())}/${key}`);
 
 describe("blob snapshot persistence", () => {
+  it("does not advertise bundle event storage", () => {
+    // Given / When
+    const adapter = createMemoryAdapter(config());
+
+    // Then
+    expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+  });
+
   it("migrates legacy manifests including scalar patch fields", async () => {
     const base = legacyBundle("1");
     const target = {

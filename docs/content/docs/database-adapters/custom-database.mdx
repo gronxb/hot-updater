@@ -227,42 +227,34 @@ The shared aggregate client ensures a channel before creating or moving a
 bundle. Concurrent channel creation may race, so duplicate creation can be
 followed by a successful re-read.
 
-Adapters that enable Analytics also persist `bundle_events` as a fourth,
-append-only collection or table. Event rows may refer to unknown or deleted
-bundle IDs, so bundle deletion must not cascade into the event log.
+Record adapters persist `bundle_events` as a fourth, append-only collection or
+table. Event rows may refer to unknown or deleted bundle IDs, so bundle deletion
+must not cascade into the event log.
 
-## Optional Analytics
+## Analytics storage
 
-`bundle_events` is part of the fixed row model, but server-facing Analytics is
-an opt-in capability. Merely accepting the row operations in the matrix does
-not enable Analytics. Advertise the capability only when every
-`bundle_events` create is an independent, concurrency-safe append:
+`bundle_events` is part of the fixed row model. Adapters created with
+`createDatabaseAdapter` write individual records, so the server enables
+Analytics automatically:
 
 ```typescript
 createDatabaseAdapter({
   name: "my-database",
-  supportsBundleEvents: true,
   adapter: () => ({
     // required row methods...
   }),
 });
 ```
 
-Without `supportsBundleEvents: true`, the server does not register
-`POST /events` or the Analytics and installation-history routes. This is the
-correct default for adapters that rewrite one shared snapshot or object for
-every mutation. Concurrent app reports can overwrite each other in those
-backends even if the adapter can technically create a `bundle_events` row.
+Adapters created with `createBlobDatabaseAdapter` replace one shared snapshot
+for every mutation, so the server does not register `POST /events` or the
+Analytics and installation-history routes. This includes S3 Database
+(`s3Database`): concurrent app reports could otherwise overwrite each other.
+Use a row-oriented or document database with atomic record inserts when
+Analytics is required.
 
-S3 Database (`s3Database`) must omit `supportsBundleEvents` because each write
-replaces a shared S3 snapshot and cannot provide safe concurrent appends. Use a
-row-oriented or document database with atomic inserts when Analytics is
-required.
-
-Opt-in implementations must preserve the shared bundle-event semantics, not
-only the method shapes. Appends are immutable and concurrency-safe. Every
-bounded Analytics read must also materialize one point-in-time snapshot; a
-cursor that can observe new rows between batches is not sufficient. Summaries
+Record implementations must preserve the shared bundle-event semantics, not
+only the method shapes. Appends are immutable and concurrency-safe. Summaries
 count distinct installations; latest-installation search orders by event time
 and event ID; a historical username or user ID match still resolves to the
 installation's latest row; windowed activity ignores older events without
@@ -417,9 +409,9 @@ The fixed-model database adapter API fully replaces the legacy adapter API. Ther
    `channel` and the referenced stable ID to `channel_id` on every bundle
    create or channel change. For non-relational databases, enforce the
    equivalent relationship in adapter writes.
-5. If the adapter will support Analytics, create the append-only
-   `bundle_events` storage and enable `supportsBundleEvents` only after its
-   writes are concurrency-safe. Otherwise, leave the capability unset.
+5. Add append-only `bundle_events` storage before switching to
+   `createDatabaseAdapter`. Snapshot-replacing backends must use
+   `createBlobDatabaseAdapter`, which leaves Analytics disabled.
 6. Replace `config.database()` and direct bundle mutation calls with the
    adapter object or `createDatabaseClient(adapter)`.
 7. Remove `appendBundle`, `updateBundle`, `deleteBundle`, and `commitBundle`.

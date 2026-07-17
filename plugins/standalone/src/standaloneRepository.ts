@@ -23,6 +23,7 @@ import {
   createDatabaseAdapter,
   createUUIDv7,
   databaseBundleEventService,
+  databaseBundleEventSupport,
   rowToBundle,
 } from "@hot-updater/plugin-core";
 
@@ -1016,10 +1017,15 @@ const createLegacyCompatibilityImplementation = (
  * fixed-model v2 adapter conformance contract.
  */
 export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
-  const repository = createDatabaseAdapter({
+  const recordRepository = createDatabaseAdapter({
     name: "standalone-repository",
     adapter: () => createLegacyCompatibilityImplementation(config),
   });
+  const {
+    [databaseBundleEventSupport]: recordBundleEventSupport,
+    ...repository
+  } = recordRepository;
+  void recordBundleEventSupport;
   if (!config.supportsBundleEvents) return repository;
   return Object.assign(repository, {
     [databaseBundleEventService]: createBundleEventService(config),

@@ -31,14 +31,11 @@ preserving channel names in the public bundle and standalone HTTP APIs.
 Publish `@hot-updater/test-utils` with reusable low-adapter and aggregate-client
 conformance suites for custom database adapter authors.
 
-Expose Analytics bundle events as an optional database capability and proxy
-the management summary, analytics, installation search, and installation history
-routes through the standalone repository so `hot-updater console` reports real
+Expose Analytics bundle events for record adapters and proxy the management
+summary, analytics, installation search, and installation history routes
+through the standalone repository so `hot-updater console` reports real
 installed and recovered counts for standalone backends. Snapshot-backed
-`s3Database` deliberately leaves this capability disabled because concurrent
-event writes can conflict.
-
-Analytics is currently unavailable for Cloudflare D1 and Worker D1, Firebase,
-legacy Postgres, and Supabase because their low-level APIs do not satisfy the
-complete bounded distinct/latest Analytics contract. The Console hides
-Analytics based only on capability presence, without provider-name branching.
+adapters created with `createBlobDatabaseAdapter`, including `s3Database`,
+deliberately leave this capability disabled because concurrent event writes can
+conflict. The Console hides Analytics based only on capability presence,
+without provider-name branching.

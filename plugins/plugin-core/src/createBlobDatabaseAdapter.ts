@@ -22,7 +22,7 @@ import {
   parseBlobDatabaseSnapshot,
   type BlobDatabaseSnapshot,
 } from "./blobDatabaseSnapshot";
-import { createDatabaseAdapter } from "./createDatabaseAdapter";
+import { createDatabaseAdapterBase } from "./createDatabaseAdapter";
 import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
   DatabaseAdapterLifecycleHooks,
@@ -300,7 +300,7 @@ export const createBlobDatabaseAdapter = <TContext = unknown>({
     transaction: (callback) => mutate(callback),
   };
 
-  const database = createDatabaseAdapter({
+  const database = createDatabaseAdapterBase({
     name,
     adapter: () => implementation,
   });

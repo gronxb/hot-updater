@@ -10,6 +10,8 @@ import {
   createChannelRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
+import { createDatabaseAdapterCore } from "../db/databaseAdapterCore";
+import { supportsBundleEvents } from "../db/types";
 import { mongoAdapter } from "./mongodb";
 import { createMongoBundleWhere } from "./mongodbQuery";
 import { createMongoTestHarness } from "./mongodbTestClient";
@@ -49,13 +51,15 @@ const createBundleEventRow = (
 describe("mongoAdapter capabilities", () => {
   it("returns an adapter object without an unsafe transaction fallback", () => {
     const adapter = mongoAdapter({ client: harness.client });
+    const core = createDatabaseAdapterCore(adapter, async () => null);
 
     expect(adapter).toBeTypeOf("object");
     expect(adapter.name).toBe("mongodb");
     expect(adapter.adapterName).toBe("mongodb");
     expect(adapter.provider).toBe("mongodb");
     expect(adapter.transaction).toBeUndefined();
-    expect(Reflect.get(adapter, databaseBundleEventSupport)).toBeUndefined();
+    expect(Reflect.get(adapter, databaseBundleEventSupport)).toBe(true);
+    expect(supportsBundleEvents(core.api)).toBe(true);
   });
 
   it("removes a patch inserted concurrently with bundle deletion", async () => {

@@ -339,7 +339,7 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: () => createMockClient(),
 }));
 
-it("does not advertise bundle event analytics support", () => {
+it("advertises bundle event analytics support", () => {
   // Given / When
   const adapter = supabaseDatabase({
     supabaseUrl: "https://test.supabase.invalid",
@@ -347,7 +347,7 @@ it("does not advertise bundle event analytics support", () => {
   });
 
   // Then
-  expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+  expect(adapter[databaseBundleEventSupport]).toBe(true);
 });
 
 setupDatabaseAdapterTestSuite({

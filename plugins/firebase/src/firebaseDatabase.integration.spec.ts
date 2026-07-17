@@ -30,10 +30,10 @@ const createAdapter = (): DatabaseAdapter =>
     storageBucket: `${PROJECT_ID}.appspot.com`,
   });
 
-it("does not advertise bundle event support", () => {
+it("advertises bundle event support", () => {
   const adapter = createAdapter();
 
-  expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+  expect(adapter[databaseBundleEventSupport]).toBe(true);
 });
 
 setupDatabaseAdapterTestSuite({

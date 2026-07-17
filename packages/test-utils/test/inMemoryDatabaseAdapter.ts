@@ -284,7 +284,6 @@ export const createInMemoryDatabaseAdapter = (
 ): DatabaseAdapter =>
   createDatabaseAdapter({
     name: "in-memory-v2",
-    supportsBundleEvents: true,
     adapter: () => createImplementation(tables),
   });
 

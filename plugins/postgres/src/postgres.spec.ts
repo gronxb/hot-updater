@@ -22,12 +22,12 @@ const getClient = (): PGlite => {
   return client;
 };
 
-it("does not advertise bundle event analytics support", async () => {
+it("advertises bundle event analytics support", async () => {
   // Given / When
   const adapter = postgres({ connectionString: "postgres://localhost/test" });
 
   // Then
-  expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+  expect(adapter[databaseBundleEventSupport]).toBe(true);
   await adapter.onUnmount?.();
 });
 

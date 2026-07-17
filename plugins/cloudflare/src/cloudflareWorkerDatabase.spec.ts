@@ -17,12 +17,12 @@ const db: D1Like = {
   }),
 };
 
-it("does not advertise bundle event analytics support", () => {
+it("advertises bundle event analytics support", () => {
   // Given / When
   const adapter = d1WorkerDatabase<TestContext>();
 
   // Then
-  expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+  expect(adapter[databaseBundleEventSupport]).toBe(true);
 });
 
 it("resolves the D1 binding from each request context", async () => {

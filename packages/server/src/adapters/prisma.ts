@@ -373,7 +373,6 @@ export const prismaAdapter = (
   Object.assign(
     createDatabaseAdapter({
       name: "prisma",
-      supportsBundleEvents: true,
       adapter: () =>
         createPrismaImplementation(
           config.prisma,
