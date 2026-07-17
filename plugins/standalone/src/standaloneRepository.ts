@@ -23,7 +23,7 @@ import {
   createDatabaseAdapter,
   createUUIDv7,
   databaseBundleEventService,
-  databaseBundleEventSupport,
+  databaseAnalyticsSupport,
   rowToBundle,
 } from "@hot-updater/plugin-core";
 
@@ -56,7 +56,7 @@ export interface StandaloneRepositoryConfig {
   readonly baseUrl: string;
   readonly commonHeaders?: Readonly<Record<string, string>>;
   readonly routes?: Routes;
-  readonly supportsBundleEvents?: true;
+  readonly supportsAnalytics?: true;
 }
 
 type StandaloneDatabaseErrorCode = "invalid-response" | "request-failed";
@@ -1021,12 +1021,10 @@ export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
     name: "standalone-repository",
     adapter: () => createLegacyCompatibilityImplementation(config),
   });
-  const {
-    [databaseBundleEventSupport]: recordBundleEventSupport,
-    ...repository
-  } = recordRepository;
-  void recordBundleEventSupport;
-  if (!config.supportsBundleEvents) return repository;
+  const { [databaseAnalyticsSupport]: recordAnalyticsSupport, ...repository } =
+    recordRepository;
+  void recordAnalyticsSupport;
+  if (!config.supportsAnalytics) return repository;
   return Object.assign(repository, {
     [databaseBundleEventService]: createBundleEventService(config),
   });

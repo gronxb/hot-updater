@@ -9,7 +9,7 @@ import {
   createDatabaseClient,
   createRequestBundleResolver,
   databaseBundleEventService,
-  databaseBundleEventSupport,
+  databaseAnalyticsSupport,
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
@@ -41,7 +41,7 @@ export function createDatabaseAdapterCore<TContext = unknown>(
   const beforeOperation = options?.beforeOperation;
   const bundleEvents =
     database[databaseBundleEventService] ??
-    (database[databaseBundleEventSupport]
+    (database[databaseAnalyticsSupport]
       ? createBundleEventService(database)
       : undefined);
 

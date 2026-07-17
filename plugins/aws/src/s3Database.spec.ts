@@ -14,7 +14,7 @@ import {
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
   createDatabaseClient,
-  databaseBundleEventSupport,
+  databaseAnalyticsSupport,
 } from "@hot-updater/plugin-core";
 import {
   setupDatabaseAdapterTestSuite,
@@ -141,7 +141,7 @@ describe("s3Database storage behavior", () => {
     const adapter = s3Database({ bucketName });
 
     // Then
-    expect(adapter[databaseBundleEventSupport]).toBeUndefined();
+    expect(adapter[databaseAnalyticsSupport]).toBeUndefined();
   });
 
   it("writes an immutable revision below the configured base path", async () => {

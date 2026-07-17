@@ -24,7 +24,7 @@ import {
 import { standaloneRepository } from "../../../plugins/standalone/src";
 import { kyselyAdapter } from "./adapters/kysely";
 import { createMigrator } from "./db";
-import { supportsBundleEvents } from "./db/types";
+import { supportsAnalytics } from "./db/types";
 import { createHotUpdater } from "./index";
 
 const db = new PGlite();
@@ -136,7 +136,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     });
 
     // Then
-    expect(supportsBundleEvents(consoleApi)).toBe(false);
+    expect(supportsAnalytics(consoleApi)).toBe(false);
     expect(bundleEventRequestCount).toBe(0);
   });
 
@@ -216,8 +216,8 @@ describe("Handler <-> Standalone Repository Integration", () => {
   });
 
   it("proxies analytics through the standalone repository", async () => {
-    if (!supportsBundleEvents(api)) {
-      throw new Error("Expected Kysely bundle event support.");
+    if (!supportsAnalytics(api)) {
+      throw new Error("Expected Kysely Analytics support.");
     }
     const bundleId = uuidv7();
     const installId = "standalone-analytics-install";
@@ -258,13 +258,13 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const consoleApi = createHotUpdater({
       database: standaloneRepository({
         baseUrl: `${baseUrl}/hot-updater`,
-        supportsBundleEvents: true,
+        supportsAnalytics: true,
       }),
       basePath: "/console",
       routes: { updateCheck: true, bundles: true },
     });
-    if (!supportsBundleEvents(consoleApi)) {
-      throw new Error("Expected standalone bundle event support.");
+    if (!supportsAnalytics(consoleApi)) {
+      throw new Error("Expected standalone Analytics support.");
     }
 
     await expect(consoleApi.getBundleEventSummary(bundleId)).resolves.toEqual({

@@ -3,7 +3,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
   databaseBundleEventService,
-  databaseBundleEventSupport,
+  databaseAnalyticsSupport,
   type DatabaseAdapter,
   type DatabaseBundleEventService,
 } from "@hot-updater/plugin-core";
@@ -20,7 +20,7 @@ import {
   type TestContext,
   updateArgs,
 } from "./databaseAdapterCore.testFixtures";
-import { supportsBundleEvents } from "./types";
+import { supportsAnalytics } from "./types";
 
 type TestEventRow = {
   id: string;
@@ -41,7 +41,7 @@ type TestEventRow = {
 };
 
 const createBundleEventAdapter = (
-  supportsBundleEvents = true,
+  supportsAnalytics = true,
 ): DatabaseAdapter<TestContext> => {
   const rows: TestEventRow[] = [];
   const matches = (
@@ -135,7 +135,7 @@ const createBundleEventAdapter = (
   };
   return {
     name: "bundle-event-test",
-    ...(supportsBundleEvents ? { [databaseBundleEventSupport]: true } : {}),
+    ...(supportsAnalytics ? { [databaseAnalyticsSupport]: true } : {}),
     create: async (input) => {
       if (input.model === "bundle_events") {
         rows.push(input.data as TestEventRow);
@@ -217,7 +217,7 @@ describe("createDatabaseAdapterCore", () => {
       { [databaseBundleEventService]: service },
     );
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
-    if (!supportsBundleEvents(core.api)) {
+    if (!supportsAnalytics(core.api)) {
       throw new Error("Expected the database-provided bundle event service.");
     }
 
@@ -462,8 +462,8 @@ describe("createDatabaseAdapterCore", () => {
     // Given
     const adapter = createBundleEventAdapter();
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
-    if (!supportsBundleEvents(core.api)) {
-      throw new Error("Expected bundle event support.");
+    if (!supportsAnalytics(core.api)) {
+      throw new Error("Expected Analytics support.");
     }
     const context: TestContext = {
       env: { assetHost: "https://assets.example.com" },
@@ -580,8 +580,8 @@ describe("createDatabaseAdapterCore", () => {
     const adapter = createBundleEventAdapter();
     const findMany = vi.spyOn(adapter, "findMany");
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
-    if (!supportsBundleEvents(core.api)) {
-      throw new Error("Expected bundle event support.");
+    if (!supportsAnalytics(core.api)) {
+      throw new Error("Expected Analytics support.");
     }
     const analyticsTime = Date.UTC(2026, 0, 1, 0, 30);
     const nowValues = [

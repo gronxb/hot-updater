@@ -31,7 +31,7 @@ describe("analytics capability gating", () => {
       name: "unsupported",
       input: {
         status: "success" as const,
-        data: { supportsBundleEvents: false },
+        data: { capabilities: { analytics: false } },
       },
       state: "unsupported",
       decision: "redirect",
@@ -41,7 +41,7 @@ describe("analytics capability gating", () => {
       name: "supported",
       input: {
         status: "success" as const,
-        data: { supportsBundleEvents: true },
+        data: { capabilities: { analytics: true } },
       },
       state: "supported",
       decision: "allow",

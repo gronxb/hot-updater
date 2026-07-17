@@ -1,6 +1,6 @@
 import {
   createDatabaseClient,
-  databaseBundleEventSupport,
+  databaseAnalyticsSupport,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 import {
@@ -30,10 +30,10 @@ const createAdapter = (): DatabaseAdapter =>
     storageBucket: `${PROJECT_ID}.appspot.com`,
   });
 
-it("advertises bundle event support", () => {
+it("advertises Analytics support", () => {
   const adapter = createAdapter();
 
-  expect(adapter[databaseBundleEventSupport]).toBe(true);
+  expect(adapter[databaseAnalyticsSupport]).toBe(true);
 });
 
 setupDatabaseAdapterTestSuite({

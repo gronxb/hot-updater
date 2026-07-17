@@ -65,7 +65,7 @@ points. Supporting context stays subordinate to exact values and actions.
 - Bundles is always available.
 - Analytics navigation, Installations navigation, protected route content,
   protected queries, and per-bundle activity are absent until
-  `supportsBundleEvents` is confirmed true.
+  `supportsAnalytics` is confirmed true.
 - An unresolved protected route shows only a neutral, layout-stable shell
   loading state. Unsupported routes redirect to Bundles without mounting or
   flashing protected content. Capability discovery errors show a compact

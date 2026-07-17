@@ -39,7 +39,7 @@ export const getAnalyticsCapabilityState = (
     case "error":
       return { status: "error", error: query.error };
     case "success":
-      return query.data.supportsBundleEvents
+      return query.data.capabilities.analytics
         ? { status: "supported" }
         : { status: "unsupported" };
   }

@@ -3,7 +3,7 @@ import {
   createTransactionDatabaseAdapter,
 } from "./databaseAdapterCrud";
 import {
-  databaseBundleEventSupport,
+  databaseAnalyticsSupport,
   type DatabaseAdapter,
   type DatabaseAdapterImplementation,
 } from "./types";
@@ -49,5 +49,5 @@ export const createDatabaseAdapter = <TContext = unknown>(
   options: CreateDatabaseAdapterOptions<TContext>,
 ): DatabaseAdapter<TContext> => ({
   ...createDatabaseAdapterBase(options),
-  [databaseBundleEventSupport]: true,
+  [databaseAnalyticsSupport]: true,
 });

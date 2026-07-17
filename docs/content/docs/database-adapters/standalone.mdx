@@ -52,7 +52,7 @@ The `standaloneRepository` adapter accepts the following options:
 interface StandaloneRepositoryConfig {
   baseUrl: string;                        // Your server URL
   commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
-  supportsBundleEvents?: true;            // Explicit Analytics capability opt-in
+  supportsAnalytics?: true;              // Explicit Analytics capability opt-in
   routes?: Routes;                        // Optional custom route configuration
 }
 ```
@@ -188,7 +188,7 @@ them with the `routes` option shown above.
 | DELETE | `/api/bundles/:id` | none | `{ "success": true }` |
 | GET | `/api/bundles/channels` | none | `ChannelsResponse` |
 
-When `supportsBundleEvents: true`, the following optional routes are also
+When `supportsAnalytics: true`, the following optional routes are also
 required. Leaving the flag unset or false is the provider-neutral default and
 causes the Console to hide Analytics and installation UI without making event
 requests.

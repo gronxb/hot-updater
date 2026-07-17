@@ -109,6 +109,6 @@ export const databaseBundleEventService = Symbol.for(
   "@hot-updater/plugin-core/database-bundle-event-service",
 );
 
-export const databaseBundleEventSupport = Symbol.for(
-  "@hot-updater/plugin-core/database-bundle-event-support",
+export const databaseAnalyticsSupport = Symbol.for(
+  "@hot-updater/plugin-core/database-analytics-support",
 );

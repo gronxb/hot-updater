@@ -11,7 +11,9 @@ const MAX_ANALYTICS_BUNDLE_PAGES = 100;
 const MAX_ANALYTICS_BUNDLES = 10_000;
 
 export type AnalyticsCapabilities = {
-  readonly supportsBundleEvents: boolean;
+  readonly capabilities: {
+    readonly analytics: boolean;
+  };
 };
 
 type BundlePage = {
@@ -54,10 +56,10 @@ export const getAnalyticsCapabilities = async (
   runtime: unknown,
 ): Promise<AnalyticsCapabilities> => {
   if (typeof runtime !== "object" || runtime === null) {
-    return { supportsBundleEvents: false };
+    return { capabilities: { analytics: false } };
   }
-  const { supportsBundleEvents } = await import("@hot-updater/server/db");
-  return { supportsBundleEvents: supportsBundleEvents(runtime) };
+  const { supportsAnalytics } = await import("@hot-updater/server/db");
+  return { capabilities: { analytics: supportsAnalytics(runtime) } };
 };
 
 const collectBundles = async (
@@ -132,11 +134,11 @@ export const collectAnalyticsOverview = async ({
   getBundles,
   pageSize = DEFAULT_ANALYTICS_PAGE_SIZE,
 }: AnalyticsOverviewDependencies): Promise<AnalyticsOverview> => {
-  const { supportsBundleEvents } = await import("@hot-updater/server/db");
+  const { supportsAnalytics } = await import("@hot-updater/server/db");
   if (
     typeof runtime !== "object" ||
     runtime === null ||
-    !supportsBundleEvents(runtime)
+    !supportsAnalytics(runtime)
   ) {
     throw new AnalyticsNotSupportedError();
   }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createDatabaseAdapter } from "./createDatabaseAdapter";
 import {
-  databaseBundleEventSupport,
+  databaseAnalyticsSupport,
   type DatabaseAdapterImplementation,
 } from "./types";
 
@@ -71,7 +71,7 @@ describe("createDatabaseAdapter", () => {
     expect(adapter.name).toBe("memory");
   });
 
-  it("advertises bundle event storage for record adapters", () => {
+  it("advertises Analytics support for record adapters", () => {
     // Given
     const adapter = createDatabaseAdapter({
       name: "memory",
@@ -79,7 +79,7 @@ describe("createDatabaseAdapter", () => {
     });
 
     // When
-    const capability = adapter[databaseBundleEventSupport];
+    const capability = adapter[databaseAnalyticsSupport];
 
     // Then
     expect(capability).toBe(true);

@@ -17,7 +17,7 @@ import type {
   BundleEventAPI,
   CreateBundleEventRequest,
 } from "./db/types";
-import { supportsBundleEvents } from "./db/types";
+import { supportsAnalytics } from "./db/types";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
@@ -411,7 +411,7 @@ const handleAppendBundleEvent: RouteHandler = async (
   api,
   context,
 ) => {
-  if (!supportsBundleEvents(api)) {
+  if (!supportsAnalytics(api)) {
     return new Response(null, { status: 404 });
   }
   const body = await readBundleEventBody(request);
@@ -706,7 +706,7 @@ const handleGetBundleEventSummary: RouteHandler = async (
   api,
   context,
 ) => {
-  if (!supportsBundleEvents(api)) {
+  if (!supportsAnalytics(api)) {
     return new Response(null, { status: 404 });
   }
   const result = await api.getBundleEventSummary(
@@ -725,7 +725,7 @@ const handleGetBundleEventAnalytics: RouteHandler = async (
   api,
   context,
 ) => {
-  if (!supportsBundleEvents(api)) {
+  if (!supportsAnalytics(api)) {
     return new Response(null, { status: 404 });
   }
   const url = new URL(request.url);
@@ -753,7 +753,7 @@ const handleGetBundleEventOverview: RouteHandler = async (
   api,
   context,
 ) => {
-  if (!supportsBundleEvents(api)) {
+  if (!supportsAnalytics(api)) {
     return new Response(null, { status: 404 });
   }
   const result = await api.getBundleEventOverview(context);
@@ -769,7 +769,7 @@ const handleSearchInstallations: RouteHandler = async (
   api,
   context,
 ) => {
-  if (!supportsBundleEvents(api)) {
+  if (!supportsAnalytics(api)) {
     return new Response(null, { status: 404 });
   }
   const url = new URL(request.url);
@@ -796,7 +796,7 @@ const handleGetInstallationHistory: RouteHandler = async (
   api,
   context,
 ) => {
-  if (!supportsBundleEvents(api)) {
+  if (!supportsAnalytics(api)) {
     return new Response(null, { status: 404 });
   }
   const url = new URL(request.url);
@@ -853,7 +853,7 @@ export function createHandler<TContext = unknown>(
     updateCheck: options.routes?.updateCheck ?? true,
     bundles: options.routes?.bundles ?? false,
   };
-  const bundleEventRoutes = supportsBundleEvents(api);
+  const analyticsRoutes = supportsAnalytics(api);
 
   // Create and configure router
   const router = createRouter();
@@ -886,13 +886,13 @@ export function createHandler<TContext = unknown>(
       "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
       "appVersionUpdateWithCohort",
     );
-    if (bundleEventRoutes) {
+    if (analyticsRoutes) {
       addRoute(router, "POST", "/events", "appendBundleEvent");
     }
   }
 
   if (routeOptions.bundles) {
-    if (bundleEventRoutes) {
+    if (analyticsRoutes) {
       addRoute(
         router,
         "GET",

@@ -7,7 +7,7 @@ import {
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
-import { supportsBundleEventsForE2E } from "../../e2e/detox/bundleEventCapability";
+import { supportsAnalyticsForE2E } from "../../e2e/detox/analyticsCapability";
 
 config({
   path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
@@ -88,10 +88,10 @@ export default defineConfig({
         }),
   database: standaloneRepository({
     baseUrl: standaloneRepositoryBaseUrl ?? "http://localhost:3007/hot-updater",
-    ...(supportsBundleEventsForE2E(
-      process.env.HOT_UPDATER_E2E_SUPPORTS_BUNDLE_EVENTS,
+    ...(supportsAnalyticsForE2E(
+      process.env.HOT_UPDATER_E2E_SUPPORTS_ANALYTICS,
     )
-      ? { supportsBundleEvents: true }
+      ? { supportsAnalytics: true }
       : {}),
     ...(managementHeaders ? { commonHeaders: managementHeaders } : {}),
   }),

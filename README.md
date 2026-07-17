@@ -72,7 +72,7 @@
 
   ## OTA Analytics
 
-  Hot Updater can optionally record successful OTA applications and automatic recoveries as bundle events. The runtime keeps this opt-in behind `HotUpdater.init({ analytics: true })`; when the configured database exposes the optional bundle-event capability, the Console surfaces Installed/Recovered activity plus per-install last-known bundle history.
+  Hot Updater can optionally record successful OTA applications and automatic recoveries as bundle events. The runtime keeps this opt-in behind `HotUpdater.init({ analytics: true })`; when the configured database exposes the optional Analytics capability, the Console surfaces Installed/Recovered activity plus per-install last-known bundle history.
 
   See the React Native/runtime docs and Console/server guides at https://hot-updater.dev for full setup.
 

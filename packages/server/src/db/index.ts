@@ -18,7 +18,7 @@ export type {
   OffsetPaginationResult,
   SchemaGenerator,
 } from "./types";
-export { supportsBundleEvents } from "./types";
+export { supportsAnalytics } from "./types";
 export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 

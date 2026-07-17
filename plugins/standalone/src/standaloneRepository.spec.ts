@@ -117,7 +117,7 @@ const createRepository = (): DatabaseAdapter =>
   standaloneRepository({ baseUrl: BASE_URL });
 
 describe("standaloneRepository", () => {
-  it("does not report or request bundle-event support by default", () => {
+  it("does not report or request Analytics support by default", () => {
     // Given / When
     const repository = createRepository();
 
@@ -218,7 +218,7 @@ describe("standaloneRepository", () => {
     );
     const repository = standaloneRepository({
       baseUrl: BASE_URL,
-      supportsBundleEvents: true,
+      supportsAnalytics: true,
     });
     const analytics = repository[databaseBundleEventService];
     if (!analytics) throw new Error("Missing standalone analytics service");

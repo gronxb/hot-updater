@@ -34,7 +34,7 @@ const createRuntime = () => ({
 });
 
 describe("getAnalyticsCapabilities", () => {
-  it("reports support only for the complete callable bundle-event contract", async () => {
+  it("reports support only for the complete callable Analytics contract", async () => {
     // Given
     const supported = createRuntime();
     const methodNames = Object.keys(supported);
@@ -50,9 +50,9 @@ describe("getAnalyticsCapabilities", () => {
     );
 
     // Then
-    expect(complete).toEqual({ supportsBundleEvents: true });
+    expect(complete).toEqual({ capabilities: { analytics: true } });
     expect(incomplete).toEqual(
-      methodNames.map(() => ({ supportsBundleEvents: false })),
+      methodNames.map(() => ({ capabilities: { analytics: false } })),
     );
     for (const method of Object.values(supported)) {
       expect(method).not.toHaveBeenCalled();
@@ -66,7 +66,7 @@ describe("getAnalyticsCapabilities", () => {
       const result = await getAnalyticsCapabilities(runtime);
 
       // Then
-      expect(result).toEqual({ supportsBundleEvents: false });
+      expect(result).toEqual({ capabilities: { analytics: false } });
     },
   );
 });

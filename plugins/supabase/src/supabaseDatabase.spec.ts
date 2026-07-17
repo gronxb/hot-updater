@@ -1,4 +1,4 @@
-import { databaseBundleEventSupport } from "@hot-updater/plugin-core";
+import { databaseAnalyticsSupport } from "@hot-updater/plugin-core";
 import { setupDatabaseAdapterTestSuite } from "@hot-updater/test-utils";
 import { expect, it, vi } from "vitest";
 
@@ -339,7 +339,7 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: () => createMockClient(),
 }));
 
-it("advertises bundle event analytics support", () => {
+it("advertises Analytics support", () => {
   // Given / When
   const adapter = supabaseDatabase({
     supabaseUrl: "https://test.supabase.invalid",
@@ -347,7 +347,7 @@ it("advertises bundle event analytics support", () => {
   });
 
   // Then
-  expect(adapter[databaseBundleEventSupport]).toBe(true);
+  expect(adapter[databaseAnalyticsSupport]).toBe(true);
 });
 
 setupDatabaseAdapterTestSuite({

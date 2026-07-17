@@ -1,4 +1,4 @@
-import { databaseBundleEventSupport } from "@hot-updater/plugin-core";
+import { databaseAnalyticsSupport } from "@hot-updater/plugin-core";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -41,7 +41,7 @@ beforeEach(() => {
   state.results.length = 0;
 });
 
-it("advertises bundle event analytics support", () => {
+it("advertises Analytics support", () => {
   // Given / When
   const adapter = d1Database({
     accountId: "account",
@@ -50,7 +50,7 @@ it("advertises bundle event analytics support", () => {
   });
 
   // Then
-  expect(adapter[databaseBundleEventSupport]).toBe(true);
+  expect(adapter[databaseAnalyticsSupport]).toBe(true);
 });
 
 it("projects selected fields after querying physical bundle columns", async () => {

@@ -1,7 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
-  databaseBundleEventSupport,
+  databaseAnalyticsSupport,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
@@ -11,7 +11,7 @@ import {
 } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
 import { createDatabaseAdapterCore } from "../db/databaseAdapterCore";
-import { supportsBundleEvents } from "../db/types";
+import { supportsAnalytics } from "../db/types";
 import { mongoAdapter } from "./mongodb";
 import { createMongoBundleWhere } from "./mongodbQuery";
 import { createMongoTestHarness } from "./mongodbTestClient";
@@ -58,8 +58,8 @@ describe("mongoAdapter capabilities", () => {
     expect(adapter.adapterName).toBe("mongodb");
     expect(adapter.provider).toBe("mongodb");
     expect(adapter.transaction).toBeUndefined();
-    expect(Reflect.get(adapter, databaseBundleEventSupport)).toBe(true);
-    expect(supportsBundleEvents(core.api)).toBe(true);
+    expect(Reflect.get(adapter, databaseAnalyticsSupport)).toBe(true);
+    expect(supportsAnalytics(core.api)).toBe(true);
   });
 
   it("removes a patch inserted concurrently with bundle deletion", async () => {

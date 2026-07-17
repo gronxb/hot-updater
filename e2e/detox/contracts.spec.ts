@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { supportsBundleEventsForE2E } from "./bundleEventCapability.ts";
+import { supportsAnalyticsForE2E } from "./analyticsCapability.ts";
 import { resolveDetoxSuiteScenarioNames } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
@@ -17,7 +17,7 @@ const detoxControlServerPath = path.join(
   repoDir,
   "e2e/detox/scripts/control-server.ts",
 );
-const bundleEventCapabilityEnvironmentFixtures = [
+const analyticsCapabilityEnvironmentFixtures = [
   { environmentValue: undefined, expectedCapability: false },
   { environmentValue: "true", expectedCapability: true },
 ] as const;
@@ -52,14 +52,14 @@ function runDetoxRunnerWithEnv(
 }
 
 describe("Detox E2E harness contract", () => {
-  it.each(bundleEventCapabilityEnvironmentFixtures)(
-    "maps bundle-event environment value $environmentValue to $expectedCapability",
+  it.each(analyticsCapabilityEnvironmentFixtures)(
+    "maps Analytics environment value $environmentValue to $expectedCapability",
     ({ environmentValue, expectedCapability }) => {
-      // Given: a neutral bundle-event capability environment value.
+      // Given: a neutral Analytics capability environment value.
       const capabilityEnvironmentValue = environmentValue;
 
       // When: the example config's capability rule receives that value.
-      const result = supportsBundleEventsForE2E(capabilityEnvironmentValue);
+      const result = supportsAnalyticsForE2E(capabilityEnvironmentValue);
 
       // Then: the config exposes exactly the capability selected by the toggle.
       expect(result).toBe(expectedCapability);
@@ -107,7 +107,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/update-check-visibility.spec.ts",
       "e2e/detox/control-server/update-check-visibility.ts",
       "e2e/detox/android-native.spec.ts",
-      "e2e/detox/bundleEventCapability.ts",
+      "e2e/detox/analyticsCapability.ts",
       "e2e/detox/contracts.spec.ts",
       "e2e/detox/control-client.spec.ts",
       "e2e/detox/control-client.ts",

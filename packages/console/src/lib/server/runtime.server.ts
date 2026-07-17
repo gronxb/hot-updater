@@ -5,7 +5,7 @@ import {
   type InstallationHistoryRow,
   type InstallationSearchRow,
   type OffsetPaginationResult,
-  supportsBundleEvents,
+  supportsAnalytics,
 } from "@hot-updater/server/db";
 
 import {
@@ -26,11 +26,11 @@ export function createRuntimeHotUpdater(config: ConfigResponse) {
   });
 }
 
-const requireBundleEventSupport = <TContext>(hotUpdater: unknown) => {
+const requireAnalyticsSupport = <TContext>(hotUpdater: unknown) => {
   if (
     typeof hotUpdater !== "object" ||
     hotUpdater === null ||
-    !supportsBundleEvents<TContext>(hotUpdater)
+    !supportsAnalytics<TContext>(hotUpdater)
   ) {
     throw new Error(
       "Analytics are not supported by the configured database adapter.",
@@ -45,7 +45,7 @@ export async function getBundleEventSummary<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) {
   const { bundleId } = parseBundleEventSummaryInput(input);
-  return requireBundleEventSupport<TContext>(hotUpdater).getBundleEventSummary(
+  return requireAnalyticsSupport<TContext>(hotUpdater).getBundleEventSummary(
     bundleId,
     context,
   );
@@ -57,9 +57,7 @@ export async function getBundleEventAnalytics<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) {
   const parsed = parseBundleEventAnalyticsInput(input);
-  return requireBundleEventSupport<TContext>(
-    hotUpdater,
-  ).getBundleEventAnalytics(
+  return requireAnalyticsSupport<TContext>(hotUpdater).getBundleEventAnalytics(
     parsed.bundleId,
     parsed.window,
     parsed.limit ?? 50,
@@ -74,7 +72,7 @@ export async function searchInstallations<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) {
   const parsed = parseSearchInstallationsInput(input);
-  return requireBundleEventSupport<TContext>(hotUpdater).searchInstallations(
+  return requireAnalyticsSupport<TContext>(hotUpdater).searchInstallations(
     parsed.query,
     parsed.limit ?? 50,
     parsed.offset ?? 0,
@@ -88,7 +86,7 @@ export async function getInstallationHistory<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) {
   const parsed = parseInstallationHistoryInput(input);
-  return requireBundleEventSupport<TContext>(hotUpdater).getInstallationHistory(
+  return requireAnalyticsSupport<TContext>(hotUpdater).getInstallationHistory(
     parsed.installId,
     parsed.limit ?? 50,
     parsed.offset ?? 0,

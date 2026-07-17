@@ -173,7 +173,7 @@ export interface BundleEventAPI<TContext = unknown> {
   ): Promise<OffsetPaginationResult<InstallationHistoryRow>>;
 }
 
-export const supportsBundleEvents = <TContext>(
+export const supportsAnalytics = <TContext>(
   api: object,
 ): api is BundleEventAPI<TContext> =>
   typeof Reflect.get(api, "appendBundleEvent") === "function" &&
