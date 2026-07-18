@@ -1,3 +1,4 @@
+import type { ActiveInstallationWindow } from "@hot-updater/plugin-core";
 import { useId } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
@@ -16,6 +17,7 @@ interface SeriesPoint {
 interface BundleActivityChartProps {
   readonly installed: readonly SeriesPoint[];
   readonly recovered: readonly SeriesPoint[];
+  readonly window: ActiveInstallationWindow;
 }
 
 interface ActivityChartPoint {
@@ -26,11 +28,11 @@ interface ActivityChartPoint {
 
 const chartConfig = {
   installed: {
-    label: "Applied on",
+    label: "Newly applied",
     color: "var(--chart-2)",
   },
   recovered: {
-    label: "Recovered from",
+    label: "Recovered away",
     color: "var(--muted-foreground)",
   },
 } satisfies ChartConfig;
@@ -40,6 +42,18 @@ const dateFormatter = new Intl.DateTimeFormat("en", {
   month: "short",
   timeZone: "UTC",
 });
+const hourFormatter = new Intl.DateTimeFormat("en", {
+  day: "numeric",
+  hour: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
+
+const windowLabels = {
+  "24h": "24 hours",
+  "7d": "7 days",
+  "30d": "30 days",
+} as const;
 
 const mergeActivitySeries = (
   installed: readonly SeriesPoint[],
@@ -65,12 +79,16 @@ const mergeActivitySeries = (
     }));
 };
 
-const formatBucket = (value: number): string =>
-  dateFormatter.format(new Date(value));
+const formatBucket = (
+  value: number,
+  window: ActiveInstallationWindow,
+): string =>
+  (window === "24h" ? hourFormatter : dateFormatter).format(new Date(value));
 
 export function BundleActivityChart({
   installed,
   recovered,
+  window,
 }: BundleActivityChartProps) {
   const captionId = useId();
   const chartData = mergeActivitySeries(installed, recovered);
@@ -81,7 +99,7 @@ export function BundleActivityChart({
   if (!hasWindowActivity) {
     return (
       <div className="flex h-28 items-center justify-center border-t px-4 pt-4 text-center text-sm text-muted-foreground">
-        No activity in the last 30 days.
+        No bundle movement in this period.
       </div>
     );
   }
@@ -90,7 +108,7 @@ export function BundleActivityChart({
     <div className="border-t pt-4">
       <ChartContainer
         aria-describedby={captionId}
-        aria-label="Cumulative update activity over the last 30 days"
+        aria-label={`Bundle movement over ${windowLabels[window]}`}
         className="h-32 w-full aspect-auto"
         config={chartConfig}
         role="img"
@@ -105,7 +123,7 @@ export function BundleActivityChart({
             axisLine={false}
             dataKey="bucketStartMs"
             minTickGap={28}
-            tickFormatter={formatBucket}
+            tickFormatter={(value: number) => formatBucket(value, window)}
             tickLine={false}
           />
           <YAxis
@@ -119,7 +137,9 @@ export function BundleActivityChart({
               <ChartTooltipContent
                 labelFormatter={(_, payload) => {
                   const bucket = payload[0]?.payload.bucketStartMs;
-                  return typeof bucket === "number" ? formatBucket(bucket) : "";
+                  return typeof bucket === "number"
+                    ? formatBucket(bucket, window)
+                    : "";
                 }}
               />
             }
@@ -147,20 +167,20 @@ export function BundleActivityChart({
       <div className="sr-only">
         <table>
           <caption id={captionId}>
-            Cumulative update activity values over the last 30 days. Dates are
-            shown in UTC.
+            Distinct bundle movement in each bucket over {windowLabels[window]}.
+            Times are shown in UTC.
           </caption>
           <thead>
             <tr>
               <th scope="col">Date</th>
-              <th scope="col">Applied on</th>
-              <th scope="col">Recovered from</th>
+              <th scope="col">Newly applied</th>
+              <th scope="col">Recovered away</th>
             </tr>
           </thead>
           <tbody>
             {chartData.map((point) => (
               <tr key={point.bucketStartMs}>
-                <th scope="row">{formatBucket(point.bucketStartMs)}</th>
+                <th scope="row">{formatBucket(point.bucketStartMs, window)}</th>
                 <td>{point.installed}</td>
                 <td>{point.recovered}</td>
               </tr>

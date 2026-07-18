@@ -11,7 +11,19 @@ describe("AnalyticsControls", () => {
     const onInstallationSearch = vi.fn();
     render(
       <AnalyticsControls
+        bundleId="bundle-a"
+        bundles={[
+          {
+            bundleId: "bundle-a",
+            description: "iOS · production · 1.0.0",
+          },
+          {
+            bundleId: "bundle-b",
+            description: "Android · production · 1.0.0",
+          },
+        ]}
         window="30d"
+        onBundleChange={vi.fn()}
         onInstallationSearch={onInstallationSearch}
         onWindowChange={onWindowChange}
       />,
@@ -37,7 +49,10 @@ describe("AnalyticsControls", () => {
     const onInstallationSearch = vi.fn();
     render(
       <AnalyticsControls
+        bundleId="bundle-a"
+        bundles={[]}
         window="24h"
+        onBundleChange={vi.fn()}
         onInstallationSearch={onInstallationSearch}
         onWindowChange={vi.fn()}
       />,
@@ -59,7 +74,10 @@ describe("AnalyticsControls", () => {
     const onInstallationSearch = vi.fn();
     render(
       <AnalyticsControls
+        bundleId="bundle-a"
+        bundles={[]}
         window="24h"
+        onBundleChange={vi.fn()}
         onInstallationSearch={onInstallationSearch}
         onWindowChange={vi.fn()}
       />,
@@ -68,5 +86,30 @@ describe("AnalyticsControls", () => {
     fireEvent.submit(screen.getByRole("search", { name: "Filter analytics" }));
 
     expect(onInstallationSearch).not.toHaveBeenCalled();
+  });
+
+  it("selects the bundle whose adoption should be inspected", () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const onBundleChange = vi.fn();
+    render(
+      <AnalyticsControls
+        bundleId="bundle-a"
+        bundles={[
+          { bundleId: "bundle-a", description: "iOS · production · 1.0.0" },
+          { bundleId: "bundle-b", description: "Android · production · 1.0.0" },
+        ]}
+        window="7d"
+        onBundleChange={onBundleChange}
+        onInstallationSearch={vi.fn()}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("combobox", { name: "Bundle to inspect" }),
+    );
+    fireEvent.click(screen.getByRole("option", { name: /bundle-b/i }));
+
+    expect(onBundleChange).toHaveBeenCalledWith("bundle-b");
   });
 });

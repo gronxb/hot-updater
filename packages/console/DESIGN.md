@@ -38,7 +38,7 @@ structure only.
 - `background`, `card`, `muted`, `border`, and their foreground counterparts
   create the warm-stone surface hierarchy in both themes.
 - Orange `primary`/`accent` is the single emphasis color. In charts,
-  `chart-2` represents the primary Applied on, active-installation, or
+  `chart-2` represents the primary Newly applied, observed-installation, or
   bundle-distribution series.
 - `muted-foreground` or `chart-1` is the neutral secondary-series treatment.
   Labels, values, and tooltips always communicate meaning without color.
@@ -94,11 +94,12 @@ structure only.
   diagnostic state and a Bundles escape path, with no protected query.
 - Data surfaces define loading, empty, success, and genuine error states.
   Unsupported capability is absence, not an error or empty-state card.
-- Analytics language is direct and evidentiary: use Active installations,
-  Active by bundle, Active trend, active in range, Rollout settings, and Last
-  known bundle. Avoid transport or lifecycle implementation terms in visible
-  copy. Never imply realtime state, complete fleet coverage, or rollout
-  completion.
+- Analytics language is direct and evidentiary: use Observed installations,
+  Observed by bundle, Observed adoption, Newly applied, Recovered away,
+  Configured rollout, and Last known bundle. Avoid the ambiguous standalone
+  terms Active and Installed, as well as transport or lifecycle implementation
+  terms in visible copy. Never imply realtime state, complete fleet coverage,
+  or rollout completion.
 
 ## 5. Reusable Primitives
 
@@ -127,21 +128,22 @@ success. Capability-unavailable primitives do not render.
 
 ## 6. Analytics-Specific Composition
 
-- **Update outcomes:** one compact card with Applied on and Recovered from
-  lifetime values followed directly by a short 30-day cumulative chart.
-  Do not repeat
-  Lifetime, UTC, or 30-day labels, and do not add explanatory framing already
-  carried by the title and accessible chart name.
-- **Active by bundle:** one dominant comparison table with a relative horizontal
-  activity bar, exact active count, and share in every row, matching the
+- **Selected bundle adoption:** one full-width operational card for the bundle
+  selected in the toolbar. Its metric rail shows Observed adoption (bundle
+  installations divided by all installations observed in the selected
+  period), Newly applied, Recovered away, and Configured rollout. The movement
+  summary and chart use the same selected period. The chart shows per-bucket
+  distinct movement rather than a cumulative total.
+- **Observed by bundle:** one dominant comparison table with a relative horizontal
+  activity bar, exact observed count, and share in every row, matching the
   comparison grammar of the EAS reference. Unknown/deleted bundles keep their
   identifier and a clear unavailable-metadata label. Each installation is
   counted once under its latest bundle in the selected period.
-- **Activity overview:** Active installations is the leading metric above the
-  full-width trend chart. Bundles, Top bundle, and As of form one compact footer
-  rail rather than separate KPI cards.
-- **Rollout settings:** ranked compact rows with progress and exact percentage.
-  Configuration is not presented as observed completion.
+- **Activity overview:** Observed installations is the leading metric above the
+  full-width trend chart. Bundles, Top observed bundle, and As of form one
+  compact footer rail rather than separate KPI cards.
+- **Configured rollout:** configuration is presented beside the selected
+  bundle's observed adoption, never as observed completion.
 - **Installation history:** the analytics toolbar accepts a user ID or install
   ID and routes to the installation history drill-down. A user ID may match
   multiple installations; the drill-down keeps those matches visible while an
@@ -174,5 +176,5 @@ success. Capability-unavailable primitives do not render.
 
 - The current card primitive owns its existing single shadow and spacing
   defaults; G002 does not redesign shared shadcn primitives.
-- Installation history remains on the existing route and receives terminology
-  alignment only; broader route decomposition is outside this focused change.
+- Installation history remains on the existing route and is composed from
+  focused search, matching-installation, and history primitives.

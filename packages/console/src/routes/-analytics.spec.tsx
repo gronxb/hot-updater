@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -22,12 +23,22 @@ vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
 vi.mock("@/components/features/analytics/AnalyticsControls", () => ({
   AnalyticsControls: (props: {
     onInstallationSearch: (query: string) => void;
+    onBundleChange: (bundleId: string) => void;
+    onWindowChange: (window: "24h" | "7d" | "30d") => void;
   }) => {
     mocks.controls(props);
     return (
-      <button onClick={() => props.onInstallationSearch("user-1")}>
-        Search installation history
-      </button>
+      <>
+        <button onClick={() => props.onInstallationSearch("user-1")}>
+          Search installation history
+        </button>
+        <button onClick={() => props.onBundleChange("bundle-b")}>
+          Select bundle
+        </button>
+        <button onClick={() => props.onWindowChange("7d")}>
+          Select window
+        </button>
+      </>
     );
   },
 }));
@@ -48,7 +59,11 @@ vi.mock("@/lib/api", () => ({
   useBundleEventAnalyticsQuery: mocks.analytics,
 }));
 
-import { AnalyticsPage } from "./analytics";
+import { Route } from "./analytics";
+
+const AnalyticsPage = (
+  Route as unknown as { readonly component: ComponentType }
+).component;
 
 const activeData = {
   asOfMs: Date.UTC(2026, 6, 18),
@@ -62,7 +77,30 @@ const catalogData = {
   trackedInstallations: 4,
   mostCommonLatestReportedBundle: null,
   latestReportedBundles: [],
-  configuredRollouts: [],
+  configuredRollouts: [
+    {
+      bundleId: "bundle-a",
+      configuredPercentage: 100,
+      trackedInstallations: 4,
+      bundle: {
+        platform: "ios",
+        channel: "production",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      },
+    },
+    {
+      bundleId: "bundle-b",
+      configuredPercentage: 25,
+      trackedInstallations: 0,
+      bundle: {
+        platform: "android",
+        channel: "production",
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+      },
+    },
+  ],
 };
 
 const analyticsData = {
@@ -107,7 +145,7 @@ describe("AnalyticsPage", () => {
     vi.clearAllMocks();
   });
 
-  it("requests 30-day analytics for the leading latest reported bundle", () => {
+  it("requests analytics for the selected bundle and reporting period", () => {
     const { container } = render(<AnalyticsPage />);
 
     expect(mocks.analytics).toHaveBeenCalledWith(
@@ -137,6 +175,22 @@ describe("AnalyticsPage", () => {
         "This database scans up to 50,000 matching analytics records per query.",
       ),
     ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Select bundle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select window" }));
+
+    expect(mocks.analytics).toHaveBeenLastCalledWith(
+      {
+        bundleId: "bundle-b",
+        window: "7d",
+        limit: 1,
+        offset: 0,
+      },
+      true,
+    );
+    expect(mocks.active).toHaveBeenLastCalledWith(expect.anything(), {
+      window: "7d",
+    });
   });
 
   it("opens matching installation history from one user or install ID", () => {

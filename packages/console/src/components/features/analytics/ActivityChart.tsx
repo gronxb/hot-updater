@@ -15,7 +15,7 @@ type ActivityPoint = ActiveInstallationOverview["series"][number];
 
 const chartConfig = {
   value: {
-    label: "Active installations",
+    label: "Observed installations",
     color: "var(--chart-2)",
   },
 } satisfies ChartConfig;
@@ -53,11 +53,11 @@ export function ActivityChart({
     <div className="flex min-w-0 flex-col gap-3">
       {!hasReports && (
         <p className="text-sm text-muted-foreground">
-          No active installations in this range.
+          No observed installations in this range.
         </p>
       )}
       <ChartContainer
-        aria-label="Non-cumulative active installation trend"
+        aria-label="Non-cumulative observed installation trend"
         className="h-64 w-full aspect-auto"
         config={chartConfig}
         role="img"
@@ -105,15 +105,15 @@ export function ActivityChart({
         </AreaChart>
       </ChartContainer>
       <div className="sr-only">
-        <table aria-label="Exact active installation values">
+        <table aria-label="Exact observed installation values">
           <caption>
-            Distinct active installations in each UTC bucket. Values are not
+            Distinct observed installations in each UTC bucket. Values are not
             cumulative.
           </caption>
           <thead>
             <tr>
               <th scope="col">UTC bucket</th>
-              <th scope="col">Active installations</th>
+              <th scope="col">Observed installations</th>
             </tr>
           </thead>
           <tbody>

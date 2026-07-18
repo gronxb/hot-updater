@@ -18,35 +18,58 @@ export const Route = createFileRoute("/analytics")({
   component: AnalyticsPage,
 });
 
-export function AnalyticsPage() {
+function AnalyticsPage() {
   const capability = useAnalyticsCapability();
   const navigate = useNavigate();
   const [window, setWindow] = useState<ActiveInstallationWindow>("30d");
+  const [selectedBundleId, setSelectedBundleId] = useState("");
   const catalog = useAnalyticsOverviewQuery(capability);
   const active = useActiveInstallationQuery(capability, { window });
-  const leadingBundleId = active.data?.bundles[0]?.bundleId ?? "";
+  const configuredById = new Map(
+    catalog.data?.configuredRollouts.map((rollout) => [
+      rollout.bundleId,
+      rollout,
+    ]) ?? [],
+  );
+  const bundleIds = new Set([
+    ...(active.data?.bundles.map(({ bundleId }) => bundleId) ?? []),
+    ...(catalog.data?.configuredRollouts.map(({ bundleId }) => bundleId) ?? []),
+  ]);
+  const bundleOptions = [...bundleIds].map((bundleId) => {
+    const configured = configuredById.get(bundleId);
+    const appVersion = configured?.bundle.targetAppVersion ?? "all versions";
+    return {
+      bundleId,
+      description: configured
+        ? `${configured.bundle.platform === "ios" ? "iOS" : "Android"} · ${configured.bundle.channel} · ${appVersion}`
+        : "Metadata unavailable",
+    };
+  });
+  const bundleId = bundleIds.has(selectedBundleId)
+    ? selectedBundleId
+    : (bundleOptions[0]?.bundleId ?? "");
   const outcomes = useBundleEventAnalyticsQuery(
     {
-      bundleId: leadingBundleId,
-      window: "30d",
+      bundleId,
+      window,
       limit: 1,
       offset: 0,
     },
-    capability.status === "supported" && leadingBundleId.length > 0,
+    capability.status === "supported" && bundleId.length > 0,
   );
-  const outcomeState: UpdateOutcomeState = !leadingBundleId
+  const outcomeState: UpdateOutcomeState = !bundleId
     ? { status: "idle" }
     : outcomes.isLoading
-      ? { status: "loading", bundleId: leadingBundleId }
+      ? { status: "loading", bundleId }
       : outcomes.error
-        ? { status: "error", bundleId: leadingBundleId, error: outcomes.error }
+        ? { status: "error", bundleId, error: outcomes.error }
         : outcomes.data
           ? {
               status: "success",
-              bundleId: leadingBundleId,
+              bundleId,
               data: outcomes.data,
             }
-          : { status: "loading", bundleId: leadingBundleId };
+          : { status: "loading", bundleId };
   const analyticsError = active.error ?? catalog.error;
 
   return (
@@ -61,7 +84,7 @@ export function AnalyticsPage() {
           <h1 className="text-sm font-medium">Analytics</h1>
         </div>
         <p className="basis-full pl-9 text-xs text-muted-foreground sm:basis-auto sm:pl-0">
-          Active installations by bundle.
+          Bundle adoption and movement over time.
         </p>
       </header>
 
@@ -76,6 +99,9 @@ export function AnalyticsPage() {
             </p>
           ) : null}
           <AnalyticsControls
+            bundleId={bundleId}
+            bundles={bundleOptions}
+            onBundleChange={setSelectedBundleId}
             onInstallationSearch={(query) => {
               void navigate({
                 to: "/installations",

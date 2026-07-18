@@ -56,7 +56,7 @@ describe("ActivityChart", () => {
       screen.getByTestId("activity-chart-data").getAttribute("data-item-count"),
     ).toBe("3");
     const table = screen.getByRole("table", {
-      name: "Exact active installation values",
+      name: "Exact observed installation values",
     });
     expect(table.parentElement?.classList.contains("sr-only")).toBe(true);
     expect(table.classList.contains("sr-only")).toBe(false);

@@ -126,7 +126,7 @@ describe("createDatabaseAdapterCore bundle events", () => {
     now.mockRestore();
   });
 
-  it("builds bundle event analytics with cumulative series and recent events", async () => {
+  it("builds windowed bundle event analytics with non-cumulative series", async () => {
     const adapter = createBundleEventAdapter();
     const findMany = vi.spyOn(adapter, "findMany");
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
@@ -135,12 +135,12 @@ describe("createDatabaseAdapterCore bundle events", () => {
     }
     const analyticsTime = Date.UTC(2026, 0, 1, 0, 30);
     const nowValues = [
-      Date.UTC(2025, 11, 1, 0, 5),
-      Date.UTC(2025, 11, 1, 0, 5),
-      Date.UTC(2025, 11, 1, 0, 10),
-      Date.UTC(2025, 11, 1, 0, 10),
-      Date.UTC(2025, 11, 1, 0, 15),
-      Date.UTC(2025, 11, 1, 0, 15),
+      Date.UTC(2025, 11, 31, 23, 5),
+      Date.UTC(2025, 11, 31, 23, 5),
+      Date.UTC(2025, 11, 31, 23, 10),
+      Date.UTC(2025, 11, 31, 23, 10),
+      Date.UTC(2025, 11, 31, 23, 15),
+      Date.UTC(2025, 11, 31, 23, 15),
       analyticsTime,
     ];
     const now = vi
@@ -219,6 +219,11 @@ describe("createDatabaseAdapterCore bundle events", () => {
             field: "type",
             operator: "in",
             value: ["UPDATE_APPLIED", "RECOVERED"],
+          },
+          {
+            field: "received_at_ms",
+            operator: "gte",
+            value: Date.UTC(2025, 11, 31, 1, 0),
           },
           {
             field: "received_at_ms",

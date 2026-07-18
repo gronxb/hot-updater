@@ -39,7 +39,7 @@ export function BundleDistribution({
   if (active.bundles.length === 0) {
     return (
       <p className="py-6 text-center text-sm text-muted-foreground">
-        No active installations in this range.
+        No observed installations in this range.
       </p>
     );
   }
@@ -52,14 +52,14 @@ export function BundleDistribution({
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="overflow-x-auto">
-        <Table aria-label="Active installations by bundle">
+        <Table aria-label="Observed installations by bundle">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead>Bundle</TableHead>
               <TableHead className="hidden w-2/5 sm:table-cell">
                 Activity
               </TableHead>
-              <TableHead className="text-right">Active</TableHead>
+              <TableHead className="text-right">Observed</TableHead>
               <TableHead className="text-right">Share</TableHead>
             </TableRow>
           </TableHeader>
@@ -82,7 +82,7 @@ export function BundleDistribution({
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
                     <Progress
-                      aria-label={`${row.bundleId} activity share ${shareLabel}`}
+                      aria-label={`${row.bundleId} observed share ${shareLabel}`}
                       aria-valuetext={shareLabel}
                       className="h-2"
                       value={share * 100}

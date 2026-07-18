@@ -125,7 +125,7 @@ const startOfUtcDay = (value: number): number => {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
 };
 
-const finiteRange = (
+export const getBundleEventWindowRange = (
   window: Exclude<BundleEventAnalyticsWindow, "all">,
   now: number,
 ): { readonly sizeMs: number; readonly rangeStart: number } => {
@@ -142,6 +142,29 @@ const finiteRange = (
   };
 };
 
+export const materializeBundleEventRowsForWindow = async <TContext>(
+  scope: BundleEventScanScope<TContext>,
+  window: BundleEventAnalyticsWindow,
+  where: readonly DatabaseWhere<"bundle_events">[],
+): Promise<readonly BundleEventRow[]> => {
+  const range =
+    window === "all"
+      ? undefined
+      : getBundleEventWindowRange(window, scope.cutoffMs);
+  return materializeBundleEventRows(scope, [
+    ...where,
+    ...(range
+      ? ([
+          {
+            field: "received_at_ms",
+            operator: "gte",
+            value: range.rangeStart,
+          },
+        ] satisfies readonly DatabaseWhere<"bundle_events">[])
+      : []),
+  ]);
+};
+
 const bucketStart = (receivedAtMs: number, sizeMs: number): number =>
   sizeMs === 60 * 60 * 1000
     ? startOfUtcHour(receivedAtMs)
@@ -153,7 +176,7 @@ const createSeries = (
   const range =
     request.window === "all"
       ? undefined
-      : finiteRange(request.window, request.cutoffMs);
+      : getBundleEventWindowRange(request.window, request.cutoffMs);
   const firstByInstall = new Map<string, BundleEventRow>();
   for (const row of request.rows) {
     if (range && row.received_at_ms < range.rangeStart) continue;
@@ -176,11 +199,9 @@ const createSeries = (
   }
   const first = range?.rangeStart ?? startOfUtcDay(oldestMs);
   const last = bucketStart(request.cutoffMs, sizeMs);
-  let cumulative = 0;
   const series: { bucketStartMs: number; value: number }[] = [];
   for (let start = first; start <= last; start += sizeMs) {
-    cumulative += counts.get(start) ?? 0;
-    series.push({ bucketStartMs: start, value: cumulative });
+    series.push({ bucketStartMs: start, value: counts.get(start) ?? 0 });
   }
   return series;
 };
@@ -188,9 +209,20 @@ const createSeries = (
 export const collectBundleEventActivity = (
   request: BundleEventActivityRequest,
 ) => {
+  const range =
+    request.window === "all"
+      ? undefined
+      : getBundleEventWindowRange(request.window, request.cutoffMs);
+  const rows = range
+    ? request.rows.filter(
+        ({ received_at_ms }) =>
+          received_at_ms >= range.rangeStart &&
+          received_at_ms < request.cutoffMs,
+      )
+    : request.rows;
   const installs = new Set<string>();
   const installsByCohort = new Map<string, Set<string>>();
-  for (const row of request.rows) {
+  for (const row of rows) {
     installs.add(row.install_id);
     const cohort = installsByCohort.get(row.cohort) ?? new Set<string>();
     cohort.add(row.install_id);
@@ -201,6 +233,6 @@ export const collectBundleEventActivity = (
     cohorts: [...installsByCohort]
       .sort(([left], [right]) => compareCodePoints(left, right))
       .map(([cohort, installIds]) => ({ cohort, value: installIds.size })),
-    series: createSeries(request),
+    series: createSeries({ ...request, rows }),
   };
 };

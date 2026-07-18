@@ -76,10 +76,9 @@ describe("AnalyticsOverview", () => {
     );
 
     for (const heading of [
-      "Active installations",
-      "Active by bundle",
-      "Update outcomes",
-      "Rollout settings",
+      "Observed installations",
+      "Observed by bundle",
+      "Selected bundle adoption",
     ]) {
       expect(
         screen.getByRole("heading", { level: 2, name: heading }),
@@ -91,19 +90,21 @@ describe("AnalyticsOverview", () => {
     expect(within(activityOverview).getByText("4")).toBeDefined();
     expect(within(activityOverview).getByText("Bundles")).toBeDefined();
     expect(within(activityOverview).getByText("2")).toBeDefined();
-    expect(within(activityOverview).getByText("Top bundle")).toBeDefined();
+    expect(
+      within(activityOverview).getByText("Top observed bundle"),
+    ).toBeDefined();
     expect(
       within(activityOverview).getByTestId("activity-chart"),
     ).toBeDefined();
     expect(screen.getAllByText("bundle-a").length).toBeGreaterThan(0);
     expect(screen.getAllByText("deleted-bundle").length).toBeGreaterThan(0);
     expect(screen.getByText("Unknown bundle metadata")).toBeDefined();
-    expect(screen.getByText("75%")).toBeDefined();
-    expect(screen.getAllByText("Applied on").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Recovered from").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("75%").length).toBeGreaterThan(1);
+    expect(screen.getAllByText("Newly applied").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Recovered away").length).toBeGreaterThan(0);
     expect(screen.getAllByText("8").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
-    expect(screen.getByText("25% configured")).toBeDefined();
+    expect(screen.getAllByText("25%").length).toBeGreaterThan(1);
     expect(
       screen.getByTestId("activity-chart").getAttribute("data-points"),
     ).toBe("2");
@@ -111,12 +112,11 @@ describe("AnalyticsOverview", () => {
 
   it("distinguishes loading, empty, and error states", () => {
     const { rerender } = render(<AnalyticsOverview status="loading" />);
-    expect(screen.getByLabelText("Loading active analytics")).toBeDefined();
+    expect(screen.getByLabelText("Loading observed analytics")).toBeDefined();
     for (const label of [
       "Loading activity overview",
       "Loading bundle activity",
-      "Loading update outcomes",
-      "Loading rollout settings",
+      "Loading selected bundle adoption",
     ]) {
       expect(screen.getByLabelText(label)).toBeDefined();
     }
@@ -130,7 +130,7 @@ describe("AnalyticsOverview", () => {
       />,
     );
     expect(
-      screen.getByText("No active installations in this range."),
+      screen.getByText("No observed installations in this range."),
     ).toBeDefined();
 
     rerender(
@@ -158,7 +158,7 @@ describe("AnalyticsOverview", () => {
     expect(screen.getByRole("alert").textContent).toContain("50,000 reports");
   });
 
-  it("shows the active count for a one-install leading bundle", () => {
+  it("shows the observed count for a one-install leading bundle", () => {
     render(
       <AnalyticsOverview
         active={{
@@ -175,7 +175,7 @@ describe("AnalyticsOverview", () => {
     expect(
       within(
         screen.getByRole("region", { name: "Activity overview" }),
-      ).getByText("1 active"),
+      ).getByText("1 seen"),
     ).toBeDefined();
   });
 });

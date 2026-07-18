@@ -9,6 +9,13 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const windows = [
@@ -18,10 +25,19 @@ const windows = [
 ] as const;
 
 export function AnalyticsControls({
+  bundleId,
+  bundles,
+  onBundleChange,
   onInstallationSearch,
   onWindowChange,
   window,
 }: {
+  readonly bundleId: string;
+  readonly bundles: readonly {
+    readonly bundleId: string;
+    readonly description: string;
+  }[];
+  readonly onBundleChange: (bundleId: string) => void;
   readonly onInstallationSearch: (query: string) => void;
   readonly onWindowChange: (window: ActiveInstallationWindow) => void;
   readonly window: ActiveInstallationWindow;
@@ -35,7 +51,7 @@ export function AnalyticsControls({
     >
       <form
         aria-label="Filter analytics"
-        className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between"
+        className="min-w-0"
         onSubmit={(event) => {
           event.preventDefault();
           const query = draft.trim();
@@ -43,12 +59,12 @@ export function AnalyticsControls({
         }}
         role="search"
       >
-        <FieldGroup className="gap-3 md:flex-row md:items-end md:justify-between">
-          <Field className="min-w-0 md:w-auto">
-            <FieldLabel>Activity window</FieldLabel>
+        <FieldGroup className="gap-3 md:grid md:grid-cols-2 md:items-end lg:grid-cols-[auto_minmax(14rem,1fr)_minmax(18rem,1.2fr)]">
+          <Field className="min-w-0">
+            <FieldLabel>Reporting period</FieldLabel>
             <ToggleGroup
-              aria-label="Activity window"
-              className="w-full md:w-fit"
+              aria-label="Reporting period"
+              className="w-full lg:w-fit"
               onValueChange={(value) => {
                 if (value) onWindowChange(value as ActiveInstallationWindow);
               }}
@@ -69,7 +85,39 @@ export function AnalyticsControls({
               ))}
             </ToggleGroup>
           </Field>
-          <Field className="min-w-0 flex-1 md:max-w-sm">
+          <Field className="min-w-0">
+            <FieldLabel htmlFor="analytics-bundle-selector">
+              Bundle to inspect
+            </FieldLabel>
+            <Select
+              disabled={bundles.length === 0}
+              onValueChange={(value) => value && onBundleChange(value)}
+              value={bundleId}
+            >
+              <SelectTrigger
+                aria-label="Bundle to inspect"
+                className="h-8 min-w-0 font-mono text-xs"
+                id="analytics-bundle-selector"
+              >
+                <SelectValue placeholder="No bundles available" />
+              </SelectTrigger>
+              <SelectContent>
+                {bundles.map((bundle) => (
+                  <SelectItem key={bundle.bundleId} value={bundle.bundleId}>
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <code className="max-w-72 truncate text-xs">
+                        {bundle.bundleId}
+                      </code>
+                      <span className="text-xs text-muted-foreground">
+                        {bundle.description}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field className="min-w-0 md:col-span-2 lg:col-span-1">
             <FieldLabel htmlFor="installation-history-search">
               Installation history
             </FieldLabel>

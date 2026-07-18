@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { ActivityChart } from "./ActivityChart";
 import { AnalyticsErrorAlert } from "./AnalyticsErrorAlert";
 import { BundleDistribution } from "./BundleDistribution";
-import { RolloutList } from "./RolloutList";
 import { UpdateOutcomes, type UpdateOutcomeState } from "./UpdateOutcomes";
 
 type AnalyticsOverviewProps =
@@ -59,7 +58,7 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
   if (props.status === "loading") {
     return (
       <div
-        aria-label="Loading active analytics"
+        aria-label="Loading observed analytics"
         className="flex min-w-0 flex-col gap-8"
       >
         <LoadingCard label="Loading activity overview">
@@ -78,24 +77,17 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
             <Skeleton className="h-12 w-full" />
           </div>
         </LoadingCard>
-        <div className="grid gap-6 xl:grid-cols-2">
-          <LoadingCard label="Loading update outcomes">
-            <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Skeleton className="h-14 w-full" />
-                <Skeleton className="h-14 w-full" />
-              </div>
-              <Skeleton className="h-32 w-full" />
+        <LoadingCard label="Loading selected bundle adoption">
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
             </div>
-          </LoadingCard>
-          <LoadingCard label="Loading rollout settings">
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          </LoadingCard>
-        </div>
+            <Skeleton className="h-32 w-full" />
+          </div>
+        </LoadingCard>
       </div>
     );
   }
@@ -104,13 +96,22 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
     return (
       <AnalyticsErrorAlert
         error={props.error}
-        fallbackTitle="Active analytics unavailable"
+        fallbackTitle="Observed analytics unavailable"
       />
     );
   }
 
   const { active, catalog, outcomes } = props;
   const leadingBundle = active.bundles[0];
+  const selectedBundleId =
+    outcomes.status === "idle" ? null : outcomes.bundleId;
+  const observedInstallations =
+    active.bundles.find(({ bundleId }) => bundleId === selectedBundleId)
+      ?.installations ?? 0;
+  const configuredPercentage =
+    catalog.configuredRollouts.find(
+      ({ bundleId }) => bundleId === selectedBundleId,
+    )?.configuredPercentage ?? null;
 
   return (
     <div className="flex min-w-0 flex-col gap-8">
@@ -118,10 +119,10 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
         <Card className="min-w-0 overflow-hidden shadow-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-sm font-medium">
-              <h2>Active installations</h2>
+              <h2>Observed installations</h2>
             </CardTitle>
             <CardDescription>
-              Distinct installations seen in this period.
+              Distinct installations reporting in this period.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
@@ -130,7 +131,7 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
                 {active.activeInstallations.toLocaleString()}
               </span>
               <span className="pb-1 text-xs text-muted-foreground">
-                active in range
+                seen in range
               </span>
             </div>
             <ActivityChart series={active.series} window={active.window} />
@@ -144,7 +145,9 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
                 </dd>
               </div>
               <div className="flex min-w-0 flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
-                <dt className="text-xs text-muted-foreground">Top bundle</dt>
+                <dt className="text-xs text-muted-foreground">
+                  Top observed bundle
+                </dt>
                 <dd className="min-w-0">
                   {leadingBundle ? (
                     <div className="flex min-w-0 flex-col gap-0.5">
@@ -152,7 +155,7 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
                         {leadingBundle.bundleId}
                       </code>
                       <span className="text-xs text-muted-foreground tabular-nums">
-                        {leadingBundle.installations.toLocaleString()} active
+                        {leadingBundle.installations.toLocaleString()} seen
                       </span>
                     </div>
                   ) : (
@@ -171,11 +174,11 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
         </Card>
       </section>
 
-      <section aria-labelledby="active-by-bundle-heading">
+      <section aria-labelledby="observed-by-bundle-heading">
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-medium" id="active-by-bundle-heading">
-              Active by bundle
+            <h2 className="text-sm font-medium" id="observed-by-bundle-heading">
+              Observed by bundle
             </h2>
             <p className="text-sm text-muted-foreground">
               Each installation is counted under its latest bundle in this
@@ -184,7 +187,7 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
           </div>
           <div className="flex gap-2 text-xs whitespace-nowrap tabular-nums">
             <span className="rounded-md bg-muted px-2.5 py-1">
-              {active.activeInstallations.toLocaleString()} active
+              {active.activeInstallations.toLocaleString()} seen
             </span>
             <span className="rounded-md bg-muted px-2.5 py-1">
               {active.bundles.length.toLocaleString()} bundles
@@ -198,27 +201,13 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
         </Card>
       </section>
 
-      <div className="grid min-w-0 items-start gap-6 xl:grid-cols-2">
-        <UpdateOutcomes state={outcomes} />
-
-        <Card className="h-full min-w-0">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              <h2>Rollout settings</h2>
-            </CardTitle>
-            <CardDescription>
-              Configured bundle availability, shown separately from active
-              installations.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RolloutList
-              latestReportedBundles={active.bundles}
-              rollouts={catalog.configuredRollouts}
-            />
-          </CardContent>
-        </Card>
-      </div>
+      <UpdateOutcomes
+        activeInstallations={active.activeInstallations}
+        configuredPercentage={configuredPercentage}
+        observedInstallations={observedInstallations}
+        state={outcomes}
+        window={active.window}
+      />
     </div>
   );
 }

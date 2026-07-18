@@ -10,6 +10,7 @@ import {
   compareCodePoints,
   materializeActiveBundleEventRows,
   materializeBundleEventRows,
+  materializeBundleEventRowsForWindow,
 } from "./bundleEventScan";
 import type { BundleEventScanScope } from "./bundleEventScan";
 import {
@@ -120,8 +121,9 @@ export const createBundleEventService = <TContext>(
       cutoffMs: Date.now(),
       context,
     };
-    const rows = await materializeBundleEventRows(
+    const rows = await materializeBundleEventRowsForWindow(
       scope,
+      window,
       TRANSITION_EVENT_WHERE,
     );
     const installedRows = rows.filter(

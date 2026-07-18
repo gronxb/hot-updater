@@ -57,7 +57,7 @@ function SupportedBundleAnalyticsSummary({
     <Card>
       <CardHeader className="pb-4">
         <CardTitle className="text-sm font-medium">
-          Reported bundle outcomes
+          Bundle movement · 30 days
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -87,14 +87,14 @@ function SupportedBundleAnalyticsSummary({
               <div className="pr-4">
                 <Metric
                   colorClassName="bg-chart-2"
-                  label="Applied on"
+                  label="Newly applied"
                   value={data?.summary.installed ?? 0}
                 />
               </div>
               <div className="pl-4">
                 <Metric
                   colorClassName="bg-muted-foreground"
-                  label="Recovered from"
+                  label="Recovered away"
                   value={data?.summary.recovered ?? 0}
                 />
               </div>
@@ -102,6 +102,7 @@ function SupportedBundleAnalyticsSummary({
             <BundleActivityChart
               installed={data?.series.installed ?? []}
               recovered={data?.series.recovered ?? []}
+              window="30d"
             />
           </>
         )}

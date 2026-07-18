@@ -100,7 +100,7 @@ describe("BundleAnalyticsSummary", () => {
         />,
       );
 
-      expect(screen.queryByText("Reported bundle outcomes")).toBeNull();
+      expect(screen.queryByText("Bundle movement · 30 days")).toBeNull();
       expect(useBundleEventAnalyticsQueryMock).not.toHaveBeenCalled();
     },
   );
@@ -119,7 +119,7 @@ describe("BundleAnalyticsSummary", () => {
     ).toBeDefined();
   });
 
-  it("renders lifetime metrics and the accessible 30-day cumulative chart", () => {
+  it("renders selected-period metrics and the accessible movement chart", () => {
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: analytics,
       error: null,
@@ -128,16 +128,16 @@ describe("BundleAnalyticsSummary", () => {
 
     render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
 
-    expect(screen.getByText("Reported bundle outcomes")).toBeDefined();
-    expect(screen.getAllByText("Applied on")).toBeDefined();
-    expect(screen.getAllByText("Recovered from")).toBeDefined();
+    expect(screen.getByText("Bundle movement · 30 days")).toBeDefined();
+    expect(screen.getAllByText("Newly applied")).toBeDefined();
+    expect(screen.getAllByText("Recovered away")).toBeDefined();
     expect(screen.getAllByText("2")).toBeDefined();
     expect(screen.getAllByText("1")).toBeDefined();
     const chart = screen.getByRole("img", {
-      name: "Cumulative update activity over the last 30 days",
+      name: "Bundle movement over 30 days",
     });
     const caption = screen.getByText(
-      "Cumulative update activity values over the last 30 days. Dates are shown in UTC.",
+      "Distinct bundle movement in each bucket over 30 days. Times are shown in UTC.",
     );
 
     expect(chart.getAttribute("aria-describedby")).toBe(caption.id);
@@ -178,7 +178,9 @@ describe("BundleAnalyticsSummary", () => {
 
     render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
 
-    expect(screen.getByText("No activity in the last 30 days.")).toBeDefined();
+    expect(
+      screen.getByText("No bundle movement in this period."),
+    ).toBeDefined();
     expect(screen.queryByTestId("activity-chart")).toBeNull();
   });
 

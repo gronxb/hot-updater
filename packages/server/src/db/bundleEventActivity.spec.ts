@@ -10,7 +10,7 @@ import {
 } from "./bundleEvents.testFixtures";
 
 describe("bundle event activity series", () => {
-  it("counts an in-window event after an older event for the same installation", async () => {
+  it("scopes totals to the window and returns per-bucket movement", async () => {
     const now = Date.UTC(2026, 6, 16, 12);
     vi.spyOn(Date, "now").mockReturnValue(now);
     const database = createInMemoryDatabaseAdapter();
@@ -22,6 +22,10 @@ describe("bundle event activity series", () => {
       model: "bundle_events",
       data: createEvent("install-a", now - 24 * 60 * 60 * 1000),
     });
+    await database.create({
+      model: "bundle_events",
+      data: createEvent("install-b", now - 2 * 24 * 60 * 60 * 1000),
+    });
     const service = createBundleEventService(database);
     const analytics = await service.getBundleEventAnalytics(
       "bundle-a",
@@ -30,7 +34,10 @@ describe("bundle event activity series", () => {
       0,
     );
 
-    expect(analytics.series.installed.at(-1)?.value).toBe(1);
+    expect(analytics.summary.installed).toBe(2);
+    expect(
+      analytics.series.installed.slice(-3).map(({ value }) => value),
+    ).toEqual([1, 1, 0]);
     vi.restoreAllMocks();
   });
 

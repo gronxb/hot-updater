@@ -27,7 +27,7 @@ vi.mock("@/components/ui/chart", () => ({
 describe("BundleActivityChart", () => {
   afterEach(cleanup);
 
-  it("keeps exact cumulative values in a non-overflowing hidden wrapper", () => {
+  it("keeps exact per-bucket values in a non-overflowing hidden wrapper", () => {
     render(
       <BundleActivityChart
         installed={[
@@ -35,11 +35,12 @@ describe("BundleActivityChart", () => {
           { bucketStartMs: Date.UTC(2026, 6, 17), value: 3 },
         ]}
         recovered={[{ bucketStartMs: Date.UTC(2026, 6, 17), value: 1 }]}
+        window="30d"
       />,
     );
 
     const table = screen.getByRole("table", {
-      name: /Cumulative update activity values over the last 30 days/i,
+      name: /Distinct bundle movement in each bucket over 30 days/i,
     });
     expect(table.parentElement?.classList.contains("sr-only")).toBe(true);
     expect(table.classList.contains("sr-only")).toBe(false);

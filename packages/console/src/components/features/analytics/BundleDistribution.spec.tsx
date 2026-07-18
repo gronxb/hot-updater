@@ -46,17 +46,17 @@ describe("BundleDistribution", () => {
 
     expect(
       screen.queryByRole("img", {
-        name: "Active installations by bundle chart",
+        name: "Observed installations by bundle chart",
       }),
     ).toBeNull();
     const table = screen.getByRole("table", {
-      name: "Active installations by bundle",
+      name: "Observed installations by bundle",
     });
     expect(
       within(table).getByRole("columnheader", { name: "Activity" }),
     ).toBeDefined();
     expect(
-      within(table).getByRole("columnheader", { name: "Active" }),
+      within(table).getByRole("columnheader", { name: "Observed" }),
     ).toBeDefined();
     expect(within(table).getByText("3")).toBeDefined();
     expect(within(table).getByText("75%")).toBeDefined();
@@ -65,7 +65,7 @@ describe("BundleDistribution", () => {
     expect(within(table).getByText("Unknown bundle metadata")).toBeDefined();
     expect(
       within(table).getByRole("progressbar", {
-        name: "01972030-1aa1-7445-8b8c-121212121212 activity share 75%",
+        name: "01972030-1aa1-7445-8b8c-121212121212 observed share 75%",
       }),
     ).toBeDefined();
   });
