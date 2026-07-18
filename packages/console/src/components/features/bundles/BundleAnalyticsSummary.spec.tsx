@@ -67,7 +67,7 @@ const analytics = {
   },
 };
 
-const supported = { status: "supported" } as const;
+const supported = { status: "supported", mode: "dedicated" } as const;
 
 const capability = (
   status: AnalyticsCapabilityState["status"],
@@ -76,6 +76,7 @@ const capability = (
     case "error":
       return { status, error: new Error("offline") };
     case "supported":
+      return { status, mode: "dedicated" };
     case "unsupported":
     case "unresolved":
       return { status };
@@ -99,7 +100,7 @@ describe("BundleAnalyticsSummary", () => {
         />,
       );
 
-      expect(screen.queryByText("Update activity")).toBeNull();
+      expect(screen.queryByText("Reported bundle outcomes")).toBeNull();
       expect(useBundleEventAnalyticsQueryMock).not.toHaveBeenCalled();
     },
   );
@@ -113,7 +114,9 @@ describe("BundleAnalyticsSummary", () => {
 
     render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
 
-    expect(screen.getByLabelText("Loading update activity")).toBeDefined();
+    expect(
+      screen.getByLabelText("Loading reported bundle outcomes"),
+    ).toBeDefined();
   });
 
   it("renders lifetime metrics and the accessible 30-day cumulative chart", () => {
@@ -125,9 +128,9 @@ describe("BundleAnalyticsSummary", () => {
 
     render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
 
-    expect(screen.getByText("Update activity")).toBeDefined();
-    expect(screen.getAllByText("Installed")).toBeDefined();
-    expect(screen.getAllByText("Recovered")).toBeDefined();
+    expect(screen.getByText("Reported bundle outcomes")).toBeDefined();
+    expect(screen.getAllByText("Applied on")).toBeDefined();
+    expect(screen.getAllByText("Recovered from")).toBeDefined();
     expect(screen.getAllByText("2")).toBeDefined();
     expect(screen.getAllByText("1")).toBeDefined();
     const chart = screen.getByRole("img", {
@@ -190,6 +193,20 @@ describe("BundleAnalyticsSummary", () => {
 
     expect(screen.getByRole("alert").textContent).toContain(
       "Analytics request failed.",
+    );
+  });
+
+  it("renders dedicated guidance when the bounded Analytics scan is exceeded", () => {
+    useBundleEventAnalyticsQueryMock.mockReturnValue({
+      data: undefined,
+      error: new Error("Bundle event scan exceeded 50000 rows."),
+      isLoading: false,
+    });
+
+    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Analytics report limit reached",
     );
   });
 });

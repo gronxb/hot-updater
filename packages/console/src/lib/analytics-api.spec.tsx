@@ -37,7 +37,7 @@ describe("analytics capability gating", () => {
       name: "unsupported",
       input: {
         status: "success" as const,
-        data: { capabilities: { analytics: false } },
+        data: { capabilities: { analytics: false as const } },
       },
       state: "unsupported",
       decision: "redirect",
@@ -47,7 +47,12 @@ describe("analytics capability gating", () => {
       name: "supported",
       input: {
         status: "success" as const,
-        data: { capabilities: { analytics: true } },
+        data: {
+          capabilities: {
+            analytics: true as const,
+            mode: "dedicated" as const,
+          },
+        },
       },
       state: "supported",
       decision: "allow",
@@ -99,7 +104,10 @@ describe("analytics overview query", () => {
 
   it("refreshes externally written overview data after a finite interval", () => {
     // Given / When
-    const options = getAnalyticsOverviewQueryOptions({ status: "supported" });
+    const options = getAnalyticsOverviewQueryOptions({
+      status: "supported",
+      mode: "dedicated",
+    });
 
     // Then
     expect(options.staleTime).toBe(30_000);
@@ -107,7 +115,7 @@ describe("analytics overview query", () => {
   });
 
   it("separates active responses by window and normalized exact user ID", () => {
-    const supported = { status: "supported" } as const;
+    const supported = { status: "supported", mode: "dedicated" } as const;
     const first = getActiveInstallationQueryOptions(supported, {
       window: "7d",
       userId: "  Alias/B  ",

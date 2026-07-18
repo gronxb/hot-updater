@@ -8,7 +8,7 @@ vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
 }));
 
-const supported = { status: "supported" } as const;
+const supported = { status: "supported", mode: "dedicated" } as const;
 
 describe("AnalyticsRouteGate", () => {
   afterEach(cleanup);

@@ -54,6 +54,7 @@ const capability = (
     case "error":
       return { status, error: new Error("offline") };
     case "supported":
+      return { status, mode: "dedicated" };
     case "unsupported":
     case "unresolved":
       return { status };

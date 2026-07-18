@@ -101,7 +101,7 @@ Installations navigation. The Analytics page shows:
 - active installations for a 24-hour, 7-day, or 30-day server-receipt window;
 - the latest reported bundle for each active installation and its distribution;
 - a non-cumulative app-ready activity series;
-- all-time Installed and Recovered outcomes for the leading bundle;
+- all-time Applied on and Recovered from outcomes for the leading bundle;
 - rollout configuration, kept separate from observed reports; and
 - an exact, case-sensitive User ID alias filter.
 
@@ -119,12 +119,14 @@ Installations navigation. The Analytics page shows:
 report during the selected range. It does not mean a person, a device that is
 online now, complete fleet coverage, or rollout completion. A user ID is only
 searchable/filterable metadata; multiple installations under one user ID still
-count separately. Installed and Recovered are transition outcomes, so routine
+count separately. Applied on and Recovered from are transition outcomes, so routine
 unchanged app-ready reports do not inflate them.
 
 The shared CRUD aggregation path is bounded to 50,000 matching event rows. A
 deployment that exceeds that window needs provider-native aggregation or
-dedicated Analytics storage instead of treating the Console as unbounded.
+dedicated Analytics storage instead of treating the Console as unbounded. The
+server returns `503` with `ANALYTICS_SCAN_LIMIT_EXCEEDED`, and the Console asks
+the operator to narrow the query or configure a dedicated Analytics service.
 
 Use the Installations page to search by username, user ID, or installation ID
 and inspect the recorded update history for a selected installation.

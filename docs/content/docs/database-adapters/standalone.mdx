@@ -19,6 +19,7 @@ The `standaloneRepository` compatibility adapter connects your Hot Updater CLI t
 **Building a Self-Hosted Server?**
 
 See the [Self-Hosting (Custom) Guide](../custom/overview) for complete server implementation instructions using `@hot-updater/server` with database adapters (Drizzle, Prisma, Kysely, MongoDB) and frameworks (Hono, Express, Elysia).
+
 </Callout>
 
 ## Installation
@@ -50,10 +51,10 @@ The `standaloneRepository` adapter accepts the following options:
 
 ```typescript
 interface StandaloneRepositoryConfig {
-  baseUrl: string;                        // Your server URL
+  baseUrl: string; // Your server URL
   commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
-  supportsAnalytics?: true;              // Explicit Analytics capability opt-in
-  routes?: Routes;                        // Optional custom route configuration
+  supportsAnalytics?: true; // Explicit Analytics capability opt-in
+  routes?: Routes; // Optional custom route configuration
 }
 ```
 
@@ -87,7 +88,7 @@ interface Routes {
 ```typescript
 database: standaloneRepository({
   baseUrl: "http://localhost:3000/hot-updater",
-})
+});
 ```
 
 ### With Authentication
@@ -96,9 +97,9 @@ database: standaloneRepository({
 database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_SERVER_URL!,
   commonHeaders: {
-    "Authorization": `Bearer ${process.env.API_TOKEN}`
-  }
-})
+    Authorization: `Bearer ${process.env.API_TOKEN}`,
+  },
+});
 ```
 
 ### With Custom Routes
@@ -109,36 +110,36 @@ database: standaloneRepository({
   routes: {
     create: () => ({
       path: "/v1/hot-updater/api/bundles",
-      headers: { "X-Custom-Header": "value" }
+      headers: { "X-Custom-Header": "value" },
     }),
     update: (bundleId) => ({
       path: `/v1/hot-updater/api/bundles/${bundleId}`,
-      headers: { "X-Custom-Header": "value" }
+      headers: { "X-Custom-Header": "value" },
     }),
     list: () => ({
-      path: "/v1/hot-updater/api/bundles"
+      path: "/v1/hot-updater/api/bundles",
     }),
     channels: () => ({
-      path: "/v1/hot-updater/api/bundles/channels"
+      path: "/v1/hot-updater/api/bundles/channels",
     }),
     retrieve: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
     }),
     delete: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
     }),
     appendEvent: () => ({ path: "/v1/hot-updater/events" }),
     bundleEventOverview: () => ({
-      path: "/v1/hot-updater/api/installations/overview"
+      path: "/v1/hot-updater/api/installations/overview",
     }),
     activeInstallationOverview: () => ({
-      path: "/v1/hot-updater/api/installations/active"
+      path: "/v1/hot-updater/api/installations/active",
     }),
     installations: () => ({
-      path: "/v1/hot-updater/api/installations"
-    })
-  }
-})
+      path: "/v1/hot-updater/api/installations",
+    }),
+  },
+});
 ```
 
 ## Server Contract
@@ -147,10 +148,10 @@ database: standaloneRepository({
 backend, your server must implement the bundle-management contract below.
 
 <Callout type="info">
-If you use `@hot-updater/server`, you do **not** need to implement these
-endpoints manually. `createHotUpdater()` provides this contract when bundle
-routes are explicitly enabled and authorized, including
-`GET /api/bundles/channels`.
+  If you use `@hot-updater/server`, you do **not** need to implement these
+  endpoints manually. `createHotUpdater()` provides this contract when bundle
+  routes are explicitly enabled and authorized, including `GET
+  /api/bundles/channels`.
 </Callout>
 
 ### Contract Types
@@ -183,29 +184,29 @@ type ChannelsResponse = DataResponse<{ channels: string[] }>;
 These are the default routes used by `standaloneRepository`. You can remap
 them with the `routes` option shown above.
 
-| Method | Default route | Request body | Success response |
-|--------|---------------|--------------|------------------|
-| POST | `/api/bundles` | `Bundle[]` | `{ "success": true }` |
-| PATCH | `/api/bundles/:id` | `Partial<Bundle>` | `{ "success": true }` |
-| GET | `/api/bundles` | none | `Paginated<Bundle[]>` |
-| GET | `/api/bundles/:id` | none | `Bundle` |
-| DELETE | `/api/bundles/:id` | none | `{ "success": true }` |
-| GET | `/api/bundles/channels` | none | `ChannelsResponse` |
+| Method | Default route           | Request body      | Success response      |
+| ------ | ----------------------- | ----------------- | --------------------- |
+| POST   | `/api/bundles`          | `Bundle[]`        | `{ "success": true }` |
+| PATCH  | `/api/bundles/:id`      | `Partial<Bundle>` | `{ "success": true }` |
+| GET    | `/api/bundles`          | none              | `Paginated<Bundle[]>` |
+| GET    | `/api/bundles/:id`      | none              | `Bundle`              |
+| DELETE | `/api/bundles/:id`      | none              | `{ "success": true }` |
+| GET    | `/api/bundles/channels` | none              | `ChannelsResponse`    |
 
 When `supportsAnalytics: true`, the following optional routes are also
 required. Leaving the flag unset or false is the provider-neutral default and
 causes the Console to hide Analytics and installation UI without making event
 requests.
 
-| Method | Default route | Purpose |
-|--------|---------------|---------|
-| POST | `/events` | Append one bundle event |
-| GET | `/api/bundles/:id/events/summary` | Distinct installed/recovered totals |
-| GET | `/api/bundles/:id/events/analytics` | Windowed series, cohorts, and recent events |
-| GET | `/api/installations/overview` | Identity-free latest-installation bundle counts |
-| GET | `/api/installations/active` | Install-ID activity and latest reported bundles for a `24h`, `7d`, or `30d` server-receipt window |
-| GET | `/api/installations` | Paginated identity search |
-| GET | `/api/installations/:installId/events` | Paginated installation history |
+| Method | Default route                          | Purpose                                                                                           |
+| ------ | -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| POST   | `/events`                              | Append one bundle event                                                                           |
+| GET    | `/api/bundles/:id/events/summary`      | Distinct installed/recovered totals                                                               |
+| GET    | `/api/bundles/:id/events/analytics`    | Windowed series, cohorts, and recent events                                                       |
+| GET    | `/api/installations/overview`          | Identity-free latest-installation bundle counts                                                   |
+| GET    | `/api/installations/active`            | Install-ID activity and latest reported bundles for a `24h`, `7d`, or `30d` server-receipt window |
+| GET    | `/api/installations`                   | Paginated identity search                                                                         |
+| GET    | `/api/installations/:installId/events` | Paginated installation history                                                                    |
 
 Only enable the flag when all routes implement the same append-only semantic
 contract as `DatabaseBundleEventService`: event inserts are concurrency-safe,
@@ -226,7 +227,7 @@ The active endpoint accepts `window=24h|7d|30d` and an optional exact,
 case-sensitive `userId`. It first selects the latest in-window report for each
 installation ID, then applies the alias filter. Installation ID remains the
 distinct key even when several installs share one user ID. Every app-ready
-outcome qualifies as activity, while Installed/Recovered summaries and
+outcome qualifies as activity, while Applied on/Recovered from summaries and
 installation update history continue to exclude routine unchanged reports.
 
 Activity windows use server receipt time and scan at most 50,000 matching
@@ -234,6 +235,8 @@ event rows in the shared CRUD fallback. That fallback is cutoff-bounded and
 eventually consistent across pages, not a strict transaction snapshot. The
 result means “installations that reported app ready in this range”; it is not a
 count of people, online devices, the complete fleet, or rollout completion.
+Shared-server implementations return `503` with
+`ANALYTICS_SCAN_LIMIT_EXCEEDED` when the bounded scan cannot answer safely.
 
 ### Bundle Shape
 
@@ -268,8 +271,8 @@ interface Bundle {
   }> | null;
   patchBaseBundleId?: string | null; // Deprecated; use patches
   patchBaseFileHash?: string | null; // Deprecated; use patches
-  patchFileHash?: string | null;     // Deprecated; use patches
-  patchStorageUri?: string | null;   // Deprecated; use patches
+  patchFileHash?: string | null; // Deprecated; use patches
+  patchStorageUri?: string | null; // Deprecated; use patches
   rolloutCohortCount?: number | null;
   targetCohorts?: string[] | null;
 }
@@ -286,23 +289,23 @@ numbers.
 
 Supported query params:
 
-| Query param | Type | Notes |
-|-------------|------|-------|
-| `channel` | `string` | Exact match |
-| `platform` | `"ios" \| "android"` | Exact match |
-| `enabled` | `boolean` | Exact match |
-| `idEq` | `string` | Exact bundle ID |
-| `idGt`, `idGte` | `string` | Bundle ID lower bound |
-| `idLt`, `idLte` | `string` | Bundle ID upper bound |
-| `idIn` | repeated `string` | Match any listed bundle ID |
-| `targetAppVersion` | `string \| "null"` | Exact app version or null |
-| `targetAppVersionNotNull` | `"true"` | Require a non-null app version |
-| `targetAppVersionIn` | repeated `string` | Match any listed app version |
-| `fingerprintHash` | `string \| "null"` | Exact fingerprint or null |
-| `limit` | `number` | Window size |
-| `page` | `number` | Optional positive page number for stable page-aligned requests |
-| `after` | `string` | Fetch the next window after this bundle ID |
-| `before` | `string` | Fetch the previous window before this bundle ID |
+| Query param               | Type                 | Notes                                                          |
+| ------------------------- | -------------------- | -------------------------------------------------------------- |
+| `channel`                 | `string`             | Exact match                                                    |
+| `platform`                | `"ios" \| "android"` | Exact match                                                    |
+| `enabled`                 | `boolean`            | Exact match                                                    |
+| `idEq`                    | `string`             | Exact bundle ID                                                |
+| `idGt`, `idGte`           | `string`             | Bundle ID lower bound                                          |
+| `idLt`, `idLte`           | `string`             | Bundle ID upper bound                                          |
+| `idIn`                    | repeated `string`    | Match any listed bundle ID                                     |
+| `targetAppVersion`        | `string \| "null"`   | Exact app version or null                                      |
+| `targetAppVersionNotNull` | `"true"`             | Require a non-null app version                                 |
+| `targetAppVersionIn`      | repeated `string`    | Match any listed app version                                   |
+| `fingerprintHash`         | `string \| "null"`   | Exact fingerprint or null                                      |
+| `limit`                   | `number`             | Window size                                                    |
+| `page`                    | `number`             | Optional positive page number for stable page-aligned requests |
+| `after`                   | `string`             | Fetch the next window after this bundle ID                     |
+| `before`                  | `string`             | Fetch the previous window before this bundle ID                |
 
 Expected response:
 

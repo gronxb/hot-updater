@@ -68,6 +68,13 @@ export function AnalyticsPage() {
 
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+          {capability.status === "supported" &&
+          capability.mode === "bounded" ? (
+            <p className="text-xs text-muted-foreground">
+              Record-backed Analytics queries are limited to{" "}
+              {capability.maxMatchingRows.toLocaleString()} matching reports.
+            </p>
+          ) : null}
           <AnalyticsControls
             onUserIdChange={setUserId}
             onWindowChange={setWindow}

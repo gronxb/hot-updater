@@ -12,9 +12,14 @@ const MAX_ANALYTICS_BUNDLE_PAGES = 100;
 const MAX_ANALYTICS_BUNDLES = 10_000;
 
 export type AnalyticsCapabilities = {
-  readonly capabilities: {
-    readonly analytics: boolean;
-  };
+  readonly capabilities:
+    | { readonly analytics: false }
+    | {
+        readonly analytics: true;
+        readonly mode: "bounded";
+        readonly maxMatchingRows: number;
+      }
+    | { readonly analytics: true; readonly mode: "dedicated" };
 };
 
 type BundlePage = {
@@ -60,7 +65,28 @@ export const getAnalyticsCapabilities = async (
     return { capabilities: { analytics: false } };
   }
   const { supportsAnalytics } = await import("@hot-updater/server/db");
-  return { capabilities: { analytics: supportsAnalytics(runtime) } };
+  if (!supportsAnalytics(runtime)) {
+    return { capabilities: { analytics: false } };
+  }
+  const metadata = Reflect.get(
+    runtime,
+    Symbol.for("@hot-updater/server/analytics-capability"),
+  );
+  if (typeof metadata === "object" && metadata !== null) {
+    const mode = Reflect.get(metadata, "mode");
+    const maxMatchingRows = Reflect.get(metadata, "maxMatchingRows");
+    if (
+      mode === "bounded" &&
+      typeof maxMatchingRows === "number" &&
+      Number.isFinite(maxMatchingRows) &&
+      maxMatchingRows > 0
+    ) {
+      return {
+        capabilities: { analytics: true, mode, maxMatchingRows },
+      };
+    }
+  }
+  return { capabilities: { analytics: true, mode: "dedicated" } };
 };
 
 const collectBundles = async (

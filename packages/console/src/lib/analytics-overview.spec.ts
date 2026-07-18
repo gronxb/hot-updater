@@ -58,7 +58,7 @@ describe("createAnalyticsOverview", () => {
 
     // Then
     expect(overview.trackedInstallations).toBe(4);
-    expect(overview.adoption).toMatchObject([
+    expect(overview.latestReportedBundles).toMatchObject([
       {
         bundleId: "bundle-a",
         trackedInstallations: 2,
@@ -76,13 +76,13 @@ describe("createAnalyticsOverview", () => {
         bundle: null,
       },
     ]);
-    expect(overview.mostActiveBundle?.bundleId).toBe("bundle-a");
+    expect(overview.mostCommonLatestReportedBundle?.bundleId).toBe("bundle-a");
     expect(JSON.stringify(overview)).not.toMatch(
       /installId|username|userId|current|live|completion|recovered/i,
     );
   });
 
-  it("sorts equal adoption counts by bundle id for every input order", () => {
+  it("sorts equal latest-reported counts by bundle id for every input order", () => {
     // Given
     const rows = [
       { installId: "install-1", lastKnownBundleId: "bundle-b" },
@@ -95,12 +95,10 @@ describe("createAnalyticsOverview", () => {
     const reverse = createAnalyticsOverview(bundles, [...rows].reverse());
 
     // Then
-    expect(forward.adoption.map(({ bundleId }) => bundleId)).toEqual([
-      "bundle-a",
-      "bundle-b",
-      "deleted-bundle",
-    ]);
-    expect(reverse.mostActiveBundle?.bundleId).toBe("bundle-a");
+    expect(
+      forward.latestReportedBundles.map(({ bundleId }) => bundleId),
+    ).toEqual(["bundle-a", "bundle-b", "deleted-bundle"]);
+    expect(reverse.mostCommonLatestReportedBundle?.bundleId).toBe("bundle-a");
   });
 
   it("retains configured rollout rows when no installations are tracked", () => {
@@ -114,8 +112,8 @@ describe("createAnalyticsOverview", () => {
     // Then
     expect(overview).toMatchObject({
       trackedInstallations: 0,
-      mostActiveBundle: null,
-      adoption: [],
+      mostCommonLatestReportedBundle: null,
+      latestReportedBundles: [],
     });
     expect(
       overview.configuredRollouts.map(

@@ -28,8 +28,8 @@ const active: ActiveInstallationOverview = {
 
 const catalog: CatalogOverview = {
   trackedInstallations: 5,
-  mostActiveBundle: null,
-  adoption: [],
+  mostCommonLatestReportedBundle: null,
+  latestReportedBundles: [],
   configuredRollouts: [
     {
       bundleId: "bundle-a",
@@ -80,7 +80,7 @@ describe("AnalyticsOverview", () => {
       "Active installations",
       "Latest reported bundles",
       "App-ready activity",
-      "Update outcomes",
+      "Reported bundle outcomes",
       "Configured rollout",
     ]) {
       expect(
@@ -106,8 +106,8 @@ describe("AnalyticsOverview", () => {
     expect(screen.getAllByText("deleted-bundle").length).toBeGreaterThan(0);
     expect(screen.getByText("Unknown bundle metadata")).toBeDefined();
     expect(screen.getByText("75%")).toBeDefined();
-    expect(screen.getAllByText("Installed").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Recovered").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Applied on").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Recovered from").length).toBeGreaterThan(0);
     expect(screen.getAllByText("8").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
     expect(screen.getByText("25% configured")).toBeDefined();
@@ -123,7 +123,7 @@ describe("AnalyticsOverview", () => {
       "Loading active installations",
       "Loading app-ready activity",
       "Loading latest reported bundles",
-      "Loading update outcomes",
+      "Loading reported bundle outcomes",
       "Loading configured rollout",
     ]) {
       expect(screen.getByLabelText(label)).toBeDefined();
@@ -151,5 +151,38 @@ describe("AnalyticsOverview", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "Active request failed",
     );
+  });
+
+  it("renders dedicated guidance when the bounded Analytics scan is exceeded", () => {
+    render(
+      <AnalyticsOverview
+        error={new Error("Bundle event scan exceeded 50000 rows.")}
+        status="error"
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Analytics report limit reached",
+    );
+    expect(screen.getByRole("alert").textContent).toContain("50,000 reports");
+  });
+
+  it("uses a singular installation label for a one-install leading bundle", () => {
+    render(
+      <AnalyticsOverview
+        active={{
+          ...active,
+          activeInstallations: 1,
+          bundles: [{ bundleId: "bundle-a", installations: 1 }],
+        }}
+        catalog={catalog}
+        outcomes={{ status: "idle" }}
+        status="success"
+        userId={undefined}
+      />,
+    );
+
+    expect(screen.getByText("1 installation")).toBeDefined();
+    expect(screen.queryByText("1 installations")).toBeNull();
   });
 });

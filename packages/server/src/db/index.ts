@@ -18,7 +18,12 @@ export type {
   OffsetPaginationResult,
   SchemaGenerator,
 } from "./types";
-export { supportsAnalytics } from "./types";
+export type { AnalyticsCapability } from "./analyticsCapability";
+export {
+  getAnalyticsCapability,
+  supportsAnalytics,
+} from "./analyticsCapability";
+export { BundleEventScanLimitExceededError } from "./bundleEventScan";
 export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 

@@ -106,7 +106,7 @@ describe("BundleEditorSheet", () => {
   it("ignores dismiss requests while the editor is saving", () => {
     render(
       <BundleEditorSheet
-        capability={{ status: "supported" }}
+        capability={{ status: "supported", mode: "dedicated" }}
         bundle={bundle}
         open
         onOpenChange={mockOnOpenChange}
@@ -123,7 +123,7 @@ describe("BundleEditorSheet", () => {
   it("allows successful saves to close the sheet even after entering a busy state", () => {
     render(
       <BundleEditorSheet
-        capability={{ status: "supported" }}
+        capability={{ status: "supported", mode: "dedicated" }}
         bundle={bundle}
         open
         onOpenChange={mockOnOpenChange}

@@ -7,13 +7,16 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import {
+  getAnalyticsCapability,
+  supportsAnalytics,
+} from "./analyticsCapability";
 import { createDatabaseAdapterCore } from "./databaseAdapterCore";
 import {
   currentBundle,
   resolveFileUrl,
 } from "./databaseAdapterCore.testFixtures";
 import { createBundleEventAdapter } from "./databaseAdapterCoreEvent.testFixtures";
-import { supportsAnalytics } from "./types";
 
 describe("createDatabaseAdapterCore capabilities", () => {
   it("omits bundle event methods when the adapter does not opt in", () => {
@@ -28,6 +31,19 @@ describe("createDatabaseAdapterCore capabilities", () => {
     expect(core.api.getBundleEventOverview).toBeUndefined();
     expect(core.api.searchInstallations).toBeUndefined();
     expect(core.api.getInstallationHistory).toBeUndefined();
+    expect(getAnalyticsCapability(core.api)).toBeNull();
+  });
+
+  it("describes CRUD-derived Analytics as bounded", () => {
+    const core = createDatabaseAdapterCore(
+      createBundleEventAdapter(),
+      resolveFileUrl,
+    );
+
+    expect(getAnalyticsCapability(core.api)).toEqual({
+      mode: "bounded",
+      maxMatchingRows: 50_000,
+    });
   });
 
   it("uses a database-provided bundle event service", async () => {
@@ -50,6 +66,7 @@ describe("createDatabaseAdapterCore capabilities", () => {
     if (!supportsAnalytics(core.api)) {
       throw new Error("Expected the database-provided bundle event service.");
     }
+    expect(getAnalyticsCapability(core.api)).toEqual({ mode: "dedicated" });
 
     await expect(core.api.getBundleEventSummary("bundle-1")).resolves.toEqual({
       installed: 2,

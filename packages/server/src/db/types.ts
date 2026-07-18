@@ -21,6 +21,17 @@ import type {
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
 
+import {
+  analyticsCapabilityMetadata,
+  type AnalyticsCapability,
+} from "./analyticsCapability";
+
+export type { AnalyticsCapability } from "./analyticsCapability";
+export {
+  getAnalyticsCapability,
+  supportsAnalytics,
+} from "./analyticsCapability";
+
 export type {
   BundleEventAnalyticsResult,
   BundleEventOverview,
@@ -184,20 +195,10 @@ export interface BundleEventAPI<TContext = unknown> {
   ): Promise<OffsetPaginationResult<InstallationHistoryRow>>;
 }
 
-export const supportsAnalytics = <TContext>(
-  api: object,
-): api is BundleEventAPI<TContext> =>
-  typeof Reflect.get(api, "appendBundleEvent") === "function" &&
-  typeof Reflect.get(api, "getBundleEventSummary") === "function" &&
-  typeof Reflect.get(api, "getBundleEventAnalytics") === "function" &&
-  typeof Reflect.get(api, "getBundleEventOverview") === "function" &&
-  typeof Reflect.get(api, "getActiveInstallationOverview") === "function" &&
-  typeof Reflect.get(api, "searchInstallations") === "function" &&
-  typeof Reflect.get(api, "getInstallationHistory") === "function";
-
 export interface DatabaseAPI<TContext = unknown> extends Partial<
   BundleEventAPI<TContext>
 > {
+  readonly [analyticsCapabilityMetadata]?: AnalyticsCapability;
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
     context?: HotUpdaterContext<TContext>,

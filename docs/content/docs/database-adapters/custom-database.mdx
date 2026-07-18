@@ -283,7 +283,7 @@ username or user ID match still resolves to the installation's latest row;
 and active overview aggregation counts each installation once while retaining
 unknown bundle IDs. All app-ready outcomes, including unchanged launches,
 qualify for active overview. Routine unchanged reports never appear in update
-history or Installed/Recovered totals. Run the public adapter conformance tests
+history or Applied on/Recovered from totals. Run the public adapter conformance tests
 and focused bundle-event semantic tests against the real backend.
 
 Active windows are half-open server-receipt ranges for 24 hours, 7 days, or
@@ -297,7 +297,8 @@ transaction: a pre-cutoff row committed during a scan can appear in that
 response. Repeated reads converge; use a dedicated `DatabaseBundleEventService`
 when strict snapshot isolation is required. These metrics describe received
 app-ready reports, not people, online devices, complete fleet state, or rollout
-completion.
+completion. Exceeding the shared scan limit returns `503` with
+`ANALYTICS_SCAN_LIMIT_EXCEEDED` instead of a generic server error.
 
 When mounted, `POST /events` rejects bodies above 16 KiB with `413` and string
 fields above 1024 characters with `400`. The values are client-reported

@@ -8,7 +8,7 @@ export type AnalyticsBundleMetadata = {
   readonly fingerprintHash: string | null;
 };
 
-export type BundleAdoption = {
+export type LatestReportedBundle = {
   readonly bundleId: string;
   readonly trackedInstallations: number;
   readonly observedShare: number;
@@ -24,8 +24,8 @@ export type ConfiguredRollout = {
 
 export type AnalyticsOverview = {
   readonly trackedInstallations: number;
-  readonly mostActiveBundle: BundleAdoption | null;
-  readonly adoption: readonly BundleAdoption[];
+  readonly mostCommonLatestReportedBundle: LatestReportedBundle | null;
+  readonly latestReportedBundles: readonly LatestReportedBundle[];
   readonly configuredRollouts: readonly ConfiguredRollout[];
 };
 
@@ -51,11 +51,11 @@ const compareCodePoints = (left: string, right: string): number =>
 const createOverview = (
   bundles: readonly Bundle[],
   trackedInstallations: number,
-  adoptionCounts: ReadonlyMap<string, number>,
+  latestReportedCounts: ReadonlyMap<string, number>,
 ): AnalyticsOverview => {
   const bundleById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
-  const adoption = [...adoptionCounts]
-    .map(([bundleId, count]): BundleAdoption => {
+  const latestReportedBundles = [...latestReportedCounts]
+    .map(([bundleId, count]): LatestReportedBundle => {
       const bundle = bundleById.get(bundleId);
       return {
         bundleId,
@@ -76,7 +76,7 @@ const createOverview = (
         bundleId: bundle.id,
         configuredPercentage:
           normalizeRolloutCohortCount(bundle.rolloutCohortCount) / 10,
-        trackedInstallations: adoptionCounts.get(bundle.id) ?? 0,
+        trackedInstallations: latestReportedCounts.get(bundle.id) ?? 0,
         bundle: toBundleMetadata(bundle),
       }),
     )
@@ -84,8 +84,8 @@ const createOverview = (
 
   return {
     trackedInstallations,
-    mostActiveBundle: adoption[0] ?? null,
-    adoption,
+    mostCommonLatestReportedBundle: latestReportedBundles[0] ?? null,
+    latestReportedBundles,
     configuredRollouts,
   };
 };

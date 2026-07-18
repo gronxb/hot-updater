@@ -1,7 +1,6 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { TriangleAlert } from "lucide-react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AnalyticsErrorAlert } from "@/components/features/analytics/AnalyticsErrorAlert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
@@ -57,12 +56,14 @@ function SupportedBundleAnalyticsSummary({
   return (
     <Card>
       <CardHeader className="pb-4">
-        <CardTitle className="text-sm font-medium">Update activity</CardTitle>
+        <CardTitle className="text-sm font-medium">
+          Reported bundle outcomes
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {isLoading ? (
           <div
-            aria-label="Loading update activity"
+            aria-label="Loading reported bundle outcomes"
             className="flex flex-col gap-4"
           >
             <div className="grid grid-cols-2 gap-4">
@@ -72,29 +73,28 @@ function SupportedBundleAnalyticsSummary({
             <Skeleton className="h-32 w-full" />
           </div>
         ) : error ? (
-          <Alert variant="destructive">
-            <TriangleAlert aria-hidden="true" />
-            <AlertTitle>Analytics unavailable</AlertTitle>
-            <AlertDescription>
-              {error instanceof Error
-                ? error.message
-                : "Failed to load bundle analytics."}
-            </AlertDescription>
-          </Alert>
+          <AnalyticsErrorAlert
+            error={
+              error instanceof Error
+                ? error
+                : new Error("Failed to load bundle analytics.")
+            }
+            fallbackTitle="Analytics unavailable"
+          />
         ) : (
           <>
             <dl className="grid grid-cols-2 divide-x divide-border/70">
               <div className="pr-4">
                 <Metric
                   colorClassName="bg-chart-2"
-                  label="Installed"
+                  label="Applied on"
                   value={data?.summary.installed ?? 0}
                 />
               </div>
               <div className="pl-4">
                 <Metric
                   colorClassName="bg-muted-foreground"
-                  label="Recovered"
+                  label="Recovered from"
                   value={data?.summary.recovered ?? 0}
                 />
               </div>

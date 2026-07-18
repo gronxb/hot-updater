@@ -35,6 +35,28 @@ const createRuntime = () => ({
 });
 
 describe("getAnalyticsCapabilities", () => {
+  it("exposes the CRUD-derived Analytics scan boundary", async () => {
+    // Given
+    const runtime = Object.assign(createRuntime(), {
+      [Symbol.for("@hot-updater/server/analytics-capability")]: {
+        mode: "bounded",
+        maxMatchingRows: 50_000,
+      },
+    });
+
+    // When
+    const result = await getAnalyticsCapabilities(runtime);
+
+    // Then
+    expect(result).toEqual({
+      capabilities: {
+        analytics: true,
+        mode: "bounded",
+        maxMatchingRows: 50_000,
+      },
+    });
+  });
+
   it("reports support only for the complete callable Analytics contract", async () => {
     // Given
     const supported = createRuntime();
@@ -51,7 +73,9 @@ describe("getAnalyticsCapabilities", () => {
     );
 
     // Then
-    expect(complete).toEqual({ capabilities: { analytics: true } });
+    expect(complete).toEqual({
+      capabilities: { analytics: true, mode: "dedicated" },
+    });
     expect(incomplete).toEqual(
       methodNames.map(() => ({ capabilities: { analytics: false } })),
     );
@@ -155,7 +179,7 @@ describe("collectAnalyticsOverview", () => {
     expect(runtime.getBundleEventOverview).toHaveBeenCalledOnce();
     expect(overview).toMatchObject({
       trackedInstallations: 0,
-      mostActiveBundle: null,
+      mostCommonLatestReportedBundle: null,
     });
   });
 

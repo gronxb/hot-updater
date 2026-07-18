@@ -1,8 +1,6 @@
 import type { ActiveInstallationOverview } from "@hot-updater/plugin-core";
-import { TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -14,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { AnalyticsOverview as CatalogOverview } from "@/lib/analytics-overview";
 
 import { ActivityChart } from "./ActivityChart";
+import { AnalyticsErrorAlert } from "./AnalyticsErrorAlert";
 import { BundleDistribution } from "./BundleDistribution";
 import { RolloutList } from "./RolloutList";
 import { UpdateOutcomes, type UpdateOutcomeState } from "./UpdateOutcomes";
@@ -80,7 +79,7 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
           </LoadingCard>
         </div>
         <div className="flex flex-col gap-4">
-          <LoadingCard label="Loading update outcomes">
+          <LoadingCard label="Loading reported bundle outcomes">
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
                 <Skeleton className="h-14 w-full" />
@@ -103,11 +102,10 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
 
   if (props.status === "error") {
     return (
-      <Alert variant="destructive">
-        <TriangleAlert aria-hidden="true" />
-        <AlertTitle>Active analytics unavailable</AlertTitle>
-        <AlertDescription>{props.error.message}</AlertDescription>
-      </Alert>
+      <AnalyticsErrorAlert
+        error={props.error}
+        fallbackTitle="Active analytics unavailable"
+      />
     );
   }
 
@@ -147,7 +145,9 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
                       </code>
                       <span className="text-xs text-muted-foreground tabular-nums">
                         {leadingBundle.installations.toLocaleString()}{" "}
-                        installations
+                        {leadingBundle.installations === 1
+                          ? "installation"
+                          : "installations"}
                       </span>
                     </>
                   ) : (

@@ -1,11 +1,37 @@
 import { describe, expect, it } from "vitest";
 
+import { BundleEventScanLimitExceededError } from "./db/bundleEventScan";
 import {
   createAnalyticsHandler,
   createAnalyticsHandlerApi,
 } from "./handlerAnalytics.testFixtures";
 
 describe("GET /api/installations/active", () => {
+  it("returns a dedicated response when the bounded Analytics scan is exceeded", async () => {
+    // Given
+    const api = createAnalyticsHandlerApi();
+    api.getActiveInstallationOverview.mockRejectedValueOnce(
+      new BundleEventScanLimitExceededError(50_000),
+    );
+    const handler = createAnalyticsHandler(api);
+
+    // When
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/installations/active?window=30d",
+      ),
+    );
+
+    // Then
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "ANALYTICS_SCAN_LIMIT_EXCEEDED",
+        limit: 50_000,
+      },
+    });
+  });
+
   it("uses 30d by default and passes context unchanged", async () => {
     // Given
     const api = createAnalyticsHandlerApi();

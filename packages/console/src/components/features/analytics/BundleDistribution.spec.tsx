@@ -78,8 +78,8 @@ describe("BundleDistribution", () => {
     };
     const catalog: AnalyticsOverview = {
       trackedInstallations: 4,
-      mostActiveBundle: null,
-      adoption: [],
+      mostCommonLatestReportedBundle: null,
+      latestReportedBundles: [],
       configuredRollouts: [
         {
           bundleId: "01972030-1aa1-7445-8b8c-121212121212",

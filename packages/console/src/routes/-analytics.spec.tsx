@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -51,8 +51,8 @@ const activeData = {
 
 const catalogData = {
   trackedInstallations: 4,
-  mostActiveBundle: null,
-  adoption: [],
+  mostCommonLatestReportedBundle: null,
+  latestReportedBundles: [],
   configuredRollouts: [],
 };
 
@@ -71,7 +71,11 @@ const analyticsData = {
 
 describe("AnalyticsPage", () => {
   beforeEach(() => {
-    mocks.capability.mockReturnValue({ status: "supported" });
+    mocks.capability.mockReturnValue({
+      status: "supported",
+      mode: "bounded",
+      maxMatchingRows: 50_000,
+    });
     mocks.active.mockReturnValue({
       data: activeData,
       error: null,
@@ -116,5 +120,10 @@ describe("AnalyticsPage", () => {
       }),
     );
     expect(container.querySelector("main")).toBeNull();
+    expect(
+      screen.getByText(
+        "Record-backed Analytics queries are limited to 50,000 matching reports.",
+      ),
+    ).toBeDefined();
   });
 });

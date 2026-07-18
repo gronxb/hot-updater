@@ -45,6 +45,11 @@ describe("UpdateOutcomes", () => {
       />,
     );
 
+    expect(
+      screen.getByRole("heading", { name: "Reported bundle outcomes" }),
+    ).toBeDefined();
+    expect(screen.getByText("Applied on")).toBeDefined();
+    expect(screen.getByText("Recovered from")).toBeDefined();
     expect(screen.getByText("8")).toBeDefined();
     expect(screen.getByText("2")).toBeDefined();
     const chart = screen.getByTestId("outcome-activity-chart");

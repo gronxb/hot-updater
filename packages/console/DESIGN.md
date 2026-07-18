@@ -21,7 +21,7 @@ subordinate to exact values and actions.
 - `background`, `card`, `muted`, `border`, and their foreground counterparts
   create the warm-stone surface hierarchy in both themes.
 - Orange `primary`/`accent` is the single emphasis color. In charts,
-  `chart-2` represents the primary Installed, app-ready, or latest-reported
+  `chart-2` represents the primary Applied on, app-ready, or latest-reported
   bundle series.
 - `muted-foreground` or `chart-1` is the neutral secondary-series treatment.
   Labels, values, and tooltips always communicate meaning without color.
@@ -106,8 +106,9 @@ success. Capability-unavailable primitives do not render.
 
 ## 6. Analytics-Specific Composition
 
-- **Update outcomes:** one compact card with Installed and Recovered lifetime
-  values followed directly by a short 30-day cumulative chart. Do not repeat
+- **Reported bundle outcomes:** one compact card with Applied on and Recovered
+  from lifetime values followed directly by a short 30-day cumulative chart.
+  Do not repeat
   Lifetime, UTC, or 30-day labels, and do not add explanatory framing already
   carried by the title and accessible chart name.
 - **Latest reported bundles:** one dominant distribution chart plus exact

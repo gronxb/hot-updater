@@ -1,5 +1,6 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
+import { BundleEventScanLimitExceededError } from "./db/bundleEventScan";
 import { supportsAnalytics } from "./db/types";
 import { createAnalyticsRouteHandlers } from "./handlerAnalyticsRoutes";
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
@@ -154,6 +155,20 @@ export function createHandler<TContext = unknown>(
           status: 413,
           headers: { "Content-Type": "application/json" },
         });
+      }
+      if (error instanceof BundleEventScanLimitExceededError) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: "ANALYTICS_SCAN_LIMIT_EXCEEDED",
+              limit: error.limit,
+            },
+          }),
+          {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
       }
       console.error("Hot Updater handler error:", error);
       return new Response(JSON.stringify({ error: "Internal server error" }), {

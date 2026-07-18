@@ -26,11 +26,11 @@ interface ActivityChartPoint {
 
 const chartConfig = {
   installed: {
-    label: "Installed",
+    label: "Applied on",
     color: "var(--chart-2)",
   },
   recovered: {
-    label: "Recovered",
+    label: "Recovered from",
     color: "var(--muted-foreground)",
   },
 } satisfies ChartConfig;
@@ -153,8 +153,8 @@ export function BundleActivityChart({
           <thead>
             <tr>
               <th scope="col">Date</th>
-              <th scope="col">Installed</th>
-              <th scope="col">Recovered</th>
+              <th scope="col">Applied on</th>
+              <th scope="col">Recovered from</th>
             </tr>
           </thead>
           <tbody>

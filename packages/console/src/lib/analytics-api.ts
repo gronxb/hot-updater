@@ -14,7 +14,12 @@ import {
 export type AnalyticsCapabilityState =
   | { readonly status: "unresolved" }
   | { readonly status: "unsupported" }
-  | { readonly status: "supported" }
+  | {
+      readonly status: "supported";
+      readonly mode: "bounded";
+      readonly maxMatchingRows: number;
+    }
+  | { readonly status: "supported"; readonly mode: "dedicated" }
   | { readonly status: "error"; readonly error: Error };
 
 type AnalyticsCapabilityQueryResult =
@@ -51,9 +56,16 @@ export const getAnalyticsCapabilityState = (
     case "error":
       return { status: "error", error: query.error };
     case "success":
-      return query.data.capabilities.analytics
-        ? { status: "supported" }
-        : { status: "unsupported" };
+      if (!query.data.capabilities.analytics) {
+        return { status: "unsupported" };
+      }
+      return query.data.capabilities.mode === "bounded"
+        ? {
+            status: "supported",
+            mode: "bounded",
+            maxMatchingRows: query.data.capabilities.maxMatchingRows,
+          }
+        : { status: "supported", mode: "dedicated" };
   }
 };
 

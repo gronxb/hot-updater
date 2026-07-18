@@ -13,7 +13,9 @@ import {
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
+import { analyticsCapabilityMetadata } from "./analyticsCapability";
 import { createBundleEventService } from "./bundleEvents";
+import { BUNDLE_EVENT_SCAN_MAX_ROWS } from "./bundleEventScan";
 import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI, DatabaseAdapter } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
@@ -39,13 +41,24 @@ export function createDatabaseAdapterCore<TContext = unknown>(
 } {
   const client = createDatabaseClient(database);
   const beforeOperation = options?.beforeOperation;
+  const dedicatedBundleEvents = database[databaseBundleEventService];
   const bundleEvents =
-    database[databaseBundleEventService] ??
+    dedicatedBundleEvents ??
     (database[databaseAnalyticsSupport]
       ? createBundleEventService(database)
       : undefined);
 
   const api: DatabaseAPI<TContext> = {
+    ...(bundleEvents
+      ? {
+          [analyticsCapabilityMetadata]: dedicatedBundleEvents
+            ? { mode: "dedicated" as const }
+            : {
+                mode: "bounded" as const,
+                maxMatchingRows: BUNDLE_EVENT_SCAN_MAX_ROWS,
+              },
+        }
+      : {}),
     async getBundleById(
       id: string,
       context?: HotUpdaterContext<TContext>,
