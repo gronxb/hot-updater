@@ -53,12 +53,12 @@ export function ActivityChart({
     <div className="flex min-w-0 flex-col gap-3">
       {!hasReports && (
         <p className="text-sm text-muted-foreground">
-          No app-ready reports were received in this range.
+          No active installations in this range.
         </p>
       )}
       <ChartContainer
-        aria-label="Non-cumulative app-ready activity"
-        className="h-48 w-full aspect-auto"
+        aria-label="Non-cumulative active installation trend"
+        className="h-64 w-full aspect-auto"
         config={chartConfig}
         role="img"
       >
@@ -96,19 +96,19 @@ export function ActivityChart({
           <Area
             dataKey="value"
             fill="var(--color-value)"
-            fillOpacity={0.12}
+            fillOpacity={0.14}
             isAnimationActive={false}
             stroke="var(--color-value)"
             strokeWidth={2}
-            type="linear"
+            type="monotone"
           />
         </AreaChart>
       </ChartContainer>
       <div className="sr-only">
-        <table aria-label="Exact app-ready activity values">
+        <table aria-label="Exact active installation values">
           <caption>
-            Distinct installations reporting app ready in each UTC bucket.
-            Values are not cumulative.
+            Distinct active installations in each UTC bucket. Values are not
+            cumulative.
           </caption>
           <thead>
             <tr>

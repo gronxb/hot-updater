@@ -72,36 +72,29 @@ describe("AnalyticsOverview", () => {
           data: outcomeAnalytics,
         }}
         status="success"
-        userId="Alias/B"
       />,
     );
 
     for (const heading of [
       "Active installations",
-      "Latest reported bundles",
-      "App-ready activity",
-      "Reported bundle outcomes",
-      "Configured rollout",
+      "Active by bundle",
+      "Update outcomes",
+      "Rollout settings",
     ]) {
       expect(
         screen.getByRole("heading", { level: 2, name: heading }),
       ).toBeDefined();
     }
-    const activeCard = screen
-      .getByText("Active installations")
-      .closest('[data-slot="card"]');
-    expect(activeCard).not.toBeNull();
-    expect(within(activeCard as HTMLElement).getByText("4")).toBeDefined();
+    const activityOverview = screen.getByRole("region", {
+      name: "Activity overview",
+    });
+    expect(within(activityOverview).getByText("4")).toBeDefined();
+    expect(within(activityOverview).getByText("Bundles")).toBeDefined();
+    expect(within(activityOverview).getByText("2")).toBeDefined();
+    expect(within(activityOverview).getByText("Top bundle")).toBeDefined();
     expect(
-      screen.getByText("Most common latest reported bundle"),
+      within(activityOverview).getByTestId("activity-chart"),
     ).toBeDefined();
-    expect(
-      screen
-        .getByText("Most common latest reported bundle")
-        .closest('[data-slot="card"]'),
-    ).toBe(
-      screen.getByText("Active installations").closest('[data-slot="card"]'),
-    );
     expect(screen.getAllByText("bundle-a").length).toBeGreaterThan(0);
     expect(screen.getAllByText("deleted-bundle").length).toBeGreaterThan(0);
     expect(screen.getByText("Unknown bundle metadata")).toBeDefined();
@@ -120,11 +113,10 @@ describe("AnalyticsOverview", () => {
     const { rerender } = render(<AnalyticsOverview status="loading" />);
     expect(screen.getByLabelText("Loading active analytics")).toBeDefined();
     for (const label of [
-      "Loading active installations",
-      "Loading app-ready activity",
-      "Loading latest reported bundles",
-      "Loading reported bundle outcomes",
-      "Loading configured rollout",
+      "Loading activity overview",
+      "Loading bundle activity",
+      "Loading update outcomes",
+      "Loading rollout settings",
     ]) {
       expect(screen.getByLabelText(label)).toBeDefined();
     }
@@ -135,11 +127,10 @@ describe("AnalyticsOverview", () => {
         catalog={catalog}
         outcomes={{ status: "idle" }}
         status="success"
-        userId={undefined}
       />,
     );
     expect(
-      screen.getByText("No active installation reports in this range."),
+      screen.getByText("No active installations in this range."),
     ).toBeDefined();
 
     rerender(
@@ -167,7 +158,7 @@ describe("AnalyticsOverview", () => {
     expect(screen.getByRole("alert").textContent).toContain("50,000 reports");
   });
 
-  it("uses a singular installation label for a one-install leading bundle", () => {
+  it("shows the active count for a one-install leading bundle", () => {
     render(
       <AnalyticsOverview
         active={{
@@ -178,11 +169,13 @@ describe("AnalyticsOverview", () => {
         catalog={catalog}
         outcomes={{ status: "idle" }}
         status="success"
-        userId={undefined}
       />,
     );
 
-    expect(screen.getByText("1 installation")).toBeDefined();
-    expect(screen.queryByText("1 installations")).toBeNull();
+    expect(
+      within(
+        screen.getByRole("region", { name: "Activity overview" }),
+      ).getByText("1 active"),
+    ).toBeDefined();
   });
 });

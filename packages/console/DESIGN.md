@@ -8,9 +8,26 @@ dense but readable information layouts. Analytics must feel native to the
 existing bundle table and detail sheet rather than like a separate product.
 
 The primary operator needs to answer three questions quickly: how many
-installations reported app ready, which bundles they most recently reported,
-and where a reported installation currently points. Supporting context stays
-subordinate to exact values and actions.
+installations are active in the selected period, how those installations are
+distributed by bundle, and where a specific installation currently points.
+Supporting context stays subordinate to exact values and actions.
+
+### Analytics dashboard reference
+
+The Analytics composition takes its information hierarchy from Expo's public
+EAS Observe > EAS Update dashboard without copying Expo branding or metrics:
+
+- a compact status-and-filter toolbar precedes the report;
+- one full-width trend card is the primary analytical surface, with the leading
+  value above the chart and supporting values aligned below it;
+- per-update comparison rows become per-bundle rows with a relative activity
+  bar, exact Active count, and share;
+- secondary operational panels follow the bundle comparison rather than
+  competing with the primary chart.
+
+Hot Updater keeps its warm-stone surfaces, orange semantic accent, existing
+type scale, and 4 px spacing grid. The reference contributes dashboard
+structure only.
 
 ## 2. Foundations
 
@@ -21,8 +38,8 @@ subordinate to exact values and actions.
 - `background`, `card`, `muted`, `border`, and their foreground counterparts
   create the warm-stone surface hierarchy in both themes.
 - Orange `primary`/`accent` is the single emphasis color. In charts,
-  `chart-2` represents the primary Applied on, app-ready, or latest-reported
-  bundle series.
+  `chart-2` represents the primary Applied on, active-installation, or
+  bundle-distribution series.
 - `muted-foreground` or `chart-1` is the neutral secondary-series treatment.
   Labels, values, and tooltips always communicate meaning without color.
 - Destructive color is reserved for genuine errors and destructive actions,
@@ -52,10 +69,11 @@ subordinate to exact values and actions.
 ## 3. Layout Grammar
 
 - The fixed sidebar and route-owned scrolling shell remain unchanged.
-- Analytics uses one primary content column at 375 px, a balanced intermediate
-  layout at 768 px, and an asymmetric two-column grid at 1280 px. Latest
-  reported bundle distribution has primary visual weight; summaries and
-  rollout configuration are subordinate.
+- Analytics uses one primary content column at 375 px and 768 px. At 1280 px,
+  the activity trend remains full width and carries the leading value. Its
+  supporting values form one bordered footer rail. Bundle activity follows as
+  a full-width comparison table; only the secondary outcome and rollout panels
+  share a row. Installation search remains full width.
 - Group with alignment, separators, and whitespace before adding containers.
   Do not nest generic KPI cards inside a larger card or repeat equal KPI tiles.
 - Tables may scroll horizontally inside their own container. The page itself
@@ -66,19 +84,21 @@ subordinate to exact values and actions.
 ## 4. Capability and Data States
 
 - Bundles is always available.
-- Analytics navigation, Installations navigation, protected route content,
-  protected queries, and per-bundle activity are absent until
-  `supportsAnalytics` is confirmed true.
+- Analytics navigation, protected route content, protected queries, and
+  per-bundle activity are absent until `supportsAnalytics` is confirmed true.
+  Installation history remains a drill-down route under the single Analytics
+  navigation state.
 - An unresolved protected route shows only a neutral, layout-stable shell
   loading state. Unsupported routes redirect to Bundles without mounting or
   flashing protected content. Capability discovery errors show a compact
   diagnostic state and a Bundles escape path, with no protected query.
 - Data surfaces define loading, empty, success, and genuine error states.
   Unsupported capability is absence, not an error or empty-state card.
-- Analytics language is evidentiary: use Active installations, app-ready
-  activity, Latest reported bundles, reported in range, configured rollout,
-  and Last known bundle. Never imply realtime state, complete fleet coverage,
-  or rollout completion.
+- Analytics language is direct and evidentiary: use Active installations,
+  Active by bundle, Active trend, active in range, Rollout settings, and Last
+  known bundle. Avoid transport or lifecycle implementation terms in visible
+  copy. Never imply realtime state, complete fleet coverage, or rollout
+  completion.
 
 ## 5. Reusable Primitives
 
@@ -94,9 +114,10 @@ subordinate to exact values and actions.
 - **Rollout row:** bundle identity, reported-in-range count, exact configured
   percentage, and shadcn `Progress`; orange is reserved for the progress
   indicator.
-- **Search form:** shadcn `InputGroup` and `Button`, an explicit label,
-  Enter submission, trimmed query, and visible focus. Results use shadcn
-  `Table` and link to the existing installation detail route.
+- **History lookup:** shadcn `Field`, `InputGroup`, and `Button`, an explicit
+  label, Enter submission, trimmed query, and visible focus. The lookup accepts
+  either a user ID or install ID and opens the existing installation history
+  drill-down, where matching installations use the shadcn `Table`.
 - **Feedback:** shadcn `Skeleton` for loading and `Alert` for genuine errors;
   compact explanatory copy for empty states.
 
@@ -106,21 +127,25 @@ success. Capability-unavailable primitives do not render.
 
 ## 6. Analytics-Specific Composition
 
-- **Reported bundle outcomes:** one compact card with Applied on and Recovered
-  from lifetime values followed directly by a short 30-day cumulative chart.
+- **Update outcomes:** one compact card with Applied on and Recovered from
+  lifetime values followed directly by a short 30-day cumulative chart.
   Do not repeat
   Lifetime, UTC, or 30-day labels, and do not add explanatory framing already
   carried by the title and accessible chart name.
-- **Latest reported bundles:** one dominant distribution chart plus exact
-  bundle count and share rows. Unknown/deleted bundles keep their identifier
-  and a clear unavailable-metadata label.
-- **Overview summary:** Active installations total and the most common latest
-  reported bundle share one compact block rather than separate KPI tiles.
-- **Configured rollout:** ranked compact rows with progress and exact
-  percentage. Configuration is not presented as observed completion.
-- **Installation search:** accepted identity fields are explained before
-  submission. Results show identity fallback, install id, Last known bundle,
-  platform, channel, and app version.
+- **Active by bundle:** one dominant comparison table with a relative horizontal
+  activity bar, exact active count, and share in every row, matching the
+  comparison grammar of the EAS reference. Unknown/deleted bundles keep their
+  identifier and a clear unavailable-metadata label. Each installation is
+  counted once under its latest bundle in the selected period.
+- **Activity overview:** Active installations is the leading metric above the
+  full-width trend chart. Bundles, Top bundle, and As of form one compact footer
+  rail rather than separate KPI cards.
+- **Rollout settings:** ranked compact rows with progress and exact percentage.
+  Configuration is not presented as observed completion.
+- **Installation history:** the analytics toolbar accepts a user ID or install
+  ID and routes to the installation history drill-down. A user ID may match
+  multiple installations; the drill-down keeps those matches visible while an
+  install ID identifies one history.
 
 ## 7. Motion and Interaction
 
@@ -128,8 +153,8 @@ success. Capability-unavailable primitives do not render.
 - Existing focus, hover, sidebar, and sheet behavior remains authoritative.
 - Controls use existing transition utilities only for meaningful state
   feedback. Reduced-motion behavior from the shared stack is preserved.
-- Search is keyboard-operable in source order: input, Search button, then
-  result links.
+- History lookup is keyboard-operable in source order: input, Search button,
+  then the matching installations and history controls on the drill-down.
 
 ## 8. Accessibility, Personas, and Accepted Debt
 

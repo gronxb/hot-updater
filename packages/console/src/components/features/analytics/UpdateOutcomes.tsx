@@ -34,17 +34,17 @@ export function UpdateOutcomes({
     <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="text-sm font-medium">
-          <h2>Reported bundle outcomes</h2>
+          <h2>Update outcomes</h2>
         </CardTitle>
         <CardDescription>
-          All-time unique installation reports for the leading bundle. Routine
-          app-ready reports are excluded.
+          Unique installations that applied or recovered from the top active
+          bundle.
         </CardDescription>
       </CardHeader>
       <CardContent>
         {state.status === "idle" ? (
           <p className="text-sm text-muted-foreground">
-            No latest reported bundle is available.
+            No active bundle is available.
           </p>
         ) : state.status === "loading" ? (
           <div
@@ -60,7 +60,7 @@ export function UpdateOutcomes({
         ) : state.status === "error" ? (
           <AnalyticsErrorAlert
             error={state.error}
-            fallbackTitle="Reported bundle outcomes unavailable"
+            fallbackTitle="Update outcomes unavailable"
           />
         ) : (
           <div className="flex min-w-0 flex-col gap-4">

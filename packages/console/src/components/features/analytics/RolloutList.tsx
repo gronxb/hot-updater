@@ -82,7 +82,7 @@ export function RolloutList({
                 value={rollout.configuredPercentage}
               />
               <span className="text-xs text-muted-foreground tabular-nums">
-                {reportedInstallations.toLocaleString()} reported in range
+                {reportedInstallations.toLocaleString()} active in range
               </span>
             </li>
           );

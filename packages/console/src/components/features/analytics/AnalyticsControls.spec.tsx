@@ -6,52 +6,67 @@ import { AnalyticsControls } from "./AnalyticsControls";
 describe("AnalyticsControls", () => {
   afterEach(cleanup);
 
-  it("changes range and applies one trimmed exact User ID alias with Enter", () => {
+  it("changes range and searches one trimmed user or install ID with Enter", () => {
     const onWindowChange = vi.fn();
-    const onUserIdChange = vi.fn();
+    const onInstallationSearch = vi.fn();
     render(
       <AnalyticsControls
-        userId={undefined}
         window="30d"
-        onUserIdChange={onUserIdChange}
+        onInstallationSearch={onInstallationSearch}
         onWindowChange={onWindowChange}
       />,
     );
 
-    expect(
-      screen.getByRole("heading", { level: 2, name: "Report scope" }),
-    ).toBeDefined();
+    const controls = screen.getByRole("region", {
+      name: "Analytics controls",
+    });
+    expect(controls.querySelector('[data-slot="card"]')).toBeNull();
 
     fireEvent.click(screen.getByRole("radio", { name: "7 days" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "User ID alias" }), {
-      target: { value: "  Alias/B  " },
-    });
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "User or install ID" }),
+      { target: { value: "  install-1  " } },
+    );
     fireEvent.submit(screen.getByRole("search", { name: "Filter analytics" }));
 
     expect(onWindowChange).toHaveBeenCalledWith("7d");
-    expect(onUserIdChange).toHaveBeenCalledWith("Alias/B");
+    expect(onInstallationSearch).toHaveBeenCalledWith("install-1");
   });
 
-  it("clears both the draft and applied alias", () => {
-    const onUserIdChange = vi.fn();
+  it("clears the installation search draft", () => {
+    const onInstallationSearch = vi.fn();
     render(
       <AnalyticsControls
-        userId="Alias/B"
         window="24h"
-        onUserIdChange={onUserIdChange}
+        onInstallationSearch={onInstallationSearch}
         onWindowChange={vi.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear User ID" }));
+    const input = screen.getByRole("searchbox", {
+      name: "User or install ID",
+    });
+    fireEvent.change(input, { target: { value: "user-1" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear installation search" }),
+    );
 
-    expect(onUserIdChange).toHaveBeenCalledWith(undefined);
-    expect(
-      (
-        screen.getByRole("textbox", {
-          name: "User ID alias",
-        }) as HTMLInputElement
-      ).value,
-    ).toBe("");
+    expect(onInstallationSearch).not.toHaveBeenCalled();
+    expect((input as HTMLInputElement).value).toBe("");
+  });
+
+  it("does not search an empty identity", () => {
+    const onInstallationSearch = vi.fn();
+    render(
+      <AnalyticsControls
+        window="24h"
+        onInstallationSearch={onInstallationSearch}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.submit(screen.getByRole("search", { name: "Filter analytics" }));
+
+    expect(onInstallationSearch).not.toHaveBeenCalled();
   });
 });

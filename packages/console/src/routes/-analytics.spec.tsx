@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -6,27 +6,36 @@ const mocks = vi.hoisted(() => ({
   analytics: vi.fn(),
   capability: vi.fn(),
   catalog: vi.fn(),
+  controls: vi.fn(),
+  navigate: vi.fn(),
   overview: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
   createFileRoute: () => (options: unknown) => options,
+  useNavigate: () => mocks.navigate,
 }));
 
 vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
   useAnalyticsCapability: mocks.capability,
 }));
 vi.mock("@/components/features/analytics/AnalyticsControls", () => ({
-  AnalyticsControls: () => null,
+  AnalyticsControls: (props: {
+    onInstallationSearch: (query: string) => void;
+  }) => {
+    mocks.controls(props);
+    return (
+      <button onClick={() => props.onInstallationSearch("user-1")}>
+        Search installation history
+      </button>
+    );
+  },
 }));
 vi.mock("@/components/features/analytics/AnalyticsOverview", () => ({
   AnalyticsOverview: (props: unknown) => {
     mocks.overview(props);
     return <div data-testid="analytics-overview" />;
   },
-}));
-vi.mock("@/components/features/analytics/InstallationSearch", () => ({
-  InstallationSearch: () => null,
 }));
 vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => null,
@@ -110,6 +119,9 @@ describe("AnalyticsPage", () => {
       },
       true,
     );
+    expect(mocks.active).toHaveBeenCalledWith(expect.anything(), {
+      window: "30d",
+    });
     expect(mocks.overview).toHaveBeenCalledWith(
       expect.objectContaining({
         outcomes: {
@@ -122,8 +134,26 @@ describe("AnalyticsPage", () => {
     expect(container.querySelector("main")).toBeNull();
     expect(
       screen.getByText(
-        "Record-backed Analytics queries are limited to 50,000 matching reports.",
+        "This database scans up to 50,000 matching analytics records per query.",
       ),
     ).toBeDefined();
+  });
+
+  it("opens matching installation history from one user or install ID", () => {
+    render(<AnalyticsPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Search installation history" }),
+    );
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/installations",
+      search: {
+        query: "user-1",
+        installId: undefined,
+        searchOffset: 0,
+        historyOffset: 0,
+      },
+    });
   });
 });

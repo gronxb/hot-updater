@@ -49,7 +49,7 @@ describe("RolloutList", () => {
       "partial-a",
       "partial-b",
     ]);
-    expect(within(rows[2]).getByText("7 reported in range")).toBeDefined();
+    expect(within(rows[2]).getByText("7 active in range")).toBeDefined();
     expect(within(rows[2]).queryByText("900")).toBeNull();
     expect(within(rows[2]).getByText("50% configured")).toBeDefined();
     const progress = within(rows[2]).getByRole("progressbar", {

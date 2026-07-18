@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { ChartNoAxesCombined, History, Moon, Package, Sun } from "lucide-react";
+import { ChartNoAxesCombined, Moon, Package, Sun } from "lucide-react";
 
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
@@ -27,8 +27,8 @@ export function AppSidebar({
   const currentPath = routerState.location.pathname;
 
   const isBundlesActive = currentPath === "/";
-  const isAnalyticsActive = currentPath === "/analytics";
-  const isInstallationsActive = currentPath === "/installations";
+  const isAnalyticsActive =
+    currentPath === "/analytics" || currentPath === "/installations";
   const showAnalyticsNavigation = analyticsCapability.status === "supported";
 
   return (
@@ -88,40 +88,18 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
               {showAnalyticsNavigation ? (
-                <>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isAnalyticsActive}
-                      tooltip="Analytics"
-                    >
-                      <Link to="/analytics">
-                        <ChartNoAxesCombined />
-                        <span>Analytics</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isInstallationsActive}
-                      tooltip="Installations"
-                    >
-                      <Link
-                        to="/installations"
-                        search={{
-                          query: undefined,
-                          installId: undefined,
-                          searchOffset: 0,
-                          historyOffset: 0,
-                        }}
-                      >
-                        <History />
-                        <span>Installations</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                </>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isAnalyticsActive}
+                    tooltip="Analytics"
+                  >
+                    <Link to="/analytics">
+                      <ChartNoAxesCombined />
+                      <span>Analytics</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
               ) : null}
             </SidebarMenu>
           </SidebarGroupContent>

@@ -134,7 +134,7 @@ function ResultsSkeleton() {
   );
 }
 
-function InstallationsPage() {
+export function InstallationsPage() {
   const capability = useAnalyticsCapability();
   const analyticsQueriesEnabled = isAnalyticsQueryEnabled(capability);
   const search = Route.useSearch();
@@ -160,6 +160,31 @@ function InstallationsPage() {
   );
 
   const selectedInstallId = search.installId ?? "";
+  const firstMatchingInstallId = results?.data[0]?.installId;
+
+  useEffect(() => {
+    if (selectedInstallId || !firstMatchingInstallId) {
+      return;
+    }
+
+    void navigate({
+      to: "/installations",
+      search: {
+        query: search.query,
+        installId: firstMatchingInstallId,
+        searchOffset: search.searchOffset,
+        historyOffset: 0,
+      },
+      replace: true,
+    });
+  }, [
+    firstMatchingInstallId,
+    navigate,
+    search.query,
+    search.searchOffset,
+    selectedInstallId,
+  ]);
+
   const {
     data: history,
     error: historyError,
@@ -180,6 +205,10 @@ function InstallationsPage() {
       ) ?? null,
     [results?.data, selectedInstallId],
   );
+  const selectedEvent = selectedInstallation ?? history?.data[0];
+  const selectedLastKnownBundleId = selectedEvent
+    ? getLastKnownBundleId(selectedEvent)
+    : undefined;
 
   const updateSearch = (
     nextSearch: {
@@ -239,8 +268,8 @@ function InstallationsPage() {
         ) : isSearchLoading ? (
           <ResultsSkeleton />
         ) : (
-          <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
-            <Card className="min-h-0">
+          <div className="grid min-h-0 min-w-0 gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+            <Card className="min-h-0 min-w-0">
               <CardHeader>
                 <CardTitle className="text-sm font-medium">
                   Matching installations ({results?.pagination.total ?? 0})
@@ -340,7 +369,7 @@ function InstallationsPage() {
               </CardContent>
             </Card>
 
-            <Card className="min-h-0">
+            <Card className="min-h-0 min-w-0">
               <CardHeader>
                 <CardTitle className="text-sm font-medium">
                   {selectedInstallId
@@ -369,21 +398,13 @@ function InstallationsPage() {
                           </div>
                           <div>
                             User:{" "}
-                            {getUserLabel(
-                              selectedInstallation ?? history.data[0],
-                            )}
+                            {selectedEvent ? getUserLabel(selectedEvent) : "—"}
                           </div>
                           <div>
                             Last known bundle:{" "}
-                            {getLastKnownBundleId(
-                              selectedInstallation ?? history.data[0],
-                            ) ? (
+                            {selectedLastKnownBundleId ? (
                               <BundleIdDisplay
-                                bundleId={
-                                  getLastKnownBundleId(
-                                    selectedInstallation ?? history.data[0],
-                                  ) as string
-                                }
+                                bundleId={selectedLastKnownBundleId}
                               />
                             ) : (
                               "—"

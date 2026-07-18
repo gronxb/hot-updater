@@ -81,30 +81,26 @@ describe("AppSidebar analytics navigation", () => {
     },
   );
 
-  it("shows Analytics and Installations after support is confirmed", () => {
+  it("shows one Analytics destination after support is confirmed", () => {
     renderSidebar(capability("supported"));
 
     expect(
       screen.getByRole("link", { name: /analytics/i }).getAttribute("href"),
     ).toBe("/analytics");
-    expect(
-      screen.getByRole("link", { name: /installations/i }).getAttribute("href"),
-    ).toBe("/installations");
+    expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
   });
 
-  it("marks Analytics active only on the Analytics route", () => {
-    pathname = "/analytics";
-    renderSidebar(capability("supported"));
+  it.each(["/analytics", "/installations"])(
+    "marks Analytics active on %s",
+    (route) => {
+      pathname = route;
+      renderSidebar(capability("supported"));
 
-    expect(
-      screen
-        .getByRole("link", { name: /analytics/i })
-        .parentElement?.getAttribute("data-active"),
-    ).toBe("true");
-    expect(
-      screen
-        .getByRole("link", { name: /installations/i })
-        .parentElement?.getAttribute("data-active"),
-    ).toBe("false");
-  });
+      expect(
+        screen
+          .getByRole("link", { name: /analytics/i })
+          .parentElement?.getAttribute("data-active"),
+      ).toBe("true");
+    },
+  );
 });

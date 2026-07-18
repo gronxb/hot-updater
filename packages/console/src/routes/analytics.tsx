@@ -1,12 +1,11 @@
 import type { ActiveInstallationWindow } from "@hot-updater/plugin-core";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ChartNoAxesCombined } from "lucide-react";
 import { useState } from "react";
 
 import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
 import { AnalyticsControls } from "@/components/features/analytics/AnalyticsControls";
 import { AnalyticsOverview } from "@/components/features/analytics/AnalyticsOverview";
-import { InstallationSearch } from "@/components/features/analytics/InstallationSearch";
 import type { UpdateOutcomeState } from "@/components/features/analytics/UpdateOutcomes";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
@@ -21,10 +20,10 @@ export const Route = createFileRoute("/analytics")({
 
 export function AnalyticsPage() {
   const capability = useAnalyticsCapability();
+  const navigate = useNavigate();
   const [window, setWindow] = useState<ActiveInstallationWindow>("30d");
-  const [userId, setUserId] = useState<string>();
   const catalog = useAnalyticsOverviewQuery(capability);
-  const active = useActiveInstallationQuery(capability, { window, userId });
+  const active = useActiveInstallationQuery(capability, { window });
   const leadingBundleId = active.data?.bundles[0]?.bundleId ?? "";
   const outcomes = useBundleEventAnalyticsQuery(
     {
@@ -62,23 +61,33 @@ export function AnalyticsPage() {
           <h1 className="text-sm font-medium">Analytics</h1>
         </div>
         <p className="basis-full pl-9 text-xs text-muted-foreground sm:basis-auto sm:pl-0">
-          Received app-ready reports by installation.
+          Active installations by bundle.
         </p>
       </header>
 
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
           {capability.status === "supported" &&
           capability.mode === "bounded" ? (
             <p className="text-xs text-muted-foreground">
-              Record-backed Analytics queries are limited to{" "}
-              {capability.maxMatchingRows.toLocaleString()} matching reports.
+              This database scans up to{" "}
+              {capability.maxMatchingRows.toLocaleString()} matching analytics
+              records per query.
             </p>
           ) : null}
           <AnalyticsControls
-            onUserIdChange={setUserId}
+            onInstallationSearch={(query) => {
+              void navigate({
+                to: "/installations",
+                search: {
+                  query,
+                  installId: undefined,
+                  searchOffset: 0,
+                  historyOffset: 0,
+                },
+              });
+            }}
             onWindowChange={setWindow}
-            userId={userId}
             window={window}
           />
           {active.isLoading || catalog.isLoading ? (
@@ -91,12 +100,10 @@ export function AnalyticsPage() {
               catalog={catalog.data}
               outcomes={outcomeState}
               status="success"
-              userId={userId}
             />
           ) : (
             <AnalyticsOverview status="loading" />
           )}
-          <InstallationSearch capability={capability} />
         </div>
       </div>
     </div>

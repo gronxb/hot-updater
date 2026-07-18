@@ -5,11 +5,13 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { AnalyticsOverview as CatalogOverview } from "@/lib/analytics-overview";
+import { cn } from "@/lib/utils";
 
 import { ActivityChart } from "./ActivityChart";
 import { AnalyticsErrorAlert } from "./AnalyticsErrorAlert";
@@ -25,7 +27,6 @@ type AnalyticsOverviewProps =
       readonly active: ActiveInstallationOverview;
       readonly catalog: CatalogOverview;
       readonly outcomes: UpdateOutcomeState;
-      readonly userId: string | undefined;
     };
 
 const asOfFormatter = new Intl.DateTimeFormat("en", {
@@ -36,13 +37,15 @@ const asOfFormatter = new Intl.DateTimeFormat("en", {
 
 function LoadingCard({
   children,
+  className,
   label,
 }: {
   readonly children: ReactNode;
+  readonly className?: string;
   readonly label: string;
 }) {
   return (
-    <Card aria-label={label} className="min-w-0">
+    <Card aria-label={label} className={cn("min-w-0", className)}>
       <CardHeader>
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-4/5" />
@@ -57,29 +60,26 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
     return (
       <div
         aria-label="Loading active analytics"
-        className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.8fr)]"
+        className="flex min-w-0 flex-col gap-8"
       >
-        <div className="flex flex-col gap-4">
-          <LoadingCard label="Loading active installations">
-            <div className="grid grid-cols-2 gap-4">
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
-            </div>
-            <Skeleton className="mt-4 h-3 w-2/3" />
-          </LoadingCard>
-          <LoadingCard label="Loading app-ready activity">
-            <Skeleton className="h-48 w-full" />
-          </LoadingCard>
-          <LoadingCard label="Loading latest reported bundles">
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-52 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          </LoadingCard>
-        </div>
-        <div className="flex flex-col gap-4">
-          <LoadingCard label="Loading reported bundle outcomes">
+        <LoadingCard label="Loading activity overview">
+          <Skeleton className="h-10 w-24" />
+          <Skeleton className="mt-5 h-64 w-full" />
+          <div className="mt-5 grid gap-4 border-t pt-5 sm:grid-cols-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        </LoadingCard>
+        <LoadingCard label="Loading bundle activity">
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        </LoadingCard>
+        <div className="grid gap-6 xl:grid-cols-2">
+          <LoadingCard label="Loading update outcomes">
             <div className="flex flex-col gap-4">
               <div className="grid grid-cols-2 gap-4">
                 <Skeleton className="h-14 w-full" />
@@ -88,7 +88,7 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
               <Skeleton className="h-32 w-full" />
             </div>
           </LoadingCard>
-          <LoadingCard label="Loading configured rollout">
+          <LoadingCard label="Loading rollout settings">
             <div className="flex flex-col gap-3">
               <Skeleton className="h-12 w-full" />
               <Skeleton className="h-12 w-full" />
@@ -109,98 +109,106 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
     );
   }
 
-  const { active, catalog, outcomes, userId } = props;
+  const { active, catalog, outcomes } = props;
   const leadingBundle = active.bundles[0];
 
   return (
-    <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(18rem,0.8fr)]">
-      <div className="flex min-w-0 flex-col gap-4">
-        <Card className="min-w-0">
-          <CardHeader>
+    <div className="flex min-w-0 flex-col gap-8">
+      <section aria-label="Activity overview">
+        <Card className="min-w-0 overflow-hidden shadow-sm">
+          <CardHeader className="pb-4">
             <CardTitle className="text-sm font-medium">
               <h2>Active installations</h2>
             </CardTitle>
             <CardDescription>
-              Distinct installation IDs with an app-ready report in this range
-              {userId ? " for the exact User ID alias." : "."}
+              Distinct installations seen in this period.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <dl className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)] sm:divide-x sm:divide-border/70">
-              <div className="flex flex-col gap-1 sm:pr-6">
-                <dt className="text-xs text-muted-foreground">Installations</dt>
-                <dd className="text-3xl font-semibold tracking-tight tabular-nums">
-                  {active.activeInstallations.toLocaleString()}
+          <CardContent className="flex flex-col gap-5">
+            <div className="flex items-end gap-2">
+              <span className="text-4xl font-semibold tracking-tight tabular-nums">
+                {active.activeInstallations.toLocaleString()}
+              </span>
+              <span className="pb-1 text-xs text-muted-foreground">
+                active in range
+              </span>
+            </div>
+            <ActivityChart series={active.series} window={active.window} />
+          </CardContent>
+          <CardFooter className="border-t bg-muted/15 p-0">
+            <dl className="grid w-full sm:grid-cols-[0.55fr_1.45fr_1fr] sm:divide-x sm:divide-border/70">
+              <div className="flex flex-col gap-1 px-5 py-4">
+                <dt className="text-xs text-muted-foreground">Bundles</dt>
+                <dd className="text-lg font-semibold tabular-nums">
+                  {active.bundles.length.toLocaleString()}
                 </dd>
               </div>
-              <div className="flex min-w-0 flex-col gap-1 sm:pl-6">
-                <dt className="text-xs text-muted-foreground">
-                  Most common latest reported bundle
-                </dt>
+              <div className="flex min-w-0 flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
+                <dt className="text-xs text-muted-foreground">Top bundle</dt>
                 <dd className="min-w-0">
                   {leadingBundle ? (
-                    <>
-                      <code className="block break-all text-xs">
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <code className="truncate text-xs">
                         {leadingBundle.bundleId}
                       </code>
                       <span className="text-xs text-muted-foreground tabular-nums">
-                        {leadingBundle.installations.toLocaleString()}{" "}
-                        {leadingBundle.installations === 1
-                          ? "installation"
-                          : "installations"}
+                        {leadingBundle.installations.toLocaleString()} active
                       </span>
-                    </>
+                    </div>
                   ) : (
                     <span className="text-sm text-muted-foreground">None</span>
                   )}
                 </dd>
               </div>
+              <div className="flex flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
+                <dt className="text-xs text-muted-foreground">As of</dt>
+                <dd className="text-xs font-medium tabular-nums">
+                  {asOfFormatter.format(new Date(active.asOfMs))} UTC
+                </dd>
+              </div>
             </dl>
-            <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
-              As of {asOfFormatter.format(new Date(active.asOfMs))} UTC
+          </CardFooter>
+        </Card>
+      </section>
+
+      <section aria-labelledby="active-by-bundle-heading">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-medium" id="active-by-bundle-heading">
+              Active by bundle
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Each installation is counted under its latest bundle in this
+              period.
             </p>
-          </CardContent>
-        </Card>
-
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              <h2>App-ready activity</h2>
-            </CardTitle>
-            <CardDescription>
-              Distinct installation IDs per UTC bucket. Values are not
-              cumulative.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ActivityChart series={active.series} window={active.window} />
-          </CardContent>
-        </Card>
-
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              <h2>Latest reported bundles</h2>
-            </CardTitle>
-            <CardDescription>
-              One latest in-window app-ready report per active installation.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div className="flex gap-2 text-xs whitespace-nowrap tabular-nums">
+            <span className="rounded-md bg-muted px-2.5 py-1">
+              {active.activeInstallations.toLocaleString()} active
+            </span>
+            <span className="rounded-md bg-muted px-2.5 py-1">
+              {active.bundles.length.toLocaleString()} bundles
+            </span>
+          </div>
+        </div>
+        <Card className="min-w-0 overflow-hidden shadow-sm">
+          <CardContent className="p-0">
             <BundleDistribution active={active} catalog={catalog} />
           </CardContent>
         </Card>
-      </div>
+      </section>
 
-      <div className="flex min-w-0 flex-col gap-4">
+      <div className="grid min-w-0 items-start gap-6 xl:grid-cols-2">
         <UpdateOutcomes state={outcomes} />
-        <Card className="min-w-0">
+
+        <Card className="h-full min-w-0">
           <CardHeader>
             <CardTitle className="text-sm font-medium">
-              <h2>Configured rollout</h2>
+              <h2>Rollout settings</h2>
             </CardTitle>
             <CardDescription>
-              Availability settings, separate from received-report distribution.
+              Configured bundle availability, shown separately from active
+              installations.
             </CardDescription>
           </CardHeader>
           <CardContent>

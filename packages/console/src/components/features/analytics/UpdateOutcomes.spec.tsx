@@ -46,7 +46,7 @@ describe("UpdateOutcomes", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Reported bundle outcomes" }),
+      screen.getByRole("heading", { name: "Update outcomes" }),
     ).toBeDefined();
     expect(screen.getByText("Applied on")).toBeDefined();
     expect(screen.getByText("Recovered from")).toBeDefined();
