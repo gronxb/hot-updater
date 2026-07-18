@@ -32,7 +32,7 @@ Modern web-based management console for Hot Updater built with **TanStack Start*
 
 ### Backend
 - **TanStack Start Server Functions** - Type-safe server endpoints
-- **Hot Updater Extensions** - Storage plugin and database adapter integration
+- **Hot Updater Integration** - Storage plugin and database adapter integration
 
 ## 📦 Installation
 
@@ -154,7 +154,7 @@ The console uses Tailwind CSS v4 with oklch color space for accessible colors. T
 ## 📊 Data Flow
 
 1. **URL State** → `useFilterParams()` hook manages filter state in URL
-2. **Server Functions** → TanStack Start server functions call the configured Hot Updater extensions
+2. **Server Functions** → TanStack Start server functions call the configured storage plugin and database adapter
 3. **React Query** → `useBundlesQuery()` fetches and caches data
 4. **UI Components** → Display data with shadcn components
 5. **Mutations** → `useUpdateBundleMutation()` updates data with optimistic updates

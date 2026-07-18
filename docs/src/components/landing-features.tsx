@@ -12,7 +12,7 @@ export function LandingFeatures() {
     },
     {
       icon: "🛠️",
-      title: "Extension System",
+      title: "Plugin and Adapter System",
       description: "Combine build and storage plugins with database adapters",
     },
     {

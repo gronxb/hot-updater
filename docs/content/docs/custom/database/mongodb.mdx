@@ -95,22 +95,21 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-  The `storage` plugin must match the `storages` in your server's
-  `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
 </Callout>
 
 ## API Endpoints
 
 The server automatically creates these endpoints:
 
-| Method | Endpoint                                                                              | Description                                                         |
-| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
-| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
-| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
-| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
-| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
-| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
-| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
-| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
-| GET    | `/hot-updater/api/bundles/channels`                                                   | List all channels                                                   |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/hot-updater/version` | Get server version |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
+| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
+| POST | `/hot-updater/api/bundles` | Create bundles |
+| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
+| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
+| GET | `/hot-updater/api/bundles/channels` | List all channels |

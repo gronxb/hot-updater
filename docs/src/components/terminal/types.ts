@@ -27,7 +27,7 @@ export interface DemoConfig {
   platform: string;
   channel: string;
   fingerprint: string;
-  extensions: {
+  plugins: {
     build: string;
     storage: string;
     database: string;
