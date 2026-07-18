@@ -41,6 +41,7 @@ describe("UpdateOutcomes", () => {
   it("renders selected-period adoption and movement without ambiguous labels", () => {
     render(
       <UpdateOutcomes
+        bundleSelector={<button type="button">Bundle selector</button>}
         reportingInstallations={4}
         configuredPercentage={25}
         latestBundleInstallations={3}

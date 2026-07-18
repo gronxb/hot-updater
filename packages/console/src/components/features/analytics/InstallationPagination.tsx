@@ -18,7 +18,7 @@ export function InstallationPagination({
   return (
     <nav
       aria-label={`${label} pagination`}
-      className="flex items-center justify-between gap-3 border-t px-4 py-3"
+      className="flex items-center justify-between gap-4 border-t px-5 py-5"
     >
       <span className="text-xs text-muted-foreground">
         {offset + 1}–{Math.min(offset + pageLength, total)} of {total}

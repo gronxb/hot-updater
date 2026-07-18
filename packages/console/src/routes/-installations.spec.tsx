@@ -136,6 +136,40 @@ describe("InstallationsPage", () => {
     ).toBe(false);
   });
 
+  it("disables history search when the identifier is empty", () => {
+    mocks.search.mockReturnValue({
+      query: undefined,
+      installId: undefined,
+      searchOffset: 0,
+      historyOffset: 0,
+    });
+
+    render(<InstallationsPage />);
+
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Search history",
+      }).disabled,
+    ).toBe(true);
+  });
+
+  it("exposes the selected installation to assistive technology", () => {
+    mocks.search.mockReturnValue({
+      query: "user-1",
+      installId: "install-1",
+      searchOffset: 0,
+      historyOffset: 0,
+    });
+
+    render(<InstallationsPage />);
+
+    expect(
+      screen
+        .getByRole("button", { name: /install-1/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
   it("shows the user ID instead of an internal username", () => {
     render(<InstallationsPage />);
 

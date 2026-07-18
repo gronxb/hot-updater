@@ -84,7 +84,7 @@ export function InstallationHistoryCard({
 
   return (
     <Card className="min-h-0 min-w-0">
-      <CardHeader className="p-5 pb-4">
+      <CardHeader className="p-6 pb-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 flex-col gap-1.5">
             <CardTitle className="text-sm font-medium">
@@ -117,7 +117,7 @@ export function InstallationHistoryCard({
             <>
               <section
                 aria-labelledby="latest-installation-state"
-                className="px-5 pb-5"
+                className="px-6 pb-6"
               >
                 <h3
                   className="text-xs font-medium"
@@ -125,7 +125,7 @@ export function InstallationHistoryCard({
                 >
                   Latest reported state
                 </h3>
-                <dl className="mt-3 grid gap-4 sm:grid-cols-3">
+                <dl className="mt-4 grid gap-6 xl:grid-cols-3">
                   <div className="min-w-0">
                     <dt className="text-xs text-muted-foreground">
                       Installation
@@ -155,9 +155,9 @@ export function InstallationHistoryCard({
                 </dl>
               </section>
               <Separator />
-              <Table className="table-fixed">
+              <Table className="min-w-xl table-fixed">
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent">
+                  <TableRow className="hover:bg-transparent [&>th]:h-12 [&>th]:px-5">
                     <TableHead className="w-1/4 whitespace-normal">
                       Reported (UTC)
                     </TableHead>
@@ -165,16 +165,16 @@ export function InstallationHistoryCard({
                       Change
                     </TableHead>
                     <TableHead className="whitespace-normal">
-                      Previous bundle
-                    </TableHead>
-                    <TableHead className="whitespace-normal">
-                      Current bundle
+                      Bundle transition
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {history.data.map((event) => (
-                    <TableRow key={event.id}>
+                    <TableRow
+                      className="[&>td]:px-5 [&>td]:py-4"
+                      key={event.id}
+                    >
                       <TableCell className="whitespace-normal align-top text-sm text-muted-foreground">
                         {formatDateTime(event.receivedAtMs)}
                       </TableCell>
@@ -186,10 +186,12 @@ export function InstallationHistoryCard({
                         </Badge>
                       </TableCell>
                       <TableCell className="whitespace-normal align-top">
-                        <BundleIdDisplay bundleId={event.fromBundleId} />
-                      </TableCell>
-                      <TableCell className="whitespace-normal align-top">
-                        <BundleIdDisplay bundleId={event.toBundleId} />
+                        <div className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 gap-y-3">
+                          <span className="text-muted-foreground">From</span>
+                          <BundleIdDisplay bundleId={event.fromBundleId} />
+                          <span className="text-muted-foreground">To</span>
+                          <BundleIdDisplay bundleId={event.toBundleId} />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

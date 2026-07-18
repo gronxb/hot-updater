@@ -2,6 +2,7 @@ import type { ActiveInstallationWindow } from "@hot-updater/plugin-core";
 import { Search, X } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   InputGroup,
@@ -74,34 +75,37 @@ export function AnalyticsControls({
             <FieldLabel htmlFor="installation-history-search">
               Installation history
             </FieldLabel>
-            <InputGroup className="h-8">
-              <InputGroupAddon>
-                <Search aria-hidden="true" />
-              </InputGroupAddon>
-              <InputGroupInput
-                aria-label="User or install ID"
-                id="installation-history-search"
-                maxLength={1024}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="User ID or install ID"
-                type="search"
-                value={draft}
-              />
-              <InputGroupAddon align="inline-end">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+              <InputGroup className="h-8 flex-1">
+                <InputGroupAddon>
+                  <Search aria-hidden="true" />
+                </InputGroupAddon>
+                <InputGroupInput
+                  aria-label="User or install ID"
+                  id="installation-history-search"
+                  maxLength={1024}
+                  onChange={(event) => setDraft(event.target.value)}
+                  placeholder="User ID or install ID"
+                  type="search"
+                  value={draft}
+                />
                 {draft && (
-                  <InputGroupButton
-                    aria-label="Clear installation search"
-                    onClick={() => setDraft("")}
-                    size="icon-xs"
-                  >
-                    <X aria-hidden="true" />
-                  </InputGroupButton>
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      aria-label="Clear installation search"
+                      onClick={() => setDraft("")}
+                      size="icon-xs"
+                    >
+                      <X aria-hidden="true" />
+                    </InputGroupButton>
+                  </InputGroupAddon>
                 )}
-                <InputGroupButton type="submit" variant="default">
-                  Search
-                </InputGroupButton>
-              </InputGroupAddon>
-            </InputGroup>
+              </InputGroup>
+              <Button className="w-full sm:w-auto" size="lg" type="submit">
+                <Search aria-hidden="true" data-icon="inline-start" />
+                Search
+              </Button>
+            </div>
           </Field>
         </FieldGroup>
       </form>

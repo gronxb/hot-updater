@@ -7,8 +7,8 @@ import type { AnalyticsOverview as CatalogOverview } from "@/lib/analytics-overv
 import { AnalyticsOverview } from "./AnalyticsOverview";
 
 vi.mock("./ActivityChart", () => ({
-  ActivityChart: ({ bundleSeries }: { bundleSeries: readonly unknown[] }) => (
-    <div data-testid="activity-chart" data-series={bundleSeries.length} />
+  ActivityChart: ({ series }: { series: readonly unknown[] }) => (
+    <div data-testid="activity-chart" data-points={series.length} />
   ),
 }));
 
@@ -98,8 +98,7 @@ describe("AnalyticsOverview", () => {
     );
 
     for (const heading of [
-      "Overall trend",
-      "Bundle detail",
+      "Weekly active installations",
       "Selected bundle activity",
     ]) {
       expect(
@@ -107,7 +106,7 @@ describe("AnalyticsOverview", () => {
       ).toBeDefined();
     }
     const activityOverview = screen.getByRole("region", {
-      name: "Overall trend",
+      name: "Installation activity",
     });
     expect(within(activityOverview).getByText("4")).toBeDefined();
     expect(
@@ -115,26 +114,43 @@ describe("AnalyticsOverview", () => {
     ).toBeDefined();
     expect(within(activityOverview).getByText("2")).toBeDefined();
     expect(
-      within(activityOverview).getByText("Most reported bundle"),
+      within(activityOverview).getByText("Reporting window"),
     ).toBeDefined();
+    expect(within(activityOverview).getByText("last 7 days")).toBeDefined();
+    expect(activityOverview.textContent).toContain(
+      "reported an update status in the last 7 days",
+    );
     expect(
       within(activityOverview).getByTestId("activity-chart"),
     ).toBeDefined();
-    expect(screen.getAllByText("bundle-a").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Newly applied").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Recovered away").length).toBeGreaterThan(0);
     expect(screen.getAllByText("8").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
     expect(screen.getByText("25%")).toBeDefined();
     expect(
-      screen.getByTestId("activity-chart").getAttribute("data-series"),
+      screen.getByTestId("activity-chart").getAttribute("data-points"),
     ).toBe("2");
+
+    const bundleActivityHeading = screen.getByRole("heading", {
+      level: 2,
+      name: "Selected bundle activity",
+    });
+    const bundleSelector = screen.getByRole("combobox", {
+      name: "Bundle to inspect",
+    });
+    expect(bundleSelector.closest('[data-slot="card"]')).toBe(
+      bundleActivityHeading.closest('[data-slot="card"]'),
+    );
   });
 
   it("distinguishes loading, empty, and error states", () => {
     const { rerender } = render(<AnalyticsOverview status="loading" />);
     expect(screen.getByLabelText("Loading reporting analytics")).toBeDefined();
-    for (const label of ["Loading overall trend", "Loading bundle detail"]) {
+    for (const label of [
+      "Loading installation activity",
+      "Loading bundle detail",
+    ]) {
       expect(screen.getByLabelText(label)).toBeDefined();
     }
 
@@ -181,11 +197,12 @@ describe("AnalyticsOverview", () => {
     expect(screen.getByRole("alert").textContent).toContain("50,000 reports");
   });
 
-  it("shows the reporting count for a one-install leading bundle", () => {
+  it("names the 30-day metric as monthly active installations", () => {
     render(
       <AnalyticsOverview
         active={{
           ...active,
+          window: "30d",
           activeInstallations: 1,
           bundles: [{ bundleId: "bundle-a", installations: 1 }],
         }}
@@ -201,9 +218,9 @@ describe("AnalyticsOverview", () => {
     );
 
     expect(
-      within(screen.getByRole("region", { name: "Overall trend" })).getByText(
-        "1 reporting install",
-      ),
+      within(
+        screen.getByRole("region", { name: "Installation activity" }),
+      ).getByRole("heading", { name: "Monthly active installations" }),
     ).toBeDefined();
   });
 });

@@ -38,30 +38,14 @@ vi.mock("@/components/ui/chart", () => ({
 describe("ActivityChart", () => {
   afterEach(cleanup);
 
-  it("renders every bundle and non-cumulative bucket in an exact table", () => {
-    const bucketStartMs = [
-      Date.UTC(2026, 6, 15),
-      Date.UTC(2026, 6, 16),
-      Date.UTC(2026, 6, 17),
-    ];
-    const bundleSeries = [
-      {
-        bundleId: "bundle-a",
-        series: bucketStartMs.map((value, index) => ({
-          bucketStartMs: value,
-          value: [2, 0, 1][index] ?? 0,
-        })),
-      },
-      {
-        bundleId: "bundle-b",
-        series: bucketStartMs.map((value, index) => ({
-          bucketStartMs: value,
-          value: [0, 1, 1][index] ?? 0,
-        })),
-      },
+  it("renders the aggregate activity series and its exact values", () => {
+    const series = [
+      { bucketStartMs: Date.UTC(2026, 6, 15), value: 2 },
+      { bucketStartMs: Date.UTC(2026, 6, 16), value: 0 },
+      { bucketStartMs: Date.UTC(2026, 6, 17), value: 1 },
     ];
 
-    render(<ActivityChart bundleSeries={bundleSeries} window="7d" />);
+    render(<ActivityChart series={series} window="7d" />);
 
     expect(
       screen
@@ -71,23 +55,35 @@ describe("ActivityChart", () => {
     expect(
       screen.getByTestId("activity-chart-data").getAttribute("data-item-count"),
     ).toBe("3");
+    expect(
+      screen.getByText("Unique active installations per day"),
+    ).toBeDefined();
     const table = screen.getByRole("table", {
-      name: "Exact reporting installations by bundle",
+      name: "Exact active installations per day",
     });
     expect(table.parentElement?.classList.contains("sr-only")).toBe(true);
-    expect(table.classList.contains("sr-only")).toBe(false);
     expect(within(table).getAllByRole("row")).toHaveLength(4);
     expect(
-      within(table).getByRole("columnheader", { name: "bundle-a" }),
+      within(table).getByRole("columnheader", {
+        name: "Active installations",
+      }),
     ).toBeDefined();
-    expect(
-      within(table).getByRole("columnheader", { name: "bundle-b" }),
-    ).toBeDefined();
-    expect(within(table).getAllByRole("cell", { name: "0" })).toHaveLength(2);
+    expect(within(table).getByRole("cell", { name: "0" })).toBeDefined();
     expect(
       screen.getByText(
-        "Each time bucket counts an installation once under the bundle in its latest status report. Bucket counts reset and do not accumulate.",
+        "Each point counts an installation once in that day. The total above counts it once across the whole period, so the points do not add up to the total.",
       ),
+    ).toBeDefined();
+  });
+
+  it("uses hourly language for the 24-hour window", () => {
+    render(<ActivityChart series={[]} window="24h" />);
+
+    expect(
+      screen.getByText("Unique active installations per hour"),
+    ).toBeDefined();
+    expect(
+      screen.getByText("No installations reported during this period."),
     ).toBeDefined();
   });
 });

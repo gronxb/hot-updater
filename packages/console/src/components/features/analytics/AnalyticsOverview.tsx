@@ -40,6 +40,21 @@ const asOfFormatter = new Intl.DateTimeFormat("en", {
   timeZone: "UTC",
 });
 
+const activityWindowCopy = {
+  "24h": {
+    label: "Daily active installations",
+    period: "last 24 hours",
+  },
+  "7d": {
+    label: "Weekly active installations",
+    period: "last 7 days",
+  },
+  "30d": {
+    label: "Monthly active installations",
+    period: "last 30 days",
+  },
+} as const;
+
 function LoadingCard({
   children,
   className,
@@ -67,7 +82,7 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
         aria-label="Loading reporting analytics"
         className="flex min-w-0 flex-col gap-8"
       >
-        <LoadingCard label="Loading overall trend">
+        <LoadingCard label="Loading installation activity">
           <Skeleton className="h-10 w-24" />
           <Skeleton className="mt-5 h-64 w-full" />
           <div className="mt-5 grid gap-4 border-t pt-5 sm:grid-cols-3">
@@ -103,7 +118,7 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
 
   const { active, bundleId, bundles, catalog, onBundleChange, outcomes } =
     props;
-  const mostReportedBundle = active.bundles[0];
+  const activityCopy = activityWindowCopy[active.window];
   const selectedBundleId =
     outcomes.status === "idle" ? null : outcomes.bundleId;
   const latestBundleInstallations =
@@ -116,38 +131,37 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
 
   return (
     <div className="flex min-w-0 flex-col gap-8">
-      <section aria-label="Overall trend">
+      <section aria-label="Installation activity">
         <Card className="min-w-0 overflow-hidden shadow-sm">
           <CardHeader className="pb-4">
             <CardTitle className="text-sm font-medium">
-              <h2>Overall trend</h2>
+              <h2>{activityCopy.label}</h2>
             </CardTitle>
             <CardDescription>
-              Unique installs that sent an update status in this period. The
-              chart groups their reports by bundle over time.
+              Unique app installations that reported an update status in the{" "}
+              {activityCopy.period}.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
             <div className="flex flex-col gap-1">
               <p className="text-xs font-medium text-muted-foreground">
-                Reporting installations
+                Active installations
               </p>
               <div className="flex items-end gap-2">
                 <span className="text-4xl font-semibold tracking-tight tabular-nums">
                   {active.activeInstallations.toLocaleString()}
                 </span>
                 <span className="pb-1 text-xs text-muted-foreground">
-                  unique in period
+                  unique in {activityCopy.period}
                 </span>
               </div>
             </div>
-            <ActivityChart
-              bundleSeries={active.bundleSeries}
-              window={active.window}
-            />
+            <div className="border-t pt-5">
+              <ActivityChart series={active.series} window={active.window} />
+            </div>
           </CardContent>
           <CardFooter className="border-t bg-muted/15 p-0">
-            <dl className="grid w-full sm:grid-cols-[0.55fr_1.45fr_1fr] sm:divide-x sm:divide-border/70">
+            <dl className="grid w-full sm:grid-cols-3 sm:divide-x sm:divide-border/70">
               <div className="flex flex-col gap-1 px-5 py-4">
                 <dt className="text-xs text-muted-foreground">
                   Reported bundles
@@ -156,26 +170,11 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
                   {active.bundles.length.toLocaleString()}
                 </dd>
               </div>
-              <div className="flex min-w-0 flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
+              <div className="flex flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
                 <dt className="text-xs text-muted-foreground">
-                  Most reported bundle
+                  Reporting window
                 </dt>
-                <dd className="min-w-0">
-                  {mostReportedBundle ? (
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      <code className="truncate text-xs">
-                        {mostReportedBundle.bundleId}
-                      </code>
-                      <span className="text-xs text-muted-foreground tabular-nums">
-                        {mostReportedBundle.installations.toLocaleString()}{" "}
-                        reporting install
-                        {mostReportedBundle.installations === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">None</span>
-                  )}
-                </dd>
+                <dd className="text-sm font-medium">{activityCopy.period}</dd>
               </div>
               <div className="flex flex-col gap-1 border-t px-5 py-4 sm:border-t-0">
                 <dt className="text-xs text-muted-foreground">As of</dt>
@@ -189,22 +188,14 @@ export function AnalyticsOverview(props: AnalyticsOverviewProps) {
       </section>
 
       <section aria-labelledby="bundle-detail-heading">
-        <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-medium" id="bundle-detail-heading">
-              Bundle detail
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Select a bundle to inspect adoption and movement.
-            </p>
-          </div>
-          <BundleSelector
-            bundleId={bundleId}
-            bundles={bundles}
-            onBundleChange={onBundleChange}
-          />
-        </div>
         <UpdateOutcomes
+          bundleSelector={
+            <BundleSelector
+              bundleId={bundleId}
+              bundles={bundles}
+              onBundleChange={onBundleChange}
+            />
+          }
           configuredPercentage={configuredPercentage}
           latestBundleInstallations={latestBundleInstallations}
           reportingInstallations={active.activeInstallations}

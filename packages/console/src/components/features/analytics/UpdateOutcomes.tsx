@@ -1,4 +1,5 @@
 import type { ActiveInstallationWindow } from "@hot-updater/plugin-core";
+import type { ReactNode } from "react";
 
 import {
   Card,
@@ -28,12 +29,14 @@ export type UpdateOutcomeState =
     };
 
 export function UpdateOutcomes({
+  bundleSelector,
   configuredPercentage,
   latestBundleInstallations,
   reportingInstallations,
   state,
   window,
 }: {
+  readonly bundleSelector: ReactNode;
   readonly configuredPercentage: number | null;
   readonly latestBundleInstallations: number;
   readonly reportingInstallations: number;
@@ -47,15 +50,19 @@ export function UpdateOutcomes({
 
   return (
     <Card className="min-w-0 overflow-hidden shadow-sm">
-      <CardHeader>
-        <CardTitle className="text-sm font-medium">
-          <h2>Selected bundle activity</h2>
-        </CardTitle>
-        <CardDescription>
-          Latest reported presence, applies, and recoveries during this period.
-        </CardDescription>
+      <CardHeader className="gap-4 space-y-0 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <CardTitle className="text-sm font-medium">
+            <h2 id="bundle-detail-heading">Selected bundle activity</h2>
+          </CardTitle>
+          <CardDescription>
+            Select a bundle to inspect its latest presence, applies, and
+            recoveries during this period.
+          </CardDescription>
+        </div>
+        {bundleSelector}
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         {state.status === "idle" ? (
           <p className="text-sm text-muted-foreground">
             No active bundle is available.
@@ -80,9 +87,6 @@ export function UpdateOutcomes({
           />
         ) : (
           <div className="flex min-w-0 flex-col gap-5">
-            <code className="break-all text-xs text-muted-foreground">
-              {state.bundleId}
-            </code>
             <dl className="grid sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-border/70">
               <div className="border-b pb-4 sm:pr-4 lg:border-b-0">
                 <dt className="text-xs text-muted-foreground">

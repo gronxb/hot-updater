@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import {
@@ -61,15 +60,15 @@ export function InstallationSearchPanel({
 }) {
   return (
     <Card>
-      <CardHeader className="p-5 pb-4">
-        <CardTitle className="text-sm font-medium">
-          <h2>Find an installation</h2>
-        </CardTitle>
-        <CardDescription>
-          Enter either identifier to open its recorded bundle history.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="p-5 pt-0">
+      <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(12rem,0.45fr)_minmax(0,1.55fr)] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <CardTitle className="text-sm font-medium">
+            <h2>Find an installation</h2>
+          </CardTitle>
+          <CardDescription>
+            Search by either identifier to inspect its bundle history.
+          </CardDescription>
+        </div>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -83,7 +82,7 @@ export function InstallationSearchPanel({
                 User ID or install ID
               </FieldLabel>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <InputGroup className="h-8 sm:max-w-2xl">
+                <InputGroup className="h-8">
                   <InputGroupAddon>
                     <Search aria-hidden="true" />
                   </InputGroupAddon>
@@ -106,7 +105,12 @@ export function InstallationSearchPanel({
                     </InputGroupAddon>
                   ) : null}
                 </InputGroup>
-                <Button size="lg" type="submit">
+                <Button
+                  className="w-full sm:w-auto"
+                  disabled={draftQuery.trim().length === 0}
+                  size="lg"
+                  type="submit"
+                >
                   <Search aria-hidden="true" data-icon="inline-start" />
                   Search history
                 </Button>
@@ -125,9 +129,9 @@ export function InstallationSearchPanel({
 
 export function InstallationResultsSkeleton() {
   return (
-    <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)]">
-      <Skeleton className="h-64 w-full" />
-      <Skeleton className="h-64 w-full" />
+    <div className="grid items-stretch gap-6 lg:min-h-96 lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)]">
+      <Skeleton className="h-64 w-full lg:h-full" />
+      <Skeleton className="h-64 w-full lg:h-full" />
     </div>
   );
 }

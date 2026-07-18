@@ -121,7 +121,7 @@ function InstallationsPage() {
     <div className="flex h-svh min-h-0 flex-col">
       <InstallationPageHeader />
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
-        <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
           <InstallationSearchPanel
             draftQuery={draftQuery}
             hasQuery={hasQuery}
@@ -141,7 +141,7 @@ function InstallationsPage() {
           {!hasQuery ? null : isSearchLoading ? (
             <InstallationResultsSkeleton />
           ) : (
-            <div className="grid min-h-0 min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)]">
+            <div className="grid min-h-0 min-w-0 items-stretch gap-6 lg:min-h-96 lg:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)]">
               <InstallationMatchesCard
                 error={searchError}
                 limit={SEARCH_LIMIT}

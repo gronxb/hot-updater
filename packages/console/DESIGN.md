@@ -18,12 +18,13 @@ The Analytics composition takes its information hierarchy from Expo's public
 EAS Observe > EAS Update dashboard without copying Expo branding or metrics:
 
 - a compact status-and-filter toolbar precedes the report;
-- one full-width trend card is the primary analytical surface, with the leading
-  value above the chart and supporting values aligned below it;
-- per-update comparison becomes a multi-series reporting-by-bundle trend so
-  operators can compare bundle movement in one surface;
-- the selected-bundle inspector follows the overall trend rather than
-  competing with the primary chart.
+- one full-width activity card is the primary analytical surface, with a
+  period-aware active-installation value above the chart and supporting values
+  aligned below it;
+- the overview chart shows one aggregate installation-activity series so the
+  selected-bundle inspector remains the place for bundle-specific analysis;
+- the selected-bundle inspector follows the installation activity card rather
+  than competing with the primary chart.
 
 Hot Updater keeps its warm-stone surfaces, orange semantic accent, existing
 type scale, and 4 px spacing grid. The reference contributes dashboard
@@ -70,7 +71,7 @@ structure only.
 
 - The fixed sidebar and route-owned scrolling shell remain unchanged.
 - Analytics uses one primary content column at 375 px and 768 px. At 1280 px,
-  the reporting-by-bundle trend remains full width and carries the leading
+  the installation activity chart remains full width and carries the leading
   value. Its supporting values form one bordered footer rail. A searchable
   bundle selector then introduces the selected-bundle detail. Installation
   search remains full width.
@@ -94,12 +95,13 @@ structure only.
   diagnostic state and a Bundles escape path, with no protected query.
 - Data surfaces define loading, empty, success, and genuine error states.
   Unsupported capability is absence, not an error or empty-state card.
-- Analytics language is direct and evidentiary: use Reporting installations,
+- Analytics language is direct and evidentiary: use Active installations,
   Latest bundle share, Newly applied, Recovered away, Configured rollout, and
-  Last known bundle. Reporting installations means unique installs that sent
-  at least one update status in the selected period. Avoid the ambiguous terms
-  Active, Observed, and Installed as standalone labels. Never imply realtime
-  state, complete fleet coverage, or rollout completion.
+  Last known bundle. Daily, Weekly, and Monthly active installations mean
+  unique install IDs that sent at least one update status in the selected 24
+  hours, 7 days, or 30 days. This is installation activity, not unique user
+  accounts. Never imply realtime state, complete fleet coverage, or rollout
+  completion.
 
 ## 5. Reusable Primitives
 
@@ -129,23 +131,27 @@ success. Capability-unavailable primitives do not render.
 ## 6. Analytics-Specific Composition
 
 - **Selected bundle activity:** one full-width operational card below the
-  overall trend. A searchable selector introduces the bundle detail instead of
-  competing with the reporting-period control. Its metric rail shows Latest
-  bundle share (installs whose latest report ends on the selected bundle,
-  divided by all reporting installs in the selected period), Newly applied,
-  Recovered away, and Configured rollout. The movement summary and chart use
-  the same selected period. The chart shows per-bucket distinct movement rather
-  than a cumulative total.
-- **Overall trend:** Reporting installations is the leading metric above one
-  full-width multi-series chart. Each UTC bucket counts an installation once
-  under the bundle in its latest status report, so repeated reports do not
-  inflate the bundle lines. Counts reset in each bucket and are not cumulative.
-  Bundle series are drawn independently rather than stacked, so every line's
-  height is its exact count. The most-reported bundles remain individually
-  visible and the rest combine into Other when needed. Exact values remain
-  available in the tooltip and screen-reader table. Reported bundles, Most
-  reported bundle, and As of form one compact footer rail rather than separate
-  KPI cards.
+  installation activity card. Its header contains the searchable selector so
+  the title, context, control, and card content share one inset and information
+  hierarchy instead of forming a detached toolbar. On wide screens the title
+  group and selector align to the same top edge; on narrow screens they stack
+  in source order. The selected bundle ID appears only in the selector instead
+  of being repeated above the metrics. Its metric rail shows Latest bundle
+  share (installs whose
+  latest report ends on the selected bundle, divided by all reporting installs
+  in the selected period), Newly applied, Recovered away, and Configured
+  rollout. The movement summary and chart use the same selected period. The
+  chart shows per-bucket distinct movement rather than a cumulative total.
+- **Installation activity:** Daily, Weekly, or Monthly active installations is
+  the leading metric above one full-width aggregate chart. The leading value
+  deduplicates install IDs across the whole selected period. Each UTC chart
+  bucket separately deduplicates install IDs within that hour or day, so an
+  installation may appear in more than one point and the points must not be
+  summed to reproduce the period total. Exact values remain available in the
+  tooltip and screen-reader table. Reported bundles, Reporting window, and As
+  of form one compact footer rail rather than separate KPI cards. Bundle IDs do
+  not compete in the overview; the searchable bundle detail below provides a
+  human-readable platform, channel, and target-version identity.
 - **Configured rollout:** configuration is presented beside the selected
   bundle's latest bundle share, never as reported completion.
 - **Installation history:** the analytics toolbar accepts a user ID or install
