@@ -98,6 +98,11 @@ not crash the app, call the app-level `onError`, or suppress
 `onNotifyAppReady`. This is an app-ready observation, not a warm-foreground
 heartbeat or a generic session event.
 
+The server keeps event ingestion closed until it has an authorization policy.
+Use `requestHeaders` for a user-scoped credential or platform-attestation
+proof expected by that policy. Do not embed a management credential in the
+app; static client secrets are extractable.
+
 When introducing Analytics to an existing deployment, deploy the database
 schema and server first, then enable `analytics: true` in clients. New clients
 remain safe against older or unsupported servers, but their reports cannot be

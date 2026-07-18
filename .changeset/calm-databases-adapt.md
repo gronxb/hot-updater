@@ -40,6 +40,15 @@ installations by install ID, supports exact user-ID alias filtering, and keeps
 received-report activity, transition outcomes, and configured rollout
 semantically separate.
 
+The shared CRUD aggregation is cutoff-bounded and deduplicated across stable
+pages, with eventual consistency for pre-cutoff rows committed during a scan.
+
+Client event ingestion is closed by default and is mounted only when
+`createHotUpdater({ eventIngestion: { authorize } })` supplies an explicit
+authorization and throttling policy. Event payloads remain untrusted telemetry;
+deployments are responsible for user-scoped authentication or attestation,
+quotas, logging, and retention.
+
 Snapshot-backed adapters created with `createBlobDatabaseAdapter`, including
 `s3Database`, deliberately leave Analytics disabled because concurrent event
 writes can conflict. The Console hides Analytics based only on capability

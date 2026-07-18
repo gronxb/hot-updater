@@ -2,6 +2,7 @@ import type { BundleEventRow } from "@hot-updater/plugin-core";
 import { expect, vi } from "vitest";
 
 import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import { BUNDLE_EVENT_SCAN_PAGE_SIZE } from "./bundleEventScan";
 
 export const createEvent = (
   installId: string,
@@ -53,7 +54,11 @@ export const expectSingleMaterialization = (
   expect(findMany).toHaveBeenCalledOnce();
   expect(findMany.mock.calls[0]?.[0]).toMatchObject({
     model: "bundle_events",
-    limit: 50_001,
+    limit: BUNDLE_EVENT_SCAN_PAGE_SIZE,
     offset: 0,
+    orderBy: [
+      { field: "received_at_ms", direction: "asc" },
+      { field: "id", direction: "asc" },
+    ],
   });
 };

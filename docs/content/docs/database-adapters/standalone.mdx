@@ -217,6 +217,11 @@ KiB and individual string fields to 1024 characters; custom route
 implementations should enforce equivalent or stricter limits before parsing or
 persisting input.
 
+When the server uses `createHotUpdater()`, `POST /events` remains closed until
+`eventIngestion.authorize` is configured. Run authorization and quota checks
+before accepting client-reported telemetry; do not place a management token or
+reusable static secret in the app.
+
 The active endpoint accepts `window=24h|7d|30d` and an optional exact,
 case-sensitive `userId`. It first selects the latest in-window report for each
 installation ID, then applies the alias filter. Installation ID remains the
@@ -225,9 +230,10 @@ outcome qualifies as activity, while Installed/Recovered summaries and
 installation update history continue to exclude routine unchanged reports.
 
 Activity windows use server receipt time and scan at most 50,000 matching
-event rows in the shared CRUD fallback. The result means “installations that
-reported app ready in this range”; it is not a count of people, online devices,
-the complete fleet, or rollout completion.
+event rows in the shared CRUD fallback. That fallback is cutoff-bounded and
+eventually consistent across pages, not a strict transaction snapshot. The
+result means “installations that reported app ready in this range”; it is not a
+count of people, online devices, the complete fleet, or rollout completion.
 
 ### Bundle Shape
 

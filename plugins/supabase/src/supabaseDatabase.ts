@@ -217,9 +217,11 @@ const createSupabaseImplementation = (
       case "bundle_events": {
         let query = supabase.from("bundle_events").select("*");
         if (filter !== undefined) query = query.or(filter);
-        if (input.sortBy !== undefined) {
-          query = query.order(input.sortBy.field, {
-            ascending: input.sortBy.direction === "asc",
+        const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : []);
+        for (const clause of orderBy) {
+          query = query.order(clause.field, {
+            ascending: clause.direction === "asc",
+            ...(clause.nulls ? { nullsFirst: clause.nulls === "first" } : {}),
           });
         }
         const { data, error } = await query.range(input.offset, rangeEnd);

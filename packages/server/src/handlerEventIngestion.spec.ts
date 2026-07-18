@@ -8,10 +8,69 @@ import {
   testEventPayload,
 } from "./handler.testFixtures";
 
+const createEventHandler = (api: ReturnType<typeof createApi>) =>
+  createHandler(api, {
+    basePath: "/hot-updater",
+    eventIngestion: { authorize: () => true },
+  });
+
 describe("createHandler event ingestion", () => {
+  it("keeps ingestion closed until an authorization policy is configured", async () => {
+    const api = createApi();
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+    });
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(api.appendBundleEvent).not.toHaveBeenCalled();
+  });
+
+  it("applies the event authorization policy before reading the body", async () => {
+    const api = createApi();
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+      eventIngestion: { authorize: () => false },
+    });
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(api.appendBundleEvent).not.toHaveBeenCalled();
+  });
+
+  it("returns a custom policy response before reading the body", async () => {
+    const api = createApi();
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+      eventIngestion: {
+        authorize: () =>
+          new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+            status: 429,
+            headers: { "Content-Type": "application/json" },
+          }),
+      },
+    });
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toEqual({
+      error: "Rate limit exceeded",
+    });
+    expect(api.appendBundleEvent).not.toHaveBeenCalled();
+  });
+
   it("mounts the events route with update-check routes", async () => {
     const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createEventHandler(api);
     const response = await handler(
       new Request("http://localhost/hot-updater/events", {
         method: "POST",
@@ -38,7 +97,7 @@ describe("createHandler event ingestion", () => {
 
   it("preserves a missing SDK version as null when appending an event", async () => {
     const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createEventHandler(api);
     const response = await handler(
       new Request("http://localhost/hot-updater/events", {
         method: "POST",
@@ -58,7 +117,7 @@ describe("createHandler event ingestion", () => {
     "returns 400 before appending an invalid SDK version header %#",
     async (sdkVersion) => {
       const api = createApi();
-      const handler = createHandler(api, { basePath: "/hot-updater" });
+      const handler = createEventHandler(api);
       const response = await handler(
         new Request("http://localhost/hot-updater/events", {
           method: "POST",
@@ -116,7 +175,7 @@ describe("createHandler event ingestion", () => {
 
   it("returns 400 JSON for invalid event payloads", async () => {
     const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createEventHandler(api);
     const response = await handler(
       new Request("http://localhost/hot-updater/events", {
         method: "POST",
@@ -134,7 +193,7 @@ describe("createHandler event ingestion", () => {
 
   it("returns 413 before parsing an oversized event body", async () => {
     const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createEventHandler(api);
     const response = await handler(
       new Request("http://localhost/hot-updater/events", {
         method: "POST",
@@ -149,7 +208,7 @@ describe("createHandler event ingestion", () => {
 
   it("returns 400 for oversized event string fields", async () => {
     const api = createApi();
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createEventHandler(api);
     const response = await handler(
       new Request("http://localhost/hot-updater/events", {
         method: "POST",
@@ -176,7 +235,7 @@ describe("createHandler event ingestion", () => {
   it("returns 500 JSON for internal event errors", async () => {
     const api = createApi();
     api.appendBundleEvent.mockRejectedValueOnce(new Error("db unavailable"));
-    const handler = createHandler(api, { basePath: "/hot-updater" });
+    const handler = createEventHandler(api);
     const response = await handler(
       new Request("http://localhost/hot-updater/events", {
         method: "POST",

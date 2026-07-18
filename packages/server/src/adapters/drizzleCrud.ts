@@ -17,7 +17,11 @@ import {
   toStoredBundleUpdate,
 } from "./databaseAdapterUtils";
 import type { DrizzleProvider } from "./drizzle";
-import type { DrizzleDB, DrizzleTable } from "./drizzleLazyDB";
+import {
+  requireDrizzleBundleEventsQuery,
+  type DrizzleDB,
+  type DrizzleTable,
+} from "./drizzleLazyDB";
 import { buildDrizzleWhere } from "./drizzleQuery";
 
 class MissingDrizzleTableError extends Error {
@@ -234,16 +238,14 @@ export const createDrizzleCrud = (
           );
         case "bundle_events": {
           if (input.distinct && input.distinct.length > 0) {
-            const rows = (await (db as any)
-              .select()
-              .from(bundleEvents)
-              .where(
+            const rows = await requireDrizzleBundleEventsQuery(db).findMany({
+              where:
                 buildDrizzleWhere(
                   provider,
                   bundleEvents,
                   input.where as never,
                 ) ?? undefined,
-              )) as Record<string, unknown>[];
+            });
             return countDistinctRows(rows, input.distinct);
           }
           return db.$count(
@@ -278,15 +280,16 @@ export const createDrizzleCrud = (
             })) ?? null
           );
         case "bundle_events": {
-          const rows = await (db as any)
-            .select()
-            .from(bundleEvents)
-            .where(
-              buildDrizzleWhere(provider, bundleEvents, input.where as never) ??
-                undefined,
-            )
-            .limit(1);
-          return rows[0] ?? null;
+          return (
+            (await requireDrizzleBundleEventsQuery(db).findFirst({
+              where:
+                buildDrizzleWhere(
+                  provider,
+                  bundleEvents,
+                  input.where as never,
+                ) ?? undefined,
+            })) ?? null
+          );
         }
       }
     },
@@ -316,18 +319,17 @@ export const createDrizzleCrud = (
             offset: input.offset,
           });
         case "bundle_events": {
-          const baseQuery = (db as any)
-            .select()
-            .from(bundleEvents)
-            .where(
-              buildDrizzleWhere(provider, bundleEvents, input.where as never) ??
-                undefined,
-            );
           const orderBy = toOrderBy(bundleEvents, input as never);
+          const rows = await requireDrizzleBundleEventsQuery(db).findMany({
+            where:
+              buildDrizzleWhere(provider, bundleEvents, input.where as never) ??
+              undefined,
+            orderBy,
+            ...(input.distinctOn
+              ? {}
+              : { limit: input.limit, offset: input.offset }),
+          });
           if (input.distinctOn) {
-            const rows = (
-              orderBy ? await baseQuery.orderBy(...orderBy) : await baseQuery
-            ) as Record<string, unknown>[];
             return applyDistinctOnRows(
               rows,
               input.distinctOn.fields,
@@ -335,8 +337,7 @@ export const createDrizzleCrud = (
               input.limit,
             );
           }
-          const query = baseQuery.limit(input.limit).offset(input.offset);
-          return orderBy ? query.orderBy(...orderBy) : query;
+          return rows;
         }
       }
     },

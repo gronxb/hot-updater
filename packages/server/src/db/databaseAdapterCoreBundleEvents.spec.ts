@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { BUNDLE_EVENT_SCAN_PAGE_SIZE } from "./bundleEventScan";
 import { createDatabaseAdapterCore } from "./databaseAdapterCore";
 import {
   currentBundle,
@@ -211,14 +212,23 @@ describe("createDatabaseAdapterCore bundle events", () => {
     expect(analytics.recentEvents.data[0]).toMatchObject({ type: "RECOVERED" });
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        limit: 50_001,
+        limit: BUNDLE_EVENT_SCAN_PAGE_SIZE,
         offset: 0,
         where: [
+          {
+            field: "type",
+            operator: "in",
+            value: ["UPDATE_APPLIED", "RECOVERED"],
+          },
           {
             field: "received_at_ms",
             operator: "lt",
             value: Date.UTC(2026, 0, 1, 0, 30),
           },
+        ],
+        orderBy: [
+          { field: "received_at_ms", direction: "asc" },
+          { field: "id", direction: "asc" },
         ],
       }),
       undefined,

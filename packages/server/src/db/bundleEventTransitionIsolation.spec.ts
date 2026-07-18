@@ -13,7 +13,34 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("transition analytics isolation", () => {
+describe("bundle event analytics isolation", () => {
+  it("pushes transition types before applying the scan budget", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(ACTIVE_AS_OF_MS);
+    const database = await insertActiveRows([
+      createActiveTransitionEvent("installed", ACTIVE_AS_OF_MS - 1),
+    ]);
+    const originalFindMany = database.findMany.bind(database);
+    const unchanged = Array.from({ length: 50_001 }, (_, index) =>
+      createUnchangedEvent(`unchanged-${index}`, ACTIVE_AS_OF_MS - 2),
+    );
+    vi.spyOn(database, "findMany").mockImplementation((input, context) => {
+      const hasTypePredicate = input.where?.some(
+        (condition) =>
+          (condition as { readonly field: string }).field === "type",
+      );
+      return hasTypePredicate
+        ? originalFindMany(input, context)
+        : Promise.resolve(unchanged);
+    });
+
+    const summary =
+      await createBundleEventService(database).getBundleEventSummary(
+        "bundle-current",
+      );
+
+    expect(summary).toEqual({ installed: 1, recovered: 0 });
+  });
+
   it("excludes UNCHANGED from installed and recovered bundle metrics", async () => {
     // Given
     vi.spyOn(Date, "now").mockReturnValue(ACTIVE_AS_OF_MS);

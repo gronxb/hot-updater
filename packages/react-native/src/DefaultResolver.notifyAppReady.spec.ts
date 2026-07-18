@@ -52,7 +52,7 @@ describe("createDefaultResolver.notifyAppReady", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 204 }));
   });
 
-  it("posts transition analytics to /events and requires HTTP 204", async () => {
+  it("posts analytics to /events and requires HTTP 204", async () => {
     const resolver = createDefaultResolver(
       "http://localhost:3007/hot-updater///",
     );

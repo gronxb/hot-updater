@@ -120,46 +120,54 @@ const bundleEventMap = (
     }),
   );
 
-type SnapshotDocuments = readonly [
-  QuerySnapshot<DocumentData>,
+type CoreSnapshotDocuments = readonly [
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
 ];
 
 const toSnapshot = (
-  documents: SnapshotDocuments,
+  documents: CoreSnapshotDocuments,
+  bundleEvents?: QuerySnapshot<DocumentData>,
 ): FirebaseDatabaseSnapshot => ({
   bundles: bundleMap(documents[0]),
   bundlePatches: patchMap(documents[1]),
   channels: channelMap(documents[2]),
-  bundleEvents: bundleEventMap(documents[3]),
+  bundleEvents: bundleEvents ? bundleEventMap(bundleEvents) : new Map(),
 });
+
+type FirebaseSnapshotOptions = {
+  readonly includeBundleEvents?: boolean;
+};
 
 export const loadFirebaseDatabaseSnapshot = async (
   collections: FirebaseDatabaseCollections,
-): Promise<FirebaseDatabaseSnapshot> =>
-  toSnapshot(
-    await Promise.all([
-      collections.bundles.get(),
-      collections.bundlePatches.get(),
-      collections.channels.get(),
-      collections.bundleEvents.get(),
-    ]),
-  );
+  options: FirebaseSnapshotOptions = {},
+): Promise<FirebaseDatabaseSnapshot> => {
+  const [bundles, patches, channels, bundleEvents] = await Promise.all([
+    collections.bundles.get(),
+    collections.bundlePatches.get(),
+    collections.channels.get(),
+    options.includeBundleEvents ? collections.bundleEvents.get() : undefined,
+  ]);
+  return toSnapshot([bundles, patches, channels], bundleEvents);
+};
 
 export const loadFirebaseTransactionSnapshot = async (
   transaction: Transaction,
   collections: FirebaseDatabaseCollections,
-): Promise<FirebaseDatabaseSnapshot> =>
-  toSnapshot(
-    await Promise.all([
-      transaction.get(collections.bundles),
-      transaction.get(collections.bundlePatches),
-      transaction.get(collections.channels),
-      transaction.get(collections.bundleEvents),
-    ]),
-  );
+  options: FirebaseSnapshotOptions = {},
+): Promise<FirebaseDatabaseSnapshot> => {
+  const [bundles, patches, channels, bundleEvents] = await Promise.all([
+    transaction.get(collections.bundles),
+    transaction.get(collections.bundlePatches),
+    transaction.get(collections.channels),
+    options.includeBundleEvents
+      ? transaction.get(collections.bundleEvents)
+      : undefined,
+  ]);
+  return toSnapshot([bundles, patches, channels], bundleEvents);
+};
 
 type PersistCollectionInput<TRow extends FixedRow> = {
   readonly transaction: Transaction;

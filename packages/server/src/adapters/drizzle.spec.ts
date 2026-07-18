@@ -135,6 +135,32 @@ const createBundleEventRow = (
 });
 
 describe("drizzleAdapter schema requirements", () => {
+  it("supports bundle event reads through a lazy database", async () => {
+    const localClient = new PGlite();
+    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    const localDatabase = drizzle(localClient, { schema });
+    const resolveDatabase = vi.fn(async () => localDatabase);
+    const adapter = drizzleAdapter({
+      db: resolveDatabase,
+      provider: "postgresql",
+      schema,
+    });
+
+    try {
+      await adapter.create({
+        model: "bundle_events",
+        data: createBundleEventRow("lazy-event", "lazy-install", 100),
+      });
+
+      await expect(
+        adapter.findMany({ model: "bundle_events" }),
+      ).resolves.toMatchObject([{ id: "lazy-event" }]);
+      expect(resolveDatabase).toHaveBeenCalledOnce();
+    } finally {
+      await localClient.close();
+    }
+  });
+
   it("does not resolve a lazy database while generating a schema", () => {
     const getDB = vi.fn(() => {
       throw new DrizzleTestStateError();

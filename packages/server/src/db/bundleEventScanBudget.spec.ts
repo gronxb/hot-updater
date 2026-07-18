@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
 import {
-  BUNDLE_EVENT_MATERIALIZATION_LIMIT,
   BUNDLE_EVENT_SCAN_MAX_ROWS,
   BundleEventScanLimitExceededError,
   materializeBundleEventRows,
@@ -29,35 +28,89 @@ const createEvent = (index: number): BundleEventRow => ({
   received_at_ms: cutoffMs - 1,
 });
 
-const createGeneratedDatabase = (totalRows: number) => {
+const createGeneratedDatabase = (totalRows: number, pageCap = Infinity) => {
   const database = createInMemoryDatabaseAdapter();
   const findMany = vi
     .spyOn(database, "findMany")
     .mockImplementation(async (input) => {
       if (input.model !== "bundle_events") return [];
-      const size = Math.min(input.limit ?? totalRows, totalRows);
-      return Array.from({ length: size }, (_, index) => createEvent(index));
+      const offset = input.offset ?? 0;
+      const size = Math.max(
+        0,
+        Math.min(input.limit ?? totalRows, pageCap, totalRows - offset),
+      );
+      return Array.from({ length: size }, (_, index) =>
+        createEvent(offset + index),
+      );
     });
   return { database, findMany };
 };
 
 describe("bundle event materialization budget", () => {
-  it("materializes exactly 50,000 rows in one statement", async () => {
+  it("deduplicates rows shifted across page boundaries by an append", async () => {
+    const database = createInMemoryDatabaseAdapter();
+    const stored = Array.from({ length: 1_001 }, (_, index) =>
+      createEvent(index),
+    );
+    let calls = 0;
+    vi.spyOn(database, "findMany").mockImplementation(async (input) => {
+      if (input.model !== "bundle_events") return [];
+      calls += 1;
+      if (calls === 2) stored.unshift(createEvent(-1));
+      const offset = input.offset ?? 0;
+      const limit = input.limit ?? stored.length;
+      return stored.slice(offset, offset + limit);
+    });
+
+    const rows = await materializeBundleEventRows({ database, cutoffMs });
+
+    expect(rows).toHaveLength(1_001);
+    expect(new Set(rows.map(({ id }) => id)).size).toBe(1_001);
+    expect(rows.some(({ id }) => id === "event--1")).toBe(false);
+  });
+
+  it("includes a pre-cutoff row committed after an earlier page", async () => {
+    const database = createInMemoryDatabaseAdapter();
+    const stored = Array.from({ length: 1_001 }, (_, index) =>
+      createEvent(index),
+    );
+    let calls = 0;
+    vi.spyOn(database, "findMany").mockImplementation(async (input) => {
+      if (input.model !== "bundle_events") return [];
+      calls += 1;
+      if (calls === 2) stored.push(createEvent(1_001));
+      const offset = input.offset ?? 0;
+      const limit = input.limit ?? stored.length;
+      return stored.slice(offset, offset + limit);
+    });
+
+    const rows = await materializeBundleEventRows({ database, cutoffMs });
+
+    expect(rows).toHaveLength(1_002);
+    expect(rows.at(-1)?.id).toBe("event-1001");
+  });
+
+  it("continues across provider-capped pages", async () => {
     // Given
-    const { database, findMany } = createGeneratedDatabase(50_000);
+    const { database, findMany } = createGeneratedDatabase(50_000, 1_000);
 
     // When
     const rows = await materializeBundleEventRows({ database, cutoffMs });
 
     // Then
     expect(rows).toHaveLength(BUNDLE_EVENT_SCAN_MAX_ROWS);
-    expect(findMany).toHaveBeenCalledOnce();
-    expect(findMany).toHaveBeenCalledWith(
+    expect(findMany).toHaveBeenCalledTimes(51);
+    expect(findMany).toHaveBeenNthCalledWith(
+      1,
       {
         model: "bundle_events",
         where: [{ field: "received_at_ms", operator: "lt", value: cutoffMs }],
-        limit: BUNDLE_EVENT_MATERIALIZATION_LIMIT,
+        limit: 1_000,
         offset: 0,
+        orderBy: [
+          { field: "received_at_ms", direction: "asc" },
+          { field: "id", direction: "asc" },
+        ],
       },
       undefined,
     );
@@ -65,7 +118,7 @@ describe("bundle event materialization budget", () => {
 
   it("rejects a 50,001-row materialization", async () => {
     // Given
-    const { database, findMany } = createGeneratedDatabase(50_001);
+    const { database, findMany } = createGeneratedDatabase(50_001, 1_000);
 
     // When
     const result = materializeBundleEventRows({ database, cutoffMs });
@@ -74,13 +127,6 @@ describe("bundle event materialization budget", () => {
     await expect(result).rejects.toBeInstanceOf(
       BundleEventScanLimitExceededError,
     );
-    expect(findMany).toHaveBeenCalledOnce();
-  });
-
-  it("uses one overflow-probe row", () => {
-    // Given / When / Then
-    expect(BUNDLE_EVENT_MATERIALIZATION_LIMIT).toBe(
-      BUNDLE_EVENT_SCAN_MAX_ROWS + 1,
-    );
+    expect(findMany).toHaveBeenCalledTimes(51);
   });
 });

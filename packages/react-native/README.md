@@ -21,6 +21,10 @@ React Native runtime for Hot Updater.
   readiness or suppresses `onNotifyAppReady`
 - Reporting happens at the existing app-ready boundary; it is not a foreground
   heartbeat or a session tracker
+- Servers keep event ingestion closed until an explicit authorization policy is
+  configured. Use `requestHeaders` for a user-scoped credential or platform
+  attestation signal; never embed a management credential or static secret
+  intended to protect the endpoint
 
 ## Installation and user identity
 

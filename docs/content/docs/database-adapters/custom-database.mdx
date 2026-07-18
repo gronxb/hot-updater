@@ -234,8 +234,8 @@ must not cascade into the event log.
 ## Analytics storage
 
 `bundle_events` is part of the fixed row model. Adapters created with
-`createDatabaseAdapter` write individual records, so the server enables
-Analytics automatically:
+`createDatabaseAdapter` write individual records, so the server exposes the
+Analytics read capability automatically:
 
 ```typescript
 createDatabaseAdapter({
@@ -245,6 +245,28 @@ createDatabaseAdapter({
   }),
 });
 ```
+
+Client event writes are closed by default. Mount `POST /events` only with an
+explicit ingestion policy:
+
+```typescript
+createHotUpdater({
+  database,
+  eventIngestion: {
+    authorize: async (request, context) => {
+      return (
+        (await verifyAppIdentity(request, context)) &&
+        (await enforceQuota(request))
+      );
+    },
+  },
+});
+```
+
+The policy runs before the body is read. Return `false` for `401`, or return a
+custom `Response` such as `429` when a quota is exceeded. Use end-user auth,
+platform attestation, or an equivalent server-verifiable signal. A static
+secret embedded in an app is extractable and must not be a management token.
 
 Adapters created with `createBlobDatabaseAdapter` replace one shared snapshot
 for every mutation, so the server does not register `POST /events` or the
@@ -269,14 +291,20 @@ Active windows are half-open server-receipt ranges for 24 hours, 7 days, or
 bundle. An optional user ID is an exact, case-sensitive filter on that latest
 row; it remains metadata and never becomes the distinct key. The shared CRUD
 fallback applies the window predicate before enforcing its 50,000 matching-row
-limit. These metrics describe received app-ready reports, not people, online
-devices, complete fleet state, or rollout completion.
+limit. Pages use stable receipt-time and event-ID ordering and discard duplicate
+IDs. The generic CRUD fallback is cutoff-bounded but not a cross-page database
+transaction: a pre-cutoff row committed during a scan can appear in that
+response. Repeated reads converge; use a dedicated `DatabaseBundleEventService`
+when strict snapshot isolation is required. These metrics describe received
+app-ready reports, not people, online devices, complete fleet state, or rollout
+completion.
 
-The public `POST /events` handler rejects bodies above 16 KiB with `413` and
-string fields above 1024 characters with `400`. Preserve these limits in custom
-HTTP frontends, and apply authentication, rate limiting, and request logging at
-the reverse proxy or framework boundary. React Native reports transport
-failures as warnings so Analytics never blocks app readiness.
+When mounted, `POST /events` rejects bodies above 16 KiB with `413` and string
+fields above 1024 characters with `400`. The values are client-reported
+telemetry, not trusted security or rollout state. Keep authorization, quotas,
+retention, and request logging in the policy or surrounding infrastructure.
+React Native reports transport failures as warnings so Analytics never blocks
+app readiness.
 
 Console visibility is capability-only: Analytics navigation, routes, queries,
 and bundle activity appear only when the complete Analytics capability is

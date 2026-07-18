@@ -17,11 +17,17 @@ import type {
 import { createUpdateRouteHandlers } from "./handlerUpdateRoutes";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
-export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
+export type {
+  AuthorizeEventIngestion,
+  HandlerAPI,
+  HandlerEventIngestionOptions,
+  HandlerOptions,
+  HandlerRoutes,
+} from "./handlerTypes";
 
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
-  options: HandlerOptions = {},
+  options: HandlerOptions<TContext> = {},
 ): (
   request: Request,
   context?: HotUpdaterContext<TContext>,
@@ -36,7 +42,9 @@ export function createHandler<TContext = unknown>(
   const routeHandlers: Record<string, RouteHandler<TContext>> = {
     ...createUpdateRouteHandlers<TContext>(),
     ...createBundleRouteHandlers<TContext>(),
-    ...createEventIngestionRouteHandlers<TContext>(),
+    ...(options.eventIngestion
+      ? createEventIngestionRouteHandlers(options.eventIngestion)
+      : {}),
     ...createAnalyticsRouteHandlers<TContext>(),
   };
 
@@ -66,7 +74,7 @@ export function createHandler<TContext = unknown>(
       "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
       "appVersionUpdateWithCohort",
     );
-    if (analyticsRoutes) {
+    if (analyticsRoutes && options.eventIngestion) {
       addRoute(router, "POST", "/events", "appendBundleEvent");
     }
   }

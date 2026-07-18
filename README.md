@@ -81,6 +81,10 @@
   and per-install history. Snapshot-backed databases such as S3 leave this
   capability disabled.
 
+  Client event writes are closed until the server configures an explicit
+  `eventIngestion.authorize` policy. Treat reports as untrusted telemetry and
+  enforce authentication or attestation, quotas, and retention server-side.
+
   See the React Native/runtime docs and Console/server guides at https://hot-updater.dev for full setup.
 
 

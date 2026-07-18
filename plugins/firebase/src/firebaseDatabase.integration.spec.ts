@@ -16,6 +16,7 @@ import { firebaseDatabase } from "./firebaseDatabase";
 const PROJECT_ID = "firebase-database-test";
 
 const {
+  bundleEventsCollection,
   bundlePatchesCollection,
   bundlesCollection,
   channelsCollection,
@@ -98,6 +99,24 @@ const bundleFixture = (suffix: string) => ({
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
   metadata: { app_version: suffix },
+});
+
+const bundleEventFixture = (id: string) => ({
+  id,
+  type: "UNCHANGED" as const,
+  install_id: "install-1",
+  user_id: null,
+  username: null,
+  from_bundle_id: null,
+  to_bundle_id: "bundle-1",
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "stable",
+  update_strategy: null,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: 100,
 });
 
 describe("firebase v1 data migration", () => {
@@ -244,6 +263,80 @@ describe("firebase v1 data migration", () => {
 
 describe("firebase bounded reads", () => {
   beforeEach(clearCollections);
+
+  it("preserves bundle event CRUD inside explicit transactions", async () => {
+    const adapter = createAdapter();
+    await adapter.create({
+      model: "bundle_events",
+      data: bundleEventFixture("event-existing"),
+    });
+    expect(adapter.transaction).toBeDefined();
+
+    const result = await adapter.transaction?.(async (database) => {
+      const before = await database.count({ model: "bundle_events" });
+      await database.create({
+        model: "bundle_events",
+        data: bundleEventFixture("event-new"),
+      });
+      const after = await database.findMany({
+        model: "bundle_events",
+        limit: 10,
+        offset: 0,
+      });
+      return { before, ids: after.map(({ id }) => id).toSorted() };
+    });
+
+    expect(result).toEqual({
+      before: 1,
+      ids: ["event-existing", "event-new"],
+    });
+    await expect(
+      bundleEventsCollection.doc("event-new").get(),
+    ).resolves.toMatchObject({ exists: true });
+  });
+
+  it("appends bundle events without a full-database transaction", async () => {
+    const adapter = createAdapter();
+    const runTransaction = vi.spyOn(firestore, "runTransaction");
+
+    try {
+      await adapter.create({
+        model: "bundle_events",
+        data: bundleEventFixture("event-direct"),
+      });
+
+      expect(runTransaction).not.toHaveBeenCalled();
+      await expect(
+        bundleEventsCollection.doc("event-direct").get(),
+      ).resolves.toMatchObject({ exists: true });
+    } finally {
+      runTransaction.mockRestore();
+    }
+  });
+
+  it("reads bundle events without loading unrelated collections", async () => {
+    const adapter = createAdapter();
+    await adapter.create({
+      model: "bundle_events",
+      data: bundleEventFixture("event-bounded"),
+    });
+    const collectionPrototype = Object.getPrototypeOf(bundleEventsCollection);
+    const queryPrototype = Object.getPrototypeOf(collectionPrototype);
+    const get = vi.spyOn(queryPrototype, "get");
+
+    try {
+      const rows = await adapter.findMany({
+        model: "bundle_events",
+        limit: 1,
+        sortBy: { field: "id", direction: "asc" },
+      });
+
+      expect(rows).toMatchObject([{ id: "event-bounded" }]);
+      expect(get).toHaveBeenCalledOnce();
+    } finally {
+      get.mockRestore();
+    }
+  });
 
   it("ignores unrelated malformed documents during an update check", async () => {
     const adapter = createAdapter();

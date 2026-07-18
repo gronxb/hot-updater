@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
 import { createBundleEventService } from "./bundleEvents";
-import { materializeBundleEventRows } from "./bundleEventScan";
+import {
+  BUNDLE_EVENT_SCAN_PAGE_SIZE,
+  materializeBundleEventRows,
+} from "./bundleEventScan";
 
 const cutoffMs = Date.UTC(2026, 6, 17, 12);
 
@@ -48,7 +51,7 @@ const createDeferred = () => {
   return { promise, resolve };
 };
 
-describe("bundle event immutable snapshots", () => {
+describe("bundle event cutoff-bounded scans", () => {
   it("applies a strict cutoff without mutating the caller input", async () => {
     // Given
     const database = await insertRows([
@@ -80,7 +83,7 @@ describe("bundle event immutable snapshots", () => {
     );
   });
 
-  it("captures Date.now once and issues one bounded read per public request", async () => {
+  it("captures Date.now once and starts one bounded scan per public request", async () => {
     // Given
     const database = createInMemoryDatabaseAdapter();
     const findMany = vi.spyOn(database, "findMany");
@@ -106,13 +109,17 @@ describe("bundle event immutable snapshots", () => {
       expect(count).not.toHaveBeenCalled();
       expect(findMany.mock.calls[0]?.[0]).toMatchObject({
         model: "bundle_events",
-        limit: 50_001,
+        limit: BUNDLE_EVENT_SCAN_PAGE_SIZE,
         offset: 0,
+        orderBy: [
+          { field: "received_at_ms", direction: "asc" },
+          { field: "id", direction: "asc" },
+        ],
       });
     }
   });
 
-  it("excludes a pre-cutoff append suspended after statement materialization", async () => {
+  it("excludes an append suspended after its page materializes", async () => {
     // Given
     vi.spyOn(Date, "now").mockReturnValue(cutoffMs);
     const database = await insertRows([

@@ -13,7 +13,11 @@ import {
   isDatabaseAdapter,
   type StoragePluginFactory,
 } from "./db/types";
-import { createHandler, type HandlerRoutes } from "./handler";
+import {
+  createHandler,
+  type HandlerEventIngestionOptions,
+  type HandlerRoutes,
+} from "./handler";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
@@ -45,6 +49,7 @@ export interface CreateHotUpdaterOptions<TContext = undefined> {
   )[];
   readonly basePath?: string;
   readonly cwd?: string;
+  readonly eventIngestion?: HandlerEventIngestionOptions<TContext>;
   readonly routes?: HandlerRoutes;
 }
 
@@ -113,6 +118,7 @@ export function createHotUpdaterCore<TContext = undefined>(
 
   const internalHandler = createHandler(core.api, {
     basePath,
+    eventIngestion: options.eventIngestion,
     routes: options.routes,
   });
 

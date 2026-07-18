@@ -10,6 +10,7 @@ import type { ActiveInstallationWindow } from "./types";
 export const BUNDLE_EVENT_SCAN_MAX_ROWS = 50_000;
 export const BUNDLE_EVENT_MATERIALIZATION_LIMIT =
   BUNDLE_EVENT_SCAN_MAX_ROWS + 1;
+export const BUNDLE_EVENT_SCAN_PAGE_SIZE = 1_000;
 
 export class BundleEventScanLimitExceededError extends Error {
   readonly name = "BundleEventScanLimitExceededError";
@@ -53,17 +54,38 @@ export const materializeBundleEventRows = async <TContext>(
   scope: BundleEventScanScope<TContext>,
   where?: readonly DatabaseWhere<"bundle_events">[],
 ): Promise<readonly BundleEventRow[]> => {
-  const rows = await scope.database.findMany(
-    {
-      model: "bundle_events",
-      where: withBundleEventCutoff(where, scope.cutoffMs),
-      limit: BUNDLE_EVENT_MATERIALIZATION_LIMIT,
-      offset: 0,
-    },
-    scope.context,
-  );
-  if (rows.length > BUNDLE_EVENT_SCAN_MAX_ROWS) {
-    throw new BundleEventScanLimitExceededError(BUNDLE_EVENT_SCAN_MAX_ROWS);
+  const rows: BundleEventRow[] = [];
+  const seenIds = new Set<string>();
+  let offset = 0;
+  while (rows.length < BUNDLE_EVENT_MATERIALIZATION_LIMIT) {
+    const limit = Math.min(
+      BUNDLE_EVENT_SCAN_PAGE_SIZE,
+      BUNDLE_EVENT_MATERIALIZATION_LIMIT - rows.length,
+    );
+    const page = await scope.database.findMany(
+      {
+        model: "bundle_events",
+        where: withBundleEventCutoff(where, scope.cutoffMs),
+        limit,
+        offset,
+        orderBy: [
+          { field: "received_at_ms", direction: "asc" },
+          { field: "id", direction: "asc" },
+        ],
+      },
+      scope.context,
+    );
+    if (page.length === 0) break;
+    offset += page.length;
+    for (const row of page) {
+      if (seenIds.has(row.id)) continue;
+      seenIds.add(row.id);
+      rows.push(row);
+    }
+    if (rows.length > BUNDLE_EVENT_SCAN_MAX_ROWS) {
+      throw new BundleEventScanLimitExceededError(BUNDLE_EVENT_SCAN_MAX_ROWS);
+    }
+    if (page.length < limit) break;
   }
   return rows;
 };

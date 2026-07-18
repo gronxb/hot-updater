@@ -10,7 +10,7 @@ import {
 } from "./bundleEventActive.testFixtures";
 import { createBundleEventService } from "./bundleEvents";
 import {
-  BUNDLE_EVENT_MATERIALIZATION_LIMIT,
+  BUNDLE_EVENT_SCAN_PAGE_SIZE,
   BundleEventScanLimitExceededError,
 } from "./bundleEventScan";
 
@@ -54,8 +54,12 @@ describe("active installation bounded scan", () => {
             value: ACTIVE_AS_OF_MS,
           },
         ],
-        limit: BUNDLE_EVENT_MATERIALIZATION_LIMIT,
+        limit: BUNDLE_EVENT_SCAN_PAGE_SIZE,
         offset: 0,
+        orderBy: [
+          { field: "received_at_ms", direction: "asc" },
+          { field: "id", direction: "asc" },
+        ],
       },
       context,
     );

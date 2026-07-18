@@ -61,6 +61,14 @@ const isRecoveredFromBundle = (
 const countDistinctInstallations = (rows: readonly BundleEventRow[]): number =>
   new Set(rows.map(({ install_id }) => install_id)).size;
 
+const TRANSITION_EVENT_WHERE: readonly DatabaseWhere<"bundle_events">[] = [
+  {
+    field: "type",
+    operator: "in",
+    value: ["UPDATE_APPLIED", "RECOVERED"],
+  },
+];
+
 export const createBundleEventService = <TContext>(
   database: DatabaseAdapter<TContext>,
 ) => ({
@@ -81,11 +89,15 @@ export const createBundleEventService = <TContext>(
     bundleId: string,
     context?: TContext,
   ): Promise<BundleEventSummary> {
-    const rows = await materializeBundleEventRows({
+    const scope: BundleEventScanScope<TContext> = {
       database,
       cutoffMs: Date.now(),
       context,
-    });
+    };
+    const rows = await materializeBundleEventRows(
+      scope,
+      TRANSITION_EVENT_WHERE,
+    );
     return {
       installed: countDistinctInstallations(
         rows.filter((row) => isInstalledForBundle(row, bundleId)),
@@ -108,7 +120,10 @@ export const createBundleEventService = <TContext>(
       cutoffMs: Date.now(),
       context,
     };
-    const rows = await materializeBundleEventRows(scope);
+    const rows = await materializeBundleEventRows(
+      scope,
+      TRANSITION_EVENT_WHERE,
+    );
     const installedRows = rows.filter(
       (
         row,
@@ -148,11 +163,10 @@ export const createBundleEventService = <TContext>(
   async getBundleEventOverview(
     context?: TContext,
   ): Promise<BundleEventOverview> {
-    const rows = await materializeBundleEventRows({
-      database,
-      cutoffMs: Date.now(),
-      context,
-    });
+    const rows = await materializeBundleEventRows(
+      { database, cutoffMs: Date.now(), context },
+      TRANSITION_EVENT_WHERE,
+    );
     const latestByInstall = new Map<string, TransitionBundleEventRow>();
     for (const row of rows.filter(isTransitionBundleEventRow)) {
       const current = latestByInstall.get(row.install_id);
@@ -202,11 +216,10 @@ export const createBundleEventService = <TContext>(
     offset: number,
     context?: TContext,
   ): Promise<OffsetPaginationResult<InstallationSearchRow>> {
-    const rows = await materializeBundleEventRows({
-      database,
-      cutoffMs: Date.now(),
-      context,
-    });
+    const rows = await materializeBundleEventRows(
+      { database, cutoffMs: Date.now(), context },
+      TRANSITION_EVENT_WHERE,
+    );
     return searchBundleEventInstallations({
       rows: rows.filter(isTransitionBundleEventRow),
       query,

@@ -90,5 +90,6 @@ export const createAnalyticsHandler = (
 ) =>
   createHandler(api, {
     basePath: "/hot-updater",
+    eventIngestion: { authorize: () => true },
     routes,
   });

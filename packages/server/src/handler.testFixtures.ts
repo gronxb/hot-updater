@@ -111,6 +111,7 @@ export const createManagementHandler = (
 ) =>
   createHandler(api, {
     basePath: "/hot-updater",
+    eventIngestion: { authorize: () => true },
     routes: {
       updateCheck: true,
       bundles: true,

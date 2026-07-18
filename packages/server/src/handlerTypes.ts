@@ -43,9 +43,20 @@ export interface HandlerAPI<TContext = unknown> extends Partial<
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
 }
 
-export interface HandlerOptions {
+export type AuthorizeEventIngestion<TContext = unknown> = (
+  request: Request,
+  context?: HotUpdaterContext<TContext>,
+) => boolean | Response | Promise<boolean | Response>;
+
+export interface HandlerEventIngestionOptions<TContext = unknown> {
+  readonly authorize: AuthorizeEventIngestion<TContext>;
+}
+
+export interface HandlerOptions<TContext = unknown> {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
+  /** Required authorization and throttling policy for client event writes. */
+  readonly eventIngestion?: HandlerEventIngestionOptions<TContext>;
   /** Route groups to mount. The version endpoint is always mounted. */
   readonly routes?: HandlerRoutes;
 }

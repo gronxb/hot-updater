@@ -6,6 +6,7 @@ import {
   createEvent,
   expectSingleMaterialization,
 } from "./bundleEvents.testFixtures";
+import { BUNDLE_EVENT_SCAN_PAGE_SIZE } from "./bundleEventScan";
 
 describe("bundle event installation search", () => {
   it("pages an empty query over stable latest-per-install rows", async () => {
@@ -39,8 +40,12 @@ describe("bundle event installation search", () => {
     for (const [input] of findMany.mock.calls) {
       expect(input).toMatchObject({
         model: "bundle_events",
-        limit: 50_001,
+        limit: BUNDLE_EVENT_SCAN_PAGE_SIZE,
         offset: 0,
+        orderBy: [
+          { field: "received_at_ms", direction: "asc" },
+          { field: "id", direction: "asc" },
+        ],
       });
     }
   });
@@ -114,6 +119,11 @@ describe("bundle event installation search", () => {
     ).toEqual(installIds.slice(200).map((id) => `latest-${id}`));
     expectSingleMaterialization(findMany);
     expect(findMany.mock.calls[0]?.[0].where).toEqual([
+      {
+        field: "type",
+        operator: "in",
+        value: ["UPDATE_APPLIED", "RECOVERED"],
+      },
       {
         field: "received_at_ms",
         operator: "lt",
