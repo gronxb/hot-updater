@@ -99,9 +99,6 @@ function AnalyticsPage() {
             </p>
           ) : null}
           <AnalyticsControls
-            bundleId={bundleId}
-            bundles={bundleOptions}
-            onBundleChange={setSelectedBundleId}
             onInstallationSearch={(query) => {
               void navigate({
                 to: "/installations",
@@ -123,7 +120,10 @@ function AnalyticsPage() {
           ) : active.data && catalog.data ? (
             <AnalyticsOverview
               active={active.data}
+              bundleId={bundleId}
+              bundles={bundleOptions}
               catalog={catalog.data}
+              onBundleChange={setSelectedBundleId}
               outcomes={outcomeState}
               status="success"
             />

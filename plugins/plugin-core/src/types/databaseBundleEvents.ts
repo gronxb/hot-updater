@@ -98,6 +98,13 @@ export interface ActiveInstallationOverview {
     readonly bucketStartMs: number;
     readonly value: number;
   }[];
+  readonly bundleSeries: readonly {
+    readonly bundleId: string;
+    readonly series: readonly {
+      readonly bucketStartMs: number;
+      readonly value: number;
+    }[];
+  }[];
   readonly bundles: readonly {
     readonly bundleId: string;
     readonly installations: number;

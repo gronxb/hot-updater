@@ -15,6 +15,7 @@ describe("BundleDistribution", () => {
       window: "7d",
       activeInstallations: 4,
       series: [],
+      bundleSeries: [],
       bundles: [
         {
           bundleId: "01972030-1aa1-7445-8b8c-121212121212",

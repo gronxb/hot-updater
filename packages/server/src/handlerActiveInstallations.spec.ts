@@ -40,6 +40,7 @@ describe("GET /api/installations/active", () => {
       window: "30d",
       activeInstallations: 2,
       series: [],
+      bundleSeries: [],
       bundles: [{ bundleId: "unknown-bundle", installations: 2 }],
     });
     const handler = createAnalyticsHandler(api);

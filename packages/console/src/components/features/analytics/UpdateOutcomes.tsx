@@ -28,31 +28,31 @@ export type UpdateOutcomeState =
     };
 
 export function UpdateOutcomes({
-  activeInstallations,
   configuredPercentage,
-  observedInstallations,
+  latestBundleInstallations,
+  reportingInstallations,
   state,
   window,
 }: {
-  readonly activeInstallations: number;
   readonly configuredPercentage: number | null;
-  readonly observedInstallations: number;
+  readonly latestBundleInstallations: number;
+  readonly reportingInstallations: number;
   readonly state: UpdateOutcomeState;
   readonly window: ActiveInstallationWindow;
 }) {
-  const observedShare =
-    activeInstallations === 0
+  const latestBundleShare =
+    reportingInstallations === 0
       ? 0
-      : (observedInstallations / activeInstallations) * 100;
+      : (latestBundleInstallations / reportingInstallations) * 100;
 
   return (
     <Card className="min-w-0 overflow-hidden shadow-sm">
       <CardHeader>
         <CardTitle className="text-sm font-medium">
-          <h2>Selected bundle adoption</h2>
+          <h2>Selected bundle activity</h2>
         </CardTitle>
         <CardDescription>
-          Recent presence and movement for the bundle selected above.
+          Latest reported presence, applies, and recoveries during this period.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -86,14 +86,14 @@ export function UpdateOutcomes({
             <dl className="grid sm:grid-cols-2 lg:grid-cols-4 lg:divide-x lg:divide-border/70">
               <div className="border-b pb-4 sm:pr-4 lg:border-b-0">
                 <dt className="text-xs text-muted-foreground">
-                  Observed adoption
+                  Latest bundle share
                 </dt>
                 <dd className="mt-1 text-2xl font-semibold tracking-tight tabular-nums">
-                  {Math.round(observedShare)}%
+                  {Math.round(latestBundleShare)}%
                 </dd>
                 <dd className="mt-1 text-xs text-muted-foreground tabular-nums">
-                  {observedInstallations.toLocaleString()} of{" "}
-                  {activeInstallations.toLocaleString()} seen
+                  {latestBundleInstallations.toLocaleString()} of{" "}
+                  {reportingInstallations.toLocaleString()} reporting installs
                 </dd>
               </div>
               <div className="border-b py-4 sm:pl-4 lg:border-b-0 lg:py-0 lg:pr-4">

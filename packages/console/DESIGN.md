@@ -20,9 +20,9 @@ EAS Observe > EAS Update dashboard without copying Expo branding or metrics:
 - a compact status-and-filter toolbar precedes the report;
 - one full-width trend card is the primary analytical surface, with the leading
   value above the chart and supporting values aligned below it;
-- per-update comparison rows become per-bundle rows with a relative activity
-  bar, exact Active count, and share;
-- secondary operational panels follow the bundle comparison rather than
+- per-update comparison becomes a multi-series reporting-by-bundle trend so
+  operators can compare bundle movement in one surface;
+- the selected-bundle inspector follows the overall trend rather than
   competing with the primary chart.
 
 Hot Updater keeps its warm-stone surfaces, orange semantic accent, existing
@@ -38,7 +38,7 @@ structure only.
 - `background`, `card`, `muted`, `border`, and their foreground counterparts
   create the warm-stone surface hierarchy in both themes.
 - Orange `primary`/`accent` is the single emphasis color. In charts,
-  `chart-2` represents the primary Newly applied, observed-installation, or
+  `chart-2` represents the primary Newly applied, reporting-installation, or
   bundle-distribution series.
 - `muted-foreground` or `chart-1` is the neutral secondary-series treatment.
   Labels, values, and tooltips always communicate meaning without color.
@@ -70,10 +70,10 @@ structure only.
 
 - The fixed sidebar and route-owned scrolling shell remain unchanged.
 - Analytics uses one primary content column at 375 px and 768 px. At 1280 px,
-  the activity trend remains full width and carries the leading value. Its
-  supporting values form one bordered footer rail. Bundle activity follows as
-  a full-width comparison table; only the secondary outcome and rollout panels
-  share a row. Installation search remains full width.
+  the reporting-by-bundle trend remains full width and carries the leading
+  value. Its supporting values form one bordered footer rail. A searchable
+  bundle selector then introduces the selected-bundle detail. Installation
+  search remains full width.
 - Group with alignment, separators, and whitespace before adding containers.
   Do not nest generic KPI cards inside a larger card or repeat equal KPI tiles.
 - Tables may scroll horizontally inside their own container. The page itself
@@ -94,12 +94,12 @@ structure only.
   diagnostic state and a Bundles escape path, with no protected query.
 - Data surfaces define loading, empty, success, and genuine error states.
   Unsupported capability is absence, not an error or empty-state card.
-- Analytics language is direct and evidentiary: use Observed installations,
-  Observed by bundle, Observed adoption, Newly applied, Recovered away,
-  Configured rollout, and Last known bundle. Avoid the ambiguous standalone
-  terms Active and Installed, as well as transport or lifecycle implementation
-  terms in visible copy. Never imply realtime state, complete fleet coverage,
-  or rollout completion.
+- Analytics language is direct and evidentiary: use Reporting installations,
+  Latest bundle share, Newly applied, Recovered away, Configured rollout, and
+  Last known bundle. Reporting installations means unique installs that sent
+  at least one update status in the selected period. Avoid the ambiguous terms
+  Active, Observed, and Installed as standalone labels. Never imply realtime
+  state, complete fleet coverage, or rollout completion.
 
 ## 5. Reusable Primitives
 
@@ -128,22 +128,26 @@ success. Capability-unavailable primitives do not render.
 
 ## 6. Analytics-Specific Composition
 
-- **Selected bundle adoption:** one full-width operational card for the bundle
-  selected in the toolbar. Its metric rail shows Observed adoption (bundle
-  installations divided by all installations observed in the selected
-  period), Newly applied, Recovered away, and Configured rollout. The movement
-  summary and chart use the same selected period. The chart shows per-bucket
-  distinct movement rather than a cumulative total.
-- **Observed by bundle:** one dominant comparison table with a relative horizontal
-  activity bar, exact observed count, and share in every row, matching the
-  comparison grammar of the EAS reference. Unknown/deleted bundles keep their
-  identifier and a clear unavailable-metadata label. Each installation is
-  counted once under its latest bundle in the selected period.
-- **Activity overview:** Observed installations is the leading metric above the
-  full-width trend chart. Bundles, Top observed bundle, and As of form one
-  compact footer rail rather than separate KPI cards.
+- **Selected bundle activity:** one full-width operational card below the
+  overall trend. A searchable selector introduces the bundle detail instead of
+  competing with the reporting-period control. Its metric rail shows Latest
+  bundle share (installs whose latest report ends on the selected bundle,
+  divided by all reporting installs in the selected period), Newly applied,
+  Recovered away, and Configured rollout. The movement summary and chart use
+  the same selected period. The chart shows per-bucket distinct movement rather
+  than a cumulative total.
+- **Overall trend:** Reporting installations is the leading metric above one
+  full-width multi-series chart. Each UTC bucket counts an installation once
+  under the bundle in its latest status report, so repeated reports do not
+  inflate the bundle lines. Counts reset in each bucket and are not cumulative.
+  Bundle series are drawn independently rather than stacked, so every line's
+  height is its exact count. The most-reported bundles remain individually
+  visible and the rest combine into Other when needed. Exact values remain
+  available in the tooltip and screen-reader table. Reported bundles, Most
+  reported bundle, and As of form one compact footer rail rather than separate
+  KPI cards.
 - **Configured rollout:** configuration is presented beside the selected
-  bundle's observed adoption, never as observed completion.
+  bundle's latest bundle share, never as reported completion.
 - **Installation history:** the analytics toolbar accepts a user ID or install
   ID and routes to the installation history drill-down. A user ID may match
   multiple installations; the drill-down keeps those matches visible while an

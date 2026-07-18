@@ -41,20 +41,20 @@ describe("UpdateOutcomes", () => {
   it("renders selected-period adoption and movement without ambiguous labels", () => {
     render(
       <UpdateOutcomes
-        activeInstallations={4}
+        reportingInstallations={4}
         configuredPercentage={25}
-        observedInstallations={3}
+        latestBundleInstallations={3}
         state={{ status: "success", bundleId: "bundle-a", data: analytics }}
         window="7d"
       />,
     );
 
     expect(
-      screen.getByRole("heading", { name: "Selected bundle adoption" }),
+      screen.getByRole("heading", { name: "Selected bundle activity" }),
     ).toBeDefined();
-    expect(screen.getByText("Observed adoption")).toBeDefined();
+    expect(screen.getByText("Latest bundle share")).toBeDefined();
     expect(screen.getByText("75%")).toBeDefined();
-    expect(screen.getByText("3 of 4 seen")).toBeDefined();
+    expect(screen.getByText("3 of 4 reporting installs")).toBeDefined();
     expect(screen.getByText("Newly applied")).toBeDefined();
     expect(screen.getByText("Recovered away")).toBeDefined();
     expect(screen.getByText("Configured rollout")).toBeDefined();

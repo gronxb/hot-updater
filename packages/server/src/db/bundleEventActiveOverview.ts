@@ -76,25 +76,59 @@ export const collectActiveInstallationOverview = (
       (bundleCounts.get(row.to_bundle_id) ?? 0) + 1,
     );
   }
-  const installsByBucket = Array.from(
+  const latestByInstallByBucket = Array.from(
     { length: definition.bucketCount },
-    () => new Set<string>(),
+    () => new Map<string, BundleEventRow>(),
   );
   for (const row of rows) {
     if (!selectedInstallIds.has(row.install_id)) continue;
     const bucketIndex = Math.floor(
       (row.received_at_ms - windowStartMs) / definition.bucketSizeMs,
     );
-    installsByBucket[bucketIndex]?.add(row.install_id);
+    const latestByInstall = latestByInstallByBucket[bucketIndex];
+    const current = latestByInstall?.get(row.install_id);
+    if (latestByInstall && (!current || isNewer(row, current))) {
+      latestByInstall.set(row.install_id, row);
+    }
+  }
+  const bundleCountsByBucket = latestByInstallByBucket.map(
+    (latestByInstall) => {
+      const counts = new Map<string, number>();
+      for (const row of latestByInstall.values()) {
+        counts.set(row.to_bundle_id, (counts.get(row.to_bundle_id) ?? 0) + 1);
+      }
+      return counts;
+    },
+  );
+  const bundleObservationTotals = new Map<string, number>();
+  for (const counts of bundleCountsByBucket) {
+    for (const [bundleId, count] of counts) {
+      bundleObservationTotals.set(
+        bundleId,
+        (bundleObservationTotals.get(bundleId) ?? 0) + count,
+      );
+    }
   }
   return {
     asOfMs: request.asOfMs,
     window: request.window,
     activeInstallations: selectedInstallIds.size,
-    series: installsByBucket.map((installIds, index) => ({
+    series: latestByInstallByBucket.map((latestByInstall, index) => ({
       bucketStartMs: windowStartMs + index * definition.bucketSizeMs,
-      value: installIds.size,
+      value: latestByInstall.size,
     })),
+    bundleSeries: [...bundleObservationTotals]
+      .sort(
+        ([leftId, leftTotal], [rightId, rightTotal]) =>
+          rightTotal - leftTotal || compareCodePoints(leftId, rightId),
+      )
+      .map(([bundleId]) => ({
+        bundleId,
+        series: bundleCountsByBucket.map((counts, index) => ({
+          bucketStartMs: windowStartMs + index * definition.bucketSizeMs,
+          value: counts.get(bundleId) ?? 0,
+        })),
+      })),
     bundles: [...bundleCounts]
       .map(([bundleId, installations]) => ({ bundleId, installations }))
       .sort(

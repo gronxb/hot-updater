@@ -1,5 +1,4 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -13,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-router", () => ({
-  createFileRoute: () => (options: unknown) => options,
+  createFileRoute: () => (options: unknown) => ({ options }),
   useNavigate: () => mocks.navigate,
 }));
 
@@ -23,7 +22,6 @@ vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
 vi.mock("@/components/features/analytics/AnalyticsControls", () => ({
   AnalyticsControls: (props: {
     onInstallationSearch: (query: string) => void;
-    onBundleChange: (bundleId: string) => void;
     onWindowChange: (window: "24h" | "7d" | "30d") => void;
   }) => {
     mocks.controls(props);
@@ -31,9 +29,6 @@ vi.mock("@/components/features/analytics/AnalyticsControls", () => ({
       <>
         <button onClick={() => props.onInstallationSearch("user-1")}>
           Search installation history
-        </button>
-        <button onClick={() => props.onBundleChange("bundle-b")}>
-          Select bundle
         </button>
         <button onClick={() => props.onWindowChange("7d")}>
           Select window
@@ -43,9 +38,17 @@ vi.mock("@/components/features/analytics/AnalyticsControls", () => ({
   },
 }));
 vi.mock("@/components/features/analytics/AnalyticsOverview", () => ({
-  AnalyticsOverview: (props: unknown) => {
+  AnalyticsOverview: (props: {
+    onBundleChange?: (bundleId: string) => void;
+  }) => {
     mocks.overview(props);
-    return <div data-testid="analytics-overview" />;
+    return (
+      <div data-testid="analytics-overview">
+        <button onClick={() => props.onBundleChange?.("bundle-b")}>
+          Select bundle
+        </button>
+      </div>
+    );
   },
 }));
 vi.mock("@/components/ui/sidebar", () => ({
@@ -61,15 +64,15 @@ vi.mock("@/lib/api", () => ({
 
 import { Route } from "./analytics";
 
-const AnalyticsPage = (
-  Route as unknown as { readonly component: ComponentType }
-).component;
+const AnalyticsPage = Route.options.component;
+if (!AnalyticsPage) throw new Error("Analytics route component is required");
 
 const activeData = {
   asOfMs: Date.UTC(2026, 6, 18),
   window: "30d",
   activeInstallations: 4,
   series: [],
+  bundleSeries: [],
   bundles: [{ bundleId: "bundle-a", installations: 4 }],
 };
 

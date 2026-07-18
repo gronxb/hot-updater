@@ -16,6 +16,54 @@ afterEach(() => {
 });
 
 describe("active installation series", () => {
+  it("groups each installation under its latest observed bundle per bucket", async () => {
+    // Given
+    vi.spyOn(Date, "now").mockReturnValue(ACTIVE_AS_OF_MS);
+    const startMs = ACTIVE_AS_OF_MS - DAY_MS;
+    const database = await insertActiveRows([
+      createActiveTransitionEvent("install-a", startMs + 1, {
+        to_bundle_id: "bundle-a",
+      }),
+      createUnchangedEvent("install-a", startMs + 2, {
+        to_bundle_id: "bundle-b",
+      }),
+      createActiveRecoveredEvent("install-b", startMs + 3, {
+        to_bundle_id: "bundle-a",
+      }),
+      createUnchangedEvent("install-a", startMs + HOUR_MS, {
+        to_bundle_id: "bundle-b",
+      }),
+    ]);
+    const service = createBundleEventService(database);
+
+    // When
+    const overview = await service.getActiveInstallationOverview({
+      window: "24h",
+    });
+
+    // Then
+    expect(overview.bundleSeries.map(({ bundleId }) => bundleId)).toEqual([
+      "bundle-b",
+      "bundle-a",
+    ]);
+    expect(overview.bundleSeries[0]?.series.slice(0, 2)).toEqual([
+      { bucketStartMs: startMs, value: 1 },
+      { bucketStartMs: startMs + HOUR_MS, value: 1 },
+    ]);
+    expect(overview.bundleSeries[1]?.series.slice(0, 2)).toEqual([
+      { bucketStartMs: startMs, value: 1 },
+      { bucketStartMs: startMs + HOUR_MS, value: 0 },
+    ]);
+    expect(
+      overview.series.map((point, index) =>
+        overview.bundleSeries.reduce(
+          (total, bundle) => total + (bundle.series[index]?.value ?? 0),
+          0,
+        ),
+      ),
+    ).toEqual(overview.series.map(({ value }) => value));
+  });
+
   it("returns 24 zero-filled non-cumulative distinct-install buckets", async () => {
     // Given
     vi.spyOn(Date, "now").mockReturnValue(ACTIVE_AS_OF_MS);

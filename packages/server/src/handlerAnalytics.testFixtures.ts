@@ -66,6 +66,7 @@ export const createAnalyticsHandlerApi = () =>
         window: "30d",
         activeInstallations: 0,
         series: [],
+        bundleSeries: [],
         bundles: [],
       }),
     searchInstallations: vi

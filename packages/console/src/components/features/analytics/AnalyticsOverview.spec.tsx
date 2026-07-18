@@ -7,8 +7,8 @@ import type { AnalyticsOverview as CatalogOverview } from "@/lib/analytics-overv
 import { AnalyticsOverview } from "./AnalyticsOverview";
 
 vi.mock("./ActivityChart", () => ({
-  ActivityChart: ({ series }: { series: readonly unknown[] }) => (
-    <div data-testid="activity-chart" data-points={series.length} />
+  ActivityChart: ({ bundleSeries }: { bundleSeries: readonly unknown[] }) => (
+    <div data-testid="activity-chart" data-series={bundleSeries.length} />
   ),
 }));
 
@@ -19,6 +19,22 @@ const active: ActiveInstallationOverview = {
   series: [
     { bucketStartMs: Date.UTC(2026, 6, 16), value: 2 },
     { bucketStartMs: Date.UTC(2026, 6, 17), value: 0 },
+  ],
+  bundleSeries: [
+    {
+      bundleId: "bundle-a",
+      series: [
+        { bucketStartMs: Date.UTC(2026, 6, 16), value: 2 },
+        { bucketStartMs: Date.UTC(2026, 6, 17), value: 0 },
+      ],
+    },
+    {
+      bundleId: "deleted-bundle",
+      series: [
+        { bucketStartMs: Date.UTC(2026, 6, 16), value: 0 },
+        { bucketStartMs: Date.UTC(2026, 6, 17), value: 1 },
+      ],
+    },
   ],
   bundles: [
     { bundleId: "bundle-a", installations: 3 },
@@ -65,7 +81,13 @@ describe("AnalyticsOverview", () => {
     render(
       <AnalyticsOverview
         active={active}
+        bundleId="bundle-a"
+        bundles={[
+          { bundleId: "bundle-a", description: "iOS · production · 1.0.0" },
+          { bundleId: "deleted-bundle", description: "Metadata unavailable" },
+        ]}
         catalog={catalog}
+        onBundleChange={vi.fn()}
         outcomes={{
           status: "success",
           bundleId: "bundle-a",
@@ -76,62 +98,63 @@ describe("AnalyticsOverview", () => {
     );
 
     for (const heading of [
-      "Observed installations",
-      "Observed by bundle",
-      "Selected bundle adoption",
+      "Overall trend",
+      "Bundle detail",
+      "Selected bundle activity",
     ]) {
       expect(
         screen.getByRole("heading", { level: 2, name: heading }),
       ).toBeDefined();
     }
     const activityOverview = screen.getByRole("region", {
-      name: "Activity overview",
+      name: "Overall trend",
     });
     expect(within(activityOverview).getByText("4")).toBeDefined();
-    expect(within(activityOverview).getByText("Bundles")).toBeDefined();
+    expect(
+      within(activityOverview).getByText("Reported bundles"),
+    ).toBeDefined();
     expect(within(activityOverview).getByText("2")).toBeDefined();
     expect(
-      within(activityOverview).getByText("Top observed bundle"),
+      within(activityOverview).getByText("Most reported bundle"),
     ).toBeDefined();
     expect(
       within(activityOverview).getByTestId("activity-chart"),
     ).toBeDefined();
     expect(screen.getAllByText("bundle-a").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("deleted-bundle").length).toBeGreaterThan(0);
-    expect(screen.getByText("Unknown bundle metadata")).toBeDefined();
-    expect(screen.getAllByText("75%").length).toBeGreaterThan(1);
     expect(screen.getAllByText("Newly applied").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Recovered away").length).toBeGreaterThan(0);
     expect(screen.getAllByText("8").length).toBeGreaterThan(0);
     expect(screen.getAllByText("2").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("25%").length).toBeGreaterThan(1);
+    expect(screen.getByText("25%")).toBeDefined();
     expect(
-      screen.getByTestId("activity-chart").getAttribute("data-points"),
+      screen.getByTestId("activity-chart").getAttribute("data-series"),
     ).toBe("2");
   });
 
   it("distinguishes loading, empty, and error states", () => {
     const { rerender } = render(<AnalyticsOverview status="loading" />);
-    expect(screen.getByLabelText("Loading observed analytics")).toBeDefined();
-    for (const label of [
-      "Loading activity overview",
-      "Loading bundle activity",
-      "Loading selected bundle adoption",
-    ]) {
+    expect(screen.getByLabelText("Loading reporting analytics")).toBeDefined();
+    for (const label of ["Loading overall trend", "Loading bundle detail"]) {
       expect(screen.getByLabelText(label)).toBeDefined();
     }
 
     rerender(
       <AnalyticsOverview
-        active={{ ...active, activeInstallations: 0, bundles: [] }}
+        active={{
+          ...active,
+          activeInstallations: 0,
+          bundles: [],
+          bundleSeries: [],
+        }}
+        bundleId=""
+        bundles={[]}
         catalog={catalog}
+        onBundleChange={vi.fn()}
         outcomes={{ status: "idle" }}
         status="success"
       />,
     );
-    expect(
-      screen.getByText("No observed installations in this range."),
-    ).toBeDefined();
+    expect(screen.getByTestId("activity-chart")).toBeDefined();
 
     rerender(
       <AnalyticsOverview
@@ -158,7 +181,7 @@ describe("AnalyticsOverview", () => {
     expect(screen.getByRole("alert").textContent).toContain("50,000 reports");
   });
 
-  it("shows the observed count for a one-install leading bundle", () => {
+  it("shows the reporting count for a one-install leading bundle", () => {
     render(
       <AnalyticsOverview
         active={{
@@ -166,16 +189,21 @@ describe("AnalyticsOverview", () => {
           activeInstallations: 1,
           bundles: [{ bundleId: "bundle-a", installations: 1 }],
         }}
+        bundleId="bundle-a"
+        bundles={[
+          { bundleId: "bundle-a", description: "iOS · production · 1.0.0" },
+        ]}
         catalog={catalog}
+        onBundleChange={vi.fn()}
         outcomes={{ status: "idle" }}
         status="success"
       />,
     );
 
     expect(
-      within(
-        screen.getByRole("region", { name: "Activity overview" }),
-      ).getByText("1 seen"),
+      within(screen.getByRole("region", { name: "Overall trend" })).getByText(
+        "1 reporting install",
+      ),
     ).toBeDefined();
   });
 });
