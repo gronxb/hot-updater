@@ -55,6 +55,12 @@ export default defineConfig({
   fingerprint: {
     debug: true,
   },
+  /* E2E_AUTO_PATCH_CONFIG_START */
+  patch: {
+    enabled: true,
+    maxBaseBundles: 2,
+  },
+  /* E2E_AUTO_PATCH_CONFIG_END */
   updateStrategy: "appVersion",
   signing: {
     enabled: true,
