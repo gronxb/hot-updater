@@ -60,18 +60,18 @@ export function BundleSelector({
           id="analytics-bundle-selector"
           render={
             <Button
-              className="w-full min-w-0 justify-between"
+              className="h-auto min-h-12 w-full min-w-0 justify-between px-3 py-2 text-left"
               size="lg"
               variant="outline"
             />
           }
         >
           {selectedBundle ? (
-            <span className="flex min-w-0 flex-1 flex-col items-start">
-              <code className="max-w-full truncate text-xs/3">
+            <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+              <code className="max-w-full truncate text-xs/4">
                 {selectedBundle.bundleId}
               </code>
-              <span className="max-w-full truncate text-xs/3 text-muted-foreground">
+              <span className="max-w-full truncate text-xs/4 text-muted-foreground">
                 {selectedBundle.description}
               </span>
             </span>
@@ -81,7 +81,7 @@ export function BundleSelector({
             </span>
           )}
         </ComboboxTrigger>
-        <ComboboxContent>
+        <ComboboxContent className="min-w-(--anchor-width)">
           <ComboboxInput
             aria-label="Search bundles"
             placeholder="Search by bundle ID or description"
@@ -91,12 +91,16 @@ export function BundleSelector({
           <ComboboxEmpty>No bundles found.</ComboboxEmpty>
           <ComboboxList>
             {(bundle) => (
-              <ComboboxItem key={bundle.bundleId} value={bundle}>
-                <span className="flex min-w-0 flex-col gap-0.5 pr-5">
-                  <code className="max-w-72 truncate text-xs">
+              <ComboboxItem
+                className="min-h-12 px-3 py-2"
+                key={bundle.bundleId}
+                value={bundle}
+              >
+                <span className="flex min-w-0 flex-col gap-1 pr-5">
+                  <code className="max-w-72 truncate text-xs/4">
                     {bundle.bundleId}
                   </code>
-                  <span className="truncate text-xs text-muted-foreground">
+                  <span className="truncate text-xs/4 text-muted-foreground">
                     {bundle.description}
                   </span>
                 </span>
