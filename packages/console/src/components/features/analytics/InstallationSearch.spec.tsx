@@ -70,9 +70,14 @@ describe("InstallationSearch", () => {
     ).toBeDefined();
     expect(
       screen.getByText(
-        "Enter a username, user ID, or install ID to search received reports.",
+        "Enter a user ID or install ID to search received reports.",
       ),
     ).toBeDefined();
+    expect(
+      screen
+        .getByRole("searchbox", { name: "User ID or install ID" })
+        .getAttribute("placeholder"),
+    ).toBe("Enter a user ID or install ID");
     expect(useInstallationSearchQueryMock).toHaveBeenCalledWith(
       { query: "", limit: 20, offset: 0 },
       false,
@@ -84,7 +89,7 @@ describe("InstallationSearch", () => {
     (method) => {
       render(<InstallationSearch capability={supported} />);
       const input = screen.getByRole("searchbox", {
-        name: /search installations/i,
+        name: "User ID or install ID",
       });
       fireEvent.change(input, { target: { value: "  ada  " } });
 
@@ -113,7 +118,7 @@ describe("InstallationSearch", () => {
 
     render(<InstallationSearch capability={supported} initialQuery="ada" />);
 
-    expect(screen.getByText("ada")).toBeDefined();
+    expect(screen.getByText("user-1")).toBeDefined();
     expect(screen.getByText("install-1")).toBeDefined();
     expect(screen.getAllByText("Last known bundle").length).toBeGreaterThan(0);
     expect(screen.getByText("bundle-a")).toBeDefined();
@@ -168,7 +173,7 @@ describe("InstallationSearch", () => {
 
     // When
     fireEvent.change(
-      screen.getByRole("searchbox", { name: /search installations/i }),
+      screen.getByRole("searchbox", { name: "User ID or install ID" }),
       { target: { value: "grace" } },
     );
     fireEvent.click(screen.getByRole("button", { name: "Search" }));

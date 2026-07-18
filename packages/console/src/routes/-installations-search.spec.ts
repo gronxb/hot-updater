@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateInstallationsSearch } from "./installations-search";
+import { validateInstallationsSearch } from "./-installations-search";
 
 describe("validateInstallationsSearch", () => {
   it("accepts non-negative integer pagination offsets", () => {

@@ -1,4 +1,5 @@
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentType, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -14,6 +15,19 @@ vi.mock("@tanstack/react-router", () => ({
     useNavigate: () => mocks.navigate,
     useSearch: mocks.search,
   }),
+  Link: ({
+    children,
+    className,
+    to,
+  }: {
+    readonly children: ReactNode;
+    readonly className?: string;
+    readonly to: string;
+  }) => (
+    <a className={className} href={to}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("@/components/BundleIdDisplay", () => ({
@@ -33,7 +47,11 @@ vi.mock("@/lib/api", () => ({
   useInstallationSearchQuery: mocks.searchInstallations,
 }));
 
-import { InstallationsPage } from "./installations";
+import { Route } from "./installations";
+
+const InstallationsPage = (
+  Route as unknown as { readonly component: ComponentType }
+).component;
 
 describe("InstallationsPage", () => {
   beforeEach(() => {
@@ -48,7 +66,7 @@ describe("InstallationsPage", () => {
         data: [
           {
             installId: "install-1",
-            username: null,
+            username: "ada",
             userId: "user-1",
             lastKnownBundleId: "bundle-a",
             latestStatus: "UPDATE_APPLIED",
@@ -91,5 +109,37 @@ describe("InstallationsPage", () => {
         replace: true,
       }),
     );
+  });
+
+  it("provides a clear route back to Analytics", () => {
+    render(<InstallationsPage />);
+
+    expect(
+      screen
+        .getByRole("link", { name: "Back to Analytics" })
+        .getAttribute("href"),
+    ).toBe("/analytics");
+  });
+
+  it("labels the history search for either a user ID or install ID", () => {
+    render(<InstallationsPage />);
+
+    expect(
+      screen
+        .getByRole("searchbox", { name: "User ID or install ID" })
+        .getAttribute("placeholder"),
+    ).toBe("Enter a user ID or install ID");
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: "Search history",
+      }).disabled,
+    ).toBe(false);
+  });
+
+  it("shows the user ID instead of an internal username", () => {
+    render(<InstallationsPage />);
+
+    expect(screen.getAllByText("user-1").length).toBeGreaterThan(0);
+    expect(screen.queryByText("ada")).toBeNull();
   });
 });

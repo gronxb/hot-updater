@@ -36,7 +36,7 @@ import {
 const SEARCH_LIMIT = 20;
 
 const identityLabel = (row: InstallationSearchRow): string =>
-  row.username ?? row.userId ?? row.installId;
+  row.userId ?? row.installId;
 
 const platformLabel = (platform: InstallationSearchRow["platform"]): string =>
   platform === "ios" ? "iOS" : "Android";
@@ -66,8 +66,7 @@ export function InstallationSearch({
           <h2>Installation inspector</h2>
         </CardTitle>
         <CardDescription>
-          Search by username, user ID, or install ID to inspect its last known
-          bundle.
+          Search by user ID or install ID to inspect its last known bundle.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
@@ -81,7 +80,7 @@ export function InstallationSearch({
           role="search"
         >
           <label className="sr-only" htmlFor="analytics-installation-search">
-            Search installations
+            User ID or install ID
           </label>
           <InputGroup className="h-9">
             <InputGroupAddon>
@@ -89,10 +88,10 @@ export function InstallationSearch({
             </InputGroupAddon>
             <InputGroupInput
               id="analytics-installation-search"
-              aria-label="Search installations"
+              aria-label="User ID or install ID"
               disabled={isLoading}
               onChange={(event) => setDraftQuery(event.target.value)}
-              placeholder="Username, user ID, or install ID"
+              placeholder="Enter a user ID or install ID"
               type="search"
               value={draftQuery}
             />
@@ -110,7 +109,7 @@ export function InstallationSearch({
 
         {!queryEnabled ? (
           <p className="text-sm text-muted-foreground">
-            Enter a username, user ID, or install ID to search received reports.
+            Enter a user ID or install ID to search received reports.
           </p>
         ) : isLoading ? (
           <div
