@@ -62,7 +62,7 @@ export function UpdateOutcomes({
         </div>
         {bundleSelector}
       </CardHeader>
-      <CardContent className="pt-4">
+      <CardContent className="pt-10">
         {state.status === "idle" ? (
           <p className="text-sm text-muted-foreground">
             No active bundle is available.
