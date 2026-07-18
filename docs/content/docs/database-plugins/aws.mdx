@@ -115,16 +115,6 @@ const hotUpdater = createHotUpdater({
 
 For complete server setup guides, see [S3 Database Adapter](/docs/custom/database/s3).
 
-<Callout type="warn">
-  `s3Database` does not support OTA analytics. Event reports are
-  writes to shared metadata, and concurrent reports can conflict because the
-  adapter replaces an S3 snapshot for each mutation. The server therefore does
-  not mount the event, analytics, or installation-history routes for this
-  adapter. The Console detects the missing capability and omits the related
-  navigation and requests without checking the adapter name. Use a row-oriented
-  database adapter if you need these features.
-</Callout>
-
 ## CloudFront Cache Invalidation
 
 The `cloudfrontDistributionId` option enables automatic CloudFront cache invalidation when bundles are updated. This is particularly useful when using Lambda@Edge for request handling.

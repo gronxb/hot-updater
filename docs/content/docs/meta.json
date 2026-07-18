@@ -12,7 +12,7 @@
     "custom",
     "build-plugins",
     "storage-plugins",
-    "database-adapters",
+    "database-plugins",
     "integration-plugins",
     "policy"
   ]

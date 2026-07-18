@@ -47,13 +47,9 @@
   - **Web Console**: Intuitive update management interface
   - **Bundle Diffing**: Reuse unchanged files and ship compact Hermes patches
     for smaller OTA downloads
-  - **Extension System**: Storage plugins for AWS S3 and Cloudflare R2, plus
-    database adapters such as D1
+  - **Plugin System**: Support for various storage providers (AWS S3, Cloudflare R2 + D1, etc.)
   - **Version Control**: Robust app version management through semantic versioning
   - **New Architecture**: Support for new architecture like React Native
-  - **Analytics**: Optional app-ready activity, update outcomes, and
-    per-install last-known bundle history
-
 
 
   ## Bundle Diffing
@@ -71,32 +67,16 @@
   See the [Bundle Diffing guide](https://hot-updater.dev/docs/guides/bundle-diffing)
   for the full runtime behavior and fallback rules.
 
-  ## OTA Analytics
 
-  Hot Updater can optionally report app-ready outcomes, including unchanged
-  launches, applied updates, and automatic recoveries. The runtime keeps this
-  opt-in behind `HotUpdater.init({ analytics: true })`. When the configured
-  database exposes the optional Analytics capability, the Console shows recent
-  active installations by install ID, latest reported bundles, update outcomes,
-  and per-install history. Snapshot-backed databases such as S3 leave this
-  capability disabled.
+  ## Plugin System
 
-  Client event writes are closed until the server configures an explicit
-  `eventIngestion.authorize` policy. Treat reports as untrusted telemetry and
-  enforce authentication or attestation, quotas, and retention server-side.
+  Hot Updater provides high extensibility through its plugin system. Each functionality like build, storage, and database is separated into plugins, allowing users to configure them according to their needs.
 
-  See the React Native/runtime docs and Console/server guides at https://hot-updater.dev for full setup.
-
-
-  ## Extension System
-
-  Hot Updater provides high extensibility through build and storage plugins plus database adapters, allowing users to configure each integration according to their needs.
-
-  ### Extension Types
+  ### Plugin Types
 
   - **Build Plugin**: Support for bundlers like Metro, Re.Pack, Expo
   - **Storage Plugin**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage
-  - **Database Adapter**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
+  - **Database Plugin**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
 
   ### Configuration Example
 

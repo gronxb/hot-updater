@@ -57,56 +57,19 @@ if (updateInfo.shouldForceUpdate) {
 
 ## Configuration Reference
 
-| Option             | Type                                        | Required | Description                                                              |
-| ------------------ | ------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| `baseURL`          | `string \| () => string \| Promise<string>` | Yes*     | Your update server URL or runtime URL resolver                           |
-| `resolver`         | `HotUpdaterResolver`                        | Yes*     | Custom network operations                                                |
-| `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications         |
-| `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                          |
-| `analytics`        | `boolean`                                   | No       | Enables best-effort OTA analytics reporting (default: `false`)           |
-| `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read                    |
-| `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks               |
+| Option             | Type                                        | Required | Description                                                      |
+| ------------------ | ------------------------------------------- | -------- | ---------------------------------------------------------------- |
+| `baseURL`          | `string \| () => string \| Promise<string>` | Yes*     | Your update server URL or runtime URL resolver                   |
+| `resolver`         | `HotUpdaterResolver`                        | Yes*     | Custom network operations                                        |
+| `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications |
+| `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                  |
+| `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read            |
+| `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks       |
 
 \*Either `baseURL` or `resolver` must be provided (mutually exclusive).
 
 `HotUpdater.checkForUpdate({ onError })` overrides the `onError` handler from
 `HotUpdater.init` for that specific update check.
-
-<Callout type="warn">
-  Analytics also require support from the server's database adapter. This
-  storage capability is optional. When the route is unavailable,
-  `HotUpdater.init` still completes normally and reports the failed request as
-  a warning.
-</Callout>
-
-## App-ready analytics
-
-With `analytics: true`, initialization attempts one best-effort app-ready
-report per JavaScript runtime. Applied updates and recoveries keep their
-directional bundle transition. An unchanged launch reports the current bundle
-with no previous bundle or update strategy, allowing the server to measure
-recent installation activity without inventing a transition.
-
-The report uses the stable installation ID as its aggregate identity. Optional
-`userId` and `username` values set through `HotUpdater.setUser` are metadata for
-search and filtering; they do not replace the installation ID or merge app
-installs.
-
-Transport failures, including `404` from a server whose database does not
-support Analytics, timeouts, and rejected responses, are warning-only. They do
-not crash the app, call the app-level `onError`, or suppress
-`onNotifyAppReady`. This is an app-ready observation, not a warm-foreground
-heartbeat or a generic session event.
-
-The server keeps event ingestion closed until it has an authorization policy.
-Use `requestHeaders` for a user-scoped credential or platform-attestation
-proof expected by that policy. Do not embed a management credential in the
-app; static client secrets are extractable.
-
-When introducing Analytics to an existing deployment, deploy the database
-schema and server first, then enable `analytics: true` in clients. New clients
-remain safe against older or unsupported servers, but their reports cannot be
-stored until the server capability is available.
 
 ## When to Use init
 
