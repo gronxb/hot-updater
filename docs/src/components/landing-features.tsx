@@ -12,8 +12,8 @@ export function LandingFeatures() {
     },
     {
       icon: "🛠️",
-      title: "Plugin System",
-      description: "Customize build and deployment processes",
+      title: "Extension System",
+      description: "Combine build and storage plugins with database adapters",
     },
     {
       icon: "📦",

@@ -1,32 +1,16 @@
 ---
 title: "Analytics"
-description: Enable OTA analytics and add support to a custom database plugin.
+description: Enable OTA analytics and support it in a custom database adapter.
 icon: ChartNoAxesCombined
 ---
 
-Hot Updater analytics records app-ready outcomes and exposes installation
-activity, update outcomes, and installation history in the Console. Analytics
-is optional and requires support from both the client and the configured
-database.
+Analytics records app-ready outcomes and shows installation activity, update
+outcomes, and installation history in the Console. It is opt-in and requires a
+supported database adapter.
 
-## Database support
+## Enable analytics
 
-| Database plugin or adapter | Analytics | Notes |
-| -------------------------- | --------- | ----- |
-| Supabase Database | Supported | Uses append-only row storage. |
-| Cloudflare D1 Database | Supported | Uses append-only row storage. |
-| Firestore Database | Supported | Uses append-only document storage. |
-| PostgreSQL Database | Supported | Uses append-only row storage. |
-| Drizzle, Kysely, Prisma, and MongoDB adapters | Supported | The adapter must include the `bundle_events` model. |
-| Standalone Database | Conditional | Set `supportsAnalytics: true` only when the remote server implements all analytics routes. |
-| AWS S3 Database (`s3Database`) | Not supported | S3 Database replaces a shared snapshot, so concurrent event appends are not safe. |
-
-The Console detects this capability automatically. Analytics and installation
-pages are hidden when the configured database does not support it.
-
-## Enable client reporting
-
-Enable analytics when initializing the React Native client:
+Enable reporting in the React Native client:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -37,34 +21,26 @@ HotUpdater.init({
 });
 ```
 
-The client attempts one best-effort app-ready report per JavaScript runtime.
-Reporting failures do not block app readiness. `HotUpdater.wrap()` does not
-enable analytics reporting; use `HotUpdater.init({ analytics: true })` when
-analytics is required.
+For a custom server, also configure `eventIngestion.authorize`. Use end-user
+authentication, platform attestation, or another server-verifiable signal;
+never embed a management credential in the app.
 
-## Authorize event ingestion
+## Database support
 
-Custom servers keep the event endpoint disabled until an authorization policy
-is configured:
+| Database adapter                              | Analytics     | Notes                                                                                      |
+| --------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------ |
+| Supabase Database                             | Supported     | Uses append-only row storage.                                                              |
+| Cloudflare D1 Database                        | Supported     | Uses append-only row storage.                                                              |
+| Firestore Database                            | Supported     | Uses append-only document storage.                                                         |
+| PostgreSQL Database                           | Supported     | Uses append-only row storage.                                                              |
+| Drizzle, Kysely, Prisma, and MongoDB adapters | Supported     | The adapter must include the `bundle_events` model.                                        |
+| Standalone Database                           | Conditional   | Set `supportsAnalytics: true` only when the remote server implements all analytics routes. |
+| AWS S3 Database (`s3Database`)                | Not supported | S3 Database replaces a shared snapshot, so concurrent event appends are not safe.          |
 
-```ts
-import { createHotUpdater } from "@hot-updater/server";
+The Console detects this capability automatically and hides analytics when the
+configured database does not support it.
 
-const hotUpdater = createHotUpdater({
-  database,
-  eventIngestion: {
-    authorize: async (request, context) => {
-      return await verifyAppIdentity(request, context);
-    },
-  },
-});
-```
-
-Use end-user authentication, platform attestation, or another
-server-verifiable signal. Do not embed a management credential or reusable
-server secret in the app.
-
-## Support analytics in a custom database plugin
+## Support analytics in a custom database adapter
 
 Use `createDatabaseAdapter` for a row- or document-oriented database. It marks
 the adapter as analytics-capable and the server provides the shared analytics
@@ -76,19 +52,16 @@ import {
   type DatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
 
-export const myDatabase = (
-  implementation: DatabaseAdapterImplementation,
-) =>
+export const myDatabase = (implementation: DatabaseAdapterImplementation) =>
   createDatabaseAdapter({
     name: "my-database",
     adapter: () => implementation,
   });
 ```
 
-`DatabaseAdapterImplementation` requires `create`, `update`, `delete`,
-`count`, `findOne`, and `findMany`. The implementation must support the fixed
-`bundles`, `bundle_patches`, `channels`, and `bundle_events` models. For
-analytics, `bundle_events` must:
+The implementation must provide `create`, `update`, `delete`, `count`,
+`findOne`, and `findMany` for the fixed `bundles`, `bundle_patches`,
+`channels`, and `bundle_events` models. For analytics, `bundle_events` must:
 
 - allow concurrency-safe, append-only creates;
 - support the adapter's filters, ordering, selection, pagination, and distinct
@@ -100,5 +73,5 @@ Do not use `createBlobDatabaseAdapter` when analytics is required. Blob
 adapters replace a shared snapshot and intentionally do not expose the
 analytics capability. This is why `s3Database` does not support analytics.
 
-When enabling analytics for an existing deployment, add the `bundle_events`
-schema first, deploy the server, and then enable client reporting.
+For an existing deployment, add the `bundle_events` schema before enabling
+client reporting.

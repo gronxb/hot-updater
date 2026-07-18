@@ -1,0 +1,377 @@
+---
+title: "Custom Database Adapter"
+description: Implement the fixed Hot Updater database adapter API
+icon: Hammer
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/plugin-core --save-dev
+```
+
+Install the public conformance suite in the project that tests your adapter:
+
+```package-install
+npm install @hot-updater/test-utils vitest --save-dev
+```
+
+## Overview
+
+Database adapters expose a small row-level API. The models are fixed:
+`bundles`, `bundle_patches`, `channels`, and `bundle_events`. Hot Updater's
+shared database client composes bundle, patch, and channel rows into bundles,
+so an adapter does not implement bundle staging or patch orchestration.
+`bundle_events` is an append-only event log.
+
+The configured value is an adapter object, not a callable database factory:
+
+```typescript
+export default defineConfig({
+  database: myDatabase({ client }),
+});
+```
+
+## Operation matrix
+
+Only the following model and method combinations are public:
+
+| Model            | `create` | `update` | `delete` | `count` | `findOne` | `findMany` |
+| ---------------- | -------- | -------- | -------- | ------- | --------- | ---------- |
+| `bundles`        | Yes      | Yes      | Yes      | Yes     | Yes       | Yes        |
+| `bundle_patches` | Yes      | No       | Yes      | Yes     | Yes       | Yes        |
+| `channels`       | Yes      | No       | No       | Yes     | Yes       | Yes        |
+| `bundle_events`  | Yes      | No       | No       | Yes     | Yes       | Yes        |
+
+`delete` removes every row matched by its non-empty predicate. Bundle updates
+use a unique `id = value` predicate and return the updated row or `null`.
+`create` returns one row, `findOne` returns one row or `null`, `findMany`
+returns an array, and `count` returns a number. Creates reject duplicate IDs.
+
+The physical row names are snake case. Import the canonical row types instead
+of declaring another mapping:
+
+```typescript
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ChannelRow,
+} from "@hot-updater/plugin-core";
+```
+
+`BundleRow` never contains patch artifacts. Patch ownership and base-bundle
+references are represented by `BundlePatchRow.bundle_id` and
+`BundlePatchRow.base_bundle_id`. `ChannelRow` is exactly
+`{ id: string; name: string }`. `BundleRow.channel` keeps the channel name for
+legacy readers, while `BundleRow.channel_id` references the channel's stable
+`id`. Bundle creates and channel changes must write both fields together.
+`BundleEventRow` is immutable after creation and is never updated or deleted
+through the public operation matrix.
+
+## Create an adapter
+
+Use `createDatabaseAdapter` to bind configuration and normalize the public
+contract. The exported adapter receives its configuration directly and closes
+over it in the low-level implementation:
+
+```typescript title="myDatabase.ts"
+import {
+  type BundleRow,
+  type DatabaseImplementationResult,
+  type DatabaseModel,
+  createDatabaseAdapter,
+} from "@hot-updater/plugin-core";
+
+type MyDatabaseConfig = {
+  db: {
+    insert: (
+      model: DatabaseModel,
+      data: unknown,
+      select: readonly string[] | undefined,
+    ) => Promise<DatabaseImplementationResult>;
+    update: (
+      model: "bundles",
+      where: unknown,
+      data: unknown,
+    ) => Promise<Partial<BundleRow> | null>;
+    delete: (
+      model: "bundles" | "bundle_patches",
+      where: unknown,
+    ) => Promise<void>;
+    count: (model: DatabaseModel, where: unknown) => Promise<number>;
+    findOne: (
+      model: DatabaseModel,
+      query: unknown,
+    ) => Promise<DatabaseImplementationResult | null>;
+    findMany: (
+      model: DatabaseModel,
+      query: unknown,
+    ) => Promise<readonly DatabaseImplementationResult[]>;
+  };
+};
+
+export const myDatabase = ({ db }: MyDatabaseConfig) =>
+  createDatabaseAdapter({
+    name: "my-database",
+    adapter: () => ({
+      create: async ({ model, data, select }) => {
+        return db.insert(model, data, select);
+      },
+
+      update: async ({ model, where, update, select }) => {
+        return db.update(model, where, update);
+      },
+
+      delete: async ({ model, where }) => {
+        await db.delete(model, where);
+      },
+
+      count: async ({ model, where }) => {
+        return db.count(model, where);
+      },
+
+      findOne: async ({ model, where, select }) => {
+        return db.findOne(model, { where, select });
+      },
+
+      findMany: async ({ model, where, sortBy, limit, offset, select }) => {
+        return db.findMany(model, {
+          where,
+          sortBy,
+          limit,
+          offset,
+          select,
+        });
+      },
+    }),
+  });
+```
+
+The implementation receives only supported model/method combinations. The
+adapter wrapper validates inputs, applies `findMany` defaults (`limit: 100`,
+`offset: 0`), validates returned fields, projects selected fields, and narrows
+the public result type.
+
+### Projection
+
+`select` is optional. When supplied, return the requested physical fields:
+
+```typescript
+const rows = await adapter.findMany({
+  model: "bundles",
+  select: ["id", "channel_id"],
+});
+// Array<{ id: string; channel_id: string }>
+```
+
+An empty `select` is invalid. Do not hydrate a projected result through a
+full-row parser that expects fields which were not selected.
+
+### Predicates and ordering
+
+Each predicate contains `field`, `value`, and an optional `operator`,
+`connector`, or string comparison `mode`:
+
+```typescript
+const rows = await adapter.findMany({
+  model: "bundles",
+  where: [
+    { field: "channel_id", value: "channel-production" },
+    { field: "enabled", value: true, connector: "AND" },
+    {
+      field: "platform",
+      operator: "in",
+      value: ["ios", "android"],
+      connector: "AND",
+    },
+  ],
+  sortBy: { field: "id", direction: "desc" },
+  limit: 50,
+  offset: 0,
+});
+```
+
+Supported operators are `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `in`,
+`not_in`, `contains`, `starts_with`, and `ends_with`, subject to the selected
+field's type. String comparisons can use `mode: "sensitive"` or
+`"insensitive"`.
+
+- Missing or empty read predicates match all rows.
+- Mutation predicates must not be empty.
+- `in: []` matches no rows; `not_in: []` matches all rows.
+- `eq` and `ne` support nullable fields.
+- The first connector is ignored. Later predicates compose left-to-right and
+  default to `AND`.
+- Filtering and sorting happen before `offset` and `limit`.
+- Negative `offset` or `limit` is invalid.
+
+## Relations and channels
+
+Persist independent `bundles`, `bundle_patches`, and `channels` collections or
+tables and enforce these rules:
+
+- A channel's `name` must be unique.
+- A bundle's `channel_id` must reference an existing channel `id`.
+- A patch's `bundle_id` and `base_bundle_id` must reference existing bundles.
+- Deleting a bundle removes patches that reference it in either direction.
+- Deleting a bundle never deletes its channel.
+- Referenced channel deletion must be rejected. The public adapter deliberately
+  exposes no channel delete method.
+
+Channel IDs and names are immutable through the v2 low API; create a distinct
+channel row for a different name.
+
+The shared aggregate client ensures a channel before creating or moving a
+bundle. Concurrent channel creation may race, so duplicate creation can be
+followed by a successful re-read.
+
+Record adapters persist `bundle_events` as a fourth, append-only collection or
+table. Event rows may refer to unknown or deleted bundle IDs, so bundle deletion
+must not cascade into the event log.
+
+## Optional update-check fast path
+
+Add `getUpdateInfo` when the backend can answer runtime update checks more
+efficiently than the generic row-query path:
+
+```typescript
+adapter: () => ({
+  // required row methods...
+  getUpdateInfo: async (args, context) => {
+    return runOptimizedUpdateQuery(db, args, context);
+  },
+});
+```
+
+The optimized result must be exactly equivalent to the shared fallback,
+including channel defaults, rollout cohorts, rollback constraints, patch
+selection, and manifest fields. It is optional; do not expose it if the
+backend cannot preserve those semantics.
+
+## Optional callback transaction
+
+Expose a transaction only when the backend provides real rollback and
+isolation for the complete callback:
+
+```typescript
+adapter: () => ({
+  // required row methods...
+  transaction: async (callback, context) => {
+    return db.transaction(async (transactionDb) => {
+      return callback(createImplementation(transactionDb));
+    });
+  },
+});
+```
+
+The transaction-bound implementation is valid only inside the callback and
+does not accept a separate context. The outer transaction binds the request
+context once and returns the callback's value. The public capability is this
+callback API; adapters do not expose separate `begin`, `commit`, or `rollback`
+methods.
+
+If `transaction` is absent, the shared client executes the same ordered writes
+sequentially. That fallback is intentionally non-atomic: it propagates the
+first error and may leave earlier writes persisted. Never simulate a
+transaction capability without rollback.
+
+## Lifecycle hooks
+
+`onUnmount` closes resources owned by the adapter. Provider construction may
+also attach `onDatabaseUpdated`; Hot Updater calls it once after a complete
+top-level aggregate mutation, never after a failed or partially completed one.
+
+```typescript
+const adapter = {
+  ...myDatabase({ db }),
+  onDatabaseUpdated: async () => invalidateCache(),
+};
+```
+
+## Test your adapter
+
+Use the public Better Auth-style conformance suite in a Vitest file:
+
+```typescript title="myDatabase.spec.ts"
+import { setupDatabaseAdapterTestSuite } from "@hot-updater/test-utils";
+
+setupDatabaseAdapterTestSuite({
+  name: "my database adapter",
+  createAdapter: () => myDatabase({ db }),
+  migrate: () => migrateTestDatabase(db),
+  reset: () => resetTestDatabase(db),
+  dispose: () => closeTestDatabase(db),
+});
+```
+
+The suite detects optional `transaction` and `getUpdateInfo` methods directly
+from the adapter. It covers
+the fixed operation matrix, projection, predicates, sorting and pagination,
+constraints, delete cardinality, transaction commit/rollback, and fast-path
+equivalence.
+
+To test Hot Updater's aggregate behavior over the adapter, also use
+`setupDatabaseClientTestSuite` with `createDatabaseClient`:
+
+```typescript
+import { createDatabaseClient } from "@hot-updater/plugin-core";
+import { setupDatabaseClientTestSuite } from "@hot-updater/test-utils";
+
+setupDatabaseClientTestSuite({
+  name: "my database aggregate client",
+  createAdapter: () => myDatabase({ db }),
+  createClient: (adapter) => createDatabaseClient(adapter),
+  migrate: () => migrateTestDatabase(db),
+  reset: () => resetTestDatabase(db),
+  dispose: () => closeTestDatabase(db),
+});
+```
+
+## Configure Hot Updater
+
+Use the adapter object directly in CLI or server configuration:
+
+```typescript
+import { defineConfig } from "hot-updater";
+import { myDatabase } from "./myDatabase";
+
+export default defineConfig({
+  database: myDatabase({ db }),
+  // storages: [...]
+});
+```
+
+```typescript
+import { createHotUpdater } from "@hot-updater/server";
+
+const hotUpdater = createHotUpdater({
+  database: myDatabase({ db }),
+  // storages: [...]
+});
+```
+
+## Migrating from the legacy database adapter
+
+The fixed-model database adapter API fully replaces the legacy adapter API. There is no legacy compatibility mode.
+
+1. Replace whole-bundle methods with the fixed row operation matrix.
+2. Split stored patches into `bundle_patches` and create
+   `channels { id, name }` with a unique `name`.
+3. Backfill one channel row for every distinct existing bundle channel, using
+   the previous channel value as both `id` and `name`.
+4. Add `bundles.channel_id -> channels.id ON DELETE RESTRICT` without removing
+   the existing `bundles.channel` string. Double-write the channel name to
+   `channel` and the referenced stable ID to `channel_id` on every bundle
+   create or channel change. For non-relational databases, enforce the
+   equivalent relationship in adapter writes.
+5. Add append-only `bundle_events` storage before switching to
+   `createDatabaseAdapter`. Snapshot-replacing backends must use
+   `createBlobDatabaseAdapter`.
+6. Replace `config.database()` and direct bundle mutation calls with the
+   adapter object or `createDatabaseClient(adapter)`.
+7. Remove `appendBundle`, `updateBundle`, `deleteBundle`, and `commitBundle`.
+8. Run both public conformance suites before deploying the migration.
+
+For non-transactional providers, plan the data migration and retry behavior
+around the documented sequential, potentially partial-write fallback.

@@ -8,11 +8,11 @@ Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Nati
 
 ## Key Architecture
 
-### Plugin System
-The system is built around three plugin types:
+### Extension System
+The system uses build and storage plugins plus database adapters:
 - **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo) - located in `plugins/expo/`, `plugins/bare/`, `plugins/repack/`, `plugins/rock/`
 - **Storage Plugins**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/standalone/`
-- **Database Plugins**: Handle metadata storage (PostgreSQL, Cloudflare D1, Supabase Database) - uses same plugin directories as storage
+- **Database Adapters**: Handle metadata storage (PostgreSQL, Cloudflare D1, Supabase Database) - uses the same provider directories as storage
 
 ### Core Packages
 - `packages/core/`: Core types and utilities
@@ -28,7 +28,7 @@ When working on helper packages, reference these external projects:
 - **Apple Helper**: Reference `~/Desktop/rnef/packages/platform-apple-helpers` (can be referred to as "rnef" or "rock" in prompts)
 
 ### Configuration
-Projects use `hot-updater.config.ts` files that define build, storage, and database plugins using the `defineConfig()` function.
+Projects use `hot-updater.config.ts` files that define build and storage plugins plus a database adapter using the `defineConfig()` function.
 
 ## Common Commands
 

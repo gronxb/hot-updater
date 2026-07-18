@@ -23,14 +23,14 @@ Hot Updater solves these problems with two core principles:
 Use any infrastructure you want - AWS, Cloudflare, Supabase, Firebase, or your own servers.
 
 **2. Use Any Bundler**
-Works with Metro, Re.Pack or any bundler through the plugin system.
+Works with Metro, Re.Pack, or any bundler through build plugins.
 
 ## How It Works
 
-Hot Updater uses a [Plugin System](../concepts/plugin-system) that separates concerns:
+Hot Updater uses a [Plugin and Adapter System](../concepts/plugin-system) that separates concerns:
 - **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo, Rock)
 - **Storage Plugins**: Store bundles anywhere (S3, R2, Supabase, Firebase)
-- **Database Plugins**: Manage metadata (PostgreSQL, D1, Firestore)
+- **Database Adapters**: Manage metadata (PostgreSQL, D1, Firestore)
 
 This architecture gives you complete control over your deployment infrastructure.
 
