@@ -1,6 +1,6 @@
 ---
-title: "Custom Storage Plugin"
-description: Create your own storage plugin for any storage provider
+title: "Custom Storage Adapter"
+description: Create your own storage adapter for any storage provider
 icon: Hammer
 ---
 
@@ -12,15 +12,15 @@ npm install @hot-updater/plugin-core --save-dev
 
 ## Overview
 
-Build a custom storage plugin when the built-in providers do not match your
+Build a custom storage adapter when the built-in providers do not match your
 storage backend.
 
 The goal is small: teach Hot Updater how to save bundle artifacts, read small
 runtime metadata, and turn stored bundles into client-downloadable URLs. A
-storage plugin should not know about database rows, rollout rules, or update
+storage adapter should not know about database rows, rollout rules, or update
 selection.
 
-Storage plugins are split into environment profiles. The profile name describes
+Storage adapters are split into environment profiles. The profile name describes
 where Hot Updater executes the storage code:
 
 | Profile   | Executed by                                                                                                           | Must implement                                                |
@@ -28,29 +28,29 @@ where Hot Updater executes the storage code:
 | `node`    | `hot-updater deploy`, `hot-updater bundle promote --action copy`, bundle diff generation, and console server actions  | Local file upload, local file download, and delete            |
 | `runtime` | `@hot-updater/server` when `createHotUpdater` handles update checks in a server, serverless function, or edge runtime | Client HTTP(S) bundle URLs and direct text reads for metadata |
 
-Use the helper that matches where the plugin will run:
+Use the helper that matches where the adapter will run:
 
 | Helper                         | Use when                                                                                                                       |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `createNodeStoragePlugin`      | The plugin is configured in `hot-updater.config.ts` and runs from CLI/Node workflows such as `hot-updater deploy`.             |
-| `createRuntimeStoragePlugin`   | The plugin is passed to `createHotUpdater({ storages })` from `@hot-updater/server` for update-check runtime reads.            |
-| `createUniversalStoragePlugin` | The same plugin should work in both places: `hot-updater.config.ts` for CLI commands and `createHotUpdater` for update checks. |
+| `createNodeStoragePlugin`      | The adapter is configured in `hot-updater.config.ts` and runs from CLI/Node workflows such as `hot-updater deploy`.             |
+| `createRuntimeStoragePlugin`   | The adapter is passed to `createHotUpdater({ storages })` from `@hot-updater/server` for update-check runtime reads.            |
+| `createUniversalStoragePlugin` | The same adapter should work in both places: `hot-updater.config.ts` for CLI commands and `createHotUpdater` for update checks. |
 
 Most providers should use `createUniversalStoragePlugin`. Split providers, such
-as Cloudflare R2, can expose one `node` plugin for Wrangler-based upload and
-download, and a separate `runtime` plugin for Worker bindings.
+as Cloudflare R2, can expose one `node` adapter for Wrangler-based upload and
+download, and a separate `runtime` adapter for Worker bindings.
 
 ## What Universal Means
 
-A universal storage plugin supports both sides of Hot Updater:
+A universal storage adapter supports both sides of Hot Updater:
 
 - `node`: writes and materializes files in deploy-time tooling.
 - `runtime`: resolves URLs and reads small metadata in update-check code.
 
 Universal does not mean "works everywhere with the same credentials." It means
-the plugin can provide both profile contracts from the configuration it
+the adapter can provide both profile contracts from the configuration it
 receives. If your provider uses different APIs in Node and edge runtimes, keep
-them as separate `node` and `runtime` plugins instead.
+them as separate `node` and `runtime` adapters instead.
 
 ## Implementation Checklist
 
@@ -59,15 +59,15 @@ Before writing code, decide these values:
 | Item                | Example                                      | Notes                                                                    |
 | ------------------- | -------------------------------------------- | ------------------------------------------------------------------------ |
 | `name`              | `customStorage`                              | Used in diagnostics. Keep it stable and human-readable.                  |
-| `supportedProtocol` | `custom-s3`                                  | Must match every `storageUri` the plugin returns.                        |
+| `supportedProtocol` | `custom-s3`                                  | Must match every `storageUri` the adapter returns.                        |
 | Storage URI shape   | `custom-s3://bucket/releases/bundle.zip`     | Include enough information to locate the object later.                   |
 | Upload key policy   | `basePath / bundleId / filename`             | Use `createStorageKeyBuilder` unless the provider needs custom behavior. |
 | Runtime URL policy  | Signed URL, public CDN URL, or worker route  | `runtime.getDownloadUrl` must return HTTP(S).                            |
 | Text read policy    | SDK call, binding read, or authenticated API | `runtime.readText` is for small metadata such as `manifest.json`.        |
 
-## Universal Storage Plugin
+## Universal Storage Adapter
 
-Use `createUniversalStoragePlugin` when one plugin can be used in both
+Use `createUniversalStoragePlugin` when one adapter can be used in both
 configuration surfaces:
 
 - `storage: customStorage(...)` in `hot-updater.config.ts`, where CLI commands
@@ -110,7 +110,7 @@ export const myStorage = createUniversalStoragePlugin<MyStorageConfig>({
 Each method should validate that the incoming `storageUri` belongs to the
 expected provider and bucket before touching storage. That small guard prevents
 accidentally deleting or reading from the wrong namespace when multiple storage
-plugins are configured.
+adapters are configured.
 
 ### `node.upload`
 
@@ -192,7 +192,7 @@ invalid storage URIs, provider outages, and malformed provider responses.
 
 ## Complete Example
 
-This example implements a universal S3-compatible storage plugin. The same
+This example implements a universal S3-compatible storage adapter. The same
 shape works for other object storage providers if you replace the SDK calls.
 
 ```typescript title="customStorage.ts"
@@ -323,9 +323,9 @@ export const customStorage = createUniversalStoragePlugin<CustomStorageConfig>({
 });
 ```
 
-## Node-Only Plugin
+## Node-Only Adapter
 
-Use `createNodeStoragePlugin` when the plugin only needs to run from CLI/Node
+Use `createNodeStoragePlugin` when the adapter only needs to run from CLI/Node
 workflows. This is the profile used by `hot-updater deploy`, copy promotion,
 bundle diff generation, and console server actions that upload, download, or
 delete local files. The factory returns the `node` profile directly.
@@ -346,9 +346,9 @@ export const nodeOnlyStorage = createNodeStoragePlugin<NodeOnlyConfig>({
 });
 ```
 
-## Runtime-Only Plugin
+## Runtime-Only Adapter
 
-Use `createRuntimeStoragePlugin` when the plugin only needs to run inside
+Use `createRuntimeStoragePlugin` when the adapter only needs to run inside
 `@hot-updater/server`. This is the profile used by
 `createHotUpdater({ storages })` while resolving update-check responses. The
 factory returns the `runtime` profile directly.
@@ -412,7 +412,7 @@ const contentType = getContentType("bundle.js");
 
 ## CLI Configuration
 
-Use your custom plugin in `hot-updater.config.ts`.
+Use your custom adapter in `hot-updater.config.ts`.
 
 ```typescript
 import { defineConfig } from "hot-updater";
@@ -432,13 +432,13 @@ export default defineConfig({
 });
 ```
 
-The configured plugin must implement the `node` profile because `hot-updater`
+The configured adapter must implement the `node` profile because `hot-updater`
 CLI commands upload, download, and delete local files.
 
 ## Custom Server Usage
 
-Use the same universal plugin with `createHotUpdater` from
-`@hot-updater/server`. The plugin passed to `storages` must implement the
+Use the same universal adapter with `createHotUpdater` from
+`@hot-updater/server`. The adapter passed to `storages` must implement the
 `runtime` profile because update checks need download URLs and direct metadata
 reads.
 
@@ -487,11 +487,11 @@ At minimum, cover these cases with unit tests:
 - `getDownloadUrl` returns an HTTP(S) URL.
 - `readText` returns text for an existing metadata object and `null` for a
   missing one.
-- The plugin factory is not initialized until a profile method is accessed.
+- The adapter factory is not initialized until a profile method is accessed.
 
 ## Security
 
-- Never hardcode credentials in plugin code.
+- Never hardcode credentials in adapter code.
 - Use environment variables or platform secret stores for sensitive values.
 - Validate `storageUri` before reading, downloading, or deleting.
 - Return only HTTP(S) URLs from `runtime.getDownloadUrl`.

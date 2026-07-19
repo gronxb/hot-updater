@@ -13,8 +13,8 @@ docs/
 │       ├── get-started/        # Getting started guides
 │       ├── managed/            # Self-Hosting (Managed) - Managed cloud provider guides (Supabase, Firebase, Cloudflare, AWS)
 │       ├── custom/             # Self-Hosting (Custom) - Custom server setup guides
-│       ├── build-plugins/      # Build plugin documentation
-│       ├── storage-plugins/    # Storage plugin documentation
+│       ├── build-adapters/      # Build adapter documentation
+│       ├── storage-adapters/    # Storage adapter documentation
 │       ├── database-adapters/   # Database adapter documentation
 │       ├── react-native-api/   # Client-side API reference
 │       ├── guides/             # Advanced topics and guides
@@ -51,11 +51,11 @@ Each directory with documentation pages needs a `meta.json` file:
 
 ### Examples
 
-**Plugin section** (`content/docs/storage-plugins/meta.json`):
+**Adapter section** (`content/docs/storage-adapters/meta.json`):
 ```json
 {
-  "title": "Storage Plugins",
-  "description": "Storage provider plugins",
+  "title": "Storage Adapters",
+  "description": "Storage provider adapters",
   "icon": "Database",
   "pages": ["supabase", "cloudflare", "firebase", "aws"]
 }
@@ -94,8 +94,8 @@ Each directory with documentation pages needs a `meta.json` file:
 ### Frontmatter Template
 ```mdx
 ---
-title: "Plugin Name"
-description: Brief description of the plugin
+title: "Adapter Name"
+description: Brief description of the adapter
 icon: icon-name
 ---
 ```
@@ -115,19 +115,19 @@ icon: icon-name
 **IMPORTANT**: Use `package-install` code block syntax with full npm command:
 
 ```package-install
-npm install @hot-updater/plugin-name --save-dev
+npm install @hot-updater/provider-name --save-dev
 ```
 
 **NOT** these:
 ```bash
-npm install @hot-updater/plugin-name
+npm install @hot-updater/provider-name
 ```
 
-All Hot Updater plugins should be installed as dev dependencies (`--save-dev`).
+All Hot Updater adapters should be installed as dev dependencies (`--save-dev`).
 
 ### Documentation Structure
 
-Each plugin documentation should follow this structure:
+Each adapter documentation should follow this structure:
 
 **Important**: Body content starts directly with `##` heading. No text or H1 between frontmatter and first `##`.
 
@@ -155,7 +155,7 @@ Each plugin documentation should follow this structure:
 
 ### TypeScript Configuration
 ```typescript
-interface PluginConfig {
+interface AdapterConfig {
   field: string;  // Brief inline comment
 }
 ```
@@ -206,14 +206,14 @@ Located in `content/docs/custom/`
 - frameworks/ - Server framework guides (Hono, Express, Elysia)
 - hosting/ - Deployment platform guides (Docker, Cloudflare Workers, Vercel)
 
-### Build Plugins
-Located in `content/docs/build-plugins/`
+### Build Adapters
+Located in `content/docs/build-adapters/`
 - bare.mdx - React Native CLI
 - expo.mdx - Expo projects
 - rock.mdx - Rock bundler
 
-### Storage Plugins
-Located in `content/docs/storage-plugins/`
+### Storage Adapters
+Located in `content/docs/storage-adapters/`
 - supabase.mdx - Supabase Storage
 - aws.mdx - AWS S3 (also covers Cloudflare R2)
 - cloudflare.mdx - Cloudflare R2 via Wrangler
@@ -230,14 +230,14 @@ Located in `content/docs/database-adapters/`
 
 ## Common Patterns
 
-### When documenting plugins that work together:
+### When documenting adapters that work together:
 Include a "Complete Example" section showing both storage and database combined.
 
 ### When documenting alternatives:
-If one plugin has limitations (e.g., Cloudflare R2 storage), recommend the better alternative upfront with a warning box:
+If one adapter has limitations (e.g., Cloudflare R2 storage), recommend the better alternative upfront with a warning box:
 
 ```mdx
-> **⚠️ Recommendation**: Use alternative plugin instead...
+> **⚠️ Recommendation**: Use alternative adapter instead...
 ```
 
 ### When documenting peer dependencies:
@@ -294,9 +294,9 @@ When referencing documentation in code, comments, or other docs, use these patte
 - **Database adapters**: `/docs/custom/database/{adapter}` (e.g., `/docs/custom/database/drizzle`)
 - **Server frameworks**: `/docs/custom/frameworks/{framework}` (e.g., `/docs/custom/frameworks/hono`)
 - **Hosting platforms**: `/docs/custom/hosting/{platform}` (e.g., `/docs/custom/hosting/docker`)
-- **Storage plugins**: `/docs/storage-plugins/{provider}` (e.g., `/docs/storage-plugins/aws`)
+- **Storage adapters**: `/docs/storage-adapters/{provider}` (e.g., `/docs/storage-adapters/aws`)
 - **Database adapters**: `/docs/database-adapters/{provider}` (e.g., `/docs/database-adapters/cloudflare`)
-- **Build plugins**: `/docs/build-plugins/{bundler}` (e.g., `/docs/build-plugins/expo`)
+- **Build adapters**: `/docs/build-adapters/{bundler}` (e.g., `/docs/build-adapters/expo`)
 - **React Native API**: `/docs/react-native-api/{topic}` (e.g., `/docs/react-native-api/wrap`)
 - **Guides**: `/docs/guides/{topic}` (e.g., `/docs/guides/update-strategies`)
 
@@ -312,6 +312,6 @@ When referencing documentation in code, comments, or other docs, use these patte
 - Remove redundant explanations and introductions
 - Use TypeScript interfaces to show configuration options
 - Show complete working examples with imports
-- Keep consistent structure across all plugin docs
+- Keep consistent structure across all adapter docs
 - Organize content logically: Overview → Setup → Usage → Advanced
 - **Important**: Documentation folder names are `managed` (Self-Hosting (Managed)) and `custom` (Self-Hosting (Custom))

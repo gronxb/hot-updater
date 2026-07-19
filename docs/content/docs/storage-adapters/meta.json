@@ -1,6 +1,6 @@
 {
-  "title": "Storage Plugins",
-  "description": "Storage provider plugins",
+  "title": "Storage Adapters",
+  "description": "Storage provider adapters",
   "icon": "Database",
   "pages": ["supabase", "cloudflare", "firebase", "aws", "custom-storage"]
 }

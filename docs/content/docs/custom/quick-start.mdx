@@ -32,7 +32,7 @@ export const db = new Kysely({
 
 ## Hot Updater Configuration
 
-Create the Hot Updater instance with your database adapter and storage plugin (see [Storage Plugins](./overview#storage-plugins)).
+Create the Hot Updater instance with your database adapter and storage adapter (see [Storage Adapters](./overview#storage-adapters)).
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
@@ -161,7 +161,7 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-  The `storage` plugin here must match the `storages` in your server's
+  The `storage` adapter here must match the `storages` in your server's
   `createHotUpdater` configuration. Both use `s3Storage` in this example.
 </Callout>
 

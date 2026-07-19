@@ -8,7 +8,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
 ## Provider Setup
 
-Before configuring the build plugin, you need to set up a provider to handle updates. Hot-updater supports multiple managed providers that handle storage and update distribution.
+Before configuring the build adapter, you need to set up a provider to handle updates. Hot-updater supports multiple managed providers that handle storage and update distribution.
 
 ### Step 1: Install hot-updater
 
@@ -28,7 +28,7 @@ npx hot-updater init
 
 This interactive CLI will guide you through:
 
-1. **Build Plugin Selection**: Choose your build system (Bare/React Native CLI, Rock, or Expo)
+1. **Build Adapter Selection**: Choose your build system (Bare/React Native CLI, Rock, or Expo)
 2. **Provider Selection**: Select from available providers:
    - [Supabase](/docs/managed/supabase)
    - [Firebase](/docs/managed/firebase)
@@ -52,7 +52,7 @@ HOT_UPDATER_SUPABASE_BUCKET_NAME=your-bucket-name
 
 **`hot-updater.config.ts`** - Contains provider integration settings:
 
-The example below uses the Bare (React Native CLI) build plugin. If you selected Rock or Expo, only the `build` field changes as shown in the build configuration section below.
+The example below uses the Bare (React Native CLI) build adapter. If you selected Rock or Expo, only the `build` field changes as shown in the build configuration section below.
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
@@ -83,7 +83,7 @@ For detailed provider-specific setup instructions, see the [Self-Hosting (Manage
 </Callout>
 
 <Callout type="warn">
-The environment variables in `.env` are used only during deployment, not in your app bundle. However, if you're using `react-native-dotenv`, review the [Security guidelines](/docs/policy/security#plugin-token-protection).
+The environment variables in `.env` are used only during deployment, not in your app bundle. However, if you're using `react-native-dotenv`, review the [Security guidelines](/docs/policy/security#adapter-token-protection).
 </Callout>
 
 ### Step 4: Wrap Your Application
@@ -137,12 +137,12 @@ The update server URL will be provided after running `npx hot-updater init`. Che
 
 ## Build Configuration
 
-Hot Updater now configures bundling through the `build` field in `hot-updater.config.ts`. Legacy build-time plugin examples are no longer used.
+Hot Updater now configures bundling through the `build` field in `hot-updater.config.ts`. Legacy build-time adapter examples are no longer used.
 
 <Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
   <Tab value="Bare (React Native CLI)">
 
-Use the Bare build plugin for standard React Native CLI projects:
+Use the Bare build adapter for standard React Native CLI projects:
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
@@ -161,7 +161,7 @@ No additional Babel plugin setup is required.
   </Tab>
   <Tab value="Rock">
 
-Use the Rock build plugin for Rock projects:
+Use the Rock build adapter for Rock projects:
 
 ```ts title="hot-updater.config.ts"
 import { rock } from "@hot-updater/rock";
@@ -178,7 +178,7 @@ No additional Babel plugin setup is required.
   </Tab>
   <Tab value="Expo">
 
-Use the Expo build plugin in `hot-updater.config.ts`:
+Use the Expo build adapter in `hot-updater.config.ts`:
 
 ```ts title="hot-updater.config.ts"
 import { expo } from "@hot-updater/expo";
@@ -218,7 +218,7 @@ For Expo projects, the config plugin automatically generates the native code con
 </Callout>
 
 <Callout type="info">
-If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) for the additional Babel plugin setup.
+If you use Expo DOM components (`use dom`), see [Expo DOM Components (`use dom`)](/docs/build-adapters/expo#expo-dom-components-use-dom) for the additional Babel plugin setup.
 </Callout>
 
   </Tab>

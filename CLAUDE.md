@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Native apps, serving as an alternative to CodePush. It consists of a monorepo with packages and plugins organized using NX workspace management.
+Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Native apps, serving as an alternative to CodePush. It consists of a monorepo with packages and adapters organized using NX workspace management.
 
 ## Key Architecture
 
-### Plugin and Adapter System
-The system uses build and storage plugins plus database adapters:
-- **Build Plugins**: Handle bundling (Metro, Re.Pack, Expo) - located in `plugins/expo/`, `plugins/bare/`, `plugins/repack/`, `plugins/rock/`
-- **Storage Plugins**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/standalone/`
+### Adapter System
+The system uses build, storage, and database adapters:
+- **Build Adapters**: Handle bundling (Metro, Re.Pack, Expo) - located in `plugins/expo/`, `plugins/bare/`, `plugins/repack/`, `plugins/rock/`
+- **Storage Adapters**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/standalone/`
 - **Database Adapters**: Handle metadata storage (PostgreSQL, Cloudflare D1, Supabase Database) - uses the same provider directories as storage
 
 ### Core Packages
@@ -28,7 +28,7 @@ When working on helper packages, reference these external projects:
 - **Apple Helper**: Reference `~/Desktop/rnef/packages/platform-apple-helpers` (can be referred to as "rnef" or "rock" in prompts)
 
 ### Configuration
-Projects use `hot-updater.config.ts` files that define build and storage plugins plus a database adapter using the `defineConfig()` function.
+Projects use `hot-updater.config.ts` files that define build and storage adapters plus a database adapter using the `defineConfig()` function.
 
 ## Common Commands
 
@@ -37,7 +37,7 @@ Projects use `hot-updater.config.ts` files that define build and storage plugins
 # Install dependencies
 pnpm install
 
-# Build all packages and plugins
+# Build all packages and adapters
 pnpm build
 
 # Run tests
@@ -94,7 +94,7 @@ npx hot-updater channel
 ### CI/CD Requirements
 **IMPORTANT**: All changes must pass the GitHub Actions workflow (`.github/workflows/integraion-typescript.yml`) before being merged. This workflow runs:
 
-1. `pnpm build` - All packages and plugins must build successfully
+1. `pnpm build` - All packages and adapters must build successfully
 2. `pnpm test:type` - TypeScript type checking must pass with no errors
 3. `pnpm lint` - Code must pass OXC linting and formatting checks
 4. `pnpm test` - All unit tests must pass
@@ -112,7 +112,7 @@ pnpm build && pnpm test:type && pnpm lint && pnpm test
 ### Testing
 - Uses Vitest with workspace configuration
 - Cloudflare Workers testing uses `@cloudflare/vitest-pool-workers`
-- Each plugin/package has its own test configuration
+- Each adapter/package has its own test configuration
 
 ### Build System
 - NX workspace with shared build targets

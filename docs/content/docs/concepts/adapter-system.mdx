@@ -1,38 +1,38 @@
 ---
-title: "Plugin and Adapter System"
-description: "Hot Updater uses build and storage plugins plus database adapters to fit your infrastructure."
+title: "Adapter System"
+description: "Hot Updater uses build, storage, and database adapters to fit your infrastructure."
 icon: Puzzle
 ---
 
 import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
-## Build Plugin
+## Build Adapter
 
-Build plugins handle the bundling process when you run the `hot-updater deploy` command. They generate the JavaScript bundles for your updates.
+Build adapters handle the bundling process when you run the `hot-updater deploy` command. They generate the JavaScript bundles for your updates.
 
-### Supported Plugins
+### Supported Adapters
 
 - **`@hot-updater/bare`**: Executes the bundle command through React Native CLI. Bundles through Metro or Re.Pack.
 - **`@hot-updater/rock`**: Executes the bundle command through [Rock](https://github.com/callstack/rock)(Formerly RNEF).
 - **`@hot-updater/expo`**: Executes the bundle command through Expo.
 
 
-## Storage Plugin
+## Storage Adapter
 
-Storage plugins upload your generated bundles during the `hot-updater deploy` command and store them in your chosen storage provider.
+Storage adapters upload your generated bundles during the `hot-updater deploy` command and store them in your chosen storage provider.
 
-Storage plugins expose explicit environment profiles:
+Storage adapters expose explicit environment profiles:
 
 - `node`: deploy-time APIs for upload, delete, and local file downloads.
 - `runtime`: update-check APIs for HTTP(S) download URLs and small metadata
   reads.
 
 `hot-updater.config.ts` uses the `node` profile. `createHotUpdater` uses the
-`runtime` profile. Most apps can use the official storage plugins directly;
-custom plugin authors only need the profile details when implementing their own
+`runtime` profile. Most apps can use the official storage adapters directly;
+custom adapter authors only need the profile details when implementing their own
 storage provider.
 
-### Supported Plugins
+### Supported Adapters
 
 - **`@hot-updater/supabase`**: Provides `supabaseStorage` functionality, leveraging Supabase for storage.
 - **`@hot-updater/cloudflare`**: Provides deploy-time `r2Storage` and Worker runtime storage for Cloudflare R2.

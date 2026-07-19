@@ -19,7 +19,7 @@ Install required dependencies.
 npm install @hot-updater/server hono
 ```
 
-Install your chosen storage plugin separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
+Install your chosen storage adapter separately (e.g., `@hot-updater/aws`, `@hot-updater/supabase`, `@hot-updater/firebase`).
 
 Install Drizzle ORM with PostgreSQL driver.
 
@@ -54,7 +54,7 @@ import { db } from "./drizzle";
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgres" }),
   storages: [
-    // Configure your storage plugin - examples:
+    // Configure your storage adapter - examples:
     // s3Storage({ /* S3 or R2 config */ }),
     // supabaseStorage({ /* Supabase config */ }),
     // firebaseStorage({ /* Firebase config */ }),
@@ -136,5 +136,5 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-The `storage` plugin must match the `storages` in your server's `createHotUpdater`.
+The `storage` adapter must match the `storages` in your server's `createHotUpdater`.
 </Callout>

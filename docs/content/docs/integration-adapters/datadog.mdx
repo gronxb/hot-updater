@@ -1,6 +1,6 @@
 ---
 title: "Datadog"
-description: "The `withDatadog()` plugin for hot-updater enables automatic sourcemap upload to Datadog during the update bundle build process."
+description: "The `withDatadog()` adapter for Hot Updater enables automatic sourcemap upload to Datadog during the update bundle build process."
 icon: datadog
 ---
 
@@ -11,15 +11,15 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 - Datadog Account: Sign up here if you don't have one.
 - Auth Token: Generate a token from your Datadog dashboard. This must be defined as the environment variable `DATADOG_API_KEY`.
 - Datadog host: in order to communicate with Datadog, you need to specify the host to which the Auth token refers using the environment variable `DATADOG_HOST` (e.g., `DATADOG_HOST=datadoghq.eu`)
-- Install the plugin:
+- Install the adapter:
 
 ```package-install
 npm install @hot-updater/datadog-plugin @datadog/datadog-ci --save-dev
 ```
 
-## Step 1: Wrap Your Build Plugin
+## Step 1: Wrap Your Build Adapter
 
-Use `withDatadog()` to wrap any compatible build plugin such as bare.
+Use `withDatadog()` to wrap any compatible build adapter such as bare.
 
 Once wrapped, sourcemaps will automatically be uploaded to Datadog when running the `hot-updater deploy` process.
 
@@ -100,7 +100,7 @@ export default defineConfig({
 </Tabs>
 
 <Callout title="Automatic Upload">
-When `withDatadog()` wraps your build plugin, all generated sourcemaps are uploaded to Datadog automatically during the `hot-updater deploy` process.
+When `withDatadog()` wraps your build adapter, all generated sourcemaps are uploaded to Datadog automatically during the `hot-updater deploy` process.
 </Callout>
 
 ## Step 3: Deploy

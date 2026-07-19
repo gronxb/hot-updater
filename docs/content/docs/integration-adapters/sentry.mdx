@@ -1,6 +1,6 @@
 ---
 title: "Sentry"
-description: "The `withSentry()` plugin for hot-updater enables automatic sourcemap upload to Sentry during the update bundle build process."
+description: "The `withSentry()` adapter for Hot Updater enables automatic sourcemap upload to Sentry during the update bundle build process."
 icon: sentry
 ---
 
@@ -10,7 +10,7 @@ import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
 
 - Sentry Account: Sign up here if you don't have one.
 - Auth Token: Generate a token with the project:releases and org:read scopes from your Sentry dashboard.
-- Install the plugin:
+- Install the adapter:
 
 ```package-install
 npm install @hot-updater/sentry-plugin --save-dev
@@ -56,9 +56,9 @@ export default {
 
 
 
-## Step 2: Wrap Your Build Plugin
+## Step 2: Wrap Your Build Adapter
 
-Use `withSentry()` to wrap any compatible build plugin such as bare.
+Use `withSentry()` to wrap any compatible build adapter such as bare.
 
 Once wrapped, sourcemaps will automatically be uploaded to Sentry when running the `hot-updater deploy` process.
 
@@ -139,7 +139,7 @@ export default defineConfig({
 </Tabs>
 
 <Callout title="Automatic Upload">
-When `withSentry()` wraps your build plugin, all generated sourcemaps are uploaded to Sentry automatically during the `hot-updater deploy` process.
+When `withSentry()` wraps your build adapter, all generated sourcemaps are uploaded to Sentry automatically during the `hot-updater deploy` process.
 </Callout>
 
 ## Step 3: Deploy

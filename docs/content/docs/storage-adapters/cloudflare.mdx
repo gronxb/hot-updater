@@ -11,11 +11,11 @@ npm install @hot-updater/cloudflare --save-dev
 ```
 
 <Callout title="Recommended Approach">
-For a single plugin that supports both deploy-time storage and runtime presigned
-URLs, use the S3-compatible AWS plugin. See the [AWS S3 Storage
-documentation](/docs/storage-plugins/aws) for more details.
+For a single adapter that supports both deploy-time storage and runtime presigned
+URLs, use the S3-compatible AWS adapter. See the [AWS S3 Storage
+documentation](/docs/storage-adapters/aws) for more details.
 
-Install the AWS plugin:
+Install the AWS adapter:
 
 ```package-install
 npm install @hot-updater/aws --save-dev
@@ -96,7 +96,7 @@ export default defineConfig({
 
 ## Runtime Usage
 
-`r2Storage` is a CLI/deploy-time storage plugin. It implements the `node`
+`r2Storage` is a CLI/deploy-time storage adapter. It implements the `node`
 profile and uses the R2 S3-compatible API when `credentials` are provided.
 Configs without `credentials` fall back to Wrangler for backward compatibility.
 
@@ -116,7 +116,7 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-The Worker runtime plugin implements the `runtime` profile. It signs bundle
+The Worker runtime adapter implements the `runtime` profile. It signs bundle
 download URLs and reads small metadata files directly from the R2 binding. This
 lets update checks use bundle diffing without the Worker fetching its own signed
 public URL.
@@ -126,7 +126,7 @@ public URL.
 - `r2Storage` does not implement the runtime profile.
 - Legacy `r2Storage` configs without `credentials` use Wrangler and are slower
   than the S3-compatible API path.
-- For a single plugin that supports both deploy-time and runtime profiles, use
+- For a single adapter that supports both deploy-time and runtime profiles, use
   `s3Storage` from `@hot-updater/aws` with R2 S3 API credentials.
 
 ## Protocol

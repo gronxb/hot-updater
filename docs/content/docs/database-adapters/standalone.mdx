@@ -37,8 +37,8 @@ import { defineConfig } from "hot-updater";
 import { standaloneRepository } from "@hot-updater/standalone";
 
 export default defineConfig({
-  build: /* your build plugin */,
-  storage: /* your storage plugin */,
+  build: /* your build adapter */,
+  storage: /* your storage adapter */,
   database: standaloneRepository({
     baseUrl: "http://localhost:3000/hot-updater",
   }),

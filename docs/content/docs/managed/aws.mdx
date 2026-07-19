@@ -73,7 +73,7 @@ npx hot-updater init
 <Accordions type="single">
   <Accordion title="Interactive Setup Steps">
 
-1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
+1. **Select a Build Adapter**: Choose a build adapter for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
    During the setup, you will be prompted to:
 3. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
@@ -120,7 +120,7 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
 
 please refer to the article below for more details:
-[Security](/docs/policy/security#plugin-token-protection)
+[Security](/docs/policy/security#adapter-token-protection)
 
 </Callout>
 
@@ -261,7 +261,7 @@ npx expo prebuild
 
 <Callout type="info">
   If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use
-  dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the
+  dom`)](/docs/build-adapters/expo#expo-dom-components-use-dom) section for the
   additional Babel plugin setup.
 </Callout>
 

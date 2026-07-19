@@ -15,12 +15,12 @@ npm install @hot-updater/server @hot-updater/standalone --save-dev
 
 ## Architecture
 
-Self-hosted mode lets you control the database layer while using existing cloud storage plugins.
+Self-hosted mode lets you control the database layer while using existing cloud storage adapters.
 
 **How it works:**
 - **CLI**: Uses `standaloneRepository` in hot-updater.config.ts to send requests to your server
 - **Server**: Handles database operations with `@hot-updater/server`
-- **Storage**: Uses existing plugins (AWS S3, Supabase, Cloudflare R2, Firebase)
+- **Storage**: Uses existing adapters (AWS S3, Supabase, Cloudflare R2, Firebase)
 
 This approach gives you full control over metadata while leveraging reliable cloud storage.
 
@@ -51,10 +51,10 @@ export default defineConfig({
 });
 ```
 
-## Storage Plugins
+## Storage Adapters
 
-The `storages` field in your server configuration accepts storage plugins that
-implement the `runtime` profile. Runtime storage plugins translate stored bundle
+The `storages` field in your server configuration accepts storage adapters that
+implement the `runtime` profile. Runtime storage adapters translate stored bundle
 locations into client download URLs. They can also read small metadata files
 directly from storage when bundle diffing data is available.
 
@@ -64,20 +64,20 @@ directly from storage when bundle diffing data is available.
 4. React Native clients download the update files using the returned URLs
 
 The CLI `storage` field uses the `node` profile for upload/delete/local file
-download operations. A plugin such as `s3Storage` can support both profiles,
+download operations. An adapter such as `s3Storage` can support both profiles,
 while edge providers such as Cloudflare Workers may use a separate runtime
-plugin that reads from platform bindings.
+adapter that reads from platform bindings.
 
-### Multiple Storage Plugins
+### Multiple Storage Adapters
 
-`storages` is an array, allowing you to configure multiple storage providers simultaneously. Each plugin acts as a decoder for its specific storage URI format.
+`storages` is an array, allowing you to configure multiple storage providers simultaneously. Each adapter acts as a decoder for its specific storage URI format.
 
 **Use cases:**
 - Bundles stored across different storage providers
 - Migrating between storage providers (old and new bundles coexist)
 - Multi-region deployments with different storage backends
 
-**Example with multiple plugins:**
+**Example with multiple adapters:**
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
@@ -90,7 +90,7 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-The server automatically uses the correct plugin to decode each `storageUri` based on its format.
+The server automatically uses the correct adapter to decode each `storageUri` based on its format.
 
 ## Route Groups
 
@@ -135,7 +135,7 @@ export const hotUpdater = createHotUpdater({
 <Callout type="warn">
 **Recommendation: Match Your CLI Configuration**
 
-For most use cases, use only the storage plugin that matches your CLI's `hot-updater.config.ts`.
+For most use cases, use only the storage adapter that matches your CLI's `hot-updater.config.ts`.
 
 **CLI (hot-updater.config.ts):**
 ```typescript
@@ -147,13 +147,13 @@ storage: s3Storage({ ... })
 storages: [s3Storage({ ... })]
 ```
 
-This ensures consistency and simplifies configuration. Only use multiple plugins when you need to support bundles from different storage providers.
+This ensures consistency and simplifies configuration. Only use multiple adapters when you need to support bundles from different storage providers.
 </Callout>
 
-**Available official plugins:**
-- [s3Storage](../storage-plugins/aws) - AWS S3 and Cloudflare R2
-- [supabaseStorage](../storage-plugins/supabase) - Supabase Storage
-- [firebaseStorage](../storage-plugins/firebase) - Firebase Cloud Storage
+**Available official adapters:**
+- [s3Storage](../storage-adapters/aws) - AWS S3 and Cloudflare R2
+- [supabaseStorage](../storage-adapters/supabase) - Supabase Storage
+- [firebaseStorage](../storage-adapters/firebase) - Firebase Cloud Storage
 
 ## Database Adapters
 
