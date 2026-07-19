@@ -91,7 +91,9 @@ describe("analytics route access", () => {
       defaultOptions: { queries: { retry: false } },
     });
 
-    await expect(ensureAnalyticsRouteAccess(queryClient)).resolves.toBeUndefined();
+    await expect(
+      ensureAnalyticsRouteAccess(queryClient),
+    ).resolves.toBeUndefined();
     expect(
       queryClient.getQueryData(getAnalyticsCapabilitiesQueryOptions().queryKey),
     ).toEqual({
@@ -107,9 +109,11 @@ describe("analytics route access", () => {
       defaultOptions: { queries: { retry: false } },
     });
 
-    await expect(ensureAnalyticsRouteAccess(queryClient)).rejects.toMatchObject({
-      options: { to: "/" },
-    });
+    await expect(ensureAnalyticsRouteAccess(queryClient)).rejects.toMatchObject(
+      {
+        options: { to: "/" },
+      },
+    );
   });
 });
 

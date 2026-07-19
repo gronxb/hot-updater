@@ -9,12 +9,14 @@ import { AnalyticsOverview } from "@/components/features/analytics/AnalyticsOver
 import type { UpdateOutcomeState } from "@/components/features/analytics/UpdateOutcomes";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import {
+  ensureAnalyticsRouteAccess,
   useActiveInstallationQuery,
   useAnalyticsOverviewQuery,
 } from "@/lib/analytics-api";
 import { useBundleEventAnalyticsQuery } from "@/lib/api";
 
 export const Route = createFileRoute("/analytics")({
+  beforeLoad: ({ context }) => ensureAnalyticsRouteAccess(context.queryClient),
   component: AnalyticsPage,
 });
 

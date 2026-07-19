@@ -1,19 +1,16 @@
 import { TanStackDevtools } from "@tanstack/react-devtools";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import {
-  createRootRoute,
+  createRootRouteWithContext,
   HeadContent,
   Outlet,
   Scripts,
-  useNavigate,
-  useRouterState,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import { AnalyticsCapabilityProvider } from "@/components/features/analytics/AnalyticsCapabilityContext";
-import { AnalyticsRouteGate } from "@/components/features/analytics/AnalyticsRouteGate";
 import { NotFoundPage } from "@/components/NotFoundPage";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -28,7 +25,9 @@ import appCss from "../styles.css?url";
 
 const LOCAL_DEBUG_HOSTS = new Set(["127.0.0.1", "localhost"]);
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{
+  readonly queryClient: QueryClient;
+}>()({
   head: () => ({
     meta: [
       {
@@ -65,7 +64,6 @@ export const Route = createRootRoute({
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
   const [isLocalDebugHost, setIsLocalDebugHost] = useState(false);
 
   useEffect(() => {
@@ -92,25 +90,23 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ThemeProvider defaultTheme="dark">
-          <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-              {children}
-              <Toaster />
-              {import.meta.env.DEV && isLocalDebugHost ? (
-                <TanStackDevtools
-                  config={{
-                    position: "bottom-right",
-                  }}
-                  plugins={[
-                    {
-                      name: "Tanstack Router",
-                      render: <TanStackRouterDevtoolsPanel />,
-                    },
-                  ]}
-                />
-              ) : null}
-            </TooltipProvider>
-          </QueryClientProvider>
+          <TooltipProvider>
+            {children}
+            <Toaster />
+            {import.meta.env.DEV && isLocalDebugHost ? (
+              <TanStackDevtools
+                config={{
+                  position: "bottom-right",
+                }}
+                plugins={[
+                  {
+                    name: "Tanstack Router",
+                    render: <TanStackRouterDevtoolsPanel />,
+                  },
+                ]}
+              />
+            ) : null}
+          </TooltipProvider>
         </ThemeProvider>
         <Scripts />
       </body>
@@ -121,25 +117,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 function RootLayout() {
   const capabilityQuery = useAnalyticsCapabilitiesQuery();
   const capability = getAnalyticsCapabilityState(capabilityQuery);
-  const pathname = useRouterState({
-    select: (state) => state.location.pathname,
-  });
-  const navigate = useNavigate();
-  const redirectToBundles = useCallback(() => {
-    void navigate({
-      to: "/",
-      search: {
-        channel: undefined,
-        platform: undefined,
-        page: undefined,
-        after: undefined,
-        before: undefined,
-        bundleId: undefined,
-        expandedBundleId: undefined,
-      },
-      replace: true,
-    });
-  }, [navigate]);
 
   useEffect(() => {
     if (
@@ -155,12 +132,7 @@ function RootLayout() {
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
-          <AnalyticsRouteGate
-            pathname={pathname}
-            onRedirect={redirectToBundles}
-          >
-            <Outlet />
-          </AnalyticsRouteGate>
+          <Outlet />
         </SidebarInset>
       </SidebarProvider>
     </AnalyticsCapabilityProvider>

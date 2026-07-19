@@ -9,7 +9,10 @@ import {
   InstallationResultsSkeleton,
   InstallationSearchPanel,
 } from "@/components/features/analytics/InstallationPageHeader";
-import { isAnalyticsQueryEnabled } from "@/lib/analytics-api";
+import {
+  ensureAnalyticsRouteAccess,
+  isAnalyticsQueryEnabled,
+} from "@/lib/analytics-api";
 import {
   type InstallationSearchRow,
   useInstallationHistoryQuery,
@@ -22,6 +25,7 @@ const SEARCH_LIMIT = 20;
 const HISTORY_LIMIT = 50;
 
 export const Route = createFileRoute("/installations")({
+  beforeLoad: ({ context }) => ensureAnalyticsRouteAccess(context.queryClient),
   component: InstallationsPage,
   validateSearch: validateInstallationsSearch,
 });

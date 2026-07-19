@@ -4,12 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("react-grab", () => ({}));
 
 vi.mock("@tanstack/react-router", () => ({
-  createRootRoute: (options: unknown) => ({ options }),
+  createRootRouteWithContext: () => (options: unknown) => ({ options }),
   HeadContent: () => null,
   Outlet: () => <div>Current route</div>,
   Scripts: () => null,
-  useNavigate: () => vi.fn(),
-  useRouterState: () => "/analytics",
 }));
 
 vi.mock("@/components/AppSidebar", () => ({
@@ -21,10 +19,6 @@ vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
   }: {
     readonly children: React.ReactNode;
   }) => children,
-}));
-vi.mock("@/components/features/analytics/AnalyticsRouteGate", () => ({
-  AnalyticsRouteGate: ({ children }: { readonly children: React.ReactNode }) =>
-    children,
 }));
 vi.mock("@/components/ui/sidebar", () => ({
   SidebarInset: ({
