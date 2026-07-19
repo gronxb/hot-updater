@@ -18,14 +18,14 @@ import {
 import { createSettingsTable } from "./settings";
 import { HOT_UPDATER_SETTINGS_TABLE } from "./types";
 
-export const channelsV036 = table(
-  "channels",
+export const bundleChannelsV036 = table(
+  "bundle_channels",
   {
     id: idColumn("id", varchar(255)),
     name: column("name", varchar(255)),
   },
   {
-    indexes: [uniqueIndex("channels_name_key", ["name"])],
+    indexes: [uniqueIndex("bundle_channels_name_key", ["name"])],
   },
 );
 
@@ -75,18 +75,22 @@ export const bundlesV036 = table(
       }),
     ],
     foreignKeys: [
-      foreignKey("bundles_channel_id_fk", ["channel_id"], "channels", ["id"], {
-        onDelete: "restrict",
-      }),
+      foreignKey(
+        "bundles_channel_id_fk",
+        ["channel_id"],
+        "bundle_channels",
+        ["id"],
+        { onDelete: "restrict" },
+      ),
     ],
     relations: [
       relation({
         name: "channelRef",
         fieldName: "bundles",
         targetFieldName: "channelRef",
-        relationName: "channels_bundles_channel",
+        relationName: "bundle_channels_bundles_channel",
         columns: ["channel_id"],
-        referencedTable: "channels",
+        referencedTable: "bundle_channels",
         referencedColumns: ["id"],
       }),
     ],
@@ -147,7 +151,7 @@ export const v0_36_0 = schema({
   version: "0.36.0",
   settingsTable: HOT_UPDATER_SETTINGS_TABLE,
   tables: [
-    channelsV036,
+    bundleChannelsV036,
     bundlesV036,
     bundlePatchesV036,
     createSettingsTable("0.36.0"),

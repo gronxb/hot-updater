@@ -46,7 +46,7 @@ vi.mock("cloudflare", () => ({
 const reset = async (): Promise<void> => {
   await getDb()
     .prepare(
-      "DELETE FROM bundle_patches; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_patches; DELETE FROM bundles; DELETE FROM bundle_channels;",
     )
     .run();
 };

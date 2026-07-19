@@ -208,8 +208,10 @@ field's type. String comparisons can use `mode: "sensitive"` or
 
 ## Relations and channels
 
-Persist independent `bundles`, `bundle_patches`, and `channels` collections or
-tables and enforce these rules:
+Persist independent `bundles`, `bundle_patches`, and `bundle_channels`
+collections or tables. The adapter model remains `channels`; SQL/ORM and
+document-store implementations should map it to `bundle_channels`. Enforce
+these rules:
 
 - A channel's `name` must be unique.
 - A bundle's `channel_id` must reference an existing channel `id`.
@@ -357,11 +359,11 @@ The fixed-model database adapter API fully replaces the legacy adapter API. Ther
 
 1. Replace whole-bundle methods with the fixed row operation matrix.
 2. Split stored patches into `bundle_patches` and create
-   `channels { id, name }` with a unique `name`.
+   `bundle_channels { id, name }` with a unique `name`.
 3. Backfill one channel row for every distinct existing bundle channel, using
    the previous channel value as both `id` and `name`.
-4. Add `bundles.channel_id -> channels.id ON DELETE RESTRICT` without removing
-   the existing `bundles.channel` string. Double-write the channel name to
+4. Add `bundles.channel_id -> bundle_channels.id ON DELETE RESTRICT` without
+   removing the existing `bundles.channel` string. Double-write the channel name to
    `channel` and the referenced stable ID to `channel_id` on every bundle
    create or channel change. For non-relational databases, enforce the
    equivalent relationship in adapter writes.

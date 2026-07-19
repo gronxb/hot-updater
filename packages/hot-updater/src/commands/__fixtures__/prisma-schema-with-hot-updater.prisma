@@ -16,11 +16,11 @@ model User {
 }
 
 // --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
-model channels {
+model bundle_channels {
   id String @db.VarChar(255) @id
   name String @db.VarChar(255)
-  bundles bundles[] @relation("channels_bundles_channel")
-  @@unique([name], map: "channels_name_key")
+  bundles bundles[] @relation("bundle_channels_bundles_channel")
+  @@unique([name], map: "bundle_channels_name_key")
 }
 model bundles {
   id String @db.Uuid @id
@@ -43,7 +43,7 @@ model bundles {
   target_cohorts Json?
   patches bundle_patches[] @relation("bundle_patches_bundles_patches")
   baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
-  channelRef channels @relation("channels_bundles_channel", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
+  channelRef bundle_channels @relation("bundle_channels_bundles_channel", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
   @@index([target_app_version], map: "bundles_target_app_version_idx")
   @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
   @@index([channel], map: "bundles_channel_idx")

@@ -61,7 +61,7 @@ const createCollections = (client: MongoClient): MongoCollections => {
   return {
     bundles: database.collection<MongoBundleDocument>("bundles"),
     bundlePatches: database.collection<BundlePatchRow>("bundle_patches"),
-    channels: database.collection<ChannelRow>("channels"),
+    channels: database.collection<ChannelRow>("bundle_channels"),
     bundleEvents: database.collection<BundleEventRow>("bundle_events"),
   };
 };

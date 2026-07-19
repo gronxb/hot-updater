@@ -123,5 +123,7 @@ it("encodes channel ids and names as JSON-bound parameters", async () => {
   expect(state.queries[0]).toMatchObject({
     params: ['"channel-production"', '"production"'],
   });
-  expect(state.queries[0]?.sql).toContain("INSERT INTO channels (id, name)");
+  expect(state.queries[0]?.sql).toContain(
+    "INSERT INTO bundle_channels (id, name)",
+  );
 });

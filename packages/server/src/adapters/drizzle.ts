@@ -45,7 +45,7 @@ const createImplementation = <TContext>(
   const crud = createDrizzleCrud(db, config.provider);
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
-  const channels = getDrizzleTable(db, "channels");
+  const bundleChannels = getDrizzleTable(db, "bundle_channels");
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
@@ -63,11 +63,11 @@ const createImplementation = <TContext>(
       getDatabaseAdapterUpdateInfo(
         {
           findChannel: (name) =>
-            db.query.channels
+            db.query.bundle_channels
               .findFirst({
                 where: buildDrizzleWhere<"channels">(
                   config.provider,
-                  channels,
+                  bundleChannels,
                   [{ field: "name", value: name }],
                 ),
               })

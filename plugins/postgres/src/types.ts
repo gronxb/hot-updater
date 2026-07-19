@@ -8,6 +8,6 @@ import type {
 export interface Database {
   readonly bundles: BundleRow;
   readonly bundle_patches: BundlePatchRow;
-  readonly channels: ChannelRow;
+  readonly bundle_channels: ChannelRow;
   readonly bundle_events: BundleEventRow;
 }

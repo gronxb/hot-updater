@@ -33,7 +33,7 @@ const createModeRejectingClient = (capturedWhere: unknown[]) => {
   const client = {
     bundles: delegate,
     bundle_patches: delegate,
-    channels: delegate,
+    bundle_channels: delegate,
     bundle_events: delegate,
     $transaction: <TResult>(
       callback: (transactionClient: object) => Promise<TResult>,

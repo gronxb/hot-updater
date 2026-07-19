@@ -23,8 +23,9 @@ optional capabilities, and the v1 staged mutation API has been removed.
 Provider functions now receive their configuration directly and close over it
 inside `createDatabaseAdapter({ name, adapter })`.
 
-Normalize channel storage as `channels { id, name }` with unique names and
-`bundles.channel_id -> channels.id`, while double-writing the channel name to
+Normalize physical channel storage as `bundle_channels { id, name }` with
+unique names and `bundles.channel_id -> bundle_channels.id`, while preserving
+the logical adapter model name `channels` and double-writing the channel name to
 the legacy `bundles.channel` field for backwards-compatible readers and
 preserving channel names in the public bundle and standalone HTTP APIs.
 

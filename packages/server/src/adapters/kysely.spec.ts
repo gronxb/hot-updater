@@ -137,7 +137,7 @@ describe("kyselyAdapter soft relations", () => {
     });
     await softClient.exec(
       DATABASE_ADAPTER_TEST_SCHEMA_SQL.replace(
-        " references channels(id) on delete restrict",
+        " references bundle_channels(id) on delete restrict",
         "",
       ).replaceAll(" references bundles(id) on delete restrict", ""),
     );

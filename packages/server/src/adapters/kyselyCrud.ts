@@ -131,7 +131,7 @@ const assertChannelReference = async (
 ): Promise<void> => {
   const result = await sql<{ readonly name: string }>`select ${sql.ref(
     "name",
-  )} from ${sql.table("channels")} where ${sql.ref("id")} = ${channelId} limit 1`.execute(
+  )} from ${sql.table("bundle_channels")} where ${sql.ref("id")} = ${channelId} limit 1`.execute(
     executor,
   );
   if (result.rows[0]?.name !== channel) {
@@ -188,7 +188,7 @@ export const findKyselyChannel = async (
   name: string,
 ): Promise<ChannelRow | null> => {
   const result = await sql<ChannelRow>`select * from ${sql.table(
-    "channels",
+    "bundle_channels",
   )}${whereClause(
     buildKyselyWhere<"channels">(provider, [{ field: "name", value: name }]),
   )} limit 1`.execute(executor);
@@ -285,7 +285,7 @@ export const createKyselyCrud = (
         await insertRow(executor, "bundle_patches", input.data);
         return input.data;
       case "channels":
-        await insertRow(executor, "channels", input.data);
+        await insertRow(executor, "bundle_channels", input.data);
         return input.data;
       case "bundle_events":
         await insertRow(executor, "bundle_events", input.data);
@@ -384,7 +384,7 @@ export const createKyselyCrud = (
       case "channels":
         return countRows(
           executor,
-          "channels",
+          "bundle_channels",
           buildKyselyWhere(provider, input.where as never),
         );
       case "bundle_events":
@@ -422,7 +422,7 @@ export const createKyselyCrud = (
           buildKyselyWhere(provider, input.where as never),
         );
         const result = await sql<ChannelRow>`select * from ${sql.table(
-          "channels",
+          "bundle_channels",
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
@@ -466,7 +466,7 @@ export const createKyselyCrud = (
         );
         const order = orderClause(input as never);
         const result = await sql<ChannelRow>`select * from ${sql.table(
-          "channels",
+          "bundle_channels",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }

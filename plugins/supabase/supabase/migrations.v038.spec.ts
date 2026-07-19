@@ -5,10 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const migrationPath = path.resolve(
-  "plugins/supabase/supabase/migrations/20260717231240.sql",
-);
-const rlsMigrationPath = path.resolve(
-  "plugins/supabase/supabase/migrations/20260717231241_hot-updater_0.38.0_rls.sql",
+  "plugins/supabase/supabase/migrations/20260713000000_hot-updater_0.38.0.sql",
 );
 
 describe("Supabase v0.38 bundle event migration", () => {
@@ -16,8 +13,11 @@ describe("Supabase v0.38 bundle event migration", () => {
 
   beforeEach(async () => {
     database = new PGlite();
-    await database.exec(await fs.readFile(migrationPath, "utf8"));
-    await database.exec(await fs.readFile(rlsMigrationPath, "utf8"));
+    const migration = await fs.readFile(migrationPath, "utf8");
+    const bundleEvents = migration.slice(
+      migration.indexOf("-- HotUpdater.bundle_events"),
+    );
+    await database.exec(bundleEvents);
   });
 
   afterEach(async () => {

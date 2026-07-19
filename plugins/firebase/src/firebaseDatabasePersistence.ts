@@ -41,7 +41,7 @@ export const createFirebaseDatabaseCollections = (
 ): FirebaseDatabaseCollections => ({
   bundles: db.collection("bundles"),
   bundlePatches: db.collection("bundle_patches"),
-  channels: db.collection("channels"),
+  channels: db.collection("bundle_channels"),
   bundleEvents: db.collection("bundle_events"),
   settings: db.collection("private_hot_updater_settings"),
 });

@@ -5,11 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import { mergePrismaSchema } from "./prisma-schema-merger";
 
-const HOT_UPDATER_MODELS = `model channels {
+const HOT_UPDATER_MODELS = `model bundle_channels {
   id String @db.VarChar(255) @id
   name String @db.VarChar(255)
-  bundles bundles[] @relation("channels_bundles_channel")
-  @@unique([name], map: "channels_name_key")
+  bundles bundles[] @relation("bundle_channels_bundles_channel")
+  @@unique([name], map: "bundle_channels_name_key")
 }
 
 model bundles {
@@ -33,7 +33,7 @@ model bundles {
   target_cohorts Json?
   patches bundle_patches[] @relation("bundle_patches_bundles_patches")
   baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
-  channelRef channels @relation("channels_bundles_channel", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
+  channelRef bundle_channels @relation("bundle_channels_bundles_channel", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
   @@index([target_app_version], map: "bundles_target_app_version_idx")
   @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
   @@index([channel], map: "bundles_channel_idx")
@@ -160,7 +160,7 @@ describe("prisma-schema-merger", () => {
       expect(beginCount).toBe(1);
     });
 
-    it("replaces every markerless v0.36 model without duplicating channels", () => {
+    it("replaces every markerless v0.36 model without duplicating bundle channels", () => {
       const markerlessSchema = `generator client {
   provider = "prisma-client-js"
 }
@@ -182,7 +182,7 @@ ${HOT_UPDATER_MODELS}`;
 
       expect(result.hadExistingModels).toBe(true);
       expect(result.content).toContain("model User");
-      expect(modelCount("channels")).toBe(1);
+      expect(modelCount("bundle_channels")).toBe(1);
       expect(modelCount("bundles")).toBe(1);
       expect(modelCount("bundle_patches")).toBe(1);
       expect(modelCount("private_hot_updater_settings")).toBe(1);

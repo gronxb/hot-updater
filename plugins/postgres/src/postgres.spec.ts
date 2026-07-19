@@ -44,7 +44,7 @@ setupDatabaseAdapterTestSuite({
   createAdapter: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
     await getClient().exec(
-      "DELETE FROM bundle_patches; DELETE FROM bundles; DELETE FROM channels;",
+      "DELETE FROM bundle_patches; DELETE FROM bundles; DELETE FROM bundle_channels;",
     );
   },
   dispose: async (adapter) => {

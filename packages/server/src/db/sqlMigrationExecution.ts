@@ -112,8 +112,8 @@ const shouldSkipMysqlStatement = async (
   if (constraint) return mysqlConstraintExists(db, constraint);
 
   if (
-    statement.startsWith("insert ignore into channels") ||
-    statement.startsWith("update bundles join channels")
+    statement.startsWith("insert into bundle_channels") ||
+    statement.startsWith("update bundles join bundle_channels")
   ) {
     return !(await mysqlColumnExists(db, {
       table: "bundles",

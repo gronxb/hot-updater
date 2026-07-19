@@ -8,20 +8,21 @@ import {
 } from "../db/schemaGenerators";
 import {
   bundlePatchesV036,
+  bundleChannelsV036,
   bundlesV036,
-  channelsV036,
   v0_36_0,
 } from "./v0_36_0";
 
 describe("v0.36.0 schema", () => {
   it("defines channels and preserves every required foreign key", () => {
     expect(v0_36_0.version).toBe("0.36.0");
-    expect(channelsV036.columns).toEqual([
+    expect(bundleChannelsV036.ormName).toBe("bundle_channels");
+    expect(bundleChannelsV036.columns).toEqual([
       expect.objectContaining({ ormName: "id", primaryKey: true }),
       expect.objectContaining({ ormName: "name" }),
     ]);
-    expect(channelsV036.indexes).toContainEqual({
-      name: "channels_name_key",
+    expect(bundleChannelsV036.indexes).toContainEqual({
+      name: "bundle_channels_name_key",
       columns: ["name"],
       unique: true,
     });
@@ -48,7 +49,7 @@ describe("v0.36.0 schema", () => {
         name: "bundles_channel_id_fk",
         columns: ["channel_id"],
         onDelete: "restrict",
-        referencedTable: "channels",
+        referencedTable: "bundle_channels",
       }),
     ]);
     expect(bundlePatchesV036.foreignKeys).toEqual([
@@ -64,13 +65,13 @@ describe("v0.36.0 schema", () => {
       "postgresql",
     );
     const createChannelIndex = statements.findIndex((statement) =>
-      statement.includes("create table if not exists channels"),
+      statement.includes("create table if not exists bundle_channels"),
     );
     const backfillChannelsIndex = statements.findIndex((statement) =>
       statement.includes("select distinct channel, channel from bundles"),
     );
     const backfillBundlesIndex = statements.findIndex((statement) =>
-      statement.includes("set channel_id = channels.id"),
+      statement.includes("set channel_id = bundle_channels.id"),
     );
     const constraintIndex = statements.findIndex((statement) =>
       statement.includes("add constraint bundles_channel_id_fk"),
@@ -102,14 +103,16 @@ describe("v0.36.0 schema", () => {
       ]),
     );
     expect(prisma).toContain(
-      'channelRef channels @relation("channels_bundles_channel"',
+      'channelRef bundle_channels @relation("bundle_channels_bundles_channel"',
     );
     expect(prisma).toContain("fields: [channel_id]");
     expect(prisma).toContain('channel String @default("production")');
     expect(prisma).toContain('@@index([channel], map: "bundles_channel_idx")');
-    expect(prisma).toContain('@@unique([name], map: "channels_name_key")');
     expect(prisma).toContain(
-      'bundles bundles[] @relation("channels_bundles_channel")',
+      '@@unique([name], map: "bundle_channels_name_key")',
+    );
+    expect(prisma).toContain(
+      'bundles bundles[] @relation("bundle_channels_bundles_channel")',
     );
     expect(prisma).toContain("onDelete: Restrict");
     expect(drizzle).toContain('name: "bundles_channel_id_fk"');
@@ -119,7 +122,7 @@ describe("v0.36.0 schema", () => {
     expect(drizzle).toContain('index("bundles_channel_idx").on(table.channel)');
     expect(drizzle).toContain('.onDelete("restrict")');
     expect(drizzle).toContain(
-      'uniqueIndex("channels_name_key").on(table.name)',
+      'uniqueIndex("bundle_channels_name_key").on(table.name)',
     );
     expect(drizzle).toContain("bundles: many(bundles");
   });
@@ -128,7 +131,7 @@ describe("v0.36.0 schema", () => {
     const statements = createSchemaMigrationSql("0.31.0", "0.36.0", "mysql");
 
     expect(statements).toContain(
-      "update bundles join channels on channels.name = bundles.channel set bundles.channel_id = channels.id",
+      "update bundles join bundle_channels on bundle_channels.name = bundles.channel set bundles.channel_id = bundle_channels.id",
     );
     expect(statements).toContain(
       "alter table bundles modify column channel_id varchar(255) not null",
@@ -147,14 +150,14 @@ describe("v0.36.0 schema", () => {
     const createChannelsIndex = operations.findIndex(
       (operation) =>
         operation.type === "create-table" &&
-        operation.value.ormName === "channels",
+        operation.value.ormName === "bundle_channels",
     );
     const backfillIndex = operations.findIndex(
       (operation) =>
         operation.type === "custom" &&
         "sql" in operation &&
         operation.sql ===
-          "backfill channels(id, name) and bundles.channel_id from bundles.channel",
+          "backfill bundle_channels(id, name) and bundles.channel_id from bundles.channel",
     );
 
     expect(createChannelsIndex).toBeGreaterThanOrEqual(0);
@@ -162,7 +165,7 @@ describe("v0.36.0 schema", () => {
     expect(backfillIndex).toBeLessThan(operations.length - 1);
     expect(operations).toContainEqual({
       type: "custom",
-      sql: "create unique index channels_name_key on channels(name)",
+      sql: "create unique index bundle_channels_name_key on bundle_channels(name)",
     });
   });
 });

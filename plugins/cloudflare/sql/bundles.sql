@@ -1,9 +1,9 @@
-CREATE TABLE channels (
+CREATE TABLE bundle_channels (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE
 );
 
-INSERT INTO channels (id, name) VALUES ('production', 'production');
+INSERT INTO bundle_channels (id, name) VALUES ('production', 'production');
 
 CREATE TABLE bundles (
     id TEXT PRIMARY KEY,
@@ -25,7 +25,7 @@ CREATE TABLE bundles (
     rollout_cohort_count INTEGER DEFAULT 1000
       CHECK (rollout_cohort_count >= 0 AND rollout_cohort_count <= 1000),
     target_cohorts TEXT,
-    FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE RESTRICT,
+    FOREIGN KEY (channel_id) REFERENCES bundle_channels(id) ON DELETE RESTRICT,
     CHECK ((target_app_version IS NOT NULL) OR (fingerprint_hash IS NOT NULL))
 );
 

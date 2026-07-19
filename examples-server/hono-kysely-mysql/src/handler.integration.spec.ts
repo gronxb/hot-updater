@@ -150,7 +150,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         .execute(db);
       await sql
         .raw(`
-        create table channels (
+        create table bundle_channels (
           id varchar(255) primary key,
           name varchar(255) not null
         )
@@ -170,7 +170,9 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         )
         .execute(db);
       await sql
-        .raw("insert into channels (id, name) values ('production', 'renamed')")
+        .raw(
+          "insert into bundle_channels (id, name) values ('production', 'renamed')",
+        )
         .execute(db);
       await sql
         .raw(
@@ -198,7 +200,9 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       );
       expect(await migrator.getVersion()).toBe("0.31.0");
 
-      await sql`delete from channels where id = ${"production"}`.execute(db);
+      await sql`delete from bundle_channels where id = ${"production"}`.execute(
+        db,
+      );
       const retry = await migrator.migrateToLatest({
         mode: "from-schema",
         updateSettings: true,

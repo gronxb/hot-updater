@@ -10,7 +10,7 @@ import {
 } from "./dsl";
 import { createSettingsTable } from "./settings";
 import { HOT_UPDATER_SETTINGS_TABLE } from "./types";
-import { bundlePatchesV036, bundlesV036, channelsV036 } from "./v0_36_0";
+import { bundleChannelsV036, bundlePatchesV036, bundlesV036 } from "./v0_36_0";
 
 export const bundleEventsV037 = table(
   "bundle_events",
@@ -79,7 +79,7 @@ export const v0_37_0 = schema({
   version: "0.37.0",
   settingsTable: HOT_UPDATER_SETTINGS_TABLE,
   tables: [
-    channelsV036,
+    bundleChannelsV036,
     bundlesV036,
     bundlePatchesV036,
     bundleEventsV037,

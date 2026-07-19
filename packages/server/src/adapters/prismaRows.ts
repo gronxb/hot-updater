@@ -38,11 +38,20 @@ const hasDelegateMethods = (value: unknown): value is PrismaDelegate =>
   typeof value["findMany"] === "function" &&
   typeof value["update"] === "function";
 
+const modelDelegates = {
+  bundles: "bundles",
+  bundle_patches: "bundle_patches",
+  channels: "bundle_channels",
+  bundle_events: "bundle_events",
+} as const satisfies Record<DatabaseModel, string>;
+
 export const getPrismaDelegate = (
   client: object,
   model: DatabaseModel,
 ): PrismaDelegate => {
-  const delegate = Object.entries(client).find(([key]) => key === model)?.[1];
+  const delegate = Object.entries(client).find(
+    ([key]) => key === modelDelegates[model],
+  )?.[1];
   if (delegate === undefined)
     throw new PrismaAdapterError(`missing model delegate "${model}"`);
   if (!hasDelegateMethods(delegate)) {

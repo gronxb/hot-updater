@@ -119,7 +119,7 @@ export const createDrizzleCrud = (
 ): TransactionDatabaseAdapterImplementation => {
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
-  const channels = getDrizzleTable(db, "channels");
+  const bundleChannels = getDrizzleTable(db, "bundle_channels");
   const bundleEvents = getDrizzleTable(db, "bundle_events");
   return {
     async create(input) {
@@ -134,7 +134,7 @@ export const createDrizzleCrud = (
           await db.insert(patches).values(input.data).execute();
           return input.data;
         case "channels":
-          await db.insert(channels).values(input.data).execute();
+          await db.insert(bundleChannels).values(input.data).execute();
           return input.data;
         case "bundle_events":
           await db.insert(bundleEvents).values(input.data).execute();
@@ -233,8 +233,8 @@ export const createDrizzleCrud = (
           );
         case "channels":
           return db.$count(
-            channels,
-            buildDrizzleWhere(provider, channels, input.where as never),
+            bundleChannels,
+            buildDrizzleWhere(provider, bundleChannels, input.where as never),
           );
         case "bundle_events": {
           if (input.distinct && input.distinct.length > 0) {
@@ -271,10 +271,10 @@ export const createDrizzleCrud = (
           );
         case "channels":
           return (
-            (await db.query.channels.findFirst({
+            (await db.query.bundle_channels.findFirst({
               where: buildDrizzleWhere(
                 provider,
-                channels,
+                bundleChannels,
                 input.where as never,
               ),
             })) ?? null
@@ -312,9 +312,13 @@ export const createDrizzleCrud = (
             offset: input.offset,
           });
         case "channels":
-          return db.query.channels.findMany({
-            where: buildDrizzleWhere(provider, channels, input.where as never),
-            orderBy: toOrderBy(channels, input as never),
+          return db.query.bundle_channels.findMany({
+            where: buildDrizzleWhere(
+              provider,
+              bundleChannels,
+              input.where as never,
+            ),
+            orderBy: toOrderBy(bundleChannels, input as never),
             limit: input.limit,
             offset: input.offset,
           });

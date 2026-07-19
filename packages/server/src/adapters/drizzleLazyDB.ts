@@ -31,7 +31,7 @@ export type DrizzleDB = {
     readonly bundle_events?: DrizzleQuery<BundleEventRow>;
     readonly bundles: DrizzleQuery<StoredBundleRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
-    readonly channels: DrizzleQuery<ChannelRow>;
+    readonly bundle_channels: DrizzleQuery<ChannelRow>;
   };
   readonly update: (table: DrizzleTable) => {
     set: (values: unknown) => {
@@ -71,7 +71,7 @@ const isDrizzleDB = (value: unknown): value is DrizzleDB => {
     !isRecord(query) ||
     !isDrizzleQuery(query["bundle_patches"]) ||
     !isDrizzleQuery(query["bundles"]) ||
-    !isDrizzleQuery(query["channels"])
+    !isDrizzleQuery(query["bundle_channels"])
   ) {
     return false;
   }
@@ -176,10 +176,11 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
           (await getDB()).query.bundles.findFirst(args),
         findMany: async (args) => (await getDB()).query.bundles.findMany(args),
       },
-      channels: {
+      bundle_channels: {
         findFirst: async (args) =>
-          (await getDB()).query.channels.findFirst(args),
-        findMany: async (args) => (await getDB()).query.channels.findMany(args),
+          (await getDB()).query.bundle_channels.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.bundle_channels.findMany(args),
       },
     },
     update: (table) => ({

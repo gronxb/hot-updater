@@ -11,7 +11,7 @@ type Tables = {
   bundle_events: Table;
   bundle_patches: Table;
   bundles: Table;
-  channels: Table;
+  bundle_channels: Table;
 };
 
 type Hooks = {
@@ -140,7 +140,7 @@ const assertReferences = (
   row: Row,
 ): void => {
   if (model === "bundles" && "channel_id" in row) {
-    if (!tables.channels.some(({ id }) => id === row.channel_id)) {
+    if (!tables.bundle_channels.some(({ id }) => id === row.channel_id)) {
       throw new PrismaTestConstraintError("missing channel");
     }
   }
@@ -160,9 +160,11 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
       throw new PrismaTestConstraintError("duplicate id");
     }
     if (
-      model === "channels" &&
+      model === "bundle_channels" &&
       "name" in data &&
-      tables.channels.some((row) => "name" in row && row.name === data.name)
+      tables.bundle_channels.some(
+        (row) => "name" in row && row.name === data.name,
+      )
     ) {
       throw new PrismaTestConstraintError("duplicate channel name");
     }
@@ -240,7 +242,7 @@ const createClient = (tables: Tables, hooks: Hooks) => ({
   bundle_events: createDelegate(tables, "bundle_events", hooks),
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
-  channels: createDelegate(tables, "channels", hooks),
+  bundle_channels: createDelegate(tables, "bundle_channels", hooks),
 });
 
 export const createPrismaTestHarness = () => {
@@ -248,7 +250,7 @@ export const createPrismaTestHarness = () => {
     bundle_events: [],
     bundle_patches: [],
     bundles: [],
-    channels: [],
+    bundle_channels: [],
   };
   const hooks: Hooks = {
     beforeNextBundleUpdateMany: undefined,
@@ -267,7 +269,7 @@ export const createPrismaTestHarness = () => {
       tables.bundle_events = transactionTables.bundle_events;
       tables.bundle_patches = transactionTables.bundle_patches;
       tables.bundles = transactionTables.bundles;
-      tables.channels = transactionTables.channels;
+      tables.bundle_channels = transactionTables.bundle_channels;
       return result;
     },
   };
@@ -298,7 +300,7 @@ export const createPrismaTestHarness = () => {
       tables.bundle_events = [];
       tables.bundle_patches = [];
       tables.bundles = [];
-      tables.channels = [];
+      tables.bundle_channels = [];
     },
   };
 };

@@ -71,10 +71,10 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
       execute: async () => {
         const db = client.db();
         const bundles = db.collection("bundles");
-        const channels = db.collection<{
+        const bundleChannels = db.collection<{
           readonly id: string;
           readonly name: string;
-        }>("channels");
+        }>("bundle_channels");
         await executeMongoMigration({
           updateSettings: options.updateSettings !== false,
           backend: {
@@ -93,7 +93,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
               return rows.map(({ _id }) => _id);
             },
             upsertChannel: async (id) => {
-              await channels.updateOne(
+              await bundleChannels.updateOne(
                 { id },
                 { $setOnInsert: { id, name: id } },
                 { upsert: true },
@@ -109,7 +109,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                 },
                 MONGO_NORMALIZE_CHANNEL_FIELDS_PIPELINE,
               );
-              const storedChannels = await channels.find().toArray();
+              const storedChannels = await bundleChannels.find().toArray();
               for (const channel of storedChannels) {
                 await bundles.updateMany(
                   { channel_id: channel.id },

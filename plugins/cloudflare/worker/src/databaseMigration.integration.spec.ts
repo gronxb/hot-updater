@@ -38,7 +38,7 @@ const insertNormalizedBundle = (
 
 beforeAll(async () => {
   const migrations = inject("d1Migrations");
-  for (const migration of migrations.slice(0, -2)) {
+  for (const migration of migrations.slice(0, -1)) {
     await env.DB.prepare(migration).run();
   }
   await insertLegacyBundle("base", "production").run();
@@ -50,18 +50,16 @@ beforeAll(async () => {
     ) VALUES ('patch', 'target', 'base', 'base-hash', 'patch-hash',
       'storage://patch', 0)
   `).run();
-  const databaseV2 = migrations.at(-2);
-  const analytics = migrations.at(-1);
-  if (databaseV2 === undefined || analytics === undefined) {
+  const migration = migrations.at(-1);
+  if (migration === undefined) {
     throw new MissingD1MigrationError();
   }
-  await env.DB.prepare(databaseV2).run();
-  await env.DB.prepare(analytics).run();
+  await env.DB.prepare(migration).run();
 });
 
 it("backfills channel names and bundle channel ids while preserving patches", async () => {
   const channel = await env.DB.prepare(
-    "SELECT id, name FROM channels WHERE id = 'production'",
+    "SELECT id, name FROM bundle_channels WHERE id = 'production'",
   ).first();
   const bundle = await env.DB.prepare(
     "SELECT channel, channel_id FROM bundles WHERE id = 'target'",
@@ -82,6 +80,9 @@ it("enforces the bundles channel id foreign key after migration", async () => {
   await expect(
     insertNormalizedBundle("invalid", "missing").run(),
   ).rejects.toThrow();
+  await expect(
+    insertLegacyBundle("missing-channel-id", "production").run(),
+  ).rejects.toThrow();
 });
 
 it("accepts UNCHANGED activity and rejects invalid event variants", async () => {
@@ -99,9 +100,13 @@ it("accepts UNCHANGED activity and rejects invalid event variants", async () => 
   await expect(insert("UPDATE_APPLIED", "base").run()).rejects.toThrow();
 });
 
-it("can safely rerun the latest analytics migration", async () => {
-  const latest = inject("d1Migrations").at(-1);
-  if (latest === undefined) throw new MissingD1MigrationError();
+it("keeps the existing bundle and patch tables during migration", async () => {
+  const migration = inject("d1Migrations").at(-1);
+  if (migration === undefined) throw new MissingD1MigrationError();
 
-  await expect(env.DB.prepare(latest).run()).resolves.toBeDefined();
+  expect(migration).not.toContain("bundles_v2");
+  expect(migration).not.toContain("bundle_patches_v2");
+  expect(migration).not.toContain("DROP TABLE bundles");
+  expect(migration).not.toContain("DROP TABLE bundle_patches");
+  expect(migration).not.toMatch(/CREATE TABLE channels\b/);
 });

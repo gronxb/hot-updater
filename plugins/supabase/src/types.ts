@@ -43,7 +43,7 @@ export type Database = {
     Tables: {
       bundles: Table<SupabaseBundleRow>;
       bundle_patches: Table<SupabaseBundlePatchRow>;
-      channels: Table<SupabaseChannelRow>;
+      bundle_channels: Table<SupabaseChannelRow>;
       bundle_events: Table<SupabaseBundleEventRow>;
     };
     Views: { [_ in never]: never };

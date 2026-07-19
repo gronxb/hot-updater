@@ -42,13 +42,15 @@ const assertNamedMetadataIsUnchanged = <
   }
 };
 
-const v036ChannelsTable = {
-  ormName: "channels",
+const v036BundleChannelsTable = {
+  ormName: "bundle_channels",
   columns: [
     { ormName: "id", type: "varchar(255)", primaryKey: true },
     { ormName: "name", type: "varchar(255)" },
   ],
-  indexes: [{ name: "channels_name_key", columns: ["name"], unique: true }],
+  indexes: [
+    { name: "bundle_channels_name_key", columns: ["name"], unique: true },
+  ],
 } as const satisfies HotUpdaterTableSchema;
 
 const v036BundlesAdditions = {
@@ -59,7 +61,7 @@ const v036BundlesAdditions = {
     {
       name: "bundles_channel_id_fk",
       columns: ["channel_id"],
-      referencedTable: "channels",
+      referencedTable: "bundle_channels",
       referencedColumns: ["id"],
       onUpdate: "restrict",
       onDelete: "restrict",
@@ -70,9 +72,9 @@ const v036BundlesAdditions = {
       name: "channelRef",
       fieldName: "bundles",
       targetFieldName: "channelRef",
-      relationName: "channels_bundles_channel",
+      relationName: "bundle_channels_bundles_channel",
       columns: ["channel_id"],
-      referencedTable: "channels",
+      referencedTable: "bundle_channels",
       referencedColumns: ["id"],
     },
   ],
@@ -225,16 +227,16 @@ export const assertV036MigrationSchemaDriftIsAllowlisted = (
     (table) => !previousTables.has(table.ormName),
   );
   for (const addedTable of addedTables) {
-    if (addedTable.ormName !== v036ChannelsTable.ormName) {
+    if (addedTable.ormName !== v036BundleChannelsTable.ormName) {
       throw new Error(
         `Unsupported Hot Updater schema change at ${addedTable.ormName}. Adding tables requires an explicit migration step.`,
       );
     }
     assertSameSchemaValue(
-      v036ChannelsTable.ormName,
-      v036ChannelsTable,
+      v036BundleChannelsTable.ormName,
+      v036BundleChannelsTable,
       addedTable,
     );
   }
-  assertSameSchemaValue(v036ChannelsTable.ormName, 1, addedTables.length);
+  assertSameSchemaValue(v036BundleChannelsTable.ormName, 1, addedTables.length);
 };

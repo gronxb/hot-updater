@@ -11,7 +11,7 @@ export function createFirestoreMock(projectId: string) {
   const bundlesCollection = firestore.collection("bundles");
   const bundlePatchesCollection = firestore.collection("bundle_patches");
   const bundleEventsCollection = firestore.collection("bundle_events");
-  const channelsCollection = firestore.collection("channels");
+  const channelsCollection = firestore.collection("bundle_channels");
   const settingsCollection = firestore.collection(
     "private_hot_updater_settings",
   );

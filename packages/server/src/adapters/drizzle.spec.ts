@@ -19,7 +19,7 @@ import {
 } from "./databaseAdapterTestDatabase";
 import { drizzleAdapter } from "./drizzle";
 
-const channels = pgTable("channels", {
+const bundleChannels = pgTable("bundle_channels", {
   id: varchar("id", { length: 255 }).primaryKey(),
   name: varchar("name", { length: 255 }).notNull().unique(),
 });
@@ -73,7 +73,7 @@ const schema = {
   bundle_events: bundleEvents,
   bundle_patches: bundlePatches,
   bundles,
-  channels,
+  bundle_channels: bundleChannels,
 };
 
 class DrizzleTestStateError extends Error {
@@ -190,7 +190,7 @@ describe("drizzleAdapter schema requirements", () => {
         provider: "postgresql",
         schema: incompleteSchema,
       }),
-    ).toThrow('Drizzle schema is missing table "channels".');
+    ).toThrow('Drizzle schema is missing table "bundle_channels".');
   });
 });
 

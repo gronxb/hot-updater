@@ -4,6 +4,7 @@ import type {
   BundleRow,
   CreateDatabaseImplementationInput,
   DatabaseAdapterImplementation,
+  DatabaseModel,
   DeleteDatabaseImplementationInput,
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
@@ -25,6 +26,13 @@ export interface D1Executor<TContext = unknown> {
     context?: TContext,
   ): Promise<readonly unknown[]>;
 }
+
+const tableNames = {
+  bundles: "bundles",
+  bundle_patches: "bundle_patches",
+  channels: "bundle_channels",
+  bundle_events: "bundle_events",
+} as const satisfies Record<DatabaseModel, string>;
 
 const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.id,
@@ -123,7 +131,7 @@ const insertQuery = (input: CreateDatabaseImplementationInput) => {
     case "channels": {
       const values = [input.data.id, input.data.name];
       return {
-        sql: `INSERT INTO channels (id, name) VALUES (${d1Placeholders(values.length)}) RETURNING *`,
+        sql: `INSERT INTO bundle_channels (id, name) VALUES (${d1Placeholders(values.length)}) RETURNING *`,
         params: encodeD1Values(values),
       };
     }
@@ -200,7 +208,7 @@ export const createD1Implementation = <TContext = unknown>(
   async delete(input: DeleteDatabaseImplementationInput, context) {
     const where = buildD1Where(input.where);
     await executor.query(
-      `DELETE FROM ${input.model}${where.sql}`,
+      `DELETE FROM ${tableNames[input.model]}${where.sql}`,
       where.params,
       context,
     );
@@ -208,7 +216,7 @@ export const createD1Implementation = <TContext = unknown>(
   async count(input, context) {
     const where = buildD1Where(input.where);
     const rows = await executor.query(
-      `SELECT COUNT(*) AS count FROM ${input.model}${where.sql}`,
+      `SELECT COUNT(*) AS count FROM ${tableNames[input.model]}${where.sql}`,
       where.params,
       context,
     );
@@ -219,7 +227,7 @@ export const createD1Implementation = <TContext = unknown>(
   async findOne(input: FindOneDatabaseImplementationInput, context) {
     const where = buildD1Where(input.where);
     const rows = await executor.query(
-      `SELECT * FROM ${input.model}${where.sql} LIMIT 1`,
+      `SELECT * FROM ${tableNames[input.model]}${where.sql} LIMIT 1`,
       where.params,
       context,
     );
@@ -242,7 +250,7 @@ export const createD1Implementation = <TContext = unknown>(
     );
     const pageParams = encodeD1Values([input.limit, input.offset]);
     const rows = await executor.query(
-      `SELECT * FROM ${input.model}${where.sql}${order} LIMIT json_extract(?, '$') OFFSET json_extract(?, '$')`,
+      `SELECT * FROM ${tableNames[input.model]}${where.sql}${order} LIMIT json_extract(?, '$') OFFSET json_extract(?, '$')`,
       [...where.params, ...pageParams],
       context,
     );

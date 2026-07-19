@@ -5,7 +5,7 @@ import { createSettingsTable } from "./settings";
 import { bundlesV021, v0_21_0 } from "./v0_21_0";
 import { bundlesV029, v0_29_0 } from "./v0_29_0";
 import { bundlesV031, v0_31_0 } from "./v0_31_0";
-import { bundlesV036, channelsV036, v0_36_0 } from "./v0_36_0";
+import { bundleChannelsV036, bundlesV036, v0_36_0 } from "./v0_36_0";
 
 describe("versioned schema DSL", () => {
   it("uses the local functional DSL for every versioned schema table", () => {
@@ -18,7 +18,7 @@ describe("versioned schema DSL", () => {
     expect(bundlesV029.dsl).toBe("table");
     expect(bundlesV031.dsl).toBe("table");
     expect(bundlesV036.dsl).toBe("table");
-    expect(channelsV036.dsl).toBe("table");
+    expect(bundleChannelsV036.dsl).toBe("table");
     expect(createSettingsTable("0.31.0").dsl).toBe("table");
 
     for (const schema of [v0_21_0, v0_29_0, v0_31_0, v0_36_0]) {

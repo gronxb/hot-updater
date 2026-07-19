@@ -19,7 +19,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
     : "NULL";
 
   return `
-    INSERT INTO channels (id, name) VALUES ('${bundle.channel}', '${bundle.channel}')
+    INSERT INTO bundle_channels (id, name) VALUES ('${bundle.channel}', '${bundle.channel}')
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO bundles (

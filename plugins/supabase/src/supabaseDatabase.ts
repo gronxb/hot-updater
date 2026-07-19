@@ -50,7 +50,7 @@ const createSupabaseImplementation = (
       }
       case "channels": {
         const { data, error } = await supabase
-          .from("channels")
+          .from("bundle_channels")
           .insert(input.data)
           .select("*")
           .single();
@@ -122,7 +122,7 @@ const createSupabaseImplementation = (
       }
       case "channels": {
         let query = supabase
-          .from("channels")
+          .from("bundle_channels")
           .select("*", { count: "exact", head: true });
         if (filter !== undefined) query = query.or(filter);
         const { count, error } = await query;
@@ -158,7 +158,7 @@ const createSupabaseImplementation = (
         return data;
       }
       case "channels": {
-        let query = supabase.from("channels").select("*");
+        let query = supabase.from("bundle_channels").select("*");
         if (filter !== undefined) query = query.or(filter);
         const { data, error } = await query.limit(1).maybeSingle();
         throwSupabaseError("findOne channels", error);
@@ -203,7 +203,7 @@ const createSupabaseImplementation = (
         return data ?? [];
       }
       case "channels": {
-        let query = supabase.from("channels").select("*");
+        let query = supabase.from("bundle_channels").select("*");
         if (filter !== undefined) query = query.or(filter);
         if (input.sortBy !== undefined) {
           query = query.order(input.sortBy.field, {

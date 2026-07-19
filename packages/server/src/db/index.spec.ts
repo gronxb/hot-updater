@@ -365,7 +365,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             bundle_events: {},
             bundle_patches: {},
             bundles: {},
-            channels: {},
+            bundle_channels: {},
           },
         },
         $count: vi.fn(),
@@ -374,7 +374,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         query: {
           bundle_patches: { findFirst: vi.fn(), findMany: vi.fn() },
           bundles: { findFirst: vi.fn(), findMany: vi.fn() },
-          channels: { findFirst: vi.fn(), findMany: vi.fn() },
+          bundle_channels: { findFirst: vi.fn(), findMany: vi.fn() },
         },
         update: vi.fn(),
       },
@@ -399,7 +399,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
     storageTexts.clear();
     await db.exec("DELETE FROM bundle_patches");
     await db.exec("DELETE FROM bundles");
-    await db.exec("DELETE FROM channels");
+    await db.exec("DELETE FROM bundle_channels");
   });
 
   afterAll(async () => {
@@ -435,14 +435,16 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const code = generateSchema(prismaSchemaHotUpdater, "latest").code;
 
       expect(code).toContain("name String @db.VarChar(255)");
-      expect(code).toContain('@@unique([name], map: "channels_name_key")');
+      expect(code).toContain(
+        '@@unique([name], map: "bundle_channels_name_key")',
+      );
       expect(code).toContain("channel_id String @db.VarChar(255)");
       expect(code).toContain('metadata Json @default("{}")');
       expect(code).toContain('value String @default("0.38.0")');
       expect(code).toContain("from_bundle_id String? @db.Uuid");
       expect(code).toContain("update_strategy String?");
       expect(code).toContain(
-        'channelRef channels @relation("channels_bundles_channel"',
+        'channelRef bundle_channels @relation("bundle_channels_bundles_channel"',
       );
       expect(code).toContain(
         'patches bundle_patches[] @relation("bundle_patches_bundles_patches")',
@@ -493,7 +495,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(code).toContain(
         'channel_id: varchar("channel_id", { length: 255 }).notNull()',
       );
-      expect(code).toContain('uniqueIndex("channels_name_key").on(table.name)');
+      expect(code).toContain(
+        'uniqueIndex("bundle_channels_name_key").on(table.name)',
+      );
       expect(code).toContain(
         'metadata: json("metadata").notNull().default({})',
       );
@@ -577,7 +581,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(v031Sql).toContain(
         "add constraint bundle_patches_bundle_id_fk foreign key",
       );
-      expect(v036Sql).toContain("create table if not exists channels");
+      expect(v036Sql).toContain("create table if not exists bundle_channels");
       const v037Sql = createSchemaMigrationSql(
         "0.36.0",
         "0.37.0",
@@ -588,7 +592,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(v037Sql).toContain("received_at_ms double precision not null");
       expect(v037Sql).toContain("bundle_events_installed_bundle_idx");
       expect(v036Sql).toContain(
-        "insert into channels (id, name) select distinct channel, channel from bundles",
+        "insert into bundle_channels (id, name) select distinct channel, channel from bundles",
       );
       expect(v036Sql).toContain(
         "add constraint bundles_channel_id_fk foreign key",
@@ -717,7 +721,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           "select rollout_cohort_count, target_cohorts, manifest_storage_uri from bundles limit 0",
         );
         await migrationDb.query("select * from bundle_patches limit 0");
-        await migrationDb.query("select * from channels limit 0");
+        await migrationDb.query("select * from bundle_channels limit 0");
         await migrationDb.query("select * from bundle_events limit 0");
       } finally {
         await migrationKysely.destroy();
@@ -819,7 +823,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             sql: "create unique index bundle_events_id_idx on bundle_events(id)",
           }),
           expect.objectContaining({
-            sql: "create unique index channels_id_idx on channels(id)",
+            sql: "create unique index bundle_channels_id_idx on bundle_channels(id)",
           }),
           expect.objectContaining({
             sql: "create index bundles_target_app_version_idx on bundles(target_app_version)",
@@ -999,7 +1003,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         update: vi.fn(),
       };
       const adapter = prismaAdapter({
-        prisma: { bundles, bundle_patches: patches, channels },
+        prisma: { bundles, bundle_patches: patches, bundle_channels: channels },
         provider: "postgresql",
       });
 
@@ -1114,7 +1118,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         update: vi.fn(),
       };
       const adapter = prismaAdapter({
-        prisma: { bundles, bundle_patches: patches, channels },
+        prisma: { bundles, bundle_patches: patches, bundle_channels: channels },
         provider: "postgresql",
       });
 
@@ -1197,7 +1201,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           platform: sql.raw("platform"),
           target_app_version: sql.raw("target_app_version"),
         },
-        channels: { id: sql.raw("id"), name: sql.raw("name") },
+        bundle_channels: { id: sql.raw("id"), name: sql.raw("name") },
       };
       const bundleFindMany = vi
         .fn()
@@ -1223,7 +1227,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             findFirst: vi.fn(),
             findMany: bundleFindMany,
           },
-          channels: {
+          bundle_channels: {
             findFirst: vi.fn(async () => ({
               id: "channel-production",
               name: "production",
@@ -1330,7 +1334,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         db: () => ({
           collection: (name: string) => {
             if (name === "bundle_patches") return patches;
-            if (name === "channels") return channels;
+            if (name === "bundle_channels") return channels;
             return bundles;
           },
         }),
@@ -1439,7 +1443,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             bundle_events: txEvents,
             bundle_patches: txPatches,
             bundles: txBundles,
-            channels: txChannels,
+            bundle_channels: txChannels,
           }),
       );
       const adapter = prismaAdapter({
@@ -1448,7 +1452,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           bundle_events: rootEvents,
           bundle_patches: rootPatches,
           bundles: rootBundles,
-          channels: rootChannels,
+          bundle_channels: rootChannels,
         },
         provider: "postgresql",
       });
@@ -1479,7 +1483,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         bundles: {
           id: "id",
         },
-        channels: {
+        bundle_channels: {
           id: sql.raw("id"),
         },
       };
@@ -1505,7 +1509,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             findFirst: vi.fn(async () => undefined),
             findMany: vi.fn(),
           },
-          channels: {
+          bundle_channels: {
             findFirst: vi.fn(async () => ({
               id: "channel-production",
               name: transactionBundle.channel,

@@ -200,9 +200,9 @@ describe("0.31.0 to 0.36.0 SQL migration drift validation", () => {
     },
     {
       name: "changed allowlisted channels table",
-      location: "channels",
+      location: "bundle_channels",
       change: (schema) =>
-        changeTable(schema, "channels", (table) => ({
+        changeTable(schema, "bundle_channels", (table) => ({
           ...table,
           columns: table.columns.map((column) =>
             column.ormName === "name" ? { ...column, nullable: true } : column,

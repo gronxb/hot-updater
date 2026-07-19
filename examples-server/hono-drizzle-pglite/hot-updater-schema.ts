@@ -2,16 +2,16 @@ import { boolean, doublePrecision, foreignKey, index, integer, json, pgTable, te
 
 import { relations } from "drizzle-orm"
 
-export const channels = pgTable("channels", {
+export const bundle_channels = pgTable("bundle_channels", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
   name: varchar("name", { length: 255 }).notNull()
 }, (table) => [
-  uniqueIndex("channels_name_key").on(table.name)
+  uniqueIndex("bundle_channels_name_key").on(table.name)
 ])
 
-export const channelsRelations = relations(channels, ({ many }) => ({
+export const bundle_channelsRelations = relations(bundle_channels, ({ many }) => ({
   bundles: many(bundles, {
-    relationName: "channels_bundles_channel"
+    relationName: "bundle_channels_bundles_channel"
   })
 }))
 
@@ -37,7 +37,7 @@ export const bundles = pgTable("bundles", {
 }, (table) => [
   foreignKey({
     columns: [table.channel_id],
-    foreignColumns: [channels.id],
+    foreignColumns: [bundle_channels.id],
     name: "bundles_channel_id_fk"
   }).onUpdate("restrict").onDelete("restrict"),
   index("bundles_target_app_version_idx").on(table.target_app_version),
@@ -48,10 +48,10 @@ export const bundles = pgTable("bundles", {
 ])
 
 export const bundlesRelations = relations(bundles, ({ one, many }) => ({
-  channelRef: one(channels, {
-    relationName: "channels_bundles_channel",
+  channelRef: one(bundle_channels, {
+    relationName: "bundle_channels_bundles_channel",
     fields: [bundles.channel_id],
-    references: [channels.id]
+    references: [bundle_channels.id]
   }),
   patches: many(bundle_patches, {
     relationName: "bundle_patches_bundles_patches"

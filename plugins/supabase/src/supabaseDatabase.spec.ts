@@ -10,7 +10,11 @@ import { supabaseDatabase } from "./supabaseDatabase";
 // allow: SIZE_OK — hoisted PostgREST query/filter state machine for public adapter conformance.
 const { createMockClient, resetMockClient } = vi.hoisted(() => {
   type Row = Record<string, unknown>;
-  type TableName = "bundle_events" | "bundle_patches" | "bundles" | "channels";
+  type TableName =
+    | "bundle_channels"
+    | "bundle_events"
+    | "bundle_patches"
+    | "bundles";
   type QueryError = { readonly message: string };
   type QueryResult = {
     readonly count: number | null;
@@ -22,7 +26,7 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
     bundle_events: new Map(),
     bundle_patches: new Map(),
     bundles: new Map(),
-    channels: new Map(),
+    bundle_channels: new Map(),
   };
 
   const splitTopLevel = (value: string): readonly string[] => {
@@ -282,8 +286,8 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
         return { count: null, data: null, error: { message: "duplicate id" } };
       }
       if (
-        this.table === "channels" &&
-        [...rows.channels.values()].some(
+        this.table === "bundle_channels" &&
+        [...rows.bundle_channels.values()].some(
           (channel) => channel.name === payload.name,
         )
       ) {
@@ -295,7 +299,7 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       }
       if (
         (this.table === "bundles" &&
-          !rows.channels.has(String(payload.channel_id))) ||
+          !rows.bundle_channels.has(String(payload.channel_id))) ||
         (this.table === "bundle_patches" &&
           (!rows.bundles.has(String(payload.bundle_id)) ||
             !rows.bundles.has(String(payload.base_bundle_id))))
@@ -345,7 +349,7 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       rows.bundle_events.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
-      rows.channels.clear();
+      rows.bundle_channels.clear();
     },
   };
 });

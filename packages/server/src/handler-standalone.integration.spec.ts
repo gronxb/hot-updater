@@ -71,7 +71,7 @@ afterEach(async () => {
   await db.exec("DELETE FROM bundle_patches");
   await db.exec("DELETE FROM bundle_events");
   await db.exec("DELETE FROM bundles");
-  await db.exec("DELETE FROM channels");
+  await db.exec("DELETE FROM bundle_channels");
 });
 
 afterAll(async () => {

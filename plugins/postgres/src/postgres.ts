@@ -147,7 +147,7 @@ const createPostgresImplementation = (
           .executeTakeFirstOrThrow();
       case "channels":
         return db
-          .insertInto("channels")
+          .insertInto("bundle_channels")
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -204,7 +204,7 @@ const createPostgresImplementation = (
       }
       case "channels": {
         let query = db
-          .selectFrom("channels")
+          .selectFrom("bundle_channels")
           .select(({ fn }) => fn.countAll<string>().as("count"));
         if (where !== undefined) query = query.where(where);
         const result = await query.executeTakeFirstOrThrow();
@@ -234,7 +234,7 @@ const createPostgresImplementation = (
         return (await query.executeTakeFirst()) ?? null;
       }
       case "channels": {
-        let query = db.selectFrom("channels").selectAll();
+        let query = db.selectFrom("bundle_channels").selectAll();
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
@@ -267,7 +267,7 @@ const createPostgresImplementation = (
         return query.limit(input.limit).offset(input.offset).execute();
       }
       case "channels": {
-        let query = db.selectFrom("channels").selectAll();
+        let query = db.selectFrom("bundle_channels").selectAll();
         if (where !== undefined) query = query.where(where);
         for (const clause of input.orderBy ??
           (input.sortBy ? [input.sortBy] : [])) {

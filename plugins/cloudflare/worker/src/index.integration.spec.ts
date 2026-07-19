@@ -132,7 +132,7 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 const seedBundles = async (bundles: Bundle[]) => {
   for (const bundle of bundles.map(toRuntimeBundle)) {
     await env.DB.prepare(
-      "INSERT OR IGNORE INTO channels (id, name) VALUES (?, ?)",
+      "INSERT OR IGNORE INTO bundle_channels (id, name) VALUES (?, ?)",
     )
       .bind(bundle.channel, bundle.channel)
       .run();
@@ -173,7 +173,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
   beforeEach(async () => {
     await env.DB.prepare("DELETE FROM bundle_patches").run();
     await env.DB.prepare("DELETE FROM bundles").run();
-    await env.DB.prepare("DELETE FROM channels").run();
+    await env.DB.prepare("DELETE FROM bundle_channels").run();
   });
 
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
