@@ -1,9 +1,12 @@
 package com.hotupdater
 
 import android.util.Log
+import androidx.core.util.AtomicFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileNotFoundException
+import java.io.FileOutputStream
 
 /**
  * Bundle metadata for managing stable/staging bundles and verification state
@@ -317,11 +320,11 @@ data class InstallationIdentity(
 
         fun loadFromFile(file: File): InstallationIdentity? =
             try {
-                if (!file.exists()) {
-                    null
-                } else {
-                    fromJson(JSONObject(file.readText()))
+                AtomicFile(file).openRead().bufferedReader().use { reader ->
+                    fromJson(JSONObject(reader.readText()))
                 }
+            } catch (_: FileNotFoundException) {
+                null
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load installation identity", e)
                 null
@@ -336,13 +339,19 @@ data class InstallationIdentity(
         }
 
     fun saveToFile(file: File): Boolean =
-        try {
-            file.parentFile?.mkdirs()
-            file.writeText(toJson().toString(2))
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save installation identity", e)
-            false
+        AtomicFile(file).let { atomicFile ->
+            var output: FileOutputStream? = null
+            try {
+                file.parentFile?.mkdirs()
+                output = atomicFile.startWrite()
+                output.write(toJson().toString(2).toByteArray())
+                atomicFile.finishWrite(output)
+                true
+            } catch (e: Exception) {
+                output?.let(atomicFile::failWrite)
+                Log.e(TAG, "Failed to save installation identity", e)
+                false
+            }
         }
 }
 

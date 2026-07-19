@@ -511,6 +511,10 @@ class BundleFileStorageService(
     private var currentLaunchReport: LaunchReport? = null
 
     @Volatile
+    private var currentInstallationIdentity: InstallationIdentity? = null
+    private val installationIdentityLock = Any()
+
+    @Volatile
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
     private val activeBundleMetadataLock = Any()
 
@@ -566,17 +570,24 @@ class BundleFileStorageService(
             "appVersion"
         }
 
-    private fun loadInstallationIdentity(): InstallationIdentity? = InstallationIdentity.loadFromFile(getInstallationIdentityFile())
+    private fun loadInstallationIdentity(): InstallationIdentity? =
+        currentInstallationIdentity ?: InstallationIdentity.loadFromFile(getInstallationIdentityFile())?.also {
+            currentInstallationIdentity = it
+        }
 
-    private fun saveInstallationIdentity(identity: InstallationIdentity): Boolean = identity.saveToFile(getInstallationIdentityFile())
-
-    private fun getOrCreateInstallationIdentity(): InstallationIdentity {
-        loadInstallationIdentity()?.let { return it }
-
-        val created = InstallationIdentity(installId = UUID.randomUUID().toString())
-        saveInstallationIdentity(created)
-        return created
+    private fun saveInstallationIdentity(identity: InstallationIdentity): Boolean {
+        currentInstallationIdentity = identity
+        return identity.saveToFile(getInstallationIdentityFile())
     }
+
+    private fun getOrCreateInstallationIdentity(): InstallationIdentity =
+        synchronized(installationIdentityLock) {
+            loadInstallationIdentity()?.let { return@synchronized it }
+
+            InstallationIdentity(installId = UUID.randomUUID().toString()).also {
+                saveInstallationIdentity(it)
+            }
+        }
 
     private fun getKnownLaunchBundleId(metadata: BundleMetadata): String =
         getCurrentVerifiedBundleId(metadata) ?: HotUpdaterImpl.getMinBundleId()
@@ -1162,16 +1173,14 @@ class BundleFileStorageService(
     override fun setUser(
         userId: String?,
         username: String?,
-    ) {
-        val identity = getOrCreateInstallationIdentity()
-        val normalizedUserId = userId?.trim()?.takeIf { it.isNotEmpty() }
-        val normalizedUsername = username?.trim()?.takeIf { it.isNotEmpty() }
+    ) = synchronized(installationIdentityLock) {
         saveInstallationIdentity(
-            identity.copy(
-                userId = normalizedUserId,
-                username = normalizedUsername,
+            getOrCreateInstallationIdentity().copy(
+                userId = userId?.trim()?.takeIf { it.isNotEmpty() },
+                username = username?.trim()?.takeIf { it.isNotEmpty() },
             ),
         )
+        Unit
     }
 
     // MARK: - Bundle URL Operations

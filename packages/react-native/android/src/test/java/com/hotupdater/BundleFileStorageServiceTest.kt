@@ -308,6 +308,27 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `user update keeps cached install id when persisted identity becomes unreadable`() {
+        val rootDir = temporaryFolder.newFolder("install-identity-corruption")
+        val service = createService(rootDir)
+        val installId = service.getInstallId()
+        val identityFile = File(bundleStoreDir(rootDir), InstallationIdentity.IDENTITY_FILENAME)
+        identityFile.writeText("{")
+
+        service.setUser("user-123", "alice")
+
+        assertEquals(installId, service.getInstallId())
+        assertEquals(
+            InstallationIdentity(
+                installId = installId,
+                userId = "user-123",
+                username = "alice",
+            ),
+            loadInstallationIdentity(rootDir),
+        )
+    }
+
+    @Test
     fun `manifest driven install is disabled before first OTA`() {
         val rootDir = temporaryFolder.newFolder("first-ota-manifest-disabled")
         val service = createService(rootDir)
