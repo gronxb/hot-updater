@@ -8,6 +8,10 @@ const supported = { status: "supported", mode: "dedicated" } as const;
 
 const useInstallationSearchQueryMock = vi.fn();
 
+vi.mock("./AnalyticsCapabilityContext", () => ({
+  useAnalyticsCapability: () => supported,
+}));
+
 vi.mock("@/lib/api", () => ({
   useInstallationSearchQuery: (input: unknown, enabled: boolean) =>
     useInstallationSearchQueryMock(input, enabled),
@@ -60,7 +64,7 @@ describe("InstallationSearch", () => {
   afterEach(cleanup);
 
   it("does not request data before a query is submitted", () => {
-    render(<InstallationSearch capability={supported} />);
+    render(<InstallationSearch />);
 
     expect(
       screen.getByRole("heading", {
@@ -87,7 +91,7 @@ describe("InstallationSearch", () => {
   it.each(["enter", "button"] as const)(
     "submits one trimmed search using %s",
     (method) => {
-      render(<InstallationSearch capability={supported} />);
+      render(<InstallationSearch />);
       const input = screen.getByRole("searchbox", {
         name: "User ID or install ID",
       });
@@ -116,7 +120,7 @@ describe("InstallationSearch", () => {
       isLoading: false,
     });
 
-    render(<InstallationSearch capability={supported} initialQuery="ada" />);
+    render(<InstallationSearch initialQuery="ada" />);
 
     expect(screen.getByText("user-1")).toBeDefined();
     expect(screen.getByText("install-1")).toBeDefined();
@@ -140,9 +144,7 @@ describe("InstallationSearch", () => {
       isLoading: false,
     });
 
-    render(
-      <InstallationSearch capability={supported} initialQuery="install-1" />,
-    );
+    render(<InstallationSearch initialQuery="install-1" />);
 
     expect(screen.getAllByText("install-1").length).toBeGreaterThan(0);
   });
@@ -157,7 +159,7 @@ describe("InstallationSearch", () => {
       error: null,
       isLoading: false,
     });
-    render(<InstallationSearch capability={supported} initialQuery="ada" />);
+    render(<InstallationSearch initialQuery="ada" />);
 
     // When
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -186,15 +188,13 @@ describe("InstallationSearch", () => {
   });
 
   it("distinguishes loading, empty, and error states", () => {
-    const { rerender } = render(
-      <InstallationSearch capability={supported} initialQuery="ada" />,
-    );
+    const { rerender } = render(<InstallationSearch initialQuery="ada" />);
     useInstallationSearchQueryMock.mockReturnValue({
       data: undefined,
       error: null,
       isLoading: true,
     });
-    rerender(<InstallationSearch capability={supported} initialQuery="ada" />);
+    rerender(<InstallationSearch initialQuery="ada" />);
     expect(screen.getByLabelText("Searching installations")).toBeDefined();
 
     useInstallationSearchQueryMock.mockReturnValue({
@@ -202,7 +202,7 @@ describe("InstallationSearch", () => {
       error: null,
       isLoading: false,
     });
-    rerender(<InstallationSearch capability={supported} initialQuery="ada" />);
+    rerender(<InstallationSearch initialQuery="ada" />);
     expect(
       screen.getByText("No installations matched that search."),
     ).toBeDefined();
@@ -212,7 +212,7 @@ describe("InstallationSearch", () => {
       error: new Error("Search request failed"),
       isLoading: false,
     });
-    rerender(<InstallationSearch capability={supported} initialQuery="ada" />);
+    rerender(<InstallationSearch initialQuery="ada" />);
     expect(screen.getByRole("alert").textContent).toContain(
       "Search request failed",
     );

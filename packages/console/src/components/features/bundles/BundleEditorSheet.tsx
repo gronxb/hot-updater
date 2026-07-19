@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
-import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
 
 import { BundleAnalyticsSummary } from "./BundleAnalyticsSummary";
 import { BundleBasicInfo } from "./BundleBasicInfo";
@@ -24,7 +23,6 @@ import { BundleEditorForm } from "./BundleEditorForm";
 import { BundleMetadata } from "./BundleMetadata";
 
 interface BundleEditorSheetProps {
-  capability: AnalyticsCapabilityState;
   bundleId?: string;
   bundle: Bundle | null;
   loading?: boolean;
@@ -33,7 +31,6 @@ interface BundleEditorSheetProps {
 }
 
 export function BundleEditorSheet({
-  capability,
   bundleId,
   bundle,
   loading = false,
@@ -101,7 +98,7 @@ export function BundleEditorSheet({
 
   const bodyContent = bundle ? (
     <div className="flex flex-col gap-6 px-4 pb-4 sm:px-6 sm:pb-6">
-      <BundleAnalyticsSummary bundle={bundle} capability={capability} />
+      <BundleAnalyticsSummary bundle={bundle} />
       <BundleEditorForm
         key={bundle.id}
         bundle={bundle}

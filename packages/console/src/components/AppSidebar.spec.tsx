@@ -7,6 +7,7 @@ import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
 import { AppSidebar } from "./AppSidebar";
 
 let pathname = "/";
+let analyticsCapability: AnalyticsCapabilityState = { status: "unresolved" };
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to }: { children: ReactNode; to: string }) => (
@@ -17,6 +18,10 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/components/ThemeProvider", () => ({
   useTheme: () => ({ theme: "dark", setTheme: vi.fn() }),
+}));
+
+vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
+  useAnalyticsCapability: () => analyticsCapability,
 }));
 
 vi.mock("@/components/HotUpdaterLogo", () => ({
@@ -61,8 +66,10 @@ const capability = (
   }
 };
 
-const renderSidebar = (analyticsCapability: AnalyticsCapabilityState) =>
-  render(<AppSidebar analyticsCapability={analyticsCapability} />);
+const renderSidebar = (capabilityState: AnalyticsCapabilityState) => {
+  analyticsCapability = capabilityState;
+  return render(<AppSidebar />);
+};
 
 describe("AppSidebar analytics navigation", () => {
   afterEach(() => {

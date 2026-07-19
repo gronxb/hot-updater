@@ -26,12 +26,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
 import { isAnalyticsQueryEnabled } from "@/lib/analytics-api";
 import {
   type InstallationSearchRow,
   useInstallationSearchQuery,
 } from "@/lib/api";
+
+import { useAnalyticsCapability } from "./AnalyticsCapabilityContext";
 
 const SEARCH_LIMIT = 20;
 
@@ -42,12 +43,11 @@ const platformLabel = (platform: InstallationSearchRow["platform"]): string =>
   platform === "ios" ? "iOS" : "Android";
 
 export function InstallationSearch({
-  capability,
   initialQuery = "",
 }: {
-  readonly capability: AnalyticsCapabilityState;
   readonly initialQuery?: string;
 }) {
+  const capability = useAnalyticsCapability();
   const normalizedInitialQuery = initialQuery.trim();
   const [draftQuery, setDraftQuery] = useState(normalizedInitialQuery);
   const [submittedQuery, setSubmittedQuery] = useState(normalizedInitialQuery);

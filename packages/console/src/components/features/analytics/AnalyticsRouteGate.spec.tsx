@@ -2,24 +2,31 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
+
 import { AnalyticsRouteGate } from "./AnalyticsRouteGate";
+
+let analyticsCapability: AnalyticsCapabilityState = { status: "unresolved" };
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="/">{children}</a>,
 }));
 
+vi.mock("./AnalyticsCapabilityContext", () => ({
+  useAnalyticsCapability: () => analyticsCapability,
+}));
+
 const supported = { status: "supported", mode: "dedicated" } as const;
 
 describe("AnalyticsRouteGate", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    analyticsCapability = { status: "unresolved" };
+  });
 
   it("never blocks the Bundles route", () => {
     render(
-      <AnalyticsRouteGate
-        pathname="/"
-        capability={{ status: "unresolved" }}
-        onRedirect={vi.fn()}
-      >
+      <AnalyticsRouteGate pathname="/" onRedirect={vi.fn()}>
         <div>Bundles content</div>
       </AnalyticsRouteGate>,
     );
@@ -30,6 +37,7 @@ describe("AnalyticsRouteGate", () => {
   it.each(["/analytics", "/installations"])(
     "withholds protected content while %s capability is unresolved",
     (pathname) => {
+      analyticsCapability = { status: "unresolved" };
       const protectedMount = vi.fn();
       const ProtectedContent = () => {
         protectedMount();
@@ -37,11 +45,7 @@ describe("AnalyticsRouteGate", () => {
       };
 
       render(
-        <AnalyticsRouteGate
-          pathname={pathname}
-          capability={{ status: "unresolved" }}
-          onRedirect={vi.fn()}
-        >
+        <AnalyticsRouteGate pathname={pathname} onRedirect={vi.fn()}>
           <ProtectedContent />
         </AnalyticsRouteGate>,
       );
@@ -53,12 +57,9 @@ describe("AnalyticsRouteGate", () => {
   );
 
   it("renders protected content only when capability is supported", () => {
+    analyticsCapability = supported;
     render(
-      <AnalyticsRouteGate
-        pathname="/analytics"
-        capability={supported}
-        onRedirect={vi.fn()}
-      >
+      <AnalyticsRouteGate pathname="/analytics" onRedirect={vi.fn()}>
         <div>Protected content</div>
       </AnalyticsRouteGate>,
     );
@@ -67,6 +68,7 @@ describe("AnalyticsRouteGate", () => {
   });
 
   it("redirects unsupported routes without mounting protected content", async () => {
+    analyticsCapability = { status: "unsupported" };
     const onRedirect = vi.fn();
     const protectedMount = vi.fn();
     const ProtectedContent = () => {
@@ -75,11 +77,7 @@ describe("AnalyticsRouteGate", () => {
     };
 
     render(
-      <AnalyticsRouteGate
-        pathname="/analytics"
-        capability={{ status: "unsupported" }}
-        onRedirect={onRedirect}
-      >
+      <AnalyticsRouteGate pathname="/analytics" onRedirect={onRedirect}>
         <ProtectedContent />
       </AnalyticsRouteGate>,
     );
@@ -90,6 +88,10 @@ describe("AnalyticsRouteGate", () => {
   });
 
   it("shows a diagnosable capability error without protected content", () => {
+    analyticsCapability = {
+      status: "error",
+      error: new Error("Network offline"),
+    };
     const protectedMount = vi.fn();
     const ProtectedContent = () => {
       protectedMount();
@@ -97,11 +99,7 @@ describe("AnalyticsRouteGate", () => {
     };
 
     const { container } = render(
-      <AnalyticsRouteGate
-        pathname="/installations"
-        capability={{ status: "error", error: new Error("Network offline") }}
-        onRedirect={vi.fn()}
-      >
+      <AnalyticsRouteGate pathname="/installations" onRedirect={vi.fn()}>
         <ProtectedContent />
       </AnalyticsRouteGate>,
     );

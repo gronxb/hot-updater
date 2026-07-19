@@ -5,25 +5,23 @@ import { useEffect, type ReactNode } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  type AnalyticsCapabilityState,
-  getProtectedAnalyticsRouteDecision,
-} from "@/lib/analytics-api";
+import { getProtectedAnalyticsRouteDecision } from "@/lib/analytics-api";
+
+import { useAnalyticsCapability } from "./AnalyticsCapabilityContext";
 
 const isProtectedPath = (pathname: string): boolean =>
   pathname === "/analytics" || pathname === "/installations";
 
 export function AnalyticsRouteGate({
-  capability,
   children,
   onRedirect,
   pathname,
 }: {
-  readonly capability: AnalyticsCapabilityState;
   readonly children: ReactNode;
   readonly onRedirect: () => void;
   readonly pathname: string;
 }) {
+  const capability = useAnalyticsCapability();
   const decision = isProtectedPath(pathname)
     ? getProtectedAnalyticsRouteDecision(capability)
     : "allow";

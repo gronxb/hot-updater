@@ -8,6 +8,11 @@ import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
 import { BundleAnalyticsSummary } from "./BundleAnalyticsSummary";
 
 const useBundleEventAnalyticsQueryMock = vi.fn();
+let analyticsCapability: AnalyticsCapabilityState = { status: "unresolved" };
+
+vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
+  useAnalyticsCapability: () => analyticsCapability,
+}));
 
 vi.mock("@/lib/api", () => ({
   useBundleEventAnalyticsQuery: (input: unknown, enabled: boolean) =>
@@ -85,6 +90,7 @@ const capability = (
 
 describe("BundleAnalyticsSummary", () => {
   beforeEach(() => {
+    analyticsCapability = { status: "unresolved" };
     useBundleEventAnalyticsQueryMock.mockReset();
   });
 
@@ -93,12 +99,8 @@ describe("BundleAnalyticsSummary", () => {
   it.each(["unresolved", "unsupported", "error"] as const)(
     "mounts no card or query while capability is %s",
     (status) => {
-      render(
-        <BundleAnalyticsSummary
-          bundle={bundle}
-          capability={capability(status)}
-        />,
-      );
+      analyticsCapability = capability(status);
+      render(<BundleAnalyticsSummary bundle={bundle} />);
 
       expect(screen.queryByText("Bundle movement · 30 days")).toBeNull();
       expect(useBundleEventAnalyticsQueryMock).not.toHaveBeenCalled();
@@ -106,13 +108,14 @@ describe("BundleAnalyticsSummary", () => {
   );
 
   it("renders compact loading feedback after support is confirmed", () => {
+    analyticsCapability = supported;
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: undefined,
       error: null,
       isLoading: true,
     });
 
-    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
+    render(<BundleAnalyticsSummary bundle={bundle} />);
 
     expect(
       screen.getByLabelText("Loading reported bundle outcomes"),
@@ -120,13 +123,14 @@ describe("BundleAnalyticsSummary", () => {
   });
 
   it("renders selected-period metrics and the accessible movement chart", () => {
+    analyticsCapability = supported;
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: analytics,
       error: null,
       isLoading: false,
     });
 
-    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
+    render(<BundleAnalyticsSummary bundle={bundle} />);
 
     expect(screen.getByText("Bundle movement · 30 days")).toBeDefined();
     expect(screen.getAllByText("Newly applied")).toBeDefined();
@@ -157,6 +161,7 @@ describe("BundleAnalyticsSummary", () => {
   });
 
   it("explains when the selected window has no activity", () => {
+    analyticsCapability = supported;
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: {
         ...analytics,
@@ -176,7 +181,7 @@ describe("BundleAnalyticsSummary", () => {
       isLoading: false,
     });
 
-    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
+    render(<BundleAnalyticsSummary bundle={bundle} />);
 
     expect(
       screen.getByText("No bundle movement in this period."),
@@ -185,13 +190,14 @@ describe("BundleAnalyticsSummary", () => {
   });
 
   it("renders supported analytics failures as an alert", () => {
+    analyticsCapability = supported;
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: undefined,
       error: new Error("Analytics request failed."),
       isLoading: false,
     });
 
-    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
+    render(<BundleAnalyticsSummary bundle={bundle} />);
 
     expect(screen.getByRole("alert").textContent).toContain(
       "Analytics request failed.",
@@ -199,13 +205,14 @@ describe("BundleAnalyticsSummary", () => {
   });
 
   it("renders dedicated guidance when the bounded Analytics scan is exceeded", () => {
+    analyticsCapability = supported;
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: undefined,
       error: new Error("Bundle event scan exceeded 50000 rows."),
       isLoading: false,
     });
 
-    render(<BundleAnalyticsSummary bundle={bundle} capability={supported} />);
+    render(<BundleAnalyticsSummary bundle={bundle} />);
 
     expect(screen.getByRole("alert").textContent).toContain(
       "Analytics report limit reached",

@@ -153,10 +153,9 @@ function RootLayout() {
   return (
     <AnalyticsCapabilityProvider value={capability}>
       <SidebarProvider>
-        <AppSidebar analyticsCapability={capability} />
+        <AppSidebar />
         <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
           <AnalyticsRouteGate
-            capability={capability}
             pathname={pathname}
             onRedirect={redirectToBundles}
           >

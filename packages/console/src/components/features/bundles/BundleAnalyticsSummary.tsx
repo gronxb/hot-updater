@@ -1,16 +1,15 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 
+import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
 import { AnalyticsErrorAlert } from "@/components/features/analytics/AnalyticsErrorAlert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { AnalyticsCapabilityState } from "@/lib/analytics-api";
 import { useBundleEventAnalyticsQuery } from "@/lib/api";
 
 import { BundleActivityChart } from "./BundleActivityChart";
 
 interface BundleAnalyticsSummaryProps {
   readonly bundle: Bundle;
-  readonly capability: AnalyticsCapabilityState;
 }
 
 function Metric({
@@ -113,8 +112,9 @@ function SupportedBundleAnalyticsSummary({
 
 export function BundleAnalyticsSummary({
   bundle,
-  capability,
 }: BundleAnalyticsSummaryProps) {
+  const capability = useAnalyticsCapability();
+
   if (capability.status !== "supported") {
     return null;
   }
