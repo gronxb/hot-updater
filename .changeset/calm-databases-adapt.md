@@ -23,6 +23,11 @@ capabilities, and the v1 staged mutation API has been removed. Provider
 functions now receive their configuration directly and close over it inside
 `createDatabaseAdapter({ name, adapter })`.
 
+Database adapter operations no longer receive request context. Providers close
+over their configured database client or binding, while request context remains
+available to server handlers and storage adapters for request-scoped URL and
+authorization behavior.
+
 Keep channel names directly on `bundles.channel` without introducing a channel
 model, table, collection, or foreign key. Adapters may expose an optimized
 `getChannels` aggregate, while the shared database client falls back to paging

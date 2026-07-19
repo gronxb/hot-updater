@@ -231,8 +231,8 @@ efficiently than the generic row-query path:
 ```typescript
 adapter: () => ({
   // required row methods...
-  getUpdateInfo: async (args, context) => {
-    return runOptimizedUpdateQuery(db, args, context);
+  getUpdateInfo: async (args) => {
+    return runOptimizedUpdateQuery(db, args);
   },
 });
 ```
@@ -250,7 +250,7 @@ isolation for the complete callback:
 ```typescript
 adapter: () => ({
   // required row methods...
-  transaction: async (callback, context) => {
+  transaction: async (callback) => {
     return db.transaction(async (transactionDb) => {
       return callback(createImplementation(transactionDb));
     });
@@ -258,11 +258,11 @@ adapter: () => ({
 });
 ```
 
-The transaction-bound implementation is valid only inside the callback and
-does not accept a separate context. The outer transaction binds the request
-context once and returns the callback's value. The public capability is this
-callback API; adapters do not expose separate `begin`, `commit`, or `rollback`
-methods.
+The transaction-bound implementation is valid only inside the callback. The
+database adapter API does not receive request context; providers should close
+over configured clients or bindings when they create the adapter. The public
+capability is this callback API; adapters do not expose separate `begin`,
+`commit`, or `rollback` methods.
 
 If `transaction` is absent, the shared client executes the same ordered writes
 sequentially. That fallback is intentionally non-atomic: it propagates the
