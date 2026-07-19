@@ -3,35 +3,26 @@ export interface RouteConfig {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-export interface Routes<TContext = unknown> {
-  readonly appendEvent?: (context?: TContext) => RouteConfig;
-  readonly bundleEventAnalytics?: (
-    bundleId: string,
-    context?: TContext,
-  ) => RouteConfig;
-  readonly bundleEventSummary?: (
-    bundleId: string,
-    context?: TContext,
-  ) => RouteConfig;
-  readonly bundleEventOverview?: (context?: TContext) => RouteConfig;
-  readonly activeInstallationOverview?: (context?: TContext) => RouteConfig;
+export interface Routes {
+  readonly appendEvent?: () => RouteConfig;
+  readonly bundleEventAnalytics?: (bundleId: string) => RouteConfig;
+  readonly bundleEventSummary?: (bundleId: string) => RouteConfig;
+  readonly bundleEventOverview?: () => RouteConfig;
+  readonly activeInstallationOverview?: () => RouteConfig;
   readonly create?: () => RouteConfig;
   readonly update?: (bundleId: string) => RouteConfig;
   readonly list?: () => RouteConfig;
   readonly channels?: () => RouteConfig;
-  readonly installationHistory?: (
-    installId: string,
-    context?: TContext,
-  ) => RouteConfig;
-  readonly installations?: (context?: TContext) => RouteConfig;
+  readonly installationHistory?: (installId: string) => RouteConfig;
+  readonly installations?: () => RouteConfig;
   readonly retrieve?: (bundleId: string) => RouteConfig;
   readonly delete?: (bundleId: string) => RouteConfig;
 }
 
-export interface StandaloneRepositoryConfig<TContext = unknown> {
+export interface StandaloneRepositoryConfig {
   readonly baseUrl: string;
   readonly commonHeaders?: Readonly<Record<string, string>>;
-  readonly routes?: Routes<TContext>;
+  readonly routes?: Routes;
   readonly supportsAnalytics?: boolean;
 }
 

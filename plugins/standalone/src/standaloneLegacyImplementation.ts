@@ -5,9 +5,9 @@ import { createLegacyReads } from "./standaloneLegacyReads";
 import { createLegacyWrites } from "./standaloneLegacyWrites";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
-export const createLegacyCompatibilityImplementation = <TContext>(
-  config: StandaloneRepositoryConfig<TContext>,
-): DatabaseAdapterImplementation<TContext> => {
+export const createLegacyCompatibilityImplementation = (
+  config: StandaloneRepositoryConfig,
+): DatabaseAdapterImplementation => {
   const remote = createStandaloneBundleRemote(config);
   return {
     ...createLegacyWrites(remote),

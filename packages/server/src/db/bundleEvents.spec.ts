@@ -101,13 +101,10 @@ describe("bundle event installation search", () => {
     const findMany = vi.spyOn(database, "findMany");
     const count = vi.spyOn(database, "count");
     const service = createBundleEventService(database);
-    const context = { requestId: "search-request" };
-
     const result = await service.searchInstallations(
       "historical-match",
       5,
       200,
-      context,
     );
 
     expect(result.pagination).toEqual({ total: 205, limit: 5, offset: 200 });
@@ -130,10 +127,7 @@ describe("bundle event installation search", () => {
         value: expect.any(Number),
       },
     ]);
-    expect(count).not.toHaveBeenCalledWith(
-      expect.objectContaining({ distinct: expect.anything() }),
-      context,
-    );
+    expect(count).not.toHaveBeenCalled();
   });
 
   it("aggregates repeated installation rows without adjacency", async () => {
@@ -151,9 +145,7 @@ describe("bundle event installation search", () => {
     const count = vi.spyOn(database, "count");
     const findMany = vi.spyOn(database, "findMany");
     const service = createBundleEventService(database);
-    const context = { requestId: "overview-request" };
-
-    const overview = await service.getBundleEventOverview(context);
+    const overview = await service.getBundleEventOverview();
 
     expect(overview).toEqual({
       trackedInstallations: 3,
@@ -165,6 +157,6 @@ describe("bundle event installation search", () => {
     });
     expect(count).not.toHaveBeenCalled();
     expectSingleMaterialization(findMany);
-    expect(findMany.mock.calls[0]?.[1]).toBe(context);
+    expect(findMany.mock.calls[0]).toHaveLength(1);
   });
 });

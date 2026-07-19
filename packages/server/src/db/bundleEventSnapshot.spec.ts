@@ -79,7 +79,6 @@ describe("bundle event cutoff-bounded scans", () => {
           { field: "received_at_ms", operator: "lt", value: cutoffMs },
         ],
       }),
-      undefined,
     );
   });
 
@@ -134,8 +133,8 @@ describe("bundle event cutoff-bounded scans", () => {
     const releaseStatement = createDeferred();
     const findMany = vi
       .spyOn(database, "findMany")
-      .mockImplementation(async (input, context) => {
-        const rows = await originalFindMany(input, context);
+      .mockImplementation(async (input) => {
+        const rows = await originalFindMany(input);
         statementMaterialized.resolve();
         await releaseStatement.promise;
         return rows;
@@ -221,7 +220,6 @@ describe("bundle event cutoff-bounded scans", () => {
           { field: "received_at_ms", operator: "lt", value: cutoffMs },
         ],
       }),
-      undefined,
     );
   });
 });

@@ -52,11 +52,11 @@ describe("runtime createHotUpdater", () => {
 
   it("accepts a direct v2 adapter object without exposing maintenance methods", () => {
     // Given
-    const database: DatabaseAdapter<undefined> = {
+    const database: DatabaseAdapter = {
       ...createInMemoryDatabaseAdapter(),
       name: "contextlessTestDatabase",
     };
-    const storage = (): RuntimeStoragePlugin<unknown> => ({
+    const storage = (): RuntimeStoragePlugin<undefined> => ({
       name: "contextlessTestStorage",
       supportedProtocol: "s3",
       profiles: {
@@ -128,20 +128,20 @@ describe("runtime createHotUpdater", () => {
     expect(createMigrator).toHaveBeenCalledOnce();
   });
 
-  it("passes handler context to the optional update fast-path and storage", async () => {
+  it("passes handler context to storage but not the database adapter", async () => {
     // Given
     const request = new Request(updateUrl);
-    const getUpdateInfo = vi.fn<
-      NonNullable<DatabaseAdapter<TestContext>["getUpdateInfo"]>
-    >(async () => ({
-      fileHash: runtimeBundle.fileHash,
-      id: runtimeBundle.id,
-      message: runtimeBundle.message,
-      shouldForceUpdate: false,
-      status: "UPDATE",
-      storageUri: runtimeBundle.storageUri,
-    }));
-    const database: DatabaseAdapter<TestContext> = {
+    const getUpdateInfo = vi.fn<NonNullable<DatabaseAdapter["getUpdateInfo"]>>(
+      async () => ({
+        fileHash: runtimeBundle.fileHash,
+        id: runtimeBundle.id,
+        message: runtimeBundle.message,
+        shouldForceUpdate: false,
+        status: "UPDATE",
+        storageUri: runtimeBundle.storageUri,
+      }),
+    );
+    const database: DatabaseAdapter = {
       ...createRuntimeDatabase(),
       getUpdateInfo,
     };
@@ -174,14 +174,14 @@ describe("runtime createHotUpdater", () => {
       id: runtimeBundle.id,
       status: "UPDATE",
     });
-    expect(getUpdateInfo).toHaveBeenCalledWith(expect.any(Object), context);
+    expect(getUpdateInfo).toHaveBeenCalledWith(expect.any(Object));
     expect(getDownloadUrl).toHaveBeenCalledWith(
       runtimeBundle.storageUri,
       context,
     );
   });
 
-  it("passes explicit context to generic low adapter queries", async () => {
+  it("does not pass handler context to generic database queries", async () => {
     // Given
     const request = new Request(updateUrl);
     const database = createRuntimeDatabase();
@@ -206,7 +206,7 @@ describe("runtime createHotUpdater", () => {
 
     // Then
     expect(response.status).toBe(200);
-    expect(findMany).toHaveBeenCalledWith(expect.any(Object), context);
+    expect(findMany).toHaveBeenCalledWith(expect.any(Object));
   });
 
   it("ignores framework bindings when an extra execution argument is passed", async () => {
@@ -219,7 +219,7 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE" as const,
       storageUri: runtimeBundle.storageUri,
     }));
-    const database: DatabaseAdapter<TestContext> = {
+    const database: DatabaseAdapter = {
       ...createRuntimeDatabase(),
       getUpdateInfo,
     };

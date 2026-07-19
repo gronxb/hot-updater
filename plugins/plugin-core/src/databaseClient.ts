@@ -19,24 +19,14 @@ import type {
 
 const PAGE_SIZE = 100;
 
-export interface DatabaseClient<TContext = unknown> {
-  getBundleById(id: string, context?: TContext): Promise<Bundle | null>;
-  getUpdateInfo(
-    args: GetBundlesArgs,
-    context?: TContext,
-  ): Promise<UpdateInfo | null>;
-  getChannels(context?: TContext): Promise<string[]>;
-  getBundles(
-    options: DatabaseBundleQueryOptions,
-    context?: TContext,
-  ): Promise<PaginatedResult>;
-  insertBundle(bundle: Bundle, context?: TContext): Promise<void>;
-  updateBundleById(
-    bundleId: string,
-    update: Partial<Bundle>,
-    context?: TContext,
-  ): Promise<void>;
-  deleteBundleById(bundleId: string, context?: TContext): Promise<void>;
+export interface DatabaseClient {
+  getBundleById(id: string): Promise<Bundle | null>;
+  getUpdateInfo(args: GetBundlesArgs): Promise<UpdateInfo | null>;
+  getChannels(): Promise<string[]>;
+  getBundles(options: DatabaseBundleQueryOptions): Promise<PaginatedResult>;
+  insertBundle(bundle: Bundle): Promise<void>;
+  updateBundleById(bundleId: string, update: Partial<Bundle>): Promise<void>;
+  deleteBundleById(bundleId: string): Promise<void>;
   /**
    * Runs multiple aggregate mutations in one adapter transaction when
    * available. Without transaction support, operations run sequentially and
@@ -44,11 +34,10 @@ export interface DatabaseClient<TContext = unknown> {
    */
   mutate<TResult>(
     operation: (client: DatabaseMutationClient) => Promise<TResult>,
-    context?: TContext,
   ): Promise<TResult>;
 }
 
-export type DatabaseMutationClient = Omit<DatabaseClient<undefined>, "mutate">;
+export type DatabaseMutationClient = Omit<DatabaseClient, "mutate">;
 
 export class DatabaseBundleNotFoundError extends Error {
   readonly name = "DatabaseBundleNotFoundError";
@@ -58,21 +47,9 @@ export class DatabaseBundleNotFoundError extends Error {
   }
 }
 
-const bindContext = <TContext>(
-  adapter: DatabaseAdapter<TContext>,
-  context: TContext | undefined,
-): TransactionDatabaseAdapter => ({
-  create: (input) => adapter.create(input, context),
-  update: (input) => adapter.update(input, context),
-  delete: (input) => adapter.delete(input, context),
-  count: (input) => adapter.count(input, context),
-  findOne: (input) => adapter.findOne(input, context),
-  findMany: (input) => adapter.findMany(input, context),
-});
-
 const transactionAdapter = (
   database: TransactionDatabaseAdapter,
-): DatabaseAdapter<undefined> => ({
+): DatabaseAdapter => ({
   name: "transaction",
   ...database,
 });
@@ -209,48 +186,40 @@ const responsePage = async (
   };
 };
 
-export const createDatabaseClient = <TContext = unknown>(
-  adapter: DatabaseAdapter<TContext>,
-): DatabaseClient<TContext> => {
+export const createDatabaseClient = (
+  adapter: DatabaseAdapter,
+): DatabaseClient => {
   const mutate = async (
     operation: (database: TransactionDatabaseAdapter) => Promise<void>,
-    context: TContext | undefined,
   ): Promise<void> => {
     if (adapter.transaction) {
-      await adapter.transaction(operation, context);
+      await adapter.transaction(operation);
     } else {
-      await operation(bindContext(adapter, context));
+      await operation(adapter);
     }
     await adapter.onDatabaseUpdated?.();
   };
 
-  const getBundleById = async (
-    id: string,
-    context?: TContext,
-  ): Promise<Bundle | null> => {
-    const database = bindContext(adapter, context);
-    const row = await database.findOne({
+  const getBundleById = async (id: string): Promise<Bundle | null> => {
+    const row = await adapter.findOne({
       model: "bundles",
       where: [{ field: "id", value: id }],
     });
     if (!row) return null;
-    return (await hydrateRows(database, [row]))[0] ?? null;
+    return (await hydrateRows(adapter, [row]))[0] ?? null;
   };
 
-  const getBundles = (
-    options: DatabaseBundleQueryOptions,
-    context?: TContext,
-  ) => responsePage(bindContext(adapter, context), options);
+  const getBundles = (options: DatabaseBundleQueryOptions) =>
+    responsePage(adapter, options);
 
   const mutateBatch = async <TResult>(
     operation: (client: DatabaseMutationClient) => Promise<TResult>,
-    context: TContext | undefined,
   ): Promise<TResult> => {
     const run = (database: TransactionDatabaseAdapter) =>
       operation(createDatabaseClient(transactionAdapter(database)));
     const result = adapter.transaction
-      ? await adapter.transaction(run, context)
-      : await run(bindContext(adapter, context));
+      ? await adapter.transaction(run)
+      : await run(adapter);
     await adapter.onDatabaseUpdated?.();
     return result;
   };
@@ -258,12 +227,11 @@ export const createDatabaseClient = <TContext = unknown>(
   return {
     getBundleById,
     getBundles,
-    async getChannels(context) {
-      if (adapter.getChannels) return adapter.getChannels(context);
-      const database = bindContext(adapter, context);
+    async getChannels() {
+      if (adapter.getChannels) return adapter.getChannels();
       const channels = new Set<string>();
       for (let offset = 0; ; offset += PAGE_SIZE) {
-        const rows = await database.findMany({
+        const rows = await adapter.findMany({
           model: "bundles",
           select: ["channel"],
           limit: PAGE_SIZE,
@@ -277,11 +245,9 @@ export const createDatabaseClient = <TContext = unknown>(
         if (rows.length < PAGE_SIZE) return [...channels].sort();
       }
     },
-    async getUpdateInfo(args, context) {
+    async getUpdateInfo(args) {
       if (adapter.getUpdateInfo) {
-        return context === undefined
-          ? adapter.getUpdateInfo(args)
-          : adapter.getUpdateInfo(args, context);
+        return adapter.getUpdateInfo(args);
       }
       const channel = args.channel ?? "production";
       const minBundleId = args.minBundleId ?? NIL_UUID;
@@ -294,14 +260,13 @@ export const createDatabaseClient = <TContext = unknown>(
           ? { fingerprintHash: args.fingerprintHash }
           : { targetAppVersionNotNull: true }),
       };
-      const database = bindContext(adapter, context);
-      const rows = await loadBundleRows(database, toBundleWhere(where));
-      const bundles = (await hydrateRows(database, rows)).filter((bundle) =>
+      const rows = await loadBundleRows(adapter, toBundleWhere(where));
+      const bundles = (await hydrateRows(adapter, rows)).filter((bundle) =>
         bundleMatchesQueryWhere(bundle, where),
       );
-      return resolveUpdateInfoFromBundles({ args, bundles, context });
+      return resolveUpdateInfoFromBundles({ args, bundles });
     },
-    async insertBundle(bundle, context) {
+    async insertBundle(bundle) {
       await mutate(async (database) => {
         await database.create({
           model: "bundles",
@@ -310,9 +275,9 @@ export const createDatabaseClient = <TContext = unknown>(
         for (const patch of bundleToPatchRows(bundle)) {
           await database.create({ model: "bundle_patches", data: patch });
         }
-      }, context);
+      });
     },
-    async updateBundleById(bundleId, update, context) {
+    async updateBundleById(bundleId, update) {
       await mutate(async (database) => {
         const currentRow = await database.findOne({
           model: "bundles",
@@ -337,15 +302,15 @@ export const createDatabaseClient = <TContext = unknown>(
         for (const patch of bundleToPatchRows(next)) {
           await database.create({ model: "bundle_patches", data: patch });
         }
-      }, context);
+      });
     },
-    async deleteBundleById(bundleId, context) {
+    async deleteBundleById(bundleId) {
       await mutate(async (database) => {
         await database.delete({
           model: "bundles",
           where: [{ field: "id", value: bundleId }],
         });
-      }, context);
+      });
     },
     mutate: mutateBatch,
   };

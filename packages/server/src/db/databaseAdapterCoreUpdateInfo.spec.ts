@@ -27,10 +27,10 @@ describe("createDatabaseAdapterCore update info", () => {
       status: "UPDATE",
       storageUri: targetBundle.storageUri,
     };
-    const getUpdateInfo = vi.fn<
-      NonNullable<DatabaseAdapter<TestContext>["getUpdateInfo"]>
-    >(async () => expected);
-    const adapter: DatabaseAdapter<TestContext> = {
+    const getUpdateInfo = vi.fn<NonNullable<DatabaseAdapter["getUpdateInfo"]>>(
+      async () => expected,
+    );
+    const adapter: DatabaseAdapter = {
       ...baseAdapter,
       getUpdateInfo,
     };
@@ -42,14 +42,14 @@ describe("createDatabaseAdapterCore update info", () => {
     const result = await core.api.getUpdateInfo(updateArgs, context);
 
     expect(result).toEqual(expected);
-    expect(getUpdateInfo).toHaveBeenCalledWith(updateArgs, context);
+    expect(getUpdateInfo).toHaveBeenCalledWith(updateArgs);
     expect(findMany).not.toHaveBeenCalled();
   });
 
   it("does not scan when the optional update fast-path returns null", async () => {
     const baseAdapter = createInMemoryDatabaseAdapter();
     const findMany = vi.spyOn(baseAdapter, "findMany");
-    const adapter: DatabaseAdapter<TestContext> = {
+    const adapter: DatabaseAdapter = {
       ...baseAdapter,
       getUpdateInfo: vi.fn(async () => null),
     };
@@ -62,8 +62,7 @@ describe("createDatabaseAdapterCore update info", () => {
   });
 
   it("derives update info through the fixed low models without a fast-path", async () => {
-    const adapter: DatabaseAdapter<TestContext> =
-      createInMemoryDatabaseAdapter();
+    const adapter: DatabaseAdapter = createInMemoryDatabaseAdapter();
     await seedBundles(adapter);
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
 
@@ -80,8 +79,7 @@ describe("createDatabaseAdapterCore update info", () => {
   });
 
   it("resolves manifest assets and patch metadata from v2 rows", async () => {
-    const adapter: DatabaseAdapter<TestContext> =
-      createInMemoryDatabaseAdapter();
+    const adapter: DatabaseAdapter = createInMemoryDatabaseAdapter();
     await seedBundles(adapter);
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl, {
       readStorageText: async (storageUri) => manifests.get(storageUri) ?? null,
@@ -116,8 +114,7 @@ describe("createDatabaseAdapterCore update info", () => {
   });
 
   it("falls back to archive metadata when a manifest cannot be loaded", async () => {
-    const adapter: DatabaseAdapter<TestContext> =
-      createInMemoryDatabaseAdapter();
+    const adapter: DatabaseAdapter = createInMemoryDatabaseAdapter();
     await seedBundles(adapter);
     const core = createDatabaseAdapterCore(adapter, resolveFileUrl, {
       readStorageText: async () => null,
@@ -137,7 +134,7 @@ describe("createDatabaseAdapterCore update info", () => {
 
   it("resolves initialization rollbacks without reading manifests", async () => {
     const baseAdapter = createInMemoryDatabaseAdapter();
-    const adapter: DatabaseAdapter<TestContext> = {
+    const adapter: DatabaseAdapter = {
       ...baseAdapter,
       getUpdateInfo: async () => ({
         fileHash: null,

@@ -19,12 +19,8 @@ import {
   encodeD1Values,
 } from "./d1Sql";
 
-export interface D1Executor<TContext = unknown> {
-  query(
-    sql: string,
-    params: readonly string[],
-    context?: TContext,
-  ): Promise<readonly unknown[]>;
+export interface D1Executor {
+  query(sql: string, params: readonly string[]): Promise<readonly unknown[]>;
 }
 
 const tableNames = {
@@ -171,12 +167,12 @@ const updateEntries = (
   update: UpdateBundleDatabaseImplementationInput["update"],
 ): readonly [string, unknown][] => Object.entries(update);
 
-export const createD1Implementation = <TContext = unknown>(
-  executor: D1Executor<TContext>,
-): DatabaseAdapterImplementation<TContext> => ({
-  async create(input, context) {
+export const createD1Implementation = (
+  executor: D1Executor,
+): DatabaseAdapterImplementation => ({
+  async create(input) {
     const query = insertQuery(input);
-    const rows = await executor.query(query.sql, query.params, context);
+    const rows = await executor.query(query.sql, query.params);
     switch (input.model) {
       case "bundles":
         return parseD1Row("bundles", rows[0]);
@@ -186,14 +182,13 @@ export const createD1Implementation = <TContext = unknown>(
         return parseD1Row("bundle_events", rows[0]);
     }
   },
-  async update(input, context) {
+  async update(input) {
     const entries = updateEntries(input.update);
     if (entries.length === 0) {
       const where = buildD1Where(input.where);
       const rows = await executor.query(
         `SELECT * FROM bundles${where.sql} LIMIT 1`,
         where.params,
-        context,
       );
       return rows[0] === undefined ? null : parseD1Row("bundles", rows[0]);
     }
@@ -204,35 +199,31 @@ export const createD1Implementation = <TContext = unknown>(
     const rows = await executor.query(
       `UPDATE bundles SET ${assignments}${where.sql} RETURNING *`,
       [...encodeD1Values(entries.map(([, value]) => value)), ...where.params],
-      context,
     );
     return rows[0] === undefined ? null : parseD1Row("bundles", rows[0]);
   },
-  async delete(input: DeleteDatabaseImplementationInput, context) {
+  async delete(input: DeleteDatabaseImplementationInput) {
     const where = buildD1Where(input.where);
     await executor.query(
       `DELETE FROM ${tableNames[input.model]}${where.sql}`,
       where.params,
-      context,
     );
   },
-  async count(input, context) {
+  async count(input) {
     const where = buildD1Where(input.where);
     const rows = await executor.query(
       `SELECT COUNT(*) AS count FROM ${tableNames[input.model]}${where.sql}`,
       where.params,
-      context,
     );
     const row = rows[0];
     if (typeof row !== "object" || row === null || !("count" in row)) return 0;
     return Number(row.count);
   },
-  async findOne(input: FindOneDatabaseImplementationInput, context) {
+  async findOne(input: FindOneDatabaseImplementationInput) {
     const where = buildD1Where(input.where);
     const rows = await executor.query(
       `SELECT * FROM ${tableNames[input.model]}${where.sql} LIMIT 1`,
       where.params,
-      context,
     );
     if (rows[0] === undefined) return null;
     switch (input.model) {
@@ -244,7 +235,7 @@ export const createD1Implementation = <TContext = unknown>(
         return parseD1Row("bundle_events", rows[0]);
     }
   },
-  async findMany(input: FindManyDatabaseImplementationInput, context) {
+  async findMany(input: FindManyDatabaseImplementationInput) {
     const where = buildD1Where(input.where);
     const order = buildD1Order(
       input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined),
@@ -253,7 +244,6 @@ export const createD1Implementation = <TContext = unknown>(
     const rows = await executor.query(
       `SELECT * FROM ${tableNames[input.model]}${where.sql}${order} LIMIT json_extract(?, '$') OFFSET json_extract(?, '$')`,
       [...where.params, ...pageParams],
-      context,
     );
     switch (input.model) {
       case "bundles":
@@ -264,11 +254,10 @@ export const createD1Implementation = <TContext = unknown>(
         return rows.map((row) => parseD1Row("bundle_events", row));
     }
   },
-  async getChannels(context) {
+  async getChannels() {
     const rows = await executor.query(
       "SELECT DISTINCT channel FROM bundles ORDER BY channel ASC",
       [],
-      context,
     );
     return rows.map(parseChannel);
   },

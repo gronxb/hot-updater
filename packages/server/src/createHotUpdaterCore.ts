@@ -35,17 +35,17 @@ export type HotUpdaterAPI<TContext = undefined> =
   RuntimeHotUpdaterAPI<TContext>;
 
 export interface CreateHotUpdaterOptions<TContext = undefined> {
-  readonly database: DatabaseAdapter<TContext>;
+  readonly database: DatabaseAdapter;
   readonly storages?: readonly (
-    | RuntimeStoragePlugin<NoInfer<TContext>>
-    | StoragePluginFactory<NoInfer<TContext>>
+    | RuntimeStoragePlugin<TContext>
+    | StoragePluginFactory<TContext>
   )[];
   /**
    * @deprecated Use `storages` instead. This field will be removed in a future version.
    */
   readonly storagePlugins?: readonly (
-    | RuntimeStoragePlugin<NoInfer<TContext>>
-    | StoragePluginFactory<NoInfer<TContext>>
+    | RuntimeStoragePlugin<TContext>
+    | StoragePluginFactory<TContext>
   )[];
   readonly basePath?: string;
   readonly cwd?: string;
@@ -105,7 +105,7 @@ export function createHotUpdaterCore<TContext = undefined>(
     throw new Error("@hot-updater/server only supports database adapters.");
   }
 
-  const adapter: DatabaseAdapter<TContext> = database;
+  const adapter: DatabaseAdapter = database;
   const adapterName = adapterCapabilities.adapterName ?? adapter.name;
   const assertSchemaReady = createSchemaReadinessChecker(
     adapterName,

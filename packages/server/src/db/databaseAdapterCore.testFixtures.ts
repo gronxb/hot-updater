@@ -56,9 +56,7 @@ export const resolveFileUrl = async (storageUri: string | null) => {
   return `https://assets.example.com/${url.host}${url.pathname}`;
 };
 
-export const seedBundles = async (
-  adapter: DatabaseAdapter<TestContext>,
-): Promise<void> => {
+export const seedBundles = async (adapter: DatabaseAdapter): Promise<void> => {
   const client = createDatabaseClient(adapter);
   await client.insertBundle(currentBundle);
   await client.insertBundle(targetBundle);

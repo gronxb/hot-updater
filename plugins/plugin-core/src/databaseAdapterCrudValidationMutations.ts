@@ -52,10 +52,9 @@ export const validateBundleUpdateData = (update: unknown): void => {
   }
 };
 
-export const validateBundleTargetUpdate = async <TContext>(
-  implementation: DatabaseAdapterImplementation<TContext>,
+export const validateBundleTargetUpdate = async (
+  implementation: DatabaseAdapterImplementation,
   input: UpdateDatabaseInput<"bundles", DatabaseSelect<"bundles"> | undefined>,
-  context: TContext | undefined,
 ): Promise<void> => {
   if (
     !Object.hasOwn(input.update, "target_app_version") &&
@@ -65,14 +64,11 @@ export const validateBundleTargetUpdate = async <TContext>(
   }
   const id = input.where[0]?.value;
   if (typeof id !== "string") return;
-  const current = await implementation.findOne(
-    {
-      model: "bundles",
-      where: [{ field: "id", value: id }],
-      select: ["target_app_version", "fingerprint_hash"],
-    },
-    context,
-  );
+  const current = await implementation.findOne({
+    model: "bundles",
+    where: [{ field: "id", value: id }],
+    select: ["target_app_version", "fingerprint_hash"],
+  });
   if (current === null) return;
   validateResult("bundles", current, [
     "target_app_version",

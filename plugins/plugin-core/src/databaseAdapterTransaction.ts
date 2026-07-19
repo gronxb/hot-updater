@@ -8,8 +8,8 @@ import type {
 export const createTransactionDatabaseAdapter = (
   implementation: TransactionDatabaseAdapterImplementation,
 ): TransactionDatabaseAdapter => {
-  const contextualImplementation: DatabaseAdapterImplementation<undefined> = {
+  const adapterImplementation: DatabaseAdapterImplementation = {
     ...implementation,
   };
-  return createDatabaseAdapterCrud(contextualImplementation);
+  return createDatabaseAdapterCrud(adapterImplementation);
 };

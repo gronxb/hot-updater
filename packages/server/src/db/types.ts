@@ -114,15 +114,14 @@ export interface DatabaseAdapterCapabilities {
   generateSchema?: SchemaGenerator;
 }
 
-export type DatabaseAdapterWithCapabilities<TContext = unknown> =
-  DatabaseAdapterContract<TContext> & DatabaseAdapterCapabilities;
+export type DatabaseAdapterWithCapabilities = DatabaseAdapterContract &
+  DatabaseAdapterCapabilities;
 
-export type DatabaseAdapter<TContext = unknown> =
-  DatabaseAdapterWithCapabilities<TContext>;
+export type DatabaseAdapter = DatabaseAdapterWithCapabilities;
 
-export function isDatabaseAdapter<TContext = unknown>(
+export function isDatabaseAdapter(
   adapter: unknown,
-): adapter is DatabaseAdapter<TContext> {
+): adapter is DatabaseAdapter {
   return (
     typeof adapter === "object" &&
     adapter !== null &&

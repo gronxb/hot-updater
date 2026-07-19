@@ -1,4 +1,3 @@
-import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 import {
   createDatabaseAdapter,
   type DatabaseAdapterImplementation,
@@ -30,9 +29,9 @@ export interface KyselyAdapterConfig<TDatabase extends object = object> {
   readonly relationMode?: RelationMode;
 }
 
-const createImplementation = <TDatabase extends object, TContext>(
+const createImplementation = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
-): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> => {
+): DatabaseAdapterImplementation => {
   const db = config.db;
   const relationMode = config.relationMode ?? "foreign-keys";
   const crud = createKyselyCrud(db, config.provider, relationMode);
@@ -62,7 +61,7 @@ const createImplementation = <TDatabase extends object, TContext>(
             input,
           ),
         ),
-    getUpdateInfo: (args, context) =>
+    getUpdateInfo: (args) =>
       getDatabaseAdapterUpdateInfo(
         {
           findBundles: async (where) =>
@@ -72,7 +71,6 @@ const createImplementation = <TDatabase extends object, TContext>(
           findPatches: (bundleIds) => findKyselyPatches(db, bundleIds),
         },
         args,
-        context,
       ),
     getChannels: () => findKyselyChannels(db),
     transaction: (callback) =>
@@ -86,13 +84,13 @@ const createImplementation = <TDatabase extends object, TContext>(
   };
 };
 
-export const kyselyAdapter = <TDatabase extends object, TContext = unknown>(
+export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
-): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
+): DatabaseAdapterWithCapabilities => {
   const adapter = createDatabaseAdapter({
     name: "kysely",
-    adapter: (): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> =>
-      createImplementation<TDatabase, TContext>(config),
+    adapter: (): DatabaseAdapterImplementation =>
+      createImplementation<TDatabase>(config),
   });
   return Object.assign(adapter, {
     adapterName: "kysely",

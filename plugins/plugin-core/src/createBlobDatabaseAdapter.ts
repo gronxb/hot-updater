@@ -122,7 +122,7 @@ const loadLegacySnapshot = async (
   );
 };
 
-export const createBlobDatabaseAdapter = <TContext = unknown>({
+export const createBlobDatabaseAdapter = ({
   name,
   adapter,
   onDatabaseUpdated,
@@ -248,7 +248,7 @@ export const createBlobDatabaseAdapter = <TContext = unknown>({
     return query(createBlobSnapshotCrud(state));
   };
 
-  const implementation: DatabaseAdapterImplementation<TContext> = {
+  const implementation: DatabaseAdapterImplementation = {
     create: (input) => mutate((database) => database.create(input)),
     update: (input) => mutate((database) => database.update(input)),
     delete: (input) => mutate((database) => database.delete(input)),
@@ -262,7 +262,7 @@ export const createBlobDatabaseAdapter = <TContext = unknown>({
       );
       return [...channels].sort();
     },
-    getUpdateInfo: async (args, context) => {
+    getUpdateInfo: async (args) => {
       await mutationQueue;
       const stored = await loadOptionalObject(
         operations,
@@ -291,7 +291,6 @@ export const createBlobDatabaseAdapter = <TContext = unknown>({
           args,
           manifestPrefix,
         ),
-        context,
       });
     },
     transaction: (callback) => mutate(callback),

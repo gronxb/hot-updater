@@ -7,4 +7,4 @@ import type { DatabaseClientTestContract } from "../src/setupDatabaseClientTestS
 
 export const createInMemoryDatabaseClient = (
   adapter: DatabaseAdapter,
-): DatabaseClientTestContract<unknown> => createDatabaseClient(adapter);
+): DatabaseClientTestContract => createDatabaseClient(adapter);

@@ -3,24 +3,16 @@ import type { BundleEventRow } from "@hot-updater/plugin-core";
 
 import type { CreateBundleEventRequest } from "./types";
 
-const EVENT_HEADER = "Hot-Updater-SDK-Version";
-
-const getSdkVersion = (
-  input: CreateBundleEventRequest,
-  context: unknown,
-): string | null => {
+const getSdkVersion = (input: CreateBundleEventRequest): string | null => {
   const sdkVersion = Reflect.get(input, "sdkVersion");
   if (typeof sdkVersion === "string" || sdkVersion === null) {
     return sdkVersion ?? null;
   }
-  if (typeof context !== "object" || context === null) return null;
-  const request = Reflect.get(context, "request");
-  return request instanceof Request ? request.headers.get(EVENT_HEADER) : null;
+  return null;
 };
 
 export const createBundleEventRow = (
   input: CreateBundleEventRequest,
-  context: unknown,
 ): BundleEventRow => {
   const base = {
     id: createUUIDv7(),
@@ -33,7 +25,7 @@ export const createBundleEventRow = (
     channel: input.channel,
     cohort: input.cohort,
     fingerprint_hash: input.fingerprintHash,
-    sdk_version: getSdkVersion(input, context),
+    sdk_version: getSdkVersion(input),
     received_at_ms: Date.now(),
   };
   switch (input.type) {

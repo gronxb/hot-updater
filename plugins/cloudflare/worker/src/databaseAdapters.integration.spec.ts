@@ -65,15 +65,10 @@ setupDatabaseAdapterTestSuite({
   dispose: () => undefined,
 });
 
-type TestContext = {
-  readonly env: { readonly DB: D1Database };
-};
-
-setupDatabaseAdapterTestSuite<TestContext>({
+setupDatabaseAdapterTestSuite({
   name: "cloudflare worker d1 fixed-model database adapter",
-  context: { env },
   migrate: () => undefined,
-  createAdapter: () => d1WorkerDatabase<TestContext>(),
+  createAdapter: () => d1WorkerDatabase(env.DB),
   reset,
   dispose: () => {
     state.db = undefined;

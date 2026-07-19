@@ -3,8 +3,6 @@ import {
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 
-import type { TestContext } from "./databaseAdapterCore.testFixtures";
-
 type TestEventRow = {
   id: string;
   type: "UPDATE_APPLIED" | "RECOVERED";
@@ -25,7 +23,7 @@ type TestEventRow = {
 
 export const createBundleEventAdapter = (
   supportsAnalytics = true,
-): DatabaseAdapter<TestContext> => {
+): DatabaseAdapter => {
   const rows: TestEventRow[] = [];
   const matches = (
     row: TestEventRow,
@@ -164,5 +162,5 @@ export const createBundleEventAdapter = (
         offset: input.offset ?? 0,
       }) as never[];
     },
-  } as DatabaseAdapter<TestContext>;
+  } as DatabaseAdapter;
 };

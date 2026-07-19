@@ -219,35 +219,6 @@ describe("database client", () => {
     expect(hook).not.toHaveBeenCalled();
   });
 
-  it("binds request context to every sequential low operation", async () => {
-    // Given
-    type TestContext = { readonly requestId: string };
-    const context = { requestId: "request-1" } satisfies TestContext;
-    const seenContexts: (TestContext | undefined)[] = [];
-    const { transaction: ignoredTransaction, ...sequentialAdapter } = adapter;
-    void ignoredTransaction;
-    const contextualAdapter: DatabaseAdapter<TestContext> = {
-      ...sequentialAdapter,
-      name: adapter.name,
-      create: (input, operationContext) => {
-        seenContexts.push(operationContext);
-        return adapter.create(input);
-      },
-      findOne: (input, operationContext) => {
-        seenContexts.push(operationContext);
-        return adapter.findOne(input);
-      },
-    };
-    const client = createDatabaseClient(contextualAdapter);
-
-    // When
-    await client.insertBundle(createBundle("304"), context);
-
-    // Then
-    expect(seenContexts.length).toBeGreaterThan(0);
-    expect(seenContexts.every((seen) => seen === context)).toBe(true);
-  });
-
   it("delegates the update-info fast path and matches the generic path", async () => {
     // Given
     const bundle = createBundle("401");

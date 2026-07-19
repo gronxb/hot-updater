@@ -235,12 +235,11 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
             ),
           ].sort();
         },
-        getUpdateInfo: async (args, context) => {
+        getUpdateInfo: async (args) => {
           await ensureMigrated();
           return resolveUpdateInfoFromBundles({
             args,
             bundles: await loadFirebaseUpdateBundles(collections, args),
-            context,
           });
         },
         transaction: (callback) => mutate(callback, true),

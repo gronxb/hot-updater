@@ -80,8 +80,8 @@ describe("bundle event activity series", () => {
     let appended = false;
     const findMany = vi
       .spyOn(database, "findMany")
-      .mockImplementation(async (input, context) => {
-        const page = await originalFindMany(input, context);
+      .mockImplementation(async (input) => {
+        const page = await originalFindMany(input);
         if (!appended && input.model === "bundle_events") {
           appended = true;
           await Promise.all(

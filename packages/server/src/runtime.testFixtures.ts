@@ -61,7 +61,7 @@ const createMigrator = (version: string | undefined): Migrator => ({
   },
 });
 
-export const createRuntimeDatabase = (): DatabaseAdapter<TestContext> => ({
+export const createRuntimeDatabase = (): DatabaseAdapter => ({
   ...createInMemoryDatabaseAdapter(),
   name: "testDatabase",
 });
@@ -69,7 +69,7 @@ export const createRuntimeDatabase = (): DatabaseAdapter<TestContext> => ({
 export const createSchemaManagedDatabase = (
   adapterName: string,
   version: string | undefined,
-): DatabaseAdapter<TestContext> & DatabaseAdapterCapabilities => ({
+): DatabaseAdapter & DatabaseAdapterCapabilities => ({
   ...createRuntimeDatabase(),
   adapterName,
   createMigrator: () => createMigrator(version),

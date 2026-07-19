@@ -100,20 +100,16 @@ describe("bundle event materialization budget", () => {
     // Then
     expect(rows).toHaveLength(BUNDLE_EVENT_SCAN_MAX_ROWS);
     expect(findMany).toHaveBeenCalledTimes(51);
-    expect(findMany).toHaveBeenNthCalledWith(
-      1,
-      {
-        model: "bundle_events",
-        where: [{ field: "received_at_ms", operator: "lt", value: cutoffMs }],
-        limit: 1_000,
-        offset: 0,
-        orderBy: [
-          { field: "received_at_ms", direction: "asc" },
-          { field: "id", direction: "asc" },
-        ],
-      },
-      undefined,
-    );
+    expect(findMany).toHaveBeenNthCalledWith(1, {
+      model: "bundle_events",
+      where: [{ field: "received_at_ms", operator: "lt", value: cutoffMs }],
+      limit: 1_000,
+      offset: 0,
+      orderBy: [
+        { field: "received_at_ms", direction: "asc" },
+        { field: "id", direction: "asc" },
+      ],
+    });
   });
 
   it("rejects a 50,001-row materialization", async () => {

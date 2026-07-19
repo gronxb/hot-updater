@@ -4,7 +4,6 @@ import type {
   BundlePatchRow,
   BundleRow,
   DatabaseWhere,
-  HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 import {
   filterCompatibleAppVersions,
@@ -37,10 +36,9 @@ const hydrateBundles = (
   );
 };
 
-export const getDatabaseAdapterUpdateInfo = async <TContext>(
+export const getDatabaseAdapterUpdateInfo = async (
   reader: UpdateInfoDatabaseReader,
   args: GetBundlesArgs,
-  context?: HotUpdaterContext<TContext>,
 ): Promise<UpdateInfo | null> => {
   const channelName = args.channel ?? "production";
   const minBundleId = args.minBundleId ?? NIL_UUID;
@@ -87,6 +85,5 @@ export const getDatabaseAdapterUpdateInfo = async <TContext>(
   return resolveUpdateInfoFromBundles({
     args: { ...args, channel: channelName, minBundleId },
     bundles: hydrateBundles(rows, patches),
-    context,
   });
 };

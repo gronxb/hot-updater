@@ -164,54 +164,44 @@ export interface TransactionDatabaseAdapter {
   ): Promise<SelectedDatabaseRow<TModel, TSelect>[]>;
 }
 
-export interface DatabaseAdapter<TContext = unknown> {
+export interface DatabaseAdapter {
   readonly name: string;
-  readonly [databaseBundleEventService]?: DatabaseBundleEventService<TContext>;
+  readonly [databaseBundleEventService]?: DatabaseBundleEventService;
   readonly [databaseAnalyticsSupport]?: true;
   create<
     TModel extends CreateDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: CreateDatabaseInput<TModel, TSelect>,
-    context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect>>;
   update<
     TModel extends UpdateDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: UpdateDatabaseInput<TModel, TSelect>,
-    context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect> | null>;
   delete<TModel extends DeleteDatabaseModel>(
     input: DeleteDatabaseInput<TModel>,
-    context?: TContext,
   ): Promise<void>;
   count<TModel extends CountDatabaseModel>(
     input: CountDatabaseInput<TModel>,
-    context?: TContext,
   ): Promise<number>;
   findOne<
     TModel extends FindOneDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindOneDatabaseInput<TModel, TSelect>,
-    context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect> | null>;
   findMany<
     TModel extends FindManyDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindManyDatabaseInput<TModel, TSelect>,
-    context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect>[]>;
-  getChannels?: (context?: TContext) => Promise<string[]>;
-  getUpdateInfo?: (
-    args: GetBundlesArgs,
-    context?: TContext,
-  ) => Promise<UpdateInfo | null>;
+  getChannels?: () => Promise<string[]>;
+  getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
   transaction?: <TResult>(
     callback: (transaction: TransactionDatabaseAdapter) => Promise<TResult>,
-    context?: TContext,
   ) => Promise<TResult>;
   onDatabaseUpdated?: () => Promise<void>;
   onUnmount?: () => Promise<void>;
@@ -283,41 +273,27 @@ export interface TransactionDatabaseAdapterImplementation {
   ): Promise<readonly DatabaseImplementationResult[]>;
 }
 
-export interface DatabaseAdapterImplementation<TContext = unknown> {
+export interface DatabaseAdapterImplementation {
   create(
     input: CreateDatabaseImplementationInput,
-    context?: TContext,
   ): Promise<DatabaseImplementationResult>;
   update(
     input: UpdateDatabaseImplementationInput,
-    context?: TContext,
   ): Promise<DatabaseImplementationResult | null>;
-  delete(
-    input: DeleteDatabaseImplementationInput,
-    context?: TContext,
-  ): Promise<void>;
-  count(
-    input: CountDatabaseImplementationInput,
-    context?: TContext,
-  ): Promise<number>;
+  delete(input: DeleteDatabaseImplementationInput): Promise<void>;
+  count(input: CountDatabaseImplementationInput): Promise<number>;
   findOne(
     input: FindOneDatabaseImplementationInput,
-    context?: TContext,
   ): Promise<DatabaseImplementationResult | null>;
   findMany(
     input: FindManyDatabaseImplementationInput,
-    context?: TContext,
   ): Promise<readonly DatabaseImplementationResult[]>;
-  getChannels?: (context?: TContext) => Promise<string[]>;
-  getUpdateInfo?: (
-    args: GetBundlesArgs,
-    context?: TContext,
-  ) => Promise<UpdateInfo | null>;
+  getChannels?: () => Promise<string[]>;
+  getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
   transaction?: <TResult>(
     callback: (
       transaction: TransactionDatabaseAdapterImplementation,
     ) => Promise<TResult>,
-    context?: TContext,
   ) => Promise<TResult>;
   onUnmount?: () => Promise<void>;
 }

@@ -27,42 +27,37 @@ describe("active installation bounded scan", () => {
     ]);
     const findMany = vi.spyOn(database, "findMany");
     const service = createBundleEventService(database);
-    const context = { requestId: "active-query" };
-
     // When
-    await service.getActiveInstallationOverview({ window: "24h" }, context);
+    await service.getActiveInstallationOverview({ window: "24h" });
 
     // Then
     expect(findMany).toHaveBeenCalledOnce();
-    expect(findMany).toHaveBeenCalledWith(
-      {
-        model: "bundle_events",
-        where: [
-          {
-            field: "received_at_ms",
-            operator: "gte",
-            value: ACTIVE_AS_OF_MS - DAY_MS,
-          },
-          {
-            field: "type",
-            operator: "in",
-            value: ["UPDATE_APPLIED", "RECOVERED", "UNCHANGED"],
-          },
-          {
-            field: "received_at_ms",
-            operator: "lt",
-            value: ACTIVE_AS_OF_MS,
-          },
-        ],
-        limit: BUNDLE_EVENT_SCAN_PAGE_SIZE,
-        offset: 0,
-        orderBy: [
-          { field: "received_at_ms", direction: "asc" },
-          { field: "id", direction: "asc" },
-        ],
-      },
-      context,
-    );
+    expect(findMany).toHaveBeenCalledWith({
+      model: "bundle_events",
+      where: [
+        {
+          field: "received_at_ms",
+          operator: "gte",
+          value: ACTIVE_AS_OF_MS - DAY_MS,
+        },
+        {
+          field: "type",
+          operator: "in",
+          value: ["UPDATE_APPLIED", "RECOVERED", "UNCHANGED"],
+        },
+        {
+          field: "received_at_ms",
+          operator: "lt",
+          value: ACTIVE_AS_OF_MS,
+        },
+      ],
+      limit: BUNDLE_EVENT_SCAN_PAGE_SIZE,
+      offset: 0,
+      orderBy: [
+        { field: "received_at_ms", direction: "asc" },
+        { field: "id", direction: "asc" },
+      ],
+    });
   });
 
   it("throws the stable typed limit for 50,001 matching rows", async () => {
@@ -98,16 +93,14 @@ describe("active installation bounded scan", () => {
       createUnchangedEvent("existing", ACTIVE_AS_OF_MS - 2),
     ]);
     const originalFindMany = database.findMany.bind(database);
-    vi.spyOn(database, "findMany").mockImplementation(
-      async (input, context) => {
-        const rows = await originalFindMany(input, context);
-        await database.create({
-          model: "bundle_events",
-          data: createUnchangedEvent("concurrent", ACTIVE_AS_OF_MS - 1),
-        });
-        return rows;
-      },
-    );
+    vi.spyOn(database, "findMany").mockImplementation(async (input) => {
+      const rows = await originalFindMany(input);
+      await database.create({
+        model: "bundle_events",
+        data: createUnchangedEvent("concurrent", ACTIVE_AS_OF_MS - 1),
+      });
+      return rows;
+    });
     const service = createBundleEventService(database);
 
     // When

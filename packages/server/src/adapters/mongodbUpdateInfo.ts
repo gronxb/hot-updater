@@ -33,7 +33,7 @@ type GetUpdateInfo = NonNullable<
 export const createMongoGetUpdateInfo = (
   collections: MongoUpdateCollections,
 ): GetUpdateInfo => {
-  return async (args, context) => {
+  return async (args) => {
     const channelName = args.channel ?? "production";
     const minBundleId = args.minBundleId ?? NIL_UUID;
     let rows: BundleRow[];
@@ -121,7 +121,6 @@ export const createMongoGetUpdateInfo = (
           patches.filter(({ bundle_id: bundleId }) => bundleId === row.id),
         ),
       ),
-      context,
     });
   };
 };

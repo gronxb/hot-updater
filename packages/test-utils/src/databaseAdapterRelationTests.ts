@@ -7,27 +7,20 @@ import {
   createBundleRowFixture,
 } from "./databaseTestFixtures";
 
-type RelationTestState<TContext> = DatabaseAdapterTestState<
-  DatabaseAdapter<TContext>,
-  TContext
->;
+type RelationTestState = DatabaseAdapterTestState<DatabaseAdapter>;
 
-const seedBundlePair = async <TContext>(
-  state: RelationTestState<TContext>,
+const seedBundlePair = async (
+  state: RelationTestState,
 ): Promise<readonly [string, string]> => {
   const base = createBundleRowFixture("61");
   const target = createBundleRowFixture("62");
-  await state
-    .getAdapter()
-    .create({ model: "bundles", data: base }, state.context);
-  await state
-    .getAdapter()
-    .create({ model: "bundles", data: target }, state.context);
+  await state.getAdapter().create({ model: "bundles", data: base });
+  await state.getAdapter().create({ model: "bundles", data: target });
   return [base.id, target.id];
 };
 
-export const registerDatabaseAdapterRelationTests = <TContext>(
-  state: RelationTestState<TContext>,
+export const registerDatabaseAdapterRelationTests = (
+  state: RelationTestState,
 ): void => {
   describe("channel aggregate", () => {
     it("returns distinct sorted channels from bundles", async (context) => {
@@ -41,10 +34,10 @@ export const registerDatabaseAdapterRelationTests = <TContext>(
         createBundleRowFixture("52", "production"),
         createBundleRowFixture("53", "staging"),
       ]) {
-        await adapter.create({ model: "bundles", data: bundle }, state.context);
+        await adapter.create({ model: "bundles", data: bundle });
       }
 
-      await expect(adapter.getChannels(state.context)).resolves.toEqual([
+      await expect(adapter.getChannels()).resolves.toEqual([
         "production",
         "staging",
       ]);
@@ -59,32 +52,26 @@ export const registerDatabaseAdapterRelationTests = <TContext>(
       for (const patch of [second, first]) {
         await state
           .getAdapter()
-          .create({ model: "bundle_patches", data: patch }, state.context);
+          .create({ model: "bundle_patches", data: patch });
       }
 
-      const rows = await state.getAdapter().findMany(
-        {
-          model: "bundle_patches",
-          where: [{ field: "bundle_id", value: targetId }],
-          select: ["id", "order_index"],
-          orderBy: [{ field: "order_index", direction: "asc" }],
-        },
-        state.context,
-      );
+      const rows = await state.getAdapter().findMany({
+        model: "bundle_patches",
+        where: [{ field: "bundle_id", value: targetId }],
+        select: ["id", "order_index"],
+        orderBy: [{ field: "order_index", direction: "asc" }],
+      });
       expect(rows).toEqual([
         { id: first.id, order_index: 1 },
         { id: second.id, order_index: 2 },
       ]);
 
-      await state.getAdapter().delete(
-        {
-          model: "bundle_patches",
-          where: [{ field: "bundle_id", value: targetId }],
-        },
-        state.context,
-      );
+      await state.getAdapter().delete({
+        model: "bundle_patches",
+        where: [{ field: "bundle_id", value: targetId }],
+      });
       await expect(
-        state.getAdapter().findMany({ model: "bundle_patches" }, state.context),
+        state.getAdapter().findMany({ model: "bundle_patches" }),
       ).resolves.toEqual([]);
     });
 
@@ -104,74 +91,54 @@ export const registerDatabaseAdapterRelationTests = <TContext>(
       await expect(
         state
           .getAdapter()
-          .create(
-            { model: "bundle_patches", data: missingOwner },
-            state.context,
-          ),
+          .create({ model: "bundle_patches", data: missingOwner }),
       ).rejects.toThrow();
       await expect(
         state
           .getAdapter()
-          .create(
-            { model: "bundle_patches", data: missingBase },
-            state.context,
-          ),
+          .create({ model: "bundle_patches", data: missingBase }),
       ).rejects.toThrow();
     });
 
     it("deletes patches whose base bundle is deleted", async () => {
       const [baseId, targetId] = await seedBundlePair(state);
       const patch = createBundlePatchRowFixture("91", targetId, baseId);
-      await state
-        .getAdapter()
-        .create({ model: "bundle_patches", data: patch }, state.context);
+      await state.getAdapter().create({ model: "bundle_patches", data: patch });
 
-      await state.getAdapter().delete(
-        {
-          model: "bundles",
-          where: [{ field: "id", value: baseId }],
-        },
-        state.context,
-      );
+      await state.getAdapter().delete({
+        model: "bundles",
+        where: [{ field: "id", value: baseId }],
+      });
 
       await expect(
-        state.getAdapter().findMany({ model: "bundle_patches" }, state.context),
+        state.getAdapter().findMany({ model: "bundle_patches" }),
       ).resolves.toEqual([]);
       await expect(
-        state
-          .getAdapter()
-          .findOne(
-            { model: "bundles", where: [{ field: "id", value: targetId }] },
-            state.context,
-          ),
+        state.getAdapter().findOne({
+          model: "bundles",
+          where: [{ field: "id", value: targetId }],
+        }),
       ).resolves.not.toBeNull();
     });
 
     it("deletes patches whose owner bundle is deleted", async () => {
       const [baseId, targetId] = await seedBundlePair(state);
       const patch = createBundlePatchRowFixture("92", targetId, baseId);
-      await state
-        .getAdapter()
-        .create({ model: "bundle_patches", data: patch }, state.context);
+      await state.getAdapter().create({ model: "bundle_patches", data: patch });
 
-      await state.getAdapter().delete(
-        {
-          model: "bundles",
-          where: [{ field: "id", value: targetId }],
-        },
-        state.context,
-      );
+      await state.getAdapter().delete({
+        model: "bundles",
+        where: [{ field: "id", value: targetId }],
+      });
 
       await expect(
-        state.getAdapter().findMany({ model: "bundle_patches" }, state.context),
+        state.getAdapter().findMany({ model: "bundle_patches" }),
       ).resolves.toEqual([]);
       await expect(
-        state
-          .getAdapter()
-          .findOne(
-            { model: "bundles", where: [{ field: "id", value: baseId }] },
-            state.context,
-          ),
+        state.getAdapter().findOne({
+          model: "bundles",
+          where: [{ field: "id", value: baseId }],
+        }),
       ).resolves.not.toBeNull();
     });
   });

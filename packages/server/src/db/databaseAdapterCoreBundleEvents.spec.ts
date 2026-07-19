@@ -236,7 +236,6 @@ describe("createDatabaseAdapterCore bundle events", () => {
           { field: "id", direction: "asc" },
         ],
       }),
-      undefined,
     );
     expect(findMany).toHaveBeenCalledOnce();
     now.mockRestore();

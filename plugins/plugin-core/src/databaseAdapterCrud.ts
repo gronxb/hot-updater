@@ -35,25 +35,24 @@ export {
   type DatabaseAdapterInputErrorCode,
 } from "./databaseAdapterCrudValidation";
 
-export type DatabaseAdapterCrud<TContext> = Pick<
-  DatabaseAdapter<TContext>,
+export type DatabaseAdapterCrud = Pick<
+  DatabaseAdapter,
   "count" | "create" | "delete" | "findMany" | "findOne" | "update"
 >;
 
-export const createDatabaseAdapterCrud = <TContext>(
-  implementation: DatabaseAdapterImplementation<TContext>,
-): DatabaseAdapterCrud<TContext> => {
+export const createDatabaseAdapterCrud = (
+  implementation: DatabaseAdapterImplementation,
+): DatabaseAdapterCrud => {
   async function create<
     TModel extends DatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: CreateDatabaseInput<TModel, TSelect>,
-    context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect>> {
     validateModel(input.model);
     validateCreateData(input.model, input.data);
     validateSelect(input.model, input.select);
-    const row = await implementation.create(input as never, context);
+    const row = await implementation.create(input as never);
     validateResult(
       input.model,
       row,
@@ -66,7 +65,6 @@ export const createDatabaseAdapterCrud = <TContext>(
     TSelect extends DatabaseSelect<"bundles"> | undefined = undefined,
   >(
     input: UpdateDatabaseInput<"bundles", TSelect>,
-    context?: TContext,
   ): Promise<SelectedDatabaseRow<"bundles", TSelect> | null> {
     validateModel(input.model);
     if (input.model !== "bundles") {
@@ -77,8 +75,8 @@ export const createDatabaseAdapterCrud = <TContext>(
     validateUpdateWhere(input.where);
     validateBundleUpdateData(input.update);
     validateSelect(input.model, input.select);
-    await validateBundleTargetUpdate(implementation, input, context);
-    const row = await implementation.update(input as never, context);
+    await validateBundleTargetUpdate(implementation, input);
+    const row = await implementation.update(input as never);
     if (row === null) return null;
     validateResult(
       input.model,
@@ -88,30 +86,24 @@ export const createDatabaseAdapterCrud = <TContext>(
     return selectRow<"bundles", TSelect>(row, input.select);
   }
 
-  async function deleteRows(
-    input: DeleteDatabaseInput<any>,
-    context?: TContext,
-  ): Promise<void> {
+  async function deleteRows(input: DeleteDatabaseInput<any>): Promise<void> {
     validateModel(input.model);
     if (input.model !== "bundles" && input.model !== "bundle_patches") {
       throw new DatabaseAdapterInputError("invalid-operation");
     }
     validateWhere(input.model, input.where);
     validateMutationWhere(input.where);
-    await implementation.delete(input as never, context);
+    await implementation.delete(input as never);
   }
 
-  async function count(
-    input: CountDatabaseInput<any>,
-    context?: TContext,
-  ): Promise<number> {
+  async function count(input: CountDatabaseInput<any>): Promise<number> {
     validateModel(input.model);
     validateWhere(input.model, input.where);
     validateDistinctFields(
       input.model,
       (input as { distinct?: readonly string[] }).distinct,
     );
-    const value = await implementation.count(input as never, context);
+    const value = await implementation.count(input as never);
     if (!Number.isSafeInteger(value) || value < 0) {
       throw new DatabaseAdapterInputError("invalid-result");
     }
@@ -123,12 +115,11 @@ export const createDatabaseAdapterCrud = <TContext>(
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindOneDatabaseInput<TModel, TSelect>,
-    context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect> | null> {
     validateModel(input.model);
     validateWhere(input.model, input.where);
     validateSelect(input.model, input.select);
-    const row = await implementation.findOne(input as never, context);
+    const row = await implementation.findOne(input as never);
     if (row === null) return null;
     validateResult(
       input.model,
@@ -143,7 +134,6 @@ export const createDatabaseAdapterCrud = <TContext>(
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
   >(
     input: FindManyDatabaseInput<TModel, TSelect>,
-    context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect>[]> {
     validateModel(input.model);
     validateWhere(input.model, input.where);
@@ -161,14 +151,11 @@ export const createDatabaseAdapterCrud = <TContext>(
       (input as { distinctOn?: unknown }).distinctOn,
       orderBy,
     );
-    const rows = await implementation.findMany(
-      {
-        ...input,
-        limit: input.limit ?? 100,
-        offset: input.offset ?? 0,
-      } as never,
-      context,
-    );
+    const rows = await implementation.findMany({
+      ...input,
+      limit: input.limit ?? 100,
+      offset: input.offset ?? 0,
+    } as never);
     if (!Array.isArray(rows)) {
       throw new DatabaseAdapterInputError("invalid-result");
     }
@@ -183,11 +170,11 @@ export const createDatabaseAdapterCrud = <TContext>(
   }
 
   return {
-    create: create as DatabaseAdapter<TContext>["create"],
-    update: update as DatabaseAdapter<TContext>["update"],
-    delete: deleteRows as DatabaseAdapter<TContext>["delete"],
-    count: count as DatabaseAdapter<TContext>["count"],
-    findOne: findOne as DatabaseAdapter<TContext>["findOne"],
-    findMany: findMany as DatabaseAdapter<TContext>["findMany"],
+    create: create as DatabaseAdapter["create"],
+    update: update as DatabaseAdapter["update"],
+    delete: deleteRows as DatabaseAdapter["delete"],
+    count: count as DatabaseAdapter["count"],
+    findOne: findOne as DatabaseAdapter["findOne"],
+    findMany: findMany as DatabaseAdapter["findMany"],
   };
 };

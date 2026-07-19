@@ -23,13 +23,13 @@ describe("bundle event analytics isolation", () => {
     const unchanged = Array.from({ length: 50_001 }, (_, index) =>
       createUnchangedEvent(`unchanged-${index}`, ACTIVE_AS_OF_MS - 2),
     );
-    vi.spyOn(database, "findMany").mockImplementation((input, context) => {
+    vi.spyOn(database, "findMany").mockImplementation((input) => {
       const hasTypePredicate = input.where?.some(
         (condition) =>
           (condition as { readonly field: string }).field === "type",
       );
       return hasTypePredicate
-        ? originalFindMany(input, context)
+        ? originalFindMany(input)
         : Promise.resolve(unchanged);
     });
 

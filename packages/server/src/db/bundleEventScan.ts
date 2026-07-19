@@ -20,10 +20,9 @@ export class BundleEventScanLimitExceededError extends Error {
   }
 }
 
-export type BundleEventScanScope<TContext> = {
-  readonly database: DatabaseAdapter<TContext>;
+export type BundleEventScanScope = {
+  readonly database: DatabaseAdapter;
   readonly cutoffMs: number;
-  readonly context?: TContext;
 };
 
 type BundleEventActivityRequest = {
@@ -50,8 +49,8 @@ export const withBundleEventCutoff = (
   { field: "received_at_ms", operator: "lt", value: cutoffMs },
 ];
 
-export const materializeBundleEventRows = async <TContext>(
-  scope: BundleEventScanScope<TContext>,
+export const materializeBundleEventRows = async (
+  scope: BundleEventScanScope,
   where?: readonly DatabaseWhere<"bundle_events">[],
 ): Promise<readonly BundleEventRow[]> => {
   const rows: BundleEventRow[] = [];
@@ -62,19 +61,16 @@ export const materializeBundleEventRows = async <TContext>(
       BUNDLE_EVENT_SCAN_PAGE_SIZE,
       BUNDLE_EVENT_MATERIALIZATION_LIMIT - rows.length,
     );
-    const page = await scope.database.findMany(
-      {
-        model: "bundle_events",
-        where: withBundleEventCutoff(where, scope.cutoffMs),
-        limit,
-        offset,
-        orderBy: [
-          { field: "received_at_ms", direction: "asc" },
-          { field: "id", direction: "asc" },
-        ],
-      },
-      scope.context,
-    );
+    const page = await scope.database.findMany({
+      model: "bundle_events",
+      where: withBundleEventCutoff(where, scope.cutoffMs),
+      limit,
+      offset,
+      orderBy: [
+        { field: "received_at_ms", direction: "asc" },
+        { field: "id", direction: "asc" },
+      ],
+    });
     if (page.length === 0) break;
     offset += page.length;
     for (const row of page) {
@@ -90,8 +86,8 @@ export const materializeBundleEventRows = async <TContext>(
   return rows;
 };
 
-export const materializeActiveBundleEventRows = async <TContext>(
-  scope: BundleEventScanScope<TContext>,
+export const materializeActiveBundleEventRows = async (
+  scope: BundleEventScanScope,
   window: ActiveInstallationWindow,
 ): Promise<readonly BundleEventRow[]> => {
   const definition = getActiveWindowDefinition(window);
@@ -142,8 +138,8 @@ export const getBundleEventWindowRange = (
   };
 };
 
-export const materializeBundleEventRowsForWindow = async <TContext>(
-  scope: BundleEventScanScope<TContext>,
+export const materializeBundleEventRowsForWindow = async (
+  scope: BundleEventScanScope,
   window: BundleEventAnalyticsWindow,
   where: readonly DatabaseWhere<"bundle_events">[],
 ): Promise<readonly BundleEventRow[]> => {

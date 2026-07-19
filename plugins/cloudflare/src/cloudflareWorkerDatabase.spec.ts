@@ -3,10 +3,6 @@ import { expect, it } from "vitest";
 
 import { d1WorkerDatabase, type D1Like } from "./cloudflareWorkerDatabase";
 
-type TestContext = {
-  readonly env: { readonly DB: D1Like };
-};
-
 const db: D1Like = {
   prepare: () => ({
     bind: () => ({
@@ -19,24 +15,19 @@ const db: D1Like = {
 
 it("advertises Analytics support", () => {
   // Given / When
-  const adapter = d1WorkerDatabase<TestContext>();
+  const adapter = d1WorkerDatabase(db);
 
   // Then
   expect(adapter[databaseAnalyticsSupport]).toBe(true);
 });
 
-it("resolves the D1 binding from each request context", async () => {
-  const adapter = d1WorkerDatabase<TestContext>();
+it("uses the configured D1 binding without request context", async () => {
+  // Given
+  const adapter = d1WorkerDatabase(db);
 
-  await expect(adapter.getChannels?.({ env: { DB: db } })).resolves.toEqual([
-    "production",
-  ]);
-});
+  // When
+  const channels = adapter.getChannels?.();
 
-it("rejects calls without a request D1 binding", async () => {
-  const adapter = d1WorkerDatabase<TestContext>();
-
-  await expect(adapter.getChannels?.()).rejects.toThrow(
-    "MissingD1BindingError",
-  );
+  // Then
+  await expect(channels).resolves.toEqual(["production"]);
 });

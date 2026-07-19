@@ -2,17 +2,15 @@ import { afterAll, beforeAll, beforeEach, describe } from "vitest";
 
 type Awaitable<T> = Promise<T> | T;
 
-export type DatabaseAdapterTestLifecycle<TAdapter, TContext> = {
+export type DatabaseAdapterTestLifecycle<TAdapter> = {
   readonly name: string;
   readonly createAdapter: () => Awaitable<TAdapter>;
   readonly migrate: () => Awaitable<void>;
   readonly reset: (adapter: TAdapter) => Awaitable<void>;
   readonly dispose: (adapter: TAdapter) => Awaitable<void>;
-  readonly context?: TContext;
 };
 
-export type DatabaseAdapterTestState<TAdapter, TContext> = {
-  readonly context: TContext | undefined;
+export type DatabaseAdapterTestState<TAdapter> = {
   readonly getAdapter: () => TAdapter;
 };
 
@@ -23,9 +21,9 @@ class AdapterUnavailableError extends Error {
   }
 }
 
-export const setupDatabaseAdapterTestRunner = <TAdapter, TContext>(
-  lifecycle: DatabaseAdapterTestLifecycle<TAdapter, TContext>,
-  registerTests: (state: DatabaseAdapterTestState<TAdapter, TContext>) => void,
+export const setupDatabaseAdapterTestRunner = <TAdapter>(
+  lifecycle: DatabaseAdapterTestLifecycle<TAdapter>,
+  registerTests: (state: DatabaseAdapterTestState<TAdapter>) => void,
 ): void => {
   describe(lifecycle.name, () => {
     let adapter: TAdapter | undefined;
@@ -51,9 +49,6 @@ export const setupDatabaseAdapterTestRunner = <TAdapter, TContext>(
       adapter = undefined;
     });
 
-    registerTests({
-      context: lifecycle.context,
-      getAdapter,
-    });
+    registerTests({ getAdapter });
   });
 };

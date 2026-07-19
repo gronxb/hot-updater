@@ -21,10 +21,8 @@ export type {
  * Channel names are exposed through the adapter aggregate instead of a
  * synthetic fixed-model relation.
  */
-export const standaloneRepository = <TContext = unknown>(
-  config: StandaloneRepositoryConfig<TContext>,
-) => {
-  const recordRepository = createDatabaseAdapter<TContext>({
+export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
+  const recordRepository = createDatabaseAdapter({
     name: "standalone-repository",
     adapter: () => createLegacyCompatibilityImplementation(config),
   });

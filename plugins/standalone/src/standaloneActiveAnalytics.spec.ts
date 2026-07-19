@@ -39,7 +39,6 @@ let responseStatus = 200;
 let requestCount = 0;
 let requestedUrl: URL | undefined;
 let requestedHeaders: Headers | undefined;
-const routeContexts: ({ readonly requestId: string } | undefined)[] = [];
 
 const server = setupServer(
   http.get(`${BASE_URL}/api/installations/active`, ({ request }) => {
@@ -57,28 +56,22 @@ beforeEach(() => {
   requestCount = 0;
   requestedUrl = undefined;
   requestedHeaders = undefined;
-  routeContexts.length = 0;
 });
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 const activeService = () => {
-  const repository = standaloneRepository<{ readonly requestId: string }>({
+  const repository = standaloneRepository({
     baseUrl: BASE_URL,
     commonHeaders: { Authorization: "Bearer common" },
     routes: {
-      activeInstallationOverview: (context?: {
-        readonly requestId: string;
-      }) => {
-        routeContexts.push(context);
-        return {
-          path: "/api/installations/active",
-          headers: {
-            "X-Request-Id": context?.requestId ?? "missing",
-            "X-Route": "active",
-          },
-        };
-      },
+      activeInstallationOverview: () => ({
+        path: "/api/installations/active",
+        headers: {
+          "X-Request-Id": "request-1",
+          "X-Route": "active",
+        },
+      }),
     },
     supportsAnalytics: true,
   });
@@ -90,22 +83,19 @@ const activeService = () => {
 describe("standalone active installation Analytics", () => {
   it("delegates the normalized exact alias with complete capability", async () => {
     const service = activeService();
-    const context = { requestId: "request-1" };
-
     await expect(
-      service.getActiveInstallationOverview(
-        { window: "7d", userId: "  Alias /+?  " },
-        context,
-      ),
+      service.getActiveInstallationOverview({
+        window: "7d",
+        userId: "  Alias /+?  ",
+      }),
     ).resolves.toEqual(overview);
 
     expect(requestedUrl?.searchParams.get("window")).toBe("7d");
     expect(requestedUrl?.searchParams.get("userId")).toBe("Alias /+?");
     expect(requestedUrl?.href).toContain("userId=Alias+%2F%2B%3F");
     expect(requestedHeaders?.get("authorization")).toBe("Bearer common");
-    expect(requestedHeaders?.get("x-request-id")).toBe(context.requestId);
+    expect(requestedHeaders?.get("x-request-id")).toBe("request-1");
     expect(requestedHeaders?.get("x-route")).toBe("active");
-    expect(routeContexts).toEqual([context]);
     expect(Object.keys(service).sort()).toEqual([
       "appendBundleEvent",
       "getActiveInstallationOverview",

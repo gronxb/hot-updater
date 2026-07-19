@@ -32,8 +32,8 @@ export interface BundleWindowInput {
   readonly sortBy?: DatabaseSortBy<"bundles">;
 }
 
-export const createStandaloneBundleRemote = <TContext>(
-  config: StandaloneRepositoryConfig<TContext>,
+export const createStandaloneBundleRemote = (
+  config: StandaloneRepositoryConfig,
 ) => {
   const customListRoute = config.routes?.list?.();
   const routes = {

@@ -1,4 +1,3 @@
-import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 import {
   createDatabaseAdapter,
   type DatabaseAdapterImplementation,
@@ -38,9 +37,9 @@ export interface DrizzleConfig {
   readonly transaction?: boolean;
 }
 
-const createImplementation = <TContext>(
+const createImplementation = (
   config: DrizzleConfig,
-): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> => {
+): DatabaseAdapterImplementation => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
   const bundles = getDrizzleTable(db, "bundles");
@@ -58,7 +57,7 @@ const createImplementation = <TContext>(
             ),
         }
       : {}),
-    getUpdateInfo: (args, context) =>
+    getUpdateInfo: (args) =>
       getDatabaseAdapterUpdateInfo(
         {
           findBundles: async (where) => {
@@ -80,7 +79,6 @@ const createImplementation = <TContext>(
                 }),
         },
         args,
-        context,
       ),
     getChannels: async () => {
       const rows = await db.query.bundles.findMany();
@@ -101,13 +99,12 @@ const createImplementation = <TContext>(
   };
 };
 
-export const drizzleAdapter = <TContext = unknown>(
+export const drizzleAdapter = (
   config: DrizzleConfig,
-): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
+): DatabaseAdapterWithCapabilities => {
   const adapter = createDatabaseAdapter({
     name: "drizzle",
-    adapter: (): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> =>
-      createImplementation<TContext>(config),
+    adapter: (): DatabaseAdapterImplementation => createImplementation(config),
   });
   return Object.assign(adapter, {
     adapterName: "drizzle",

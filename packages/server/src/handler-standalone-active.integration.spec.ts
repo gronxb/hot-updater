@@ -101,13 +101,13 @@ describe("standalone active installation handler integration", () => {
     );
     now.mockReturnValue(AS_OF_MS);
     const consoleApi = createHotUpdater({
-      database: standaloneRepository<{ readonly requestId: string }>({
+      database: standaloneRepository({
         baseUrl: `${BASE_URL}/hot-updater`,
         routes: {
-          activeInstallationOverview: (context) => ({
+          activeInstallationOverview: () => ({
             path: "/api/installations/active",
             headers: {
-              "X-Analytics-Context": context?.requestId ?? "missing",
+              "X-Analytics-Context": "console-request",
             },
           }),
         },
@@ -122,10 +122,10 @@ describe("standalone active installation handler integration", () => {
       throw new Error("Expected standalone Analytics support.");
     }
     await expect(
-      consoleApi.getActiveInstallationOverview(
-        { window: "24h", userId: "shared-alias" },
-        { requestId: "outer-context" },
-      ),
+      consoleApi.getActiveInstallationOverview({
+        window: "24h",
+        userId: "shared-alias",
+      }),
     ).resolves.toMatchObject({
       asOfMs: AS_OF_MS,
       window: "24h",
@@ -133,6 +133,6 @@ describe("standalone active installation handler integration", () => {
       bundles: [{ bundleId, installations: 2 }],
     });
     expect(activeRequests).toBe(1);
-    expect(forwardedHeader).toBe("outer-context");
+    expect(forwardedHeader).toBe("console-request");
   });
 });

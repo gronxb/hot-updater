@@ -70,30 +70,18 @@ const TRANSITION_EVENT_WHERE: readonly DatabaseWhere<"bundle_events">[] = [
   },
 ];
 
-export const createBundleEventService = <TContext>(
-  database: DatabaseAdapter<TContext>,
-) => ({
-  async appendBundleEvent(
-    input: CreateBundleEventRequest,
-    context?: TContext,
-  ): Promise<void> {
-    await database.create(
-      {
-        model: "bundle_events",
-        data: createBundleEventRow(input, context),
-      },
-      context,
-    );
+export const createBundleEventService = (database: DatabaseAdapter) => ({
+  async appendBundleEvent(input: CreateBundleEventRequest): Promise<void> {
+    await database.create({
+      model: "bundle_events",
+      data: createBundleEventRow(input),
+    });
   },
 
-  async getBundleEventSummary(
-    bundleId: string,
-    context?: TContext,
-  ): Promise<BundleEventSummary> {
-    const scope: BundleEventScanScope<TContext> = {
+  async getBundleEventSummary(bundleId: string): Promise<BundleEventSummary> {
+    const scope: BundleEventScanScope = {
       database,
       cutoffMs: Date.now(),
-      context,
     };
     const rows = await materializeBundleEventRows(
       scope,
@@ -114,12 +102,10 @@ export const createBundleEventService = <TContext>(
     window: BundleEventAnalyticsWindow,
     limit: number,
     offset: number,
-    context?: TContext,
   ): Promise<BundleEventAnalyticsResult> {
-    const scope: BundleEventScanScope<TContext> = {
+    const scope: BundleEventScanScope = {
       database,
       cutoffMs: Date.now(),
-      context,
     };
     const rows = await materializeBundleEventRowsForWindow(
       scope,
@@ -162,11 +148,9 @@ export const createBundleEventService = <TContext>(
     };
   },
 
-  async getBundleEventOverview(
-    context?: TContext,
-  ): Promise<BundleEventOverview> {
+  async getBundleEventOverview(): Promise<BundleEventOverview> {
     const rows = await materializeBundleEventRows(
-      { database, cutoffMs: Date.now(), context },
+      { database, cutoffMs: Date.now() },
       TRANSITION_EVENT_WHERE,
     );
     const latestByInstall = new Map<string, TransitionBundleEventRow>();
@@ -192,16 +176,13 @@ export const createBundleEventService = <TContext>(
     };
   },
 
-  async getActiveInstallationOverview(
-    input: {
-      readonly window: ActiveInstallationWindow;
-      readonly userId?: string;
-    },
-    context?: TContext,
-  ): Promise<ActiveInstallationOverview> {
+  async getActiveInstallationOverview(input: {
+    readonly window: ActiveInstallationWindow;
+    readonly userId?: string;
+  }): Promise<ActiveInstallationOverview> {
     const asOfMs = Date.now();
     const rows = await materializeActiveBundleEventRows(
-      { database, cutoffMs: asOfMs, context },
+      { database, cutoffMs: asOfMs },
       input.window,
     );
     return collectActiveInstallationOverview({
@@ -216,10 +197,9 @@ export const createBundleEventService = <TContext>(
     query: string,
     limit: number,
     offset: number,
-    context?: TContext,
   ): Promise<OffsetPaginationResult<InstallationSearchRow>> {
     const rows = await materializeBundleEventRows(
-      { database, cutoffMs: Date.now(), context },
+      { database, cutoffMs: Date.now() },
       TRANSITION_EVENT_WHERE,
     );
     return searchBundleEventInstallations({
@@ -234,7 +214,6 @@ export const createBundleEventService = <TContext>(
     installId: string,
     limit: number,
     offset: number,
-    context?: TContext,
   ): Promise<OffsetPaginationResult<InstallationHistoryRow>> {
     const where: readonly DatabaseWhere<"bundle_events">[] = [
       { field: "install_id", value: installId },
@@ -245,7 +224,7 @@ export const createBundleEventService = <TContext>(
       },
     ];
     const rows = await materializeBundleEventRows(
-      { database, cutoffMs: Date.now(), context },
+      { database, cutoffMs: Date.now() },
       where,
     );
     const ordered = rows

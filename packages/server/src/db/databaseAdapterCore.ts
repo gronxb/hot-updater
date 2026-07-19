@@ -21,7 +21,7 @@ import type { DatabaseAPI, DatabaseAdapter } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
 
 export function createDatabaseAdapterCore<TContext = unknown>(
-  database: DatabaseAdapter<TContext>,
+  database: DatabaseAdapter,
   resolveFileUrl: (
     storageUri: string | null,
     context?: HotUpdaterContext<TContext>,
@@ -61,18 +61,18 @@ export function createDatabaseAdapterCore<TContext = unknown>(
       : {}),
     async getBundleById(
       id: string,
-      context?: HotUpdaterContext<TContext>,
+      _context?: HotUpdaterContext<TContext>,
     ): Promise<Bundle | null> {
       await beforeOperation?.();
-      return client.getBundleById(id, context);
+      return client.getBundleById(id);
     },
 
     async getUpdateInfo(
       args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
-      context?: HotUpdaterContext<TContext>,
+      _context?: HotUpdaterContext<TContext>,
     ): Promise<import("@hot-updater/core").UpdateInfo | null> {
       await beforeOperation?.();
-      return client.getUpdateInfo(args, context);
+      return client.getUpdateInfo(args);
     },
 
     async getAppUpdateInfo(
@@ -93,13 +93,9 @@ export function createDatabaseAdapterCore<TContext = unknown>(
 
       const requestBundles = createRequestBundleResolver(context);
       const getBundleById = (id: string) =>
-        requestBundles.getById(id, () => client.getBundleById(id, context));
-      const getCurrentBundle = () => {
-        if (args.bundleId === NIL_UUID) return null;
-        const seeded = requestBundles.peek(args.bundleId);
-        if (seeded || requestBundles.hasSeededBundles()) return seeded;
-        return getBundleById(args.bundleId);
-      };
+        requestBundles.getById(id, () => client.getBundleById(id));
+      const getCurrentBundle = () =>
+        args.bundleId === NIL_UUID ? null : getBundleById(args.bundleId);
       const [fileUrl, targetBundle, currentBundle] = await Promise.all([
         resolveFileUrl(storageUri ?? null, context),
         getBundleById(info.id),
@@ -119,33 +115,33 @@ export function createDatabaseAdapterCore<TContext = unknown>(
     },
 
     async getChannels(
-      context?: HotUpdaterContext<TContext>,
+      _context?: HotUpdaterContext<TContext>,
     ): Promise<string[]> {
       await beforeOperation?.();
-      return client.getChannels(context);
+      return client.getChannels();
     },
 
-    async getBundles(options, context?: HotUpdaterContext<TContext>) {
+    async getBundles(options, _context?: HotUpdaterContext<TContext>) {
       await beforeOperation?.();
-      return client.getBundles(options, context);
+      return client.getBundles(options);
     },
 
     async insertBundle(
       bundle: Bundle,
-      context?: HotUpdaterContext<TContext>,
+      _context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       await beforeOperation?.();
       assertBundlePersistenceConstraints(bundle);
-      await client.insertBundle(bundle, context);
+      await client.insertBundle(bundle);
     },
 
     async updateBundleById(
       bundleId: string,
       update: Partial<Bundle>,
-      context?: HotUpdaterContext<TContext>,
+      _context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       await beforeOperation?.();
-      const current = await client.getBundleById(bundleId, context);
+      const current = await client.getBundleById(bundleId);
       if (!current) throw new Error("targetBundleId not found");
       const nextBundle: Bundle = {
         ...current,
@@ -153,73 +149,60 @@ export function createDatabaseAdapterCore<TContext = unknown>(
         id: bundleId,
       };
       assertBundlePersistenceConstraints(nextBundle);
-      await client.updateBundleById(bundleId, update, context);
+      await client.updateBundleById(bundleId, update);
     },
 
     async deleteBundleById(
       bundleId: string,
-      context?: HotUpdaterContext<TContext>,
+      _context?: HotUpdaterContext<TContext>,
     ): Promise<void> {
       await beforeOperation?.();
-      await client.deleteBundleById(bundleId, context);
+      await client.deleteBundleById(bundleId);
     },
 
     ...(bundleEvents
       ? {
-          async appendBundleEvent(input, context) {
+          async appendBundleEvent(input) {
             await beforeOperation?.();
-            await bundleEvents.appendBundleEvent(input, context);
+            await bundleEvents.appendBundleEvent(input);
           },
 
-          async getBundleEventSummary(bundleId, context) {
+          async getBundleEventSummary(bundleId) {
             await beforeOperation?.();
-            return bundleEvents.getBundleEventSummary(bundleId, context);
+            return bundleEvents.getBundleEventSummary(bundleId);
           },
 
-          async getBundleEventAnalytics(
-            bundleId,
-            window,
-            limit,
-            offset,
-            context,
-          ) {
+          async getBundleEventAnalytics(bundleId, window, limit, offset) {
             await beforeOperation?.();
             return bundleEvents.getBundleEventAnalytics(
               bundleId,
               window,
               limit,
               offset,
-              context,
             );
           },
 
-          async getBundleEventOverview(context) {
+          async getBundleEventOverview() {
             await beforeOperation?.();
-            return bundleEvents.getBundleEventOverview(context);
+            return bundleEvents.getBundleEventOverview();
           },
 
-          async getActiveInstallationOverview(input, context) {
+          async getActiveInstallationOverview(input) {
             await beforeOperation?.();
-            return bundleEvents.getActiveInstallationOverview(input, context);
+            return bundleEvents.getActiveInstallationOverview(input);
           },
 
-          async searchInstallations(query, limit, offset, context) {
+          async searchInstallations(query, limit, offset) {
             await beforeOperation?.();
-            return bundleEvents.searchInstallations(
-              query,
-              limit,
-              offset,
-              context,
-            );
+            return bundleEvents.searchInstallations(query, limit, offset);
           },
 
-          async getInstallationHistory(installId, limit, offset, context) {
+          async getInstallationHistory(installId, limit, offset) {
             await beforeOperation?.();
             return bundleEvents.getInstallationHistory(
               installId,
               limit,
               offset,
-              context,
             );
           },
         }

@@ -66,7 +66,7 @@ export const mockDatabase = (config: MockDatabaseConfig) =>
               ),
             ].sort(),
           ),
-        getUpdateInfo: (args, context) =>
+        getUpdateInfo: (args) =>
           read(() =>
             resolveUpdateInfoFromBundles({
               args,
@@ -75,7 +75,6 @@ export const mockDatabase = (config: MockDatabaseConfig) =>
                 [...data.bundlePatches.values()],
                 [...data.bundles.values()],
               ),
-              context,
             }),
           ),
         transaction: (callback) =>

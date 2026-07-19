@@ -7,11 +7,11 @@ import { registerDatabaseAdapterRelationTests } from "./databaseAdapterRelationT
 import type { DatabaseAdapterTestLifecycle } from "./databaseAdapterTestRunner";
 import { setupDatabaseAdapterTestRunner } from "./databaseAdapterTestRunner";
 
-export type DatabaseAdapterTestSuiteOptions<TContext = unknown> =
-  DatabaseAdapterTestLifecycle<DatabaseAdapter<TContext>, TContext>;
+export type DatabaseAdapterTestSuiteOptions =
+  DatabaseAdapterTestLifecycle<DatabaseAdapter>;
 
-export const setupDatabaseAdapterTestSuite = <TContext = unknown>(
-  options: DatabaseAdapterTestSuiteOptions<TContext>,
+export const setupDatabaseAdapterTestSuite = (
+  options: DatabaseAdapterTestSuiteOptions,
 ): void => {
   setupDatabaseAdapterTestRunner(options, (state) => {
     registerDatabaseAdapterBundleTests(state);

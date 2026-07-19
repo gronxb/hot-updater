@@ -12,22 +12,22 @@ export {
   type DatabaseAdapterInputErrorCode,
 } from "./databaseAdapterCrud";
 
-export interface CreateDatabaseAdapterOptions<TContext = unknown> {
+export interface CreateDatabaseAdapterOptions {
   readonly name: string;
-  readonly adapter: () => DatabaseAdapterImplementation<TContext>;
+  readonly adapter: () => DatabaseAdapterImplementation;
 }
 
-export type DatabaseAdapterBase<TContext = unknown> = Omit<
-  DatabaseAdapter<TContext>,
+export type DatabaseAdapterBase = Omit<
+  DatabaseAdapter,
   typeof databaseAnalyticsSupport | typeof databaseBundleEventService
 > & {
   readonly [databaseAnalyticsSupport]?: never;
   readonly [databaseBundleEventService]?: never;
 };
 
-export const createDatabaseAdapterBase = <TContext = unknown>(
-  options: CreateDatabaseAdapterOptions<TContext>,
-): DatabaseAdapterBase<TContext> => {
+export const createDatabaseAdapterBase = (
+  options: CreateDatabaseAdapterOptions,
+): DatabaseAdapterBase => {
   const implementation = options.adapter();
   const transaction = implementation.transaction;
   return {
@@ -41,11 +41,9 @@ export const createDatabaseAdapterBase = <TContext = unknown>(
       : {}),
     ...(transaction
       ? {
-          transaction: (callback, context) =>
-            transaction(
-              (rawTransaction) =>
-                callback(createTransactionDatabaseAdapter(rawTransaction)),
-              context,
+          transaction: (callback) =>
+            transaction((rawTransaction) =>
+              callback(createTransactionDatabaseAdapter(rawTransaction)),
             ),
         }
       : {}),
@@ -55,9 +53,9 @@ export const createDatabaseAdapterBase = <TContext = unknown>(
   };
 };
 
-export const createDatabaseAdapter = <TContext = unknown>(
-  options: CreateDatabaseAdapterOptions<TContext>,
-): DatabaseAdapter<TContext> => ({
+export const createDatabaseAdapter = (
+  options: CreateDatabaseAdapterOptions,
+): DatabaseAdapter => ({
   ...createDatabaseAdapterBase(options),
   [databaseAnalyticsSupport]: true,
 });

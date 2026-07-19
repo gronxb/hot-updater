@@ -111,41 +111,29 @@ export interface ActiveInstallationOverview {
   }[];
 }
 
-export interface DatabaseBundleEventService<TContext = unknown> {
-  appendBundleEvent(
-    input: CreateBundleEventRequest,
-    context?: TContext,
-  ): Promise<void>;
-  getBundleEventSummary(
-    bundleId: string,
-    context?: TContext,
-  ): Promise<BundleEventSummary>;
+export interface DatabaseBundleEventService {
+  appendBundleEvent(input: CreateBundleEventRequest): Promise<void>;
+  getBundleEventSummary(bundleId: string): Promise<BundleEventSummary>;
   getBundleEventAnalytics(
     bundleId: string,
     window: BundleEventAnalyticsWindow,
     limit: number,
     offset: number,
-    context?: TContext,
   ): Promise<BundleEventAnalyticsResult>;
-  getBundleEventOverview(context?: TContext): Promise<BundleEventOverview>;
-  getActiveInstallationOverview(
-    input: {
-      readonly window: ActiveInstallationWindow;
-      readonly userId?: string;
-    },
-    context?: TContext,
-  ): Promise<ActiveInstallationOverview>;
+  getBundleEventOverview(): Promise<BundleEventOverview>;
+  getActiveInstallationOverview(input: {
+    readonly window: ActiveInstallationWindow;
+    readonly userId?: string;
+  }): Promise<ActiveInstallationOverview>;
   searchInstallations(
     query: string,
     limit: number,
     offset: number,
-    context?: TContext,
   ): Promise<OffsetPaginationResult<InstallationSearchRow>>;
   getInstallationHistory(
     installId: string,
     limit: number,
     offset: number,
-    context?: TContext,
   ): Promise<OffsetPaginationResult<InstallationHistoryRow>>;
 }
 

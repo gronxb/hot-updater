@@ -9,10 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { DatabaseAdapterTestState } from "./databaseAdapterTestRunner";
 import { createBundleRowFixture } from "./databaseTestFixtures";
 
-type CapabilityTestState<TContext> = DatabaseAdapterTestState<
-  DatabaseAdapter<TContext>,
-  TContext
->;
+type CapabilityTestState = DatabaseAdapterTestState<DatabaseAdapter>;
 
 class TransactionFixtureError extends Error {
   constructor() {
@@ -21,8 +18,8 @@ class TransactionFixtureError extends Error {
   }
 }
 
-export const registerDatabaseAdapterCapabilityTests = <TContext>(
-  state: CapabilityTestState<TContext>,
+export const registerDatabaseAdapterCapabilityTests = (
+  state: CapabilityTestState,
 ): void => {
   describe("optional capabilities", () => {
     it("commits transaction writes and returns the callback value", async (context) => {
@@ -37,17 +34,14 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
       const result = await adapter.transaction(async (transaction) => {
         await transaction.create({ model: "bundles", data: bundle });
         return "committed" as const;
-      }, state.context);
+      });
 
       expect(result).toBe("committed");
       await expect(
-        adapter.findOne(
-          {
-            model: "bundles",
-            where: [{ field: "id", value: bundle.id }],
-          },
-          state.context,
-        ),
+        adapter.findOne({
+          model: "bundles",
+          where: [{ field: "id", value: bundle.id }],
+        }),
       ).resolves.toEqual(bundle);
     });
 
@@ -64,16 +58,13 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
         adapter.transaction(async (transaction) => {
           await transaction.create({ model: "bundles", data: bundle });
           throw new TransactionFixtureError();
-        }, state.context),
+        }),
       ).rejects.toBeInstanceOf(TransactionFixtureError);
       await expect(
-        adapter.findOne(
-          {
-            model: "bundles",
-            where: [{ field: "id", value: bundle.id }],
-          },
-          state.context,
-        ),
+        adapter.findOne({
+          model: "bundles",
+          where: [{ field: "id", value: bundle.id }],
+        }),
       ).resolves.toBeNull();
     });
 
@@ -85,7 +76,7 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
       }
       expect(adapter.getUpdateInfo).toBeTypeOf("function");
       const bundle = createBundleRowFixture("99");
-      await adapter.create({ model: "bundles", data: bundle }, state.context);
+      await adapter.create({ model: "bundles", data: bundle });
 
       const args = {
         appVersion: "1.0.0",
@@ -93,7 +84,7 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
         platform: "ios",
         _updateStrategy: "appVersion",
       } as const;
-      const update = await adapter.getUpdateInfo(args, state.context);
+      const update = await adapter.getUpdateInfo(args);
       const genericUpdate = await resolveUpdateInfoFromBundles({
         args,
         bundles: [rowToBundle(bundle)],

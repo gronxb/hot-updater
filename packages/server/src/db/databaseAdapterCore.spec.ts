@@ -72,10 +72,7 @@ describe("createDatabaseAdapterCore capabilities", () => {
       installed: 2,
       recovered: 1,
     });
-    expect(service.getBundleEventSummary).toHaveBeenCalledWith(
-      "bundle-1",
-      undefined,
-    );
+    expect(service.getBundleEventSummary).toHaveBeenCalledWith("bundle-1");
   });
 
   it("runs the schema readiness guard before a low adapter operation", async () => {

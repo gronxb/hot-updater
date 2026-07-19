@@ -84,9 +84,8 @@ describe("createDatabaseAdapter", () => {
     expect(capability).toBe(true);
   });
 
-  it("forwards the provider-native channel aggregate", async () => {
+  it("calls the provider-native channel aggregate without request context", async () => {
     // Given
-    const context = { binding: "request-db" };
     const getChannels = vi.fn(async () => ["preview", "production"]);
     const adapter = createDatabaseAdapter({
       name: "memory",
@@ -94,11 +93,27 @@ describe("createDatabaseAdapter", () => {
     });
 
     // When
-    const channels = await adapter.getChannels?.(context);
+    const channels = await adapter.getChannels?.();
 
     // Then
     expect(channels).toEqual(["preview", "production"]);
-    expect(getChannels).toHaveBeenCalledWith(context);
+    expect(getChannels).toHaveBeenCalledWith();
+  });
+
+  it("calls provider CRUD with only the record input", async () => {
+    // Given
+    const create = vi.fn(async () => bundleRow);
+    const adapter = createDatabaseAdapter({
+      name: "memory",
+      adapter: () => ({ ...createMethods(), create }),
+    });
+    const input = { model: "bundles", data: bundleRow } as const;
+
+    // When
+    await adapter.create(input);
+
+    // Then
+    expect(create).toHaveBeenCalledWith(input);
   });
 
   it("composes onUnmount without invoking it", async () => {
@@ -113,30 +128,28 @@ describe("createDatabaseAdapter", () => {
     expect(onUnmount).toHaveBeenCalledOnce();
   });
 
-  it("forwards context to a callback-scoped transaction", async () => {
-    const context = { binding: "request-db" };
-    const seenContexts: (typeof context)[] = [];
-    const createImplementation = (): DatabaseAdapterImplementation<
-      typeof context
-    > => ({
+  it("opens a callback-scoped transaction without request context", async () => {
+    const calls: unknown[] = [];
+    const transaction: NonNullable<
+      DatabaseAdapterImplementation["transaction"]
+    > = async (callback) => {
+      calls.push(callback);
+      return callback(createMethods());
+    };
+    const createImplementation = (): DatabaseAdapterImplementation => ({
       ...createMethods(),
-      transaction: async (callback, transactionContext) => {
-        if (transactionContext) seenContexts.push(transactionContext);
-        return callback(createMethods());
-      },
+      transaction,
     });
     const adapter = createDatabaseAdapter({
       name: "memory",
       adapter: createImplementation,
     });
 
-    const result = await adapter.transaction?.(
-      async () => "committed",
-      context,
-    );
+    const callback = async () => "committed";
+    const result = await adapter.transaction?.(callback);
 
     expect(result).toBe("committed");
-    expect(seenContexts).toEqual([context]);
+    expect(calls).toEqual([expect.any(Function)]);
   });
 
   it("passes default paging to findMany", async () => {

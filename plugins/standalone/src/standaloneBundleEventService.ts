@@ -45,51 +45,48 @@ const normalizeActiveInput = (
   return userId ? { window: input.window, userId } : { window: input.window };
 };
 
-export const createBundleEventService = <TContext>(
-  config: StandaloneRepositoryConfig<TContext>,
-): DatabaseBundleEventService<TContext> => {
+export const createBundleEventService = (
+  config: StandaloneRepositoryConfig,
+): DatabaseBundleEventService => {
   const routes = {
-    appendEvent: (context?: TContext) =>
-      createRoute(
-        defaultRoutes.appendEvent(),
-        config.routes?.appendEvent?.(context),
-      ),
-    bundleEventAnalytics: (bundleId: string, context?: TContext) =>
+    appendEvent: () =>
+      createRoute(defaultRoutes.appendEvent(), config.routes?.appendEvent?.()),
+    bundleEventAnalytics: (bundleId: string) =>
       createRoute(
         defaultRoutes.bundleEventAnalytics(bundleId),
-        config.routes?.bundleEventAnalytics?.(bundleId, context),
+        config.routes?.bundleEventAnalytics?.(bundleId),
       ),
-    bundleEventSummary: (bundleId: string, context?: TContext) =>
+    bundleEventSummary: (bundleId: string) =>
       createRoute(
         defaultRoutes.bundleEventSummary(bundleId),
-        config.routes?.bundleEventSummary?.(bundleId, context),
+        config.routes?.bundleEventSummary?.(bundleId),
       ),
-    bundleEventOverview: (context?: TContext) =>
+    bundleEventOverview: () =>
       createRoute(
         defaultRoutes.bundleEventOverview(),
-        config.routes?.bundleEventOverview?.(context),
+        config.routes?.bundleEventOverview?.(),
       ),
-    activeInstallationOverview: (context?: TContext) =>
+    activeInstallationOverview: () =>
       createRoute(
         defaultRoutes.activeInstallationOverview(),
-        config.routes?.activeInstallationOverview?.(context),
+        config.routes?.activeInstallationOverview?.(),
       ),
-    installationHistory: (installId: string, context?: TContext) =>
+    installationHistory: (installId: string) =>
       createRoute(
         defaultRoutes.installationHistory(installId),
-        config.routes?.installationHistory?.(installId, context),
+        config.routes?.installationHistory?.(installId),
       ),
-    installations: (context?: TContext) =>
+    installations: () =>
       createRoute(
         defaultRoutes.installations(),
-        config.routes?.installations?.(context),
+        config.routes?.installations?.(),
       ),
   };
   const http = createStandaloneHttp(config);
 
   return {
-    async appendBundleEvent(input, context) {
-      const route = routes.appendEvent(context);
+    async appendBundleEvent(input) {
+      const route = routes.appendEvent();
       const response = await fetch(http.buildUrl(route.path), {
         method: "POST",
         headers: http.headers(route.headers),
@@ -97,31 +94,31 @@ export const createBundleEventService = <TContext>(
       });
       if (!response.ok) await http.requestFailed(response);
     },
-    getBundleEventSummary(bundleId, context) {
+    getBundleEventSummary(bundleId) {
       return http.load(
-        routes.bundleEventSummary(bundleId, context),
+        routes.bundleEventSummary(bundleId),
         {},
         isBundleEventSummary,
         "Invalid bundle event summary response.",
       );
     },
-    getBundleEventAnalytics(bundleId, window, limit, offset, context) {
+    getBundleEventAnalytics(bundleId, window, limit, offset) {
       return http.load(
-        routes.bundleEventAnalytics(bundleId, context),
+        routes.bundleEventAnalytics(bundleId),
         { window, limit: String(limit), offset: String(offset) },
         isBundleEventAnalytics,
         "Invalid bundle event analytics response.",
       );
     },
-    getBundleEventOverview(context) {
+    getBundleEventOverview() {
       return http.load(
-        routes.bundleEventOverview(context),
+        routes.bundleEventOverview(),
         {},
         isBundleEventOverview,
         "Invalid bundle event overview response.",
       );
     },
-    async getActiveInstallationOverview(input, context) {
+    async getActiveInstallationOverview(input) {
       const normalized = normalizeActiveInput(input);
       const searchParams: Record<string, string> = {
         window: normalized.window,
@@ -130,24 +127,24 @@ export const createBundleEventService = <TContext>(
         searchParams.userId = normalized.userId;
       }
       return http.load(
-        routes.activeInstallationOverview(context),
+        routes.activeInstallationOverview(),
         searchParams,
         (value) => isActiveInstallationOverview(value, normalized.window),
         "Invalid active installation overview response.",
       );
     },
-    searchInstallations(query, limit, offset, context) {
+    searchInstallations(query, limit, offset) {
       return http.load(
-        routes.installations(context),
+        routes.installations(),
         { query, limit: String(limit), offset: String(offset) },
         (value): value is OffsetPaginationResult<InstallationSearchRow> =>
           isOffsetPaginationResult(value, isInstallationSearchRow),
         "Invalid installation search response.",
       );
     },
-    getInstallationHistory(installId, limit, offset, context) {
+    getInstallationHistory(installId, limit, offset) {
       return http.load(
-        routes.installationHistory(installId, context),
+        routes.installationHistory(installId),
         { limit: String(limit), offset: String(offset) },
         (value): value is OffsetPaginationResult<InstallationHistoryRow> =>
           isOffsetPaginationResult(value, isInstallationHistoryRow),

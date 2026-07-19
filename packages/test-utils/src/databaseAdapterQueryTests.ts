@@ -4,12 +4,9 @@ import { describe, expect, it } from "vitest";
 import type { DatabaseAdapterTestState } from "./databaseAdapterTestRunner";
 import { createBundleRowFixture } from "./databaseTestFixtures";
 
-type QueryTestState<TContext> = DatabaseAdapterTestState<
-  DatabaseAdapter<TContext>,
-  TContext
->;
+type QueryTestState = DatabaseAdapterTestState<DatabaseAdapter>;
 
-const seedQueryRows = async <TContext>(state: QueryTestState<TContext>) => {
+const seedQueryRows = async (state: QueryTestState) => {
   const rows = [
     {
       ...createBundleRowFixture("501"),
@@ -25,30 +22,25 @@ const seedQueryRows = async <TContext>(state: QueryTestState<TContext>) => {
     },
   ];
   for (const row of rows) {
-    await state
-      .getAdapter()
-      .create({ model: "bundles", data: row }, state.context);
+    await state.getAdapter().create({ model: "bundles", data: row });
   }
   return rows;
 };
 
-export const registerDatabaseAdapterQueryTests = <TContext>(
-  state: QueryTestState<TContext>,
+export const registerDatabaseAdapterQueryTests = (
+  state: QueryTestState,
 ): void => {
   describe("query semantics", () => {
     it("supports ordered comparison operators", async () => {
       const rows = await seedQueryRows(state);
 
-      const result = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            { field: "id", operator: "gte", value: rows[1].id },
-            { field: "id", operator: "lt", value: rows[2].id },
-          ],
-        },
-        state.context,
-      );
+      const result = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          { field: "id", operator: "gte", value: rows[1].id },
+          { field: "id", operator: "lt", value: rows[2].id },
+        ],
+      });
 
       expect(result.map(({ id }) => id)).toEqual([rows[1].id]);
     });
@@ -56,23 +48,17 @@ export const registerDatabaseAdapterQueryTests = <TContext>(
     it("supports in and not_in including empty sets", async () => {
       const rows = await seedQueryRows(state);
 
-      const included = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            { field: "id", operator: "in", value: [rows[0].id, rows[2].id] },
-          ],
-          sortBy: { field: "id", direction: "asc" },
-        },
-        state.context,
-      );
-      const emptyExclusion = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [{ field: "id", operator: "not_in", value: [] }],
-        },
-        state.context,
-      );
+      const included = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          { field: "id", operator: "in", value: [rows[0].id, rows[2].id] },
+        ],
+        sortBy: { field: "id", direction: "asc" },
+      });
+      const emptyExclusion = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [{ field: "id", operator: "not_in", value: [] }],
+      });
 
       expect(included.map(({ id }) => id)).toEqual([rows[0].id, rows[2].id]);
       expect(emptyExclusion).toHaveLength(3);
@@ -81,46 +67,37 @@ export const registerDatabaseAdapterQueryTests = <TContext>(
     it("supports insensitive string pattern operators", async () => {
       const rows = await seedQueryRows(state);
 
-      const contains = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            {
-              field: "message",
-              operator: "contains",
-              value: "RELEASE",
-              mode: "insensitive",
-            },
-          ],
-        },
-        state.context,
-      );
-      const startsWith = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            {
-              field: "message",
-              operator: "starts_with",
-              value: "Gamma",
-            },
-          ],
-        },
-        state.context,
-      );
-      const endsWith = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            {
-              field: "message",
-              operator: "ends_with",
-              value: "Preview",
-            },
-          ],
-        },
-        state.context,
-      );
+      const contains = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "message",
+            operator: "contains",
+            value: "RELEASE",
+            mode: "insensitive",
+          },
+        ],
+      });
+      const startsWith = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "message",
+            operator: "starts_with",
+            value: "Gamma",
+          },
+        ],
+      });
+      const endsWith = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "message",
+            operator: "ends_with",
+            value: "Preview",
+          },
+        ],
+      });
 
       expect(contains.map(({ id }) => id)).toEqual([rows[0].id, rows[1].id]);
       expect(startsWith.map(({ id }) => id)).toEqual([rows[2].id]);
@@ -130,34 +107,28 @@ export const registerDatabaseAdapterQueryTests = <TContext>(
     it("supports insensitive equality operators", async () => {
       const rows = await seedQueryRows(state);
 
-      const equal = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            {
-              field: "message",
-              value: "ALPHA RELEASE",
-              mode: "insensitive",
-            },
-          ],
-        },
-        state.context,
-      );
-      const notEqual = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            {
-              field: "message",
-              operator: "ne",
-              value: "ALPHA RELEASE",
-              mode: "insensitive",
-            },
-          ],
-          sortBy: { field: "id", direction: "asc" },
-        },
-        state.context,
-      );
+      const equal = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "message",
+            value: "ALPHA RELEASE",
+            mode: "insensitive",
+          },
+        ],
+      });
+      const notEqual = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "message",
+            operator: "ne",
+            value: "ALPHA RELEASE",
+            mode: "insensitive",
+          },
+        ],
+        sortBy: { field: "id", direction: "asc" },
+      });
 
       expect(equal.map(({ id }) => id)).toEqual([rows[0].id]);
       expect(notEqual.map(({ id }) => id)).toEqual([rows[1].id, rows[2].id]);
@@ -166,22 +137,19 @@ export const registerDatabaseAdapterQueryTests = <TContext>(
     it("composes connectors left to right and defaults to AND", async () => {
       const rows = await seedQueryRows(state);
 
-      const result = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            { field: "id", value: rows[0].id },
-            {
-              field: "id",
-              value: rows[1].id,
-              connector: "OR",
-            },
-            { field: "enabled", value: true, connector: "AND" },
-          ],
-          sortBy: { field: "id", direction: "asc" },
-        },
-        state.context,
-      );
+      const result = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          { field: "id", value: rows[0].id },
+          {
+            field: "id",
+            value: rows[1].id,
+            connector: "OR",
+          },
+          { field: "enabled", value: true, connector: "AND" },
+        ],
+        sortBy: { field: "id", direction: "asc" },
+      });
 
       expect(result.map(({ id }) => id)).toEqual([rows[0].id, rows[1].id]);
     });
@@ -189,59 +157,44 @@ export const registerDatabaseAdapterQueryTests = <TContext>(
     it("compares nullable fields with eq and ne", async () => {
       const rows = await seedQueryRows(state);
 
-      const nullRows = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [{ field: "target_app_version", value: null }],
-        },
-        state.context,
-      );
-      const nonNullRows = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [{ field: "target_app_version", operator: "ne", value: null }],
-        },
-        state.context,
-      );
-      const otherVersionRows = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            {
-              field: "target_app_version",
-              operator: "ne",
-              value: "1.0.0",
-            },
-          ],
-        },
-        state.context,
-      );
-      const versionsOutsideSet = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            {
-              field: "target_app_version",
-              operator: "not_in",
-              value: ["1.0.0"],
-            },
-          ],
-        },
-        state.context,
-      );
-      const earlierVersions = await state.getAdapter().findMany(
-        {
-          model: "bundles",
-          where: [
-            {
-              field: "target_app_version",
-              operator: "lt",
-              value: "2.0.0",
-            },
-          ],
-        },
-        state.context,
-      );
+      const nullRows = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [{ field: "target_app_version", value: null }],
+      });
+      const nonNullRows = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [{ field: "target_app_version", operator: "ne", value: null }],
+      });
+      const otherVersionRows = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "target_app_version",
+            operator: "ne",
+            value: "1.0.0",
+          },
+        ],
+      });
+      const versionsOutsideSet = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "target_app_version",
+            operator: "not_in",
+            value: ["1.0.0"],
+          },
+        ],
+      });
+      const earlierVersions = await state.getAdapter().findMany({
+        model: "bundles",
+        where: [
+          {
+            field: "target_app_version",
+            operator: "lt",
+            value: "2.0.0",
+          },
+        ],
+      });
 
       expect(nullRows.map(({ id }) => id)).toEqual([rows[0].id]);
       expect(nonNullRows).toHaveLength(2);
@@ -254,32 +207,21 @@ export const registerDatabaseAdapterQueryTests = <TContext>(
       await seedQueryRows(state);
 
       await expect(
-        state
-          .getAdapter()
-          .findMany({ model: "bundles", limit: -1 }, state.context),
+        state.getAdapter().findMany({ model: "bundles", limit: -1 }),
+      ).rejects.toThrow();
+      await expect(
+        state.getAdapter().findMany({ model: "bundles", offset: -1 }),
+      ).rejects.toThrow();
+      await expect(
+        state.getAdapter().findMany({ model: "bundles", select: [] }),
       ).rejects.toThrow();
       await expect(
         state
           .getAdapter()
-          .findMany({ model: "bundles", offset: -1 }, state.context),
+          .update({ model: "bundles", where: [], update: { enabled: false } }),
       ).rejects.toThrow();
       await expect(
-        state
-          .getAdapter()
-          .findMany({ model: "bundles", select: [] }, state.context),
-      ).rejects.toThrow();
-      await expect(
-        state
-          .getAdapter()
-          .update(
-            { model: "bundles", where: [], update: { enabled: false } },
-            state.context,
-          ),
-      ).rejects.toThrow();
-      await expect(
-        state
-          .getAdapter()
-          .delete({ model: "bundles", where: [] }, state.context),
+        state.getAdapter().delete({ model: "bundles", where: [] }),
       ).rejects.toThrow();
     });
   });

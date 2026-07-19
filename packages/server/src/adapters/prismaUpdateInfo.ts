@@ -47,7 +47,7 @@ type GetUpdateInfo = NonNullable<
 >;
 
 export const createPrismaGetUpdateInfo = (client: object): GetUpdateInfo => {
-  return async (args, context) => {
+  return async (args) => {
     const channelName = args.channel ?? "production";
     const minBundleId = args.minBundleId ?? NIL_UUID;
     const delegate = getPrismaDelegate(client, "bundles");
@@ -109,7 +109,6 @@ export const createPrismaGetUpdateInfo = (client: object): GetUpdateInfo => {
     return resolveUpdateInfoFromBundles({
       args: { ...args, channel: channelName, minBundleId },
       bundles: await hydrateBundles(client, rows),
-      context,
     });
   };
 };

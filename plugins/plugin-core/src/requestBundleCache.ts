@@ -1,8 +1,6 @@
 import type { Bundle, HotUpdaterContext } from "./types";
 
 export interface RequestBundleResolver {
-  readonly hasSeededBundles: () => boolean;
-  readonly peek: (bundleId: string) => Bundle | null;
   readonly getById: (
     bundleId: string,
     loadBundleById: () => Promise<Bundle | null>,
@@ -14,23 +12,6 @@ type BundleCacheEntry = Bundle | null;
 class RequestBundleCache {
   private readonly entries = new Map<string, BundleCacheEntry>();
   private readonly pendingLoads = new Map<string, Promise<Bundle | null>>();
-  private readonly seededIds = new Set<string>();
-
-  seed(seeds: readonly (Bundle | null | undefined)[]): void {
-    for (const bundle of seeds) {
-      if (!bundle) continue;
-      this.seededIds.add(bundle.id);
-      this.entries.set(bundle.id, bundle);
-    }
-  }
-
-  hasSeeds(): boolean {
-    return this.seededIds.size > 0;
-  }
-
-  peek(bundleId: string): Bundle | null {
-    return this.entries.get(bundleId) ?? null;
-  }
 
   async getById(
     bundleId: string,
@@ -70,20 +51,11 @@ const getRequestCache = (context: unknown): RequestBundleCache | null => {
   return created;
 };
 
-export const seedRequestBundles = <TContext = unknown>(
-  context: HotUpdaterContext<TContext> | undefined,
-  seeds: readonly (Bundle | null | undefined)[],
-): void => {
-  getRequestCache(context)?.seed(seeds);
-};
-
 export const createRequestBundleResolver = <TContext = unknown>(
   context: HotUpdaterContext<TContext> | undefined,
 ): RequestBundleResolver => {
   const cache = getRequestCache(context) ?? new RequestBundleCache();
   return {
-    hasSeededBundles: () => cache.hasSeeds(),
-    peek: (bundleId) => cache.peek(bundleId),
     getById: (bundleId, loadBundleById) =>
       cache.getById(bundleId, loadBundleById),
   };
