@@ -119,16 +119,28 @@ The `storage` plugin must match the `storages` in your server's `createHotUpdate
 
 ## API Endpoints
 
-The server automatically creates these endpoints:
+The server automatically creates these endpoints. Analytics read endpoints are
+available because the Kysely adapter supports `bundle_events`. The event
+ingestion endpoint is mounted only when you configure
+`eventIngestion.authorize`; see [Analytics](/docs/guides/analytics).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/hot-updater/version` | Get server version |
 | GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort` | Check for updates by fingerprint and cohort |
 | GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId/:cohort` | Check for updates by app version and cohort |
+| POST | `/hot-updater/events` | Record a bundle event (requires `eventIngestion.authorize`) |
 | GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
 | GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
 | POST | `/hot-updater/api/bundles` | Create bundles |
 | PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
+| GET | `/hot-updater/api/bundles/:id/events/summary` | Get a bundle event summary |
+| GET | `/hot-updater/api/bundles/:id/events/analytics` | Get paginated bundle event analytics |
+| GET | `/hot-updater/api/installations` | Search installations |
+| GET | `/hot-updater/api/installations/overview` | Get the installation overview |
+| GET | `/hot-updater/api/installations/active` | Get the active installation overview |
+| GET | `/hot-updater/api/installations/:installId/events` | Get paginated installation event history |

@@ -107,10 +107,18 @@ The server automatically creates these endpoints:
 |--------|----------|-------------|
 | GET | `/hot-updater/version` | Get server version |
 | GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
+| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort` | Check for updates by fingerprint and cohort |
 | GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId/:cohort` | Check for updates by app version and cohort |
 | GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
 | GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
 | POST | `/hot-updater/api/bundles` | Create bundles |
 | PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
+
+<Callout type="warn">
+`s3Database` does not expose event ingestion or analytics endpoints because it
+cannot safely append concurrent events. Use a supported row- or document-based
+database adapter if you need [Analytics](/docs/guides/analytics).
+</Callout>
