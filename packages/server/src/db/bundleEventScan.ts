@@ -177,31 +177,25 @@ const createSeries = (
     request.window === "all"
       ? undefined
       : getBundleEventWindowRange(request.window, request.cutoffMs);
-  const firstByInstall = new Map<string, BundleEventRow>();
+  const sizeMs = range?.sizeMs ?? 24 * 60 * 60 * 1000;
+  const installIdsByBucket = new Map<number, Set<string>>();
+  let oldestMs = request.cutoffMs;
   for (const row of request.rows) {
     if (range && row.received_at_ms < range.rangeStart) continue;
-    const current = firstByInstall.get(row.install_id);
-    if (
-      !current ||
-      row.received_at_ms < current.received_at_ms ||
-      (row.received_at_ms === current.received_at_ms && row.id < current.id)
-    ) {
-      firstByInstall.set(row.install_id, row);
-    }
-  }
-  const sizeMs = range?.sizeMs ?? 24 * 60 * 60 * 1000;
-  const counts = new Map<number, number>();
-  let oldestMs = request.cutoffMs;
-  for (const row of firstByInstall.values()) {
     oldestMs = Math.min(oldestMs, row.received_at_ms);
     const start = bucketStart(row.received_at_ms, sizeMs);
-    counts.set(start, (counts.get(start) ?? 0) + 1);
+    const installIds = installIdsByBucket.get(start) ?? new Set<string>();
+    installIds.add(row.install_id);
+    installIdsByBucket.set(start, installIds);
   }
   const first = range?.rangeStart ?? startOfUtcDay(oldestMs);
   const last = bucketStart(request.cutoffMs, sizeMs);
   const series: { bucketStartMs: number; value: number }[] = [];
   for (let start = first; start <= last; start += sizeMs) {
-    series.push({ bucketStartMs: start, value: counts.get(start) ?? 0 });
+    series.push({
+      bucketStartMs: start,
+      value: installIdsByBucket.get(start)?.size ?? 0,
+    });
   }
   return series;
 };

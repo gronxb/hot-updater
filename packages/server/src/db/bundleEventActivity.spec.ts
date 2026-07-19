@@ -10,6 +10,25 @@ import {
 } from "./bundleEvents.testFixtures";
 
 describe("bundle event activity series", () => {
+  it("counts an installation in every bucket where it reports movement", async () => {
+    const now = Date.UTC(2026, 6, 16, 12);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const database = await insertRows([
+      createEvent("install-a", now - 2 * 24 * 60 * 60 * 1000),
+      createEvent("install-a", now - 24 * 60 * 60 * 1000),
+    ]);
+
+    const analytics = await createBundleEventService(
+      database,
+    ).getBundleEventAnalytics("bundle-a", "30d", 20, 0);
+
+    expect(analytics.summary.installed).toBe(1);
+    expect(
+      analytics.series.installed.slice(-3).map(({ value }) => value),
+    ).toEqual([1, 1, 0]);
+    vi.restoreAllMocks();
+  });
+
   it("scopes totals to the window and returns per-bucket movement", async () => {
     const now = Date.UTC(2026, 6, 16, 12);
     vi.spyOn(Date, "now").mockReturnValue(now);
