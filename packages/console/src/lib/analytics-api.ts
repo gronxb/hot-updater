@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
+import { redirect } from "@tanstack/react-router";
 
 import {
   type ActiveInstallationInput,
@@ -88,12 +89,38 @@ export const isAnalyticsQueryEnabled = (
   capability: AnalyticsCapabilityState,
 ): boolean => capability.status === "supported";
 
+export const getAnalyticsCapabilitiesQueryOptions = () => ({
+  queryKey: analyticsQueryKeys.capabilities,
+  queryFn: () => getAnalyticsCapabilitiesRpc(),
+  staleTime: Infinity,
+});
+
 export const useAnalyticsCapabilitiesQuery = () =>
-  useQuery({
-    queryKey: analyticsQueryKeys.capabilities,
-    queryFn: () => getAnalyticsCapabilitiesRpc(),
-    staleTime: Infinity,
-  });
+  useQuery(getAnalyticsCapabilitiesQueryOptions());
+
+export const ensureAnalyticsRouteAccess = async (
+  queryClient: QueryClient,
+): Promise<void> => {
+  const result = await queryClient.ensureQueryData(
+    getAnalyticsCapabilitiesQueryOptions(),
+  );
+
+  if (!result.capabilities.analytics) {
+    throw redirect({
+      to: "/",
+      search: {
+        channel: undefined,
+        platform: undefined,
+        page: undefined,
+        after: undefined,
+        before: undefined,
+        bundleId: undefined,
+        expandedBundleId: undefined,
+      },
+      replace: true,
+    });
+  }
+};
 
 export const getAnalyticsOverviewQueryOptions = (
   capability: AnalyticsCapabilityState,

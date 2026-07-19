@@ -5,8 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   type AnalyticsCapabilityState,
+  ensureAnalyticsRouteAccess,
   getActiveInstallationQueryOptions,
   getAnalyticsCapabilityState,
+  getAnalyticsCapabilitiesQueryOptions,
   getAnalyticsOverviewQueryOptions,
   getProtectedAnalyticsRouteDecision,
   isAnalyticsQueryEnabled,
@@ -15,6 +17,7 @@ import {
 } from "./analytics-api";
 import {
   getActiveInstallationOverviewRpc,
+  getAnalyticsCapabilitiesRpc,
   getAnalyticsOverviewRpc,
 } from "./analytics-rpc";
 
@@ -77,6 +80,37 @@ describe("analytics capability gating", () => {
       expect(isAnalyticsQueryEnabled(capability)).toBe(enabled);
     },
   );
+});
+
+describe("analytics route access", () => {
+  it("allows navigation when the shared capability query reports support", async () => {
+    vi.mocked(getAnalyticsCapabilitiesRpc).mockResolvedValueOnce({
+      capabilities: { analytics: true, mode: "dedicated" },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    await expect(ensureAnalyticsRouteAccess(queryClient)).resolves.toBeUndefined();
+    expect(
+      queryClient.getQueryData(getAnalyticsCapabilitiesQueryOptions().queryKey),
+    ).toEqual({
+      capabilities: { analytics: true, mode: "dedicated" },
+    });
+  });
+
+  it("redirects navigation when the shared capability query reports no support", async () => {
+    vi.mocked(getAnalyticsCapabilitiesRpc).mockResolvedValueOnce({
+      capabilities: { analytics: false },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    await expect(ensureAnalyticsRouteAccess(queryClient)).rejects.toMatchObject({
+      options: { to: "/" },
+    });
+  });
 });
 
 describe("analytics overview query", () => {
