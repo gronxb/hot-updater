@@ -157,7 +157,8 @@ success. Capability-unavailable primitives do not render.
 - **Installation history:** the analytics toolbar accepts a user ID or install
   ID and routes to the installation history drill-down. A user ID may match
   multiple installations; the drill-down keeps those matches visible while an
-  install ID identifies one history.
+  install ID identifies one history. Every history event shows the app version
+  reported with that event beside its bundle transition.
 
 ## 7. Motion and Interaction
 

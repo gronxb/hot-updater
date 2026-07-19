@@ -155,11 +155,14 @@ export function InstallationHistoryCard({
                 </dl>
               </section>
               <Separator />
-              <Table className="min-w-xl table-fixed">
+              <Table className="min-w-3xl table-fixed">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent [&>th]:h-12 [&>th]:px-5">
-                    <TableHead className="w-1/4 whitespace-normal">
+                    <TableHead className="w-1/5 whitespace-normal">
                       Reported (UTC)
+                    </TableHead>
+                    <TableHead className="w-1/6 whitespace-normal">
+                      App version
                     </TableHead>
                     <TableHead className="w-1/5 whitespace-normal">
                       Change
@@ -177,6 +180,9 @@ export function InstallationHistoryCard({
                     >
                       <TableCell className="whitespace-normal align-top text-sm text-muted-foreground">
                         {formatDateTime(event.receivedAtMs)}
+                      </TableCell>
+                      <TableCell className="whitespace-normal align-top font-mono text-xs">
+                        {event.appVersion}
                       </TableCell>
                       <TableCell className="whitespace-normal align-top">
                         <Badge variant="secondary">
