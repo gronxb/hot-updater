@@ -61,7 +61,7 @@ export const myDatabase = (implementation: DatabaseAdapterImplementation) =>
 
 The implementation must provide `create`, `update`, `delete`, `count`,
 `findOne`, and `findMany` for the fixed `bundles`, `bundle_patches`,
-`channels`, and `bundle_events` models. For analytics, `bundle_events` must:
+and `bundle_events` models. For analytics, `bundle_events` must:
 
 - allow concurrency-safe, append-only creates;
 - support the adapter's filters, ordering, selection, pagination, and distinct

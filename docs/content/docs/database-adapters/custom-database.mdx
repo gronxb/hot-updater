@@ -19,9 +19,10 @@ npm install @hot-updater/test-utils vitest --save-dev
 ## Overview
 
 Database adapters expose a small row-level API. The models are fixed:
-`bundles`, `bundle_patches`, `channels`, and `bundle_events`. Hot Updater's
-shared database client composes bundle, patch, and channel rows into bundles,
-so an adapter does not implement bundle staging or patch orchestration.
+`bundles`, `bundle_patches`, and `bundle_events`. Hot Updater's shared database
+client composes bundle and patch rows into bundles and derives channel names
+from `bundles.channel`, so an adapter does not implement bundle staging or
+patch orchestration.
 `bundle_events` is an append-only event log.
 
 The configured value is an adapter object, not a callable database factory:
@@ -40,7 +41,6 @@ Only the following model and method combinations are public:
 | ---------------- | -------- | -------- | -------- | ------- | --------- | ---------- |
 | `bundles`        | Yes      | Yes      | Yes      | Yes     | Yes       | Yes        |
 | `bundle_patches` | Yes      | No       | Yes      | Yes     | Yes       | Yes        |
-| `channels`       | Yes      | No       | No       | Yes     | Yes       | Yes        |
 | `bundle_events`  | Yes      | No       | No       | Yes     | Yes       | Yes        |
 
 `delete` removes every row matched by its non-empty predicate. Bundle updates
@@ -56,16 +56,14 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
 } from "@hot-updater/plugin-core";
 ```
 
 `BundleRow` never contains patch artifacts. Patch ownership and base-bundle
 references are represented by `BundlePatchRow.bundle_id` and
-`BundlePatchRow.base_bundle_id`. `ChannelRow` is exactly
-`{ id: string; name: string }`. `BundleRow.channel` keeps the channel name for
-legacy readers, while `BundleRow.channel_id` references the channel's stable
-`id`. Bundle creates and channel changes must write both fields together.
+`BundlePatchRow.base_bundle_id`. `BundleRow.channel` stores the channel name
+directly. There is no separate channel row or channel ID in the adapter
+contract.
 `BundleEventRow` is immutable after creation and is never updated or deleted
 through the public operation matrix.
 
@@ -160,9 +158,9 @@ the public result type.
 ```typescript
 const rows = await adapter.findMany({
   model: "bundles",
-  select: ["id", "channel_id"],
+  select: ["id", "channel"],
 });
-// Array<{ id: string; channel_id: string }>
+// Array<{ id: string; channel: string }>
 ```
 
 An empty `select` is invalid. Do not hydrate a projected result through a
@@ -177,7 +175,7 @@ Each predicate contains `field`, `value`, and an optional `operator`,
 const rows = await adapter.findMany({
   model: "bundles",
   where: [
-    { field: "channel_id", value: "channel-production" },
+    { field: "channel", value: "production" },
     { field: "enabled", value: true, connector: "AND" },
     {
       field: "platform",
@@ -208,25 +206,18 @@ field's type. String comparisons can use `mode: "sensitive"` or
 
 ## Relations and channels
 
-Persist independent `bundles`, `bundle_patches`, and `bundle_channels`
-collections or tables. The adapter model remains `channels`; SQL/ORM and
-document-store implementations should map it to `bundle_channels`. Enforce
-these rules:
+Persist independent `bundles` and `bundle_patches` collections or tables, with
+the channel name stored directly in `bundles.channel`. Enforce these rules:
 
-- A channel's `name` must be unique.
-- A bundle's `channel_id` must reference an existing channel `id`.
 - A patch's `bundle_id` and `base_bundle_id` must reference existing bundles.
 - Deleting a bundle removes patches that reference it in either direction.
-- Deleting a bundle never deletes its channel.
-- Referenced channel deletion must be rejected. The public adapter deliberately
-  exposes no channel delete method.
+- Changing a bundle's channel updates its `channel` string directly.
 
-Channel IDs and names are immutable through the v2 low API; create a distinct
-channel row for a different name.
-
-The shared aggregate client ensures a channel before creating or moving a
-bundle. Concurrent channel creation may race, so duplicate creation can be
-followed by a successful re-read.
+`DatabaseAdapterImplementation.getChannels` is an optional aggregate fast
+path. SQL adapters should implement it with a sorted `SELECT DISTINCT channel`
+query when possible. If it is omitted, `createDatabaseClient` pages projected
+bundle channel values and returns their sorted distinct set. Consequently, a
+channel disappears from `getChannels()` after its last bundle is deleted.
 
 Record adapters persist `bundle_events` as a fourth, append-only collection or
 table. Event rows may refer to unknown or deleted bundle IDs, so bundle deletion
@@ -358,22 +349,15 @@ const hotUpdater = createHotUpdater({
 The fixed-model database adapter API fully replaces the legacy adapter API. There is no legacy compatibility mode.
 
 1. Replace whole-bundle methods with the fixed row operation matrix.
-2. Split stored patches into `bundle_patches` and create
-   `bundle_channels { id, name }` with a unique `name`.
-3. Backfill one channel row for every distinct existing bundle channel, using
-   the previous channel value as both `id` and `name`.
-4. Add `bundles.channel_id -> bundle_channels.id ON DELETE RESTRICT` without
-   removing the existing `bundles.channel` string. Double-write the channel name to
-   `channel` and the referenced stable ID to `channel_id` on every bundle
-   create or channel change. For non-relational databases, enforce the
-   equivalent relationship in adapter writes.
-5. Add append-only `bundle_events` storage before switching to
+2. Split stored patches into `bundle_patches` while keeping the existing
+   `bundles.channel` string as the only channel storage.
+3. Add append-only `bundle_events` storage before switching to
    `createDatabaseAdapter`. Snapshot-replacing backends must use
    `createBlobDatabaseAdapter`.
-6. Replace `config.database()` and direct bundle mutation calls with the
+4. Replace `config.database()` and direct bundle mutation calls with the
    adapter object or `createDatabaseClient(adapter)`.
-7. Remove `appendBundle`, `updateBundle`, `deleteBundle`, and `commitBundle`.
-8. Run both public conformance suites before deploying the migration.
+5. Remove `appendBundle`, `updateBundle`, `deleteBundle`, and `commitBundle`.
+6. Run both public conformance suites before deploying the migration.
 
 For non-transactional providers, plan the data migration and retry behavior
 around the documented sequential, potentially partial-write fallback.

@@ -9,11 +9,9 @@ icon: Server
 The `standaloneRepository` compatibility adapter connects your Hot Updater CLI to a self-hosted backend server. This is the **client-side configuration** for connecting to your server.
 
 > `standaloneRepository` is a compatibility bridge over the existing aggregate
-> bundle routes, not a strict fixed-model v2 database adapter. The legacy
-> channels response contains names only, so the bridge deterministically uses
-> each channel name as its low-row `id`; it cannot preserve a separate caller-
-> supplied channel ID. Use a custom database adapter when independent channel
-> IDs or the public v2 conformance contract are required.
+> bundle routes, not a fixed-model database adapter. It forwards channel-list
+> reads to the existing channels endpoint while bundle rows keep their channel
+> name directly in `channel`.
 
 <Callout type="info">
 **Building a Self-Hosted Server?**
