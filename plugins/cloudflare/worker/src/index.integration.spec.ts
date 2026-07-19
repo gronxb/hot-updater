@@ -51,7 +51,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel_id,
+      should_force_update, enabled, git_commit_hash, message, channel,
       storage_uri, fingerprint_hash, metadata, manifest_storage_uri,
       manifest_file_hash, asset_base_storage_uri, rollout_cohort_count,
       target_cohorts
@@ -81,7 +81,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       enabled = excluded.enabled,
       git_commit_hash = excluded.git_commit_hash,
       message = excluded.message,
-      channel_id = excluded.channel_id,
+      channel = excluded.channel,
       storage_uri = excluded.storage_uri,
       fingerprint_hash = excluded.fingerprint_hash,
       metadata = excluded.metadata,
@@ -131,11 +131,6 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 
 const seedBundles = async (bundles: Bundle[]) => {
   for (const bundle of bundles.map(toRuntimeBundle)) {
-    await env.DB.prepare(
-      "INSERT OR IGNORE INTO bundle_channels (id, name) VALUES (?, ?)",
-    )
-      .bind(bundle.channel, bundle.channel)
-      .run();
     await env.DB.prepare(createInsertBundleQuery(bundle)).run();
     for (const patchSql of createInsertBundlePatchQueries(bundle)) {
       await env.DB.prepare(patchSql).run();
@@ -173,7 +168,6 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
   beforeEach(async () => {
     await env.DB.prepare("DELETE FROM bundle_patches").run();
     await env.DB.prepare("DELETE FROM bundles").run();
-    await env.DB.prepare("DELETE FROM bundle_channels").run();
   });
 
   const requestUpdateInfo = async (args: GetBundlesArgs) => {

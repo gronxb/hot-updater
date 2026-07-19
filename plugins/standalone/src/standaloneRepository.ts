@@ -18,10 +18,8 @@ export type {
 /**
  * Compatibility bridge over the legacy aggregate `/api/bundles` HTTP API.
  *
- * The channel endpoint exposes names only, so this bridge deterministically
- * aliases each channel name as its low-row `id`. It cannot preserve an
- * independently supplied `ChannelRow.id` and is therefore outside the strict
- * fixed-model v2 adapter conformance contract.
+ * Channel names are exposed through the adapter aggregate instead of a
+ * synthetic fixed-model relation.
  */
 export const standaloneRepository = <TContext = unknown>(
   config: StandaloneRepositoryConfig<TContext>,

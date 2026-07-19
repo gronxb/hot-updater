@@ -10,11 +10,7 @@ import {
   getEmptyMigrationResult,
   isCurrentSchemaVersion,
 } from "./fixedMigratorShared";
-import {
-  executeMongoMigration,
-  MONGO_CHANNEL_ID_PIPELINE,
-  MONGO_NORMALIZE_CHANNEL_FIELDS_PIPELINE,
-} from "./mongoMigrationExecution";
+import { executeMongoMigration } from "./mongoMigrationExecution";
 import { createMongoMigrationOperations } from "./schema/mongodb";
 import {
   hotUpdaterSchema,
@@ -70,11 +66,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
       operations: createMongoMigrationOperations(settingsOperation),
       execute: async () => {
         const db = client.db();
-        const bundles = db.collection("bundles");
-        const bundleChannels = db.collection<{
-          readonly id: string;
-          readonly name: string;
-        }>("bundle_channels");
         await executeMongoMigration({
           updateSettings: options.updateSettings !== false,
           backend: {
@@ -84,37 +75,6 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
                 await db
                   .createCollection(table.ormName)
                   .catch(ignoreExistingCollection);
-              }
-            },
-            findChannelIds: async () => {
-              const rows = await bundles
-                .aggregate<{ readonly _id: string }>(MONGO_CHANNEL_ID_PIPELINE)
-                .toArray();
-              return rows.map(({ _id }) => _id);
-            },
-            upsertChannel: async (id) => {
-              await bundleChannels.updateOne(
-                { id },
-                { $setOnInsert: { id, name: id } },
-                { upsert: true },
-              );
-            },
-            normalizeLegacyBundles: async () => {
-              await bundles.updateMany(
-                {
-                  $or: [
-                    { channel: { $type: "string", $ne: "" } },
-                    { channel_id: { $type: "string", $ne: "" } },
-                  ],
-                },
-                MONGO_NORMALIZE_CHANNEL_FIELDS_PIPELINE,
-              );
-              const storedChannels = await bundleChannels.find().toArray();
-              for (const channel of storedChannels) {
-                await bundles.updateMany(
-                  { channel_id: channel.id },
-                  { $set: { channel: channel.name } },
-                );
               }
             },
             ensureIndexes: async () => {

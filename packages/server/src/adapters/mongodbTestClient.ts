@@ -2,7 +2,6 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
 } from "@hot-updater/plugin-core";
 import { MongoClient } from "mongodb";
 
@@ -16,7 +15,6 @@ type Tables = {
   bundle_events: MongoTestRow[];
   bundle_patches: MongoTestRow[];
   bundles: MongoTestRow[];
-  channels: MongoTestRow[];
 };
 
 type FindOptions = { readonly projection?: unknown };
@@ -95,6 +93,14 @@ const createCollection = (
       (row) => !matchesMongoTestFilter(row, filter),
     );
   },
+  distinct: async (field: string, filter?: unknown): Promise<unknown[]> =>
+    Array.from(
+      new Set(
+        tables[model]
+          .filter((row) => matchesMongoTestFilter(row, filter))
+          .map((row) => Reflect.get(row, field)),
+      ),
+    ),
   find: (filter?: unknown, options?: FindOptions): MongoTestCursor =>
     new MongoTestCursor(
       tables[model].filter((row) => matchesMongoTestFilter(row, filter)),
@@ -129,15 +135,6 @@ const createCollection = (
     if (tables[model].some(({ id }) => id === row.id)) {
       throw new MongoTestConstraintError("duplicate id");
     }
-    if (
-      model === "channels" &&
-      "name" in row &&
-      tables.channels.some(
-        (current) => "name" in current && current.name === row.name,
-      )
-    ) {
-      throw new MongoTestConstraintError("duplicate channel name");
-    }
     tables[model].push(structuredClone(row));
   },
   updateMany: async (filter: unknown, update: UpdateInput): Promise<void> => {
@@ -160,10 +157,8 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "bundles", hooks);
       case "bundle_patches":
         return createCollection(tables, "bundle_patches", hooks);
-      case "channels":
-        return createCollection(tables, "channels", hooks);
       default:
-        return createCollection(tables, "channels", hooks);
+        throw new MongoTestConstraintError(`unknown collection: ${name}`);
     }
   },
 });
@@ -173,7 +168,6 @@ export const createMongoTestHarness = () => {
     bundle_events: [],
     bundle_patches: [],
     bundles: [],
-    channels: [],
   };
   const hooks: MongoTestHooks = { failNextBundleTombstone: false };
   const client = new MongoClient("mongodb://127.0.0.1:27017/hot_updater_test");
@@ -188,7 +182,6 @@ export const createMongoTestHarness = () => {
       tables.bundle_events = [];
       tables.bundle_patches = [];
       tables.bundles = [];
-      tables.channels = [];
     },
     setBeforeBundlePatchInsert: (
       hook: MongoTestHooks["beforeBundlePatchInsert"],
@@ -209,4 +202,3 @@ export const createMongoTestHarness = () => {
 export type MongoTestBundleRow = BundleRow;
 export type MongoTestBundleEventRow = BundleEventRow;
 export type MongoTestBundlePatchRow = BundlePatchRow;
-export type MongoTestChannelRow = ChannelRow;

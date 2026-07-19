@@ -45,14 +45,12 @@ vi.mock("cloudflare", () => ({
 
 const reset = async (): Promise<void> => {
   await getDb()
-    .prepare(
-      "DELETE FROM bundle_patches; DELETE FROM bundles; DELETE FROM bundle_channels;",
-    )
+    .prepare("DELETE FROM bundle_patches; DELETE FROM bundles;")
     .run();
 };
 
 setupDatabaseAdapterTestSuite({
-  name: "cloudflare d1 http database adapter v2",
+  name: "cloudflare d1 http fixed-model database adapter",
   migrate: async () => {
     state.db = env.DB;
     await getDb().prepare(inject("prepareSql")).run();
@@ -72,7 +70,7 @@ type TestContext = {
 };
 
 setupDatabaseAdapterTestSuite<TestContext>({
-  name: "cloudflare worker d1 database adapter v2",
+  name: "cloudflare worker d1 fixed-model database adapter",
   context: { env },
   migrate: () => undefined,
   createAdapter: () => d1WorkerDatabase<TestContext>(),

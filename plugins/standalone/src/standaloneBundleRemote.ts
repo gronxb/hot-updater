@@ -135,7 +135,7 @@ export const createStandaloneBundleRemote = <TContext>(
       ? value.data
       : value.data.slice(input.offset, input.offset + input.limit);
     return {
-      rows: bundles.map((bundle) => bundleToRow(bundle, bundle.channel)),
+      rows: bundles.map(bundleToRow),
       total: value.pagination.total,
     };
   };

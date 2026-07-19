@@ -115,7 +115,7 @@ beforeEach(() => {
 });
 
 setupDatabaseAdapterTestSuite({
-  name: "AWS S3 database adapter v2",
+  name: "AWS S3 fixed-model database adapter",
   createAdapter: () => s3Database({ bucketName }),
   migrate: () => undefined,
   reset: () => {
@@ -147,10 +147,7 @@ describe("s3Database storage behavior", () => {
   it("writes an immutable revision below the configured base path", async () => {
     const adapter = s3Database({ bucketName, basePath: "/metadata/" });
 
-    await adapter.create({
-      model: "channels",
-      data: { id: "production", name: "production" },
-    });
+    await adapter.create({ model: "bundles", data: bundleRow("1") });
 
     const pointerKey = `metadata/${BLOB_DATABASE_SNAPSHOT_KEY}`;
     const revision = readActiveRevision(pointerKey);
@@ -162,9 +159,8 @@ describe("s3Database storage behavior", () => {
       ),
     ).toEqual({
       version: 2,
-      bundles: [],
+      bundles: [bundleRow("1")],
       bundle_patches: [],
-      channels: [{ id: "production", name: "production" }],
       bundle_events: [],
     });
     const call = s3Mock.commandCalls(PutObjectCommand).at(-1);
@@ -192,14 +188,11 @@ describe("s3Database storage behavior", () => {
 
   it("uses the loaded snapshot ETag for conditional replacement", async () => {
     const adapter = s3Database({ bucketName });
-    await adapter.create({
-      model: "channels",
-      data: { id: "production", name: "production" },
-    });
+    await adapter.create({ model: "bundles", data: bundleRow("1") });
     const previous = objects.get(BLOB_DATABASE_SNAPSHOT_KEY);
     if (previous === undefined) throw new Error("Snapshot was not written.");
 
-    await adapter.create({ model: "bundles", data: bundleRow("1") });
+    await adapter.create({ model: "bundles", data: bundleRow("2") });
 
     const snapshotWrites = s3Mock
       .commandCalls(PutObjectCommand)
@@ -211,15 +204,10 @@ describe("s3Database storage behavior", () => {
 
   it("preserves a concurrent snapshot when the conditional write loses", async () => {
     const adapter = s3Database({ bucketName });
-    await adapter.create({
-      model: "channels",
-      data: { id: "production", name: "production" },
-    });
+    await adapter.create({ model: "bundles", data: bundleRow("1") });
     const external = JSON.stringify({
       version: 2,
-      bundles: [],
-      bundle_patches: [],
-      channels: [{ id: "external", name: "external" }],
+      active_revision: "00000000-0000-7000-8000-000000000099",
     });
     replacementBeforeConditionalPut = {
       key: BLOB_DATABASE_SNAPSHOT_KEY,
@@ -227,7 +215,7 @@ describe("s3Database storage behavior", () => {
     };
 
     await expect(
-      adapter.create({ model: "bundles", data: bundleRow("1") }),
+      adapter.create({ model: "bundles", data: bundleRow("2") }),
     ).rejects.toThrow("changed while a mutation was in progress");
     expect(objects.get(BLOB_DATABASE_SNAPSHOT_KEY)).toBe(external);
   });
@@ -237,11 +225,6 @@ describe("s3Database storage behavior", () => {
       bucketName,
       cloudfrontDistributionId: "distribution-1",
     });
-    await adapter.create({
-      model: "channels",
-      data: { id: "production", name: "production" },
-    });
-
     await adapter.create({ model: "bundles", data: bundleRow("1") });
 
     expect(
@@ -268,16 +251,10 @@ describe("s3Database storage behavior", () => {
       cloudfrontDistributionId: "distribution-1",
     });
     await adapter.create({
-      model: "channels",
-      data: { id: "release-channel", name: "release candidate" },
-    });
-
-    await adapter.create({
       model: "bundles",
       data: {
         ...bundleRow("1"),
         channel: "release candidate",
-        channel_id: "release-channel",
       },
     });
 
@@ -291,10 +268,6 @@ describe("s3Database storage behavior", () => {
 
   it("fails closed when an active revision manifest is archived", async () => {
     const adapter = s3Database({ bucketName });
-    await adapter.create({
-      model: "channels",
-      data: { id: "production", name: "production" },
-    });
     await adapter.create({ model: "bundles", data: bundleRow("1") });
     const revision = readActiveRevision(BLOB_DATABASE_SNAPSHOT_KEY);
     archivedKeys.add(
@@ -327,11 +300,6 @@ describe("s3Database storage behavior", () => {
     const adapter = s3Database({
       bucketName,
     });
-    await adapter.create({
-      model: "channels",
-      data: { id: "production", name: "production" },
-    });
-
     await adapter.create({ model: "bundles", data: bundleRow("1") });
 
     expect(cloudFrontMock.commandCalls(CreateInvalidationCommand)).toHaveLength(
@@ -352,7 +320,6 @@ const bundleRow = (suffix: string) => ({
   git_commit_hash: null,
   message: `bundle-${suffix}`,
   channel: "production",
-  channel_id: "production",
   storage_uri: `s3://${bucketName}/bundles/${suffix}.zip`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

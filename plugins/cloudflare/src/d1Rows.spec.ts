@@ -27,7 +27,6 @@ it("parses SQLite booleans and JSON columns into public bundle rows", () => {
     git_commit_hash: null,
     message: null,
     channel: "production",
-    channel_id: "channel-production",
     storage_uri: "storage://bundle",
     target_app_version: null,
     fingerprint_hash: "fingerprint",
@@ -43,21 +42,9 @@ it("parses SQLite booleans and JSON columns into public bundle rows", () => {
     should_force_update: true,
     enabled: false,
     channel: "production",
-    channel_id: "channel-production",
     metadata: { build: 1 },
     target_cohorts: ["stable", "beta"],
   });
-});
-
-it("parses channel ids and names from D1 rows", () => {
-  // Given
-  const row = { id: "channel-production", name: "production" };
-
-  // When
-  const channel = parseD1Row("channels", row);
-
-  // Then
-  expect(channel).toEqual(row);
 });
 
 it("parses all three bundle event variants and nullable transition fields", () => {

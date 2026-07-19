@@ -61,7 +61,6 @@ function findHotUpdaterModels(lines: string[]): {
   endIndex: number;
 } | null {
   const hotUpdaterModelNames = [
-    "bundle_channels",
     "bundles",
     "bundle_patches",
     "private_hot_updater_settings",

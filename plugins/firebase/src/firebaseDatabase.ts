@@ -17,7 +17,6 @@ import type {
 import {
   parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
-  parseFirebaseChannelRow,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
 import {
@@ -203,12 +202,6 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
                   )
                 : null;
             }
-            case "channels": {
-              const document = await collections.channels.doc(id).get();
-              return document.exists
-                ? parseFirebaseChannelRow(document.data(), document.id)
-                : null;
-            }
             case "bundle_events": {
               const document = await collections.bundleEvents.doc(id).get();
               return document.exists
@@ -232,6 +225,15 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
           }
           await ensureMigrated();
           return loadFirebaseBundleEvents(collections.bundleEvents, input);
+        },
+        getChannels: async () => {
+          await ensureMigrated();
+          const snapshot = await collections.bundles.select("channel").get();
+          return [
+            ...new Set(
+              snapshot.docs.map((document) => String(document.get("channel"))),
+            ),
+          ].sort();
         },
         getUpdateInfo: async (args, context) => {
           await ensureMigrated();

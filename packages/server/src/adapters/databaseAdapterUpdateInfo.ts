@@ -3,7 +3,6 @@ import { NIL_UUID } from "@hot-updater/core";
 import type {
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseWhere,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
@@ -15,7 +14,6 @@ import {
 import { rowToBundle } from "../db/bundleRows";
 
 type UpdateInfoDatabaseReader = {
-  readonly findChannel: (name: string) => Promise<ChannelRow | null>;
   readonly findBundles: (
     where: readonly DatabaseWhere<"bundles">[],
   ) => Promise<readonly BundleRow[]>;
@@ -27,7 +25,6 @@ type UpdateInfoDatabaseReader = {
 const hydrateBundles = (
   rows: readonly BundleRow[],
   patches: readonly BundlePatchRow[],
-  channelName: string,
 ) => {
   const patchesByBundleId = new Map<string, BundlePatchRow[]>();
   for (const patch of patches) {
@@ -36,7 +33,7 @@ const hydrateBundles = (
     patchesByBundleId.set(patch.bundle_id, current);
   }
   return rows.map((row) =>
-    rowToBundle(row, channelName, patchesByBundleId.get(row.id) ?? []),
+    rowToBundle(row, patchesByBundleId.get(row.id) ?? []),
   );
 };
 
@@ -47,18 +44,10 @@ export const getDatabaseAdapterUpdateInfo = async <TContext>(
 ): Promise<UpdateInfo | null> => {
   const channelName = args.channel ?? "production";
   const minBundleId = args.minBundleId ?? NIL_UUID;
-  const channel = await reader.findChannel(channelName);
-  if (channel === null) {
-    return resolveUpdateInfoFromBundles({
-      args: { ...args, channel: channelName, minBundleId },
-      bundles: [],
-      context,
-    });
-  }
   const commonWhere = [
     { field: "enabled", value: true },
     { field: "platform", value: args.platform },
-    { field: "channel_id", value: channel.id },
+    { field: "channel", value: channelName },
     { field: "id", operator: "gte", value: minBundleId },
   ] satisfies readonly DatabaseWhere<"bundles">[];
 
@@ -97,7 +86,7 @@ export const getDatabaseAdapterUpdateInfo = async <TContext>(
   const patches = await reader.findPatches(rows.map((row) => row.id));
   return resolveUpdateInfoFromBundles({
     args: { ...args, channel: channelName, minBundleId },
-    bundles: hydrateBundles(rows, patches, channelName),
+    bundles: hydrateBundles(rows, patches),
     context,
   });
 };

@@ -7,8 +7,4 @@ export {
   rowsToBundles,
 } from "@hot-updater/plugin-core";
 
-export type {
-  BundlePatchRow,
-  BundleRow,
-  ChannelRow,
-} from "@hot-updater/plugin-core";
+export type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";

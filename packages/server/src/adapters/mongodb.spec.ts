@@ -5,10 +5,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-} from "../../../test-utils/src/databaseTestFixtures";
+import { createBundleRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
 import { createDatabaseAdapterCore } from "../db/databaseAdapterCore";
 import { supportsAnalytics } from "../db/types";
@@ -66,10 +63,6 @@ describe("mongoAdapter capabilities", () => {
     harness.reset();
     harness.setBeforeBundlePatchInsert(undefined);
     const adapter = mongoAdapter({ client: harness.client });
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
     const bundle = {
       id: "bundle-production",
       platform: "ios" as const,
@@ -79,7 +72,6 @@ describe("mongoAdapter capabilities", () => {
       git_commit_hash: null,
       message: null,
       channel: "production",
-      channel_id: "channel-production",
       storage_uri: "storage://bundle",
       target_app_version: "1.0.0",
       fingerprint_hash: null,
@@ -167,10 +159,6 @@ describe("mongoAdapter capabilities", () => {
     harness.reset();
     const adapter = mongoAdapter({ client: harness.client });
     const bundle = createBundleRowFixture("972");
-    await adapter.create({
-      model: "channels",
-      data: createChannelRowFixture("production"),
-    });
     await adapter.create({ model: "bundles", data: bundle });
     harness.setBundleField(bundle.id, "should_force_update", "false");
     const getUpdateInfo = adapter.getUpdateInfo;

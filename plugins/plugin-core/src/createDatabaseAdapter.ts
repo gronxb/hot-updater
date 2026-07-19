@@ -33,6 +33,9 @@ export const createDatabaseAdapterBase = <TContext = unknown>(
   return {
     ...createDatabaseAdapterCrud(implementation),
     name: options.name,
+    ...(implementation.getChannels
+      ? { getChannels: implementation.getChannels }
+      : {}),
     ...(implementation.getUpdateInfo
       ? { getUpdateInfo: implementation.getUpdateInfo }
       : {}),

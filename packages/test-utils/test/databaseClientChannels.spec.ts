@@ -1,14 +1,10 @@
 import type { Bundle } from "@hot-updater/core";
-import {
-  createDatabaseClient,
-  type DatabaseAdapter,
-  type TransactionDatabaseAdapter,
-} from "@hot-updater/plugin-core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { expect, it } from "vitest";
 
 import { createInMemoryDatabaseAdapter } from "./inMemoryDatabaseAdapter";
 
-it("stores normalized channel ids while exposing channel names", async () => {
+it("stores channel names directly on bundles", async () => {
   // Given
   const adapter = createInMemoryDatabaseAdapter();
   const client = createDatabaseClient(adapter);
@@ -30,26 +26,20 @@ it("stores normalized channel ids while exposing channel names", async () => {
   await client.insertBundle(bundle);
 
   // Then
-  const channel = await adapter.findOne({
-    model: "channels",
-    where: [{ field: "name", value: "beta" }],
-  });
-  expect(channel?.id).toMatch(
-    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-  );
   await expect(
     adapter.findOne({
       model: "bundles",
       where: [{ field: "id", value: bundle.id }],
-      select: ["channel", "channel_id"],
+      select: ["channel"],
     }),
-  ).resolves.toEqual({ channel: "beta", channel_id: channel?.id });
+  ).resolves.toEqual({ channel: "beta" });
+  await expect(client.getChannels()).resolves.toEqual(["beta"]);
   await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
     channel: "beta",
   });
 });
 
-it("updates legacy and normalized channel fields together", async () => {
+it("updates the bundle channel directly", async () => {
   // Given
   const adapter = createInMemoryDatabaseAdapter();
   const client = createDatabaseClient(adapter);
@@ -72,76 +62,41 @@ it("updates legacy and normalized channel fields together", async () => {
   await client.updateBundleById(bundle.id, { channel: "stable" });
 
   // Then
-  const channel = await adapter.findOne({
-    model: "channels",
-    where: [{ field: "name", value: "stable" }],
-  });
   await expect(
     adapter.findOne({
       model: "bundles",
       where: [{ field: "id", value: bundle.id }],
-      select: ["channel", "channel_id"],
+      select: ["channel"],
     }),
-  ).resolves.toEqual({ channel: "stable", channel_id: channel?.id });
+  ).resolves.toEqual({ channel: "stable" });
+  await expect(client.getChannels()).resolves.toEqual(["stable"]);
 });
 
-it("retries the whole transaction after a concurrent channel insert", async () => {
-  // Given
-  const base = createInMemoryDatabaseAdapter();
-  const runBaseTransaction = base.transaction;
-  if (!runBaseTransaction) throw new Error("transaction unavailable");
-  let transactionAttempts = 0;
-  let abortedTransactionLookups = 0;
-  const adapter: DatabaseAdapter = {
-    ...base,
-    transaction: async (callback) => {
-      transactionAttempts += 1;
-      if (transactionAttempts > 1) return runBaseTransaction(callback);
-      let aborted = false;
-      const failedTransaction: TransactionDatabaseAdapter = {
-        ...base,
-        findOne: async (input) => {
-          if (aborted) {
-            abortedTransactionLookups += 1;
-            throw new Error("current transaction is aborted");
-          }
-          if (input.model === "channels") return null;
-          return base.findOne(input);
-        },
-        create: async (input) => {
-          if (input.model === "channels") {
-            await base.create(input);
-            aborted = true;
-            throw new Error("duplicate channel name");
-          }
-          return base.create(input);
-        },
-      };
-      return callback(failedTransaction);
-    },
-  };
+it("returns distinct sorted channel names", async () => {
+  const adapter = createInMemoryDatabaseAdapter();
   const client = createDatabaseClient(adapter);
-  const bundle: Bundle = {
-    id: "106",
-    platform: "ios",
-    shouldForceUpdate: false,
-    enabled: true,
-    fileHash: "hash-106",
-    gitCommitHash: null,
-    message: "106",
-    channel: "concurrent",
-    storageUri: "storage://106",
-    targetAppVersion: "1.0.0",
-    fingerprintHash: null,
-  };
+  for (const [id, channel] of [
+    ["106", "staging"],
+    ["107", "production"],
+    ["108", "staging"],
+  ] as const) {
+    await client.insertBundle({
+      id,
+      platform: "ios",
+      shouldForceUpdate: false,
+      enabled: true,
+      fileHash: `hash-${id}`,
+      gitCommitHash: null,
+      message: id,
+      channel,
+      storageUri: `storage://${id}`,
+      targetAppVersion: "1.0.0",
+      fingerprintHash: null,
+    });
+  }
 
-  // When
-  await client.insertBundle(bundle);
-
-  // Then
-  await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
-    channel: "concurrent",
-  });
-  expect(transactionAttempts).toBe(2);
-  expect(abortedTransactionLookups).toBe(0);
+  await expect(client.getChannels()).resolves.toEqual([
+    "production",
+    "staging",
+  ]);
 });

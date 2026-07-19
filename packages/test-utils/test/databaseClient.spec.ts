@@ -70,7 +70,7 @@ describe("database client", () => {
     expect(hook).toHaveBeenCalledOnce();
   });
 
-  it("paginates filtered bundle aggregates and lists persistent channels", async () => {
+  it("paginates filtered bundle aggregates and lists derived channels", async () => {
     // Given
     const client = createDatabaseClient(adapter);
     await client.insertBundle(createBundle("101"));
@@ -88,10 +88,7 @@ describe("database client", () => {
     // Then
     expect(page.data.map(({ id }) => id)).toEqual(["103"]);
     expect(page.pagination).toMatchObject({ total: 2, hasNextPage: true });
-    await expect(client.getChannels()).resolves.toEqual([
-      "production",
-      "staging",
-    ]);
+    await expect(client.getChannels()).resolves.toEqual(["production"]);
   });
 
   it("replaces patches and removes both incoming and outgoing patch rows", async () => {

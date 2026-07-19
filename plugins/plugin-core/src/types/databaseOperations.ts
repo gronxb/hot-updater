@@ -41,14 +41,6 @@ export type DatabaseModelCapabilities = {
     readonly findOne: true;
     readonly findMany: true;
   };
-  readonly channels: {
-    readonly create: true;
-    readonly update: false;
-    readonly delete: false;
-    readonly count: true;
-    readonly findOne: true;
-    readonly findMany: true;
-  };
   readonly bundle_events: {
     readonly create: true;
     readonly update: false;
@@ -85,21 +77,7 @@ export type CreateDatabaseInput<
   readonly select?: TSelect;
 };
 
-type BundleRowUpdateFields = Partial<
-  Omit<BundleRow, "channel" | "channel_id" | "id">
->;
-
-export type BundleRowUpdate = BundleRowUpdateFields &
-  (
-    | {
-        readonly channel?: never;
-        readonly channel_id?: never;
-      }
-    | {
-        readonly channel: string;
-        readonly channel_id: string;
-      }
-  );
+export type BundleRowUpdate = Partial<Omit<BundleRow, "id">>;
 
 export type DatabaseRowUpdate<TModel extends UpdateDatabaseModel> = {
   readonly bundles: BundleRowUpdate;
@@ -226,6 +204,7 @@ export interface DatabaseAdapter<TContext = unknown> {
     input: FindManyDatabaseInput<TModel, TSelect>,
     context?: TContext,
   ): Promise<SelectedDatabaseRow<TModel, TSelect>[]>;
+  getChannels?: (context?: TContext) => Promise<string[]>;
   getUpdateInfo?: (
     args: GetBundlesArgs,
     context?: TContext,
@@ -329,6 +308,7 @@ export interface DatabaseAdapterImplementation<TContext = unknown> {
     input: FindManyDatabaseImplementationInput,
     context?: TContext,
   ): Promise<readonly DatabaseImplementationResult[]>;
+  getChannels?: (context?: TContext) => Promise<string[]>;
   getUpdateInfo?: (
     args: GetBundlesArgs,
     context?: TContext,

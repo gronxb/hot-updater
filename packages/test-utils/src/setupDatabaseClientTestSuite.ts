@@ -107,13 +107,13 @@ export const setupDatabaseClientTestSuite = <TAdapter, TContext>(
         expect(result.pagination.total).toBe(3);
       });
 
-      it("retains a channel after its last bundle is deleted", async () => {
+      it("removes a derived channel after its last bundle is deleted", async () => {
         const bundle = createBundleFixture("301", "staging");
         await getClient().insertBundle(bundle, context);
 
         await getClient().deleteBundleById(bundle.id, context);
 
-        await expect(getClient().getChannels(context)).resolves.toContain(
+        await expect(getClient().getChannels(context)).resolves.not.toContain(
           "staging",
         );
       });

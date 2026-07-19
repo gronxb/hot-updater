@@ -1,6 +1,5 @@
 import type {
   BundleRow,
-  ChannelRow,
   CountBundlesDatabaseInput,
   CountDatabaseModel,
   DatabaseDeleteModel,
@@ -14,7 +13,7 @@ import { describe, expectTypeOf, it } from "vitest";
 describe("database adapter operation matrix", () => {
   it("exposes create and findMany for all fixed models", () => {
     expectTypeOf<DatabaseModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches" | "channels" | "bundle_events"
+      "bundles" | "bundle_patches" | "bundle_events"
     >();
   });
 
@@ -26,13 +25,13 @@ describe("database adapter operation matrix", () => {
 
   it("limits findOne to models with read-by-selector support", () => {
     expectTypeOf<DatabaseFindOneModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches" | "channels" | "bundle_events"
+      "bundles" | "bundle_patches" | "bundle_events"
     >();
   });
 
   it("allows count across all readable models while preserving bundle aliases", () => {
     expectTypeOf<CountDatabaseModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches" | "channels" | "bundle_events"
+      "bundles" | "bundle_patches" | "bundle_events"
     >();
     expectTypeOf<
       UpdateBundleDatabaseInput["model"]
@@ -44,10 +43,7 @@ describe("database adapter operation matrix", () => {
 
   it("narrows selected result fields", () => {
     expectTypeOf<
-      SelectedDatabaseRow<"channels", readonly ["id", "name"]>
-    >().toEqualTypeOf<ChannelRow>();
-    expectTypeOf<
-      SelectedDatabaseRow<"bundles", readonly ["id", "channel_id"]>
-    >().toEqualTypeOf<Pick<BundleRow, "id" | "channel_id">>();
+      SelectedDatabaseRow<"bundles", readonly ["id", "channel"]>
+    >().toEqualTypeOf<Pick<BundleRow, "id" | "channel">>();
   });
 });

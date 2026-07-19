@@ -125,35 +125,25 @@ describe("blob snapshot persistence", () => {
     ]);
     expect(activeSnapshot()).toMatchObject({
       version: 2,
-      channels: [{ name: "production" }],
+      bundles: expect.arrayContaining([
+        expect.objectContaining({ channel: "production" }),
+      ]),
     });
   });
 
-  it("writes deterministic fixed-model snapshots and preserves empty channels", async () => {
+  it("writes deterministic fixed-model snapshots", async () => {
     const adapter = createMemoryAdapter(config());
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-unused", name: "unused" },
-    });
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
     await adapter.create({ model: "bundles", data: bundleRow("2") });
     await adapter.create({ model: "bundles", data: bundleRow("1") });
     await adapter.delete({
       model: "bundles",
-      where: [{ field: "channel_id", value: "channel-production" }],
+      where: [{ field: "channel", value: "production" }],
     });
 
     expect(activeSnapshot()).toEqual({
       version: 2,
       bundles: [],
       bundle_patches: [],
-      channels: [
-        { id: "channel-production", name: "production" },
-        { id: "channel-unused", name: "unused" },
-      ],
       bundle_events: [],
     });
   });
@@ -177,9 +167,8 @@ describe("blob snapshot persistence", () => {
   it("rejects a corrupt v2 snapshot without replacing it", async () => {
     const corrupt = {
       version: 2,
-      bundles: [bundleRow("1")],
+      bundles: [{ ...bundleRow("1"), channel: undefined }],
       bundle_patches: [],
-      channels: [],
     };
     store.set(BLOB_DATABASE_SNAPSHOT_KEY, corrupt);
     const adapter = createMemoryAdapter(config());
@@ -193,10 +182,6 @@ describe("blob snapshot persistence", () => {
 
   it("invalidates exact, range, and fingerprint update routes", async () => {
     const adapter = createMemoryAdapter(config());
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
     await adapter.create({ model: "bundles", data: bundleRow("1") });
     await adapter.create({
       model: "bundles",
@@ -326,10 +311,7 @@ describe("blob snapshot persistence", () => {
   it("reloads the latest snapshot written by another adapter instance", async () => {
     const first = createMemoryAdapter(config());
     const second = createMemoryAdapter(config());
-    await first.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
+    await first.count({ model: "bundles" });
 
     await second.create({ model: "bundles", data: bundleRow("1") });
 
@@ -342,7 +324,6 @@ describe("blob snapshot persistence", () => {
       version: 2 as const,
       bundles: [],
       bundle_patches: [],
-      channels: [{ id: "channel-external", name: "external" }],
     };
     const adapter = createMemoryAdapter({
       ...config(),
@@ -356,8 +337,8 @@ describe("blob snapshot persistence", () => {
 
     await expect(
       adapter.create({
-        model: "channels",
-        data: { id: "channel-local", name: "local" },
+        model: "bundles",
+        data: bundleRow("1"),
       }),
     ).rejects.toThrow("changed while a mutation was in progress");
 
@@ -377,7 +358,6 @@ const bundleRow = (suffix: string) => ({
   git_commit_hash: null,
   message: `bundle-${suffix}`,
   channel: "production",
-  channel_id: "channel-production",
   storage_uri: `storage://bundles/${suffix}.zip`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

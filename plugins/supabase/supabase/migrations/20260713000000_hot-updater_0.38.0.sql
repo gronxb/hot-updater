@@ -1,36 +1,5 @@
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS public.bundle_channels (
-  id text PRIMARY KEY,
-  name text NOT NULL UNIQUE
-);
-
-INSERT INTO public.bundle_channels (id, name)
-SELECT DISTINCT b.channel, b.channel
-FROM public.bundles b
-WHERE NOT EXISTS (
-  SELECT 1 FROM public.bundle_channels c WHERE c.name = b.channel
-)
-ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
-
-ALTER TABLE public.bundles
-  ADD COLUMN channel_id text;
-
-UPDATE public.bundles b
-SET channel_id = c.id
-FROM public.bundle_channels c
-WHERE c.name = b.channel;
-
-ALTER TABLE public.bundles
-  ALTER COLUMN channel_id SET NOT NULL,
-  ADD CONSTRAINT bundles_channel_id_fk
-  FOREIGN KEY (channel_id)
-  REFERENCES public.bundle_channels(id) ON DELETE RESTRICT;
-
-CREATE INDEX bundles_channel_id_idx ON public.bundles(channel_id);
-
-ALTER TABLE public.bundle_channels ENABLE ROW LEVEL SECURITY;
-
 CREATE OR REPLACE FUNCTION public.get_channels ()
 RETURNS TABLE (
     channel text
@@ -40,9 +9,9 @@ STABLE
 SET search_path = public, pg_catalog
 AS
 $$
-    SELECT c.name AS channel
-    FROM public.bundle_channels c
-    ORDER BY c.name
+    SELECT DISTINCT b.channel
+    FROM public.bundles b
+    ORDER BY b.channel
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_update_info_by_fingerprint_hash (
@@ -79,11 +48,10 @@ BEGIN
             b.rollout_cohort_count,
             b.target_cohorts
         FROM public.bundles b
-        JOIN public.bundle_channels c ON c.id = b.channel_id
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id >= min_bundle_id
-          AND c.name = target_channel
+          AND b.channel = target_channel
           AND b.fingerprint_hash = target_fingerprint_hash
     ),
     current_candidate AS (
@@ -204,14 +172,13 @@ BEGIN
             b.rollout_cohort_count,
             b.target_cohorts
         FROM public.bundles b
-        JOIN public.bundle_channels c ON c.id = b.channel_id
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id >= min_bundle_id
           AND b.target_app_version IN (
               SELECT pg_catalog.unnest(target_app_version_list)
           )
-          AND c.name = target_channel
+          AND b.channel = target_channel
     ),
     current_candidate AS (
         SELECT

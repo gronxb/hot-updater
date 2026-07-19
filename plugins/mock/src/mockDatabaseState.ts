@@ -2,7 +2,6 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseImplementationResult,
   TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
@@ -15,7 +14,6 @@ import {
 export interface MockDatabaseData {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
-  readonly channels: Map<string, ChannelRow>;
   readonly bundleEvents: Map<string, BundleEventRow>;
 }
 
@@ -30,7 +28,6 @@ export class MockDatabaseConstraintError extends Error {
 export const createMockDatabaseData = (): MockDatabaseData => ({
   bundles: new Map(),
   bundlePatches: new Map(),
-  channels: new Map(),
   bundleEvents: new Map(),
 });
 
@@ -39,7 +36,6 @@ export const cloneMockDatabaseData = (
 ): MockDatabaseData => ({
   bundles: new Map(data.bundles),
   bundlePatches: new Map(data.bundlePatches),
-  channels: new Map(data.channels),
   bundleEvents: new Map(data.bundleEvents),
 });
 
@@ -49,13 +45,11 @@ export const replaceMockDatabaseData = (
 ): void => {
   target.bundles.clear();
   target.bundlePatches.clear();
-  target.channels.clear();
   target.bundleEvents.clear();
   for (const [id, row] of source.bundles) target.bundles.set(id, row);
   for (const [id, row] of source.bundlePatches) {
     target.bundlePatches.set(id, row);
   }
-  for (const [id, row] of source.channels) target.channels.set(id, row);
   for (const [id, row] of source.bundleEvents) {
     target.bundleEvents.set(id, row);
   }
@@ -68,15 +62,6 @@ const requireUnique = (
 ): void => {
   if (rows.has(id)) {
     throw new MockDatabaseConstraintError(`${model}.id.unique`);
-  }
-};
-
-const requireUniqueChannelName = (
-  channels: ReadonlyMap<string, ChannelRow>,
-  name: string,
-): void => {
-  if ([...channels.values()].some((channel) => channel.name === name)) {
-    throw new MockDatabaseConstraintError("channels.name.unique");
   }
 };
 
@@ -98,18 +83,8 @@ export const createMockDatabaseState = (
 ): TransactionDatabaseAdapterImplementation => ({
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
-      case "channels":
-        requireUnique(data.channels, input.data.id, input.model);
-        requireUniqueChannelName(data.channels, input.data.name);
-        data.channels.set(input.data.id, input.data);
-        return input.data;
       case "bundles":
         requireUnique(data.bundles, input.data.id, input.model);
-        if (!data.channels.has(input.data.channel_id)) {
-          throw new MockDatabaseConstraintError(
-            "bundles.channel_id.foreign-key",
-          );
-        }
         data.bundles.set(input.data.id, input.data);
         return input.data;
       case "bundle_patches":
@@ -138,9 +113,6 @@ export const createMockDatabaseState = (
     );
     if (!current) return null;
     const updated = { ...current, ...input.update };
-    if (!data.channels.has(updated.channel_id)) {
-      throw new MockDatabaseConstraintError("bundles.channel_id.foreign-key");
-    }
     data.bundles.set(current.id, updated);
     return updated;
   },
@@ -184,13 +156,6 @@ export const createMockDatabaseState = (
           ),
           input.distinct as readonly string[] | undefined,
         );
-      case "channels":
-        return distinctCount(
-          [...data.channels.values()].filter((row) =>
-            matchesMockDatabaseWhere(row, input.where),
-          ),
-          input.distinct as readonly string[] | undefined,
-        );
       case "bundle_events":
         return distinctCount(
           [...data.bundleEvents.values()].filter((row) =>
@@ -214,12 +179,6 @@ export const createMockDatabaseState = (
             matchesMockDatabaseWhere(row, input.where),
           ) ?? null
         );
-      case "channels":
-        return (
-          [...data.channels.values()].find((row) =>
-            matchesMockDatabaseWhere(row, input.where),
-          ) ?? null
-        );
       case "bundle_events":
         return (
           [...data.bundleEvents.values()].find((row) =>
@@ -234,8 +193,6 @@ export const createMockDatabaseState = (
         return queryMockDatabaseRows([...data.bundles.values()], input);
       case "bundle_patches":
         return queryMockDatabaseRows([...data.bundlePatches.values()], input);
-      case "channels":
-        return queryMockDatabaseRows([...data.channels.values()], input);
       case "bundle_events":
         return queryMockDatabaseRows([...data.bundleEvents.values()], input);
     }

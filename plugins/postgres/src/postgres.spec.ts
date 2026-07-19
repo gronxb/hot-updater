@@ -32,7 +32,7 @@ it("advertises Analytics support", async () => {
 });
 
 setupDatabaseAdapterTestSuite({
-  name: "postgres database adapter v2",
+  name: "postgres fixed-model database adapter",
   migrate: async () => {
     client = new PGlite();
     const schema = await fs.readFile(
@@ -43,9 +43,7 @@ setupDatabaseAdapterTestSuite({
   },
   createAdapter: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
-    await getClient().exec(
-      "DELETE FROM bundle_patches; DELETE FROM bundles; DELETE FROM bundle_channels;",
-    );
+    await getClient().exec("DELETE FROM bundle_patches; DELETE FROM bundles;");
   },
   dispose: async (adapter) => {
     await adapter.onUnmount?.();

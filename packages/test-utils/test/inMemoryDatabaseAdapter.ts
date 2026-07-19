@@ -30,7 +30,6 @@ class MemoryConstraintError extends Error {
 const createTables = (): Tables => ({
   bundles: { rows: [] },
   bundle_patches: { rows: [] },
-  channels: { rows: [] },
   bundle_events: { rows: [] },
 });
 
@@ -40,11 +39,6 @@ const assertReferences = (
 ): void => {
   switch (input.model) {
     case "bundles":
-      if (
-        !tables.channels.rows.some(({ id }) => id === input.data.channel_id)
-      ) {
-        throw new MemoryConstraintError("Bundle channel does not exist");
-      }
       return;
     case "bundle_patches":
       if (
@@ -56,7 +50,6 @@ const assertReferences = (
         );
       }
       return;
-    case "channels":
     case "bundle_events":
       return;
   }
@@ -90,16 +83,6 @@ const createCrudImplementation = (
           break;
         tables.bundle_patches.rows.push(structuredClone(input.data));
         return input.data;
-      case "channels":
-        if (
-          tables.channels.rows.some(
-            ({ id, name }) => id === input.data.id || name === input.data.name,
-          )
-        ) {
-          break;
-        }
-        tables.channels.rows.push(structuredClone(input.data));
-        return input.data;
       case "bundle_events":
         if (tables.bundle_events.rows.some(({ id }) => id === input.data.id))
           break;
@@ -115,9 +98,6 @@ const createCrudImplementation = (
     const current = tables.bundles.rows[index];
     if (current === undefined) return null;
     const updated = { ...current, ...input.update };
-    if (!tables.channels.rows.some(({ id }) => id === updated.channel_id)) {
-      throw new MemoryConstraintError("Bundle channel does not exist");
-    }
     tables.bundles.rows[index] = updated;
     return structuredClone(updated);
   },
@@ -166,15 +146,6 @@ const createCrudImplementation = (
           input.distinct as readonly string[] | undefined,
         );
       }
-      case "channels": {
-        const rows = tables.channels.rows.filter((row) =>
-          matchesAll(row, input.where),
-        );
-        return distinctCount(
-          rows,
-          input.distinct as readonly string[] | undefined,
-        );
-      }
       case "bundle_events": {
         const rows = tables.bundle_events.rows.filter((row) =>
           matchesAll(row, input.where),
@@ -198,11 +169,6 @@ const createCrudImplementation = (
           tables.bundle_patches.rows.find((row) =>
             matchesAll(row, input.where),
           ) ?? null
-        );
-      case "channels":
-        return (
-          tables.channels.rows.find((row) => matchesAll(row, input.where)) ??
-          null
         );
       case "bundle_events":
         return (
@@ -232,15 +198,6 @@ const createCrudImplementation = (
           input.offset,
           input.limit,
         );
-      case "channels":
-        return queryRows(
-          tables.channels.rows,
-          input.where,
-          input.orderBy,
-          input.distinctOn,
-          input.offset,
-          input.limit,
-        );
       case "bundle_events":
         return queryRows(
           tables.bundle_events.rows,
@@ -258,6 +215,10 @@ const createImplementation = (
   tables: Tables,
 ): DatabaseAdapterImplementation => ({
   ...createCrudImplementation(tables),
+  getChannels: async () =>
+    Array.from(
+      new Set(tables.bundles.rows.map(({ channel }) => channel)),
+    ).sort(),
   getUpdateInfo: async (args) =>
     resolveUpdateInfoFromBundles({
       args,
@@ -265,7 +226,6 @@ const createImplementation = (
         tables.bundles.rows,
         tables.bundle_patches.rows,
         tables.bundles.rows,
-        tables.channels.rows,
       ),
     }),
   transaction: async (callback) => {
@@ -273,7 +233,6 @@ const createImplementation = (
     const result = await callback(createCrudImplementation(transactionTables));
     tables.bundles.rows = transactionTables.bundles.rows;
     tables.bundle_patches.rows = transactionTables.bundle_patches.rows;
-    tables.channels.rows = transactionTables.channels.rows;
     tables.bundle_events.rows = transactionTables.bundle_events.rows;
     return result;
   },
@@ -294,7 +253,6 @@ export const createInMemoryDatabaseHarness = () => {
     reset: (): void => {
       tables.bundles.rows = [];
       tables.bundle_patches.rows = [];
-      tables.channels.rows = [];
       tables.bundle_events.rows = [];
     },
   };

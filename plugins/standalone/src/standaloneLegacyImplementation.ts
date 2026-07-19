@@ -12,5 +12,6 @@ export const createLegacyCompatibilityImplementation = <TContext>(
   return {
     ...createLegacyWrites(remote),
     ...createLegacyReads(remote),
+    getChannels: () => remote.loadChannels(),
   };
 };

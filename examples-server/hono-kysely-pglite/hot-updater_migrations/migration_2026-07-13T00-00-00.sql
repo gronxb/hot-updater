@@ -1,28 +1,3 @@
-CREATE TABLE IF NOT EXISTS bundle_channels (
-  id varchar(255) PRIMARY KEY NOT NULL,
-  name varchar(255) NOT NULL
-);
-
-CREATE UNIQUE INDEX bundle_channels_name_key ON bundle_channels(name);
-
-ALTER TABLE bundles ADD COLUMN channel_id varchar(255);
-
-INSERT INTO bundle_channels (id, name)
-SELECT DISTINCT channel, channel
-FROM bundles;
-
-UPDATE bundles
-SET channel_id = bundle_channels.id
-FROM bundle_channels
-WHERE bundle_channels.name = bundles.channel;
-
-ALTER TABLE bundles ALTER COLUMN channel_id SET NOT NULL;
-
-CREATE INDEX bundles_channel_id_idx ON bundles(channel_id);
-
-ALTER TABLE bundles
-ADD CONSTRAINT bundles_channel_id_fk FOREIGN KEY (channel_id) REFERENCES bundle_channels (id) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
 CREATE TABLE bundle_events (
   id uuid PRIMARY KEY NOT NULL,
   type text NOT NULL,

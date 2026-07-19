@@ -2,7 +2,6 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseImplementationResult,
   DatabaseAdapterImplementation,
   FindManyDatabaseImplementationInput,
@@ -15,7 +14,6 @@ import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import { hasNullOrderOverrides, sortRowsByOrder } from "./databaseAdapterUtils";
 import {
   createMongoBundleWhere,
-  createMongoChannelWhere,
   createMongoPatchWhere,
   createMongoSort,
 } from "./mongodbQuery";
@@ -52,7 +50,6 @@ const activeBundleFilter = (where: object) => ({
 type MongoCollections = {
   readonly bundles: Collection<MongoBundleDocument>;
   readonly bundlePatches: Collection<BundlePatchRow>;
-  readonly channels: Collection<ChannelRow>;
   readonly bundleEvents: Collection<BundleEventRow>;
 };
 
@@ -61,24 +58,8 @@ const createCollections = (client: MongoClient): MongoCollections => {
   return {
     bundles: database.collection<MongoBundleDocument>("bundles"),
     bundlePatches: database.collection<BundlePatchRow>("bundle_patches"),
-    channels: database.collection<ChannelRow>("bundle_channels"),
     bundleEvents: database.collection<BundleEventRow>("bundle_events"),
   };
-};
-
-const assertChannelExists = async (
-  channels: Collection<ChannelRow>,
-  channelId: string,
-): Promise<void> => {
-  const row = await channels.findOne(
-    { id: channelId },
-    { projection: WITHOUT_MONGO_ID },
-  );
-  if (row === null) {
-    throw new MongoAdapterConstraintError(
-      `channel "${channelId}" does not exist`,
-    );
-  }
 };
 
 const assertPatchReferences = async (
@@ -223,32 +204,6 @@ const findMongoRows = async (
         ? cursor.toArray()
         : cursor.sort(sort).toArray();
     }
-    case "channels": {
-      const cursor = collections.channels
-        .find(createMongoChannelWhere(input.where as never), {
-          projection: WITHOUT_MONGO_ID,
-        })
-        .skip(input.offset)
-        .limit(input.limit);
-      if (rawOrderBy === undefined) {
-        return cursor.toArray();
-      }
-      if (needsInMemoryOrder) {
-        const rows = await collections.channels
-          .find(createMongoChannelWhere(input.where as never), {
-            projection: WITHOUT_MONGO_ID,
-          })
-          .toArray();
-        return sortRowsByOrder(rows, rawOrderBy as never).slice(
-          input.offset,
-          input.offset + input.limit,
-        );
-      }
-      const sort = createMongoSort(input as never);
-      return sort === undefined
-        ? cursor.toArray()
-        : cursor.sort(sort).toArray();
-    }
     case "bundle_events": {
       if (input.distinctOn || needsInMemoryOrder) {
         const rows = (await collections.bundleEvents
@@ -289,7 +244,6 @@ const createMongoImplementation = (
     switch (input.model) {
       case "bundles":
         assertBundleTarget(input.data);
-        await assertChannelExists(collections.channels, input.data.channel_id);
         await collections.bundles.insertOne(input.data);
         return input.data;
       case "bundle_patches":
@@ -301,9 +255,6 @@ const createMongoImplementation = (
           await collections.bundlePatches.deleteMany({ id: input.data.id });
           throw error;
         }
-        return input.data;
-      case "channels":
-        await collections.channels.insertOne(input.data);
         return input.data;
       case "bundle_events":
         await collections.bundleEvents.insertOne(input.data);
@@ -318,9 +269,6 @@ const createMongoImplementation = (
       throw new MongoAdapterConstraintError(
         "bundles.version-or-fingerprint.check",
       );
-    }
-    if (input.update.channel_id !== undefined) {
-      await assertChannelExists(collections.channels, input.update.channel_id);
     }
     return collections.bundles.findOneAndUpdate(
       activeBundleFilter({
@@ -376,10 +324,6 @@ const createMongoImplementation = (
         return collections.bundlePatches.countDocuments(
           createMongoPatchWhere(input.where as never),
         );
-      case "channels":
-        return collections.channels.countDocuments(
-          createMongoChannelWhere(input.where as never),
-        );
       case "bundle_events": {
         if (input.distinct && input.distinct.length > 0) {
           const rows = (await collections.bundleEvents
@@ -411,13 +355,6 @@ const createMongoImplementation = (
             projection: WITHOUT_MONGO_ID,
           },
         );
-      case "channels":
-        return collections.channels.findOne(
-          createMongoChannelWhere(input.where as never),
-          {
-            projection: WITHOUT_MONGO_ID,
-          },
-        );
       case "bundle_events":
         return collections.bundleEvents.findOne(
           createMongoEventWhere(input.where),
@@ -428,6 +365,18 @@ const createMongoImplementation = (
     }
   },
   findMany: (input) => findMongoRows(collections, input),
+  getChannels: async () => {
+    const channels = await collections.bundles.distinct(
+      "channel",
+      activeBundleFilter({}),
+    );
+    if (!channels.every((channel) => typeof channel === "string")) {
+      throw new MongoAdapterConstraintError(
+        "bundles.channel must contain only strings",
+      );
+    }
+    return channels.sort();
+  },
   getUpdateInfo: createMongoGetUpdateInfo(collections),
 });
 

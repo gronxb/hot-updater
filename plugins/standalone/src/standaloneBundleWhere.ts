@@ -23,7 +23,6 @@ export const appendBundleWhere = (
     const operator = condition.operator ?? "eq";
     switch (condition.field) {
       case "channel":
-      case "channel_id":
         if (operator !== "eq" || typeof condition.value !== "string") {
           return false;
         }

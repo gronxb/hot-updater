@@ -145,12 +145,6 @@ const createPostgresImplementation = (
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
-      case "channels":
-        return db
-          .insertInto("bundle_channels")
-          .values(input.data)
-          .returningAll()
-          .executeTakeFirstOrThrow();
       case "bundle_events":
         return db
           .insertInto("bundle_events")
@@ -202,14 +196,6 @@ const createPostgresImplementation = (
         const result = await query.executeTakeFirstOrThrow();
         return Number(result.count);
       }
-      case "channels": {
-        let query = db
-          .selectFrom("bundle_channels")
-          .select(({ fn }) => fn.countAll<string>().as("count"));
-        if (where !== undefined) query = query.where(where);
-        const result = await query.executeTakeFirstOrThrow();
-        return Number(result.count);
-      }
       case "bundle_events": {
         let query = db
           .selectFrom("bundle_events")
@@ -230,11 +216,6 @@ const createPostgresImplementation = (
       }
       case "bundle_patches": {
         let query = db.selectFrom("bundle_patches").selectAll();
-        if (where !== undefined) query = query.where(where);
-        return (await query.executeTakeFirst()) ?? null;
-      }
-      case "channels": {
-        let query = db.selectFrom("bundle_channels").selectAll();
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
@@ -266,15 +247,6 @@ const createPostgresImplementation = (
         }
         return query.limit(input.limit).offset(input.offset).execute();
       }
-      case "channels": {
-        let query = db.selectFrom("bundle_channels").selectAll();
-        if (where !== undefined) query = query.where(where);
-        for (const clause of input.orderBy ??
-          (input.sortBy ? [input.sortBy] : [])) {
-          query = query.orderBy(clause.field, clause.direction);
-        }
-        return query.limit(input.limit).offset(input.offset).execute();
-      }
       case "bundle_events": {
         let query = db.selectFrom("bundle_events").selectAll();
         if (where !== undefined) query = query.where(where);
@@ -285,6 +257,15 @@ const createPostgresImplementation = (
         return query.limit(input.limit).offset(input.offset).execute();
       }
     }
+  },
+  async getChannels() {
+    const rows = await db
+      .selectFrom("bundles")
+      .select("channel")
+      .distinct()
+      .orderBy("channel", "asc")
+      .execute();
+    return rows.map(({ channel }) => channel);
   },
   transaction: (callback) =>
     db

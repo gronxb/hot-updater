@@ -111,7 +111,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       hotUpdater.deleteBundleById(bundleId),
   });
 
-  it("resumes a partially applied MySQL channel migration", async () => {
+  it("preserves bundle channels while migrating from v0.31", async () => {
     const database = `hot_updater_retry_${process.pid}`;
     const admin = createPool({
       host: process.env.MYSQL_HOST || "localhost",
@@ -150,14 +150,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         .execute(db);
       await sql
         .raw(`
-        create table bundle_channels (
-          id varchar(255) primary key,
-          name varchar(255) not null
-        )
-      `)
-        .execute(db);
-      await sql
-        .raw(`
         create table private_hot_updater_settings (
           \`key\` varchar(255) primary key,
           value varchar(255) not null
@@ -171,11 +163,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         .execute(db);
       await sql
         .raw(
-          "insert into bundle_channels (id, name) values ('production', 'renamed')",
-        )
-        .execute(db);
-      await sql
-        .raw(
           "insert into private_hot_updater_settings (`key`, value) values ('version', '0.31.0')",
         )
         .execute(db);
@@ -184,48 +171,25 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         database: kyselyAdapter({ db, provider: "mysql" }),
       });
       const migrator = createMigrator(migrationHotUpdater);
-      const interrupted = await migrator.migrateToLatest({
+      const migration = await migrator.migrateToLatest({
         mode: "from-schema",
         updateSettings: true,
       });
-      await expect(interrupted.execute()).rejects.toThrow();
-
-      const partialColumns = await sql<{ readonly name: string }>`
-        select column_name as name
-        from information_schema.columns
-        where table_schema = ${database} and table_name = 'bundles'
-      `.execute(db);
-      expect(partialColumns.rows.map(({ name }) => name)).toEqual(
-        expect.arrayContaining(["channel", "channel_id"]),
-      );
-      expect(await migrator.getVersion()).toBe("0.31.0");
-
-      await sql`delete from bundle_channels where id = ${"production"}`.execute(
-        db,
-      );
-      const retry = await migrator.migrateToLatest({
-        mode: "from-schema",
-        updateSettings: true,
-      });
-      await retry.execute();
+      await migration.execute();
 
       expect(await migrator.getVersion()).toBe("0.38.0");
-      const migrated = await sql<{
-        readonly channel: string;
-        readonly channel_id: string;
-      }>`
-        select channel, channel_id from bundles
+      const migrated = await sql<{ readonly channel: string }>`
+        select channel from bundles
       `.execute(db);
-      expect(migrated.rows).toEqual([
-        { channel: "production", channel_id: "production" },
-      ]);
+      expect(migrated.rows).toEqual([{ channel: "production" }]);
       const finalColumns = await sql<{ readonly name: string }>`
         select column_name as name
         from information_schema.columns
         where table_schema = ${database} and table_name = 'bundles'
       `.execute(db);
-      expect(finalColumns.rows.map(({ name }) => name)).toEqual(
-        expect.arrayContaining(["channel", "channel_id"]),
+      expect(finalColumns.rows.map(({ name }) => name)).toContain("channel");
+      expect(finalColumns.rows.map(({ name }) => name)).not.toContain(
+        "channel_id",
       );
     } finally {
       await db.destroy();
@@ -284,10 +248,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
       const ownerId = "fumadb-owner";
       const baseId = "fumadb-base";
-      await adapter.create({
-        model: "channels",
-        data: { id: "channel-production", name: "production" },
-      });
       for (const id of [baseId, ownerId]) {
         await adapter.create({
           model: "bundles",
@@ -370,7 +330,6 @@ const createAdapterBundleRow = (id: string) => ({
   git_commit_hash: null,
   message: null,
   channel: "production",
-  channel_id: "channel-production",
   storage_uri: `storage://${id}`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

@@ -2,7 +2,6 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseModel,
   DatabaseRow,
 } from "@hot-updater/plugin-core";
@@ -86,7 +85,6 @@ const bundleRow = (row: Record<string, unknown>): BundleRow => {
     git_commit_hash: nullableString(row, "git_commit_hash", "bundles"),
     message: nullableString(row, "message", "bundles"),
     channel: stringValue(row, "channel", "bundles"),
-    channel_id: stringValue(row, "channel_id", "bundles"),
     storage_uri: stringValue(row, "storage_uri", "bundles"),
     target_app_version: nullableString(row, "target_app_version", "bundles"),
     fingerprint_hash: nullableString(row, "fingerprint_hash", "bundles"),
@@ -115,11 +113,6 @@ const patchRow = (row: Record<string, unknown>): BundlePatchRow => ({
   patch_file_hash: stringValue(row, "patch_file_hash", "bundle_patches"),
   patch_storage_uri: stringValue(row, "patch_storage_uri", "bundle_patches"),
   order_index: numberValue(row, "order_index", "bundle_patches"),
-});
-
-const channelRow = (row: Record<string, unknown>): ChannelRow => ({
-  id: stringValue(row, "id", "channels"),
-  name: stringValue(row, "name", "channels"),
 });
 
 const bundleEventRow = (row: Record<string, unknown>): BundleEventRow => {
@@ -199,7 +192,6 @@ export function parseD1Row(
   model: "bundle_patches",
   value: unknown,
 ): BundlePatchRow;
-export function parseD1Row(model: "channels", value: unknown): ChannelRow;
 export function parseD1Row(
   model: "bundle_events",
   value: unknown,
@@ -218,8 +210,6 @@ export function parseD1Row(
       return bundleRow(value);
     case "bundle_patches":
       return patchRow(value);
-    case "channels":
-      return channelRow(value);
     case "bundle_events":
       return bundleEventRow(value);
   }

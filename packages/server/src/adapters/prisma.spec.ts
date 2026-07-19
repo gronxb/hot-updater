@@ -33,7 +33,6 @@ const createModeRejectingClient = (capturedWhere: unknown[]) => {
   const client = {
     bundles: delegate,
     bundle_patches: delegate,
-    bundle_channels: delegate,
     bundle_events: delegate,
     $transaction: <TResult>(
       callback: (transactionClient: object) => Promise<TResult>,
@@ -192,10 +191,6 @@ describe("prismaAdapter capabilities", () => {
       provider: "postgresql",
     });
     await adapter.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
-    await adapter.create({
       model: "bundles",
       data: {
         id: "bundle-race",
@@ -206,7 +201,6 @@ describe("prismaAdapter capabilities", () => {
         git_commit_hash: null,
         message: null,
         channel: "production",
-        channel_id: "channel-production",
         storage_uri: "storage://bundle",
         target_app_version: "1.0.0",
         fingerprint_hash: "fingerprint",
@@ -256,7 +250,6 @@ describe("prismaAdapter capabilities", () => {
       git_commit_hash: null,
       message: null,
       channel: "production",
-      channel_id: "channel-production",
       storage_uri: "storage://bundle",
       target_app_version: "1.0.0",
       fingerprint_hash: null,
@@ -267,10 +260,6 @@ describe("prismaAdapter capabilities", () => {
       manifest_file_hash: null,
       asset_base_storage_uri: null,
     };
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
     await adapter.create({
       model: "bundles",
       data: { ...bundle, id: "bundle-base" },
@@ -307,10 +296,6 @@ describe("prismaAdapter capabilities", () => {
       prisma: harness.client,
       provider: "postgresql",
     });
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
     const bundle = {
       platform: "ios" as const,
       should_force_update: false,
@@ -319,7 +304,6 @@ describe("prismaAdapter capabilities", () => {
       git_commit_hash: null,
       message: null,
       channel: "production",
-      channel_id: "channel-production",
       storage_uri: "storage://bundle",
       target_app_version: "1.0.0",
       fingerprint_hash: null,

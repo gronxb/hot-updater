@@ -242,43 +242,16 @@ describe("standaloneRepository", () => {
     });
   });
 
-  it("aliases a supplied channel id to its legacy name deterministically", async () => {
-    const repository = createRepository();
-
-    const created = await repository.create({
-      model: "channels",
-      data: { id: "generated-preview-id", name: "preview" },
-    });
-
-    expect(created).toEqual({ id: "preview", name: "preview" });
-    await expect(repository.findMany({ model: "channels" })).resolves.toEqual([
-      created,
-    ]);
-    expect(bundles.size).toBe(0);
-    expect(requestPaths).not.toContainEqual(
-      expect.stringContaining("/database/"),
-    );
-  });
-
-  it("rejects a duplicate channel name through the existing channels route", async () => {
+  it("loads channels through the existing channels route", async () => {
     channels.add("preview");
     const repository = createRepository();
 
-    await expect(
-      repository.create({
-        model: "channels",
-        data: { id: "another-id", name: "preview" },
-      }),
-    ).rejects.toEqual(
-      new StandaloneDatabaseError(
-        "request-failed",
-        "Channel preview already exists.",
-        409,
-      ),
-    );
+    await expect(repository.getChannels?.()).resolves.toEqual(["preview"]);
+    expect(bundles.size).toBe(0);
+    expect(requestPaths).toContain("/hot-updater/api/bundles/channels");
   });
 
-  it("normalizes aggregate bundle channels to low channel ids", async () => {
+  it("keeps aggregate bundle channel names", async () => {
     const value = bundle("00000000-0000-0000-0000-000000000021", {
       channel: "preview",
     });
@@ -292,7 +265,7 @@ describe("standaloneRepository", () => {
       }),
     ).resolves.toMatchObject({
       id: value.id,
-      channel_id: "preview",
+      channel: "preview",
     });
   });
 
@@ -342,7 +315,7 @@ describe("standaloneRepository", () => {
     await createRepository().findMany({
       model: "bundles",
       where: [
-        { field: "channel_id", value: "preview" },
+        { field: "channel", value: "preview" },
         { field: "platform", value: "ios" },
         { field: "enabled", value: true },
         { field: "id", operator: "gte", value: "bundle-20" },
@@ -402,18 +375,21 @@ describe("standaloneRepository", () => {
     expect(requestedUrl?.searchParams.has("channel")).toBe(false);
   });
 
-  it("preserves empty-set filters through the local fallback", async () => {
+  it("forwards direct channel filters to the aggregate endpoint", async () => {
     const value = bundle("00000000-0000-0000-0000-000000000025");
     bundles.set(value.id, value);
-    channels.add("production");
     let requestedUrl: URL | undefined;
     server.use(
       http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
         requestedUrl = new URL(request.url);
+        const channel = requestedUrl.searchParams.get("channel");
+        const filtered = [...bundles.values()].filter(
+          (bundle) => channel === null || bundle.channel === channel,
+        );
         return HttpResponse.json({
-          data: [...bundles.values()],
+          data: filtered,
           pagination: {
-            total: bundles.size,
+            total: filtered.length,
             hasNextPage: false,
             hasPreviousPage: false,
             currentPage: 1,
@@ -429,6 +405,7 @@ describe("standaloneRepository", () => {
         where: { channel: "missing" },
       }),
     ).resolves.toMatchObject({ data: [], pagination: { total: 0 } });
+    expect(requestedUrl?.searchParams.get("channel")).toBe("missing");
     expect(requestedUrl?.searchParams.has("idIn")).toBe(false);
   });
 
@@ -481,9 +458,7 @@ describe("standaloneRepository", () => {
       routes: { channels: () => ({ path: "/custom/channels" }) },
     });
 
-    await expect(repository.findMany({ model: "channels" })).resolves.toEqual([
-      { id: "custom", name: "custom" },
-    ]);
+    await expect(repository.getChannels?.()).resolves.toEqual(["custom"]);
     expect(authorization).toBe("Bearer token");
   });
 

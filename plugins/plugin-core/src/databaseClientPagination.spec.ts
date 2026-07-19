@@ -59,21 +59,14 @@ describe("database client pagination", () => {
     const patchQueries = findMany.mock.calls.flatMap(([input]) =>
       input.model === "bundle_patches" ? [input] : [],
     );
-    const channelQueries = findMany.mock.calls.flatMap(([input]) =>
-      input.model === "channels" ? [input] : [],
-    );
     expect(page.data.map(({ id }) => id)).toEqual(["003"]);
     expect(patchQueries).toHaveLength(1);
     expect(patchQueries[0]?.where).toEqual([
       { field: "bundle_id", operator: "in", value: ["003"] },
     ]);
-    expect(channelQueries).toHaveLength(1);
-    expect(channelQueries[0]?.where).toEqual([
-      expect.objectContaining({ field: "id", value: expect.any(Array) }),
-    ]);
   });
 
-  it("hydrates bundle channels beyond the adapter default page size", async () => {
+  it("hydrates bundle channel values beyond the adapter default page size", async () => {
     const channels = Array.from({ length: 101 }, (_, index) => ({
       id: `channel-${index}`,
       name: `release-${index}`,
@@ -87,7 +80,6 @@ describe("database client pagination", () => {
       git_commit_hash: null,
       message: null,
       channel: channel.name,
-      channel_id: channel.id,
       storage_uri: `storage://bundle-${index}.zip`,
       target_app_version: "1.0.0",
       fingerprint_hash: null,
@@ -111,12 +103,7 @@ describe("database client pagination", () => {
         count: async () => bundles.length,
         findOne: async () => null,
         findMany: async (input) => {
-          const rows =
-            input.model === "bundles"
-              ? bundles
-              : input.model === "channels"
-                ? channels
-                : [];
+          const rows = input.model === "bundles" ? bundles : [];
           return rows.slice(input.offset, input.offset + input.limit);
         },
       }),

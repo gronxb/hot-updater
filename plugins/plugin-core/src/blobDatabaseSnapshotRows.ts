@@ -11,26 +11,8 @@ import {
 } from "./blobDatabaseValue";
 import type { BundleEventRow, BundlePatchRow, BundleRow } from "./types";
 
-export const parseBundleRow = (
-  value: unknown,
-  source: string,
-  channelNameById: ReadonlyMap<string, string>,
-  channelIdByName: ReadonlyMap<string, string>,
-): BundleRow => {
+export const parseBundleRow = (value: unknown, source: string): BundleRow => {
   const input = blobRecord(value, source);
-  const channelValue = blobProperty(input, "channel");
-  const channelIdValue = blobProperty(input, "channel_id");
-  const storedChannel =
-    channelValue === undefined ? undefined : blobString(channelValue, source);
-  const storedChannelId =
-    channelIdValue === undefined
-      ? undefined
-      : blobString(channelIdValue, source);
-  const channel =
-    storedChannel ??
-    channelNameById.get(blobString(channelIdValue, source)) ??
-    blobString(channelIdValue, source);
-  const channelId = storedChannelId ?? channelIdByName.get(channel) ?? channel;
   return {
     id: blobString(blobProperty(input, "id"), source),
     platform: blobPlatform(blobProperty(input, "platform"), source),
@@ -45,8 +27,7 @@ export const parseBundleRow = (
       source,
     ),
     message: blobNullableString(blobProperty(input, "message"), source),
-    channel,
-    channel_id: channelId,
+    channel: blobString(blobProperty(input, "channel"), source),
     storage_uri: blobString(blobProperty(input, "storage_uri"), source),
     target_app_version: blobNullableString(
       blobProperty(input, "target_app_version"),

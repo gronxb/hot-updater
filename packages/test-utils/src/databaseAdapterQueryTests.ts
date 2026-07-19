@@ -2,10 +2,7 @@ import type { DatabaseAdapter } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabaseAdapterTestState } from "./databaseAdapterTestRunner";
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-} from "./databaseTestFixtures";
+import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type QueryTestState<TContext> = DatabaseAdapterTestState<
   DatabaseAdapter<TContext>,
@@ -27,12 +24,6 @@ const seedQueryRows = async <TContext>(state: QueryTestState<TContext>) => {
       target_app_version: "2.0.0",
     },
   ];
-  await state
-    .getAdapter()
-    .create(
-      { model: "channels", data: createChannelRowFixture("production") },
-      state.context,
-    );
   for (const row of rows) {
     await state
       .getAdapter()

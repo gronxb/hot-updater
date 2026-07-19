@@ -5,7 +5,6 @@ import type { DatabaseAdapterTestState } from "./databaseAdapterTestRunner";
 import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
-  createChannelRowFixture,
 } from "./databaseTestFixtures";
 
 type RelationTestState<TContext> = DatabaseAdapterTestState<
@@ -16,12 +15,8 @@ type RelationTestState<TContext> = DatabaseAdapterTestState<
 const seedBundlePair = async <TContext>(
   state: RelationTestState<TContext>,
 ): Promise<readonly [string, string]> => {
-  const channel = createChannelRowFixture("production");
-  const base = createBundleRowFixture("61", channel.id);
-  const target = createBundleRowFixture("62", channel.id);
-  await state
-    .getAdapter()
-    .create({ model: "channels", data: channel }, state.context);
+  const base = createBundleRowFixture("61");
+  const target = createBundleRowFixture("62");
   await state
     .getAdapter()
     .create({ model: "bundles", data: base }, state.context);
@@ -34,58 +29,25 @@ const seedBundlePair = async <TContext>(
 export const registerDatabaseAdapterRelationTests = <TContext>(
   state: RelationTestState<TContext>,
 ): void => {
-  describe("channels", () => {
-    it("creates and retrieves explicit channel rows", async () => {
-      const production = createChannelRowFixture("production");
-      const staging = createChannelRowFixture("staging");
-      await state
-        .getAdapter()
-        .create({ model: "channels", data: production }, state.context);
-      await state
-        .getAdapter()
-        .create({ model: "channels", data: staging }, state.context);
+  describe("channel aggregate", () => {
+    it("returns distinct sorted channels from bundles", async (context) => {
+      const adapter = state.getAdapter();
+      if (adapter.getChannels === undefined) {
+        context.skip();
+        return;
+      }
+      for (const bundle of [
+        createBundleRowFixture("51", "staging"),
+        createBundleRowFixture("52", "production"),
+        createBundleRowFixture("53", "staging"),
+      ]) {
+        await adapter.create({ model: "bundles", data: bundle }, state.context);
+      }
 
-      await expect(
-        state.getAdapter().findOne(
-          {
-            model: "channels",
-            where: [{ field: "name", value: "production" }],
-          },
-          state.context,
-        ),
-      ).resolves.toEqual(production);
-      await expect(
-        state.getAdapter().findMany(
-          {
-            model: "channels",
-            sortBy: { field: "name", direction: "asc" },
-          },
-          state.context,
-        ),
-      ).resolves.toEqual([production, staging]);
-    });
-
-    it("rejects duplicate channel ids and names", async () => {
-      const channel = createChannelRowFixture("production");
-      await state
-        .getAdapter()
-        .create({ model: "channels", data: channel }, state.context);
-
-      await expect(
-        state
-          .getAdapter()
-          .create({ model: "channels", data: channel }, state.context),
-      ).rejects.toThrow();
-
-      await expect(
-        state.getAdapter().create(
-          {
-            model: "channels",
-            data: createChannelRowFixture("production", "another-id"),
-          },
-          state.context,
-        ),
-      ).rejects.toThrow();
+      await expect(adapter.getChannels(state.context)).resolves.toEqual([
+        "production",
+        "staging",
+      ]);
     });
   });
 

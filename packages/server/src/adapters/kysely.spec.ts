@@ -98,10 +98,6 @@ describe("kyselyAdapter SQLite JSON storage", () => {
     };
 
     // When
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
     await adapter.create({ model: "bundles", data: bundle });
     const stored = await sqliteClient.query<{
       metadata: string;
@@ -136,10 +132,10 @@ describe("kyselyAdapter soft relations", () => {
       },
     });
     await softClient.exec(
-      DATABASE_ADAPTER_TEST_SCHEMA_SQL.replace(
-        " references bundle_channels(id) on delete restrict",
+      DATABASE_ADAPTER_TEST_SCHEMA_SQL.replaceAll(
+        " references bundles(id) on delete restrict",
         "",
-      ).replaceAll(" references bundles(id) on delete restrict", ""),
+      ),
     );
     const adapter = kyselyAdapter({
       db: softDatabase,
@@ -150,10 +146,6 @@ describe("kyselyAdapter soft relations", () => {
     const owner = createBundleRowFixture("952");
 
     try {
-      await adapter.create({
-        model: "channels",
-        data: { id: "channel-production", name: "production" },
-      });
       await adapter.create({ model: "bundles", data: base });
       await adapter.create({ model: "bundles", data: owner });
       queries.length = 0;

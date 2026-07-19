@@ -33,21 +33,19 @@ const commonBundleRow = {
 };
 
 describe("blob snapshot compatibility", () => {
-  it("restores the legacy channel name from a normalized channel id", () => {
+  it("keeps direct bundle channel strings", () => {
     const snapshot = parseBlobDatabaseSnapshot({
       version: 2,
-      bundles: [{ ...commonBundleRow, channel_id: "channel-production" }],
+      bundles: [{ ...commonBundleRow, channel: "production" }],
       bundle_patches: [],
-      channels: [{ id: "channel-production", name: "production" }],
     });
 
     expect(snapshot.bundles[0]).toMatchObject({
       channel: "production",
-      channel_id: "channel-production",
     });
   });
 
-  it("reads and rewrites the pre-normalization v2 shape", async () => {
+  it("reads and rewrites the direct-channel v2 shape", async () => {
     // Given
     const store = new Map<string, unknown>([
       [
@@ -56,7 +54,6 @@ describe("blob snapshot compatibility", () => {
           version: 2,
           bundles: [{ ...commonBundleRow, channel: "production" }],
           bundle_patches: [],
-          channels: [{ id: "production" }],
         },
       ],
     ]);
@@ -84,8 +81,12 @@ describe("blob snapshot compatibility", () => {
     // When
     const bundle = await createDatabaseClient(adapter).getBundleById(bundleId);
     await adapter.create({
-      model: "channels",
-      data: { id: "channel-staging", name: "staging" },
+      model: "bundles",
+      data: {
+        ...commonBundleRow,
+        id: `${bundleId}-staging`,
+        channel: "staging",
+      },
     });
 
     // Then
@@ -101,14 +102,14 @@ describe("blob snapshot compatibility", () => {
         {
           ...commonBundleRow,
           channel: "production",
-          channel_id: "production",
+        },
+        {
+          ...commonBundleRow,
+          id: `${bundleId}-staging`,
+          channel: "staging",
         },
       ],
       bundle_patches: [],
-      channels: [
-        { id: "channel-staging", name: "staging" },
-        { id: "production", name: "production" },
-      ],
       bundle_events: [],
     });
   });

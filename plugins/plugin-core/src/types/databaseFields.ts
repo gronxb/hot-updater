@@ -8,7 +8,6 @@ export const databaseFields = {
     "git_commit_hash",
     "message",
     "channel",
-    "channel_id",
     "storage_uri",
     "target_app_version",
     "fingerprint_hash",
@@ -28,7 +27,6 @@ export const databaseFields = {
     "patch_storage_uri",
     "order_index",
   ],
-  channels: ["id", "name"],
   bundle_events: [
     "id",
     "type",

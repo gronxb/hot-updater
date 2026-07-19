@@ -42,7 +42,7 @@ export const createLegacyReads = (
         typeof idSelector.value === "string"
       ) {
         const bundle = await remote.loadBundle(idSelector.value);
-        const row = bundle ? bundleToRow(bundle, bundle.channel) : null;
+        const row = bundle ? bundleToRow(bundle) : null;
         return row && matchesStandaloneWhere(row, input.where) ? row : null;
       }
       return (
@@ -54,8 +54,10 @@ export const createLegacyReads = (
     }
     if (input.model === "bundle_events") return null;
     return (
-      queryStandaloneRows(await loadRows(remote, "channels"), {
-        where: input.where as readonly DatabaseWhere<"channels">[] | undefined,
+      queryStandaloneRows(await loadRows(remote, "bundle_patches"), {
+        where: input.where as
+          | readonly DatabaseWhere<"bundle_patches">[]
+          | undefined,
         limit: 1,
       })[0] ?? null
     );
@@ -84,15 +86,6 @@ export const createLegacyReads = (
         return queryStandaloneRows(await loadRows(remote, "bundle_patches"), {
           where: input.where as
             | readonly DatabaseWhere<"bundle_patches">[]
-            | undefined,
-          limit: input.limit,
-          offset: input.offset,
-          sortBy: input.sortBy,
-        });
-      case "channels":
-        return queryStandaloneRows(await loadRows(remote, "channels"), {
-          where: input.where as
-            | readonly DatabaseWhere<"channels">[]
             | undefined,
           limit: input.limit,
           offset: input.offset,

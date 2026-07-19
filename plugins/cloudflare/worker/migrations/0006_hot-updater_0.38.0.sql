@@ -1,36 +1,3 @@
-CREATE TABLE bundle_channels (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE
-);
-
-INSERT INTO bundle_channels (id, name)
-SELECT DISTINCT channel, channel FROM bundles;
-
-ALTER TABLE bundles
-ADD COLUMN channel_id TEXT REFERENCES bundle_channels(id) ON DELETE RESTRICT;
-
-UPDATE bundles
-SET channel_id = COALESCE(
-    (SELECT bundle_channels.id FROM bundle_channels WHERE bundle_channels.name = bundles.channel),
-    bundles.channel
-);
-
-CREATE TRIGGER bundles_channel_id_not_null_insert
-BEFORE INSERT ON bundles
-WHEN NEW.channel_id IS NULL
-BEGIN
-    SELECT RAISE(ABORT, 'bundles.channel_id must not be null');
-END;
-
-CREATE TRIGGER bundles_channel_id_not_null_update
-BEFORE UPDATE OF channel_id ON bundles
-WHEN NEW.channel_id IS NULL
-BEGIN
-    SELECT RAISE(ABORT, 'bundles.channel_id must not be null');
-END;
-
-CREATE INDEX bundles_channel_id_idx ON bundles(channel_id);
-
 CREATE TABLE bundle_events (
     id TEXT PRIMARY KEY NOT NULL,
     type TEXT NOT NULL,

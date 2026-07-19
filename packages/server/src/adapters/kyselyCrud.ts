@@ -2,7 +2,6 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseWhere,
   TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
@@ -124,21 +123,6 @@ const createBundleTargetPredicate = (
   return undefined;
 };
 
-const assertChannelReference = async (
-  executor: QueryExecutorProvider,
-  channelId: string,
-  channel: string,
-): Promise<void> => {
-  const result = await sql<{ readonly name: string }>`select ${sql.ref(
-    "name",
-  )} from ${sql.table("bundle_channels")} where ${sql.ref("id")} = ${channelId} limit 1`.execute(
-    executor,
-  );
-  if (result.rows[0]?.name !== channel) {
-    throw new KyselyAdapterInvariantError("bundles.channel_id.foreign-key");
-  }
-};
-
 const assertBundleReferences = async (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
@@ -182,17 +166,15 @@ export const findKyselyBundles = async (
   return [...result.rows];
 };
 
-export const findKyselyChannel = async (
+export const findKyselyChannels = async (
   executor: QueryExecutorProvider,
-  provider: Exclude<ORMSQLProvider, "mssql">,
-  name: string,
-): Promise<ChannelRow | null> => {
-  const result = await sql<ChannelRow>`select * from ${sql.table(
-    "bundle_channels",
-  )}${whereClause(
-    buildKyselyWhere<"channels">(provider, [{ field: "name", value: name }]),
-  )} limit 1`.execute(executor);
-  return result.rows[0] ?? null;
+): Promise<string[]> => {
+  const result = await sql<{
+    readonly channel: string;
+  }>`select distinct ${sql.ref("channel")} from ${sql.table(
+    "bundles",
+  )} order by ${sql.ref("channel")} asc`.execute(executor);
+  return result.rows.map(({ channel }) => channel);
 };
 
 export const findKyselyPatches = async (
@@ -263,11 +245,6 @@ export const createKyselyCrud = (
   async create(input) {
     switch (input.model) {
       case "bundles":
-        await assertChannelReference(
-          executor,
-          input.data.channel_id,
-          input.data.channel,
-        );
         await insertRow(
           executor,
           "bundles",
@@ -284,9 +261,6 @@ export const createKyselyCrud = (
         );
         await insertRow(executor, "bundle_patches", input.data);
         return input.data;
-      case "channels":
-        await insertRow(executor, "bundle_channels", input.data);
-        return input.data;
       case "bundle_events":
         await insertRow(executor, "bundle_events", input.data);
         return input.data;
@@ -296,16 +270,6 @@ export const createKyselyCrud = (
     const selector = input.where[0];
     if (selector === undefined || typeof selector.value !== "string") {
       throw new KyselyAdapterInvariantError("bundles.update.selector");
-    }
-    if (
-      input.update.channel_id !== undefined &&
-      input.update.channel !== undefined
-    ) {
-      await assertChannelReference(
-        executor,
-        input.update.channel_id,
-        input.update.channel,
-      );
     }
     await updateBundle(
       executor,
@@ -381,12 +345,6 @@ export const createKyselyCrud = (
           "bundle_patches",
           buildKyselyWhere(provider, input.where as never),
         );
-      case "channels":
-        return countRows(
-          executor,
-          "bundle_channels",
-          buildKyselyWhere(provider, input.where as never),
-        );
       case "bundle_events":
         return countRows(
           executor,
@@ -414,15 +372,6 @@ export const createKyselyCrud = (
         );
         const result = await sql<BundlePatchRow>`select * from ${sql.table(
           "bundle_patches",
-        )}${where} limit 1`.execute(executor);
-        return result.rows[0] ?? null;
-      }
-      case "channels": {
-        const where = whereClause(
-          buildKyselyWhere(provider, input.where as never),
-        );
-        const result = await sql<ChannelRow>`select * from ${sql.table(
-          "bundle_channels",
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
@@ -457,16 +406,6 @@ export const createKyselyCrud = (
         const order = orderClause(input as never);
         const result = await sql<BundlePatchRow>`select * from ${sql.table(
           "bundle_patches",
-        )}${where}${order}${pagination}`.execute(executor);
-        return [...result.rows];
-      }
-      case "channels": {
-        const where = whereClause(
-          buildKyselyWhere(provider, input.where as never),
-        );
-        const order = orderClause(input as never);
-        const result = await sql<ChannelRow>`select * from ${sql.table(
-          "bundle_channels",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }

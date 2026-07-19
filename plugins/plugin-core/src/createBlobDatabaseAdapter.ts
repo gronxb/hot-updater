@@ -95,7 +95,6 @@ const loadLegacySnapshot = async (
     string,
     BlobDatabaseSnapshot["bundle_patches"][number]
   >();
-  const channels = new Map<string, BlobDatabaseSnapshot["channels"][number]>();
   for (const key of keys) {
     const value = await loadOptionalObject(operations, key);
     if (value === null) continue;
@@ -105,15 +104,7 @@ const loadLegacySnapshot = async (
     }
     for (const item of value) {
       const parsed = parseLegacyBundle(item, key);
-      const channel = channels.get(parsed.channelName) ?? {
-        id: parsed.channelName,
-        name: parsed.channelName,
-      };
-      channels.set(channel.name, channel);
-      bundles.set(parsed.bundle.id, {
-        ...parsed.bundle,
-        channel_id: channel.id,
-      });
+      bundles.set(parsed.bundle.id, parsed.bundle);
       for (const [patchId, patch] of patches) {
         if (patch.bundle_id === parsed.bundle.id) patches.delete(patchId);
       }
@@ -125,7 +116,6 @@ const loadLegacySnapshot = async (
       version: 2,
       bundles: [...bundles.values()],
       bundle_patches: [...patches.values()],
-      channels: [...channels.values()],
       bundle_events: [],
     },
     "legacy update.json manifests",
@@ -265,6 +255,13 @@ export const createBlobDatabaseAdapter = <TContext = unknown>({
     count: (input) => read((database) => database.count(input)),
     findOne: (input) => read((database) => database.findOne(input)),
     findMany: (input) => read((database) => database.findMany(input)),
+    getChannels: async () => {
+      await mutationQueue;
+      const channels = new Set(
+        (await loadSnapshot()).snapshot.bundles.map(({ channel }) => channel),
+      );
+      return [...channels].sort();
+    },
     getUpdateInfo: async (args, context) => {
       await mutationQueue;
       const stored = await loadOptionalObject(

@@ -6,21 +6,10 @@ import {
 } from "./databaseAdapterCrudValidationFields";
 import { validateResult } from "./databaseAdapterCrudValidationRows";
 import type {
-  CreateDatabaseInput,
   DatabaseAdapterImplementation,
   DatabaseSelect,
   UpdateDatabaseInput,
 } from "./types";
-
-export const validateBundleCreateChannel = (
-  input: CreateDatabaseInput<"bundles", DatabaseSelect<"bundles"> | undefined>,
-): void => {
-  const hasChannel = Object.hasOwn(input.data, "channel");
-  const hasChannelId = Object.hasOwn(input.data, "channel_id");
-  if (hasChannel !== hasChannelId) {
-    throw new DatabaseAdapterInputError("incomplete-channel-create");
-  }
-};
 
 export const validateMutationWhere = (where: readonly unknown[]): void => {
   if (where.length === 0) {
@@ -43,16 +32,6 @@ export const validateUpdateWhere = (where: readonly unknown[]): void => {
   }
 };
 
-export const validateChannelUpdate = (
-  update: UpdateDatabaseInput<"bundles">["update"],
-): void => {
-  const hasChannel = Object.hasOwn(update, "channel");
-  const hasChannelId = Object.hasOwn(update, "channel_id");
-  if (hasChannel !== hasChannelId) {
-    throw new DatabaseAdapterInputError("incomplete-channel-update");
-  }
-};
-
 export const validateBundleUpdateData = (update: unknown): void => {
   if (!isRecord(update)) throw new DatabaseAdapterInputError("invalid-data");
   for (const [field, value] of Object.entries(update)) {
@@ -70,29 +49,6 @@ export const validateBundleUpdateData = (update: unknown): void => {
     Reflect.get(update, "fingerprint_hash") === null
   ) {
     throw new DatabaseAdapterInputError("invalid-data");
-  }
-};
-
-export const validateChannelReference = async <TContext>(
-  implementation: DatabaseAdapterImplementation<TContext>,
-  channel: string,
-  channelId: string,
-  context: TContext | undefined,
-): Promise<void> => {
-  const stored = await implementation.findOne(
-    {
-      model: "channels",
-      where: [{ field: "id", value: channelId }],
-      select: ["name"],
-    },
-    context,
-  );
-  if (stored === null) {
-    throw new DatabaseAdapterInputError("channel-reference-mismatch");
-  }
-  validateResult("channels", stored, ["name"]);
-  if (Reflect.get(stored, "name") !== channel) {
-    throw new DatabaseAdapterInputError("channel-reference-mismatch");
   }
 };
 

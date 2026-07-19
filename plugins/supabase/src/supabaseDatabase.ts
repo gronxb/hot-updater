@@ -48,17 +48,6 @@ const createSupabaseImplementation = (
         }
         return data;
       }
-      case "channels": {
-        const { data, error } = await supabase
-          .from("bundle_channels")
-          .insert(input.data)
-          .select("*")
-          .single();
-        throwSupabaseError("create channels", error);
-        if (data === null)
-          throw new SupabaseMissingDataError("create channels");
-        return data;
-      }
       case "bundle_events": {
         const { data, error } = await supabase
           .from("bundle_events")
@@ -120,15 +109,6 @@ const createSupabaseImplementation = (
         throwSupabaseError("count bundle_patches", error);
         return count ?? 0;
       }
-      case "channels": {
-        let query = supabase
-          .from("bundle_channels")
-          .select("*", { count: "exact", head: true });
-        if (filter !== undefined) query = query.or(filter);
-        const { count, error } = await query;
-        throwSupabaseError("count channels", error);
-        return count ?? 0;
-      }
       case "bundle_events": {
         let query = supabase
           .from("bundle_events")
@@ -155,13 +135,6 @@ const createSupabaseImplementation = (
         if (filter !== undefined) query = query.or(filter);
         const { data, error } = await query.limit(1).maybeSingle();
         throwSupabaseError("findOne bundle_patches", error);
-        return data;
-      }
-      case "channels": {
-        let query = supabase.from("bundle_channels").select("*");
-        if (filter !== undefined) query = query.or(filter);
-        const { data, error } = await query.limit(1).maybeSingle();
-        throwSupabaseError("findOne channels", error);
         return data;
       }
       case "bundle_events": {
@@ -202,18 +175,6 @@ const createSupabaseImplementation = (
         throwSupabaseError("findMany bundle_patches", error);
         return data ?? [];
       }
-      case "channels": {
-        let query = supabase.from("bundle_channels").select("*");
-        if (filter !== undefined) query = query.or(filter);
-        if (input.sortBy !== undefined) {
-          query = query.order(input.sortBy.field, {
-            ascending: input.sortBy.direction === "asc",
-          });
-        }
-        const { data, error } = await query.range(input.offset, rangeEnd);
-        throwSupabaseError("findMany channels", error);
-        return data ?? [];
-      }
       case "bundle_events": {
         let query = supabase.from("bundle_events").select("*");
         if (filter !== undefined) query = query.or(filter);
@@ -229,6 +190,11 @@ const createSupabaseImplementation = (
         return data ?? [];
       }
     }
+  },
+  async getChannels() {
+    const { data, error } = await supabase.rpc("get_channels");
+    throwSupabaseError("get channels", error);
+    return (data ?? []).map(({ channel }) => channel);
   },
   getUpdateInfo: createSupabaseGetUpdateInfo(supabase),
 });

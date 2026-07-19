@@ -1,11 +1,8 @@
 import {
   DatabaseAdapterInputError,
   selectRow,
-  validateBundleCreateChannel,
   validateBundleTargetUpdate,
   validateBundleUpdateData,
-  validateChannelReference,
-  validateChannelUpdate,
   validateCreateData,
   validateDistinctFields,
   validateDistinctOn,
@@ -55,19 +52,6 @@ export const createDatabaseAdapterCrud = <TContext>(
   ): Promise<SelectedDatabaseRow<TModel, TSelect>> {
     validateModel(input.model);
     validateCreateData(input.model, input.data);
-    if (input.model === "bundles") {
-      const bundleInput = input as CreateDatabaseInput<
-        "bundles",
-        DatabaseSelect<"bundles"> | undefined
-      >;
-      validateBundleCreateChannel(bundleInput);
-      await validateChannelReference(
-        implementation,
-        bundleInput.data.channel,
-        bundleInput.data.channel_id,
-        context,
-      );
-    }
     validateSelect(input.model, input.select);
     const row = await implementation.create(input as never, context);
     validateResult(
@@ -92,20 +76,8 @@ export const createDatabaseAdapterCrud = <TContext>(
     validateMutationWhere(input.where);
     validateUpdateWhere(input.where);
     validateBundleUpdateData(input.update);
-    validateChannelUpdate(input.update);
     validateSelect(input.model, input.select);
     await validateBundleTargetUpdate(implementation, input, context);
-    if (
-      input.update.channel !== undefined &&
-      input.update.channel_id !== undefined
-    ) {
-      await validateChannelReference(
-        implementation,
-        input.update.channel,
-        input.update.channel_id,
-        context,
-      );
-    }
     const row = await implementation.update(input as never, context);
     if (row === null) return null;
     validateResult(

@@ -1,21 +1,11 @@
 import type { Bundle } from "@hot-updater/core";
-import type {
-  BundlePatchRow,
-  BundleRow,
-  ChannelRow,
-} from "@hot-updater/plugin-core";
+import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
 
 const fixtureId = (suffix: string): string =>
   `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`;
 
-export const createChannelRowFixture = (
-  name: string,
-  id = `channel-${name}`,
-): ChannelRow => ({ id, name });
-
 export const createBundleRowFixture = (
   suffix: string,
-  channelId = "channel-production",
   channel = "production",
 ): BundleRow => ({
   id: fixtureId(suffix),
@@ -26,7 +16,6 @@ export const createBundleRowFixture = (
   git_commit_hash: null,
   message: `bundle-${suffix}`,
   channel,
-  channel_id: channelId,
   storage_uri: `storage://bundles/${suffix}.zip`,
   target_app_version: "1.0.0",
   fingerprint_hash: null,

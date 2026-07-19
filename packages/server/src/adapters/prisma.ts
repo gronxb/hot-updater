@@ -23,7 +23,6 @@ import {
   getPrismaDelegate,
   parsePrismaBundleEventRow,
   parsePrismaBundleRow,
-  parsePrismaChannelRow,
   parsePrismaPatchRow,
   parsePrismaRows,
   PrismaAdapterError,
@@ -141,22 +140,8 @@ const findMany = async (
       return parsePrismaRows(rows, parsePrismaBundleRow);
     case "bundle_patches":
       return parsePrismaRows(rows, parsePrismaPatchRow);
-    case "channels":
-      return parsePrismaRows(rows, parsePrismaChannelRow);
     case "bundle_events":
       return parsePrismaRows(rows, parsePrismaBundleEventRow);
-  }
-};
-
-const assertChannelExists = async (
-  client: object,
-  channelId: string,
-): Promise<void> => {
-  const row = await getPrismaDelegate(client, "channels").findFirst({
-    where: { id: channelId },
-  });
-  if (row === null) {
-    throw new PrismaAdapterError(`channel "${channelId}" does not exist`);
   }
 };
 
@@ -215,7 +200,6 @@ const createCrudImplementation = (
   create: async (input) => {
     if (input.model === "bundles") {
       assertBundleTarget(input.data);
-      await assertChannelExists(client, input.data.channel_id);
     }
     if (input.model === "bundle_patches") {
       await assertPatchReferences(
@@ -232,8 +216,6 @@ const createCrudImplementation = (
         return parsePrismaBundleRow(row);
       case "bundle_patches":
         return parsePrismaPatchRow(row);
-      case "channels":
-        return parsePrismaChannelRow(row);
       case "bundle_events":
         return parsePrismaBundleEventRow(row);
     }
@@ -242,9 +224,6 @@ const createCrudImplementation = (
     const id = input.where[0]?.value;
     if (typeof id !== "string") {
       throw new PrismaAdapterError("bundle update requires a string id");
-    }
-    if (input.update.channel_id !== undefined) {
-      await assertChannelExists(client, input.update.channel_id);
     }
     const delegate = getPrismaDelegate(client, "bundles");
     if (delegate.updateMany === undefined) {
@@ -309,8 +288,6 @@ const createCrudImplementation = (
         return parsePrismaBundleRow(row);
       case "bundle_patches":
         return parsePrismaPatchRow(row);
-      case "channels":
-        return parsePrismaChannelRow(row);
       case "bundle_events":
         return parsePrismaBundleEventRow(row);
     }
@@ -334,6 +311,28 @@ const createPrismaImplementation = (
         createCrudImplementation(transactionClient, provider).delete(input),
       );
     },
+    getChannels: async () => {
+      const rows = await getPrismaDelegate(client, "bundles").findMany({
+        distinct: ["channel"],
+        orderBy: { channel: "asc" },
+        select: { channel: true },
+      });
+      return Array.from(
+        new Set(
+          rows.map((row) => {
+            if (
+              typeof row !== "object" ||
+              row === null ||
+              !("channel" in row) ||
+              typeof row.channel !== "string"
+            ) {
+              throw new PrismaAdapterError('expected string field "channel"');
+            }
+            return row.channel;
+          }),
+        ),
+      ).sort();
+    },
     getUpdateInfo: createPrismaGetUpdateInfo(client),
   };
   if (relationMode === "prisma" && !hasCallbackTransaction(client)) {
@@ -344,7 +343,7 @@ const createPrismaImplementation = (
   if (!hasCallbackTransaction(client)) return implementation;
   if (relationMode === "prisma") {
     implementation.create = (input) =>
-      input.model === "channels" || input.model === "bundle_events"
+      input.model === "bundle_events"
         ? crud.create(input)
         : runPrismaTransaction(client, relationMode, (transactionClient) =>
             createCrudImplementation(transactionClient, provider).create(input),
@@ -360,7 +359,6 @@ const createPrismaImplementation = (
       runPrismaTransaction(client, relationMode, async (transactionClient) => {
         getPrismaDelegate(transactionClient, "bundles");
         getPrismaDelegate(transactionClient, "bundle_patches");
-        getPrismaDelegate(transactionClient, "channels");
         getPrismaDelegate(transactionClient, "bundle_events");
         return callback(createCrudImplementation(transactionClient, provider));
       }),

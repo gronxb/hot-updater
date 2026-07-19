@@ -2,13 +2,6 @@
 
 CREATE TYPE platforms AS ENUM ('ios', 'android');
 
-CREATE TABLE bundle_channels (
-    id text PRIMARY KEY,
-    name text NOT NULL UNIQUE
-);
-
-INSERT INTO bundle_channels (id, name) VALUES ('production', 'production');
-
 CREATE TABLE bundles (
     id uuid PRIMARY KEY,
     platform platforms NOT NULL,
@@ -18,8 +11,6 @@ CREATE TABLE bundles (
     git_commit_hash text,
     message text,
     channel text NOT NULL DEFAULT 'production',
-    channel_id text NOT NULL
-      REFERENCES bundle_channels(id) ON DELETE RESTRICT,
     storage_uri text NOT NULL,
     target_app_version text,
     fingerprint_hash text,
@@ -48,7 +39,6 @@ CREATE TABLE bundle_patches (
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
 CREATE INDEX bundles_channel_idx ON bundles(channel);
-CREATE INDEX bundles_channel_id_idx ON bundles(channel_id);
 CREATE INDEX bundles_rollout_idx ON bundles(rollout_cohort_count);
 CREATE INDEX bundles_target_cohorts_idx ON bundles USING GIN (target_cohorts);
 CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id);

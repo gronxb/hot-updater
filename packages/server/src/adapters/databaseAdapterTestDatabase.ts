@@ -1,8 +1,4 @@
 export const DATABASE_ADAPTER_TEST_SCHEMA_SQL = `
-  create table bundle_channels (
-    id varchar(255) primary key,
-    name varchar(255) not null unique
-  );
   create table bundles (
     id text primary key,
     platform text not null,
@@ -12,7 +8,6 @@ export const DATABASE_ADAPTER_TEST_SCHEMA_SQL = `
     git_commit_hash text,
     message text,
     channel text not null default 'production',
-    channel_id varchar(255) not null references bundle_channels(id) on delete restrict,
     storage_uri text not null,
     target_app_version text,
     fingerprint_hash text,
@@ -55,5 +50,4 @@ export const DATABASE_ADAPTER_TEST_RESET_SQL = `
   delete from bundle_events;
   delete from bundle_patches;
   delete from bundles;
-  delete from bundle_channels;
 `;

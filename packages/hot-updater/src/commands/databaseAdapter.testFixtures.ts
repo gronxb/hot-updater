@@ -14,7 +14,6 @@ const emptySnapshot = (): BlobDatabaseSnapshot => ({
   version: 2,
   bundles: [],
   bundle_patches: [],
-  channels: [],
   bundle_events: [],
 });
 
@@ -107,11 +106,8 @@ export const createDatabaseAdapterHarness = () => {
       storedObjects.clear();
       storedSnapshot = {
         version: 2,
-        bundles: bundles.map((bundle) => bundleToRow(bundle, bundle.channel)),
+        bundles: bundles.map((bundle) => bundleToRow(bundle)),
         bundle_patches: bundles.flatMap(bundleToPatchRows),
-        channels: [...new Set(bundles.map(({ channel }) => channel))].map(
-          (name) => ({ id: name, name }),
-        ),
         bundle_events: [],
       };
     },

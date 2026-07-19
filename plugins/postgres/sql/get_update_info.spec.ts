@@ -19,12 +19,9 @@ const createInsertBundleQuery = (bundle: Bundle) => {
     : "NULL";
 
   return `
-    INSERT INTO bundle_channels (id, name) VALUES ('${bundle.channel}', '${bundle.channel}')
-    ON CONFLICT (id) DO NOTHING;
-
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel_id, storage_uri, fingerprint_hash,
+      should_force_update, enabled, git_commit_hash, message, channel, storage_uri, fingerprint_hash,
       rollout_cohort_count, target_cohorts
     ) VALUES (
       '${bundle.id}',
@@ -48,7 +45,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       enabled = EXCLUDED.enabled,
       git_commit_hash = EXCLUDED.git_commit_hash,
       message = EXCLUDED.message,
-      channel_id = EXCLUDED.channel_id,
+      channel = EXCLUDED.channel,
       storage_uri = EXCLUDED.storage_uri,
       fingerprint_hash = EXCLUDED.fingerprint_hash,
       rollout_cohort_count = EXCLUDED.rollout_cohort_count,

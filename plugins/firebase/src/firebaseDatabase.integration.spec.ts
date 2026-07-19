@@ -19,7 +19,6 @@ const {
   bundleEventsCollection,
   bundlePatchesCollection,
   bundlesCollection,
-  channelsCollection,
   clearCollections,
   firestore,
   settingsCollection,
@@ -38,7 +37,7 @@ it("advertises Analytics support", () => {
 });
 
 setupDatabaseAdapterTestSuite({
-  name: "firebase database adapter v2",
+  name: "firebase fixed-model database adapter",
   createAdapter,
   migrate: () => undefined,
   reset: clearCollections,
@@ -122,7 +121,7 @@ const bundleEventFixture = (id: string) => ({
 describe("firebase v1 data migration", () => {
   beforeEach(clearCollections);
 
-  it("backfills channels and splits inline patches into fixed collections", async () => {
+  it("splits inline patches into fixed collections", async () => {
     const base = legacyRow("legacy-base");
     const target = legacyRow("legacy-target");
     await bundlesCollection.doc(base.id).set(base);
@@ -153,42 +152,13 @@ describe("firebase v1 data migration", () => {
       },
     ]);
     await expect(
-      channelsCollection.doc("production").get(),
-    ).resolves.toMatchObject({
-      exists: true,
-      data: expect.any(Function),
-    });
-    const migratedChannel = await channelsCollection.doc("production").get();
-    expect(migratedChannel.data()).toEqual({
-      id: "production",
-      name: "production",
-    });
-    await expect(
       bundlePatchesCollection.doc(`${target.id}:${base.id}`).get(),
     ).resolves.toMatchObject({ exists: true });
     const migratedTarget = await bundlesCollection.doc(target.id).get();
     expect(migratedTarget.data()).toMatchObject({
       channel: "production",
-      channel_id: "production",
     });
     expect(migratedTarget.data()).not.toHaveProperty("patches");
-  });
-
-  it("normalizes existing channel documents with names", async () => {
-    await channelsCollection.doc("release").set({ id: "release" });
-    const bundle = legacyRow("legacy-release", "release");
-    await bundlesCollection.doc(bundle.id).set(bundle);
-
-    const adapter = createAdapter();
-    await adapter.findMany({ model: "bundles" });
-
-    const channel = await channelsCollection.doc("release").get();
-    expect(channel.data()).toEqual({ id: "release", name: "release" });
-    const migratedBundle = await bundlesCollection.doc(bundle.id).get();
-    expect(migratedBundle.data()).toMatchObject({
-      channel: "release",
-      channel_id: "release",
-    });
   });
 
   it("migrates legacy rows with bounded batches instead of a transaction", async () => {
@@ -217,29 +187,7 @@ describe("firebase v1 data migration", () => {
     const migrated = await bundlesCollection.doc(bundle.id).get();
     expect(migrated.data()).toMatchObject({
       channel: "production",
-      channel_id: "production",
     });
-  });
-
-  it("resolves legacy bundle channel names to existing channel ids", async () => {
-    await channelsCollection.doc("channel-release").set({
-      id: "channel-release",
-      name: "release",
-    });
-    const bundle = legacyRow("legacy-named-release", "release");
-    await bundlesCollection.doc(bundle.id).set(bundle);
-
-    const adapter = createAdapter();
-    await adapter.findMany({ model: "bundles" });
-
-    const migratedBundle = await bundlesCollection.doc(bundle.id).get();
-    expect(migratedBundle.data()).toMatchObject({
-      channel: "release",
-      channel_id: "channel-release",
-    });
-    await expect(
-      channelsCollection.doc("release").get(),
-    ).resolves.toMatchObject({ exists: false });
   });
 
   it("rejects an existing patch whose owner or base bundle is missing", async () => {
@@ -349,7 +297,6 @@ describe("firebase bounded reads", () => {
     await client.insertBundle(value);
     await bundlesCollection.doc("unrelated-malformed").set({
       channel: "other",
-      channel_id: "other",
       platform: "android",
       enabled: true,
       fingerprint_hash: "other-fingerprint",
@@ -373,7 +320,6 @@ describe("firebase bounded reads", () => {
     await client.insertBundle(value);
     await bundlesCollection.doc("unrelated-malformed").set({
       channel: "other",
-      channel_id: "other",
     });
 
     await expect(

@@ -1,9 +1,6 @@
 export type DatabaseAdapterInputErrorCode =
-  | "channel-reference-mismatch"
   | "empty-mutation-where"
   | "empty-select"
-  | "incomplete-channel-create"
-  | "incomplete-channel-update"
   | "invalid-data"
   | "invalid-distinct"
   | "invalid-field"

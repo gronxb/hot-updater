@@ -5,11 +5,11 @@ import type {
   BundleRow,
   CountDatabaseInput,
   DatabaseAdapter,
+  DatabaseModel,
   DeleteDatabaseInput,
   FindManyDatabaseInput,
   FindOneDatabaseInput,
   TransactionDatabaseAdapter,
-  UpdateDatabaseInput,
 } from "./database";
 import type {
   ActiveInstallationOverview,
@@ -20,12 +20,9 @@ import type {
 
 describe("database adapter types", () => {
   it("keeps unsupported model and operation pairs outside the contract", () => {
-    type ChannelUpdate = { readonly model: "channels" };
     type EventDelete = { readonly model: "bundle_events" };
 
-    expectTypeOf<ChannelUpdate>().not.toMatchTypeOf<
-      UpdateDatabaseInput<"bundles">
-    >();
+    expectTypeOf<"channels">().not.toMatchTypeOf<DatabaseModel>();
     expectTypeOf<EventDelete>().not.toMatchTypeOf<
       DeleteDatabaseInput<"bundles" | "bundle_patches">
     >();
@@ -109,11 +106,7 @@ describe("database adapter types", () => {
     expectTypeOf<
       TransactionDatabaseAdapter["count"]
     >().parameters.toEqualTypeOf<
-      [
-        CountDatabaseInput<
-          "bundles" | "bundle_patches" | "channels" | "bundle_events"
-        >,
-      ]
+      [CountDatabaseInput<"bundles" | "bundle_patches" | "bundle_events">]
     >();
     expectTypeOf<FindOneDatabaseInput<"bundle_patches">>().toMatchTypeOf<{
       readonly model: "bundle_patches";

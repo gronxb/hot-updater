@@ -2,7 +2,6 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseImplementationResult,
   TransactionDatabaseAdapterImplementation,
 } from "@hot-updater/plugin-core";
@@ -15,7 +14,6 @@ import {
 export interface FirebaseDatabaseSnapshot {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
-  readonly channels: Map<string, ChannelRow>;
   readonly bundleEvents: Map<string, BundleEventRow>;
 }
 
@@ -32,7 +30,6 @@ export const cloneFirebaseDatabaseSnapshot = (
 ): FirebaseDatabaseSnapshot => ({
   bundles: new Map(snapshot.bundles),
   bundlePatches: new Map(snapshot.bundlePatches),
-  channels: new Map(snapshot.channels),
   bundleEvents: new Map(snapshot.bundleEvents),
 });
 
@@ -64,17 +61,6 @@ export const createFirebaseDatabaseState = (
 ): TransactionDatabaseAdapterImplementation => ({
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
-      case "channels":
-        requireUnique(snapshot.channels, input.data.id, input.model);
-        if (
-          [...snapshot.channels.values()].some(
-            ({ name }) => name === input.data.name,
-          )
-        ) {
-          throw new FirebaseDatabaseConstraintError("channels.name.unique");
-        }
-        snapshot.channels.set(input.data.id, input.data);
-        return input.data;
       case "bundles":
         requireUnique(snapshot.bundles, input.data.id, input.model);
         if (
@@ -83,11 +69,6 @@ export const createFirebaseDatabaseState = (
         ) {
           throw new FirebaseDatabaseConstraintError(
             "bundles.version-or-fingerprint.check",
-          );
-        }
-        if (!snapshot.channels.has(input.data.channel_id)) {
-          throw new FirebaseDatabaseConstraintError(
-            "bundles.channel_id.foreign-key",
           );
         }
         snapshot.bundles.set(input.data.id, input.data);
@@ -124,11 +105,6 @@ export const createFirebaseDatabaseState = (
     ) {
       throw new FirebaseDatabaseConstraintError(
         "bundles.version-or-fingerprint.check",
-      );
-    }
-    if (!snapshot.channels.has(updated.channel_id)) {
-      throw new FirebaseDatabaseConstraintError(
-        "bundles.channel_id.foreign-key",
       );
     }
     snapshot.bundles.set(current.id, updated);
@@ -174,13 +150,6 @@ export const createFirebaseDatabaseState = (
           ),
           input.distinct as readonly string[] | undefined,
         );
-      case "channels":
-        return distinctCount(
-          [...snapshot.channels.values()].filter((row) =>
-            matchesFirebaseDatabaseWhere(row, input.where),
-          ),
-          input.distinct as readonly string[] | undefined,
-        );
       case "bundle_events":
         return distinctCount(
           [...snapshot.bundleEvents.values()].filter((row) =>
@@ -204,12 +173,6 @@ export const createFirebaseDatabaseState = (
             matchesFirebaseDatabaseWhere(row, input.where),
           ) ?? null
         );
-      case "channels":
-        return (
-          [...snapshot.channels.values()].find((row) =>
-            matchesFirebaseDatabaseWhere(row, input.where),
-          ) ?? null
-        );
       case "bundle_events":
         return (
           [...snapshot.bundleEvents.values()].find((row) =>
@@ -225,11 +188,6 @@ export const createFirebaseDatabaseState = (
       case "bundle_patches":
         return queryFirebaseDatabaseRows(
           [...snapshot.bundlePatches.values()],
-          input,
-        );
-      case "channels":
-        return queryFirebaseDatabaseRows(
-          [...snapshot.channels.values()],
           input,
         );
       case "bundle_events":

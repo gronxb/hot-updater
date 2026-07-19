@@ -11,7 +11,7 @@ import {
   queryStandaloneRows,
 } from "./standaloneDatabaseQuery";
 import { StandaloneDatabaseError } from "./standaloneHttp";
-import { loadRows, persistChannel } from "./standaloneLegacyData";
+import { loadRows } from "./standaloneLegacyData";
 
 type LegacyWrites = Pick<
   DatabaseAdapterImplementation,
@@ -23,19 +23,8 @@ export const createLegacyWrites = (
 ): LegacyWrites => ({
   async create(input) {
     switch (input.model) {
-      case "channels":
-        return persistChannel(remote, input.data.name);
       case "bundles":
-        if (!(await remote.loadChannels()).includes(input.data.channel_id)) {
-          throw new StandaloneDatabaseError(
-            "request-failed",
-            `Channel ${input.data.channel_id} was not found.`,
-            409,
-          );
-        }
-        await remote.createBundle(
-          rowToBundle(input.data, input.data.channel_id),
-        );
+        await remote.createBundle(rowToBundle(input.data));
         return input.data;
       case "bundle_patches": {
         const owner = await remote.loadBundle(input.data.bundle_id);
@@ -65,10 +54,7 @@ export const createLegacyWrites = (
           );
         }
         await remote.updateBundle(
-          rowToBundle(bundleToRow(owner, owner.channel), owner.channel, [
-            ...patches,
-            input.data,
-          ]),
+          rowToBundle(bundleToRow(owner), [...patches, input.data]),
         );
         return input.data;
       }
@@ -85,19 +71,10 @@ export const createLegacyWrites = (
     const current = await remote.loadBundle(bundleId);
     if (!current) return null;
     const nextRow = {
-      ...bundleToRow(current, current.channel),
+      ...bundleToRow(current),
       ...input.update,
     };
-    if (!(await remote.loadChannels()).includes(nextRow.channel_id)) {
-      throw new StandaloneDatabaseError(
-        "request-failed",
-        `Channel ${nextRow.channel_id} was not found.`,
-        409,
-      );
-    }
-    await remote.updateBundle(
-      rowToBundle(nextRow, nextRow.channel_id, bundleToPatchRows(current)),
-    );
+    await remote.updateBundle(rowToBundle(nextRow, bundleToPatchRows(current)));
     return nextRow;
   },
   async delete(input) {
@@ -115,13 +92,7 @@ export const createLegacyWrites = (
         (row) => !matchesStandaloneWhere(row, input.where),
       );
       if (remaining.length !== patches.length) {
-        await remote.updateBundle(
-          rowToBundle(
-            bundleToRow(bundle, bundle.channel),
-            bundle.channel,
-            remaining,
-          ),
-        );
+        await remote.updateBundle(rowToBundle(bundleToRow(bundle), remaining));
       }
     }
   },

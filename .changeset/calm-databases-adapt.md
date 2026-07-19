@@ -16,18 +16,17 @@
 ---
 
 Replace the legacy database adapter API with the fixed-model adapter API for
-`bundles`, `bundle_patches`, and `channels`. Database providers now return a
-direct adapter object, aggregate bundle behavior is provided by the shared
-database client, callback transactions and optimized update checks are
-optional capabilities, and the v1 staged mutation API has been removed.
-Provider functions now receive their configuration directly and close over it
-inside `createDatabaseAdapter({ name, adapter })`.
+`bundles`, `bundle_patches`, and `bundle_events`. Database providers now return
+a direct adapter object, aggregate bundle behavior is provided by the shared
+database client, callback transactions and optimized update checks are optional
+capabilities, and the v1 staged mutation API has been removed. Provider
+functions now receive their configuration directly and close over it inside
+`createDatabaseAdapter({ name, adapter })`.
 
-Normalize physical channel storage as `bundle_channels { id, name }` with
-unique names and `bundles.channel_id -> bundle_channels.id`, while preserving
-the logical adapter model name `channels` and double-writing the channel name to
-the legacy `bundles.channel` field for backwards-compatible readers and
-preserving channel names in the public bundle and standalone HTTP APIs.
+Keep channel names directly on `bundles.channel` without introducing a channel
+model, table, collection, or foreign key. Adapters may expose an optimized
+`getChannels` aggregate, while the shared database client falls back to paging
+bundle channel values and returning their sorted distinct set.
 
 Publish `@hot-updater/test-utils` with reusable low-adapter and aggregate-client
 conformance suites for custom database adapter authors.

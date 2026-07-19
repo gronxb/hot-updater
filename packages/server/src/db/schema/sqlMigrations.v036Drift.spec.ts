@@ -147,69 +147,6 @@ describe("0.31.0 to 0.36.0 SQL migration drift validation", () => {
         })),
     },
     {
-      name: "changed allowlisted channel column metadata",
-      location: "bundles.columns.channel_id",
-      change: (schema) =>
-        changeTable(schema, "bundles", (table) => ({
-          ...table,
-          columns: table.columns.map((column) =>
-            column.ormName === "channel_id"
-              ? { ...column, nullable: true }
-              : column,
-          ),
-        })),
-    },
-    {
-      name: "changed allowlisted channel index metadata",
-      location: "bundles.indexes.bundles_channel_id_idx",
-      change: (schema) =>
-        changeTable(schema, "bundles", (table) => ({
-          ...table,
-          indexes: table.indexes?.map((index) =>
-            index.name === "bundles_channel_id_idx"
-              ? { ...index, unique: true }
-              : index,
-          ),
-        })),
-    },
-    {
-      name: "changed allowlisted channel foreign key metadata",
-      location: "bundles.foreignKeys.bundles_channel_id_fk",
-      change: (schema) =>
-        changeTable(schema, "bundles", (table) => ({
-          ...table,
-          foreignKeys: table.foreignKeys?.map((foreignKey) =>
-            foreignKey.name === "bundles_channel_id_fk"
-              ? { ...foreignKey, onDelete: "cascade" }
-              : foreignKey,
-          ),
-        })),
-    },
-    {
-      name: "changed allowlisted channel relation metadata",
-      location: "bundles.relations.channelRef",
-      change: (schema) =>
-        changeTable(schema, "bundles", (table) => ({
-          ...table,
-          relations: table.relations?.map((relation) =>
-            relation.name === "channelRef"
-              ? { ...relation, relationName: "unexpected" }
-              : relation,
-          ),
-        })),
-    },
-    {
-      name: "changed allowlisted channels table",
-      location: "bundle_channels",
-      change: (schema) =>
-        changeTable(schema, "bundle_channels", (table) => ({
-          ...table,
-          columns: table.columns.map((column) =>
-            column.ormName === "name" ? { ...column, nullable: true } : column,
-          ),
-        })),
-    },
-    {
       name: "unallowlisted table addition",
       location: "unexpected",
       change: (schema) => ({

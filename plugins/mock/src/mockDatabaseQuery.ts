@@ -25,7 +25,7 @@ const normalizeStringComparison = (
 };
 
 const matchesCondition = <
-  TModel extends "bundle_patches" | "bundles" | "bundle_events" | "channels",
+  TModel extends "bundle_patches" | "bundles" | "bundle_events",
 >(
   row: DatabaseRow<TModel>,
   condition: DatabaseWhere<TModel>,
@@ -95,7 +95,7 @@ const matchesCondition = <
 };
 
 export const matchesMockDatabaseWhere = <
-  TModel extends "bundle_patches" | "bundles" | "bundle_events" | "channels",
+  TModel extends "bundle_patches" | "bundles" | "bundle_events",
 >(
   row: DatabaseRow<TModel>,
   where: readonly DatabaseWhere<TModel>[] | undefined,
@@ -112,7 +112,7 @@ export const matchesMockDatabaseWhere = <
 };
 
 export const queryMockDatabaseRows = <
-  TModel extends "bundle_patches" | "bundles" | "bundle_events" | "channels",
+  TModel extends "bundle_patches" | "bundles" | "bundle_events",
 >(
   rows: readonly DatabaseRow<TModel>[],
   input: {

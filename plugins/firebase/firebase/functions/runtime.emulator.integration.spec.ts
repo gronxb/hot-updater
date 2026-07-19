@@ -293,7 +293,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     await clearStorageBucket(storageBucket);
     await clearFirestoreCollection("bundle_patches");
     await clearFirestoreCollection("bundles");
-    await clearFirestoreCollection("bundle_channels");
   });
 
   afterAll(async () => {

@@ -11,23 +11,11 @@ import {
   schema,
   stringColumn,
   table,
-  uniqueIndex,
   uuid,
   varchar,
 } from "./dsl";
 import { createSettingsTable } from "./settings";
 import { HOT_UPDATER_SETTINGS_TABLE } from "./types";
-
-export const bundleChannelsV036 = table(
-  "bundle_channels",
-  {
-    id: idColumn("id", varchar(255)),
-    name: column("name", varchar(255)),
-  },
-  {
-    indexes: [uniqueIndex("bundle_channels_name_key", ["name"])],
-  },
-);
 
 export const bundlesV036 = table(
   "bundles",
@@ -40,7 +28,6 @@ export const bundlesV036 = table(
     git_commit_hash: stringColumn("git_commit_hash").nullable(),
     message: stringColumn("message").nullable(),
     channel: stringColumn("channel").defaultTo("production"),
-    channel_id: column("channel_id", varchar(255)),
     storage_uri: stringColumn("storage_uri"),
     target_app_version: stringColumn("target_app_version").nullable(),
     fingerprint_hash: stringColumn("fingerprint_hash").nullable(),
@@ -56,7 +43,6 @@ export const bundlesV036 = table(
       index("bundles_target_app_version_idx", ["target_app_version"]),
       index("bundles_fingerprint_hash_idx", ["fingerprint_hash"]),
       index("bundles_channel_idx", ["channel"]),
-      index("bundles_channel_id_idx", ["channel_id"]),
       index("bundles_platform_idx", ["platform"], ["mongodb"]),
       index("bundles_rollout_idx", ["rollout_cohort_count"]),
     ],
@@ -72,26 +58,6 @@ export const bundlesV036 = table(
         expression:
           "rollout_cohort_count >= 0 and rollout_cohort_count <= 1000",
         sqliteInline: true,
-      }),
-    ],
-    foreignKeys: [
-      foreignKey(
-        "bundles_channel_id_fk",
-        ["channel_id"],
-        "bundle_channels",
-        ["id"],
-        { onDelete: "restrict" },
-      ),
-    ],
-    relations: [
-      relation({
-        name: "channelRef",
-        fieldName: "bundles",
-        targetFieldName: "channelRef",
-        relationName: "bundle_channels_bundles_channel",
-        columns: ["channel_id"],
-        referencedTable: "bundle_channels",
-        referencedColumns: ["id"],
       }),
     ],
   },
@@ -150,10 +116,5 @@ export const bundlePatchesV036 = table(
 export const v0_36_0 = schema({
   version: "0.36.0",
   settingsTable: HOT_UPDATER_SETTINGS_TABLE,
-  tables: [
-    bundleChannelsV036,
-    bundlesV036,
-    bundlePatchesV036,
-    createSettingsTable("0.36.0"),
-  ],
+  tables: [bundlesV036, bundlePatchesV036, createSettingsTable("0.36.0")],
 });

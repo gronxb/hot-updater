@@ -21,7 +21,6 @@ const snapshot = (bundle_events: readonly object[]) => ({
   version: 2,
   bundles: [],
   bundle_patches: [],
-  channels: [],
   bundle_events,
 });
 

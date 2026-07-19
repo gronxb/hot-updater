@@ -63,7 +63,6 @@ it("projects selected fields after querying physical bundle columns", async () =
     git_commit_hash: null,
     message: "Alpha Release",
     channel: "production",
-    channel_id: "channel-production",
     storage_uri: "storage://bundle",
     target_app_version: "1.0.0",
     fingerprint_hash: null,
@@ -107,23 +106,18 @@ it("projects selected fields after querying physical bundle columns", async () =
   );
 });
 
-it("encodes channel ids and names as JSON-bound parameters", async () => {
-  state.results.push({ id: "channel-production", name: "production" });
+it("uses a native distinct channel query", async () => {
+  state.results.push({ channel: "production" });
   const adapter = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
   });
 
-  await adapter.create({
-    model: "channels",
-    data: { id: "channel-production", name: "production" },
-  });
+  await expect(adapter.getChannels?.()).resolves.toEqual(["production"]);
 
-  expect(state.queries[0]).toMatchObject({
-    params: ['"channel-production"', '"production"'],
-  });
-  expect(state.queries[0]?.sql).toContain(
-    "INSERT INTO bundle_channels (id, name)",
+  expect(state.queries[0]?.params).toEqual([]);
+  expect(state.queries[0]?.sql).toBe(
+    "SELECT DISTINCT channel FROM bundles ORDER BY channel ASC",
   );
 });

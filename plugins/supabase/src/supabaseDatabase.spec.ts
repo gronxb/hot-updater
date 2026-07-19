@@ -10,11 +10,7 @@ import { supabaseDatabase } from "./supabaseDatabase";
 // allow: SIZE_OK — hoisted PostgREST query/filter state machine for public adapter conformance.
 const { createMockClient, resetMockClient } = vi.hoisted(() => {
   type Row = Record<string, unknown>;
-  type TableName =
-    | "bundle_channels"
-    | "bundle_events"
-    | "bundle_patches"
-    | "bundles";
+  type TableName = "bundle_events" | "bundle_patches" | "bundles";
   type QueryError = { readonly message: string };
   type QueryResult = {
     readonly count: number | null;
@@ -26,7 +22,6 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
     bundle_events: new Map(),
     bundle_patches: new Map(),
     bundles: new Map(),
-    bundle_channels: new Map(),
   };
 
   const splitTopLevel = (value: string): readonly string[] => {
@@ -286,23 +281,9 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
         return { count: null, data: null, error: { message: "duplicate id" } };
       }
       if (
-        this.table === "bundle_channels" &&
-        [...rows.bundle_channels.values()].some(
-          (channel) => channel.name === payload.name,
-        )
-      ) {
-        return {
-          count: null,
-          data: null,
-          error: { message: "duplicate name" },
-        };
-      }
-      if (
-        (this.table === "bundles" &&
-          !rows.bundle_channels.has(String(payload.channel_id))) ||
-        (this.table === "bundle_patches" &&
-          (!rows.bundles.has(String(payload.bundle_id)) ||
-            !rows.bundles.has(String(payload.base_bundle_id))))
+        this.table === "bundle_patches" &&
+        (!rows.bundles.has(String(payload.bundle_id)) ||
+          !rows.bundles.has(String(payload.base_bundle_id)))
       ) {
         return { count: null, data: null, error: { message: "foreign key" } };
       }
@@ -321,6 +302,14 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
             data: bundles.map((bundle) => ({
               target_app_version: bundle.target_app_version,
             })),
+            error: null,
+          };
+        }
+        if (name === "get_channels") {
+          return {
+            data: [...new Set(bundles.map((bundle) => String(bundle.channel)))]
+              .sort()
+              .map((channel) => ({ channel })),
             error: null,
           };
         }
@@ -349,7 +338,6 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       rows.bundle_events.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
-      rows.bundle_channels.clear();
     },
   };
 });
@@ -413,7 +401,7 @@ it("applies compound ordering to bundle event pages", async () => {
 });
 
 setupDatabaseAdapterTestSuite({
-  name: "supabase database adapter v2",
+  name: "supabase fixed-model database adapter",
   migrate: () => undefined,
   createAdapter: () =>
     supabaseDatabase({

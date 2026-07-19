@@ -28,7 +28,6 @@ export const modelValidators: ValidatorMap = {
     git_commit_hash: (value) => value === null || typeof value === "string",
     message: (value) => value === null || typeof value === "string",
     channel: (value) => typeof value === "string",
-    channel_id: (value) => typeof value === "string",
     storage_uri: (value) => typeof value === "string",
     target_app_version: (value) => value === null || typeof value === "string",
     fingerprint_hash: (value) => value === null || typeof value === "string",
@@ -56,10 +55,6 @@ export const modelValidators: ValidatorMap = {
     patch_storage_uri: (value) => typeof value === "string",
     order_index: (value) =>
       typeof value === "number" && Number.isInteger(value) && value >= 0,
-  },
-  channels: {
-    id: (value) => typeof value === "string",
-    name: (value) => typeof value === "string",
   },
   bundle_events: {
     id: (value) => typeof value === "string",
@@ -92,7 +87,6 @@ export const stringFields = new Set<string>([
   "git_commit_hash",
   "message",
   "channel",
-  "channel_id",
   "storage_uri",
   "target_app_version",
   "fingerprint_hash",
@@ -101,7 +95,6 @@ export const stringFields = new Set<string>([
   "base_file_hash",
   "patch_file_hash",
   "patch_storage_uri",
-  "name",
   "type",
   "install_id",
   "user_id",
@@ -133,7 +126,6 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "git_commit_hash",
     "message",
     "channel",
-    "channel_id",
     "storage_uri",
     "target_app_version",
     "fingerprint_hash",
@@ -151,7 +143,6 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "patch_storage_uri",
     "order_index",
   ]),
-  channels: new Set(["id", "name"]),
   bundle_events: new Set([
     "id",
     "type",

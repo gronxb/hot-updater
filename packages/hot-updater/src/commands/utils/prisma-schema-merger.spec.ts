@@ -5,14 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { mergePrismaSchema } from "./prisma-schema-merger";
 
-const HOT_UPDATER_MODELS = `model bundle_channels {
-  id String @db.VarChar(255) @id
-  name String @db.VarChar(255)
-  bundles bundles[] @relation("bundle_channels_bundles_channel")
-  @@unique([name], map: "bundle_channels_name_key")
-}
-
-model bundles {
+const HOT_UPDATER_MODELS = `model bundles {
   id String @db.Uuid @id
   platform String
   should_force_update Boolean
@@ -21,7 +14,6 @@ model bundles {
   git_commit_hash String?
   message String?
   channel String @default("production")
-  channel_id String @db.VarChar(255)
   storage_uri String
   target_app_version String?
   fingerprint_hash String?
@@ -33,11 +25,9 @@ model bundles {
   target_cohorts Json?
   patches bundle_patches[] @relation("bundle_patches_bundles_patches")
   baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
-  channelRef bundle_channels @relation("bundle_channels_bundles_channel", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
   @@index([target_app_version], map: "bundles_target_app_version_idx")
   @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
   @@index([channel], map: "bundles_channel_idx")
-  @@index([channel_id], map: "bundles_channel_id_idx")
   @@index([rollout_cohort_count], map: "bundles_rollout_idx")
 }
 
@@ -57,7 +47,7 @@ model bundle_patches {
 
 model private_hot_updater_settings {
   key String @db.VarChar(255) @id
-  value String @default("0.36.0")
+  value String @default("0.38.0")
 }`;
 
 describe("prisma-schema-merger", () => {
@@ -120,11 +110,10 @@ describe("prisma-schema-merger", () => {
       // Updated models should be present
       expect(result.content).toContain("rollout_cohort_count");
       expect(result.content).toContain("@@index([channel]");
-      expect(result.content).toContain("@@index([channel_id]");
       expect(result.content).toContain(
         'bundle bundles @relation("bundle_patches_bundles_patches"',
       );
-      expect(result.content).toContain('"0.36.0"');
+      expect(result.content).toContain('"0.38.0"');
       // Should only have one set of hot-updater markers
       const beginCount = (
         result.content.match(/BEGIN HOT-UPDATER MODELS/g) || []
@@ -160,7 +149,7 @@ describe("prisma-schema-merger", () => {
       expect(beginCount).toBe(1);
     });
 
-    it("replaces every markerless v0.36 model without duplicating bundle channels", () => {
+    it("replaces every markerless Hot Updater model", () => {
       const markerlessSchema = `generator client {
   provider = "prisma-client-js"
 }
@@ -182,7 +171,6 @@ ${HOT_UPDATER_MODELS}`;
 
       expect(result.hadExistingModels).toBe(true);
       expect(result.content).toContain("model User");
-      expect(modelCount("bundle_channels")).toBe(1);
       expect(modelCount("bundles")).toBe(1);
       expect(modelCount("bundle_patches")).toBe(1);
       expect(modelCount("private_hot_updater_settings")).toBe(1);

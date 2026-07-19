@@ -4,7 +4,7 @@ import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemory
 import { isDatabaseAdapter, supportsAnalytics } from "./types";
 
 describe("isDatabaseAdapter", () => {
-  it("accepts a direct v2 low adapter object", () => {
+  it("accepts a direct fixed-model adapter object", () => {
     // Given
     const adapter = createInMemoryDatabaseAdapter();
 

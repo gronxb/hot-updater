@@ -30,7 +30,6 @@ const bundleRow = {
   git_commit_hash: null,
   message: null,
   channel: "production",
-  channel_id: "channel-production",
   storage_uri: "storage://bundle-1.zip",
   target_app_version: "1.0.0",
   fingerprint_hash: null,
@@ -85,6 +84,23 @@ describe("createDatabaseAdapter", () => {
     expect(capability).toBe(true);
   });
 
+  it("forwards the provider-native channel aggregate", async () => {
+    // Given
+    const context = { binding: "request-db" };
+    const getChannels = vi.fn(async () => ["preview", "production"]);
+    const adapter = createDatabaseAdapter({
+      name: "memory",
+      adapter: () => ({ ...createMethods(), getChannels }),
+    });
+
+    // When
+    const channels = await adapter.getChannels?.(context);
+
+    // Then
+    expect(channels).toEqual(["preview", "production"]);
+    expect(getChannels).toHaveBeenCalledWith(context);
+  });
+
   it("composes onUnmount without invoking it", async () => {
     const onUnmount = vi.fn(async () => undefined);
     const adapter = createDatabaseAdapter({
@@ -136,9 +152,9 @@ describe("createDatabaseAdapter", () => {
       }),
     });
 
-    await adapter.findMany({ model: "channels" });
+    await adapter.findMany({ model: "bundles" });
 
-    expect(inputs).toEqual([{ model: "channels", limit: 100, offset: 0 }]);
+    expect(inputs).toEqual([{ model: "bundles", limit: 100, offset: 0 }]);
   });
 
   it("passes select and generic orderBy/distinctOn through findMany", async () => {
@@ -201,17 +217,17 @@ describe("createDatabaseAdapter", () => {
     });
 
     await expect(
-      adapter.findMany({ model: "channels", select: [] }),
+      adapter.findMany({ model: "bundles", select: [] }),
     ).rejects.toMatchObject({
       code: "empty-select",
     });
     await expect(
-      adapter.findMany({ model: "channels", limit: -1 }),
+      adapter.findMany({ model: "bundles", limit: -1 }),
     ).rejects.toMatchObject({
       code: "invalid-pagination",
     });
     await expect(
-      adapter.findMany({ model: "channels", offset: 0.5 }),
+      adapter.findMany({ model: "bundles", offset: 0.5 }),
     ).rejects.toMatchObject({
       code: "invalid-pagination",
     });
@@ -223,7 +239,7 @@ describe("createDatabaseAdapter", () => {
     await expect(
       adapter.update({
         model: "bundles",
-        where: [{ field: "channel_id", value: "channel-production" }],
+        where: [{ field: "channel", value: "production" }],
         update: { enabled: false },
       }),
     ).rejects.toMatchObject({ code: "invalid-update-selector" });
@@ -292,9 +308,9 @@ describe("createDatabaseAdapter", () => {
 
     await expect(
       updateOperation({
-        model: "channels",
-        where: [{ field: "id", value: "channel-production" }],
-        update: { name: "stable" },
+        model: "bundle_patches",
+        where: [{ field: "id", value: "patch-1" }],
+        update: { patch_storage_uri: "storage://patch-1" },
       }),
     ).rejects.toMatchObject({ code: "invalid-operation" });
     await expect(
@@ -358,7 +374,7 @@ describe("createDatabaseAdapter", () => {
     await expect(
       createOperation({
         model: "bundles",
-        data: { channel: "production", channel_id: "channel-production" },
+        data: { channel: "production" },
         select: ["id"],
       }),
     ).rejects.toMatchObject({ code: "invalid-data" });
@@ -366,7 +382,7 @@ describe("createDatabaseAdapter", () => {
       updateOperation({
         model: "bundles",
         where: [{ field: "id", value: bundleRow.id }],
-        update: { channel: "production", channel_id: undefined },
+        update: { channel: undefined },
       }),
     ).rejects.toMatchObject({ code: "invalid-data" });
     expect(create).not.toHaveBeenCalled();

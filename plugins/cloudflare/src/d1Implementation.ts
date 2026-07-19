@@ -30,9 +30,23 @@ export interface D1Executor<TContext = unknown> {
 const tableNames = {
   bundles: "bundles",
   bundle_patches: "bundle_patches",
-  channels: "bundle_channels",
   bundle_events: "bundle_events",
 } as const satisfies Record<DatabaseModel, string>;
+
+class InvalidD1ChannelAggregateError extends Error {
+  readonly name = "InvalidD1ChannelAggregateError";
+}
+
+const parseChannel = (row: unknown): string => {
+  if (typeof row !== "object" || row === null || !("channel" in row)) {
+    throw new InvalidD1ChannelAggregateError();
+  }
+  const channel = row.channel;
+  if (typeof channel !== "string") {
+    throw new InvalidD1ChannelAggregateError();
+  }
+  return channel;
+};
 
 const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.id,
@@ -43,7 +57,6 @@ const bundleValues = (row: BundleRow): readonly unknown[] => [
   row.git_commit_hash,
   row.message,
   row.channel,
-  row.channel_id,
   row.storage_uri,
   row.target_app_version,
   row.fingerprint_hash,
@@ -95,7 +108,6 @@ const insertQuery = (input: CreateDatabaseImplementationInput) => {
         "git_commit_hash",
         "message",
         "channel",
-        "channel_id",
         "storage_uri",
         "target_app_version",
         "fingerprint_hash",
@@ -125,13 +137,6 @@ const insertQuery = (input: CreateDatabaseImplementationInput) => {
       const values = patchValues(input.data);
       return {
         sql: `INSERT INTO bundle_patches (${columns.join(", ")}) VALUES (${d1Placeholders(values.length)}) RETURNING *`,
-        params: encodeD1Values(values),
-      };
-    }
-    case "channels": {
-      const values = [input.data.id, input.data.name];
-      return {
-        sql: `INSERT INTO bundle_channels (id, name) VALUES (${d1Placeholders(values.length)}) RETURNING *`,
         params: encodeD1Values(values),
       };
     }
@@ -177,8 +182,6 @@ export const createD1Implementation = <TContext = unknown>(
         return parseD1Row("bundles", rows[0]);
       case "bundle_patches":
         return parseD1Row("bundle_patches", rows[0]);
-      case "channels":
-        return parseD1Row("channels", rows[0]);
       case "bundle_events":
         return parseD1Row("bundle_events", rows[0]);
     }
@@ -237,8 +240,6 @@ export const createD1Implementation = <TContext = unknown>(
         return parseD1Row("bundles", rows[0]);
       case "bundle_patches":
         return parseD1Row("bundle_patches", rows[0]);
-      case "channels":
-        return parseD1Row("channels", rows[0]);
       case "bundle_events":
         return parseD1Row("bundle_events", rows[0]);
     }
@@ -259,10 +260,16 @@ export const createD1Implementation = <TContext = unknown>(
         return rows.map((row) => parseD1Row("bundles", row));
       case "bundle_patches":
         return rows.map((row) => parseD1Row("bundle_patches", row));
-      case "channels":
-        return rows.map((row) => parseD1Row("channels", row));
       case "bundle_events":
         return rows.map((row) => parseD1Row("bundle_events", row));
     }
+  },
+  async getChannels(context) {
+    const rows = await executor.query(
+      "SELECT DISTINCT channel FROM bundles ORDER BY channel ASC",
+      [],
+      context,
+    );
+    return rows.map(parseChannel);
   },
 });

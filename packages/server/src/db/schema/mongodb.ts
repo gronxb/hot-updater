@@ -6,10 +6,6 @@ export const createMongoMigrationOperations = (
   settingsOperation?: MigrationOperation,
 ): MigrationOperation[] => [
   ...hotUpdaterCreateTableOperations,
-  {
-    type: "custom",
-    sql: "backfill bundle_channels(id, name) and bundles.channel_id from bundles.channel",
-  },
   ...hotUpdaterSchema.tables
     .filter((table) => !table.internal)
     .map(

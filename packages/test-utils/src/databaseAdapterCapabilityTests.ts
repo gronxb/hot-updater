@@ -7,10 +7,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import type { DatabaseAdapterTestState } from "./databaseAdapterTestRunner";
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-} from "./databaseTestFixtures";
+import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type CapabilityTestState<TContext> = DatabaseAdapterTestState<
   DatabaseAdapter<TContext>,
@@ -38,10 +35,6 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
       const bundle = createBundleRowFixture("91");
 
       const result = await adapter.transaction(async (transaction) => {
-        await transaction.create({
-          model: "channels",
-          data: createChannelRowFixture("production"),
-        });
         await transaction.create({ model: "bundles", data: bundle });
         return "committed" as const;
       }, state.context);
@@ -65,21 +58,19 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
         return;
       }
       expect(adapter.transaction).toBeTypeOf("function");
+      const bundle = createBundleRowFixture("92", "rollback");
 
       await expect(
         adapter.transaction(async (transaction) => {
-          await transaction.create({
-            model: "channels",
-            data: createChannelRowFixture("rollback"),
-          });
+          await transaction.create({ model: "bundles", data: bundle });
           throw new TransactionFixtureError();
         }, state.context),
       ).rejects.toBeInstanceOf(TransactionFixtureError);
       await expect(
         adapter.findOne(
           {
-            model: "channels",
-            where: [{ field: "id", value: "channel-rollback" }],
+            model: "bundles",
+            where: [{ field: "id", value: bundle.id }],
           },
           state.context,
         ),
@@ -94,13 +85,6 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
       }
       expect(adapter.getUpdateInfo).toBeTypeOf("function");
       const bundle = createBundleRowFixture("99");
-      await adapter.create(
-        {
-          model: "channels",
-          data: createChannelRowFixture("production"),
-        },
-        state.context,
-      );
       await adapter.create({ model: "bundles", data: bundle }, state.context);
 
       const args = {
@@ -112,7 +96,7 @@ export const registerDatabaseAdapterCapabilityTests = <TContext>(
       const update = await adapter.getUpdateInfo(args, state.context);
       const genericUpdate = await resolveUpdateInfoFromBundles({
         args,
-        bundles: [rowToBundle(bundle, "production")],
+        bundles: [rowToBundle(bundle)],
       });
 
       expect(update).toEqual(genericUpdate);

@@ -1,19 +1,6 @@
-import { blob, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { blob, foreignKey, index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core"
 
 import { relations } from "drizzle-orm"
-
-export const bundle_channels = sqliteTable("bundle_channels", {
-  id: text("id", { length: 255 }).primaryKey().notNull(),
-  name: text("name", { length: 255 }).notNull()
-}, (table) => [
-  uniqueIndex("bundle_channels_name_key").on(table.name)
-])
-
-export const bundle_channelsRelations = relations(bundle_channels, ({ many }) => ({
-  bundles: many(bundles, {
-    relationName: "bundle_channels_bundles_channel"
-  })
-}))
 
 export const bundles = sqliteTable("bundles", {
   id: text("id").primaryKey().notNull(),
@@ -24,7 +11,6 @@ export const bundles = sqliteTable("bundles", {
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
   channel: text("channel").notNull().default("production"),
-  channel_id: text("channel_id", { length: 255 }).notNull(),
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
@@ -35,24 +21,13 @@ export const bundles = sqliteTable("bundles", {
   manifest_file_hash: text("manifest_file_hash"),
   asset_base_storage_uri: text("asset_base_storage_uri")
 }, (table) => [
-  foreignKey({
-    columns: [table.channel_id],
-    foreignColumns: [bundle_channels.id],
-    name: "bundles_channel_id_fk"
-  }).onUpdate("restrict").onDelete("restrict"),
   index("bundles_target_app_version_idx").on(table.target_app_version),
   index("bundles_fingerprint_hash_idx").on(table.fingerprint_hash),
   index("bundles_channel_idx").on(table.channel),
-  index("bundles_channel_id_idx").on(table.channel_id),
   index("bundles_rollout_idx").on(table.rollout_cohort_count)
 ])
 
-export const bundlesRelations = relations(bundles, ({ one, many }) => ({
-  channelRef: one(bundle_channels, {
-    relationName: "bundle_channels_bundles_channel",
-    fields: [bundles.channel_id],
-    references: [bundle_channels.id]
-  }),
+export const bundlesRelations = relations(bundles, ({ many }) => ({
   patches: many(bundle_patches, {
     relationName: "bundle_patches_bundles_patches"
   }),

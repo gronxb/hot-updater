@@ -17,10 +17,6 @@ const BUNDLE_COUNT = 20_000;
 const BENCH_APP_VERSION = "1.0.0";
 const BENCH_PLATFORM = "ios" as const;
 const BENCH_CHANNEL = "production";
-const BENCH_CHANNEL_ROW = {
-  id: "channel-production",
-  name: BENCH_CHANNEL,
-} as const;
 
 class BenchmarkMutationError extends Error {
   readonly name = "BenchmarkMutationError";
@@ -48,9 +44,7 @@ const createBundle = (index: number): Bundle => ({
 });
 
 const createBenchAdapter = (bundles: readonly Bundle[]): DatabaseAdapter => {
-  const rows = bundles.map((bundle) =>
-    bundleToRow(bundle, BENCH_CHANNEL_ROW.id),
-  );
+  const rows = bundles.map((bundle) => bundleToRow(bundle));
   return createDatabaseAdapter({
     name: "bench-v2-adapter",
     adapter: () => ({
@@ -75,10 +69,6 @@ const createBenchAdapter = (bundles: readonly Bundle[]): DatabaseAdapter => {
               rows.find((row) => matchesAll<"bundles">(row, input.where)) ??
               null
             );
-          case "channels":
-            return matchesAll<"channels">(BENCH_CHANNEL_ROW, input.where)
-              ? BENCH_CHANNEL_ROW
-              : null;
           case "bundle_patches":
           case "bundle_events":
             return null;
@@ -98,11 +88,6 @@ const createBenchAdapter = (bundles: readonly Bundle[]): DatabaseAdapter => {
           case "bundle_patches":
           case "bundle_events":
             return [];
-          case "channels":
-            return [BENCH_CHANNEL_ROW].slice(
-              input.offset,
-              input.offset + input.limit,
-            );
         }
       },
     }),
@@ -126,7 +111,7 @@ describe("database adapter update check benchmark", () => {
   ).api;
 
   bench(
-    "v2 low adapter paged update check",
+    "fixed-model adapter paged update check",
     async () => {
       await api.getUpdateInfo(args);
     },

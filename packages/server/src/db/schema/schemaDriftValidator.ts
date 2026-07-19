@@ -42,52 +42,6 @@ const assertNamedMetadataIsUnchanged = <
   }
 };
 
-const v036BundleChannelsTable = {
-  ormName: "bundle_channels",
-  columns: [
-    { ormName: "id", type: "varchar(255)", primaryKey: true },
-    { ormName: "name", type: "varchar(255)" },
-  ],
-  indexes: [
-    { name: "bundle_channels_name_key", columns: ["name"], unique: true },
-  ],
-} as const satisfies HotUpdaterTableSchema;
-
-const v036BundlesAdditions = {
-  columns: [{ ormName: "channel_id", type: "varchar(255)" }],
-  indexes: [{ name: "bundles_channel_id_idx", columns: ["channel_id"] }],
-  checks: [],
-  foreignKeys: [
-    {
-      name: "bundles_channel_id_fk",
-      columns: ["channel_id"],
-      referencedTable: "bundle_channels",
-      referencedColumns: ["id"],
-      onUpdate: "restrict",
-      onDelete: "restrict",
-    },
-  ],
-  relations: [
-    {
-      name: "channelRef",
-      fieldName: "bundles",
-      targetFieldName: "channelRef",
-      relationName: "bundle_channels_bundles_channel",
-      columns: ["channel_id"],
-      referencedTable: "bundle_channels",
-      referencedColumns: ["id"],
-    },
-  ],
-} as const;
-
-const noV036Additions = {
-  columns: [],
-  indexes: [],
-  checks: [],
-  foreignKeys: [],
-  relations: [],
-} as const;
-
 const addedNamedMetadata = <Metadata extends { readonly name: string }>(
   previousItems: readonly Metadata[] | undefined,
   nextItems: readonly Metadata[] | undefined,
@@ -109,8 +63,6 @@ const assertV036TableAdditionsAreAllowlisted = (
   previous: HotUpdaterTableSchema,
   next: HotUpdaterTableSchema,
 ): void => {
-  const allowed =
-    previous.ormName === "bundles" ? v036BundlesAdditions : noV036Additions;
   const previousColumns = new Set(
     previous.columns.map((column) => column.ormName),
   );
@@ -128,9 +80,9 @@ const assertV036TableAdditionsAreAllowlisted = (
     addedMetadataLocation(
       `${previous.ormName}.columns`,
       additions.columns[0]?.ormName,
-      allowed.columns[0]?.ormName,
+      undefined,
     ),
-    allowed.columns,
+    [],
     additions.columns,
   );
   for (const kind of [
@@ -143,9 +95,9 @@ const assertV036TableAdditionsAreAllowlisted = (
       addedMetadataLocation(
         `${previous.ormName}.${kind}`,
         additions[kind][0]?.name,
-        allowed[kind][0]?.name,
+        undefined,
       ),
-      allowed[kind],
+      [],
       additions[kind],
     );
   }
@@ -226,17 +178,11 @@ export const assertV036MigrationSchemaDriftIsAllowlisted = (
   const addedTables = [...nextTables.values()].filter(
     (table) => !previousTables.has(table.ormName),
   );
-  for (const addedTable of addedTables) {
-    if (addedTable.ormName !== v036BundleChannelsTable.ormName) {
-      throw new Error(
-        `Unsupported Hot Updater schema change at ${addedTable.ormName}. Adding tables requires an explicit migration step.`,
-      );
-    }
-    assertSameSchemaValue(
-      v036BundleChannelsTable.ormName,
-      v036BundleChannelsTable,
-      addedTable,
+  const addedTable = addedTables[0];
+  if (addedTable) {
+    throw new Error(
+      `Unsupported Hot Updater schema change at ${addedTable.ormName}. Adding tables requires an explicit migration step.`,
     );
   }
-  assertSameSchemaValue(v036BundleChannelsTable.ormName, 1, addedTables.length);
+  assertSameSchemaValue("0.36.0.tables", 0, addedTables.length);
 };

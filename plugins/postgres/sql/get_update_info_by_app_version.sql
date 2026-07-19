@@ -36,12 +36,11 @@ BEGIN
             b.rollout_cohort_count,
             b.target_cohorts
         FROM bundles b
-        JOIN bundle_channels c ON c.id = b.channel_id
         WHERE b.enabled = TRUE
           AND b.platform = app_platform
           AND b.id >= min_bundle_id
           AND b.target_app_version IN (SELECT unnest(target_app_version_list))
-          AND c.name = target_channel
+          AND b.channel = target_channel
     ),
     current_candidate AS (
         SELECT

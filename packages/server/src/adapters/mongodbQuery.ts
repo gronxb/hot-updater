@@ -1,7 +1,6 @@
 import type {
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseModel,
   DatabaseOrderBy,
   DatabaseWhere,
@@ -139,15 +138,6 @@ export function createMongoPatchWhere(
 ): Filter<BundlePatchRow>;
 export function createMongoPatchWhere(
   where: readonly DatabaseWhere<"bundle_patches">[] | undefined,
-): Document {
-  return createMongoWhereDocument(where);
-}
-
-export function createMongoChannelWhere(
-  where: readonly DatabaseWhere<"channels">[] | undefined,
-): Filter<ChannelRow>;
-export function createMongoChannelWhere(
-  where: readonly DatabaseWhere<"channels">[] | undefined,
 ): Document {
   return createMongoWhereDocument(where);
 }

@@ -29,23 +29,18 @@ const exactVersionPaths = (
 
 const bundlePaths = (
   apiBasePath: string,
-  snapshot: BlobDatabaseSnapshot,
   bundle: BundleRow,
 ): readonly string[] => {
-  const channelName = snapshot.channels.find(
-    ({ id }) => id === bundle.channel_id,
-  )?.name;
-  if (channelName === undefined) return [];
   if (bundle.fingerprint_hash) {
     return [
-      `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprint_hash}/${channelName}/*`,
+      `${apiBasePath}/fingerprint/${bundle.platform}/${bundle.fingerprint_hash}/${bundle.channel}/*`,
     ];
   }
   return bundle.target_app_version
     ? exactVersionPaths(
         apiBasePath,
         bundle,
-        channelName,
+        bundle.channel,
         bundle.target_app_version,
       )
     : [];
@@ -76,12 +71,12 @@ export const changedBundleInvalidationPaths = (
       patchFingerprint(before, id) !== patchFingerprint(after, id);
     if (!bundleChanged && !patchesChanged) continue;
     if (previous) {
-      for (const path of bundlePaths(apiBasePath, before, previous)) {
+      for (const path of bundlePaths(apiBasePath, previous)) {
         paths.add(path);
       }
     }
     if (next) {
-      for (const path of bundlePaths(apiBasePath, after, next)) {
+      for (const path of bundlePaths(apiBasePath, next)) {
         paths.add(path);
       }
     }

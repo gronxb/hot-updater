@@ -2,7 +2,6 @@ import type {
   BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseModel,
 } from "@hot-updater/plugin-core";
 
@@ -41,7 +40,6 @@ const hasDelegateMethods = (value: unknown): value is PrismaDelegate =>
 const modelDelegates = {
   bundles: "bundles",
   bundle_patches: "bundle_patches",
-  channels: "bundle_channels",
   bundle_events: "bundle_events",
 } as const satisfies Record<DatabaseModel, string>;
 
@@ -113,7 +111,6 @@ export const parsePrismaBundleRow = (value: unknown): BundleRow => {
     git_commit_hash: readNullableString(value, "git_commit_hash"),
     message: readNullableString(value, "message"),
     channel: readString(value, "channel"),
-    channel_id: readString(value, "channel_id"),
     storage_uri: readString(value, "storage_uri"),
     target_app_version: readNullableString(value, "target_app_version"),
     fingerprint_hash: readNullableString(value, "fingerprint_hash"),
@@ -141,11 +138,6 @@ export const parsePrismaPatchRow = (value: unknown): BundlePatchRow => {
     patch_storage_uri: readString(value, "patch_storage_uri"),
     order_index: orderIndex,
   };
-};
-
-export const parsePrismaChannelRow = (value: unknown): ChannelRow => {
-  if (!isRecord(value)) throw new PrismaAdapterError("invalid channel row");
-  return { id: readString(value, "id"), name: readString(value, "name") };
 };
 
 export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {

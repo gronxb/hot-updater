@@ -8,7 +8,7 @@ import {
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
 
-import type { BundlePatchRow, BundleRow, ChannelRow } from "./types";
+import type { BundlePatchRow, BundleRow } from "./types";
 
 export const BundleRowHydrationErrorReason = {
   duplicatePatchId: "duplicate_patch_id",
@@ -38,17 +38,6 @@ export class BundleRowHydrationError extends Error {
     this.reason = reason;
     this.patchId = patchId;
     this.bundleId = bundleId;
-  }
-}
-
-export class BundleChannelNotFoundError extends Error {
-  readonly name = "BundleChannelNotFoundError";
-
-  constructor(
-    readonly bundleId: string,
-    readonly channelId: string,
-  ) {
-    super(`Channel "${channelId}" for bundle "${bundleId}" was not found.`);
   }
 }
 
@@ -100,7 +89,7 @@ const parseTargetCohorts = (value: unknown): string[] | null => {
   }
 };
 
-export const bundleToRow = (bundle: Bundle, channelId: string): BundleRow => ({
+export const bundleToRow = (bundle: Bundle): BundleRow => ({
   id: bundle.id,
   platform: bundle.platform,
   should_force_update: bundle.shouldForceUpdate,
@@ -109,7 +98,6 @@ export const bundleToRow = (bundle: Bundle, channelId: string): BundleRow => ({
   git_commit_hash: bundle.gitCommitHash,
   message: bundle.message,
   channel: bundle.channel,
-  channel_id: channelId,
   storage_uri: bundle.storageUri,
   target_app_version: bundle.targetAppVersion,
   fingerprint_hash: bundle.fingerprintHash,
@@ -145,7 +133,6 @@ const patchRowToArtifact = (row: BundlePatchRow): BundlePatchArtifact => ({
 
 export const rowToBundle = (
   row: BundleRow,
-  channelName: string,
   patchRows: readonly BundlePatchRow[] = [],
 ): Bundle => {
   const patches = patchRows
@@ -161,7 +148,7 @@ export const rowToBundle = (
     fileHash: row.file_hash,
     gitCommitHash: row.git_commit_hash ?? null,
     message: row.message ?? null,
-    channel: channelName,
+    channel: row.channel,
     storageUri: row.storage_uri,
     targetAppVersion: row.target_app_version ?? null,
     fingerprintHash: row.fingerprint_hash ?? null,
@@ -184,7 +171,6 @@ export const rowsToBundles = (
   bundleRows: readonly BundleRow[],
   patchRows: readonly BundlePatchRow[],
   referencedBundleRows: readonly BundleRow[],
-  channelRows: readonly ChannelRow[],
 ): Bundle[] => {
   const ownerIds = new Set(bundleRows.map(({ id }) => id));
   const baseIds = new Set(ownerIds);
@@ -220,12 +206,7 @@ export const rowsToBundles = (
     patchesByOwner.set(patch.bundle_id, ownerPatches);
   }
 
-  const channelsById = new Map(channelRows.map((row) => [row.id, row.name]));
-  return bundleRows.map((row) => {
-    const channelName = channelsById.get(row.channel_id);
-    if (channelName === undefined) {
-      throw new BundleChannelNotFoundError(row.id, row.channel_id);
-    }
-    return rowToBundle(row, channelName, patchesByOwner.get(row.id) ?? []);
-  });
+  return bundleRows.map((row) =>
+    rowToBundle(row, patchesByOwner.get(row.id) ?? []),
+  );
 };

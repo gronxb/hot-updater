@@ -51,15 +51,10 @@ describe("database rows", () => {
     const patchRows = bundleToPatchRows(bundle).toReversed();
 
     // When
-    const [hydrated] = rowsToBundles(
-      [bundleToRow(bundle, "channel-production")],
-      patchRows,
-      [
-        bundleToRow(firstBase, "channel-production"),
-        bundleToRow(secondBase, "channel-production"),
-      ],
-      [{ id: "channel-production", name: "production" }],
-    );
+    const [hydrated] = rowsToBundles([bundleToRow(bundle)], patchRows, [
+      bundleToRow(firstBase),
+      bundleToRow(secondBase),
+    ]);
 
     // Then
     expect(hydrated?.patches).toEqual(bundle.patches);
@@ -93,12 +88,7 @@ describe("database rows", () => {
 
     // When
     const hydrate = () =>
-      rowsToBundles(
-        [bundleToRow(bundle, "channel-production")],
-        [patch, patch],
-        [bundleToRow(base, "channel-production")],
-        [{ id: "channel-production", name: "production" }],
-      );
+      rowsToBundles([bundleToRow(bundle)], [patch, patch], [bundleToRow(base)]);
 
     // Then
     expect(hydrate).toThrowError(
@@ -123,21 +113,8 @@ describe("database rows", () => {
     } as const;
 
     // When
-    const channels = [{ id: "channel-production", name: "production" }];
-    const orphanOwner = () =>
-      rowsToBundles(
-        [],
-        [patch],
-        [bundleToRow(base, "channel-production")],
-        channels,
-      );
-    const orphanBase = () =>
-      rowsToBundles(
-        [bundleToRow(target, "channel-production")],
-        [patch],
-        [],
-        channels,
-      );
+    const orphanOwner = () => rowsToBundles([], [patch], [bundleToRow(base)]);
+    const orphanBase = () => rowsToBundles([bundleToRow(target)], [patch], []);
 
     // Then
     expect(orphanOwner).toThrowError(

@@ -13,7 +13,6 @@ import { rowToBundle } from "../db/bundleRows";
 import {
   getPrismaDelegate,
   parsePrismaBundleRow,
-  parsePrismaChannelRow,
   parsePrismaPatchRow,
   parsePrismaRows,
 } from "./prismaRows";
@@ -30,11 +29,7 @@ const fetchPatches = async (
   return parsePrismaRows(rows, parsePrismaPatchRow);
 };
 
-const hydrateBundles = async (
-  client: object,
-  rows: readonly BundleRow[],
-  channelName: string,
-) => {
+const hydrateBundles = async (client: object, rows: readonly BundleRow[]) => {
   const patches = await fetchPatches(
     client,
     rows.map(({ id }) => id),
@@ -42,7 +37,6 @@ const hydrateBundles = async (
   return rows.map((row) =>
     rowToBundle(
       row,
-      channelName,
       patches.filter(({ bundle_id: bundleId }) => bundleId === row.id),
     ),
   );
@@ -56,17 +50,6 @@ export const createPrismaGetUpdateInfo = (client: object): GetUpdateInfo => {
   return async (args, context) => {
     const channelName = args.channel ?? "production";
     const minBundleId = args.minBundleId ?? NIL_UUID;
-    const channelValue = await getPrismaDelegate(client, "channels").findFirst({
-      where: { name: channelName },
-    });
-    if (channelValue === null) {
-      return resolveUpdateInfoFromBundles({
-        args: { ...args, channel: channelName, minBundleId },
-        bundles: [],
-        context,
-      });
-    }
-    const channel = parsePrismaChannelRow(channelValue);
     const delegate = getPrismaDelegate(client, "bundles");
     let rows: BundleRow[];
     if (args._updateStrategy === "appVersion") {
@@ -75,7 +58,7 @@ export const createPrismaGetUpdateInfo = (client: object): GetUpdateInfo => {
           where: {
             enabled: true,
             platform: args.platform,
-            channel_id: channel.id,
+            channel: channelName,
             id: { gte: minBundleId },
             target_app_version: { not: null },
           },
@@ -100,7 +83,7 @@ export const createPrismaGetUpdateInfo = (client: object): GetUpdateInfo => {
                 where: {
                   enabled: true,
                   platform: args.platform,
-                  channel_id: channel.id,
+                  channel: channelName,
                   id: { gte: minBundleId },
                   target_app_version: { in: compatibleVersions },
                 },
@@ -114,7 +97,7 @@ export const createPrismaGetUpdateInfo = (client: object): GetUpdateInfo => {
           where: {
             enabled: true,
             platform: args.platform,
-            channel_id: channel.id,
+            channel: channelName,
             id: { gte: minBundleId },
             fingerprint_hash: args.fingerprintHash,
           },
@@ -125,7 +108,7 @@ export const createPrismaGetUpdateInfo = (client: object): GetUpdateInfo => {
     }
     return resolveUpdateInfoFromBundles({
       args: { ...args, channel: channelName, minBundleId },
-      bundles: await hydrateBundles(client, rows, channelName),
+      bundles: await hydrateBundles(client, rows),
       context,
     });
   };

@@ -15,7 +15,7 @@ import { getDatabaseAdapterUpdateInfo } from "./databaseAdapterUpdateInfo";
 import { fromStoredBundleRow } from "./databaseAdapterUtils";
 import {
   createKyselyCrud,
-  findKyselyChannel,
+  findKyselyChannels,
   findKyselyBundles,
   findKyselyPatches,
 } from "./kyselyCrud";
@@ -65,7 +65,6 @@ const createImplementation = <TDatabase extends object, TContext>(
     getUpdateInfo: (args, context) =>
       getDatabaseAdapterUpdateInfo(
         {
-          findChannel: (name) => findKyselyChannel(db, config.provider, name),
           findBundles: async (where) =>
             (await findKyselyBundles(db, config.provider, where)).map(
               fromStoredBundleRow,
@@ -75,6 +74,7 @@ const createImplementation = <TDatabase extends object, TContext>(
         args,
         context,
       ),
+    getChannels: () => findKyselyChannels(db),
     transaction: (callback) =>
       db
         .transaction()

@@ -19,10 +19,6 @@ import {
 } from "./databaseAdapterTestDatabase";
 import { drizzleAdapter } from "./drizzle";
 
-const bundleChannels = pgTable("bundle_channels", {
-  id: varchar("id", { length: 255 }).primaryKey(),
-  name: varchar("name", { length: 255 }).notNull().unique(),
-});
 const bundles = pgTable("bundles", {
   id: text("id").primaryKey(),
   platform: text("platform").notNull(),
@@ -32,7 +28,6 @@ const bundles = pgTable("bundles", {
   git_commit_hash: text("git_commit_hash"),
   message: text("message"),
   channel: text("channel").notNull().default("production"),
-  channel_id: varchar("channel_id", { length: 255 }).notNull(),
   storage_uri: text("storage_uri").notNull(),
   target_app_version: text("target_app_version"),
   fingerprint_hash: text("fingerprint_hash"),
@@ -73,7 +68,6 @@ const schema = {
   bundle_events: bundleEvents,
   bundle_patches: bundlePatches,
   bundles,
-  bundle_channels: bundleChannels,
 };
 
 class DrizzleTestStateError extends Error {
@@ -177,9 +171,8 @@ describe("drizzleAdapter schema requirements", () => {
     expect(getDB).not.toHaveBeenCalled();
   });
 
-  it("requires all four fixed table objects", () => {
+  it("requires all three fixed table objects", () => {
     const incompleteSchema = {
-      bundle_events: bundleEvents,
       bundle_patches: bundlePatches,
       bundles,
     };
@@ -190,7 +183,7 @@ describe("drizzleAdapter schema requirements", () => {
         provider: "postgresql",
         schema: incompleteSchema,
       }),
-    ).toThrow('Drizzle schema is missing table "bundle_channels".');
+    ).toThrow('Drizzle schema is missing table "bundle_events".');
   });
 });
 

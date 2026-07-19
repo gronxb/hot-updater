@@ -2,46 +2,30 @@ import type { DatabaseAdapter } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabaseAdapterTestState } from "./databaseAdapterTestRunner";
-import {
-  createBundleRowFixture,
-  createChannelRowFixture,
-} from "./databaseTestFixtures";
+import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type BundleTestState<TContext> = DatabaseAdapterTestState<
   DatabaseAdapter<TContext>,
   TContext
 >;
 
-const seedChannel = async <TContext>(
-  state: BundleTestState<TContext>,
-  id = "production",
-): Promise<void> => {
-  await state
-    .getAdapter()
-    .create(
-      { model: "channels", data: createChannelRowFixture(id) },
-      state.context,
-    );
-};
-
 export const registerDatabaseAdapterBundleTests = <TContext>(
   state: BundleTestState<TContext>,
 ): void => {
   describe("bundles", () => {
     it("creates a row and returns only selected fields", async () => {
-      await seedChannel(state);
       const bundle = createBundleRowFixture("1");
 
       const created = await state
         .getAdapter()
         .create(
-          { model: "bundles", data: bundle, select: ["id", "channel_id"] },
+          { model: "bundles", data: bundle, select: ["id", "channel"] },
           state.context,
         );
 
       expect(created).toEqual({
         id: bundle.id,
-        channel_id: bundle.channel_id,
+        channel: bundle.channel,
       });
       await expect(
         state.getAdapter().findOne(
@@ -72,7 +56,6 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
     });
 
     it("updates explicit false, null, and empty-array values", async () => {
-      await seedChannel(state);
       const bundle = createBundleRowFixture("2");
       await state
         .getAdapter()
@@ -97,10 +80,8 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
     });
 
     it("filters, orders, offsets, and limits before returning rows", async () => {
-      await seedChannel(state);
-      await seedChannel(state, "staging");
       const first = { ...createBundleRowFixture("11"), enabled: false };
-      const second = createBundleRowFixture("12", "channel-staging", "staging");
+      const second = createBundleRowFixture("12", "staging");
       const third = createBundleRowFixture("13");
       for (const bundle of [first, second, third]) {
         await state
@@ -114,8 +95,8 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
           where: [
             { field: "enabled", value: true },
             {
-              field: "channel_id",
-              value: "channel-staging",
+              field: "channel",
+              value: "staging",
               operator: "ne",
               connector: "AND",
             },
@@ -131,7 +112,6 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
     });
 
     it("uses the same predicates for count", async () => {
-      await seedChannel(state);
       const enabled = createBundleRowFixture("21");
       const disabled = { ...createBundleRowFixture("22"), enabled: false };
       for (const bundle of [enabled, disabled]) {
@@ -152,7 +132,6 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
     });
 
     it("treats an empty in predicate as matching no rows", async () => {
-      await seedChannel(state);
       await state
         .getAdapter()
         .create(
@@ -172,7 +151,6 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
     });
 
     it("deletes every matching bundle row", async () => {
-      await seedChannel(state);
       for (const suffix of ["41", "42"]) {
         await state
           .getAdapter()
@@ -185,7 +163,7 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
       await state.getAdapter().delete(
         {
           model: "bundles",
-          where: [{ field: "channel_id", value: "channel-production" }],
+          where: [{ field: "channel", value: "production" }],
         },
         state.context,
       );
@@ -195,15 +173,8 @@ export const registerDatabaseAdapterBundleTests = <TContext>(
       ).resolves.toEqual([]);
     });
 
-    it("rejects duplicate ids and bundles with missing channels", async () => {
+    it("rejects duplicate bundle ids", async () => {
       const bundle = createBundleRowFixture("51");
-      await expect(
-        state
-          .getAdapter()
-          .create({ model: "bundles", data: bundle }, state.context),
-      ).rejects.toThrow();
-
-      await seedChannel(state);
       await state
         .getAdapter()
         .create({ model: "bundles", data: bundle }, state.context);

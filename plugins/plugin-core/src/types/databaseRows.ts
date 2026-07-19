@@ -17,7 +17,6 @@ export interface BundleRow {
   readonly git_commit_hash: string | null;
   readonly message: string | null;
   readonly channel: string;
-  readonly channel_id: string;
   readonly storage_uri: string;
   readonly target_app_version: string | null;
   readonly fingerprint_hash: string | null;
@@ -37,11 +36,6 @@ export interface BundlePatchRow {
   readonly patch_file_hash: string;
   readonly patch_storage_uri: string;
   readonly order_index: number;
-}
-
-export interface ChannelRow {
-  readonly id: string;
-  readonly name: string;
 }
 
 interface BundleEventRowBase {
@@ -79,7 +73,6 @@ export type BundleEventRow =
 export interface DatabaseModelMap {
   readonly bundles: BundleRow;
   readonly bundle_patches: BundlePatchRow;
-  readonly channels: ChannelRow;
   readonly bundle_events: BundleEventRow;
 }
 

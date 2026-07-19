@@ -9,7 +9,6 @@ import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
   DatabaseAdapter,
@@ -17,14 +16,8 @@ import type {
   PaginatedResult,
   TransactionDatabaseAdapter,
 } from "./types";
-import { createUUIDv7 } from "./uuidv7";
 
 const PAGE_SIZE = 100;
-const transactionAdapterMarker = Symbol("transaction-adapter");
-
-type TransactionScopedDatabaseAdapter = DatabaseAdapter<undefined> & {
-  readonly [transactionAdapterMarker]: true;
-};
 
 export interface DatabaseClient<TContext = unknown> {
   getBundleById(id: string, context?: TContext): Promise<Bundle | null>;
@@ -65,17 +58,6 @@ export class DatabaseBundleNotFoundError extends Error {
   }
 }
 
-class ChannelCreationConflictError extends Error {
-  readonly name = "ChannelCreationConflictError";
-
-  constructor(
-    readonly channel: string,
-    readonly originalError: unknown,
-  ) {
-    super(`Channel "${channel}" could not be created.`);
-  }
-}
-
 const bindContext = <TContext>(
   adapter: DatabaseAdapter<TContext>,
   context: TContext | undefined,
@@ -90,25 +72,18 @@ const bindContext = <TContext>(
 
 const transactionAdapter = (
   database: TransactionDatabaseAdapter,
-): TransactionScopedDatabaseAdapter => ({
+): DatabaseAdapter<undefined> => ({
   name: "transaction",
-  [transactionAdapterMarker]: true,
   ...database,
 });
 
 const toBundleWhere = (
   where: DatabaseBundleQueryWhere | undefined,
-  channelId?: string,
 ): readonly DatabaseWhere<"bundles">[] => {
   if (!where) return [];
   const filters: DatabaseWhere<"bundles">[] = [];
-  if (where.channel !== undefined) {
-    if (channelId === undefined) {
-      filters.push({ field: "id", operator: "in", value: [] });
-    } else {
-      filters.push({ field: "channel_id", value: channelId });
-    }
-  }
+  if (where.channel !== undefined)
+    filters.push({ field: "channel", value: where.channel });
   if (where.platform !== undefined)
     filters.push({ field: "platform", value: where.platform });
   if (where.enabled !== undefined)
@@ -185,24 +160,6 @@ const loadPatchRows = async (
   }
 };
 
-const loadChannelRows = async (
-  database: TransactionDatabaseAdapter,
-  channelIds: readonly string[],
-): Promise<ChannelRow[]> => {
-  if (channelIds.length === 0) return [];
-  const rows: ChannelRow[] = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const page = await database.findMany({
-      model: "channels",
-      where: [{ field: "id", operator: "in", value: channelIds }],
-      limit: PAGE_SIZE,
-      offset,
-    });
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) return rows;
-  }
-};
-
 const hydrateRows = async (
   database: TransactionDatabaseAdapter,
   ownerRows: readonly BundleRow[],
@@ -225,51 +182,14 @@ const hydrateRows = async (
       : await loadBundleRows(database, [
           { field: "id", operator: "in", value: referencedIds },
         ]);
-  const channelRows = await loadChannelRows(database, [
-    ...new Set(ownerRows.map(({ channel_id }) => channel_id)),
-  ]);
-  return rowsToBundles(ownerRows, patchRows, referencedRows, channelRows);
-};
-
-const findChannelByName = (
-  database: TransactionDatabaseAdapter,
-  name: string,
-): Promise<ChannelRow | null> =>
-  database.findOne({
-    model: "channels",
-    where: [{ field: "name", value: name }],
-  });
-
-const ensureChannel = async (
-  database: TransactionDatabaseAdapter,
-  name: string,
-  transactionScoped: boolean,
-): Promise<ChannelRow> => {
-  const existing = await findChannelByName(database, name);
-  if (existing) return existing;
-  try {
-    return await database.create({
-      model: "channels",
-      data: { id: createUUIDv7(), name },
-    });
-  } catch (error) {
-    if (!transactionScoped) {
-      const converged = await findChannelByName(database, name);
-      if (converged) return converged;
-    }
-    throw new ChannelCreationConflictError(name, error);
-  }
+  return rowsToBundles(ownerRows, patchRows, referencedRows);
 };
 
 const responsePage = async (
   database: TransactionDatabaseAdapter,
   options: DatabaseBundleQueryOptions,
 ): Promise<PaginatedResult> => {
-  const channel =
-    options.where?.channel === undefined
-      ? null
-      : await findChannelByName(database, options.where.channel);
-  const where = toBundleWhere(options.where, channel?.id);
+  const where = toBundleWhere(options.where);
   const [rows, total] = await Promise.all([
     loadBundleRows(database, where),
     database.count({ model: "bundles", where }),
@@ -292,40 +212,15 @@ const responsePage = async (
 export const createDatabaseClient = <TContext = unknown>(
   adapter: DatabaseAdapter<TContext>,
 ): DatabaseClient<TContext> => {
-  const transactionScoped =
-    Reflect.get(adapter, transactionAdapterMarker) === true;
-  const retryConcurrentChannelCreation = async <TResult>(
-    operation: () => Promise<TResult>,
-    context: TContext | undefined,
-  ): Promise<TResult> => {
-    try {
-      return await operation();
-    } catch (error) {
-      if (
-        transactionScoped ||
-        adapter.transaction === undefined ||
-        !(error instanceof ChannelCreationConflictError)
-      ) {
-        throw error;
-      }
-      const channel = await findChannelByName(
-        bindContext(adapter, context),
-        error.channel,
-      );
-      if (!channel) throw error.originalError;
-      return operation();
-    }
-  };
-
   const mutate = async (
     operation: (database: TransactionDatabaseAdapter) => Promise<void>,
     context: TContext | undefined,
   ): Promise<void> => {
-    const run = () =>
-      adapter.transaction
-        ? adapter.transaction(operation, context)
-        : operation(bindContext(adapter, context));
-    await retryConcurrentChannelCreation(run, context);
+    if (adapter.transaction) {
+      await adapter.transaction(operation, context);
+    } else {
+      await operation(bindContext(adapter, context));
+    }
     await adapter.onDatabaseUpdated?.();
   };
 
@@ -353,11 +248,9 @@ export const createDatabaseClient = <TContext = unknown>(
   ): Promise<TResult> => {
     const run = (database: TransactionDatabaseAdapter) =>
       operation(createDatabaseClient(transactionAdapter(database)));
-    const execute = () =>
-      adapter.transaction
-        ? adapter.transaction(run, context)
-        : run(bindContext(adapter, context));
-    const result = await retryConcurrentChannelCreation(execute, context);
+    const result = adapter.transaction
+      ? await adapter.transaction(run, context)
+      : await run(bindContext(adapter, context));
     await adapter.onDatabaseUpdated?.();
     return result;
   };
@@ -366,17 +259,22 @@ export const createDatabaseClient = <TContext = unknown>(
     getBundleById,
     getBundles,
     async getChannels(context) {
+      if (adapter.getChannels) return adapter.getChannels(context);
       const database = bindContext(adapter, context);
-      const channels: string[] = [];
+      const channels = new Set<string>();
       for (let offset = 0; ; offset += PAGE_SIZE) {
         const rows = await database.findMany({
-          model: "channels",
+          model: "bundles",
+          select: ["channel"],
           limit: PAGE_SIZE,
           offset,
-          orderBy: [{ field: "name", direction: "asc" }],
+          orderBy: [
+            { field: "channel", direction: "asc" },
+            { field: "id", direction: "asc" },
+          ],
         });
-        channels.push(...rows.map(({ name }) => name));
-        if (rows.length < PAGE_SIZE) return channels;
+        for (const { channel } of rows) channels.add(channel);
+        if (rows.length < PAGE_SIZE) return [...channels].sort();
       }
     },
     async getUpdateInfo(args, context) {
@@ -397,11 +295,7 @@ export const createDatabaseClient = <TContext = unknown>(
           : { targetAppVersionNotNull: true }),
       };
       const database = bindContext(adapter, context);
-      const channelRow = await findChannelByName(database, channel);
-      const rows = await loadBundleRows(
-        database,
-        toBundleWhere(where, channelRow?.id),
-      );
+      const rows = await loadBundleRows(database, toBundleWhere(where));
       const bundles = (await hydrateRows(database, rows)).filter((bundle) =>
         bundleMatchesQueryWhere(bundle, where),
       );
@@ -409,14 +303,9 @@ export const createDatabaseClient = <TContext = unknown>(
     },
     async insertBundle(bundle, context) {
       await mutate(async (database) => {
-        const channel = await ensureChannel(
-          database,
-          bundle.channel,
-          transactionScoped || adapter.transaction !== undefined,
-        );
         await database.create({
           model: "bundles",
-          data: bundleToRow(bundle, channel.id),
+          data: bundleToRow(bundle),
         });
         for (const patch of bundleToPatchRows(bundle)) {
           await database.create({ model: "bundle_patches", data: patch });
@@ -433,17 +322,7 @@ export const createDatabaseClient = <TContext = unknown>(
         const [current] = await hydrateRows(database, [currentRow]);
         if (!current) throw new DatabaseBundleNotFoundError(bundleId);
         const next: Bundle = { ...current, ...update, id: bundleId };
-        const channelId =
-          next.channel === current.channel
-            ? currentRow.channel_id
-            : (
-                await ensureChannel(
-                  database,
-                  next.channel,
-                  transactionScoped || adapter.transaction !== undefined,
-                )
-              ).id;
-        const { id: ignoredId, ...rowUpdate } = bundleToRow(next, channelId);
+        const { id: ignoredId, ...rowUpdate } = bundleToRow(next);
         void ignoredId;
         const updated = await database.update({
           model: "bundles",

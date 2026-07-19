@@ -26,7 +26,6 @@ const bundleRow = {
   git_commit_hash: null,
   message: null,
   channel: "production",
-  channel_id: "channel-production",
   storage_uri: "storage://bundle-1.zip",
   target_app_version: "1.0.0",
   fingerprint_hash: null,
@@ -234,50 +233,4 @@ describe("database adapter CRUD runtime contract", () => {
     await expect(result).rejects.toMatchObject({ code: "invalid-data" });
     expect(update).not.toHaveBeenCalled();
   });
-
-  it.each(["create", "update"])(
-    "rejects a mismatched bundle channel reference on %s",
-    async (operation) => {
-      // Given
-      const create = vi.fn(async () => bundleRow);
-      const update = vi.fn(async () => bundleRow);
-      const adapter = createDatabaseAdapter({
-        name: "channel-contract",
-        adapter: () => ({
-          ...createMethods(),
-          create,
-          findOne: async () => ({ name: "staging" }),
-          update,
-        }),
-      });
-      const input =
-        operation === "create"
-          ? {
-              model: "bundles",
-              data: {
-                ...bundleRow,
-                channel: "production",
-                channel_id: "channel-staging",
-              },
-            }
-          : {
-              model: "bundles",
-              where: [{ field: "id", value: bundleRow.id }],
-              update: {
-                channel: "production",
-                channel_id: "channel-staging",
-              },
-            };
-
-      // When
-      const result = invoke(adapter, operation, input);
-
-      // Then
-      await expect(result).rejects.toMatchObject({
-        code: "channel-reference-mismatch",
-      });
-      expect(create).not.toHaveBeenCalled();
-      expect(update).not.toHaveBeenCalled();
-    },
-  );
 });
