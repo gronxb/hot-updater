@@ -25,6 +25,12 @@ const overview = {
   window: "7d" as const,
   activeInstallations: 2,
   series: [{ bucketStartMs: 1_721_138_400_000, value: 2 }],
+  bundleSeries: [
+    {
+      bundleId: "bundle-a",
+      series: [{ bucketStartMs: 1_721_138_400_000, value: 2 }],
+    },
+  ],
   bundles: [{ bundleId: "bundle-a", installations: 2 }],
 };
 
@@ -127,6 +133,16 @@ describe("standalone active installation Analytics", () => {
     { ...overview, window: "30d" },
     { ...overview, activeInstallations: -1 },
     { ...overview, series: [{ bucketStartMs: 1, value: -1 }] },
+    { ...overview, bundleSeries: undefined },
+    {
+      ...overview,
+      bundleSeries: [
+        {
+          bundleId: "bundle-a",
+          series: [{ bucketStartMs: 1_721_138_400_000, value: -1 }],
+        },
+      ],
+    },
     { ...overview, bundles: [{ bundleId: "bundle-a", installations: 1 }] },
   ])("rejects malformed active responses %#", async (invalid) => {
     responseBody = invalid;

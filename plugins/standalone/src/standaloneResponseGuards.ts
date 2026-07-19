@@ -167,6 +167,17 @@ export const hasChannels = (
   Array.isArray(value.data.channels) &&
   value.data.channels.every((channel) => typeof channel === "string");
 
+const isActiveInstallationSeries = (
+  value: unknown,
+): value is ActiveInstallationOverview["series"] =>
+  Array.isArray(value) &&
+  value.every(
+    (item) =>
+      isRecord(item) &&
+      isNonNegativeInteger(item.bucketStartMs) &&
+      isNonNegativeInteger(item.value),
+  );
+
 export const isActiveInstallationOverview = (
   value: unknown,
   expectedWindow: ActiveInstallationWindow,
@@ -176,16 +187,23 @@ export const isActiveInstallationOverview = (
     !isNonNegativeInteger(value.asOfMs) ||
     value.window !== expectedWindow ||
     !isNonNegativeInteger(value.activeInstallations) ||
-    !Array.isArray(value.series) ||
+    !isActiveInstallationSeries(value.series) ||
+    !Array.isArray(value.bundleSeries) ||
     !Array.isArray(value.bundles)
   ) {
     return false;
   }
-  const validSeries = value.series.every(
+  const aggregateSeries = value.series;
+  const validBundleSeries = value.bundleSeries.every(
     (item) =>
       isRecord(item) &&
-      isNonNegativeInteger(item.bucketStartMs) &&
-      isNonNegativeInteger(item.value),
+      typeof item.bundleId === "string" &&
+      isActiveInstallationSeries(item.series) &&
+      item.series.length === aggregateSeries.length &&
+      item.series.every(
+        (point, index) =>
+          point.bucketStartMs === aggregateSeries[index]?.bucketStartMs,
+      ),
   );
   const validBundles = value.bundles.every(
     (item) =>
@@ -202,6 +220,8 @@ export const isActiveInstallationOverview = (
     0,
   );
   return (
-    validSeries && validBundles && bundleTotal === value.activeInstallations
+    validBundleSeries &&
+    validBundles &&
+    bundleTotal === value.activeInstallations
   );
 };
