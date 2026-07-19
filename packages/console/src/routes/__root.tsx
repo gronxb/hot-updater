@@ -154,7 +154,7 @@ function RootLayout() {
     <AnalyticsCapabilityProvider value={capability}>
       <SidebarProvider>
         <AppSidebar analyticsCapability={capability} />
-        <SidebarInset className="min-h-0 min-w-0">
+        <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
           <AnalyticsRouteGate
             capability={capability}
             pathname={pathname}
