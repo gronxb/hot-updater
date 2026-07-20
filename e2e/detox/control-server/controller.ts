@@ -35,7 +35,6 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
-import { acquireFairFileLock } from "./fair-file-lock.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
@@ -260,7 +259,6 @@ const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
 const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
   "HOT_UPDATER_E2E_DEPLOY_MAX_OLD_SPACE_SIZE_MB";
-const DEPLOY_PROCESS_LOCK_DIR_ENV_KEY = "HOT_UPDATER_E2E_DEPLOY_LOCK_DIR";
 const DEFAULT_DEPLOY_MAX_OLD_SPACE_SIZE_MB = 8192;
 const NODE_MAX_OLD_SPACE_SIZE_PATTERN = /^--max-old-space-size(?:=|$)/;
 const E2E_REMOTE_RESET_LOGICAL_CHANNELS = ["production", "beta"] as const;
@@ -705,19 +703,6 @@ function bareBuildCacheRoot() {
   }
 
   return path.resolve(REPO_DIR, cacheDir);
-}
-
-function deployProcessLockRoot() {
-  const lockDir = process.env[DEPLOY_PROCESS_LOCK_DIR_ENV_KEY];
-  if (lockDir) {
-    return path.resolve(REPO_DIR, lockDir);
-  }
-
-  const worktreeHash = createHash("sha256")
-    .update(REPO_DIR)
-    .digest("hex")
-    .slice(0, 16);
-  return path.join(os.tmpdir(), "hot-updater-e2e-deploy-lock", worktreeHash);
 }
 
 function readGitTrackedInputFiles(inputPaths: string[]) {
@@ -1588,10 +1573,7 @@ async function fetchEnabledBundlesForRemoteReset(
   return enabledBundles;
 }
 
-async function patchProviderBundleRecord(
-  bundleId: string,
-  patch: Partial<Bundle>,
-) {
+async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
   const definedPatch = Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined),
   ) as Partial<Bundle>;
@@ -1611,17 +1593,6 @@ async function patchProviderBundleRecord(
     bundleId,
     patch: definedPatch,
   });
-}
-
-async function patchProviderBundle(
-  bundleId: string,
-  patch: Partial<Bundle>,
-  signal?: AbortSignal,
-) {
-  return withDatabaseMutationLock(
-    () => patchProviderBundleRecord(bundleId, patch),
-    signal,
-  );
 }
 
 function readLegacyPatchAssetPath(bundle: Bundle | null | undefined) {
@@ -1842,7 +1813,7 @@ async function fetchRemainingRemoteBundle(
   return (await fetchEnabledBundlesForRemoteReset(1, resetChannels))[0];
 }
 
-async function clearProviderBundleRecords({
+async function clearProviderBundles({
   mode = "delete",
 }: { mode?: "delete" | "disable" } = {}) {
   const clearedBundleIds: string[] = [];
@@ -1925,7 +1896,7 @@ async function clearProviderBundleRecords({
     });
 
     if (mode === "disable") {
-      await patchProviderBundleRecord(remainingActiveBundle.id, {
+      await patchProviderBundle(remainingActiveBundle.id, {
         enabled: false,
       });
     } else {
@@ -1947,19 +1918,6 @@ async function clearProviderBundleRecords({
     mode,
     platform: fixtureSession.platform,
   });
-}
-
-async function clearProviderBundles({
-  mode = "delete",
-  signal,
-}: {
-  mode?: "delete" | "disable";
-  signal?: AbortSignal;
-} = {}) {
-  return withDatabaseMutationLock(
-    () => clearProviderBundleRecords({ mode }),
-    signal,
-  );
 }
 
 function updateTrackedBundleRecord(
@@ -4721,45 +4679,6 @@ async function acquireBareBuildCacheLock(
   }
 }
 
-async function withDatabaseMutationLock<T>(
-  operation: () => Promise<T>,
-  signal?: AbortSignal,
-): Promise<T> {
-  const lock = await acquireFairFileLock({
-    lockRoot: deployProcessLockRoot(),
-    onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
-      logDetoxFixture(
-        reason === "owner-exited"
-          ? "database mutation lock owner exited; removing"
-          : "database mutation lock stale; removing",
-        { ageMs, lockPath, owner },
-      );
-    },
-    onWait: ({ owner, position }) => {
-      logDetoxFixture("database mutation lock waiting", {
-        lockPath: deployProcessLockRoot(),
-        owner,
-        platform: fixtureSession.platform,
-        position,
-      });
-    },
-    ownerLabel: fixtureSession.platform,
-    signal,
-    staleMs: BARE_BUILD_CACHE_LOCK_STALE_MS,
-    waitIntervalMs: BARE_BUILD_CACHE_LOCK_WAIT_MS,
-  });
-  logDetoxFixture("database mutation lock acquired", {
-    lockPath: lock.lockPath,
-    platform: fixtureSession.platform,
-  });
-
-  try {
-    return await operation();
-  } finally {
-    await lock.release();
-  }
-}
-
 async function deployFixtureBundle(
   request: DeployBundleRequest,
   context?: JobExecutionContext,
@@ -4845,7 +4764,7 @@ async function deployFixtureBundle(
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
   let bareBuildLockPath: string | null = null;
   let deployDurationMs = 0;
-  const deployOutput = await withDatabaseMutationLock(async () => {
+  const deployOutput = await (async () => {
     try {
       bareBuildLockPath = await acquireBareBuildCacheLock(cacheEnv, signal);
       const deployStartedAt = Date.now();
@@ -4865,7 +4784,7 @@ async function deployFixtureBundle(
         });
       }
     }
-  }, signal);
+  })();
   const bundleId = extractDeployBundleId(deployOutput);
   if (!bundleId) {
     throw new Error(
@@ -4919,13 +4838,9 @@ async function deployFixtureBundle(
   })();
 
   if (request.targetCohorts && request.targetCohorts.length > 0) {
-    await patchProviderBundle(
-      bundleId,
-      {
-        targetCohorts: request.targetCohorts,
-      },
-      signal,
-    );
+    await patchProviderBundle(bundleId, {
+      targetCohorts: request.targetCohorts,
+    });
   }
 
   let bundle = await fetchProviderBundleById(bundleId);
@@ -4992,16 +4907,12 @@ async function updateFixtureBundle(
 ) {
   const signal = context?.signal;
   throwIfAborted(signal);
-  await patchProviderBundle(
-    request.bundleId,
-    {
-      enabled: request.enabled,
-      rolloutCohortCount: request.rolloutCohortCount,
-      shouldForceUpdate: request.shouldForceUpdate,
-      targetCohorts: request.targetCohorts,
-    },
-    signal,
-  );
+  await patchProviderBundle(request.bundleId, {
+    enabled: request.enabled,
+    rolloutCohortCount: request.rolloutCohortCount,
+    shouldForceUpdate: request.shouldForceUpdate,
+    targetCohorts: request.targetCohorts,
+  });
 
   const bundle = await fetchProviderBundleById(request.bundleId);
   if (request.enabled === false && bundle.enabled === false) {
@@ -5636,11 +5547,10 @@ async function captureState(prefix: string) {
   return {};
 }
 
-async function resetRemoteBundles(signal?: AbortSignal) {
+async function resetRemoteBundles() {
   remoteAssetProxyTargets.clear();
   await clearProviderBundles({
     mode: "delete",
-    signal,
   });
 
   logDetoxFixture("remote bundles reset on demand", {
@@ -5980,7 +5890,7 @@ export function startPatchBundleJob(request: PatchBundleRequest) {
 }
 
 export function startResetRemoteBundlesJob() {
-  return createJob((context) => resetRemoteBundles(context.signal));
+  return createJob(() => resetRemoteBundles());
 }
 
 export function startWaitForMetadataJob(

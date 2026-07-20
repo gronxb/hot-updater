@@ -28,22 +28,15 @@ describe("Detox control-server database v2 consumer", () => {
     const controllerSource = await fs.readFile(controllerPath, "utf8");
 
     // When
-    const clearProviderBundleRecordsSource = controllerSource.slice(
-      controllerSource.indexOf("async function clearProviderBundleRecords"),
-      controllerSource.indexOf("async function clearProviderBundles"),
-    );
     const clearProviderBundlesSource = controllerSource.slice(
       controllerSource.indexOf("async function clearProviderBundles"),
       controllerSource.indexOf("function updateTrackedBundleRecord"),
     );
 
     // Then
-    expect(clearProviderBundleRecordsSource).toContain(
+    expect(clearProviderBundlesSource).toContain(
       "databaseClient.mutate(async (transaction) =>",
     );
-    expect(clearProviderBundleRecordsSource).not.toContain("commitBundle");
-    expect(clearProviderBundlesSource).toContain(
-      "return withDatabaseMutationLock(",
-    );
+    expect(clearProviderBundlesSource).not.toContain("commitBundle");
   });
 });

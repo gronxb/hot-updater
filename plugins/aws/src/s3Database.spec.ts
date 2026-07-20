@@ -202,22 +202,37 @@ describe("s3Database storage behavior", () => {
     });
   });
 
-  it("preserves a concurrent snapshot when the conditional write loses", async () => {
+  it("retries against a concurrent snapshot when the conditional write loses", async () => {
     const adapter = s3Database({ bucketName });
     await adapter.create({ model: "bundles", data: bundleRow("1") });
+    const externalRevision = "00000000-0000-7000-8000-000000000099";
     const external = JSON.stringify({
       version: 2,
-      active_revision: "00000000-0000-7000-8000-000000000099",
+      active_revision: externalRevision,
     });
+    objects.set(
+      `_hot-updater/database/revisions/${externalRevision}/snapshot.json`,
+      JSON.stringify({
+        version: 2,
+        bundles: [bundleRow("1"), bundleRow("99")],
+        bundle_patches: [],
+        bundle_events: [],
+      }),
+    );
     replacementBeforeConditionalPut = {
       key: BLOB_DATABASE_SNAPSHOT_KEY,
       value: external,
     };
 
+    await adapter.create({ model: "bundles", data: bundleRow("2") });
+
+    await expect(adapter.count({ model: "bundles" })).resolves.toBe(3);
     await expect(
-      adapter.create({ model: "bundles", data: bundleRow("2") }),
-    ).rejects.toThrow("changed while a mutation was in progress");
-    expect(objects.get(BLOB_DATABASE_SNAPSHOT_KEY)).toBe(external);
+      adapter.findOne({
+        model: "bundles",
+        where: [{ field: "id", value: bundleRow("99").id }],
+      }),
+    ).resolves.toMatchObject(bundleRow("99"));
   });
 
   it("invalidates the existing CloudFront update route after a bundle write", async () => {
