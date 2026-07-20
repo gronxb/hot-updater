@@ -318,12 +318,32 @@ describe("blob snapshot persistence", () => {
     await expect(first.count({ model: "bundles" })).resolves.toBe(1);
   });
 
-  it("rejects a write when another adapter changes the loaded snapshot", async () => {
+  it("preserves concurrent writes across adapter instances", async () => {
+    const adapters = Array.from({ length: 5 }, () =>
+      createMemoryAdapter(config()),
+    );
+
+    await Promise.all(
+      adapters.map((adapter, index) =>
+        adapter.create({
+          model: "bundles",
+          data: bundleRow(String(index + 1)),
+        }),
+      ),
+    );
+
+    const reader = adapters[0];
+    if (!reader) throw new Error("Expected a concurrent adapter fixture.");
+    await expect(reader.count({ model: "bundles" })).resolves.toBe(5);
+  });
+
+  it("merges a disjoint concurrent write without rerunning the callback", async () => {
     let snapshotReads = 0;
     const externalSnapshot = {
       version: 2 as const,
-      bundles: [],
+      bundles: [bundleRow("2")],
       bundle_patches: [],
+      bundle_events: [],
     };
     const adapter = createMemoryAdapter({
       ...config(),
@@ -334,14 +354,58 @@ describe("blob snapshot persistence", () => {
         }
       },
     });
-
-    await expect(
-      adapter.create({
+    const mutation = vi.fn(async (database) => {
+      await database.create({
         model: "bundles",
         data: bundleRow("1"),
-      }),
-    ).rejects.toThrow("changed while a mutation was in progress");
+      });
+      return "created";
+    });
+    if (!adapter.transaction) {
+      throw new Error("Expected a transactional blob adapter fixture.");
+    }
 
+    await expect(adapter.transaction(mutation)).resolves.toBe("created");
+
+    expect(mutation).toHaveBeenCalledTimes(1);
+    await expect(adapter.count({ model: "bundles" })).resolves.toBe(2);
+  });
+
+  it("rejects conflicting writes to the same row without rerunning the callback", async () => {
+    const seed = createMemoryAdapter(config());
+    await seed.create({ model: "bundles", data: bundleRow("1") });
+    let snapshotReads = 0;
+    const externalSnapshot = {
+      version: 2 as const,
+      bundles: [{ ...bundleRow("1"), message: "external" }],
+      bundle_patches: [],
+      bundle_events: [],
+    };
+    const adapter = createMemoryAdapter({
+      ...config(),
+      onSnapshotRead: () => {
+        snapshotReads += 1;
+        if (snapshotReads === 2) {
+          store.set(BLOB_DATABASE_SNAPSHOT_KEY, externalSnapshot);
+        }
+      },
+    });
+    const mutation = vi.fn(async (database) => {
+      await database.update({
+        model: "bundles",
+        where: [{ field: "id", value: fixtureId("1") }],
+        update: { message: "local" },
+      });
+    });
+    if (!adapter.transaction) {
+      throw new Error("Expected a transactional blob adapter fixture.");
+    }
+
+    await expect(adapter.transaction(mutation)).rejects.toThrow(
+      "changed while a mutation was in progress",
+    );
+
+    expect(mutation).toHaveBeenCalledTimes(1);
     expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toBe(externalSnapshot);
   });
 });

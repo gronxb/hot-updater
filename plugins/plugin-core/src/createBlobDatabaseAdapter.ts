@@ -69,6 +69,90 @@ type LoadedBlobDatabaseSnapshot = {
   readonly snapshot: BlobDatabaseSnapshot;
 };
 
+type BlobDatabaseRow = {
+  readonly id: string;
+};
+
+const BLOB_DATABASE_COMMIT_MAX_ATTEMPTS = 16;
+const BLOB_DATABASE_COMMIT_RETRY_BASE_DELAY_MS = 10;
+
+const rowsEqual = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+const mergeChangedRows = <TRow extends BlobDatabaseRow>(
+  baseRows: readonly TRow[],
+  intendedRows: readonly TRow[],
+  latestRows: readonly TRow[],
+): readonly TRow[] => {
+  const base = new Map(baseRows.map((row) => [row.id, row]));
+  const intended = new Map(intendedRows.map((row) => [row.id, row]));
+  const merged = new Map(latestRows.map((row) => [row.id, row]));
+  const candidateIds = new Set([...base.keys(), ...intended.keys()]);
+
+  for (const id of candidateIds) {
+    const baseRow = base.get(id);
+    const intendedRow = intended.get(id);
+    if (rowsEqual(baseRow, intendedRow)) continue;
+
+    const latestRow = merged.get(id);
+    if (rowsEqual(latestRow, intendedRow)) continue;
+    if (!rowsEqual(latestRow, baseRow)) {
+      throw new BlobDatabaseWriteConflictError();
+    }
+
+    if (intendedRow) {
+      merged.set(id, intendedRow);
+    } else {
+      merged.delete(id);
+    }
+  }
+
+  return [...merged.values()];
+};
+
+const mergeSnapshotMutation = (
+  base: BlobDatabaseSnapshot,
+  intended: BlobDatabaseSnapshot,
+  latest: BlobDatabaseSnapshot,
+): BlobDatabaseSnapshot => {
+  try {
+    return parseBlobDatabaseSnapshot(
+      {
+        version: 2,
+        bundles: mergeChangedRows(
+          base.bundles,
+          intended.bundles,
+          latest.bundles,
+        ),
+        bundle_patches: mergeChangedRows(
+          base.bundle_patches,
+          intended.bundle_patches,
+          latest.bundle_patches,
+        ),
+        bundle_events: mergeChangedRows(
+          base.bundle_events,
+          intended.bundle_events,
+          latest.bundle_events,
+        ),
+      },
+      "merged concurrent blob database snapshot",
+    );
+  } catch (error) {
+    if (error instanceof BlobDatabaseSnapshotError) {
+      throw new BlobDatabaseWriteConflictError();
+    }
+    throw error;
+  }
+};
+
+const waitForCommitRetry = (attempt: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(
+      resolve,
+      Math.min(BLOB_DATABASE_COMMIT_RETRY_BASE_DELAY_MS * attempt, 100),
+    );
+  });
+
 const isLegacyUpdateManifestKey = (key: string): boolean =>
   /^[^/]+\/(ios|android)\/[^/]+\/update\.json$/.test(key);
 
@@ -228,8 +312,37 @@ export const createBlobDatabaseAdapter = ({
       const before = await loadSnapshot();
       const state: BlobSnapshotState = { snapshot: before.snapshot };
       const result = await mutation(createBlobSnapshotCrud(state));
-      await persistSnapshot(before, state.snapshot);
-      return result;
+      const intended = state.snapshot;
+      let latest = before;
+      let merged = intended;
+
+      for (
+        let attempt = 1;
+        attempt <= BLOB_DATABASE_COMMIT_MAX_ATTEMPTS;
+        attempt += 1
+      ) {
+        try {
+          await persistSnapshot(latest, merged);
+          return result;
+        } catch (error) {
+          if (
+            !(error instanceof BlobDatabaseWriteConflictError) ||
+            attempt === BLOB_DATABASE_COMMIT_MAX_ATTEMPTS
+          ) {
+            throw error;
+          }
+        }
+
+        await waitForCommitRetry(attempt);
+        latest = await loadSnapshot();
+        merged = mergeSnapshotMutation(
+          before.snapshot,
+          intended,
+          latest.snapshot,
+        );
+      }
+
+      throw new BlobDatabaseWriteConflictError();
     });
     mutationQueue = run.then(
       () => undefined,
