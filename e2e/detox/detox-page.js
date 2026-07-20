@@ -101,15 +101,7 @@ async function openScreenForTestID(testID, options = {}) {
 }
 
 async function openDeepLinkScreen(url) {
-  if (isAndroidRun()) {
-    await launchApp({ newInstance: false, url });
-    return;
-  }
-
-  await launchApp({ newInstance: false });
-  await disableSynchronizationUntilLaunch();
-  await device.openURL({ url });
-  synchronizationDisabledUntilLaunch = false;
+  await launchApp({ newInstance: false, url });
   await disableSynchronizationUntilLaunch();
 }
 
