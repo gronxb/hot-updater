@@ -23,6 +23,11 @@ import {
 } from "../../../plugins/plugin-core/dist/index.mjs";
 import type { DatabaseAdapter } from "../../../plugins/plugin-core/src/types/index.ts";
 import {
+  ConsoleAnalyticsQaError,
+  verifyConsoleAnalytics,
+  type ConsoleAnalyticsQaClient,
+} from "../console-analytics-qa.ts";
+import {
   createCrashRecoveryArtifactNames,
   getLaunchReportState,
   waitForCrashRecoveryState,
@@ -1337,6 +1342,139 @@ async function withDatabaseClient<T>(
   } finally {
     process.chdir(originalCwd);
   }
+}
+
+type AnalyticsRuntime = {
+  readonly getActiveInstallationOverview?: (input: {
+    readonly window: "24h";
+  }) => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["getActiveOverview"]>>
+  >;
+  readonly getBundleEventAnalytics?: (
+    bundleId: string,
+    window: "30d",
+    limit: number,
+    offset: number,
+  ) => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["getBundleAnalytics"]>>
+  >;
+  readonly getBundleEventOverview?: () => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["getOverview"]>>
+  >;
+  readonly getBundleEventSummary?: (
+    bundleId: string,
+  ) => Promise<Awaited<ReturnType<ConsoleAnalyticsQaClient["getSummary"]>>>;
+  readonly getInstallationHistory?: (
+    installId: string,
+    limit: number,
+    offset: number,
+  ) => Promise<Awaited<ReturnType<ConsoleAnalyticsQaClient["getHistory"]>>>;
+  readonly searchInstallations?: (
+    query: string,
+    limit: number,
+    offset: number,
+  ) => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["searchInstallations"]>>
+  >;
+};
+
+const hasAnalyticsRuntime = (runtime: AnalyticsRuntime) =>
+  typeof runtime.getActiveInstallationOverview === "function" &&
+  typeof runtime.getBundleEventAnalytics === "function" &&
+  typeof runtime.getBundleEventOverview === "function" &&
+  typeof runtime.getBundleEventSummary === "function" &&
+  typeof runtime.getInstallationHistory === "function" &&
+  typeof runtime.searchInstallations === "function";
+
+async function withAnalyticsRuntime<T>(
+  callback: (runtime: AnalyticsRuntime) => Promise<T>,
+): Promise<T> {
+  const { loadConfig } =
+    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+      loadConfig: (options: null) => Promise<{ database: DatabaseAdapter }>;
+    };
+  const { createHotUpdater } =
+    (await import("../../../packages/server/dist/index.mjs")) as {
+      createHotUpdater: (options: {
+        database: DatabaseAdapter;
+      }) => AnalyticsRuntime;
+    };
+  const originalCwd = process.cwd();
+
+  try {
+    process.chdir(fixtureSession.exampleDir);
+    return await withHotUpdaterControlEnv(async () => {
+      const config = await loadConfig(null);
+      try {
+        return await callback(createHotUpdater({ database: config.database }));
+      } finally {
+        await config.database.onUnmount?.();
+      }
+    });
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
+async function verifyConfiguredConsoleAnalytics(args: {
+  bundleIds: readonly string[];
+  sinceMs: number;
+}) {
+  return withAnalyticsRuntime(async (runtime) => {
+    if (!hasAnalyticsRuntime(runtime)) {
+      return { skipped: true, reason: "unsupported" };
+    }
+    const probe = Reflect.get(
+      runtime,
+      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    );
+    if (typeof probe === "function") {
+      const capability: unknown = await Reflect.apply(probe, runtime, []);
+      if (
+        typeof capability !== "object" ||
+        capability === null ||
+        Reflect.get(capability, "analytics") !== true
+      ) {
+        return { skipped: true, reason: "unsupported" };
+      }
+    }
+
+    const client: ConsoleAnalyticsQaClient = {
+      getActiveOverview: () =>
+        runtime.getActiveInstallationOverview!({ window: "24h" }),
+      getBundleAnalytics: (bundleId) =>
+        runtime.getBundleEventAnalytics!(bundleId, "30d", 50, 0),
+      getCapabilities: async () => ({ analytics: true }),
+      getHistory: (installId) =>
+        runtime.getInstallationHistory!(installId, 50, 0),
+      getOverview: () => runtime.getBundleEventOverview!(),
+      getSummary: (bundleId) => runtime.getBundleEventSummary!(bundleId),
+      searchInstallations: (query) =>
+        runtime.searchInstallations!(query, 50, 0),
+    };
+    const bundleIds = [
+      ...args.bundleIds,
+      "00000000-0000-0000-0000-000000000000",
+    ];
+    for (let attempt = 1; attempt <= 30; attempt += 1) {
+      try {
+        const evidence = await verifyConsoleAnalytics(client, bundleIds, {
+          sinceMs: args.sinceMs,
+        });
+        return { skipped: false, ...evidence };
+      } catch (error) {
+        if (
+          !(error instanceof ConsoleAnalyticsQaError) ||
+          error.code === "unsupported" ||
+          attempt === 30
+        ) {
+          throw error;
+        }
+        await sleep(1_000);
+      }
+    }
+    throw new Error("Console Analytics verification exhausted its retries.");
+  });
 }
 
 async function fetchProviderBundlesPage(args: {
@@ -5985,4 +6123,11 @@ export async function handleWriteSummary(args: {
 
 export async function handleCleanup() {
   return cleanup();
+}
+
+export async function handleVerifyConsoleAnalytics(args: {
+  bundleIds: readonly string[];
+  sinceMs: number;
+}) {
+  return verifyConfiguredConsoleAnalytics(args);
 }

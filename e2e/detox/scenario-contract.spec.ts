@@ -340,6 +340,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("device.terminateApp");
     expect(detoxRuntimeSource).toContain("/e2e/jobs/reset-remote-bundles");
     expect(detoxRuntimeSource).toContain("/e2e/reset-local-app-state");
+    expect(detoxRuntimeSource).toContain("verifyConsoleAnalytics");
   });
 
   it("does not launch the app before provider bundles are deployed", async () => {

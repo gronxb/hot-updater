@@ -5,7 +5,6 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { supportsAnalyticsForE2E } from "./analyticsCapability.ts";
 import { resolveDetoxSuiteScenarioNames } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
@@ -17,11 +16,6 @@ const detoxControlServerPath = path.join(
   repoDir,
   "e2e/detox/scripts/control-server.ts",
 );
-const analyticsCapabilityEnvironmentFixtures = [
-  { environmentValue: undefined, expectedCapability: false },
-  { environmentValue: "true", expectedCapability: true },
-] as const;
-
 async function readRootPackageJson(): Promise<{
   readonly devDependencies?: Record<string, string>;
   readonly scripts?: Record<string, string>;
@@ -52,20 +46,6 @@ function runDetoxRunnerWithEnv(
 }
 
 describe("Detox E2E harness contract", () => {
-  it.each(analyticsCapabilityEnvironmentFixtures)(
-    "maps Analytics environment value $environmentValue to $expectedCapability",
-    ({ environmentValue, expectedCapability }) => {
-      // Given: a neutral Analytics capability environment value.
-      const capabilityEnvironmentValue = environmentValue;
-
-      // When: the example config's capability rule receives that value.
-      const result = supportsAnalyticsForE2E(capabilityEnvironmentValue);
-
-      // Then: the config exposes exactly the capability selected by the toggle.
-      expect(result).toBe(expectedCapability);
-    },
-  );
-
   it("exposes Detox as the root E2E command surface", async () => {
     // Given: root scripts are the dashboard bot command surface.
     const rootPackage = await readRootPackageJson();
@@ -107,7 +87,8 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/update-check-visibility.spec.ts",
       "e2e/detox/control-server/update-check-visibility.ts",
       "e2e/detox/android-native.spec.ts",
-      "e2e/detox/analyticsCapability.ts",
+      "e2e/detox/console-analytics-qa.spec.ts",
+      "e2e/detox/console-analytics-qa.ts",
       "e2e/detox/contracts.spec.ts",
       "e2e/detox/control-client.spec.ts",
       "e2e/detox/control-client.ts",
