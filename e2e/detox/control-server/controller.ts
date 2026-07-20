@@ -35,6 +35,7 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
+import { acquireFairFileLock } from "./fair-file-lock.ts";
 import {
   readE2eScreenStateSnapshot,
   resetE2eScreenState,
@@ -4691,103 +4692,6 @@ async function acquireBareBuildCacheLock(
   }
 }
 
-async function readDeployProcessLockOwner(lockPath: string) {
-  try {
-    return JSON.parse(
-      await fsPromises.readFile(path.join(lockPath, "owner.json"), "utf8"),
-    ) as { pid?: unknown; platform?: unknown; startedAt?: unknown };
-  } catch {
-    return null;
-  }
-}
-
-function isDeployProcessLockOwnerAlive(
-  owner: Awaited<ReturnType<typeof readDeployProcessLockOwner>>,
-) {
-  if (!owner || typeof owner.pid !== "number" || !Number.isInteger(owner.pid)) {
-    return true;
-  }
-
-  return isProcessRunning(owner.pid);
-}
-
-async function acquireDeployProcessLock(signal?: AbortSignal) {
-  const lockRoot = deployProcessLockRoot();
-  const lockPath = path.join(lockRoot, "deploy.lock");
-  await fsPromises.mkdir(lockRoot, { recursive: true });
-  let loggedWait = false;
-
-  while (true) {
-    throwIfAborted(signal);
-    try {
-      await fsPromises.mkdir(lockPath);
-      await fsPromises.writeFile(
-        path.join(lockPath, "owner.json"),
-        JSON.stringify(
-          {
-            pid: process.pid,
-            platform: fixtureSession.platform,
-            startedAt: new Date().toISOString(),
-          },
-          null,
-          2,
-        ),
-      );
-      logDetoxFixture("deploy process lock acquired", {
-        lockPath,
-        platform: fixtureSession.platform,
-      });
-      return lockPath;
-    } catch (error) {
-      if (
-        !error ||
-        typeof error !== "object" ||
-        !("code" in error) ||
-        error.code !== "EEXIST"
-      ) {
-        throw error;
-      }
-
-      const stats = await fsPromises.stat(lockPath).catch(() => null);
-      const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
-      const owner = await readDeployProcessLockOwner(lockPath);
-      if (!isDeployProcessLockOwnerAlive(owner)) {
-        logDetoxFixture("deploy process lock owner exited; removing", {
-          lockPath,
-          owner,
-        });
-        await fsPromises.rm(lockPath, { force: true, recursive: true });
-        loggedWait = false;
-        continue;
-      }
-
-      if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
-        logDetoxFixture("deploy process lock stale; removing", {
-          ageMs,
-          lockPath,
-          owner,
-        });
-        await fsPromises.rm(lockPath, { force: true, recursive: true });
-        continue;
-      }
-
-      if (!loggedWait) {
-        logDetoxFixture("deploy process lock waiting", {
-          lockPath,
-          owner,
-          platform: fixtureSession.platform,
-        });
-        loggedWait = true;
-      }
-      await abortableSleep(BARE_BUILD_CACHE_LOCK_WAIT_MS, signal);
-    }
-  }
-}
-
-async function releaseDeployProcessLock(lockPath: string) {
-  await fsPromises.rm(lockPath, { force: true, recursive: true });
-}
-
 async function deployFixtureBundle(
   request: DeployBundleRequest,
   context?: JobExecutionContext,
@@ -4871,7 +4775,33 @@ async function deployFixtureBundle(
     targetAppVersion: request.targetAppVersion,
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
-  const deployProcessLockPath = await acquireDeployProcessLock(signal);
+  const deployProcessLock = await acquireFairFileLock({
+    lockRoot: deployProcessLockRoot(),
+    onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
+      logDetoxFixture(
+        reason === "owner-exited"
+          ? "deploy process lock owner exited; removing"
+          : "deploy process lock stale; removing",
+        { ageMs, lockPath, owner },
+      );
+    },
+    onWait: ({ owner, position }) => {
+      logDetoxFixture("deploy process lock waiting", {
+        lockPath: deployProcessLockRoot(),
+        owner,
+        platform: fixtureSession.platform,
+        position,
+      });
+    },
+    ownerLabel: fixtureSession.platform,
+    signal,
+    staleMs: BARE_BUILD_CACHE_LOCK_STALE_MS,
+    waitIntervalMs: BARE_BUILD_CACHE_LOCK_WAIT_MS,
+  });
+  logDetoxFixture("deploy process lock acquired", {
+    lockPath: deployProcessLock.lockPath,
+    platform: fixtureSession.platform,
+  });
   let bareBuildLockPath: string | null = null;
   let deployDurationMs = 0;
   const deployOutput = await (async () => {
@@ -4893,7 +4823,7 @@ async function deployFixtureBundle(
           recursive: true,
         });
       }
-      await releaseDeployProcessLock(deployProcessLockPath);
+      await deployProcessLock.release();
     }
   })();
   const bundleId = extractDeployBundleId(deployOutput);
