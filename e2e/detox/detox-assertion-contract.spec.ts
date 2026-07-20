@@ -117,7 +117,7 @@ describe("Detox assertion parity", () => {
     expect(detoxRuntimeSource).not.toMatch(/\bretry\b/i);
   });
 
-  it("opens deep-linked target screens in one foreground operation", async () => {
+  it("opens deep-linked target screens without waiting for Detox app idle", async () => {
     const detoxPageSource = await fs.readFile(
       path.join(repoDir, "e2e/detox/detox-page.js"),
       "utf8",
@@ -145,20 +145,46 @@ describe("Detox assertion parity", () => {
     expect(openScreenBody).not.toContain('by.id("e2e-screen-content")');
     expect(openScreenBody).not.toContain("activateScreenPath");
     expect(detoxPageSource).toContain("async function openDeepLinkScreen");
+    expect(detoxPageSource).toContain("if (isAndroidRun())");
     expect(detoxPageSource).toContain(
       "await launchApp({ newInstance: false, url });",
     );
+    expect(detoxPageSource).toContain(
+      "await launchApp({ newInstance: false });",
+    );
     expect(
       openDeepLinkScreenBody.indexOf(
-        "await launchApp({ newInstance: false, url });",
+        "await launchApp({ newInstance: false });",
       ),
     ).toBeLessThan(
       openDeepLinkScreenBody.indexOf(
         "await disableSynchronizationUntilLaunch();",
       ),
     );
-    expect(openDeepLinkScreenBody).not.toContain("device.openURL");
-    expect(openDeepLinkScreenBody).not.toContain("if (isAndroidRun())");
+    expect(
+      openDeepLinkScreenBody.indexOf(
+        "await disableSynchronizationUntilLaunch();",
+      ),
+    ).toBeLessThan(
+      openDeepLinkScreenBody.indexOf("await device.openURL({ url });"),
+    );
+    expect(detoxPageSource).toContain("await device.openURL({ url });");
+    const openUrlIndex = openDeepLinkScreenBody.indexOf(
+      "await device.openURL({ url });",
+    );
+    const postOpenUrlFlagResetIndex = openDeepLinkScreenBody.indexOf(
+      "synchronizationDisabledUntilLaunch = false;",
+      openUrlIndex,
+    );
+    const postOpenUrlDisableIndex = openDeepLinkScreenBody.indexOf(
+      "await disableSynchronizationUntilLaunch();",
+      openUrlIndex + 1,
+    );
+    expect(postOpenUrlFlagResetIndex).toBeGreaterThan(openUrlIndex);
+    expect(postOpenUrlDisableIndex).toBeGreaterThan(postOpenUrlFlagResetIndex);
+    expect(
+      detoxPageSource.indexOf("await launchApp({ newInstance: false });"),
+    ).toBeLessThan(detoxPageSource.indexOf("await device.openURL({ url });"));
     expect(openScreenBody).not.toContain("e2e-screen-content");
   });
 
