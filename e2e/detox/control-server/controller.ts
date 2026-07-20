@@ -24,8 +24,10 @@ import {
 import type { DatabaseAdapter } from "../../../plugins/plugin-core/src/types/index.ts";
 import {
   ConsoleAnalyticsQaError,
+  readObservedAnalyticsEvent,
   verifyConsoleAnalytics,
   type ConsoleAnalyticsQaClient,
+  type ObservedAnalyticsEvent,
 } from "../console-analytics-qa.ts";
 import {
   createCrashRecoveryArtifactNames,
@@ -90,6 +92,7 @@ type SessionState = {
   largeArchiveAssetBackupPath: string | null;
   largeArchiveAssetPath: string;
   multiAssetBackupPaths: Record<string, string | null>;
+  observedAnalyticsEvents: ObservedAnalyticsEvent[];
   platform: Platform;
   resultsDir: string;
   storePath: string | null;
@@ -471,6 +474,7 @@ const fixtureSession: SessionState = {
     LARGE_ARCHIVE_ASSET_RELATIVE_PATH,
   ),
   multiAssetBackupPaths: {},
+  observedAnalyticsEvents: [],
   platform,
   resultsDir,
   storePath: null,
@@ -1459,6 +1463,7 @@ async function verifyConfiguredConsoleAnalytics(args: {
     for (let attempt = 1; attempt <= 30; attempt += 1) {
       try {
         const evidence = await verifyConsoleAnalytics(client, bundleIds, {
+          observedEvents: fixtureSession.observedAnalyticsEvents,
           sinceMs: args.sinceMs,
         });
         return { skipped: false, ...evidence };
@@ -3359,14 +3364,29 @@ export async function handleProxyUpdateRequest(request: Request) {
   const headers = new Headers(request.headers);
   headers.delete("host");
 
+  const requestBody =
+    request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : await request.arrayBuffer();
   const response = await fetch(targetUrl, {
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer(),
+    body: requestBody,
     headers,
     method: request.method,
   });
+
+  if (requestUrl.pathname.endsWith("/events") && response.ok && requestBody) {
+    try {
+      const event = readObservedAnalyticsEvent(
+        JSON.parse(new TextDecoder().decode(requestBody)),
+        Date.now(),
+      );
+      if (event) fixtureSession.observedAnalyticsEvents.push(event);
+    } catch (error) {
+      logDetoxFixture("analytics event observation skipped", {
+        error: formatErrorMessage(error),
+      });
+    }
+  }
 
   logDetoxFixture("proxied update request", {
     method: request.method,
@@ -4495,6 +4515,7 @@ async function bootstrap() {
 
   fixtureSession.builtInBundleId = null;
   fixtureSession.deployedBundles = [];
+  fixtureSession.observedAnalyticsEvents = [];
   fixtureSession.storePath = null;
 
   await waitForLocalProviderReady();
@@ -5652,6 +5673,7 @@ async function resetRemoteBundles() {
 
 async function resetLocalAppState() {
   resetE2eScreenState();
+  fixtureSession.observedAnalyticsEvents = [];
   if (fixtureSession.platform === "ios") {
     await clearIosLocalBundleState();
   } else {

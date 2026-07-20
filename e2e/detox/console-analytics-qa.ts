@@ -1,10 +1,43 @@
 type AnalyticsEvent = {
   readonly fromBundleId: string | null;
   readonly id: string;
-  readonly installId: string;
   readonly receivedAtMs: number;
   readonly toBundleId: string;
   readonly type: "RECOVERED" | "UPDATE_APPLIED";
+};
+
+export type ObservedAnalyticsEvent = {
+  readonly fromBundleId: string | null;
+  readonly installId: string;
+  readonly observedAtMs: number;
+  readonly toBundleId: string;
+  readonly type: "RECOVERED" | "UNCHANGED" | "UPDATE_APPLIED";
+};
+
+export const readObservedAnalyticsEvent = (
+  value: unknown,
+  observedAtMs: number,
+): ObservedAnalyticsEvent | null => {
+  if (typeof value !== "object" || value === null) return null;
+  const event = value as Record<string, unknown>;
+  if (
+    typeof event.installId !== "string" ||
+    typeof event.toBundleId !== "string" ||
+    (event.type !== "RECOVERED" &&
+      event.type !== "UNCHANGED" &&
+      event.type !== "UPDATE_APPLIED")
+  ) {
+    return null;
+  }
+  const fromBundleId = event.fromBundleId;
+  if (fromBundleId !== null && typeof fromBundleId !== "string") return null;
+  return {
+    fromBundleId,
+    installId: event.installId,
+    observedAtMs,
+    toBundleId: event.toBundleId,
+    type: event.type,
+  };
 };
 
 type OffsetResult<T> = {
@@ -19,6 +52,10 @@ type OffsetResult<T> = {
 export type ConsoleAnalyticsQaClient = {
   readonly getActiveOverview: () => Promise<{
     readonly activeInstallations: number;
+    readonly bundles: readonly {
+      readonly bundleId: string;
+      readonly installations: number;
+    }[];
   }>;
   readonly getBundleAnalytics: (bundleId: string) => Promise<{
     readonly recentEvents: OffsetResult<AnalyticsEvent>;
@@ -61,7 +98,10 @@ export class ConsoleAnalyticsQaError extends Error {
 export const verifyConsoleAnalytics = async (
   client: ConsoleAnalyticsQaClient,
   bundleIds: readonly string[],
-  options: { readonly sinceMs?: number } = {},
+  options: {
+    readonly observedEvents?: readonly ObservedAnalyticsEvent[];
+    readonly sinceMs?: number;
+  } = {},
 ) => {
   const capabilities = await client.getCapabilities();
   if (!capabilities.analytics) {
@@ -74,7 +114,21 @@ export const verifyConsoleAnalytics = async (
   let selected:
     | { readonly bundleId: string; readonly event: AnalyticsEvent }
     | undefined;
-  for (const bundleId of [...new Set(bundleIds)]) {
+  const observedEvents = (options.observedEvents ?? []).filter(
+    (event) =>
+      options.sinceMs === undefined || event.observedAtMs >= options.sinceMs,
+  );
+  const observedTransitions = observedEvents.filter(
+    (event) => event.type !== "UNCHANGED",
+  );
+  const analyticsBundleIds = new Set(bundleIds);
+  for (const event of observedTransitions) {
+    analyticsBundleIds.add(
+      event.type === "RECOVERED" ? event.fromBundleId : event.toBundleId,
+    );
+  }
+
+  for (const bundleId of analyticsBundleIds) {
     const analytics = await client.getBundleAnalytics(bundleId);
     const event = analytics.recentEvents.data
       .filter(
@@ -92,6 +146,23 @@ export const verifyConsoleAnalytics = async (
   }
 
   if (!selected) {
+    const unchanged = observedEvents
+      .filter((event) => event.type === "UNCHANGED")
+      .sort((left, right) => right.observedAtMs - left.observedAtMs)[0];
+    if (unchanged && observedTransitions.length === 0) {
+      const active = await client.getActiveOverview();
+      const activeBundle = active.bundles.find(
+        (bundle) => bundle.bundleId === unchanged.toBundleId,
+      );
+      if (active.activeInstallations > 0 && activeBundle?.installations) {
+        return {
+          activeInstallations: active.activeInstallations,
+          bundleId: unchanged.toBundleId,
+          installId: unchanged.installId,
+          mode: "active" as const,
+        };
+      }
+    }
     throw new ConsoleAnalyticsQaError(
       "event-not-found",
       "No current E2E bundle event was returned by Console Analytics.",
@@ -99,17 +170,31 @@ export const verifyConsoleAnalytics = async (
   }
 
   const { bundleId, event } = selected;
+  const observed = observedTransitions
+    .filter(
+      (candidate) =>
+        candidate.type === event.type &&
+        candidate.fromBundleId === event.fromBundleId &&
+        candidate.toBundleId === event.toBundleId,
+    )
+    .sort((left, right) => right.observedAtMs - left.observedAtMs)[0];
+  if (!observed) {
+    throw new ConsoleAnalyticsQaError(
+      "inconsistent-data",
+      "Console Analytics returned an event that was not observed from the current E2E app.",
+    );
+  }
   const [summary, overview, active, installations, history] = await Promise.all(
     [
       client.getSummary(bundleId),
       client.getOverview(),
       client.getActiveOverview(),
-      client.searchInstallations(event.installId),
-      client.getHistory(event.installId),
+      client.searchInstallations(observed.installId),
+      client.getHistory(observed.installId),
     ],
   );
   const installationFound = installations.data.some(
-    (entry) => entry.installId === event.installId,
+    (entry) => entry.installId === observed.installId,
   );
   const eventFound = history.data.some((entry) => entry.id === event.id);
   const summaryCount = summary.installed + summary.recovered;
@@ -130,7 +215,7 @@ export const verifyConsoleAnalytics = async (
     activeInstallations: active.activeInstallations,
     bundleId,
     eventId: event.id,
-    installId: event.installId,
+    installId: observed.installId,
     trackedInstallations: overview.trackedInstallations,
   };
 };
