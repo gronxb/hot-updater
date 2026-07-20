@@ -13,15 +13,18 @@ const readIOSSource = (filename: string) =>
 
 describe("iOS Objective-C interoperability", () => {
   it("does not call an autoreleased NSString through raw Swift ABI", () => {
-    const bridgingHeader = readIOSSource("HotUpdater-Bridging-Header.h");
     const implementation = readIOSSource("HotUpdaterImpl.swift");
+    const objectiveCImplementation = readIOSSource("HotUpdater.mm");
 
     expect(implementation).not.toContain(
       '@_silgen_name("HotUpdaterGetMinBundleId")',
     );
-    expect(bridgingHeader).toContain("+ (NSString *)minBundleId;");
     expect(implementation).toContain(
-      "HotUpdaterRecoverySignalBridge.minBundleId() as String",
+      '@_silgen_name("HotUpdaterCopyMinBundleId")',
+    );
+    expect(implementation).toContain(".takeRetainedValue() as String");
+    expect(objectiveCImplementation).toContain(
+      "return (__bridge_retained void *)HotUpdaterGetMinBundleId();",
     );
   });
 });

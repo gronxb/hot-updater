@@ -234,6 +234,11 @@ extern "C" NSString *HotUpdaterGetMinBundleId(void)
   return uuid;
 }
 
+extern "C" void *HotUpdaterCopyMinBundleId(void)
+{
+  return (__bridge_retained void *)HotUpdaterGetMinBundleId();
+}
+
 
 // Define Notification names used for observing Swift Core
 NSNotificationName const HotUpdaterDownloadProgressUpdateNotification = @"HotUpdaterDownloadProgressUpdate";
@@ -253,11 +258,6 @@ NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUp
 + (void)updateLaunchState:(NSString * _Nullable)bundleId shouldRollback:(BOOL)shouldRollback
 {
     HotUpdaterUpdateSignalLaunchState(bundleId, shouldRollback);
-}
-
-+ (NSString *)minBundleId
-{
-    return HotUpdaterGetMinBundleId();
 }
 
 @end

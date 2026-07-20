@@ -13,6 +13,5 @@
 @interface HotUpdaterRecoverySignalBridge : NSObject
 + (void)installSignalHandlers:(NSString *)crashMarkerPath;
 + (void)updateLaunchState:(NSString * _Nullable)bundleId shouldRollback:(BOOL)shouldRollback;
-+ (NSString *)minBundleId;
 @end
 #endif /* HotUpdater_Bridging_Header_h */
