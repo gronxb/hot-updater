@@ -1588,7 +1588,10 @@ async function fetchEnabledBundlesForRemoteReset(
   return enabledBundles;
 }
 
-async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
+async function patchProviderBundleRecord(
+  bundleId: string,
+  patch: Partial<Bundle>,
+) {
   const definedPatch = Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined),
   ) as Partial<Bundle>;
@@ -1608,6 +1611,17 @@ async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
     bundleId,
     patch: definedPatch,
   });
+}
+
+async function patchProviderBundle(
+  bundleId: string,
+  patch: Partial<Bundle>,
+  signal?: AbortSignal,
+) {
+  return withDatabaseMutationLock(
+    () => patchProviderBundleRecord(bundleId, patch),
+    signal,
+  );
 }
 
 function readLegacyPatchAssetPath(bundle: Bundle | null | undefined) {
@@ -1828,7 +1842,7 @@ async function fetchRemainingRemoteBundle(
   return (await fetchEnabledBundlesForRemoteReset(1, resetChannels))[0];
 }
 
-async function clearProviderBundles({
+async function clearProviderBundleRecords({
   mode = "delete",
 }: { mode?: "delete" | "disable" } = {}) {
   const clearedBundleIds: string[] = [];
@@ -1911,7 +1925,9 @@ async function clearProviderBundles({
     });
 
     if (mode === "disable") {
-      await patchProviderBundle(remainingActiveBundle.id, { enabled: false });
+      await patchProviderBundleRecord(remainingActiveBundle.id, {
+        enabled: false,
+      });
     } else {
       await deleteProviderBundle(remainingActiveBundle.id);
     }
@@ -1931,6 +1947,19 @@ async function clearProviderBundles({
     mode,
     platform: fixtureSession.platform,
   });
+}
+
+async function clearProviderBundles({
+  mode = "delete",
+  signal,
+}: {
+  mode?: "delete" | "disable";
+  signal?: AbortSignal;
+} = {}) {
+  return withDatabaseMutationLock(
+    () => clearProviderBundleRecords({ mode }),
+    signal,
+  );
 }
 
 function updateTrackedBundleRecord(
@@ -4692,6 +4721,45 @@ async function acquireBareBuildCacheLock(
   }
 }
 
+async function withDatabaseMutationLock<T>(
+  operation: () => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  const lock = await acquireFairFileLock({
+    lockRoot: deployProcessLockRoot(),
+    onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
+      logDetoxFixture(
+        reason === "owner-exited"
+          ? "database mutation lock owner exited; removing"
+          : "database mutation lock stale; removing",
+        { ageMs, lockPath, owner },
+      );
+    },
+    onWait: ({ owner, position }) => {
+      logDetoxFixture("database mutation lock waiting", {
+        lockPath: deployProcessLockRoot(),
+        owner,
+        platform: fixtureSession.platform,
+        position,
+      });
+    },
+    ownerLabel: fixtureSession.platform,
+    signal,
+    staleMs: BARE_BUILD_CACHE_LOCK_STALE_MS,
+    waitIntervalMs: BARE_BUILD_CACHE_LOCK_WAIT_MS,
+  });
+  logDetoxFixture("database mutation lock acquired", {
+    lockPath: lock.lockPath,
+    platform: fixtureSession.platform,
+  });
+
+  try {
+    return await operation();
+  } finally {
+    await lock.release();
+  }
+}
+
 async function deployFixtureBundle(
   request: DeployBundleRequest,
   context?: JobExecutionContext,
@@ -4775,36 +4843,9 @@ async function deployFixtureBundle(
     targetAppVersion: request.targetAppVersion,
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
-  const deployProcessLock = await acquireFairFileLock({
-    lockRoot: deployProcessLockRoot(),
-    onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
-      logDetoxFixture(
-        reason === "owner-exited"
-          ? "deploy process lock owner exited; removing"
-          : "deploy process lock stale; removing",
-        { ageMs, lockPath, owner },
-      );
-    },
-    onWait: ({ owner, position }) => {
-      logDetoxFixture("deploy process lock waiting", {
-        lockPath: deployProcessLockRoot(),
-        owner,
-        platform: fixtureSession.platform,
-        position,
-      });
-    },
-    ownerLabel: fixtureSession.platform,
-    signal,
-    staleMs: BARE_BUILD_CACHE_LOCK_STALE_MS,
-    waitIntervalMs: BARE_BUILD_CACHE_LOCK_WAIT_MS,
-  });
-  logDetoxFixture("deploy process lock acquired", {
-    lockPath: deployProcessLock.lockPath,
-    platform: fixtureSession.platform,
-  });
   let bareBuildLockPath: string | null = null;
   let deployDurationMs = 0;
-  const deployOutput = await (async () => {
+  const deployOutput = await withDatabaseMutationLock(async () => {
     try {
       bareBuildLockPath = await acquireBareBuildCacheLock(cacheEnv, signal);
       const deployStartedAt = Date.now();
@@ -4823,9 +4864,8 @@ async function deployFixtureBundle(
           recursive: true,
         });
       }
-      await deployProcessLock.release();
     }
-  })();
+  }, signal);
   const bundleId = extractDeployBundleId(deployOutput);
   if (!bundleId) {
     throw new Error(
@@ -4879,9 +4919,13 @@ async function deployFixtureBundle(
   })();
 
   if (request.targetCohorts && request.targetCohorts.length > 0) {
-    await patchProviderBundle(bundleId, {
-      targetCohorts: request.targetCohorts,
-    });
+    await patchProviderBundle(
+      bundleId,
+      {
+        targetCohorts: request.targetCohorts,
+      },
+      signal,
+    );
   }
 
   let bundle = await fetchProviderBundleById(bundleId);
@@ -4948,12 +4992,16 @@ async function updateFixtureBundle(
 ) {
   const signal = context?.signal;
   throwIfAborted(signal);
-  await patchProviderBundle(request.bundleId, {
-    enabled: request.enabled,
-    rolloutCohortCount: request.rolloutCohortCount,
-    shouldForceUpdate: request.shouldForceUpdate,
-    targetCohorts: request.targetCohorts,
-  });
+  await patchProviderBundle(
+    request.bundleId,
+    {
+      enabled: request.enabled,
+      rolloutCohortCount: request.rolloutCohortCount,
+      shouldForceUpdate: request.shouldForceUpdate,
+      targetCohorts: request.targetCohorts,
+    },
+    signal,
+  );
 
   const bundle = await fetchProviderBundleById(request.bundleId);
   if (request.enabled === false && bundle.enabled === false) {
@@ -5588,10 +5636,11 @@ async function captureState(prefix: string) {
   return {};
 }
 
-async function resetRemoteBundles() {
+async function resetRemoteBundles(signal?: AbortSignal) {
   remoteAssetProxyTargets.clear();
   await clearProviderBundles({
     mode: "delete",
+    signal,
   });
 
   logDetoxFixture("remote bundles reset on demand", {
@@ -5931,7 +5980,7 @@ export function startPatchBundleJob(request: PatchBundleRequest) {
 }
 
 export function startResetRemoteBundlesJob() {
-  return createJob(() => resetRemoteBundles());
+  return createJob((context) => resetRemoteBundles(context.signal));
 }
 
 export function startWaitForMetadataJob(

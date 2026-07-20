@@ -12,18 +12,27 @@ const controllerPath = path.join(
   "e2e/detox/control-server/controller.ts",
 );
 
-describe("Detox control-server deploy lock", () => {
-  it("routes deploy mutations through the fair file lock", async () => {
+describe("Detox control-server database mutation lock", () => {
+  it("routes every provider mutation through the fair file lock", async () => {
     const controllerSource = await fs.readFile(controllerPath, "utf8");
 
     expect(controllerSource).toContain(
       'import { acquireFairFileLock } from "./fair-file-lock.ts";',
     );
     expect(controllerSource).toContain(
-      "const deployProcessLock = await acquireFairFileLock({",
+      "async function withDatabaseMutationLock<T>(",
     );
-    expect(controllerSource).not.toContain(
-      "async function acquireDeployProcessLock",
+    expect(controllerSource.match(/withDatabaseMutationLock\(/g)).toHaveLength(
+      3,
+    );
+    expect(controllerSource).toMatch(
+      /return withDatabaseMutationLock\(\s*\(\) => patchProviderBundleRecord\(/,
+    );
+    expect(controllerSource).toMatch(
+      /return withDatabaseMutationLock\(\s*\(\) => clearProviderBundleRecords\(/,
+    );
+    expect(controllerSource).toMatch(
+      /const deployOutput = await withDatabaseMutationLock\(/,
     );
   });
 
