@@ -13,7 +13,10 @@ import {
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
-import { analyticsCapabilityMetadata } from "./analyticsCapability";
+import {
+  analyticsCapabilityMetadata,
+  internalAnalyticsCapabilityProbe,
+} from "./analyticsCapability";
 import { createBundleEventService } from "./bundleEvents";
 import { BUNDLE_EVENT_SCAN_MAX_ROWS } from "./bundleEventScan";
 import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
@@ -42,6 +45,10 @@ export function createDatabaseAdapterCore<TContext = unknown>(
   const client = createDatabaseClient(database);
   const beforeOperation = options?.beforeOperation;
   const dedicatedBundleEvents = database[databaseBundleEventService];
+  const analyticsCapabilityProbe = Reflect.get(
+    database,
+    internalAnalyticsCapabilityProbe,
+  );
   const bundleEvents =
     dedicatedBundleEvents ??
     (database[databaseAnalyticsSupport]
@@ -208,6 +215,13 @@ export function createDatabaseAdapterCore<TContext = unknown>(
         }
       : {}),
   };
+
+  if (typeof analyticsCapabilityProbe === "function") {
+    Object.assign(api, {
+      [internalAnalyticsCapabilityProbe]: () =>
+        Reflect.apply(analyticsCapabilityProbe, database, []),
+    });
+  }
 
   return {
     api,

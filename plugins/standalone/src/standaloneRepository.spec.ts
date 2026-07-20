@@ -12,12 +12,14 @@ import {
   beforeEach,
   describe,
   expect,
+  expectTypeOf,
   it,
 } from "vitest";
 
 import {
   StandaloneDatabaseError,
   standaloneRepository,
+  type StandaloneRepositoryConfig,
 } from "./standaloneRepository";
 
 const BASE_URL = "http://localhost/hot-updater";
@@ -41,6 +43,12 @@ const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
 });
 
 const server = setupServer(
+  http.get(`${BASE_URL}/version`, () =>
+    HttpResponse.json({
+      version: "0.0.0-test",
+      capabilities: { analytics: true, mode: "dedicated" },
+    }),
+  ),
   http.get(`${BASE_URL}/api/bundles/channels`, ({ request }) => {
     requestPaths.push(new URL(request.url).pathname);
     return HttpResponse.json({ data: { channels: [...channels] } });
@@ -117,13 +125,42 @@ const createRepository = (): DatabaseAdapter =>
   standaloneRepository({ baseUrl: BASE_URL });
 
 describe("standaloneRepository", () => {
-  it("does not report or request Analytics support by default", () => {
-    // Given / When
-    const repository = createRepository();
+  it("keeps the existing user config source-compatible", () => {
+    type ExistingUserConfig = {
+      baseUrl: string;
+      commonHeaders?: Record<string, string>;
+      routes?: {
+        create?: () => { path: string };
+        list?: () => { path: string };
+        channels?: () => { path: string };
+        retrieve?: (bundleId: string) => { path: string };
+        update?: (bundleId: string) => { path: string };
+        delete?: (bundleId: string) => { path: string };
+      };
+    };
+    type HasPublicSupportsOption =
+      "supportsAnalytics" extends keyof StandaloneRepositoryConfig
+        ? true
+        : false;
 
-    // Then
-    expect(repository[databaseBundleEventService]).toBeUndefined();
-    expect(requestPaths).toEqual([]);
+    expectTypeOf<ExistingUserConfig>().toMatchTypeOf<StandaloneRepositoryConfig>();
+    expectTypeOf<HasPublicSupportsOption>().toEqualTypeOf<false>();
+  });
+
+  it("discovers Analytics support without a public config option", async () => {
+    // Given
+    const repository = createRepository();
+    const probe = Reflect.get(
+      repository,
+      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    ) as () => Promise<unknown>;
+
+    // When / Then
+    expect(repository[databaseBundleEventService]).toBeDefined();
+    await expect(probe()).resolves.toEqual({
+      analytics: true,
+      mode: "dedicated",
+    });
   });
 
   it("uses only the existing bundle routes for aggregate mutations", async () => {
@@ -216,10 +253,7 @@ describe("standaloneRepository", () => {
         }),
       ),
     );
-    const repository = standaloneRepository({
-      baseUrl: BASE_URL,
-      supportsAnalytics: true,
-    });
+    const repository = standaloneRepository({ baseUrl: BASE_URL });
     const analytics = repository[databaseBundleEventService];
     if (!analytics) throw new Error("Missing standalone analytics service");
 

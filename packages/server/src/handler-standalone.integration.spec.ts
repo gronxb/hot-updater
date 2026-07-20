@@ -124,8 +124,8 @@ const createInMemoryBlobDatabase = (store: Record<string, string>) =>
   });
 
 describe("Handler <-> Standalone Repository Integration", () => {
-  it("keeps unsupported standalone remotes event-free", () => {
-    // Given / When
+  it("discovers a record-backed standalone remote without user config", async () => {
+    // Given
     const consoleApi = createHotUpdater({
       database: standaloneRepository({
         baseUrl: `${baseUrl}/hot-updater`,
@@ -133,9 +133,24 @@ describe("Handler <-> Standalone Repository Integration", () => {
       basePath: "/console",
       routes: { updateCheck: true, bundles: true },
     });
+    const probe = Reflect.get(
+      consoleApi,
+      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    ) as () => Promise<unknown>;
 
-    // Then
-    expect(supportsAnalytics(consoleApi)).toBe(false);
+    // When / Then
+    expect(supportsAnalytics(consoleApi)).toBe(true);
+    await expect(probe()).resolves.toEqual({
+      analytics: true,
+      mode: "bounded",
+      maxMatchingRows: 50_000,
+    });
+    const version = await consoleApi.handler(
+      new Request(`${baseUrl}/console/version`),
+    );
+    await expect(version.json()).resolves.toMatchObject({
+      capabilities: { analytics: true, mode: "bounded" },
+    });
     expect(bundleEventRequestCount).toBe(0);
   });
 
@@ -257,7 +272,6 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const consoleApi = createHotUpdater({
       database: standaloneRepository({
         baseUrl: `${baseUrl}/hot-updater`,
-        supportsAnalytics: true,
       }),
       basePath: "/console",
       routes: { updateCheck: true, bundles: true },
@@ -379,6 +393,15 @@ describe("Handler <-> Standalone Repository Integration", () => {
         });
       }),
     );
+    const blobConsoleApi = createHotUpdater({
+      database: standaloneRepository({
+        baseUrl: `${baseUrl}/blob-hot-updater`,
+      }),
+    });
+    const probe = Reflect.get(
+      blobConsoleApi,
+      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    ) as () => Promise<unknown>;
     const client = createStandaloneClient(`${baseUrl}/blob-hot-updater`);
     const bundleId = uuidv7();
     await client.insertBundle(
@@ -391,6 +414,13 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     await client.updateBundleById(bundleId, { targetAppVersion: "1.0.2" });
 
+    await expect(probe()).resolves.toEqual({ analytics: false });
+    const version = await blobConsoleApi.handler(
+      new Request(`${baseUrl}/api/version`),
+    );
+    await expect(version.json()).resolves.toMatchObject({
+      capabilities: { analytics: false },
+    });
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
       id: bundleId,
       targetAppVersion: "1.0.2",

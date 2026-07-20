@@ -47,6 +47,28 @@ export class AnalyticsNotSupportedError extends Error {
   }
 }
 
+const internalAnalyticsCapabilityProbe = Symbol.for(
+  "@hot-updater/internal/analytics-capability-probe",
+);
+
+const isProbedCapabilities = (
+  value: unknown,
+): value is AnalyticsCapabilities["capabilities"] => {
+  if (typeof value !== "object" || value === null) return false;
+  const analytics = Reflect.get(value, "analytics");
+  if (analytics === false) return true;
+  const mode = Reflect.get(value, "mode");
+  if (analytics !== true) return false;
+  if (mode === "dedicated") return true;
+  const maxMatchingRows = Reflect.get(value, "maxMatchingRows");
+  return (
+    mode === "bounded" &&
+    typeof maxMatchingRows === "number" &&
+    Number.isFinite(maxMatchingRows) &&
+    maxMatchingRows > 0
+  );
+};
+
 export class AnalyticsBundlePaginationError extends Error {
   readonly name = "AnalyticsBundlePaginationError";
 
@@ -67,6 +89,15 @@ export const getAnalyticsCapabilities = async (
   const { supportsAnalytics } = await import("@hot-updater/server/db");
   if (!supportsAnalytics(runtime)) {
     return { capabilities: { analytics: false } };
+  }
+  const probe = Reflect.get(runtime, internalAnalyticsCapabilityProbe);
+  if (typeof probe === "function") {
+    const capabilities: unknown = await Reflect.apply(probe, runtime, []);
+    return {
+      capabilities: isProbedCapabilities(capabilities)
+        ? capabilities
+        : { analytics: false },
+    };
   }
   const metadata = Reflect.get(
     runtime,
@@ -167,6 +198,10 @@ export const collectAnalyticsOverview = async ({
     runtime === null ||
     !supportsAnalytics(runtime)
   ) {
+    throw new AnalyticsNotSupportedError();
+  }
+  const { capabilities } = await getAnalyticsCapabilities(runtime);
+  if (!capabilities.analytics) {
     throw new AnalyticsNotSupportedError();
   }
 

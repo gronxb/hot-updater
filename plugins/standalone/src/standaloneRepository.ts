@@ -4,6 +4,10 @@ import {
   databaseBundleEventService,
 } from "@hot-updater/plugin-core";
 
+import {
+  createAnalyticsCapabilityProbe,
+  internalAnalyticsCapabilityProbe,
+} from "./standaloneAnalyticsCapability";
 import { createBundleEventService } from "./standaloneBundleEventService";
 import { createLegacyCompatibilityImplementation } from "./standaloneLegacyImplementation";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
@@ -29,8 +33,8 @@ export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
   const { [databaseAnalyticsSupport]: analyticsSupport, ...repository } =
     recordRepository;
   void analyticsSupport;
-  if (!config.supportsAnalytics) return repository;
   return Object.assign(repository, {
     [databaseBundleEventService]: createBundleEventService(config),
+    [internalAnalyticsCapabilityProbe]: createAnalyticsCapabilityProbe(config),
   });
 };

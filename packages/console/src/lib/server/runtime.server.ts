@@ -26,7 +26,11 @@ export function createRuntimeHotUpdater(config: ConfigResponse) {
   });
 }
 
-const requireAnalyticsSupport = <TContext>(hotUpdater: unknown) => {
+const internalAnalyticsCapabilityProbe = Symbol.for(
+  "@hot-updater/internal/analytics-capability-probe",
+);
+
+const requireAnalyticsSupport = async <TContext>(hotUpdater: unknown) => {
   if (
     typeof hotUpdater !== "object" ||
     hotUpdater === null ||
@@ -35,6 +39,19 @@ const requireAnalyticsSupport = <TContext>(hotUpdater: unknown) => {
     throw new Error(
       "Analytics are not supported by the configured database adapter.",
     );
+  }
+  const probe = Reflect.get(hotUpdater, internalAnalyticsCapabilityProbe);
+  if (typeof probe === "function") {
+    const capability: unknown = await Reflect.apply(probe, hotUpdater, []);
+    if (
+      typeof capability !== "object" ||
+      capability === null ||
+      Reflect.get(capability, "analytics") !== true
+    ) {
+      throw new Error(
+        "Analytics are not supported by the configured database adapter.",
+      );
+    }
   }
   return hotUpdater;
 };
@@ -45,10 +62,9 @@ export async function getBundleEventSummary<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) {
   const { bundleId } = parseBundleEventSummaryInput(input);
-  return requireAnalyticsSupport<TContext>(hotUpdater).getBundleEventSummary(
-    bundleId,
-    context,
-  );
+  return (
+    await requireAnalyticsSupport<TContext>(hotUpdater)
+  ).getBundleEventSummary(bundleId, context);
 }
 
 export async function getActiveInstallationOverview<TContext = unknown>(
@@ -57,8 +73,8 @@ export async function getActiveInstallationOverview<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) {
   const parsed = parseActiveInstallationInput(input);
-  return requireAnalyticsSupport<TContext>(
-    hotUpdater,
+  return (
+    await requireAnalyticsSupport<TContext>(hotUpdater)
   ).getActiveInstallationOverview(parsed, context);
 }
 
@@ -68,7 +84,9 @@ export async function getBundleEventAnalytics<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) {
   const parsed = parseBundleEventAnalyticsInput(input);
-  return requireAnalyticsSupport<TContext>(hotUpdater).getBundleEventAnalytics(
+  return (
+    await requireAnalyticsSupport<TContext>(hotUpdater)
+  ).getBundleEventAnalytics(
     parsed.bundleId,
     parsed.window,
     parsed.limit ?? 50,
@@ -83,7 +101,9 @@ export async function searchInstallations<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) {
   const parsed = parseSearchInstallationsInput(input);
-  return requireAnalyticsSupport<TContext>(hotUpdater).searchInstallations(
+  return (
+    await requireAnalyticsSupport<TContext>(hotUpdater)
+  ).searchInstallations(
     parsed.query,
     parsed.limit ?? 50,
     parsed.offset ?? 0,
@@ -97,7 +117,9 @@ export async function getInstallationHistory<TContext = unknown>(
   context?: HotUpdaterContext<TContext>,
 ) {
   const parsed = parseInstallationHistoryInput(input);
-  return requireAnalyticsSupport<TContext>(hotUpdater).getInstallationHistory(
+  return (
+    await requireAnalyticsSupport<TContext>(hotUpdater)
+  ).getInstallationHistory(
     parsed.installId,
     parsed.limit ?? 50,
     parsed.offset ?? 0,

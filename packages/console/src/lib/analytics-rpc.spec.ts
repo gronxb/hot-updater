@@ -35,6 +35,42 @@ const createRuntime = () => ({
 });
 
 describe("getAnalyticsCapabilities", () => {
+  it("uses an internal remote capability probe before exposing Analytics", async () => {
+    // Given
+    const probe = vi.fn().mockResolvedValue({ analytics: false as const });
+    const runtime = Object.assign(createRuntime(), {
+      [Symbol.for("@hot-updater/internal/analytics-capability-probe")]: probe,
+    });
+
+    // When
+    const result = await getAnalyticsCapabilities(runtime);
+
+    // Then
+    expect(result).toEqual({ capabilities: { analytics: false } });
+    expect(probe).toHaveBeenCalledOnce();
+  });
+
+  it("preserves the mode returned by an internal remote capability probe", async () => {
+    // Given
+    const runtime = Object.assign(createRuntime(), {
+      [Symbol.for("@hot-updater/internal/analytics-capability-probe")]: () =>
+        Promise.resolve({
+          analytics: true as const,
+          mode: "bounded" as const,
+          maxMatchingRows: 12_345,
+        }),
+    });
+
+    // When / Then
+    await expect(getAnalyticsCapabilities(runtime)).resolves.toEqual({
+      capabilities: {
+        analytics: true,
+        mode: "bounded",
+        maxMatchingRows: 12_345,
+      },
+    });
+  });
+
   it("exposes the CRUD-derived Analytics scan boundary", async () => {
     // Given
     const runtime = Object.assign(createRuntime(), {

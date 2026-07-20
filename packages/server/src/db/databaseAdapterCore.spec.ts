@@ -75,6 +75,26 @@ describe("createDatabaseAdapterCore capabilities", () => {
     expect(service.getBundleEventSummary).toHaveBeenCalledWith("bundle-1");
   });
 
+  it("forwards an internal remote Analytics capability probe", async () => {
+    // Given
+    const capability = { analytics: false as const };
+    const probe = vi.fn().mockResolvedValue(capability);
+    const adapter = Object.assign(createInMemoryDatabaseAdapter(), {
+      [Symbol.for("@hot-updater/internal/analytics-capability-probe")]: probe,
+    });
+
+    // When
+    const core = createDatabaseAdapterCore(adapter, resolveFileUrl);
+    const forwarded = Reflect.get(
+      core.api,
+      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    ) as () => Promise<typeof capability>;
+
+    // Then
+    await expect(forwarded()).resolves.toEqual(capability);
+    expect(probe).toHaveBeenCalledOnce();
+  });
+
   it("runs the schema readiness guard before a low adapter operation", async () => {
     const adapter: DatabaseAdapter = createInMemoryDatabaseAdapter();
     const beforeOperation = vi.fn(async () => {});

@@ -58,3 +58,8 @@ Snapshot-backed adapters created with `createBlobDatabaseAdapter`, including
 `s3Database`, deliberately leave Analytics disabled because concurrent event
 writes can conflict. The Console hides Analytics based only on capability
 presence, without provider-name branching.
+
+The Analytics addition requires no changes to existing consumer configuration
+or call sites. In particular, `standaloneRepository` has no public
+`supportsAnalytics` option; it discovers the remote database capability through
+the server's version response.

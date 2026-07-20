@@ -1,6 +1,7 @@
 import type { AppUpdateAvailableInfo, AppUpdateInfo } from "@hot-updater/core";
 import semver from "semver";
 
+import { resolveReportedAnalyticsCapability } from "./db/analyticsCapability";
 import {
   decodeMaybe,
   requirePlatformParam,
@@ -39,11 +40,19 @@ export const createUpdateRouteHandlers = <TContext>(): Record<
   string,
   RouteHandler<TContext>
 > => ({
-  version: async () =>
-    new Response(JSON.stringify({ version: HOT_UPDATER_SERVER_VERSION }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }),
+  version: async (_params, _request, api) => {
+    const capabilities = await resolveReportedAnalyticsCapability(api);
+    return new Response(
+      JSON.stringify({
+        version: HOT_UPDATER_SERVER_VERSION,
+        capabilities,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  },
 
   fingerprintUpdateWithCohort: async (params, request, api, context) => {
     const updateInfo = await api.getAppUpdateInfo(

@@ -27,6 +27,21 @@ const createRuntime = () => ({
 });
 
 describe("analytics runtime input validation", () => {
+  it("rejects a remote that internally reports Analytics unsupported", async () => {
+    // Given
+    const runtime = Object.assign(createRuntime(), {
+      [Symbol.for("@hot-updater/internal/analytics-capability-probe")]: () =>
+        Promise.resolve({ analytics: false }),
+    });
+
+    // When
+    const result = getBundleEventSummary(runtime, { bundleId: "bundle-1" });
+
+    // Then
+    await expect(result).rejects.toThrow(/not supported/i);
+    expect(runtime.getBundleEventSummary).not.toHaveBeenCalled();
+  });
+
   it.each([
     { bundleId: "bundle-1", window: "1h" },
     { bundleId: "bundle-1", window: "24h", limit: 0 },

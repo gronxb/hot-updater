@@ -111,7 +111,6 @@ describe("standalone active installation handler integration", () => {
             },
           }),
         },
-        supportsAnalytics: true,
       }),
       basePath: "/console",
       routes: { updateCheck: true, bundles: true },

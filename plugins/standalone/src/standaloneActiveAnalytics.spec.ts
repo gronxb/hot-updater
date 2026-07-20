@@ -73,7 +73,6 @@ const activeService = () => {
         },
       }),
     },
-    supportsAnalytics: true,
   });
   const service = repository[databaseBundleEventService];
   if (!service) throw new Error("Missing standalone Analytics service.");
@@ -190,14 +189,13 @@ describe("standalone active installation Analytics", () => {
     expect(requestCount).toBe(0);
   });
 
-  it("keeps disabled standalone Analytics structurally absent", () => {
+  it("does not require a public Analytics support option", () => {
     const repository = standaloneRepository({
       baseUrl: BASE_URL,
-      supportsAnalytics: false,
     });
 
     expect(Reflect.get(repository, databaseAnalyticsSupport)).toBeUndefined();
-    expect(repository[databaseBundleEventService]).toBeUndefined();
+    expect(repository[databaseBundleEventService]).toBeDefined();
     expect(requestCount).toBe(0);
   });
 });

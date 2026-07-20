@@ -27,18 +27,22 @@ never embed a management credential in the app.
 
 ## Database support
 
-| Database adapter                              | Analytics     | Notes                                                                                      |
-| --------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------ |
-| Supabase Database                             | Supported     | Uses append-only row storage.                                                              |
-| Cloudflare D1 Database                        | Supported     | Uses append-only row storage.                                                              |
-| Firestore Database                            | Supported     | Uses append-only document storage.                                                         |
-| PostgreSQL Database                           | Supported     | Uses append-only row storage.                                                              |
-| Drizzle, Kysely, Prisma, and MongoDB adapters | Supported     | The adapter must include the `bundle_events` model.                                        |
-| Standalone Database                           | Conditional   | Set `supportsAnalytics: true` only when the remote server implements all analytics routes. |
-| AWS S3 Database (`s3Database`)                | Not supported | S3 Database replaces a shared snapshot, so concurrent event appends are not safe.          |
+| Database adapter                              | Analytics     | Notes                                                                             |
+| --------------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
+| Supabase Database                             | Supported     | Uses append-only row storage.                                                     |
+| Cloudflare D1 Database                        | Supported     | Uses append-only row storage.                                                     |
+| Firestore Database                            | Supported     | Uses append-only document storage.                                                |
+| PostgreSQL Database                           | Supported     | Uses append-only row storage.                                                     |
+| Drizzle, Kysely, Prisma, and MongoDB adapters | Supported     | The adapter must include the `bundle_events` model.                               |
+| Standalone Database                           | Conditional   | Discovers the remote database capability from the server automatically.           |
+| AWS S3 Database (`s3Database`)                | Not supported | S3 Database replaces a shared snapshot, so concurrent event appends are not safe. |
 
 The Console detects this capability automatically and hides analytics when the
 configured database does not support it.
+
+Existing `standaloneRepository` configuration does not change. There is no
+`supportsAnalytics` option to set: record-backed servers advertise support,
+while snapshot-backed servers such as S3 advertise that analytics is unavailable.
 
 ## Support analytics in a custom database adapter
 

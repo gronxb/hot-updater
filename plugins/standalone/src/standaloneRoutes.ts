@@ -23,7 +23,6 @@ export interface StandaloneRepositoryConfig {
   readonly baseUrl: string;
   readonly commonHeaders?: Readonly<Record<string, string>>;
   readonly routes?: Routes;
-  readonly supportsAnalytics?: boolean;
 }
 
 export const defaultRoutes = {
