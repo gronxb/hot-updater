@@ -255,6 +255,11 @@ NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUp
     HotUpdaterUpdateSignalLaunchState(bundleId, shouldRollback);
 }
 
++ (NSString *)minBundleId
+{
+    return HotUpdaterGetMinBundleId();
+}
+
 @end
 
 @interface HotUpdater () <RCTInitializing>

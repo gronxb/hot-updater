@@ -17,9 +17,6 @@ private func hotUpdaterUpdateSignalLaunchStateSymbol(
 @_silgen_name("HotUpdaterPerformRecoveryReload")
 private func hotUpdaterPerformRecoveryReloadSymbol() -> ObjCBool
 
-@_silgen_name("HotUpdaterGetMinBundleId")
-private func hotUpdaterGetMinBundleIdSymbol() -> NSString
-
 private func hotUpdaterInstallSignalHandlers(_ crashMarkerPath: String) {
     hotUpdaterInstallSignalHandlersSymbol(crashMarkerPath as NSString)
 }
@@ -30,10 +27,6 @@ private func hotUpdaterUpdateSignalLaunchState(_ bundleId: String?, shouldRollba
 
 private func hotUpdaterPerformRecoveryReload() -> Bool {
     return hotUpdaterPerformRecoveryReloadSymbol().boolValue
-}
-
-private func hotUpdaterGetMinBundleId() -> String {
-    hotUpdaterGetMinBundleIdSymbol() as String
 }
 
 @objcMembers public class HotUpdaterImpl: NSObject {
@@ -108,7 +101,7 @@ private func hotUpdaterGetMinBundleId() -> String {
     }
 
     public static func minBundleId() -> String {
-        hotUpdaterGetMinBundleId()
+        HotUpdaterRecoverySignalBridge.minBundleId() as String
     }
     
     /**
