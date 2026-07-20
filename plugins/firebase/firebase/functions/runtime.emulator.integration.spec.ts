@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
+import { supportsAnalytics } from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -309,15 +310,10 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     }
   });
 
-  const invokeHandler = async (
-    routePath: string,
-    headers?: Headers | Record<string, string>,
-  ) => {
+  const invokeHandler = async (routePath: string, init?: RequestInit) => {
     return await fetch(
       `http://127.0.0.1:${functionsPort}/${projectId}/${REGION}/${FUNCTION_NAME}${routePath}`,
-      {
-        headers,
-      },
+      init,
     );
   };
 
@@ -496,6 +492,38 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
+  });
+
+  it("ingests bundle events from the emulator entrypoint", async () => {
+    // Given: the client reports a successful OTA transition.
+    const bundleId = "00000000-0000-0000-0000-000000000001";
+
+    // When: the event is sent through the public runtime route.
+    const response = await invokeHandler(`${HOT_UPDATER_BASE_PATH}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        appVersion: "1.0",
+        channel: "production",
+        cohort: "782",
+        fingerprintHash: null,
+        fromBundleId: NIL_UUID,
+        installId: "firebase-e2e-install",
+        platform: "ios",
+        toBundleId: bundleId,
+        type: "UPDATE_APPLIED",
+        updateStrategy: "appVersion",
+      }),
+    });
+
+    // Then: the runtime accepts and exposes the analytics event.
+    expect(response.status).toBe(204);
+    if (!supportsAnalytics(seedHotUpdater)) {
+      throw new Error("Expected Firebase Analytics support.");
+    }
+    await expect(
+      seedHotUpdater.getBundleEventSummary(bundleId),
+    ).resolves.toEqual({ installed: 1, recovered: 0 });
   });
 
   it("does not support the legacy exact path", async () => {

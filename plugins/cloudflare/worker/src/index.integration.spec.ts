@@ -339,6 +339,41 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     });
   });
 
+  it("ingests bundle events from the worker entrypoint", async () => {
+    // Given: the client reports a successful OTA transition.
+    const bundleId = "00000000-0000-0000-0000-000000000001";
+
+    // When: the event is sent through the public runtime route.
+    const response = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0",
+          channel: "production",
+          cohort: "782",
+          fingerprintHash: null,
+          fromBundleId: NIL_UUID,
+          installId: "cloudflare-e2e-install",
+          platform: "ios",
+          toBundleId: bundleId,
+          type: "UPDATE_APPLIED",
+          updateStrategy: "appVersion",
+        }),
+      }),
+      env,
+    );
+
+    // Then: the runtime accepts and persists the analytics event.
+    expect(response.status).toBe(204);
+    const row = await env.DB.prepare(
+      "SELECT type, to_bundle_id FROM bundle_events WHERE install_id = ?",
+    )
+      .bind("cloudflare-e2e-install")
+      .first();
+    expect(row).toEqual({ type: "UPDATE_APPLIED", to_bundle_id: bundleId });
+  });
+
   it("does not support the legacy exact path", async () => {
     const response = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}`),
