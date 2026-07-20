@@ -69,17 +69,6 @@ type LoadedBlobDatabaseSnapshot = {
   readonly snapshot: BlobDatabaseSnapshot;
 };
 
-const BLOB_DATABASE_MUTATION_MAX_ATTEMPTS = 16;
-const BLOB_DATABASE_MUTATION_RETRY_BASE_DELAY_MS = 10;
-
-const waitForMutationRetry = (attempt: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(
-      resolve,
-      Math.min(BLOB_DATABASE_MUTATION_RETRY_BASE_DELAY_MS * attempt, 100),
-    );
-  });
-
 const isLegacyUpdateManifestKey = (key: string): boolean =>
   /^[^/]+\/(ios|android)\/[^/]+\/update\.json$/.test(key);
 
@@ -236,29 +225,11 @@ export const createBlobDatabaseAdapter = ({
     mutation: SnapshotMutation<TResult>,
   ): Promise<TResult> => {
     const run = mutationQueue.then(async () => {
-      for (
-        let attempt = 1;
-        attempt <= BLOB_DATABASE_MUTATION_MAX_ATTEMPTS;
-        attempt += 1
-      ) {
-        try {
-          const before = await loadSnapshot();
-          const state: BlobSnapshotState = { snapshot: before.snapshot };
-          const result = await mutation(createBlobSnapshotCrud(state));
-          await persistSnapshot(before, state.snapshot);
-          return result;
-        } catch (error) {
-          if (
-            !(error instanceof BlobDatabaseWriteConflictError) ||
-            attempt === BLOB_DATABASE_MUTATION_MAX_ATTEMPTS
-          ) {
-            throw error;
-          }
-          await waitForMutationRetry(attempt);
-        }
-      }
-
-      throw new BlobDatabaseWriteConflictError();
+      const before = await loadSnapshot();
+      const state: BlobSnapshotState = { snapshot: before.snapshot };
+      const result = await mutation(createBlobSnapshotCrud(state));
+      await persistSnapshot(before, state.snapshot);
+      return result;
     });
     mutationQueue = run.then(
       () => undefined,

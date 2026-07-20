@@ -318,32 +318,12 @@ describe("blob snapshot persistence", () => {
     await expect(first.count({ model: "bundles" })).resolves.toBe(1);
   });
 
-  it("preserves concurrent writes across adapter instances", async () => {
-    const adapters = Array.from({ length: 5 }, () =>
-      createMemoryAdapter(config()),
-    );
-
-    await Promise.all(
-      adapters.map((adapter, index) =>
-        adapter.create({
-          model: "bundles",
-          data: bundleRow(String(index + 1)),
-        }),
-      ),
-    );
-
-    const reader = adapters[0];
-    if (!reader) throw new Error("Expected a concurrent adapter fixture.");
-    await expect(reader.count({ model: "bundles" })).resolves.toBe(5);
-  });
-
-  it("retries a write when another adapter changes the loaded snapshot", async () => {
+  it("rejects a write when another adapter changes the loaded snapshot", async () => {
     let snapshotReads = 0;
     const externalSnapshot = {
       version: 2 as const,
-      bundles: [bundleRow("2")],
+      bundles: [],
       bundle_patches: [],
-      bundle_events: [],
     };
     const adapter = createMemoryAdapter({
       ...config(),
@@ -355,23 +335,14 @@ describe("blob snapshot persistence", () => {
       },
     });
 
-    await adapter.create({
-      model: "bundles",
-      data: bundleRow("1"),
-    });
+    await expect(
+      adapter.create({
+        model: "bundles",
+        data: bundleRow("1"),
+      }),
+    ).rejects.toThrow("changed while a mutation was in progress");
 
-    await expect(
-      adapter.findOne({
-        model: "bundles",
-        where: [{ field: "id", value: fixtureId("1") }],
-      }),
-    ).resolves.toMatchObject(bundleRow("1"));
-    await expect(
-      adapter.findOne({
-        model: "bundles",
-        where: [{ field: "id", value: fixtureId("2") }],
-      }),
-    ).resolves.toMatchObject(bundleRow("2"));
+    expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toBe(externalSnapshot);
   });
 });
 
