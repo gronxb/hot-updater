@@ -1,7 +1,7 @@
 import {
-  createDatabaseAdapter,
-  type DatabaseAdapterImplementation,
-  type TransactionDatabaseAdapterImplementation,
+  createDatabasePlugin,
+  type DatabasePluginImplementation,
+  type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import { asc, desc, inArray } from "drizzle-orm";
 
@@ -15,8 +15,8 @@ import type {
   ORMProvider,
   SchemaGenerator,
 } from "../db/types";
-import { getDatabaseAdapterUpdateInfo } from "./databaseAdapterUpdateInfo";
-import { fromStoredBundleRow } from "./databaseAdapterUtils";
+import { getDatabasePluginUpdateInfo } from "./databasePluginUpdateInfo";
+import { fromStoredBundleRow } from "./databasePluginUtils";
 import {
   createDrizzleCrud,
   getDrizzleColumn,
@@ -39,7 +39,7 @@ export interface DrizzleConfig {
 
 const createImplementation = (
   config: DrizzleConfig,
-): DatabaseAdapterImplementation => {
+): DatabasePluginImplementation => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
   const bundles = getDrizzleTable(db, "bundles");
@@ -58,7 +58,7 @@ const createImplementation = (
         }
       : {}),
     getUpdateInfo: (args) =>
-      getDatabaseAdapterUpdateInfo(
+      getDatabasePluginUpdateInfo(
         {
           findBundles: async (where) => {
             const rows = await db.query.bundles.findMany({
@@ -88,7 +88,7 @@ const createImplementation = (
       ? {
           transaction: async <TResult>(
             callback: (
-              transaction: TransactionDatabaseAdapterImplementation,
+              transaction: TransactionDatabasePluginImplementation,
             ) => Promise<TResult>,
           ): Promise<TResult> =>
             transaction((transaction) =>
@@ -102,11 +102,11 @@ const createImplementation = (
 export const drizzleAdapter = (
   config: DrizzleConfig,
 ): DatabaseAdapterWithCapabilities => {
-  const adapter = createDatabaseAdapter({
+  const plugin = createDatabasePlugin({
     name: "drizzle",
-    adapter: (): DatabaseAdapterImplementation => createImplementation(config),
+    plugin: (): DatabasePluginImplementation => createImplementation(config),
   });
-  return Object.assign(adapter, {
+  return Object.assign(plugin, {
     adapterName: "drizzle",
     provider: config.provider,
     generateSchema: (version: Parameters<SchemaGenerator>[0]) => ({

@@ -1,8 +1,8 @@
 import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
-import type { DatabaseAdapterTestLifecycle } from "./databaseAdapterTestRunner";
-import { setupDatabaseAdapterTestRunner } from "./databaseAdapterTestRunner";
+import type { DatabasePluginTestLifecycle } from "./databasePluginTestRunner";
+import { setupDatabasePluginTestRunner } from "./databasePluginTestRunner";
 import { createBundleFixture } from "./databaseTestFixtures";
 
 export type DatabaseClientTestContract = {
@@ -40,17 +40,17 @@ export type DatabaseClientTestPage = {
   };
 };
 
-export type DatabaseClientTestSuiteOptions<TAdapter> =
-  DatabaseAdapterTestLifecycle<TAdapter> & {
-    readonly createClient: (adapter: TAdapter) => DatabaseClientTestContract;
+export type DatabaseClientTestSuiteOptions<TPlugin> =
+  DatabasePluginTestLifecycle<TPlugin> & {
+    readonly createClient: (plugin: TPlugin) => DatabaseClientTestContract;
   };
 
-export const setupDatabaseClientTestSuite = <TAdapter>(
-  options: DatabaseClientTestSuiteOptions<TAdapter>,
+export const setupDatabaseClientTestSuite = <TPlugin>(
+  options: DatabaseClientTestSuiteOptions<TPlugin>,
 ): void => {
-  setupDatabaseAdapterTestRunner(options, ({ getAdapter }) => {
+  setupDatabasePluginTestRunner(options, ({ getPlugin }) => {
     const getClient = (): DatabaseClientTestContract =>
-      options.createClient(getAdapter());
+      options.createClient(getPlugin());
 
     describe("aggregate client", () => {
       it("hydrates patch rows when a bundle is retrieved", async () => {

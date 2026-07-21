@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
-import { createBlobDatabaseAdapter } from "./createBlobDatabaseAdapter";
+import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
 import {
   databaseAnalyticsSupport,
   databaseBundleEventService,
@@ -8,9 +8,9 @@ import {
 } from "./types";
 
 const createCapabilityFixture = () =>
-  createBlobDatabaseAdapter({
+  createBlobDatabasePlugin({
     name: "blob-capability",
-    adapter: () => ({
+    plugin: () => ({
       apiBasePath: "/api/check-update",
       listObjects: async () => [],
       loadObject: async () => null,
@@ -30,14 +30,14 @@ describe("blob database capability", () => {
     };
 
     expectTypeOf<
-      ReturnType<typeof createBlobDatabaseAdapter>
+      ReturnType<typeof createBlobDatabasePlugin>
     >().not.toMatchTypeOf<AnalyticsCapability>();
     expectTypeOf<
-      ReturnType<typeof createBlobDatabaseAdapter>
+      ReturnType<typeof createBlobDatabasePlugin>
     >().not.toMatchTypeOf<BundleEventCapability>();
-    const adapter = createCapabilityFixture();
+    const plugin = createCapabilityFixture();
 
-    expect(Reflect.get(adapter, databaseAnalyticsSupport)).toBeUndefined();
-    expect(Reflect.get(adapter, databaseBundleEventService)).toBeUndefined();
+    expect(Reflect.get(plugin, databaseAnalyticsSupport)).toBeUndefined();
+    expect(Reflect.get(plugin, databaseBundleEventService)).toBeUndefined();
   });
 });

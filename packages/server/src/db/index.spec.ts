@@ -24,7 +24,7 @@ import {
   vi,
 } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { drizzleAdapter } from "../adapters/drizzle";
 import { kyselyAdapter } from "../adapters/kysely";
 import { mongoAdapter } from "../adapters/mongodb";
@@ -38,7 +38,7 @@ import {
 } from "./hotUpdaterSchema";
 import { createMigrator, generateSchema } from "./index";
 import { generateDrizzleSchema } from "./schemaGenerators";
-import type { DatabaseAdapter, ORMProvider } from "./types";
+import type { DatabasePlugin, ORMProvider } from "./types";
 
 const RAW_PRISMA_SCHEMA = `model bundles {
   id String @id
@@ -222,9 +222,9 @@ function createSchemaOnlyAdapter({
   name: string;
   provider: ORMProvider;
   path: string;
-}): DatabaseAdapter {
+}): DatabasePlugin {
   return {
-    ...createInMemoryDatabaseAdapter(),
+    ...createInMemoryDatabasePlugin(),
     adapterName: name,
     provider,
     generateSchema: (_version, schemaName = name) => ({

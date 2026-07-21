@@ -2,7 +2,7 @@ import {
   databaseAnalyticsSupport,
   type BundleEventRow,
 } from "@hot-updater/plugin-core";
-import { setupDatabaseAdapterTestSuite } from "@hot-updater/test-utils";
+import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { expect, it, vi } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
@@ -400,10 +400,10 @@ it("applies compound ordering to bundle event pages", async () => {
   expect(result.map(({ id }) => id)).toEqual(["c", "a", "b"]);
 });
 
-setupDatabaseAdapterTestSuite({
-  name: "supabase fixed-model database adapter",
+setupDatabasePluginTestSuite({
+  name: "supabase fixed-model database plugin",
   migrate: () => undefined,
-  createAdapter: () =>
+  createPlugin: () =>
     supabaseDatabase({
       supabaseUrl: "https://test.supabase.invalid",
       supabaseServiceRoleKey: "test-service-role-key",

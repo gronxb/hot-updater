@@ -1,7 +1,7 @@
 import { loadConfig, p, promoteBundle } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabaseAdapter,
+  DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import {
@@ -21,14 +21,12 @@ export interface PromoteOptions {
   yes?: boolean;
 }
 
-const safeOnUnmount = async (
-  databaseAdapter: DatabaseAdapter,
-): Promise<void> => {
+const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
   try {
-    await databaseAdapter.onUnmount?.();
+    await databasePlugin.onUnmount?.();
   } catch (err) {
     p.log.warn(
-      `Database adapter onUnmount failed (cleanup-only, original error preserved): ${
+      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
         (err as Error)?.message ?? String(err)
       }`,
     );
@@ -69,8 +67,8 @@ export const handlePromote = async (
   }
 
   const config = await loadConfig(null);
-  const databaseAdapter = config.database;
-  const databaseClient = createDatabaseClient(databaseAdapter);
+  const databasePlugin = config.database;
+  const databaseClient = createDatabaseClient(databasePlugin);
   let storagePlugin: NodeStoragePlugin | null = null;
   try {
     storagePlugin = await config.storage();
@@ -130,6 +128,6 @@ export const handlePromote = async (
       p.log.info(`  ${ui.id(promoted.id)}`);
     }
   } finally {
-    await safeOnUnmount(databaseAdapter);
+    await safeOnUnmount(databasePlugin);
   }
 };

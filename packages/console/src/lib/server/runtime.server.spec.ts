@@ -133,7 +133,7 @@ describe("analytics runtime input validation", () => {
     );
   });
 
-  it("rejects an invalid bundle summary id before adapter access", async () => {
+  it("rejects an invalid bundle summary id before plugin access", async () => {
     // Given
     const runtime = createRuntime();
 

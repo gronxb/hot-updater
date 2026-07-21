@@ -4,12 +4,12 @@ import type {
   BundleEventRow,
   BundleRow,
   CountDatabaseInput,
-  DatabaseAdapter,
+  DatabasePlugin,
   DatabaseModel,
   DeleteDatabaseInput,
   FindManyDatabaseInput,
   FindOneDatabaseInput,
-  TransactionDatabaseAdapter,
+  TransactionDatabasePlugin,
 } from "./database";
 import type {
   ActiveInstallationOverview,
@@ -18,7 +18,7 @@ import type {
   DatabaseBundleEventService,
 } from "./databaseBundleEvents";
 
-describe("database adapter types", () => {
+describe("database plugin types", () => {
   it("keeps unsupported model and operation pairs outside the contract", () => {
     type EventDelete = { readonly model: "bundle_events" };
 
@@ -32,8 +32,8 @@ describe("database adapter types", () => {
   });
 
   it("correlates physical fields and projected results with the model", () => {
-    const exerciseProjection = async (adapter: DatabaseAdapter) => {
-      const row = await adapter.findOne({
+    const exerciseProjection = async (plugin: DatabasePlugin) => {
+      const row = await plugin.findOne({
         model: "bundles",
         select: ["id", "file_hash"],
       });
@@ -54,8 +54,8 @@ describe("database adapter types", () => {
   });
 
   it("supports latest-per-install distinctOn ordering for bundle events", () => {
-    const exerciseLatestPerInstall = async (adapter: DatabaseAdapter) => {
-      const rows = await adapter.findMany({
+    const exerciseLatestPerInstall = async (plugin: DatabasePlugin) => {
+      const rows = await plugin.findMany({
         model: "bundle_events",
         distinctOn: { fields: ["install_id"] },
         orderBy: [
@@ -103,9 +103,7 @@ describe("database adapter types", () => {
   });
 
   it("keeps transaction operations input-only", () => {
-    expectTypeOf<
-      TransactionDatabaseAdapter["count"]
-    >().parameters.toEqualTypeOf<
+    expectTypeOf<TransactionDatabasePlugin["count"]>().parameters.toEqualTypeOf<
       [CountDatabaseInput<"bundles" | "bundle_patches" | "bundle_events">]
     >();
     expectTypeOf<FindOneDatabaseInput<"bundle_patches">>().toMatchTypeOf<{

@@ -1,4 +1,4 @@
-import type { Bundle, DatabaseAdapter } from "@hot-updater/plugin-core";
+import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createDatabaseClient,
   databaseBundleEventService,
@@ -121,7 +121,7 @@ beforeEach(() => {
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-const createRepository = (): DatabaseAdapter =>
+const createRepository = (): DatabasePlugin =>
   standaloneRepository({ baseUrl: BASE_URL });
 
 describe("standaloneRepository", () => {

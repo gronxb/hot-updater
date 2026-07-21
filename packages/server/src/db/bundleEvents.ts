@@ -25,7 +25,7 @@ import type {
   ActiveInstallationOverview,
   ActiveInstallationWindow,
   CreateBundleEventRequest,
-  DatabaseAdapter,
+  DatabasePlugin,
   InstallationHistoryRow,
   InstallationSearchRow,
   OffsetPaginationResult,
@@ -70,7 +70,7 @@ const TRANSITION_EVENT_WHERE: readonly DatabaseWhere<"bundle_events">[] = [
   },
 ];
 
-export const createBundleEventService = (database: DatabaseAdapter) => ({
+export const createBundleEventService = (database: DatabasePlugin) => ({
   async appendBundleEvent(input: CreateBundleEventRequest): Promise<void> {
     await database.create({
       model: "bundle_events",

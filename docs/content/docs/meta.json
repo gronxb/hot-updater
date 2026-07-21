@@ -10,10 +10,10 @@
     "react-native-api",
     "managed",
     "custom",
-    "build-adapters",
-    "storage-adapters",
-    "database-adapters",
-    "integration-adapters",
+    "build-plugins",
+    "storage-plugins",
+    "database-plugins",
+    "integration-plugins",
     "policy"
   ]
 }

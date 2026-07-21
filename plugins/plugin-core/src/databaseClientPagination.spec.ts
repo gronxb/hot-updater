@@ -1,8 +1,8 @@
 import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { createBlobDatabaseAdapter } from "./createBlobDatabaseAdapter";
-import { createDatabaseAdapter } from "./createDatabaseAdapter";
+import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
+import { createDatabasePlugin } from "./createDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 
 const createBundle = (id: string): Bundle => ({
@@ -23,9 +23,9 @@ describe("database client pagination", () => {
   it("hydrates only the selected bundle row", async () => {
     // Given
     const store = new Map<string, unknown>();
-    const adapter = createBlobDatabaseAdapter({
+    const plugin = createBlobDatabasePlugin({
       name: "pagination-memory",
-      adapter: () => ({
+      plugin: () => ({
         apiBasePath: "/api/check-update",
         listObjects: async (prefix) =>
           [...store.keys()].filter((key) => key.startsWith(prefix)),
@@ -43,11 +43,11 @@ describe("database client pagination", () => {
         invalidatePaths: async () => undefined,
       }),
     });
-    const client = createDatabaseClient(adapter);
+    const client = createDatabaseClient(plugin);
     for (const id of ["001", "002", "003"]) {
       await client.insertBundle(createBundle(id));
     }
-    const findMany = vi.spyOn(adapter, "findMany");
+    const findMany = vi.spyOn(plugin, "findMany");
 
     // When
     const page = await client.getBundles({
@@ -66,7 +66,7 @@ describe("database client pagination", () => {
     ]);
   });
 
-  it("hydrates bundle channel values beyond the adapter default page size", async () => {
+  it("hydrates bundle channel values beyond the plugin default page size", async () => {
     const channels = Array.from({ length: 101 }, (_, index) => ({
       id: `channel-${index}`,
       name: `release-${index}`,
@@ -90,9 +90,9 @@ describe("database client pagination", () => {
       manifest_file_hash: null,
       asset_base_storage_uri: null,
     }));
-    const adapter = createDatabaseAdapter({
+    const plugin = createDatabasePlugin({
       name: "channel-pagination",
-      adapter: () => ({
+      plugin: () => ({
         create: async () => {
           throw new Error("not implemented");
         },
@@ -109,7 +109,7 @@ describe("database client pagination", () => {
       }),
     });
 
-    const result = await createDatabaseClient(adapter).getBundles({
+    const result = await createDatabaseClient(plugin).getBundles({
       limit: 101,
       orderBy: { field: "id", direction: "asc" },
     });

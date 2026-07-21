@@ -1,11 +1,11 @@
 import type {
   BundleRow,
   DatabaseImplementationResult,
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
   FindManyDatabaseImplementationInput,
-  TransactionDatabaseAdapterImplementation,
+  TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 import {
   getHotUpdaterSchemaVersion,
@@ -17,7 +17,7 @@ import type {
   ORMProvider,
   SchemaGenerator,
 } from "../db/types";
-import { hasNullOrderOverrides, sortRowsByOrder } from "./databaseAdapterUtils";
+import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
 import {
   getPrismaDelegate,
@@ -196,7 +196,7 @@ const createBundleTargetUpdateWhere = (
 const createCrudImplementation = (
   client: object,
   provider: ORMProvider,
-): TransactionDatabaseAdapterImplementation => ({
+): TransactionDatabasePluginImplementation => ({
   create: async (input) => {
     if (input.model === "bundles") {
       assertBundleTarget(input.data);
@@ -299,9 +299,9 @@ const createPrismaImplementation = (
   client: object,
   relationMode: PrismaRelationMode,
   provider: ORMProvider,
-): DatabaseAdapterImplementation => {
+): DatabasePluginImplementation => {
   const crud = createCrudImplementation(client, provider);
-  const implementation: DatabaseAdapterImplementation = {
+  const implementation: DatabasePluginImplementation = {
     ...crud,
     delete: (input) => {
       if (input.model !== "bundles" || !hasCallbackTransaction(client)) {
@@ -369,9 +369,9 @@ export const prismaAdapter = (
   config: PrismaConfig,
 ): DatabaseAdapterWithCapabilities =>
   Object.assign(
-    createDatabaseAdapter({
+    createDatabasePlugin({
       name: "prisma",
-      adapter: () =>
+      plugin: () =>
         createPrismaImplementation(
           config.prisma,
           config.relationMode ?? "foreign-keys",

@@ -3,7 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   DatabaseImplementationResult,
-  TransactionDatabaseAdapterImplementation,
+  TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -80,7 +80,7 @@ const distinctCount = <TRow extends object>(
 
 export const createMockDatabaseState = (
   data: MockDatabaseData,
-): TransactionDatabaseAdapterImplementation => ({
+): TransactionDatabasePluginImplementation => ({
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
       case "bundles":

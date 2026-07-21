@@ -5,7 +5,7 @@ import path from "path";
 import { getCwd, loadConfig, readPackageUp } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createDatabaseAdapterHarness } from "./databaseAdapter.testFixtures";
+import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 import {
   areVersionsCompatible,
   doctor,
@@ -26,7 +26,7 @@ vi.mock("@hot-updater/cli-tools", () => ({
 const mockGetCwd = getCwd as ReturnType<typeof vi.fn>;
 const mockLoadConfig = loadConfig as ReturnType<typeof vi.fn>;
 const mockReadPackageUp = readPackageUp as ReturnType<typeof vi.fn>;
-const doctorDatabaseHarness = createDatabaseAdapterHarness();
+const doctorDatabaseHarness = createDatabasePluginHarness();
 
 const createConfig = (overrides: Record<string, unknown> = {}) => ({
   updateStrategy: "appVersion",
@@ -41,7 +41,7 @@ const createConfig = (overrides: Record<string, unknown> = {}) => ({
   signing: {
     enabled: false,
   },
-  database: doctorDatabaseHarness.adapter,
+  database: doctorDatabaseHarness.plugin,
   ...overrides,
 });
 

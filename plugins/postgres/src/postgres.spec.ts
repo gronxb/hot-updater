@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { databaseAnalyticsSupport } from "@hot-updater/plugin-core";
-import { setupDatabaseAdapterTestSuite } from "@hot-updater/test-utils";
+import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { expect, it } from "vitest";
 
@@ -24,15 +24,15 @@ const getClient = (): PGlite => {
 
 it("advertises Analytics support", async () => {
   // Given / When
-  const adapter = postgres({ connectionString: "postgres://localhost/test" });
+  const plugin = postgres({ connectionString: "postgres://localhost/test" });
 
   // Then
-  expect(adapter[databaseAnalyticsSupport]).toBe(true);
-  await adapter.onUnmount?.();
+  expect(plugin[databaseAnalyticsSupport]).toBe(true);
+  await plugin.onUnmount?.();
 });
 
-setupDatabaseAdapterTestSuite({
-  name: "postgres fixed-model database adapter",
+setupDatabasePluginTestSuite({
+  name: "postgres fixed-model database plugin",
   migrate: async () => {
     client = new PGlite();
     const schema = await fs.readFile(
@@ -41,12 +41,12 @@ setupDatabaseAdapterTestSuite({
     );
     await client.exec(schema);
   },
-  createAdapter: () => postgres({ dialect: new PGliteDialect(getClient()) }),
+  createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
     await getClient().exec("DELETE FROM bundle_patches; DELETE FROM bundles;");
   },
-  dispose: async (adapter) => {
-    await adapter.onUnmount?.();
+  dispose: async (plugin) => {
+    await plugin.onUnmount?.();
     client = undefined;
   },
 });

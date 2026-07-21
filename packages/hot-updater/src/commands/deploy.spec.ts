@@ -123,10 +123,10 @@ vi.mock("is-port-reachable", () => ({
   default: vi.fn(),
 }));
 
-import { createDatabaseAdapterHarness } from "./databaseAdapter.testFixtures";
+import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 
-const databaseHarness = createDatabaseAdapterHarness();
-const databaseAdapter = databaseHarness.adapter;
+const databaseHarness = createDatabasePluginHarness();
+const databasePlugin = databaseHarness.plugin;
 
 vi.mock("open", () => ({
   default: vi.fn(),
@@ -330,7 +330,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: databaseAdapter,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -697,7 +697,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       cacheDir: "node_modules/.hot-updater",
       compressStrategy: "tar.br",
-      database: databaseAdapter,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -838,7 +838,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: databaseAdapter,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -890,7 +890,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: databaseAdapter,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -920,7 +920,7 @@ describe("deploy rollout wiring", () => {
         bundleId: "bundle-123",
       },
       {
-        databaseAdapter,
+        databasePlugin,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -934,7 +934,7 @@ describe("deploy rollout wiring", () => {
         bundleId: "bundle-123",
       },
       {
-        databaseAdapter,
+        databasePlugin,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -947,7 +947,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: databaseAdapter,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -978,7 +978,7 @@ describe("deploy rollout wiring", () => {
         bundleId: "bundle-123",
       },
       {
-        databaseAdapter,
+        databasePlugin,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -991,7 +991,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: databaseAdapter,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1026,7 +1026,7 @@ describe("deploy rollout wiring", () => {
         bundleId: "bundle-123",
       },
       {
-        databaseAdapter,
+        databasePlugin,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -1039,7 +1039,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: databaseAdapter,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,

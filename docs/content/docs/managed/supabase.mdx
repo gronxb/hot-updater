@@ -38,7 +38,7 @@ npx hot-updater init
 <Accordions type="single">
   <Accordion title="Interactive Setup Steps">
 
-1. **Select a Build Adapter**: Choose a build adapter for your project (e.g., Bare (React Native CLI) for React Native).
+1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select Supabase as the provider for handling updates.
 
 During the setup, you will be prompted to:
@@ -66,7 +66,7 @@ HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
 If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
 
 please refer to the article below for more details:
-[Security](/docs/policy/security#adapter-token-protection)
+[Security](/docs/policy/security#plugin-token-protection)
 </Callout>
 
 
@@ -184,7 +184,7 @@ Skip this step if you are using bare or Rock.
 </Callout>
 
 <Callout type="info">
-If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use dom`)](/docs/build-adapters/expo#expo-dom-components-use-dom) section for the additional Babel plugin setup.
+If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the additional Babel plugin setup.
 </Callout>
 
 

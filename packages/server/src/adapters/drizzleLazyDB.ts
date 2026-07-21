@@ -1,6 +1,6 @@
 import type { BundleEventRow, BundlePatchRow } from "@hot-updater/plugin-core";
 
-import type { StoredBundleRow } from "./databaseAdapterUtils";
+import type { StoredBundleRow } from "./databasePluginUtils";
 import type { DrizzleConfig } from "./drizzle";
 
 export type DrizzleTable = Record<string, unknown>;

@@ -7,7 +7,7 @@ import { normalizeBlobDatabaseSnapshot } from "./blobDatabaseSnapshot";
 import type {
   BundleRow,
   DatabaseImplementationResult,
-  TransactionDatabaseAdapterImplementation,
+  TransactionDatabasePluginImplementation,
 } from "./types";
 
 export type BlobSnapshotState = {
@@ -46,7 +46,7 @@ const distinctCount = <TRow extends object>(
 
 export const createBlobSnapshotCrud = (
   state: BlobSnapshotState,
-): TransactionDatabaseAdapterImplementation => ({
+): TransactionDatabasePluginImplementation => ({
   async create(input): Promise<DatabaseImplementationResult> {
     const snapshot = state.snapshot;
     switch (input.model) {

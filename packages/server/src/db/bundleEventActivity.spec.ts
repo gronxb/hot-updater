@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { createBundleEventService } from "./bundleEvents";
 import {
   createEvent,
@@ -32,7 +32,7 @@ describe("bundle event activity series", () => {
   it("scopes totals to the window and returns per-bucket movement", async () => {
     const now = Date.UTC(2026, 6, 16, 12);
     vi.spyOn(Date, "now").mockReturnValue(now);
-    const database = createInMemoryDatabaseAdapter();
+    const database = createInMemoryDatabasePlugin();
     await database.create({
       model: "bundle_events",
       data: createEvent("install-a", now - 31 * 24 * 60 * 60 * 1000),

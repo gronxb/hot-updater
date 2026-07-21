@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
-import { isDatabaseAdapter, supportsAnalytics } from "./types";
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
+import { isDatabasePlugin, supportsAnalytics } from "./types";
 
-describe("isDatabaseAdapter", () => {
-  it("accepts a direct fixed-model adapter object", () => {
+describe("isDatabasePlugin", () => {
+  it("accepts a direct fixed-model plugin object", () => {
     // Given
-    const adapter = createInMemoryDatabaseAdapter();
+    const plugin = createInMemoryDatabasePlugin();
 
     // When
-    const result = isDatabaseAdapter(adapter);
+    const result = isDatabasePlugin(plugin);
 
     // Then
     expect(result).toBe(true);
@@ -17,13 +17,13 @@ describe("isDatabaseAdapter", () => {
 
   it("rejects a v1 factory and non-callable CRUD fields", () => {
     // Given
-    const adapter = createInMemoryDatabaseAdapter();
-    const factory = () => adapter;
-    const malformed = { ...adapter, findMany: null };
+    const plugin = createInMemoryDatabasePlugin();
+    const factory = () => plugin;
+    const malformed = { ...plugin, findMany: null };
 
     // When
-    const factoryResult = isDatabaseAdapter(factory);
-    const malformedResult = isDatabaseAdapter(malformed);
+    const factoryResult = isDatabasePlugin(factory);
+    const malformedResult = isDatabasePlugin(malformed);
 
     // Then
     expect(factoryResult).toBe(false);

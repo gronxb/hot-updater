@@ -15,28 +15,28 @@
 "hot-updater": minor
 ---
 
-Replace the legacy database adapter API with the fixed-model adapter API for
+Replace the legacy database plugin API with the fixed-model plugin API for
 `bundles`, `bundle_patches`, and `bundle_events`. Database providers now return
-a direct adapter object, aggregate bundle behavior is provided by the shared
+a direct plugin object, aggregate bundle behavior is provided by the shared
 database client, callback transactions and optimized update checks are optional
 capabilities, and the v1 staged mutation API has been removed. Provider
 functions now receive their configuration directly and close over it inside
-`createDatabaseAdapter({ name, adapter })`.
+`createDatabasePlugin({ name, plugin })`.
 
-Database adapter operations no longer receive request context. Providers close
+Database plugin operations no longer receive request context. Providers close
 over their configured database client or binding, while request context remains
-available to server handlers and storage adapters for request-scoped URL and
+available to server handlers and storage plugins for request-scoped URL and
 authorization behavior.
 
 Keep channel names directly on `bundles.channel` without introducing a channel
-model, table, collection, or foreign key. Adapters may expose an optimized
+model, table, collection, or foreign key. Plugins may expose an optimized
 `getChannels` aggregate, while the shared database client falls back to paging
 bundle channel values and returning their sorted distinct set.
 
-Publish `@hot-updater/test-utils` with reusable low-adapter and aggregate-client
-conformance suites for custom database adapter authors.
+Publish `@hot-updater/test-utils` with reusable low-plugin and aggregate-client
+conformance suites for custom database plugin authors.
 
-Expose app-ready Analytics for record adapters and proxy event ingestion,
+Expose app-ready Analytics for record plugins and proxy event ingestion,
 active-installation overview, bundle outcomes, installation search, and
 installation history through the standalone repository. React Native reports
 unchanged launches as well as applied/recovered transitions through the
@@ -54,7 +54,7 @@ authorization and throttling policy. Event payloads remain untrusted telemetry;
 deployments are responsible for user-scoped authentication or attestation,
 quotas, logging, and retention.
 
-Snapshot-backed adapters created with `createBlobDatabaseAdapter`, including
+Snapshot-backed plugins created with `createBlobDatabasePlugin`, including
 `s3Database`, deliberately leave Analytics disabled because concurrent event
 writes can conflict. The Console hides Analytics based only on capability
 presence, without provider-name branching.

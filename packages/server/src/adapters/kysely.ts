@@ -1,6 +1,6 @@
 import {
-  createDatabaseAdapter,
-  type DatabaseAdapterImplementation,
+  createDatabasePlugin,
+  type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import type { Kysely } from "kysely";
 
@@ -10,8 +10,8 @@ import type {
   ORMSQLProvider,
   RelationMode,
 } from "../db/types";
-import { getDatabaseAdapterUpdateInfo } from "./databaseAdapterUpdateInfo";
-import { fromStoredBundleRow } from "./databaseAdapterUtils";
+import { getDatabasePluginUpdateInfo } from "./databasePluginUpdateInfo";
+import { fromStoredBundleRow } from "./databasePluginUtils";
 import {
   createKyselyCrud,
   findKyselyChannels,
@@ -31,7 +31,7 @@ export interface KyselyAdapterConfig<TDatabase extends object = object> {
 
 const createImplementation = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
-): DatabaseAdapterImplementation => {
+): DatabasePluginImplementation => {
   const db = config.db;
   const relationMode = config.relationMode ?? "foreign-keys";
   const crud = createKyselyCrud(db, config.provider, relationMode);
@@ -62,7 +62,7 @@ const createImplementation = <TDatabase extends object>(
           ),
         ),
     getUpdateInfo: (args) =>
-      getDatabaseAdapterUpdateInfo(
+      getDatabasePluginUpdateInfo(
         {
           findBundles: async (where) =>
             (await findKyselyBundles(db, config.provider, where)).map(
@@ -87,12 +87,12 @@ const createImplementation = <TDatabase extends object>(
 export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
 ): DatabaseAdapterWithCapabilities => {
-  const adapter = createDatabaseAdapter({
+  const plugin = createDatabasePlugin({
     name: "kysely",
-    adapter: (): DatabaseAdapterImplementation =>
+    plugin: (): DatabasePluginImplementation =>
       createImplementation<TDatabase>(config),
   });
-  return Object.assign(adapter, {
+  return Object.assign(plugin, {
     adapterName: "kysely",
     provider: config.provider,
     createMigrator: () =>

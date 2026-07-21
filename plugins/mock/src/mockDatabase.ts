@@ -1,6 +1,6 @@
 import {
-  createDatabaseAdapter,
-  type DatabaseAdapterImplementation,
+  createDatabasePlugin,
+  type DatabasePluginImplementation,
   resolveUpdateInfoFromBundles,
   rowsToBundles,
 } from "@hot-updater/plugin-core";
@@ -23,9 +23,9 @@ export interface MockDatabaseConfig {
 }
 
 export const mockDatabase = (config: MockDatabaseConfig) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "mockDatabase",
-    adapter: (): DatabaseAdapterImplementation => {
+    plugin: (): DatabasePluginImplementation => {
       const data = config.data ?? createMockDatabaseData();
       const state = createMockDatabaseState(data);
       let operationQueue: Promise<void> = Promise.resolve();

@@ -13,7 +13,7 @@ import type {
   ActiveInstallationOverview,
   ActiveInstallationWindow,
   CreateBundleEventRequest,
-  DatabaseAdapter as DatabaseAdapterContract,
+  DatabasePlugin as DatabasePluginContract,
   HotUpdaterContext,
   InstallationHistoryRow,
   InstallationSearchRow,
@@ -114,31 +114,29 @@ export interface DatabaseAdapterCapabilities {
   generateSchema?: SchemaGenerator;
 }
 
-export type DatabaseAdapterWithCapabilities = DatabaseAdapterContract &
+export type DatabaseAdapterWithCapabilities = DatabasePluginContract &
   DatabaseAdapterCapabilities;
 
-export type DatabaseAdapter = DatabaseAdapterWithCapabilities;
+export type DatabasePlugin = DatabaseAdapterWithCapabilities;
 
-export function isDatabaseAdapter(
-  adapter: unknown,
-): adapter is DatabaseAdapter {
+export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
   return (
-    typeof adapter === "object" &&
-    adapter !== null &&
-    "name" in adapter &&
-    typeof adapter.name === "string" &&
-    "create" in adapter &&
-    typeof adapter.create === "function" &&
-    "update" in adapter &&
-    typeof adapter.update === "function" &&
-    "delete" in adapter &&
-    typeof adapter.delete === "function" &&
-    "count" in adapter &&
-    typeof adapter.count === "function" &&
-    "findOne" in adapter &&
-    typeof adapter.findOne === "function" &&
-    "findMany" in adapter &&
-    typeof adapter.findMany === "function"
+    typeof plugin === "object" &&
+    plugin !== null &&
+    "name" in plugin &&
+    typeof plugin.name === "string" &&
+    "create" in plugin &&
+    typeof plugin.create === "function" &&
+    "update" in plugin &&
+    typeof plugin.update === "function" &&
+    "delete" in plugin &&
+    typeof plugin.delete === "function" &&
+    "count" in plugin &&
+    typeof plugin.count === "function" &&
+    "findOne" in plugin &&
+    typeof plugin.findOne === "function" &&
+    "findMany" in plugin &&
+    typeof plugin.findMany === "function"
   );
 }
 

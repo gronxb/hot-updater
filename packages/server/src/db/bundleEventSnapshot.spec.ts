@@ -1,7 +1,7 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { createBundleEventService } from "./bundleEvents";
 import {
   BUNDLE_EVENT_SCAN_PAGE_SIZE,
@@ -36,7 +36,7 @@ const createEvent = (
 });
 
 const insertRows = async (rows: readonly BundleEventRow[]) => {
-  const database = createInMemoryDatabaseAdapter();
+  const database = createInMemoryDatabasePlugin();
   await Promise.all(
     rows.map((data) => database.create({ model: "bundle_events", data })),
   );
@@ -84,7 +84,7 @@ describe("bundle event cutoff-bounded scans", () => {
 
   it("captures Date.now once and starts one bounded scan per public request", async () => {
     // Given
-    const database = createInMemoryDatabaseAdapter();
+    const database = createInMemoryDatabasePlugin();
     const findMany = vi.spyOn(database, "findMany");
     const count = vi.spyOn(database, "count");
     const service = createBundleEventService(database);

@@ -1,5 +1,5 @@
 import { type Bundle, NIL_UUID } from "@hot-updater/core";
-import { createBlobDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { bench, describe } from "vitest";
 
@@ -137,9 +137,9 @@ const createBenchHotUpdater = () => {
   const store = createDatasetStore();
   const keys = Object.keys(store);
 
-  const database = createBlobDatabaseAdapter({
+  const database = createBlobDatabasePlugin({
     name: "lambdaBenchDatabase",
-    adapter: () => ({
+    plugin: () => ({
       apiBasePath: BASE_PATH,
       listObjects: async (prefix: string) =>
         keys.filter((key) => key.startsWith(prefix)),

@@ -21,7 +21,7 @@ export class PrismaAdapterError extends Error {
   readonly name = "PrismaAdapterError";
 
   constructor(readonly reason: string) {
-    super(`Invalid Prisma adapter state: ${reason}`);
+    super(`Invalid Prisma plugin state: ${reason}`);
   }
 }
 

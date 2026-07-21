@@ -1,6 +1,0 @@
-{
-  "title": "Build Adapters",
-  "description": "Build system adapters",
-  "icon": "Hammer",
-  "pages": ["bare", "expo", "rock"]
-}

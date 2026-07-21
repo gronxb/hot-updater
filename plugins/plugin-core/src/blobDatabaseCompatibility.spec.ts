@@ -8,8 +8,8 @@ import {
 import { parseBlobDatabaseSnapshot } from "./blobDatabaseSnapshot";
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
-  createBlobDatabaseAdapter,
-} from "./createBlobDatabaseAdapter";
+  createBlobDatabasePlugin,
+} from "./createBlobDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 
 const bundleId = "00000000-0000-0000-0000-000000000001";
@@ -57,9 +57,9 @@ describe("blob snapshot compatibility", () => {
         },
       ],
     ]);
-    const adapter = createBlobDatabaseAdapter({
+    const plugin = createBlobDatabasePlugin({
       name: "compatibility-memory",
-      adapter: () => ({
+      plugin: () => ({
         apiBasePath: "/api/check-update",
         listObjects: async (prefix) =>
           [...store.keys()].filter((key) => key.startsWith(prefix)),
@@ -79,8 +79,8 @@ describe("blob snapshot compatibility", () => {
     });
 
     // When
-    const bundle = await createDatabaseClient(adapter).getBundleById(bundleId);
-    await adapter.create({
+    const bundle = await createDatabaseClient(plugin).getBundleById(bundleId);
+    await plugin.create({
       model: "bundles",
       data: {
         ...commonBundleRow,
@@ -133,9 +133,9 @@ describe("blob snapshot compatibility", () => {
       ["production/ios/target-app-versions.json", ["1.0.0"]],
       ["production/ios/1.0.0/update.json", [legacyBundle]],
     ]);
-    const adapter = createBlobDatabaseAdapter({
+    const plugin = createBlobDatabasePlugin({
       name: "legacy-manifest-memory",
-      adapter: () => ({
+      plugin: () => ({
         apiBasePath: "/api/check-update",
         listObjects: async (prefix) =>
           [...store.keys()].filter((key) => key.startsWith(prefix)),
@@ -155,7 +155,7 @@ describe("blob snapshot compatibility", () => {
     });
 
     await expect(
-      adapter.getUpdateInfo?.({
+      plugin.getUpdateInfo?.({
         _updateStrategy: "appVersion",
         appVersion: "1.0.0",
         bundleId: "00000000-0000-0000-0000-000000000000",

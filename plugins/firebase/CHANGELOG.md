@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Enable Analytics for Firebase's record-based database adapter.
+- Enable Analytics for Firebase's record-based database plugin.
 
 ## 0.35.3
 

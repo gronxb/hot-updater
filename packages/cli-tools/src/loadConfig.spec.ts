@@ -65,7 +65,7 @@ describe("loadConfig", () => {
     expect(config.cacheDir).toBeNull();
   });
 
-  it("preserves database adapter symbol capabilities", async () => {
+  it("preserves database plugin symbol capabilities", async () => {
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.ts",

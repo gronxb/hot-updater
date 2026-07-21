@@ -1,7 +1,7 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import {
   BUNDLE_EVENT_SCAN_MAX_ROWS,
   BundleEventScanLimitExceededError,
@@ -29,7 +29,7 @@ const createEvent = (index: number): BundleEventRow => ({
 });
 
 const createGeneratedDatabase = (totalRows: number, pageCap = Infinity) => {
-  const database = createInMemoryDatabaseAdapter();
+  const database = createInMemoryDatabasePlugin();
   const findMany = vi
     .spyOn(database, "findMany")
     .mockImplementation(async (input) => {
@@ -48,7 +48,7 @@ const createGeneratedDatabase = (totalRows: number, pageCap = Infinity) => {
 
 describe("bundle event materialization budget", () => {
   it("deduplicates rows shifted across page boundaries by an append", async () => {
-    const database = createInMemoryDatabaseAdapter();
+    const database = createInMemoryDatabasePlugin();
     const stored = Array.from({ length: 1_001 }, (_, index) =>
       createEvent(index),
     );
@@ -70,7 +70,7 @@ describe("bundle event materialization budget", () => {
   });
 
   it("includes a pre-cutoff row committed after an earlier page", async () => {
-    const database = createInMemoryDatabaseAdapter();
+    const database = createInMemoryDatabasePlugin();
     const stored = Array.from({ length: 1_001 }, (_, index) =>
       createEvent(index),
     );

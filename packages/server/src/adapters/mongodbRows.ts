@@ -4,7 +4,7 @@ export class MongoAdapterDataError extends Error {
   readonly name = "MongoAdapterDataError";
 
   constructor(readonly source: string) {
-    super(`Invalid MongoDB adapter data at "${source}".`);
+    super(`Invalid MongoDB plugin data at "${source}".`);
   }
 }
 

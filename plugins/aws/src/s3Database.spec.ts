@@ -17,7 +17,7 @@ import {
   databaseAnalyticsSupport,
 } from "@hot-updater/plugin-core";
 import {
-  setupDatabaseAdapterTestSuite,
+  setupDatabasePluginTestSuite,
   setupDatabaseClientTestSuite,
 } from "@hot-updater/test-utils";
 import { mockClient } from "aws-sdk-client-mock";
@@ -114,9 +114,9 @@ beforeEach(() => {
   replacementBeforeConditionalPut = undefined;
 });
 
-setupDatabaseAdapterTestSuite({
-  name: "AWS S3 fixed-model database adapter",
-  createAdapter: () => s3Database({ bucketName }),
+setupDatabasePluginTestSuite({
+  name: "AWS S3 fixed-model database plugin",
+  createPlugin: () => s3Database({ bucketName }),
   migrate: () => undefined,
   reset: () => {
     objects.clear();
@@ -126,7 +126,7 @@ setupDatabaseAdapterTestSuite({
 
 setupDatabaseClientTestSuite({
   name: "AWS S3 database aggregate client",
-  createAdapter: () => s3Database({ bucketName }),
+  createPlugin: () => s3Database({ bucketName }),
   createClient: createDatabaseClient,
   migrate: () => undefined,
   reset: () => {

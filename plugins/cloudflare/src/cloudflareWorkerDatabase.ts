@@ -1,4 +1,4 @@
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 import { createD1Implementation } from "./d1Implementation";
 
@@ -23,9 +23,9 @@ export interface CloudflareWorkerDatabaseEnv {
 }
 
 export const d1WorkerDatabase = (db: D1Like) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "d1WorkerDatabase",
-    adapter: () =>
+    plugin: () =>
       createD1Implementation({
         async query(sql, params) {
           const result = await db

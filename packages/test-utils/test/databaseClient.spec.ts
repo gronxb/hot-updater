@@ -2,11 +2,11 @@ import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
-  type DatabaseAdapter,
+  type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "./inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "./inMemoryDatabasePlugin";
 
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   id,
@@ -24,17 +24,17 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
 });
 
 describe("database client", () => {
-  let adapter: DatabaseAdapter;
+  let plugin: DatabasePlugin;
 
   beforeEach(() => {
-    adapter = createInMemoryDatabaseAdapter();
+    plugin = createInMemoryDatabasePlugin();
   });
 
   it("inserts and hydrates an aggregate with ordered patch rows", async () => {
     // Given
     const hook = vi.fn(async () => undefined);
     const client = createDatabaseClient({
-      ...adapter,
+      ...plugin,
       onDatabaseUpdated: hook,
     });
     const firstBase = createBundle("001");
@@ -72,7 +72,7 @@ describe("database client", () => {
 
   it("paginates filtered bundle aggregates and lists derived channels", async () => {
     // Given
-    const client = createDatabaseClient(adapter);
+    const client = createDatabaseClient(plugin);
     await client.insertBundle(createBundle("101"));
     await client.insertBundle(createBundle("102", { channel: "staging" }));
     await client.insertBundle(createBundle("103"));
@@ -93,7 +93,7 @@ describe("database client", () => {
 
   it("replaces patches and removes both incoming and outgoing patch rows", async () => {
     // Given
-    const client = createDatabaseClient(adapter);
+    const client = createDatabaseClient(plugin);
     const firstBase = createBundle("201");
     const secondBase = createBundle("202");
     const target = createBundle("203", {
@@ -133,7 +133,7 @@ describe("database client", () => {
 
   it("does not let an update retarget bundle or patch ownership", async () => {
     // Given
-    const client = createDatabaseClient(adapter);
+    const client = createDatabaseClient(plugin);
     const base = createBundle("211");
     const target = createBundle("212");
     await client.insertBundle(base);
@@ -174,7 +174,7 @@ describe("database client", () => {
       ],
     });
     const client = createDatabaseClient({
-      ...adapter,
+      ...plugin,
       onDatabaseUpdated: hook,
     });
 
@@ -200,11 +200,11 @@ describe("database client", () => {
         },
       ],
     });
-    const { transaction: ignoredTransaction, ...sequentialAdapter } = adapter;
+    const { transaction: ignoredTransaction, ...sequentialPlugin } = plugin;
     void ignoredTransaction;
     const client = createDatabaseClient({
-      ...sequentialAdapter,
-      name: adapter.name,
+      ...sequentialPlugin,
+      name: plugin.name,
       onDatabaseUpdated: hook,
     });
 
@@ -222,7 +222,7 @@ describe("database client", () => {
   it("delegates the update-info fast path and matches the generic path", async () => {
     // Given
     const bundle = createBundle("401");
-    const genericClient = createDatabaseClient(adapter);
+    const genericClient = createDatabaseClient(plugin);
     await genericClient.insertBundle(bundle);
     const args = {
       _updateStrategy: "appVersion",
@@ -233,7 +233,7 @@ describe("database client", () => {
     const expected = await genericClient.getUpdateInfo(args);
     const fastPath = vi.fn(async () => expected);
     const fastClient = createDatabaseClient({
-      ...adapter,
+      ...plugin,
       getUpdateInfo: fastPath,
     });
 
@@ -245,11 +245,11 @@ describe("database client", () => {
     expect(fastPath).toHaveBeenCalledWith(args);
   });
 
-  it("runs high-level mutations in one adapter transaction", async () => {
+  it("runs high-level mutations in one plugin transaction", async () => {
     // Given
     const hook = vi.fn(async () => undefined);
     const client = createDatabaseClient({
-      ...adapter,
+      ...plugin,
       onDatabaseUpdated: hook,
     });
     const base = createBundle("501");

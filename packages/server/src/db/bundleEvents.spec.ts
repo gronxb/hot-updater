@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { createBundleEventService } from "./bundleEvents";
 import {
   createEvent,
@@ -10,7 +10,7 @@ import { BUNDLE_EVENT_SCAN_PAGE_SIZE } from "./bundleEventScan";
 
 describe("bundle event installation search", () => {
   it("pages an empty query over stable latest-per-install rows", async () => {
-    const database = createInMemoryDatabaseAdapter();
+    const database = createInMemoryDatabasePlugin();
     const rows = [
       createEvent("install-a", 1, { to_bundle_id: "old-a" }),
       createEvent("install-a", 4, { to_bundle_id: "latest-a" }),
@@ -51,7 +51,7 @@ describe("bundle event installation search", () => {
   });
 
   it("returns the latest row when a historical identity matches", async () => {
-    const database = createInMemoryDatabaseAdapter();
+    const database = createInMemoryDatabasePlugin();
     await database.create({
       model: "bundle_events",
       data: {
@@ -79,7 +79,7 @@ describe("bundle event installation search", () => {
   });
 
   it("finds a late historical-identity page from one materialization", async () => {
-    const database = createInMemoryDatabaseAdapter();
+    const database = createInMemoryDatabasePlugin();
     const installIds = Array.from(
       { length: 205 },
       (_, index) => `install-${index.toString().padStart(3, "0")}`,
@@ -131,7 +131,7 @@ describe("bundle event installation search", () => {
   });
 
   it("aggregates repeated installation rows without adjacency", async () => {
-    const database = createInMemoryDatabaseAdapter();
+    const database = createInMemoryDatabasePlugin();
     const crossingGroup = Array.from({ length: 205 }, (_, index) =>
       createEvent("install-a", index + 1, { to_bundle_id: `old-${index}` }),
     );

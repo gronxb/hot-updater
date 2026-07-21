@@ -1,5 +1,5 @@
 import {
-  createDatabaseAdapter,
+  createDatabasePlugin,
   databaseAnalyticsSupport,
   databaseBundleEventService,
 } from "@hot-updater/plugin-core";
@@ -22,13 +22,13 @@ export type {
 /**
  * Compatibility bridge over the legacy aggregate `/api/bundles` HTTP API.
  *
- * Channel names are exposed through the adapter aggregate instead of a
+ * Channel names are exposed through the plugin aggregate instead of a
  * synthetic fixed-model relation.
  */
 export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
-  const recordRepository = createDatabaseAdapter({
+  const recordRepository = createDatabasePlugin({
     name: "standalone-repository",
-    adapter: () => createLegacyCompatibilityImplementation(config),
+    plugin: () => createLegacyCompatibilityImplementation(config),
   });
   const { [databaseAnalyticsSupport]: analyticsSupport, ...repository } =
     recordRepository;

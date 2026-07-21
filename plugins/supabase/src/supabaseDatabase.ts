@@ -1,13 +1,13 @@
 import type {
   CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
   DeleteDatabaseImplementationInput,
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -23,7 +23,7 @@ export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
 
 const createSupabaseImplementation = (
   supabase: SupabaseClient<Database>,
-): DatabaseAdapterImplementation => ({
+): DatabasePluginImplementation => ({
   async create(input: CreateDatabaseImplementationInput) {
     switch (input.model) {
       case "bundles": {
@@ -200,9 +200,9 @@ const createSupabaseImplementation = (
 });
 
 export const supabaseDatabase = (config: SupabaseDatabaseConfig) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "supabaseDatabase",
-    adapter: () =>
+    plugin: () =>
       createSupabaseImplementation(
         createClient<Database>(
           config.supabaseUrl,

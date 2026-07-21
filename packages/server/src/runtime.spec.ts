@@ -1,13 +1,13 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
-  type DatabaseAdapter,
+  type DatabasePlugin,
   type RuntimeStoragePlugin,
   type RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import packageJson from "../package.json" with { type: "json" };
 import { createHotUpdater } from "./index";
 import type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./index";
@@ -50,10 +50,10 @@ describe("runtime createHotUpdater", () => {
     }>();
   });
 
-  it("accepts a direct v2 adapter object without exposing maintenance methods", () => {
+  it("accepts a direct v2 plugin object without exposing maintenance methods", () => {
     // Given
-    const database: DatabaseAdapter = {
-      ...createInMemoryDatabaseAdapter(),
+    const database: DatabasePlugin = {
+      ...createInMemoryDatabasePlugin(),
       name: "contextlessTestDatabase",
     };
     const storage = (): RuntimeStoragePlugin<undefined> => ({
@@ -128,10 +128,10 @@ describe("runtime createHotUpdater", () => {
     expect(createMigrator).toHaveBeenCalledOnce();
   });
 
-  it("passes handler context to storage but not the database adapter", async () => {
+  it("passes handler context to storage but not the database plugin", async () => {
     // Given
     const request = new Request(updateUrl);
-    const getUpdateInfo = vi.fn<NonNullable<DatabaseAdapter["getUpdateInfo"]>>(
+    const getUpdateInfo = vi.fn<NonNullable<DatabasePlugin["getUpdateInfo"]>>(
       async () => ({
         fileHash: runtimeBundle.fileHash,
         id: runtimeBundle.id,
@@ -141,7 +141,7 @@ describe("runtime createHotUpdater", () => {
         storageUri: runtimeBundle.storageUri,
       }),
     );
-    const database: DatabaseAdapter = {
+    const database: DatabasePlugin = {
       ...createRuntimeDatabase(),
       getUpdateInfo,
     };
@@ -219,7 +219,7 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE" as const,
       storageUri: runtimeBundle.storageUri,
     }));
-    const database: DatabaseAdapter = {
+    const database: DatabasePlugin = {
       ...createRuntimeDatabase(),
       getUpdateInfo,
     };

@@ -3,7 +3,7 @@ import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
-  createBlobDatabaseAdapter,
+  createBlobDatabasePlugin,
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
@@ -100,9 +100,9 @@ const createStandaloneClient = (base = `${baseUrl}/hot-updater`) =>
 const parseStoredJson = (value: string): unknown => JSON.parse(value);
 
 const createInMemoryBlobDatabase = (store: Record<string, string>) =>
-  createBlobDatabaseAdapter({
+  createBlobDatabasePlugin({
     name: "blob-test",
-    adapter: () => ({
+    plugin: () => ({
       apiBasePath: "/api/check-update",
       listObjects: async (prefix: string) =>
         Object.keys(store).filter((key) => key.startsWith(prefix)),

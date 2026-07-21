@@ -2,12 +2,12 @@ import type { Bundle } from "@hot-updater/core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { expect, it } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "./inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "./inMemoryDatabasePlugin";
 
 it("stores channel names directly on bundles", async () => {
   // Given
-  const adapter = createInMemoryDatabaseAdapter();
-  const client = createDatabaseClient(adapter);
+  const plugin = createInMemoryDatabasePlugin();
+  const client = createDatabaseClient(plugin);
   const bundle: Bundle = {
     id: "104",
     platform: "ios",
@@ -27,7 +27,7 @@ it("stores channel names directly on bundles", async () => {
 
   // Then
   await expect(
-    adapter.findOne({
+    plugin.findOne({
       model: "bundles",
       where: [{ field: "id", value: bundle.id }],
       select: ["channel"],
@@ -41,8 +41,8 @@ it("stores channel names directly on bundles", async () => {
 
 it("updates the bundle channel directly", async () => {
   // Given
-  const adapter = createInMemoryDatabaseAdapter();
-  const client = createDatabaseClient(adapter);
+  const plugin = createInMemoryDatabasePlugin();
+  const client = createDatabaseClient(plugin);
   const bundle: Bundle = {
     id: "105",
     platform: "ios",
@@ -63,7 +63,7 @@ it("updates the bundle channel directly", async () => {
 
   // Then
   await expect(
-    adapter.findOne({
+    plugin.findOne({
       model: "bundles",
       where: [{ field: "id", value: bundle.id }],
       select: ["channel"],
@@ -73,8 +73,8 @@ it("updates the bundle channel directly", async () => {
 });
 
 it("returns distinct sorted channel names", async () => {
-  const adapter = createInMemoryDatabaseAdapter();
-  const client = createDatabaseClient(adapter);
+  const plugin = createInMemoryDatabasePlugin();
+  const client = createDatabaseClient(plugin);
   for (const [id, channel] of [
     ["106", "staging"],
     ["107", "production"],

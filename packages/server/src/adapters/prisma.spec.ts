@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
+import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import { prismaAdapter } from "./prisma";
 import { createPrismaTestHarness } from "./prismaTestClient";
 
@@ -76,10 +76,10 @@ const identityPrismaWhere = {
   ],
 };
 
-setupDatabaseAdapterTestSuite({
+setupDatabasePluginTestSuite({
   name: "prismaAdapter v2",
   migrate: () => undefined,
-  createAdapter: () =>
+  createPlugin: () =>
     prismaAdapter({ prisma: harness.client, provider: "postgresql" }),
   reset: () => harness.reset(),
   dispose: () => undefined,
@@ -113,13 +113,13 @@ describe("prismaAdapter capabilities", () => {
     async (provider) => {
       // Given
       const capturedWhere: unknown[] = [];
-      const adapter = prismaAdapter({
+      const plugin = prismaAdapter({
         prisma: createModeRejectingClient(capturedWhere),
         provider,
       });
 
       // When
-      await adapter.findMany({
+      await plugin.findMany({
         model: "bundle_events",
         where: identityWhere,
       });
@@ -134,13 +134,13 @@ describe("prismaAdapter capabilities", () => {
     async (provider) => {
       // Given
       const capturedWhere: unknown[] = [];
-      const adapter = prismaAdapter({
+      const plugin = prismaAdapter({
         prisma: createModeRejectingClient(capturedWhere),
         provider,
       });
 
       // When
-      await adapter.transaction?.((transaction) =>
+      await plugin.transaction?.((transaction) =>
         transaction.findMany({
           model: "bundle_events",
           where: identityWhere,
@@ -152,24 +152,24 @@ describe("prismaAdapter capabilities", () => {
     },
   );
 
-  it("returns an adapter object instead of a callable factory", () => {
-    const adapter = prismaAdapter({
+  it("returns an plugin object instead of a callable factory", () => {
+    const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
     });
 
-    expect(adapter).toBeTypeOf("object");
-    expect(adapter.name).toBe("prisma");
-    expect(adapter.adapterName).toBe("prisma");
-    expect(adapter.provider).toBe("postgresql");
+    expect(plugin).toBeTypeOf("object");
+    expect(plugin.name).toBe("prisma");
+    expect(plugin.adapterName).toBe("prisma");
+    expect(plugin.provider).toBe("postgresql");
   });
 
   it("omits transaction when callback transactions are unavailable", () => {
     const { $transaction: _transaction, ...client } = harness.client;
 
-    const adapter = prismaAdapter({ prisma: client, provider: "postgresql" });
+    const plugin = prismaAdapter({ prisma: client, provider: "postgresql" });
 
-    expect(adapter.transaction).toBeUndefined();
+    expect(plugin.transaction).toBeUndefined();
   });
 
   it("requires callback transactions for emulated relations", () => {
@@ -186,11 +186,11 @@ describe("prismaAdapter capabilities", () => {
 
   it("guards target fields against a concurrent clear", async () => {
     harness.reset();
-    const adapter = prismaAdapter({
+    const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundles",
       data: {
         id: "bundle-race",
@@ -218,14 +218,14 @@ describe("prismaAdapter capabilities", () => {
     );
 
     await expect(
-      adapter.update({
+      plugin.update({
         model: "bundles",
         where: [{ field: "id", value: "bundle-race" }],
         update: { target_app_version: null },
       }),
     ).rejects.toThrow("bundle target update was not applied");
     await expect(
-      adapter.findOne({
+      plugin.findOne({
         model: "bundles",
         where: [{ field: "id", value: "bundle-race" }],
       }),
@@ -237,7 +237,7 @@ describe("prismaAdapter capabilities", () => {
 
   it("uses serializable transactions for emulated relation mutations", async () => {
     harness.reset();
-    const adapter = prismaAdapter({
+    const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
       relationMode: "prisma",
@@ -260,15 +260,15 @@ describe("prismaAdapter capabilities", () => {
       manifest_file_hash: null,
       asset_base_storage_uri: null,
     };
-    await adapter.create({
+    await plugin.create({
       model: "bundles",
       data: { ...bundle, id: "bundle-base" },
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundles",
       data: { ...bundle, id: "bundle-target" },
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_patches",
       data: {
         id: "patch-1",
@@ -280,7 +280,7 @@ describe("prismaAdapter capabilities", () => {
         order_index: 0,
       },
     });
-    await adapter.delete({
+    await plugin.delete({
       model: "bundles",
       where: [{ field: "id", value: "bundle-target" }],
     });
@@ -292,7 +292,7 @@ describe("prismaAdapter capabilities", () => {
 
   it("rolls back patch cleanup when a bundle cascade delete fails", async () => {
     harness.reset();
-    const adapter = prismaAdapter({
+    const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
     });
@@ -314,15 +314,15 @@ describe("prismaAdapter capabilities", () => {
       manifest_file_hash: null,
       asset_base_storage_uri: null,
     };
-    await adapter.create({
+    await plugin.create({
       model: "bundles",
       data: { ...bundle, id: "bundle-base" },
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundles",
       data: { ...bundle, id: "bundle-target" },
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_patches",
       data: {
         id: "patch-1",
@@ -337,20 +337,20 @@ describe("prismaAdapter capabilities", () => {
 
     harness.failNextBundleDelete();
     await expect(
-      adapter.delete({
+      plugin.delete({
         model: "bundles",
         where: [{ field: "id", value: "bundle-target" }],
       }),
     ).rejects.toThrow("injected bundle delete failure");
 
     await expect(
-      adapter.findOne({
+      plugin.findOne({
         model: "bundles",
         where: [{ field: "id", value: "bundle-target" }],
       }),
     ).resolves.toMatchObject({ id: "bundle-target" });
     await expect(
-      adapter.findMany({
+      plugin.findMany({
         model: "bundle_patches",
         where: [{ field: "id", value: "patch-1" }],
       }),
@@ -361,33 +361,33 @@ describe("prismaAdapter capabilities", () => {
 describe("prismaAdapter bundle_events distinct semantics", () => {
   it("counts distinct installs and keeps the latest row per install", async () => {
     harness.reset();
-    const adapter = prismaAdapter({
+    const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
     });
 
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-a-1", "install-a", 100),
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-a-2", "install-a", 200),
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-b-1", "install-b", 150),
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-b-2", "install-b", 150),
     });
 
     await expect(
-      adapter.count({ model: "bundle_events", distinct: ["install_id"] }),
+      plugin.count({ model: "bundle_events", distinct: ["install_id"] }),
     ).resolves.toBe(2);
     await expect(
-      adapter.findMany({
+      plugin.findMany({
         model: "bundle_events",
         distinctOn: { fields: ["install_id"] },
         orderBy: [
@@ -403,16 +403,16 @@ describe("prismaAdapter bundle_events distinct semantics", () => {
   });
   it("honors explicit null ordering for bundle event queries", async () => {
     harness.reset();
-    const adapter = prismaAdapter({
+    const plugin = prismaAdapter({
       prisma: harness.client,
       provider: "postgresql",
     });
 
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-null", "install-a", 100),
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: {
         ...createBundleEventRow("event-user", "install-b", 200),
@@ -421,7 +421,7 @@ describe("prismaAdapter bundle_events distinct semantics", () => {
     });
 
     await expect(
-      adapter.findMany({
+      plugin.findMany({
         model: "bundle_events",
         orderBy: [
           { field: "user_id", direction: "asc", nulls: "first" },

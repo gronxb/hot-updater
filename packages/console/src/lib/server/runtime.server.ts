@@ -37,7 +37,7 @@ const requireAnalyticsSupport = async <TContext>(hotUpdater: unknown) => {
     !supportsAnalytics<TContext>(hotUpdater)
   ) {
     throw new Error(
-      "Analytics are not supported by the configured database adapter.",
+      "Analytics are not supported by the configured database plugin.",
     );
   }
   const probe = Reflect.get(hotUpdater, internalAnalyticsCapabilityProbe);
@@ -49,7 +49,7 @@ const requireAnalyticsSupport = async <TContext>(hotUpdater: unknown) => {
       Reflect.get(capability, "analytics") !== true
     ) {
       throw new Error(
-        "Analytics are not supported by the configured database adapter.",
+        "Analytics are not supported by the configured database plugin.",
       );
     }
   }

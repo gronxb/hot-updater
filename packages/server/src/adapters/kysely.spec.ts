@@ -7,12 +7,12 @@ import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
-import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
+import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import {
-  DATABASE_ADAPTER_TEST_RESET_SQL,
-  DATABASE_ADAPTER_TEST_SCHEMA_SQL,
-} from "./databaseAdapterTestDatabase";
+  DATABASE_PLUGIN_TEST_RESET_SQL,
+  DATABASE_PLUGIN_TEST_SCHEMA_SQL,
+} from "./databasePluginTestDatabase";
 import { kyselyAdapter } from "./kysely";
 
 class KyselyTestStateError extends Error {
@@ -32,17 +32,17 @@ const getDatabase = (): Kysely<object> => {
   return database;
 };
 
-setupDatabaseAdapterTestSuite({
+setupDatabasePluginTestSuite({
   name: "kyselyAdapter PostgreSQL",
   migrate: async () => {
     client = new PGlite();
     database = new Kysely({ dialect: new PGliteDialect(client) });
-    await client.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    await client.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
   },
-  createAdapter: (): DatabaseAdapterWithCapabilities =>
+  createPlugin: (): DatabaseAdapterWithCapabilities =>
     kyselyAdapter({ db: getDatabase(), provider: "postgresql" }),
   reset: async () => {
-    await getClient().exec(DATABASE_ADAPTER_TEST_RESET_SQL);
+    await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
   },
   dispose: async () => {
     await getDatabase().destroy();
@@ -82,7 +82,7 @@ describe("kyselyAdapter SQLite JSON storage", () => {
       dialect: new PGliteDialect(sqliteClient),
     });
     await sqliteClient.exec(
-      DATABASE_ADAPTER_TEST_SCHEMA_SQL.replace(
+      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replace(
         "metadata jsonb not null default '{}'::jsonb",
         "metadata text not null",
       ).replace("target_cohorts jsonb", "target_cohorts text"),
@@ -132,7 +132,7 @@ describe("kyselyAdapter soft relations", () => {
       },
     });
     await softClient.exec(
-      DATABASE_ADAPTER_TEST_SCHEMA_SQL.replaceAll(
+      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replaceAll(
         " references bundles(id) on delete restrict",
         "",
       ),
@@ -199,7 +199,7 @@ describe("kyselyAdapter bundle_events distinct semantics", () => {
     const localDatabase = new Kysely({
       dialect: new PGliteDialect(localClient),
     });
-    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
     const adapter = kyselyAdapter({
       db: localDatabase,
       provider: "postgresql",
@@ -250,7 +250,7 @@ describe("kyselyAdapter bundle_events distinct semantics", () => {
     const localDatabase = new Kysely({
       dialect: new PGliteDialect(localClient),
     });
-    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
     const adapter = kyselyAdapter({
       db: localDatabase,
       provider: "postgresql",

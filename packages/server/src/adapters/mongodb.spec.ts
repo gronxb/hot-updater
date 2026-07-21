@@ -6,8 +6,8 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { createBundleRowFixture } from "../../../test-utils/src/databaseTestFixtures";
-import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
-import { createDatabaseAdapterCore } from "../db/databaseAdapterCore";
+import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
+import { createDatabasePluginCore } from "../db/databasePluginCore";
 import { supportsAnalytics } from "../db/types";
 import { mongoAdapter } from "./mongodb";
 import { createMongoBundleWhere } from "./mongodbQuery";
@@ -15,10 +15,10 @@ import { createMongoTestHarness } from "./mongodbTestClient";
 
 const harness = createMongoTestHarness();
 
-setupDatabaseAdapterTestSuite({
+setupDatabasePluginTestSuite({
   name: "mongoAdapter v2",
   migrate: () => undefined,
-  createAdapter: () => mongoAdapter({ client: harness.client }),
+  createPlugin: () => mongoAdapter({ client: harness.client }),
   reset: () => harness.reset(),
   dispose: () => harness.close(),
 });
@@ -46,23 +46,23 @@ const createBundleEventRow = (
 });
 
 describe("mongoAdapter capabilities", () => {
-  it("returns an adapter object without an unsafe transaction fallback", () => {
-    const adapter = mongoAdapter({ client: harness.client });
-    const core = createDatabaseAdapterCore(adapter, async () => null);
+  it("returns an plugin object without an unsafe transaction fallback", () => {
+    const plugin = mongoAdapter({ client: harness.client });
+    const core = createDatabasePluginCore(plugin, async () => null);
 
-    expect(adapter).toBeTypeOf("object");
-    expect(adapter.name).toBe("mongodb");
-    expect(adapter.adapterName).toBe("mongodb");
-    expect(adapter.provider).toBe("mongodb");
-    expect(adapter.transaction).toBeUndefined();
-    expect(Reflect.get(adapter, databaseAnalyticsSupport)).toBe(true);
+    expect(plugin).toBeTypeOf("object");
+    expect(plugin.name).toBe("mongodb");
+    expect(plugin.adapterName).toBe("mongodb");
+    expect(plugin.provider).toBe("mongodb");
+    expect(plugin.transaction).toBeUndefined();
+    expect(Reflect.get(plugin, databaseAnalyticsSupport)).toBe(true);
     expect(supportsAnalytics(core.api)).toBe(true);
   });
 
   it("removes a patch inserted concurrently with bundle deletion", async () => {
     harness.reset();
     harness.setBeforeBundlePatchInsert(undefined);
-    const adapter = mongoAdapter({ client: harness.client });
+    const plugin = mongoAdapter({ client: harness.client });
     const bundle = {
       id: "bundle-production",
       platform: "ios" as const,
@@ -82,7 +82,7 @@ describe("mongoAdapter capabilities", () => {
       manifest_file_hash: null,
       asset_base_storage_uri: null,
     };
-    await adapter.create({ model: "bundles", data: bundle });
+    await plugin.create({ model: "bundles", data: bundle });
 
     let releaseInsert: (() => void) | undefined;
     const insertReleased = new Promise<void>((resolve) => {
@@ -97,7 +97,7 @@ describe("mongoAdapter capabilities", () => {
       await insertReleased;
     });
 
-    const createPatch = adapter.create({
+    const createPatch = plugin.create({
       model: "bundle_patches",
       data: {
         id: "patch-production",
@@ -110,23 +110,23 @@ describe("mongoAdapter capabilities", () => {
       },
     });
     await insertObserved;
-    await adapter.delete({
+    await plugin.delete({
       model: "bundles",
       where: [{ field: "id", value: bundle.id }],
     });
     releaseInsert?.();
 
     await expect(createPatch).rejects.toThrow("references a missing bundle");
-    await expect(
-      adapter.findMany({ model: "bundle_patches" }),
-    ).resolves.toEqual([]);
+    await expect(plugin.findMany({ model: "bundle_patches" })).resolves.toEqual(
+      [],
+    );
     harness.setBeforeBundlePatchInsert(undefined);
   });
 
   it("recovers a tombstoned bundle when an aggregate delete is retried", async () => {
     harness.reset();
-    const adapter = mongoAdapter({ client: harness.client });
-    const client = createDatabaseClient(adapter);
+    const plugin = mongoAdapter({ client: harness.client });
+    const client = createDatabaseClient(plugin);
     const bundle = {
       id: "bundle-retry",
       platform: "ios" as const,
@@ -157,11 +157,11 @@ describe("mongoAdapter capabilities", () => {
 
   it("rejects malformed stored bundle rows in the update-info fast path", async () => {
     harness.reset();
-    const adapter = mongoAdapter({ client: harness.client });
+    const plugin = mongoAdapter({ client: harness.client });
     const bundle = createBundleRowFixture("972");
-    await adapter.create({ model: "bundles", data: bundle });
+    await plugin.create({ model: "bundles", data: bundle });
     harness.setBundleField(bundle.id, "should_force_update", "false");
-    const getUpdateInfo = adapter.getUpdateInfo;
+    const getUpdateInfo = plugin.getUpdateInfo;
     if (getUpdateInfo === undefined) throw new Error("fast path unavailable");
 
     await expect(
@@ -171,37 +171,37 @@ describe("mongoAdapter capabilities", () => {
         platform: "ios",
         _updateStrategy: "appVersion",
       }),
-    ).rejects.toThrow("Invalid MongoDB adapter data");
+    ).rejects.toThrow("Invalid MongoDB plugin data");
   });
 });
 
 describe("mongoAdapter bundle_events distinct semantics", () => {
   it("counts distinct installs and keeps the latest row per install", async () => {
     harness.reset();
-    const adapter = mongoAdapter({ client: harness.client });
+    const plugin = mongoAdapter({ client: harness.client });
 
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-a-1", "install-a", 100),
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-a-2", "install-a", 200),
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-b-1", "install-b", 150),
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-b-2", "install-b", 150),
     });
 
     await expect(
-      adapter.count({ model: "bundle_events", distinct: ["install_id"] }),
+      plugin.count({ model: "bundle_events", distinct: ["install_id"] }),
     ).resolves.toBe(2);
     await expect(
-      adapter.findMany({
+      plugin.findMany({
         model: "bundle_events",
         distinctOn: { fields: ["install_id"] },
         orderBy: [
@@ -217,13 +217,13 @@ describe("mongoAdapter bundle_events distinct semantics", () => {
   });
   it("honors explicit null ordering for bundle event queries", async () => {
     harness.reset();
-    const adapter = mongoAdapter({ client: harness.client });
+    const plugin = mongoAdapter({ client: harness.client });
 
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: createBundleEventRow("event-null", "install-a", 100),
     });
-    await adapter.create({
+    await plugin.create({
       model: "bundle_events",
       data: {
         ...createBundleEventRow("event-user", "install-b", 200),
@@ -232,7 +232,7 @@ describe("mongoAdapter bundle_events distinct semantics", () => {
     });
 
     await expect(
-      adapter.findMany({
+      plugin.findMany({
         model: "bundle_events",
         orderBy: [
           { field: "user_id", direction: "asc", nulls: "first" },

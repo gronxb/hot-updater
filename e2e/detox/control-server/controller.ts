@@ -21,7 +21,7 @@ import {
   createDatabaseClient,
   type DatabaseClient,
 } from "../../../plugins/plugin-core/dist/index.mjs";
-import type { DatabaseAdapter } from "../../../plugins/plugin-core/src/types/index.ts";
+import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
 import {
   ConsoleAnalyticsQaError,
   readObservedAnalyticsEvent,
@@ -1315,7 +1315,7 @@ async function withDatabaseClient<T>(
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (options: null) => Promise<{ database: DatabaseAdapter }>;
+      loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
     };
   const originalCwd = process.cwd();
 
@@ -1381,12 +1381,12 @@ async function withAnalyticsRuntime<T>(
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (options: null) => Promise<{ database: DatabaseAdapter }>;
+      loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
     };
   const { createHotUpdater } =
     (await import("../../../packages/server/dist/index.mjs")) as {
       createHotUpdater: (options: {
-        database: DatabaseAdapter;
+        database: DatabasePlugin;
       }) => AnalyticsRuntime;
     };
   const originalCwd = process.cwd();

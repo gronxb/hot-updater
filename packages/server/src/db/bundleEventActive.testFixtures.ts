@@ -1,6 +1,6 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
 
-import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 
 export const ACTIVE_AS_OF_MS = Date.UTC(2026, 6, 17, 12, 30);
 export const HOUR_MS = 60 * 60 * 1000;
@@ -88,7 +88,7 @@ export const createActiveRecoveredEvent = (
 });
 
 export const insertActiveRows = async (rows: readonly BundleEventRow[]) => {
-  const database = createInMemoryDatabaseAdapter();
+  const database = createInMemoryDatabasePlugin();
   await Promise.all(
     rows.map((data) => database.create({ model: "bundle_events", data })),
   );

@@ -163,7 +163,7 @@ express-server/
 
 ## Notes
 
-- The Prisma adapter uses Hot Updater's DatabaseAdapter contract with generated
+- The Prisma adapter uses Hot Updater's DatabasePlugin contract with generated
   Prisma schema artifacts
 - Schema generation is handled by Hot Updater CLI (`db generate`)
 - Database migrations use Prisma's built-in migration system

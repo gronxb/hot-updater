@@ -4,7 +4,7 @@ import {
   ACTIVE_BUNDLE_EVENT_TYPES,
   getActiveWindowDefinition,
 } from "./bundleEventActiveOverview";
-import type { BundleEventAnalyticsWindow, DatabaseAdapter } from "./types";
+import type { BundleEventAnalyticsWindow, DatabasePlugin } from "./types";
 import type { ActiveInstallationWindow } from "./types";
 
 export const BUNDLE_EVENT_SCAN_MAX_ROWS = 50_000;
@@ -21,7 +21,7 @@ export class BundleEventScanLimitExceededError extends Error {
 }
 
 export type BundleEventScanScope = {
-  readonly database: DatabaseAdapter;
+  readonly database: DatabasePlugin;
   readonly cutoffMs: number;
 };
 

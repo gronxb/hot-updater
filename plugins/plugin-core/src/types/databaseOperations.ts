@@ -131,7 +131,7 @@ export type FindManyDatabaseInput<
   readonly select?: TSelect;
 };
 
-export interface TransactionDatabaseAdapter {
+export interface TransactionDatabasePlugin {
   create<
     TModel extends CreateDatabaseModel,
     TSelect extends DatabaseSelect<TModel> | undefined = undefined,
@@ -164,7 +164,7 @@ export interface TransactionDatabaseAdapter {
   ): Promise<SelectedDatabaseRow<TModel, TSelect>[]>;
 }
 
-export interface DatabaseAdapter {
+export interface DatabasePlugin {
   readonly name: string;
   readonly [databaseBundleEventService]?: DatabaseBundleEventService;
   readonly [databaseAnalyticsSupport]?: true;
@@ -201,7 +201,7 @@ export interface DatabaseAdapter {
   getChannels?: () => Promise<string[]>;
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
   transaction?: <TResult>(
-    callback: (transaction: TransactionDatabaseAdapter) => Promise<TResult>,
+    callback: (transaction: TransactionDatabasePlugin) => Promise<TResult>,
   ) => Promise<TResult>;
   onDatabaseUpdated?: () => Promise<void>;
   onUnmount?: () => Promise<void>;
@@ -256,7 +256,7 @@ export type FindManyDatabaseImplementationInput = {
   };
 }[FindManyDatabaseModel];
 
-export interface TransactionDatabaseAdapterImplementation {
+export interface TransactionDatabasePluginImplementation {
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;
@@ -273,7 +273,7 @@ export interface TransactionDatabaseAdapterImplementation {
   ): Promise<readonly DatabaseImplementationResult[]>;
 }
 
-export interface DatabaseAdapterImplementation {
+export interface DatabasePluginImplementation {
   create(
     input: CreateDatabaseImplementationInput,
   ): Promise<DatabaseImplementationResult>;
@@ -292,12 +292,12 @@ export interface DatabaseAdapterImplementation {
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
   transaction?: <TResult>(
     callback: (
-      transaction: TransactionDatabaseAdapterImplementation,
+      transaction: TransactionDatabasePluginImplementation,
     ) => Promise<TResult>,
   ) => Promise<TResult>;
   onUnmount?: () => Promise<void>;
 }
 
-export interface DatabaseAdapterLifecycleHooks {
+export interface DatabasePluginLifecycleHooks {
   readonly onDatabaseUpdated?: () => Promise<void>;
 }

@@ -1,5 +1,5 @@
 import type {
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
   DatabaseWhere,
 } from "@hot-updater/plugin-core";
 import { bundleToRow } from "@hot-updater/plugin-core";
@@ -12,7 +12,7 @@ import {
 import { loadRows } from "./standaloneLegacyData";
 
 type LegacyReads = Pick<
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
   "count" | "findOne" | "findMany"
 >;
 

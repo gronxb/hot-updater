@@ -1,4 +1,4 @@
-import type { DatabaseAdapterImplementation } from "@hot-updater/plugin-core";
+import type { DatabasePluginImplementation } from "@hot-updater/plugin-core";
 import {
   bundleToPatchRows,
   bundleToRow,
@@ -14,7 +14,7 @@ import { StandaloneDatabaseError } from "./standaloneHttp";
 import { loadRows } from "./standaloneLegacyData";
 
 type LegacyWrites = Pick<
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
   "create" | "update" | "delete"
 >;
 

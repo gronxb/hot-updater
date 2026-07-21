@@ -1,7 +1,7 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
 import { expect, vi } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { BUNDLE_EVENT_SCAN_PAGE_SIZE } from "./bundleEventScan";
 
 export const createEvent = (
@@ -41,7 +41,7 @@ export const createRecoveredEvent = (
 });
 
 export const insertRows = async (rows: readonly BundleEventRow[]) => {
-  const database = createInMemoryDatabaseAdapter();
+  const database = createInMemoryDatabasePlugin();
   await Promise.all(
     rows.map((data) => database.create({ model: "bundle_events", data })),
   );

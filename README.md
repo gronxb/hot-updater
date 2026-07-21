@@ -47,8 +47,7 @@
   - **Web Console**: Intuitive update management interface
   - **Bundle Diffing**: Reuse unchanged files and ship compact Hermes patches
     for smaller OTA downloads
-  - **Adapter System**: Build, storage, database, and integration adapters for
-    the tools and infrastructure you already use
+  - **Plugin System**: Support for various storage providers (AWS S3, Cloudflare R2 + D1, etc.)
   - **Version Control**: Robust app version management through semantic versioning
   - **New Architecture**: Support for new architecture like React Native
 
@@ -68,15 +67,16 @@
   See the [Bundle Diffing guide](https://hot-updater.dev/docs/guides/bundle-diffing)
   for the full runtime behavior and fallback rules.
 
-  ## Adapter System
 
-  Hot Updater provides high extensibility through build, storage, and database adapters, allowing users to configure each integration according to their needs.
+  ## Plugin System
 
-  ### Adapter Types
+  Hot Updater provides high extensibility through its plugin system. Each functionality like build, storage, and database is separated into plugins, allowing users to configure them according to their needs.
 
-  - **Build Adapter**: Support for bundlers like Metro, Re.Pack, Expo
-  - **Storage Adapter**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage
-  - **Database Adapter**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
+  ### Plugin Types
+
+  - **Build Plugin**: Support for bundlers like Metro, Re.Pack, Expo
+  - **Storage Plugin**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage
+  - **Database Plugin**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
 
   ### Configuration Example
 

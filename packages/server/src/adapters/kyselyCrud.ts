@@ -3,7 +3,7 @@ import type {
   BundlePatchRow,
   BundleRow,
   DatabaseWhere,
-  TransactionDatabaseAdapterImplementation,
+  TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import { sql, type QueryExecutorProvider, type RawBuilder } from "kysely";
 
@@ -13,14 +13,14 @@ import {
   type StoredBundleRow,
   toStoredBundleRow,
   toStoredBundleUpdate,
-} from "./databaseAdapterUtils";
+} from "./databasePluginUtils";
 import { buildKyselyWhere } from "./kyselyQuery";
 
 class KyselyAdapterInvariantError extends Error {
   readonly name = "KyselyAdapterInvariantError";
 
   constructor(readonly reason: string) {
-    super(`Kysely adapter invariant failed: ${reason}`);
+    super(`Kysely plugin invariant failed: ${reason}`);
   }
 }
 
@@ -241,7 +241,7 @@ export const createKyselyCrud = (
   executor: QueryExecutorProvider,
   provider: Exclude<ORMSQLProvider, "mssql">,
   relationMode: RelationMode = "foreign-keys",
-): TransactionDatabaseAdapterImplementation => ({
+): TransactionDatabasePluginImplementation => ({
   async create(input) {
     switch (input.model) {
       case "bundles":

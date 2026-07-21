@@ -42,7 +42,7 @@ type AnalyticsOverviewDependencies = {
 
 export class AnalyticsNotSupportedError extends Error {
   constructor() {
-    super("Analytics are not supported by the configured database adapter.");
+    super("Analytics are not supported by the configured database plugin.");
     this.name = "AnalyticsNotSupportedError";
   }
 }

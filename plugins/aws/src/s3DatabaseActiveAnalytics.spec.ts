@@ -14,10 +14,10 @@ beforeEach(() => s3Mock.reset());
 
 describe("S3 active installation Analytics capability", () => {
   it("exposes no Analytics service and sends no S3 request", () => {
-    const adapter = s3Database({ bucketName: "analytics-disabled" });
+    const plugin = s3Database({ bucketName: "analytics-disabled" });
 
-    expect(Reflect.get(adapter, databaseAnalyticsSupport)).toBeUndefined();
-    expect(Reflect.get(adapter, databaseBundleEventService)).toBeUndefined();
+    expect(Reflect.get(plugin, databaseAnalyticsSupport)).toBeUndefined();
+    expect(Reflect.get(plugin, databaseBundleEventService)).toBeUndefined();
     expect(s3Mock.calls()).toHaveLength(0);
   });
 });

@@ -11,12 +11,12 @@ import {
 import { drizzle } from "drizzle-orm/pglite";
 import { describe, expect, it, vi } from "vitest";
 
-import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
+import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import {
-  DATABASE_ADAPTER_TEST_RESET_SQL,
-  DATABASE_ADAPTER_TEST_SCHEMA_SQL,
-} from "./databaseAdapterTestDatabase";
+  DATABASE_PLUGIN_TEST_RESET_SQL,
+  DATABASE_PLUGIN_TEST_SCHEMA_SQL,
+} from "./databasePluginTestDatabase";
 import { drizzleAdapter } from "./drizzle";
 
 const bundles = pgTable("bundles", {
@@ -87,17 +87,17 @@ const getDatabase = (): ReturnType<typeof drizzle<typeof schema>> => {
   return database;
 };
 
-setupDatabaseAdapterTestSuite({
+setupDatabasePluginTestSuite({
   name: "drizzleAdapter PostgreSQL",
   migrate: async () => {
     client = new PGlite();
-    await client.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    await client.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
     database = drizzle(client, { schema });
   },
-  createAdapter: (): DatabaseAdapterWithCapabilities =>
+  createPlugin: (): DatabaseAdapterWithCapabilities =>
     drizzleAdapter({ db: getDatabase(), provider: "postgresql" }),
   reset: async () => {
-    await getClient().exec(DATABASE_ADAPTER_TEST_RESET_SQL);
+    await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
   },
   dispose: async () => {
     await getClient().close();
@@ -131,7 +131,7 @@ const createBundleEventRow = (
 describe("drizzleAdapter schema requirements", () => {
   it("supports bundle event reads through a lazy database", async () => {
     const localClient = new PGlite();
-    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
     const localDatabase = drizzle(localClient, { schema });
     const resolveDatabase = vi.fn(async () => localDatabase);
     const adapter = drizzleAdapter({
@@ -190,7 +190,7 @@ describe("drizzleAdapter schema requirements", () => {
 describe("drizzleAdapter bundle_events distinct semantics", () => {
   it("counts distinct installs and keeps the latest row per install", async () => {
     const localClient = new PGlite();
-    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
     const localDatabase = drizzle(localClient, { schema });
     const adapter = drizzleAdapter({
       db: localDatabase,
@@ -238,7 +238,7 @@ describe("drizzleAdapter bundle_events distinct semantics", () => {
   });
   it("honors explicit null ordering for bundle event queries", async () => {
     const localClient = new PGlite();
-    await localClient.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
     const localDatabase = drizzle(localClient, { schema });
     const adapter = drizzleAdapter({
       db: localDatabase,

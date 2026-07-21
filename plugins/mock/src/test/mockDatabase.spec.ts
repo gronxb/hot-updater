@@ -1,11 +1,11 @@
 import {
   createDatabaseClient,
-  type DatabaseAdapter,
+  type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  setupDatabaseAdapterTestSuite,
+  setupDatabasePluginTestSuite,
   setupDatabaseClientTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "../../../../packages/test-utils/src/index";
@@ -25,7 +25,7 @@ const resetData = (): void => {
   data.bundleEvents.clear();
 };
 
-const createAdapter = (): DatabaseAdapter =>
+const createPlugin = (): DatabasePlugin =>
   mockDatabase({ data, latency: DEFAULT_LATENCY });
 
 beforeEach(() => {
@@ -34,9 +34,9 @@ beforeEach(() => {
 
 data = createMockDatabaseData();
 
-setupDatabaseAdapterTestSuite({
-  name: "mock fixed-model database adapter",
-  createAdapter,
+setupDatabasePluginTestSuite({
+  name: "mock fixed-model database plugin",
+  createPlugin,
   migrate: () => undefined,
   reset: resetData,
   dispose: () => undefined,
@@ -44,7 +44,7 @@ setupDatabaseAdapterTestSuite({
 
 setupDatabaseClientTestSuite({
   name: "mock database aggregate client",
-  createAdapter,
+  createPlugin,
   createClient: createDatabaseClient,
   migrate: () => undefined,
   reset: resetData,
@@ -54,21 +54,21 @@ setupDatabaseClientTestSuite({
 setupGetUpdateInfoTestSuite({
   getUpdateInfo: async (bundles, args) => {
     resetData();
-    const adapter = createAdapter();
-    const client = createDatabaseClient(adapter);
+    const plugin = createPlugin();
+    const client = createDatabaseClient(plugin);
     for (const bundle of bundles) {
       await client.insertBundle(bundle);
     }
-    return adapter.getUpdateInfo?.(args) ?? null;
+    return plugin.getUpdateInfo?.(args) ?? null;
   },
 });
 
 describe("mock database provider", () => {
   it("rolls back all fixed-model changes when a transaction rejects", async () => {
-    const adapter = createAdapter();
+    const plugin = createPlugin();
 
     await expect(
-      adapter.transaction?.(async (transaction) => {
+      plugin.transaction?.(async (transaction) => {
         await transaction.create({
           model: "bundles",
           data: {
@@ -96,7 +96,7 @@ describe("mock database provider", () => {
     ).rejects.toThrow("rollback fixture");
 
     await expect(
-      adapter.findOne({
+      plugin.findOne({
         model: "bundles",
         where: [{ field: "id", value: "bundle-rollback" }],
       }),

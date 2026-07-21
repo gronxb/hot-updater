@@ -1,10 +1,10 @@
 import {
-  createDatabaseAdapter,
+  createDatabasePlugin,
   type DatabaseWhereOperator,
-  type DatabaseAdapterImplementation,
+  type DatabasePluginImplementation,
   type FindManyDatabaseImplementationInput,
   resolveUpdateInfoFromBundles,
-  type TransactionDatabaseAdapterImplementation,
+  type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import admin from "firebase-admin";
 import type {
@@ -33,7 +33,7 @@ import {
 import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
 
 type FirebaseMutation<TResult> = (
-  database: TransactionDatabaseAdapterImplementation,
+  database: TransactionDatabasePluginImplementation,
 ) => Promise<TResult>;
 
 type FirebaseBundleEventsFindManyInput = Extract<
@@ -93,7 +93,7 @@ const loadFirebaseBundleEvents = async (
 };
 
 const exactId = (
-  input: Parameters<DatabaseAdapterImplementation["findOne"]>[0],
+  input: Parameters<DatabasePluginImplementation["findOne"]>[0],
 ): string | undefined => {
   if (input.where?.length !== 1) return undefined;
   const [condition] = input.where;
@@ -105,9 +105,9 @@ const exactId = (
 };
 
 export const firebaseDatabase = (config: admin.AppOptions) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "firebaseDatabase",
-    adapter: (): DatabaseAdapterImplementation => {
+    plugin: (): DatabasePluginImplementation => {
       const existingApp = admin.apps.find((app) => app !== null);
       const app = existingApp ?? admin.initializeApp(config);
       const db = admin.firestore(app);

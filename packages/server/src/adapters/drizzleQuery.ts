@@ -16,7 +16,7 @@ import {
 } from "drizzle-orm";
 
 import type { ORMSQLProvider } from "../db/types";
-import { escapeGlobPattern, escapeLikePattern } from "./databaseAdapterUtils";
+import { escapeGlobPattern, escapeLikePattern } from "./databasePluginUtils";
 import type { DrizzleTable } from "./drizzleLazyDB";
 
 class InvalidDatabasePredicateError extends Error {

@@ -1,4 +1,4 @@
-import type { TransactionDatabaseAdapterImplementation } from "@hot-updater/plugin-core";
+import type { TransactionDatabasePluginImplementation } from "@hot-updater/plugin-core";
 import {
   and,
   asc,
@@ -15,7 +15,7 @@ import {
   fromStoredBundleRow,
   toStoredBundleRow,
   toStoredBundleUpdate,
-} from "./databaseAdapterUtils";
+} from "./databasePluginUtils";
 import type { DrizzleProvider } from "./drizzle";
 import {
   requireDrizzleBundleEventsQuery,
@@ -116,7 +116,7 @@ const countDistinctRows = (
 export const createDrizzleCrud = (
   db: DrizzleDB,
   provider: DrizzleProvider,
-): TransactionDatabaseAdapterImplementation => {
+): TransactionDatabasePluginImplementation => {
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
   const bundleEvents = getDrizzleTable(db, "bundle_events");

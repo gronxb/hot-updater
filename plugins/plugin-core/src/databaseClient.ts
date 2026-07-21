@@ -11,10 +11,10 @@ import type {
   BundleRow,
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
-  DatabaseAdapter,
+  DatabasePlugin,
   DatabaseWhere,
   PaginatedResult,
-  TransactionDatabaseAdapter,
+  TransactionDatabasePlugin,
 } from "./types";
 
 const PAGE_SIZE = 100;
@@ -28,7 +28,7 @@ export interface DatabaseClient {
   updateBundleById(bundleId: string, update: Partial<Bundle>): Promise<void>;
   deleteBundleById(bundleId: string): Promise<void>;
   /**
-   * Runs multiple aggregate mutations in one adapter transaction when
+   * Runs multiple aggregate mutations in one plugin transaction when
    * available. Without transaction support, operations run sequentially and
    * may leave partial state when the callback rejects.
    */
@@ -47,9 +47,9 @@ export class DatabaseBundleNotFoundError extends Error {
   }
 }
 
-const transactionAdapter = (
-  database: TransactionDatabaseAdapter,
-): DatabaseAdapter => ({
+const transactionPlugin = (
+  database: TransactionDatabasePlugin,
+): DatabasePlugin => ({
   name: "transaction",
   ...database,
 });
@@ -103,7 +103,7 @@ const toBundleWhere = (
 };
 
 const loadBundleRows = async (
-  database: TransactionDatabaseAdapter,
+  database: TransactionDatabasePlugin,
   where?: readonly DatabaseWhere<"bundles">[],
 ): Promise<BundleRow[]> => {
   const rows: BundleRow[] = [];
@@ -120,7 +120,7 @@ const loadBundleRows = async (
 };
 
 const loadPatchRows = async (
-  database: TransactionDatabaseAdapter,
+  database: TransactionDatabasePlugin,
   ownerIds: readonly string[],
 ): Promise<BundlePatchRow[]> => {
   if (ownerIds.length === 0) return [];
@@ -138,7 +138,7 @@ const loadPatchRows = async (
 };
 
 const hydrateRows = async (
-  database: TransactionDatabaseAdapter,
+  database: TransactionDatabasePlugin,
   ownerRows: readonly BundleRow[],
 ): Promise<Bundle[]> => {
   const patchRows = await loadPatchRows(
@@ -163,7 +163,7 @@ const hydrateRows = async (
 };
 
 const responsePage = async (
-  database: TransactionDatabaseAdapter,
+  database: TransactionDatabasePlugin,
   options: DatabaseBundleQueryOptions,
 ): Promise<PaginatedResult> => {
   const where = toBundleWhere(options.where);
@@ -187,40 +187,40 @@ const responsePage = async (
 };
 
 export const createDatabaseClient = (
-  adapter: DatabaseAdapter,
+  plugin: DatabasePlugin,
 ): DatabaseClient => {
   const mutate = async (
-    operation: (database: TransactionDatabaseAdapter) => Promise<void>,
+    operation: (database: TransactionDatabasePlugin) => Promise<void>,
   ): Promise<void> => {
-    if (adapter.transaction) {
-      await adapter.transaction(operation);
+    if (plugin.transaction) {
+      await plugin.transaction(operation);
     } else {
-      await operation(adapter);
+      await operation(plugin);
     }
-    await adapter.onDatabaseUpdated?.();
+    await plugin.onDatabaseUpdated?.();
   };
 
   const getBundleById = async (id: string): Promise<Bundle | null> => {
-    const row = await adapter.findOne({
+    const row = await plugin.findOne({
       model: "bundles",
       where: [{ field: "id", value: id }],
     });
     if (!row) return null;
-    return (await hydrateRows(adapter, [row]))[0] ?? null;
+    return (await hydrateRows(plugin, [row]))[0] ?? null;
   };
 
   const getBundles = (options: DatabaseBundleQueryOptions) =>
-    responsePage(adapter, options);
+    responsePage(plugin, options);
 
   const mutateBatch = async <TResult>(
     operation: (client: DatabaseMutationClient) => Promise<TResult>,
   ): Promise<TResult> => {
-    const run = (database: TransactionDatabaseAdapter) =>
-      operation(createDatabaseClient(transactionAdapter(database)));
-    const result = adapter.transaction
-      ? await adapter.transaction(run)
-      : await run(adapter);
-    await adapter.onDatabaseUpdated?.();
+    const run = (database: TransactionDatabasePlugin) =>
+      operation(createDatabaseClient(transactionPlugin(database)));
+    const result = plugin.transaction
+      ? await plugin.transaction(run)
+      : await run(plugin);
+    await plugin.onDatabaseUpdated?.();
     return result;
   };
 
@@ -228,10 +228,10 @@ export const createDatabaseClient = (
     getBundleById,
     getBundles,
     async getChannels() {
-      if (adapter.getChannels) return adapter.getChannels();
+      if (plugin.getChannels) return plugin.getChannels();
       const channels = new Set<string>();
       for (let offset = 0; ; offset += PAGE_SIZE) {
-        const rows = await adapter.findMany({
+        const rows = await plugin.findMany({
           model: "bundles",
           select: ["channel"],
           limit: PAGE_SIZE,
@@ -246,8 +246,8 @@ export const createDatabaseClient = (
       }
     },
     async getUpdateInfo(args) {
-      if (adapter.getUpdateInfo) {
-        return adapter.getUpdateInfo(args);
+      if (plugin.getUpdateInfo) {
+        return plugin.getUpdateInfo(args);
       }
       const channel = args.channel ?? "production";
       const minBundleId = args.minBundleId ?? NIL_UUID;
@@ -260,8 +260,8 @@ export const createDatabaseClient = (
           ? { fingerprintHash: args.fingerprintHash }
           : { targetAppVersionNotNull: true }),
       };
-      const rows = await loadBundleRows(adapter, toBundleWhere(where));
-      const bundles = (await hydrateRows(adapter, rows)).filter((bundle) =>
+      const rows = await loadBundleRows(plugin, toBundleWhere(where));
+      const bundles = (await hydrateRows(plugin, rows)).filter((bundle) =>
         bundleMatchesQueryWhere(bundle, where),
       );
       return resolveUpdateInfoFromBundles({ args, bundles });

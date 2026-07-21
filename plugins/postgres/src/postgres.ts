@@ -1,7 +1,7 @@
 import type {
   CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
   DatabaseModel,
   DatabaseWhere,
   DeleteDatabaseImplementationInput,
@@ -9,7 +9,7 @@ import type {
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   Kysely,
   PostgresDialect,
@@ -130,7 +130,7 @@ const buildWhere = (
 
 const createPostgresImplementation = (
   db: Kysely<Database>,
-): DatabaseAdapterImplementation => ({
+): DatabasePluginImplementation => ({
   async create(input: CreateDatabaseImplementationInput) {
     switch (input.model) {
       case "bundles":
@@ -277,9 +277,9 @@ const createPostgresImplementation = (
 });
 
 export const postgres = (config: PostgresConfig) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "postgres",
-    adapter: () => {
+    plugin: () => {
       const { dialect, ...poolConfig } = config;
       if (dialect !== undefined) {
         return createPostgresImplementation(new Kysely<Database>({ dialect }));

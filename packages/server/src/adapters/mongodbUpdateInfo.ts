@@ -2,7 +2,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import type {
   BundlePatchRow,
   BundleRow,
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import {
   filterCompatibleAppVersions,
@@ -26,9 +26,7 @@ const WITHOUT_MONGO_ID = {
   _id: 0,
   _hot_updater_deletion_token: 0,
 } as const;
-type GetUpdateInfo = NonNullable<
-  DatabaseAdapterImplementation["getUpdateInfo"]
->;
+type GetUpdateInfo = NonNullable<DatabasePluginImplementation["getUpdateInfo"]>;
 
 export const createMongoGetUpdateInfo = (
   collections: MongoUpdateCollections,

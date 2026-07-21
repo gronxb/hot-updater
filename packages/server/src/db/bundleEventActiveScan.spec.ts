@@ -1,7 +1,7 @@
 import type { BundleEventRow } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import {
   ACTIVE_AS_OF_MS,
   DAY_MS,
@@ -63,7 +63,7 @@ describe("active installation bounded scan", () => {
   it("throws the stable typed limit for 50,001 matching rows", async () => {
     // Given
     vi.spyOn(Date, "now").mockReturnValue(ACTIVE_AS_OF_MS);
-    const database = createInMemoryDatabaseAdapter();
+    const database = createInMemoryDatabasePlugin();
     vi.spyOn(database, "findMany").mockResolvedValue(
       Array.from(
         { length: 50_001 },

@@ -1,6 +1,0 @@
-{
-  "title": "Integration Adapters",
-  "description": "Third-party service and tool integrations",
-  "icon": "Plug",
-  "pages": ["sentry", "datadog"]
-}

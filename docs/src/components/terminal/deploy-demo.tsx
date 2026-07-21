@@ -7,7 +7,7 @@ const DEMO_CONFIG: DemoConfig = {
   platform: "ios",
   channel: "production",
   fingerprint: "a1b2c3d4e5f6",
-  adapters: {
+  plugins: {
     build: "bare",
     storage: "s3Storage",
     database: "standaloneRepository",
@@ -42,29 +42,29 @@ export async function runDeployDemo(terminal: Terminal): Promise<void> {
 
   // Building Bundle
   await clack.spinner(
-    `📦  Building Bundle (${DEMO_CONFIG.adapters.build})`,
+    `📦  Building Bundle (${DEMO_CONFIG.plugins.build})`,
     700,
   );
-  await clack.log.message(`✅  Build Complete (${DEMO_CONFIG.adapters.build})`);
+  await clack.log.message(`✅  Build Complete (${DEMO_CONFIG.plugins.build})`);
   await sleep(200);
 
   // Uploading to Storage
   await clack.spinner(
-    `📦  Uploading to Storage (${DEMO_CONFIG.adapters.storage})`,
+    `📦  Uploading to Storage (${DEMO_CONFIG.plugins.storage})`,
     700,
   );
   await clack.log.message(
-    `✅  Upload Complete (${DEMO_CONFIG.adapters.storage})`,
+    `✅  Upload Complete (${DEMO_CONFIG.plugins.storage})`,
   );
   await sleep(500);
 
   // Updating Database
   await clack.spinner(
-    `📦  Updating Database (${DEMO_CONFIG.adapters.database})`,
+    `📦  Updating Database (${DEMO_CONFIG.plugins.database})`,
     700,
   );
   await clack.log.message(
-    `✅  Update Complete (${DEMO_CONFIG.adapters.database})`,
+    `✅  Update Complete (${DEMO_CONFIG.plugins.database})`,
   );
   await sleep(600);
 

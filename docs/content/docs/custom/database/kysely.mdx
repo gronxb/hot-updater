@@ -54,10 +54,6 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
-  routes: {
-    updateCheck: true,
-    bundles: true,
-  },
 });
 ```
 
@@ -91,7 +87,7 @@ Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-
 Configure your CLI to use this self-hosted server.
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
+import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
 import { standaloneRepository } from "@hot-updater/standalone";
@@ -114,33 +110,21 @@ export default defineConfig({
 ```
 
 <Callout type="warn">
-The `storage` adapter must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
+The `storage` plugin must match the `storages` in your server's `createHotUpdater`. Both use `s3Storage` in this example.
 </Callout>
 
 ## API Endpoints
 
-The server automatically creates these endpoints. Analytics read endpoints are
-available because the Kysely adapter supports `bundle_events`. The event
-ingestion endpoint is mounted only when you configure
-`eventIngestion.authorize`; see [Analytics](/docs/guides/analytics).
+The server automatically creates these endpoints:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/hot-updater/version` | Get server version |
 | GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
-| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort` | Check for updates by fingerprint and cohort |
 | GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
-| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId/:cohort` | Check for updates by app version and cohort |
-| POST | `/hot-updater/events` | Record a bundle event (requires `eventIngestion.authorize`) |
 | GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
 | GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
 | POST | `/hot-updater/api/bundles` | Create bundles |
 | PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
-| GET | `/hot-updater/api/bundles/:id/events/summary` | Get a bundle event summary |
-| GET | `/hot-updater/api/bundles/:id/events/analytics` | Get paginated bundle event analytics |
-| GET | `/hot-updater/api/installations` | Search installations |
-| GET | `/hot-updater/api/installations/overview` | Get the installation overview |
-| GET | `/hot-updater/api/installations/active` | Get the active installation overview |
-| GET | `/hot-updater/api/installations/:installId/events` | Get paginated installation event history |

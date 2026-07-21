@@ -3,15 +3,15 @@ import type {
   BundlePatchRow,
   BundleRow,
   DatabaseImplementationResult,
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
   FindManyDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabaseAdapter, createUUIDv7 } from "@hot-updater/plugin-core";
+import { createDatabasePlugin, createUUIDv7 } from "@hot-updater/plugin-core";
 import type { Collection, MongoClient } from "mongodb";
 
 import { createMongoMigrator } from "../db/fixedMigrator";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
-import { hasNullOrderOverrides, sortRowsByOrder } from "./databaseAdapterUtils";
+import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import {
   createMongoBundleWhere,
   createMongoPatchWhere,
@@ -88,7 +88,7 @@ const assertBundleTarget = (
 };
 
 const targetConstraintFilter = (
-  update: Parameters<DatabaseAdapterImplementation["update"]>[0]["update"],
+  update: Parameters<DatabasePluginImplementation["update"]>[0]["update"],
 ): object => {
   if (
     update.target_app_version === null &&
@@ -239,7 +239,7 @@ const findMongoRows = async (
 
 const createMongoImplementation = (
   collections: MongoCollections,
-): DatabaseAdapterImplementation => ({
+): DatabasePluginImplementation => ({
   create: async (input) => {
     switch (input.model) {
       case "bundles":
@@ -384,10 +384,9 @@ export const mongoAdapter = (
   config: MongoDBConfig,
 ): DatabaseAdapterWithCapabilities =>
   Object.assign(
-    createDatabaseAdapter({
+    createDatabasePlugin({
       name: "mongodb",
-      adapter: () =>
-        createMongoImplementation(createCollections(config.client)),
+      plugin: () => createMongoImplementation(createCollections(config.client)),
     }),
     {
       adapterName: "mongodb",

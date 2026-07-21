@@ -2,7 +2,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import type {
   BundlePatchRow,
   BundleRow,
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import {
   filterCompatibleAppVersions,
@@ -42,9 +42,7 @@ const hydrateBundles = async (client: object, rows: readonly BundleRow[]) => {
   );
 };
 
-type GetUpdateInfo = NonNullable<
-  DatabaseAdapterImplementation["getUpdateInfo"]
->;
+type GetUpdateInfo = NonNullable<DatabasePluginImplementation["getUpdateInfo"]>;
 
 export const createPrismaGetUpdateInfo = (client: object): GetUpdateInfo => {
   return async (args) => {
