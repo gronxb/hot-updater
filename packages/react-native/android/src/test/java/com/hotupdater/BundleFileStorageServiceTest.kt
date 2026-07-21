@@ -1,6 +1,8 @@
 package com.hotupdater
 
 import android.content.ContextWrapper
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,6 +14,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.net.URL
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -270,6 +274,47 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `manifest driven install moves blocking work off caller dispatcher`() {
+        val rootDir = temporaryFolder.newFolder("manifest-install-dispatcher")
+        val preferences = InMemoryPreferencesService()
+        val downloadService = RecordingFailedDownloadService()
+        val service = createService(rootDir, preferences, downloadService)
+        val activeDir = createBundleDir(rootDir, "active-bundle")
+        val activeBundleFile = writeFile(activeDir, "index.android.bundle")
+        writeManifest(activeDir, listOf("index.android.bundle"))
+
+        preferences.setItem("HotUpdaterBundleURL", activeBundleFile.absolutePath)
+
+        Executors
+            .newSingleThreadExecutor { runnable -> Thread(runnable, "manifest-caller") }
+            .asCoroutineDispatcher()
+            .use { callerDispatcher ->
+                runBlocking(callerDispatcher) {
+                    val result =
+                        runCatching {
+                            service.updateBundle(
+                                bundleId = "target-bundle",
+                                fileUrl = "https://example.com/bundle.zip",
+                                fileHash = null,
+                                manifestUrl = "https://example.com/manifest.json",
+                                manifestFileHash = "manifest-hash",
+                                changedAssets = emptyMap(),
+                                progressCallback = {},
+                            )
+                        }
+                    assertTrue(result.exceptionOrNull() is HotUpdaterException)
+                }
+            }
+
+        val manifestCall = downloadService.calls.first()
+        assertEquals("https://example.com/manifest.json", manifestCall.first)
+        assertFalse(
+            "Manifest install ran on the caller dispatcher: ${manifestCall.second}",
+            manifestCall.second.contains("manifest-caller"),
+        )
+    }
+
+    @Test
     fun `zip decompression does not write sibling prefix traversal entries`() {
         val rootDir = temporaryFolder.newFolder("zip-sibling-prefix")
         val zipFile = File(rootDir, "bundle.zip")
@@ -293,11 +338,12 @@ class BundleFileStorageServiceTest {
     private fun createService(
         rootDir: File,
         preferences: InMemoryPreferencesService = InMemoryPreferencesService(),
+        downloadService: DownloadService = UnusedDownloadService,
     ): BundleFileStorageService =
         BundleFileStorageService(
             ContextWrapper(null),
             TestFileSystemService(rootDir),
-            UnusedDownloadService,
+            downloadService,
             DecompressService(),
             preferences,
             TEST_ISOLATION_KEY,
@@ -445,6 +491,20 @@ class BundleFileStorageServiceTest {
             fileSizeCallback: ((Long) -> Unit)?,
             progressCallback: (DownloadProgress) -> Unit,
         ): DownloadResult = error("downloadFile should not be called in these tests")
+    }
+
+    private class RecordingFailedDownloadService : DownloadService {
+        val calls = CopyOnWriteArrayList<Pair<String, String>>()
+
+        override suspend fun downloadFile(
+            fileUrl: URL,
+            destination: File,
+            fileSizeCallback: ((Long) -> Unit)?,
+            progressCallback: (DownloadProgress) -> Unit,
+        ): DownloadResult {
+            calls += fileUrl.toString() to Thread.currentThread().name
+            return DownloadResult.Error(IllegalStateException("expected download failure"))
+        }
     }
 
     companion object {
