@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.35.5
+
+### Patch Changes
+
+- 7c12f39: fix(android): ensure BsdiffPatch.apply runs on Dispatchers.IO to prevent ANR
+  - @hot-updater/cli-tools@0.35.5
+  - @hot-updater/core@0.35.5
+  - @hot-updater/js@0.35.5
+  - @hot-updater/plugin-core@0.35.5
+
 ## 0.35.4
 
 ### Patch Changes
