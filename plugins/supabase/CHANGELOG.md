@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Disable Analytics for Supabase until its adapter satisfies the complete
+- Disable Analytics for Supabase until its plugin satisfies the complete
   bundle-event contract.
 
 ## 0.35.3

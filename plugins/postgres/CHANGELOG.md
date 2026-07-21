@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Disable Analytics for the legacy Postgres adapter until it satisfies the
+- Disable Analytics for the legacy Postgres plugin until it satisfies the
   complete bundle-event contract.
 
 ## 0.35.3

@@ -43,14 +43,14 @@ beforeEach(() => {
 
 it("advertises Analytics support", () => {
   // Given / When
-  const adapter = d1Database({
+  const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
   });
 
   // Then
-  expect(adapter[databaseAnalyticsSupport]).toBe(true);
+  expect(plugin[databaseAnalyticsSupport]).toBe(true);
 });
 
 it("projects selected fields after querying physical bundle columns", async () => {
@@ -73,13 +73,13 @@ it("projects selected fields after querying physical bundle columns", async () =
     manifest_file_hash: null,
     asset_base_storage_uri: null,
   });
-  const adapter = d1Database({
+  const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
   });
 
-  const rows = await adapter.findMany({
+  const rows = await plugin.findMany({
     model: "bundles",
     where: [
       {
@@ -108,13 +108,13 @@ it("projects selected fields after querying physical bundle columns", async () =
 
 it("uses a native distinct channel query", async () => {
   state.results.push({ channel: "production" });
-  const adapter = d1Database({
+  const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
   });
 
-  await expect(adapter.getChannels?.()).resolves.toEqual(["production"]);
+  await expect(plugin.getChannels?.()).resolves.toEqual(["production"]);
 
   expect(state.queries[0]?.params).toEqual([]);
   expect(state.queries[0]?.sql).toBe(

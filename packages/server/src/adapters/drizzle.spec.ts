@@ -134,20 +134,20 @@ describe("drizzleAdapter schema requirements", () => {
     await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
     const localDatabase = drizzle(localClient, { schema });
     const resolveDatabase = vi.fn(async () => localDatabase);
-    const adapter = drizzleAdapter({
+    const plugin = drizzleAdapter({
       db: resolveDatabase,
       provider: "postgresql",
       schema,
     });
 
     try {
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("lazy-event", "lazy-install", 100),
       });
 
       await expect(
-        adapter.findMany({ model: "bundle_events" }),
+        plugin.findMany({ model: "bundle_events" }),
       ).resolves.toMatchObject([{ id: "lazy-event" }]);
       expect(resolveDatabase).toHaveBeenCalledOnce();
     } finally {
@@ -159,13 +159,13 @@ describe("drizzleAdapter schema requirements", () => {
     const getDB = vi.fn(() => {
       throw new DrizzleTestStateError();
     });
-    const adapter = drizzleAdapter({
+    const plugin = drizzleAdapter({
       db: getDB,
       provider: "postgresql",
       schema,
     });
 
-    const generated = adapter.generateSchema?.("latest");
+    const generated = plugin.generateSchema?.("latest");
 
     expect(generated?.code).toContain("pgTable");
     expect(getDB).not.toHaveBeenCalled();
@@ -192,34 +192,34 @@ describe("drizzleAdapter bundle_events distinct semantics", () => {
     const localClient = new PGlite();
     await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
     const localDatabase = drizzle(localClient, { schema });
-    const adapter = drizzleAdapter({
+    const plugin = drizzleAdapter({
       db: localDatabase,
       provider: "postgresql",
     });
 
     try {
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-a-1", "install-a", 100),
       });
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-a-2", "install-a", 200),
       });
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-b-1", "install-b", 150),
       });
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-b-2", "install-b", 150),
       });
 
       await expect(
-        adapter.count({ model: "bundle_events", distinct: ["install_id"] }),
+        plugin.count({ model: "bundle_events", distinct: ["install_id"] }),
       ).resolves.toBe(2);
       await expect(
-        adapter.findMany({
+        plugin.findMany({
           model: "bundle_events",
           distinctOn: { fields: ["install_id"] },
           orderBy: [
@@ -240,17 +240,17 @@ describe("drizzleAdapter bundle_events distinct semantics", () => {
     const localClient = new PGlite();
     await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
     const localDatabase = drizzle(localClient, { schema });
-    const adapter = drizzleAdapter({
+    const plugin = drizzleAdapter({
       db: localDatabase,
       provider: "postgresql",
     });
 
     try {
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-null", "install-a", 100),
       });
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: {
           ...createBundleEventRow("event-user", "install-b", 200),
@@ -259,7 +259,7 @@ describe("drizzleAdapter bundle_events distinct semantics", () => {
       });
 
       await expect(
-        adapter.findMany({
+        plugin.findMany({
           model: "bundle_events",
           orderBy: [
             { field: "user_id", direction: "asc", nulls: "first" },

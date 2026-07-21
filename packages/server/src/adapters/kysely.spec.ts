@@ -87,7 +87,7 @@ describe("kyselyAdapter SQLite JSON storage", () => {
         "metadata text not null",
       ).replace("target_cohorts jsonb", "target_cohorts text"),
     );
-    const adapter = kyselyAdapter({
+    const plugin = kyselyAdapter({
       db: sqliteDatabase,
       provider: "sqlite",
     });
@@ -98,14 +98,14 @@ describe("kyselyAdapter SQLite JSON storage", () => {
     };
 
     // When
-    await adapter.create({ model: "bundles", data: bundle });
+    await plugin.create({ model: "bundles", data: bundle });
     const stored = await sqliteClient.query<{
       metadata: string;
       target_cohorts: string;
     }>("select metadata, target_cohorts from bundles where id = $1", [
       bundle.id,
     ]);
-    const restored = await adapter.findOne({
+    const restored = await plugin.findOne({
       model: "bundles",
       where: [{ field: "id", value: bundle.id }],
     });
@@ -137,7 +137,7 @@ describe("kyselyAdapter soft relations", () => {
         "",
       ),
     );
-    const adapter = kyselyAdapter({
+    const plugin = kyselyAdapter({
       db: softDatabase,
       provider: "postgresql",
       relationMode: "fumadb",
@@ -146,12 +146,12 @@ describe("kyselyAdapter soft relations", () => {
     const owner = createBundleRowFixture("952");
 
     try {
-      await adapter.create({ model: "bundles", data: base });
-      await adapter.create({ model: "bundles", data: owner });
+      await plugin.create({ model: "bundles", data: base });
+      await plugin.create({ model: "bundles", data: owner });
       queries.length = 0;
 
       await expect(
-        adapter.create({
+        plugin.create({
           model: "bundle_patches",
           data: createBundlePatchRowFixture(
             "missing-owner",
@@ -162,7 +162,7 @@ describe("kyselyAdapter soft relations", () => {
       ).rejects.toThrow("bundle_patches.bundle_id.foreign-key");
       expect(queries.some((query) => query.endsWith("for update"))).toBe(true);
       await expect(
-        adapter.create({
+        plugin.create({
           model: "bundle_patches",
           data: createBundlePatchRowFixture(
             "missing-base",
@@ -172,10 +172,10 @@ describe("kyselyAdapter soft relations", () => {
         }),
       ).rejects.toThrow("bundle_patches.base_bundle_id.foreign-key");
       await expect(
-        adapter.findMany({ model: "bundle_patches" }),
+        plugin.findMany({ model: "bundle_patches" }),
       ).resolves.toEqual([]);
       queries.length = 0;
-      await adapter.delete({
+      await plugin.delete({
         model: "bundles",
         where: [{ field: "id", value: owner.id }],
       });
@@ -200,34 +200,34 @@ describe("kyselyAdapter bundle_events distinct semantics", () => {
       dialect: new PGliteDialect(localClient),
     });
     await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-    const adapter = kyselyAdapter({
+    const plugin = kyselyAdapter({
       db: localDatabase,
       provider: "postgresql",
     });
 
     try {
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-a-1", "install-a", 100),
       });
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-a-2", "install-a", 200),
       });
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-b-1", "install-b", 150),
       });
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-b-2", "install-b", 150),
       });
 
       await expect(
-        adapter.count({ model: "bundle_events", distinct: ["install_id"] }),
+        plugin.count({ model: "bundle_events", distinct: ["install_id"] }),
       ).resolves.toBe(2);
       await expect(
-        adapter.findMany({
+        plugin.findMany({
           model: "bundle_events",
           distinctOn: { fields: ["install_id"] },
           orderBy: [
@@ -251,17 +251,17 @@ describe("kyselyAdapter bundle_events distinct semantics", () => {
       dialect: new PGliteDialect(localClient),
     });
     await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
-    const adapter = kyselyAdapter({
+    const plugin = kyselyAdapter({
       db: localDatabase,
       provider: "postgresql",
     });
 
     try {
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: createBundleEventRow("event-null", "install-a", 100),
       });
-      await adapter.create({
+      await plugin.create({
         model: "bundle_events",
         data: {
           ...createBundleEventRow("event-user", "install-b", 200),
@@ -270,7 +270,7 @@ describe("kyselyAdapter bundle_events distinct semantics", () => {
       });
 
       await expect(
-        adapter.findMany({
+        plugin.findMany({
           model: "bundle_events",
           orderBy: [
             { field: "user_id", direction: "asc", nulls: "first" },

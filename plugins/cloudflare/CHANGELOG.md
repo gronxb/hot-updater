@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Disable Analytics for Cloudflare D1 and Worker D1 until their adapters satisfy
+- Disable Analytics for Cloudflare D1 and Worker D1 until their plugins satisfy
   the complete bundle-event contract.
 
 ## 0.35.3

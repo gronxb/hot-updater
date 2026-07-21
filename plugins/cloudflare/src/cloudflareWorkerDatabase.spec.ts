@@ -15,18 +15,18 @@ const db: D1Like = {
 
 it("advertises Analytics support", () => {
   // Given / When
-  const adapter = d1WorkerDatabase(db);
+  const plugin = d1WorkerDatabase(db);
 
   // Then
-  expect(adapter[databaseAnalyticsSupport]).toBe(true);
+  expect(plugin[databaseAnalyticsSupport]).toBe(true);
 });
 
 it("uses the configured D1 binding without request context", async () => {
   // Given
-  const adapter = d1WorkerDatabase(db);
+  const plugin = d1WorkerDatabase(db);
 
   // When
-  const channels = adapter.getChannels?.();
+  const channels = plugin.getChannels?.();
 
   // Then
   await expect(channels).resolves.toEqual(["production"]);

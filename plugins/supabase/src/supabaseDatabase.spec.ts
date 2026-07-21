@@ -7,7 +7,7 @@ import { expect, it, vi } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
 
-// allow: SIZE_OK — hoisted PostgREST query/filter state machine for public adapter conformance.
+// allow: SIZE_OK — hoisted PostgREST query/filter state machine for public plugin conformance.
 const { createMockClient, resetMockClient } = vi.hoisted(() => {
   type Row = Record<string, unknown>;
   type TableName = "bundle_events" | "bundle_patches" | "bundles";
@@ -366,28 +366,28 @@ const bundleEvent = (id: string, receivedAtMs: number): BundleEventRow => ({
 
 it("advertises Analytics support", () => {
   // Given / When
-  const adapter = supabaseDatabase({
+  const plugin = supabaseDatabase({
     supabaseUrl: "https://test.supabase.invalid",
     supabaseServiceRoleKey: "test-service-role-key",
   });
 
   // Then
-  expect(adapter[databaseAnalyticsSupport]).toBe(true);
+  expect(plugin[databaseAnalyticsSupport]).toBe(true);
 });
 
 it("applies compound ordering to bundle event pages", async () => {
   resetMockClient();
-  const adapter = supabaseDatabase({
+  const plugin = supabaseDatabase({
     supabaseUrl: "https://test.supabase.invalid",
     supabaseServiceRoleKey: "test-service-role-key",
   });
   await Promise.all(
     [bundleEvent("b", 100), bundleEvent("c", 50), bundleEvent("a", 100)].map(
-      (data) => adapter.create({ model: "bundle_events", data }),
+      (data) => plugin.create({ model: "bundle_events", data }),
     ),
   );
 
-  const result = await adapter.findMany({
+  const result = await plugin.findMany({
     model: "bundle_events",
     orderBy: [
       { field: "received_at_ms", direction: "asc" },

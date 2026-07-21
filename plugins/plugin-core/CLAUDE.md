@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with the plugin-core pac
 
 ## Package Overview
 
-`@hot-updater/plugin-core` is a core utility package that provides shared functionality for storage adapters and database plugins. It contains helper functions, type definitions, and abstractions used by both integration types.
+`@hot-updater/plugin-core` is a core utility package that provides shared functionality for storage and database plugins. It contains helper functions, type definitions, and abstractions used by both integration types.
 
 ## Runtime Compatibility
 
@@ -60,7 +60,7 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 
 ### Type Definitions
 
-Located in `src/types/`, provides TypeScript interfaces for adapters and core functionality.
+Located in `src/types/`, provides TypeScript interfaces for plugins and core functionality.
 
 ## Development Guidelines
 
@@ -115,8 +115,8 @@ pnpm test
 
 This package is used by:
 
-- Storage adapters (AWS, Cloudflare, Supabase, Firebase, Standalone)
+- Storage plugins (AWS, Cloudflare, Supabase, Firebase, Standalone)
 - Database plugins (PostgreSQL, Cloudflare D1, Supabase)
-- Build adapters (Expo, Bare, Re.Pack, Rock)
+- Build plugins (Expo, Bare, Re.Pack, Rock)
 
-Changes here may affect multiple adapters across the ecosystem.
+Changes here may affect multiple plugins across the ecosystem.
