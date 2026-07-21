@@ -1,5 +1,15 @@
 # @hot-updater/react-native
 
+## 0.35.6
+
+### Patch Changes
+
+- ae255f8: fix(android): run manifest-driven bundle installation on the I/O dispatcher
+  - @hot-updater/cli-tools@0.35.6
+  - @hot-updater/core@0.35.6
+  - @hot-updater/js@0.35.6
+  - @hot-updater/plugin-core@0.35.6
+
 ## 0.35.5
 
 ### Patch Changes
