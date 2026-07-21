@@ -429,7 +429,9 @@ class BundleFileStorageService(
                     if (!HashUtils.verifyHash(patchDownloadResult.file, patch.patchFileHash)) {
                         false
                     } else {
-                        BsdiffPatch.apply(sourceFile, patchDownloadResult.file, targetFile)
+                        withContext(Dispatchers.IO) {
+                            BsdiffPatch.apply(sourceFile, patchDownloadResult.file, targetFile)
+                        }
                         HashUtils.verifyHash(targetFile, expectedHash).also { patched ->
                             if (patched) {
                                 Log.d(
