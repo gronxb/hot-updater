@@ -45,8 +45,9 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<HandlerOptions>().toHaveProperty("routes");
     expectTypeOf<HandlerOptions>().toHaveProperty("eventIngestion");
     expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
-      updateCheck: boolean;
-      bundles: boolean;
+      readonly updateCheck: boolean;
+      readonly bundles: boolean;
+      readonly analytics?: boolean;
     }>();
   });
 
