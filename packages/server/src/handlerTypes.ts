@@ -55,18 +55,59 @@ export interface HandlerEventIngestionOptions<TContext = unknown> {
 export interface HandlerOptions<TContext = unknown> {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
-  /** Required authorization and throttling policy for client event writes. */
+  /**
+   * Required authorization and throttling policy for client event writes.
+   * Providing this option mounts `POST /events` when the database supports
+   * Analytics.
+   */
   readonly eventIngestion?: HandlerEventIngestionOptions<TContext>;
-  /** Route groups to mount. The version endpoint is always mounted. */
+  /**
+   * Route groups to mount. `GET /version` is always mounted independently.
+   * All paths are relative to `basePath`.
+   */
   readonly routes?: HandlerRoutes;
 }
 
 export interface HandlerRoutes {
-  /** React Native update-check routes. @default true */
+  /**
+   * Mounts the React Native update-check endpoints:
+   *
+   * - `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId`
+   * - `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort`
+   * - `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId`
+   * - `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort`
+   *
+   * @default true
+   */
   readonly updateCheck: boolean;
-  /** Bundle management routes used by standaloneRepository. @default false */
+  /**
+   * Mounts the bundle management endpoints used by `standaloneRepository`:
+   *
+   * - `GET /api/bundles/channels`
+   * - `GET /api/bundles/:id`
+   * - `GET /api/bundles`
+   * - `POST /api/bundles`
+   * - `PATCH /api/bundles/:id`
+   * - `DELETE /api/bundles/:id`
+   *
+   * @default false
+   */
   readonly bundles: boolean;
-  /** Analytics and installation query routes used by Console. @default false */
+  /**
+   * Mounts the Analytics and installation query endpoints used by Console:
+   *
+   * - `GET /api/bundles/:id/events/summary`
+   * - `GET /api/bundles/:id/events/analytics`
+   * - `GET /api/installations`
+   * - `GET /api/installations/overview`
+   * - `GET /api/installations/active`
+   * - `GET /api/installations/:installId/events`
+   *
+   * These endpoints require a database with Analytics support. This field does
+   * not control `POST /events`; configure `eventIngestion` separately.
+   *
+   * @default false
+   */
   readonly analytics?: boolean;
 }
 
