@@ -1,16 +1,23 @@
 ---
 title: "Analytics"
-description: Enable OTA analytics and support it in a custom database plugin.
+description: Enable OTA analytics and understand the installation data shown in the Console.
 icon: ChartNoAxesCombined
 ---
 
-Analytics records app-ready outcomes and shows installation activity, update
-outcomes, and installation history in the Console. It is opt-in and requires a
-supported database plugin.
+## Overview
+
+Analytics records one app-ready observation when a JavaScript runtime starts.
+The Console uses these observations to show active installations, reported
+bundle outcomes, and installation history.
+
+Analytics is opt-in. It requires a supported database plugin and an event
+ingestion route on the update server.
 
 ## Enable analytics
 
-Enable reporting in the React Native client:
+### Apps using `HotUpdater.init`
+
+Enable Analytics when you initialize a manual update flow:
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -21,34 +28,163 @@ HotUpdater.init({
 });
 ```
 
-For a custom server, also configure `eventIngestion.authorize`. Use end-user
-authentication, platform attestation, or another server-verifiable signal;
-never embed a management credential in the app.
+Call `HotUpdater.init` once, when the runtime is ready to report the current
+launch.
+
+### Apps using `HotUpdater.wrap`
+
+Keep `HotUpdater.wrap` in place for automatic updates. Call
+`HotUpdater.init({ analytics: true })` once before exporting the wrapped app:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+const baseURL = "<your-update-server-url>";
+
+HotUpdater.init({
+  baseURL,
+  analytics: true,
+});
+
+export default HotUpdater.wrap({
+  baseURL,
+  updateStrategy: "appVersion",
+})(App);
+```
+
+Do not replace `HotUpdater.wrap` with `HotUpdater.init` unless your app also
+implements a manual update flow. The `analytics` option belongs to
+`HotUpdater.init`; it is not a `HotUpdater.wrap` option.
+
+### Send authentication headers
+
+`requestHeaders` are shared by update checks and app-ready reports. Use the
+same end-user credential that your server verifies in
+`eventIngestion.authorize`:
+
+```tsx
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  analytics: true,
+  requestHeaders: {
+    Authorization: `Bearer ${userAccessToken}`,
+  },
+});
+```
+
+Never embed a management credential or provider service key in the app.
+
+## Associate reports with a user
+
+Analytics always counts installations by `installId`. You can attach a
+`userId` and `username` as searchable aliases:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.setUser({
+  userId: currentUser.id,
+  username: currentUser.username,
+});
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  analytics: true,
+});
+```
+
+Call `setUser` before `init` when the identity is already available. If the
+user signs in later, call `setUser` then; the identity appears on future
+app-ready reports. Clear the persisted aliases on sign-out:
+
+```tsx
+HotUpdater.setUser(null);
+```
+
+Changing or clearing an alias does not rewrite historical reports. Multiple
+installations with the same `userId` remain separate installations.
+
+## Configure a custom server
+
+Managed Cloudflare, Firebase, and Supabase runtimes include event ingestion.
+For a custom server, add an explicit authorization policy to
+`createHotUpdater`:
+
+```ts
+import { createHotUpdater } from "@hot-updater/server";
+
+export const hotUpdater = createHotUpdater({
+  database,
+  storages,
+  eventIngestion: {
+    authorize: async (request) => {
+      const authorization = request.headers.get("Authorization");
+      return authorization != null && verifyEndUserToken(authorization);
+    },
+  },
+});
+```
+
+Replace `verifyEndUserToken` with your application's authentication or
+attestation check.
+
+Without `eventIngestion.authorize`, the server does not mount `POST /events`.
+Authorization runs before the server parses the event body. Add rate limits
+and quotas at the same boundary because event payloads are untrusted telemetry.
+
+## Understand the Console data
+
+| Console value | Meaning |
+| --- | --- |
+| Active installations | Distinct `installId` values that reported app ready during the selected 24-hour, 7-day, or 30-day window |
+| Latest reported bundle | The bundle from the latest report received for each installation in the window |
+| Applied on | Distinct installations that reported an `UPDATE_APPLIED` transition to a bundle |
+| Recovered from | Distinct installations that reported a `RECOVERED` transition away from a bundle |
+| Configured rollout | The rollout availability stored on the bundle, independent from received reports |
+
+An active installation is not realtime presence or a complete fleet count. A
+device appears only after the app starts and its report reaches the server.
+
+Hot Updater records three app-ready outcomes:
+
+- `UPDATE_APPLIED` records the previous and current bundle after an update.
+- `RECOVERED` records the failed bundle and the bundle restored after recovery.
+- `UNCHANGED` records the currently active bundle without an update outcome.
+
+`UNCHANGED` contributes to active-installation windows and latest-bundle
+distribution. It is excluded from Applied on, Recovered from, and transition
+history.
+
+Each JavaScript runtime makes at most one best-effort reporting attempt.
+Timeouts, unsupported servers, and non-success responses produce a warning.
+They do not block app readiness, call the app's `onError`, or retry in the
+background.
 
 ## Database support
 
-| Database plugin                              | Analytics     | Notes                                                                             |
-| -------------------------------------------- | ------------- | --------------------------------------------------------------------------------- |
-| Supabase Database                            | Supported     | Uses append-only row storage.                                                     |
-| Cloudflare D1 Database                       | Supported     | Uses append-only row storage.                                                     |
-| Firestore Database                           | Supported     | Uses append-only document storage.                                                |
-| PostgreSQL Database                          | Supported     | Uses append-only row storage.                                                     |
-| Drizzle, Kysely, Prisma, and MongoDB plugins | Supported     | The plugin must include the `bundle_events` model.                                |
-| Standalone Database                          | Conditional   | Discovers the remote database capability from the server automatically.           |
-| AWS S3 Database (`s3Database`)               | Not supported | S3 Database replaces a shared snapshot, so concurrent event appends are not safe. |
+| Database plugin | Analytics | Notes |
+| --- | --- | --- |
+| Supabase Database | Supported | Uses append-only row storage. |
+| Cloudflare D1 Database | Supported | Uses append-only row storage. |
+| Firestore Database | Supported | Uses append-only document storage. |
+| PostgreSQL Database | Supported | Uses append-only row storage. |
+| Drizzle, Kysely, Prisma, and MongoDB plugins | Supported | The plugin must include the `bundle_events` model. |
+| Standalone Database | Conditional | Discovers the remote database capability from the server automatically. |
+| AWS S3 Database (`s3Database`) | Not supported | S3 Database replaces a shared snapshot, so concurrent event appends are not safe. |
 
-The Console detects this capability automatically and hides analytics when the
+The Console detects this capability automatically and hides Analytics when the
 configured database does not support it.
 
 Existing `standaloneRepository` configuration does not change. There is no
-`supportsAnalytics` option to set: record-backed servers advertise support,
-while snapshot-backed servers such as S3 advertise that analytics is unavailable.
+`supportsAnalytics` option to set. Record-backed servers advertise support,
+while snapshot-backed servers such as S3 advertise that Analytics is
+unavailable.
 
-## Support analytics in a custom database plugin
+## Support Analytics in a custom database plugin
 
 Use `createDatabasePlugin` for a row- or document-oriented database plugin. It
-marks the plugin as analytics-capable and the server provides the shared
-analytics queries:
+marks the plugin as Analytics-capable, and the server provides the shared
+Analytics queries:
 
 ```ts
 import {
@@ -64,18 +200,47 @@ export const myDatabase = (implementation: DatabasePluginImplementation) =>
 ```
 
 The implementation must provide `create`, `update`, `delete`, `count`,
-`findOne`, and `findMany` for the fixed `bundles`, `bundle_patches`,
-and `bundle_events` models. For analytics, `bundle_events` must:
+`findOne`, and `findMany` for the fixed `bundles`, `bundle_patches`, and
+`bundle_events` models. For Analytics, `bundle_events` must:
 
 - allow concurrency-safe, append-only creates;
-- support the plugin's filters, ordering, selection, pagination, and distinct
-  queries; and
+- support filtering, ordering, selection, pagination, and distinct queries;
+  and
 - remain independent from bundle deletion because events may reference old or
   unknown bundle IDs.
 
-Do not use `createBlobDatabasePlugin` when analytics is required. Blob-backed
-database plugins replace a shared snapshot and intentionally do not expose the
-analytics capability. This is why `s3Database` does not support analytics.
+The shared Analytics implementation scans at most 50,000 matching event rows.
+If a query exceeds that limit, the server returns HTTP 503 with code
+`ANALYTICS_SCAN_LIMIT_EXCEEDED`. Narrow the query or provide a dedicated bundle
+event service for larger datasets.
 
-For an existing deployment, add the `bundle_events` schema before enabling
-client reporting.
+Do not use `createBlobDatabasePlugin` when Analytics is required. Blob-backed
+database plugins replace a shared snapshot and intentionally do not expose the
+Analytics capability. This is why `s3Database` does not support Analytics.
+
+See [Custom Database Plugin](/docs/database-plugins/custom-database) for the
+complete fixed-model contract and conformance tests.
+
+## Deploy safely
+
+Deploy the database schema and server before enabling Analytics in a client:
+
+1. Add the `bundle_events` table or collection.
+2. Deploy the server that accepts and queries app-ready reports.
+3. Confirm the Console shows Analytics for the database capability.
+4. Release a client with `analytics: true`.
+
+Old clients continue to work with the new server. A new client connected to an
+old or unsupported server logs a warning and continues, but that report is not
+stored.
+
+Hot Updater does not add foreground heartbeats, sessions, durable retries, or
+an event-retention policy. Configure retention and monitoring for your own
+deployment.
+
+## Related APIs
+
+- [`HotUpdater.init()`](/docs/react-native-api/init)
+- [`HotUpdater.getInstallId()`](/docs/react-native-api/getInstallId)
+- [`HotUpdater.setUser()`](/docs/react-native-api/setUser)
+- [`HotUpdater.notifyAppReady()`](/docs/react-native-api/notifyAppReady)

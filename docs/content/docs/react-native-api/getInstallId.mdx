@@ -1,0 +1,32 @@
+---
+title: "getInstallId"
+description: "The `HotUpdater.getInstallId()` function returns the stable ID for the current app installation."
+icon: Fingerprint
+---
+
+## Usage
+
+Use `HotUpdater.getInstallId()` when you need to correlate app diagnostics with
+the installation shown in the Hot Updater Console.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+const installId = HotUpdater.getInstallId();
+console.log("Hot Updater installation:", installId);
+```
+
+## Behavior
+
+- Returns a stable string for the current app installation.
+- Persists across app restarts and OTA updates.
+- Changes when the app is reinstalled or its native application data is reset.
+- Identifies an installation, not a person or account.
+
+Analytics always aggregates by this value. A `userId` or `username` set with
+`HotUpdater.setUser()` is a searchable alias and never replaces the install ID.
+
+## Related APIs
+
+- [`HotUpdater.setUser()`](/docs/react-native-api/setUser)
+- [Analytics](/docs/guides/analytics)
