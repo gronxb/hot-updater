@@ -116,6 +116,11 @@ import { createHotUpdater } from "@hot-updater/server";
 export const hotUpdater = createHotUpdater({
   database,
   storages,
+  routes: {
+    updateCheck: true,
+    bundles: true,
+    analytics: true,
+  },
   eventIngestion: {
     authorize: async (request) => {
       const authorization = request.headers.get("Authorization");
@@ -131,6 +136,11 @@ attestation check.
 Without `eventIngestion.authorize`, the server does not mount `POST /events`.
 Authorization runs before the server parses the event body. Add rate limits
 and quotas at the same boundary because event payloads are untrusted telemetry.
+
+`routes.analytics: true` mounts the Analytics and installation query routes
+used by Console. It is disabled by default and is independent from bundle
+management. Protect `/api/bundles/*/events*` and `/api/installations*` with the
+same framework authentication used for your other management routes.
 
 ## Understand the Console data
 

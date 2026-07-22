@@ -94,16 +94,18 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 
 ## Route Groups
 
-`createHotUpdater` exposes two configurable route groups:
+`createHotUpdater` exposes three configurable route groups:
 
 - `updateCheck`: update-check endpoints used by React Native clients
 - `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin
+- `analytics`: Analytics and installation query endpoints used by Console
 
-`updateCheck` is mounted by default. `bundles` is disabled by default and must
-be enabled explicitly when the CLI needs bundle-management APIs. When
-`bundles: true`, protect `/api/bundles*` with framework middleware. The
-`/version` endpoint is always mounted for diagnostics. If you provide `routes`,
-specify both configurable route groups.
+`updateCheck` is mounted by default. `bundles` and `analytics` are disabled by
+default and must be enabled explicitly. Protect all enabled `/api/*` management
+routes with framework middleware. The `/version` endpoint is always mounted
+for diagnostics. Event ingestion is controlled separately by
+`eventIngestion.authorize` so a public update server can accept reports without
+exposing Analytics queries.
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
@@ -113,6 +115,7 @@ export const hotUpdater = createHotUpdater({
   routes: {
     updateCheck: true,
     bundles: true,
+    analytics: true,
   },
 });
 ```
@@ -128,6 +131,7 @@ export const hotUpdater = createHotUpdater({
   routes: {
     updateCheck: true,
     bundles: false,
+    analytics: false,
   },
 });
 ```

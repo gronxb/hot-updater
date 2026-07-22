@@ -54,6 +54,12 @@ authorization and throttling policy. Event payloads remain untrusted telemetry;
 deployments are responsible for user-scoped authentication or attestation,
 quotas, logging, and retention.
 
+Analytics and installation query routes are also closed by default. Self-hosted
+servers expose them explicitly with `routes.analytics: true`, independently
+from bundle management routes. Event ingestion remains independently
+configurable so public managed runtimes can accept authorized reports without
+exposing Analytics queries.
+
 Snapshot-backed plugins created with `createBlobDatabasePlugin`, including
 `s3Database`, deliberately leave Analytics disabled because concurrent event
 writes can conflict. The Console hides Analytics based only on capability

@@ -116,6 +116,7 @@ export const createManagementHandler = (
     routes: {
       updateCheck: true,
       bundles: true,
+      analytics: true,
       ...routes,
     },
   });

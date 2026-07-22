@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createHandler } from "./handler";
 import { createApi, createManagementHandler } from "./handler.testFixtures";
 
 describe("createHandler management routes", () => {
@@ -49,6 +50,49 @@ describe("createHandler management routes", () => {
       "bundle-1",
       undefined,
     );
+  });
+
+  it("mounts Analytics routes independently from bundle management", async () => {
+    // Given
+    const api = createApi();
+    api.getBundleEventSummary.mockResolvedValueOnce({
+      installed: 3,
+      recovered: 1,
+    });
+    const handler = createManagementHandler(api, {
+      analytics: true,
+      bundles: false,
+    });
+
+    // When
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles/bundle-1/events/summary",
+      ),
+    );
+
+    // Then
+    expect(response.status).toBe(200);
+  });
+
+  it("does not mount Analytics routes when only bundles are enabled", async () => {
+    // Given
+    const api = createApi();
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+      routes: { updateCheck: true, bundles: true },
+    });
+
+    // When
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles/bundle-1/events/summary",
+      ),
+    );
+
+    // Then
+    expect(response.status).toBe(404);
+    expect(api.getBundleEventSummary).not.toHaveBeenCalled();
   });
 
   it("forwards bounded analytics pagination and window parameters", async () => {

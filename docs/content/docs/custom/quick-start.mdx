@@ -57,6 +57,7 @@ export const hotUpdater = createHotUpdater({
   routes: {
     updateCheck: true,
     bundles: true,
+    analytics: false,
   },
 });
 ```
@@ -64,8 +65,8 @@ export const hotUpdater = createHotUpdater({
 By default, `createHotUpdater` mounts update-check routes and `/version`.
 Bundle management routes used by the CLI `standaloneRepository` plugin must be
 enabled explicitly and protected by framework middleware before mounting the
-handler. When you provide `routes`, specify both configurable route groups
-explicitly.
+handler. Analytics query routes are also disabled by default; enable them with
+`analytics: true` only when Console needs HTTP access to Analytics data.
 
 ## Server Setup
 
@@ -105,6 +106,8 @@ The bundle management routes under `/hot-updater/api/*` are used by the CLI.
 They are mounted only when `routes.bundles: true`, and your framework
 middleware must protect each management request before mounting the handler.
 The server example above uses Bearer authentication for `/hot-updater/api/*`.
+The same requirement applies to Analytics query routes when
+`routes.analytics: true`.
 
 Set your auth token in environment variables:
 

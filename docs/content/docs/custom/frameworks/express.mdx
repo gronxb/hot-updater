@@ -76,7 +76,8 @@ export default defineConfig({
 ## API Endpoints
 
 The server automatically creates these endpoints. Bundle management endpoints
-under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
+are mounted only when `routes.bundles` is enabled. Analytics query endpoints
+are mounted independently when `routes.analytics` is enabled:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -89,6 +90,12 @@ under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
 | PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
+| GET | `/hot-updater/api/bundles/:id/events/summary` | Summarize reported bundle outcomes |
+| GET | `/hot-updater/api/bundles/:id/events/analytics` | Query bundle Analytics |
+| GET | `/hot-updater/api/installations` | Search installations |
+| GET | `/hot-updater/api/installations/overview` | Summarize latest reported bundles |
+| GET | `/hot-updater/api/installations/active` | Query active installations |
+| GET | `/hot-updater/api/installations/:installId/events` | Read installation history |
 
 ## React Native Setup
 

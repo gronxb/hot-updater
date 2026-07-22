@@ -87,7 +87,11 @@ export const createAnalyticsHandlerApi = () =>
 
 export const createAnalyticsHandler = (
   api: HandlerAPI<HandlerTestContext>,
-  routes: HandlerRoutes = { updateCheck: true, bundles: true },
+  routes: HandlerRoutes = {
+    updateCheck: true,
+    bundles: true,
+    analytics: true,
+  },
 ) =>
   createHandler(api, {
     basePath: "/hot-updater",

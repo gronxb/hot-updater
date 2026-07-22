@@ -20,7 +20,7 @@ const kysely = new Kysely({ dialect: new PGliteDialect(database) });
 const sourceApi = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
   basePath: "/hot-updater",
-  routes: { updateCheck: true, bundles: true },
+  routes: { updateCheck: true, bundles: true, analytics: true },
 });
 const server = setupServer();
 let activeRequests = 0;

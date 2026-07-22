@@ -62,8 +62,12 @@ export interface HandlerOptions<TContext = unknown> {
 }
 
 export interface HandlerRoutes {
-  updateCheck: boolean;
-  bundles: boolean;
+  /** React Native update-check routes. @default true */
+  readonly updateCheck: boolean;
+  /** Bundle management routes used by standaloneRepository. @default false */
+  readonly bundles: boolean;
+  /** Analytics and installation query routes used by Console. @default false */
+  readonly analytics?: boolean;
 }
 
 export type RouteHandler<TContext = unknown> = (

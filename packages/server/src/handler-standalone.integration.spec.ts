@@ -32,7 +32,7 @@ const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 const api = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
   basePath: "/hot-updater",
-  routes: { updateCheck: true, bundles: true },
+  routes: { updateCheck: true, bundles: true, analytics: true },
 });
 const baseUrl = "http://localhost:3000";
 const server = setupServer();

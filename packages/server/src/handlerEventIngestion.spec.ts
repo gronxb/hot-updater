@@ -261,15 +261,20 @@ describe("createHandler event ingestion", () => {
     });
   });
 
-  it("does not mount event routes when update-check routes are disabled", async () => {
+  it("mounts event ingestion independently from update-check routes", async () => {
     const api = createApi();
     const handler = createHandler(api, {
       basePath: "/hot-updater",
+      eventIngestion: { authorize: () => true },
       routes: { updateCheck: false, bundles: false },
     });
     const response = await handler(
-      new Request("http://localhost/hot-updater/events", { method: "POST" }),
+      new Request("http://localhost/hot-updater/events", {
+        method: "POST",
+        body: JSON.stringify(testEventPayload),
+      }),
     );
-    expect(response.status).toBe(404);
+
+    expect(response.status).toBe(204);
   });
 });

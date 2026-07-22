@@ -37,8 +37,9 @@ export function createHandler<TContext = unknown>(
   const routeOptions = {
     updateCheck: options.routes?.updateCheck ?? true,
     bundles: options.routes?.bundles ?? false,
+    analytics: options.routes?.analytics ?? false,
   } satisfies HandlerRoutes;
-  const analyticsRoutes = supportsAnalytics(api);
+  const analyticsSupported = supportsAnalytics(api);
   const router = createRouter<string>();
   const routeHandlers: Record<string, RouteHandler<TContext>> = {
     ...createUpdateRouteHandlers<TContext>(),
@@ -75,45 +76,47 @@ export function createHandler<TContext = unknown>(
       "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
       "appVersionUpdateWithCohort",
     );
-    if (analyticsRoutes && options.eventIngestion) {
-      addRoute(router, "POST", "/events", "appendBundleEvent");
-    }
+  }
+
+  if (analyticsSupported && options.eventIngestion) {
+    addRoute(router, "POST", "/events", "appendBundleEvent");
+  }
+
+  if (routeOptions.analytics && analyticsSupported) {
+    addRoute(
+      router,
+      "GET",
+      "/api/bundles/:id/events/summary",
+      "getBundleEventSummary",
+    );
+    addRoute(
+      router,
+      "GET",
+      "/api/bundles/:id/events/analytics",
+      "getBundleEventAnalytics",
+    );
+    addRoute(router, "GET", "/api/installations", "searchInstallations");
+    addRoute(
+      router,
+      "GET",
+      "/api/installations/overview",
+      "getBundleEventOverview",
+    );
+    addRoute(
+      router,
+      "GET",
+      "/api/installations/active",
+      "getActiveInstallationOverview",
+    );
+    addRoute(
+      router,
+      "GET",
+      "/api/installations/:installId/events",
+      "getInstallationHistory",
+    );
   }
 
   if (routeOptions.bundles) {
-    if (analyticsRoutes) {
-      addRoute(
-        router,
-        "GET",
-        "/api/bundles/:id/events/summary",
-        "getBundleEventSummary",
-      );
-      addRoute(
-        router,
-        "GET",
-        "/api/bundles/:id/events/analytics",
-        "getBundleEventAnalytics",
-      );
-      addRoute(router, "GET", "/api/installations", "searchInstallations");
-      addRoute(
-        router,
-        "GET",
-        "/api/installations/overview",
-        "getBundleEventOverview",
-      );
-      addRoute(
-        router,
-        "GET",
-        "/api/installations/active",
-        "getActiveInstallationOverview",
-      );
-      addRoute(
-        router,
-        "GET",
-        "/api/installations/:installId/events",
-        "getInstallationHistory",
-      );
-    }
     addRoute(router, "GET", "/api/bundles/channels", "getChannels");
     addRoute(router, "GET", "/api/bundles/:id", "getBundle");
     addRoute(router, "GET", "/api/bundles", "getBundles");

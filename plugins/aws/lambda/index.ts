@@ -85,6 +85,7 @@ const hotUpdater = createHotUpdater<SignedUrlContext>({
   routes: {
     updateCheck: true,
     bundles: false,
+    analytics: false,
   },
 });
 
