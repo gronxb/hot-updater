@@ -1,6 +1,38 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isConsoleServerReady, waitForConsoleReady } from "./console";
+import {
+  getConsoleServerEnv,
+  isConsoleServerReady,
+  waitForConsoleReady,
+} from "./console";
+
+describe("getConsoleServerEnv", () => {
+  it.each([
+    {
+      name: "defaults an unset host to loopback",
+      processEnv: {},
+      expectedHost: "127.0.0.1",
+    },
+    {
+      name: "defaults a blank host to loopback",
+      processEnv: { NITRO_HOST: " \t " },
+      expectedHost: "127.0.0.1",
+    },
+    {
+      name: "preserves an explicit host",
+      processEnv: { NITRO_HOST: "0.0.0.0" },
+      expectedHost: "0.0.0.0",
+    },
+  ])("$name", ({ processEnv, expectedHost }) => {
+    const env = getConsoleServerEnv(4_321, processEnv);
+
+    expect(env).toMatchObject({
+      PORT: "4321",
+      NITRO_PORT: "4321",
+      NITRO_HOST: expectedHost,
+    });
+  });
+});
 
 describe("isConsoleServerReady", () => {
   afterEach(() => {

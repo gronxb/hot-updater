@@ -129,15 +129,27 @@ The console integrates with the configured Hot Updater storage and database plug
 Configure Hot Updater in `hot-updater.config.ts`:
 
 ```typescript
-import { mockDatabase, mockStorage } from "@hot-updater/mock";
+import {
+  createMockDatabaseData,
+  mockDatabase,
+  mockStorage,
+} from "@hot-updater/mock";
+import { bundleToRow, type Bundle } from "@hot-updater/plugin-core";
+
+const bundles: Bundle[] = [
+  // ... your bundles
+];
+
+const databaseData = createMockDatabaseData();
+for (const bundle of bundles) {
+  databaseData.bundles.set(bundle.id, bundleToRow(bundle));
+}
 
 export default {
-  storage: mockStorage(),
+  storage: mockStorage({}),
   database: mockDatabase({
     latency: { min: 500, max: 700 },
-    initialBundles: [
-      // ... your bundles
-    ],
+    data: databaseData,
   }),
 };
 ```

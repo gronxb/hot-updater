@@ -11,6 +11,7 @@
 "@hot-updater/supabase": minor
 "@hot-updater/cli-tools": minor
 "@hot-updater/console": minor
+"@hot-updater/core": minor
 "@hot-updater/react-native": minor
 "hot-updater": minor
 ---
@@ -61,6 +62,9 @@ fields. Omitted patches stay unchanged; caller-present patch replacement
 requires a real provider transaction and throws
 `DatabasePatchUpdateUnsupportedError` before mutation when that capability is
 absent.
+
+Core bundle artifact helpers prefer normalized `bundle_patches` rows over
+deprecated scalar patch fields when both representations are present.
 
 Multi-platform deploy now performs build, archive, and content-addressed upload
 work once before entering a retryable database transaction. The transaction
