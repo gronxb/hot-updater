@@ -217,6 +217,10 @@ export interface DatabaseAPI<TContext = unknown> extends Partial<
     bundle: Bundle,
     context?: HotUpdaterContext<TContext>,
   ): Promise<void>;
+  insertBundles(
+    bundles: readonly Bundle[],
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<void>;
   updateBundleById(
     bundleId: string,
     newBundle: Partial<Bundle>,

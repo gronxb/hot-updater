@@ -456,6 +456,29 @@ describe("Handler <-> Standalone Repository Integration", () => {
     }
   });
 
+  it("rolls back the entire create batch when one bundle cannot be inserted", async () => {
+    // Given
+    const existingId = uuidv7();
+    const newId = uuidv7();
+    await api.insertBundle(createTestBundle({ id: existingId }));
+
+    // When
+    const response = await api.handler(
+      new Request(`${baseUrl}/hot-updater/api/bundles`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([
+          createTestBundle({ id: newId }),
+          createTestBundle({ id: existingId }),
+        ]),
+      }),
+    );
+
+    // Then
+    expect(response.status).toBe(500);
+    await expect(api.getBundleById(newId)).resolves.toBeNull();
+  });
+
   it("works with a custom basePath", async () => {
     const customApi = createHotUpdater({
       database: kyselyAdapter({ db: kysely, provider: "postgresql" }),

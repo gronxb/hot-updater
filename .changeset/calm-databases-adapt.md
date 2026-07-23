@@ -45,6 +45,9 @@ bundle channel values and returning their sorted distinct set.
 
 Publish `@hot-updater/test-utils` as a public package with reusable low-plugin
 and aggregate-client conformance suites for custom database plugin authors.
+The package root is ESM-only because the shared suites depend on Vitest's ESM
+runtime. The `@hot-updater/test-utils/node` entry remains available to both ESM
+and CommonJS consumers.
 
 Expose app-ready Analytics for record plugins and proxy event ingestion,
 active-installation overview, bundle outcomes, installation search, and
@@ -75,6 +78,13 @@ work once before entering a retryable database transaction. The transaction
 callback contains repeatable database inserts only. Uploaded objects remain
 available for reuse when the database commit fails.
 
+Multi-platform bundle creation is sent as one atomic array request. Database
+backed servers use a provider transaction for arrays with more than one bundle,
+and custom `HandlerAPI` implementations must provide `insertBundles` to accept
+those arrays. Servers that cannot guarantee an atomic batch reject it before
+inserting any bundle. The standalone adapter uses this route for transactions
+that contain only new bundles; mixed multi-bundle mutations remain unsupported.
+
 Client event ingestion is mounted automatically when the configured database
 supports Analytics. The managed Cloudflare, Firebase, and Supabase presets
 therefore mount `POST /events` by default so mobile Analytics works without
@@ -82,6 +92,11 @@ additional server configuration. This release does not add route-specific
 authentication; event payloads remain untrusted telemetry and deployments are
 responsible for their framework or provider access controls, rate limits,
 quotas, logging, and retention.
+
+The managed Firebase template no longer emits the unsupported Functions
+`gen` property. Firebase Functions v2 continues to be selected by the
+`firebase-functions/v2` entrypoint, and the generated project now passes
+Firebase CLI schema validation and emulator trigger discovery.
 
 Analytics and installation query routes are also closed by default. Self-hosted
 servers expose them explicitly with `routes.analytics: true`, independently
@@ -130,6 +145,10 @@ multi-clause ordering. Supported distinct operations are exact, and providers
 honor every requested order clause. Callers must request an `id` clause when
 they need a deterministic tie-break. Unsupported operations reject with a
 typed error before provider I/O.
+
+PostgreSQL now also honors the requested null placement on every order clause.
+Cloudflare D1 count queries throw a provider error when the first result row is
+missing or malformed instead of reporting a misleading zero.
 
 Blob database mutation success follows the active-pointer commit. Post-commit
 cache invalidation is attempted up to three times. Exhaustion calls

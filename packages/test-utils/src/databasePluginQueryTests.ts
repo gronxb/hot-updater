@@ -205,6 +205,53 @@ export const registerDatabasePluginQueryTests = (
       expect(earlierVersions.map(({ id }) => id)).toEqual([rows[1].id]);
     });
 
+    it("places nulls first for ascending orderBy clauses", async () => {
+      // Given
+      const rows = await seedQueryRows(state);
+
+      // When
+      const result = await state.getPlugin().findMany({
+        model: "bundles",
+        orderBy: [
+          {
+            field: "target_app_version",
+            direction: "asc",
+            nulls: "first",
+          },
+          { field: "id", direction: "asc" },
+        ],
+      });
+
+      // Then
+      expect(result.map(({ id }) => id)).toEqual([
+        rows[0].id,
+        rows[1].id,
+        rows[2].id,
+      ]);
+    });
+
+    it("places nulls last for descending legacy sortBy clauses", async () => {
+      // Given
+      const rows = await seedQueryRows(state);
+
+      // When
+      const result = await state.getPlugin().findMany({
+        model: "bundles",
+        sortBy: {
+          field: "target_app_version",
+          direction: "desc",
+          nulls: "last",
+        },
+      });
+
+      // Then
+      expect(result.map(({ id }) => id)).toEqual([
+        rows[2].id,
+        rows[1].id,
+        rows[0].id,
+      ]);
+    });
+
     it("rejects invalid paging, selection, and mutation predicates", async () => {
       await seedQueryRows(state);
 

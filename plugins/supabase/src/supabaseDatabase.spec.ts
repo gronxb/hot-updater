@@ -154,6 +154,7 @@ const { createMockClient, getFromCalls, resetMockClient } = vi.hoisted(() => {
     private readonly orderClauses: {
       readonly field: string;
       readonly ascending: boolean;
+      readonly nullsFirst: boolean | undefined;
     }[] = [];
     private payload: Row | undefined;
     private rangeStart = 0;
@@ -184,10 +185,17 @@ const { createMockClient, getFromCalls, resetMockClient } = vi.hoisted(() => {
       this.filter = filter;
       return this;
     }
-    order(field: string, options?: { readonly ascending?: boolean }) {
+    order(
+      field: string,
+      options?: {
+        readonly ascending?: boolean;
+        readonly nullsFirst?: boolean;
+      },
+    ) {
       this.orderClauses.push({
         field,
         ascending: options?.ascending ?? true,
+        nullsFirst: options?.nullsFirst,
       });
       return this;
     }
@@ -225,9 +233,23 @@ const { createMockClient, getFromCalls, resetMockClient } = vi.hoisted(() => {
         .sort((left, right) => {
           const clauses = this.orderClauses.length
             ? this.orderClauses
-            : [{ field: "id", ascending: true }];
+            : [
+                {
+                  field: "id",
+                  ascending: true,
+                  nullsFirst: undefined,
+                },
+              ];
           for (const clause of clauses) {
-            const result = compare(left[clause.field], right[clause.field]);
+            const leftValue = left[clause.field];
+            const rightValue = right[clause.field];
+            if (leftValue == null || rightValue == null) {
+              if (leftValue == null && rightValue == null) continue;
+              const nullsFirst = clause.nullsFirst ?? !clause.ascending;
+              const order = leftValue == null ? -1 : 1;
+              return nullsFirst ? order : -order;
+            }
+            const result = compare(leftValue, rightValue);
             if (result !== 0) return clause.ascending ? result : -result;
           }
           return 0;

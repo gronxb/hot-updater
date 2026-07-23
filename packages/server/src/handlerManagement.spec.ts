@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { createHandler } from "./handler";
-import { createApi, createManagementHandler } from "./handler.testFixtures";
+import {
+  createApi,
+  createManagementHandler,
+  testBundle,
+} from "./handler.testFixtures";
 
 describe("createHandler management routes", () => {
   it("mounts bundle routes when explicitly enabled", async () => {
@@ -69,6 +73,25 @@ describe("createHandler management routes", () => {
     // Then
     expect(response.status).toBe(400);
     expect(api.getBundles).not.toHaveBeenCalled();
+  });
+
+  it("rejects a bundle batch before mutation when atomic insertion is unavailable", async () => {
+    // Given
+    const api = createApi();
+    const handler = createManagementHandler(api);
+
+    // When
+    const response = await handler(
+      new Request("http://localhost/hot-updater/api/bundles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([testBundle, { ...testBundle, id: "bundle-2" }]),
+      }),
+    );
+
+    // Then
+    expect(response.status).toBe(400);
+    expect(api.insertBundle).not.toHaveBeenCalled();
   });
 
   it("serves bundle event summaries through management routes", async () => {

@@ -142,6 +142,26 @@ export function createDatabasePluginCore<TContext = unknown>(
       await client.insertBundle(bundle);
     },
 
+    async insertBundles(
+      bundles: readonly Bundle[],
+      _context?: HotUpdaterContext<TContext>,
+    ): Promise<void> {
+      await beforeOperation?.();
+      for (const bundle of bundles) {
+        assertBundlePersistenceConstraints(bundle);
+      }
+      if (bundles.length > 1 && database.transaction === undefined) {
+        throw new Error(
+          `Database plugin "${database.name}" does not support atomic bundle batches.`,
+        );
+      }
+      await client.mutate(async (transaction) => {
+        for (const bundle of bundles) {
+          await transaction.insertBundle(bundle);
+        }
+      });
+    },
+
     async updateBundleById(
       bundleId: string,
       update: Partial<Bundle>,

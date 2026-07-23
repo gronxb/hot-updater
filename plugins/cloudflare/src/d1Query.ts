@@ -15,6 +15,15 @@ export const d1TableNames = {
   bundle_events: "bundle_events",
 } as const satisfies Record<DatabaseModel, string>;
 
+export class D1QueryResultError extends Error {
+  readonly name = "D1QueryResultError";
+  readonly operation = "count";
+
+  constructor(readonly result: unknown) {
+    super("D1 count query returned a malformed first row");
+  }
+}
+
 export const countD1Rows = async (
   executor: D1Executor,
   input: CountDatabaseImplementationInput,
@@ -30,8 +39,14 @@ export const countD1Rows = async (
     where.params,
   );
   const row = rows[0];
-  if (typeof row !== "object" || row === null || !("count" in row)) return 0;
-  return Number(row.count);
+  if (typeof row !== "object" || row === null || Array.isArray(row)) {
+    throw new D1QueryResultError(row);
+  }
+  const count = Reflect.get(row, "count");
+  if (typeof count !== "number" || !Number.isFinite(count)) {
+    throw new D1QueryResultError(row);
+  }
+  return count;
 };
 
 export const findManyD1Rows = async (

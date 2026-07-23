@@ -26,6 +26,7 @@ const BASE_URL = "http://localhost/hot-updater";
 const bundles = new Map<string, Bundle>();
 const channels = new Set<string>();
 const requestPaths: string[] = [];
+const createRequestBodies: unknown[] = [];
 
 const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   id,
@@ -87,6 +88,7 @@ const server = setupServer(
   http.post(`${BASE_URL}/api/bundles`, async ({ request }) => {
     requestPaths.push(new URL(request.url).pathname);
     const body: unknown = await request.json();
+    createRequestBodies.push(body);
     const values = Array.isArray(body) ? body : [body];
     for (const value of values) {
       if (typeof value === "object" && value !== null && "id" in value) {
@@ -122,6 +124,7 @@ beforeEach(() => {
   bundles.clear();
   channels.clear();
   requestPaths.length = 0;
+  createRequestBodies.length = 0;
 });
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -247,6 +250,65 @@ describe("standaloneRepository", () => {
     await expect(client.getBundleById(target.id)).resolves.toMatchObject({
       enabled: true,
     });
+  });
+
+  it("commits multiple bundle creations in one remote request", async () => {
+    // Given
+    const ios = bundle("00000000-0000-0000-0000-000000000001");
+    const android = bundle("00000000-0000-0000-0000-000000000002", {
+      platform: "android",
+    });
+    const client = createDatabaseClient(createRepository());
+
+    // When
+    await client.mutate(async (transaction) => {
+      await transaction.insertBundle(ios);
+      await transaction.insertBundle(android);
+    });
+
+    // Then
+    expect(createRequestBodies).toEqual([
+      [
+        expect.objectContaining({ id: ios.id, platform: "ios" }),
+        expect.objectContaining({ id: android.id, platform: "android" }),
+      ],
+    ]);
+    await expect(client.getBundleById(ios.id)).resolves.toMatchObject({
+      id: ios.id,
+    });
+    await expect(client.getBundleById(android.id)).resolves.toMatchObject({
+      id: android.id,
+    });
+  });
+
+  it("does not retry a bundle batch after an ambiguous commit failure", async () => {
+    // Given
+    const first = bundle("00000000-0000-0000-0000-000000000001");
+    const second = bundle("00000000-0000-0000-0000-000000000002");
+    const client = createDatabaseClient(createRepository());
+    server.use(
+      http.post(`${BASE_URL}/api/bundles`, async ({ request }) => {
+        createRequestBodies.push(await request.json());
+        return HttpResponse.json(
+          { error: "response lost after commit" },
+          { status: 500 },
+        );
+      }),
+    );
+
+    // When
+    const commit = client.mutate(async (transaction) => {
+      await transaction.insertBundle(first);
+      await transaction.insertBundle(second);
+    });
+
+    // Then
+    await expect(commit).rejects.toBeInstanceOf(StandaloneDatabaseError);
+    expect(createRequestBodies).toHaveLength(1);
+    expect(createRequestBodies[0]).toEqual([
+      expect.objectContaining({ id: first.id }),
+      expect.objectContaining({ id: second.id }),
+    ]);
   });
 
   it("delegates analytics to standalone management routes", async () => {

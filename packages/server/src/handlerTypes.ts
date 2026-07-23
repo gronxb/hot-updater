@@ -31,6 +31,10 @@ export interface HandlerAPI<TContext = unknown> extends Partial<
     bundle: Bundle,
     context?: HotUpdaterContext<TContext>,
   ) => Promise<void>;
+  insertBundles?: (
+    bundles: readonly Bundle[],
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<void>;
   updateBundleById: (
     bundleId: string,
     bundle: Partial<Bundle>,

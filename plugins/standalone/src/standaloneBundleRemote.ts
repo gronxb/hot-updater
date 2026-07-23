@@ -175,13 +175,22 @@ export const createStandaloneBundleRemote = (
     return value;
   };
 
-  const sendBundle = async (method: "POST" | "PATCH", bundle: Bundle) => {
-    const route =
-      method === "POST" ? routes.create() : routes.update(bundle.id);
+  const updateBundle = async (bundle: Bundle): Promise<void> => {
+    const route = routes.update(bundle.id);
     const response = await fetch(http.buildUrl(route.path), {
-      method,
+      method: "PATCH",
       headers: http.headers(route.headers),
-      body: JSON.stringify(method === "POST" ? [bundle] : bundle),
+      body: JSON.stringify(bundle),
+    });
+    await http.parseJson(response);
+  };
+
+  const createBundles = async (bundles: readonly Bundle[]): Promise<void> => {
+    const route = routes.create();
+    const response = await fetch(http.buildUrl(route.path), {
+      method: "POST",
+      headers: http.headers(route.headers),
+      body: JSON.stringify(bundles),
     });
     await http.parseJson(response);
   };
@@ -196,13 +205,14 @@ export const createStandaloneBundleRemote = (
   };
 
   return {
-    createBundle: (bundle: Bundle) => sendBundle("POST", bundle),
+    createBundle: (bundle: Bundle) => createBundles([bundle]),
+    createBundles,
     deleteBundle,
     loadBundle,
     loadBundles,
     loadBundleWindow,
     loadChannels,
-    updateBundle: (bundle: Bundle) => sendBundle("PATCH", bundle),
+    updateBundle,
   };
 };
 

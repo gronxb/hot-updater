@@ -163,4 +163,39 @@ describe("server node entry", () => {
       await close(server);
     }
   });
+
+  it("accepts parsed event JSON when Content-Length proves the raw size", async () => {
+    // Given
+    const api = createApi();
+    const app = express();
+    app.use(express.json());
+    app.all(
+      "/hot-updater/*",
+      toNodeHandler({
+        handler: createHandler(api, { basePath: "/hot-updater" }),
+      }),
+    );
+    const server = app.listen(0, "127.0.0.1");
+    const baseUrl = await listen(server);
+    const body = JSON.stringify(testEventPayload);
+    const contentLength = new TextEncoder().encode(body).byteLength;
+
+    try {
+      // When
+      const response = await fetch(`${baseUrl}/hot-updater/events`, {
+        method: "POST",
+        headers: {
+          "content-length": String(contentLength),
+          "content-type": "application/json",
+        },
+        body,
+      });
+
+      // Then
+      expect(response.status).toBe(204);
+      expect(api.appendBundleEvent).toHaveBeenCalledOnce();
+    } finally {
+      await close(server);
+    }
+  });
 });

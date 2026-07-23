@@ -8,6 +8,7 @@ import {
   setupDatabaseClientTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
+import { Transaction } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
@@ -219,28 +220,58 @@ describe("firebase bounded reads", () => {
       data: bundleEventFixture("event-existing"),
     });
     expect(plugin.transaction).toBeDefined();
+    const get = vi.spyOn(Transaction.prototype, "get");
 
-    const result = await plugin.transaction?.(async (database) => {
-      const before = await database.count({ model: "bundle_events" });
-      await database.create({
-        model: "bundle_events",
-        data: bundleEventFixture("event-new"),
+    try {
+      const result = await plugin.transaction?.(async (database) => {
+        const before = await database.count({ model: "bundle_events" });
+        await database.create({
+          model: "bundle_events",
+          data: bundleEventFixture("event-new"),
+        });
+        const after = await database.findMany({
+          model: "bundle_events",
+          limit: 10,
+          offset: 0,
+        });
+        return { before, ids: after.map(({ id }) => id).toSorted() };
       });
-      const after = await database.findMany({
-        model: "bundle_events",
-        limit: 10,
-        offset: 0,
-      });
-      return { before, ids: after.map(({ id }) => id).toSorted() };
-    });
 
-    expect(result).toEqual({
-      before: 1,
-      ids: ["event-existing", "event-new"],
-    });
-    await expect(
-      bundleEventsCollection.doc("event-new").get(),
-    ).resolves.toMatchObject({ exists: true });
+      const bundleEventReads = get.mock.calls.filter(
+        ([reference]) =>
+          "path" in reference && reference.path === bundleEventsCollection.path,
+      );
+      expect(bundleEventReads).toHaveLength(1);
+      expect(result).toEqual({
+        before: 1,
+        ids: ["event-existing", "event-new"],
+      });
+      await expect(
+        bundleEventsCollection.doc("event-new").get(),
+      ).resolves.toMatchObject({ exists: true });
+    } finally {
+      get.mockRestore();
+    }
+  });
+
+  it("does not read bundle events during ordinary bundle mutations", async () => {
+    const client = createDatabaseClient(createPlugin());
+    const bundle = bundleFixture("994");
+    const get = vi.spyOn(Transaction.prototype, "get");
+
+    try {
+      await client.insertBundle(bundle);
+      await client.updateBundleById(bundle.id, { message: "updated" });
+      await client.deleteBundleById(bundle.id);
+
+      const bundleEventReads = get.mock.calls.filter(
+        ([reference]) =>
+          "path" in reference && reference.path === bundleEventsCollection.path,
+      );
+      expect(bundleEventReads).toHaveLength(0);
+    } finally {
+      get.mockRestore();
+    }
   });
 
   it("appends bundle events without a full-database transaction", async () => {

@@ -3,11 +3,26 @@ import type {
   DatabaseImplementationResult,
   FindManyDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import type { Kysely, RawBuilder } from "kysely";
+import type { Kysely, OrderByItemBuilder, RawBuilder } from "kysely";
 
 import type { Database } from "./types";
 
 type PostgresWhere = RawBuilder<boolean> | undefined;
+
+const applyOrder = (
+  order: OrderByItemBuilder,
+  clause: {
+    readonly direction: "asc" | "desc";
+    readonly nulls?: "first" | "last";
+  },
+): OrderByItemBuilder => {
+  const directed = clause.direction === "asc" ? order.asc() : order.desc();
+  return clause.nulls === undefined
+    ? directed
+    : clause.nulls === "first"
+      ? directed.nullsFirst()
+      : directed.nullsLast();
+};
 
 export const countPostgresRows = async (
   db: Kysely<Database>,
@@ -71,7 +86,9 @@ export const findManyPostgresRows = async (
       }
       for (const clause of input.orderBy ??
         (input.sortBy ? [input.sortBy] : [])) {
-        query = query.orderBy(clause.field, clause.direction);
+        query = query.orderBy(clause.field, (order) =>
+          applyOrder(order, clause),
+        );
       }
       return query.limit(input.limit).offset(input.offset).execute();
     }
@@ -83,7 +100,9 @@ export const findManyPostgresRows = async (
       }
       for (const clause of input.orderBy ??
         (input.sortBy ? [input.sortBy] : [])) {
-        query = query.orderBy(clause.field, clause.direction);
+        query = query.orderBy(clause.field, (order) =>
+          applyOrder(order, clause),
+        );
       }
       return query.limit(input.limit).offset(input.offset).execute();
     }
@@ -95,7 +114,9 @@ export const findManyPostgresRows = async (
       }
       for (const clause of input.orderBy ??
         (input.sortBy ? [input.sortBy] : [])) {
-        query = query.orderBy(clause.field, clause.direction);
+        query = query.orderBy(clause.field, (order) =>
+          applyOrder(order, clause),
+        );
       }
       return query.limit(input.limit).offset(input.offset).execute();
     }

@@ -23,6 +23,11 @@ const createStagedRemote = (
   createBundle: async (bundle) => {
     bundles.set(bundle.id, cloneBundle(bundle));
   },
+  createBundles: async (createdBundles) => {
+    for (const bundle of createdBundles) {
+      bundles.set(bundle.id, cloneBundle(bundle));
+    }
+  },
   deleteBundle: async (bundleId) => {
     bundles.delete(bundleId);
   },
@@ -72,6 +77,14 @@ export const runLegacyAggregateTransaction = async <TResult>(
   );
   const changedIds = changedBundleIds(initial, staged);
   if (changedIds.length > 1) {
+    const createdBundles = changedIds.flatMap((id) => {
+      const bundle = staged.get(id);
+      return initial.has(id) || bundle === undefined ? [] : [bundle];
+    });
+    if (createdBundles.length === changedIds.length) {
+      await remote.createBundles(createdBundles);
+      return result;
+    }
     throw new StandaloneDatabaseError(
       "request-failed",
       "The standalone bundle API can atomically mutate only one bundle per transaction.",

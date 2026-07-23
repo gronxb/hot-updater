@@ -153,6 +153,7 @@ export const createDatabasePluginCrud = (
     );
     const rows = await implementation.findMany({
       ...input,
+      orderBy,
       limit: input.limit ?? 100,
       offset: input.offset ?? 0,
     } as never);

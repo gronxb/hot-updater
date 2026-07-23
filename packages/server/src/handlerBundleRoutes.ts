@@ -162,8 +162,18 @@ export const createBundleRouteHandlers = <TContext>(): Record<
   createBundles: async (_params, request, api, context) => {
     const body = await request.json();
     const bundles = Array.isArray(body) ? body : [body];
-    for (const bundle of bundles) {
-      await api.insertBundle(bundle as Bundle, context);
+    if (api.insertBundles) {
+      await api.insertBundles(bundles as Bundle[], context);
+    } else {
+      if (bundles.length > 1) {
+        throw new HandlerBadRequestError(
+          "This server does not support atomic bundle batches",
+        );
+      }
+      const bundle = bundles[0];
+      if (bundle !== undefined) {
+        await api.insertBundle(bundle as Bundle, context);
+      }
     }
     return new Response(JSON.stringify({ success: true }), {
       status: 201,
