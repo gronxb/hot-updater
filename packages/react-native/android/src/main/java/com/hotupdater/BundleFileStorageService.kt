@@ -454,7 +454,9 @@ class BundleFileStorageService(
                     if (!HashUtils.verifyHash(patchDownloadResult.file, patch.patchFileHash)) {
                         false
                     } else {
-                        BsdiffPatch.apply(sourceFile, patchDownloadResult.file, targetFile)
+                        withContext(Dispatchers.IO) {
+                            BsdiffPatch.apply(sourceFile, patchDownloadResult.file, targetFile)
+                        }
                         HashUtils.verifyHash(targetFile, expectedHash).also { patched ->
                             if (patched) {
                                 Log.d(
@@ -1321,15 +1323,17 @@ class BundleFileStorageService(
 
         if (hasManifestDrivenArtifacts && canUseManifestDrivenInstall()) {
             try {
-                updateBundleFromManifest(
-                    bundleId = bundleId,
-                    manifestUrl = manifestUrl!!,
-                    manifestFileHash = manifestFileHash!!,
-                    changedAssets = changedAssets!!,
-                    bundleStoreDir = bundleStoreDir,
-                    finalBundleDir = finalBundleDir,
-                    progressCallback = progressCallback,
-                )
+                withContext(Dispatchers.IO) {
+                    updateBundleFromManifest(
+                        bundleId = bundleId,
+                        manifestUrl = manifestUrl!!,
+                        manifestFileHash = manifestFileHash!!,
+                        changedAssets = changedAssets!!,
+                        bundleStoreDir = bundleStoreDir,
+                        finalBundleDir = finalBundleDir,
+                        progressCallback = progressCallback,
+                    )
+                }
                 return
             } catch (e: Exception) {
                 if (fileUrl.isNullOrEmpty()) {

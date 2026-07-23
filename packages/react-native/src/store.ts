@@ -90,11 +90,24 @@ const createHotUpdaterStore = () => {
   };
 
   const listeners = new Set<() => void>();
+  let isEmitScheduled = false;
 
   const emitChange = () => {
-    for (const listener of listeners) {
-      listener();
+    if (isEmitScheduled) {
+      return;
     }
+
+    isEmitScheduled = true;
+    const scheduleFrame =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame
+        : (callback: (timestamp: number) => void) => callback(0);
+    scheduleFrame(() => {
+      isEmitScheduled = false;
+      for (const listener of listeners) {
+        listener();
+      }
+    });
   };
 
   const normalizeDiffDetails = (

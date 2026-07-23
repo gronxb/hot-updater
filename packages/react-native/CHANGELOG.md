@@ -5,6 +5,37 @@
 ### Minor Changes
 
 - Add opt-in OTA analytics with the exact `UNCHANGED | UPDATE_APPLIED | RECOVERED` app-ready contract, persisted install/user identity helpers, and `/events` reporting from `HotUpdater.init({ analytics: true })`.
+
+## 0.35.6
+
+### Patch Changes
+
+- ae255f8: fix(android): run manifest-driven bundle installation on the I/O dispatcher
+  - @hot-updater/cli-tools@0.35.6
+  - @hot-updater/core@0.35.6
+  - @hot-updater/js@0.35.6
+  - @hot-updater/plugin-core@0.35.6
+
+## 0.35.5
+
+### Patch Changes
+
+- 7c12f39: fix(android): ensure BsdiffPatch.apply runs on Dispatchers.IO to prevent ANR
+  - @hot-updater/cli-tools@0.35.5
+  - @hot-updater/core@0.35.5
+  - @hot-updater/js@0.35.5
+  - @hot-updater/plugin-core@0.35.5
+
+## 0.35.4
+
+### Patch Changes
+
+- 7cacd77: fix(react-native): coalesce progress store notifications
+  - @hot-updater/cli-tools@0.35.4
+  - @hot-updater/core@0.35.4
+  - @hot-updater/js@0.35.4
+  - @hot-updater/plugin-core@0.35.4
+
 ## 0.35.3
 
 ### Patch Changes

@@ -5,6 +5,28 @@
 ### Minor Changes
 
 - Add a bundle analytics summary, runtime-backed installation search/history, and a dedicated Console installations route for last-known bundle evidence.
+
+## 0.35.6
+
+### Patch Changes
+
+- @hot-updater/bsdiff@0.35.6
+- @hot-updater/server@0.35.6
+
+## 0.35.5
+
+### Patch Changes
+
+- @hot-updater/bsdiff@0.35.5
+- @hot-updater/server@0.35.5
+
+## 0.35.4
+
+### Patch Changes
+
+- @hot-updater/bsdiff@0.35.4
+- @hot-updater/server@0.35.4
+
 ## 0.35.3
 
 ### Patch Changes

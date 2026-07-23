@@ -7,6 +7,27 @@
 - Disable Analytics for the legacy Postgres plugin until it satisfies the
   complete bundle-event contract.
 
+## 0.35.6
+
+### Patch Changes
+
+- @hot-updater/core@0.35.6
+- @hot-updater/plugin-core@0.35.6
+
+## 0.35.5
+
+### Patch Changes
+
+- @hot-updater/core@0.35.5
+- @hot-updater/plugin-core@0.35.5
+
+## 0.35.4
+
+### Patch Changes
+
+- @hot-updater/core@0.35.4
+- @hot-updater/plugin-core@0.35.4
+
 ## 0.35.3
 
 ### Patch Changes
