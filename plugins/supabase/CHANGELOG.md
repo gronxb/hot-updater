@@ -13,9 +13,9 @@
 - Add the forward-only `0.38` migration for `bundle_events` and its Row Level
   Security policy. Back up the database before upgrading; do not manually
   replay the migration after it succeeds.
-- Leave `POST /events` and Analytics query routes unmounted on the managed Edge
-  Function by default. Event collection requires a custom runtime with
-  explicit authorization and provider-level abuse controls.
+- Mount public `POST /events` ingestion on the managed Edge Function by default
+  while leaving Analytics query routes unmounted. Deployments remain
+  responsible for provider-level rate limits, quotas, logging, and retention.
 
 ## 0.35.6
 

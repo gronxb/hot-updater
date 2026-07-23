@@ -107,9 +107,14 @@ installations with the same `userId` remain separate installations.
 
 ## Configure a custom server
 
-Managed Cloudflare, Firebase, and Supabase presets leave event ingestion
-unmounted by default. For a custom server, add an explicit authorization policy
-to `createHotUpdater`:
+Managed Cloudflare, Firebase, and Supabase presets mount public event ingestion
+by default so `analytics: true` works without additional server configuration.
+The managed presets still leave Analytics query routes disabled. Treat all
+reported identifiers as untrusted telemetry and configure provider-level rate
+limits, quotas, logging, and retention.
+
+For a custom server, add an explicit authorization policy to
+`createHotUpdater`:
 
 ```ts
 import { createHotUpdater } from "@hot-updater/server";

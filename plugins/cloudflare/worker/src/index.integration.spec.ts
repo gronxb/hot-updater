@@ -339,8 +339,8 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     });
   });
 
-  it("does not expose event ingestion from the worker entrypoint", async () => {
-    // Given: the client sends a valid OTA transition without authorization.
+  it("ingests events from the managed worker by default", async () => {
+    // Given: the client sends a valid OTA transition.
     const installId = "cloudflare-e2e-install";
 
     // When: the event is sent to the managed runtime default.
@@ -364,14 +364,14 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       env,
     );
 
-    // Then: the route is closed before persistence.
-    expect(response.status).toBe(404);
+    // Then: the managed runtime persists the event.
+    expect(response.status).toBe(204);
     const row = await env.DB.prepare(
       "SELECT id FROM bundle_events WHERE install_id = ?",
     )
       .bind(installId)
       .first();
-    expect(row).toBeNull();
+    expect(row).not.toBeNull();
   });
 
   it("does not support the legacy exact path", async () => {

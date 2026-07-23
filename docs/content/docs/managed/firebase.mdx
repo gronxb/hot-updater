@@ -173,19 +173,19 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed Firebase runtime exposes the public update-check endpoints and
-`/version`. Management routes, Analytics query routes, and `POST /events` are
-not mounted on the public function URL by default. A valid anonymous event
-request returns 404 before persistence. The version response therefore reports
-`eventIngestion: false` and `analyticsQueries: false`, independently from
+The managed Firebase runtime exposes the public update-check endpoints,
+`POST /events`, and `/version`. Management and Analytics query routes are not
+mounted on the public function URL by default. The version response reports
+`eventIngestion: true` and `analyticsQueries: false`, independently from
 Firestore's structural Analytics support.
 </Callout>
 
-Enabling `analytics: true` in the app does not override this server policy. To
-collect events, deploy a custom runtime with an explicit
-`eventIngestion.authorize` decision and provider-level rate limits or quotas.
-Do not expose ingestion with `authorize: () => true`. See
-[Analytics](/docs/guides/analytics) for route and retention requirements.
+Enabling `analytics: true` in the app sends events to this public ingestion
+route without additional server configuration. Treat installation and user
+identifiers as untrusted telemetry, and configure Firebase rate limits, quotas,
+logging, and retention for your deployment. Customize the generated function's
+`eventIngestion.authorize` policy when your app can provide an end-user
+credential or attestation. See [Analytics](/docs/guides/analytics).
 
 ## Step 5: If You Use Expo, Add the Config Plugin
 

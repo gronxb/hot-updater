@@ -3,8 +3,7 @@ import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
 
-import { firebaseDatabase } from "../../src/firebaseDatabase";
-import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
+import { firebaseDatabase, firebaseStorage } from "../../src/functions";
 
 declare global {
   var HotUpdater: {
@@ -29,15 +28,17 @@ if (!storageBucket) {
 }
 
 const hotUpdater = createHotUpdater({
-  database: firebaseDatabase(adminOptions),
+  database: firebaseDatabase(),
   storages: [
-    firebaseFunctionsStorage({
-      ...adminOptions,
+    firebaseStorage({
       storageBucket,
       cdnUrl,
     }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
+  eventIngestion: {
+    authorize: () => true,
+  },
   routes: {
     updateCheck: true,
     bundles: false,

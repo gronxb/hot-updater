@@ -290,8 +290,8 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       expect(result.imports).toEqual({
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
-        "@hot-updater/supabase":
-          "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
+        "@hot-updater/supabase/edge":
+          "./_hot-updater/hot-updater-supabase/dist/edge/index.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
         "@hot-updater/js": "./_hot-updater/hot-updater-js/dist/index.mjs",
         "@hot-updater/plugin-core":
@@ -320,16 +320,15 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         ),
       ).resolves.toContain("./handler.mjs");
 
-      const supabaseDistFiles = await fs.readdir(
-        path.join(targetDir, "_hot-updater/hot-updater-supabase/dist"),
-      );
-      expect(
-        supabaseDistFiles.some(
-          (file) =>
-            file.startsWith("supabaseEdgeFunctionStorage-") &&
-            file.endsWith(".mjs"),
+      await expect(
+        fs.readFile(
+          path.join(
+            targetDir,
+            "_hot-updater/hot-updater-supabase/dist/edge/index.mjs",
+          ),
+          "utf8",
         ),
-      ).toBe(true);
+      ).resolves.toContain("supabaseStorage");
     } finally {
       await fs.rm(targetDir, { recursive: true, force: true });
     }

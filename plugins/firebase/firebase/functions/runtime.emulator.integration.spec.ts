@@ -494,8 +494,8 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     });
   });
 
-  it("does not expose event ingestion from the emulator entrypoint", async () => {
-    // Given: the client sends a valid OTA transition without authorization.
+  it("ingests events from the managed function by default", async () => {
+    // Given: the client sends a valid OTA transition.
     const bundleId = "00000000-0000-0000-0000-000000000001";
 
     // When: the event is sent to the managed runtime default.
@@ -516,14 +516,14 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       }),
     });
 
-    // Then: the route is closed before persistence.
-    expect(response.status).toBe(404);
+    // Then: the managed runtime persists the event.
+    expect(response.status).toBe(204);
     if (!supportsAnalytics(seedHotUpdater)) {
       throw new Error("Expected Firebase Analytics support.");
     }
     await expect(
       seedHotUpdater.getBundleEventSummary(bundleId),
-    ).resolves.toEqual({ installed: 0, recovered: 0 });
+    ).resolves.toEqual({ installed: 1, recovered: 0 });
   });
 
   it("does not support the legacy exact path", async () => {

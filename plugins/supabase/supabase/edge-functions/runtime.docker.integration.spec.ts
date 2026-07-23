@@ -523,8 +523,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
   });
 
-  it("does not expose event ingestion from the edge function entrypoint", async () => {
-    // Given: the client sends a valid OTA transition without authorization.
+  it("ingests events from the managed edge function by default", async () => {
+    // Given: the client sends a valid OTA transition.
     const bundleId = "00000000-0000-0000-0000-000000000001";
 
     // When: the event is sent to the managed runtime default.
@@ -548,14 +548,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
       },
     );
 
-    // Then: the route is closed before persistence.
-    expect(response.status).toBe(404);
+    // Then: the managed runtime persists the event.
+    expect(response.status).toBe(204);
     if (!supportsAnalytics(seedHotUpdater)) {
       throw new Error("Expected Supabase Analytics support.");
     }
     await expect(
       seedHotUpdater.getBundleEventSummary(bundleId),
-    ).resolves.toEqual({ installed: 0, recovered: 0 });
+    ).resolves.toEqual({ installed: 1, recovered: 0 });
   });
 
   it("does not support the legacy exact path", async () => {
@@ -969,7 +969,7 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/server": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
       ).href,
-      "@hot-updater/supabase": pathToFileURL(
+      "@hot-updater/supabase/edge": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
     },
@@ -978,8 +978,8 @@ const writeSupabaseRuntimeFiles = async ({
   await writeFile(
     path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
     `
-export { supabaseEdgeFunctionDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionDatabase.ts")).href)};
-export { supabaseEdgeFunctionStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
+export { supabaseEdgeFunctionDatabase as supabaseDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionDatabase.ts")).href)};
+export { supabaseEdgeFunctionStorage as supabaseStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
 `.trim(),
   );
   await writeFile(

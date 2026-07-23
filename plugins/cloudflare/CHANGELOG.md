@@ -11,9 +11,9 @@
   tie-break.
 - Add the forward-only `0.38` D1 migration for `bundle_events`. Back up D1
   before upgrading; do not manually replay the migration after it succeeds.
-- Leave `POST /events` and Analytics query routes unmounted on the managed
-  Worker by default. Event collection requires a custom runtime with explicit
-  authorization and provider-level abuse controls.
+- Mount public `POST /events` ingestion on the managed Worker by default while
+  leaving Analytics query routes unmounted. Deployments remain responsible for
+  provider-level rate limits, quotas, logging, and retention.
 - Publish `@hot-updater/cloudflare/worker` as a Worker ESM-only subpath. It no
   longer advertises CommonJS or fallback export conditions.
 

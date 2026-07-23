@@ -7,14 +7,14 @@ import {
   withCloudFrontSignedUrl,
 } from "./withCloudFrontSignedUrl";
 
-export type AwsLambdaEdgeStorageConfig = S3StorageConfig &
-  WithCloudFrontSignedUrlOptions;
+export type AwsLambdaEdgeStorageConfig<TContext = unknown> = S3StorageConfig &
+  WithCloudFrontSignedUrlOptions<TContext>;
 
-export const awsLambdaEdgeStorage = (
-  config: AwsLambdaEdgeStorageConfig,
+export const awsLambdaEdgeStorage = <TContext = unknown>(
+  config: AwsLambdaEdgeStorageConfig<TContext>,
   hooks?: StoragePluginHooks,
 ) => {
-  return withCloudFrontSignedUrl(s3Storage(config, hooks), config);
+  return withCloudFrontSignedUrl<TContext>(s3Storage(config, hooks), config);
 };
 
 export const s3LambdaEdgeStorage = awsLambdaEdgeStorage;

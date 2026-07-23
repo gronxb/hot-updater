@@ -32,6 +32,24 @@ Storage plugins expose explicit environment profiles:
 custom plugin authors only need the profile details when implementing their own
 storage provider.
 
+### Runtime-specific entrypoints
+
+Official providers expose server-only plugins from runtime subpaths. These
+entrypoints keep the provider-facing names consistent while adapting their
+configuration and implementation to the host runtime:
+
+| Runtime | Import | Exports |
+| --- | --- | --- |
+| Cloudflare Workers | `@hot-updater/cloudflare/worker` | `d1Database`, `r2Storage` |
+| AWS Lambda@Edge | `@hot-updater/aws/lambda` | `s3Database`, `s3Storage` |
+| Firebase Functions | `@hot-updater/firebase/functions` | `firebaseDatabase`, `firebaseStorage` |
+| Supabase Edge Functions | `@hot-updater/supabase/edge` | `supabaseDatabase`, `supabaseStorage` |
+
+For example, the Cloudflare Worker entrypoint uses native D1 and R2 bindings,
+the AWS Lambda entrypoint adds CloudFront URL signing, and the Firebase
+Functions entrypoint derives Admin SDK settings from the initialized runtime
+app. Root provider imports remain the deploy-time or universal surface.
+
 ### Supported Plugins
 
 - **`@hot-updater/supabase`**: Provides `supabaseStorage` functionality, leveraging Supabase for storage.

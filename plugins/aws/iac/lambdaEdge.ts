@@ -34,7 +34,7 @@ export class LambdaEdgeDeployer {
     });
     if (p.isCancel(lambdaName)) process.exit(1);
 
-    const lambdaPath = require.resolve("@hot-updater/aws/lambda");
+    const lambdaPath = require.resolve("@hot-updater/aws/lambda/handler");
     const lambdaDir = path.dirname(lambdaPath);
     const { tmpDir, removeTmpDir } = await copyDirToTmp(lambdaDir);
 

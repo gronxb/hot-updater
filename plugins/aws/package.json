@@ -27,6 +27,11 @@
       "require": "./dist/iac/index.cjs"
     },
     "./lambda": {
+      "types": "./dist/lambda.d.cts",
+      "import": "./dist/lambda.mjs",
+      "require": "./dist/lambda.cjs"
+    },
+    "./lambda/handler": {
       "require": "./dist/lambda/index.cjs"
     },
     "./package.json": "./package.json"
