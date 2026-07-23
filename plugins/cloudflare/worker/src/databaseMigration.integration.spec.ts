@@ -87,3 +87,14 @@ it("keeps the existing bundle and patch tables during migration", async () => {
   expect(migration).not.toContain("bundle_channels");
   expect(migration).not.toContain("channel_id");
 });
+
+it("fails a repeated v0.38 migration with the conflicting table name", async () => {
+  // Given
+  const migration = inject("d1Migrations").at(-1);
+  if (migration === undefined) throw new MissingD1MigrationError();
+
+  // When / Then
+  await expect(env.DB.prepare(migration).run()).rejects.toThrow(
+    "table bundle_events already exists",
+  );
+});

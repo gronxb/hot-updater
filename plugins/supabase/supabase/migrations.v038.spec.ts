@@ -104,4 +104,17 @@ describe("Supabase v0.38 bundle event migration", () => {
       ).rejects.toThrow();
     },
   );
+
+  it("fails repeated post-commit DDL with the conflicting relation", async () => {
+    // Given
+    const migration = await fs.readFile(migrationPath, "utf8");
+    const bundleEvents = migration.slice(
+      migration.indexOf("-- HotUpdater.bundle_events"),
+    );
+
+    // When / Then
+    await expect(database.exec(bundleEvents)).rejects.toThrow(
+      'relation "bundle_events" already exists',
+    );
+  });
 });

@@ -193,4 +193,18 @@ describe("SQLite v0.38 migration", () => {
     expect(rerun.operations).toEqual([]);
     expect(rerun.getSQL?.()).toBe("");
   });
+
+  it("rejects downgrade because the v0.38 release is forward-only", async () => {
+    // Given
+    const database = await migrateV037();
+    const migrator = createKyselyMigrator({
+      db: createKysely(database),
+      provider: "sqlite",
+    });
+
+    // When / Then
+    await expect(migrator.down()).rejects.toThrow(
+      "No previous schema to migrate to.",
+    );
+  });
 });
