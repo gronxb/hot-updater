@@ -200,7 +200,7 @@ vi.mock("./console", () => ({
 import fs from "fs";
 import path from "path";
 
-import type { Bundle } from "@hot-updater/plugin-core";
+import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
 import { BLOB_DATABASE_SNAPSHOT_KEY } from "@hot-updater/plugin-core";
 
 import { writeBundleManifest } from "@/utils/bundleManifest";
@@ -520,6 +520,79 @@ describe("deploy rollout wiring", () => {
         ([key]) => key === BLOB_DATABASE_SNAPSHOT_KEY,
       ),
     ).toHaveLength(1);
+  });
+
+  it("runs deployment side effects once when the database transaction retries", async () => {
+    // Given
+    const originalTransaction = databasePlugin.transaction;
+    if (originalTransaction === undefined) {
+      throw new TypeError(
+        "Expected the database fixture to support transactions",
+      );
+    }
+    const retrySignal = new Error("retry transaction");
+    let transactionCallbackInvocationCount = 0;
+    const retryingDatabasePlugin: DatabasePlugin = {
+      ...databasePlugin,
+      transaction: async (operation) => {
+        try {
+          await originalTransaction(async (transaction) => {
+            transactionCallbackInvocationCount += 1;
+            await operation(transaction);
+            throw retrySignal;
+          });
+        } catch (error) {
+          if (error !== retrySignal) {
+            throw error;
+          }
+        }
+
+        return originalTransaction(async (transaction) => {
+          transactionCallbackInvocationCount += 1;
+          return operation(transaction);
+        });
+      },
+    };
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: retryingDatabasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
+      buildPath: "/mock/build",
+      bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      stdout: null,
+    }));
+
+    // When
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      targetAppVersion: "1.0.x",
+    });
+
+    // Then
+    expect(transactionCallbackInvocationCount).toBe(2);
+    expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
+    expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledTimes(2);
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(6);
+    expect(mockCli.p.log.success).toHaveBeenCalledTimes(2);
+    expect(mockCli.p.outro).toHaveBeenCalledTimes(1);
+    expect(mockCli.p.outro).toHaveBeenCalledWith(
+      "🚀 Deployment Successful (iOS, Android)",
+    );
+    expect(
+      (await databaseHarness.bundles()).map(({ id }) => id).sort(),
+    ).toEqual(["bundle-android", "bundle-ios"]);
   });
 
   it("renders build stdout in a note instead of raw task output", async () => {

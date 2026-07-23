@@ -53,12 +53,19 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
+import { prepareAndCommitBundles } from "./deployTransaction";
 
 const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
 
 class DeployAbortedError extends Error {
   override readonly name = "DeployAbortedError";
 }
+
+type DeployPlatformResult = {
+  readonly bundleId: string;
+  readonly platform: Platform;
+  readonly runDeferredPatches: (() => Promise<void>) | null;
+};
 
 export interface DeployOptions {
   bundleOutputPath?: string;
@@ -529,28 +536,24 @@ const getMultiPlatformDeploymentContext = async ({
 };
 
 const deployPlatform = async ({
-  database,
   databasePlugin,
   deferAutoPatches,
   deferredDatabase,
   options,
+  persistBundle,
   platform,
   platformIndex,
   platformCount,
 }: {
-  database: DatabaseMutationClient;
   databasePlugin: DatabasePlugin;
   deferAutoPatches: boolean;
   deferredDatabase: DatabaseMutationClient;
   options: DeployOptions;
+  persistBundle: DatabaseMutationClient["insertBundle"];
   platform: Platform;
   platformIndex: number;
   platformCount: number;
-}): Promise<{
-  bundleId: string;
-  platform: Platform;
-  runDeferredPatches: (() => Promise<void>) | null;
-} | null> => {
+}): Promise<DeployPlatformResult | null> => {
   const cwd = getCwd();
   const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
   const rolloutCohortCount =
@@ -1033,7 +1036,7 @@ const deployPlatform = async ({
           const appVersion = await getNativeAppVersion(platform);
 
           try {
-            await database.insertBundle({
+            await persistBundle({
               shouldForceUpdate: options.forceUpdate,
               platform,
               fileHash,
@@ -1087,7 +1090,7 @@ const deployPlatform = async ({
                 patchSummary = await createAutoPatches({
                   bundleId: confirmedBundleId,
                   channel,
-                  database: deferAutoPatches ? deferredDatabase : database,
+                  database: deferredDatabase,
                   databasePlugin,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
@@ -1216,21 +1219,17 @@ export const deploy = async (options: DeployOptions) => {
     }
   }
 
-  const results: Array<{
-    bundleId: string;
-    platform: Platform;
-    runDeferredPatches: (() => Promise<void>) | null;
-  }> = [];
   const deployPlatforms = async (
-    mutationDatabase: DatabaseMutationClient,
-  ): Promise<void> => {
+    persistBundle: DatabaseMutationClient["insertBundle"],
+  ): Promise<DeployPlatformResult[]> => {
+    const preparedResults: DeployPlatformResult[] = [];
     for (const [platformIndex, platform] of platforms.entries()) {
       const result = await deployPlatform({
-        database: mutationDatabase,
         databasePlugin,
         deferAutoPatches: platforms.length > 1,
         deferredDatabase: database,
         options,
+        persistBundle,
         platform,
         platformCount: platforms.length,
         platformIndex,
@@ -1240,16 +1239,16 @@ export const deploy = async (options: DeployOptions) => {
         throw new DeployAbortedError();
       }
 
-      results.push(result);
+      preparedResults.push(result);
     }
+    return preparedResults;
   };
 
   try {
-    if (platforms.length > 1) {
-      await database.mutate(deployPlatforms);
-    } else {
-      await deployPlatforms(database);
-    }
+    const results =
+      platforms.length > 1
+        ? await prepareAndCommitBundles({ database, prepare: deployPlatforms })
+        : await deployPlatforms(database.insertBundle);
 
     for (const result of results) {
       await result.runDeferredPatches?.();
