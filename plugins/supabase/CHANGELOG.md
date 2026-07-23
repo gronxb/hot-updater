@@ -2,10 +2,20 @@
 
 ## Unreleased
 
-### Patch Changes
+### Minor Changes
 
-- Disable Analytics for Supabase until its plugin satisfies the complete
-  bundle-event contract.
+- Replace the aggregate Supabase database plugin with the fixed `bundles`,
+  `bundle_patches`, and `bundle_events` row contract. Supabase now exposes
+  structural Analytics support through append-only event rows.
+- Reject unsupported distinct counts and `distinctOn` with a typed
+  `invalid-operation` error before opening a PostgREST query. Supported
+  bundle, patch, and event queries honor every requested `orderBy` clause.
+- Add the forward-only `0.38` migration for `bundle_events` and its Row Level
+  Security policy. Back up the database before upgrading; do not manually
+  replay the migration after it succeeds.
+- Leave `POST /events` and Analytics query routes unmounted on the managed Edge
+  Function by default. Event collection requires a custom runtime with
+  explicit authorization and provider-level abuse controls.
 
 ## 0.35.6
 

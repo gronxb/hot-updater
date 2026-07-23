@@ -111,6 +111,17 @@ export default defineConfig({
 });
 ```
 
+### Upgrade and rollback
+
+Back up D1 before applying the database v2 schema. The `0.38` migration adds
+`bundle_events` and is forward-only; Hot Updater does not publish a down
+migration. Do not replay the migration SQL manually after it succeeds. A rerun
+fails explicitly when the event table already exists.
+
+Roll back to an older Hot Updater package set only when it is documented as
+compatible with the upgraded schema. Otherwise, stop writers and restore the
+pre-migration backup.
+
 ## Step 4: Add HotUpdater to Your Project
 
 The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:
@@ -160,8 +171,19 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed Cloudflare runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false, analytics: false } })`, so management and Analytics query endpoints are not mounted on the public worker URL.
+The managed Cloudflare runtime exposes the public update-check endpoints and
+`/version`. Management routes, Analytics query routes, and `POST /events` are
+not mounted on the public worker URL by default. A valid anonymous event request
+returns 404 before persistence. The version response therefore reports
+`eventIngestion: false` and `analyticsQueries: false`, independently from the
+D1 database's structural Analytics support.
 </Callout>
+
+Enabling `analytics: true` in the app does not override this server policy. To
+collect events, deploy a custom runtime with an explicit
+`eventIngestion.authorize` decision and provider-level rate limits or quotas.
+Do not expose ingestion with `authorize: () => true`. See
+[Analytics](/docs/guides/analytics) for route and retention requirements.
 
 ## Step 5: If You Use Expo, Add the Config Plugin
 

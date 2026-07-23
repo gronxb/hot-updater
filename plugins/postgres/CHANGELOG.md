@@ -2,10 +2,14 @@
 
 ## Unreleased
 
-### Patch Changes
+### Minor Changes
 
-- Disable Analytics for the legacy Postgres plugin until it satisfies the
-  complete bundle-event contract.
+- Replace the aggregate PostgreSQL database plugin with the fixed `bundles`,
+  `bundle_patches`, and `bundle_events` row contract. PostgreSQL now exposes
+  structural Analytics support through append-only event rows.
+- Implement exact single- and compound-field distinct counts, ordered
+  `distinctOn`, and every requested order clause, including an explicit `id`
+  tie-break.
 
 ## 0.35.6
 

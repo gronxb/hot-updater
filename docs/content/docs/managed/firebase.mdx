@@ -113,6 +113,17 @@ export default defineConfig({
 });
 ```
 
+### Upgrade and rollback
+
+Back up Firestore before the database v2 migration. The migration moves legacy
+inline or scalar patch fields into `bundle_patches`, removes those legacy
+fields, and records database adapter version 2. It is forward-only, so a v1
+code rollback is not assumed to be compatible with the migrated documents.
+
+Roll back only to a complete Hot Updater package set documented as compatible
+with adapter version 2. Otherwise, stop writers and restore the pre-migration
+backup.
+
 ## Step 4: Add HotUpdater to Your Project
 
 The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:
@@ -162,8 +173,19 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed Firebase runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false, analytics: false } })`, so management and Analytics query endpoints are not mounted on the public function URL.
+The managed Firebase runtime exposes the public update-check endpoints and
+`/version`. Management routes, Analytics query routes, and `POST /events` are
+not mounted on the public function URL by default. A valid anonymous event
+request returns 404 before persistence. The version response therefore reports
+`eventIngestion: false` and `analyticsQueries: false`, independently from
+Firestore's structural Analytics support.
 </Callout>
+
+Enabling `analytics: true` in the app does not override this server policy. To
+collect events, deploy a custom runtime with an explicit
+`eventIngestion.authorize` decision and provider-level rate limits or quotas.
+Do not expose ingestion with `authorize: () => true`. See
+[Analytics](/docs/guides/analytics) for route and retention requirements.
 
 ## Step 5: If You Use Expo, Add the Config Plugin
 

@@ -10,8 +10,9 @@ Analytics records one app-ready observation when a JavaScript runtime starts.
 The Console uses these observations to show active installations, reported
 bundle outcomes, and installation history.
 
-Analytics is opt-in. It requires a supported database plugin and an event
-ingestion route on the update server.
+Analytics is opt-in. Database support, client event ingestion, and Console
+query routes are separate capabilities. A deployment needs all three before it
+can collect and display reports.
 
 ## Enable analytics
 
@@ -106,9 +107,9 @@ installations with the same `userId` remain separate installations.
 
 ## Configure a custom server
 
-Managed Cloudflare, Firebase, and Supabase runtimes include event ingestion.
-For a custom server, add an explicit authorization policy to
-`createHotUpdater`:
+Managed Cloudflare, Firebase, and Supabase presets leave event ingestion
+unmounted by default. For a custom server, add an explicit authorization policy
+to `createHotUpdater`:
 
 ```ts
 import { createHotUpdater } from "@hot-updater/server";
@@ -141,6 +142,23 @@ and quotas at the same boundary because event payloads are untrusted telemetry.
 used by Console. It is disabled by default and is independent from bundle
 management. Protect `/api/bundles/*/events*` and `/api/installations*` with the
 same framework authentication used for your other management routes.
+
+`GET /version` reports these states independently:
+
+| Capability | Meaning |
+| --- | --- |
+| `capabilities.analytics` | The database has structural event storage and shared Analytics support. It does not mean a route is public. |
+| `capabilities.eventIngestion` | This server mounts authorized `POST /events`. |
+| `capabilities.analyticsQueries` | This server mounts the Analytics and installation query routes used by Console. |
+
+When `analytics` is true, `mode` and the optional `maxMatchingRows` describe
+the structural query implementation and its scan bound. They do not imply that
+either route group is mounted.
+
+Standalone and Console require `analyticsQueries: true` before calling query
+routes. A legacy `/version` response without the route-specific fields is
+treated as unavailable, even when it reports `analytics: true`. Upgrade the
+remote server and Standalone/Console packages together.
 
 ## Understand the Console data
 
@@ -182,13 +200,13 @@ background.
 | Standalone Database | Conditional | Discovers the remote database capability from the server automatically. |
 | AWS S3 Database (`s3Database`) | Not supported | S3 Database replaces a shared snapshot, so concurrent event appends are not safe. |
 
-The Console detects this capability automatically and hides Analytics when the
-configured database does not support it.
+The Console detects structural support and actual query-route availability. It
+hides Analytics when either one is unavailable.
 
 Existing `standaloneRepository` configuration does not change. There is no
-`supportsAnalytics` option to set. Record-backed servers advertise support,
-while snapshot-backed servers such as S3 advertise that Analytics is
-unavailable.
+`supportsAnalytics` option to set. Record-backed servers advertise structural
+support, while snapshot-backed servers such as S3 advertise that Analytics is
+unavailable. The remote server must also advertise `analyticsQueries: true`.
 
 ## Support Analytics in a custom database plugin
 
@@ -233,20 +251,50 @@ complete fixed-model contract and conformance tests.
 
 ## Deploy safely
 
-Deploy the database schema and server before enabling Analytics in a client:
+Use a native-first rollout. Deploy the database schema and server before
+enabling Analytics in JavaScript:
 
-1. Add the `bundle_events` table or collection.
-2. Deploy the server that accepts and queries app-ready reports.
-3. Confirm the Console shows Analytics for the database capability.
-4. Release a client with `analytics: true`.
+1. Back up the database, then add the `bundle_events` table or collection.
+2. Deploy the server and verify the `/version` route-capability fields.
+3. Release a store build containing the matching React Native native module.
+4. Confirm the Console sees structural support and the intended query route.
+5. Enable `analytics: true` in JavaScript only after the native build is in
+   service.
 
 Old clients continue to work with the new server. A new client connected to an
 old or unsupported server logs a warning and continues, but that report is not
 stored.
 
+New JavaScript also preserves a recovery reported by an older native binary as
+`RECOVERED`. For the legacy `{ status: "RECOVERED", crashedBundleId }` result,
+Hot Updater uses the current active bundle as the recovered-to bundle when it
+can. Legacy native payloads do not contain all directional and strategy
+metadata required by Analytics, so Hot Updater skips that telemetry event
+without discarding the readiness result.
+
+For a custom resolver, `notifyAppReady` remains the legacy readiness callback.
+It runs whether Analytics is enabled or disabled, and its failures continue to
+reach `onError`. Automatic Analytics uses the separate best-effort
+`notifyAppReadyAnalytics` callback; its transport failures warn but do not call
+`onError` or block app readiness. Implement the new callback when a custom
+resolver opts into Analytics. The default resolver already provides it.
+
+## Retention and downgrade policy
+
 Hot Updater does not add foreground heartbeats, sessions, durable retries, or
-an event-retention policy. Configure retention and monitoring for your own
-deployment.
+an event-retention policy. Bundle deletion does not delete historical
+`bundle_events`. Configure a provider-native scheduled job or TTL policy to
+remove events according to your privacy, storage, and query-performance
+requirements. Monitor row growth before queries reach the 50,000 matching-row
+scan limit.
+
+Official schema migrations are forward-only and do not include a down
+migration. Before upgrading, back up the database and verify the provider's
+clean-install and upgrade path. Roll back application or server code against
+the newer schema only when that complete Hot Updater package set is documented
+as compatible. Otherwise, stop writers and restore the pre-migration database
+backup as a coordinated recovery. Do not partially reverse the
+`bundle_events` schema.
 
 ## Related APIs
 

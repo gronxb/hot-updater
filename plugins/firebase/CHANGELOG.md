@@ -2,9 +2,17 @@
 
 ## Unreleased
 
-### Patch Changes
+### Minor Changes
 
-- Enable Analytics for Firebase's record-based database plugin.
+- Replace the aggregate database plugin with the fixed `bundles`,
+  `bundle_patches`, and `bundle_events` row contract. Firestore now exposes
+  structural Analytics support through append-only event documents.
+- Migrate legacy inline and scalar patch fields into `bundle_patches`, remove
+  the legacy fields, and record database adapter version 2. This migration is
+  forward-only; back up Firestore before upgrading.
+- Leave `POST /events` and Analytics query routes unmounted on the managed
+  Firebase function by default. Event collection requires a custom runtime
+  with explicit authorization and provider-level abuse controls.
 
 ## 0.35.6
 

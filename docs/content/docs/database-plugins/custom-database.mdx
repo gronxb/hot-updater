@@ -36,6 +36,45 @@ export default defineConfig({
 });
 ```
 
+## Migrate from database plugin v1
+
+Database plugin v2 intentionally replaces the aggregate, staged-mutation API.
+Upgrade the Hot Updater packages and every custom or official database
+provider together.
+
+| v1 contract | v2 contract | Migration |
+| --- | --- | --- |
+| `createDatabasePlugin<MyConfig>({ factory(config) })` returned a configured plugin factory | Your provider function returns the plugin object from `createDatabasePlugin({ name, plugin })` | Accept configuration in the provider function and close over it in the zero-argument `plugin` callback. Pass the returned object directly to `defineConfig` or `createHotUpdater`. |
+| The configured factory initialized its implementation lazily | `createDatabasePlugin` calls `plugin()` while constructing the plugin object | Resolve required bindings before creating the plugin. Put only driver-level lazy connection behavior behind the implementation when needed. |
+| Providers read and wrote aggregate `Bundle` objects | Providers implement fixed rows for `bundles`, `bundle_patches`, and `bundle_events` | Split nested patches into `bundle_patches`. Let the shared database client compose rows into bundles. |
+| `getBundleById`, `getBundles`, and `getChannels` implemented aggregate reads | `findOne`, `findMany`, and `count` implement row reads; `getChannels` is optional | Push filtering, ordered pagination, projection, and distinct operations into the database. |
+| `appendBundle`, `updateBundle`, and `deleteBundle` staged changes until `commitBundle` | `create`, `update`, and `delete` write rows directly | Remove the provider-owned unit of work and `commitBundle`. Expose `transaction` when a group of writes can be rolled back together. |
+| Database methods received `HotUpdaterContext` | Database methods receive only their typed operation input | Bind one database client or binding to each configured plugin. Keep request-scoped authorization and URL behavior in handlers and storage plugins. |
+| `mockDatabase({ initialBundles })` seeded aggregate bundles | `mockDatabase({ data })` accepts `MockDatabaseData` | Create data with `createMockDatabaseData()`, then populate its `bundles`, `bundlePatches`, and `bundleEvents` maps with fixed rows. |
+| `onUnmount` was returned from `factory`; `onDatabaseUpdated` was passed as a factory hook | `onUnmount` belongs to `DatabasePluginImplementation`; `onDatabaseUpdated` belongs to the returned `DatabasePlugin` | Keep resource cleanup inside the implementation. Attach cache invalidation to the returned plugin or use a provider helper that exposes the lifecycle hook. |
+
+There is no compatibility adapter for the removed factory, request-context,
+unit-of-work, `commitBundle`, or aggregate provider methods. Consumers that
+cannot migrate all database call sites in one release must pin the v1 package
+set until their provider is ready.
+
+### Route tenants without database request context
+
+Resolve the tenant at the server boundary from trusted authentication or host
+configuration, then select a separately configured Hot Updater runtime for that
+tenant. Each runtime must close over its own database client or binding.
+
+Do not change tenant state on a shared plugin while requests are in flight, and
+do not select a tenant from an unverified event payload. The handler context is
+still available to `eventIngestion.authorize` and storage plugins; it is not
+forwarded to database operations.
+
+For a worker-style deployment, bind the database before constructing the
+runtime. For a long-lived server, create or cache one runtime per tenant and
+dispatch the request to that runtime only after tenant authorization. Pass an
+explicit `createHotUpdater<MyHandlerContext>` generic when handler or storage
+plugins use a custom context; the default context type is `undefined`.
+
 ## Operation matrix
 
 Implement only the supported model and method combinations:
@@ -151,7 +190,9 @@ two app-ready reports cannot overwrite each other.
 Only `bundles` can be updated. Hot Updater uses an exact `id` predicate and
 expects the updated row, or `null` when the bundle does not exist.
 
-The `update` object never changes the bundle ID.
+The `update` object never changes the bundle ID. Only fields present in the
+caller's update are forwarded. Omitted scalar fields and omitted patches stay
+unchanged.
 
 ### Delete
 
@@ -245,9 +286,11 @@ transaction: async (callback) => {
 },
 ```
 
-If `transaction` is absent, Hot Updater performs the same writes sequentially.
-That fallback is not atomic and may leave earlier writes persisted when a later
-write fails.
+If `transaction` is absent, scalar-only bundle updates remain available.
+Replacing `patches` requires a real provider transaction. A non-transactional
+provider throws `DatabasePatchUpdateUnsupportedError` before changing any row
+when `patches` is caller-present. Omitting `patches` preserves existing patch
+rows; passing `patches: []` clears them on a transactional provider.
 
 ### Lifecycle
 
