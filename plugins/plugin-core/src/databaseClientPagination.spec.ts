@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
+import { loadBundleRows } from "./databaseClientReads";
+import type { BundleRow } from "./types";
 
 const createBundle = (id: string): Bundle => ({
   id,
@@ -66,20 +68,17 @@ describe("database client pagination", () => {
     ]);
   });
 
-  it("hydrates bundle channel values beyond the plugin default page size", async () => {
-    const channels = Array.from({ length: 101 }, (_, index) => ({
-      id: `channel-${index}`,
-      name: `release-${index}`,
-    }));
-    const bundles = channels.map((channel, index) => ({
-      id: `bundle-${String(index).padStart(3, "0")}`,
+  it("pushes a one-row owner page into the provider for 1,001 bundles", async () => {
+    // Given
+    const bundles = Array.from({ length: 1_001 }, (_, index) => ({
+      id: `bundle-${String(index).padStart(4, "0")}`,
       platform: "ios" as const,
       should_force_update: false,
       enabled: true,
       file_hash: `hash-${index}`,
       git_commit_hash: null,
       message: null,
-      channel: channel.name,
+      channel: `release-${index}`,
       storage_uri: `storage://bundle-${index}.zip`,
       target_app_version: "1.0.0",
       fingerprint_hash: null,
@@ -90,6 +89,7 @@ describe("database client pagination", () => {
       manifest_file_hash: null,
       asset_base_storage_uri: null,
     }));
+    const ownerQueries: unknown[] = [];
     const plugin = createDatabasePlugin({
       name: "channel-pagination",
       plugin: () => ({
@@ -103,20 +103,109 @@ describe("database client pagination", () => {
         count: async () => bundles.length,
         findOne: async () => null,
         findMany: async (input) => {
-          const rows = input.model === "bundles" ? bundles : [];
+          if (input.model === "bundles") ownerQueries.push(input);
+          const rows =
+            input.model === "bundles"
+              ? input.orderBy?.[0]?.direction === "desc"
+                ? bundles.toReversed()
+                : bundles
+              : [];
           return rows.slice(input.offset, input.offset + input.limit);
         },
       }),
     });
 
+    // When
     const result = await createDatabaseClient(plugin).getBundles({
-      limit: 101,
-      orderBy: { field: "id", direction: "asc" },
+      limit: 1,
+      orderBy: { field: "id", direction: "desc" },
     });
 
-    expect(result.data).toHaveLength(101);
-    expect(result.data.map(({ channel }) => channel)).toEqual(
-      channels.map(({ name }) => name),
-    );
+    // Then
+    expect(ownerQueries).toEqual([
+      expect.objectContaining({
+        model: "bundles",
+        limit: 1,
+        offset: 0,
+        orderBy: [{ field: "id", direction: "desc" }],
+      }),
+    ]);
+    expect(result.data.map(({ id }) => id)).toEqual(["bundle-1000"]);
+    expect(result.pagination.total).toBe(1_001);
   });
+
+  it("scans the captured bundle cutoff once when an insert moves order", async () => {
+    // Given
+    const capturedRows: BundleRow[] = Array.from({ length: 150 }, (_, index) =>
+      bundlesRow(createBundle(String(index).padStart(3, "0"))),
+    );
+    let inserted = false;
+    const plugin = createDatabasePlugin({
+      name: "moving-pagination",
+      plugin: () => ({
+        create: async () => {
+          throw new Error("not implemented");
+        },
+        update: async () => {
+          throw new Error("not implemented");
+        },
+        delete: async () => {},
+        count: async () => capturedRows.length,
+        findOne: async () => null,
+        findMany: async (input) => {
+          if (input.model !== "bundles") return [];
+          const idFilters = (input.where ?? []).filter(
+            ({ field }) => field === "id",
+          );
+          const candidates = capturedRows.filter((row) =>
+            idFilters.every(({ operator, value }) => {
+              if (typeof value !== "string") return true;
+              if (operator === "gt") return row.id > value;
+              if (operator === "lte") return row.id <= value;
+              return true;
+            }),
+          );
+          const ordered =
+            input.orderBy?.[0]?.direction === "desc"
+              ? candidates.toReversed()
+              : candidates;
+          const page = ordered.slice(input.offset, input.offset + input.limit);
+          if (!inserted && page.length === 100) {
+            inserted = true;
+            capturedRows.unshift(bundlesRow(createBundle("-01")));
+          }
+          return page;
+        },
+      }),
+    });
+
+    // When
+    const rows = await loadBundleRows(plugin);
+
+    // Then
+    expect(rows).toHaveLength(150);
+    expect(new Set(rows.map(({ id }) => id)).size).toBe(150);
+    expect(rows.map(({ id }) => id)).not.toContain("-01");
+    expect(rows.at(-1)?.id).toBe("149");
+  });
+});
+
+const bundlesRow = (bundle: Bundle): BundleRow => ({
+  id: bundle.id,
+  platform: bundle.platform,
+  should_force_update: bundle.shouldForceUpdate,
+  enabled: bundle.enabled,
+  file_hash: bundle.fileHash,
+  git_commit_hash: bundle.gitCommitHash,
+  message: bundle.message,
+  channel: bundle.channel,
+  storage_uri: bundle.storageUri,
+  target_app_version: bundle.targetAppVersion,
+  fingerprint_hash: bundle.fingerprintHash,
+  metadata: {},
+  rollout_cohort_count: 1000,
+  target_cohorts: null,
+  manifest_storage_uri: null,
+  manifest_file_hash: null,
+  asset_base_storage_uri: null,
 });

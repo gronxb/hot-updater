@@ -45,6 +45,12 @@ export type DatabaseClientTestSuiteOptions<TPlugin> =
     readonly createClient: (plugin: TPlugin) => DatabaseClientTestContract;
   };
 
+const supportsAtomicPatchUpdate = (plugin: unknown): boolean =>
+  typeof plugin === "object" &&
+  plugin !== null &&
+  "transaction" in plugin &&
+  typeof plugin.transaction === "function";
+
 export const setupDatabaseClientTestSuite = <TPlugin>(
   options: DatabaseClientTestSuiteOptions<TPlugin>,
 ): void => {
@@ -108,14 +114,17 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
         );
       });
 
-      it("replaces patch rows during a bundle update", async () => {
+      it("replaces patches only with atomic aggregate update support", async () => {
+        const plugin = getPlugin();
+        const client = options.createClient(plugin);
         const firstBase = createBundleFixture("401");
         const secondBase = createBundleFixture("402");
         const bundle = createBundleFixture("403");
         for (const fixture of [firstBase, secondBase, bundle]) {
-          await getClient().insertBundle(fixture);
+          await client.insertBundle(fixture);
         }
-        await getClient().updateBundleById(bundle.id, {
+        const update = client.updateBundleById(bundle.id, {
+          message: "replacement-message",
           patches: [
             {
               baseBundleId: secondBase.id,
@@ -126,8 +135,22 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
           ],
         });
 
-        const updated = await getClient().getBundleById(bundle.id);
+        if (!supportsAtomicPatchUpdate(plugin)) {
+          await expect(update).rejects.toMatchObject({
+            name: "DatabasePatchUpdateUnsupportedError",
+            bundleId: bundle.id,
+          });
+          await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
+            message: bundle.message,
+            patches: [],
+          });
+          return;
+        }
 
+        await update;
+        const updated = await client.getBundleById(bundle.id);
+
+        expect(updated?.message).toBe("replacement-message");
         expect(updated?.patches).toEqual([
           {
             baseBundleId: secondBase.id,

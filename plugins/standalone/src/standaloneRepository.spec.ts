@@ -46,7 +46,12 @@ const server = setupServer(
   http.get(`${BASE_URL}/version`, () =>
     HttpResponse.json({
       version: "0.0.0-test",
-      capabilities: { analytics: true, mode: "dedicated" },
+      capabilities: {
+        analytics: true,
+        mode: "dedicated",
+        eventIngestion: false,
+        analyticsQueries: true,
+      },
     }),
   ),
   http.get(`${BASE_URL}/api/bundles/channels`, ({ request }) => {
@@ -160,6 +165,8 @@ describe("standaloneRepository", () => {
     await expect(probe()).resolves.toEqual({
       analytics: true,
       mode: "dedicated",
+      eventIngestion: false,
+      analyticsQueries: true,
     });
   });
 
@@ -365,6 +372,139 @@ describe("standaloneRepository", () => {
     expect(requestedUrl?.searchParams.get("idGte")).toBe("bundle-20");
     expect(requestedUrl?.searchParams.get("limit")).toBe("10");
     expect(requestedUrl?.searchParams.get("page")).toBe("3");
+    expect(requestedUrl?.searchParams.get("orderDirection")).toBe("desc");
+  });
+
+  it("forwards bounded ascending bundle order to the aggregate endpoint", async () => {
+    // Given
+    let requestedUrl: URL | undefined;
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [bundle("00000000-0000-0000-0000-000000000031")],
+          pagination: {
+            total: 2,
+            hasNextPage: true,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 2,
+          },
+        });
+      }),
+    );
+
+    // When
+    const result = await createRepository().findMany({
+      model: "bundles",
+      orderBy: [{ field: "id", direction: "asc" }],
+      limit: 1,
+      offset: 0,
+    });
+
+    // Then
+    expect(result.map(({ id }) => id)).toEqual([
+      "00000000-0000-0000-0000-000000000031",
+    ]);
+    expect(requestedUrl?.searchParams.get("limit")).toBe("1");
+    expect(requestedUrl?.searchParams.get("page")).toBe("1");
+    expect(requestedUrl?.searchParams.get("orderDirection")).toBe("asc");
+  });
+
+  it("counts distinct bundle values through the local compatibility view", async () => {
+    // Given
+    const first = bundle("00000000-0000-0000-0000-000000000041");
+    const second = bundle("00000000-0000-0000-0000-000000000042");
+    const preview = bundle("00000000-0000-0000-0000-000000000043", {
+      channel: "preview",
+    });
+    bundles.set(first.id, first);
+    bundles.set(second.id, second);
+    bundles.set(preview.id, preview);
+
+    // When
+    const result = await createRepository().count({
+      model: "bundles",
+      distinct: ["channel"],
+    });
+
+    // Then
+    expect(result).toBe(2);
+  });
+
+  it("counts compound distinct bundle tuples", async () => {
+    // Given
+    const productionIos = bundle("00000000-0000-0000-0000-000000000044");
+    const productionAndroid = bundle("00000000-0000-0000-0000-000000000045", {
+      platform: "android",
+    });
+    const previewIos = bundle("00000000-0000-0000-0000-000000000046", {
+      channel: "preview",
+    });
+    bundles.set(productionIos.id, productionIos);
+    bundles.set(productionAndroid.id, productionAndroid);
+    bundles.set(previewIos.id, previewIos);
+
+    // When
+    const result = await createRepository().count({
+      model: "bundles",
+      distinct: ["channel", "platform"],
+    });
+
+    // Then
+    expect(result).toBe(3);
+  });
+
+  it("counts patch rows independently from bundle rows", async () => {
+    // Given
+    const base = bundle("00000000-0000-0000-0000-000000000047");
+    const target = bundle("00000000-0000-0000-0000-000000000048", {
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "patch-hash",
+          patchStorageUri: "storage://patch",
+        },
+      ],
+    });
+    bundles.set(base.id, base);
+    bundles.set(target.id, target);
+
+    // When
+    const result = await createRepository().count({
+      model: "bundle_patches",
+    });
+
+    // Then
+    expect(result).toBe(1);
+  });
+
+  it("keeps the highest id per channel for ordered distinct bundle rows", async () => {
+    // Given
+    const production = bundle("00000000-0000-0000-0000-000000000051");
+    const previewLow = bundle("00000000-0000-0000-0000-000000000052", {
+      channel: "preview",
+    });
+    const previewHigh = bundle("00000000-0000-0000-0000-000000000053", {
+      channel: "preview",
+    });
+    bundles.set(production.id, production);
+    bundles.set(previewLow.id, previewLow);
+    bundles.set(previewHigh.id, previewHigh);
+
+    // When
+    const result = await createRepository().findMany({
+      model: "bundles",
+      distinctOn: { fields: ["channel"] },
+      orderBy: [
+        { field: "channel", direction: "asc" },
+        { field: "id", direction: "desc" },
+      ],
+    });
+
+    // Then
+    expect(result.map(({ id }) => id)).toEqual([previewHigh.id, production.id]);
   });
 
   it("returns an empty bundle window without sending an invalid zero limit", async () => {

@@ -339,11 +339,11 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     });
   });
 
-  it("ingests bundle events from the worker entrypoint", async () => {
-    // Given: the client reports a successful OTA transition.
-    const bundleId = "00000000-0000-0000-0000-000000000001";
+  it("does not expose event ingestion from the worker entrypoint", async () => {
+    // Given: the client sends a valid OTA transition without authorization.
+    const installId = "cloudflare-e2e-install";
 
-    // When: the event is sent through the public runtime route.
+    // When: the event is sent to the managed runtime default.
     const response = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
         method: "POST",
@@ -354,9 +354,9 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
           cohort: "782",
           fingerprintHash: null,
           fromBundleId: NIL_UUID,
-          installId: "cloudflare-e2e-install",
+          installId,
           platform: "ios",
-          toBundleId: bundleId,
+          toBundleId: "00000000-0000-0000-0000-000000000001",
           type: "UPDATE_APPLIED",
           updateStrategy: "appVersion",
         }),
@@ -364,14 +364,14 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       env,
     );
 
-    // Then: the runtime accepts and persists the analytics event.
-    expect(response.status).toBe(204);
+    // Then: the route is closed before persistence.
+    expect(response.status).toBe(404);
     const row = await env.DB.prepare(
-      "SELECT type, to_bundle_id FROM bundle_events WHERE install_id = ?",
+      "SELECT id FROM bundle_events WHERE install_id = ?",
     )
-      .bind("cloudflare-e2e-install")
+      .bind(installId)
       .first();
-    expect(row).toEqual({ type: "UPDATE_APPLIED", to_bundle_id: bundleId });
+    expect(row).toBeNull();
   });
 
   it("does not support the legacy exact path", async () => {

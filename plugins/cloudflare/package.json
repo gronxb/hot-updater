@@ -13,9 +13,7 @@
     },
     "./worker": {
       "types": "./dist/worker/index.d.cts",
-      "import": "./dist/worker/index.mjs",
-      "require": "./dist/worker/index.cjs",
-      "default": "./dist/worker/index.mjs"
+      "import": "./dist/worker/index.mjs"
     },
     "./worker/config": "./worker/wrangler.json",
     "./worker/wrangler.json": "./worker/wrangler.json",

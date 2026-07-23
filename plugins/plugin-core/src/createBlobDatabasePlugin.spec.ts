@@ -9,6 +9,7 @@ import {
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
   createBlobDatabasePlugin,
+  type BlobInvalidationFailure,
 } from "./createBlobDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 import { databaseAnalyticsSupport } from "./types";
@@ -17,6 +18,8 @@ type MemoryConfig = {
   readonly store: Map<string, unknown>;
   readonly failNextUpload: () => boolean;
   readonly invalidations: string[][];
+  readonly invalidatePaths?: (paths: readonly string[]) => Promise<void>;
+  readonly onInvalidationError?: (failure: BlobInvalidationFailure) => void;
   readonly onLoadObject?: (key: string) => void;
   readonly onSnapshotRead?: () => void;
 };
@@ -53,9 +56,12 @@ const createMemoryPlugin = (
         config.store.set(key, data);
         return true;
       },
-      invalidatePaths: async (paths) => {
-        config.invalidations.push([...paths]);
-      },
+      invalidatePaths:
+        config.invalidatePaths ??
+        (async (paths) => {
+          config.invalidations.push([...paths]);
+        }),
+      onInvalidationError: config.onInvalidationError,
     }),
   });
 
@@ -161,6 +167,49 @@ describe("blob snapshot persistence", () => {
     );
 
     expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toEqual(previous);
+    expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
+  });
+
+  it("commits and reports once when bounded invalidation retries fail", async () => {
+    // Given
+    const invalidationError = new Error("fixture invalidation failure");
+    const invalidatePaths = vi.fn(async () => {
+      throw invalidationError;
+    });
+    const onInvalidationError = vi.fn();
+    const onDatabaseUpdated = vi.fn(async () => undefined);
+    const plugin = createMemoryPlugin(
+      {
+        ...config(),
+        invalidatePaths,
+        onInvalidationError,
+      },
+      onDatabaseUpdated,
+    );
+    const client = createDatabaseClient(plugin);
+
+    // When
+    await expect(
+      client.insertBundle(legacyBundle("1")),
+    ).resolves.toBeUndefined();
+
+    // Then
+    const reader = createMemoryPlugin(config());
+    await expect(
+      reader.findOne({
+        model: "bundles",
+        where: [{ field: "id", value: fixtureId("1") }],
+      }),
+    ).resolves.toMatchObject({ id: fixtureId("1") });
+    expect(invalidatePaths).toHaveBeenCalledTimes(3);
+    expect(onInvalidationError).toHaveBeenCalledTimes(1);
+    expect(onInvalidationError).toHaveBeenCalledWith({
+      attempts: 3,
+      error: invalidationError,
+      paths: expect.arrayContaining([
+        "/api/check-update/app-version/ios/1.0.0/production/*",
+      ]),
+    });
     expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
   });
 

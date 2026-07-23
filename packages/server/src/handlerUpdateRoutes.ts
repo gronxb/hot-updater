@@ -1,7 +1,10 @@
 import type { AppUpdateAvailableInfo, AppUpdateInfo } from "@hot-updater/core";
 import semver from "semver";
 
-import { resolveReportedAnalyticsCapability } from "./db/analyticsCapability";
+import {
+  type AnalyticsRouteCapability,
+  resolveReportedAnalyticsCapability,
+} from "./db/analyticsCapability";
 import {
   decodeMaybe,
   requirePlatformParam,
@@ -36,12 +39,11 @@ const serializeUpdateInfo = (
   return JSON.stringify(null);
 };
 
-export const createUpdateRouteHandlers = <TContext>(): Record<
-  string,
-  RouteHandler<TContext>
-> => ({
+export const createUpdateRouteHandlers = <TContext>(
+  routes: AnalyticsRouteCapability,
+): Record<string, RouteHandler<TContext>> => ({
   version: async (_params, _request, api) => {
-    const capabilities = await resolveReportedAnalyticsCapability(api);
+    const capabilities = await resolveReportedAnalyticsCapability(api, routes);
     return new Response(
       JSON.stringify({
         version: HOT_UPDATER_SERVER_VERSION,

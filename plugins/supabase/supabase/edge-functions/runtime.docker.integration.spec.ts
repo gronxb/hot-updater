@@ -523,11 +523,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
   });
 
-  it("ingests bundle events from the edge function entrypoint", async () => {
-    // Given: the client reports a successful OTA transition.
+  it("does not expose event ingestion from the edge function entrypoint", async () => {
+    // Given: the client sends a valid OTA transition without authorization.
     const bundleId = "00000000-0000-0000-0000-000000000001";
 
-    // When: the event is sent through the public runtime route.
+    // When: the event is sent to the managed runtime default.
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/events`,
       {
@@ -548,14 +548,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
       },
     );
 
-    // Then: the runtime accepts and exposes the analytics event.
-    expect(response.status).toBe(204);
+    // Then: the route is closed before persistence.
+    expect(response.status).toBe(404);
     if (!supportsAnalytics(seedHotUpdater)) {
       throw new Error("Expected Supabase Analytics support.");
     }
     await expect(
       seedHotUpdater.getBundleEventSummary(bundleId),
-    ).resolves.toEqual({ installed: 1, recovered: 0 });
+    ).resolves.toEqual({ installed: 0, recovered: 0 });
   });
 
   it("does not support the legacy exact path", async () => {

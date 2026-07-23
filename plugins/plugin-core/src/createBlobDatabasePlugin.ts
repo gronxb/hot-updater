@@ -3,7 +3,10 @@ import {
   type BlobSnapshotState,
 } from "./blobDatabaseCrud";
 import { BlobDatabaseSnapshotError } from "./blobDatabaseErrors";
-import { changedBundleInvalidationPaths } from "./blobDatabaseInvalidation";
+import {
+  invalidateBlobPathsAfterCommit,
+  type BlobInvalidationFailure,
+} from "./blobDatabaseInvalidationRetry";
 import { parseLegacyBundle } from "./blobDatabaseLegacy";
 import {
   createBlobUpdateManifestObjects,
@@ -37,6 +40,7 @@ export {
   type BlobDatabaseSnapshot,
 } from "./blobDatabaseSnapshot";
 export { BlobDatabaseSnapshotError } from "./blobDatabaseErrors";
+export type { BlobInvalidationFailure } from "./blobDatabaseInvalidationRetry";
 
 export interface BlobDatabaseOperations {
   readonly apiBasePath: string;
@@ -49,6 +53,7 @@ export interface BlobDatabaseOperations {
     data: unknown,
   ) => Promise<boolean>;
   readonly invalidatePaths: (paths: readonly string[]) => Promise<void>;
+  readonly onInvalidationError?: (failure: BlobInvalidationFailure) => void;
   readonly shouldSkipLoadObjectError?: (error: unknown, key: string) => boolean;
 }
 
@@ -297,12 +302,7 @@ export const createBlobDatabasePlugin = ({
       pointer,
     );
     if (!written) throw new BlobDatabaseWriteConflictError();
-    const paths = changedBundleInvalidationPaths(
-      operations.apiBasePath,
-      before.snapshot,
-      after,
-    );
-    if (paths.length > 0) await operations.invalidatePaths(paths);
+    await invalidateBlobPathsAfterCommit(operations, before.snapshot, after);
   };
 
   const mutate = <TResult>(

@@ -8,7 +8,7 @@ import { expect, it, vi } from "vitest";
 import { supabaseDatabase } from "./supabaseDatabase";
 
 // allow: SIZE_OK — hoisted PostgREST query/filter state machine for public plugin conformance.
-const { createMockClient, resetMockClient } = vi.hoisted(() => {
+const { createMockClient, getFromCalls, resetMockClient } = vi.hoisted(() => {
   type Row = Record<string, unknown>;
   type TableName = "bundle_events" | "bundle_patches" | "bundles";
   type QueryError = { readonly message: string };
@@ -23,6 +23,7 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
     bundle_patches: new Map(),
     bundles: new Map(),
   };
+  const fromCalls: TableName[] = [];
 
   const splitTopLevel = (value: string): readonly string[] => {
     const parts: string[] = [];
@@ -294,7 +295,10 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
 
   return {
     createMockClient: () => ({
-      from: (table: TableName) => new QueryBuilder(table),
+      from: (table: TableName) => {
+        fromCalls.push(table);
+        return new QueryBuilder(table);
+      },
       rpc: async (name: string) => {
         const bundles = [...rows.bundles.values()];
         if (name === "get_target_app_version_list") {
@@ -334,7 +338,9 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
         };
       },
     }),
+    getFromCalls: () => [...fromCalls],
     resetMockClient: () => {
+      fromCalls.length = 0;
       rows.bundle_events.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
@@ -398,6 +404,45 @@ it("applies compound ordering to bundle event pages", async () => {
   });
 
   expect(result.map(({ id }) => id)).toEqual(["c", "a", "b"]);
+});
+
+it("rejects distinct counts before opening a PostgREST query", async () => {
+  // Given
+  resetMockClient();
+  const plugin = supabaseDatabase({
+    supabaseUrl: "https://test.supabase.invalid",
+    supabaseServiceRoleKey: "test-service-role-key",
+  });
+
+  // When
+  const operation = plugin.count({
+    model: "bundle_events",
+    distinct: ["install_id"],
+  });
+
+  // Then
+  await expect(operation).rejects.toMatchObject({ code: "invalid-operation" });
+  expect(getFromCalls()).toEqual([]);
+});
+
+it("rejects distinct row selection before opening a PostgREST query", async () => {
+  // Given
+  resetMockClient();
+  const plugin = supabaseDatabase({
+    supabaseUrl: "https://test.supabase.invalid",
+    supabaseServiceRoleKey: "test-service-role-key",
+  });
+
+  // When
+  const operation = plugin.findMany({
+    model: "bundle_events",
+    distinctOn: { fields: ["install_id"] },
+    orderBy: [{ field: "install_id", direction: "asc" }],
+  });
+
+  // Then
+  await expect(operation).rejects.toMatchObject({ code: "invalid-operation" });
+  expect(getFromCalls()).toEqual([]);
 });
 
 setupDatabasePluginTestSuite({

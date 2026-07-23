@@ -28,6 +28,49 @@ describe("createHandler management routes", () => {
     );
   });
 
+  it("forwards an explicit bundle id order direction", async () => {
+    // Given
+    const api = createApi();
+    const handler = createManagementHandler(api);
+
+    // When
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?orderDirection=asc",
+      ),
+    );
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(api.getBundles).toHaveBeenCalledWith(
+      {
+        cursor: undefined,
+        limit: 50,
+        orderBy: { field: "id", direction: "asc" },
+        page: undefined,
+        where: {},
+      },
+      undefined,
+    );
+  });
+
+  it("rejects an invalid bundle id order direction", async () => {
+    // Given
+    const api = createApi();
+    const handler = createManagementHandler(api);
+
+    // When
+    const response = await handler(
+      new Request(
+        "http://localhost/hot-updater/api/bundles?orderDirection=random",
+      ),
+    );
+
+    // Then
+    expect(response.status).toBe(400);
+    expect(api.getBundles).not.toHaveBeenCalled();
+  });
+
   it("serves bundle event summaries through management routes", async () => {
     const api = createApi();
     api.getBundleEventSummary.mockResolvedValueOnce({

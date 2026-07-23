@@ -4,30 +4,18 @@ import type {
   BundleRow,
   CreateDatabaseImplementationInput,
   DatabasePluginImplementation,
-  DatabaseModel,
   DeleteDatabaseImplementationInput,
-  FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
 
+import { countD1Rows, d1TableNames, findManyD1Rows } from "./d1Query";
 import { parseD1Row } from "./d1Rows";
-import {
-  buildD1Order,
-  buildD1Where,
-  d1Placeholders,
-  encodeD1Values,
-} from "./d1Sql";
+import { buildD1Where, d1Placeholders, encodeD1Values } from "./d1Sql";
 
 export interface D1Executor {
   query(sql: string, params: readonly string[]): Promise<readonly unknown[]>;
 }
-
-const tableNames = {
-  bundles: "bundles",
-  bundle_patches: "bundle_patches",
-  bundle_events: "bundle_events",
-} as const satisfies Record<DatabaseModel, string>;
 
 class InvalidD1ChannelAggregateError extends Error {
   readonly name = "InvalidD1ChannelAggregateError";
@@ -205,24 +193,15 @@ export const createD1Implementation = (
   async delete(input: DeleteDatabaseImplementationInput) {
     const where = buildD1Where(input.where);
     await executor.query(
-      `DELETE FROM ${tableNames[input.model]}${where.sql}`,
+      `DELETE FROM ${d1TableNames[input.model]}${where.sql}`,
       where.params,
     );
   },
-  async count(input) {
-    const where = buildD1Where(input.where);
-    const rows = await executor.query(
-      `SELECT COUNT(*) AS count FROM ${tableNames[input.model]}${where.sql}`,
-      where.params,
-    );
-    const row = rows[0];
-    if (typeof row !== "object" || row === null || !("count" in row)) return 0;
-    return Number(row.count);
-  },
+  count: (input) => countD1Rows(executor, input),
   async findOne(input: FindOneDatabaseImplementationInput) {
     const where = buildD1Where(input.where);
     const rows = await executor.query(
-      `SELECT * FROM ${tableNames[input.model]}${where.sql} LIMIT 1`,
+      `SELECT * FROM ${d1TableNames[input.model]}${where.sql} LIMIT 1`,
       where.params,
     );
     if (rows[0] === undefined) return null;
@@ -235,25 +214,7 @@ export const createD1Implementation = (
         return parseD1Row("bundle_events", rows[0]);
     }
   },
-  async findMany(input: FindManyDatabaseImplementationInput) {
-    const where = buildD1Where(input.where);
-    const order = buildD1Order(
-      input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined),
-    );
-    const pageParams = encodeD1Values([input.limit, input.offset]);
-    const rows = await executor.query(
-      `SELECT * FROM ${tableNames[input.model]}${where.sql}${order} LIMIT json_extract(?, '$') OFFSET json_extract(?, '$')`,
-      [...where.params, ...pageParams],
-    );
-    switch (input.model) {
-      case "bundles":
-        return rows.map((row) => parseD1Row("bundles", row));
-      case "bundle_patches":
-        return rows.map((row) => parseD1Row("bundle_patches", row));
-      case "bundle_events":
-        return rows.map((row) => parseD1Row("bundle_events", row));
-    }
-  },
+  findMany: (input) => findManyD1Rows(executor, input),
   async getChannels() {
     const rows = await executor.query(
       "SELECT DISTINCT channel FROM bundles ORDER BY channel ASC",

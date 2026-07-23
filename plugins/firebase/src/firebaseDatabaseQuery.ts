@@ -1,4 +1,10 @@
-import type { DatabaseRow, DatabaseWhere } from "@hot-updater/plugin-core";
+import type {
+  DatabaseDistinctOn,
+  DatabaseOrderBy,
+  DatabaseRow,
+  DatabaseSortBy,
+  DatabaseWhere,
+} from "@hot-updater/plugin-core";
 
 const compare = (left: unknown, right: unknown): number => {
   if (typeof left === "number" && typeof right === "number") {
@@ -110,11 +116,11 @@ export const queryFirebaseDatabaseRows = <
 >(
   rows: readonly DatabaseRow<TModel>[],
   input: {
+    readonly model: TModel;
     readonly where?: readonly DatabaseWhere<TModel>[];
-    readonly sortBy?: {
-      readonly field: keyof DatabaseRow<TModel>;
-      readonly direction: "asc" | "desc";
-    };
+    readonly orderBy?: DatabaseOrderBy<TModel>;
+    readonly sortBy?: DatabaseSortBy<TModel>;
+    readonly distinctOn?: DatabaseDistinctOn<TModel>;
     readonly offset: number;
     readonly limit: number;
   },
@@ -122,16 +128,40 @@ export const queryFirebaseDatabaseRows = <
   const filtered = rows.filter((row) =>
     matchesFirebaseDatabaseWhere(row, input.where),
   );
-  const sortBy = input.sortBy;
-  if (sortBy) {
-    const direction = sortBy.direction === "asc" ? 1 : -1;
-    filtered.sort(
-      (left, right) =>
-        compare(
-          Reflect.get(left, sortBy.field),
-          Reflect.get(right, sortBy.field),
-        ) * direction,
-    );
+  const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : undefined);
+  if (orderBy !== undefined) {
+    filtered.sort((left, right) => {
+      for (const clause of orderBy) {
+        const leftValue = Reflect.get(left, clause.field);
+        const rightValue = Reflect.get(right, clause.field);
+        if (leftValue === rightValue) continue;
+        if (
+          clause.nulls !== undefined &&
+          (leftValue === null || rightValue === null)
+        ) {
+          const nullComparison = leftValue === null ? -1 : 1;
+          return clause.nulls === "first" ? nullComparison : -nullComparison;
+        }
+        const comparison = compare(leftValue, rightValue);
+        if (comparison !== 0) {
+          return clause.direction === "asc" ? comparison : -comparison;
+        }
+      }
+      return 0;
+    });
   }
-  return filtered.slice(input.offset, input.offset + input.limit);
+  const distinctOn = input.distinctOn;
+  if (distinctOn === undefined) {
+    return filtered.slice(input.offset, input.offset + input.limit);
+  }
+  const seen = new Set<string>();
+  const distinctRows = filtered.filter((row) => {
+    const key = JSON.stringify(
+      distinctOn.fields.map((field) => Reflect.get(row, field)),
+    );
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return distinctRows.slice(input.offset, input.offset + input.limit);
 };

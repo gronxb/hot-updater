@@ -1,6 +1,7 @@
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
+import { registerDatabasePluginDistinctTests } from "./databasePluginDistinctTests";
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
 import { createBundleRowFixture } from "./databaseTestFixtures";
 
@@ -30,6 +31,7 @@ const seedQueryRows = async (state: QueryTestState) => {
 export const registerDatabasePluginQueryTests = (
   state: QueryTestState,
 ): void => {
+  registerDatabasePluginDistinctTests(state);
   describe("query semantics", () => {
     it("supports ordered comparison operators", async () => {
       const rows = await seedQueryRows(state);

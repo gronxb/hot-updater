@@ -1,11 +1,9 @@
 import type {
-  CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
   DatabasePluginImplementation,
   DatabaseModel,
   DatabaseWhere,
   DeleteDatabaseImplementationInput,
-  FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
@@ -20,6 +18,7 @@ import {
 import { Pool, type PoolConfig } from "pg";
 
 import { getUpdateInfo } from "./getUpdateInfo";
+import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
 import type { Database } from "./types";
 
 type PostgresWhere = {
@@ -177,35 +176,7 @@ const createPostgresImplementation = (
       }
     }
   },
-  async count(input: CountDatabaseImplementationInput) {
-    const where = buildWhere(input.where);
-    switch (input.model) {
-      case "bundles": {
-        let query = db
-          .selectFrom("bundles")
-          .select(({ fn }) => fn.countAll<string>().as("count"));
-        if (where !== undefined) query = query.where(where);
-        const result = await query.executeTakeFirstOrThrow();
-        return Number(result.count);
-      }
-      case "bundle_patches": {
-        let query = db
-          .selectFrom("bundle_patches")
-          .select(({ fn }) => fn.countAll<string>().as("count"));
-        if (where !== undefined) query = query.where(where);
-        const result = await query.executeTakeFirstOrThrow();
-        return Number(result.count);
-      }
-      case "bundle_events": {
-        let query = db
-          .selectFrom("bundle_events")
-          .select(({ fn }) => fn.countAll<string>().as("count"));
-        if (where !== undefined) query = query.where(where);
-        const result = await query.executeTakeFirstOrThrow();
-        return Number(result.count);
-      }
-    }
-  },
+  count: (input) => countPostgresRows(db, input, buildWhere(input.where)),
   async findOne(input: FindOneDatabaseImplementationInput) {
     const where = buildWhere(input.where);
     switch (input.model) {
@@ -226,38 +197,7 @@ const createPostgresImplementation = (
       }
     }
   },
-  async findMany(input: FindManyDatabaseImplementationInput) {
-    const where = buildWhere(input.where);
-    switch (input.model) {
-      case "bundles": {
-        let query = db.selectFrom("bundles").selectAll();
-        if (where !== undefined) query = query.where(where);
-        for (const clause of input.orderBy ??
-          (input.sortBy ? [input.sortBy] : [])) {
-          query = query.orderBy(clause.field, clause.direction);
-        }
-        return query.limit(input.limit).offset(input.offset).execute();
-      }
-      case "bundle_patches": {
-        let query = db.selectFrom("bundle_patches").selectAll();
-        if (where !== undefined) query = query.where(where);
-        for (const clause of input.orderBy ??
-          (input.sortBy ? [input.sortBy] : [])) {
-          query = query.orderBy(clause.field, clause.direction);
-        }
-        return query.limit(input.limit).offset(input.offset).execute();
-      }
-      case "bundle_events": {
-        let query = db.selectFrom("bundle_events").selectAll();
-        if (where !== undefined) query = query.where(where);
-        for (const clause of input.orderBy ??
-          (input.sortBy ? [input.sortBy] : [])) {
-          query = query.orderBy(clause.field, clause.direction);
-        }
-        return query.limit(input.limit).offset(input.offset).execute();
-      }
-    }
-  },
+  findMany: (input) => findManyPostgresRows(db, input, buildWhere(input.where)),
   async getChannels() {
     const rows = await db
       .selectFrom("bundles")

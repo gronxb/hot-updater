@@ -144,6 +144,8 @@ describe("Handler <-> Standalone Repository Integration", () => {
       analytics: true,
       mode: "bounded",
       maxMatchingRows: 50_000,
+      eventIngestion: false,
+      analyticsQueries: true,
     });
     const version = await consoleApi.handler(
       new Request(`${baseUrl}/console/version`),
@@ -414,7 +416,11 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     await client.updateBundleById(bundleId, { targetAppVersion: "1.0.2" });
 
-    await expect(probe()).resolves.toEqual({ analytics: false });
+    await expect(probe()).resolves.toEqual({
+      analytics: false,
+      eventIngestion: false,
+      analyticsQueries: false,
+    });
     const version = await blobConsoleApi.handler(
       new Request(`${baseUrl}/api/version`),
     );

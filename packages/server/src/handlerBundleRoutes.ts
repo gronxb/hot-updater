@@ -65,6 +65,7 @@ export const createBundleRouteHandlers = <TContext>(): Record<
     const offset = url.searchParams.get("offset");
     const after = url.searchParams.get("after") ?? undefined;
     const before = url.searchParams.get("before") ?? undefined;
+    const orderDirection = url.searchParams.get("orderDirection");
     const enabled = parseBooleanSearchParam(url, "enabled");
     const targetAppVersion = parseNullableStringSearchParam(
       url,
@@ -109,6 +110,15 @@ export const createBundleRouteHandlers = <TContext>(): Record<
         `Invalid platform: ${platform}. Expected 'ios' or 'android'.`,
       );
     }
+    if (
+      orderDirection !== null &&
+      orderDirection !== "asc" &&
+      orderDirection !== "desc"
+    ) {
+      throw new HandlerBadRequestError(
+        "The 'orderDirection' query parameter must be 'asc' or 'desc'.",
+      );
+    }
     const result = await api.getBundles(
       {
         where: {
@@ -137,6 +147,9 @@ export const createBundleRouteHandlers = <TContext>(): Record<
         limit,
         page,
         cursor: after || before ? { after, before } : undefined,
+        ...(orderDirection && {
+          orderBy: { field: "id", direction: orderDirection },
+        }),
       },
       context,
     );

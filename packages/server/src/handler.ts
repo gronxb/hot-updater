@@ -1,5 +1,6 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
+import type { AnalyticsRouteCapability } from "./db/analyticsCapability";
 import { BundleEventScanLimitExceededError } from "./db/bundleEventScan";
 import { supportsAnalytics } from "./db/types";
 import { createAnalyticsRouteHandlers } from "./handlerAnalyticsRoutes";
@@ -40,9 +41,13 @@ export function createHandler<TContext = unknown>(
     analytics: options.routes?.analytics ?? false,
   } satisfies HandlerRoutes;
   const analyticsSupported = supportsAnalytics(api);
+  const mountedAnalyticsRoutes = {
+    eventIngestion: analyticsSupported && options.eventIngestion !== undefined,
+    analyticsQueries: analyticsSupported && routeOptions.analytics === true,
+  } satisfies AnalyticsRouteCapability;
   const router = createRouter<string>();
   const routeHandlers: Record<string, RouteHandler<TContext>> = {
-    ...createUpdateRouteHandlers<TContext>(),
+    ...createUpdateRouteHandlers<TContext>(mountedAnalyticsRoutes),
     ...createBundleRouteHandlers<TContext>(),
     ...(options.eventIngestion
       ? createEventIngestionRouteHandlers(options.eventIngestion)
@@ -78,11 +83,11 @@ export function createHandler<TContext = unknown>(
     );
   }
 
-  if (analyticsSupported && options.eventIngestion) {
+  if (mountedAnalyticsRoutes.eventIngestion) {
     addRoute(router, "POST", "/events", "appendBundleEvent");
   }
 
-  if (routeOptions.analytics && analyticsSupported) {
+  if (mountedAnalyticsRoutes.analyticsQueries) {
     addRoute(
       router,
       "GET",

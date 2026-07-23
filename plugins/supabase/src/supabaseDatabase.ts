@@ -7,7 +7,10 @@ import type {
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  createDatabasePlugin,
+  DatabasePluginInputError,
+} from "@hot-updater/plugin-core";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -89,6 +92,9 @@ const createSupabaseImplementation = (
     }
   },
   async count(input: CountDatabaseImplementationInput) {
+    if (input.distinct !== undefined) {
+      throw new DatabasePluginInputError("invalid-operation");
+    }
     const filter = buildSupabaseFilter(input.where);
     switch (input.model) {
       case "bundles": {
@@ -147,16 +153,21 @@ const createSupabaseImplementation = (
     }
   },
   async findMany(input: FindManyDatabaseImplementationInput) {
+    if (input.distinctOn !== undefined) {
+      throw new DatabasePluginInputError("invalid-operation");
+    }
     if (input.limit === 0) return [];
     const filter = buildSupabaseFilter(input.where);
     const rangeEnd = input.offset + input.limit - 1;
+    const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : []);
     switch (input.model) {
       case "bundles": {
         let query = supabase.from("bundles").select("*");
         if (filter !== undefined) query = query.or(filter);
-        if (input.sortBy !== undefined) {
-          query = query.order(input.sortBy.field, {
-            ascending: input.sortBy.direction === "asc",
+        for (const clause of orderBy) {
+          query = query.order(clause.field, {
+            ascending: clause.direction === "asc",
+            ...(clause.nulls ? { nullsFirst: clause.nulls === "first" } : {}),
           });
         }
         const { data, error } = await query.range(input.offset, rangeEnd);
@@ -166,9 +177,10 @@ const createSupabaseImplementation = (
       case "bundle_patches": {
         let query = supabase.from("bundle_patches").select("*");
         if (filter !== undefined) query = query.or(filter);
-        if (input.sortBy !== undefined) {
-          query = query.order(input.sortBy.field, {
-            ascending: input.sortBy.direction === "asc",
+        for (const clause of orderBy) {
+          query = query.order(clause.field, {
+            ascending: clause.direction === "asc",
+            ...(clause.nulls ? { nullsFirst: clause.nulls === "first" } : {}),
           });
         }
         const { data, error } = await query.range(input.offset, rangeEnd);
@@ -178,7 +190,6 @@ const createSupabaseImplementation = (
       case "bundle_events": {
         let query = supabase.from("bundle_events").select("*");
         if (filter !== undefined) query = query.or(filter);
-        const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : []);
         for (const clause of orderBy) {
           query = query.order(clause.field, {
             ascending: clause.direction === "asc",

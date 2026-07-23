@@ -38,9 +38,6 @@ const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
-  eventIngestion: {
-    authorize: () => true,
-  },
   routes: {
     updateCheck: true,
     bundles: false,

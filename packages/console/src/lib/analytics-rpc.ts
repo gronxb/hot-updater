@@ -51,22 +51,33 @@ const internalAnalyticsCapabilityProbe = Symbol.for(
   "@hot-updater/internal/analytics-capability-probe",
 );
 
-const isProbedCapabilities = (
-  value: unknown,
-): value is AnalyticsCapabilities["capabilities"] => {
-  if (typeof value !== "object" || value === null) return false;
-  const analytics = Reflect.get(value, "analytics");
-  if (analytics === false) return true;
-  const mode = Reflect.get(value, "mode");
-  if (analytics !== true) return false;
-  if (mode === "dedicated") return true;
-  const maxMatchingRows = Reflect.get(value, "maxMatchingRows");
-  return (
-    mode === "bounded" &&
+export const parseProbedAnalyticsCapabilities = (
+  capabilities: unknown,
+): AnalyticsCapabilities["capabilities"] => {
+  if (typeof capabilities !== "object" || capabilities === null) {
+    return { analytics: false };
+  }
+  const analytics = Reflect.get(capabilities, "analytics");
+  const eventIngestion = Reflect.get(capabilities, "eventIngestion");
+  const analyticsQueries = Reflect.get(capabilities, "analyticsQueries");
+  if (
+    analytics !== true ||
+    typeof eventIngestion !== "boolean" ||
+    analyticsQueries !== true
+  ) {
+    return { analytics: false };
+  }
+  const mode = Reflect.get(capabilities, "mode");
+  if (mode === "dedicated") {
+    return { analytics: true, mode };
+  }
+  const maxMatchingRows = Reflect.get(capabilities, "maxMatchingRows");
+  return mode === "bounded" &&
     typeof maxMatchingRows === "number" &&
     Number.isFinite(maxMatchingRows) &&
     maxMatchingRows > 0
-  );
+    ? { analytics: true, mode, maxMatchingRows }
+    : { analytics: false };
 };
 
 export class AnalyticsBundlePaginationError extends Error {
@@ -94,9 +105,7 @@ export const getAnalyticsCapabilities = async (
   if (typeof probe === "function") {
     const capabilities: unknown = await Reflect.apply(probe, runtime, []);
     return {
-      capabilities: isProbedCapabilities(capabilities)
-        ? capabilities
-        : { analytics: false },
+      capabilities: parseProbedAnalyticsCapabilities(capabilities),
     };
   }
   const metadata = Reflect.get(

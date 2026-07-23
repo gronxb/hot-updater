@@ -121,3 +121,67 @@ it("uses a native distinct channel query", async () => {
     "SELECT DISTINCT channel FROM bundles ORDER BY channel ASC",
   );
 });
+
+it("counts compound distinct tuples in SQL", async () => {
+  // Given
+  state.results.push({ count: 3 });
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+
+  // When
+  await plugin.count({
+    model: "bundle_events",
+    distinct: ["install_id", "channel"],
+  });
+
+  // Then
+  expect(state.queries[0]?.sql).toBe(
+    "SELECT COUNT(*) AS count FROM (SELECT DISTINCT install_id, channel FROM bundle_events) AS distinct_rows",
+  );
+});
+
+it("selects one ordered row per distinct key in SQL", async () => {
+  // Given
+  state.results.push({
+    id: "event-1",
+    type: "UNCHANGED",
+    install_id: "install-1",
+    user_id: null,
+    username: null,
+    from_bundle_id: null,
+    to_bundle_id: "bundle-1",
+    platform: "ios",
+    app_version: "1.0.0",
+    channel: "production",
+    cohort: "stable",
+    update_strategy: null,
+    fingerprint_hash: null,
+    sdk_version: null,
+    received_at_ms: 100,
+  });
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+
+  // When
+  await plugin.findMany({
+    model: "bundle_events",
+    distinctOn: { fields: ["install_id"] },
+    orderBy: [
+      { field: "install_id", direction: "asc" },
+      { field: "received_at_ms", direction: "desc" },
+      { field: "id", direction: "asc" },
+    ],
+  });
+
+  // Then
+  expect(state.queries[0]?.sql).toContain(
+    "ROW_NUMBER() OVER (PARTITION BY install_id ORDER BY install_id ASC, received_at_ms DESC, id ASC)",
+  );
+  expect(state.queries[0]?.sql).toContain("WHERE __hot_updater_rank = 1");
+});

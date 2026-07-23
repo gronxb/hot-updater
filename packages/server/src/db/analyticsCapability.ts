@@ -15,9 +15,16 @@ export const internalAnalyticsCapabilityProbe = Symbol.for(
   "@hot-updater/internal/analytics-capability-probe",
 );
 
-export type ReportedAnalyticsCapability =
+export type ReportedAnalyticsCapability = (
   | { readonly analytics: false }
-  | ({ readonly analytics: true } & AnalyticsCapability);
+  | ({ readonly analytics: true } & AnalyticsCapability)
+) &
+  AnalyticsRouteCapability;
+
+export type AnalyticsRouteCapability = {
+  readonly eventIngestion: boolean;
+  readonly analyticsQueries: boolean;
+};
 
 export const supportsAnalytics = <TContext>(
   api: object,
@@ -70,14 +77,17 @@ const isReportedAnalyticsCapability = (
 
 export const resolveReportedAnalyticsCapability = async (
   api: object,
+  routes: AnalyticsRouteCapability,
 ): Promise<ReportedAnalyticsCapability> => {
   const probe = Reflect.get(api, internalAnalyticsCapabilityProbe);
   if (typeof probe === "function") {
     const capability: unknown = await Reflect.apply(probe, api, []);
     return isReportedAnalyticsCapability(capability)
-      ? capability
-      : { analytics: false };
+      ? { ...capability, ...routes }
+      : { analytics: false, ...routes };
   }
   const capability = getAnalyticsCapability(api);
-  return capability ? { analytics: true, ...capability } : { analytics: false };
+  return capability
+    ? { analytics: true, ...capability, ...routes }
+    : { analytics: false, ...routes };
 };

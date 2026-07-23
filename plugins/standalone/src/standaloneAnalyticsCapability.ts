@@ -1,7 +1,7 @@
 import { createStandaloneHttp } from "./standaloneHttp";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
-type RemoteAnalyticsCapability =
+type LegacyRemoteAnalyticsCapability =
   | { readonly analytics: false }
   | { readonly analytics: true; readonly mode: "dedicated" }
   | {
@@ -9,6 +9,21 @@ type RemoteAnalyticsCapability =
       readonly mode: "bounded";
       readonly maxMatchingRows: number;
     };
+
+type RemoteAnalyticsCapability = LegacyRemoteAnalyticsCapability & {
+  readonly eventIngestion: boolean;
+  readonly analyticsQueries: boolean;
+};
+
+type ParsedAnalyticsCapability =
+  | LegacyRemoteAnalyticsCapability
+  | RemoteAnalyticsCapability;
+
+const unavailableAnalyticsCapability = {
+  analytics: false,
+  eventIngestion: false,
+  analyticsQueries: false,
+} as const satisfies RemoteAnalyticsCapability;
 
 export const internalAnalyticsCapabilityProbe = Symbol.for(
   "@hot-updater/internal/analytics-capability-probe",
@@ -19,23 +34,39 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isAnalyticsCapability = (
   value: unknown,
-): value is RemoteAnalyticsCapability => {
+): value is ParsedAnalyticsCapability => {
   if (!isRecord(value) || typeof value.analytics !== "boolean") return false;
-  if (!value.analytics) return true;
-  if (value.mode === "dedicated") return true;
+  const validStructuralCapability =
+    !value.analytics ||
+    value.mode === "dedicated" ||
+    (value.mode === "bounded" &&
+      typeof value.maxMatchingRows === "number" &&
+      Number.isFinite(value.maxMatchingRows) &&
+      value.maxMatchingRows > 0);
+  if (!validStructuralCapability) return false;
+
+  const legacyShape =
+    value.eventIngestion === undefined && value.analyticsQueries === undefined;
   return (
-    value.mode === "bounded" &&
-    typeof value.maxMatchingRows === "number" &&
-    Number.isFinite(value.maxMatchingRows) &&
-    value.maxMatchingRows > 0
+    legacyShape ||
+    (typeof value.eventIngestion === "boolean" &&
+      typeof value.analyticsQueries === "boolean")
   );
 };
+
+const isRouteAwareAnalyticsCapability = (
+  value: ParsedAnalyticsCapability,
+): value is RemoteAnalyticsCapability =>
+  "eventIngestion" in value &&
+  typeof value.eventIngestion === "boolean" &&
+  "analyticsQueries" in value &&
+  typeof value.analyticsQueries === "boolean";
 
 const isVersionResponse = (
   value: unknown,
 ): value is {
   readonly version: string;
-  readonly capabilities?: RemoteAnalyticsCapability;
+  readonly capabilities?: ParsedAnalyticsCapability;
 } =>
   isRecord(value) &&
   typeof value.version === "string" &&
@@ -53,6 +84,15 @@ export const createAnalyticsCapabilityProbe = (
       isVersionResponse,
       "Invalid server version response.",
     );
-    return response.capabilities ?? { analytics: false };
+    const capabilities = response.capabilities;
+    if (
+      !capabilities ||
+      !isRouteAwareAnalyticsCapability(capabilities) ||
+      !capabilities.analytics ||
+      !capabilities.analyticsQueries
+    ) {
+      return unavailableAnalyticsCapability;
+    }
+    return capabilities;
   };
 };

@@ -102,15 +102,15 @@ export const createStandaloneBundleRemote = (
 
   const loadBundleWindow = async (input: BundleWindowInput) => {
     if (input.limit === 0) return { rows: [] as BundleRow[], total: 0 };
-    if (
-      input.sortBy &&
-      (input.sortBy.field !== "id" || input.sortBy.direction !== "desc")
-    ) {
+    if (input.sortBy && input.sortBy.field !== "id") {
       return null;
     }
     const route = routes.list();
     const url = new URL(http.buildUrl(route.path));
     if (!appendBundleWhere(url, input.where)) return null;
+    if (input.sortBy !== undefined) {
+      url.searchParams.set("orderDirection", input.sortBy.direction);
+    }
     const pageAligned = input.limit > 0 && input.offset % input.limit === 0;
     const remoteLimit = pageAligned ? input.limit : input.offset + input.limit;
     if (remoteLimit > PAGE_SIZE) return null;

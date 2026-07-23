@@ -43,7 +43,9 @@ setupDatabasePluginTestSuite({
   },
   createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
-    await getClient().exec("DELETE FROM bundle_patches; DELETE FROM bundles;");
+    await getClient().exec(
+      "DELETE FROM bundle_events; DELETE FROM bundle_patches; DELETE FROM bundles;",
+    );
   },
   dispose: async (plugin) => {
     await plugin.onUnmount?.();
