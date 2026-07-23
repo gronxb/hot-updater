@@ -101,6 +101,16 @@ export const s3Database = (
                 },
               )
             : Promise.resolve(),
+        onInvalidationError: ({ error, paths }) => {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Unknown invalidation error";
+          console.warn(
+            "[hot-updater/aws] CloudFront invalidation failed; continuing without cache invalidation.",
+            { distributionId: cloudfrontDistributionId, error: message, paths },
+          );
+        },
       };
     },
   });

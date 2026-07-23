@@ -271,6 +271,21 @@ describe("Handler <-> Standalone Repository Integration", () => {
       fingerprintHash: null,
     });
     now.mockReturnValue(Date.UTC(2026, 6, 17, 12, 0, 0, 2));
+    await api.appendBundleEvent({
+      type: "UNCHANGED",
+      installId,
+      fromBundleId: null,
+      toBundleId: bundleId,
+      userId: "integration-user-renamed",
+      username: "Renamed Integration User",
+      platform: "ios",
+      appVersion: "1.0.1",
+      channel: "production",
+      cohort: "refreshed",
+      updateStrategy: null,
+      fingerprintHash: null,
+    });
+    now.mockReturnValue(Date.UTC(2026, 6, 17, 12, 0, 0, 3));
     const consoleApi = createHotUpdater({
       database: standaloneRepository({
         baseUrl: `${baseUrl}/hot-updater`,
@@ -302,8 +317,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
       data: [
         {
           installId,
-          latestStatus: "RECOVERED",
-          userId: "integration-user",
+          lastKnownBundleId: bundleId,
+          latestStatus: "UNCHANGED",
+          userId: "integration-user-renamed",
         },
       ],
       pagination: { total: 1 },

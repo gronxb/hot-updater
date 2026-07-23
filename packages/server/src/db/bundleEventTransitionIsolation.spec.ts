@@ -70,7 +70,38 @@ describe("bundle event analytics isolation", () => {
     ]);
   });
 
-  it("keeps transition overview, search, and history free of UNCHANGED", async () => {
+  it("discovers an installation tracked only by UNCHANGED", async () => {
+    // Given
+    vi.spyOn(Date, "now").mockReturnValue(ACTIVE_AS_OF_MS);
+    const database = await insertActiveRows([
+      createUnchangedEvent("unchanged-only", ACTIVE_AS_OF_MS - 1, {
+        user_id: "Alias-A",
+        to_bundle_id: "active-bundle",
+      }),
+    ]);
+    const service = createBundleEventService(database);
+
+    // When
+    const [overview, search, history] = await Promise.all([
+      service.getBundleEventOverview(),
+      service.searchInstallations("Alias-A", 20, 0),
+      service.getInstallationHistory("unchanged-only", 20, 0),
+    ]);
+
+    // Then
+    expect(overview).toEqual({ trackedInstallations: 0, bundles: [] });
+    expect(search.data).toMatchObject([
+      {
+        installId: "unchanged-only",
+        userId: "Alias-A",
+        lastKnownBundleId: "active-bundle",
+        latestStatus: "UNCHANGED",
+      },
+    ]);
+    expect(history.data).toEqual([]);
+  });
+
+  it("refreshes installation state from a newer UNCHANGED event", async () => {
     // Given
     vi.spyOn(Date, "now").mockReturnValue(ACTIVE_AS_OF_MS);
     const database = await insertActiveRows([
@@ -104,8 +135,9 @@ describe("bundle event analytics isolation", () => {
     expect(search.data).toMatchObject([
       {
         installId: "alias-change",
-        userId: "Alias-A",
-        latestStatus: "UPDATE_APPLIED",
+        userId: "Alias-B",
+        lastKnownBundleId: "active-bundle",
+        latestStatus: "UNCHANGED",
       },
     ]);
     expect(history.data.map(({ type }) => type)).toEqual(["UPDATE_APPLIED"]);

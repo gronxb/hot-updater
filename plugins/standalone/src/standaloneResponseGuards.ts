@@ -70,6 +70,11 @@ const isNullableString = (value: unknown): value is string | null =>
 const isEventType = (value: unknown): value is "RECOVERED" | "UPDATE_APPLIED" =>
   value === "RECOVERED" || value === "UPDATE_APPLIED";
 
+const isLatestStatus = (
+  value: unknown,
+): value is InstallationSearchRow["latestStatus"] =>
+  isEventType(value) || value === "UNCHANGED";
+
 export const isInstallationHistoryRow = (
   value: unknown,
 ): value is InstallationHistoryRow =>
@@ -95,7 +100,7 @@ export const isInstallationSearchRow = (
   isNullableString(value.username) &&
   isNullableString(value.userId) &&
   typeof value.lastKnownBundleId === "string" &&
-  isEventType(value.latestStatus) &&
+  isLatestStatus(value.latestStatus) &&
   (value.platform === "ios" || value.platform === "android") &&
   typeof value.appVersion === "string" &&
   typeof value.channel === "string" &&

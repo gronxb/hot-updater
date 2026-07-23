@@ -177,6 +177,7 @@ export const responsePage = async (
     : 0;
   const cursor = options.page ? undefined : options.cursor;
   const cursorFilter = cursorWhere(cursor, direction);
+  const queryLimit = cursor ? options.limit + 1 : options.limit;
   const queryDirection = cursor?.before
     ? direction === "desc"
       ? "asc"
@@ -186,22 +187,24 @@ export const responsePage = async (
     database.findMany({
       model: "bundles",
       where: cursorFilter ? [...where, cursorFilter] : where,
-      limit: options.limit,
+      limit: queryLimit,
       offset,
       orderBy: [{ field: "id", direction: queryDirection }],
     }),
     database.count({ model: "bundles", where }),
   ]);
-  const ownerRows = cursor?.before ? queriedRows.toReversed() : queriedRows;
+  const hasMore = cursor ? queriedRows.length > options.limit : false;
+  const pageRows = cursor ? queriedRows.slice(0, options.limit) : queriedRows;
+  const ownerRows = cursor?.before ? pageRows.toReversed() : pageRows;
   const pagination = calculatePagination(total, {
     limit: options.limit,
     offset,
   });
   const hasPreviousPage = cursor
-    ? Boolean(cursor.after) || queriedRows.length === options.limit
+    ? Boolean(cursor.after) || hasMore
     : pagination.hasPreviousPage;
   const hasNextPage = cursor
-    ? Boolean(cursor.before) || queriedRows.length === options.limit
+    ? Boolean(cursor.before) || hasMore
     : pagination.hasNextPage;
   const firstId = ownerRows[0]?.id;
   const lastId = ownerRows.at(-1)?.id;

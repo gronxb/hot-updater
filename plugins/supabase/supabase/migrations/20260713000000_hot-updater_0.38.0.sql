@@ -263,8 +263,6 @@ BEGIN
 END;
 $$;
 
-COMMIT;
-
 -- HotUpdater.bundle_events
 
 CREATE TABLE bundle_events (
@@ -314,3 +312,5 @@ CREATE INDEX bundle_events_received_at_idx
   ON bundle_events(received_at_ms, id);
 
 ALTER TABLE public.bundle_events ENABLE ROW LEVEL SECURITY;
+
+COMMIT;

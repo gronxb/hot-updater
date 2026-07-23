@@ -2565,6 +2565,9 @@ class BundleFileStorageService: BundleStorageService {
         var result: [String: Any] = ["status": report.status.rawValue]
         if let fromBundleId = report.fromBundleId {
             result["fromBundleId"] = fromBundleId
+            if report.status == .recovered {
+                result["crashedBundleId"] = fromBundleId
+            }
         }
         if let toBundleId = report.toBundleId {
             result["toBundleId"] = toBundleId

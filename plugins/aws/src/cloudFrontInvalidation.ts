@@ -21,49 +21,39 @@ export const invalidateCloudFront = async (
   options: CloudFrontInvalidationOptions,
 ): Promise<void> => {
   if (paths.length === 0) return;
-  try {
-    const response = await client.send(
-      new CreateInvalidationCommand({
-        DistributionId: distributionId,
-        InvalidationBatch: {
-          CallerReference: `invalidation-${Date.now()}`,
-          Paths: {
-            Quantity: paths.length,
-            Items: paths.map((path) => encodeURI(path)),
-          },
+  const response = await client.send(
+    new CreateInvalidationCommand({
+      DistributionId: distributionId,
+      InvalidationBatch: {
+        CallerReference: `invalidation-${Date.now()}`,
+        Paths: {
+          Quantity: paths.length,
+          Items: paths.map((path) => encodeURI(path)),
         },
-      }),
-    );
-    if (!options.shouldWait || response.Invalidation?.Status === "Completed") {
-      return;
-    }
-    const invalidationId = response.Invalidation?.Id;
-    if (!invalidationId) {
-      throw new Error(
-        "CloudFront invalidation response is missing Invalidation.Id",
-      );
-    }
-    const deadline = Date.now() + DEFAULT_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      await sleep(DEFAULT_POLL_INTERVAL_MS);
-      const status = await client.send(
-        new GetInvalidationCommand({
-          DistributionId: distributionId,
-          Id: invalidationId,
-        }),
-      );
-      if (status.Invalidation?.Status === "Completed") return;
-    }
+      },
+    }),
+  );
+  if (!options.shouldWait || response.Invalidation?.Status === "Completed") {
+    return;
+  }
+  const invalidationId = response.Invalidation?.Id;
+  if (!invalidationId) {
     throw new Error(
-      `Timed out waiting for CloudFront invalidation ${invalidationId}.`,
-    );
-  } catch (error) {
-    if (options.shouldWait) throw error;
-    const message =
-      error instanceof Error ? error.message : "Unknown invalidation error";
-    console.warn(
-      "[hot-updater/aws] CloudFront invalidation failed; continuing without cache invalidation.",
-      { distributionId, error: message, paths },
+      "CloudFront invalidation response is missing Invalidation.Id",
     );
   }
+  const deadline = Date.now() + DEFAULT_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(DEFAULT_POLL_INTERVAL_MS);
+    const status = await client.send(
+      new GetInvalidationCommand({
+        DistributionId: distributionId,
+        Id: invalidationId,
+      }),
+    );
+    if (status.Invalidation?.Status === "Completed") return;
+  }
+  throw new Error(
+    `Timed out waiting for CloudFront invalidation ${invalidationId}.`,
+  );
 };

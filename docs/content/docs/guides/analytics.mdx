@@ -203,6 +203,20 @@ background.
 The Console detects structural support and actual query-route availability. It
 hides Analytics when either one is unavailable.
 
+### Upgrade an existing PostgreSQL plugin installation
+
+Databases initialized with `@hot-updater/postgres` before 0.38.0 do not have
+the `bundle_events` table. After upgrading the package, apply the dedicated
+forward-only migration once:
+
+```bash
+psql "$DATABASE_URL" \
+  -f node_modules/@hot-updater/postgres/sql/migrations/0.38.0-bundle-events.sql
+```
+
+Use `sql/bundles.sql` only for a new database. It recreates the complete
+PostgreSQL schema and is not an existing-install migration.
+
 Existing `standaloneRepository` configuration does not change. There is no
 `supportsAnalytics` option to set. Record-backed servers advertise structural
 support, while snapshot-backed servers such as S3 advertise that Analytics is

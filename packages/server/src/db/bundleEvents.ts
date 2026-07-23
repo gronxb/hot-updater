@@ -198,12 +198,12 @@ export const createBundleEventService = (database: DatabasePlugin) => ({
     limit: number,
     offset: number,
   ): Promise<OffsetPaginationResult<InstallationSearchRow>> {
-    const rows = await materializeBundleEventRows(
-      { database, cutoffMs: Date.now() },
-      TRANSITION_EVENT_WHERE,
-    );
+    const rows = await materializeBundleEventRows({
+      database,
+      cutoffMs: Date.now(),
+    });
     return searchBundleEventInstallations({
-      rows: rows.filter(isTransitionBundleEventRow),
+      rows,
       query,
       limit,
       offset,

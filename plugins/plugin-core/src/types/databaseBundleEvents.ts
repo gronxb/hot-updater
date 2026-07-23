@@ -39,7 +39,7 @@ export interface InstallationSearchRow {
   username: string | null;
   userId: string | null;
   lastKnownBundleId: string;
-  latestStatus: "UPDATE_APPLIED" | "RECOVERED";
+  latestStatus: "UPDATE_APPLIED" | "RECOVERED" | "UNCHANGED";
   platform: "ios" | "android";
   appVersion: string;
   channel: string;

@@ -44,10 +44,17 @@ export const invalidateBlobPathsAfterCommit = async (
       await waitForInvalidationRetry(attempt);
       continue;
     }
-    operations.onInvalidationError?.({
-      attempts: attempt,
-      error: outcome,
-      paths,
-    });
+    await Promise.resolve()
+      .then(() =>
+        operations.onInvalidationError?.({
+          attempts: attempt,
+          error: outcome,
+          paths,
+        }),
+      )
+      .then(
+        () => undefined,
+        () => undefined,
+      );
   }
 };

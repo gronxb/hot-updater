@@ -117,11 +117,6 @@ describe("bundle event installation search", () => {
     expectSingleMaterialization(findMany);
     expect(findMany.mock.calls[0]?.[0].where).toEqual([
       {
-        field: "type",
-        operator: "in",
-        value: ["UPDATE_APPLIED", "RECOVERED"],
-      },
-      {
         field: "received_at_ms",
         operator: "lt",
         value: expect.any(Number),

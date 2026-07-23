@@ -10,6 +10,8 @@
 - Implement exact single- and compound-field distinct counts, ordered
   `distinctOn`, and every requested order clause, including an explicit `id`
   tie-break.
+- Add the forward-only `sql/migrations/0.38.0-bundle-events.sql` migration for
+  PostgreSQL installations created before 0.38.0.
 
 ## 0.35.6
 

@@ -1160,7 +1160,12 @@ class BundleFileStorageService(
         }
         return buildMap {
             put("status", report.status)
-            report.fromBundleId?.let { put("fromBundleId", it) }
+            report.fromBundleId?.let {
+                put("fromBundleId", it)
+                if (report.status == "RECOVERED") {
+                    put("crashedBundleId", it)
+                }
+            }
             report.toBundleId?.let { put("toBundleId", it) }
             report.updateStrategy?.let { put("updateStrategy", it) }
         }

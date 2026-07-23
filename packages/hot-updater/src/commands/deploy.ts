@@ -1165,14 +1165,10 @@ const deployPlatform = async ({
 
       p.note(note);
     }
-    if (multiPlatform) {
-      p.log.success(
-        `✅ ${platformName} Deployment Successful (${confirmedBundleId})`,
-      );
-      return { bundleId: confirmedBundleId, platform, runDeferredPatches };
+    if (!multiPlatform) {
+      p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
     }
 
-    p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
     return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
     await fs.promises.rm(bundlePath, { force: true });
@@ -1252,6 +1248,11 @@ export const deploy = async (options: DeployOptions) => {
 
     for (const result of results) {
       await result.runDeferredPatches?.();
+      if (platforms.length > 1) {
+        p.log.success(
+          `✅ ${getPlatformName(result.platform)} Deployment Successful (${result.bundleId})`,
+        );
+      }
     }
 
     if (platforms.length > 1) {

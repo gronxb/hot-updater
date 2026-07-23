@@ -98,7 +98,7 @@ describe("database client pagination semantics", () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "bundles",
-        limit: 2,
+        limit: 3,
         offset: 0,
         where: [{ field: "id", operator: "lt", value: "004" }],
         orderBy: [{ field: "id", direction: "desc" }],
@@ -122,11 +122,57 @@ describe("database client pagination semantics", () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "bundles",
-        limit: 2,
+        limit: 3,
         offset: 0,
         where: [{ field: "id", operator: "gt", value: "003" }],
         orderBy: [{ field: "id", direction: "asc" }],
       }),
     );
+  });
+
+  it("does not expose a next page after an exactly full terminal window", async () => {
+    // Given
+    const options = {
+      limit: 2,
+      cursor: { after: "003" },
+      orderBy: { field: "id", direction: "desc" },
+    } as const;
+
+    // When
+    const page = await client.getBundles(options);
+
+    // Then
+    expect(page.data.map(({ id }) => id)).toEqual(["002", "001"]);
+    expect(page.pagination).toEqual(
+      expect.objectContaining({
+        hasNextPage: false,
+        hasPreviousPage: true,
+        previousCursor: "002",
+      }),
+    );
+    expect(page.pagination.nextCursor).toBeUndefined();
+  });
+
+  it("does not expose a previous page before an exactly full terminal window", async () => {
+    // Given
+    const options = {
+      limit: 2,
+      cursor: { before: "003" },
+      orderBy: { field: "id", direction: "desc" },
+    } as const;
+
+    // When
+    const page = await client.getBundles(options);
+
+    // Then
+    expect(page.data.map(({ id }) => id)).toEqual(["005", "004"]);
+    expect(page.pagination).toEqual(
+      expect.objectContaining({
+        hasNextPage: true,
+        hasPreviousPage: false,
+        nextCursor: "004",
+      }),
+    );
+    expect(page.pagination.previousCursor).toBeUndefined();
   });
 });

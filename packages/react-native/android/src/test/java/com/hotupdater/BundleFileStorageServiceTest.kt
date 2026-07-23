@@ -147,6 +147,7 @@ class BundleFileStorageServiceTest {
         assertFalse(stagingDir.exists())
         assertEquals("RECOVERED", report["status"])
         assertEquals(stagingDir.name, report["fromBundleId"])
+        assertEquals(stagingDir.name, report["crashedBundleId"])
         assertEquals(stableDir.name, report["toBundleId"])
         assertEquals("appVersion", report["updateStrategy"])
 
@@ -188,6 +189,7 @@ class BundleFileStorageServiceTest {
         assertFalse(stagingDir.exists())
         assertEquals("RECOVERED", report["status"])
         assertEquals(stagingDir.name, report["fromBundleId"])
+        assertEquals(stagingDir.name, report["crashedBundleId"])
         assertEquals(HotUpdaterImpl.getMinBundleId(), report["toBundleId"])
         assertEquals("appVersion", report["updateStrategy"])
     }

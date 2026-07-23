@@ -10,14 +10,33 @@ const migrationPath = path.resolve(
 
 describe("Supabase v0.38 bundle event migration", () => {
   let database: PGlite;
+  let migration: string;
 
   beforeEach(async () => {
     database = new PGlite();
-    const migration = await fs.readFile(migrationPath, "utf8");
-    const bundleEvents = migration.slice(
-      migration.indexOf("-- HotUpdater.bundle_events"),
-    );
-    await database.exec(bundleEvents);
+    migration = await fs.readFile(migrationPath, "utf8");
+    await database.exec(`
+      create type public.platforms as enum ('ios', 'android');
+      create table public.bundles (
+        id uuid primary key,
+        platform public.platforms not null,
+        enabled boolean not null,
+        should_force_update boolean not null,
+        message text,
+        storage_uri text not null,
+        file_hash text not null,
+        rollout_cohort_count integer not null default 1000,
+        target_cohorts text[],
+        fingerprint_hash text,
+        target_app_version text,
+        channel text not null
+      );
+      create function public.is_cohort_eligible(uuid, text, integer, text[])
+      returns boolean
+      language sql
+      immutable
+      as 'select true';
+    `);
   });
 
   afterEach(async () => {
@@ -26,6 +45,7 @@ describe("Supabase v0.38 bundle event migration", () => {
 
   it("creates the final shape, indexes, checks, and RLS policy boundary", async () => {
     // When
+    await database.exec(migration);
     await database.exec(`
       insert into bundle_events (
         id, type, install_id, from_bundle_id, to_bundle_id, platform,
@@ -89,6 +109,9 @@ describe("Supabase v0.38 bundle event migration", () => {
   ])(
     "rejects invalid %s event shapes",
     async (type, fromBundleId, strategy) => {
+      // Given
+      await database.exec(migration);
+
       // When / Then
       await expect(
         database.exec(`
@@ -105,16 +128,37 @@ describe("Supabase v0.38 bundle event migration", () => {
     },
   );
 
-  it("fails repeated post-commit DDL with the conflicting relation", async () => {
-    // Given
-    const migration = await fs.readFile(migrationPath, "utf8");
-    const bundleEvents = migration.slice(
-      migration.indexOf("-- HotUpdater.bundle_events"),
-    );
+  it("wraps the complete migration in one explicit transaction", () => {
+    // When
+    const statements = migration
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line === "BEGIN;" || line === "COMMIT;");
 
-    // When / Then
-    await expect(database.exec(bundleEvents)).rejects.toThrow(
+    // Then
+    expect(statements).toEqual(["BEGIN;", "COMMIT;"]);
+    expect(migration.trimStart()).toMatch(/^BEGIN;/);
+    expect(migration.trimEnd()).toMatch(/COMMIT;$/);
+  });
+
+  it("rolls back bundle_events when late DDL fails", async () => {
+    // Given
+    const failingMigration = migration.replace(
+      /\nCOMMIT;\s*$/,
+      "\nCREATE TABLE bundle_events (id uuid);\n\nCOMMIT;",
+    );
+    expect(failingMigration).not.toBe(migration);
+
+    // When
+    await expect(database.exec(failingMigration)).rejects.toThrow(
       'relation "bundle_events" already exists',
     );
+    await database.exec("ROLLBACK;");
+
+    // Then
+    const relations = await database.query<{ relation: string | null }>(
+      "select to_regclass('public.bundle_events')::text as relation",
+    );
+    expect(relations.rows).toEqual([{ relation: null }]);
   });
 });

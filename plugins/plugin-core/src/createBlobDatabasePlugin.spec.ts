@@ -19,7 +19,9 @@ type MemoryConfig = {
   readonly failNextUpload: () => boolean;
   readonly invalidations: string[][];
   readonly invalidatePaths?: (paths: readonly string[]) => Promise<void>;
-  readonly onInvalidationError?: (failure: BlobInvalidationFailure) => void;
+  readonly onInvalidationError?: (
+    failure: BlobInvalidationFailure,
+  ) => void | Promise<void>;
   readonly onLoadObject?: (key: string) => void;
   readonly onSnapshotRead?: () => void;
 };
@@ -212,6 +214,43 @@ describe("blob snapshot persistence", () => {
     });
     expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["throws", "rejects"] as const)(
+    "commits and runs the update hook when the invalidation observer $0",
+    async (observerBehavior) => {
+      // Given
+      const invalidatePaths = vi.fn(async () => {
+        throw new Error("fixture invalidation failure");
+      });
+      const observerError = new Error("fixture observer failure");
+      const onInvalidationError =
+        observerBehavior === "throws"
+          ? vi.fn(() => {
+              throw observerError;
+            })
+          : vi.fn(async () => {
+              throw observerError;
+            });
+      const onDatabaseUpdated = vi.fn(async () => undefined);
+      const plugin = createMemoryPlugin(
+        {
+          ...config(),
+          invalidatePaths,
+          onInvalidationError,
+        },
+        onDatabaseUpdated,
+      );
+      const client = createDatabaseClient(plugin);
+
+      // When / Then
+      await expect(
+        client.insertBundle(legacyBundle("1")),
+      ).resolves.toBeUndefined();
+      expect(invalidatePaths).toHaveBeenCalledTimes(3);
+      expect(onInvalidationError).toHaveBeenCalledTimes(1);
+      expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("rejects a corrupt v2 snapshot without replacing it", async () => {
     const corrupt = {

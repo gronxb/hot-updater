@@ -53,7 +53,9 @@ export interface BlobDatabaseOperations {
     data: unknown,
   ) => Promise<boolean>;
   readonly invalidatePaths: (paths: readonly string[]) => Promise<void>;
-  readonly onInvalidationError?: (failure: BlobInvalidationFailure) => void;
+  readonly onInvalidationError?: (
+    failure: BlobInvalidationFailure,
+  ) => void | Promise<void>;
   readonly shouldSkipLoadObjectError?: (error: unknown, key: string) => boolean;
 }
 

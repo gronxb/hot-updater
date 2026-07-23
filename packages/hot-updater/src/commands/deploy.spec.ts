@@ -522,6 +522,56 @@ describe("deploy rollout wiring", () => {
     ).toHaveLength(1);
   });
 
+  it("does not print deployment success when the database commit fails", async () => {
+    // Given
+    const originalTransaction = databasePlugin.transaction;
+    if (originalTransaction === undefined) {
+      throw new TypeError(
+        "Expected the database fixture to support transactions",
+      );
+    }
+    const commitError = new Error("commit failed");
+    const failingDatabasePlugin: DatabasePlugin = {
+      ...databasePlugin,
+      transaction: async (operation) =>
+        originalTransaction(async (transaction) => {
+          await operation(transaction);
+          throw commitError;
+        }),
+    };
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: failingDatabasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
+      buildPath: "/mock/build",
+      bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      stdout: null,
+    }));
+
+    // When
+    const deployment = deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      targetAppVersion: "1.0.x",
+    });
+
+    // Then
+    await expect(deployment).rejects.toBe(commitError);
+    expect(mockCli.p.log.success).not.toHaveBeenCalled();
+    expect(mockCli.p.outro).not.toHaveBeenCalled();
+  });
+
   it("runs deployment side effects once when the database transaction retries", async () => {
     // Given
     const originalTransaction = databasePlugin.transaction;

@@ -21,7 +21,7 @@ import {
   setupDatabaseClientTestSuite,
 } from "@hot-updater/test-utils";
 import { mockClient } from "aws-sdk-client-mock";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { s3Database } from "./s3Database";
 
@@ -104,14 +104,14 @@ s3Mock.on(PutObjectCommand).callsFake(async (input) => {
   objects.set(input.Key, String(input.Body ?? ""));
   return {};
 });
-cloudFrontMock.on(CreateInvalidationCommand).resolves({
-  Invalidation: invalidation("invalidation-1", "Completed"),
-});
-
 beforeEach(() => {
   objects.clear();
   archivedKeys.clear();
   replacementBeforeConditionalPut = undefined;
+  cloudFrontMock.reset();
+  cloudFrontMock.on(CreateInvalidationCommand).resolves({
+    Invalidation: invalidation("invalidation-1", "Completed"),
+  });
 });
 
 setupDatabasePluginTestSuite({
@@ -258,6 +258,49 @@ describe("s3Database storage behavior", () => {
         },
       },
     });
+  });
+
+  it("retries a transient CloudFront invalidation submission failure", async () => {
+    cloudFrontMock
+      .on(CreateInvalidationCommand)
+      .rejectsOnce(new Error("Throttling"))
+      .resolves({
+        Invalidation: invalidation("invalidation-1", "Completed"),
+      });
+    const plugin = s3Database({
+      bucketName,
+      cloudfrontDistributionId: "distribution-1",
+    });
+
+    await expect(
+      plugin.create({ model: "bundles", data: bundleRow("1") }),
+    ).resolves.toEqual(bundleRow("1"));
+
+    expect(cloudFrontMock.commandCalls(CreateInvalidationCommand)).toHaveLength(
+      2,
+    );
+  });
+
+  it("reports exhausted CloudFront invalidation submissions without rejecting the committed mutation", async () => {
+    cloudFrontMock
+      .on(CreateInvalidationCommand)
+      .rejects(new Error("ServiceUnavailable"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const plugin = s3Database({
+      bucketName,
+      cloudfrontDistributionId: "distribution-1",
+    });
+
+    await expect(
+      plugin.create({ model: "bundles", data: bundleRow("1") }),
+    ).resolves.toEqual(bundleRow("1"));
+
+    expect(cloudFrontMock.commandCalls(CreateInvalidationCommand)).toHaveLength(
+      3,
+    );
+    expect(warn).toHaveBeenCalledOnce();
+    await expect(plugin.count({ model: "bundles" })).resolves.toBe(1);
+    warn.mockRestore();
   });
 
   it("encodes CloudFront invalidation path segments", async () => {

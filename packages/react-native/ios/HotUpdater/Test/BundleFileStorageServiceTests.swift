@@ -186,6 +186,7 @@ struct BundleFileStorageServiceTests {
         #expect(selection.launchedBundleId == "stable-bundle")
         #expect(report["status"] as? String == "RECOVERED")
         #expect(report["fromBundleId"] as? String == "next-bundle")
+        #expect(report["crashedBundleId"] as? String == "next-bundle")
         #expect(report["toBundleId"] as? String == "stable-bundle")
         #expect(report["updateStrategy"] as? String == "appVersion")
     }
@@ -235,6 +236,7 @@ struct BundleFileStorageServiceTests {
         #expect(selection.launchedBundleId == nil)
         #expect(report["status"] as? String == "RECOVERED")
         #expect(report["fromBundleId"] as? String == "next-bundle")
+        #expect(report["crashedBundleId"] as? String == "next-bundle")
         #expect(report["toBundleId"] as? String == "builtin-bundle")
         #expect(report["updateStrategy"] as? String == "fingerprint")
     }
