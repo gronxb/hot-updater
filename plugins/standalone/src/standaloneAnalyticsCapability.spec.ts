@@ -17,7 +17,10 @@ const BASE_URL = "http://localhost/hot-updater";
 const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 afterAll(() => server.close());
 
 describe("createAnalyticsCapabilityProbe", () => {
@@ -196,6 +199,88 @@ describe("createAnalyticsCapabilityProbe", () => {
     expect(initial).toEqual(expect.objectContaining({ eventIngestion: true }));
     expect(stale).toEqual(initial);
     await expect(expired).rejects.toBeInstanceOf(StandaloneDatabaseError);
+    expect(requestCount).toBe(3);
+  });
+
+  it("times out and clears a hanging initial discovery", async () => {
+    // Given
+    vi.useFakeTimers();
+    let requestCount = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      requestCount += 1;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    });
+    const probe = createAnalyticsCapabilityProbe({ baseUrl: BASE_URL });
+
+    // When
+    const initial = Promise.allSettled([probe(), probe()]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    const initialResults = await initial;
+    const retry = expect(probe()).rejects.toBeInstanceOf(
+      StandaloneDatabaseError,
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    // Then
+    expect(initialResults).toEqual([
+      expect.objectContaining({ status: "rejected" }),
+      expect.objectContaining({ status: "rejected" }),
+    ]);
+    await retry;
+    expect(requestCount).toBe(2);
+  });
+
+  it("bounds a hanging refresh with stale and expired capabilities", async () => {
+    // Given
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    let requestCount = 0;
+    const capability = {
+      analytics: true,
+      mode: "dedicated",
+      eventIngestion: true,
+      analyticsQueries: false,
+    } as const;
+    vi.spyOn(globalThis, "fetch").mockImplementation((_input, init) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return Promise.resolve(
+          Response.json({
+            version: "0.0.0-test",
+            capabilities: capability,
+          }),
+        );
+      }
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    });
+    const probe = createAnalyticsCapabilityProbe({ baseUrl: BASE_URL });
+    const initial = await probe();
+
+    // When
+    vi.setSystemTime(31_001);
+    const stale = probe();
+    await vi.advanceTimersByTimeAsync(5_000);
+    vi.setSystemTime(301_001);
+    const expired = expect(probe()).rejects.toBeInstanceOf(
+      StandaloneDatabaseError,
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    // Then
+    await expect(stale).resolves.toEqual(initial);
+    await expired;
     expect(requestCount).toBe(3);
   });
 });

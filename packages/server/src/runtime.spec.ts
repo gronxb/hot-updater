@@ -10,7 +10,12 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import packageJson from "../package.json" with { type: "json" };
 import { createHotUpdater } from "./index";
-import type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./index";
+import type {
+  CreateHotUpdaterOptions,
+  HandlerAPI,
+  HandlerOptions,
+  HandlerRoutes,
+} from "./index";
 import {
   createRuntimeDatabase,
   createRuntimeStorage,
@@ -43,6 +48,10 @@ describe("runtime createHotUpdater", () => {
     // Given / When / Then
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<HandlerOptions>().toHaveProperty("routes");
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
+    expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
+      "database" | "storages" | "storagePlugins" | "basePath" | "cwd" | "routes"
+    >();
     expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
       readonly updateCheck: boolean;
       readonly bundles: boolean;

@@ -62,6 +62,7 @@ export const createStandaloneHttp = (config: StandaloneRepositoryConfig) => {
     searchParams: Readonly<Record<string, string>>,
     isResult: (value: unknown) => value is TResult,
     invalidMessage: string,
+    signal?: AbortSignal,
   ): Promise<TResult> => {
     const url = new URL(buildUrl(route.path));
     for (const [key, value] of Object.entries(searchParams)) {
@@ -70,6 +71,7 @@ export const createStandaloneHttp = (config: StandaloneRepositoryConfig) => {
     const response = await fetch(url, {
       method: "GET",
       headers: headers(route.headers),
+      signal,
     });
     const value = await parseJson(response);
     if (!isResult(value)) {

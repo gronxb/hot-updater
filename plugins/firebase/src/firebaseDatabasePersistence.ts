@@ -149,6 +149,12 @@ export const loadFirebaseTransactionSnapshot = async (
   return toSnapshot([bundles, patches], bundleEvents);
 };
 
+export const loadFirebaseTransactionBundleEvents = async (
+  transaction: Transaction,
+  collections: FirebaseDatabaseCollections,
+): Promise<Map<string, BundleEventRow>> =>
+  bundleEventMap(await transaction.get(collections.bundleEvents));
+
 type PersistCollectionInput<TRow extends FixedRow> = {
   readonly transaction: Transaction;
   readonly collection: CollectionReference<DocumentData>;

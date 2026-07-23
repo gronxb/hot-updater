@@ -43,8 +43,8 @@ model, table, collection, or foreign key. Plugins may expose an optimized
 `getChannels` aggregate, while the shared database client falls back to paging
 bundle channel values and returning their sorted distinct set.
 
-Publish `@hot-updater/test-utils` with reusable low-plugin and aggregate-client
-conformance suites for custom database plugin authors.
+Publish `@hot-updater/test-utils` as a public package with reusable low-plugin
+and aggregate-client conformance suites for custom database plugin authors.
 
 Expose app-ready Analytics for record plugins and proxy event ingestion,
 active-installation overview, bundle outcomes, installation search, and
@@ -96,13 +96,22 @@ treat legacy responses without route fields as unavailable.
 Standalone preserves the upstream ingestion and query flags independently and
 returns 404 instead of forwarding a route that the upstream reports disabled.
 It caches validated upstream route capabilities for 30 seconds, coalesces
-concurrent refreshes, and uses the last validated response for at most five
-minutes before failing closed. Proxied event ingestion preserves the validated
-SDK-version header.
+concurrent refreshes, bounds capability requests to five seconds, and uses the
+last validated response for at most five minutes before failing closed. Proxied
+event ingestion preserves the validated SDK-version header.
 
 The managed Firebase runtime forwards the original request bytes into the
 shared server handler so the Analytics payload limit applies before parsed JSON
 can be normalized.
+
+The Node adapter also preserves `Uint8Array` request bodies. Express
+integrations should mount `express.raw({ type: "application/json" })` for the
+Hot Updater path; parsed event bodies without a declared byte length fail
+closed.
+
+Firebase transactions load the append-only event collection only when the
+transaction callback accesses `bundle_events`, so normal bundle deploys and
+mutations do not scan Analytics history.
 
 Snapshot-backed plugins created with `createBlobDatabasePlugin`, including
 `s3Database`, deliberately leave Analytics disabled because concurrent event

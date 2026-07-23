@@ -130,9 +130,9 @@ database: standaloneRepository({
 
 Standalone validates the upstream Analytics route flags through `GET /version`.
 It caches a validated response for 30 seconds and coalesces concurrent
-refreshes. If a refresh fails, the last validated capability is used for at
-most five minutes; without a recent validated response, Analytics routes fail
-closed.
+refreshes. Capability requests time out after five seconds. If a refresh fails,
+the last validated capability is used for at most five minutes; without a
+recent validated response, Analytics routes fail closed.
 
 ## Server Contract
 

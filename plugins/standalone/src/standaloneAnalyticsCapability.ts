@@ -1,4 +1,7 @@
-import { createStandaloneHttp } from "./standaloneHttp";
+import {
+  createStandaloneHttp,
+  StandaloneDatabaseError,
+} from "./standaloneHttp";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
 type LegacyRemoteAnalyticsCapability =
@@ -21,6 +24,7 @@ type ParsedAnalyticsCapability =
 
 const ANALYTICS_CAPABILITY_FRESHNESS_MS = 30_000;
 const ANALYTICS_CAPABILITY_MAX_STALENESS_MS = 5 * 60_000;
+const ANALYTICS_CAPABILITY_TIMEOUT_MS = 5_000;
 
 const unavailableAnalyticsCapability = {
   analytics: false,
@@ -89,17 +93,35 @@ export const createAnalyticsCapabilityProbe = (
   let pending: Promise<RemoteAnalyticsCapability> | undefined;
 
   const loadCapability = async (): Promise<RemoteAnalyticsCapability> => {
-    const response = await http.load(
-      { path: "/version" },
-      {},
-      isVersionResponse,
-      "Invalid server version response.",
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      ANALYTICS_CAPABILITY_TIMEOUT_MS,
     );
-    const capabilities = response.capabilities;
-    if (!capabilities || !isRouteAwareAnalyticsCapability(capabilities)) {
-      return unavailableAnalyticsCapability;
+    try {
+      const response = await http.load(
+        { path: "/version" },
+        {},
+        isVersionResponse,
+        "Invalid server version response.",
+        controller.signal,
+      );
+      const capabilities = response.capabilities;
+      if (!capabilities || !isRouteAwareAnalyticsCapability(capabilities)) {
+        return unavailableAnalyticsCapability;
+      }
+      return capabilities;
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new StandaloneDatabaseError(
+          "request-failed",
+          "Server capability request timed out.",
+        );
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    return capabilities;
   };
 
   return async (): Promise<RemoteAnalyticsCapability> => {

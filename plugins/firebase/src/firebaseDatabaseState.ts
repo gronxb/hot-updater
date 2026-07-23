@@ -198,3 +198,35 @@ export const createFirebaseDatabaseState = (
     }
   },
 });
+
+export const createFirebaseTransactionDatabaseState = (
+  snapshot: FirebaseDatabaseSnapshot,
+  loadBundleEvents: () => Promise<void>,
+): TransactionDatabasePluginImplementation => {
+  const database = createFirebaseDatabaseState(snapshot);
+  let bundleEventsReady: Promise<void> | undefined;
+  const ensureBundleEvents = (): Promise<void> => {
+    bundleEventsReady ??= loadBundleEvents();
+    return bundleEventsReady;
+  };
+
+  return {
+    ...database,
+    async create(input) {
+      if (input.model === "bundle_events") await ensureBundleEvents();
+      return database.create(input);
+    },
+    async count(input) {
+      if (input.model === "bundle_events") await ensureBundleEvents();
+      return database.count(input);
+    },
+    async findOne(input) {
+      if (input.model === "bundle_events") await ensureBundleEvents();
+      return database.findOne(input);
+    },
+    async findMany(input) {
+      if (input.model === "bundle_events") await ensureBundleEvents();
+      return database.findMany(input);
+    },
+  };
+};

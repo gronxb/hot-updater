@@ -22,6 +22,7 @@ import {
 import {
   createFirebaseDatabaseCollections,
   loadFirebaseDatabaseSnapshot,
+  loadFirebaseTransactionBundleEvents,
   loadFirebaseTransactionSnapshot,
   migrateFirebaseDatabase,
   persistFirebaseDatabaseSnapshot,
@@ -29,6 +30,7 @@ import {
 import {
   cloneFirebaseDatabaseSnapshot,
   createFirebaseDatabaseState,
+  createFirebaseTransactionDatabaseState,
 } from "./firebaseDatabaseState";
 import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
 
@@ -126,17 +128,28 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
 
       const mutate = async <TResult>(
         operation: FirebaseMutation<TResult>,
-        includeBundleEvents = false,
       ): Promise<TResult> => {
         await ensureMigrated();
         return db.runTransaction(async (transaction) => {
           const before = await loadFirebaseTransactionSnapshot(
             transaction,
             collections,
-            { includeBundleEvents },
           );
           const after = cloneFirebaseDatabaseSnapshot(before);
-          const result = await operation(createFirebaseDatabaseState(after));
+          const database = createFirebaseTransactionDatabaseState(
+            after,
+            async () => {
+              const bundleEvents = await loadFirebaseTransactionBundleEvents(
+                transaction,
+                collections,
+              );
+              for (const [id, row] of bundleEvents) {
+                before.bundleEvents.set(id, row);
+                after.bundleEvents.set(id, row);
+              }
+            },
+          );
+          const result = await operation(database);
           persistFirebaseDatabaseSnapshot({
             transaction,
             collections,
@@ -242,7 +255,7 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
             bundles: await loadFirebaseUpdateBundles(collections, args),
           });
         },
-        transaction: (callback) => mutate(callback, true),
+        transaction: (callback) => mutate(callback),
       };
     },
   });

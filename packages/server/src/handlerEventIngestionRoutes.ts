@@ -8,7 +8,7 @@ import { isPlatform } from "./handlerParameters";
 import type { RouteHandler } from "./handlerTypes";
 
 const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
-const MAX_EVENT_BODY_BYTES = 16 * 1024;
+export const MAX_EVENT_BODY_BYTES = 16 * 1024;
 const MAX_EVENT_STRING_LENGTH = 1024;
 
 const requireStringField = (
