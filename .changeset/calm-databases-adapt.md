@@ -63,6 +63,10 @@ requires a real provider transaction and throws
 `DatabasePatchUpdateUnsupportedError` before mutation when that capability is
 absent.
 
+The MongoDB adapter exposes that transaction capability when configured with
+`transactions: true`. Use it with a replica set or sharded cluster so bundle
+and patch-row replacements commit atomically.
+
 Core bundle artifact helpers prefer normalized `bundle_patches` rows over
 deprecated scalar patch fields when both representations are present.
 

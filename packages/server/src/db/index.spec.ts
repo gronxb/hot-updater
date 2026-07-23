@@ -12,7 +12,7 @@ import {
 import { sql } from "drizzle-orm";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import type { MongoClient } from "mongodb";
+import { type ClientSession, MongoClient } from "mongodb";
 import {
   afterAll,
   afterEach,
@@ -1465,6 +1465,44 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const adapter = mongoAdapter({ client });
 
       expect(adapter.transaction).toBeUndefined();
+    });
+
+    it("uses a MongoDB session when transactions are enabled", async () => {
+      const client = new MongoClient("mongodb://localhost");
+      const session = client.startSession();
+      const withTransaction = vi.fn(
+        async (operation: (session: ClientSession) => Promise<unknown>) =>
+          operation(session),
+      );
+      Object.defineProperty(session, "withTransaction", {
+        value: withTransaction,
+      });
+      const insertOne = vi.fn(async () => undefined);
+      Object.defineProperty(client, "db", {
+        value: () => ({
+          collection: () => ({ insertOne }),
+        }),
+      });
+      const withSession = vi.fn(
+        async (operation: (session: ClientSession) => Promise<unknown>) =>
+          operation(session),
+      );
+      Object.defineProperty(client, "withSession", { value: withSession });
+      const adapter = mongoAdapter({ client, transactions: true });
+
+      if (!adapter.transaction) throw new Error("transaction is required");
+      await adapter.transaction((transaction) =>
+        transaction.create({
+          model: "bundles",
+          data: bundleToRow(transactionBundle),
+        }),
+      );
+
+      expect(withSession).toHaveBeenCalledTimes(1);
+      expect(withTransaction).toHaveBeenCalledTimes(1);
+      expect(insertOne).toHaveBeenCalledWith(bundleToRow(transactionBundle), {
+        session,
+      });
     });
   });
 

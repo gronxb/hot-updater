@@ -1,23 +1,22 @@
-version: '3.8'
-
 services:
   mongodb:
     image: mongo:7-jammy
     container_name: hono-mongodb
     restart: unless-stopped
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27018:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: hot_updater
-      MONGO_INITDB_ROOT_PASSWORD: hot_updater_dev
-      MONGO_INITDB_DATABASE: hot_updater
     volumes:
       - mongodb_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --eval 'try { rs.status().ok } catch (error) { rs.initiate({_id: \"rs0\", members: [{_id: 0, host: \"localhost:27017\"}]}).ok }' | grep -q 1",
+        ]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
 volumes:
   mongodb_data:
