@@ -199,6 +199,56 @@ describe("standaloneRepository", () => {
     ).toBe(true);
   });
 
+  it("replaces bundle patches through the aggregate update route", async () => {
+    // Given
+    const base = bundle("00000000-0000-0000-0000-000000000001");
+    const target = bundle("00000000-0000-0000-0000-000000000002");
+    const client = createDatabaseClient(createRepository());
+    await client.insertBundle(base);
+    await client.insertBundle(target);
+
+    // When
+    await client.updateBundleById(target.id, {
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "replacement-patch-hash",
+          patchStorageUri: "storage://replacement-patch",
+        },
+      ],
+    });
+
+    // Then
+    await expect(client.getBundleById(target.id)).resolves.toMatchObject({
+      patches: [
+        {
+          baseBundleId: base.id,
+          patchFileHash: "replacement-patch-hash",
+        },
+      ],
+    });
+  });
+
+  it("does not publish staged bundle changes when a transaction fails", async () => {
+    // Given
+    const target = bundle("00000000-0000-0000-0000-000000000001");
+    const client = createDatabaseClient(createRepository());
+    await client.insertBundle(target);
+
+    // When
+    const mutation = client.mutate(async (transaction) => {
+      await transaction.updateBundleById(target.id, { enabled: false });
+      throw new Error("reject transaction");
+    });
+
+    // Then
+    await expect(mutation).rejects.toThrow("reject transaction");
+    await expect(client.getBundleById(target.id)).resolves.toMatchObject({
+      enabled: true,
+    });
+  });
+
   it("delegates analytics to standalone management routes", async () => {
     const event = {
       id: "event-1",

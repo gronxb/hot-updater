@@ -9,7 +9,9 @@ import {
   internalAnalyticsCapabilityProbe,
 } from "./standaloneAnalyticsCapability";
 import { createBundleEventService } from "./standaloneBundleEventService";
+import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
 import { createLegacyCompatibilityImplementation } from "./standaloneLegacyImplementation";
+import { runLegacyAggregateTransaction } from "./standaloneLegacyTransaction";
 import type { StandaloneRepositoryConfig } from "./standaloneRoutes";
 
 export { StandaloneDatabaseError } from "./standaloneHttp";
@@ -28,7 +30,15 @@ export type {
 export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
   const recordRepository = createDatabasePlugin({
     name: "standalone-repository",
-    plugin: () => createLegacyCompatibilityImplementation(config),
+    plugin: () => {
+      const remote = createStandaloneBundleRemote(config);
+      const implementation = createLegacyCompatibilityImplementation(remote);
+      return {
+        ...implementation,
+        transaction: (callback) =>
+          runLegacyAggregateTransaction(remote, callback),
+      };
+    },
   });
   const { [databaseAnalyticsSupport]: analyticsSupport, ...repository } =
     recordRepository;
