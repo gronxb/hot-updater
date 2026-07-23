@@ -46,7 +46,8 @@ const requireAnalyticsSupport = async <TContext>(hotUpdater: unknown) => {
     if (
       typeof capability !== "object" ||
       capability === null ||
-      Reflect.get(capability, "analytics") !== true
+      Reflect.get(capability, "analytics") !== true ||
+      Reflect.get(capability, "analyticsQueries") !== true
     ) {
       throw new Error(
         "Analytics are not supported by the configured database plugin.",

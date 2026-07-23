@@ -1,8 +1,8 @@
+import { resolveAnalyticsRouteAPI } from "./db/analyticsCapability";
 import type {
   ActiveInstallationWindow,
   BundleEventAnalyticsWindow,
 } from "./db/types";
-import { supportsAnalytics } from "./db/types";
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
   parseNonNegativeIntegerSearchParam,
@@ -68,17 +68,32 @@ export const createAnalyticsRouteHandlers = <TContext>(): Record<
   RouteHandler<TContext>
 > => ({
   getBundleEventSummary: async (params, _request, api, context) => {
-    if (!supportsAnalytics(api)) return new Response(null, { status: 404 });
+    const analyticsApi = await resolveAnalyticsRouteAPI<TContext>(
+      api,
+      "analyticsQueries",
+    );
+    if (!analyticsApi) {
+      return new Response(null, { status: 404 });
+    }
     return jsonResponse(
-      await api.getBundleEventSummary(requireRouteParam(params, "id"), context),
+      await analyticsApi.getBundleEventSummary(
+        requireRouteParam(params, "id"),
+        context,
+      ),
     );
   },
 
   getBundleEventAnalytics: async (params, request, api, context) => {
-    if (!supportsAnalytics(api)) return new Response(null, { status: 404 });
+    const analyticsApi = await resolveAnalyticsRouteAPI<TContext>(
+      api,
+      "analyticsQueries",
+    );
+    if (!analyticsApi) {
+      return new Response(null, { status: 404 });
+    }
     const url = new URL(request.url);
     return jsonResponse(
-      await api.getBundleEventAnalytics(
+      await analyticsApi.getBundleEventAnalytics(
         requireRouteParam(params, "id"),
         parseBundleEventAnalyticsWindow(url),
         parsePositiveIntegerSearchParam(url, "limit", EVENT_LIST_BOUNDS),
@@ -89,14 +104,26 @@ export const createAnalyticsRouteHandlers = <TContext>(): Record<
   },
 
   getBundleEventOverview: async (_params, _request, api, context) => {
-    if (!supportsAnalytics(api)) return new Response(null, { status: 404 });
-    return jsonResponse(await api.getBundleEventOverview(context));
+    const analyticsApi = await resolveAnalyticsRouteAPI<TContext>(
+      api,
+      "analyticsQueries",
+    );
+    if (!analyticsApi) {
+      return new Response(null, { status: 404 });
+    }
+    return jsonResponse(await analyticsApi.getBundleEventOverview(context));
   },
 
   getActiveInstallationOverview: async (_params, request, api, context) => {
-    if (!supportsAnalytics(api)) return new Response(null, { status: 404 });
+    const analyticsApi = await resolveAnalyticsRouteAPI<TContext>(
+      api,
+      "analyticsQueries",
+    );
+    if (!analyticsApi) {
+      return new Response(null, { status: 404 });
+    }
     return jsonResponse(
-      await api.getActiveInstallationOverview(
+      await analyticsApi.getActiveInstallationOverview(
         parseActiveInstallationInput(new URL(request.url)),
         context,
       ),
@@ -104,10 +131,16 @@ export const createAnalyticsRouteHandlers = <TContext>(): Record<
   },
 
   searchInstallations: async (_params, request, api, context) => {
-    if (!supportsAnalytics(api)) return new Response(null, { status: 404 });
+    const analyticsApi = await resolveAnalyticsRouteAPI<TContext>(
+      api,
+      "analyticsQueries",
+    );
+    if (!analyticsApi) {
+      return new Response(null, { status: 404 });
+    }
     const url = new URL(request.url);
     return jsonResponse(
-      await api.searchInstallations(
+      await analyticsApi.searchInstallations(
         url.searchParams.get("query")?.trim() ?? "",
         parsePositiveIntegerSearchParam(url, "limit", EVENT_LIST_BOUNDS),
         parseNonNegativeIntegerSearchParam(url, "offset", 0),
@@ -117,10 +150,16 @@ export const createAnalyticsRouteHandlers = <TContext>(): Record<
   },
 
   getInstallationHistory: async (params, request, api, context) => {
-    if (!supportsAnalytics(api)) return new Response(null, { status: 404 });
+    const analyticsApi = await resolveAnalyticsRouteAPI<TContext>(
+      api,
+      "analyticsQueries",
+    );
+    if (!analyticsApi) {
+      return new Response(null, { status: 404 });
+    }
     const url = new URL(request.url);
     return jsonResponse(
-      await api.getInstallationHistory(
+      await analyticsApi.getInstallationHistory(
         requireRouteParam(params, "installId"),
         parsePositiveIntegerSearchParam(url, "limit", EVENT_LIST_BOUNDS),
         parseNonNegativeIntegerSearchParam(url, "offset", 0),

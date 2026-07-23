@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { internalAnalyticsCapabilityProbe } from "./db/analyticsCapability";
 import { createHandler } from "./handler";
-import { createApi } from "./handler.testFixtures";
+import { createApi, testEventPayload } from "./handler.testFixtures";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 const BASE_URL = "http://localhost/hot-updater";
@@ -86,6 +87,67 @@ describe("createHandler route capabilities", () => {
       });
       expect(ingestionResponse.status !== 404).toBe(analyticsSupported);
       expect(queryResponse.status !== 404).toBe(expectedAnalyticsQueries);
+    },
+  );
+
+  it.each([
+    {
+      name: "only event ingestion is available upstream",
+      eventIngestion: true,
+      analyticsQueries: false,
+    },
+    {
+      name: "only Analytics queries are available upstream",
+      eventIngestion: false,
+      analyticsQueries: true,
+    },
+  ] as const)(
+    "honors standalone route capabilities when $name",
+    async ({ eventIngestion, analyticsQueries }) => {
+      // Given
+      const api = createApi();
+      Reflect.set(api, internalAnalyticsCapabilityProbe, async () => ({
+        analytics: true,
+        mode: "dedicated",
+        eventIngestion,
+        analyticsQueries,
+      }));
+      const handler = createHandler(api, {
+        basePath: "/hot-updater",
+        routes: {
+          updateCheck: false,
+          bundles: false,
+          analytics: true,
+        },
+      });
+
+      // When
+      const versionResponse = await handler(new Request(`${BASE_URL}/version`));
+      const ingestionResponse = await handler(
+        new Request(`${BASE_URL}/events`, {
+          method: "POST",
+          body: JSON.stringify(testEventPayload),
+        }),
+      );
+      const queryResponse = await handler(
+        new Request(`${BASE_URL}/api/bundles/bundle-1/events/summary`),
+      );
+
+      // Then
+      await expect(versionResponse.json()).resolves.toEqual({
+        version: HOT_UPDATER_SERVER_VERSION,
+        capabilities: {
+          analytics: true,
+          mode: "dedicated",
+          eventIngestion,
+          analyticsQueries,
+        },
+      });
+      expect(ingestionResponse.status !== 404).toBe(eventIngestion);
+      expect(queryResponse.status !== 404).toBe(analyticsQueries);
+      expect(api.appendBundleEvent).toHaveBeenCalledTimes(
+        eventIngestion ? 1 : 0,
+      );
     },
   );
 });

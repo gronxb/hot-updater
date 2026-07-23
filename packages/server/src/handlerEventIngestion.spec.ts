@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { internalAnalyticsCapabilityProbe } from "./db/analyticsCapability";
 import { createHandler } from "./handler";
 import {
   createApi,
@@ -117,6 +118,24 @@ describe("createHandler event ingestion", () => {
     expect(appendResponse.status).toBe(404);
     expect(summaryResponse.status).toBe(404);
     expect(bundlesResponse.status).toBe(200);
+  });
+
+  it("rejects standalone ingestion before reading the body when the upstream route is unavailable", async () => {
+    const api = createApi();
+    Reflect.set(api, internalAnalyticsCapabilityProbe, async () => ({
+      analytics: true,
+      mode: "dedicated",
+      eventIngestion: false,
+      analyticsQueries: true,
+    }));
+    const handler = createEventHandler(api);
+
+    const response = await handler(
+      new Request("http://localhost/hot-updater/events", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(api.appendBundleEvent).not.toHaveBeenCalled();
   });
 
   it("returns 400 JSON for invalid event payloads", async () => {

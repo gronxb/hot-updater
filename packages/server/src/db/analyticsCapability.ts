@@ -61,6 +61,12 @@ const isReportedAnalyticsCapability = (
   value: unknown,
 ): value is ReportedAnalyticsCapability => {
   if (typeof value !== "object" || value === null) return false;
+  if (
+    typeof Reflect.get(value, "eventIngestion") !== "boolean" ||
+    typeof Reflect.get(value, "analyticsQueries") !== "boolean"
+  ) {
+    return false;
+  }
   const analytics = Reflect.get(value, "analytics");
   if (analytics === false) return true;
   if (analytics !== true) return false;
@@ -75,6 +81,21 @@ const isReportedAnalyticsCapability = (
   );
 };
 
+export const resolveAnalyticsRouteAPI = async <TContext>(
+  api: object,
+  route: keyof AnalyticsRouteCapability,
+): Promise<BundleEventAPI<TContext> | null> => {
+  if (!supportsAnalytics<TContext>(api)) return null;
+  const probe = Reflect.get(api, internalAnalyticsCapabilityProbe);
+  if (typeof probe !== "function") return api;
+  const capability: unknown = await Reflect.apply(probe, api, []);
+  return isReportedAnalyticsCapability(capability) &&
+    capability.analytics &&
+    capability[route]
+    ? api
+    : null;
+};
+
 export const resolveReportedAnalyticsCapability = async (
   api: object,
   routes: AnalyticsRouteCapability,
@@ -82,9 +103,18 @@ export const resolveReportedAnalyticsCapability = async (
   const probe = Reflect.get(api, internalAnalyticsCapabilityProbe);
   if (typeof probe === "function") {
     const capability: unknown = await Reflect.apply(probe, api, []);
-    return isReportedAnalyticsCapability(capability)
-      ? { ...capability, ...routes }
-      : { analytics: false, ...routes };
+    if (!isReportedAnalyticsCapability(capability) || !capability.analytics) {
+      return {
+        analytics: false,
+        eventIngestion: false,
+        analyticsQueries: false,
+      };
+    }
+    return {
+      ...capability,
+      eventIngestion: capability.eventIngestion && routes.eventIngestion,
+      analyticsQueries: capability.analyticsQueries && routes.analyticsQueries,
+    };
   }
   const capability = getAnalyticsCapability(api);
   return capability

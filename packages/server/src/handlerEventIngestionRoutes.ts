@@ -1,5 +1,5 @@
+import { resolveAnalyticsRouteAPI } from "./db/analyticsCapability";
 import type { CreateBundleEventRequest } from "./db/types";
-import { supportsAnalytics } from "./db/types";
 import {
   HandlerBadRequestError,
   HandlerPayloadTooLargeError,
@@ -139,7 +139,11 @@ export const createEventIngestionRouteHandlers = <TContext>(): Record<
   RouteHandler<TContext>
 > => ({
   appendBundleEvent: async (_params, request, api, context) => {
-    if (!supportsAnalytics(api)) {
+    const analyticsApi = await resolveAnalyticsRouteAPI<TContext>(
+      api,
+      "eventIngestion",
+    );
+    if (!analyticsApi) {
       return new Response(null, { status: 404 });
     }
     const payload = requireBundleEventPayload(
@@ -155,7 +159,7 @@ export const createEventIngestionRouteHandlers = <TContext>(): Record<
     const event: CreateBundleEventRequest & {
       readonly sdkVersion: string | null;
     } = { ...payload, sdkVersion };
-    await api.appendBundleEvent(event, context);
+    await analyticsApi.appendBundleEvent(event, context);
     return new Response(null, { status: 204 });
   },
 });

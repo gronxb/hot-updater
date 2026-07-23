@@ -85,14 +85,16 @@ quotas, logging, and retention.
 
 Analytics and installation query routes are also closed by default. Self-hosted
 servers expose them explicitly with `routes.analytics: true`, independently
-from bundle management routes. Event ingestion remains independently
-configurable.
+from bundle management routes. Event ingestion is independent of that query
+flag and follows database Analytics support automatically.
 
 `GET /version` now distinguishes structural database Analytics support from
 the mounted routes through `capabilities.analytics`,
 `capabilities.eventIngestion`, and `capabilities.analyticsQueries`.
 Standalone and Console require the query-route capability and conservatively
 treat legacy responses without route fields as unavailable.
+Standalone preserves the upstream ingestion and query flags independently and
+returns 404 instead of forwarding a route that the upstream reports disabled.
 
 Snapshot-backed plugins created with `createBlobDatabasePlugin`, including
 `s3Database`, deliberately leave Analytics disabled because concurrent event

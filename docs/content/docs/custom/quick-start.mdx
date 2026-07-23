@@ -109,6 +109,11 @@ The server example above uses Bearer authentication for `/hot-updater/api/*`.
 The same requirement applies to Analytics query routes when
 `routes.analytics: true`.
 
+When the database supports Analytics, `POST /hot-updater/events` is mounted
+automatically outside that management middleware so mobile clients can report
+untrusted telemetry. Apply rate limits, quotas, logging, and retention at the
+framework or provider boundary.
+
 Set your auth token in environment variables:
 
 ```bash

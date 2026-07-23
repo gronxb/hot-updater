@@ -156,6 +156,96 @@ describe("Handler <-> Standalone Repository Integration", () => {
     expect(bundleEventRequestCount).toBe(0);
   });
 
+  it.each([
+    {
+      name: "only event ingestion is available upstream",
+      slug: "event-only",
+      eventIngestion: true,
+      analyticsQueries: false,
+    },
+    {
+      name: "only Analytics queries are available upstream",
+      slug: "queries-only",
+      eventIngestion: false,
+      analyticsQueries: true,
+    },
+  ] as const)(
+    "preserves asymmetric remote capabilities when $name",
+    async ({ slug, eventIngestion, analyticsQueries }) => {
+      const remoteBaseUrl = `${baseUrl}/${slug}`;
+      let forwardedEvents = 0;
+      let forwardedQueries = 0;
+      server.use(
+        http.get(`${remoteBaseUrl}/version`, () =>
+          HttpResponse.json({
+            version: "0.0.0-test",
+            capabilities: {
+              analytics: true,
+              mode: "dedicated",
+              eventIngestion,
+              analyticsQueries,
+            },
+          }),
+        ),
+        http.post(`${remoteBaseUrl}/events`, () => {
+          forwardedEvents += 1;
+          return new HttpResponse(null, { status: 204 });
+        }),
+        http.get(`${remoteBaseUrl}/api/bundles/:id/events/summary`, () => {
+          forwardedQueries += 1;
+          return HttpResponse.json({ installed: 0, recovered: 0 });
+        }),
+      );
+      const proxy = createHotUpdater({
+        database: standaloneRepository({ baseUrl: remoteBaseUrl }),
+        basePath: `/proxy-${slug}`,
+        routes: {
+          updateCheck: false,
+          bundles: false,
+          analytics: true,
+        },
+      });
+
+      const versionResponse = await proxy.handler(
+        new Request(`${baseUrl}/proxy-${slug}/version`),
+      );
+      const eventResponse = await proxy.handler(
+        new Request(`${baseUrl}/proxy-${slug}/events`, {
+          method: "POST",
+          body: JSON.stringify({
+            type: "UNCHANGED",
+            installId: `install-${slug}`,
+            fromBundleId: null,
+            toBundleId: NIL_UUID,
+            platform: "ios",
+            appVersion: "1.0.0",
+            channel: "production",
+            cohort: "default",
+            updateStrategy: null,
+            fingerprintHash: null,
+          }),
+        }),
+      );
+      const queryResponse = await proxy.handler(
+        new Request(
+          `${baseUrl}/proxy-${slug}/api/bundles/${NIL_UUID}/events/summary`,
+        ),
+      );
+
+      await expect(versionResponse.json()).resolves.toMatchObject({
+        capabilities: {
+          analytics: true,
+          eventIngestion,
+          analyticsQueries,
+        },
+      });
+      expect(eventResponse.status).toBe(eventIngestion ? 204 : 404);
+      expect(queryResponse.status).toBe(analyticsQueries ? 200 : 404);
+      expect(forwardedEvents).toBe(eventIngestion ? 1 : 0);
+      expect(forwardedQueries).toBe(analyticsQueries ? 1 : 0);
+    },
+  );
+
   it("creates a bundle through handler POST /bundles", async () => {
     const client = createStandaloneClient();
     const bundleId = uuidv7();

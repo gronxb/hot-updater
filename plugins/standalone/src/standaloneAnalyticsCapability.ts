@@ -85,12 +85,7 @@ export const createAnalyticsCapabilityProbe = (
       "Invalid server version response.",
     );
     const capabilities = response.capabilities;
-    if (
-      !capabilities ||
-      !isRouteAwareAnalyticsCapability(capabilities) ||
-      !capabilities.analytics ||
-      !capabilities.analyticsQueries
-    ) {
+    if (!capabilities || !isRouteAwareAnalyticsCapability(capabilities)) {
       return unavailableAnalyticsCapability;
     }
     return capabilities;

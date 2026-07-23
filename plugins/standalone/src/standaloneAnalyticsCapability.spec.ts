@@ -32,6 +32,15 @@ describe("createAnalyticsCapabilityProbe", () => {
         analyticsQueries: true,
       },
     },
+    {
+      name: "event ingestion without query routes",
+      capabilities: {
+        analytics: true,
+        mode: "dedicated",
+        eventIngestion: true,
+        analyticsQueries: false,
+      },
+    },
   ] as const)("preserves $name", async ({ capabilities }) => {
     // Given
     server.use(
@@ -48,15 +57,6 @@ describe("createAnalyticsCapabilityProbe", () => {
   });
 
   it.each([
-    {
-      name: "query routes are not mounted",
-      capabilities: {
-        analytics: true,
-        mode: "dedicated",
-        eventIngestion: true,
-        analyticsQueries: false,
-      },
-    },
     {
       name: "the server returns the legacy structural shape",
       capabilities: { analytics: true, mode: "dedicated" },
