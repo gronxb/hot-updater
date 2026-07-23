@@ -12,6 +12,7 @@ The `standaloneRepository` plugin connects your Hot Updater CLI to a self-hosted
 **Building a Self-Hosted Server?**
 
 See the [Self-Hosting (Custom) Guide](../custom/overview) for complete server implementation instructions using `@hot-updater/server` with database adapters (Drizzle, Prisma, Kysely, MongoDB) and frameworks (Hono, Express, Elysia).
+
 </Callout>
 
 ## Installation
@@ -43,9 +44,9 @@ The `standaloneRepository` plugin accepts the following options:
 
 ```typescript
 interface StandaloneRepositoryConfig {
-  baseUrl: string;                        // Your server URL
+  baseUrl: string; // Your server URL
   commonHeaders?: Record<string, string>; // Optional headers (e.g., authentication)
-  routes?: Routes;                        // Optional custom route configuration
+  routes?: Routes; // Optional custom route configuration
 }
 ```
 
@@ -58,10 +59,17 @@ interface RouteConfig {
 }
 
 interface Routes {
+  appendEvent?: () => RouteConfig;
+  bundleEventAnalytics?: (bundleId: string) => RouteConfig;
+  bundleEventSummary?: (bundleId: string) => RouteConfig;
+  bundleEventOverview?: () => RouteConfig;
+  activeInstallationOverview?: () => RouteConfig;
   create?: () => RouteConfig;
   update?: (bundleId: string) => RouteConfig;
   list?: () => RouteConfig;
   channels?: () => RouteConfig;
+  installationHistory?: (installId: string) => RouteConfig;
+  installations?: () => RouteConfig;
   retrieve?: (bundleId: string) => RouteConfig;
   delete?: (bundleId: string) => RouteConfig;
 }
@@ -72,7 +80,7 @@ interface Routes {
 ```typescript
 database: standaloneRepository({
   baseUrl: "http://localhost:3000/hot-updater",
-})
+});
 ```
 
 ### With Authentication
@@ -81,9 +89,9 @@ database: standaloneRepository({
 database: standaloneRepository({
   baseUrl: process.env.HOT_UPDATER_SERVER_URL!,
   commonHeaders: {
-    "Authorization": `Bearer ${process.env.API_TOKEN}`
-  }
-})
+    Authorization: `Bearer ${process.env.API_TOKEN}`,
+  },
+});
 ```
 
 ### With Custom Routes
@@ -94,27 +102,37 @@ database: standaloneRepository({
   routes: {
     create: () => ({
       path: "/v1/hot-updater/api/bundles",
-      headers: { "X-Custom-Header": "value" }
+      headers: { "X-Custom-Header": "value" },
+    }),
+    appendEvent: () => ({
+      path: "/v1/hot-updater/events",
+      headers: { "X-Custom-Header": "value" },
     }),
     update: (bundleId) => ({
       path: `/v1/hot-updater/api/bundles/${bundleId}`,
-      headers: { "X-Custom-Header": "value" }
+      headers: { "X-Custom-Header": "value" },
     }),
     list: () => ({
-      path: "/v1/hot-updater/api/bundles"
+      path: "/v1/hot-updater/api/bundles",
     }),
     channels: () => ({
-      path: "/v1/hot-updater/api/bundles/channels"
+      path: "/v1/hot-updater/api/bundles/channels",
     }),
     retrieve: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
     }),
     delete: (bundleId) => ({
-      path: `/v1/hot-updater/api/bundles/${bundleId}`
-    })
-  }
-})
+      path: `/v1/hot-updater/api/bundles/${bundleId}`,
+    }),
+  },
+});
 ```
+
+Standalone validates the upstream Analytics route flags through `GET /version`.
+It caches a validated response for 30 seconds and coalesces concurrent
+refreshes. If a refresh fails, the last validated capability is used for at
+most five minutes; without a recent validated response, Analytics routes fail
+closed.
 
 ## Server Contract
 
@@ -122,9 +140,9 @@ database: standaloneRepository({
 backend, your server must implement the bundle-management contract below.
 
 <Callout type="info">
-If you use `@hot-updater/server`, you do **not** need to implement these
-endpoints manually. `createHotUpdater()` provides this contract when bundle
-routes are explicitly enabled, including `GET /api/bundles/channels`.
+  If you use `@hot-updater/server`, you do **not** need to implement these
+  endpoints manually. `createHotUpdater()` provides this contract when bundle
+  routes are explicitly enabled, including `GET /api/bundles/channels`.
 </Callout>
 
 ### Contract Types
@@ -157,14 +175,14 @@ type ChannelsResponse = DataResponse<{ channels: string[] }>;
 These are the default routes used by `standaloneRepository`. You can remap
 them with the `routes` option shown above.
 
-| Method | Default route | Request body | Success response |
-|--------|---------------|--------------|------------------|
-| POST | `/api/bundles` | `Bundle[]` | `{ "success": true }` |
-| PATCH | `/api/bundles/:id` | `Partial<Bundle>` | `{ "success": true }` |
-| GET | `/api/bundles` | none | `Paginated<Bundle[]>` |
-| GET | `/api/bundles/:id` | none | `Bundle` |
-| DELETE | `/api/bundles/:id` | none | `{ "success": true }` |
-| GET | `/api/bundles/channels` | none | `ChannelsResponse` |
+| Method | Default route           | Request body      | Success response      |
+| ------ | ----------------------- | ----------------- | --------------------- |
+| POST   | `/api/bundles`          | `Bundle[]`        | `{ "success": true }` |
+| PATCH  | `/api/bundles/:id`      | `Partial<Bundle>` | `{ "success": true }` |
+| GET    | `/api/bundles`          | none              | `Paginated<Bundle[]>` |
+| GET    | `/api/bundles/:id`      | none              | `Bundle`              |
+| DELETE | `/api/bundles/:id`      | none              | `{ "success": true }` |
+| GET    | `/api/bundles/channels` | none              | `ChannelsResponse`    |
 
 ### Bundle Shape
 
@@ -204,14 +222,14 @@ numbers.
 
 Supported query params:
 
-| Query param | Type | Notes |
-|-------------|------|-------|
-| `channel` | `string` | Exact match |
-| `platform` | `"ios" \| "android"` | Exact match |
-| `limit` | `number` | Window size |
-| `page` | `number` | Optional positive page number for stable page-aligned requests |
-| `after` | `string` | Fetch the next window after this bundle ID |
-| `before` | `string` | Fetch the previous window before this bundle ID |
+| Query param | Type                 | Notes                                                          |
+| ----------- | -------------------- | -------------------------------------------------------------- |
+| `channel`   | `string`             | Exact match                                                    |
+| `platform`  | `"ios" \| "android"` | Exact match                                                    |
+| `limit`     | `number`             | Window size                                                    |
+| `page`      | `number`             | Optional positive page number for stable page-aligned requests |
+| `after`     | `string`             | Fetch the next window after this bundle ID                     |
+| `before`    | `string`             | Fetch the previous window before this bundle ID                |
 
 Expected response:
 

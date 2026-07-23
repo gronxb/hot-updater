@@ -19,6 +19,9 @@ type ParsedAnalyticsCapability =
   | LegacyRemoteAnalyticsCapability
   | RemoteAnalyticsCapability;
 
+const ANALYTICS_CAPABILITY_FRESHNESS_MS = 30_000;
+const ANALYTICS_CAPABILITY_MAX_STALENESS_MS = 5 * 60_000;
+
 const unavailableAnalyticsCapability = {
   analytics: false,
   eventIngestion: false,
@@ -77,7 +80,15 @@ export const createAnalyticsCapabilityProbe = (
   config: StandaloneRepositoryConfig,
 ) => {
   const http = createStandaloneHttp(config);
-  return async (): Promise<RemoteAnalyticsCapability> => {
+  let cached:
+    | {
+        capability: RemoteAnalyticsCapability;
+        fetchedAtMs: number;
+      }
+    | undefined;
+  let pending: Promise<RemoteAnalyticsCapability> | undefined;
+
+  const loadCapability = async (): Promise<RemoteAnalyticsCapability> => {
     const response = await http.load(
       { path: "/version" },
       {},
@@ -89,5 +100,42 @@ export const createAnalyticsCapabilityProbe = (
       return unavailableAnalyticsCapability;
     }
     return capabilities;
+  };
+
+  return async (): Promise<RemoteAnalyticsCapability> => {
+    const now = Date.now();
+    if (
+      cached &&
+      now - cached.fetchedAtMs <= ANALYTICS_CAPABILITY_FRESHNESS_MS
+    ) {
+      return cached.capability;
+    }
+
+    const refresh =
+      pending ??
+      loadCapability().then((capability) => {
+        cached = {
+          capability,
+          fetchedAtMs: Date.now(),
+        };
+        return capability;
+      });
+    pending = refresh;
+
+    try {
+      return await refresh;
+    } catch (error) {
+      if (
+        cached &&
+        Date.now() - cached.fetchedAtMs <= ANALYTICS_CAPABILITY_MAX_STALENESS_MS
+      ) {
+        return cached.capability;
+      }
+      throw error;
+    } finally {
+      if (pending === refresh) {
+        pending = undefined;
+      }
+    }
   };
 };

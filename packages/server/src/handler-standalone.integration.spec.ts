@@ -175,6 +175,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       const remoteBaseUrl = `${baseUrl}/${slug}`;
       let forwardedEvents = 0;
       let forwardedQueries = 0;
+      let forwardedSdkVersion: string | null = null;
       server.use(
         http.get(`${remoteBaseUrl}/version`, () =>
           HttpResponse.json({
@@ -187,8 +188,9 @@ describe("Handler <-> Standalone Repository Integration", () => {
             },
           }),
         ),
-        http.post(`${remoteBaseUrl}/events`, () => {
+        http.post(`${remoteBaseUrl}/events`, ({ request }) => {
           forwardedEvents += 1;
+          forwardedSdkVersion = request.headers.get("Hot-Updater-SDK-Version");
           return new HttpResponse(null, { status: 204 });
         }),
         http.get(`${remoteBaseUrl}/api/bundles/:id/events/summary`, () => {
@@ -212,6 +214,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       const eventResponse = await proxy.handler(
         new Request(`${baseUrl}/proxy-${slug}/events`, {
           method: "POST",
+          headers: { "Hot-Updater-SDK-Version": "0.37.0" },
           body: JSON.stringify({
             type: "UNCHANGED",
             installId: `install-${slug}`,
@@ -243,6 +246,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       expect(queryResponse.status).toBe(analyticsQueries ? 200 : 404);
       expect(forwardedEvents).toBe(eventIngestion ? 1 : 0);
       expect(forwardedQueries).toBe(analyticsQueries ? 1 : 0);
+      expect(forwardedSdkVersion).toBe(eventIngestion ? "0.37.0" : null);
     },
   );
 

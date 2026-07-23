@@ -98,7 +98,8 @@ export const resolveAnalyticsRouteAPI = async <TContext>(
 
 export const resolveReportedAnalyticsCapability = async (
   api: object,
-  routes: AnalyticsRouteCapability,
+  eventIngestionMounted: boolean,
+  analyticsQueriesMounted: boolean,
 ): Promise<ReportedAnalyticsCapability> => {
   const probe = Reflect.get(api, internalAnalyticsCapabilityProbe);
   if (typeof probe === "function") {
@@ -112,12 +113,21 @@ export const resolveReportedAnalyticsCapability = async (
     }
     return {
       ...capability,
-      eventIngestion: capability.eventIngestion && routes.eventIngestion,
-      analyticsQueries: capability.analyticsQueries && routes.analyticsQueries,
+      eventIngestion: capability.eventIngestion && eventIngestionMounted,
+      analyticsQueries: capability.analyticsQueries && analyticsQueriesMounted,
     };
   }
   const capability = getAnalyticsCapability(api);
   return capability
-    ? { analytics: true, ...capability, ...routes }
-    : { analytics: false, ...routes };
+    ? {
+        analytics: true,
+        ...capability,
+        eventIngestion: eventIngestionMounted,
+        analyticsQueries: analyticsQueriesMounted,
+      }
+    : {
+        analytics: false,
+        eventIngestion: eventIngestionMounted,
+        analyticsQueries: analyticsQueriesMounted,
+      };
 };

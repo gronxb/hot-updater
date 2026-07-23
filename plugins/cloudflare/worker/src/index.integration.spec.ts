@@ -374,6 +374,27 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     expect(row).not.toBeNull();
   });
 
+  it("reports ingestion without exposing Analytics queries", async () => {
+    const versionResponse = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/version`),
+      env,
+    );
+    const queryResponse = await worker.fetch(
+      new Request(
+        `${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/api/bundles/bundle-1/events/summary`,
+      ),
+      env,
+    );
+
+    await expect(versionResponse.json()).resolves.toMatchObject({
+      capabilities: {
+        eventIngestion: true,
+        analyticsQueries: false,
+      },
+    });
+    expect(queryResponse.status).toBe(404);
+  });
+
   it("does not support the legacy exact path", async () => {
     const response = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}`),

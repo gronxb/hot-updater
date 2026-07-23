@@ -40,10 +40,14 @@ const serializeUpdateInfo = (
 };
 
 export const createUpdateRouteHandlers = <TContext>(
-  routes: AnalyticsRouteCapability,
+  mountedRouteCapability: AnalyticsRouteCapability,
 ): Record<string, RouteHandler<TContext>> => ({
   version: async (_params, _request, api) => {
-    const capabilities = await resolveReportedAnalyticsCapability(api, routes);
+    const capabilities = await resolveReportedAnalyticsCapability(
+      api,
+      mountedRouteCapability.eventIngestion,
+      mountedRouteCapability.analyticsQueries,
+    );
     return new Response(
       JSON.stringify({
         version: HOT_UPDATER_SERVER_VERSION,

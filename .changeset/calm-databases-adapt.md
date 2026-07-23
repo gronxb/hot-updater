@@ -95,6 +95,14 @@ Standalone and Console require the query-route capability and conservatively
 treat legacy responses without route fields as unavailable.
 Standalone preserves the upstream ingestion and query flags independently and
 returns 404 instead of forwarding a route that the upstream reports disabled.
+It caches validated upstream route capabilities for 30 seconds, coalesces
+concurrent refreshes, and uses the last validated response for at most five
+minutes before failing closed. Proxied event ingestion preserves the validated
+SDK-version header.
+
+The managed Firebase runtime forwards the original request bytes into the
+shared server handler so the Analytics payload limit applies before parsed JSON
+can be normalized.
 
 Snapshot-backed plugins created with `createBlobDatabasePlugin`, including
 `s3Database`, deliberately leave Analytics disabled because concurrent event

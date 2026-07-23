@@ -22,6 +22,7 @@ import {
 } from "./standaloneRoutes";
 
 const MAX_USER_ID_LENGTH = 1024;
+const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
 
 const normalizeActiveInput = (
   input: Parameters<
@@ -87,9 +88,15 @@ export const createBundleEventService = (
   return {
     async appendBundleEvent(input) {
       const route = routes.appendEvent();
+      const headers = new Headers(http.headers(route.headers));
+      headers.delete(SDK_VERSION_HEADER);
+      const sdkVersion = Reflect.get(input, "sdkVersion");
+      if (typeof sdkVersion === "string") {
+        headers.set(SDK_VERSION_HEADER, sdkVersion);
+      }
       const response = await fetch(http.buildUrl(route.path), {
         method: "POST",
-        headers: http.headers(route.headers),
+        headers,
         body: JSON.stringify(input),
       });
       if (!response.ok) await http.requestFailed(response);

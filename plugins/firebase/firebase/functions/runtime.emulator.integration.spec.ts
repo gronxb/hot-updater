@@ -292,6 +292,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   beforeEach(async () => {
     cdnObjects.clear();
     await clearStorageBucket(storageBucket);
+    await clearFirestoreCollection("bundle_events");
     await clearFirestoreCollection("bundle_patches");
     await clearFirestoreCollection("bundles");
   });
@@ -524,6 +525,64 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     await expect(
       seedHotUpdater.getBundleEventSummary(bundleId),
     ).resolves.toEqual({ installed: 1, recovered: 0 });
+  });
+
+  it("measures the original Firebase request body before ingesting", async () => {
+    const payload = JSON.stringify({
+      appVersion: "1.0",
+      channel: "production",
+      cohort: "782",
+      fingerprintHash: null,
+      fromBundleId: NIL_UUID,
+      installId: "firebase-oversized-install",
+      platform: "ios",
+      toBundleId: "00000000-0000-0000-0000-000000000001",
+      type: "UPDATE_APPLIED",
+      updateStrategy: "appVersion",
+    });
+    const oversizedBody = new TextEncoder().encode(
+      `${payload}${" ".repeat(17 * 1024)}`,
+    );
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(oversizedBody);
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    };
+    const response = await invokeHandler(
+      `${HOT_UPDATER_BASE_PATH}/events`,
+      init,
+    );
+    const persisted = await admin
+      .firestore()
+      .collection("bundle_events")
+      .where("install_id", "==", "firebase-oversized-install")
+      .get();
+
+    expect(response.status).toBe(413);
+    expect(persisted.empty).toBe(true);
+  });
+
+  it("reports ingestion without exposing Analytics queries", async () => {
+    const versionResponse = await invokeHandler(
+      `${HOT_UPDATER_BASE_PATH}/version`,
+    );
+    const queryResponse = await invokeHandler(
+      `${HOT_UPDATER_BASE_PATH}/api/bundles/bundle-1/events/summary`,
+    );
+
+    await expect(versionResponse.json()).resolves.toMatchObject({
+      capabilities: {
+        eventIngestion: true,
+        analyticsQueries: false,
+      },
+    });
+    expect(queryResponse.status).toBe(404);
   });
 
   it("does not support the legacy exact path", async () => {
