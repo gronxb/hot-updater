@@ -80,6 +80,7 @@ vi.mock("./specs/NativeHotUpdater", () => ({
 const createResolver = () => ({
   checkUpdate: vi.fn(),
   notifyAppReady: vi.fn().mockResolvedValue(undefined),
+  notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
 });
 
 describe("automatic notifyAppReady analytics boundaries", () => {
@@ -107,7 +108,7 @@ describe("automatic notifyAppReady analytics boundaries", () => {
     nativePersistence.setPersistedInstallId("install-persisted");
   });
 
-  it("warns when resolver.notifyAppReady is missing and preserves readiness", async () => {
+  it("warns when resolver analytics transport is missing and preserves readiness", async () => {
     stubNotifyFrame();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const onError = vi.fn();
@@ -128,8 +129,44 @@ describe("automatic notifyAppReady analytics boundaries", () => {
       "[HotUpdater] Automatic notifyAppReady analytics failed:",
       expect.objectContaining({
         message:
-          "[HotUpdater] Automatic analytics requires resolver.notifyAppReady().",
+          "[HotUpdater] Automatic analytics requires resolver.notifyAppReadyAnalytics().",
       }),
+    );
+    warn.mockRestore();
+  });
+
+  it("delivers legacy readiness resolver failures through onError", async () => {
+    stubNotifyFrame();
+    const failure = new Error("legacy readiness failed");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const onError = vi.fn();
+    const onNotifyAppReady = vi.fn();
+    const resolver = {
+      checkUpdate: vi.fn(),
+      notifyAppReady: vi.fn().mockRejectedValue(failure),
+      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
+    };
+    const { init } = await import("./wrap");
+
+    init({
+      analytics: false,
+      onError,
+      onNotifyAppReady,
+      resolver,
+    });
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+      requestHeaders: undefined,
+      requestTimeout: undefined,
+      status: "STABLE",
+    });
+    expect(resolver.notifyAppReadyAnalytics).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(failure);
+    expect(onNotifyAppReady).toHaveBeenCalledWith({ status: "UNCHANGED" });
+    expect(warn).toHaveBeenCalledWith(
+      "[HotUpdater] Resolver notifyAppReady failed:",
+      failure,
     );
     warn.mockRestore();
   });
@@ -157,7 +194,7 @@ describe("automatic notifyAppReady analytics boundaries", () => {
       init({ analytics: true, onError, onNotifyAppReady, resolver });
       await vi.runOnlyPendingTimersAsync();
 
-      expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+      expect(resolver.notifyAppReadyAnalytics).not.toHaveBeenCalled();
       expect(onError).not.toHaveBeenCalled();
       expect(onNotifyAppReady).toHaveBeenCalledWith({ status: "UNCHANGED" });
       expect(warn).toHaveBeenCalledWith(
@@ -191,7 +228,7 @@ describe("automatic notifyAppReady analytics boundaries", () => {
       init({ analytics: true, onError, onNotifyAppReady, resolver });
       await vi.runOnlyPendingTimersAsync();
 
-      expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+      expect(resolver.notifyAppReadyAnalytics).not.toHaveBeenCalled();
       expect(onError).not.toHaveBeenCalled();
       expect(onNotifyAppReady).toHaveBeenCalledWith({ status: "UNCHANGED" });
       expect(warn).toHaveBeenCalledWith(

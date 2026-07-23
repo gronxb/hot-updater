@@ -1,5 +1,5 @@
 import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/core";
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
   const getManifest = vi.fn<() => Record<string, unknown> | string>();
@@ -134,21 +134,50 @@ describe("notifyAppReady", () => {
     });
   });
 
-  it("returns UNCHANGED for incomplete recovery payloads", async () => {
+  it("preserves recovery from legacy native object payloads", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue({
-      fromBundleId: "bundle-123",
+      crashedBundleId: "bundle-crashed",
       status: "RECOVERED",
-      toBundleId: null,
-      updateStrategy: "appVersion",
     });
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-recovered");
 
     const { notifyAppReady, readNotifyAppReady } = await import("./native");
 
-    expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
+    expect(notifyAppReady()).toEqual({
+      fromBundleId: "bundle-crashed",
+      status: "RECOVERED",
+      toBundleId: "bundle-recovered",
+    });
     expect(readNotifyAppReady()).toEqual({
       analyticsEvent: null,
       pending: false,
-      result: { status: "UNCHANGED" },
+      result: {
+        fromBundleId: "bundle-crashed",
+        status: "RECOVERED",
+        toBundleId: "bundle-recovered",
+      },
+    });
+  });
+
+  it("preserves recovery from legacy Android JSON payloads", async () => {
+    nativeModuleMock.notifyAppReady.mockReturnValue(
+      JSON.stringify({
+        crashedBundleId: "bundle-crashed",
+        status: "RECOVERED",
+      }),
+    );
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-recovered");
+
+    const { readNotifyAppReady } = await import("./native");
+
+    expect(readNotifyAppReady()).toEqual({
+      analyticsEvent: null,
+      pending: false,
+      result: {
+        fromBundleId: "bundle-crashed",
+        status: "RECOVERED",
+        toBundleId: "bundle-recovered",
+      },
     });
   });
 
@@ -202,11 +231,8 @@ describe("notifyAppReady", () => {
   });
 
   it("throws when native SDK does not expose getBundleId", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      getBundleId?: typeof nativeModuleMock.getBundleId;
-    };
-    const originalGetBundleId = nativeModule.getBundleId;
-    nativeModule.getBundleId = null as unknown as Mock<() => string | null>;
+    const originalGetBundleId = nativeModuleMock.getBundleId;
+    Reflect.set(nativeModuleMock, "getBundleId", null);
 
     try {
       const { getBundleId } = await import("./native");
@@ -215,7 +241,7 @@ describe("notifyAppReady", () => {
         "Native module is missing 'getBundleId()'",
       );
     } finally {
-      nativeModule.getBundleId = originalGetBundleId;
+      Reflect.set(nativeModuleMock, "getBundleId", originalGetBundleId);
     }
   });
 
@@ -691,11 +717,8 @@ describe("notifyAppReady", () => {
   });
 
   it("throws when native SDK does not expose getInstallId", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      getInstallId?: typeof nativeModuleMock.getInstallId;
-    };
-    const originalGetInstallId = nativeModule.getInstallId;
-    nativeModule.getInstallId = null as unknown as Mock<() => string>;
+    const originalGetInstallId = nativeModuleMock.getInstallId;
+    Reflect.set(nativeModuleMock, "getInstallId", null);
 
     try {
       const { getInstallId } = await import("./native");
@@ -704,7 +727,7 @@ describe("notifyAppReady", () => {
         "Native module is missing 'getInstallId()'",
       );
     } finally {
-      nativeModule.getInstallId = originalGetInstallId;
+      Reflect.set(nativeModuleMock, "getInstallId", originalGetInstallId);
     }
   });
 
@@ -739,12 +762,8 @@ describe("notifyAppReady", () => {
   });
 
   it("throws when native SDK does not expose persisted user identity getters", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      getUserId?: typeof nativeModuleMock.getUserId;
-      getUsername?: typeof nativeModuleMock.getUsername;
-    };
-    const originalGetUserId = nativeModule.getUserId;
-    nativeModule.getUserId = null as unknown as Mock<() => string | null>;
+    const originalGetUserId = nativeModuleMock.getUserId;
+    Reflect.set(nativeModuleMock, "getUserId", null);
 
     try {
       const { getPersistedUserIdentity } = await import("./native");
@@ -753,18 +772,13 @@ describe("notifyAppReady", () => {
         "Native module is missing 'getUserId()' or 'getUsername()'",
       );
     } finally {
-      nativeModule.getUserId = originalGetUserId;
+      Reflect.set(nativeModuleMock, "getUserId", originalGetUserId);
     }
   });
 
   it("throws when native SDK does not expose setUser", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      setUser?: typeof nativeModuleMock.setUser;
-    };
-    const originalSetUser = nativeModule.setUser;
-    nativeModule.setUser = null as unknown as Mock<
-      (userId: string | null, username: string | null) => void
-    >;
+    const originalSetUser = nativeModuleMock.setUser;
+    Reflect.set(nativeModuleMock, "setUser", null);
 
     try {
       const { setUser } = await import("./native");
@@ -773,7 +787,7 @@ describe("notifyAppReady", () => {
         "Native module is missing 'setUser()'",
       );
     } finally {
-      nativeModule.setUser = originalSetUser;
+      Reflect.set(nativeModuleMock, "setUser", originalSetUser);
     }
   });
 

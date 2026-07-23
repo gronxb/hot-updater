@@ -120,7 +120,13 @@ describe("HotUpdater wrap initialization", () => {
     await vi.runOnlyPendingTimersAsync();
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledWith();
-    expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+      requestHeaders: {
+        Authorization: "Bearer token",
+      },
+      requestTimeout: 1000,
+      status: "STABLE",
+    });
   });
 
   it("waits for native launch verification before sending analytics", async () => {
@@ -155,6 +161,7 @@ describe("HotUpdater wrap initialization", () => {
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
+      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
     };
     const { init } = await import("./wrap");
 
@@ -164,6 +171,7 @@ describe("HotUpdater wrap initialization", () => {
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledTimes(2);
     expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
+    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledTimes(1);
   });
 
   it("sends automatic analytics only from init when enabled", async () => {
@@ -201,6 +209,7 @@ describe("HotUpdater wrap initialization", () => {
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
+      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
     };
     const { init } = await import("./wrap");
 
@@ -215,7 +224,7 @@ describe("HotUpdater wrap initialization", () => {
 
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledWith({
       appVersion: "1.0.0",
       channel: "production",
       cohort: "123",
@@ -265,6 +274,7 @@ describe("HotUpdater wrap initialization", () => {
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
+      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
     };
     const { init } = await import("./wrap");
 
@@ -273,7 +283,7 @@ describe("HotUpdater wrap initialization", () => {
 
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
+    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledTimes(1);
   });
 
   it("warns without interrupting app readiness when analytics transport fails", async () => {
@@ -307,7 +317,8 @@ describe("HotUpdater wrap initialization", () => {
     );
     const resolver = {
       checkUpdate: vi.fn(),
-      notifyAppReady: vi.fn().mockRejectedValue(error),
+      notifyAppReady: vi.fn().mockResolvedValue(undefined),
+      notifyAppReadyAnalytics: vi.fn().mockRejectedValue(error),
     };
     const { init } = await import("./wrap");
 

@@ -8,14 +8,22 @@ import {
 import { NativeEventEmitter, Platform } from "react-native";
 
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
+import {
+  readNativeNotifyAppReady,
+  type NotifyAppReadyReadResult,
+} from "./notifyAppReadyNative";
+import type { NotifyAppReadyResult } from "./notifyAppReadyTypes";
 import HotUpdaterNative, {
   type UpdateBundleParams,
 } from "./specs/NativeHotUpdater";
 
 export { HotUpdaterErrorCode, isHotUpdaterError };
+export type {
+  NotifyAppReadyAnalyticsEvent,
+  NotifyAppReadyResult,
+} from "./notifyAppReadyTypes";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
-type PersistedUpdateStrategy = "fingerprint" | "appVersion";
 
 const normalizeAndValidateCohort = (cohort: string): string => {
   const normalized = normalizeCohortValue(cohort);
@@ -688,147 +696,11 @@ export function setUser(params: SetUserParams | null): void {
   nativeModule.setUser(normalizedUserId, params.username ?? null);
 }
 
-/**
- * Result returned by notifyAppReady()
- */
-export type NotifyAppReadyResult =
-  | { status: "UNCHANGED" }
-  | { status: "UPDATE_APPLIED"; fromBundleId: string; toBundleId: string }
-  | { status: "RECOVERED"; fromBundleId: string; toBundleId: string };
-
-export type NotifyAppReadyAnalyticsEvent = {
-  type: "UPDATE_APPLIED" | "RECOVERED";
-  fromBundleId: string;
-  toBundleId: string;
-  updateStrategy: PersistedUpdateStrategy;
-};
-
-type RawNotifyAppReadyResult = {
-  status?: string;
-  crashedBundleId?: string;
-  fromBundleId?: string;
-  toBundleId?: string;
-  updateStrategy?: PersistedUpdateStrategy;
-};
-
-const isPersistedUpdateStrategy = (
-  value: unknown,
-): value is PersistedUpdateStrategy => {
-  return value === "appVersion" || value === "fingerprint";
-};
-
-const readRawNotifyAppReadyResult = (): RawNotifyAppReadyResult => {
-  const result = HotUpdaterNative.notifyAppReady();
-
-  if (typeof result === "string") {
-    try {
-      const parsed = JSON.parse(result) as unknown;
-      if (
-        typeof parsed !== "object" ||
-        parsed === null ||
-        Array.isArray(parsed)
-      ) {
-        return {};
-      }
-      return parsed as RawNotifyAppReadyResult;
-    } catch {
-      return {};
-    }
-  }
-
-  if (typeof result !== "object" || result === null || Array.isArray(result)) {
-    return {};
-  }
-
-  return result as RawNotifyAppReadyResult;
-};
-
-const readDirectionalBundleId = (bundleId: unknown): string | null => {
-  if (typeof bundleId !== "string") {
-    return null;
-  }
-  const normalizedBundleId = bundleId.trim();
-  if (normalizedBundleId.length === 0) {
-    return null;
-  }
-  return resolveBundleId(normalizedBundleId);
-};
-
-const getNotifyAppReadyTransition = (
-  result: RawNotifyAppReadyResult,
-): {
-  status: "UPDATE_APPLIED" | "RECOVERED";
-  fromBundleId: string;
-  toBundleId: string;
-} | null => {
-  if (result.status === "UPDATE_APPLIED" || result.status === "PROMOTED") {
-    const fromBundleId = readDirectionalBundleId(result.fromBundleId);
-    const toBundleId = readDirectionalBundleId(result.toBundleId);
-    if (fromBundleId && toBundleId) {
-      return {
-        status: "UPDATE_APPLIED",
-        fromBundleId,
-        toBundleId,
-      };
-    }
-  }
-
-  if (result.status === "RECOVERED") {
-    const fromBundleId = readDirectionalBundleId(result.fromBundleId);
-    const toBundleId = readDirectionalBundleId(result.toBundleId);
-    if (fromBundleId && toBundleId) {
-      return {
-        status: "RECOVERED",
-        fromBundleId,
-        toBundleId,
-      };
-    }
-  }
-
-  return null;
-};
-
-const getNotifyAppReadyAnalyticsEvent = (
-  result: RawNotifyAppReadyResult,
-): NotifyAppReadyAnalyticsEvent | null => {
-  const transition = getNotifyAppReadyTransition(result);
-
-  if (!transition || !isPersistedUpdateStrategy(result.updateStrategy)) {
-    return null;
-  }
-
-  return {
-    type: transition.status,
-    fromBundleId: transition.fromBundleId,
-    toBundleId: transition.toBundleId,
-    updateStrategy: result.updateStrategy,
-  };
-};
-
-const normalizeNotifyAppReadyResult = (
-  result: RawNotifyAppReadyResult,
-): NotifyAppReadyResult => {
-  const transition = getNotifyAppReadyTransition(result);
-
-  if (transition) {
-    return transition;
-  }
-
-  return { status: "UNCHANGED" };
-};
-
-export const readNotifyAppReady = (): {
-  result: NotifyAppReadyResult;
-  analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
-  pending: boolean;
-} => {
-  const rawResult = readRawNotifyAppReadyResult();
-
-  return {
-    result: normalizeNotifyAppReadyResult(rawResult),
-    analyticsEvent: getNotifyAppReadyAnalyticsEvent(rawResult),
-    pending: rawResult.status === "PENDING",
-  };
+export const readNotifyAppReady = (): NotifyAppReadyReadResult => {
+  return readNativeNotifyAppReady(HotUpdaterNative.notifyAppReady(), {
+    getActiveBundleId: getBundleId,
+    resolveBundleId,
+  });
 };
 
 /**

@@ -6,7 +6,7 @@ import type {
   HotUpdaterBaseURL,
   HotUpdaterResolver,
   ResolverCheckUpdateParams,
-  ResolverNotifyAppReadyParams,
+  ResolverNotifyAppReadyAnalyticsParams,
 } from "./types";
 
 const resolveBaseURL = async (baseURL: HotUpdaterBaseURL): Promise<string> => {
@@ -60,8 +60,8 @@ export function createDefaultResolver(
         requestTimeout: params.requestTimeout,
       });
     },
-    notifyAppReady: async (
-      params: ResolverNotifyAppReadyParams,
+    notifyAppReadyAnalytics: async (
+      params: ResolverNotifyAppReadyAnalyticsParams,
     ): Promise<void> => {
       const resolvedBaseURL = (await resolveBaseURL(baseURL)).replace(
         /\/+$/,

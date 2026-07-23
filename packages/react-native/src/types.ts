@@ -1,5 +1,18 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
 
+import type {
+  NotifyAppReadyResult,
+  ResolverNotifyAppReadyAnalyticsParams,
+  ResolverNotifyAppReadyParams,
+  ResolverNotifyAppReadyResult,
+} from "./notifyAppReadyTypes";
+
+export type {
+  ResolverNotifyAppReadyAnalyticsParams,
+  ResolverNotifyAppReadyParams,
+  ResolverNotifyAppReadyResult,
+} from "./notifyAppReadyTypes";
+
 export type HotUpdaterBaseURL = string | (() => string | Promise<string>);
 
 /**
@@ -57,119 +70,6 @@ export interface ResolverCheckUpdateParams {
   requestTimeout?: number;
 }
 
-/** Parameters shared by all resolver.notifyAppReady event variants. */
-interface ResolverNotifyAppReadyCommonParams {
-  /**
-   * Stable install identity for the current app installation.
-   */
-  readonly installId: string;
-
-  /**
-   * Optional persisted user identity associated with this install.
-   */
-  readonly userId?: string;
-
-  /**
-   * Optional persisted username associated with this install.
-   */
-  readonly username?: string;
-
-  /**
-   * The platform the app is running on.
-   */
-  readonly platform: "ios" | "android";
-
-  /**
-   * The current app version.
-   */
-  readonly appVersion: string;
-
-  /**
-   * The current channel.
-   */
-  readonly channel: string;
-
-  /**
-   * Cohort identifier used for server-side rollout decisions.
-   */
-  readonly cohort: string;
-
-  /**
-   * Current fingerprint hash when available.
-   */
-  readonly fingerprintHash: string | null;
-
-  /**
-   * Request headers from global config (for optional use)
-   */
-  readonly requestHeaders?: Record<string, string>;
-
-  /**
-   * Request timeout from global config (for optional use)
-   */
-  readonly requestTimeout?: number;
-}
-
-/** Parameters passed to resolver.notifyAppReady for an applied update. */
-type ResolverNotifyAppReadyUpdateAppliedParams =
-  ResolverNotifyAppReadyCommonParams & {
-    /** Transition event type to append. */
-    readonly type: "UPDATE_APPLIED";
-
-    /** Bundle replaced or rolled back from. */
-    readonly fromBundleId: string;
-
-    /** Bundle now active after the transition. */
-    readonly toBundleId: string;
-
-    /** Persisted update strategy for the qualifying transition. */
-    readonly updateStrategy: "fingerprint" | "appVersion";
-  };
-
-/** Parameters passed to resolver.notifyAppReady for a recovered update. */
-type ResolverNotifyAppReadyRecoveredParams =
-  ResolverNotifyAppReadyCommonParams & {
-    /** Transition event type to append. */
-    readonly type: "RECOVERED";
-
-    /** Bundle replaced or rolled back from. */
-    readonly fromBundleId: string;
-
-    /** Bundle now active after the transition. */
-    readonly toBundleId: string;
-
-    /** Persisted update strategy for the qualifying transition. */
-    readonly updateStrategy: "fingerprint" | "appVersion";
-  };
-
-/** Parameters passed to resolver.notifyAppReady when the bundle is unchanged. */
-type ResolverNotifyAppReadyUnchangedParams =
-  ResolverNotifyAppReadyCommonParams & {
-    /** App-ready event type to append. */
-    readonly type: "UNCHANGED";
-
-    /** No previous bundle exists for an unchanged report. */
-    readonly fromBundleId: null;
-
-    /** The currently active bundle. */
-    readonly toBundleId: string;
-
-    /** Unchanged reports have no transition strategy. */
-    readonly updateStrategy: null;
-  };
-
-/**
- * Parameters passed to resolver.notifyAppReady method.
- *
- * Transition events require directional bundle ids and an update strategy;
- * unchanged events require null transition fields and report the active
- * bundle as `toBundleId`.
- */
-export type ResolverNotifyAppReadyParams =
-  | ResolverNotifyAppReadyUpdateAppliedParams
-  | ResolverNotifyAppReadyRecoveredParams
-  | ResolverNotifyAppReadyUnchangedParams;
-
 /**
  * Resolver interface for custom network operations
  */
@@ -205,19 +105,32 @@ export interface HotUpdaterResolver {
    * Note: Native rollback/promotion semantics are already finalized before this callback runs.
    *
    * @param params - All parameters about the current app state
-   * @returns Promise that resolves when transport completes successfully
+   * @returns Optional legacy readiness result
    *
    * @example
    * ```typescript
    * notifyAppReady: async (params) => {
-   *   await fetch(`https://api.custom.com/events`, {
+   *   await fetch(`https://api.custom.com/notify`, {
    *     method: 'POST',
    *     body: JSON.stringify(params),
    *   });
+   *
+   *   return { status: "STABLE" };
    * }
    * ```
    */
-  notifyAppReady?: (params: ResolverNotifyAppReadyParams) => Promise<void>;
+  notifyAppReady?: (
+    params: ResolverNotifyAppReadyParams,
+  ) => Promise<ResolverNotifyAppReadyResult | NotifyAppReadyResult | undefined>;
+
+  /**
+   * Optional transport for automatic Analytics event ingestion.
+   *
+   * This is independent from the legacy notifyAppReady readiness callback.
+   */
+  notifyAppReadyAnalytics?: (
+    params: ResolverNotifyAppReadyAnalyticsParams,
+  ) => Promise<void>;
 }
 
 /**

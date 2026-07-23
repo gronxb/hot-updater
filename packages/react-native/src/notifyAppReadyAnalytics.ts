@@ -13,7 +13,11 @@ import {
   type NotifyAppReadyResult,
   readNotifyAppReady,
 } from "./native";
-import type { HotUpdaterResolver, ResolverNotifyAppReadyParams } from "./types";
+import type {
+  HotUpdaterResolver,
+  ResolverNotifyAppReadyAnalyticsParams,
+  ResolverNotifyAppReadyParams,
+} from "./types";
 
 export type NotifyAppReadyOptions = {
   analytics?: boolean;
@@ -52,7 +56,7 @@ const buildNotifyAppReadyAnalyticsParams = (
   nativeResult: NotifyAppReadyResult,
   analyticsEvent: NotifyAppReadyAnalyticsEvent | null,
   options: Pick<NotifyAppReadyOptions, "requestHeaders" | "requestTimeout">,
-): ResolverNotifyAppReadyParams => {
+): ResolverNotifyAppReadyAnalyticsParams => {
   const appVersion = getAppVersion();
 
   if (!appVersion) {
@@ -148,9 +152,9 @@ const maybeSendAutomaticAnalytics = async (
 
   didAttemptAutomaticAnalytics = true;
 
-  if (!options.resolver?.notifyAppReady) {
+  if (!options.resolver?.notifyAppReadyAnalytics) {
     throw new Error(
-      "[HotUpdater] Automatic analytics requires resolver.notifyAppReady().",
+      "[HotUpdater] Automatic analytics requires resolver.notifyAppReadyAnalytics().",
     );
   }
 
@@ -160,7 +164,7 @@ const maybeSendAutomaticAnalytics = async (
     );
   }
 
-  await options.resolver.notifyAppReady(
+  await options.resolver.notifyAppReadyAnalytics(
     buildNotifyAppReadyAnalyticsParams(nativeResult, analyticsEvent, options),
   );
 };
@@ -176,6 +180,39 @@ export const handleNotifyAppReady = async (
     } while (nativeReadResult.pending);
 
     const { analyticsEvent, result: nativeResult } = nativeReadResult;
+
+    if (options.resolver?.notifyAppReady) {
+      let legacyParams: ResolverNotifyAppReadyParams;
+      switch (nativeResult.status) {
+        case "RECOVERED":
+          legacyParams = {
+            crashedBundleId: nativeResult.fromBundleId,
+            requestHeaders: options.requestHeaders,
+            requestTimeout: options.requestTimeout,
+            status: "RECOVERED",
+          };
+          break;
+        case "UNCHANGED":
+        case "UPDATE_APPLIED":
+          legacyParams = {
+            requestHeaders: options.requestHeaders,
+            requestTimeout: options.requestTimeout,
+            status: "STABLE",
+          };
+          break;
+        default:
+          return assertNever(nativeResult);
+      }
+
+      try {
+        await options.resolver.notifyAppReady(legacyParams);
+      } catch (error) {
+        const warning =
+          error instanceof Error ? error : new Error(String(error));
+        options.onError?.(error);
+        console.warn("[HotUpdater] Resolver notifyAppReady failed:", warning);
+      }
+    }
 
     try {
       await maybeSendAutomaticAnalytics(options, nativeResult, analyticsEvent);

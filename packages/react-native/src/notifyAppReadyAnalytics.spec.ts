@@ -96,6 +96,7 @@ describe("automatic notifyAppReady analytics", () => {
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
+      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
     };
     const onNotifyAppReady = vi.fn();
     const { init } = await import("./wrap");
@@ -110,6 +111,11 @@ describe("automatic notifyAppReady analytics", () => {
     await vi.runOnlyPendingTimersAsync();
 
     expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+      requestHeaders: { Authorization: "Bearer token" },
+      requestTimeout: 1000,
+      status: "STABLE",
+    });
+    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledWith({
       appVersion: "1.0.0",
       channel: "production",
       cohort: "123",
@@ -152,6 +158,7 @@ describe("automatic notifyAppReady analytics", () => {
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
+      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
     };
     const onNotifyAppReady = vi.fn();
     const { init } = await import("./wrap");
@@ -160,6 +167,12 @@ describe("automatic notifyAppReady analytics", () => {
     await vi.runOnlyPendingTimersAsync();
 
     expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+      crashedBundleId: "bundle-b",
+      requestHeaders: undefined,
+      requestTimeout: undefined,
+      status: "RECOVERED",
+    });
+    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledWith({
       appVersion: "1.0.0",
       channel: "production",
       cohort: "123",
@@ -185,6 +198,7 @@ describe("automatic notifyAppReady analytics", () => {
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
+      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
     };
     const onNotifyAppReady = vi.fn();
     const { init } = await import("./wrap");
@@ -193,8 +207,14 @@ describe("automatic notifyAppReady analytics", () => {
     init({ analytics: true, onNotifyAppReady, resolver });
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
+    expect(resolver.notifyAppReady).toHaveBeenCalledTimes(2);
     expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+      requestHeaders: undefined,
+      requestTimeout: undefined,
+      status: "STABLE",
+    });
+    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledTimes(1);
+    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledWith({
       appVersion: "1.0.0",
       channel: "production",
       cohort: "123",
@@ -222,6 +242,7 @@ describe("automatic notifyAppReady analytics", () => {
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
+      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
     };
     const onNotifyAppReady = vi.fn();
     const { init } = await import("./wrap");
@@ -229,7 +250,12 @@ describe("automatic notifyAppReady analytics", () => {
     init({ analytics: false, onNotifyAppReady, resolver });
     await vi.runOnlyPendingTimersAsync();
 
-    expect(resolver.notifyAppReady).not.toHaveBeenCalled();
+    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+      requestHeaders: undefined,
+      requestTimeout: undefined,
+      status: "STABLE",
+    });
+    expect(resolver.notifyAppReadyAnalytics).not.toHaveBeenCalled();
     expect(onNotifyAppReady).toHaveBeenCalledWith({ status: "UNCHANGED" });
   });
 });

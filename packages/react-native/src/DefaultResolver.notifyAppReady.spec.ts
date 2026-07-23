@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createDefaultResolver } from "./DefaultResolver";
 import { HOT_UPDATER_SDK_VERSION } from "./sdkVersion";
-import type { ResolverNotifyAppReadyParams } from "./types";
+import type { ResolverNotifyAppReadyAnalyticsParams } from "./types";
 
 const mocks = vi.hoisted(() => {
   (
@@ -21,7 +21,7 @@ vi.mock("./fetchUpdateInfo", () => ({
 const createNotifyParams = (
   type: "UPDATE_APPLIED" | "RECOVERED" = "UPDATE_APPLIED",
   updateStrategy: "fingerprint" | "appVersion" = "appVersion",
-): ResolverNotifyAppReadyParams => {
+): ResolverNotifyAppReadyAnalyticsParams => {
   const common = {
     appVersion: "1.0.0",
     channel: "production",
@@ -45,7 +45,7 @@ const createNotifyParams = (
   return { ...common, type: "UPDATE_APPLIED" };
 };
 
-describe("createDefaultResolver.notifyAppReady", () => {
+describe("createDefaultResolver.notifyAppReadyAnalytics", () => {
   beforeEach(() => {
     mocks.fetchUpdateInfo.mockReset();
     vi.unstubAllGlobals();
@@ -57,7 +57,7 @@ describe("createDefaultResolver.notifyAppReady", () => {
       "http://localhost:3007/hot-updater///",
     );
 
-    await resolver.notifyAppReady?.(
+    await resolver.notifyAppReadyAnalytics?.(
       createNotifyParams("RECOVERED", "fingerprint"),
     );
 
@@ -106,9 +106,9 @@ describe("createDefaultResolver.notifyAppReady", () => {
       toBundleId: "bundle-id",
       type: "UNCHANGED",
       updateStrategy: null,
-    } satisfies ResolverNotifyAppReadyParams;
+    } satisfies ResolverNotifyAppReadyAnalyticsParams;
 
-    await resolver.notifyAppReady?.(unchangedParams);
+    await resolver.notifyAppReadyAnalytics?.(unchangedParams);
 
     expect(fetch).toHaveBeenCalledWith(
       "http://localhost:3007/hot-updater/events",
@@ -130,12 +130,12 @@ describe("createDefaultResolver.notifyAppReady", () => {
     );
   });
 
-  it("fails notifyAppReady when /events does not return HTTP 204", async () => {
+  it("fails analytics when /events does not return HTTP 204", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 200 }));
     const resolver = createDefaultResolver("http://localhost:3007/hot-updater");
 
     await expect(
-      resolver.notifyAppReady?.(createNotifyParams()),
+      resolver.notifyAppReadyAnalytics?.(createNotifyParams()),
     ).rejects.toThrow("Expected HTTP 204 from /events, received 200");
   });
 });
