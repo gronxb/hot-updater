@@ -17,51 +17,23 @@ const ANALYTICS_METHODS = [
 
 const routeCases = [
   {
-    name: "unsupported without requested routes",
+    name: "unsupported without requested queries",
     analyticsSupported: false,
-    eventIngestion: false,
-    analyticsQueries: false,
-  },
-  {
-    name: "unsupported with requested ingestion",
-    analyticsSupported: false,
-    eventIngestion: true,
     analyticsQueries: false,
   },
   {
     name: "unsupported with requested queries",
     analyticsSupported: false,
-    eventIngestion: false,
     analyticsQueries: true,
   },
   {
-    name: "unsupported with all requested routes",
-    analyticsSupported: false,
-    eventIngestion: true,
-    analyticsQueries: true,
-  },
-  {
-    name: "supported without requested routes",
+    name: "supported without requested queries",
     analyticsSupported: true,
-    eventIngestion: false,
-    analyticsQueries: false,
-  },
-  {
-    name: "supported with requested ingestion",
-    analyticsSupported: true,
-    eventIngestion: true,
     analyticsQueries: false,
   },
   {
     name: "supported with requested queries",
     analyticsSupported: true,
-    eventIngestion: false,
-    analyticsQueries: true,
-  },
-  {
-    name: "supported with all requested routes",
-    analyticsSupported: true,
-    eventIngestion: true,
     analyticsQueries: true,
   },
 ] as const;
@@ -69,7 +41,7 @@ const routeCases = [
 describe("createHandler route capabilities", () => {
   it.each(routeCases)(
     "reports only reachable Analytics routes when $name",
-    async ({ analyticsSupported, eventIngestion, analyticsQueries }) => {
+    async ({ analyticsSupported, analyticsQueries }) => {
       // Given
       const api = createApi();
       if (!analyticsSupported) {
@@ -79,9 +51,6 @@ describe("createHandler route capabilities", () => {
       }
       const handler = createHandler(api, {
         basePath: "/hot-updater",
-        ...(eventIngestion
-          ? { eventIngestion: { authorize: () => false } }
-          : {}),
         routes: {
           updateCheck: false,
           bundles: false,
@@ -99,7 +68,6 @@ describe("createHandler route capabilities", () => {
       );
 
       // Then
-      const expectedEventIngestion = analyticsSupported && eventIngestion;
       const expectedAnalyticsQueries = analyticsSupported && analyticsQueries;
       await expect(versionResponse.json()).resolves.toEqual({
         version: HOT_UPDATER_SERVER_VERSION,
@@ -107,7 +75,7 @@ describe("createHandler route capabilities", () => {
           ? {
               analytics: true,
               mode: "dedicated",
-              eventIngestion: expectedEventIngestion,
+              eventIngestion: true,
               analyticsQueries: expectedAnalyticsQueries,
             }
           : {
@@ -116,7 +84,7 @@ describe("createHandler route capabilities", () => {
               analyticsQueries: false,
             },
       });
-      expect(ingestionResponse.status !== 404).toBe(expectedEventIngestion);
+      expect(ingestionResponse.status !== 404).toBe(analyticsSupported);
       expect(queryResponse.status !== 404).toBe(expectedAnalyticsQueries);
     },
   );

@@ -5,10 +5,7 @@ import {
   HandlerPayloadTooLargeError,
 } from "./handlerErrors";
 import { isPlatform } from "./handlerParameters";
-import type {
-  HandlerEventIngestionOptions,
-  RouteHandler,
-} from "./handlerTypes";
+import type { RouteHandler } from "./handlerTypes";
 
 const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
 const MAX_EVENT_BODY_BYTES = 16 * 1024;
@@ -137,18 +134,11 @@ const requireBundleEventPayload = (
   }
 };
 
-export const createEventIngestionRouteHandlers = <TContext>(
-  options: HandlerEventIngestionOptions<TContext>,
-): Record<string, RouteHandler<TContext>> => ({
+export const createEventIngestionRouteHandlers = <TContext>(): Record<
+  string,
+  RouteHandler<TContext>
+> => ({
   appendBundleEvent: async (_params, request, api, context) => {
-    const authorization = await options.authorize(request, context);
-    if (authorization instanceof Response) return authorization;
-    if (!authorization) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
     if (!supportsAnalytics(api)) {
       return new Response(null, { status: 404 });
     }

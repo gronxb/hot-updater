@@ -144,7 +144,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
       analytics: true,
       mode: "bounded",
       maxMatchingRows: 50_000,
-      eventIngestion: false,
+      eventIngestion: true,
       analyticsQueries: true,
     });
     const version = await consoleApi.handler(

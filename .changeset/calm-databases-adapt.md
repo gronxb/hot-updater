@@ -75,13 +75,13 @@ work once before entering a retryable database transaction. The transaction
 callback contains repeatable database inserts only. Uploaded objects remain
 available for reuse when the database commit fails.
 
-Client event ingestion in custom servers is closed by default and is mounted
-only when `createHotUpdater({ eventIngestion: { authorize } })` supplies an
-explicit authorization decision. The managed Cloudflare, Firebase, and
-Supabase presets mount public `POST /events` ingestion by default so mobile
-Analytics works without additional server configuration. Event payloads remain
-untrusted telemetry; deployments are responsible for authentication or
-attestation where available, rate limits, quotas, logging, and retention.
+Client event ingestion is mounted automatically when the configured database
+supports Analytics. The managed Cloudflare, Firebase, and Supabase presets
+therefore mount `POST /events` by default so mobile Analytics works without
+additional server configuration. This release does not add route-specific
+authentication; event payloads remain untrusted telemetry and deployments are
+responsible for their framework or provider access controls, rate limits,
+quotas, logging, and retention.
 
 Analytics and installation query routes are also closed by default. Self-hosted
 servers expose them explicitly with `routes.analytics: true`, independently

@@ -1,11 +1,5 @@
 export { createHandler } from "./handler";
-export type {
-  AuthorizeEventIngestion,
-  HandlerAPI,
-  HandlerEventIngestionOptions,
-  HandlerOptions,
-  HandlerRoutes,
-} from "./handler";
+export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handler";
 export { createHotUpdater } from "./createHotUpdaterCore";
 export type {
   CreateHotUpdaterOptions,

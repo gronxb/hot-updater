@@ -43,7 +43,6 @@ describe("runtime createHotUpdater", () => {
     // Given / When / Then
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<HandlerOptions>().toHaveProperty("routes");
-    expectTypeOf<HandlerOptions>().toHaveProperty("eventIngestion");
     expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
       readonly updateCheck: boolean;
       readonly bundles: boolean;
@@ -274,7 +273,7 @@ describe("runtime createHotUpdater", () => {
           analytics: true,
           mode: "bounded",
           maxMatchingRows: 50_000,
-          eventIngestion: false,
+          eventIngestion: true,
           analyticsQueries: false,
         },
       });

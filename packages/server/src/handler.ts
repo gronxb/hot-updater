@@ -19,17 +19,11 @@ import type {
 import { createUpdateRouteHandlers } from "./handlerUpdateRoutes";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
-export type {
-  AuthorizeEventIngestion,
-  HandlerAPI,
-  HandlerEventIngestionOptions,
-  HandlerOptions,
-  HandlerRoutes,
-} from "./handlerTypes";
+export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
 
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
-  options: HandlerOptions<TContext> = {},
+  options: HandlerOptions = {},
 ): (
   request: Request,
   context?: HotUpdaterContext<TContext>,
@@ -42,16 +36,14 @@ export function createHandler<TContext = unknown>(
   } satisfies HandlerRoutes;
   const analyticsSupported = supportsAnalytics(api);
   const mountedAnalyticsRoutes = {
-    eventIngestion: analyticsSupported && options.eventIngestion !== undefined,
+    eventIngestion: analyticsSupported,
     analyticsQueries: analyticsSupported && routeOptions.analytics === true,
   } satisfies AnalyticsRouteCapability;
   const router = createRouter<string>();
   const routeHandlers: Record<string, RouteHandler<TContext>> = {
     ...createUpdateRouteHandlers<TContext>(mountedAnalyticsRoutes),
     ...createBundleRouteHandlers<TContext>(),
-    ...(options.eventIngestion
-      ? createEventIngestionRouteHandlers(options.eventIngestion)
-      : {}),
+    ...createEventIngestionRouteHandlers<TContext>(),
     ...createAnalyticsRouteHandlers<TContext>(),
   };
 

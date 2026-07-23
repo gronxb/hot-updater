@@ -66,8 +66,8 @@ tenant. Each runtime must close over its own database client or binding.
 
 Do not change tenant state on a shared plugin while requests are in flight, and
 do not select a tenant from an unverified event payload. The handler context is
-still available to `eventIngestion.authorize` and storage plugins; it is not
-forwarded to database operations.
+still available to storage plugins; it is not forwarded to database
+operations.
 
 For a worker-style deployment, bind the database before constructing the
 runtime. For a long-lived server, create or cache one runtime per tenant and

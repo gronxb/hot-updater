@@ -43,24 +43,9 @@ export interface HandlerAPI<TContext = unknown> extends Partial<
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
 }
 
-export type AuthorizeEventIngestion<TContext = unknown> = (
-  request: Request,
-  context?: HotUpdaterContext<TContext>,
-) => boolean | Response | Promise<boolean | Response>;
-
-export interface HandlerEventIngestionOptions<TContext = unknown> {
-  readonly authorize: AuthorizeEventIngestion<TContext>;
-}
-
-export interface HandlerOptions<TContext = unknown> {
+export interface HandlerOptions {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
-  /**
-   * Required authorization and throttling policy for client event writes.
-   * Providing this option mounts `POST /events` when the database supports
-   * Analytics.
-   */
-  readonly eventIngestion?: HandlerEventIngestionOptions<TContext>;
   /**
    * Route groups to mount. `GET /version` is always mounted independently.
    * All paths are relative to `basePath`.
@@ -104,7 +89,7 @@ export interface HandlerRoutes {
    * - `GET /api/installations/:installId/events`
    *
    * These endpoints require a database with Analytics support. This field does
-   * not control `POST /events`; configure `eventIngestion` separately.
+   * not control `POST /events`, which is mounted automatically when supported.
    *
    * @default false
    */

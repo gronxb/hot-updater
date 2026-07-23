@@ -57,24 +57,6 @@ Do not replace `HotUpdater.wrap` with `HotUpdater.init` unless your app also
 implements a manual update flow. The `analytics` option belongs to
 `HotUpdater.init`; it is not a `HotUpdater.wrap` option.
 
-### Send authentication headers
-
-`requestHeaders` are shared by update checks and app-ready reports. Use the
-same end-user credential that your server verifies in
-`eventIngestion.authorize`:
-
-```tsx
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-  analytics: true,
-  requestHeaders: {
-    Authorization: `Bearer ${userAccessToken}`,
-  },
-});
-```
-
-Never embed a management credential or provider service key in the app.
-
 ## Associate reports with a user
 
 Analytics always counts installations by `installId`. You can attach a
@@ -113,8 +95,7 @@ The managed presets still leave Analytics query routes disabled. Treat all
 reported identifiers as untrusted telemetry and configure provider-level rate
 limits, quotas, logging, and retention.
 
-For a custom server, add an explicit authorization policy to
-`createHotUpdater`:
+For a custom server, configure an Analytics-capable database:
 
 ```ts
 import { createHotUpdater } from "@hot-updater/server";
@@ -127,21 +108,14 @@ export const hotUpdater = createHotUpdater({
     bundles: true,
     analytics: true,
   },
-  eventIngestion: {
-    authorize: async (request) => {
-      const authorization = request.headers.get("Authorization");
-      return authorization != null && verifyEndUserToken(authorization);
-    },
-  },
 });
 ```
 
-Replace `verifyEndUserToken` with your application's authentication or
-attestation check.
-
-Without `eventIngestion.authorize`, the server does not mount `POST /events`.
-Authorization runs before the server parses the event body. Add rate limits
-and quotas at the same boundary because event payloads are untrusted telemetry.
+When the database supports Analytics, the server mounts `POST /events`
+automatically. Hot Updater does not provide route-specific authentication in
+this release; protect it with the same framework or provider boundary used for
+other routes. Add rate limits and quotas at that boundary because event
+payloads are untrusted telemetry.
 
 `routes.analytics: true` mounts the Analytics and installation query routes
 used by Console. It is disabled by default and is independent from bundle
@@ -153,7 +127,7 @@ same framework authentication used for your other management routes.
 | Capability | Meaning |
 | --- | --- |
 | `capabilities.analytics` | The database has structural event storage and shared Analytics support. It does not mean a route is public. |
-| `capabilities.eventIngestion` | This server mounts authorized `POST /events`. |
+| `capabilities.eventIngestion` | The database supports event writes and this server mounts `POST /events`. |
 | `capabilities.analyticsQueries` | This server mounts the Analytics and installation query routes used by Console. |
 
 When `analytics` is true, `mode` and the optional `maxMatchingRows` describe
