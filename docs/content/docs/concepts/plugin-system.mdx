@@ -50,6 +50,15 @@ the AWS Lambda entrypoint adds CloudFront URL signing, and the Firebase
 Functions entrypoint derives Admin SDK settings from the initialized runtime
 app. Root provider imports remain the deploy-time or universal surface.
 
+The runtime subpaths are a breaking boundary change for the pre-1.0 provider
+packages. Existing managed handler imports move from
+`@hot-updater/aws/lambda` and `@hot-updater/firebase/functions` to the
+corresponding `/handler` subpath. AWS Lambda storage moves from
+`awsLambdaEdgeStorage` or `s3LambdaEdgeStorage` at the provider root to
+`s3Storage` at `@hot-updater/aws/lambda`. Supabase Edge factories move from
+their `supabaseEdgeFunction*` names to `supabaseDatabase` and
+`supabaseStorage` at `@hot-updater/supabase/edge`.
+
 ### Supported Plugins
 
 - **`@hot-updater/supabase`**: Provides `supabaseStorage` functionality, leveraging Supabase for storage.

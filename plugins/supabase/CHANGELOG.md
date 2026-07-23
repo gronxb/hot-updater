@@ -16,6 +16,9 @@
 - Mount public `POST /events` ingestion on the managed Edge Function by default
   while leaving Analytics query routes unmounted. Deployments remain
   responsible for provider-level rate limits, quotas, logging, and retention.
+- Move Edge factories to `@hot-updater/supabase/edge` as `supabaseDatabase` and
+  `supabaseStorage`; the previous root and `supabaseEdgeFunction*` names are
+  removed.
 
 ## 0.35.6
 

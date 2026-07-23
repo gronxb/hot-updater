@@ -9,7 +9,7 @@ export default defineConfig([
   },
   {
     entry: ["src/worker/index.ts"],
-    format: ["esm", "cjs"],
+    format: ["esm"],
     dts: true,
     outDir: "dist/worker",
     deps: {

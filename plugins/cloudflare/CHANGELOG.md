@@ -15,7 +15,8 @@
   leaving Analytics query routes unmounted. Deployments remain responsible for
   provider-level rate limits, quotas, logging, and retention.
 - Publish `@hot-updater/cloudflare/worker` as a Worker ESM-only subpath. It no
-  longer advertises CommonJS or fallback export conditions.
+  longer advertises CommonJS or fallback export conditions, including
+  CommonJS declaration files.
 
 ## 0.35.6
 

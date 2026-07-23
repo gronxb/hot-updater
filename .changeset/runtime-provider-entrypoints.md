@@ -14,7 +14,18 @@ Add normalized server-runtime plugin entrypoints:
 - `@hot-updater/supabase/edge` exports `supabaseDatabase` and
   `supabaseStorage` from an isolated Edge runtime bundle.
 
-Move the managed deployment artifacts to
-`@hot-updater/aws/lambda/handler` and
-`@hot-updater/firebase/functions/handler`. Move the AWS Lambda-specific and
-Supabase Edge-specific plugin names out of the root provider entrypoints.
+This is a breaking import-boundary change. Migrate existing imports as follows:
+
+| Previous import | Replacement |
+| --- | --- |
+| `require("@hot-updater/aws/lambda").handler` | `require("@hot-updater/aws/lambda/handler").handler` |
+| `@hot-updater/aws` `awsLambdaEdgeStorage` or `s3LambdaEdgeStorage` | `@hot-updater/aws/lambda` `s3Storage` |
+| `require("@hot-updater/firebase/functions").hot` | `require("@hot-updater/firebase/functions/handler").hot` |
+| `@hot-updater/supabase` `supabaseEdgeFunctionDatabase` | `@hot-updater/supabase/edge` `supabaseDatabase` |
+| `@hot-updater/supabase` `supabaseEdgeFunctionStorage` | `@hot-updater/supabase/edge` `supabaseStorage` |
+| `@hot-updater/supabase/edge` `supabaseEdgeFunctionDatabase` | `@hot-updater/supabase/edge` `supabaseDatabase` |
+| `@hot-updater/supabase/edge` `supabaseEdgeFunctionStorage` | `@hot-updater/supabase/edge` `supabaseStorage` |
+
+The provider packages remain pre-1.0, where this repository releases breaking
+provider changes as a minor version. No compatibility aliases are shipped for
+these runtime-only names or handler paths.

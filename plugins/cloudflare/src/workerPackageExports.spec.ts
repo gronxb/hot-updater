@@ -10,11 +10,13 @@ describe("Cloudflare Worker package exports", () => {
     // When: consumers resolve the Worker subpath conditions.
     const conditions = Object.keys(workerExport);
 
-    // Then: only types and ESM import targets are advertised.
-    expect(conditions).toEqual(["types", "import"]);
+    // Then: types and runtime code are both scoped to ESM imports.
+    expect(conditions).toEqual(["import"]);
     expect(workerExport).toEqual({
-      types: "./dist/worker/index.d.cts",
-      import: "./dist/worker/index.mjs",
+      import: {
+        types: "./dist/worker/index.d.mts",
+        default: "./dist/worker/index.mjs",
+      },
     });
   });
 });

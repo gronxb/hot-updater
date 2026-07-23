@@ -183,9 +183,10 @@ Firestore's structural Analytics support.
 Enabling `analytics: true` in the app sends events to this public ingestion
 route without additional server configuration. Treat installation and user
 identifiers as untrusted telemetry, and configure Firebase rate limits, quotas,
-logging, and retention for your deployment. Customize the generated function's
-`eventIngestion.authorize` policy when your app can provide an end-user
-credential or attestation. See [Analytics](/docs/guides/analytics).
+logging, and retention for your deployment. The managed preset does not expose
+an inline authorization hook; use a custom server runtime when your app must
+verify an end-user credential or attestation. See
+[Analytics](/docs/guides/analytics).
 
 ## Step 5: If You Use Expo, Add the Config Plugin
 
