@@ -18,7 +18,8 @@
   responsible for provider-level rate limits, quotas, logging, and retention.
 - Move Edge factories to `@hot-updater/supabase/edge` as `supabaseDatabase` and
   `supabaseStorage`; the previous root and `supabaseEdgeFunction*` names are
-  removed.
+  removed. Import the renamed `SupabaseDatabaseConfig` and
+  `SupabaseStorageConfig` types from the Edge subpath.
 
 ## 0.35.6
 

@@ -55,9 +55,11 @@ packages. Existing managed handler imports move from
 `@hot-updater/aws/lambda` and `@hot-updater/firebase/functions` to the
 corresponding `/handler` subpath. AWS Lambda storage moves from
 `awsLambdaEdgeStorage` or `s3LambdaEdgeStorage` at the provider root to
-`s3Storage` at `@hot-updater/aws/lambda`. Supabase Edge factories move from
-their `supabaseEdgeFunction*` names to `supabaseDatabase` and
-`supabaseStorage` at `@hot-updater/supabase/edge`.
+`s3Storage` at `@hot-updater/aws/lambda`; its config type is renamed from
+`AwsLambdaEdgeStorageConfig` to `S3StorageConfig`. Supabase Edge factories move
+from their `supabaseEdgeFunction*` names to `supabaseDatabase` and
+`supabaseStorage` at `@hot-updater/supabase/edge`. Their config types are
+renamed to `SupabaseDatabaseConfig` and `SupabaseStorageConfig`.
 
 ### Supported Plugins
 
