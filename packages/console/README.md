@@ -17,6 +17,7 @@ Modern web-based management console for Hot Updater built with **TanStack Start*
 ## 🛠️ Tech Stack
 
 ### Frontend
+
 - **TanStack Start** - Full-stack React framework with SSR
 - **TanStack Router** - File-based routing with type safety
 - **TanStack Query** - Data fetching and caching
@@ -25,14 +26,16 @@ Modern web-based management console for Hot Updater built with **TanStack Start*
 - **React 19** - Latest React features
 
 ### UI Components
+
 - **shadcn/ui** - High-quality accessible components (Radix Mira style)
 - **Tailwind CSS v4** - Utility-first CSS with oklch color system
 - **Lucide React** - Beautiful icon library
 - **Sonner** - Toast notifications
 
 ### Backend
+
 - **TanStack Start Server Functions** - Type-safe server endpoints
-- **Hot Updater Extensions** - Storage plugin and database adapter integration
+- **Hot Updater Integration** - Storage and database plugin integration
 
 ## 📦 Installation
 
@@ -92,23 +95,26 @@ src/
 ## 🎨 Key Components
 
 ### Bundle List Page
+
 - **FilterToolbar** - Platform and channel filters with reset button
 - **BundlesTable** - Server-side paginated table (20 per page)
 - **BundleTableColumns** - Column definitions with custom cell renderers
 
 ### Bundle Editor Sheet
+
 - **BundleEditorSheet** - Right-side slide-out panel
 - **BundleEditorForm** - TanStack Form with validation
 - **BundleMetadata** - Read-only bundle information display
 
 ### Dialogs
+
 - **PromoteChannelDialog** - Channel promotion with copy/move toggle
 - **DeleteBundleDialog** - Confirmation dialog with bundle details
 - **EmergencyRollbackButton** - One-click disable + 0% rollout
 
 ## 🔌 API Integration
 
-The console integrates with the configured Hot Updater storage plugin and database adapter through TanStack Start server functions:
+The console integrates with the configured Hot Updater storage and database plugins through TanStack Start server functions:
 
 - `getConfig()` - Load console configuration
 - `getChannels()` - List available channels
@@ -154,7 +160,7 @@ The console uses Tailwind CSS v4 with oklch color space for accessible colors. T
 ## 📊 Data Flow
 
 1. **URL State** → `useFilterParams()` hook manages filter state in URL
-2. **Server Functions** → TanStack Start server functions call the configured Hot Updater extensions
+2. **Server Functions** → TanStack Start server functions call the configured storage and database plugins
 3. **React Query** → `useBundlesQuery()` fetches and caches data
 4. **UI Components** → Display data with shadcn components
 5. **Mutations** → `useUpdateBundleMutation()` updates data with optimistic updates
@@ -171,16 +177,19 @@ The console uses Tailwind CSS v4 with oklch color space for accessible colors. T
 ## 🐛 Troubleshooting
 
 ### Build Errors
+
 - Ensure `.server.ts` files are not imported on the client
 - Check that native modules (`.node`) are excluded from bundling
 
 ### Development Server
+
 - Default port is 3000
 - Change port: `pnpm dev --port 3001`
 
 ### Hot Updater Config
+
 - Ensure `hot-updater.config.ts` is at package root
-- Verify the storage plugin and database adapter are correctly initialized
+- Verify the storage and database plugins are correctly initialized
 
 ## 📝 License
 

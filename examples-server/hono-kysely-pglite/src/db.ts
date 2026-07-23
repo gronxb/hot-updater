@@ -45,9 +45,16 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
+  eventIngestion: {
+    authorize: () =>
+      process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE?.startsWith(
+        "hot-updater-e2e/",
+      ) === true,
+  },
   routes: {
     updateCheck: true,
     bundles: true,
+    analytics: true,
   },
 });
 

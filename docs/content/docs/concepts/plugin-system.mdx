@@ -1,6 +1,6 @@
 ---
-title: "Plugin and Adapter System"
-description: "Hot Updater uses build and storage plugins plus database adapters to fit your infrastructure."
+title: "Plugin System"
+description: "Hot Updater uses a flexible plugin system that lets you customize how bundles are built, stored, and managed to fit your infrastructure."
 icon: Puzzle
 ---
 
@@ -39,11 +39,11 @@ storage provider.
 - **`@hot-updater/aws`**: Provides `s3Storage` functionality, enabling the use of AWS S3 for storage.
 - **`@hot-updater/firebase`**: Provides `firebaseStorage` functionality, utilizing Firebase Storage for storing update bundles.
 
-## Database Adapter
+## Database Plugin
 
-Database adapters store bundle metadata that your app uses to check for updates. They run during the `hot-updater deploy` command.
+Database plugins store bundle metadata that your app uses to check for updates. They run during the `hot-updater deploy` command.
 
-### Supported Adapters
+### Supported Plugins
 
 - **`@hot-updater/supabase`**: Provides `supabaseDatabase` functionality, using Supabase as a database solution.
 - **`@hot-updater/aws`**: Provides `s3Database` functionality, utilizing AWS for database storage.

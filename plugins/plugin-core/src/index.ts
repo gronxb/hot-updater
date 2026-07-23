@@ -2,8 +2,14 @@ export * from "./calculatePagination";
 export * from "./compressionFormat";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
-export * from "./createBlobDatabaseAdapter";
-export * from "./createDatabaseAdapter";
+export * from "./createBlobDatabasePlugin";
+export {
+  createDatabasePlugin,
+  DatabasePluginInputError,
+  type DatabasePluginBase,
+  type CreateDatabasePluginOptions,
+  type DatabasePluginInputErrorCode,
+} from "./createDatabasePlugin";
 export * from "./createStorageKeyBuilder";
 export * from "./createStoragePlugin";
 export * from "./databaseClient";

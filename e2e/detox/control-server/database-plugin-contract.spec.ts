@@ -1,0 +1,42 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+const controllerPath = path.join(import.meta.dirname, "controller.ts");
+
+describe("Detox control-server database v2 consumer", () => {
+  it("uses the direct plugin through the aggregate database client", async () => {
+    // Given
+    const controllerSource = await fs.readFile(controllerPath, "utf8");
+
+    // When
+    const databaseHelperSource = controllerSource.slice(
+      controllerSource.indexOf("async function withDatabaseClient"),
+      controllerSource.indexOf("async function fetchProviderBundlesPage"),
+    );
+
+    // Then
+    expect(databaseHelperSource).toContain(
+      "createDatabaseClient(config.database)",
+    );
+    expect(databaseHelperSource).not.toContain("config.database()");
+  });
+
+  it("batches remote reset updates through mutate", async () => {
+    // Given
+    const controllerSource = await fs.readFile(controllerPath, "utf8");
+
+    // When
+    const clearProviderBundlesSource = controllerSource.slice(
+      controllerSource.indexOf("async function clearProviderBundles"),
+      controllerSource.indexOf("function updateTrackedBundleRecord"),
+    );
+
+    // Then
+    expect(clearProviderBundlesSource).toContain(
+      "databaseClient.mutate(async (transaction) =>",
+    );
+    expect(clearProviderBundlesSource).not.toContain("commitBundle");
+  });
+});

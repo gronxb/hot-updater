@@ -6,11 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   queryKeys,
+  useBundleEventSummaryQuery,
+  useBundleEventAnalyticsQuery,
   useDeleteBundleMutation,
   useUpdateBundleMutation,
 } from "./api";
 import {
   deleteBundle as deleteBundleApi,
+  getBundleEventSummary as getBundleEventSummaryApi,
+  getBundleEventAnalytics as getBundleEventAnalyticsApi,
   updateBundle as updateBundleApi,
 } from "./api-rpc";
 
@@ -21,6 +25,8 @@ vi.mock("./api-rpc", () => ({
   getBundleChildCounts: vi.fn(),
   getBundleChildren: vi.fn(),
   getBundleDownloadUrl: vi.fn(),
+  getBundleEventSummary: vi.fn(),
+  getBundleEventAnalytics: vi.fn(),
   getBundles: vi.fn(),
   getChannels: vi.fn(),
   getConfig: vi.fn(),
@@ -53,6 +59,51 @@ const timeout = (ms: number) =>
   new Promise((resolve) => {
     setTimeout(() => resolve("timeout"), ms);
   });
+
+describe("protected bundle-event queries", () => {
+  it("does not request a bundle-event summary when explicitly disabled", async () => {
+    // Given
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    // When
+    renderHook(() => useBundleEventSummaryQuery(bundle.id, false), { wrapper });
+    await Promise.resolve();
+
+    // Then
+    expect(getBundleEventSummaryApi).not.toHaveBeenCalled();
+    queryClient.clear();
+  });
+
+  it("does not request bundle-event analytics when explicitly disabled", async () => {
+    // Given
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    // When
+    renderHook(
+      () =>
+        useBundleEventAnalyticsQuery(
+          { bundleId: bundle.id, window: "30d" },
+          false,
+        ),
+      { wrapper },
+    );
+    await Promise.resolve();
+
+    // Then
+    expect(getBundleEventAnalyticsApi).not.toHaveBeenCalled();
+    queryClient.clear();
+  });
+});
 
 describe("useUpdateBundleMutation", () => {
   let queryClient: QueryClient;

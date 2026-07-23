@@ -1,11 +1,7 @@
 import type { Bundle, GetBundlesArgs } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import { rowsToBundles } from "@hot-updater/plugin-core";
-import type {
-  BundlePatchRow,
-  BundleRow,
-  ChannelRow,
-} from "@hot-updater/plugin-core";
+import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
 import type { DocumentData, QuerySnapshot } from "firebase-admin/firestore";
 
 import {
@@ -78,14 +74,7 @@ export const loadFirebaseUpdateBundles = async (
         ),
       );
       const bases = baseSnapshots.flatMap(parseBundles);
-      const channels = new Map<string, ChannelRow>();
-      for (const row of [...owners, ...bases]) {
-        channels.set(row.channel_id, {
-          id: row.channel_id,
-          name: row.channel,
-        });
-      }
-      return rowsToBundles(owners, patches, bases, [...channels.values()]);
+      return rowsToBundles(owners, patches, bases);
     },
     { readOnly: true },
   );

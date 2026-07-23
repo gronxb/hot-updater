@@ -1,31 +1,52 @@
-CREATE TABLE IF NOT EXISTS channels (
-  id varchar(255) PRIMARY KEY NOT NULL,
-  name varchar(255) NOT NULL
+CREATE TABLE bundle_events (
+  id char(36) PRIMARY KEY NOT NULL,
+  type text NOT NULL,
+  install_id text NOT NULL,
+  user_id text,
+  username text,
+  from_bundle_id char(36),
+  to_bundle_id char(36) NOT NULL,
+  platform text NOT NULL,
+  app_version text NOT NULL,
+  channel text NOT NULL,
+  cohort text NOT NULL,
+  update_strategy text,
+  fingerprint_hash text,
+  sdk_version text,
+  received_at_ms double NOT NULL,
+  CONSTRAINT bundle_events_type_v038_check
+    CHECK (type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')),
+  CONSTRAINT bundle_events_update_strategy_v038_check
+    CHECK (update_strategy IS NULL OR update_strategy IN ('fingerprint', 'appVersion')),
+  CONSTRAINT bundle_events_shape_v038_check
+    CHECK (
+      (type IN ('UPDATE_APPLIED', 'RECOVERED')
+        AND from_bundle_id IS NOT NULL
+        AND update_strategy IS NOT NULL)
+      OR (type = 'UNCHANGED'
+        AND from_bundle_id IS NULL
+        AND update_strategy IS NULL)
+    )
 );
 
-CREATE UNIQUE INDEX channels_name_key ON channels(name);
-
-ALTER TABLE bundles ADD COLUMN channel_id varchar(255);
-
-INSERT IGNORE INTO channels (id, name)
-SELECT DISTINCT channel, channel
-FROM bundles;
-
-UPDATE bundles
-JOIN channels ON channels.name = bundles.channel
-SET bundles.channel_id = channels.id;
-
-ALTER TABLE bundles
-MODIFY COLUMN channel_id varchar(255) NOT NULL;
-
-CREATE INDEX bundles_channel_id_idx ON bundles(channel_id);
-
-ALTER TABLE bundles
-ADD CONSTRAINT bundles_channel_id_fk FOREIGN KEY (channel_id) REFERENCES channels (id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+CREATE INDEX bundle_events_installed_bundle_idx
+  ON bundle_events(type(255), to_bundle_id, received_at_ms, id);
+CREATE INDEX bundle_events_recovered_bundle_idx
+  ON bundle_events(type(255), from_bundle_id, received_at_ms, id);
+CREATE INDEX bundle_events_install_idx
+  ON bundle_events(install_id(255), received_at_ms, id);
+CREATE INDEX bundle_events_user_id_idx
+  ON bundle_events(user_id(255), received_at_ms, id);
+CREATE INDEX bundle_events_username_idx
+  ON bundle_events(username(255), received_at_ms, id);
+CREATE INDEX bundle_events_cohort_idx
+  ON bundle_events(cohort(255), type(255), received_at_ms, id);
+CREATE INDEX bundle_events_received_at_idx
+  ON bundle_events(received_at_ms, id);
 
 INSERT INTO
   private_hot_updater_settings (`key`, value)
 VALUES
-  ('version', '0.36.0')
+  ('version', '0.38.0')
 ON DUPLICATE KEY UPDATE
-  value = '0.36.0';
+  value = '0.38.0';

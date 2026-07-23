@@ -25,11 +25,7 @@ export const normalizeBlobTargetAppVersion = (version: string): string =>
 const parseManifestBundles = (value: unknown, source: string): Bundle[] =>
   blobArray(value, source).map((item) => {
     const parsed = parseLegacyBundle(item, source);
-    return rowToBundle(
-      { ...parsed.bundle, channel_id: parsed.channelName },
-      parsed.channelName,
-      parsed.patches,
-    );
+    return rowToBundle(parsed.bundle, parsed.patches);
   });
 
 const loadManifestBundles = async (
@@ -100,7 +96,6 @@ const manifestBundles = (
     snapshot.bundles,
     snapshot.bundle_patches,
     snapshot.bundles,
-    snapshot.channels,
   );
   for (const bundle of bundles) {
     const key = manifestKey(bundle);

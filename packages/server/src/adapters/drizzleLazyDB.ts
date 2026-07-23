@@ -1,6 +1,6 @@
-import type { BundlePatchRow, ChannelRow } from "@hot-updater/plugin-core";
+import type { BundleEventRow, BundlePatchRow } from "@hot-updater/plugin-core";
 
-import type { StoredBundleRow } from "./databaseAdapterUtils";
+import type { StoredBundleRow } from "./databasePluginUtils";
 import type { DrizzleConfig } from "./drizzle";
 
 export type DrizzleTable = Record<string, unknown>;
@@ -24,9 +24,9 @@ export type DrizzleDB = {
     values: (value: unknown) => DrizzleMutation;
   };
   readonly query: {
+    readonly bundle_events?: DrizzleQuery<BundleEventRow>;
     readonly bundles: DrizzleQuery<StoredBundleRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
-    readonly channels: DrizzleQuery<ChannelRow>;
   };
   readonly update: (table: DrizzleTable) => {
     set: (values: unknown) => {
@@ -65,8 +65,7 @@ const isDrizzleDB = (value: unknown): value is DrizzleDB => {
   if (
     !isRecord(query) ||
     !isDrizzleQuery(query["bundle_patches"]) ||
-    !isDrizzleQuery(query["bundles"]) ||
-    !isDrizzleQuery(query["channels"])
+    !isDrizzleQuery(query["bundles"])
   ) {
     return false;
   }
@@ -91,6 +90,18 @@ const asDB = (db: unknown): DrizzleDB => {
     );
   }
   return db;
+};
+
+export const requireDrizzleBundleEventsQuery = (
+  db: DrizzleDB,
+): DrizzleQuery<BundleEventRow> => {
+  const query = db.query.bundle_events;
+  if (!query) {
+    throw new InvalidDrizzleDatabaseError(
+      "Drizzle Analytics requires query mode with the bundle_events schema.",
+    );
+  }
+  return query;
 };
 
 const isDBFactory = (
@@ -142,6 +153,12 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
       }),
     }),
     query: {
+      bundle_events: {
+        findFirst: async (args) =>
+          requireDrizzleBundleEventsQuery(await getDB()).findFirst(args),
+        findMany: async (args) =>
+          requireDrizzleBundleEventsQuery(await getDB()).findMany(args),
+      },
       bundle_patches: {
         findFirst: async (args) =>
           (await getDB()).query.bundle_patches.findFirst(args),
@@ -152,11 +169,6 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
         findFirst: async (args) =>
           (await getDB()).query.bundles.findFirst(args),
         findMany: async (args) => (await getDB()).query.bundles.findMany(args),
-      },
-      channels: {
-        findFirst: async (args) =>
-          (await getDB()).query.channels.findFirst(args),
-        findMany: async (args) => (await getDB()).query.channels.findMany(args),
       },
     },
     update: (table) => ({

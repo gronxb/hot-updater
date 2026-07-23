@@ -1,7 +1,7 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseModel,
 } from "@hot-updater/plugin-core";
 
@@ -21,7 +21,7 @@ export class PrismaAdapterError extends Error {
   readonly name = "PrismaAdapterError";
 
   constructor(readonly reason: string) {
-    super(`Invalid Prisma adapter state: ${reason}`);
+    super(`Invalid Prisma plugin state: ${reason}`);
   }
 }
 
@@ -37,11 +37,19 @@ const hasDelegateMethods = (value: unknown): value is PrismaDelegate =>
   typeof value["findMany"] === "function" &&
   typeof value["update"] === "function";
 
+const modelDelegates = {
+  bundles: "bundles",
+  bundle_patches: "bundle_patches",
+  bundle_events: "bundle_events",
+} as const satisfies Record<DatabaseModel, string>;
+
 export const getPrismaDelegate = (
   client: object,
   model: DatabaseModel,
 ): PrismaDelegate => {
-  const delegate = Object.entries(client).find(([key]) => key === model)?.[1];
+  const delegate = Object.entries(client).find(
+    ([key]) => key === modelDelegates[model],
+  )?.[1];
   if (delegate === undefined)
     throw new PrismaAdapterError(`missing model delegate "${model}"`);
   if (!hasDelegateMethods(delegate)) {
@@ -103,7 +111,6 @@ export const parsePrismaBundleRow = (value: unknown): BundleRow => {
     git_commit_hash: readNullableString(value, "git_commit_hash"),
     message: readNullableString(value, "message"),
     channel: readString(value, "channel"),
-    channel_id: readString(value, "channel_id"),
     storage_uri: readString(value, "storage_uri"),
     target_app_version: readNullableString(value, "target_app_version"),
     fingerprint_hash: readNullableString(value, "fingerprint_hash"),
@@ -133,9 +140,80 @@ export const parsePrismaPatchRow = (value: unknown): BundlePatchRow => {
   };
 };
 
-export const parsePrismaChannelRow = (value: unknown): ChannelRow => {
-  if (!isRecord(value)) throw new PrismaAdapterError("invalid channel row");
-  return { id: readString(value, "id"), name: readString(value, "name") };
+export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
+  if (!isRecord(value)) {
+    throw new PrismaAdapterError("invalid bundle event row");
+  }
+  const type = readString(value, "type");
+  const platformValue = readString(value, "platform");
+  const fromBundleId = readNullableString(value, "from_bundle_id");
+  const updateStrategy = readNullableString(value, "update_strategy");
+  const receivedAtMs = value["received_at_ms"];
+  if (platformValue !== "android" && platformValue !== "ios") {
+    throw new PrismaAdapterError("invalid bundle event platform");
+  }
+  const platform = platformValue === "ios" ? "ios" : "android";
+  if (typeof receivedAtMs !== "number") {
+    throw new PrismaAdapterError("invalid bundle event timestamp");
+  }
+
+  const common = {
+    id: readString(value, "id"),
+    install_id: readString(value, "install_id"),
+    user_id: readNullableString(value, "user_id"),
+    username: readNullableString(value, "username"),
+    to_bundle_id: readString(value, "to_bundle_id"),
+    app_version: readString(value, "app_version"),
+    channel: readString(value, "channel"),
+    cohort: readString(value, "cohort"),
+    fingerprint_hash: readNullableString(value, "fingerprint_hash"),
+    sdk_version: readNullableString(value, "sdk_version"),
+    received_at_ms: receivedAtMs,
+  };
+
+  switch (type) {
+    case "UNCHANGED":
+      if (fromBundleId !== null || updateStrategy !== null) {
+        throw new PrismaAdapterError("invalid unchanged bundle event shape");
+      }
+      return {
+        ...common,
+        platform,
+        type: "UNCHANGED",
+        from_bundle_id: null,
+        update_strategy: null,
+      };
+    case "UPDATE_APPLIED":
+      if (
+        fromBundleId === null ||
+        (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion")
+      ) {
+        throw new PrismaAdapterError("invalid transition bundle event shape");
+      }
+      return {
+        ...common,
+        platform,
+        type: "UPDATE_APPLIED",
+        from_bundle_id: fromBundleId,
+        update_strategy: updateStrategy,
+      };
+    case "RECOVERED":
+      if (
+        fromBundleId === null ||
+        (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion")
+      ) {
+        throw new PrismaAdapterError("invalid transition bundle event shape");
+      }
+      return {
+        ...common,
+        platform,
+        type: "RECOVERED",
+        from_bundle_id: fromBundleId,
+        update_strategy: updateStrategy,
+      };
+    default:
+      throw new PrismaAdapterError("invalid bundle event type");
+  }
 };
 
 export const parsePrismaRows = <TRow>(

@@ -6,6 +6,7 @@ import type {
   HotUpdaterBaseURL,
   HotUpdaterResolver,
   ResolverCheckUpdateParams,
+  ResolverNotifyAppReadyParams,
 } from "./types";
 
 const resolveBaseURL = async (baseURL: HotUpdaterBaseURL): Promise<string> => {
@@ -58,6 +59,57 @@ export function createDefaultResolver(
         },
         requestTimeout: params.requestTimeout,
       });
+    },
+    notifyAppReady: async (
+      params: ResolverNotifyAppReadyParams,
+    ): Promise<void> => {
+      const resolvedBaseURL = (await resolveBaseURL(baseURL)).replace(
+        /\/+$/,
+        "",
+      );
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, params.requestTimeout ?? 5000);
+
+      try {
+        const response = await fetch(`${resolvedBaseURL}/events`, {
+          body: JSON.stringify({
+            appVersion: params.appVersion,
+            channel: params.channel,
+            cohort: params.cohort,
+            fingerprintHash: params.fingerprintHash,
+            fromBundleId: params.fromBundleId,
+            installId: params.installId,
+            platform: params.platform,
+            toBundleId: params.toBundleId,
+            type: params.type,
+            updateStrategy: params.updateStrategy,
+            ...(params.userId != null ? { userId: params.userId } : {}),
+            ...(params.username != null ? { username: params.username } : {}),
+          }),
+          headers: {
+            "Content-Type": "application/json",
+            ...params.requestHeaders,
+            "Hot-Updater-SDK-Version": HOT_UPDATER_SDK_VERSION,
+          },
+          method: "POST",
+          signal: controller.signal,
+        });
+
+        if (response.status !== 204) {
+          throw new Error(
+            `Expected HTTP 204 from /events, received ${response.status}`,
+          );
+        }
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new Error("Request timed out");
+        }
+        throw error;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     },
   };
 }

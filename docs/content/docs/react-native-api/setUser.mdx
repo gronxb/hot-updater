@@ -1,0 +1,60 @@
+---
+title: "setUser"
+description: "The `HotUpdater.setUser()` function associates searchable user aliases with future Analytics reports."
+icon: UserRound
+---
+
+## Usage
+
+Persist a user ID and optional username before enabling Analytics:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.setUser({
+  userId: currentUser.id,
+  username: currentUser.username,
+});
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  analytics: true,
+});
+```
+
+`userId` accepts a string or number. Hot Updater stores numeric values as
+strings.
+
+## Clear the user
+
+Clear both aliases when the user signs out:
+
+```tsx
+HotUpdater.setUser(null);
+```
+
+You can also clear one field while setting the other:
+
+```tsx
+HotUpdater.setUser({
+  userId: currentUser.id,
+  username: null,
+});
+```
+
+## Behavior
+
+- Persists the aliases on the device for future app-ready reports.
+- Does not send a report by itself.
+- Does not change the installation ID.
+- Does not merge installations that use the same user ID.
+- Does not rewrite reports already stored by the server.
+
+If a user signs in after `HotUpdater.init` has already reported the current
+runtime, set the identity then. It will be included the next time the app
+reports ready.
+
+## Related APIs
+
+- [`HotUpdater.getInstallId()`](/docs/react-native-api/getInstallId)
+- [Analytics](/docs/guides/analytics)

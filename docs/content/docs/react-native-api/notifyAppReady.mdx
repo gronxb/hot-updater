@@ -1,0 +1,50 @@
+---
+title: "notifyAppReady"
+description: "The `HotUpdater.notifyAppReady()` function returns the native launch outcome for the current runtime."
+icon: BadgeCheck
+---
+
+## Usage
+
+`HotUpdater.wrap` and `HotUpdater.init` read the launch outcome automatically.
+Use `HotUpdater.notifyAppReady()` only when an advanced integration owns that
+lifecycle directly.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+const result = HotUpdater.notifyAppReady();
+
+switch (result.status) {
+  case "UPDATE_APPLIED":
+    console.log("Applied bundle:", result.toBundleId);
+    break;
+  case "RECOVERED":
+    console.log("Recovered from bundle:", result.fromBundleId);
+    break;
+  case "UNCHANGED":
+    console.log("The active bundle did not change");
+    break;
+}
+```
+
+## Result
+
+| Status | Additional fields | Meaning |
+| --- | --- | --- |
+| `UPDATE_APPLIED` | `fromBundleId`, `toBundleId` | A downloaded update became active. |
+| `RECOVERED` | `fromBundleId`, `toBundleId` | Hot Updater recovered from a failed bundle. |
+| `UNCHANGED` | None | The active bundle did not change. |
+
+## Important notes
+
+- This API reads the native launch result. It does not send an Analytics event.
+- Normal apps should use `HotUpdater.init({ analytics: true })` for automatic
+  reporting.
+- Prefer `onNotifyAppReady` when you only need to observe the result produced
+  by `HotUpdater.wrap` or `HotUpdater.init`.
+
+## Related APIs
+
+- [`HotUpdater.init()`](/docs/react-native-api/init)
+- [Analytics](/docs/guides/analytics)

@@ -1,9 +1,10 @@
 import {
   createDatabaseClient,
-  type DatabaseAdapter,
+  databaseAnalyticsSupport,
+  type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
-  setupDatabaseAdapterTestSuite,
+  setupDatabasePluginTestSuite,
   setupDatabaseClientTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -15,23 +16,29 @@ import { firebaseDatabase } from "./firebaseDatabase";
 const PROJECT_ID = "firebase-database-test";
 
 const {
+  bundleEventsCollection,
   bundlePatchesCollection,
   bundlesCollection,
-  channelsCollection,
   clearCollections,
   firestore,
   settingsCollection,
 } = createFirestoreMock(PROJECT_ID);
 
-const createAdapter = (): DatabaseAdapter =>
+const createPlugin = (): DatabasePlugin =>
   firebaseDatabase({
     projectId: PROJECT_ID,
     storageBucket: `${PROJECT_ID}.appspot.com`,
   });
 
-setupDatabaseAdapterTestSuite({
-  name: "firebase database adapter v2",
-  createAdapter,
+it("advertises Analytics support", () => {
+  const plugin = createPlugin();
+
+  expect(plugin[databaseAnalyticsSupport]).toBe(true);
+});
+
+setupDatabasePluginTestSuite({
+  name: "firebase fixed-model database plugin",
+  createPlugin,
   migrate: () => undefined,
   reset: clearCollections,
   dispose: () => undefined,
@@ -39,7 +46,7 @@ setupDatabaseAdapterTestSuite({
 
 setupDatabaseClientTestSuite({
   name: "firebase database aggregate client",
-  createAdapter,
+  createPlugin,
   createClient: createDatabaseClient,
   migrate: () => undefined,
   reset: clearCollections,
@@ -49,12 +56,12 @@ setupDatabaseClientTestSuite({
 setupGetUpdateInfoTestSuite({
   getUpdateInfo: async (bundles, args) => {
     await clearCollections();
-    const adapter = createAdapter();
-    const client = createDatabaseClient(adapter);
+    const plugin = createPlugin();
+    const client = createDatabaseClient(plugin);
     for (const bundle of bundles) {
       await client.insertBundle(bundle);
     }
-    return adapter.getUpdateInfo?.(args) ?? null;
+    return plugin.getUpdateInfo?.(args) ?? null;
   },
 });
 
@@ -93,10 +100,28 @@ const bundleFixture = (suffix: string) => ({
   metadata: { app_version: suffix },
 });
 
+const bundleEventFixture = (id: string) => ({
+  id,
+  type: "UNCHANGED" as const,
+  install_id: "install-1",
+  user_id: null,
+  username: null,
+  from_bundle_id: null,
+  to_bundle_id: "bundle-1",
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "stable",
+  update_strategy: null,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: 100,
+});
+
 describe("firebase v1 data migration", () => {
   beforeEach(clearCollections);
 
-  it("backfills channels and splits inline patches into fixed collections", async () => {
+  it("splits inline patches into fixed collections", async () => {
     const base = legacyRow("legacy-base");
     const target = legacyRow("legacy-target");
     await bundlesCollection.doc(base.id).set(base);
@@ -112,8 +137,8 @@ describe("firebase v1 data migration", () => {
       ],
     });
 
-    const adapter = createAdapter();
-    const patches = await adapter.findMany({ model: "bundle_patches" });
+    const plugin = createPlugin();
+    const patches = await plugin.findMany({ model: "bundle_patches" });
 
     expect(patches).toEqual([
       {
@@ -127,42 +152,13 @@ describe("firebase v1 data migration", () => {
       },
     ]);
     await expect(
-      channelsCollection.doc("production").get(),
-    ).resolves.toMatchObject({
-      exists: true,
-      data: expect.any(Function),
-    });
-    const migratedChannel = await channelsCollection.doc("production").get();
-    expect(migratedChannel.data()).toEqual({
-      id: "production",
-      name: "production",
-    });
-    await expect(
       bundlePatchesCollection.doc(`${target.id}:${base.id}`).get(),
     ).resolves.toMatchObject({ exists: true });
     const migratedTarget = await bundlesCollection.doc(target.id).get();
     expect(migratedTarget.data()).toMatchObject({
       channel: "production",
-      channel_id: "production",
     });
     expect(migratedTarget.data()).not.toHaveProperty("patches");
-  });
-
-  it("normalizes existing channel documents with names", async () => {
-    await channelsCollection.doc("release").set({ id: "release" });
-    const bundle = legacyRow("legacy-release", "release");
-    await bundlesCollection.doc(bundle.id).set(bundle);
-
-    const adapter = createAdapter();
-    await adapter.findMany({ model: "bundles" });
-
-    const channel = await channelsCollection.doc("release").get();
-    expect(channel.data()).toEqual({ id: "release", name: "release" });
-    const migratedBundle = await bundlesCollection.doc(bundle.id).get();
-    expect(migratedBundle.data()).toMatchObject({
-      channel: "release",
-      channel_id: "release",
-    });
   });
 
   it("migrates legacy rows with bounded batches instead of a transaction", async () => {
@@ -170,7 +166,7 @@ describe("firebase v1 data migration", () => {
     await bundlesCollection.doc(bundle.id).set(bundle);
     const runTransaction = vi.spyOn(firestore, "runTransaction");
 
-    await createAdapter().findMany({ model: "bundles" });
+    await createPlugin().findMany({ model: "bundles" });
 
     expect(runTransaction).not.toHaveBeenCalled();
     await expect(
@@ -184,36 +180,14 @@ describe("firebase v1 data migration", () => {
     await bundlesCollection.doc(bundle.id).set(bundle);
 
     await Promise.all([
-      createAdapter().findMany({ model: "bundles" }),
-      createAdapter().findMany({ model: "bundles" }),
+      createPlugin().findMany({ model: "bundles" }),
+      createPlugin().findMany({ model: "bundles" }),
     ]);
 
     const migrated = await bundlesCollection.doc(bundle.id).get();
     expect(migrated.data()).toMatchObject({
       channel: "production",
-      channel_id: "production",
     });
-  });
-
-  it("resolves legacy bundle channel names to existing channel ids", async () => {
-    await channelsCollection.doc("channel-release").set({
-      id: "channel-release",
-      name: "release",
-    });
-    const bundle = legacyRow("legacy-named-release", "release");
-    await bundlesCollection.doc(bundle.id).set(bundle);
-
-    const adapter = createAdapter();
-    await adapter.findMany({ model: "bundles" });
-
-    const migratedBundle = await bundlesCollection.doc(bundle.id).get();
-    expect(migratedBundle.data()).toMatchObject({
-      channel: "release",
-      channel_id: "channel-release",
-    });
-    await expect(
-      channelsCollection.doc("release").get(),
-    ).resolves.toMatchObject({ exists: false });
   });
 
   it("rejects an existing patch whose owner or base bundle is missing", async () => {
@@ -227,9 +201,9 @@ describe("firebase v1 data migration", () => {
       order_index: 0,
     });
 
-    const adapter = createAdapter();
+    const plugin = createPlugin();
 
-    await expect(adapter.findMany({ model: "bundle_patches" })).rejects.toThrow(
+    await expect(plugin.findMany({ model: "bundle_patches" })).rejects.toThrow(
       "bundle_patches.bundle_id.foreign-key",
     );
   });
@@ -238,9 +212,83 @@ describe("firebase v1 data migration", () => {
 describe("firebase bounded reads", () => {
   beforeEach(clearCollections);
 
+  it("preserves bundle event CRUD inside explicit transactions", async () => {
+    const plugin = createPlugin();
+    await plugin.create({
+      model: "bundle_events",
+      data: bundleEventFixture("event-existing"),
+    });
+    expect(plugin.transaction).toBeDefined();
+
+    const result = await plugin.transaction?.(async (database) => {
+      const before = await database.count({ model: "bundle_events" });
+      await database.create({
+        model: "bundle_events",
+        data: bundleEventFixture("event-new"),
+      });
+      const after = await database.findMany({
+        model: "bundle_events",
+        limit: 10,
+        offset: 0,
+      });
+      return { before, ids: after.map(({ id }) => id).toSorted() };
+    });
+
+    expect(result).toEqual({
+      before: 1,
+      ids: ["event-existing", "event-new"],
+    });
+    await expect(
+      bundleEventsCollection.doc("event-new").get(),
+    ).resolves.toMatchObject({ exists: true });
+  });
+
+  it("appends bundle events without a full-database transaction", async () => {
+    const plugin = createPlugin();
+    const runTransaction = vi.spyOn(firestore, "runTransaction");
+
+    try {
+      await plugin.create({
+        model: "bundle_events",
+        data: bundleEventFixture("event-direct"),
+      });
+
+      expect(runTransaction).not.toHaveBeenCalled();
+      await expect(
+        bundleEventsCollection.doc("event-direct").get(),
+      ).resolves.toMatchObject({ exists: true });
+    } finally {
+      runTransaction.mockRestore();
+    }
+  });
+
+  it("reads bundle events without loading unrelated collections", async () => {
+    const plugin = createPlugin();
+    await plugin.create({
+      model: "bundle_events",
+      data: bundleEventFixture("event-bounded"),
+    });
+    const collectionPrototype = Object.getPrototypeOf(bundleEventsCollection);
+    const queryPrototype = Object.getPrototypeOf(collectionPrototype);
+    const get = vi.spyOn(queryPrototype, "get");
+
+    try {
+      const rows = await plugin.findMany({
+        model: "bundle_events",
+        limit: 1,
+        sortBy: { field: "id", direction: "asc" },
+      });
+
+      expect(rows).toMatchObject([{ id: "event-bounded" }]);
+      expect(get).toHaveBeenCalledOnce();
+    } finally {
+      get.mockRestore();
+    }
+  });
+
   it("ignores unrelated malformed documents during an update check", async () => {
-    const adapter = createAdapter();
-    const client = createDatabaseClient(adapter);
+    const plugin = createPlugin();
+    const client = createDatabaseClient(plugin);
     const value = {
       ...bundleFixture("991"),
       fingerprintHash: "fingerprint-991",
@@ -249,14 +297,13 @@ describe("firebase bounded reads", () => {
     await client.insertBundle(value);
     await bundlesCollection.doc("unrelated-malformed").set({
       channel: "other",
-      channel_id: "other",
       platform: "android",
       enabled: true,
       fingerprint_hash: "other-fingerprint",
     });
 
     await expect(
-      adapter.getUpdateInfo?.({
+      plugin.getUpdateInfo?.({
         _updateStrategy: "fingerprint",
         platform: "ios",
         bundleId: "00000000-0000-0000-0000-000000000000",
@@ -267,17 +314,16 @@ describe("firebase bounded reads", () => {
   });
 
   it("uses an exact document read without parsing unrelated bundles", async () => {
-    const adapter = createAdapter();
-    const client = createDatabaseClient(adapter);
+    const plugin = createPlugin();
+    const client = createDatabaseClient(plugin);
     const value = bundleFixture("992");
     await client.insertBundle(value);
     await bundlesCollection.doc("unrelated-malformed").set({
       channel: "other",
-      channel_id: "other",
     });
 
     await expect(
-      createAdapter().findOne({
+      createPlugin().findOne({
         model: "bundles",
         where: [{ field: "id", value: value.id }],
       }),
@@ -285,15 +331,15 @@ describe("firebase bounded reads", () => {
   });
 
   it("loads update-check relations from one read-only snapshot", async () => {
-    const adapter = createAdapter();
-    const client = createDatabaseClient(adapter);
+    const plugin = createPlugin();
+    const client = createDatabaseClient(plugin);
     const value = bundleFixture("993");
     await client.insertBundle(value);
     const runTransaction = vi.spyOn(firestore, "runTransaction");
 
     try {
       await expect(
-        adapter.getUpdateInfo?.({
+        plugin.getUpdateInfo?.({
           _updateStrategy: "appVersion",
           platform: "ios",
           bundleId: "00000000-0000-0000-0000-000000000000",

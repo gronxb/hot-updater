@@ -1,9 +1,8 @@
 import type {
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseModel,
-  DatabaseSortBy,
+  DatabaseOrderBy,
   DatabaseWhere,
 } from "@hot-updater/plugin-core";
 import type { Document, Filter, Sort } from "mongodb";
@@ -11,8 +10,8 @@ import type { Document, Filter, Sort } from "mongodb";
 type AnyDatabaseWhere = {
   readonly [TModel in DatabaseModel]: DatabaseWhere<TModel>;
 }[DatabaseModel];
-type AnyDatabaseSortBy = {
-  readonly [TModel in DatabaseModel]: DatabaseSortBy<TModel>;
+type AnyDatabaseOrderBy = {
+  readonly [TModel in DatabaseModel]: DatabaseOrderBy<TModel>;
 }[DatabaseModel];
 
 const escapeRegularExpression = (value: string): string =>
@@ -112,7 +111,7 @@ const predicate = (where: AnyDatabaseWhere): Document => {
 const createMongoWhereDocument = (
   where: readonly AnyDatabaseWhere[] | undefined,
 ): Document => {
-  const items = where ?? [];
+  const items = Array.isArray(where) ? where : [];
   const first = items[0];
   if (first === undefined) return {};
 
@@ -143,18 +142,35 @@ export function createMongoPatchWhere(
   return createMongoWhereDocument(where);
 }
 
-export function createMongoChannelWhere(
-  where: readonly DatabaseWhere<"channels">[] | undefined,
-): Filter<ChannelRow>;
-export function createMongoChannelWhere(
-  where: readonly DatabaseWhere<"channels">[] | undefined,
-): Document {
-  return createMongoWhereDocument(where);
-}
-
 export const createMongoSort = (
-  sortBy: AnyDatabaseSortBy | undefined,
-): Sort | undefined =>
-  sortBy === undefined
-    ? undefined
-    : { [sortBy.field]: sortBy.direction === "asc" ? 1 : -1 };
+  input:
+    | {
+        readonly orderBy?: AnyDatabaseOrderBy;
+        readonly sortBy?: {
+          readonly field: string;
+          readonly direction: "asc" | "desc";
+        };
+      }
+    | AnyDatabaseOrderBy
+    | undefined,
+): Sort | undefined => {
+  const clauses:
+    | readonly { field: string; direction: "asc" | "desc" }[]
+    | undefined = Array.isArray(input)
+    ? (input as readonly { field: string; direction: "asc" | "desc" }[])
+    : input && "orderBy" in input && Array.isArray(input.orderBy)
+      ? (input.orderBy as readonly {
+          field: string;
+          direction: "asc" | "desc";
+        }[])
+      : input && "sortBy" in input && input.sortBy
+        ? [input.sortBy]
+        : undefined;
+  if (clauses === undefined || clauses.length === 0) return undefined;
+  return Object.fromEntries(
+    clauses.map((clause) => [
+      clause.field,
+      clause.direction === "asc" ? 1 : -1,
+    ]),
+  );
+};

@@ -43,10 +43,10 @@ vi.mock("@/utils/printBanner", () => ({
   printBanner: vi.fn(),
 }));
 
-import { createDatabaseAdapterHarness } from "./databaseAdapter.testFixtures";
+import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 import { createPatch } from "./patch";
 
-const databaseHarness = createDatabaseAdapterHarness();
+const databaseHarness = createDatabasePluginHarness();
 
 describe("createPatch", () => {
   beforeEach(() => {
@@ -58,7 +58,7 @@ describe("createPatch", () => {
       id: "target-bundle",
     });
     mockCli.loadConfig.mockResolvedValue({
-      database: databaseHarness.adapter,
+      database: databaseHarness.plugin,
       storage: async () => mockStoragePlugin,
     });
   });
@@ -86,7 +86,7 @@ describe("createPatch", () => {
         bundleId: "target-bundle",
       },
       {
-        databaseAdapter: databaseHarness.adapter,
+        databasePlugin: databaseHarness.plugin,
         storagePlugin: mockStoragePlugin,
       },
       {

@@ -1,87 +1,27 @@
-import type {
-  BundlePatchRow,
-  BundleRow,
-  ChannelRow,
-} from "@hot-updater/plugin-core";
+import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
 
-export class FirebaseDatabaseDataError extends Error {
-  readonly name = "FirebaseDatabaseDataError";
-
-  constructor(readonly source: string) {
-    super(`Invalid Firebase database data at "${source}".`);
-  }
-}
-
-const record = (value: unknown, source: string): object => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new FirebaseDatabaseDataError(source);
-  }
-  return value;
-};
-
-export const property = (value: object, key: string): unknown =>
-  Reflect.get(value, key);
-
-export const hasFirebaseProperty = (value: unknown, key: string): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  key in value;
-
-const string = (value: unknown, source: string): string => {
-  if (typeof value !== "string") throw new FirebaseDatabaseDataError(source);
-  return value;
-};
-
-const nullableString = (value: unknown, source: string): string | null => {
-  if (value === null || value === undefined) return null;
-  return string(value, source);
-};
-
-const boolean = (value: unknown, source: string): boolean => {
-  if (typeof value !== "boolean") throw new FirebaseDatabaseDataError(source);
-  return value;
-};
-
-const number = (value: unknown, source: string): number => {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new FirebaseDatabaseDataError(source);
-  }
-  return value;
-};
-
-const stringArray = (
-  value: unknown,
-  source: string,
-): readonly string[] | null => {
-  if (value === null || value === undefined) return null;
-  if (!Array.isArray(value)) throw new FirebaseDatabaseDataError(source);
-  return value.map((item) => string(item, source));
-};
-
-const platform = (value: unknown, source: string): "android" | "ios" => {
-  if (value === "android" || value === "ios") return value;
-  throw new FirebaseDatabaseDataError(source);
-};
+import {
+  boolean,
+  nullableString,
+  number,
+  platform,
+  property,
+  record,
+  string,
+  stringArray,
+} from "./firebaseDatabaseParserShared";
+export {
+  FirebaseDatabaseDataError,
+  hasFirebaseProperty,
+  property,
+} from "./firebaseDatabaseParserShared";
+export { parseFirebaseBundleEventRow } from "./firebaseBundleEventParser";
 
 export const parseFirebaseBundleRow = (
   value: unknown,
   source: string,
 ): BundleRow => {
   const input = record(value, source);
-  return parseFirebaseBundleInput(
-    input,
-    string(property(input, "channel_id"), source),
-    source,
-  );
-};
-
-const parseFirebaseBundleInput = (
-  input: object,
-  channelId: string,
-  source: string,
-): BundleRow => {
-  const channel = property(input, "channel");
   return {
     id: string(property(input, "id"), source),
     platform: platform(property(input, "platform"), source),
@@ -93,8 +33,7 @@ const parseFirebaseBundleInput = (
     file_hash: string(property(input, "file_hash"), source),
     git_commit_hash: nullableString(property(input, "git_commit_hash"), source),
     message: nullableString(property(input, "message"), source),
-    channel: typeof channel === "string" ? channel : channelId,
-    channel_id: channelId,
+    channel: string(property(input, "channel"), source),
     storage_uri: string(property(input, "storage_uri"), source),
     target_app_version: nullableString(
       property(input, "target_app_version"),
@@ -128,17 +67,7 @@ const parseFirebaseBundleInput = (
 export const parseFirebaseMigratingBundleRow = (
   value: unknown,
   source: string,
-): BundleRow => {
-  const input = record(value, source);
-  const channelId = property(input, "channel_id");
-  return parseFirebaseBundleInput(
-    input,
-    typeof channelId === "string"
-      ? channelId
-      : string(property(input, "channel"), source),
-    source,
-  );
-};
+): BundleRow => parseFirebaseBundleRow(value, source);
 
 export const parseFirebasePatchRow = (
   value: unknown,
@@ -153,32 +82,6 @@ export const parseFirebasePatchRow = (
     patch_file_hash: string(property(input, "patch_file_hash"), source),
     patch_storage_uri: string(property(input, "patch_storage_uri"), source),
     order_index: number(property(input, "order_index"), source),
-  };
-};
-
-export const parseFirebaseChannelRow = (
-  value: unknown,
-  documentId: string,
-): ChannelRow => {
-  const input = record(value, `channels/${documentId}`);
-  return {
-    id: string(property(input, "id"), `channels/${documentId}`),
-    name: string(property(input, "name"), `channels/${documentId}`),
-  };
-};
-
-export const parseFirebaseMigratingChannelRow = (
-  value: unknown,
-  documentId: string,
-): ChannelRow => {
-  const source = `channels/${documentId}`;
-  const input = record(value, source);
-  const id = property(input, "id");
-  const normalizedId = typeof id === "string" ? id : documentId;
-  const name = property(input, "name");
-  return {
-    id: normalizedId,
-    name: typeof name === "string" ? name : normalizedId,
   };
 };
 

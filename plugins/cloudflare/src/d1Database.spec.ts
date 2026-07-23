@@ -1,3 +1,4 @@
+import { databaseAnalyticsSupport } from "@hot-updater/plugin-core";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -40,6 +41,18 @@ beforeEach(() => {
   state.results.length = 0;
 });
 
+it("advertises Analytics support", () => {
+  // Given / When
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+
+  // Then
+  expect(plugin[databaseAnalyticsSupport]).toBe(true);
+});
+
 it("projects selected fields after querying physical bundle columns", async () => {
   state.results.push({
     id: "bundle-1",
@@ -50,7 +63,6 @@ it("projects selected fields after querying physical bundle columns", async () =
     git_commit_hash: null,
     message: "Alpha Release",
     channel: "production",
-    channel_id: "channel-production",
     storage_uri: "storage://bundle",
     target_app_version: "1.0.0",
     fingerprint_hash: null,
@@ -61,13 +73,13 @@ it("projects selected fields after querying physical bundle columns", async () =
     manifest_file_hash: null,
     asset_base_storage_uri: null,
   });
-  const adapter = d1Database({
+  const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
   });
 
-  const rows = await adapter.findMany({
+  const rows = await plugin.findMany({
     model: "bundles",
     where: [
       {
@@ -77,7 +89,10 @@ it("projects selected fields after querying physical bundle columns", async () =
         mode: "insensitive",
       },
     ],
-    sortBy: { field: "id", direction: "desc" },
+    orderBy: [
+      { field: "channel", direction: "asc", nulls: "last" },
+      { field: "id", direction: "desc" },
+    ],
     select: ["id", "enabled"],
     limit: 10,
   });
@@ -86,24 +101,23 @@ it("projects selected fields after querying physical bundle columns", async () =
   expect(state.queries[0]?.sql).toContain(
     "lower(message) LIKE lower(json_extract(?, '$'))",
   );
-  expect(state.queries[0]?.sql).toContain("ORDER BY id DESC");
+  expect(state.queries[0]?.sql).toContain(
+    "ORDER BY channel ASC NULLS LAST, id DESC",
+  );
 });
 
-it("encodes channel ids and names as JSON-bound parameters", async () => {
-  state.results.push({ id: "channel-production", name: "production" });
-  const adapter = d1Database({
+it("uses a native distinct channel query", async () => {
+  state.results.push({ channel: "production" });
+  const plugin = d1Database({
     accountId: "account",
     cloudflareApiToken: "token",
     databaseId: "database",
   });
 
-  await adapter.create({
-    model: "channels",
-    data: { id: "channel-production", name: "production" },
-  });
+  await expect(plugin.getChannels?.()).resolves.toEqual(["production"]);
 
-  expect(state.queries[0]).toMatchObject({
-    params: ['"channel-production"', '"production"'],
-  });
-  expect(state.queries[0]?.sql).toContain("INSERT INTO channels (id, name)");
+  expect(state.queries[0]?.params).toEqual([]);
+  expect(state.queries[0]?.sql).toBe(
+    "SELECT DISTINCT channel FROM bundles ORDER BY channel ASC",
+  );
 });

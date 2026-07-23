@@ -7,12 +7,12 @@ import {
   createBundlePatchRowFixture,
   createBundleRowFixture,
 } from "../../../test-utils/src/databaseTestFixtures";
-import { setupDatabaseAdapterTestSuite } from "../../../test-utils/src/setupDatabaseAdapterTestSuite";
+import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
 import type { DatabaseAdapterWithCapabilities } from "../db/types";
 import {
-  DATABASE_ADAPTER_TEST_RESET_SQL,
-  DATABASE_ADAPTER_TEST_SCHEMA_SQL,
-} from "./databaseAdapterTestDatabase";
+  DATABASE_PLUGIN_TEST_RESET_SQL,
+  DATABASE_PLUGIN_TEST_SCHEMA_SQL,
+} from "./databasePluginTestDatabase";
 import { kyselyAdapter } from "./kysely";
 
 class KyselyTestStateError extends Error {
@@ -32,17 +32,17 @@ const getDatabase = (): Kysely<object> => {
   return database;
 };
 
-setupDatabaseAdapterTestSuite({
+setupDatabasePluginTestSuite({
   name: "kyselyAdapter PostgreSQL",
   migrate: async () => {
     client = new PGlite();
     database = new Kysely({ dialect: new PGliteDialect(client) });
-    await client.exec(DATABASE_ADAPTER_TEST_SCHEMA_SQL);
+    await client.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
   },
-  createAdapter: (): DatabaseAdapterWithCapabilities =>
+  createPlugin: (): DatabaseAdapterWithCapabilities =>
     kyselyAdapter({ db: getDatabase(), provider: "postgresql" }),
   reset: async () => {
-    await getClient().exec(DATABASE_ADAPTER_TEST_RESET_SQL);
+    await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
   },
   dispose: async () => {
     await getDatabase().destroy();
@@ -50,6 +50,28 @@ setupDatabaseAdapterTestSuite({
     database = undefined;
     client = undefined;
   },
+});
+
+const createBundleEventRow = (
+  id: string,
+  installId: string,
+  receivedAtMs: number,
+) => ({
+  id,
+  type: "UPDATE_APPLIED" as const,
+  install_id: installId,
+  user_id: null,
+  username: null,
+  from_bundle_id: `from-${installId}`,
+  to_bundle_id: `to-${installId}`,
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "stable",
+  update_strategy: "appVersion" as const,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: receivedAtMs,
 });
 
 describe("kyselyAdapter SQLite JSON storage", () => {
@@ -60,12 +82,12 @@ describe("kyselyAdapter SQLite JSON storage", () => {
       dialect: new PGliteDialect(sqliteClient),
     });
     await sqliteClient.exec(
-      DATABASE_ADAPTER_TEST_SCHEMA_SQL.replace(
+      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replace(
         "metadata jsonb not null default '{}'::jsonb",
         "metadata text not null",
       ).replace("target_cohorts jsonb", "target_cohorts text"),
     );
-    const adapter = kyselyAdapter({
+    const plugin = kyselyAdapter({
       db: sqliteDatabase,
       provider: "sqlite",
     });
@@ -76,18 +98,14 @@ describe("kyselyAdapter SQLite JSON storage", () => {
     };
 
     // When
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
-    await adapter.create({ model: "bundles", data: bundle });
+    await plugin.create({ model: "bundles", data: bundle });
     const stored = await sqliteClient.query<{
       metadata: string;
       target_cohorts: string;
     }>("select metadata, target_cohorts from bundles where id = $1", [
       bundle.id,
     ]);
-    const restored = await adapter.findOne({
+    const restored = await plugin.findOne({
       model: "bundles",
       where: [{ field: "id", value: bundle.id }],
     });
@@ -114,12 +132,12 @@ describe("kyselyAdapter soft relations", () => {
       },
     });
     await softClient.exec(
-      DATABASE_ADAPTER_TEST_SCHEMA_SQL.replace(
-        " references channels(id) on delete restrict",
+      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replaceAll(
+        " references bundles(id) on delete restrict",
         "",
-      ).replaceAll(" references bundles(id) on delete restrict", ""),
+      ),
     );
-    const adapter = kyselyAdapter({
+    const plugin = kyselyAdapter({
       db: softDatabase,
       provider: "postgresql",
       relationMode: "fumadb",
@@ -128,16 +146,12 @@ describe("kyselyAdapter soft relations", () => {
     const owner = createBundleRowFixture("952");
 
     try {
-      await adapter.create({
-        model: "channels",
-        data: { id: "channel-production", name: "production" },
-      });
-      await adapter.create({ model: "bundles", data: base });
-      await adapter.create({ model: "bundles", data: owner });
+      await plugin.create({ model: "bundles", data: base });
+      await plugin.create({ model: "bundles", data: owner });
       queries.length = 0;
 
       await expect(
-        adapter.create({
+        plugin.create({
           model: "bundle_patches",
           data: createBundlePatchRowFixture(
             "missing-owner",
@@ -148,7 +162,7 @@ describe("kyselyAdapter soft relations", () => {
       ).rejects.toThrow("bundle_patches.bundle_id.foreign-key");
       expect(queries.some((query) => query.endsWith("for update"))).toBe(true);
       await expect(
-        adapter.create({
+        plugin.create({
           model: "bundle_patches",
           data: createBundlePatchRowFixture(
             "missing-base",
@@ -158,10 +172,10 @@ describe("kyselyAdapter soft relations", () => {
         }),
       ).rejects.toThrow("bundle_patches.base_bundle_id.foreign-key");
       await expect(
-        adapter.findMany({ model: "bundle_patches" }),
+        plugin.findMany({ model: "bundle_patches" }),
       ).resolves.toEqual([]);
       queries.length = 0;
-      await adapter.delete({
+      await plugin.delete({
         model: "bundles",
         where: [{ field: "id", value: owner.id }],
       });
@@ -175,6 +189,101 @@ describe("kyselyAdapter soft relations", () => {
     } finally {
       await softDatabase.destroy();
       await softClient.close();
+    }
+  });
+});
+
+describe("kyselyAdapter bundle_events distinct semantics", () => {
+  it("counts distinct installs and keeps the latest row per install", async () => {
+    const localClient = new PGlite();
+    const localDatabase = new Kysely({
+      dialect: new PGliteDialect(localClient),
+    });
+    await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+    const plugin = kyselyAdapter({
+      db: localDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-a-1", "install-a", 100),
+      });
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-a-2", "install-a", 200),
+      });
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-b-1", "install-b", 150),
+      });
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-b-2", "install-b", 150),
+      });
+
+      await expect(
+        plugin.count({ model: "bundle_events", distinct: ["install_id"] }),
+      ).resolves.toBe(2);
+      await expect(
+        plugin.findMany({
+          model: "bundle_events",
+          distinctOn: { fields: ["install_id"] },
+          orderBy: [
+            { field: "install_id", direction: "asc" },
+            { field: "received_at_ms", direction: "desc" },
+            { field: "id", direction: "desc" },
+          ],
+        }),
+      ).resolves.toMatchObject([
+        { id: "event-a-2", install_id: "install-a", received_at_ms: 200 },
+        { id: "event-b-2", install_id: "install-b", received_at_ms: 150 },
+      ]);
+    } finally {
+      await localDatabase.destroy();
+      await localClient.close();
+    }
+  });
+  it("honors explicit null ordering for bundle event queries", async () => {
+    const localClient = new PGlite();
+    const localDatabase = new Kysely({
+      dialect: new PGliteDialect(localClient),
+    });
+    await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+    const plugin = kyselyAdapter({
+      db: localDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-null", "install-a", 100),
+      });
+      await plugin.create({
+        model: "bundle_events",
+        data: {
+          ...createBundleEventRow("event-user", "install-b", 200),
+          user_id: "user-123",
+        },
+      });
+
+      await expect(
+        plugin.findMany({
+          model: "bundle_events",
+          orderBy: [
+            { field: "user_id", direction: "asc", nulls: "first" },
+            { field: "id", direction: "asc" },
+          ],
+        }),
+      ).resolves.toMatchObject([
+        { id: "event-null", user_id: null },
+        { id: "event-user", user_id: "user-123" },
+      ]);
+    } finally {
+      await localDatabase.destroy();
+      await localClient.close();
     }
   });
 });

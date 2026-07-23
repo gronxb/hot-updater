@@ -1,7 +1,7 @@
 import { TanStackDevtools } from "@tanstack/react-devtools";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import {
-  createRootRoute,
+  createRootRouteWithContext,
   HeadContent,
   Outlet,
   Scripts,
@@ -10,17 +10,24 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/AppSidebar";
+import { AnalyticsCapabilityProvider } from "@/components/features/analytics/AnalyticsCapabilityContext";
 import { NotFoundPage } from "@/components/NotFoundPage";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import {
+  getAnalyticsCapabilityState,
+  useAnalyticsCapabilitiesQuery,
+} from "@/lib/analytics-api";
 
 import appCss from "../styles.css?url";
 
 const LOCAL_DEBUG_HOSTS = new Set(["127.0.0.1", "localhost"]);
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{
+  readonly queryClient: QueryClient;
+}>()({
   head: () => ({
     meta: [
       {
@@ -57,7 +64,6 @@ export const Route = createRootRoute({
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(() => new QueryClient());
   const [isLocalDebugHost, setIsLocalDebugHost] = useState(false);
 
   useEffect(() => {
@@ -84,25 +90,23 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <ThemeProvider defaultTheme="dark">
-          <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-              {children}
-              <Toaster />
-              {import.meta.env.DEV && isLocalDebugHost ? (
-                <TanStackDevtools
-                  config={{
-                    position: "bottom-right",
-                  }}
-                  plugins={[
-                    {
-                      name: "Tanstack Router",
-                      render: <TanStackRouterDevtoolsPanel />,
-                    },
-                  ]}
-                />
-              ) : null}
-            </TooltipProvider>
-          </QueryClientProvider>
+          <TooltipProvider>
+            {children}
+            <Toaster />
+            {import.meta.env.DEV && isLocalDebugHost ? (
+              <TanStackDevtools
+                config={{
+                  position: "bottom-right",
+                }}
+                plugins={[
+                  {
+                    name: "Tanstack Router",
+                    render: <TanStackRouterDevtoolsPanel />,
+                  },
+                ]}
+              />
+            ) : null}
+          </TooltipProvider>
         </ThemeProvider>
         <Scripts />
       </body>
@@ -111,6 +115,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 }
 
 function RootLayout() {
+  const capabilityQuery = useAnalyticsCapabilitiesQuery();
+  const capability = getAnalyticsCapabilityState(capabilityQuery);
+
   useEffect(() => {
     if (
       import.meta.env.DEV &&
@@ -121,11 +128,13 @@ function RootLayout() {
     }
   }, []);
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset className="min-h-0 min-w-0">
-        <Outlet />
-      </SidebarInset>
-    </SidebarProvider>
+    <AnalyticsCapabilityProvider value={capability}>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
+          <Outlet />
+        </SidebarInset>
+      </SidebarProvider>
+    </AnalyticsCapabilityProvider>
   );
 }

@@ -1,10 +1,10 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
 } from "@hot-updater/plugin-core";
 
-export type MongoTestRow = BundlePatchRow | BundleRow | ChannelRow;
+export type MongoTestRow = BundleEventRow | BundlePatchRow | BundleRow;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -137,14 +137,18 @@ export const sortMongoTestRows = (
   sort: unknown,
 ): MongoTestRow[] => {
   if (!isRecord(sort)) return rows;
-  const entry = Object.entries(sort)[0];
-  if (entry === undefined) return rows;
-  const [field, direction] = entry;
+  const entries = Object.entries(sort);
+  if (entries.length === 0) return rows;
   return rows.toSorted((left, right) => {
-    const result = compare(
-      readMongoTestField(left, field),
-      readMongoTestField(right, field),
-    );
-    return direction === -1 ? -result : result;
+    for (const [field, direction] of entries) {
+      const result = compare(
+        readMongoTestField(left, field),
+        readMongoTestField(right, field),
+      );
+      if (result !== 0) {
+        return direction === -1 ? -result : result;
+      }
+    }
+    return 0;
   });
 };

@@ -1,7 +1,7 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   Platform,
 } from "@hot-updater/plugin-core";
 
@@ -13,8 +13,8 @@ export type SupabaseBundlePatchRow = {
   [TField in keyof BundlePatchRow]: BundlePatchRow[TField];
 };
 
-export type SupabaseChannelRow = {
-  [TField in keyof ChannelRow]: ChannelRow[TField];
+export type SupabaseBundleEventRow = {
+  [TField in keyof BundleEventRow]: BundleEventRow[TField];
 };
 
 type Table<TRow> = {
@@ -38,10 +38,14 @@ export type Database = {
     Tables: {
       bundles: Table<SupabaseBundleRow>;
       bundle_patches: Table<SupabaseBundlePatchRow>;
-      channels: Table<SupabaseChannelRow>;
+      bundle_events: Table<SupabaseBundleEventRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
+      get_channels: {
+        Args: Record<never, never>;
+        Returns: { readonly channel: string }[];
+      };
       get_target_app_version_list: {
         Args: {
           app_platform: Platform;

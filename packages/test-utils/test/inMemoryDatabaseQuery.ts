@@ -1,13 +1,20 @@
 import type {
+  DatabaseDistinctOn,
   DatabaseModel,
+  DatabaseOrderBy,
   DatabaseRow,
-  DatabaseSortBy,
   DatabaseWhere,
 } from "@hot-updater/plugin-core";
 
 const compareOrdered = (left: unknown, right: unknown): number => {
   if (typeof left === "number" && typeof right === "number") {
     return left - right;
+  }
+  if (left === null || left === undefined) {
+    return right === null || right === undefined ? 0 : -1;
+  }
+  if (right === null || right === undefined) {
+    return 1;
   }
   if (typeof left === "string" && typeof right === "string") {
     return left.localeCompare(right);
@@ -106,21 +113,62 @@ export const matchesAll = <TModel extends DatabaseModel>(
   return result;
 };
 
+const compareRows = <TModel extends DatabaseModel>(
+  left: DatabaseRow<TModel>,
+  right: DatabaseRow<TModel>,
+  orderBy: DatabaseOrderBy<TModel>,
+): number => {
+  for (const clause of orderBy) {
+    const leftValue = left[clause.field];
+    const rightValue = right[clause.field];
+    if (leftValue == null || rightValue == null) {
+      if (leftValue == null && rightValue == null) {
+        continue;
+      }
+      const nulls =
+        clause.nulls ?? (clause.direction === "asc" ? "last" : "first");
+      const order = leftValue == null ? -1 : 1;
+      return nulls === "first" ? order : -order;
+    }
+    const order = compareOrdered(leftValue, rightValue);
+    if (order !== 0) {
+      return clause.direction === "asc" ? order : -order;
+    }
+  }
+  return 0;
+};
+
+const distinctKey = <TModel extends DatabaseModel>(
+  row: DatabaseRow<TModel>,
+  distinctOn: DatabaseDistinctOn<TModel>,
+): string => JSON.stringify(distinctOn.fields.map((field) => row[field]));
+
 export const queryRows = <TModel extends DatabaseModel>(
   rows: readonly DatabaseRow<TModel>[],
   where: readonly DatabaseWhere<TModel>[] | undefined,
-  sortBy: DatabaseSortBy<TModel> | undefined,
+  orderBy: DatabaseOrderBy<TModel> | undefined,
+  distinctOn: DatabaseDistinctOn<TModel> | undefined,
   offset: number,
   limit: number,
 ): DatabaseRow<TModel>[] => {
   const filtered = rows.filter((row) => matchesAll(row, where));
-  const sorted = sortBy
-    ? filtered.toSorted((left, right) => {
-        const order = compareOrdered(left[sortBy.field], right[sortBy.field]);
-        return sortBy.direction === "asc" ? order : -order;
-      })
+  const ordered = orderBy
+    ? filtered.toSorted((left, right) => compareRows(left, right, orderBy))
     : filtered;
-  return sorted
+  const distinct = distinctOn
+    ? (() => {
+        const seen = new Set<string>();
+        const unique: DatabaseRow<TModel>[] = [];
+        for (const row of ordered) {
+          const key = distinctKey(row, distinctOn);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          unique.push(row);
+        }
+        return unique;
+      })()
+    : ordered;
+  return distinct
     .slice(offset, offset + limit)
     .map((row) => structuredClone(row));
 };

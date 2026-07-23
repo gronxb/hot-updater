@@ -1,12 +1,11 @@
 import {
   createDatabaseClient,
-  type BundleRow,
-  type DatabaseAdapter,
+  type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  setupDatabaseAdapterTestSuite,
+  setupDatabasePluginTestSuite,
   setupDatabaseClientTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "../../../../packages/test-utils/src/index";
@@ -23,10 +22,10 @@ let data: MockDatabaseData;
 const resetData = (): void => {
   data.bundles.clear();
   data.bundlePatches.clear();
-  data.channels.clear();
+  data.bundleEvents.clear();
 };
 
-const createAdapter = (): DatabaseAdapter =>
+const createPlugin = (): DatabasePlugin =>
   mockDatabase({ data, latency: DEFAULT_LATENCY });
 
 beforeEach(() => {
@@ -35,9 +34,9 @@ beforeEach(() => {
 
 data = createMockDatabaseData();
 
-setupDatabaseAdapterTestSuite({
-  name: "mock database adapter v2",
-  createAdapter,
+setupDatabasePluginTestSuite({
+  name: "mock fixed-model database plugin",
+  createPlugin,
   migrate: () => undefined,
   reset: resetData,
   dispose: () => undefined,
@@ -45,7 +44,7 @@ setupDatabaseAdapterTestSuite({
 
 setupDatabaseClientTestSuite({
   name: "mock database aggregate client",
-  createAdapter,
+  createPlugin,
   createClient: createDatabaseClient,
   migrate: () => undefined,
   reset: resetData,
@@ -55,81 +54,52 @@ setupDatabaseClientTestSuite({
 setupGetUpdateInfoTestSuite({
   getUpdateInfo: async (bundles, args) => {
     resetData();
-    const adapter = createAdapter();
-    const client = createDatabaseClient(adapter);
+    const plugin = createPlugin();
+    const client = createDatabaseClient(plugin);
     for (const bundle of bundles) {
       await client.insertBundle(bundle);
     }
-    return adapter.getUpdateInfo?.(args) ?? null;
+    return plugin.getUpdateInfo?.(args) ?? null;
   },
 });
 
 describe("mock database provider", () => {
   it("rolls back all fixed-model changes when a transaction rejects", async () => {
-    const adapter = createAdapter();
+    const plugin = createPlugin();
 
     await expect(
-      adapter.transaction?.(async (transaction) => {
+      plugin.transaction?.(async (transaction) => {
         await transaction.create({
-          model: "channels",
-          data: { id: "channel-rollback", name: "rollback" },
+          model: "bundles",
+          data: {
+            id: "bundle-rollback",
+            platform: "ios",
+            should_force_update: false,
+            enabled: true,
+            file_hash: "hash",
+            git_commit_hash: null,
+            message: null,
+            channel: "rollback",
+            storage_uri: "storage://bundle.zip",
+            target_app_version: "1.0.0",
+            fingerprint_hash: null,
+            metadata: {},
+            rollout_cohort_count: 1000,
+            target_cohorts: null,
+            manifest_storage_uri: null,
+            manifest_file_hash: null,
+            asset_base_storage_uri: null,
+          },
         });
         throw new Error("rollback fixture");
       }),
     ).rejects.toThrow("rollback fixture");
 
     await expect(
-      adapter.findOne({
-        model: "channels",
-        where: [{ field: "id", value: "channel-rollback" }],
+      plugin.findOne({
+        model: "bundles",
+        where: [{ field: "id", value: "bundle-rollback" }],
       }),
     ).resolves.toBeNull();
-  });
-
-  it("rejects duplicate channel names", async () => {
-    const adapter = createAdapter();
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-production", name: "production" },
-    });
-
-    await expect(
-      adapter.create({
-        model: "channels",
-        data: { id: "channel-production-copy", name: "production" },
-      }),
-    ).rejects.toMatchObject({
-      constraint: "channels.name.unique",
-    });
-  });
-
-  it("rejects bundles whose channel id does not exist", async () => {
-    const adapter = createAdapter();
-    const bundle = {
-      id: "00000000-0000-0000-0000-000000000001",
-      platform: "ios",
-      should_force_update: false,
-      enabled: true,
-      file_hash: "hash",
-      git_commit_hash: null,
-      message: null,
-      channel: "missing",
-      channel_id: "missing-channel",
-      storage_uri: "storage://bundle.zip",
-      target_app_version: "1.0.0",
-      fingerprint_hash: null,
-      metadata: {},
-      rollout_cohort_count: 1000,
-      target_cohorts: null,
-      manifest_storage_uri: null,
-      manifest_file_hash: null,
-      asset_base_storage_uri: null,
-    } satisfies BundleRow;
-
-    await expect(
-      adapter.create({ model: "bundles", data: bundle }),
-    ).rejects.toMatchObject({
-      code: "channel-reference-mismatch",
-    });
   });
 });

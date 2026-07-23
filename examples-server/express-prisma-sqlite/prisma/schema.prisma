@@ -21,12 +21,6 @@ model User {
 }
 
 // --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
-model channels {
-  id String @id
-  name String
-  bundles bundles[] @relation("channels_bundles_channel")
-  @@unique([name], map: "channels_name_key")
-}
 model bundles {
   id String @id
   platform String
@@ -36,7 +30,6 @@ model bundles {
   git_commit_hash String?
   message String?
   channel String @default("production")
-  channel_id String
   storage_uri String
   target_app_version String?
   fingerprint_hash String?
@@ -48,11 +41,9 @@ model bundles {
   asset_base_storage_uri String?
   patches bundle_patches[] @relation("bundle_patches_bundles_patches")
   baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
-  channelRef channels @relation("channels_bundles_channel", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
   @@index([target_app_version], map: "bundles_target_app_version_idx")
   @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
   @@index([channel], map: "bundles_channel_idx")
-  @@index([channel_id], map: "bundles_channel_id_idx")
   @@index([rollout_cohort_count], map: "bundles_rollout_idx")
 }
 model bundle_patches {
@@ -68,8 +59,32 @@ model bundle_patches {
   @@index([bundle_id], map: "bundle_patches_bundle_id_idx")
   @@index([base_bundle_id], map: "bundle_patches_base_bundle_id_idx")
 }
+model bundle_events {
+  id String @id
+  type String
+  install_id String
+  user_id String?
+  username String?
+  from_bundle_id String?
+  to_bundle_id String
+  platform String
+  app_version String
+  channel String
+  cohort String
+  update_strategy String?
+  fingerprint_hash String?
+  sdk_version String?
+  received_at_ms Float
+  @@index([type, to_bundle_id, received_at_ms, id], map: "bundle_events_installed_bundle_idx")
+  @@index([type, from_bundle_id, received_at_ms, id], map: "bundle_events_recovered_bundle_idx")
+  @@index([install_id, received_at_ms, id], map: "bundle_events_install_idx")
+  @@index([user_id, received_at_ms, id], map: "bundle_events_user_id_idx")
+  @@index([username, received_at_ms, id], map: "bundle_events_username_idx")
+  @@index([cohort, type, received_at_ms, id], map: "bundle_events_cohort_idx")
+  @@index([received_at_ms, id], map: "bundle_events_received_at_idx")
+}
 model private_hot_updater_settings {
   key String @id
-  value String @default("0.36.0")
+  value String @default("0.38.0")
 }
 // --- END HOT-UPDATER MODELS ---

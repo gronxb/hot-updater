@@ -1,13 +1,13 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
-  type DatabaseAdapter,
+  type DatabasePlugin,
   type RuntimeStoragePlugin,
   type RuntimeStorageProfile,
 } from "@hot-updater/plugin-core";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { createInMemoryDatabaseAdapter } from "../../test-utils/test/inMemoryDatabaseAdapter";
+import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import packageJson from "../package.json" with { type: "json" };
 import { createHotUpdater } from "./index";
 import type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./index";
@@ -43,19 +43,21 @@ describe("runtime createHotUpdater", () => {
     // Given / When / Then
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
     expectTypeOf<HandlerOptions>().toHaveProperty("routes");
+    expectTypeOf<HandlerOptions>().toHaveProperty("eventIngestion");
     expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
-      updateCheck: boolean;
-      bundles: boolean;
+      readonly updateCheck: boolean;
+      readonly bundles: boolean;
+      readonly analytics?: boolean;
     }>();
   });
 
-  it("accepts a direct v2 adapter object without exposing maintenance methods", () => {
+  it("accepts a direct v2 plugin object without exposing maintenance methods", () => {
     // Given
-    const database: DatabaseAdapter<undefined> = {
-      ...createInMemoryDatabaseAdapter(),
+    const database: DatabasePlugin = {
+      ...createInMemoryDatabasePlugin(),
       name: "contextlessTestDatabase",
     };
-    const storage = (): RuntimeStoragePlugin<unknown> => ({
+    const storage = (): RuntimeStoragePlugin<undefined> => ({
       name: "contextlessTestStorage",
       supportedProtocol: "s3",
       profiles: {
@@ -127,20 +129,20 @@ describe("runtime createHotUpdater", () => {
     expect(createMigrator).toHaveBeenCalledOnce();
   });
 
-  it("passes handler context to the optional update fast-path and storage", async () => {
+  it("passes handler context to storage but not the database plugin", async () => {
     // Given
     const request = new Request(updateUrl);
-    const getUpdateInfo = vi.fn<
-      NonNullable<DatabaseAdapter<TestContext>["getUpdateInfo"]>
-    >(async () => ({
-      fileHash: runtimeBundle.fileHash,
-      id: runtimeBundle.id,
-      message: runtimeBundle.message,
-      shouldForceUpdate: false,
-      status: "UPDATE",
-      storageUri: runtimeBundle.storageUri,
-    }));
-    const database: DatabaseAdapter<TestContext> = {
+    const getUpdateInfo = vi.fn<NonNullable<DatabasePlugin["getUpdateInfo"]>>(
+      async () => ({
+        fileHash: runtimeBundle.fileHash,
+        id: runtimeBundle.id,
+        message: runtimeBundle.message,
+        shouldForceUpdate: false,
+        status: "UPDATE",
+        storageUri: runtimeBundle.storageUri,
+      }),
+    );
+    const database: DatabasePlugin = {
       ...createRuntimeDatabase(),
       getUpdateInfo,
     };
@@ -173,14 +175,14 @@ describe("runtime createHotUpdater", () => {
       id: runtimeBundle.id,
       status: "UPDATE",
     });
-    expect(getUpdateInfo).toHaveBeenCalledWith(expect.any(Object), context);
+    expect(getUpdateInfo).toHaveBeenCalledWith(expect.any(Object));
     expect(getDownloadUrl).toHaveBeenCalledWith(
       runtimeBundle.storageUri,
       context,
     );
   });
 
-  it("passes explicit context to generic low adapter queries", async () => {
+  it("does not pass handler context to generic database queries", async () => {
     // Given
     const request = new Request(updateUrl);
     const database = createRuntimeDatabase();
@@ -205,7 +207,7 @@ describe("runtime createHotUpdater", () => {
 
     // Then
     expect(response.status).toBe(200);
-    expect(findMany).toHaveBeenCalledWith(expect.any(Object), context);
+    expect(findMany).toHaveBeenCalledWith(expect.any(Object));
   });
 
   it("ignores framework bindings when an extra execution argument is passed", async () => {
@@ -218,7 +220,7 @@ describe("runtime createHotUpdater", () => {
       status: "UPDATE" as const,
       storageUri: runtimeBundle.storageUri,
     }));
-    const database: DatabaseAdapter<TestContext> = {
+    const database: DatabasePlugin = {
       ...createRuntimeDatabase(),
       getUpdateInfo,
     };
@@ -268,6 +270,11 @@ describe("runtime createHotUpdater", () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({
         version: HOT_UPDATER_SERVER_VERSION,
+        capabilities: {
+          analytics: true,
+          mode: "bounded",
+          maxMatchingRows: 50_000,
+        },
       });
     },
   );

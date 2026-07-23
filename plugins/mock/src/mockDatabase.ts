@@ -1,6 +1,6 @@
 import {
-  createDatabaseAdapter,
-  type DatabaseAdapterImplementation,
+  createDatabasePlugin,
+  type DatabasePluginImplementation,
   resolveUpdateInfoFromBundles,
   rowsToBundles,
 } from "@hot-updater/plugin-core";
@@ -23,9 +23,9 @@ export interface MockDatabaseConfig {
 }
 
 export const mockDatabase = (config: MockDatabaseConfig) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "mockDatabase",
-    adapter: (): DatabaseAdapterImplementation => {
+    plugin: (): DatabasePluginImplementation => {
       const data = config.data ?? createMockDatabaseData();
       const state = createMockDatabaseState(data);
       let operationQueue: Promise<void> = Promise.resolve();
@@ -58,7 +58,15 @@ export const mockDatabase = (config: MockDatabaseConfig) =>
         count: (input) => read(() => state.count(input)),
         findOne: (input) => read(() => state.findOne(input)),
         findMany: (input) => read(() => state.findMany(input)),
-        getUpdateInfo: (args, context) =>
+        getChannels: () =>
+          read(async () =>
+            [
+              ...new Set(
+                [...data.bundles.values()].map(({ channel }) => channel),
+              ),
+            ].sort(),
+          ),
+        getUpdateInfo: (args) =>
           read(() =>
             resolveUpdateInfoFromBundles({
               args,
@@ -66,9 +74,7 @@ export const mockDatabase = (config: MockDatabaseConfig) =>
                 [...data.bundles.values()],
                 [...data.bundlePatches.values()],
                 [...data.bundles.values()],
-                [...data.channels.values()],
               ),
-              context,
             }),
           ),
         transaction: (callback) =>

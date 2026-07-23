@@ -1,5 +1,12 @@
 # @hot-updater/cloudflare
 
+## Unreleased
+
+### Patch Changes
+
+- Disable Analytics for Cloudflare D1 and Worker D1 until their plugins satisfy
+  the complete bundle-event contract.
+
 ## 0.35.3
 
 ### Patch Changes

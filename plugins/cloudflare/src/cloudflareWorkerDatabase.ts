@@ -1,5 +1,4 @@
-import type { RequestEnvContext } from "@hot-updater/plugin-core";
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 import { createD1Implementation } from "./d1Implementation";
 
@@ -23,25 +22,12 @@ export interface CloudflareWorkerDatabaseEnv {
   readonly DB: D1Like;
 }
 
-class MissingD1BindingError extends Error {
-  readonly name = "MissingD1BindingError";
-
-  constructor() {
-    super("MissingD1BindingError");
-  }
-}
-
-export const d1WorkerDatabase = <
-  TContext extends RequestEnvContext<CloudflareWorkerDatabaseEnv> =
-    RequestEnvContext<CloudflareWorkerDatabaseEnv>,
->() =>
-  createDatabaseAdapter({
+export const d1WorkerDatabase = (db: D1Like) =>
+  createDatabasePlugin({
     name: "d1WorkerDatabase",
-    adapter: () =>
-      createD1Implementation<TContext>({
-        async query(sql, params, context) {
-          const db = context?.env?.DB;
-          if (db === undefined) throw new MissingD1BindingError();
+    plugin: () =>
+      createD1Implementation({
+        async query(sql, params) {
           const result = await db
             .prepare(sql)
             .bind(...params)

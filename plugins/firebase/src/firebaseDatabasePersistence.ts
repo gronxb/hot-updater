@@ -1,7 +1,7 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
 } from "@hot-updater/plugin-core";
 import {
   type CollectionReference,
@@ -15,12 +15,10 @@ import {
 } from "firebase-admin/firestore";
 
 import {
-  hasFirebaseProperty,
+  parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
-  parseFirebaseChannelRow,
   parseFirebaseLegacyPatchRows,
   parseFirebaseMigratingBundleRow,
-  parseFirebaseMigratingChannelRow,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
 import type { FirebaseDatabaseSnapshot } from "./firebaseDatabaseState";
@@ -29,7 +27,7 @@ import { FirebaseDatabaseConstraintError } from "./firebaseDatabaseState";
 export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
   readonly bundlePatches: CollectionReference<DocumentData>;
-  readonly channels: CollectionReference<DocumentData>;
+  readonly bundleEvents: CollectionReference<DocumentData>;
   readonly settings: CollectionReference<DocumentData>;
 }
 
@@ -38,11 +36,11 @@ export const createFirebaseDatabaseCollections = (
 ): FirebaseDatabaseCollections => ({
   bundles: db.collection("bundles"),
   bundlePatches: db.collection("bundle_patches"),
-  channels: db.collection("channels"),
+  bundleEvents: db.collection("bundle_events"),
   settings: db.collection("private_hot_updater_settings"),
 });
 
-type FixedRow = BundlePatchRow | BundleRow | ChannelRow;
+type FixedRow = BundleEventRow | BundlePatchRow | BundleRow;
 
 type FirebaseMigrationWrite =
   | {
@@ -93,52 +91,63 @@ const patchMap = (
     }),
   );
 
-const channelMap = (
+const bundleEventMap = (
   snapshot: QuerySnapshot<DocumentData>,
-): Map<string, ChannelRow> =>
+): Map<string, BundleEventRow> =>
   new Map(
     snapshot.docs.map((document) => {
-      const row = parseFirebaseChannelRow(document.data(), document.id);
+      const row = parseFirebaseBundleEventRow(
+        document.data(),
+        `bundle_events/${document.id}`,
+      );
       return [row.id, row];
     }),
   );
 
-type SnapshotDocuments = readonly [
-  QuerySnapshot<DocumentData>,
+type CoreSnapshotDocuments = readonly [
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
 ];
 
 const toSnapshot = (
-  documents: SnapshotDocuments,
+  documents: CoreSnapshotDocuments,
+  bundleEvents?: QuerySnapshot<DocumentData>,
 ): FirebaseDatabaseSnapshot => ({
   bundles: bundleMap(documents[0]),
   bundlePatches: patchMap(documents[1]),
-  channels: channelMap(documents[2]),
+  bundleEvents: bundleEvents ? bundleEventMap(bundleEvents) : new Map(),
 });
+
+type FirebaseSnapshotOptions = {
+  readonly includeBundleEvents?: boolean;
+};
 
 export const loadFirebaseDatabaseSnapshot = async (
   collections: FirebaseDatabaseCollections,
-): Promise<FirebaseDatabaseSnapshot> =>
-  toSnapshot(
-    await Promise.all([
-      collections.bundles.get(),
-      collections.bundlePatches.get(),
-      collections.channels.get(),
-    ]),
-  );
+  options: FirebaseSnapshotOptions = {},
+): Promise<FirebaseDatabaseSnapshot> => {
+  const [bundles, patches, bundleEvents] = await Promise.all([
+    collections.bundles.get(),
+    collections.bundlePatches.get(),
+    options.includeBundleEvents ? collections.bundleEvents.get() : undefined,
+  ]);
+  return toSnapshot([bundles, patches], bundleEvents);
+};
 
 export const loadFirebaseTransactionSnapshot = async (
   transaction: Transaction,
   collections: FirebaseDatabaseCollections,
-): Promise<FirebaseDatabaseSnapshot> =>
-  toSnapshot(
-    await Promise.all([
-      transaction.get(collections.bundles),
-      transaction.get(collections.bundlePatches),
-      transaction.get(collections.channels),
-    ]),
-  );
+  options: FirebaseSnapshotOptions = {},
+): Promise<FirebaseDatabaseSnapshot> => {
+  const [bundles, patches, bundleEvents] = await Promise.all([
+    transaction.get(collections.bundles),
+    transaction.get(collections.bundlePatches),
+    options.includeBundleEvents
+      ? transaction.get(collections.bundleEvents)
+      : undefined,
+  ]);
+  return toSnapshot([bundles, patches], bundleEvents);
+};
 
 type PersistCollectionInput<TRow extends FixedRow> = {
   readonly transaction: Transaction;
@@ -190,9 +199,9 @@ export const persistFirebaseDatabaseSnapshot = ({
   });
   persistCollection({
     transaction,
-    collection: collections.channels,
-    before: before.channels,
-    after: after.channels,
+    collection: collections.bundleEvents,
+    before: before.bundleEvents,
+    after: after.bundleEvents,
   });
 };
 
@@ -204,18 +213,12 @@ const migrateFirebaseDatabaseAttempt = async (
   const version = await versionDocument.get();
   if (version.data()?.version === 2) return;
 
-  const [bundles, patches, channels] = await Promise.all([
+  const [bundles, patches] = await Promise.all([
     collections.bundles.get(),
     collections.bundlePatches.get(),
-    collections.channels.get(),
   ]);
   const bundleIds = new Set(bundles.docs.map(({ id }) => id));
   const patchIds = new Set(patches.docs.map(({ id }) => id));
-  const channelIds = new Set<string>();
-  const channelNames = new Set<string>();
-  const channelIdsByName = new Map<string, string>();
-  const channelsById = new Map<string, ChannelRow>();
-  const channelWrites: FirebaseMigrationWrite[] = [];
   const patchWrites: FirebaseMigrationWrite[] = [];
   const bundleWrites: FirebaseMigrationWrite[] = [];
 
@@ -236,68 +239,12 @@ const migrateFirebaseDatabaseAttempt = async (
     }
   }
 
-  for (const document of channels.docs) {
-    const channel = parseFirebaseMigratingChannelRow(
-      document.data(),
-      document.id,
-    );
-    if (channelIds.has(channel.id)) {
-      throw new FirebaseDatabaseConstraintError("channels.id.unique");
-    }
-    if (channelNames.has(channel.name)) {
-      throw new FirebaseDatabaseConstraintError("channels.name.unique");
-    }
-    channelIds.add(channel.id);
-    channelNames.add(channel.name);
-    channelIdsByName.set(channel.name, channel.id);
-    channelsById.set(channel.id, channel);
-    channelWrites.push({
-      kind: "update",
-      reference: document.ref,
-      updateTime: requireUpdateTime(document, `channels/${document.id}`),
-      value: { ...channel },
-    });
-  }
-
   for (const document of bundles.docs) {
     const value: unknown = document.data();
-    const migratingBundle = parseFirebaseMigratingBundleRow(
+    const bundle = parseFirebaseMigratingBundleRow(
       value,
       `bundles/${document.id}`,
     );
-    const isLegacyBundle = !hasFirebaseProperty(value, "channel_id");
-    const channelId = isLegacyBundle
-      ? (channelIdsByName.get(migratingBundle.channel_id) ??
-        migratingBundle.channel_id)
-      : migratingBundle.channel_id;
-    if (!channelIds.has(channelId)) {
-      if (!isLegacyBundle) {
-        throw new FirebaseDatabaseConstraintError(
-          "bundles.channel_id.foreign-key",
-        );
-      }
-      const channel = { id: channelId, name: migratingBundle.channel };
-      channelWrites.push({
-        kind: "create",
-        reference: collections.channels.doc(channel.id),
-        value: { ...channel },
-      });
-      channelIds.add(channel.id);
-      channelNames.add(channel.name);
-      channelIdsByName.set(channel.name, channel.id);
-      channelsById.set(channel.id, channel);
-    }
-    const channelName = channelsById.get(channelId)?.name;
-    if (!channelName) {
-      throw new FirebaseDatabaseConstraintError(
-        "bundles.channel_id.foreign-key",
-      );
-    }
-    const bundle = {
-      ...migratingBundle,
-      channel: channelName,
-      channel_id: channelId,
-    };
     const legacyPatches = parseFirebaseLegacyPatchRows(
       value,
       bundle.id,
@@ -334,7 +281,6 @@ const migrateFirebaseDatabaseAttempt = async (
   }
 
   const writes: FirebaseMigrationWrite[] = [
-    ...channelWrites,
     ...patchWrites,
     ...bundleWrites,
     version.exists

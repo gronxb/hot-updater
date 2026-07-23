@@ -1,8 +1,7 @@
-import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 import {
-  createDatabaseAdapter,
-  type DatabaseAdapterImplementation,
-  type TransactionDatabaseAdapterImplementation,
+  createDatabasePlugin,
+  type DatabasePluginImplementation,
+  type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import { asc, desc, inArray } from "drizzle-orm";
 
@@ -16,8 +15,8 @@ import type {
   ORMProvider,
   SchemaGenerator,
 } from "../db/types";
-import { getDatabaseAdapterUpdateInfo } from "./databaseAdapterUpdateInfo";
-import { fromStoredBundleRow } from "./databaseAdapterUtils";
+import { getDatabasePluginUpdateInfo } from "./databasePluginUpdateInfo";
+import { fromStoredBundleRow } from "./databasePluginUtils";
 import {
   createDrizzleCrud,
   getDrizzleColumn,
@@ -38,14 +37,13 @@ export interface DrizzleConfig {
   readonly transaction?: boolean;
 }
 
-const createImplementation = <TContext>(
+const createImplementation = (
   config: DrizzleConfig,
-): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> => {
+): DatabasePluginImplementation => {
   const db = createLazyDB(config);
   const crud = createDrizzleCrud(db, config.provider);
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
-  const channels = getDrizzleTable(db, "channels");
   const transaction = db.transaction?.bind(db);
   return {
     ...crud,
@@ -59,19 +57,9 @@ const createImplementation = <TContext>(
             ),
         }
       : {}),
-    getUpdateInfo: (args, context) =>
-      getDatabaseAdapterUpdateInfo(
+    getUpdateInfo: (args) =>
+      getDatabasePluginUpdateInfo(
         {
-          findChannel: (name) =>
-            db.query.channels
-              .findFirst({
-                where: buildDrizzleWhere<"channels">(
-                  config.provider,
-                  channels,
-                  [{ field: "name", value: name }],
-                ),
-              })
-              .then((row) => row ?? null),
           findBundles: async (where) => {
             const rows = await db.query.bundles.findMany({
               where: buildDrizzleWhere(config.provider, bundles, where),
@@ -91,13 +79,16 @@ const createImplementation = <TContext>(
                 }),
         },
         args,
-        context,
       ),
+    getChannels: async () => {
+      const rows = await db.query.bundles.findMany();
+      return [...new Set(rows.map(({ channel }) => channel))].sort();
+    },
     ...(transaction
       ? {
           transaction: async <TResult>(
             callback: (
-              transaction: TransactionDatabaseAdapterImplementation,
+              transaction: TransactionDatabasePluginImplementation,
             ) => Promise<TResult>,
           ): Promise<TResult> =>
             transaction((transaction) =>
@@ -108,15 +99,14 @@ const createImplementation = <TContext>(
   };
 };
 
-export const drizzleAdapter = <TContext = unknown>(
+export const drizzleAdapter = (
   config: DrizzleConfig,
-): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
-  const adapter = createDatabaseAdapter({
+): DatabaseAdapterWithCapabilities => {
+  const plugin = createDatabasePlugin({
     name: "drizzle",
-    adapter: (): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> =>
-      createImplementation<TContext>(config),
+    plugin: (): DatabasePluginImplementation => createImplementation(config),
   });
-  return Object.assign(adapter, {
+  return Object.assign(plugin, {
     adapterName: "drizzle",
     provider: config.provider,
     generateSchema: (version: Parameters<SchemaGenerator>[0]) => ({

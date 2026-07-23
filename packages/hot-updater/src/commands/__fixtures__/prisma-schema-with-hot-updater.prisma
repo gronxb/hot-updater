@@ -16,12 +16,6 @@ model User {
 }
 
 // --- BEGIN HOT-UPDATER MODELS (DO NOT EDIT) ---
-model channels {
-  id String @db.VarChar(255) @id
-  name String @db.VarChar(255)
-  bundles bundles[] @relation("channels_bundles_channel")
-  @@unique([name], map: "channels_name_key")
-}
 model bundles {
   id String @db.Uuid @id
   platform String
@@ -31,7 +25,6 @@ model bundles {
   git_commit_hash String?
   message String?
   channel String @default("production")
-  channel_id String @db.VarChar(255)
   storage_uri String
   target_app_version String?
   fingerprint_hash String?
@@ -43,11 +36,9 @@ model bundles {
   target_cohorts Json?
   patches bundle_patches[] @relation("bundle_patches_bundles_patches")
   baseForPatches bundle_patches[] @relation("bundle_patches_bundles_baseForPatches")
-  channelRef channels @relation("channels_bundles_channel", fields: [channel_id], references: [id], onUpdate: Restrict, onDelete: Restrict)
   @@index([target_app_version], map: "bundles_target_app_version_idx")
   @@index([fingerprint_hash], map: "bundles_fingerprint_hash_idx")
   @@index([channel], map: "bundles_channel_idx")
-  @@index([channel_id], map: "bundles_channel_id_idx")
   @@index([rollout_cohort_count], map: "bundles_rollout_idx")
 }
 model bundle_patches {

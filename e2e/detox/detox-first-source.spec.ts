@@ -123,7 +123,7 @@ describe("Detox-first source shape", () => {
     const controlServerSource = await fs.readFile(controlServerPath, "utf8");
 
     expect(controlServerSource).not.toContain(
-      "databaseAdapter.updateFixtureBundle",
+      "databasePlugin.updateFixtureBundle",
     );
   });
 

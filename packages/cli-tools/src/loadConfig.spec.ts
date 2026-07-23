@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
+import { databaseBundleEventService } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let projectRoot = "";
@@ -62,6 +63,41 @@ describe("loadConfig", () => {
     const config = await loadConfig(null);
 
     expect(config.cacheDir).toBeNull();
+  });
+
+  it("preserves database plugin symbol capabilities", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "const eventService = {",
+        "  getBundleEventSummary: async () => ({ installed: 1, recovered: 0 }),",
+        "};",
+        "const database = {",
+        "  name: 'symbol-database',",
+        "  create: async () => ({}),",
+        "  update: async () => null,",
+        "  delete: async () => undefined,",
+        "  count: async () => 0,",
+        "  findOne: async () => null,",
+        "  findMany: async () => [],",
+        "  [Symbol.for('@hot-updater/plugin-core/database-bundle-event-service')]: eventService,",
+        "};",
+        "export default { database };",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+    const eventService = config.database[databaseBundleEventService];
+
+    await expect(
+      eventService?.getBundleEventSummary("bundle-1"),
+    ).resolves.toEqual({
+      installed: 1,
+      recovered: 0,
+    });
   });
 
   it("discovers native config files from the project root by default", async () => {

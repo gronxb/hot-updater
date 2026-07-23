@@ -142,7 +142,9 @@ class BundleFileStorageServiceTest {
         assertFalse(selection.shouldRollbackOnCrash)
         assertFalse(stagingDir.exists())
         assertEquals("RECOVERED", report["status"])
-        assertEquals(stagingDir.name, report["crashedBundleId"])
+        assertEquals(stagingDir.name, report["fromBundleId"])
+        assertEquals(stableDir.name, report["toBundleId"])
+        assertEquals("appVersion", report["updateStrategy"])
 
         val metadata = loadMetadata(rootDir)
         assertNotNull(metadata)
@@ -181,7 +183,9 @@ class BundleFileStorageServiceTest {
         assertFalse(selection.shouldRollbackOnCrash)
         assertFalse(stagingDir.exists())
         assertEquals("RECOVERED", report["status"])
-        assertEquals(stagingDir.name, report["crashedBundleId"])
+        assertEquals(stagingDir.name, report["fromBundleId"])
+        assertEquals(HotUpdaterImpl.getMinBundleId(), report["toBundleId"])
+        assertEquals("appVersion", report["updateStrategy"])
     }
 
     @Test
@@ -231,6 +235,97 @@ class BundleFileStorageServiceTest {
         preferences.setItem("HotUpdaterBundleURL", stagingBundleFile.absolutePath)
 
         assertEquals(stagingDir.name, service.getBundleId())
+    }
+
+    @Test
+    fun `markLaunchCompleted records update applied transition`() {
+        val rootDir = temporaryFolder.newFolder("update-applied-transition")
+        val service = createService(rootDir)
+
+        val stableDir = createBundleDir(rootDir, "stable-bundle")
+        writeFile(stableDir, "index.android.bundle")
+        writeManifest(stableDir, listOf("index.android.bundle"))
+
+        val stagingDir = createBundleDir(rootDir, "staging-bundle")
+        writeFile(stagingDir, "index.android.bundle")
+        writeManifest(stagingDir, listOf("index.android.bundle"))
+
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = stableDir.name,
+                stagingBundleId = stagingDir.name,
+                verificationPending = true,
+            ),
+        )
+
+        assertEquals(mapOf("status" to "PENDING"), service.notifyAppReady())
+
+        service.markLaunchCompleted(stagingDir.name)
+
+        assertEquals(
+            mapOf(
+                "status" to "UPDATE_APPLIED",
+                "fromBundleId" to stableDir.name,
+                "toBundleId" to stagingDir.name,
+                "updateStrategy" to "appVersion",
+            ),
+            service.notifyAppReady(),
+        )
+    }
+
+    @Test
+    fun `install identity persists across service instances and user clear keeps install id`() {
+        val rootDir = temporaryFolder.newFolder("install-identity")
+        val firstService = createService(rootDir)
+
+        val firstInstallId = firstService.getInstallId()
+        assertTrue(firstInstallId.isNotBlank())
+
+        firstService.setUser("user-123", "alice")
+        assertEquals(
+            InstallationIdentity(
+                installId = firstInstallId,
+                userId = "user-123",
+                username = "alice",
+            ),
+            loadInstallationIdentity(rootDir),
+        )
+
+        val restartedService = createService(rootDir)
+        assertEquals(firstInstallId, restartedService.getInstallId())
+
+        restartedService.setUser(null, null)
+        assertEquals(
+            InstallationIdentity(
+                installId = firstInstallId,
+                userId = null,
+                username = null,
+            ),
+            loadInstallationIdentity(rootDir),
+        )
+    }
+
+    @Test
+    fun `user update keeps cached install id when persisted identity becomes unreadable`() {
+        val rootDir = temporaryFolder.newFolder("install-identity-corruption")
+        val service = createService(rootDir)
+        val installId = service.getInstallId()
+        val identityFile = File(bundleStoreDir(rootDir), InstallationIdentity.IDENTITY_FILENAME)
+        identityFile.writeText("{")
+
+        service.setUser("user-123", "alice")
+
+        assertEquals(installId, service.getInstallId())
+        assertEquals(
+            InstallationIdentity(
+                installId = installId,
+                userId = "user-123",
+                username = "alice",
+            ),
+            loadInstallationIdentity(rootDir),
+        )
     }
 
     @Test
@@ -338,6 +433,11 @@ class BundleFileStorageServiceTest {
         BundleMetadata.loadFromFile(
             File(bundleStoreDir(rootDir), BundleMetadata.METADATA_FILENAME),
             TEST_ISOLATION_KEY,
+        )
+
+    private fun loadInstallationIdentity(rootDir: File): InstallationIdentity? =
+        InstallationIdentity.loadFromFile(
+            File(bundleStoreDir(rootDir), InstallationIdentity.IDENTITY_FILENAME),
         )
 
     private fun writeFile(

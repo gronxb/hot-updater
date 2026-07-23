@@ -1,9 +1,9 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseImplementationResult,
-  TransactionDatabaseAdapterImplementation,
+  TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 
 import {
@@ -14,7 +14,7 @@ import {
 export interface FirebaseDatabaseSnapshot {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
-  readonly channels: Map<string, ChannelRow>;
+  readonly bundleEvents: Map<string, BundleEventRow>;
 }
 
 export class FirebaseDatabaseConstraintError extends Error {
@@ -30,7 +30,7 @@ export const cloneFirebaseDatabaseSnapshot = (
 ): FirebaseDatabaseSnapshot => ({
   bundles: new Map(snapshot.bundles),
   bundlePatches: new Map(snapshot.bundlePatches),
-  channels: new Map(snapshot.channels),
+  bundleEvents: new Map(snapshot.bundleEvents),
 });
 
 const requireUnique = (
@@ -43,22 +43,24 @@ const requireUnique = (
   }
 };
 
+const distinctCount = <TRow extends object>(
+  rows: readonly TRow[],
+  fields: readonly string[] | undefined,
+): number => {
+  if (fields === undefined) return rows.length;
+  const seen = new Set(
+    rows.map((row) =>
+      JSON.stringify(fields.map((field) => Reflect.get(row, field))),
+    ),
+  );
+  return seen.size;
+};
+
 export const createFirebaseDatabaseState = (
   snapshot: FirebaseDatabaseSnapshot,
-): TransactionDatabaseAdapterImplementation => ({
+): TransactionDatabasePluginImplementation => ({
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
-      case "channels":
-        requireUnique(snapshot.channels, input.data.id, input.model);
-        if (
-          [...snapshot.channels.values()].some(
-            ({ name }) => name === input.data.name,
-          )
-        ) {
-          throw new FirebaseDatabaseConstraintError("channels.name.unique");
-        }
-        snapshot.channels.set(input.data.id, input.data);
-        return input.data;
       case "bundles":
         requireUnique(snapshot.bundles, input.data.id, input.model);
         if (
@@ -67,11 +69,6 @@ export const createFirebaseDatabaseState = (
         ) {
           throw new FirebaseDatabaseConstraintError(
             "bundles.version-or-fingerprint.check",
-          );
-        }
-        if (!snapshot.channels.has(input.data.channel_id)) {
-          throw new FirebaseDatabaseConstraintError(
-            "bundles.channel_id.foreign-key",
           );
         }
         snapshot.bundles.set(input.data.id, input.data);
@@ -90,6 +87,10 @@ export const createFirebaseDatabaseState = (
         }
         snapshot.bundlePatches.set(input.data.id, input.data);
         return input.data;
+      case "bundle_events":
+        requireUnique(snapshot.bundleEvents, input.data.id, input.model);
+        snapshot.bundleEvents.set(input.data.id, input.data);
+        return input.data;
     }
   },
   async update(input): Promise<Partial<BundleRow> | null> {
@@ -104,11 +105,6 @@ export const createFirebaseDatabaseState = (
     ) {
       throw new FirebaseDatabaseConstraintError(
         "bundles.version-or-fingerprint.check",
-      );
-    }
-    if (!snapshot.channels.has(updated.channel_id)) {
-      throw new FirebaseDatabaseConstraintError(
-        "bundles.channel_id.foreign-key",
       );
     }
     snapshot.bundles.set(current.id, updated);
@@ -139,9 +135,29 @@ export const createFirebaseDatabaseState = (
     }
   },
   async count(input): Promise<number> {
-    return [...snapshot.bundles.values()].filter((row) =>
-      matchesFirebaseDatabaseWhere(row, input.where),
-    ).length;
+    switch (input.model) {
+      case "bundles":
+        return distinctCount(
+          [...snapshot.bundles.values()].filter((row) =>
+            matchesFirebaseDatabaseWhere(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
+      case "bundle_patches":
+        return distinctCount(
+          [...snapshot.bundlePatches.values()].filter((row) =>
+            matchesFirebaseDatabaseWhere(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
+      case "bundle_events":
+        return distinctCount(
+          [...snapshot.bundleEvents.values()].filter((row) =>
+            matchesFirebaseDatabaseWhere(row, input.where),
+          ),
+          input.distinct as readonly string[] | undefined,
+        );
+    }
   },
   async findOne(input): Promise<DatabaseImplementationResult | null> {
     switch (input.model) {
@@ -151,9 +167,15 @@ export const createFirebaseDatabaseState = (
             matchesFirebaseDatabaseWhere(row, input.where),
           ) ?? null
         );
-      case "channels":
+      case "bundle_patches":
         return (
-          [...snapshot.channels.values()].find((row) =>
+          [...snapshot.bundlePatches.values()].find((row) =>
+            matchesFirebaseDatabaseWhere(row, input.where),
+          ) ?? null
+        );
+      case "bundle_events":
+        return (
+          [...snapshot.bundleEvents.values()].find((row) =>
             matchesFirebaseDatabaseWhere(row, input.where),
           ) ?? null
         );
@@ -168,9 +190,9 @@ export const createFirebaseDatabaseState = (
           [...snapshot.bundlePatches.values()],
           input,
         );
-      case "channels":
+      case "bundle_events":
         return queryFirebaseDatabaseRows(
-          [...snapshot.channels.values()],
+          [...snapshot.bundleEvents.values()],
           input,
         );
     }

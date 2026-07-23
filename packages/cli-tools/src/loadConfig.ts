@@ -5,7 +5,7 @@ import type {
   Platform,
   RequiredDeep,
 } from "@hot-updater/plugin-core";
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
@@ -17,26 +17,26 @@ export type HotUpdaterConfigOptions = {
   channel: string;
 } | null;
 
-const missingDatabase = createDatabaseAdapter({
+const missingDatabase = createDatabasePlugin({
   name: "missingDatabase",
-  adapter: () => ({
+  plugin: () => ({
     create: async () => {
-      throw new Error("database adapter is required");
+      throw new Error("database plugin is required");
     },
     update: async () => {
-      throw new Error("database adapter is required");
+      throw new Error("database plugin is required");
     },
     delete: async () => {
-      throw new Error("database adapter is required");
+      throw new Error("database plugin is required");
     },
     count: async () => {
-      throw new Error("database adapter is required");
+      throw new Error("database plugin is required");
     },
     findOne: async () => {
-      throw new Error("database adapter is required");
+      throw new Error("database plugin is required");
     },
     findMany: async () => {
-      throw new Error("database adapter is required");
+      throw new Error("database plugin is required");
     },
   }),
 });
@@ -149,10 +149,13 @@ export type ConfigResponse = RequiredDeep<ConfigInput>;
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
 ) => {
-  return sources.reduceRight<ConfigInput>(
+  const mergedConfig = sources.reduceRight<ConfigInput>(
     (mergedConfig, source) => merge(mergedConfig, source ?? {}),
     {} as ConfigInput,
   );
+
+  const database = sources.find((source) => source?.database)?.database;
+  return database ? { ...mergedConfig, database } : mergedConfig;
 };
 
 const getConfigLoaderOptions = (

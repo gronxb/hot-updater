@@ -1,13 +1,13 @@
 import type {
-  CountBundlesDatabaseInput,
+  CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
   DeleteDatabaseImplementationInput,
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -23,7 +23,7 @@ export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
 
 const createSupabaseImplementation = (
   supabase: SupabaseClient<Database>,
-): DatabaseAdapterImplementation => ({
+): DatabasePluginImplementation => ({
   async create(input: CreateDatabaseImplementationInput) {
     switch (input.model) {
       case "bundles": {
@@ -48,15 +48,16 @@ const createSupabaseImplementation = (
         }
         return data;
       }
-      case "channels": {
+      case "bundle_events": {
         const { data, error } = await supabase
-          .from("channels")
+          .from("bundle_events")
           .insert(input.data)
           .select("*")
           .single();
-        throwSupabaseError("create channels", error);
-        if (data === null)
-          throw new SupabaseMissingDataError("create channels");
+        throwSupabaseError("create bundle_events", error);
+        if (data === null) {
+          throw new SupabaseMissingDataError("create bundle_events");
+        }
         return data;
       }
     }
@@ -87,15 +88,37 @@ const createSupabaseImplementation = (
       }
     }
   },
-  async count(input: CountBundlesDatabaseInput) {
+  async count(input: CountDatabaseImplementationInput) {
     const filter = buildSupabaseFilter(input.where);
-    let query = supabase
-      .from("bundles")
-      .select("*", { count: "exact", head: true });
-    if (filter !== undefined) query = query.or(filter);
-    const { count, error } = await query;
-    throwSupabaseError("count bundles", error);
-    return count ?? 0;
+    switch (input.model) {
+      case "bundles": {
+        let query = supabase
+          .from("bundles")
+          .select("*", { count: "exact", head: true });
+        if (filter !== undefined) query = query.or(filter);
+        const { count, error } = await query;
+        throwSupabaseError("count bundles", error);
+        return count ?? 0;
+      }
+      case "bundle_patches": {
+        let query = supabase
+          .from("bundle_patches")
+          .select("*", { count: "exact", head: true });
+        if (filter !== undefined) query = query.or(filter);
+        const { count, error } = await query;
+        throwSupabaseError("count bundle_patches", error);
+        return count ?? 0;
+      }
+      case "bundle_events": {
+        let query = supabase
+          .from("bundle_events")
+          .select("*", { count: "exact", head: true });
+        if (filter !== undefined) query = query.or(filter);
+        const { count, error } = await query;
+        throwSupabaseError("count bundle_events", error);
+        return count ?? 0;
+      }
+    }
   },
   async findOne(input: FindOneDatabaseImplementationInput) {
     const filter = buildSupabaseFilter(input.where);
@@ -107,11 +130,18 @@ const createSupabaseImplementation = (
         throwSupabaseError("findOne bundles", error);
         return data;
       }
-      case "channels": {
-        let query = supabase.from("channels").select("*");
+      case "bundle_patches": {
+        let query = supabase.from("bundle_patches").select("*");
         if (filter !== undefined) query = query.or(filter);
         const { data, error } = await query.limit(1).maybeSingle();
-        throwSupabaseError("findOne channels", error);
+        throwSupabaseError("findOne bundle_patches", error);
+        return data;
+      }
+      case "bundle_events": {
+        let query = supabase.from("bundle_events").select("*");
+        if (filter !== undefined) query = query.or(filter);
+        const { data, error } = await query.limit(1).maybeSingle();
+        throwSupabaseError("findOne bundle_events", error);
         return data;
       }
     }
@@ -145,27 +175,34 @@ const createSupabaseImplementation = (
         throwSupabaseError("findMany bundle_patches", error);
         return data ?? [];
       }
-      case "channels": {
-        let query = supabase.from("channels").select("*");
+      case "bundle_events": {
+        let query = supabase.from("bundle_events").select("*");
         if (filter !== undefined) query = query.or(filter);
-        if (input.sortBy !== undefined) {
-          query = query.order(input.sortBy.field, {
-            ascending: input.sortBy.direction === "asc",
+        const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : []);
+        for (const clause of orderBy) {
+          query = query.order(clause.field, {
+            ascending: clause.direction === "asc",
+            ...(clause.nulls ? { nullsFirst: clause.nulls === "first" } : {}),
           });
         }
         const { data, error } = await query.range(input.offset, rangeEnd);
-        throwSupabaseError("findMany channels", error);
+        throwSupabaseError("findMany bundle_events", error);
         return data ?? [];
       }
     }
+  },
+  async getChannels() {
+    const { data, error } = await supabase.rpc("get_channels");
+    throwSupabaseError("get channels", error);
+    return (data ?? []).map(({ channel }) => channel);
   },
   getUpdateInfo: createSupabaseGetUpdateInfo(supabase),
 });
 
 export const supabaseDatabase = (config: SupabaseDatabaseConfig) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "supabaseDatabase",
-    adapter: () =>
+    plugin: () =>
       createSupabaseImplementation(
         createClient<Database>(
           config.supabaseUrl,

@@ -1,14 +1,10 @@
-import type {
-  BundlePatchRow,
-  BundleRow,
-  ChannelRow,
-} from "@hot-updater/plugin-core";
+import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
 
 export class MongoAdapterDataError extends Error {
   readonly name = "MongoAdapterDataError";
 
   constructor(readonly source: string) {
-    super(`Invalid MongoDB adapter data at "${source}".`);
+    super(`Invalid MongoDB plugin data at "${source}".`);
   }
 }
 
@@ -93,7 +89,6 @@ export const parseMongoBundleRow = (
     git_commit_hash: nullableString(input["git_commit_hash"], source),
     message: nullableString(input["message"], source),
     channel: string(input["channel"], source),
-    channel_id: string(input["channel_id"], source),
     storage_uri: string(input["storage_uri"], source),
     target_app_version: targetAppVersion,
     fingerprint_hash: fingerprintHash,
@@ -125,16 +120,5 @@ export const parseMongoPatchRow = (
     patch_file_hash: string(input["patch_file_hash"], source),
     patch_storage_uri: string(input["patch_storage_uri"], source),
     order_index: integer(input["order_index"], source),
-  };
-};
-
-export const parseMongoChannelRow = (
-  value: unknown,
-  source = "channels",
-): ChannelRow => {
-  const input = record(value, source);
-  return {
-    id: string(input["id"], source),
-    name: string(input["name"], source),
   };
 };

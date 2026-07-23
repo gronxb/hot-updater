@@ -40,10 +40,6 @@ export const forceUpdateAutoReloadScenario: DetoxScenarioDefinition = {
         verificationPending: false,
       },
     );
-    await app.assertText(
-      "assert force update launch",
-      "launch-status-result",
-      "Current Launch Status: STABLE",
-    );
+    await app.assertStableLaunch("assert force update launch");
   },
 };

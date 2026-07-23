@@ -1,0 +1,13 @@
+{
+  "title": "Database Plugins",
+  "description": "Database provider plugins",
+  "icon": "Table",
+  "pages": [
+    "supabase",
+    "cloudflare",
+    "firestore",
+    "aws",
+    "standalone",
+    "custom-database"
+  ]
+}

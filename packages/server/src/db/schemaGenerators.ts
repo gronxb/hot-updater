@@ -42,6 +42,7 @@ const prismaType = (
 ): string => {
   const base = (() => {
     if (column.type === "bool") return "Boolean";
+    if (column.type === "float") return "Float";
     if (column.type === "integer") return "Int";
     if (column.type === "json") return "Json";
     return "String";
@@ -180,6 +181,12 @@ const drizzleColumnFn = (
         imports: ["integer"],
       };
     }
+    if (column.type === "float") {
+      return {
+        code: `real(${literal(column.ormName)})`,
+        imports: ["real"],
+      };
+    }
     if (column.type === "json") {
       return {
         code: `blob(${literal(column.ormName)}, { mode: "json" })`,
@@ -211,6 +218,12 @@ const drizzleColumnFn = (
     if (column.type === "integer") {
       return { code: `int(${literal(column.ormName)})`, imports: ["int"] };
     }
+    if (column.type === "float") {
+      return {
+        code: `double(${literal(column.ormName)})`,
+        imports: ["double"],
+      };
+    }
     if (column.type === "json") {
       return { code: `json(${literal(column.ormName)})`, imports: ["json"] };
     }
@@ -236,6 +249,12 @@ const drizzleColumnFn = (
     return {
       code: `integer(${literal(column.ormName)})`,
       imports: ["integer"],
+    };
+  }
+  if (column.type === "float") {
+    return {
+      code: `doublePrecision(${literal(column.ormName)})`,
+      imports: ["doublePrecision"],
     };
   }
   if (column.type === "json") {

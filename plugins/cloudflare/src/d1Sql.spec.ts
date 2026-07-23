@@ -6,11 +6,16 @@ it("composes predicates left to right with one json_each bind for sets", () => {
   const query = buildD1Where([
     { field: "enabled", value: true },
     { field: "id", operator: "in", value: ["a", "b"], connector: "OR" },
-    { field: "channel_id", operator: "ne", value: null, connector: "AND" },
+    {
+      field: "target_app_version",
+      operator: "ne",
+      value: null,
+      connector: "AND",
+    },
   ]);
 
   expect(query.sql).toBe(
-    " WHERE ((enabled = json_extract(?, '$') OR id IN (SELECT value FROM json_each(?))) AND channel_id IS NOT NULL)",
+    " WHERE ((enabled = json_extract(?, '$') OR id IN (SELECT value FROM json_each(?))) AND target_app_version IS NOT NULL)",
   );
   expect(query.params).toEqual(["true", '["a","b"]']);
 });

@@ -10,6 +10,27 @@ const detoxScenarioRuntimePath = path.join(
 );
 
 describe("Detox assertion parity", () => {
+  it("accepts both stable transition states after OTA activation", async () => {
+    // Given: a stable launch may report the transition once or a later unchanged launch.
+    const detoxRuntimeSource = await fs.readFile(
+      detoxScenarioRuntimePath,
+      "utf8",
+    );
+    const stableLaunchBody = detoxRuntimeSource.slice(
+      detoxRuntimeSource.indexOf("async assertStableLaunch(stage"),
+      detoxRuntimeSource.indexOf("async assertText(stage"),
+    );
+
+    // Then: the assertion keeps both explicit native states and rejects recovery.
+    expect(stableLaunchBody).toContain(
+      '"Current Launch Status: UPDATE_APPLIED"',
+    );
+    expect(stableLaunchBody).toContain('"Current Launch Status: UNCHANGED"');
+    expect(stableLaunchBody).not.toContain(
+      '"Current Launch Status: RECOVERED"',
+    );
+  });
+
   it("reads expected text from the visible testID like Maestro copyTextFrom assertions", async () => {
     // Given: Maestro asserted a visible testID, copied that node's text, then
     // checked that the copied text included the expected value.

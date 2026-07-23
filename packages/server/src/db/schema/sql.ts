@@ -38,19 +38,30 @@ export const getSqlType = (
 ): string => {
   if (provider === "sqlite") {
     if (type === "bool" || type === "integer") return "integer";
+    if (type === "float") return "real";
     return "text";
   }
   if (provider === "mysql") {
     if (type === "uuid") return "char(36)";
     if (type === "bool") return "boolean";
     if (type === "integer") return "integer";
+    if (type === "float") return "double";
     if (type === "json") return "json";
     if (type.startsWith("varchar")) return type;
     return "text";
   }
+  if (provider === "mssql") {
+    if (type === "uuid") return "uniqueidentifier";
+    if (type === "bool") return "bit";
+    if (type === "integer") return "int";
+    if (type === "float") return "float";
+    if (type.startsWith("varchar")) return type;
+    return "nvarchar(max)";
+  }
   if (type === "uuid") return "uuid";
   if (type === "bool") return "boolean";
   if (type === "integer") return "integer";
+  if (type === "float") return "double precision";
   if (type === "json") return "json";
   if (type.startsWith("varchar")) return type;
   return "text";

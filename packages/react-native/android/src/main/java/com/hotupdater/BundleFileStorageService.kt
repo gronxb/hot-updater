@@ -10,6 +10,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.URL
+import java.util.UUID
 
 data class ChangedAssetDescriptor(
     val fileUrl: String?,
@@ -107,6 +108,30 @@ interface BundleStorageService {
      * Returns the launch report for the current process.
      */
     fun notifyAppReady(): Map<String, Any?>
+
+    /**
+     * Returns the stable install ID for this app installation.
+     */
+    fun getInstallId(): String
+
+    /**
+     * Returns the persisted nullable user id for this app installation.
+     */
+    fun getUserId(): String?
+
+    /**
+     * Returns the persisted nullable username for this app installation.
+     */
+    fun getUsername(): String?
+
+    /**
+     * Persists the optional user envelope for analytics.
+     * Passing null clears the stored user identity.
+     */
+    fun setUser(
+        userId: String?,
+        username: String?,
+    )
 
     /**
      * Gets the crashed bundle history
@@ -486,6 +511,10 @@ class BundleFileStorageService(
     private var currentLaunchReport: LaunchReport? = null
 
     @Volatile
+    private var currentInstallationIdentity: InstallationIdentity? = null
+    private val installationIdentityLock = Any()
+
+    @Volatile
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot? = null
     private val activeBundleMetadataLock = Any()
 
@@ -501,6 +530,8 @@ class BundleFileStorageService(
     private fun getCrashedHistoryFile(): File = File(getBundleStoreDir(), CrashedHistory.CRASHED_HISTORY_FILENAME)
 
     private fun getLaunchReportFile(): File = File(getBundleStoreDir(), LaunchReport.LAUNCH_REPORT_FILENAME)
+
+    private fun getInstallationIdentityFile(): File = File(getBundleStoreDir(), InstallationIdentity.IDENTITY_FILENAME)
 
     // MARK: - Metadata Operations
 
@@ -527,6 +558,39 @@ class BundleFileStorageService(
         }
         report.saveToFile(file)
     }
+
+    private fun resolveUpdateStrategy(): String =
+        try {
+            if (HotUpdaterImpl.getFingerprintHash(context).isNullOrEmpty()) {
+                "appVersion"
+            } else {
+                "fingerprint"
+            }
+        } catch (_: Exception) {
+            "appVersion"
+        }
+
+    private fun loadInstallationIdentity(): InstallationIdentity? =
+        currentInstallationIdentity ?: InstallationIdentity.loadFromFile(getInstallationIdentityFile())?.also {
+            currentInstallationIdentity = it
+        }
+
+    private fun saveInstallationIdentity(identity: InstallationIdentity): Boolean {
+        currentInstallationIdentity = identity
+        return identity.saveToFile(getInstallationIdentityFile())
+    }
+
+    private fun getOrCreateInstallationIdentity(): InstallationIdentity =
+        synchronized(installationIdentityLock) {
+            loadInstallationIdentity()?.let { return@synchronized it }
+
+            InstallationIdentity(installId = UUID.randomUUID().toString()).also {
+                saveInstallationIdentity(it)
+            }
+        }
+
+    private fun getKnownLaunchBundleId(metadata: BundleMetadata): String =
+        getCurrentVerifiedBundleId(metadata) ?: HotUpdaterImpl.getMinBundleId()
 
     private fun createInitialMetadata(): BundleMetadata {
         val currentBundleId = extractBundleIdFromCurrentURL()
@@ -933,6 +997,7 @@ class BundleFileStorageService(
         return metadata.copy(
             stableBundleId = currentVerifiedBundleId,
             stagingBundleId = bundleId,
+            pendingUpdateStrategy = resolveUpdateStrategy(),
             verificationPending = true,
             updatedAt = System.currentTimeMillis(),
         )
@@ -959,16 +1024,25 @@ class BundleFileStorageService(
             metadata.copy(
                 stableBundleId = null,
                 stagingBundleId = fallbackBundleId,
+                pendingUpdateStrategy = null,
                 verificationPending = false,
                 updatedAt = System.currentTimeMillis(),
             )
+
         saveMetadata(updatedMetadata)
 
         val fallbackBundleUrl = fallbackBundleId?.let { getBundleUrlForId(it) }
         setBundleURL(fallbackBundleUrl)
 
         File(getBundleStoreDir(), stagingBundleId).deleteRecursively()
-        saveLaunchReport(LaunchReport(status = "RECOVERED", crashedBundleId = stagingBundleId))
+        saveLaunchReport(
+            LaunchReport(
+                status = "RECOVERED",
+                fromBundleId = stagingBundleId,
+                toBundleId = fallbackBundleId ?: HotUpdaterImpl.getMinBundleId(),
+                updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
+            ),
+        )
         return true
     }
 
@@ -1053,10 +1127,20 @@ class BundleFileStorageService(
             return
         }
 
+        val fromBundleId = getKnownLaunchBundleId(metadata)
         saveMetadata(
             metadata.copy(
+                pendingUpdateStrategy = null,
                 verificationPending = false,
                 updatedAt = System.currentTimeMillis(),
+            ),
+        )
+        saveLaunchReport(
+            LaunchReport(
+                status = "UPDATE_APPLIED",
+                fromBundleId = fromBundleId,
+                toBundleId = stagingBundleId,
+                updateStrategy = metadata.pendingUpdateStrategy ?: resolveUpdateStrategy(),
             ),
         )
     }
@@ -1064,11 +1148,39 @@ class BundleFileStorageService(
     // MARK: - notifyAppReady
 
     override fun notifyAppReady(): Map<String, Any?> {
-        val report = loadLaunchReport() ?: return mapOf("status" to "STABLE")
+        val report = loadLaunchReport()
+        if (report == null) {
+            val metadata = loadMetadataOrNull()
+            if (metadata?.verificationPending == true && metadata.stagingBundleId != null) {
+                return mapOf("status" to "PENDING")
+            }
+            return mapOf("status" to "UNCHANGED")
+        }
         return buildMap {
             put("status", report.status)
-            report.crashedBundleId?.let { put("crashedBundleId", it) }
+            report.fromBundleId?.let { put("fromBundleId", it) }
+            report.toBundleId?.let { put("toBundleId", it) }
+            report.updateStrategy?.let { put("updateStrategy", it) }
         }
+    }
+
+    override fun getInstallId(): String = getOrCreateInstallationIdentity().installId
+
+    override fun getUserId(): String? = getOrCreateInstallationIdentity().userId
+
+    override fun getUsername(): String? = getOrCreateInstallationIdentity().username
+
+    override fun setUser(
+        userId: String?,
+        username: String?,
+    ) = synchronized(installationIdentityLock) {
+        saveInstallationIdentity(
+            getOrCreateInstallationIdentity().copy(
+                userId = userId?.trim()?.takeIf { it.isNotEmpty() },
+                username = username?.trim()?.takeIf { it.isNotEmpty() },
+            ),
+        )
+        Unit
     }
 
     // MARK: - Bundle URL Operations
@@ -1932,6 +2044,7 @@ class BundleFileStorageService(
                     isolationKey = isolationKey,
                     stableBundleId = null,
                     stagingBundleId = null,
+                    pendingUpdateStrategy = null,
                     verificationPending = false,
                 )
 

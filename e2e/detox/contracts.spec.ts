@@ -16,7 +16,6 @@ const detoxControlServerPath = path.join(
   repoDir,
   "e2e/detox/scripts/control-server.ts",
 );
-
 async function readRootPackageJson(): Promise<{
   readonly devDependencies?: Record<string, string>;
   readonly scripts?: Record<string, string>;
@@ -77,8 +76,7 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/controller.ts",
       "e2e/detox/control-server/crash-recovery-wait.spec.ts",
       "e2e/detox/control-server/crash-recovery-wait.ts",
-      "e2e/detox/control-server/database-adapter-contract.spec.ts",
-      "e2e/detox/control-server/deploy-lock-contract.spec.ts",
+      "e2e/detox/control-server/database-plugin-contract.spec.ts",
       "e2e/detox/control-server/index.ts",
       "e2e/detox/control-server/routes.ts",
       "e2e/detox/control-server/screen-state.spec.ts",
@@ -88,6 +86,8 @@ describe("Detox E2E harness contract", () => {
       "e2e/detox/control-server/update-check-visibility.spec.ts",
       "e2e/detox/control-server/update-check-visibility.ts",
       "e2e/detox/android-native.spec.ts",
+      "e2e/detox/console-analytics-qa.spec.ts",
+      "e2e/detox/console-analytics-qa.ts",
       "e2e/detox/contracts.spec.ts",
       "e2e/detox/control-client.spec.ts",
       "e2e/detox/control-client.ts",

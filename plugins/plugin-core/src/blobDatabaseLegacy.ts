@@ -57,14 +57,14 @@ export const parseLegacyBundle = (
   value: unknown,
   source: string,
 ): {
-  readonly bundle: Omit<BundleRow, "channel_id">;
+  readonly bundle: BundleRow;
   readonly channelName: string;
   readonly patches: readonly BundlePatchRow[];
 } => {
   const input = blobRecord(value, source);
   const id = blobString(blobProperty(input, "id"), source);
   const channelName = blobString(blobProperty(input, "channel"), source);
-  const bundle: Omit<BundleRow, "channel_id"> = {
+  const bundle: BundleRow = {
     id,
     platform: blobPlatform(blobProperty(input, "platform"), source),
     should_force_update: blobBoolean(

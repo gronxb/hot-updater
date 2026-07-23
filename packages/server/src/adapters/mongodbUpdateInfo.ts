@@ -2,8 +2,7 @@ import { NIL_UUID } from "@hot-updater/core";
 import type {
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
-  DatabaseAdapterImplementation,
+  DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import {
   filterCompatibleAppVersions,
@@ -12,11 +11,7 @@ import {
 import type { Collection } from "mongodb";
 
 import { rowToBundle } from "../db/bundleRows";
-import {
-  parseMongoBundleRow,
-  parseMongoChannelRow,
-  parseMongoPatchRow,
-} from "./mongodbRows";
+import { parseMongoBundleRow, parseMongoPatchRow } from "./mongodbRows";
 
 type MongoUpdateBundleDocument = BundleRow & {
   readonly _hot_updater_deletion_token?: string;
@@ -25,35 +20,20 @@ type MongoUpdateBundleDocument = BundleRow & {
 type MongoUpdateCollections = {
   readonly bundles: Collection<MongoUpdateBundleDocument>;
   readonly bundlePatches: Collection<BundlePatchRow>;
-  readonly channels: Collection<ChannelRow>;
 };
 
 const WITHOUT_MONGO_ID = {
   _id: 0,
   _hot_updater_deletion_token: 0,
 } as const;
-type GetUpdateInfo = NonNullable<
-  DatabaseAdapterImplementation["getUpdateInfo"]
->;
+type GetUpdateInfo = NonNullable<DatabasePluginImplementation["getUpdateInfo"]>;
 
 export const createMongoGetUpdateInfo = (
   collections: MongoUpdateCollections,
 ): GetUpdateInfo => {
-  return async (args, context) => {
+  return async (args) => {
     const channelName = args.channel ?? "production";
     const minBundleId = args.minBundleId ?? NIL_UUID;
-    const channelDocument = await collections.channels.findOne(
-      { name: channelName },
-      { projection: WITHOUT_MONGO_ID },
-    );
-    if (channelDocument === null) {
-      return resolveUpdateInfoFromBundles({
-        args: { ...args, channel: channelName, minBundleId },
-        bundles: [],
-        context,
-      });
-    }
-    const channel = parseMongoChannelRow(channelDocument);
     let rows: BundleRow[];
     if (args._updateStrategy === "appVersion") {
       const candidates = (
@@ -63,7 +43,7 @@ export const createMongoGetUpdateInfo = (
               enabled: true,
               _hot_updater_deletion_token: { $exists: false },
               platform: args.platform,
-              channel_id: channel.id,
+              channel: channelName,
               id: { $gte: minBundleId },
               target_app_version: { $ne: null },
             },
@@ -91,7 +71,7 @@ export const createMongoGetUpdateInfo = (
                     enabled: true,
                     _hot_updater_deletion_token: { $exists: false },
                     platform: args.platform,
-                    channel_id: channel.id,
+                    channel: channelName,
                     id: { $gte: minBundleId },
                     target_app_version: { $in: compatibleVersions },
                   },
@@ -108,7 +88,7 @@ export const createMongoGetUpdateInfo = (
               enabled: true,
               _hot_updater_deletion_token: { $exists: false },
               platform: args.platform,
-              channel_id: channel.id,
+              channel: channelName,
               id: { $gte: minBundleId },
               fingerprint_hash: args.fingerprintHash,
             },
@@ -136,11 +116,9 @@ export const createMongoGetUpdateInfo = (
       bundles: rows.map((row) =>
         rowToBundle(
           row,
-          channelName,
           patches.filter(({ bundle_id: bundleId }) => bundleId === row.id),
         ),
       ),
-      context,
     });
   };
 };

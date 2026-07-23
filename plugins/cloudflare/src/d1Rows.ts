@@ -1,7 +1,7 @@
 import type {
+  BundleEventRow,
   BundlePatchRow,
   BundleRow,
-  ChannelRow,
   DatabaseModel,
   DatabaseRow,
 } from "@hot-updater/plugin-core";
@@ -85,7 +85,6 @@ const bundleRow = (row: Record<string, unknown>): BundleRow => {
     git_commit_hash: nullableString(row, "git_commit_hash", "bundles"),
     message: nullableString(row, "message", "bundles"),
     channel: stringValue(row, "channel", "bundles"),
-    channel_id: stringValue(row, "channel_id", "bundles"),
     storage_uri: stringValue(row, "storage_uri", "bundles"),
     target_app_version: nullableString(row, "target_app_version", "bundles"),
     fingerprint_hash: nullableString(row, "fingerprint_hash", "bundles"),
@@ -116,17 +115,87 @@ const patchRow = (row: Record<string, unknown>): BundlePatchRow => ({
   order_index: numberValue(row, "order_index", "bundle_patches"),
 });
 
-const channelRow = (row: Record<string, unknown>): ChannelRow => ({
-  id: stringValue(row, "id", "channels"),
-  name: stringValue(row, "name", "channels"),
-});
+const bundleEventRow = (row: Record<string, unknown>): BundleEventRow => {
+  const type = stringValue(row, "type", "bundle_events");
+  const fromBundleId = nullableString(row, "from_bundle_id", "bundle_events");
+  const updateStrategy = nullableString(
+    row,
+    "update_strategy",
+    "bundle_events",
+  );
+  const platformValue = stringValue(row, "platform", "bundle_events");
+  if (platformValue !== "ios" && platformValue !== "android") {
+    throw new InvalidD1RowError("bundle_events");
+  }
+  const platform = platformValue === "ios" ? "ios" : "android";
+  const common = {
+    id: stringValue(row, "id", "bundle_events"),
+    install_id: stringValue(row, "install_id", "bundle_events"),
+    user_id: nullableString(row, "user_id", "bundle_events"),
+    username: nullableString(row, "username", "bundle_events"),
+    to_bundle_id: stringValue(row, "to_bundle_id", "bundle_events"),
+    app_version: stringValue(row, "app_version", "bundle_events"),
+    channel: stringValue(row, "channel", "bundle_events"),
+    cohort: stringValue(row, "cohort", "bundle_events"),
+    fingerprint_hash: nullableString(row, "fingerprint_hash", "bundle_events"),
+    sdk_version: nullableString(row, "sdk_version", "bundle_events"),
+    received_at_ms: numberValue(row, "received_at_ms", "bundle_events"),
+  };
+
+  switch (type) {
+    case "UNCHANGED":
+      if (fromBundleId !== null || updateStrategy !== null) {
+        throw new InvalidD1RowError("bundle_events");
+      }
+      return {
+        ...common,
+        platform,
+        type: "UNCHANGED",
+        from_bundle_id: null,
+        update_strategy: null,
+      };
+    case "UPDATE_APPLIED":
+      if (
+        fromBundleId === null ||
+        (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion")
+      ) {
+        throw new InvalidD1RowError("bundle_events");
+      }
+      return {
+        ...common,
+        platform,
+        type: "UPDATE_APPLIED",
+        from_bundle_id: fromBundleId,
+        update_strategy: updateStrategy,
+      };
+    case "RECOVERED":
+      if (
+        fromBundleId === null ||
+        (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion")
+      ) {
+        throw new InvalidD1RowError("bundle_events");
+      }
+      return {
+        ...common,
+        platform,
+        type: "RECOVERED",
+        from_bundle_id: fromBundleId,
+        update_strategy: updateStrategy,
+      };
+    default:
+      throw new InvalidD1RowError("bundle_events");
+  }
+};
 
 export function parseD1Row(model: "bundles", value: unknown): BundleRow;
 export function parseD1Row(
   model: "bundle_patches",
   value: unknown,
 ): BundlePatchRow;
-export function parseD1Row(model: "channels", value: unknown): ChannelRow;
+export function parseD1Row(
+  model: "bundle_events",
+  value: unknown,
+): BundleEventRow;
 export function parseD1Row(
   model: DatabaseModel,
   value: unknown,
@@ -141,7 +210,7 @@ export function parseD1Row(
       return bundleRow(value);
     case "bundle_patches":
       return patchRow(value);
-    case "channels":
-      return channelRow(value);
+    case "bundle_events":
+      return bundleEventRow(value);
   }
 }

@@ -51,7 +51,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
   return `
     INSERT INTO bundles (
       id, file_hash, platform, target_app_version,
-      should_force_update, enabled, git_commit_hash, message, channel_id,
+      should_force_update, enabled, git_commit_hash, message, channel,
       storage_uri, fingerprint_hash, metadata, manifest_storage_uri,
       manifest_file_hash, asset_base_storage_uri, rollout_cohort_count,
       target_cohorts
@@ -81,7 +81,7 @@ const createInsertBundleQuery = (bundle: Bundle) => {
       enabled = excluded.enabled,
       git_commit_hash = excluded.git_commit_hash,
       message = excluded.message,
-      channel_id = excluded.channel_id,
+      channel = excluded.channel,
       storage_uri = excluded.storage_uri,
       fingerprint_hash = excluded.fingerprint_hash,
       metadata = excluded.metadata,
@@ -131,11 +131,6 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 
 const seedBundles = async (bundles: Bundle[]) => {
   for (const bundle of bundles.map(toRuntimeBundle)) {
-    await env.DB.prepare(
-      "INSERT OR IGNORE INTO channels (id, name) VALUES (?, ?)",
-    )
-      .bind(bundle.channel, bundle.channel)
-      .run();
     await env.DB.prepare(createInsertBundleQuery(bundle)).run();
     for (const patchSql of createInsertBundlePatchQueries(bundle)) {
       await env.DB.prepare(patchSql).run();
@@ -173,7 +168,6 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
   beforeEach(async () => {
     await env.DB.prepare("DELETE FROM bundle_patches").run();
     await env.DB.prepare("DELETE FROM bundles").run();
-    await env.DB.prepare("DELETE FROM channels").run();
   });
 
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
@@ -343,6 +337,41 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
+  });
+
+  it("ingests bundle events from the worker entrypoint", async () => {
+    // Given: the client reports a successful OTA transition.
+    const bundleId = "00000000-0000-0000-0000-000000000001";
+
+    // When: the event is sent through the public runtime route.
+    const response = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0",
+          channel: "production",
+          cohort: "782",
+          fingerprintHash: null,
+          fromBundleId: NIL_UUID,
+          installId: "cloudflare-e2e-install",
+          platform: "ios",
+          toBundleId: bundleId,
+          type: "UPDATE_APPLIED",
+          updateStrategy: "appVersion",
+        }),
+      }),
+      env,
+    );
+
+    // Then: the runtime accepts and persists the analytics event.
+    expect(response.status).toBe(204);
+    const row = await env.DB.prepare(
+      "SELECT type, to_bundle_id FROM bundle_events WHERE install_id = ?",
+    )
+      .bind("cloudflare-e2e-install")
+      .first();
+    expect(row).toEqual({ type: "UPDATE_APPLIED", to_bundle_id: bundleId });
   });
 
   it("does not support the legacy exact path", async () => {

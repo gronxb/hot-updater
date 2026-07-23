@@ -3,7 +3,7 @@ import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
-  createBlobDatabaseAdapter,
+  createBlobDatabasePlugin,
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
@@ -11,11 +11,20 @@ import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { uuidv7 } from "uuidv7";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 import { standaloneRepository } from "../../../plugins/standalone/src";
 import { kyselyAdapter } from "./adapters/kysely";
 import { createMigrator } from "./db";
+import { supportsAnalytics } from "./db/types";
 import { createHotUpdater } from "./index";
 
 const db = new PGlite();
@@ -23,12 +32,19 @@ const kysely = new Kysely({ dialect: new PGliteDialect(db) });
 const api = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
   basePath: "/hot-updater",
-  routes: { updateCheck: true, bundles: true },
+  routes: { updateCheck: true, bundles: true, analytics: true },
 });
 const baseUrl = "http://localhost:3000";
 const server = setupServer();
+let bundleEventRequestCount = 0;
 
 const handleRequest = async (request: Request) => {
+  if (
+    new URL(request.url).pathname.includes("/events") ||
+    new URL(request.url).pathname.includes("/installations")
+  ) {
+    bundleEventRequestCount += 1;
+  }
   const response = await api.handler(request);
   return new HttpResponse(await response.text(), {
     status: response.status,
@@ -51,9 +67,10 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  bundleEventRequestCount = 0;
   await db.exec("DELETE FROM bundle_patches");
+  await db.exec("DELETE FROM bundle_events");
   await db.exec("DELETE FROM bundles");
-  await db.exec("DELETE FROM channels");
 });
 
 afterAll(async () => {
@@ -80,22 +97,24 @@ const createTestBundle = (overrides?: Partial<Bundle>): Bundle => ({
 const createStandaloneClient = (base = `${baseUrl}/hot-updater`) =>
   createDatabaseClient(standaloneRepository({ baseUrl: base }));
 
+const parseStoredJson = (value: string): unknown => JSON.parse(value);
+
 const createInMemoryBlobDatabase = (store: Record<string, string>) =>
-  createBlobDatabaseAdapter({
+  createBlobDatabasePlugin({
     name: "blob-test",
-    adapter: () => ({
+    plugin: () => ({
       apiBasePath: "/api/check-update",
       listObjects: async (prefix: string) =>
         Object.keys(store).filter((key) => key.startsWith(prefix)),
       loadObject: async (key: string) => {
         const value = store[key];
-        return value ? (JSON.parse(value) as unknown) : null;
+        return value ? parseStoredJson(value) : null;
       },
       uploadObject: async (key: string, data: unknown) => {
         store[key] = JSON.stringify(data);
       },
       compareAndSwapObject: async (key, expected, data) => {
-        const current = store[key] ? (JSON.parse(store[key]) as unknown) : null;
+        const current = store[key] ? parseStoredJson(store[key]) : null;
         if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
         store[key] = JSON.stringify(data);
         return true;
@@ -105,6 +124,36 @@ const createInMemoryBlobDatabase = (store: Record<string, string>) =>
   });
 
 describe("Handler <-> Standalone Repository Integration", () => {
+  it("discovers a record-backed standalone remote without user config", async () => {
+    // Given
+    const consoleApi = createHotUpdater({
+      database: standaloneRepository({
+        baseUrl: `${baseUrl}/hot-updater`,
+      }),
+      basePath: "/console",
+      routes: { updateCheck: true, bundles: true },
+    });
+    const probe = Reflect.get(
+      consoleApi,
+      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    ) as () => Promise<unknown>;
+
+    // When / Then
+    expect(supportsAnalytics(consoleApi)).toBe(true);
+    await expect(probe()).resolves.toEqual({
+      analytics: true,
+      mode: "bounded",
+      maxMatchingRows: 50_000,
+    });
+    const version = await consoleApi.handler(
+      new Request(`${baseUrl}/console/version`),
+    );
+    await expect(version.json()).resolves.toMatchObject({
+      capabilities: { analytics: true, mode: "bounded" },
+    });
+    expect(bundleEventRequestCount).toBe(0);
+  });
+
   it("creates a bundle through handler POST /bundles", async () => {
     const client = createStandaloneClient();
     const bundleId = uuidv7();
@@ -178,6 +227,92 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     expect(channels).toEqual(expect.arrayContaining(["production", "beta"]));
     expect(channels).toHaveLength(2);
+  });
+
+  it("proxies analytics through the standalone repository", async () => {
+    if (!supportsAnalytics(api)) {
+      throw new Error("Expected Kysely Analytics support.");
+    }
+    const bundleId = uuidv7();
+    const installId = "standalone-analytics-install";
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(Date.UTC(2026, 6, 17, 12));
+    await api.insertBundle(createTestBundle({ id: bundleId }));
+    await api.appendBundleEvent({
+      type: "UPDATE_APPLIED",
+      installId,
+      fromBundleId: NIL_UUID,
+      toBundleId: bundleId,
+      userId: "integration-user",
+      username: "Integration User",
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      updateStrategy: "appVersion",
+      fingerprintHash: null,
+    });
+    now.mockReturnValue(Date.UTC(2026, 6, 17, 12, 0, 0, 1));
+    await api.appendBundleEvent({
+      type: "RECOVERED",
+      installId,
+      fromBundleId: bundleId,
+      toBundleId: NIL_UUID,
+      userId: "integration-user",
+      username: "Integration User",
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      updateStrategy: "appVersion",
+      fingerprintHash: null,
+    });
+    now.mockReturnValue(Date.UTC(2026, 6, 17, 12, 0, 0, 2));
+    const consoleApi = createHotUpdater({
+      database: standaloneRepository({
+        baseUrl: `${baseUrl}/hot-updater`,
+      }),
+      basePath: "/console",
+      routes: { updateCheck: true, bundles: true },
+    });
+    if (!supportsAnalytics(consoleApi)) {
+      throw new Error("Expected standalone Analytics support.");
+    }
+
+    await expect(consoleApi.getBundleEventSummary(bundleId)).resolves.toEqual({
+      installed: 1,
+      recovered: 1,
+    });
+    await expect(
+      consoleApi.getBundleEventAnalytics(bundleId, "24h", 50, 0),
+    ).resolves.toMatchObject({
+      summary: { installed: 1, recovered: 1 },
+      recentEvents: { pagination: { total: 2 } },
+    });
+    await expect(consoleApi.getBundleEventOverview()).resolves.toMatchObject({
+      trackedInstallations: 1,
+      bundles: [{ installations: 1 }],
+    });
+    await expect(
+      consoleApi.searchInstallations("integration-user", 50, 0),
+    ).resolves.toMatchObject({
+      data: [
+        {
+          installId,
+          latestStatus: "RECOVERED",
+          userId: "integration-user",
+        },
+      ],
+      pagination: { total: 1 },
+    });
+    await expect(
+      consoleApi.getInstallationHistory(installId, 50, 0),
+    ).resolves.toMatchObject({
+      data: [{ type: "RECOVERED" }, { type: "UPDATE_APPLIED" }],
+      pagination: { total: 2 },
+    });
+    now.mockRestore();
   });
 
   it("creates, retrieves, updates, and deletes through existing routes", async () => {
@@ -258,6 +393,15 @@ describe("Handler <-> Standalone Repository Integration", () => {
         });
       }),
     );
+    const blobConsoleApi = createHotUpdater({
+      database: standaloneRepository({
+        baseUrl: `${baseUrl}/blob-hot-updater`,
+      }),
+    });
+    const probe = Reflect.get(
+      blobConsoleApi,
+      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    ) as () => Promise<unknown>;
     const client = createStandaloneClient(`${baseUrl}/blob-hot-updater`);
     const bundleId = uuidv7();
     await client.insertBundle(
@@ -270,6 +414,13 @@ describe("Handler <-> Standalone Repository Integration", () => {
 
     await client.updateBundleById(bundleId, { targetAppVersion: "1.0.2" });
 
+    await expect(probe()).resolves.toEqual({ analytics: false });
+    const version = await blobConsoleApi.handler(
+      new Request(`${baseUrl}/api/version`),
+    );
+    await expect(version.json()).resolves.toMatchObject({
+      capabilities: { analytics: false },
+    });
     await expect(client.getBundleById(bundleId)).resolves.toMatchObject({
       id: bundleId,
       targetAppVersion: "1.0.2",

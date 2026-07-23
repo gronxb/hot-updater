@@ -1,4 +1,5 @@
 import type { Bundle } from "@hot-updater/plugin-core";
+import type { BundleEventAnalyticsWindow } from "@hot-updater/server/db";
 import {
   type QueryClient,
   type QueryKey,
@@ -14,11 +15,15 @@ import {
   getBundleChildCounts,
   getBundleChildren,
   getBundleDownloadUrl,
+  getBundleEventAnalytics as getBundleEventAnalyticsApi,
+  getBundleEventSummary as getBundleEventSummaryApi,
   getBundles,
   getChannels,
   getConfig,
   getConfigLoaded,
+  getInstallationHistory as getInstallationHistoryApi,
   promoteBundle as promoteBundleApi,
+  searchInstallations as searchInstallationsApi,
   updateBundle as updateBundleApi,
 } from "./api-rpc";
 
@@ -32,6 +37,23 @@ type BundleFilters = {
 };
 
 type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;
+
+const ANALYTICS_STALE_TIME_MS = 30_000;
+
+export type BundleEventSummary = Awaited<
+  ReturnType<typeof getBundleEventSummaryApi>
+>;
+export type BundleEventAnalytics = Awaited<
+  ReturnType<typeof getBundleEventAnalyticsApi>
+>;
+export type InstallationSearchResult = Awaited<
+  ReturnType<typeof searchInstallationsApi>
+>;
+export type InstallationHistoryResult = Awaited<
+  ReturnType<typeof getInstallationHistoryApi>
+>;
+export type InstallationSearchRow = InstallationSearchResult["data"][number];
+export type InstallationHistoryRow = InstallationHistoryResult["data"][number];
 
 const bundleListQueryKey = ["bundles"] as const;
 
@@ -51,6 +73,21 @@ export const queryKeys = {
       ["bundle-children", "counts", ...bundleIds] as const,
   },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
+  bundleEventSummary: (bundleId: string) =>
+    ["bundle-event-summary", bundleId] as const,
+  bundleEventAnalytics: (input: {
+    bundleId: string;
+    window: BundleEventAnalyticsWindow;
+    limit?: number;
+    offset?: number;
+  }) => ["bundle-event-analytics", input] as const,
+
+  installations: {
+    search: (input: { query: string; limit?: number; offset?: number }) =>
+      ["installations", "search", input] as const,
+    history: (input: { installId: string; limit?: number; offset?: number }) =>
+      ["installations", "history", input] as const,
+  },
 };
 
 function replaceBundleInQueryData(
@@ -133,6 +170,68 @@ export function useBundleQuery(bundleId: string) {
     queryFn: () => getBundle({ data: { bundleId } }),
     staleTime: Infinity,
     enabled: !!bundleId,
+  });
+}
+
+export function useBundleEventSummaryQuery(bundleId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.bundleEventSummary(bundleId),
+    queryFn: () => getBundleEventSummaryApi({ data: { bundleId } }),
+    staleTime: ANALYTICS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    enabled: enabled && bundleId.length > 0,
+  });
+}
+
+export function useBundleEventAnalyticsQuery(
+  input: {
+    bundleId: string;
+    window: BundleEventAnalyticsWindow;
+    limit?: number;
+    offset?: number;
+  },
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.bundleEventAnalytics(input),
+    queryFn: () => getBundleEventAnalyticsApi({ data: input }),
+    staleTime: ANALYTICS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    enabled: enabled && input.bundleId.length > 0,
+  });
+}
+
+export function useInstallationSearchQuery(
+  input: {
+    query: string;
+    limit?: number;
+    offset?: number;
+  },
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.installations.search(input),
+    queryFn: () => searchInstallationsApi({ data: input }),
+    staleTime: ANALYTICS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    enabled: enabled && input.query.trim().length > 0,
+  });
+}
+
+export function useInstallationHistoryQuery(
+  input: {
+    installId: string;
+    limit?: number;
+    offset?: number;
+  },
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: queryKeys.installations.history(input),
+    queryFn: () => getInstallationHistoryApi({ data: input }),
+    staleTime: ANALYTICS_STALE_TIME_MS,
+    refetchOnWindowFocus: true,
+    enabled: enabled && input.installId.length > 0,
   });
 }
 

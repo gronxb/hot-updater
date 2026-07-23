@@ -1,7 +1,6 @@
-import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 import {
-  createDatabaseAdapter,
-  type DatabaseAdapterImplementation,
+  createDatabasePlugin,
+  type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import type { Kysely } from "kysely";
 
@@ -11,11 +10,11 @@ import type {
   ORMSQLProvider,
   RelationMode,
 } from "../db/types";
-import { getDatabaseAdapterUpdateInfo } from "./databaseAdapterUpdateInfo";
-import { fromStoredBundleRow } from "./databaseAdapterUtils";
+import { getDatabasePluginUpdateInfo } from "./databasePluginUpdateInfo";
+import { fromStoredBundleRow } from "./databasePluginUtils";
 import {
   createKyselyCrud,
-  findKyselyChannel,
+  findKyselyChannels,
   findKyselyBundles,
   findKyselyPatches,
 } from "./kyselyCrud";
@@ -30,9 +29,9 @@ export interface KyselyAdapterConfig<TDatabase extends object = object> {
   readonly relationMode?: RelationMode;
 }
 
-const createImplementation = <TDatabase extends object, TContext>(
+const createImplementation = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
-): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> => {
+): DatabasePluginImplementation => {
   const db = config.db;
   const relationMode = config.relationMode ?? "foreign-keys";
   const crud = createKyselyCrud(db, config.provider, relationMode);
@@ -62,10 +61,9 @@ const createImplementation = <TDatabase extends object, TContext>(
             input,
           ),
         ),
-    getUpdateInfo: (args, context) =>
-      getDatabaseAdapterUpdateInfo(
+    getUpdateInfo: (args) =>
+      getDatabasePluginUpdateInfo(
         {
-          findChannel: (name) => findKyselyChannel(db, config.provider, name),
           findBundles: async (where) =>
             (await findKyselyBundles(db, config.provider, where)).map(
               fromStoredBundleRow,
@@ -73,8 +71,8 @@ const createImplementation = <TDatabase extends object, TContext>(
           findPatches: (bundleIds) => findKyselyPatches(db, bundleIds),
         },
         args,
-        context,
       ),
+    getChannels: () => findKyselyChannels(db),
     transaction: (callback) =>
       db
         .transaction()
@@ -86,15 +84,15 @@ const createImplementation = <TDatabase extends object, TContext>(
   };
 };
 
-export const kyselyAdapter = <TDatabase extends object, TContext = unknown>(
+export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
-): DatabaseAdapterWithCapabilities<HotUpdaterContext<TContext>> => {
-  const adapter = createDatabaseAdapter({
+): DatabaseAdapterWithCapabilities => {
+  const plugin = createDatabasePlugin({
     name: "kysely",
-    adapter: (): DatabaseAdapterImplementation<HotUpdaterContext<TContext>> =>
-      createImplementation<TDatabase, TContext>(config),
+    plugin: (): DatabasePluginImplementation =>
+      createImplementation<TDatabase>(config),
   });
-  return Object.assign(adapter, {
+  return Object.assign(plugin, {
     adapterName: "kysely",
     provider: config.provider,
     createMigrator: () =>

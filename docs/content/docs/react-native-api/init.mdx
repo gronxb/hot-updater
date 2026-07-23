@@ -63,6 +63,7 @@ if (updateInfo.shouldForceUpdate) {
 | `resolver`         | `HotUpdaterResolver`                        | Yes*     | Custom network operations                                        |
 | `requestHeaders`   | `Record<string, string>`                    | No       | Shared headers used by update checks and app-ready notifications |
 | `requestTimeout`   | `number`                                    | No       | Request timeout in milliseconds (default: 5000)                  |
+| `analytics`        | `boolean`                                   | No       | Send one best-effort app-ready report per JavaScript runtime     |
 | `onNotifyAppReady` | `(result) => void`                          | No       | Callback invoked after native app-ready state is read            |
 | `onError`          | `(error) => void`                           | No       | Default error handler for initialization and update checks       |
 
@@ -85,3 +86,4 @@ lifecycle directly, especially for automatic update checks with a fallback UI.
 - [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
 - [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
 - [Custom Update](/docs/guides/custom-update)
+- [Analytics](/docs/guides/analytics)

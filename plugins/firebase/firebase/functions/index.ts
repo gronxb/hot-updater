@@ -38,9 +38,13 @@ const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
+  eventIngestion: {
+    authorize: () => true,
+  },
   routes: {
     updateCheck: true,
     bundles: false,
+    analytics: false,
   },
 });
 
@@ -64,7 +68,9 @@ const handler = onRequest(
       method: req.method,
       headers: req.headers as Record<string, string>,
       body:
-        req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+        req.method !== "GET" && req.method !== "HEAD"
+          ? JSON.stringify(req.body)
+          : undefined,
     });
     const honoResponse = await app.fetch(request);
     res.status(honoResponse.status);

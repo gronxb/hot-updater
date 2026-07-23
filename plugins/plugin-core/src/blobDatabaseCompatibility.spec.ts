@@ -8,8 +8,8 @@ import {
 import { parseBlobDatabaseSnapshot } from "./blobDatabaseSnapshot";
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
-  createBlobDatabaseAdapter,
-} from "./createBlobDatabaseAdapter";
+  createBlobDatabasePlugin,
+} from "./createBlobDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 
 const bundleId = "00000000-0000-0000-0000-000000000001";
@@ -33,21 +33,19 @@ const commonBundleRow = {
 };
 
 describe("blob snapshot compatibility", () => {
-  it("restores the legacy channel name from a normalized channel id", () => {
+  it("keeps direct bundle channel strings", () => {
     const snapshot = parseBlobDatabaseSnapshot({
       version: 2,
-      bundles: [{ ...commonBundleRow, channel_id: "channel-production" }],
+      bundles: [{ ...commonBundleRow, channel: "production" }],
       bundle_patches: [],
-      channels: [{ id: "channel-production", name: "production" }],
     });
 
     expect(snapshot.bundles[0]).toMatchObject({
       channel: "production",
-      channel_id: "channel-production",
     });
   });
 
-  it("reads and rewrites the pre-normalization v2 shape", async () => {
+  it("reads and rewrites the direct-channel v2 shape", async () => {
     // Given
     const store = new Map<string, unknown>([
       [
@@ -56,13 +54,12 @@ describe("blob snapshot compatibility", () => {
           version: 2,
           bundles: [{ ...commonBundleRow, channel: "production" }],
           bundle_patches: [],
-          channels: [{ id: "production" }],
         },
       ],
     ]);
-    const adapter = createBlobDatabaseAdapter({
+    const plugin = createBlobDatabasePlugin({
       name: "compatibility-memory",
-      adapter: () => ({
+      plugin: () => ({
         apiBasePath: "/api/check-update",
         listObjects: async (prefix) =>
           [...store.keys()].filter((key) => key.startsWith(prefix)),
@@ -82,10 +79,14 @@ describe("blob snapshot compatibility", () => {
     });
 
     // When
-    const bundle = await createDatabaseClient(adapter).getBundleById(bundleId);
-    await adapter.create({
-      model: "channels",
-      data: { id: "channel-staging", name: "staging" },
+    const bundle = await createDatabaseClient(plugin).getBundleById(bundleId);
+    await plugin.create({
+      model: "bundles",
+      data: {
+        ...commonBundleRow,
+        id: `${bundleId}-staging`,
+        channel: "staging",
+      },
     });
 
     // Then
@@ -101,14 +102,15 @@ describe("blob snapshot compatibility", () => {
         {
           ...commonBundleRow,
           channel: "production",
-          channel_id: "production",
+        },
+        {
+          ...commonBundleRow,
+          id: `${bundleId}-staging`,
+          channel: "staging",
         },
       ],
       bundle_patches: [],
-      channels: [
-        { id: "channel-staging", name: "staging" },
-        { id: "production", name: "production" },
-      ],
+      bundle_events: [],
     });
   });
 
@@ -131,9 +133,9 @@ describe("blob snapshot compatibility", () => {
       ["production/ios/target-app-versions.json", ["1.0.0"]],
       ["production/ios/1.0.0/update.json", [legacyBundle]],
     ]);
-    const adapter = createBlobDatabaseAdapter({
+    const plugin = createBlobDatabasePlugin({
       name: "legacy-manifest-memory",
-      adapter: () => ({
+      plugin: () => ({
         apiBasePath: "/api/check-update",
         listObjects: async (prefix) =>
           [...store.keys()].filter((key) => key.startsWith(prefix)),
@@ -153,7 +155,7 @@ describe("blob snapshot compatibility", () => {
     });
 
     await expect(
-      adapter.getUpdateInfo?.({
+      plugin.getUpdateInfo?.({
         _updateStrategy: "appVersion",
         appVersion: "1.0.0",
         bundleId: "00000000-0000-0000-0000-000000000000",

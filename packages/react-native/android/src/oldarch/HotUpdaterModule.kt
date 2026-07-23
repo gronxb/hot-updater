@@ -299,6 +299,23 @@ class HotUpdaterModule internal constructor(
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun getCohort(): String = cohortService.getCohort()
 
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getInstallId(): String = getInstance().getInstallId()
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getUserId(): String? = getInstance().getUserId()
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getUsername(): String? = getInstance().getUsername()
+
+    @ReactMethod
+    override fun setUser(
+        userId: String?,
+        username: String?,
+    ) {
+        getInstance().setUser(userId, username)
+    }
+
     @ReactMethod
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {

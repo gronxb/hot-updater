@@ -1,4 +1,4 @@
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 
 import { createD1Implementation } from "./d1Implementation";
@@ -10,9 +10,9 @@ export interface D1DatabaseConfig {
 }
 
 export const d1Database = (config: D1DatabaseConfig) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "d1Database",
-    adapter: () => {
+    plugin: () => {
       const cloudflare = new Cloudflare({
         apiToken: config.cloudflareApiToken,
       });

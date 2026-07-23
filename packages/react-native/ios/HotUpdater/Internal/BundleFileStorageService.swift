@@ -281,6 +281,10 @@ public protocol BundleStorageService {
     func notifyAppReady() -> [String: Any]
     func getCrashHistory() -> CrashedHistory
     func clearCrashHistory() -> Bool
+    func getInstallId() -> String
+    func getUserId() -> String?
+    func getUsername() -> String?
+    func setUser(userId: String?, username: String?)
     
     /**
      * Gets the base URL for the current active bundle directory
@@ -352,6 +356,27 @@ class BundleFileStorageService: BundleStorageService {
     private var currentLaunchReport: LaunchReport?
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
+    private let builtInBundleIdProvider: () -> String
+    private let updateStrategyProvider: () -> UpdateStrategy
+
+    private var currentInstallIdentity: InstallIdentity?
+    private var currentUserIdentity: UserIdentity?
+
+    private let protectedBundleStoreEntries: Set<String> = [
+        BundleMetadata.metadataFilename,
+        CrashedHistory.crashedHistoryFilename,
+        LaunchReport.launchReportFilename,
+        InstallIdentity.installIdentityFilename,
+        UserIdentity.userIdentityFilename,
+    ]
+
+    private func normalizeIdentityValue(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else {
+            return nil
+        }
+        return trimmed
+    }
 
     private func emitArchiveProgress(
         progressHandler: @escaping (UpdateProgressPayload) -> Void,
@@ -701,13 +726,21 @@ class BundleFileStorageService: BundleStorageService {
                 downloadService: DownloadService,
                 decompressService: DecompressService,
                 preferences: PreferencesService,
-                isolationKey: String) {
+                isolationKey: String,
+                builtInBundleIdProvider: @escaping () -> String = { "" },
+                updateStrategyProvider: @escaping () -> UpdateStrategy = {
+                    let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
+                        ?? Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+                    return (fingerprintHash?.isEmpty == false) ? .fingerprint : .appVersion
+                }) {
 
         self.fileSystem = fileSystem
         self.downloadService = downloadService
         self.decompressService = decompressService
         self.preferences = preferences
         self.isolationKey = isolationKey
+        self.builtInBundleIdProvider = builtInBundleIdProvider
+        self.updateStrategyProvider = updateStrategyProvider
 
         // Create queue for file operations
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
@@ -742,6 +775,20 @@ class BundleFileStorageService: BundleStorageService {
             return nil
         }
         return URL(fileURLWithPath: storeDir).appendingPathComponent(LaunchReport.launchReportFilename)
+    }
+
+    private func installIdentityFileURL() -> URL? {
+        guard case .success(let storeDir) = bundleStoreDir() else {
+            return nil
+        }
+        return URL(fileURLWithPath: storeDir).appendingPathComponent(InstallIdentity.installIdentityFilename)
+    }
+
+    private func userIdentityFileURL() -> URL? {
+        guard case .success(let storeDir) = bundleStoreDir() else {
+            return nil
+        }
+        return URL(fileURLWithPath: storeDir).appendingPathComponent(UserIdentity.userIdentityFilename)
     }
 
     // MARK: - Metadata Operations
@@ -790,13 +837,87 @@ class BundleFileStorageService: BundleStorageService {
         _ = report.save(to: file)
     }
 
+    private func loadInstallIdentity() -> InstallIdentity? {
+        if let currentInstallIdentity {
+            return currentInstallIdentity
+        }
+        guard let file = installIdentityFileURL(),
+              let identity = InstallIdentity.load(from: file) else {
+            return nil
+        }
+        currentInstallIdentity = identity
+        return identity
+    }
+
+    private func saveInstallIdentity(_ identity: InstallIdentity) -> Bool {
+        currentInstallIdentity = identity
+        guard let file = installIdentityFileURL() else {
+            return false
+        }
+        return identity.save(to: file)
+    }
+
+    private func loadUserIdentity() -> UserIdentity? {
+        if let currentUserIdentity {
+            return currentUserIdentity
+        }
+        guard let file = userIdentityFileURL(),
+              let identity = UserIdentity.load(from: file) else {
+            return nil
+        }
+        currentUserIdentity = identity
+        return identity
+    }
+
+    private func saveUserIdentity(_ identity: UserIdentity?) -> Bool {
+        currentUserIdentity = identity
+        guard let file = userIdentityFileURL() else {
+            return false
+        }
+
+        guard let identity else {
+            if FileManager.default.fileExists(atPath: file.path) {
+                try? FileManager.default.removeItem(at: file)
+            }
+            return true
+        }
+
+        return identity.save(to: file)
+    }
+
+    private func resolveBuiltInBundleId() -> String? {
+        let bundleId = builtInBundleIdProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        return bundleId.isEmpty ? nil : bundleId
+    }
+
+    private func createPendingTransition(
+        fromBundleId: String,
+        toBundleId: String
+    ) -> PendingBundleTransition {
+        PendingBundleTransition(
+            fromBundleId: fromBundleId,
+            toBundleId: toBundleId,
+            updateStrategy: updateStrategyProvider()
+        )
+    }
+
+    private func launchReport(for status: LaunchReportStatus, transition: PendingBundleTransition?) -> LaunchReport {
+        LaunchReport(
+            status: status,
+            fromBundleId: transition?.fromBundleId,
+            toBundleId: transition?.toBundleId,
+            updateStrategy: transition?.updateStrategy
+        )
+    }
+
     private func createInitialMetadata() -> BundleMetadata {
         let currentBundleId = getCachedBundleURL()?.deletingLastPathComponent().lastPathComponent
         return BundleMetadata(
             isolationKey: isolationKey,
             stableBundleId: nil,
             stagingBundleId: currentBundleId,
-            verificationPending: false
+            verificationPending: false,
+            pendingTransition: nil
         )
     }
 
@@ -804,7 +925,7 @@ class BundleFileStorageService: BundleStorageService {
         if let stagingBundleId = metadata.stagingBundleId, !metadata.verificationPending {
             return stagingBundleId
         }
-        return metadata.stableBundleId
+        return metadata.stableBundleId ?? resolveBuiltInBundleId()
     }
 
     private func getActiveBundleId() -> String? {
@@ -1077,8 +1198,7 @@ class BundleFileStorageService: BundleStorageService {
             for item in contents {
                 let fullPath = (storeDir as NSString).appendingPathComponent(item)
 
-                // Skip metadata files
-                if item == "metadata.json" || item == "crashed-history.json" {
+                if protectedBundleStoreEntries.contains(item) {
                     continue
                 }
 
@@ -1119,11 +1239,15 @@ class BundleFileStorageService: BundleStorageService {
 
     private func prepareMetadataForNewStagingBundle(_ metadata: BundleMetadata, bundleId: String) -> BundleMetadata {
         let currentVerifiedBundleId = getCurrentVerifiedBundleId(metadata).flatMap { $0 == bundleId ? nil : $0 }
+        let pendingTransition = currentVerifiedBundleId.map {
+            createPendingTransition(fromBundleId: $0, toBundleId: bundleId)
+        }
         return BundleMetadata(
             isolationKey: isolationKey,
             stableBundleId: currentVerifiedBundleId,
             stagingBundleId: bundleId,
             verificationPending: true,
+            pendingTransition: pendingTransition,
             updatedAt: Date().timeIntervalSince1970 * 1000
         )
     }
@@ -1133,6 +1257,8 @@ class BundleFileStorageService: BundleStorageService {
         guard var metadata = loadMetadataOrNull(), metadata.stagingBundleId == stagingId else {
             return false
         }
+
+        let pendingTransition = metadata.pendingTransition
 
         var crashedHistory = loadCrashedHistory()
         crashedHistory.addEntry(stagingId)
@@ -1153,6 +1279,7 @@ class BundleFileStorageService: BundleStorageService {
             stableBundleId: nil,
             stagingBundleId: fallbackBundleId,
             verificationPending: false,
+            pendingTransition: nil,
             updatedAt: Date().timeIntervalSince1970 * 1000
         )
 
@@ -1175,7 +1302,16 @@ class BundleFileStorageService: BundleStorageService {
             try? fileSystem.removeItem(atPath: stagingDir)
         }
 
-        saveLaunchReport(LaunchReport(status: "RECOVERED", crashedBundleId: stagingId))
+        saveLaunchReport(
+            LaunchReport(
+                status: .recovered,
+                fromBundleId: stagingId,
+                toBundleId: fallbackBundleId
+                    ?? pendingTransition?.fromBundleId
+                    ?? resolveBuiltInBundleId(),
+                updateStrategy: pendingTransition?.updateStrategy ?? updateStrategyProvider()
+            )
+        )
         return true
     }
 
@@ -1345,8 +1481,7 @@ class BundleFileStorageService: BundleStorageService {
         let bundles = contents.compactMap { item -> String? in
             let fullPath = (storeDir as NSString).appendingPathComponent(item)
 
-            // Skip metadata files - DO NOT delete
-            if item == "metadata.json" || item == "crashed-history.json" {
+            if protectedBundleStoreEntries.contains(item) {
                 return nil
             }
 
@@ -1488,6 +1623,10 @@ class BundleFileStorageService: BundleStorageService {
 
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {
         saveLaunchReport(nil)
+        if loadInstallIdentity() == nil {
+            let identity = InstallIdentity()
+            _ = saveInstallIdentity(identity)
+        }
         applyPendingRecoveryIfNeeded(pendingRecovery)
         return selectLaunch(bundle: bundle)
     }
@@ -2405,19 +2544,33 @@ class BundleFileStorageService: BundleStorageService {
             return
         }
 
+        let pendingTransition = metadata.pendingTransition
         metadata.verificationPending = false
+        metadata.pendingTransition = nil
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
         let _ = saveMetadata(metadata)
+        saveLaunchReport(launchReport(for: .updateApplied, transition: pendingTransition))
     }
 
     func notifyAppReady() -> [String: Any] {
         guard let report = loadLaunchReport() else {
-            return ["status": "STABLE"]
+            if let metadata = loadMetadataOrNull(),
+               metadata.verificationPending,
+               metadata.stagingBundleId != nil {
+                return ["status": "PENDING"]
+            }
+            return ["status": LaunchReportStatus.unchanged.rawValue]
         }
 
-        var result: [String: Any] = ["status": report.status]
-        if let crashedBundleId = report.crashedBundleId {
-            result["crashedBundleId"] = crashedBundleId
+        var result: [String: Any] = ["status": report.status.rawValue]
+        if let fromBundleId = report.fromBundleId {
+            result["fromBundleId"] = fromBundleId
+        }
+        if let toBundleId = report.toBundleId {
+            result["toBundleId"] = toBundleId
+        }
+        if let updateStrategy = report.updateStrategy {
+            result["updateStrategy"] = updateStrategy.rawValue
         }
         return result
     }
@@ -2438,6 +2591,37 @@ class BundleFileStorageService: BundleStorageService {
         var history = loadCrashedHistory()
         history.clear()
         return saveCrashedHistory(history)
+    }
+
+    func getInstallId() -> String {
+        if let installId = loadInstallIdentity()?.installId {
+            return installId
+        }
+
+        let identity = InstallIdentity()
+        guard saveInstallIdentity(identity) else {
+            return identity.installId
+        }
+        return identity.installId
+    }
+
+    func getUserId() -> String? {
+        loadUserIdentity()?.userId
+    }
+
+    func getUsername() -> String? {
+        loadUserIdentity()?.username
+    }
+
+    func setUser(userId: String?, username: String?) {
+        let normalizedUserId = normalizeIdentityValue(userId)
+        let normalizedUsername = normalizeIdentityValue(username)
+        let identity = UserIdentity(userId: normalizedUserId, username: normalizedUsername)
+        if identity.isEmpty {
+            _ = saveUserIdentity(nil)
+            return
+        }
+        _ = saveUserIdentity(identity)
     }
 
     /**
@@ -2508,9 +2692,7 @@ class BundleFileStorageService: BundleStorageService {
 
         do {
             for item in try fileSystem.contentsOfDirectory(atPath: storeDir) {
-                if item == BundleMetadata.metadataFilename ||
-                    item == CrashedHistory.crashedHistoryFilename ||
-                    item == LaunchReport.launchReportFilename {
+                if protectedBundleStoreEntries.contains(item) {
                     continue
                 }
 

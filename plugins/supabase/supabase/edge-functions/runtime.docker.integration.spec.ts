@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
+import { supportsAnalytics } from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -520,6 +521,41 @@ describe.sequential("supabase edge runtime acceptance", () => {
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
+  });
+
+  it("ingests bundle events from the edge function entrypoint", async () => {
+    // Given: the client reports a successful OTA transition.
+    const bundleId = "00000000-0000-0000-0000-000000000001";
+
+    // When: the event is sent through the public runtime route.
+    const response = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/events`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0",
+          channel: "production",
+          cohort: "782",
+          fingerprintHash: null,
+          fromBundleId: NIL_UUID,
+          installId: "supabase-e2e-install",
+          platform: "ios",
+          toBundleId: bundleId,
+          type: "UPDATE_APPLIED",
+          updateStrategy: "appVersion",
+        }),
+      },
+    );
+
+    // Then: the runtime accepts and exposes the analytics event.
+    expect(response.status).toBe(204);
+    if (!supportsAnalytics(seedHotUpdater)) {
+      throw new Error("Expected Supabase Analytics support.");
+    }
+    await expect(
+      seedHotUpdater.getBundleEventSummary(bundleId),
+    ).resolves.toEqual({ installed: 1, recovered: 0 });
   });
 
   it("does not support the legacy exact path", async () => {

@@ -24,9 +24,7 @@ const createBundle = (id: string): Bundle => ({
   fingerprintHash: null,
 });
 
-const CHANNEL_ID = "channel-production";
-const CHANNEL_ROWS = [{ id: CHANNEL_ID, name: "production" }] as const;
-const toRow = (bundle: Bundle): BundleRow => bundleToRow(bundle, CHANNEL_ID);
+const toRow = (bundle: Bundle): BundleRow => bundleToRow(bundle);
 
 const createPatchRow = (
   id: string,
@@ -68,19 +66,15 @@ describe("bundle row conversion", () => {
     // When
     const row = toRow(bundle);
     const patchRows = bundleToPatchRows(bundle);
-    const hydratedBundles = rowsToBundles(
-      [row],
-      patchRows,
-      [toRow(baseBundle)],
-      CHANNEL_ROWS,
-    );
+    const hydratedBundles = rowsToBundles([row], patchRows, [
+      toRow(baseBundle),
+    ]);
 
     // Then
     expect(row).not.toHaveProperty("patches");
     expect(row).not.toHaveProperty("patch_file_hash");
     expect(row).toMatchObject({
       channel: bundle.channel,
-      channel_id: CHANNEL_ID,
     });
     expect(hydratedBundles).toHaveLength(1);
     expect(hydratedBundles[0]).toEqual({
@@ -107,7 +101,6 @@ describe("bundle row conversion", () => {
       rows,
       [later, secondById, firstById],
       [toRow(oldest), toRow(newest)],
-      CHANNEL_ROWS,
     );
 
     // Then
@@ -127,7 +120,7 @@ describe("bundle row conversion", () => {
     const bundle = createBundle("without-patches");
 
     // When
-    const [hydrated] = rowsToBundles([toRow(bundle)], [], [], CHANNEL_ROWS);
+    const [hydrated] = rowsToBundles([toRow(bundle)], [], []);
 
     // Then
     expect(hydrated).toMatchObject({
@@ -147,7 +140,7 @@ describe("bundle row conversion", () => {
     };
 
     // When
-    const [hydrated] = rowsToBundles([row], [], [], CHANNEL_ROWS);
+    const [hydrated] = rowsToBundles([row], [], []);
 
     // Then
     expect(hydrated).toMatchObject({
@@ -166,12 +159,7 @@ describe("bundle row conversion", () => {
 
     // When
     const hydrate = () =>
-      rowsToBundles(
-        [toRow(target)],
-        [patch, duplicate],
-        [toRow(base)],
-        CHANNEL_ROWS,
-      );
+      rowsToBundles([toRow(target)], [patch, duplicate], [toRow(base)]);
 
     // Then
     expect(hydrate).toThrowError(BundleRowHydrationError);
@@ -189,8 +177,7 @@ describe("bundle row conversion", () => {
     const patch = createPatchRow("orphan-owner", "missing", base.id, 0);
 
     // When
-    const hydrate = () =>
-      rowsToBundles([], [patch], [toRow(base)], CHANNEL_ROWS);
+    const hydrate = () => rowsToBundles([], [patch], [toRow(base)]);
 
     // Then
     expect(hydrate).toThrowError(
@@ -208,8 +195,7 @@ describe("bundle row conversion", () => {
     const patch = createPatchRow("orphan-base", target.id, "missing", 0);
 
     // When
-    const hydrate = () =>
-      rowsToBundles([toRow(target)], [patch], [], CHANNEL_ROWS);
+    const hydrate = () => rowsToBundles([toRow(target)], [patch], []);
 
     // Then
     expect(hydrate).toThrowError(

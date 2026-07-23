@@ -1,8 +1,8 @@
 import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
 import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
 import {
-  createBlobDatabaseAdapter,
-  type DatabaseAdapterLifecycleHooks,
+  createBlobDatabasePlugin,
+  type DatabasePluginLifecycleHooks,
 } from "@hot-updater/plugin-core";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
@@ -42,12 +42,12 @@ const createKeyBuilder = (basePath: string | undefined) => {
 
 export const s3Database = (
   config: S3DatabaseConfig,
-  hooks?: DatabaseAdapterLifecycleHooks,
+  hooks?: DatabasePluginLifecycleHooks,
 ) =>
-  createBlobDatabaseAdapter({
+  createBlobDatabasePlugin({
     name: "s3Database",
     onDatabaseUpdated: hooks?.onDatabaseUpdated,
-    adapter: () => {
+    plugin: () => {
       const {
         apiBasePath = "/api/check-update",
         basePath,

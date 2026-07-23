@@ -9,6 +9,7 @@ import {
   bundleToPatchRows,
   bundleToRow,
   type Bundle,
+  type BundleEventRow,
 } from "@hot-updater/plugin-core";
 
 type BundleSeed = Omit<Bundle, "storageUri"> &
@@ -650,14 +651,248 @@ const bundles: Bundle[] = [
 
 const databaseData = createMockDatabaseData();
 for (const bundle of bundles) {
-  databaseData.channels.set(bundle.channel, {
-    id: bundle.channel,
-    name: bundle.channel,
-  });
-  databaseData.bundles.set(bundle.id, bundleToRow(bundle, bundle.channel));
+  databaseData.bundles.set(bundle.id, bundleToRow(bundle));
   for (const patch of bundleToPatchRows(bundle)) {
     databaseData.bundlePatches.set(patch.id, patch);
   }
+}
+
+const bundleEvents: readonly BundleEventRow[] = [
+  {
+    id: "019f635e-0001-7000-8000-000000000001",
+    type: "UPDATE_APPLIED",
+    install_id: "019f635d-0001-7000-8000-000000000001",
+    user_id: "detox-e2e",
+    username: "hot-updater-e2e",
+    from_bundle_id: iosProdCorePatchA.id,
+    to_bundle_id: iosProdCorePatchB.id,
+    platform: "ios",
+    app_version: "1.4.2",
+    channel: "production",
+    cohort: "staff-ios",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: "0.37.0",
+    received_at_ms: Date.UTC(2026, 6, 15, 1, 20),
+  },
+  {
+    id: "019f635e-0002-7000-8000-000000000002",
+    type: "RECOVERED",
+    install_id: "019f635d-0001-7000-8000-000000000001",
+    user_id: "detox-e2e",
+    username: "hot-updater-e2e",
+    from_bundle_id: iosProdCorePatchB.id,
+    to_bundle_id: iosProdCorePatchA.id,
+    platform: "ios",
+    app_version: "1.4.2",
+    channel: "production",
+    cohort: "staff-ios",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: "0.37.0",
+    received_at_ms: Date.UTC(2026, 6, 15, 1, 24),
+  },
+  {
+    id: "019f635e-0003-7000-8000-000000000003",
+    type: "UPDATE_APPLIED",
+    install_id: "019f635d-0002-7000-8000-000000000002",
+    user_id: "detox-e2e-beta",
+    username: "hot-updater-e2e-beta",
+    from_bundle_id: iosProdCorePatchA.id,
+    to_bundle_id: iosProdCorePatchB.id,
+    platform: "ios",
+    app_version: "1.4.2",
+    channel: "production",
+    cohort: "default",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: "0.37.0",
+    received_at_ms: Date.UTC(2026, 6, 15, 1, 28),
+  },
+  {
+    id: "019f635e-0004-7000-8000-000000000004",
+    type: "UPDATE_APPLIED",
+    install_id: "019f635d-0002-7000-8000-000000000002",
+    user_id: "detox-e2e-beta",
+    username: "hot-updater-e2e-beta",
+    from_bundle_id: iosProdCorePatchB.id,
+    to_bundle_id: iosProdCoreHotfix.id,
+    platform: "ios",
+    app_version: "1.4.2",
+    channel: "production",
+    cohort: "default",
+    update_strategy: "appVersion",
+    fingerprint_hash: null,
+    sdk_version: "0.37.0",
+    received_at_ms: Date.UTC(2026, 6, 15, 1, 32),
+  },
+  ...(
+    [
+      [
+        "0003",
+        "UPDATE_APPLIED",
+        "demo-alpha",
+        iosProdCorePatchA.id,
+        iosProdCorePatchB.id,
+        12,
+        10,
+      ],
+      [
+        "0003",
+        "UNCHANGED",
+        "demo-alpha",
+        iosProdCorePatchB.id,
+        iosProdCorePatchB.id,
+        14,
+        10,
+      ],
+      [
+        "0003",
+        "UNCHANGED",
+        "demo-alpha",
+        iosProdCorePatchB.id,
+        iosProdCorePatchB.id,
+        16,
+        10,
+      ],
+      [
+        "0003",
+        "UNCHANGED",
+        "demo-alpha",
+        iosProdCorePatchB.id,
+        iosProdCorePatchB.id,
+        18,
+        9,
+      ],
+      [
+        "0004",
+        "UPDATE_APPLIED",
+        "demo-beta",
+        iosProdCorePatchA.id,
+        iosProdCorePatchB.id,
+        13,
+        11,
+      ],
+      [
+        "0004",
+        "UNCHANGED",
+        "demo-beta",
+        iosProdCorePatchB.id,
+        iosProdCorePatchB.id,
+        15,
+        11,
+      ],
+      [
+        "0004",
+        "UNCHANGED",
+        "demo-beta",
+        iosProdCorePatchB.id,
+        iosProdCorePatchB.id,
+        17,
+        11,
+      ],
+      [
+        "0005",
+        "UPDATE_APPLIED",
+        "demo-gamma",
+        iosProdCorePatchA.id,
+        iosProdCorePatchB.id,
+        14,
+        12,
+      ],
+      [
+        "0005",
+        "UPDATE_APPLIED",
+        "demo-gamma",
+        iosProdCorePatchB.id,
+        iosProdCoreHotfix.id,
+        17,
+        12,
+      ],
+      [
+        "0006",
+        "UPDATE_APPLIED",
+        "demo-delta",
+        iosProdCorePatchA.id,
+        iosProdCorePatchB.id,
+        15,
+        9,
+      ],
+      [
+        "0006",
+        "RECOVERED",
+        "demo-delta",
+        iosProdCorePatchB.id,
+        iosProdCorePatchA.id,
+        18,
+        8,
+      ],
+      [
+        "0007",
+        "UPDATE_APPLIED",
+        "demo-epsilon",
+        iosProdCorePatchB.id,
+        iosProdCoreHotfix.id,
+        16,
+        12,
+      ],
+      [
+        "0007",
+        "UNCHANGED",
+        "demo-epsilon",
+        iosProdCoreHotfix.id,
+        iosProdCoreHotfix.id,
+        18,
+        10,
+      ],
+      [
+        "0008",
+        "UPDATE_APPLIED",
+        "demo-zeta",
+        iosProdCorePatchA.id,
+        iosProdCorePatchB.id,
+        17,
+        13,
+      ],
+    ] as const
+  ).map(
+    (
+      [installSuffix, type, userId, fromBundleId, toBundleId, day, hour],
+      index,
+    ): BundleEventRow => {
+      const baseEvent = {
+        id: `019f635e-1${String(index).padStart(3, "0")}-7000-8000-000000000${installSuffix}`,
+        install_id: `019f635d-${installSuffix}-7000-8000-00000000${installSuffix}`,
+        user_id: userId,
+        username: userId,
+        to_bundle_id: toBundleId,
+        platform: "ios",
+        app_version: "1.4.2",
+        channel: "production",
+        cohort: "default",
+        fingerprint_hash: null,
+        sdk_version: "0.37.0",
+        received_at_ms: Date.UTC(2026, 6, Number(day), Number(hour)),
+      } as const;
+      return type === "UNCHANGED"
+        ? {
+            ...baseEvent,
+            type,
+            from_bundle_id: null,
+            update_strategy: null,
+          }
+        : {
+            ...baseEvent,
+            type,
+            from_bundle_id: fromBundleId,
+            update_strategy: "appVersion",
+          };
+    },
+  ),
+];
+
+for (const event of bundleEvents) {
+  databaseData.bundleEvents.set(event.id, event);
 }
 
 export default {

@@ -166,7 +166,7 @@ describe("Hot Updater Handler Integration Tests (Hono + S3)", () => {
       hotUpdater.deleteBundleById(bundleId),
   });
 
-  it("updates targetAppVersion through the standalone database adapter", async () => {
+  it("updates targetAppVersion through the standalone database plugin", async () => {
     const database = standaloneRepository({
       baseUrl: `${baseUrl}/hot-updater`,
       commonHeaders: {

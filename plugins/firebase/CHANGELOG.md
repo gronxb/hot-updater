@@ -1,5 +1,11 @@
 # @hot-updater/firebase
 
+## Unreleased
+
+### Patch Changes
+
+- Enable Analytics for Firebase's record-based database plugin.
+
 ## 0.35.3
 
 ### Patch Changes

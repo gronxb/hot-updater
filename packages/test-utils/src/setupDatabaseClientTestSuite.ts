@@ -1,27 +1,22 @@
 import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
-import type { DatabaseAdapterTestLifecycle } from "./databaseAdapterTestRunner";
-import { setupDatabaseAdapterTestRunner } from "./databaseAdapterTestRunner";
+import type { DatabasePluginTestLifecycle } from "./databasePluginTestRunner";
+import { setupDatabasePluginTestRunner } from "./databasePluginTestRunner";
 import { createBundleFixture } from "./databaseTestFixtures";
 
-export type DatabaseClientTestContract<TContext> = {
-  readonly getBundleById: (
-    id: string,
-    context?: TContext,
-  ) => Promise<Bundle | null>;
+export type DatabaseClientTestContract = {
+  readonly getBundleById: (id: string) => Promise<Bundle | null>;
   readonly getBundles: (
     options: DatabaseClientTestQueryOptions,
-    context?: TContext,
   ) => Promise<DatabaseClientTestPage>;
-  readonly getChannels: (context?: TContext) => Promise<string[]>;
-  readonly insertBundle: (bundle: Bundle, context?: TContext) => Promise<void>;
+  readonly getChannels: () => Promise<string[]>;
+  readonly insertBundle: (bundle: Bundle) => Promise<void>;
   readonly updateBundleById: (
     id: string,
     update: Partial<Bundle>,
-    context?: TContext,
   ) => Promise<void>;
-  readonly deleteBundleById: (id: string, context?: TContext) => Promise<void>;
+  readonly deleteBundleById: (id: string) => Promise<void>;
 };
 
 export type DatabaseClientTestQueryOptions = {
@@ -45,19 +40,17 @@ export type DatabaseClientTestPage = {
   };
 };
 
-export type DatabaseClientTestSuiteOptions<TAdapter, TContext> =
-  DatabaseAdapterTestLifecycle<TAdapter, TContext> & {
-    readonly createClient: (
-      adapter: TAdapter,
-    ) => DatabaseClientTestContract<TContext>;
+export type DatabaseClientTestSuiteOptions<TPlugin> =
+  DatabasePluginTestLifecycle<TPlugin> & {
+    readonly createClient: (plugin: TPlugin) => DatabaseClientTestContract;
   };
 
-export const setupDatabaseClientTestSuite = <TAdapter, TContext>(
-  options: DatabaseClientTestSuiteOptions<TAdapter, TContext>,
+export const setupDatabaseClientTestSuite = <TPlugin>(
+  options: DatabaseClientTestSuiteOptions<TPlugin>,
 ): void => {
-  setupDatabaseAdapterTestRunner(options, ({ context, getAdapter }) => {
-    const getClient = (): DatabaseClientTestContract<TContext> =>
-      options.createClient(getAdapter());
+  setupDatabasePluginTestRunner(options, ({ getPlugin }) => {
+    const getClient = (): DatabaseClientTestContract =>
+      options.createClient(getPlugin());
 
     describe("aggregate client", () => {
       it("hydrates patch rows when a bundle is retrieved", async () => {
@@ -74,11 +67,11 @@ export const setupDatabaseClientTestSuite = <TAdapter, TContext>(
           ],
         } satisfies Bundle;
 
-        await getClient().insertBundle(base, context);
-        await getClient().insertBundle(bundle, context);
+        await getClient().insertBundle(base);
+        await getClient().insertBundle(bundle);
 
         await expect(
-          getClient().getBundleById(bundle.id, context),
+          getClient().getBundleById(bundle.id),
         ).resolves.toMatchObject({ id: bundle.id, patches: bundle.patches });
       });
 
@@ -89,16 +82,13 @@ export const setupDatabaseClientTestSuite = <TAdapter, TContext>(
           createBundleFixture("203"),
         ];
         for (const bundle of bundles) {
-          await getClient().insertBundle(bundle, context);
+          await getClient().insertBundle(bundle);
         }
 
-        const result = await getClient().getBundles(
-          {
-            limit: 2,
-            orderBy: { field: "id", direction: "desc" },
-          },
-          context,
-        );
+        const result = await getClient().getBundles({
+          limit: 2,
+          orderBy: { field: "id", direction: "desc" },
+        });
 
         expect(result.data.map(({ id }) => id)).toEqual([
           bundles[2]?.id,
@@ -107,13 +97,13 @@ export const setupDatabaseClientTestSuite = <TAdapter, TContext>(
         expect(result.pagination.total).toBe(3);
       });
 
-      it("retains a channel after its last bundle is deleted", async () => {
+      it("removes a derived channel after its last bundle is deleted", async () => {
         const bundle = createBundleFixture("301", "staging");
-        await getClient().insertBundle(bundle, context);
+        await getClient().insertBundle(bundle);
 
-        await getClient().deleteBundleById(bundle.id, context);
+        await getClient().deleteBundleById(bundle.id);
 
-        await expect(getClient().getChannels(context)).resolves.toContain(
+        await expect(getClient().getChannels()).resolves.not.toContain(
           "staging",
         );
       });
@@ -123,24 +113,20 @@ export const setupDatabaseClientTestSuite = <TAdapter, TContext>(
         const secondBase = createBundleFixture("402");
         const bundle = createBundleFixture("403");
         for (const fixture of [firstBase, secondBase, bundle]) {
-          await getClient().insertBundle(fixture, context);
+          await getClient().insertBundle(fixture);
         }
-        await getClient().updateBundleById(
-          bundle.id,
-          {
-            patches: [
-              {
-                baseBundleId: secondBase.id,
-                baseFileHash: secondBase.fileHash,
-                patchFileHash: "replacement-hash",
-                patchStorageUri: "storage://patches/replacement.patch",
-              },
-            ],
-          },
-          context,
-        );
+        await getClient().updateBundleById(bundle.id, {
+          patches: [
+            {
+              baseBundleId: secondBase.id,
+              baseFileHash: secondBase.fileHash,
+              patchFileHash: "replacement-hash",
+              patchStorageUri: "storage://patches/replacement.patch",
+            },
+          ],
+        });
 
-        const updated = await getClient().getBundleById(bundle.id, context);
+        const updated = await getClient().getBundleById(bundle.id);
 
         expect(updated?.patches).toEqual([
           {

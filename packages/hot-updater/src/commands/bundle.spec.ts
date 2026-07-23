@@ -35,9 +35,9 @@ vi.mock("@/utils/printBanner", () => ({
   printBanner: mockPrintBanner,
 }));
 
-import { createDatabaseAdapterHarness } from "./databaseAdapter.testFixtures";
+import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 
-const databaseHarness = createDatabaseAdapterHarness();
+const databaseHarness = createDatabasePluginHarness();
 
 const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
@@ -57,7 +57,7 @@ const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
 });
 
 const stubLoadedConfig = () => {
-  mockCli.loadConfig.mockResolvedValue({ database: databaseHarness.adapter });
+  mockCli.loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
 };
 
 const expectExit = (code: number) => {

@@ -1,15 +1,15 @@
 import type {
-  CountBundlesDatabaseInput,
+  CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
+  DatabasePluginImplementation,
   DatabaseModel,
-  DatabaseAdapterImplementation,
   DatabaseWhere,
   DeleteDatabaseImplementationInput,
   FindManyDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabaseAdapter } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   Kysely,
   PostgresDialect,
@@ -130,7 +130,7 @@ const buildWhere = (
 
 const createPostgresImplementation = (
   db: Kysely<Database>,
-): DatabaseAdapterImplementation => ({
+): DatabasePluginImplementation => ({
   async create(input: CreateDatabaseImplementationInput) {
     switch (input.model) {
       case "bundles":
@@ -145,9 +145,9 @@ const createPostgresImplementation = (
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
-      case "channels":
+      case "bundle_events":
         return db
-          .insertInto("channels")
+          .insertInto("bundle_events")
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
@@ -177,14 +177,34 @@ const createPostgresImplementation = (
       }
     }
   },
-  async count(input: CountBundlesDatabaseInput) {
+  async count(input: CountDatabaseImplementationInput) {
     const where = buildWhere(input.where);
-    let query = db
-      .selectFrom("bundles")
-      .select(({ fn }) => fn.countAll<string>().as("count"));
-    if (where !== undefined) query = query.where(where);
-    const result = await query.executeTakeFirstOrThrow();
-    return Number(result.count);
+    switch (input.model) {
+      case "bundles": {
+        let query = db
+          .selectFrom("bundles")
+          .select(({ fn }) => fn.countAll<string>().as("count"));
+        if (where !== undefined) query = query.where(where);
+        const result = await query.executeTakeFirstOrThrow();
+        return Number(result.count);
+      }
+      case "bundle_patches": {
+        let query = db
+          .selectFrom("bundle_patches")
+          .select(({ fn }) => fn.countAll<string>().as("count"));
+        if (where !== undefined) query = query.where(where);
+        const result = await query.executeTakeFirstOrThrow();
+        return Number(result.count);
+      }
+      case "bundle_events": {
+        let query = db
+          .selectFrom("bundle_events")
+          .select(({ fn }) => fn.countAll<string>().as("count"));
+        if (where !== undefined) query = query.where(where);
+        const result = await query.executeTakeFirstOrThrow();
+        return Number(result.count);
+      }
+    }
   },
   async findOne(input: FindOneDatabaseImplementationInput) {
     const where = buildWhere(input.where);
@@ -194,8 +214,13 @@ const createPostgresImplementation = (
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
-      case "channels": {
-        let query = db.selectFrom("channels").selectAll();
+      case "bundle_patches": {
+        let query = db.selectFrom("bundle_patches").selectAll();
+        if (where !== undefined) query = query.where(where);
+        return (await query.executeTakeFirst()) ?? null;
+      }
+      case "bundle_events": {
+        let query = db.selectFrom("bundle_events").selectAll();
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
@@ -207,28 +232,40 @@ const createPostgresImplementation = (
       case "bundles": {
         let query = db.selectFrom("bundles").selectAll();
         if (where !== undefined) query = query.where(where);
-        if (input.sortBy !== undefined) {
-          query = query.orderBy(input.sortBy.field, input.sortBy.direction);
+        for (const clause of input.orderBy ??
+          (input.sortBy ? [input.sortBy] : [])) {
+          query = query.orderBy(clause.field, clause.direction);
         }
         return query.limit(input.limit).offset(input.offset).execute();
       }
       case "bundle_patches": {
         let query = db.selectFrom("bundle_patches").selectAll();
         if (where !== undefined) query = query.where(where);
-        if (input.sortBy !== undefined) {
-          query = query.orderBy(input.sortBy.field, input.sortBy.direction);
+        for (const clause of input.orderBy ??
+          (input.sortBy ? [input.sortBy] : [])) {
+          query = query.orderBy(clause.field, clause.direction);
         }
         return query.limit(input.limit).offset(input.offset).execute();
       }
-      case "channels": {
-        let query = db.selectFrom("channels").selectAll();
+      case "bundle_events": {
+        let query = db.selectFrom("bundle_events").selectAll();
         if (where !== undefined) query = query.where(where);
-        if (input.sortBy !== undefined) {
-          query = query.orderBy(input.sortBy.field, input.sortBy.direction);
+        for (const clause of input.orderBy ??
+          (input.sortBy ? [input.sortBy] : [])) {
+          query = query.orderBy(clause.field, clause.direction);
         }
         return query.limit(input.limit).offset(input.offset).execute();
       }
     }
+  },
+  async getChannels() {
+    const rows = await db
+      .selectFrom("bundles")
+      .select("channel")
+      .distinct()
+      .orderBy("channel", "asc")
+      .execute();
+    return rows.map(({ channel }) => channel);
   },
   transaction: (callback) =>
     db
@@ -240,9 +277,9 @@ const createPostgresImplementation = (
 });
 
 export const postgres = (config: PostgresConfig) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "postgres",
-    adapter: () => {
+    plugin: () => {
       const { dialect, ...poolConfig } = config;
       if (dialect !== undefined) {
         return createPostgresImplementation(new Kysely<Database>({ dialect }));

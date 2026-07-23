@@ -1,12 +1,16 @@
-import { setupDatabaseAdapterTestSuite } from "@hot-updater/test-utils";
-import { vi } from "vitest";
+import {
+  databaseAnalyticsSupport,
+  type BundleEventRow,
+} from "@hot-updater/plugin-core";
+import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { expect, it, vi } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
 
-// allow: SIZE_OK — hoisted PostgREST query/filter state machine for public adapter conformance.
+// allow: SIZE_OK — hoisted PostgREST query/filter state machine for public plugin conformance.
 const { createMockClient, resetMockClient } = vi.hoisted(() => {
   type Row = Record<string, unknown>;
-  type TableName = "bundle_patches" | "bundles" | "channels";
+  type TableName = "bundle_events" | "bundle_patches" | "bundles";
   type QueryError = { readonly message: string };
   type QueryResult = {
     readonly count: number | null;
@@ -15,9 +19,9 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
   };
 
   const rows: Record<TableName, Map<string, Row>> = {
+    bundle_events: new Map(),
     bundle_patches: new Map(),
     bundles: new Map(),
-    channels: new Map(),
   };
 
   const splitTopLevel = (value: string): readonly string[] => {
@@ -146,8 +150,10 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
     private head = false;
     private limitValue: number | undefined;
     private mode: "delete" | "insert" | "select" | "update" = "select";
-    private orderField = "id";
-    private ascending = true;
+    private readonly orderClauses: {
+      readonly field: string;
+      readonly ascending: boolean;
+    }[] = [];
     private payload: Row | undefined;
     private rangeStart = 0;
     private rangeEnd: number | undefined;
@@ -178,8 +184,10 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       return this;
     }
     order(field: string, options?: { readonly ascending?: boolean }) {
-      this.orderField = field;
-      this.ascending = options?.ascending ?? true;
+      this.orderClauses.push({
+        field,
+        ascending: options?.ascending ?? true,
+      });
       return this;
     }
     limit(value: number) {
@@ -214,8 +222,14 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       return [...rows[this.table].values()]
         .filter((row) => this.filter === undefined || matches(row, this.filter))
         .sort((left, right) => {
-          const result = compare(left[this.orderField], right[this.orderField]);
-          return this.ascending ? result : -result;
+          const clauses = this.orderClauses.length
+            ? this.orderClauses
+            : [{ field: "id", ascending: true }];
+          for (const clause of clauses) {
+            const result = compare(left[clause.field], right[clause.field]);
+            if (result !== 0) return clause.ascending ? result : -result;
+          }
+          return 0;
         });
     }
 
@@ -267,23 +281,9 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
         return { count: null, data: null, error: { message: "duplicate id" } };
       }
       if (
-        this.table === "channels" &&
-        [...rows.channels.values()].some(
-          (channel) => channel.name === payload.name,
-        )
-      ) {
-        return {
-          count: null,
-          data: null,
-          error: { message: "duplicate name" },
-        };
-      }
-      if (
-        (this.table === "bundles" &&
-          !rows.channels.has(String(payload.channel_id))) ||
-        (this.table === "bundle_patches" &&
-          (!rows.bundles.has(String(payload.bundle_id)) ||
-            !rows.bundles.has(String(payload.base_bundle_id))))
+        this.table === "bundle_patches" &&
+        (!rows.bundles.has(String(payload.bundle_id)) ||
+          !rows.bundles.has(String(payload.base_bundle_id)))
       ) {
         return { count: null, data: null, error: { message: "foreign key" } };
       }
@@ -302,6 +302,14 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
             data: bundles.map((bundle) => ({
               target_app_version: bundle.target_app_version,
             })),
+            error: null,
+          };
+        }
+        if (name === "get_channels") {
+          return {
+            data: [...new Set(bundles.map((bundle) => String(bundle.channel)))]
+              .sort()
+              .map((channel) => ({ channel })),
             error: null,
           };
         }
@@ -327,9 +335,9 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       },
     }),
     resetMockClient: () => {
+      rows.bundle_events.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
-      rows.channels.clear();
     },
   };
 });
@@ -338,10 +346,64 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: () => createMockClient(),
 }));
 
-setupDatabaseAdapterTestSuite({
-  name: "supabase database adapter v2",
+const bundleEvent = (id: string, receivedAtMs: number): BundleEventRow => ({
+  id,
+  type: "UNCHANGED",
+  install_id: "install-1",
+  user_id: null,
+  username: null,
+  from_bundle_id: null,
+  to_bundle_id: "bundle-1",
+  platform: "ios",
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "stable",
+  update_strategy: null,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: receivedAtMs,
+});
+
+it("advertises Analytics support", () => {
+  // Given / When
+  const plugin = supabaseDatabase({
+    supabaseUrl: "https://test.supabase.invalid",
+    supabaseServiceRoleKey: "test-service-role-key",
+  });
+
+  // Then
+  expect(plugin[databaseAnalyticsSupport]).toBe(true);
+});
+
+it("applies compound ordering to bundle event pages", async () => {
+  resetMockClient();
+  const plugin = supabaseDatabase({
+    supabaseUrl: "https://test.supabase.invalid",
+    supabaseServiceRoleKey: "test-service-role-key",
+  });
+  await Promise.all(
+    [bundleEvent("b", 100), bundleEvent("c", 50), bundleEvent("a", 100)].map(
+      (data) => plugin.create({ model: "bundle_events", data }),
+    ),
+  );
+
+  const result = await plugin.findMany({
+    model: "bundle_events",
+    orderBy: [
+      { field: "received_at_ms", direction: "asc" },
+      { field: "id", direction: "asc" },
+    ],
+    limit: 10,
+    offset: 0,
+  });
+
+  expect(result.map(({ id }) => id)).toEqual(["c", "a", "b"]);
+});
+
+setupDatabasePluginTestSuite({
+  name: "supabase fixed-model database plugin",
   migrate: () => undefined,
-  createAdapter: () =>
+  createPlugin: () =>
     supabaseDatabase({
       supabaseUrl: "https://test.supabase.invalid",
       supabaseServiceRoleKey: "test-service-role-key",

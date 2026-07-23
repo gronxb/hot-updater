@@ -15,7 +15,7 @@ docs/
 │       ├── custom/             # Self-Hosting (Custom) - Custom server setup guides
 │       ├── build-plugins/      # Build plugin documentation
 │       ├── storage-plugins/    # Storage plugin documentation
-│       ├── database-adapters/   # Database adapter documentation
+│       ├── database-plugins/   # Database plugin documentation
 │       ├── react-native-api/   # Client-side API reference
 │       ├── guides/             # Advanced topics and guides
 │       ├── cli-reference/      # CLI command documentation
@@ -220,8 +220,8 @@ Located in `content/docs/storage-plugins/`
 - firebase.mdx - Firebase Cloud Storage
 - standalone.mdx - Custom self-hosted storage
 
-### Database Adapters
-Located in `content/docs/database-adapters/`
+### Database Plugins
+Located in `content/docs/database-plugins/`
 - supabase.mdx - Supabase PostgreSQL
 - aws.mdx - S3 + CloudFront JSON storage
 - cloudflare.mdx - Cloudflare D1
@@ -295,7 +295,7 @@ When referencing documentation in code, comments, or other docs, use these patte
 - **Server frameworks**: `/docs/custom/frameworks/{framework}` (e.g., `/docs/custom/frameworks/hono`)
 - **Hosting platforms**: `/docs/custom/hosting/{platform}` (e.g., `/docs/custom/hosting/docker`)
 - **Storage plugins**: `/docs/storage-plugins/{provider}` (e.g., `/docs/storage-plugins/aws`)
-- **Database adapters**: `/docs/database-adapters/{provider}` (e.g., `/docs/database-adapters/cloudflare`)
+- **Database plugins**: `/docs/database-plugins/{provider}` (e.g., `/docs/database-plugins/cloudflare`)
 - **Build plugins**: `/docs/build-plugins/{bundler}` (e.g., `/docs/build-plugins/expo`)
 - **React Native API**: `/docs/react-native-api/{topic}` (e.g., `/docs/react-native-api/wrap`)
 - **Guides**: `/docs/guides/{topic}` (e.g., `/docs/guides/update-strategies`)

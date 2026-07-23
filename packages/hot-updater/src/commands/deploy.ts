@@ -15,7 +15,7 @@ import {
 import type {
   Bundle,
   DatabaseMutationClient,
-  DatabaseAdapter,
+  DatabasePlugin,
   NodeStoragePlugin,
   Platform,
 } from "@hot-updater/plugin-core";
@@ -248,7 +248,7 @@ const createAutoPatches = async ({
   bundleId,
   channel,
   database,
-  databaseAdapter,
+  databasePlugin,
   maxBaseBundles,
   platform,
   storagePlugin,
@@ -257,7 +257,7 @@ const createAutoPatches = async ({
   bundleId: string;
   channel: string;
   database: DatabaseMutationClient;
-  databaseAdapter: DatabaseAdapter;
+  databasePlugin: DatabasePlugin;
   maxBaseBundles: number;
   platform: Platform;
   storagePlugin: NodeStoragePlugin;
@@ -285,7 +285,7 @@ const createAutoPatches = async ({
           bundleId,
         },
         {
-          databaseAdapter,
+          databasePlugin,
           storagePlugin,
         },
         {
@@ -530,7 +530,7 @@ const getMultiPlatformDeploymentContext = async ({
 
 const deployPlatform = async ({
   database,
-  databaseAdapter,
+  databasePlugin,
   deferAutoPatches,
   deferredDatabase,
   options,
@@ -539,7 +539,7 @@ const deployPlatform = async ({
   platformCount,
 }: {
   database: DatabaseMutationClient;
-  databaseAdapter: DatabaseAdapter;
+  databasePlugin: DatabasePlugin;
   deferAutoPatches: boolean;
   deferredDatabase: DatabaseMutationClient;
   options: DeployOptions;
@@ -1019,7 +1019,7 @@ const deployPlatform = async ({
         },
       },
       {
-        title: `📦 Updating Database (${platformName} • ${databaseAdapter.name})`,
+        title: `📦 Updating Database (${platformName} • ${databasePlugin.name})`,
         task: async () => {
           if (!bundleId) {
             throw new Error("Bundle ID not found");
@@ -1057,7 +1057,7 @@ const deployPlatform = async ({
             }
             throw e;
           }
-          return `✅ Update Complete (${databaseAdapter.name})`;
+          return `✅ Update Complete (${databasePlugin.name})`;
         },
       },
     ]);
@@ -1088,7 +1088,7 @@ const deployPlatform = async ({
                   bundleId: confirmedBundleId,
                   channel,
                   database: deferAutoPatches ? deferredDatabase : database,
-                  databaseAdapter,
+                  databasePlugin,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
                   storagePlugin,
@@ -1198,8 +1198,8 @@ export const deploy = async (options: DeployOptions) => {
     console.error("No config found. Please run `hot-updater init` first.");
     process.exit(1);
   }
-  const databaseAdapter = databaseConfig.database;
-  const database = createDatabaseClient(databaseAdapter);
+  const databasePlugin = databaseConfig.database;
+  const database = createDatabaseClient(databasePlugin);
 
   const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
 
@@ -1227,7 +1227,7 @@ export const deploy = async (options: DeployOptions) => {
     for (const [platformIndex, platform] of platforms.entries()) {
       const result = await deployPlatform({
         database: mutationDatabase,
-        databaseAdapter,
+        databasePlugin,
         deferAutoPatches: platforms.length > 1,
         deferredDatabase: database,
         options,
@@ -1265,6 +1265,6 @@ export const deploy = async (options: DeployOptions) => {
       throw error;
     }
   } finally {
-    await databaseAdapter.onUnmount?.();
+    await databasePlugin.onUnmount?.();
   }
 };

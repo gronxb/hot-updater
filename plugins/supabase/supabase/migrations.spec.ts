@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 const rlsMigrationPath = path.resolve(
   "plugins/supabase/supabase/migrations/20260520014100_hot-updater_rls.sql",
 );
-const databaseV2MigrationPath = path.resolve(
-  "plugins/supabase/supabase/migrations/20260713000000_hot-updater_0.36.0.sql",
+const databaseMigrationPath = path.resolve(
+  "plugins/supabase/supabase/migrations/20260713000000_hot-updater_0.38.0.sql",
 );
 const migrationsDir = path.dirname(rlsMigrationPath);
 
@@ -21,14 +21,14 @@ describe("Supabase RLS migration", () => {
     }
   });
 
-  it("runs database v2 after RLS hardening and reapplies function security", async () => {
+  it("runs the v0.38 migration after RLS hardening", async () => {
     const migrations = (await fs.readdir(migrationsDir))
       .filter((file) => file.endsWith(".sql"))
       .sort();
 
-    expect(migrations.at(-1)).toBe(path.basename(databaseV2MigrationPath));
+    expect(migrations.at(-1)).toBe("20260713000000_hot-updater_0.38.0.sql");
 
-    const sql = await fs.readFile(databaseV2MigrationPath, "utf8");
+    const sql = await fs.readFile(databaseMigrationPath, "utf8");
     expect(sql).toContain("CREATE OR REPLACE FUNCTION public.get_channels");
     expect(sql).toContain("SET search_path = public, pg_catalog");
     expect(sql).not.toContain(
@@ -84,79 +84,13 @@ describe("Supabase RLS migration", () => {
     expect(sql).not.toContain("GRANT EXECUTE");
   });
 
-  it("backfills channels before adding a restrictive bundle relation", async () => {
-    const sql = await fs.readFile(databaseV2MigrationPath, "utf8");
+  it("keeps channels on bundles without introducing a channel relation", async () => {
+    const sql = await fs.readFile(databaseMigrationPath, "utf8");
 
-    expect(sql).toContain("CREATE TABLE IF NOT EXISTS public.channels");
-    expect(sql).toContain("SELECT DISTINCT b.channel, b.channel");
-    expect(sql).toContain("WHERE c.name = b.channel");
-    expect(sql).toContain(
-      "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name",
-    );
-    expect(sql).toContain("name text NOT NULL UNIQUE");
-    expect(sql).toContain("SET channel_id = c.id");
-    expect(sql).toContain("REFERENCES public.channels(id) ON DELETE RESTRICT");
-    expect(sql.indexOf("SELECT DISTINCT b.channel, b.channel")).toBeLessThan(
-      sql.indexOf("REFERENCES public.channels(id) ON DELETE RESTRICT"),
-    );
-    expect(sql).not.toContain("DROP COLUMN channel");
-    expect(sql).toContain("JOIN public.channels c ON c.id = b.channel_id");
-    expect(sql).toContain("c.name = target_channel");
-    expect(sql).toContain("SELECT c.name");
-    expect(sql).toContain(
-      "ALTER TABLE public.channels ENABLE ROW LEVEL SECURITY;",
-    );
-  });
-
-  it("reuses an existing stable channel id for a legacy bundle name", async () => {
-    const database = new PGlite();
-    databases.push(database);
-    await database.exec(`
-      create table public.bundles (
-        id uuid primary key,
-        channel text not null
-      );
-      create table public.channels (
-        id text primary key,
-        name text not null unique
-      );
-      insert into public.bundles (id, channel)
-      values ('00000000-0000-0000-0000-000000000001', 'production');
-      insert into public.channels (id, name)
-      values ('channel-production', 'production');
-    `);
-
-    await database.exec(`
-      insert into public.channels (id, name)
-      select distinct b.channel, b.channel
-      from public.bundles b
-      where not exists (
-        select 1 from public.channels c where c.name = b.channel
-      )
-      on conflict (id) do update set name = excluded.name;
-      alter table public.bundles add column channel_id text;
-      update public.bundles b
-      set channel_id = c.id
-      from public.channels c
-      where c.name = b.channel;
-    `);
-
-    const rows = await database.query<{
-      channel: string;
-      channel_id: string;
-      name: string;
-    }>(`
-      select b.channel, b.channel_id, c.name
-      from public.bundles b
-      join public.channels c on c.id = b.channel_id
-    `);
-    expect(rows.rows).toEqual([
-      {
-        channel: "production",
-        channel_id: "channel-production",
-        name: "production",
-      },
-    ]);
+    expect(sql).toContain("SELECT DISTINCT b.channel");
+    expect(sql).toContain("b.channel = target_channel");
+    expect(sql).not.toContain("bundle_channels");
+    expect(sql).not.toContain("channel_id");
   });
 
   it("keeps hardened ACLs while replacing channel-aware functions", async () => {
@@ -232,7 +166,7 @@ describe("Supabase RLS migration", () => {
       ) to hot_updater_reader;
     `);
 
-    await database.exec(await fs.readFile(databaseV2MigrationPath, "utf8"));
+    await database.exec(await fs.readFile(databaseMigrationPath, "utf8"));
 
     const channels = await database.query<{ channel: string }>(
       "select channel from public.get_channels()",

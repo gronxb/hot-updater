@@ -78,6 +78,33 @@
         { "fieldPath": "platform", "order": "ASCENDING" },
         { "fieldPath": "id", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bundle_events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "install_id", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "received_at_ms", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

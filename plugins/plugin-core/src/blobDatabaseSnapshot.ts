@@ -1,16 +1,11 @@
 import { BlobDatabaseSnapshotError } from "./blobDatabaseErrors";
 import {
-  blobArray,
-  blobBoolean,
-  blobNullableString,
-  blobNumber,
-  blobPlatform,
-  blobProperty,
-  blobRecord,
-  blobString,
-  blobStringArray,
-} from "./blobDatabaseValue";
-import type { BundlePatchRow, BundleRow, ChannelRow } from "./types";
+  parseBundleEventRow,
+  parseBundleRow,
+  parsePatchRow,
+} from "./blobDatabaseSnapshotRows";
+import { blobArray, blobProperty, blobRecord } from "./blobDatabaseValue";
+import type { BundleEventRow, BundlePatchRow, BundleRow } from "./types";
 
 export const BLOB_DATABASE_SNAPSHOT_KEY =
   "_hot-updater/database/v2.json" as const;
@@ -21,100 +16,15 @@ export type BlobDatabaseSnapshot = {
   readonly version: 2;
   readonly bundles: readonly BundleRow[];
   readonly bundle_patches: readonly BundlePatchRow[];
-  readonly channels: readonly ChannelRow[];
+  readonly bundle_events: readonly BundleEventRow[];
 };
 
 export const emptyBlobDatabaseSnapshot = (): BlobDatabaseSnapshot => ({
   version: 2,
   bundles: [],
   bundle_patches: [],
-  channels: [],
+  bundle_events: [],
 });
-
-const parseBundleRow = (
-  value: unknown,
-  source: string,
-  channelNameById: ReadonlyMap<string, string>,
-  channelIdByName: ReadonlyMap<string, string>,
-): BundleRow => {
-  const input = blobRecord(value, source);
-  const channelValue = blobProperty(input, "channel");
-  const channelIdValue = blobProperty(input, "channel_id");
-  const storedChannel =
-    channelValue === undefined ? undefined : blobString(channelValue, source);
-  const storedChannelId =
-    channelIdValue === undefined
-      ? undefined
-      : blobString(channelIdValue, source);
-  const channel =
-    storedChannel ??
-    channelNameById.get(blobString(channelIdValue, source)) ??
-    blobString(channelIdValue, source);
-  const channelId = storedChannelId ?? channelIdByName.get(channel) ?? channel;
-  return {
-    id: blobString(blobProperty(input, "id"), source),
-    platform: blobPlatform(blobProperty(input, "platform"), source),
-    should_force_update: blobBoolean(
-      blobProperty(input, "should_force_update"),
-      source,
-    ),
-    enabled: blobBoolean(blobProperty(input, "enabled"), source),
-    file_hash: blobString(blobProperty(input, "file_hash"), source),
-    git_commit_hash: blobNullableString(
-      blobProperty(input, "git_commit_hash"),
-      source,
-    ),
-    message: blobNullableString(blobProperty(input, "message"), source),
-    channel,
-    channel_id: channelId,
-    storage_uri: blobString(blobProperty(input, "storage_uri"), source),
-    target_app_version: blobNullableString(
-      blobProperty(input, "target_app_version"),
-      source,
-    ),
-    fingerprint_hash: blobNullableString(
-      blobProperty(input, "fingerprint_hash"),
-      source,
-    ),
-    metadata: blobProperty(input, "metadata"),
-    rollout_cohort_count: blobNumber(
-      blobProperty(input, "rollout_cohort_count"),
-      source,
-    ),
-    target_cohorts: blobStringArray(
-      blobProperty(input, "target_cohorts"),
-      source,
-    ),
-    manifest_storage_uri: blobNullableString(
-      blobProperty(input, "manifest_storage_uri"),
-      source,
-    ),
-    manifest_file_hash: blobNullableString(
-      blobProperty(input, "manifest_file_hash"),
-      source,
-    ),
-    asset_base_storage_uri: blobNullableString(
-      blobProperty(input, "asset_base_storage_uri"),
-      source,
-    ),
-  };
-};
-
-const parsePatchRow = (value: unknown, source: string): BundlePatchRow => {
-  const input = blobRecord(value, source);
-  return {
-    id: blobString(blobProperty(input, "id"), source),
-    bundle_id: blobString(blobProperty(input, "bundle_id"), source),
-    base_bundle_id: blobString(blobProperty(input, "base_bundle_id"), source),
-    base_file_hash: blobString(blobProperty(input, "base_file_hash"), source),
-    patch_file_hash: blobString(blobProperty(input, "patch_file_hash"), source),
-    patch_storage_uri: blobString(
-      blobProperty(input, "patch_storage_uri"),
-      source,
-    ),
-    order_index: blobNumber(blobProperty(input, "order_index"), source),
-  };
-};
 
 export const parseBlobDatabaseSnapshot = (
   value: unknown,
@@ -124,33 +34,19 @@ export const parseBlobDatabaseSnapshot = (
   if (blobProperty(input, "version") !== 2) {
     throw new BlobDatabaseSnapshotError(source);
   }
-  const channels = blobArray(blobProperty(input, "channels"), source).map(
-    (row) => {
-      const channel = blobRecord(row, source);
-      const id = blobString(blobProperty(channel, "id"), source);
-      const name = blobProperty(channel, "name");
-      return {
-        id,
-        name: blobString(name === undefined ? id : name, source),
-      };
-    },
-  );
-  const channelNameById = new Map(
-    channels.map(({ id, name }) => [id, name] as const),
-  );
-  const channelIdByName = new Map(
-    channels.map(({ id, name }) => [name, id] as const),
-  );
   const snapshot = normalizeBlobDatabaseSnapshot({
     version: 2,
     bundles: blobArray(blobProperty(input, "bundles"), source).map((row) =>
-      parseBundleRow(row, source, channelNameById, channelIdByName),
+      parseBundleRow(row, source),
     ),
     bundle_patches: blobArray(
       blobProperty(input, "bundle_patches"),
       source,
     ).map((row) => parsePatchRow(row, source)),
-    channels,
+    bundle_events: blobArray(
+      blobProperty(input, "bundle_events") ?? [],
+      source,
+    ).map((row) => parseBundleEventRow(row, source)),
   });
   validateSnapshotRelations(snapshot, source);
   return snapshot;
@@ -160,23 +56,13 @@ const validateSnapshotRelations = (
   snapshot: BlobDatabaseSnapshot,
   source: string,
 ): void => {
-  const channelNamesById = new Map(
-    snapshot.channels.map(({ id, name }) => [id, name] as const),
-  );
-  const channelIds = new Set(channelNamesById.keys());
-  const channelNames = new Set(snapshot.channels.map(({ name }) => name));
   const bundleIds = new Set(snapshot.bundles.map(({ id }) => id));
   const patchIds = new Set(snapshot.bundle_patches.map(({ id }) => id));
+  const eventIds = new Set(snapshot.bundle_events.map(({ id }) => id));
   if (
-    channelIds.size !== snapshot.channels.length ||
-    channelNames.size !== snapshot.channels.length ||
     bundleIds.size !== snapshot.bundles.length ||
     patchIds.size !== snapshot.bundle_patches.length ||
-    snapshot.bundles.some(
-      ({ channel, channel_id }) =>
-        !channelIds.has(channel_id) ||
-        channelNamesById.get(channel_id) !== channel,
-    ) ||
+    eventIds.size !== snapshot.bundle_events.length ||
     snapshot.bundle_patches.some(
       ({ base_bundle_id, bundle_id }) =>
         !bundleIds.has(bundle_id) || !bundleIds.has(base_bundle_id),
@@ -199,7 +85,9 @@ export const normalizeBlobDatabaseSnapshot = (
       left.order_index - right.order_index ||
       left.id.localeCompare(right.id),
   ),
-  channels: [...snapshot.channels].sort((left, right) =>
-    left.id.localeCompare(right.id),
+  bundle_events: [...snapshot.bundle_events].sort(
+    (left, right) =>
+      left.received_at_ms - right.received_at_ms ||
+      left.id.localeCompare(right.id),
   ),
 });

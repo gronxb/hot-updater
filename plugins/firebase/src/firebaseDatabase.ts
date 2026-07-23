@@ -1,14 +1,23 @@
 import {
-  createDatabaseAdapter,
-  type DatabaseAdapterImplementation,
+  createDatabasePlugin,
+  type DatabaseWhereOperator,
+  type DatabasePluginImplementation,
+  type FindManyDatabaseImplementationInput,
   resolveUpdateInfoFromBundles,
-  type TransactionDatabaseAdapterImplementation,
+  type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import admin from "firebase-admin";
+import type {
+  CollectionReference,
+  DocumentData,
+  Query,
+  WhereFilterOp,
+} from "firebase-admin/firestore";
 
 import {
+  parseFirebaseBundleEventRow,
   parseFirebaseBundleRow,
-  parseFirebaseChannelRow,
+  parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
 import {
   createFirebaseDatabaseCollections,
@@ -24,11 +33,67 @@ import {
 import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
 
 type FirebaseMutation<TResult> = (
-  database: TransactionDatabaseAdapterImplementation,
+  database: TransactionDatabasePluginImplementation,
 ) => Promise<TResult>;
 
+type FirebaseBundleEventsFindManyInput = Extract<
+  FindManyDatabaseImplementationInput,
+  { readonly model: "bundle_events" }
+>;
+
+const FIREBASE_WHERE_OPERATORS: Partial<
+  Record<DatabaseWhereOperator, WhereFilterOp>
+> = {
+  eq: "==",
+  ne: "!=",
+  lt: "<",
+  lte: "<=",
+  gt: ">",
+  gte: ">=",
+  in: "in",
+  not_in: "not-in",
+};
+
+const supportsFirebaseBundleEventQuery = (
+  input: FirebaseBundleEventsFindManyInput,
+): boolean => {
+  if (input.distinctOn !== undefined) return false;
+  const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : []);
+  if (orderBy.some((clause) => clause.nulls !== undefined)) return false;
+  return (input.where ?? []).every((condition) => {
+    if (condition.connector === "OR") return false;
+    if ("mode" in condition && condition.mode === "insensitive") return false;
+    const operator = condition.operator ?? "eq";
+    return FIREBASE_WHERE_OPERATORS[operator] !== undefined;
+  });
+};
+
+const loadFirebaseBundleEvents = async (
+  collection: CollectionReference<DocumentData>,
+  input: FirebaseBundleEventsFindManyInput,
+) => {
+  let query: Query<DocumentData> = collection;
+  for (const condition of input.where ?? []) {
+    const operator = condition.operator ?? "eq";
+    const firestoreOperator = FIREBASE_WHERE_OPERATORS[operator];
+    if (firestoreOperator === undefined) throw new Error("Unsupported query");
+    query = query.where(condition.field, firestoreOperator, condition.value);
+  }
+  const orderBy = input.orderBy ?? (input.sortBy ? [input.sortBy] : []);
+  for (const clause of orderBy) {
+    query = query.orderBy(clause.field, clause.direction);
+  }
+  const snapshot = await query.offset(input.offset).limit(input.limit).get();
+  return snapshot.docs.map((document) =>
+    parseFirebaseBundleEventRow(
+      document.data(),
+      `bundle_events/${document.id}`,
+    ),
+  );
+};
+
 const exactId = (
-  input: Parameters<DatabaseAdapterImplementation["findOne"]>[0],
+  input: Parameters<DatabasePluginImplementation["findOne"]>[0],
 ): string | undefined => {
   if (input.where?.length !== 1) return undefined;
   const [condition] = input.where;
@@ -40,9 +105,9 @@ const exactId = (
 };
 
 export const firebaseDatabase = (config: admin.AppOptions) =>
-  createDatabaseAdapter({
+  createDatabasePlugin({
     name: "firebaseDatabase",
-    adapter: (): DatabaseAdapterImplementation => {
+    plugin: (): DatabasePluginImplementation => {
       const existingApp = admin.apps.find((app) => app !== null);
       const app = existingApp ?? admin.initializeApp(config);
       const db = admin.firestore(app);
@@ -61,12 +126,14 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
 
       const mutate = async <TResult>(
         operation: FirebaseMutation<TResult>,
+        includeBundleEvents = false,
       ): Promise<TResult> => {
         await ensureMigrated();
         return db.runTransaction(async (transaction) => {
           const before = await loadFirebaseTransactionSnapshot(
             transaction,
             collections,
+            { includeBundleEvents },
           );
           const after = cloneFirebaseDatabaseSnapshot(before);
           const result = await operation(createFirebaseDatabaseState(after));
@@ -82,47 +149,100 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
 
       const read = async <TResult>(
         operation: FirebaseMutation<TResult>,
+        includeBundleEvents = false,
       ): Promise<TResult> => {
         await ensureMigrated();
-        const snapshot = await loadFirebaseDatabaseSnapshot(collections);
+        const snapshot = await loadFirebaseDatabaseSnapshot(collections, {
+          includeBundleEvents,
+        });
         return operation(createFirebaseDatabaseState(snapshot));
       };
 
       return {
-        create: (input) => mutate((database) => database.create(input)),
+        create: async (input) => {
+          if (input.model !== "bundle_events") {
+            return mutate((database) => database.create(input));
+          }
+          await ensureMigrated();
+          await collections.bundleEvents.doc(input.data.id).create(input.data);
+          return input.data;
+        },
         update: (input) => mutate((database) => database.update(input)),
         delete: (input) => mutate((database) => database.delete(input)),
-        count: (input) => read((database) => database.count(input)),
+        count: (input) =>
+          read(
+            (database) => database.count(input),
+            input.model === "bundle_events",
+          ),
         findOne: async (input) => {
           const id = exactId(input);
           if (id === undefined) {
-            return read((database) => database.findOne(input));
+            return read(
+              (database) => database.findOne(input),
+              input.model === "bundle_events",
+            );
           }
           await ensureMigrated();
-          if (input.model === "bundles") {
-            const document = await collections.bundles.doc(id).get();
-            return document.exists
-              ? parseFirebaseBundleRow(
-                  document.data(),
-                  `bundles/${document.id}`,
-                )
-              : null;
+          switch (input.model) {
+            case "bundles": {
+              const document = await collections.bundles.doc(id).get();
+              return document.exists
+                ? parseFirebaseBundleRow(
+                    document.data(),
+                    `bundles/${document.id}`,
+                  )
+                : null;
+            }
+            case "bundle_patches": {
+              const document = await collections.bundlePatches.doc(id).get();
+              return document.exists
+                ? parseFirebasePatchRow(
+                    document.data(),
+                    `bundle_patches/${document.id}`,
+                  )
+                : null;
+            }
+            case "bundle_events": {
+              const document = await collections.bundleEvents.doc(id).get();
+              return document.exists
+                ? parseFirebaseBundleEventRow(
+                    document.data(),
+                    `bundle_events/${document.id}`,
+                  )
+                : null;
+            }
           }
-          const document = await collections.channels.doc(id).get();
-          return document.exists
-            ? parseFirebaseChannelRow(document.data(), document.id)
-            : null;
         },
-        findMany: (input) => read((database) => database.findMany(input)),
-        getUpdateInfo: async (args, context) => {
+        findMany: async (input) => {
+          if (
+            input.model !== "bundle_events" ||
+            !supportsFirebaseBundleEventQuery(input)
+          ) {
+            return read(
+              (database) => database.findMany(input),
+              input.model === "bundle_events",
+            );
+          }
+          await ensureMigrated();
+          return loadFirebaseBundleEvents(collections.bundleEvents, input);
+        },
+        getChannels: async () => {
+          await ensureMigrated();
+          const snapshot = await collections.bundles.select("channel").get();
+          return [
+            ...new Set(
+              snapshot.docs.map((document) => String(document.get("channel"))),
+            ),
+          ].sort();
+        },
+        getUpdateInfo: async (args) => {
           await ensureMigrated();
           return resolveUpdateInfoFromBundles({
             args,
             bundles: await loadFirebaseUpdateBundles(collections, args),
-            context,
           });
         },
-        transaction: (callback) => mutate(callback),
+        transaction: (callback) => mutate(callback, true),
       };
     },
   });

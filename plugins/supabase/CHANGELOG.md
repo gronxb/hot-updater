@@ -1,5 +1,12 @@
 # @hot-updater/supabase
 
+## Unreleased
+
+### Patch Changes
+
+- Disable Analytics for Supabase until its plugin satisfies the complete
+  bundle-event contract.
+
 ## 0.35.3
 
 ### Patch Changes
