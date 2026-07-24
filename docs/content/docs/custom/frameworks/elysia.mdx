@@ -78,18 +78,24 @@ under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled.
 Event ingestion and Analytics query endpoints are mounted when
 `routes.analytics` is enabled and the database supports Analytics:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/hot-updater/version` | Get server version |
-| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
-| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
-| POST | `/hot-updater/events` | Record untrusted client Analytics telemetry |
-| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
-| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
-| POST | `/hot-updater/api/bundles` | Create bundles |
-| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
-| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
-| GET | `/hot-updater/api/bundles/channels` | List all channels |
+| Method | Endpoint                                                                              | Description                                                         |
+| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
+| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
+| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
+| POST   | `/hot-updater/events`                                                                 | Record untrusted client Analytics telemetry                         |
+| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
+| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
+| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
+| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
+| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
+| GET    | `/hot-updater/api/bundles/channels`                                                   | List all channels                                                   |
+| GET    | `/hot-updater/api/bundles/:id/events/summary`                                         | Get bundle event summary                                            |
+| GET    | `/hot-updater/api/bundles/:id/events/analytics`                                       | Get bundle event Analytics                                          |
+| GET    | `/hot-updater/api/installations`                                                      | Search installations                                                |
+| GET    | `/hot-updater/api/installations/overview`                                             | Get installation overview                                           |
+| GET    | `/hot-updater/api/installations/active`                                               | Get active installations                                            |
+| GET    | `/hot-updater/api/installations/:installId/events`                                    | Get installation history                                            |
 
 ## React Native Setup
 

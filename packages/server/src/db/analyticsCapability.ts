@@ -21,7 +21,7 @@ export const warnAnalyticsRoutesUnavailable = (api: object): void => {
   if (warnedAnalyticsAPIs.has(api)) return;
   warnedAnalyticsAPIs.add(api);
   console.warn(
-    "Hot Updater Analytics routes are enabled, but the configured database does not expose Analytics.",
+    "Hot Updater Analytics routes are enabled, but the configured database or upstream does not expose the requested Analytics route.",
   );
 };
 
