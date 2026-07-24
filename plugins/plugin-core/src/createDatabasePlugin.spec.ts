@@ -1,843 +1,404 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { Bundle, GetBundlesArgs, RequestEnvContext } from "./types";
+import {
+  databaseAnalyticsSupport,
+  type DatabasePluginImplementation,
+} from "./types";
 
-const baseBundle: Bundle = {
-  id: "0195a408-8f13-7d9b-8df4-123456789abc",
-  channel: "production",
-  platform: "ios",
+class UnimplementedPluginMethodError extends Error {}
+
+const unimplemented = async (): Promise<never> => {
+  throw new UnimplementedPluginMethodError();
+};
+
+const createMethods = () => ({
+  create: unimplemented,
+  update: unimplemented,
+  delete: unimplemented,
+  count: unimplemented,
+  findOne: unimplemented,
+  findMany: unimplemented,
+});
+
+const bundleRow = {
+  id: "bundle-1",
+  platform: "ios" as const,
+  should_force_update: false,
   enabled: true,
-  shouldForceUpdate: false,
-  fileHash: "hash",
-  storageUri: "s3://bucket/bundle.zip",
-  gitCommitHash: "deadbeef",
-  message: "Initial message",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  rolloutCohortCount: 1000,
-  targetCohorts: ["device-1", "device-2"],
+  file_hash: "hash-1",
+  git_commit_hash: null,
+  message: null,
+  channel: "production",
+  storage_uri: "storage://bundle-1.zip",
+  target_app_version: "1.0.0",
+  fingerprint_hash: null,
+  metadata: {},
+  rollout_cohort_count: 1000,
+  target_cohorts: null,
+  manifest_storage_uri: null,
+  manifest_file_hash: null,
+  asset_base_storage_uri: null,
+};
+
+const bundleEventRow = {
+  id: "01976b57-48d2-7e1b-8ee0-9cbf4b3f0001",
+  type: "UPDATE_APPLIED" as const,
+  install_id: "install-1",
+  user_id: null,
+  username: null,
+  from_bundle_id: "bundle-0",
+  to_bundle_id: "bundle-1",
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "default",
+  update_strategy: "appVersion" as const,
+  fingerprint_hash: null,
+  sdk_version: "0.37.0",
+  received_at_ms: 1_725_000_000_000,
 };
 
 describe("createDatabasePlugin", () => {
-  it("replaces targetCohorts instead of merging array items", async () => {
-    const commitBundle = vi.fn();
-
+  it("returns a plugin object from a directly configured plugin", () => {
     const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, {
-      targetCohorts: ["device-2"],
+      name: "memory",
+      plugin: createMethods,
     });
-    await plugin.commitBundle();
 
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            targetCohorts: ["device-2"],
-          },
-        },
-      ],
-    });
+    expect(typeof plugin).toBe("object");
+    expect(plugin.name).toBe("memory");
   });
 
-  it("preserves pending updates while allowing targetCohorts to be cleared", async () => {
-    const commitBundle = vi.fn();
-
+  it("advertises Analytics support for record plugins", () => {
+    // Given
     const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.updateBundle(baseBundle.id, { targetCohorts: null });
-    await plugin.commitBundle();
-
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            enabled: false,
-            targetCohorts: null,
-          },
-        },
-      ],
+      name: "memory",
+      plugin: createMethods,
     });
+
+    // When
+    const capability = plugin[databaseAnalyticsSupport];
+
+    // Then
+    expect(capability).toBe(true);
   });
 
-  it("preserves pending changes after a failed commit", async () => {
-    const getBundleById = vi.fn(async (bundleId: string) =>
-      bundleId === baseBundle.id ? baseBundle : null,
-    );
-    const commitBundle = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("commit failed"))
-      .mockResolvedValueOnce(undefined);
-
+  it("calls the provider-native channel aggregate without request context", async () => {
+    // Given
+    const getChannels = vi.fn(async () => ["preview", "production"]);
     const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
+      name: "memory",
+      plugin: () => ({ ...createMethods(), getChannels }),
+    });
 
-    await plugin.updateBundle(baseBundle.id, {
-      enabled: false,
-    });
-    await expect(plugin.commitBundle()).rejects.toThrow("commit failed");
-    await plugin.commitBundle();
+    // When
+    const channels = await plugin.getChannels?.();
 
-    expect(getBundleById).toHaveBeenCalledTimes(1);
-    expect(commitBundle).toHaveBeenNthCalledWith(1, {
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            enabled: false,
-          },
-        },
-      ],
-    });
-    expect(commitBundle).toHaveBeenNthCalledWith(2, {
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            enabled: false,
-          },
-        },
-      ],
-    });
+    // Then
+    expect(channels).toEqual(["preview", "production"]);
+    expect(getChannels).toHaveBeenCalledWith();
   });
 
-  it("stages no-context updates without keeping read-only cache entries", async () => {
-    const getBundleById = vi.fn(async (bundleId: string) =>
-      bundleId === baseBundle.id ? baseBundle : null,
-    );
-    const commitBundle = vi.fn();
-
+  it("calls provider CRUD with only the record input", async () => {
+    // Given
+    const create = vi.fn(async () => bundleRow);
     const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
-
-    await expect(plugin.getBundleById(baseBundle.id)).resolves.toStrictEqual(
-      baseBundle,
-    );
-    await plugin.updateBundle(baseBundle.id, {
-      enabled: false,
+      name: "memory",
+      plugin: () => ({ ...createMethods(), create }),
     });
-    await plugin.commitBundle();
+    const input = { model: "bundles", data: bundleRow } as const;
 
-    expect(getBundleById).toHaveBeenCalledTimes(2);
-    expect(commitBundle).toHaveBeenCalledWith({
-      changedSets: [
-        {
-          operation: "update",
-          data: {
-            ...baseBundle,
-            enabled: false,
-          },
-        },
-      ],
-    });
+    // When
+    await plugin.create(input);
+
+    // Then
+    expect(create).toHaveBeenCalledWith(input);
   });
 
-  it("reads pending updates before commit in the same request context", async () => {
-    const getBundleById = vi.fn(async (bundleId: string) =>
-      bundleId === baseBundle.id ? baseBundle : null,
-    );
-    const context: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets.example.com",
-      },
-      request: new Request("https://updates.example.com"),
+  it("composes onUnmount without invoking it", async () => {
+    const onUnmount = vi.fn(async () => undefined);
+    const plugin = createDatabasePlugin({
+      name: "memory",
+      plugin: () => ({ ...createMethods(), onUnmount }),
+    });
+
+    expect(onUnmount).not.toHaveBeenCalled();
+    await expect(plugin.onUnmount?.()).resolves.toBeUndefined();
+    expect(onUnmount).toHaveBeenCalledOnce();
+  });
+
+  it("opens a callback-scoped transaction without request context", async () => {
+    const calls: unknown[] = [];
+    const transaction: NonNullable<
+      DatabasePluginImplementation["transaction"]
+    > = async (callback) => {
+      calls.push(callback);
+      return callback(createMethods());
     };
-
+    const createImplementation = (): DatabasePluginImplementation => ({
+      ...createMethods(),
+      transaction,
+    });
     const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
+      name: "memory",
+      plugin: createImplementation,
+    });
+
+    const callback = async () => "committed";
+    const result = await plugin.transaction?.(callback);
+
+    expect(result).toBe("committed");
+    expect(calls).toEqual([expect.any(Function)]);
+  });
+
+  it("passes default paging to findMany", async () => {
+    const inputs: { readonly limit?: number; readonly offset?: number }[] = [];
+    const plugin = createDatabasePlugin({
+      name: "memory",
+      plugin: () => ({
+        ...createMethods(),
+        findMany: async (input) => {
+          inputs.push(input);
+          return [];
+        },
       }),
-    })({})();
+    });
 
-    await expect(plugin.getBundleById(baseBundle.id, context)).resolves.toEqual(
-      baseBundle,
-    );
-    await plugin.updateBundle(baseBundle.id, { enabled: false }, context);
+    await plugin.findMany({ model: "bundles" });
 
-    await expect(plugin.getBundleById(baseBundle.id, context)).resolves.toEqual(
+    expect(inputs).toEqual([{ model: "bundles", limit: 100, offset: 0 }]);
+  });
+
+  it("passes select and generic orderBy/distinctOn through findMany", async () => {
+    const inputs: object[] = [];
+    const plugin = createDatabasePlugin({
+      name: "memory",
+      plugin: () => ({
+        ...createMethods(),
+        findMany: async (input) => {
+          inputs.push(input);
+          return [
+            { id: bundleEventRow.id, install_id: bundleEventRow.install_id },
+          ];
+        },
+      }),
+    });
+
+    const rows = await plugin.findMany({
+      model: "bundle_events",
+      select: ["id", "install_id"],
+      distinctOn: { fields: ["install_id"] },
+      orderBy: [
+        { field: "install_id", direction: "asc" },
+        { field: "received_at_ms", direction: "desc" },
+        { field: "id", direction: "desc" },
+      ],
+    });
+
+    expect(inputs).toEqual([
       {
-        ...baseBundle,
-        enabled: false,
+        model: "bundle_events",
+        select: ["id", "install_id"],
+        distinctOn: { fields: ["install_id"] },
+        orderBy: [
+          { field: "install_id", direction: "asc" },
+          { field: "received_at_ms", direction: "desc" },
+          { field: "id", direction: "desc" },
+        ],
+        limit: 100,
+        offset: 0,
       },
-    );
-    expect(getBundleById).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not cache no-context bundle reads across logical calls", async () => {
-    const nextBundle = {
-      ...baseBundle,
-      message: "Provider changed",
-    };
-    const getBundleById = vi
-      .fn()
-      .mockResolvedValueOnce(baseBundle)
-      .mockResolvedValueOnce(nextBundle);
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [nextBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await expect(plugin.getBundleById(baseBundle.id)).resolves.toEqual(
-      baseBundle,
-    );
-    await expect(plugin.getBundleById(baseBundle.id)).resolves.toEqual(
-      nextBundle,
-    );
-    expect(getBundleById).toHaveBeenCalledTimes(2);
-  });
-
-  it("overlays pending updates and deletes onto bundle lists before commit", async () => {
-    const deleteBundle = {
-      ...baseBundle,
-      id: "0195a408-8f13-7d9b-8df4-123456789abd",
-      message: "Delete me",
-    };
-    const getBundleById = vi.fn(async (bundleId: string) => {
-      if (bundleId === baseBundle.id) return baseBundle;
-      if (bundleId === deleteBundle.id) return deleteBundle;
-      return null;
-    });
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle, deleteBundle],
-          pagination: {
-            total: 2,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.deleteBundle(deleteBundle);
-
-    await expect(
-      plugin.getBundles({
-        limit: 10,
-        orderBy: { field: "id", direction: "asc" },
-      }),
-    ).resolves.toMatchObject({
-      data: [
-        {
-          ...baseBundle,
-          enabled: false,
-        },
-      ],
-    });
-  });
-
-  it("removes pending updates that no longer match bundle list filters", async () => {
-    const context: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets.example.com",
-      },
-      request: new Request("https://updates.example.com"),
-    };
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false }, context);
-
-    await expect(
-      plugin.getBundles(
-        {
-          limit: 10,
-          where: { enabled: true },
-        },
-        context,
-      ),
-    ).resolves.toMatchObject({
-      data: [],
-      pagination: {
-        total: 0,
-        totalPages: 0,
-      },
-    });
-  });
-
-  it("adds pending updates that now match bundle list filters", async () => {
-    const disabledBundle = {
-      ...baseBundle,
-      enabled: false,
-    };
-    const context: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets.example.com",
-      },
-      request: new Request("https://updates.example.com"),
-    };
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === disabledBundle.id ? disabledBundle : null,
-        getBundles: async () => ({
-          data: [],
-          pagination: {
-            total: 0,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 0,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.updateBundle(disabledBundle.id, { enabled: true }, context);
-
-    await expect(
-      plugin.getBundles(
-        {
-          limit: 10,
-          where: { enabled: true },
-        },
-        context,
-      ),
-    ).resolves.toMatchObject({
-      data: [baseBundle],
-      pagination: {
-        total: 1,
-        totalPages: 1,
-      },
-    });
-  });
-
-  it("backfills bundle lists after pending deletes on a page boundary", async () => {
-    const deletedBundle = {
-      ...baseBundle,
-      id: "0195a408-8f13-7d9b-8df4-123456789abd",
-      message: "Delete me",
-    };
-    const nextBundle = {
-      ...baseBundle,
-      id: "0195a408-8f13-7d9b-8df4-123456789abe",
-      message: "Backfill me",
-    };
-    const bundles = [baseBundle, deletedBundle, nextBundle];
-    const getBundles = vi.fn(async (options) => ({
-      data: bundles.slice(0, options.limit),
-      pagination: {
-        total: bundles.length,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        currentPage: 1,
-        totalPages: 1,
-      },
-    }));
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundles.find((bundle) => bundle.id === bundleId) ?? null,
-        getBundles,
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.deleteBundle(deletedBundle);
-
-    await expect(
-      plugin.getBundles({
-        limit: 2,
-        orderBy: { field: "id", direction: "asc" },
-      }),
-    ).resolves.toMatchObject({
-      data: [baseBundle, nextBundle],
-      pagination: {
-        total: 2,
-        totalPages: 1,
-      },
-    });
-    expect(getBundles).toHaveBeenLastCalledWith({
-      limit: 3,
-      offset: 0,
-      orderBy: { field: "id", direction: "asc" },
-      where: undefined,
-    });
-  });
-
-  it("keeps pending inserts visible by id but out of provider-paginated lists", async () => {
-    const insertBundle = {
-      ...baseBundle,
-      id: "0195a408-8f13-7d9b-8df4-123456789abe",
-      message: "Inserted",
-    };
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.appendBundle(insertBundle);
-
-    await expect(plugin.getBundleById(insertBundle.id)).resolves.toEqual(
-      insertBundle,
-    );
-    await expect(plugin.getBundles({ limit: 10 })).resolves.toMatchObject({
-      data: [baseBundle],
-    });
-  });
-
-  it("clears pending unit-of-work state after a successful commit", async () => {
-    const persistedBundle = { ...baseBundle, enabled: false };
-    const getBundleById = vi
-      .fn()
-      .mockResolvedValueOnce(baseBundle)
-      .mockResolvedValueOnce(persistedBundle);
-    const commitBundle = vi.fn();
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false });
-    await plugin.commitBundle();
-
-    await expect(plugin.getBundleById(baseBundle.id)).resolves.toEqual(
-      persistedBundle,
-    );
-    expect(getBundleById).toHaveBeenCalledTimes(2);
-  });
-
-  it("keeps unit-of-work state isolated between request contexts", async () => {
-    const contextA: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets-a.example.com",
-      },
-      request: new Request("https://updates-a.example.com"),
-    };
-    const contextB: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets-b.example.com",
-      },
-      request: new Request("https://updates-b.example.com"),
-    };
-    const getBundleById = vi.fn(async (bundleId: string) =>
-      bundleId === baseBundle.id ? baseBundle : null,
-    );
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await plugin.updateBundle(baseBundle.id, { enabled: false }, contextA);
-
-    await expect(
-      plugin.getBundleById(baseBundle.id, contextA),
-    ).resolves.toEqual({
-      ...baseBundle,
-      enabled: false,
-    });
-    await expect(
-      plugin.getBundleById(baseBundle.id, contextB),
-    ).resolves.toEqual(baseBundle);
-    expect(getBundleById).toHaveBeenCalledTimes(2);
-  });
-
-  it("forwards getUpdateInfo fast-path calls with context when provided", async () => {
-    const expected = {
-      fileHash: baseBundle.fileHash,
-      id: baseBundle.id,
-      message: baseBundle.message,
-      shouldForceUpdate: baseBundle.shouldForceUpdate,
-      status: "UPDATE" as const,
-      storageUri: baseBundle.storageUri,
-    };
-    const getUpdateInfo = vi.fn(async () => expected);
-    const args: GetBundlesArgs = {
-      _updateStrategy: "appVersion",
-      appVersion: "1.0.0",
-      bundleId: baseBundle.id,
-      platform: "ios",
-    };
-    const context: RequestEnvContext<{ assetHost: string }> = {
-      env: {
-        assetHost: "https://assets.example.com",
-      },
-      request: new Request("https://updates.example.com"),
-    };
-
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundleId === baseBundle.id ? baseBundle : null,
-        getBundles: async () => ({
-          data: [baseBundle],
-          pagination: {
-            total: 1,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 1,
-          },
-        }),
-        getChannels: async () => ["production"],
-        getUpdateInfo,
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await expect(plugin.getUpdateInfo?.(args, context)).resolves.toEqual(
-      expected,
-    );
-    expect(getUpdateInfo).toHaveBeenCalledWith(args, context);
-  });
-
-  it("rejects removed offset pagination on the public plugin API", async () => {
-    const plugin = createDatabasePlugin({
-      name: "test-plugin",
-      factory: () => ({
-        getBundleById: async () => null,
-        getBundles: async () => ({
-          data: [],
-          pagination: {
-            total: 0,
-            hasNextPage: false,
-            hasPreviousPage: false,
-            currentPage: 1,
-            totalPages: 0,
-          },
-        }),
-        getChannels: async () => [],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    await expect(
-      plugin.getBundles({ limit: 20, offset: 10 } as never),
-    ).rejects.toThrow(
-      "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
-    );
-  });
-
-  it("adapts cursor pagination for legacy database methods that still page by offset", async () => {
-    const bundles = [
-      { ...baseBundle, id: "bundle-300" },
-      { ...baseBundle, id: "bundle-200" },
-      { ...baseBundle, id: "bundle-100" },
-    ];
-
-    const plugin = createDatabasePlugin({
-      name: "legacy-plugin",
-      factory: () => ({
-        getBundleById: async (bundleId) =>
-          bundles.find((bundle) => bundle.id === bundleId) ?? null,
-        getBundles: async (options) => {
-          const offset = options.offset ?? 0;
-          const filtered = bundles
-            .filter((bundle) => {
-              if (options.where?.id?.lt) {
-                return bundle.id.localeCompare(options.where.id.lt) < 0;
-              }
-              if (options.where?.id?.gt) {
-                return bundle.id.localeCompare(options.where.id.gt) > 0;
-              }
-              return true;
-            })
-            .sort((a, b) => {
-              const result = a.id.localeCompare(b.id);
-              return options.orderBy?.direction === "asc" ? result : -result;
-            });
-          const page =
-            options.limit > 0
-              ? filtered.slice(offset, offset + options.limit)
-              : filtered.slice(offset);
-
-          return {
-            data: page,
-            pagination: {
-              total: filtered.length,
-              hasNextPage: offset + options.limit < filtered.length,
-              hasPreviousPage: offset > 0,
-              currentPage: Math.floor(offset / options.limit) + 1,
-              totalPages: Math.ceil(filtered.length / options.limit),
-            },
-          };
-        },
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
-      }),
-    })({})();
-
-    const firstPage = await plugin.getBundles({ limit: 2 });
-    const secondPage = await plugin.getBundles({
-      limit: 2,
-      cursor: {
-        after: firstPage.pagination.nextCursor ?? undefined,
-      },
-    });
-
-    expect(firstPage.data.map((bundle) => bundle.id)).toEqual([
-      "bundle-300",
-      "bundle-200",
     ]);
-    expect(firstPage.pagination.nextCursor).toBe("bundle-200");
-    expect(secondPage.data.map((bundle) => bundle.id)).toEqual(["bundle-100"]);
-    expect(secondPage.pagination.previousCursor).toBe("bundle-100");
-    expect(secondPage.pagination.currentPage).toBe(2);
+    expect(rows).toEqual([
+      { id: bundleEventRow.id, install_id: bundleEventRow.install_id },
+    ]);
   });
 
-  it("uses internal offset pagination when a stable page number is provided", async () => {
-    const bundles = Array.from({ length: 45 }, (_, index) => ({
-      ...baseBundle,
-      id: `bundle-${String(45 - index).padStart(3, "0")}`,
-    }));
-    const getBundles = vi.fn(async (options) => {
-      const filtered = bundles.slice();
-      const offset = options.offset ?? 0;
-      const page =
-        options.limit > 0
-          ? filtered.slice(offset, offset + options.limit)
-          : filtered.slice(offset);
-
-      return {
-        data: page,
-        pagination: {
-          total: filtered.length,
-          hasNextPage: offset + options.limit < filtered.length,
-          hasPreviousPage: offset > 0,
-          currentPage: Math.floor(offset / options.limit) + 1,
-          totalPages: Math.ceil(filtered.length / options.limit),
-        },
-      };
-    });
-
+  it("rejects invalid common operation inputs before provider execution", async () => {
+    const findMany = vi.fn(unimplemented);
+    const deleteRows = vi.fn(unimplemented);
+    const update = vi.fn(unimplemented);
     const plugin = createDatabasePlugin({
-      name: "page-aware-plugin",
-      factory: () => ({
-        supportsCursorPagination: true,
-        getBundleById: async (bundleId) =>
-          bundles.find((bundle) => bundle.id === bundleId) ?? null,
-        getBundles,
-        getChannels: async () => ["production"],
-        commitBundle: async () => undefined,
+      name: "memory",
+      plugin: () => ({
+        ...createMethods(),
+        findMany,
+        delete: deleteRows,
+        update,
       }),
-    })({})();
-
-    const pageTwo = await plugin.getBundles({
-      limit: 20,
-      page: 2,
-      cursor: {
-        after: "bundle-033",
-      },
     });
 
-    expect(getBundles).toHaveBeenCalledWith(
-      expect.objectContaining({
-        limit: 20,
-        offset: 20,
-        cursor: {
-          after: "bundle-033",
-        },
+    await expect(
+      plugin.findMany({ model: "bundles", select: [] }),
+    ).rejects.toMatchObject({
+      code: "empty-select",
+    });
+    await expect(
+      plugin.findMany({ model: "bundles", limit: -1 }),
+    ).rejects.toMatchObject({
+      code: "invalid-pagination",
+    });
+    await expect(
+      plugin.findMany({ model: "bundles", offset: 0.5 }),
+    ).rejects.toMatchObject({
+      code: "invalid-pagination",
+    });
+    await expect(
+      plugin.delete({ model: "bundles", where: [] }),
+    ).rejects.toMatchObject({
+      code: "empty-mutation-where",
+    });
+    await expect(
+      plugin.update({
+        model: "bundles",
+        where: [{ field: "channel", value: "production" }],
+        update: { enabled: false },
       }),
-    );
-    expect(pageTwo.data.map((bundle) => bundle.id)).toEqual([
-      "bundle-025",
-      "bundle-024",
-      "bundle-023",
-      "bundle-022",
-      "bundle-021",
-      "bundle-020",
-      "bundle-019",
-      "bundle-018",
-      "bundle-017",
-      "bundle-016",
-      "bundle-015",
-      "bundle-014",
-      "bundle-013",
-      "bundle-012",
-      "bundle-011",
-      "bundle-010",
-      "bundle-009",
-      "bundle-008",
-      "bundle-007",
-      "bundle-006",
-    ]);
-    expect(pageTwo.pagination.currentPage).toBe(2);
-    expect(pageTwo.pagination.previousCursor).toBe("bundle-025");
-    expect(pageTwo.pagination.nextCursor).toBe("bundle-006");
+    ).rejects.toMatchObject({ code: "invalid-update-selector" });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(deleteRows).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid orderBy and distinctOn combinations", async () => {
+    const plugin = createDatabasePlugin({
+      name: "memory",
+      plugin: () => ({ ...createMethods(), findMany: async () => [] }),
+    });
+
+    await expect(
+      plugin.findMany({
+        model: "bundles",
+        orderBy: [{ field: "metadata" as "id", direction: "asc" }],
+      }),
+    ).rejects.toMatchObject({ code: "invalid-query" });
+    await expect(
+      plugin.findMany({
+        model: "bundle_events",
+        distinctOn: { fields: ["install_id"] },
+      }),
+    ).rejects.toMatchObject({ code: "invalid-distinct" });
+    await expect(
+      plugin.findMany({
+        model: "bundle_events",
+        distinctOn: { fields: ["install_id"] },
+        orderBy: [{ field: "received_at_ms", direction: "desc" }],
+      }),
+    ).rejects.toMatchObject({ code: "invalid-distinct" });
+  });
+
+  it("rejects runtime model and field injection before provider execution", async () => {
+    const findMany = vi.fn(unimplemented);
+    const plugin = createDatabasePlugin({
+      name: "memory",
+      plugin: () => ({ ...createMethods(), findMany }),
+    });
+    const findManyOperation: unknown = Reflect.get(plugin, "findMany");
+    if (typeof findManyOperation !== "function") {
+      throw new Error("Expected the plugin findMany operation.");
+    }
+
+    await expect(
+      findManyOperation({ model: "bundles; DROP TABLE channels" }),
+    ).rejects.toMatchObject({ code: "invalid-model" });
+    await expect(
+      findManyOperation({
+        model: "bundles",
+        where: [{ field: "id) OR 1=1 --", value: "bundle-1" }],
+      }),
+    ).rejects.toMatchObject({ code: "invalid-field" });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported operation and model pairs at runtime", async () => {
+    const plugin = createDatabasePlugin({
+      name: "operation-matrix",
+      plugin: () => ({ ...createMethods() }),
+    });
+    const updateOperation = Reflect.get(plugin, "update") as Function;
+    const deleteOperation = Reflect.get(plugin, "delete") as Function;
+
+    await expect(
+      updateOperation({
+        model: "bundle_patches",
+        where: [{ field: "id", value: "patch-1" }],
+        update: { patch_storage_uri: "storage://patch-1" },
+      }),
+    ).rejects.toMatchObject({ code: "invalid-operation" });
+    await expect(
+      deleteOperation({
+        model: "bundle_events",
+        where: [{ field: "id", value: bundleEventRow.id }],
+      }),
+    ).rejects.toMatchObject({ code: "invalid-operation" });
+  });
+
+  it("rejects invalid provider result values", async () => {
+    const plugin = createDatabasePlugin({
+      name: "invalid-result",
+      plugin: () => ({
+        ...createMethods(),
+        findOne: async () => JSON.parse('{"id":42,"platform":"windows"}'),
+      }),
+    });
+
+    await expect(
+      plugin.findOne({
+        model: "bundles",
+        where: [{ field: "id", value: "bundle-1" }],
+        select: ["id"],
+      }),
+    ).rejects.toMatchObject({ code: "invalid-result" });
+  });
+
+  it("validates bundle event rows and distinct counts", async () => {
+    const plugin = createDatabasePlugin({
+      name: "event-memory",
+      plugin: () => ({
+        ...createMethods(),
+        create: async (input) => input.data,
+        count: async () => 1,
+      }),
+    });
+
+    await expect(
+      plugin.create({ model: "bundle_events", data: bundleEventRow }),
+    ).resolves.toEqual(bundleEventRow);
+    await expect(
+      plugin.count({
+        model: "bundle_events",
+        where: [{ field: "type", value: "UPDATE_APPLIED" }],
+        distinct: ["install_id"],
+      }),
+    ).resolves.toBe(1);
+  });
+
+  it("rejects incomplete or invalid row values before provider execution", async () => {
+    const create = vi.fn(unimplemented);
+    const update = vi.fn(unimplemented);
+    const plugin = createDatabasePlugin({
+      name: "memory",
+      plugin: () => ({ ...createMethods(), create, update }),
+    });
+    const createOperation = Reflect.get(plugin, "create") as Function;
+    const updateOperation = Reflect.get(plugin, "update") as Function;
+
+    await expect(
+      createOperation({
+        model: "bundles",
+        data: { channel: "production" },
+        select: ["id"],
+      }),
+    ).rejects.toMatchObject({ code: "invalid-data" });
+    await expect(
+      updateOperation({
+        model: "bundles",
+        where: [{ field: "id", value: bundleRow.id }],
+        update: { channel: undefined },
+      }),
+    ).rejects.toMatchObject({ code: "invalid-data" });
+    expect(create).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
   });
 });

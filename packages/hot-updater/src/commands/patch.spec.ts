@@ -1,35 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCli, mockDatabasePlugin, mockServer, mockStoragePlugin } =
-  vi.hoisted(() => {
-    const mockDatabasePlugin = {
-      onUnmount: vi.fn(),
-    };
-    const mockStoragePlugin = {
-      name: "mock-storage",
-    };
-    const mockServer = {
-      createBundleDiff: vi.fn(),
-    };
-    const mockCli = {
-      loadConfig: vi.fn(),
-      p: {
-        isCancel: vi.fn(),
-        log: {
-          error: vi.fn(),
-        },
-        note: vi.fn(),
-        outro: vi.fn(),
+const { mockCli, mockServer, mockStoragePlugin } = vi.hoisted(() => {
+  const mockStoragePlugin = {
+    name: "mock-storage",
+  };
+  const mockServer = {
+    createBundleDiff: vi.fn(),
+  };
+  const mockCli = {
+    loadConfig: vi.fn(),
+    p: {
+      isCancel: vi.fn(),
+      log: {
+        error: vi.fn(),
       },
-    };
+      note: vi.fn(),
+      outro: vi.fn(),
+    },
+  };
 
-    return {
-      mockCli,
-      mockDatabasePlugin,
-      mockServer,
-      mockStoragePlugin,
-    };
-  });
+  return {
+    mockCli,
+    mockServer,
+    mockStoragePlugin,
+  };
+});
 
 vi.mock("@hot-updater/cli-tools", () => ({
   loadConfig: mockCli.loadConfig,
@@ -48,19 +43,22 @@ vi.mock("@/utils/printBanner", () => ({
   printBanner: vi.fn(),
 }));
 
+import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 import { createPatch } from "./patch";
+
+const databaseHarness = createDatabasePluginHarness();
 
 describe("createPatch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    databaseHarness.reset();
 
     mockCli.p.isCancel.mockReturnValue(false);
-    mockDatabasePlugin.onUnmount.mockResolvedValue(undefined);
     mockServer.createBundleDiff.mockResolvedValue({
       id: "target-bundle",
     });
     mockCli.loadConfig.mockResolvedValue({
-      database: async () => mockDatabasePlugin,
+      database: databaseHarness.plugin,
       storage: async () => mockStoragePlugin,
     });
   });
@@ -88,7 +86,7 @@ describe("createPatch", () => {
         bundleId: "target-bundle",
       },
       {
-        databasePlugin: mockDatabasePlugin,
+        databasePlugin: databaseHarness.plugin,
         storagePlugin: mockStoragePlugin,
       },
       {
@@ -98,6 +96,6 @@ describe("createPatch", () => {
     expect(mockCli.p.outro).toHaveBeenCalledWith(
       "⚡ Patch Ready (target-bundle)",
     );
-    expect(mockDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
+    expect(databaseHarness.onUnmount).toHaveBeenCalledOnce();
   });
 });

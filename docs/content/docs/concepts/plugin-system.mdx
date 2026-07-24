@@ -32,6 +32,35 @@ Storage plugins expose explicit environment profiles:
 custom plugin authors only need the profile details when implementing their own
 storage provider.
 
+### Runtime-specific entrypoints
+
+Official providers expose server-only plugins from runtime subpaths. These
+entrypoints keep the provider-facing names consistent while adapting their
+configuration and implementation to the host runtime:
+
+| Runtime | Import | Exports |
+| --- | --- | --- |
+| Cloudflare Workers | `@hot-updater/cloudflare/worker` | `d1Database`, `r2Storage` |
+| AWS Lambda@Edge | `@hot-updater/aws/lambda` | `s3Database`, `s3Storage` |
+| Firebase Functions | `@hot-updater/firebase/functions` | `firebaseDatabase`, `firebaseStorage` |
+| Supabase Edge Functions | `@hot-updater/supabase/edge` | `supabaseDatabase`, `supabaseStorage` |
+
+For example, the Cloudflare Worker entrypoint uses native D1 and R2 bindings,
+the AWS Lambda entrypoint adds CloudFront URL signing, and the Firebase
+Functions entrypoint derives Admin SDK settings from the initialized runtime
+app. Root provider imports remain the deploy-time or universal surface.
+
+The runtime subpaths are a breaking boundary change for the pre-1.0 provider
+packages. Existing managed handler imports move from
+`@hot-updater/aws/lambda` and `@hot-updater/firebase/functions` to the
+corresponding `/handler` subpath. AWS Lambda storage moves from
+`awsLambdaEdgeStorage` or `s3LambdaEdgeStorage` at the provider root to
+`s3Storage` at `@hot-updater/aws/lambda`; its config type is renamed from
+`AwsLambdaEdgeStorageConfig` to `S3StorageConfig`. Supabase Edge factories move
+from their `supabaseEdgeFunction*` names to `supabaseDatabase` and
+`supabaseStorage` at `@hot-updater/supabase/edge`. Their config types are
+renamed to `SupabaseDatabaseConfig` and `SupabaseStorageConfig`.
+
 ### Supported Plugins
 
 - **`@hot-updater/supabase`**: Provides `supabaseStorage` functionality, leveraging Supabase for storage.

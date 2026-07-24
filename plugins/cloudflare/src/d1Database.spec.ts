@@ -1,427 +1,187 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
-import {
-  setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
-} from "@hot-updater/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { databaseAnalyticsSupport } from "@hot-updater/plugin-core";
+import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
 
-type D1Row = {
-  id: string;
-  channel: string;
-  enabled: number | boolean;
-  should_force_update: number | boolean;
-  file_hash: string;
-  git_commit_hash: string | null;
-  message: string | null;
-  platform: "ios" | "android";
-  target_app_version: string | null;
-  storage_uri: string;
-  fingerprint_hash: string | null;
-  metadata: string;
-  manifest_storage_uri?: string | null;
-  manifest_file_hash?: string | null;
-  asset_base_storage_uri?: string | null;
-  rollout_cohort_count: number | null;
-  target_cohorts: string | null;
+type RecordedQuery = {
+  readonly sql: string;
+  readonly params: readonly string[];
 };
 
-type D1PatchRow = {
-  id: string;
-  bundle_id: string;
-  base_bundle_id: string;
-  base_file_hash: string;
-  patch_file_hash: string;
-  patch_storage_uri: string;
-  order_index: number | null;
-};
-
-const { rows, patchRows } = vi.hoisted(() => ({
-  rows: new Map<string, D1Row>(),
-  patchRows: new Map<string, D1PatchRow>(),
-}));
-
-vi.mock("pg-minify", () => ({
-  default: (sql: string) => sql.replace(/\s+/g, " ").trim(),
-}));
-
-const createPage = <T>(results: T[]) => ({
-  async *iterPages() {
-    yield {
-      result: [{ results }],
-    };
-  },
-});
-
-const getFilteredRows = (sql: string, params: any[]) => {
-  let filteredRows = Array.from(rows.values());
-  let index = 0;
-
-  const consumeInValues = (pattern: RegExp) => {
-    const match = sql.match(pattern);
-    if (!match) {
-      return null;
-    }
-
-    const body = match[1] ?? "";
-    if (body.includes("json_each(")) {
-      const values = JSON.parse(String(params[index++])) as unknown;
-      return Array.isArray(values) ? values : [];
-    }
-
-    const count = (body.match(/\?/g) ?? []).length;
-    const values = params.slice(index, index + count);
-    index += count;
-    return values;
-  };
-
-  if (sql.includes("channel = ?")) {
-    const channel = params[index++];
-    filteredRows = filteredRows.filter((row) => row.channel === channel);
-  }
-
-  if (sql.includes("platform = ?")) {
-    const platform = params[index++];
-    filteredRows = filteredRows.filter((row) => row.platform === platform);
-  }
-
-  if (sql.includes("enabled = ?")) {
-    const enabled = Number(params[index++]);
-    filteredRows = filteredRows.filter(
-      (row) => Number(row.enabled) === enabled,
-    );
-  }
-
-  const idInValues = consumeInValues(/id IN \(([^)]+)\)/);
-  if (idInValues) {
-    filteredRows = filteredRows.filter((row) => idInValues.includes(row.id));
-  }
-
-  if (sql.includes("id = ?")) {
-    const id = params[index++];
-    filteredRows = filteredRows.filter((row) => row.id === id);
-  }
-
-  if (sql.includes("id > ?")) {
-    const id = params[index++];
-    filteredRows = filteredRows.filter((row) => row.id.localeCompare(id) > 0);
-  }
-
-  if (sql.includes("id >= ?")) {
-    const id = params[index++];
-    filteredRows = filteredRows.filter((row) => row.id.localeCompare(id) >= 0);
-  }
-
-  if (sql.includes("id < ?")) {
-    const id = params[index++];
-    filteredRows = filteredRows.filter((row) => row.id.localeCompare(id) < 0);
-  }
-
-  if (sql.includes("id <= ?")) {
-    const id = params[index++];
-    filteredRows = filteredRows.filter((row) => row.id.localeCompare(id) <= 0);
-  }
-
-  if (sql.includes("target_app_version IS NOT NULL")) {
-    filteredRows = filteredRows.filter(
-      (row) => row.target_app_version !== null,
-    );
-  }
-
-  if (sql.includes("target_app_version IS NULL")) {
-    filteredRows = filteredRows.filter(
-      (row) => row.target_app_version === null,
-    );
-  } else if (sql.includes("target_app_version = ?")) {
-    const targetAppVersion = params[index++];
-    filteredRows = filteredRows.filter(
-      (row) => row.target_app_version === targetAppVersion,
-    );
-  }
-
-  const targetAppVersionInValues = consumeInValues(
-    /target_app_version IN \(([^)]+)\)/,
-  );
-  if (targetAppVersionInValues) {
-    filteredRows = filteredRows.filter((row) =>
-      targetAppVersionInValues.includes(row.target_app_version),
-    );
-  }
-
-  if (sql.includes("fingerprint_hash IS NULL")) {
-    filteredRows = filteredRows.filter((row) => row.fingerprint_hash === null);
-  } else if (sql.includes("fingerprint_hash = ?")) {
-    const fingerprintHash = params[index++];
-    filteredRows = filteredRows.filter(
-      (row) => row.fingerprint_hash === fingerprintHash,
-    );
-  }
-
-  return { filteredRows, index };
-};
+const state = vi.hoisted<{
+  queries: RecordedQuery[];
+  results: unknown[];
+}>(() => ({ queries: [], results: [] }));
 
 vi.mock("cloudflare", () => ({
   default: class MockCloudflare {
-    d1 = {
+    readonly d1 = {
       database: {
         query: async (
           _databaseId: string,
-          {
-            sql,
-            params = [],
-          }: {
-            sql: string;
-            params?: any[];
-          },
+          input: { readonly sql: string; readonly params?: readonly string[] },
         ) => {
-          if (params.length > 100) {
-            throw new Error(
-              "D1_ERROR: too many SQL variables at offset 386: SQLITE_ERROR",
-            );
-          }
-
-          const normalizedSql = sql.replace(/\s+/g, " ").trim().toLowerCase();
-
-          if (
-            normalizedSql.startsWith("select count(*) as total from bundles")
-          ) {
-            const { filteredRows } = getFilteredRows(sql, params);
-            return createPage([{ total: filteredRows.length }]);
-          }
-
-          if (normalizedSql.startsWith("select * from bundles where id = ?")) {
-            const bundleId = params[0];
-            const row = rows.get(bundleId);
-            return createPage(row ? [row] : []);
-          }
-
-          if (
-            normalizedSql.startsWith(
-              "select * from bundle_patches where bundle_id in",
-            )
-          ) {
-            const selectedBundleIds = new Set(
-              normalizedSql.includes("json_each")
-                ? (JSON.parse(String(params[0])) as unknown[]).map(String)
-                : params.map((value) => String(value)),
-            );
-            const result = Array.from(patchRows.values())
-              .filter((row) => selectedBundleIds.has(row.bundle_id))
-              .sort(
-                (a, b) =>
-                  Number(a.order_index ?? 0) - Number(b.order_index ?? 0) ||
-                  a.base_bundle_id.localeCompare(b.base_bundle_id),
-              );
-
-            return createPage(result);
-          }
-
-          if (normalizedSql.startsWith("select * from bundles")) {
-            const { filteredRows, index } = getFilteredRows(sql, params);
-            const limit = Number(params[index] ?? filteredRows.length);
-            const offset = Number(params[index + 1] ?? 0);
-            const result = filteredRows
-              .sort((a, b) => b.id.localeCompare(a.id))
-              .slice(offset, offset + limit);
-
-            return createPage(result);
-          }
-
-          if (
-            normalizedSql.startsWith("select target_app_version from bundles")
-          ) {
-            const { filteredRows } = getFilteredRows(sql, params);
-            const result = Array.from(
-              new Set(
-                filteredRows
-                  .map((row) => row.target_app_version)
-                  .filter((version): version is string => Boolean(version)),
-              ),
-            ).map((targetAppVersion) => ({
-              target_app_version: targetAppVersion,
-            }));
-
-            return createPage(result);
-          }
-
-          if (
-            normalizedSql.startsWith(
-              "select channel from bundles group by channel",
-            )
-          ) {
-            const channels = Array.from(
-              new Set(Array.from(rows.values()).map((row) => row.channel)),
-            ).map((channel) => ({ channel }));
-            return createPage(channels);
-          }
-
-          if (normalizedSql.startsWith("delete from bundles where id = ?")) {
-            rows.delete(params[0]);
-            return createPage([]);
-          }
-
-          if (
-            normalizedSql.startsWith(
-              "delete from bundle_patches where bundle_id = ?",
-            )
-          ) {
-            const bundleId = String(params[0]);
-            for (const [id, row] of patchRows.entries()) {
-              if (row.bundle_id === bundleId) {
-                patchRows.delete(id);
-              }
-            }
-            return createPage([]);
-          }
-
-          if (
-            normalizedSql.startsWith(
-              "delete from bundle_patches where base_bundle_id = ?",
-            )
-          ) {
-            const baseBundleId = String(params[0]);
-            for (const [id, row] of patchRows.entries()) {
-              if (row.base_bundle_id === baseBundleId) {
-                patchRows.delete(id);
-              }
-            }
-            return createPage([]);
-          }
-
-          if (normalizedSql.startsWith("insert or replace into bundles")) {
-            const row: D1Row = {
-              id: params[0],
-              channel: params[1],
-              enabled: params[2],
-              should_force_update: params[3],
-              file_hash: params[4],
-              git_commit_hash: params[5],
-              message: params[6],
-              platform: params[7],
-              target_app_version: params[8],
-              storage_uri: params[9],
-              fingerprint_hash: params[10],
-              metadata: params[11],
-              manifest_storage_uri: params[12],
-              manifest_file_hash: params[13],
-              asset_base_storage_uri: params[14],
-              rollout_cohort_count: params[15],
-              target_cohorts: params[16],
-            };
-            rows.set(row.id, row);
-            return createPage([]);
-          }
-
-          if (
-            normalizedSql.startsWith("insert or replace into bundle_patches")
-          ) {
-            const row: D1PatchRow = {
-              id: params[0],
-              bundle_id: params[1],
-              base_bundle_id: params[2],
-              base_file_hash: params[3],
-              patch_file_hash: params[4],
-              patch_storage_uri: params[5],
-              order_index: Number(params[6] ?? 0),
-            };
-            patchRows.set(row.id, row);
-            return createPage([]);
-          }
-
-          throw new Error(`Unsupported SQL in D1 mock: ${sql}`);
+          state.queries.push({
+            sql: input.sql,
+            params: input.params ?? [],
+          });
+          return {
+            async *iterPages() {
+              yield { result: [{ results: state.results }] };
+            },
+          };
         },
       },
     };
   },
 }));
 
-describe("d1Database plugin", () => {
-  let plugin: DatabasePlugin;
+beforeEach(() => {
+  state.queries.length = 0;
+  state.results.length = 0;
+});
 
-  beforeEach(() => {
-    rows.clear();
-    patchRows.clear();
-    plugin = d1Database({
-      databaseId: "test-db-id",
-      accountId: "test-account-id",
-      cloudflareApiToken: "test-token",
-    })();
+it("advertises Analytics support", () => {
+  // Given / When
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
   });
 
-  setupBundleMethodsTestSuite({
-    getBundleById: (id) => plugin.getBundleById(id),
-    getChannels: () => plugin.getChannels(),
-    insertBundle: async (bundle) => {
-      await plugin.appendBundle(bundle);
-      await plugin.commitBundle();
-    },
-    getBundles: (options) => plugin.getBundles(options),
-    updateBundleById: async (bundleId, newBundle) => {
-      await plugin.updateBundle(bundleId, newBundle);
-      await plugin.commitBundle();
-    },
-    deleteBundleById: async (bundleId) => {
-      const bundle = await plugin.getBundleById(bundleId);
-      if (!bundle) {
-        return;
-      }
-      await plugin.deleteBundle(bundle);
-      await plugin.commitBundle();
-    },
+  // Then
+  expect(plugin[databaseAnalyticsSupport]).toBe(true);
+});
+
+it("projects selected fields after querying physical bundle columns", async () => {
+  state.results.push({
+    id: "bundle-1",
+    platform: "ios",
+    should_force_update: 0,
+    enabled: 1,
+    file_hash: "hash",
+    git_commit_hash: null,
+    message: "Alpha Release",
+    channel: "production",
+    storage_uri: "storage://bundle",
+    target_app_version: "1.0.0",
+    fingerprint_hash: null,
+    metadata: '{"version":1}',
+    rollout_cohort_count: 1000,
+    target_cohorts: '["stable"]',
+    manifest_storage_uri: null,
+    manifest_file_hash: null,
+    asset_base_storage_uri: null,
+  });
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
   });
 
-  setupGetUpdateInfoTestSuite({
-    getUpdateInfo: async (bundles, args) => {
-      rows.clear();
-      patchRows.clear();
-
-      for (const bundle of bundles) {
-        await plugin.appendBundle(bundle);
-      }
-      await plugin.commitBundle();
-
-      return plugin.getUpdateInfo?.(args) ?? null;
-    },
+  const rows = await plugin.findMany({
+    model: "bundles",
+    where: [
+      {
+        field: "message",
+        operator: "contains",
+        value: "release",
+        mode: "insensitive",
+      },
+    ],
+    orderBy: [
+      { field: "channel", direction: "asc", nulls: "last" },
+      { field: "id", direction: "desc" },
+    ],
+    select: ["id", "enabled"],
+    limit: 10,
   });
 
-  it("refreshes bundle data before merging an update after a previous list request", async () => {
-    const bundleId = "bundle-stale-cache";
-    const initialRow: D1Row = {
-      id: bundleId,
-      channel: "production",
-      enabled: 1,
-      should_force_update: 0,
-      file_hash: "hash-1",
-      git_commit_hash: "commit-1",
-      message: "stale message",
-      platform: "ios",
-      target_app_version: "1.0.0",
-      storage_uri: "s3://bucket/stale.zip",
-      fingerprint_hash: null,
-      metadata: JSON.stringify({ source: "initial" }),
-      rollout_cohort_count: 1000,
-      target_cohorts: null,
-    };
-    rows.set(bundleId, initialRow);
+  expect(rows).toEqual([{ id: "bundle-1", enabled: true }]);
+  expect(state.queries[0]?.sql).toContain(
+    "lower(message) LIKE lower(json_extract(?, '$'))",
+  );
+  expect(state.queries[0]?.sql).toContain(
+    "ORDER BY channel ASC NULLS LAST, id DESC",
+  );
+});
 
-    await plugin.getBundles({ limit: 20 });
-
-    rows.set(bundleId, {
-      ...initialRow,
-      message: "fresh message",
-      metadata: JSON.stringify({ source: "fresh" }),
-    });
-
-    await plugin.updateBundle(bundleId, { enabled: false });
-    await plugin.commitBundle();
-
-    expect(rows.get(bundleId)).toEqual(
-      expect.objectContaining({
-        enabled: 0,
-        message: "fresh message",
-        metadata: JSON.stringify({ source: "fresh" }),
-      }),
-    );
+it("uses a native distinct channel query", async () => {
+  state.results.push({ channel: "production" });
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
   });
+
+  await expect(plugin.getChannels?.()).resolves.toEqual(["production"]);
+
+  expect(state.queries[0]?.params).toEqual([]);
+  expect(state.queries[0]?.sql).toBe(
+    "SELECT DISTINCT channel FROM bundles ORDER BY channel ASC",
+  );
+});
+
+it("counts compound distinct tuples in SQL", async () => {
+  // Given
+  state.results.push({ count: 3 });
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+
+  // When
+  await plugin.count({
+    model: "bundle_events",
+    distinct: ["install_id", "channel"],
+  });
+
+  // Then
+  expect(state.queries[0]?.sql).toBe(
+    "SELECT COUNT(*) AS count FROM (SELECT DISTINCT install_id, channel FROM bundle_events) AS distinct_rows",
+  );
+});
+
+it("selects one ordered row per distinct key in SQL", async () => {
+  // Given
+  state.results.push({
+    id: "event-1",
+    type: "UNCHANGED",
+    install_id: "install-1",
+    user_id: null,
+    username: null,
+    from_bundle_id: null,
+    to_bundle_id: "bundle-1",
+    platform: "ios",
+    app_version: "1.0.0",
+    channel: "production",
+    cohort: "stable",
+    update_strategy: null,
+    fingerprint_hash: null,
+    sdk_version: null,
+    received_at_ms: 100,
+  });
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+
+  // When
+  await plugin.findMany({
+    model: "bundle_events",
+    distinctOn: { fields: ["install_id"] },
+    orderBy: [
+      { field: "install_id", direction: "asc" },
+      { field: "received_at_ms", direction: "desc" },
+      { field: "id", direction: "asc" },
+    ],
+  });
+
+  // Then
+  expect(state.queries[0]?.sql).toContain(
+    "ROW_NUMBER() OVER (PARTITION BY install_id ORDER BY install_id ASC, received_at_ms DESC, id ASC)",
+  );
+  expect(state.queries[0]?.sql).toContain("WHERE __hot_updater_rank = 1");
 });

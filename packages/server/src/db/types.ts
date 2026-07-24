@@ -1,20 +1,51 @@
 import type {
   AppUpdateAvailableInfo,
+  AppVersionGetBundlesArgs,
   Bundle,
-  GetBundlesArgs,
+  FingerprintGetBundlesArgs,
   UpdateInfo,
 } from "@hot-updater/core";
 import type {
-  DatabaseBundleQueryOptions,
-  DatabasePlugin,
+  BundleEventAnalyticsResult,
+  BundleEventOverview,
+  BundleEventAnalyticsWindow,
+  BundleEventSummary,
+  ActiveInstallationOverview,
+  ActiveInstallationWindow,
+  CreateBundleEventRequest,
+  DatabasePlugin as DatabasePluginContract,
   HotUpdaterContext,
+  InstallationHistoryRow,
+  InstallationSearchRow,
+  OffsetPaginationResult,
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
 
-import type { PaginatedResult } from "../types";
+import {
+  analyticsCapabilityMetadata,
+  type AnalyticsCapability,
+} from "./analyticsCapability";
 
-export type DatabasePluginFactory<TContext = unknown> =
-  (() => DatabasePlugin<TContext>) & Partial<DatabaseAdapterCapabilities>;
+export type { AnalyticsCapability } from "./analyticsCapability";
+export {
+  getAnalyticsCapability,
+  supportsAnalytics,
+} from "./analyticsCapability";
+
+export type {
+  BundleEventAnalyticsResult,
+  BundleEventOverview,
+  BundleEventAnalyticsWindow,
+  BundleEventSummary,
+  ActiveInstallationOverview,
+  ActiveInstallationWindow,
+  CreateBundleEventRequest,
+  InstallationHistoryRow,
+  InstallationSearchRow,
+  OffsetPaginationResult,
+} from "@hot-updater/plugin-core";
+
+import type { PaginatedResult } from "../types";
 
 export const sqlProviders = [
   "sqlite",
@@ -83,29 +114,29 @@ export interface DatabaseAdapterCapabilities {
   generateSchema?: SchemaGenerator;
 }
 
-export type DatabaseAdapterWithCapabilities<TContext = unknown> =
-  DatabasePlugin<TContext> & DatabaseAdapterCapabilities;
+export type DatabaseAdapterWithCapabilities = DatabasePluginContract &
+  DatabaseAdapterCapabilities;
 
-export type DatabaseAdapter<TContext = unknown> =
-  | DatabaseAdapterWithCapabilities<TContext>
-  | DatabasePlugin<TContext>
-  | DatabasePluginFactory<TContext>;
+export type DatabasePlugin = DatabaseAdapterWithCapabilities;
 
-export function isDatabasePluginFactory<TContext = unknown>(
-  adapter: DatabaseAdapter<TContext>,
-): adapter is DatabasePluginFactory<TContext> {
-  return typeof adapter === "function";
-}
-
-export function isDatabasePlugin<TContext = unknown>(
-  adapter: DatabaseAdapter<TContext>,
-): adapter is DatabasePlugin<TContext> {
+export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
   return (
-    typeof adapter === "object" &&
-    adapter !== null &&
-    "getBundleById" in adapter &&
-    "getBundles" in adapter &&
-    "getChannels" in adapter
+    typeof plugin === "object" &&
+    plugin !== null &&
+    "name" in plugin &&
+    typeof plugin.name === "string" &&
+    "create" in plugin &&
+    typeof plugin.create === "function" &&
+    "update" in plugin &&
+    typeof plugin.update === "function" &&
+    "delete" in plugin &&
+    typeof plugin.delete === "function" &&
+    "count" in plugin &&
+    typeof plugin.count === "function" &&
+    "findOne" in plugin &&
+    typeof plugin.findOne === "function" &&
+    "findMany" in plugin &&
+    typeof plugin.findMany === "function"
   );
 }
 
@@ -121,26 +152,73 @@ export function getSQLProvider(
     : undefined;
 }
 
-export interface DatabaseAPI<TContext = unknown> {
+export interface BundleEventAPI<TContext = unknown> {
+  appendBundleEvent(
+    input: CreateBundleEventRequest,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<void>;
+  getBundleEventSummary(
+    bundleId: string,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<BundleEventSummary>;
+  getBundleEventAnalytics(
+    bundleId: string,
+    window: BundleEventAnalyticsWindow,
+    limit: number,
+    offset: number,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<BundleEventAnalyticsResult>;
+  getBundleEventOverview(
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<BundleEventOverview>;
+  getActiveInstallationOverview(
+    input: {
+      readonly window: ActiveInstallationWindow;
+      readonly userId?: string;
+    },
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<ActiveInstallationOverview>;
+  searchInstallations(
+    query: string,
+    limit: number,
+    offset: number,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<OffsetPaginationResult<InstallationSearchRow>>;
+  getInstallationHistory(
+    installId: string,
+    limit: number,
+    offset: number,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<OffsetPaginationResult<InstallationHistoryRow>>;
+}
+
+export interface DatabaseAPI<TContext = unknown> extends Partial<
+  BundleEventAPI<TContext>
+> {
+  readonly [analyticsCapabilityMetadata]?: AnalyticsCapability;
+  getAppUpdateInfo: (
+    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<AppUpdateAvailableInfo | null>;
   getBundleById(
     id: string,
     context?: HotUpdaterContext<TContext>,
   ): Promise<Bundle | null>;
   getUpdateInfo(
-    args: GetBundlesArgs,
+    args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
     context?: HotUpdaterContext<TContext>,
   ): Promise<UpdateInfo | null>;
-  getAppUpdateInfo(
-    args: GetBundlesArgs,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<AppUpdateAvailableInfo | null>;
   getChannels(context?: HotUpdaterContext<TContext>): Promise<string[]>;
   getBundles(
-    options: DatabaseBundleQueryOptions,
+    options: import("@hot-updater/plugin-core").DatabaseBundleQueryOptions,
     context?: HotUpdaterContext<TContext>,
   ): Promise<PaginatedResult>;
   insertBundle(
     bundle: Bundle,
+    context?: HotUpdaterContext<TContext>,
+  ): Promise<void>;
+  insertBundles(
+    bundles: readonly Bundle[],
     context?: HotUpdaterContext<TContext>,
   ): Promise<void>;
   updateBundleById(

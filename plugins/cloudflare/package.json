@@ -12,10 +12,10 @@
       "require": "./dist/index.cjs"
     },
     "./worker": {
-      "types": "./dist/worker/index.d.cts",
-      "import": "./dist/worker/index.mjs",
-      "require": "./dist/worker/index.cjs",
-      "default": "./dist/worker/index.mjs"
+      "import": {
+        "types": "./dist/worker/index.d.mts",
+        "default": "./dist/worker/index.mjs"
+      }
     },
     "./worker/config": "./worker/wrangler.json",
     "./worker/wrangler.json": "./worker/wrangler.json",
@@ -74,7 +74,6 @@
     "dayjs": "^1.11.13",
     "execa": "catalog:tools",
     "mime": "^4.0.4",
-    "pg-minify": "^1.6.5",
     "semver": "^7.6.3",
     "toml": "^3.0.0",
     "typescript": "^6.0.2",

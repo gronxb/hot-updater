@@ -3,8 +3,7 @@ import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
 
-import { firebaseDatabase } from "../../src/firebaseDatabase";
-import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
+import { firebaseDatabase, firebaseStorage } from "../../src/functions";
 
 declare global {
   var HotUpdater: {
@@ -29,10 +28,9 @@ if (!storageBucket) {
 }
 
 const hotUpdater = createHotUpdater({
-  database: firebaseDatabase(adminOptions),
+  database: firebaseDatabase(),
   storages: [
-    firebaseFunctionsStorage({
-      ...adminOptions,
+    firebaseStorage({
       storageBucket,
       cdnUrl,
     }),
@@ -41,6 +39,7 @@ const hotUpdater = createHotUpdater({
   routes: {
     updateCheck: true,
     bundles: false,
+    analytics: true,
   },
 });
 
@@ -64,7 +63,9 @@ const handler = onRequest(
       method: req.method,
       headers: req.headers as Record<string, string>,
       body:
-        req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+        req.method !== "GET" && req.method !== "HEAD"
+          ? new Uint8Array(req.rawBody)
+          : undefined,
     });
     const honoResponse = await app.fetch(request);
     res.status(honoResponse.status);

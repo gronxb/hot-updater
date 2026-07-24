@@ -1,107 +1,289 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { Bundle } from "@hot-updater/core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createHotUpdater } from "../index";
 import {
-  HOT_UPDATER_SCHEMA_VERSION,
-  HOT_UPDATER_SETTINGS_TABLE,
-} from "../schema/types";
+  createBundlePatchRowFixture,
+  createBundleRowFixture,
+} from "../../../test-utils/src/databaseTestFixtures";
+import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
+import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import {
+  DATABASE_PLUGIN_TEST_RESET_SQL,
+  DATABASE_PLUGIN_TEST_SCHEMA_SQL,
+} from "./databasePluginTestDatabase";
 import { kyselyAdapter } from "./kysely";
 
-const sqliteJsonBundle: Bundle = {
-  id: "00000000-0000-0000-0000-000000000901",
-  platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
-  fileHash: "sqlite-json-hash",
-  gitCommitHash: null,
-  message: "sqlite json bundle",
-  channel: "production",
-  storageUri: "s3://bucket/sqlite-json.zip",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  metadata: { app_version: "1.0.0" },
-  targetCohorts: ["17", "qa-group"],
+class KyselyTestStateError extends Error {
+  readonly name = "KyselyTestStateError";
+}
+
+let client: PGlite | undefined;
+let database: Kysely<object> | undefined;
+
+const getClient = (): PGlite => {
+  if (client === undefined) throw new KyselyTestStateError();
+  return client;
 };
 
-describe("kyselyAdapter sqlite provider", () => {
-  const databases: PGlite[] = [];
-  const kyselyInstances: Kysely<object>[] = [];
+const getDatabase = (): Kysely<object> => {
+  if (database === undefined) throw new KyselyTestStateError();
+  return database;
+};
 
-  afterEach(async () => {
-    for (const kysely of kyselyInstances.splice(0)) {
-      await kysely.destroy();
-    }
-    for (const db of databases.splice(0)) {
-      await db.close();
-    }
-  });
+setupDatabasePluginTestSuite({
+  name: "kyselyAdapter PostgreSQL",
+  migrate: async () => {
+    client = new PGlite();
+    database = new Kysely({ dialect: new PGliteDialect(client) });
+    await client.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+  },
+  createPlugin: (): DatabaseAdapterWithCapabilities =>
+    kyselyAdapter({ db: getDatabase(), provider: "postgresql" }),
+  reset: async () => {
+    await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
+  },
+  dispose: async () => {
+    await getDatabase().destroy();
+    await getClient().close();
+    database = undefined;
+    client = undefined;
+  },
+});
 
-  it("stores bundle JSON columns as text and round-trips them", async () => {
-    const db = new PGlite();
-    databases.push(db);
-    const kysely = new Kysely({ dialect: new PGliteDialect(db) });
-    kyselyInstances.push(kysely);
-    await db.exec(`
-      create table bundles (
-        id text primary key,
-        platform text not null,
-        should_force_update boolean not null,
-        enabled boolean not null,
-        file_hash text not null,
-        git_commit_hash text,
-        message text,
-        channel text not null,
-        storage_uri text not null,
-        target_app_version text,
-        fingerprint_hash text,
-        metadata text not null,
-        manifest_storage_uri text,
-        manifest_file_hash text,
-        asset_base_storage_uri text,
-        rollout_cohort_count integer not null,
-        target_cohorts text
-      );
-      create table bundle_patches (
-        id text primary key,
-        bundle_id text not null,
-        base_bundle_id text not null,
-        base_file_hash text not null,
-        patch_file_hash text not null,
-        patch_storage_uri text not null,
-        order_index integer not null
-      );
-      create table ${HOT_UPDATER_SETTINGS_TABLE} (
-        key text primary key,
-        value text not null
-      );
-      insert into ${HOT_UPDATER_SETTINGS_TABLE} (key, value)
-      values ('version', '${HOT_UPDATER_SCHEMA_VERSION}');
-    `);
-    const hotUpdater = createHotUpdater({
-      database: kyselyAdapter({
-        db: kysely,
-        provider: "sqlite",
-      }),
+const createBundleEventRow = (
+  id: string,
+  installId: string,
+  receivedAtMs: number,
+) => ({
+  id,
+  type: "UPDATE_APPLIED" as const,
+  install_id: installId,
+  user_id: null,
+  username: null,
+  from_bundle_id: `from-${installId}`,
+  to_bundle_id: `to-${installId}`,
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "stable",
+  update_strategy: "appVersion" as const,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: receivedAtMs,
+});
+
+describe("kyselyAdapter SQLite JSON storage", () => {
+  it("round-trips JSON values through text columns", async () => {
+    // Given
+    const sqliteClient = new PGlite();
+    const sqliteDatabase = new Kysely({
+      dialect: new PGliteDialect(sqliteClient),
     });
+    await sqliteClient.exec(
+      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replace(
+        "metadata jsonb not null default '{}'::jsonb",
+        "metadata text not null",
+      ).replace("target_cohorts jsonb", "target_cohorts text"),
+    );
+    const plugin = kyselyAdapter({
+      db: sqliteDatabase,
+      provider: "sqlite",
+    });
+    const bundle = {
+      ...createBundleRowFixture("901"),
+      metadata: { app_version: "1.0.0" },
+      target_cohorts: ["17", "qa-group"],
+    };
 
-    await hotUpdater.insertBundle(sqliteJsonBundle);
-    const stored = await db.query<{
+    // When
+    await plugin.create({ model: "bundles", data: bundle });
+    const stored = await sqliteClient.query<{
       metadata: string;
       target_cohorts: string;
     }>("select metadata, target_cohorts from bundles where id = $1", [
-      sqliteJsonBundle.id,
+      bundle.id,
     ]);
-    const restored = await hotUpdater.getBundleById(sqliteJsonBundle.id);
-
-    expect(stored.rows[0]).toEqual({
-      metadata: JSON.stringify({ app_version: "1.0.0" }),
-      target_cohorts: JSON.stringify(["17", "qa-group"]),
+    const restored = await plugin.findOne({
+      model: "bundles",
+      where: [{ field: "id", value: bundle.id }],
     });
-    expect(restored?.metadata).toEqual({ app_version: "1.0.0" });
-    expect(restored?.targetCohorts).toEqual(["17", "qa-group"]);
+
+    // Then
+    expect(stored.rows[0]).toEqual({
+      metadata: JSON.stringify(bundle.metadata),
+      target_cohorts: JSON.stringify(bundle.target_cohorts),
+    });
+    expect(restored).toEqual(bundle);
+    await sqliteDatabase.destroy();
+    await sqliteClient.close();
+  });
+});
+
+describe("kyselyAdapter soft relations", () => {
+  it("rejects orphan patches when the SQL schema omits foreign keys", async () => {
+    const softClient = new PGlite();
+    const queries: string[] = [];
+    const softDatabase = new Kysely({
+      dialect: new PGliteDialect(softClient),
+      log: (event) => {
+        if (event.level === "query") queries.push(event.query.sql);
+      },
+    });
+    await softClient.exec(
+      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replaceAll(
+        " references bundles(id) on delete restrict",
+        "",
+      ),
+    );
+    const plugin = kyselyAdapter({
+      db: softDatabase,
+      provider: "postgresql",
+      relationMode: "fumadb",
+    });
+    const base = createBundleRowFixture("951");
+    const owner = createBundleRowFixture("952");
+
+    try {
+      await plugin.create({ model: "bundles", data: base });
+      await plugin.create({ model: "bundles", data: owner });
+      queries.length = 0;
+
+      await expect(
+        plugin.create({
+          model: "bundle_patches",
+          data: createBundlePatchRowFixture(
+            "missing-owner",
+            "missing-owner",
+            base.id,
+          ),
+        }),
+      ).rejects.toThrow("bundle_patches.bundle_id.foreign-key");
+      expect(queries.some((query) => query.endsWith("for update"))).toBe(true);
+      await expect(
+        plugin.create({
+          model: "bundle_patches",
+          data: createBundlePatchRowFixture(
+            "missing-base",
+            owner.id,
+            "missing-base",
+          ),
+        }),
+      ).rejects.toThrow("bundle_patches.base_bundle_id.foreign-key");
+      await expect(
+        plugin.findMany({ model: "bundle_patches" }),
+      ).resolves.toEqual([]);
+      queries.length = 0;
+      await plugin.delete({
+        model: "bundles",
+        where: [{ field: "id", value: owner.id }],
+      });
+      expect(
+        queries.some(
+          (query) =>
+            query.includes('select "id" from "bundles"') &&
+            query.endsWith("for update"),
+        ),
+      ).toBe(true);
+    } finally {
+      await softDatabase.destroy();
+      await softClient.close();
+    }
+  });
+});
+
+describe("kyselyAdapter bundle_events distinct semantics", () => {
+  it("counts distinct installs and keeps the latest row per install", async () => {
+    const localClient = new PGlite();
+    const localDatabase = new Kysely({
+      dialect: new PGliteDialect(localClient),
+    });
+    await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+    const plugin = kyselyAdapter({
+      db: localDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-a-1", "install-a", 100),
+      });
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-a-2", "install-a", 200),
+      });
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-b-1", "install-b", 150),
+      });
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-b-2", "install-b", 150),
+      });
+
+      await expect(
+        plugin.count({ model: "bundle_events", distinct: ["install_id"] }),
+      ).resolves.toBe(2);
+      await expect(
+        plugin.findMany({
+          model: "bundle_events",
+          distinctOn: { fields: ["install_id"] },
+          orderBy: [
+            { field: "install_id", direction: "asc" },
+            { field: "received_at_ms", direction: "desc" },
+            { field: "id", direction: "desc" },
+          ],
+        }),
+      ).resolves.toMatchObject([
+        { id: "event-a-2", install_id: "install-a", received_at_ms: 200 },
+        { id: "event-b-2", install_id: "install-b", received_at_ms: 150 },
+      ]);
+    } finally {
+      await localDatabase.destroy();
+      await localClient.close();
+    }
+  });
+  it("honors explicit null ordering for bundle event queries", async () => {
+    const localClient = new PGlite();
+    const localDatabase = new Kysely({
+      dialect: new PGliteDialect(localClient),
+    });
+    await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+    const plugin = kyselyAdapter({
+      db: localDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      await plugin.create({
+        model: "bundle_events",
+        data: createBundleEventRow("event-null", "install-a", 100),
+      });
+      await plugin.create({
+        model: "bundle_events",
+        data: {
+          ...createBundleEventRow("event-user", "install-b", 200),
+          user_id: "user-123",
+        },
+      });
+
+      await expect(
+        plugin.findMany({
+          model: "bundle_events",
+          orderBy: [
+            { field: "user_id", direction: "asc", nulls: "first" },
+            { field: "id", direction: "asc" },
+          ],
+        }),
+      ).resolves.toMatchObject([
+        { id: "event-null", user_id: null },
+        { id: "event-user", user_id: "user-123" },
+      ]);
+    } finally {
+      await localDatabase.destroy();
+      await localClient.close();
+    }
   });
 });

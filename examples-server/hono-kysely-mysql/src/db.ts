@@ -64,6 +64,7 @@ export const hotUpdater = createHotUpdater({
   routes: {
     updateCheck: true,
     bundles: true,
+    analytics: true,
   },
 });
 

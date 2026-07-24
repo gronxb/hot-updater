@@ -42,6 +42,13 @@ describe("createDefaultResolver", () => {
   beforeEach(() => {
     mocks.fetchUpdateInfo.mockReset();
     mocks.fetchUpdateInfo.mockResolvedValue(null);
+    vi.unstubAllGlobals();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        status: 204,
+      }),
+    );
   });
 
   it("strips trailing slashes from baseURL for app-version requests", async () => {

@@ -1,60 +1,43 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  mockCli,
-  mockDatabasePlugin,
-  mockStoragePlugin,
-  mockPrintBanner,
-  mockPromoteBundle,
-} = vi.hoisted(() => {
-  const mockDatabasePlugin = {
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
-    name: "mock-database",
-    onUnmount: vi.fn(),
-    updateBundle: vi.fn(),
-  };
-  const mockStoragePlugin = {
-    name: "mock-storage",
-    supportedProtocol: "s3",
-    profiles: {
-      node: {
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-        exists: vi.fn(async () => false),
-        upload: vi.fn(),
+const { mockCli, mockStoragePlugin, mockPrintBanner, mockPromoteBundle } =
+  vi.hoisted(() => {
+    const mockStoragePlugin = {
+      name: "mock-storage",
+      supportedProtocol: "s3",
+      profiles: {
+        node: {
+          delete: vi.fn(),
+          downloadFile: vi.fn(),
+          exists: vi.fn(async () => false),
+          upload: vi.fn(),
+        },
       },
-    },
-  };
-  const mockCli = {
-    loadConfig: vi.fn(),
-    p: {
-      confirm: vi.fn(),
-      isCancel: vi.fn(() => false),
-      log: {
-        error: vi.fn(),
-        info: vi.fn(),
-        message: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
+    };
+    const mockCli = {
+      loadConfig: vi.fn(),
+      p: {
+        confirm: vi.fn(),
+        isCancel: vi.fn(() => false),
+        log: {
+          error: vi.fn(),
+          info: vi.fn(),
+          message: vi.fn(),
+          success: vi.fn(),
+          warn: vi.fn(),
+        },
       },
-    },
-  };
-  const mockPrintBanner = vi.fn();
-  const mockPromoteBundle = vi.fn();
-  return {
-    mockCli,
-    mockDatabasePlugin,
-    mockStoragePlugin,
-    mockPrintBanner,
-    mockPromoteBundle,
-  };
-});
+    };
+    const mockPrintBanner = vi.fn();
+    const mockPromoteBundle = vi.fn();
+    return {
+      mockCli,
+      mockStoragePlugin,
+      mockPrintBanner,
+      mockPromoteBundle,
+    };
+  });
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -70,6 +53,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 vi.mock("@/utils/printBanner", () => ({
   printBanner: mockPrintBanner,
 }));
+
+import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+
+const databaseHarness = createDatabasePluginHarness();
 
 const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
@@ -90,9 +77,9 @@ const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
 
 const stubLoadedConfig = () => {
   mockCli.loadConfig.mockResolvedValue({
-    database: vi.fn().mockResolvedValue(mockDatabasePlugin),
+    database: databaseHarness.plugin,
     storage: vi.fn().mockResolvedValue(mockStoragePlugin),
-  } as never);
+  });
 };
 
 const expectExit = (code: number) => {
@@ -109,6 +96,7 @@ const setupConsoleSpies = () => {
 describe("handlePromote", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    databaseHarness.reset();
     stubLoadedConfig();
     setupConsoleSpies();
   });
@@ -119,7 +107,7 @@ describe("handlePromote", () => {
   it("copies the named bundle to the target channel", async () => {
     const bundle = buildBundle({ id: "src-1", channel: "internal" });
     const promoted = buildBundle({ id: "new-1", channel: "beta" });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(bundle);
+    databaseHarness.setBundles([bundle]);
     mockPromoteBundle.mockResolvedValue(promoted);
 
     const { handlePromote } = await import("./promote");
@@ -129,7 +117,6 @@ describe("handlePromote", () => {
       yes: true,
     });
 
-    expect(mockDatabasePlugin.getBundleById).toHaveBeenCalledWith("src-1");
     expect(mockPromoteBundle).toHaveBeenCalledWith(
       {
         action: "copy",
@@ -137,7 +124,9 @@ describe("handlePromote", () => {
         targetChannel: "beta",
       },
       expect.objectContaining({
-        databasePlugin: mockDatabasePlugin,
+        databaseClient: expect.objectContaining({
+          getBundleById: expect.any(Function),
+        }),
         storagePlugin: mockStoragePlugin,
       }),
     );
@@ -148,7 +137,7 @@ describe("handlePromote", () => {
 
   it("moves the named bundle to the target channel", async () => {
     const bundle = buildBundle({ id: "src-1", channel: "internal" });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(bundle);
+    databaseHarness.setBundles([bundle]);
     mockPromoteBundle.mockResolvedValue({ ...bundle, channel: "beta" });
 
     const { handlePromote } = await import("./promote");
@@ -169,7 +158,7 @@ describe("handlePromote", () => {
 
   it("defaults --action to copy when omitted", async () => {
     const bundle = buildBundle({ id: "src-1" });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(bundle);
+    databaseHarness.setBundles([bundle]);
     mockPromoteBundle.mockResolvedValue({
       ...bundle,
       id: "new-1",
@@ -186,9 +175,7 @@ describe("handlePromote", () => {
   });
 
   it("rejects when the bundle's channel equals --target", async () => {
-    mockDatabasePlugin.getBundleById.mockResolvedValue(
-      buildBundle({ id: "src-1", channel: "beta" }),
-    );
+    databaseHarness.setBundles([buildBundle({ id: "src-1", channel: "beta" })]);
     const { exitSpy } = expectExit(1);
     const { handlePromote } = await import("./promote");
     await expect(
@@ -202,7 +189,6 @@ describe("handlePromote", () => {
   });
 
   it("exits 1 when the bundle id does not exist", async () => {
-    mockDatabasePlugin.getBundleById.mockResolvedValue(null);
     const { exitSpy } = expectExit(1);
     const { handlePromote } = await import("./promote");
     await expect(
@@ -219,7 +205,7 @@ describe("handlePromote", () => {
       handlePromote("src-1", { target: "  ", yes: true }),
     ).rejects.toThrow("process.exit(1)");
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockDatabasePlugin.getBundleById).not.toHaveBeenCalled();
+    expect(databaseHarness.loadObject).not.toHaveBeenCalled();
     expect(mockPromoteBundle).not.toHaveBeenCalled();
   });
 
@@ -232,9 +218,7 @@ describe("handlePromote", () => {
       configurable: true,
       value: true,
     });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(
-      buildBundle({ id: "src-1" }),
-    );
+    databaseHarness.setBundles([buildBundle({ id: "src-1" })]);
     mockCli.p.confirm.mockResolvedValueOnce(false);
 
     const { exitSpy } = expectExit(2);
@@ -259,9 +243,7 @@ describe("handlePromote", () => {
       configurable: true,
       value: false,
     });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(
-      buildBundle({ id: "src-1" }),
-    );
+    databaseHarness.setBundles([buildBundle({ id: "src-1" })]);
 
     const { exitSpy } = expectExit(1);
     const { handlePromote } = await import("./promote");
@@ -276,15 +258,13 @@ describe("handlePromote", () => {
   });
 
   it("propagates promoteBundle errors and calls onUnmount", async () => {
-    mockDatabasePlugin.getBundleById.mockResolvedValue(
-      buildBundle({ id: "src-1" }),
-    );
+    databaseHarness.setBundles([buildBundle({ id: "src-1" })]);
     mockPromoteBundle.mockRejectedValue(new Error("storage plugin failed"));
 
     const { handlePromote } = await import("./promote");
     await expect(
       handlePromote("src-1", { target: "beta", yes: true }),
     ).rejects.toThrow("storage plugin failed");
-    expect(mockDatabasePlugin.onUnmount).toHaveBeenCalled();
+    expect(databaseHarness.onUnmount).toHaveBeenCalled();
   });
 });

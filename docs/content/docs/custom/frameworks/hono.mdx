@@ -23,6 +23,7 @@ Update-check routes are usually exposed for React Native clients, but that is a
 deployment choice:
 
 - Update check: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
+- Public client telemetry: `POST /hot-updater/events`
 - Optional public diagnostics: `/hot-updater/version`
 - Protected management API: `/hot-updater/api/*`
 
@@ -46,7 +47,8 @@ app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 export default app;
 ```
 
-If you set `routes: { updateCheck: true, bundles: false }`,
+If you set
+`routes: { updateCheck: true, bundles: false, analytics: false }`,
 `/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
 available for diagnostics.
 Set `bundles: true` only when this server accepts bundle-management requests;
@@ -77,19 +79,28 @@ export default defineConfig({
 ## API Endpoints
 
 The server automatically creates these endpoints. Bundle management endpoints
-under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
+are mounted only when `routes.bundles` is enabled. Event ingestion and
+Analytics query endpoints are mounted when `routes.analytics` is enabled and
+the database supports Analytics:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/hot-updater/version` | Get server version |
 | GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
 | GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
+| POST | `/hot-updater/events` | Record untrusted client Analytics telemetry |
 | GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
 | GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
 | POST | `/hot-updater/api/bundles` | Create bundles |
 | PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
 | DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
 | GET | `/hot-updater/api/bundles/channels` | List all channels |
+| GET | `/hot-updater/api/bundles/:id/events/summary` | Summarize reported bundle outcomes |
+| GET | `/hot-updater/api/bundles/:id/events/analytics` | Query bundle Analytics |
+| GET | `/hot-updater/api/installations` | Search installations |
+| GET | `/hot-updater/api/installations/overview` | Summarize latest reported bundles |
+| GET | `/hot-updater/api/installations/active` | Query active installations |
+| GET | `/hot-updater/api/installations/:installId/events` | Read installation history |
 
 ## React Native Setup
 

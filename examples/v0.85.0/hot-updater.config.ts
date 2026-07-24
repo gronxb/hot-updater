@@ -53,7 +53,7 @@ export default defineConfig({
     },
   },
 
-  build: bare({ enableHermes: true, resetCache: false }),
+  build: bare({ enableHermes: true }),
   storage: localS3StorageEndpoint
     ? s3Storage({
         region: process.env.AWS_REGION ?? "us-east-1",

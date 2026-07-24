@@ -1,0 +1,304 @@
+---
+title: "Analytics"
+description: Enable OTA analytics and understand the installation data shown in the Console.
+icon: ChartNoAxesCombined
+---
+
+## Overview
+
+Analytics records one app-ready observation when a JavaScript runtime starts.
+The Console uses these observations to show active installations, reported
+bundle outcomes, and installation history.
+
+Analytics is opt-in. Database support, client event ingestion, and Console
+query routes are separate capabilities. A deployment needs all three before it
+can collect and display reports.
+
+## Enable analytics
+
+### Apps using `HotUpdater.init`
+
+Enable Analytics when you initialize a manual update flow:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  analytics: true,
+});
+```
+
+Call `HotUpdater.init` once, when the runtime is ready to report the current
+launch.
+
+### Apps using `HotUpdater.wrap`
+
+Keep `HotUpdater.wrap` in place for automatic updates. Call
+`HotUpdater.init({ analytics: true })` once before exporting the wrapped app:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+const baseURL = "<your-update-server-url>";
+
+HotUpdater.init({
+  baseURL,
+  analytics: true,
+});
+
+export default HotUpdater.wrap({
+  baseURL,
+  updateStrategy: "appVersion",
+})(App);
+```
+
+Do not replace `HotUpdater.wrap` with `HotUpdater.init` unless your app also
+implements a manual update flow. The `analytics` option belongs to
+`HotUpdater.init`; it is not a `HotUpdater.wrap` option.
+
+## Associate reports with a user
+
+Analytics always counts installations by `installId`. You can attach a
+`userId` and `username` as searchable aliases:
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.setUser({
+  userId: currentUser.id,
+  username: currentUser.username,
+});
+
+HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  analytics: true,
+});
+```
+
+Call `setUser` before `init` when the identity is already available. If the
+user signs in later, call `setUser` then; the identity appears on future
+app-ready reports. Clear the persisted aliases on sign-out:
+
+```tsx
+HotUpdater.setUser(null);
+```
+
+Changing or clearing an alias does not rewrite historical reports. Multiple
+installations with the same `userId` remain separate installations.
+
+## Configure a custom server
+
+Managed Cloudflare, Firebase, and Supabase presets enable the public Analytics
+route group by default so `analytics: true` works without additional server
+configuration. This includes event ingestion and Analytics query routes. Treat
+all reported identifiers as untrusted telemetry and configure provider-level
+access controls, rate limits, quotas, logging, and retention.
+
+For a custom server, configure an Analytics-capable database:
+
+```ts
+import { createHotUpdater } from "@hot-updater/server";
+
+export const hotUpdater = createHotUpdater({
+  database,
+  storages,
+  routes: {
+    updateCheck: true,
+    bundles: true,
+    analytics: true,
+  },
+});
+```
+
+When the database supports Analytics, `routes.analytics: true` mounts
+`POST /events` together with the Analytics and installation query routes.
+Enabling the option with an unsupported database logs a warning and mounts none
+of those routes. Hot Updater does not provide route-specific authentication in
+this release; protect the group with the same framework or provider boundary
+used for other routes. Add rate limits and quotas at that boundary because
+event payloads are untrusted telemetry.
+
+Standalone proxies also check the upstream `/version` capability before
+forwarding ingestion or query requests. An upstream route reported as
+unavailable remains unavailable locally, and the two route capabilities are
+preserved independently.
+
+The Analytics route group is disabled by default and is independent from
+bundle management. Protect `/events`, `/api/bundles/*/events*`, and
+`/api/installations*` with the appropriate framework authentication or public
+telemetry controls for your deployment.
+
+`GET /version` reports these states independently:
+
+| Capability | Meaning |
+| --- | --- |
+| `capabilities.analytics` | The database has structural event storage and shared Analytics support. It does not mean a route is public. |
+| `capabilities.eventIngestion` | The database supports event writes and this server mounts `POST /events`. |
+| `capabilities.analyticsQueries` | This server mounts the Analytics and installation query routes used by Console. |
+
+When `analytics` is true, `mode` and the optional `maxMatchingRows` describe
+the structural query implementation and its scan bound. They do not imply that
+either route group is mounted.
+
+Standalone and Console require `analyticsQueries: true` before calling query
+routes. A legacy `/version` response without the route-specific fields is
+treated as unavailable, even when it reports `analytics: true`. Upgrade the
+remote server and Standalone/Console packages together.
+
+## Understand the Console data
+
+| Console value | Meaning |
+| --- | --- |
+| Active installations | Distinct `installId` values that reported app ready during the selected 24-hour, 7-day, or 30-day window |
+| Latest reported bundle | The bundle from the latest report received for each installation in the window |
+| Applied on | Distinct installations that reported an `UPDATE_APPLIED` transition to a bundle |
+| Recovered from | Distinct installations that reported a `RECOVERED` transition away from a bundle |
+| Configured rollout | The rollout availability stored on the bundle, independent from received reports |
+
+An active installation is not realtime presence or a complete fleet count. A
+device appears only after the app starts and its report reaches the server.
+
+Hot Updater records three app-ready outcomes:
+
+- `UPDATE_APPLIED` records the previous and current bundle after an update.
+- `RECOVERED` records the failed bundle and the bundle restored after recovery.
+- `UNCHANGED` records the currently active bundle without an update outcome.
+
+`UNCHANGED` contributes to active-installation windows and latest-bundle
+distribution. It is excluded from Applied on, Recovered from, and transition
+history.
+
+Each JavaScript runtime makes at most one best-effort reporting attempt.
+Timeouts, unsupported servers, and non-success responses produce a warning.
+They do not block app readiness, call the app's `onError`, or retry in the
+background.
+
+## Database support
+
+| Database plugin | Analytics | Notes |
+| --- | --- | --- |
+| Supabase Database | Supported | Uses append-only row storage. |
+| Cloudflare D1 Database | Supported | Uses append-only row storage. |
+| Firestore Database | Supported | Uses append-only document storage. |
+| PostgreSQL Database | Supported | Uses append-only row storage. |
+| Drizzle, Kysely, Prisma, and MongoDB plugins | Supported | The plugin must include the `bundle_events` model. |
+| Standalone Database | Conditional | Discovers the remote database capability from the server automatically. |
+| AWS S3 Database (`s3Database`) | Not supported | S3 Database replaces a shared snapshot, so concurrent event appends are not safe. |
+
+The Console detects structural support and actual query-route availability. It
+hides Analytics when either one is unavailable.
+
+### Upgrade an existing PostgreSQL plugin installation
+
+Databases initialized with `@hot-updater/postgres` before 0.38.0 do not have
+the `bundle_events` table. After upgrading the package, apply the dedicated
+forward-only migration once:
+
+```bash
+psql "$DATABASE_URL" \
+  -f node_modules/@hot-updater/postgres/sql/migrations/0.38.0-bundle-events.sql
+```
+
+Use `sql/bundles.sql` only for a new database. It recreates the complete
+PostgreSQL schema and is not an existing-install migration.
+
+Existing `standaloneRepository` configuration does not change. There is no
+`supportsAnalytics` option to set. Record-backed servers advertise structural
+support, while snapshot-backed servers such as S3 advertise that Analytics is
+unavailable. The remote server must also advertise `analyticsQueries: true`.
+
+## Support Analytics in a custom database plugin
+
+Use `createDatabasePlugin` for a row- or document-oriented database plugin. It
+marks the plugin as Analytics-capable, and the server provides the shared
+Analytics queries:
+
+```ts
+import {
+  createDatabasePlugin,
+  type DatabasePluginImplementation,
+} from "@hot-updater/plugin-core";
+
+export const myDatabase = (implementation: DatabasePluginImplementation) =>
+  createDatabasePlugin({
+    name: "my-database",
+    plugin: () => implementation,
+  });
+```
+
+The implementation must provide `create`, `update`, `delete`, `count`,
+`findOne`, and `findMany` for the fixed `bundles`, `bundle_patches`, and
+`bundle_events` models. For Analytics, `bundle_events` must:
+
+- allow concurrency-safe, append-only creates;
+- support filtering, ordering, selection, pagination, and distinct queries;
+  and
+- remain independent from bundle deletion because events may reference old or
+  unknown bundle IDs.
+
+The shared Analytics implementation scans at most 50,000 matching event rows.
+If a query exceeds that limit, the server returns HTTP 503 with code
+`ANALYTICS_SCAN_LIMIT_EXCEEDED`. Narrow the query or provide a dedicated bundle
+event service for larger datasets.
+
+Do not use `createBlobDatabasePlugin` when Analytics is required. Blob-backed
+database plugins replace a shared snapshot and intentionally do not expose the
+Analytics capability. This is why `s3Database` does not support Analytics.
+
+See [Custom Database Plugin](/docs/database-plugins/custom-database) for the
+complete fixed-model contract and conformance tests.
+
+## Deploy safely
+
+Use a native-first rollout. Deploy the database schema and server before
+enabling Analytics in JavaScript:
+
+1. Back up the database, then add the `bundle_events` table or collection.
+2. Deploy the server and verify the `/version` route-capability fields.
+3. Release a store build containing the matching React Native native module.
+4. Confirm the Console sees structural support and the intended query route.
+5. Enable `analytics: true` in JavaScript only after the native build is in
+   service.
+
+Old clients continue to work with the new server. A new client connected to an
+old or unsupported server logs a warning and continues, but that report is not
+stored.
+
+New JavaScript also preserves a recovery reported by an older native binary as
+`RECOVERED`. For the legacy `{ status: "RECOVERED", crashedBundleId }` result,
+Hot Updater uses the current active bundle as the recovered-to bundle when it
+can. Legacy native payloads do not contain all directional and strategy
+metadata required by Analytics, so Hot Updater skips that telemetry event
+without discarding the readiness result.
+
+For a custom resolver, `notifyAppReady` remains the legacy readiness callback.
+It runs whether Analytics is enabled or disabled, and its failures continue to
+reach `onError`. Automatic Analytics uses the separate best-effort
+`notifyAppReadyAnalytics` callback; its transport failures warn but do not call
+`onError` or block app readiness. Implement the new callback when a custom
+resolver opts into Analytics. The default resolver already provides it.
+
+## Retention and downgrade policy
+
+Hot Updater does not add foreground heartbeats, sessions, durable retries, or
+an event-retention policy. Bundle deletion does not delete historical
+`bundle_events`. Configure a provider-native scheduled job or TTL policy to
+remove events according to your privacy, storage, and query-performance
+requirements. Monitor row growth before queries reach the 50,000 matching-row
+scan limit.
+
+Official schema migrations are forward-only and do not include a down
+migration. Before upgrading, back up the database and verify the provider's
+clean-install and upgrade path. Roll back application or server code against
+the newer schema only when that complete Hot Updater package set is documented
+as compatible. Otherwise, stop writers and restore the pre-migration database
+backup as a coordinated recovery. Do not partially reverse the
+`bundle_events` schema.
+
+## Related APIs
+
+- [`HotUpdater.init()`](/docs/react-native-api/init)
+- [`HotUpdater.getInstallId()`](/docs/react-native-api/getInstallId)
+- [`HotUpdater.setUser()`](/docs/react-native-api/setUser)
+- [`HotUpdater.notifyAppReady()`](/docs/react-native-api/notifyAppReady)

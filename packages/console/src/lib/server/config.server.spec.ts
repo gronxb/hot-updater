@@ -1,12 +1,17 @@
 // @vitest-environment node
 
-import type {
-  DatabasePlugin,
-  NodeStoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { NodeStoragePlugin } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { loadConfigMock } = vi.hoisted(() => ({
+const { createHotUpdaterMock, loadConfigMock } = vi.hoisted(() => ({
+  createHotUpdaterMock: vi.fn(() => ({
+    getBundleEventSummary: vi.fn(),
+    getBundleEventAnalytics: vi.fn(),
+    getBundleEventOverview: vi.fn(),
+    searchInstallations: vi.fn(),
+    getInstallationHistory: vi.fn(),
+  })),
   loadConfigMock: vi.fn(),
 }));
 
@@ -14,18 +19,22 @@ vi.mock("@hot-updater/cli-tools", () => ({
   loadConfig: loadConfigMock,
 }));
 
-function createDatabasePlugin(name: string): DatabasePlugin {
-  return {
+vi.mock("@hot-updater/server", () => ({
+  createHotUpdater: createHotUpdaterMock,
+}));
+
+const createTestDatabasePlugin = (name: string) =>
+  createDatabasePlugin({
     name,
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
-    updateBundle: vi.fn(),
-    appendBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    commitBundle: vi.fn(),
-  };
-}
+    plugin: () => ({
+      create: vi.fn(async ({ data }) => data),
+      update: vi.fn(async () => null),
+      delete: vi.fn(async () => undefined),
+      count: vi.fn(async () => 0),
+      findOne: vi.fn(async () => null),
+      findMany: vi.fn(async () => []),
+    }),
+  });
 
 function createStoragePlugin(): NodeStoragePlugin {
   return {
@@ -45,18 +54,14 @@ function createStoragePlugin(): NodeStoragePlugin {
 afterEach(() => {
   vi.resetModules();
   vi.restoreAllMocks();
+  createHotUpdaterMock.mockClear();
   loadConfigMock.mockReset();
 });
 
 describe("config.server", () => {
-  it("caches the loaded config while creating a fresh database plugin per request", async () => {
-    const firstDatabasePlugin = createDatabasePlugin("db-1");
-    const secondDatabasePlugin = createDatabasePlugin("db-2");
+  it("caches the loaded config and reuses its database and runtime clients", async () => {
+    const database = createTestDatabasePlugin("db");
     const storagePlugin = createStoragePlugin();
-    const database = vi
-      .fn()
-      .mockResolvedValueOnce(firstDatabasePlugin)
-      .mockResolvedValueOnce(secondDatabasePlugin);
     const storage = vi.fn().mockResolvedValue(storagePlugin);
 
     loadConfigMock.mockResolvedValue({
@@ -73,19 +78,20 @@ describe("config.server", () => {
     const second = await prepareConfig();
 
     expect(loadConfigMock).toHaveBeenCalledTimes(1);
-    expect(database).toHaveBeenCalledTimes(2);
+    expect(createHotUpdaterMock).toHaveBeenCalledTimes(1);
+    expect(createHotUpdaterMock).toHaveBeenCalledWith({ database });
     expect(storage).toHaveBeenCalledTimes(1);
-    expect(first.databasePlugin).toBe(firstDatabasePlugin);
-    expect(second.databasePlugin).toBe(secondDatabasePlugin);
+    expect(first.databaseClient).toBe(second.databaseClient);
+    expect(first.hotUpdater).toBe(second.hotUpdater);
+    expect(first.config.database).toBe(database);
     expect(first.storagePlugin).toBe(storagePlugin);
     expect(second.storagePlugin).toBe(storagePlugin);
     expect(isConfigLoaded()).toBe(true);
   });
 
   it("resets the cached config promise after an initialization failure", async () => {
-    const databasePlugin = createDatabasePlugin("db");
+    const database = createTestDatabasePlugin("db");
     const storagePlugin = createStoragePlugin();
-    const database = vi.fn().mockResolvedValue(databasePlugin);
     const storage = vi.fn().mockResolvedValue(storagePlugin);
     const consoleErrorSpy = vi
       .spyOn(console, "error")
@@ -106,13 +112,14 @@ describe("config.server", () => {
     const recovered = await prepareConfig();
 
     expect(loadConfigMock).toHaveBeenCalledTimes(2);
-    expect(recovered.databasePlugin).toBe(databasePlugin);
+    expect(createHotUpdaterMock).toHaveBeenCalledTimes(1);
+    expect(recovered.config.database).toBe(database);
     expect(recovered.storagePlugin).toBe(storagePlugin);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
   it("requires the configured storage plugin to implement the node profile", async () => {
-    const database = vi.fn().mockResolvedValue(createDatabasePlugin("db"));
+    const database = createTestDatabasePlugin("db");
     const storage = vi.fn().mockResolvedValue({
       name: "runtimeOnlyStorage",
       supportedProtocol: "s3",

@@ -365,7 +365,12 @@ describe.sequential("aws lambda runtime acceptance", () => {
 
   const seedRuntimeBundles = async (bundles: Bundle[]) => {
     for (const bundle of bundles.map(toRuntimeBundle)) {
-      await seedHotUpdater.insertBundle(bundle);
+      const existing = await seedHotUpdater.getBundleById(bundle.id);
+      if (existing) {
+        await seedHotUpdater.updateBundleById(bundle.id, bundle);
+      } else {
+        await seedHotUpdater.insertBundle(bundle);
+      }
     }
   };
 

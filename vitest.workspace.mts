@@ -1,12 +1,17 @@
+import { fileURLToPath } from "node:url";
+
 import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 import { defineConfig, defineProject } from "vitest/config";
 
-const rootExclude = [
+const consoleSource = fileURLToPath(
+  new URL("./packages/console/src", import.meta.url),
+);
+const commonExclude = [
   "**/dist/**",
-  "**/lib/**",
   "**/node_modules/**",
   "**/runtime-acceptance-*/**",
 ];
+const rootExclude = [...commonExclude, "**/lib/**"];
 const unitInclude = [
   "packages/**/*.spec.ts",
   "packages/**/*.test.ts",
@@ -54,14 +59,21 @@ export default defineConfig({
         },
       }),
       defineProject({
+        resolve: {
+          alias: {
+            "@": consoleSource,
+          },
+        },
         test: {
           name: "unit:console",
           environment: "jsdom",
           include: [
             "packages/console/**/*.spec.ts",
+            "packages/console/**/*.spec.tsx",
             "packages/console/**/*.test.ts",
+            "packages/console/**/*.test.tsx",
           ],
-          exclude: [...rootExclude, "**/*.integration.spec.ts"],
+          exclude: [...commonExclude, "**/*.integration.spec.ts"],
         },
       }),
       defineProject({
@@ -79,6 +91,9 @@ export default defineConfig({
           maxConcurrency: 1,
           maxWorkers: 1,
           pool: "forks",
+          sequence: {
+            groupOrder: 0,
+          },
           hookTimeout: 60000,
           testTimeout: 60000,
         },
@@ -95,6 +110,9 @@ export default defineConfig({
           name: "integration:cloudflare",
           include: ["plugins/cloudflare/worker/**/*.integration.spec.ts"],
           globalSetup: "./plugins/cloudflare/vitest.global-setup.mts",
+          sequence: {
+            groupOrder: 1,
+          },
         },
       }),
     ],

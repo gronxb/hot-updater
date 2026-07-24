@@ -141,6 +141,15 @@ async function recordScenarioCalls(
 ): Promise<readonly RecordedScenarioCall[]> {
   const calls: RecordedScenarioCall[] = [];
   const app: DetoxAppDriver = {
+    assertStableLaunch: (stage) => {
+      calls.push({
+        contains: "UPDATE_APPLIED or UNCHANGED",
+        kind: "assertText",
+        stage,
+        testID: "launch-status-result",
+      });
+      return Promise.resolve();
+    },
     assertText: (stage, testID, contains, options) => {
       calls.push({ contains, kind: "assertText", options, stage, testID });
       return Promise.resolve();
@@ -331,6 +340,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("device.terminateApp");
     expect(detoxRuntimeSource).toContain("/e2e/jobs/reset-remote-bundles");
     expect(detoxRuntimeSource).toContain("/e2e/reset-local-app-state");
+    expect(detoxRuntimeSource).toContain("verifyConsoleAnalytics");
   });
 
   it("does not launch the app before provider bundles are deployed", async () => {
@@ -599,6 +609,9 @@ describe("Detox scenario contract", () => {
 
     expect(exampleAppSource).toContain("./src/e2eApp");
     expect(e2eRuntimeSource).toContain("../e2eRuntimeConfig");
+    expect(e2eRuntimeSource).toContain("analytics: true");
+    expect(e2eRuntimeSource).toContain('userId: "detox-e2e"');
+    expect(e2eRuntimeSource).toContain('username: "hot-updater-e2e"');
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");
     expect(exampleAppSource).not.toContain('from "@env"');
     expect(runtimeConfigSource).toContain("react-native-launch-arguments");
@@ -1784,7 +1797,7 @@ describe("Detox scenario contract", () => {
   it("resolves auto patch metadata from the provider-visible bundle record", async () => {
     // Given: standalone providers can expose a just-deployed bundle through the
     // same CLI surface used by provider assertions before a direct database
-    // plugin read observes it.
+    // adapter read observes it.
     const controllerSource = await fs.readFile(
       detoxControlServerControllerPath,
       "utf8",

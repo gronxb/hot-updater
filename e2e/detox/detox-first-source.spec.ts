@@ -119,7 +119,7 @@ describe("Detox-first source shape", () => {
     expect(routesSource).not.toContain("/e2e/ensure-app-foreground");
   });
 
-  it("keeps provider plugin method names at the fixture boundary", async () => {
+  it("keeps provider adapter method names at the fixture boundary", async () => {
     const controlServerSource = await fs.readFile(controlServerPath, "utf8");
 
     expect(controlServerSource).not.toContain(

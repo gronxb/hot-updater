@@ -1,4 +1,4 @@
-import { blob, foreignKey, index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { blob, foreignKey, index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core"
 
 import { relations } from "drizzle-orm"
 
@@ -26,6 +26,15 @@ export const bundles = sqliteTable("bundles", {
   index("bundles_channel_idx").on(table.channel),
   index("bundles_rollout_idx").on(table.rollout_cohort_count)
 ])
+
+export const bundlesRelations = relations(bundles, ({ many }) => ({
+  patches: many(bundle_patches, {
+    relationName: "bundle_patches_bundles_patches"
+  }),
+  baseForPatches: many(bundle_patches, {
+    relationName: "bundle_patches_bundles_baseForPatches"
+  })
+}))
 
 export const bundle_patches = sqliteTable("bundle_patches", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
@@ -63,7 +72,33 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
   })
 }))
 
+export const bundle_events = sqliteTable("bundle_events", {
+  id: text("id").primaryKey().notNull(),
+  type: text("type").notNull(),
+  install_id: text("install_id").notNull(),
+  user_id: text("user_id"),
+  username: text("username"),
+  from_bundle_id: text("from_bundle_id"),
+  to_bundle_id: text("to_bundle_id").notNull(),
+  platform: text("platform").notNull(),
+  app_version: text("app_version").notNull(),
+  channel: text("channel").notNull(),
+  cohort: text("cohort").notNull(),
+  update_strategy: text("update_strategy"),
+  fingerprint_hash: text("fingerprint_hash"),
+  sdk_version: text("sdk_version"),
+  received_at_ms: real("received_at_ms").notNull()
+}, (table) => [
+  index("bundle_events_installed_bundle_idx").on(table.type, table.to_bundle_id, table.received_at_ms, table.id),
+  index("bundle_events_recovered_bundle_idx").on(table.type, table.from_bundle_id, table.received_at_ms, table.id),
+  index("bundle_events_install_idx").on(table.install_id, table.received_at_ms, table.id),
+  index("bundle_events_user_id_idx").on(table.user_id, table.received_at_ms, table.id),
+  index("bundle_events_username_idx").on(table.username, table.received_at_ms, table.id),
+  index("bundle_events_cohort_idx").on(table.cohort, table.type, table.received_at_ms, table.id),
+  index("bundle_events_received_at_idx").on(table.received_at_ms, table.id)
+])
+
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   id: text("id", { length: 255 }).primaryKey().notNull(),
-  version: text("version", { length: 255 }).notNull().default("0.31.0")
+  version: text("version", { length: 255 }).notNull().default("0.38.0")
 })

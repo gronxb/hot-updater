@@ -1,5 +1,5 @@
 import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/core";
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
   const getManifest = vi.fn<() => Record<string, unknown> | string>();
@@ -10,6 +10,9 @@ const nativeModuleMock = vi.hoisted(() => {
     getBaseURL: vi.fn<() => string | null>(() => null),
     getBundleId: vi.fn<() => string | null>(() => "bundle-id"),
     getCohort: vi.fn<() => string>(() => "123"),
+    getInstallId: vi.fn<() => string>(() => "install-id"),
+    getUserId: vi.fn<() => string | null>(() => null),
+    getUsername: vi.fn<() => string | null>(() => null),
     getManifest,
     getCrashHistory,
     getConstants: vi.fn(() => ({
@@ -23,6 +26,7 @@ const nativeModuleMock = vi.hoisted(() => {
     reload: vi.fn(),
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
+    setUser: vi.fn(),
     setBundleURL: vi.fn(),
     switchChannel: vi.fn(),
     updateBundle: vi.fn(),
@@ -63,6 +67,8 @@ describe("notifyAppReady", () => {
     nativeModuleMock.getCrashHistory.mockReturnValue([]);
     nativeModuleMock.getCohort.mockReset();
     nativeModuleMock.getCohort.mockReturnValue("123");
+    nativeModuleMock.getInstallId.mockReset();
+    nativeModuleMock.getInstallId.mockReturnValue("install-id");
     nativeModuleMock.getManifest.mockReset();
     nativeModuleMock.getManifest.mockReturnValue({
       assets: {
@@ -74,40 +80,146 @@ describe("notifyAppReady", () => {
     });
     nativeModuleMock.resetChannel.mockReset();
     nativeModuleMock.setCohort.mockReset();
+    nativeModuleMock.setUser.mockReset();
     nativeModuleMock.updateBundle.mockReset();
   });
 
-  it("normalizes legacy PROMOTED launch reports to STABLE", async () => {
+  it("normalizes legacy PROMOTED launch reports to UPDATE_APPLIED", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue(
-      JSON.stringify({ status: "PROMOTED" }),
+      JSON.stringify({
+        fromBundleId: "bundle-123",
+        status: "PROMOTED",
+        toBundleId: "bundle-456",
+      }),
     );
 
     const { notifyAppReady } = await import("./native");
 
-    expect(notifyAppReady()).toEqual({ status: "STABLE" });
+    expect(notifyAppReady()).toEqual({
+      fromBundleId: "bundle-123",
+      status: "UPDATE_APPLIED",
+      toBundleId: "bundle-456",
+    });
     expect(nativeModuleMock.notifyAppReady).toHaveBeenCalledWith();
   });
 
-  it("returns RECOVERED launch reports unchanged", async () => {
+  it("returns RECOVERED launch reports with directional ids", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue({
-      crashedBundleId: "bundle-123",
+      fromBundleId: "bundle-123",
       status: "RECOVERED",
+      toBundleId: "bundle-122",
+      updateStrategy: "appVersion",
     });
 
-    const { notifyAppReady } = await import("./native");
+    const { notifyAppReady, readNotifyAppReady } = await import("./native");
 
     expect(notifyAppReady()).toEqual({
-      crashedBundleId: "bundle-123",
+      fromBundleId: "bundle-123",
       status: "RECOVERED",
+      toBundleId: "bundle-122",
+    });
+    expect(readNotifyAppReady()).toEqual({
+      analyticsEvent: {
+        fromBundleId: "bundle-123",
+        toBundleId: "bundle-122",
+        type: "RECOVERED",
+        updateStrategy: "appVersion",
+      },
+      pending: false,
+      result: {
+        fromBundleId: "bundle-123",
+        status: "RECOVERED",
+        toBundleId: "bundle-122",
+      },
     });
   });
 
-  it("falls back to STABLE for malformed old-arch payloads", async () => {
+  it("preserves recovery from legacy native object payloads", async () => {
+    nativeModuleMock.notifyAppReady.mockReturnValue({
+      crashedBundleId: "bundle-crashed",
+      status: "RECOVERED",
+    });
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-recovered");
+
+    const { notifyAppReady, readNotifyAppReady } = await import("./native");
+
+    expect(notifyAppReady()).toEqual({
+      fromBundleId: "bundle-crashed",
+      status: "RECOVERED",
+      toBundleId: "bundle-recovered",
+    });
+    expect(readNotifyAppReady()).toEqual({
+      analyticsEvent: null,
+      pending: false,
+      result: {
+        fromBundleId: "bundle-crashed",
+        status: "RECOVERED",
+        toBundleId: "bundle-recovered",
+      },
+    });
+  });
+
+  it("preserves recovery from legacy Android JSON payloads", async () => {
+    nativeModuleMock.notifyAppReady.mockReturnValue(
+      JSON.stringify({
+        crashedBundleId: "bundle-crashed",
+        status: "RECOVERED",
+      }),
+    );
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-recovered");
+
+    const { readNotifyAppReady } = await import("./native");
+
+    expect(readNotifyAppReady()).toEqual({
+      analyticsEvent: null,
+      pending: false,
+      result: {
+        fromBundleId: "bundle-crashed",
+        status: "RECOVERED",
+        toBundleId: "bundle-recovered",
+      },
+    });
+  });
+
+  it("returns UNCHANGED when automatic analytics metadata is incomplete", async () => {
+    nativeModuleMock.notifyAppReady.mockReturnValue({
+      status: "UPDATE_APPLIED",
+    });
+
+    const { notifyAppReady, readNotifyAppReady } = await import("./native");
+
+    expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
+    expect(readNotifyAppReady()).toEqual({
+      analyticsEvent: null,
+      pending: false,
+      result: { status: "UNCHANGED" },
+    });
+  });
+
+  it("normalizes malformed old-arch notifyAppReady payloads to UNCHANGED", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue("{");
 
-    const { notifyAppReady } = await import("./native");
+    const { notifyAppReady, readNotifyAppReady } = await import("./native");
 
-    expect(notifyAppReady()).toEqual({ status: "STABLE" });
+    expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
+    expect(readNotifyAppReady()).toEqual({
+      analyticsEvent: null,
+      pending: false,
+      result: { status: "UNCHANGED" },
+    });
+  });
+
+  it("keeps the internal pending state out of the public result", async () => {
+    nativeModuleMock.notifyAppReady.mockReturnValue({ status: "PENDING" });
+
+    const { notifyAppReady, readNotifyAppReady } = await import("./native");
+
+    expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
+    expect(readNotifyAppReady()).toEqual({
+      analyticsEvent: null,
+      pending: true,
+      result: { status: "UNCHANGED" },
+    });
   });
 
   it("returns the native bundle id when available", async () => {
@@ -119,11 +231,8 @@ describe("notifyAppReady", () => {
   });
 
   it("throws when native SDK does not expose getBundleId", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      getBundleId?: typeof nativeModuleMock.getBundleId;
-    };
-    const originalGetBundleId = nativeModule.getBundleId;
-    nativeModule.getBundleId = null as unknown as Mock<() => string | null>;
+    const originalGetBundleId = nativeModuleMock.getBundleId;
+    Reflect.set(nativeModuleMock, "getBundleId", null);
 
     try {
       const { getBundleId } = await import("./native");
@@ -132,7 +241,7 @@ describe("notifyAppReady", () => {
         "Native module is missing 'getBundleId()'",
       );
     } finally {
-      nativeModule.getBundleId = originalGetBundleId;
+      Reflect.set(nativeModuleMock, "getBundleId", originalGetBundleId);
     }
   });
 
@@ -597,6 +706,89 @@ describe("notifyAppReady", () => {
       INVALID_COHORT_ERROR_MESSAGE,
     );
     expect(nativeModuleMock.setCohort).not.toHaveBeenCalled();
+  });
+
+  it("returns the install id reported by native", async () => {
+    nativeModuleMock.getInstallId.mockReturnValue("install-123");
+
+    const { getInstallId } = await import("./native");
+
+    expect(getInstallId()).toBe("install-123");
+  });
+
+  it("throws when native SDK does not expose getInstallId", async () => {
+    const originalGetInstallId = nativeModuleMock.getInstallId;
+    Reflect.set(nativeModuleMock, "getInstallId", null);
+
+    try {
+      const { getInstallId } = await import("./native");
+
+      expect(() => getInstallId()).toThrow(
+        "Native module is missing 'getInstallId()'",
+      );
+    } finally {
+      Reflect.set(nativeModuleMock, "getInstallId", originalGetInstallId);
+    }
+  });
+
+  it("passes nullable user identity through to native", async () => {
+    const { setUser } = await import("./native");
+
+    setUser({ userId: "user-123", username: "alice" });
+    setUser({ userId: 42, username: "bob" });
+    setUser({});
+    setUser(null);
+
+    expect(nativeModuleMock.setUser).toHaveBeenNthCalledWith(
+      1,
+      "user-123",
+      "alice",
+    );
+    expect(nativeModuleMock.setUser).toHaveBeenNthCalledWith(2, "42", "bob");
+    expect(nativeModuleMock.setUser).toHaveBeenNthCalledWith(3, null, null);
+    expect(nativeModuleMock.setUser).toHaveBeenNthCalledWith(4, null, null);
+  });
+
+  it("reads persisted user identity from native when available", async () => {
+    nativeModuleMock.getUserId.mockReturnValue("user-123");
+    nativeModuleMock.getUsername.mockReturnValue("alice");
+
+    const { getPersistedUserIdentity } = await import("./native");
+
+    expect(getPersistedUserIdentity()).toEqual({
+      userId: "user-123",
+      username: "alice",
+    });
+  });
+
+  it("throws when native SDK does not expose persisted user identity getters", async () => {
+    const originalGetUserId = nativeModuleMock.getUserId;
+    Reflect.set(nativeModuleMock, "getUserId", null);
+
+    try {
+      const { getPersistedUserIdentity } = await import("./native");
+
+      expect(() => getPersistedUserIdentity()).toThrow(
+        "Native module is missing 'getUserId()' or 'getUsername()'",
+      );
+    } finally {
+      Reflect.set(nativeModuleMock, "getUserId", originalGetUserId);
+    }
+  });
+
+  it("throws when native SDK does not expose setUser", async () => {
+    const originalSetUser = nativeModuleMock.setUser;
+    Reflect.set(nativeModuleMock, "setUser", null);
+
+    try {
+      const { setUser } = await import("./native");
+
+      expect(() => setUser({ userId: "user-123" })).toThrow(
+        "Native module is missing 'setUser()'",
+      );
+    } finally {
+      Reflect.set(nativeModuleMock, "setUser", originalSetUser);
+    }
   });
 
   it("returns the cohort reported by native", async () => {

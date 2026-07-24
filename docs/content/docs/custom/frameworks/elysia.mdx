@@ -23,6 +23,7 @@ Update-check routes are usually exposed for React Native clients, but that is a
 deployment choice:
 
 - Update check: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
+- Public client telemetry: `POST /hot-updater/events`
 - Optional public diagnostics: `/hot-updater/version`
 - Protected management API: `/hot-updater/api/*`
 
@@ -36,15 +37,19 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 new Elysia()
   .use(bearer()) // [!code ++]
-  .onBeforeHandle(({ bearer, request }) => { // [!code ++]
-    const pathname = new URL(request.url).pathname; // [!code ++]
-    if (pathname === "/hot-updater/api" || pathname.startsWith("/hot-updater/api/")) { // [!code ++]
-      if (bearer !== process.env.HOT_UPDATER_AUTH_TOKEN) { // [!code ++]
-        return new Response("Unauthorized", { status: 401 }); // [!code ++]
-      } // [!code ++]
-    } // [!code ++]
-  }) // [!code ++]
-  .mount("/hot-updater", hotUpdater.handler) // [!code ++]
+  // [!code ++:12]
+  .onBeforeHandle(({ bearer, request }) => {
+    const pathname = new URL(request.url).pathname;
+    if (
+      pathname === "/hot-updater/api" ||
+      pathname.startsWith("/hot-updater/api/")
+    ) {
+      if (bearer !== process.env.HOT_UPDATER_AUTH_TOKEN) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+    }
+  })
+  .mount("/hot-updater", hotUpdater.handler)
   .listen(3000);
 ```
 
@@ -73,19 +78,28 @@ export default defineConfig({
 ## API Endpoints
 
 The server automatically creates these endpoints. Bundle management endpoints
-under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
+under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled.
+Event ingestion and Analytics query endpoints are mounted when
+`routes.analytics` is enabled and the database supports Analytics:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/hot-updater/version` | Get server version |
-| GET | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint |
-| GET | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId` | Check for updates by app version |
-| GET | `/hot-updater/api/bundles` | List bundles (query: channel, platform, limit, page, after, before) |
-| GET | `/hot-updater/api/bundles/:id` | Get bundle by ID |
-| POST | `/hot-updater/api/bundles` | Create bundles |
-| PATCH | `/hot-updater/api/bundles/:id` | Update a bundle |
-| DELETE | `/hot-updater/api/bundles/:id` | Delete bundle |
-| GET | `/hot-updater/api/bundles/channels` | List all channels |
+| Method | Endpoint                                                                              | Description                                                         |
+| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET    | `/hot-updater/version`                                                                | Get server version                                                  |
+| GET    | `/hot-updater/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId` | Check for updates by fingerprint                                    |
+| GET    | `/hot-updater/app-version/:platform/:version/:channel/:minBundleId/:bundleId`         | Check for updates by app version                                    |
+| POST   | `/hot-updater/events`                                                                 | Record untrusted client Analytics telemetry                         |
+| GET    | `/hot-updater/api/bundles`                                                            | List bundles (query: channel, platform, limit, page, after, before) |
+| GET    | `/hot-updater/api/bundles/:id`                                                        | Get bundle by ID                                                    |
+| POST   | `/hot-updater/api/bundles`                                                            | Create bundles                                                      |
+| PATCH  | `/hot-updater/api/bundles/:id`                                                        | Update a bundle                                                     |
+| DELETE | `/hot-updater/api/bundles/:id`                                                        | Delete bundle                                                       |
+| GET    | `/hot-updater/api/bundles/channels`                                                   | List all channels                                                   |
+| GET    | `/hot-updater/api/bundles/:id/events/summary`                                         | Get bundle event summary                                            |
+| GET    | `/hot-updater/api/bundles/:id/events/analytics`                                       | Get bundle event Analytics                                          |
+| GET    | `/hot-updater/api/installations`                                                      | Search installations                                                |
+| GET    | `/hot-updater/api/installations/overview`                                             | Get installation overview                                           |
+| GET    | `/hot-updater/api/installations/active`                                               | Get active installations                                            |
+| GET    | `/hot-updater/api/installations/:installId/events`                                    | Get installation history                                            |
 
 ## React Native Setup
 

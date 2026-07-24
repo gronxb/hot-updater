@@ -14,11 +14,15 @@ import {
 } from "@hot-updater/cli-tools";
 import type {
   Bundle,
+  DatabaseMutationClient,
   DatabasePlugin,
   NodeStoragePlugin,
   Platform,
 } from "@hot-updater/plugin-core";
-import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  assertNodeStoragePlugin,
+  createDatabaseClient,
+} from "@hot-updater/plugin-core";
 import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
@@ -49,8 +53,19 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
+import { prepareAndCommitBundles } from "./deployTransaction";
 
 const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
+
+class DeployAbortedError extends Error {
+  override readonly name = "DeployAbortedError";
+}
+
+type DeployPlatformResult = {
+  readonly bundleId: string;
+  readonly platform: Platform;
+  readonly runDeferredPatches: (() => Promise<void>) | null;
+};
 
 export interface DeployOptions {
   bundleOutputPath?: string;
@@ -147,14 +162,14 @@ const areTargetAppVersionsPatchCompatible = (a: string, b: string): boolean => {
 const getPatchBaseBundles = async ({
   bundleId,
   channel,
-  databasePlugin,
+  database,
   maxBaseBundles,
   platform,
   target,
 }: {
   bundleId: string;
   channel: string;
-  databasePlugin: DatabasePlugin;
+  database: DatabaseMutationClient;
   maxBaseBundles: number;
   platform: Platform;
   target: {
@@ -167,10 +182,10 @@ const getPatchBaseBundles = async ({
     enabled: true,
     id: { lt: bundleId },
     platform,
-  } satisfies Parameters<DatabasePlugin["getBundles"]>[0]["where"];
+  } satisfies Parameters<DatabaseMutationClient["getBundles"]>[0]["where"];
 
   if (target.fingerprintHash) {
-    const { data } = await databasePlugin.getBundles({
+    const { data } = await database.getBundles({
       limit: maxBaseBundles,
       orderBy: {
         direction: "desc",
@@ -196,7 +211,7 @@ const getPatchBaseBundles = async ({
   let cursorAfter: string | undefined;
 
   while (compatibleBundles.length < maxBaseBundles) {
-    const { data, pagination } = await databasePlugin.getBundles({
+    const { data, pagination } = await database.getBundles({
       ...(cursorAfter ? { cursor: { after: cursorAfter } } : {}),
       limit: pageSize,
       orderBy: {
@@ -239,6 +254,7 @@ const getPatchBaseBundles = async ({
 const createAutoPatches = async ({
   bundleId,
   channel,
+  database,
   databasePlugin,
   maxBaseBundles,
   platform,
@@ -247,6 +263,7 @@ const createAutoPatches = async ({
 }: {
   bundleId: string;
   channel: string;
+  database: DatabaseMutationClient;
   databasePlugin: DatabasePlugin;
   maxBaseBundles: number;
   platform: Platform;
@@ -259,7 +276,7 @@ const createAutoPatches = async ({
   const baseBundles = await getPatchBaseBundles({
     bundleId,
     channel,
-    databasePlugin,
+    database,
     maxBaseBundles,
     platform,
     target,
@@ -519,16 +536,24 @@ const getMultiPlatformDeploymentContext = async ({
 };
 
 const deployPlatform = async ({
+  databasePlugin,
+  deferAutoPatches,
+  deferredDatabase,
   options,
+  persistBundle,
   platform,
   platformIndex,
   platformCount,
 }: {
+  databasePlugin: DatabasePlugin;
+  deferAutoPatches: boolean;
+  deferredDatabase: DatabaseMutationClient;
   options: DeployOptions;
+  persistBundle: DatabaseMutationClient["insertBundle"];
   platform: Platform;
   platformIndex: number;
   platformCount: number;
-}): Promise<{ bundleId: string; platform: Platform } | null> => {
+}): Promise<DeployPlatformResult | null> => {
   const cwd = getCwd();
   const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
   const rolloutCohortCount =
@@ -724,12 +749,11 @@ const deployPlatform = async ({
     p.note(deploymentContext, deploymentTitle);
   }
 
-  const [buildPlugin, storagePlugin, databasePlugin] = await Promise.all([
+  const [buildPlugin, storagePlugin] = await Promise.all([
     config.build({
       cwd,
     }),
     config.storage(),
-    config.database(),
   ]);
   assertNodeStoragePlugin(storagePlugin);
 
@@ -1012,7 +1036,7 @@ const deployPlatform = async ({
           const appVersion = await getNativeAppVersion(platform);
 
           try {
-            await databasePlugin.appendBundle({
+            await persistBundle({
               shouldForceUpdate: options.forceUpdate,
               platform,
               fileHash,
@@ -1030,7 +1054,6 @@ const deployPlatform = async ({
               manifestStorageUri: taskRef.manifestStorageUri,
               rolloutCohortCount,
             });
-            await databasePlugin.commitBundle();
           } catch (e) {
             if (e instanceof Error) {
               p.log.error(e.message);
@@ -1046,61 +1069,71 @@ const deployPlatform = async ({
     }
     const confirmedBundleId = bundleId;
 
+    let runDeferredPatches: (() => Promise<void>) | null = null;
     if (config.patch.enabled) {
-      let patchSummary: {
-        candidateCount: number;
-        createdCount: number;
-        failures: { baseBundleId: string; message: string }[];
-      } = {
-        candidateCount: 0,
-        createdCount: 0,
-        failures: [],
+      const runAutoPatches = async (): Promise<void> => {
+        let patchSummary: {
+          candidateCount: number;
+          createdCount: number;
+          failures: { baseBundleId: string; message: string }[];
+        } = {
+          candidateCount: 0,
+          createdCount: 0,
+          failures: [],
+        };
+
+        await p.tasks([
+          {
+            title: "⚡ Optimizing Delivery",
+            task: async () => {
+              try {
+                patchSummary = await createAutoPatches({
+                  bundleId: confirmedBundleId,
+                  channel,
+                  database: deferredDatabase,
+                  databasePlugin,
+                  maxBaseBundles: maxPatchBaseBundles,
+                  platform,
+                  storagePlugin,
+                  target,
+                });
+              } catch (error) {
+                const message =
+                  error instanceof Error
+                    ? error.message
+                    : "Unknown patch optimization error";
+                p.log.warn(`Partial updates unavailable: ${message}`);
+                patchSummary = {
+                  candidateCount: 0,
+                  createdCount: 0,
+                  failures: [],
+                };
+              }
+
+              if (!patchSummary.candidateCount) {
+                return "Skipped (no compatible base bundles)";
+              }
+
+              if (!patchSummary.createdCount) {
+                return "Skipped (no patch artifacts created)";
+              }
+
+              return `✅ Prepared ${patchSummary.createdCount} partial update path(s)`;
+            },
+          },
+        ]);
+
+        for (const failure of patchSummary.failures) {
+          p.log.warn(
+            `Partial update skipped for ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
+          );
+        }
       };
 
-      await p.tasks([
-        {
-          title: "⚡ Optimizing Delivery",
-          task: async () => {
-            try {
-              patchSummary = await createAutoPatches({
-                bundleId: confirmedBundleId,
-                channel,
-                databasePlugin,
-                maxBaseBundles: maxPatchBaseBundles,
-                platform,
-                storagePlugin,
-                target,
-              });
-            } catch (error) {
-              const message =
-                error instanceof Error
-                  ? error.message
-                  : "Unknown patch optimization error";
-              p.log.warn(`Partial updates unavailable: ${message}`);
-              patchSummary = {
-                candidateCount: 0,
-                createdCount: 0,
-                failures: [],
-              };
-            }
-
-            if (!patchSummary.candidateCount) {
-              return "Skipped (no compatible base bundles)";
-            }
-
-            if (!patchSummary.createdCount) {
-              return "Skipped (no patch artifacts created)";
-            }
-
-            return `✅ Prepared ${patchSummary.createdCount} partial update path(s)`;
-          },
-        },
-      ]);
-
-      for (const failure of patchSummary.failures) {
-        p.log.warn(
-          `Partial update skipped for ${failure.baseBundleId.slice(0, 8)}: ${failure.message}`,
-        );
+      if (deferAutoPatches) {
+        runDeferredPatches = runAutoPatches;
+      } else {
+        await runAutoPatches();
       }
     }
 
@@ -1132,22 +1165,15 @@ const deployPlatform = async ({
 
       p.note(note);
     }
-    if (multiPlatform) {
-      p.log.success(
-        `✅ ${platformName} Deployment Successful (${confirmedBundleId})`,
-      );
-      return { bundleId: confirmedBundleId, platform };
+    if (!multiPlatform) {
+      p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
     }
 
-    p.outro(`🚀 Deployment Successful (${confirmedBundleId})`);
-    return { bundleId: confirmedBundleId, platform };
+    return { bundleId: confirmedBundleId, platform, runDeferredPatches };
   } catch (e) {
-    await databasePlugin.onUnmount?.();
     await fs.promises.rm(bundlePath, { force: true });
     console.error(e);
     process.exit(1);
-  } finally {
-    await databasePlugin.onUnmount?.();
   }
 };
 
@@ -1158,6 +1184,21 @@ export const deploy = async (options: DeployOptions) => {
   if (!platforms || platforms.length === 0) {
     return;
   }
+  const firstPlatform = platforms[0];
+  if (!firstPlatform) {
+    return;
+  }
+
+  const databaseConfig = await loadConfig({
+    channel: options.channel,
+    platform: firstPlatform,
+  });
+  if (!databaseConfig) {
+    console.error("No config found. Please run `hot-updater init` first.");
+    process.exit(1);
+  }
+  const databasePlugin = databaseConfig.database;
+  const database = createDatabaseClient(databasePlugin);
 
   const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
 
@@ -1174,25 +1215,56 @@ export const deploy = async (options: DeployOptions) => {
     }
   }
 
-  const results: Array<{ bundleId: string; platform: Platform }> = [];
-  for (const [platformIndex, platform] of platforms.entries()) {
-    const result = await deployPlatform({
-      options,
-      platform,
-      platformCount: platforms.length,
-      platformIndex,
-    });
+  const deployPlatforms = async (
+    persistBundle: DatabaseMutationClient["insertBundle"],
+  ): Promise<DeployPlatformResult[]> => {
+    const preparedResults: DeployPlatformResult[] = [];
+    for (const [platformIndex, platform] of platforms.entries()) {
+      const result = await deployPlatform({
+        databasePlugin,
+        deferAutoPatches: platforms.length > 1,
+        deferredDatabase: database,
+        options,
+        persistBundle,
+        platform,
+        platformCount: platforms.length,
+        platformIndex,
+      });
 
-    if (!result) {
-      return;
+      if (!result) {
+        throw new DeployAbortedError();
+      }
+
+      preparedResults.push(result);
+    }
+    return preparedResults;
+  };
+
+  try {
+    const results =
+      platforms.length > 1
+        ? await prepareAndCommitBundles({ database, prepare: deployPlatforms })
+        : await deployPlatforms(database.insertBundle);
+
+    for (const result of results) {
+      await result.runDeferredPatches?.();
+      if (platforms.length > 1) {
+        p.log.success(
+          `✅ ${getPlatformName(result.platform)} Deployment Successful (${result.bundleId})`,
+        );
+      }
     }
 
-    results.push(result);
-  }
-
-  if (platforms.length > 1) {
-    p.outro(
-      `🚀 Deployment Successful (${results.map(({ platform }) => getPlatformName(platform)).join(", ")})`,
-    );
+    if (platforms.length > 1) {
+      p.outro(
+        `🚀 Deployment Successful (${results.map(({ platform }) => getPlatformName(platform)).join(", ")})`,
+      );
+    }
+  } catch (error) {
+    if (!(error instanceof DeployAbortedError)) {
+      throw error;
+    }
+  } finally {
+    await databasePlugin.onUnmount?.();
   }
 };

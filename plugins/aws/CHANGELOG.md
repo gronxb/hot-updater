@@ -1,5 +1,16 @@
 # @hot-updater/aws
 
+## Unreleased
+
+### Minor Changes
+
+- Publish Lambda runtime factories as `s3Database` and `s3Storage` from
+  `@hot-updater/aws/lambda`; move the managed handler to
+  `@hot-updater/aws/lambda/handler`.
+- Remove the root `awsLambdaEdgeStorage`, `s3LambdaEdgeStorage`, and
+  `AwsLambdaEdgeStorageConfig` exports. Use `s3Storage` and `S3StorageConfig`
+  from `@hot-updater/aws/lambda`.
+
 ## 0.35.6
 
 ### Patch Changes

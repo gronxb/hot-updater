@@ -162,7 +162,7 @@ async function generateWithMigrator(
   } else {
     p.log.error(
       "Migration result does not support SQL generation. " +
-        "This may happen if you're not using an SQL-based database adapter.",
+        "This may happen if you're not using an SQL-based database plugin.",
     );
     requestGenerateExit(1);
     return;

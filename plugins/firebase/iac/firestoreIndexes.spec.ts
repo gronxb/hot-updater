@@ -26,6 +26,28 @@ describe("firebase firestore index template", () => {
         { fieldPath: "channel", order: "ASCENDING" },
         { fieldPath: "enabled", order: "ASCENDING" },
         { fieldPath: "platform", order: "ASCENDING" },
+        { fieldPath: "id", order: "ASCENDING" },
+      ],
+      queryScope: "COLLECTION",
+    });
+
+    const eventIndexes = indexFile.indexes
+      .filter(({ collectionGroup }) => collectionGroup === "bundle_events")
+      .map(({ fields }) => fields.map(({ fieldPath }) => fieldPath));
+    expect(eventIndexes).toEqual(
+      expect.arrayContaining([
+        ["received_at_ms", "id"],
+        ["type", "received_at_ms", "id"],
+        ["install_id", "type", "received_at_ms", "id"],
+      ]),
+    );
+
+    expect(indexFile.indexes).toContainEqual({
+      collectionGroup: "bundles",
+      fields: [
+        { fieldPath: "channel", order: "ASCENDING" },
+        { fieldPath: "enabled", order: "ASCENDING" },
+        { fieldPath: "platform", order: "ASCENDING" },
         { fieldPath: "target_app_version", order: "ASCENDING" },
         { fieldPath: "id", order: "ASCENDING" },
       ],

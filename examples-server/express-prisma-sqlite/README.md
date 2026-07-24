@@ -49,7 +49,8 @@ cp .env.example .env
 pnpm db:generate
 ```
 
-This will create a `hot-updater-schema.ts` file with the Prisma schema definitions.
+This merges the fixed Hot Updater models directly into
+`prisma/schema.prisma` while preserving application models.
 
 4. Apply the schema to the database:
 
@@ -95,7 +96,8 @@ pnpm test
 
 ### Prisma Workflow for Hot Updater
 
-Prisma uses a different workflow compared to Drizzle or Kysely adapters. The process involves integrating generated models into your Prisma schema file:
+Prisma uses a different workflow compared to Drizzle or Kysely adapters. The
+Hot Updater CLI manages a generated block inside the existing Prisma schema.
 
 **Step 1: Generate Hot Updater Models**
 
@@ -104,43 +106,19 @@ pnpm db:generate
 ```
 
 This command:
+
 1. Reads your Hot Updater configuration from `src/db.ts`
-2. Generates `hot-updater-schema.ts` with Prisma model definitions
-3. The file contains model schemas for `bundles` and `private_hot_updater_settings`
+2. Merges the fixed `bundles`, `bundle_patches`, `bundle_events`, and
+   `private_hot_updater_settings` models into `prisma/schema.prisma`
+3. Preserves application models outside the generated block
 
-**Step 2: Integrate Models into `prisma/schema.prisma`**
-
-The generated models need to be added to your `prisma/schema.prisma` file. This example already includes them:
-
-```prisma
-model bundles {
-  id                  String  @id
-  platform            String
-  should_force_update Boolean
-  enabled             Boolean
-  file_hash           String
-  git_commit_hash     String?
-  message             String?
-  channel             String
-  storage_uri         String
-  target_app_version  String?
-  fingerprint_hash    String?
-  metadata            Json
-}
-
-model private_hot_updater_settings {
-  key   String @id
-  value String @default("0.29.0")
-}
-```
-
-**Step 3: Generate Prisma Client**
+**Step 2: Generate Prisma Client**
 
 ```bash
 npx prisma generate
 ```
 
-**Step 4: Apply Schema to Database**
+**Step 3: Apply Schema to Database**
 
 For development (quick sync without migration files):
 
@@ -158,7 +136,8 @@ npx prisma migrate deploy
 ### Why This Workflow?
 
 Unlike Drizzle (which generates complete TypeScript schema files) or Kysely (which uses SQL migrations), Prisma requires:
-1. **Schema file integration**: Models must be in `prisma/schema.prisma`
+
+1. **Schema merge**: `db generate` maintains the generated models in `prisma/schema.prisma`
 2. **Client generation**: Prisma Client must be generated from the schema
 3. **Database sync**: Use `db push` (dev) or `migrate` (production) to apply changes
 

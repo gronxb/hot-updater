@@ -1,5 +1,18 @@
 # @hot-updater/postgres
 
+## Unreleased
+
+### Minor Changes
+
+- Replace the aggregate PostgreSQL database plugin with the fixed `bundles`,
+  `bundle_patches`, and `bundle_events` row contract. PostgreSQL now exposes
+  structural Analytics support through append-only event rows.
+- Implement exact single- and compound-field distinct counts, ordered
+  `distinctOn`, and every requested order clause, including an explicit `id`
+  tie-break.
+- Add the forward-only `sql/migrations/0.38.0-bundle-events.sql` migration for
+  PostgreSQL installations created before 0.38.0.
+
 ## 0.35.6
 
 ### Patch Changes

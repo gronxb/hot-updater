@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
+import { supportsAnalytics } from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -291,9 +292,9 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   beforeEach(async () => {
     cdnObjects.clear();
     await clearStorageBucket(storageBucket);
+    await clearFirestoreCollection("bundle_events");
+    await clearFirestoreCollection("bundle_patches");
     await clearFirestoreCollection("bundles");
-    await clearFirestoreCollection("channels");
-    await clearFirestoreCollection("target_app_versions");
   });
 
   afterAll(async () => {
@@ -310,15 +311,10 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     }
   });
 
-  const invokeHandler = async (
-    routePath: string,
-    headers?: Headers | Record<string, string>,
-  ) => {
+  const invokeHandler = async (routePath: string, init?: RequestInit) => {
     return await fetch(
       `http://127.0.0.1:${functionsPort}/${projectId}/${REGION}/${FUNCTION_NAME}${routePath}`,
-      {
-        headers,
-      },
+      init,
     );
   };
 
@@ -326,7 +322,12 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     for (const bundle of bundles.map((bundle) =>
       toRuntimeBundle(bundle, storageBucket),
     )) {
-      await seedHotUpdater.insertBundle(bundle);
+      const existing = await seedHotUpdater.getBundleById(bundle.id);
+      if (existing) {
+        await seedHotUpdater.updateBundleById(bundle.id, bundle);
+      } else {
+        await seedHotUpdater.insertBundle(bundle);
+      }
     }
   };
 
@@ -492,6 +493,96 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
+  });
+
+  it("ingests events from the managed function by default", async () => {
+    // Given: the client sends a valid OTA transition.
+    const bundleId = "00000000-0000-0000-0000-000000000001";
+
+    // When: the event is sent to the managed runtime default.
+    const response = await invokeHandler(`${HOT_UPDATER_BASE_PATH}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        appVersion: "1.0",
+        channel: "production",
+        cohort: "782",
+        fingerprintHash: null,
+        fromBundleId: NIL_UUID,
+        installId: "firebase-e2e-install",
+        platform: "ios",
+        toBundleId: bundleId,
+        type: "UPDATE_APPLIED",
+        updateStrategy: "appVersion",
+      }),
+    });
+
+    // Then: the managed runtime persists the event.
+    expect(response.status).toBe(204);
+    if (!supportsAnalytics(seedHotUpdater)) {
+      throw new Error("Expected Firebase Analytics support.");
+    }
+    await expect(
+      seedHotUpdater.getBundleEventSummary(bundleId),
+    ).resolves.toEqual({ installed: 1, recovered: 0 });
+  });
+
+  it("measures the original Firebase request body before ingesting", async () => {
+    const payload = JSON.stringify({
+      appVersion: "1.0",
+      channel: "production",
+      cohort: "782",
+      fingerprintHash: null,
+      fromBundleId: NIL_UUID,
+      installId: "firebase-oversized-install",
+      platform: "ios",
+      toBundleId: "00000000-0000-0000-0000-000000000001",
+      type: "UPDATE_APPLIED",
+      updateStrategy: "appVersion",
+    });
+    const oversizedBody = new TextEncoder().encode(
+      `${payload}${" ".repeat(17 * 1024)}`,
+    );
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(oversizedBody);
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    };
+    const response = await invokeHandler(
+      `${HOT_UPDATER_BASE_PATH}/events`,
+      init,
+    );
+    const persisted = await admin
+      .firestore()
+      .collection("bundle_events")
+      .where("install_id", "==", "firebase-oversized-install")
+      .get();
+
+    expect(response.status).toBe(413);
+    expect(persisted.empty).toBe(true);
+  });
+
+  it("exposes the managed Analytics route group by default", async () => {
+    const versionResponse = await invokeHandler(
+      `${HOT_UPDATER_BASE_PATH}/version`,
+    );
+    const queryResponse = await invokeHandler(
+      `${HOT_UPDATER_BASE_PATH}/api/bundles/bundle-1/events/summary`,
+    );
+
+    await expect(versionResponse.json()).resolves.toMatchObject({
+      capabilities: {
+        eventIngestion: true,
+        analyticsQueries: true,
+      },
+    });
+    expect(queryResponse.status).toBe(200);
   });
 
   it("does not support the legacy exact path", async () => {

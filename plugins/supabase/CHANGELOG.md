@@ -1,5 +1,27 @@
 # @hot-updater/supabase
 
+## Unreleased
+
+### Minor Changes
+
+- Replace the aggregate Supabase database plugin with the fixed `bundles`,
+  `bundle_patches`, and `bundle_events` row contract. Supabase now exposes
+  structural Analytics support through append-only event rows.
+- Reject unsupported distinct counts and `distinctOn` with a typed
+  `invalid-operation` error before opening a PostgREST query. Supported
+  bundle, patch, and event queries honor every requested `orderBy` clause.
+- Add the forward-only `0.38` migration for `bundle_events` and its Row Level
+  Security policy. Back up the database before upgrading; do not manually
+  replay the migration after it succeeds.
+- Enable the public Analytics route group on the managed Edge Function by
+  default, including `POST /events` and Analytics queries. Deployments remain
+  responsible for provider-level access controls, rate limits, quotas, logging,
+  and retention.
+- Move Edge factories to `@hot-updater/supabase/edge` as `supabaseDatabase` and
+  `supabaseStorage`; the previous root and `supabaseEdgeFunction*` names are
+  removed. Import the renamed `SupabaseDatabaseConfig` and
+  `SupabaseStorageConfig` types from the Edge subpath.
+
 ## 0.35.6
 
 ### Patch Changes

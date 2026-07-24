@@ -24,6 +24,10 @@ type RecordedRecoveryCall = {
 async function recordRecoveryCalls(): Promise<readonly RecordedRecoveryCall[]> {
   const calls: RecordedRecoveryCall[] = [];
   const app: DetoxAppDriver = {
+    assertStableLaunch: (stage) => {
+      calls.push({ kind: "assertText", stage, testID: "launch-status-result" });
+      return Promise.resolve();
+    },
     assertText: (stage, testID) => {
       calls.push({ kind: "assertText", stage, testID });
       return Promise.resolve();

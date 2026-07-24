@@ -1,25 +1,24 @@
 import { calculatePagination } from "./calculatePagination";
 import { sortBundles } from "./queryBundles";
 import type {
-  Bundle,
   DatabaseBundleCursor,
   DatabaseBundleQueryOrder,
   Paginated,
 } from "./types";
 
-export function paginateBundles({
+export function paginateBundles<TBundle extends { readonly id: string }>({
   bundles,
   limit,
   offset,
   cursor,
   orderBy,
 }: {
-  bundles: Bundle[];
+  bundles: readonly TBundle[];
   limit: number;
   offset?: number;
   cursor?: DatabaseBundleCursor;
   orderBy?: DatabaseBundleQueryOrder;
-}): Paginated<Bundle[]> {
+}): Paginated<TBundle[]> {
   const sortedBundles = sortBundles(bundles, orderBy);
   const direction = orderBy?.direction ?? "desc";
 
@@ -52,7 +51,7 @@ export function paginateBundles({
     };
   }
 
-  let data: Bundle[];
+  let data: TBundle[];
   if (cursor?.after) {
     const candidates = sortedBundles.filter((bundle) =>
       direction === "desc"

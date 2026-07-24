@@ -1,8 +1,10 @@
 import {
+  type AppUpdateInfo,
   getBundlePatches,
   type Bundle,
   type GetBundlesArgs,
   NIL_UUID,
+  type UpdateInfo,
 } from "@hot-updater/core";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -174,7 +176,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       env,
     );
 
-    return (await response.json()) as any;
+    return response.json() as Promise<UpdateInfo | AppUpdateInfo | null>;
   };
 
   const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
@@ -335,6 +337,62 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
+  });
+
+  it("ingests events from the managed worker by default", async () => {
+    // Given: the client sends a valid OTA transition.
+    const installId = "cloudflare-e2e-install";
+
+    // When: the event is sent to the managed runtime default.
+    const response = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0",
+          channel: "production",
+          cohort: "782",
+          fingerprintHash: null,
+          fromBundleId: NIL_UUID,
+          installId,
+          platform: "ios",
+          toBundleId: "00000000-0000-0000-0000-000000000001",
+          type: "UPDATE_APPLIED",
+          updateStrategy: "appVersion",
+        }),
+      }),
+      env,
+    );
+
+    // Then: the managed runtime persists the event.
+    expect(response.status).toBe(204);
+    const row = await env.DB.prepare(
+      "SELECT id FROM bundle_events WHERE install_id = ?",
+    )
+      .bind(installId)
+      .first();
+    expect(row).not.toBeNull();
+  });
+
+  it("exposes the managed Analytics route group by default", async () => {
+    const versionResponse = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/version`),
+      env,
+    );
+    const queryResponse = await worker.fetch(
+      new Request(
+        `${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/api/bundles/bundle-1/events/summary`,
+      ),
+      env,
+    );
+
+    await expect(versionResponse.json()).resolves.toMatchObject({
+      capabilities: {
+        eventIngestion: true,
+        analyticsQueries: true,
+      },
+    });
+    expect(queryResponse.status).toBe(200);
   });
 
   it("does not support the legacy exact path", async () => {

@@ -47,7 +47,7 @@ model bundle_patches {
 
 model private_hot_updater_settings {
   key String @db.VarChar(255) @id
-  value String @default("0.31.0")
+  value String @default("0.38.0")
 }`;
 
 describe("prisma-schema-merger", () => {
@@ -113,7 +113,7 @@ describe("prisma-schema-merger", () => {
       expect(result.content).toContain(
         'bundle bundles @relation("bundle_patches_bundles_patches"',
       );
-      expect(result.content).toContain('"0.31.0"');
+      expect(result.content).toContain('"0.38.0"');
       // Should only have one set of hot-updater markers
       const beginCount = (
         result.content.match(/BEGIN HOT-UPDATER MODELS/g) || []
@@ -147,6 +147,33 @@ describe("prisma-schema-merger", () => {
         thirdRun.content.match(/BEGIN HOT-UPDATER MODELS/g) || []
       ).length;
       expect(beginCount).toBe(1);
+    });
+
+    it("replaces every markerless Hot Updater model", () => {
+      const markerlessSchema = `generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id String @id
+}
+
+${HOT_UPDATER_MODELS}`;
+
+      const result = mergePrismaSchema(markerlessSchema, HOT_UPDATER_MODELS);
+      const modelCount = (name: string): number =>
+        result.content.match(new RegExp(`model ${name} \\{`, "g"))?.length ?? 0;
+
+      expect(result.hadExistingModels).toBe(true);
+      expect(result.content).toContain("model User");
+      expect(modelCount("bundles")).toBe(1);
+      expect(modelCount("bundle_patches")).toBe(1);
+      expect(modelCount("private_hot_updater_settings")).toBe(1);
     });
 
     it("should handle schemas with comments and whitespace", () => {

@@ -35,6 +35,27 @@ class DetoxAppDriver {
     this.stageValues = { ...initialValues };
   }
 
+  async assertStableLaunch(stage) {
+    await this.runStage(stage, async () => {
+      await withSynchronizationDisabledForAssertion(async () => {
+        const target = await findVisibleTestID(
+          this.controlClient,
+          "launch-status-result",
+        );
+        const text = textFromAttributes(await target.getAttributes());
+        const stableStatuses = [
+          "Current Launch Status: UPDATE_APPLIED",
+          "Current Launch Status: UNCHANGED",
+        ];
+        if (!stableStatuses.some((status) => text.includes(status))) {
+          throw new Error(
+            `${stage} expected a stable launch status, received "${text}"`,
+          );
+        }
+      });
+    });
+  }
+
   async assertText(stage, testID, contains, options = {}) {
     await this.runStage(stage, async () => {
       const expectedText = String(this.resolvePlaceholders(contains));
@@ -160,6 +181,27 @@ class DetoxAppDriver {
   readStageValue(key) {
     if (Object.hasOwn(this.stageValues, key)) return this.stageValues[key];
     throw new Error(`Missing Detox scenario value: ${key}`);
+  }
+
+  async verifyConsoleAnalytics(sinceMs) {
+    const bundleIds = [
+      ...new Set(
+        Object.values(this.stageValues).filter(
+          (value) =>
+            typeof value === "string" &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              value,
+            ),
+        ),
+      ),
+    ];
+    const evidence = await this.controlClient.postJson(
+      "verify Console Analytics",
+      "/e2e/verify-console-analytics",
+      { bundleIds, sinceMs },
+    );
+    console.log(`[detox-console-analytics] ${JSON.stringify(evidence)}`);
+    return evidence;
   }
 
   resolvePlaceholders(value) {

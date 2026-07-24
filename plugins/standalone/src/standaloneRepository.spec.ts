@@ -1,7 +1,7 @@
+import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
 import {
-  type Bundle,
-  calculatePagination,
-  type DatabasePlugin,
+  createDatabaseClient,
+  databaseBundleEventService,
 } from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -12,895 +12,775 @@ import {
   beforeEach,
   describe,
   expect,
+  expectTypeOf,
   it,
-  vi,
 } from "vitest";
 
 import {
-  type StandaloneRepositoryConfig,
+  StandaloneDatabaseError,
   standaloneRepository,
+  type StandaloneRepositoryConfig,
 } from "./standaloneRepository";
 
-const DEFAULT_BUNDLE = {
-  key: "bundle.zip",
-  fileHash: "hash",
+const BASE_URL = "http://localhost/hot-updater";
+const bundles = new Map<string, Bundle>();
+const channels = new Set<string>();
+const requestPaths: string[] = [];
+const createRequestBodies: unknown[] = [];
+
+const bundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
+  id,
   platform: "ios",
+  shouldForceUpdate: false,
+  enabled: true,
+  fileHash: `hash-${id}`,
   gitCommitHash: null,
-  message: null,
-} as const;
-
-const TEST_BUNDLE_1 = {
-  id: "bundle1",
+  message: id,
   channel: "production",
-  enabled: true,
-  shouldForceUpdate: true,
-  fileHash: "hash1",
-  gitCommitHash: "commit1",
-  message: "bundle 1",
-  platform: "android",
-  targetAppVersion: "2.0.0",
-  storageUri: "gs://test-bucket/test-key",
-  fingerprintHash: null,
-} as const;
-
-const TEST_BUNDLE_2 = {
-  id: "bundle2",
-  channel: "production",
-  enabled: false,
-  shouldForceUpdate: false,
-  fileHash: "hash2",
-  gitCommitHash: "commit2",
-  message: "bundle 2",
-  platform: "ios",
+  storageUri: `storage://${id}`,
   targetAppVersion: "1.0.0",
-  storageUri: "gs://test-bucket/test-key",
   fingerprintHash: null,
-} as const;
+  ...overrides,
+});
 
-const TEST_BUNDLE_3 = {
-  id: "bundle3",
-  channel: "staging",
-  enabled: true,
-  shouldForceUpdate: false,
-  fileHash: "hash3",
-  gitCommitHash: "commit3",
-  message: "bundle 3",
-  platform: "android",
-  targetAppVersion: "1.5.0",
-  storageUri: "gs://test-bucket/test-key",
-  fingerprintHash: null,
-} as const;
+const server = setupServer(
+  http.get(`${BASE_URL}/version`, () =>
+    HttpResponse.json({
+      version: "0.0.0-test",
+      capabilities: {
+        analytics: true,
+        mode: "dedicated",
+        eventIngestion: false,
+        analyticsQueries: true,
+      },
+    }),
+  ),
+  http.get(`${BASE_URL}/api/bundles/channels`, ({ request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    return HttpResponse.json({ data: { channels: [...channels] } });
+  }),
+  http.get(`${BASE_URL}/api/bundles/:id`, ({ params, request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    const value = bundles.get(String(params.id));
+    return value
+      ? HttpResponse.json(value)
+      : HttpResponse.json({ error: "Not found" }, { status: 404 });
+  }),
+  http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    const url = new URL(request.url);
+    const limit = Number(url.searchParams.get("limit") ?? 100);
+    const page = Number(url.searchParams.get("page") ?? 1);
+    const all = [...bundles.values()];
+    const start = (page - 1) * limit;
+    const data = all.slice(start, start + limit);
+    return HttpResponse.json({
+      data,
+      pagination: {
+        total: all.length,
+        hasNextPage: start + data.length < all.length,
+        hasPreviousPage: page > 1,
+        currentPage: page,
+        totalPages: Math.max(1, Math.ceil(all.length / limit)),
+      },
+    });
+  }),
+  http.post(`${BASE_URL}/api/bundles`, async ({ request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    const body: unknown = await request.json();
+    createRequestBodies.push(body);
+    const values = Array.isArray(body) ? body : [body];
+    for (const value of values) {
+      if (typeof value === "object" && value !== null && "id" in value) {
+        const next = value as Bundle;
+        bundles.set(next.id, next);
+        channels.add(next.channel);
+      }
+    }
+    return HttpResponse.json({ success: true }, { status: 201 });
+  }),
+  http.patch(`${BASE_URL}/api/bundles/:id`, async ({ params, request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    const id = String(params.id);
+    const current = bundles.get(id);
+    if (!current) {
+      return HttpResponse.json({ error: "Not found" }, { status: 404 });
+    }
+    const update = (await request.json()) as Partial<Bundle>;
+    const next = { ...current, ...update, id };
+    bundles.set(id, next);
+    channels.add(next.channel);
+    return HttpResponse.json({ success: true });
+  }),
+  http.delete(`${BASE_URL}/api/bundles/:id`, ({ params, request }) => {
+    requestPaths.push(new URL(request.url).pathname);
+    bundles.delete(String(params.id));
+    return HttpResponse.json({ success: true });
+  }),
+);
 
-const testBundles: Bundle[] = [
-  {
-    ...DEFAULT_BUNDLE,
-    targetAppVersion: "*",
-    shouldForceUpdate: false,
-    enabled: true,
-    id: "00000000-0000-0000-0000-000000000001",
-    channel: "production",
-    storageUri: "gs://test-bucket/test-key",
-    fingerprintHash: null,
-  },
-  TEST_BUNDLE_1,
-  TEST_BUNDLE_2,
-  TEST_BUNDLE_3,
-];
-
-const createPaginatedResult = (
-  data: Bundle[],
-  options: {
-    total?: number;
-    limit?: number;
-    offset?: number;
-  } = {},
-) => {
-  const limit = options.limit ?? (data.length > 0 ? data.length : 20);
-  const offset = options.offset ?? 0;
-  const total = options.total ?? data.length;
-
-  return {
-    data,
-    pagination: calculatePagination(total, { limit, offset }),
-  };
-};
-
-const server = setupServer();
-
-beforeAll(() => server.listen());
+beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+beforeEach(() => {
+  bundles.clear();
+  channels.clear();
+  requestPaths.length = 0;
+  createRequestBodies.length = 0;
+});
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-describe("Standalone Repository Plugin (Default Routes)", () => {
-  let repo: DatabasePlugin;
-  let onDatabaseUpdated: () => Promise<void>;
-  const config: StandaloneRepositoryConfig = {
-    baseUrl: "http://localhost/hot-updater",
-  };
+const createRepository = (): DatabasePlugin =>
+  standaloneRepository({ baseUrl: BASE_URL });
 
-  beforeEach(() => {
-    onDatabaseUpdated = vi.fn();
-    repo = standaloneRepository(config, { onDatabaseUpdated })();
+describe("standaloneRepository", () => {
+  it("keeps the existing user config source-compatible", () => {
+    type ExistingUserConfig = {
+      baseUrl: string;
+      commonHeaders?: Record<string, string>;
+      routes?: {
+        create?: () => { path: string };
+        list?: () => { path: string };
+        channels?: () => { path: string };
+        retrieve?: (bundleId: string) => { path: string };
+        update?: (bundleId: string) => { path: string };
+        delete?: (bundleId: string) => { path: string };
+      };
+    };
+    type HasPublicSupportsOption =
+      "supportsAnalytics" extends keyof StandaloneRepositoryConfig
+        ? true
+        : false;
+
+    expectTypeOf<ExistingUserConfig>().toMatchTypeOf<StandaloneRepositoryConfig>();
+    expectTypeOf<HasPublicSupportsOption>().toEqualTypeOf<false>();
   });
 
-  it("getBundles: GET /hot-updater/api/bundles fetches bundle list", async () => {
-    let callCount = 0;
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
-        callCount++;
-        expect(request.headers.get("Content-Type")).toEqual("application/json");
-        expect(request.headers.get("Cache-Control")).toEqual("no-cache");
-        return HttpResponse.json(
-          createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
-        );
-      }),
-    );
+  it("discovers Analytics support without a public config option", async () => {
+    // Given
+    const repository = createRepository();
+    const probe = Reflect.get(
+      repository,
+      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    ) as () => Promise<unknown>;
 
-    const bundles = await repo.getBundles({ limit: 20 });
-    expect(bundles.data).toEqual(testBundles);
-    expect(callCount).toBe(1);
+    // When / Then
+    expect(repository[databaseBundleEventService]).toBeDefined();
+    await expect(probe()).resolves.toEqual({
+      analytics: true,
+      mode: "dedicated",
+      eventIngestion: false,
+      analyticsQueries: true,
+    });
   });
 
-  it("getBundles: makes new request when refresh is true", async () => {
-    let callCount = 0;
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", () => {
-        callCount++;
-        return HttpResponse.json(
-          createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
-        );
-      }),
-    );
-
-    await repo.getBundles({ limit: 20 });
-    const refreshed = await repo.getBundles({ limit: 20 });
-    expect(refreshed.data).toEqual(testBundles);
-    expect(callCount).toBe(2);
-  });
-
-  it("getBundles: forwards bundle filters through query parameters", async () => {
-    let requestedChannel: string | null = null;
-    let requestedPlatform: string | null = null;
-    let requestedEnabled: string | null = null;
-    let requestedLimit: string | null = null;
-    let requestedIdLt: string | null = null;
-    let requestedTargetAppVersion: string | null = null;
-    let requestedTargetAppVersionNotNull: string | null = null;
-    let requestedFingerprintHash: string | null = null;
-
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
-        const url = new URL(request.url);
-        requestedChannel = url.searchParams.get("channel");
-        requestedPlatform = url.searchParams.get("platform");
-        requestedEnabled = url.searchParams.get("enabled");
-        requestedLimit = url.searchParams.get("limit");
-        requestedIdLt = url.searchParams.get("idLt");
-        requestedTargetAppVersion = url.searchParams.get("targetAppVersion");
-        requestedTargetAppVersionNotNull = url.searchParams.get(
-          "targetAppVersionNotNull",
-        );
-        requestedFingerprintHash = url.searchParams.get("fingerprintHash");
-
-        return HttpResponse.json(
-          createPaginatedResult([], { limit: 10, offset: 0 }),
-        );
-      }),
-    );
-
-    await repo.getBundles({
-      where: {
-        channel: "production",
-        platform: "ios",
-        enabled: true,
-        id: {
-          lt: "bundle9",
+  it("uses only the existing bundle routes for aggregate mutations", async () => {
+    const base = bundle("00000000-0000-0000-0000-000000000001");
+    const target = bundle("00000000-0000-0000-0000-000000000002", {
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "patch-hash",
+          patchStorageUri: "storage://patch",
         },
-        targetAppVersion: "1.0.x",
-        targetAppVersionNotNull: true,
-        fingerprintHash: null,
-      },
-      limit: 10,
+      ],
     });
+    const client = createDatabaseClient(createRepository());
 
-    expect(requestedChannel).toBe("production");
-    expect(requestedPlatform).toBe("ios");
-    expect(requestedEnabled).toBe("true");
-    expect(requestedLimit).toBe("10");
-    expect(requestedIdLt).toBe("bundle9");
-    expect(requestedTargetAppVersion).toBe("1.0.x");
-    expect(requestedTargetAppVersionNotNull).toBe("true");
-    expect(requestedFingerprintHash).toBe("null");
+    await client.insertBundle(base);
+    await client.insertBundle(target);
+
+    await expect(client.getBundleById(target.id)).resolves.toMatchObject({
+      id: target.id,
+      patches: target.patches,
+    });
+    expect(requestPaths).not.toContainEqual(
+      expect.stringContaining("/database/"),
+    );
+    expect(
+      requestPaths.every((path) => path.startsWith("/hot-updater/api/bundles")),
+    ).toBe(true);
   });
 
-  it("getBundles: forwards cursor query params without offset", async () => {
-    let requestedAfter: string | null = null;
-    let requestedBefore: string | null = null;
-    let requestedPage: string | null = null;
+  it("replaces bundle patches through the aggregate update route", async () => {
+    // Given
+    const base = bundle("00000000-0000-0000-0000-000000000001");
+    const target = bundle("00000000-0000-0000-0000-000000000002");
+    const client = createDatabaseClient(createRepository());
+    await client.insertBundle(base);
+    await client.insertBundle(target);
 
+    // When
+    await client.updateBundleById(target.id, {
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "replacement-patch-hash",
+          patchStorageUri: "storage://replacement-patch",
+        },
+      ],
+    });
+
+    // Then
+    await expect(client.getBundleById(target.id)).resolves.toMatchObject({
+      patches: [
+        {
+          baseBundleId: base.id,
+          patchFileHash: "replacement-patch-hash",
+        },
+      ],
+    });
+  });
+
+  it("does not publish staged bundle changes when a transaction fails", async () => {
+    // Given
+    const target = bundle("00000000-0000-0000-0000-000000000001");
+    const client = createDatabaseClient(createRepository());
+    await client.insertBundle(target);
+
+    // When
+    const mutation = client.mutate(async (transaction) => {
+      await transaction.updateBundleById(target.id, { enabled: false });
+      throw new Error("reject transaction");
+    });
+
+    // Then
+    await expect(mutation).rejects.toThrow("reject transaction");
+    await expect(client.getBundleById(target.id)).resolves.toMatchObject({
+      enabled: true,
+    });
+  });
+
+  it("commits multiple bundle creations in one remote request", async () => {
+    // Given
+    const ios = bundle("00000000-0000-0000-0000-000000000001");
+    const android = bundle("00000000-0000-0000-0000-000000000002", {
+      platform: "android",
+    });
+    const client = createDatabaseClient(createRepository());
+
+    // When
+    await client.mutate(async (transaction) => {
+      await transaction.insertBundle(ios);
+      await transaction.insertBundle(android);
+    });
+
+    // Then
+    expect(createRequestBodies).toEqual([
+      [
+        expect.objectContaining({ id: ios.id, platform: "ios" }),
+        expect.objectContaining({ id: android.id, platform: "android" }),
+      ],
+    ]);
+    await expect(client.getBundleById(ios.id)).resolves.toMatchObject({
+      id: ios.id,
+    });
+    await expect(client.getBundleById(android.id)).resolves.toMatchObject({
+      id: android.id,
+    });
+  });
+
+  it("does not retry a bundle batch after an ambiguous commit failure", async () => {
+    // Given
+    const first = bundle("00000000-0000-0000-0000-000000000001");
+    const second = bundle("00000000-0000-0000-0000-000000000002");
+    const client = createDatabaseClient(createRepository());
     server.use(
-      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
-        const url = new URL(request.url);
-        requestedAfter = url.searchParams.get("after");
-        requestedBefore = url.searchParams.get("before");
-        requestedPage = url.searchParams.get("page");
-
+      http.post(`${BASE_URL}/api/bundles`, async ({ request }) => {
+        createRequestBodies.push(await request.json());
         return HttpResponse.json(
-          createPaginatedResult([TEST_BUNDLE_1], { limit: 1, offset: 1 }),
+          { error: "response lost after commit" },
+          { status: 500 },
         );
       }),
     );
 
-    const result = await repo.getBundles({
-      limit: 1,
-      cursor: {
-        after: "bundle1",
-      },
+    // When
+    const commit = client.mutate(async (transaction) => {
+      await transaction.insertBundle(first);
+      await transaction.insertBundle(second);
     });
 
-    expect(requestedAfter).toBe("bundle1");
-    expect(requestedBefore).toBeNull();
-    expect(requestedPage).toBeNull();
-    expect(result.data).toEqual([TEST_BUNDLE_1]);
+    // Then
+    await expect(commit).rejects.toBeInstanceOf(StandaloneDatabaseError);
+    expect(createRequestBodies).toHaveLength(1);
+    expect(createRequestBodies[0]).toEqual([
+      expect.objectContaining({ id: first.id }),
+      expect.objectContaining({ id: second.id }),
+    ]);
   });
 
-  it("getBundles: forwards page-aligned cursor requests", async () => {
-    let requestedAfter: string | null = null;
-    let requestedPage: string | null = null;
-
+  it("delegates analytics to standalone management routes", async () => {
+    const event = {
+      id: "event-1",
+      type: "UPDATE_APPLIED" as const,
+      fromBundleId: "bundle-0",
+      toBundleId: "bundle-1",
+      username: "hot-updater-e2e",
+      userId: "detox-e2e",
+      platform: "android" as const,
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "782",
+      receivedAtMs: 1_700_000_000_000,
+    };
     server.use(
-      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
-        const url = new URL(request.url);
-        requestedAfter = url.searchParams.get("after");
-        requestedPage = url.searchParams.get("page");
-
-        return HttpResponse.json(
-          createPaginatedResult([TEST_BUNDLE_2], {
-            limit: 20,
-            offset: 20,
-            total: 121,
-          }),
-        );
-      }),
-    );
-
-    await repo.getBundles({
-      limit: 20,
-      page: 2,
-      cursor: {
-        after: "bundle-020",
-      },
-    });
-
-    expect(requestedAfter).toBe("bundle-020");
-    expect(requestedPage).toBe("2");
-  });
-
-  it("getBundles: rejects removed offset pagination", async () => {
-    await expect(
-      repo.getBundles({ limit: 20, offset: 1 } as never),
-    ).rejects.toThrow(
-      "Bundle offset pagination has been removed. Use cursor.after or cursor.before instead.",
-    );
-  });
-
-  it("should return correct pagination info for single page", async () => {
-    // Mock initial bundles fetch
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json(
-          createPaginatedResult([], { limit: 20, offset: 0 }),
-        );
-      }),
-      http.post("http://localhost/hot-updater/api/bundles", async () => {
-        return HttpResponse.json({ success: true });
-      }),
-    );
-
-    await repo.appendBundle(TEST_BUNDLE_1);
-    await repo.appendBundle(TEST_BUNDLE_2);
-    await repo.appendBundle(TEST_BUNDLE_3);
-    await repo.commitBundle();
-
-    // Mock filtered bundles response
-    const productionBundles = [TEST_BUNDLE_1, TEST_BUNDLE_2];
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
-        const url = new URL(request.url);
-        const channel = url.searchParams.get("channel");
-        if (channel === "production") {
-          return HttpResponse.json(
-            createPaginatedResult(productionBundles, {
-              limit: 20,
-              offset: 0,
-            }),
-          );
-        }
-        return HttpResponse.json(
-          createPaginatedResult([TEST_BUNDLE_1, TEST_BUNDLE_2, TEST_BUNDLE_3], {
-            limit: 20,
-            offset: 0,
-          }),
-        );
-      }),
-    );
-
-    const result = await repo.getBundles({
-      where: { channel: "production" },
-      limit: 20,
-    });
-
-    expect(result.data).toHaveLength(2);
-    expect(result.data[0].id).toBe("bundle1");
-    expect(result.data[1].id).toBe("bundle2");
-
-    expect(result.pagination).toEqual({
-      total: 2,
-      hasNextPage: false,
-      hasPreviousPage: false,
-      currentPage: 1,
-      totalPages: 1,
-    });
-  });
-
-  it("should return correct pagination info for multiple pages", async () => {
-    // Mock paginated responses
-    const allBundles = [TEST_BUNDLE_1, TEST_BUNDLE_2, TEST_BUNDLE_3];
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", ({ request }) => {
-        const url = new URL(request.url);
-        const after = url.searchParams.get("after");
-        if (after === TEST_BUNDLE_2.id) {
-          return HttpResponse.json({
-            data: [TEST_BUNDLE_3],
-            pagination: {
-              total: allBundles.length,
-              hasNextPage: false,
-              hasPreviousPage: true,
-              currentPage: 2,
-              totalPages: 2,
-              previousCursor: TEST_BUNDLE_3.id,
+      http.get(`${BASE_URL}/api/bundles/bundle-1/events/summary`, () =>
+        HttpResponse.json({ installed: 1, recovered: 0 }),
+      ),
+      http.get(`${BASE_URL}/api/bundles/bundle-1/events/analytics`, () =>
+        HttpResponse.json({
+          summary: { installed: 1, recovered: 0 },
+          series: { installed: [], recovered: [] },
+          cohorts: { installed: [], recovered: [] },
+          recentEvents: {
+            data: [event],
+            pagination: { total: 1, limit: 20, offset: 0 },
+          },
+        }),
+      ),
+      http.get(`${BASE_URL}/api/installations`, () =>
+        HttpResponse.json({
+          data: [
+            {
+              installId: "install-1",
+              username: event.username,
+              userId: event.userId,
+              lastKnownBundleId: event.toBundleId,
+              latestStatus: event.type,
+              platform: event.platform,
+              appVersion: event.appVersion,
+              channel: event.channel,
+              cohort: event.cohort,
+              receivedAtMs: event.receivedAtMs,
             },
-          });
-        }
+          ],
+          pagination: { total: 1, limit: 20, offset: 0 },
+        }),
+      ),
+      http.get(`${BASE_URL}/api/installations/overview`, () =>
+        HttpResponse.json({
+          trackedInstallations: 1,
+          bundles: [{ bundleId: "bundle-1", installations: 1 }],
+        }),
+      ),
+      http.get(`${BASE_URL}/api/installations/install-1/events`, () =>
+        HttpResponse.json({
+          data: [event],
+          pagination: { total: 1, limit: 20, offset: 0 },
+        }),
+      ),
+    );
+    const repository = standaloneRepository({ baseUrl: BASE_URL });
+    const analytics = repository[databaseBundleEventService];
+    if (!analytics) throw new Error("Missing standalone analytics service");
 
+    await expect(analytics.getBundleEventSummary("bundle-1")).resolves.toEqual({
+      installed: 1,
+      recovered: 0,
+    });
+    await expect(
+      analytics.getBundleEventAnalytics("bundle-1", "24h", 20, 0),
+    ).resolves.toMatchObject({ summary: { installed: 1, recovered: 0 } });
+    await expect(
+      analytics.searchInstallations("detox-e2e", 20, 0),
+    ).resolves.toMatchObject({ data: [{ installId: "install-1" }] });
+    await expect(
+      analytics.getInstallationHistory("install-1", 20, 0),
+    ).resolves.toMatchObject({ data: [event] });
+    await expect(analytics.getBundleEventOverview()).resolves.toEqual({
+      trackedInstallations: 1,
+      bundles: [{ bundleId: "bundle-1", installations: 1 }],
+    });
+  });
+
+  it("loads channels through the existing channels route", async () => {
+    channels.add("preview");
+    const repository = createRepository();
+
+    await expect(repository.getChannels?.()).resolves.toEqual(["preview"]);
+    expect(bundles.size).toBe(0);
+    expect(requestPaths).toContain("/hot-updater/api/bundles/channels");
+  });
+
+  it("keeps aggregate bundle channel names", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000021", {
+      channel: "preview",
+    });
+    bundles.set(value.id, value);
+    channels.add("preview");
+
+    await expect(
+      createRepository().findOne({
+        model: "bundles",
+        where: [{ field: "id", value: value.id }],
+      }),
+    ).resolves.toMatchObject({
+      id: value.id,
+      channel: "preview",
+    });
+  });
+
+  it("uses the configured retrieve route for exact bundle ids", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000022");
+    let retrieveCalls = 0;
+    server.use(
+      http.get(`http://localhost/custom/bundles/${value.id}`, () => {
+        retrieveCalls += 1;
+        return HttpResponse.json(value);
+      }),
+    );
+    const repository = standaloneRepository({
+      baseUrl: "http://localhost",
+      routes: {
+        retrieve: (bundleId) => ({ path: `/custom/bundles/${bundleId}` }),
+      },
+    });
+
+    await expect(
+      repository.findOne({
+        model: "bundles",
+        where: [{ field: "id", value: value.id }],
+      }),
+    ).resolves.toMatchObject({ id: value.id, channel: "production" });
+    expect(retrieveCalls).toBe(1);
+  });
+
+  it("forwards supported bundle filters and page-aligned offsets", async () => {
+    let requestedUrl: URL | undefined;
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
         return HttpResponse.json({
-          data: [TEST_BUNDLE_1, TEST_BUNDLE_2],
+          data: [],
           pagination: {
-            total: allBundles.length,
+            total: 0,
+            hasNextPage: false,
+            hasPreviousPage: true,
+            currentPage: 3,
+            totalPages: 3,
+          },
+        });
+      }),
+    );
+
+    await createRepository().findMany({
+      model: "bundles",
+      where: [
+        { field: "channel", value: "preview" },
+        { field: "platform", value: "ios" },
+        { field: "enabled", value: true },
+        { field: "id", operator: "gte", value: "bundle-20" },
+      ],
+      sortBy: { field: "id", direction: "desc" },
+      limit: 10,
+      offset: 20,
+    });
+
+    expect(requestedUrl?.searchParams.get("channel")).toBe("preview");
+    expect(requestedUrl?.searchParams.get("platform")).toBe("ios");
+    expect(requestedUrl?.searchParams.get("enabled")).toBe("true");
+    expect(requestedUrl?.searchParams.get("idGte")).toBe("bundle-20");
+    expect(requestedUrl?.searchParams.get("limit")).toBe("10");
+    expect(requestedUrl?.searchParams.get("page")).toBe("3");
+    expect(requestedUrl?.searchParams.get("orderDirection")).toBe("desc");
+  });
+
+  it("forwards bounded ascending bundle order to the aggregate endpoint", async () => {
+    // Given
+    let requestedUrl: URL | undefined;
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [bundle("00000000-0000-0000-0000-000000000031")],
+          pagination: {
+            total: 2,
             hasNextPage: true,
             hasPreviousPage: false,
             currentPage: 1,
             totalPages: 2,
-            nextCursor: TEST_BUNDLE_2.id,
           },
         });
       }),
-      http.post("http://localhost/hot-updater/api/bundles", async () => {
-        return HttpResponse.json({ success: true });
-      }),
     );
 
-    await repo.appendBundle(TEST_BUNDLE_1);
-    await repo.appendBundle(TEST_BUNDLE_2);
-    await repo.appendBundle(TEST_BUNDLE_3);
-    await repo.commitBundle();
-
-    const firstPage = await repo.getBundles({
-      limit: 2,
+    // When
+    const result = await createRepository().findMany({
+      model: "bundles",
+      orderBy: [{ field: "id", direction: "asc" }],
+      limit: 1,
+      offset: 0,
     });
 
-    expect(firstPage.data).toHaveLength(2);
-    expect(firstPage.pagination).toEqual({
-      total: 3,
-      hasNextPage: true,
-      hasPreviousPage: false,
-      currentPage: 1,
-      totalPages: 2,
-      nextCursor: TEST_BUNDLE_2.id,
-    });
-
-    const secondPage = await repo.getBundles({
-      limit: 2,
-      cursor: {
-        after: firstPage.pagination.nextCursor!,
-      },
-    });
-
-    expect(secondPage.data).toHaveLength(1);
-    expect(secondPage.pagination).toEqual({
-      total: 3,
-      hasNextPage: false,
-      hasPreviousPage: true,
-      currentPage: 2,
-      totalPages: 2,
-      previousCursor: TEST_BUNDLE_3.id,
-    });
-  });
-
-  it("getChannels: GET /hot-updater/api/bundles/channels fetches channels", async () => {
-    server.use(
-      http.get(
-        "http://localhost/hot-updater/api/bundles/channels",
-        ({ request }) => {
-          expect(request.headers.get("Content-Type")).toEqual(
-            "application/json",
-          );
-          expect(request.headers.get("Cache-Control")).toEqual("no-cache");
-          return HttpResponse.json({
-            data: {
-              channels: ["production", "staging"],
-            },
-          });
-        },
-      ),
-    );
-
-    await expect(repo.getChannels()).resolves.toEqual([
-      "production",
-      "staging",
+    // Then
+    expect(result.map(({ id }) => id)).toEqual([
+      "00000000-0000-0000-0000-000000000031",
     ]);
+    expect(requestedUrl?.searchParams.get("limit")).toBe("1");
+    expect(requestedUrl?.searchParams.get("page")).toBe("1");
+    expect(requestedUrl?.searchParams.get("orderDirection")).toBe("asc");
   });
 
-  it("getBundleById: GET /hot-updater/api/bundles/:id retrieves a bundle (success case)", async () => {
-    server.use(
-      http.get(
-        "http://localhost/hot-updater/api/bundles/:bundleId",
-        ({ params, request }) => {
-          const { bundleId } = params;
-          if (bundleId === testBundles[0].id) {
-            expect(request.headers.get("Accept")).toEqual("application/json");
-            return HttpResponse.json(testBundles[0]);
-          }
-          return HttpResponse.error();
-        },
-      ),
-    );
-
-    const bundle = await repo.getBundleById(
-      "00000000-0000-0000-0000-000000000001",
-    );
-    expect(bundle).toEqual(testBundles[0]);
-  });
-
-  it("getBundleById: returns null when retrieval fails", async () => {
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles/:bundleId", () => {
-        return HttpResponse.error();
-      }),
-    );
-
-    const bundle = await repo.getBundleById("non-existent");
-    expect(bundle).toBeNull();
-  });
-
-  it("getBundleById: returns null on network error", async () => {
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles/:bundleId", () => {
-        throw new Error("Network failure");
-      }),
-    );
-
-    const bundle = await repo.getBundleById(
-      "00000000-0000-0000-0000-000000000001",
-    );
-    expect(bundle).toBeNull();
-  });
-
-  it("getBundles: throws error when API returns error", async () => {
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", () => {
-        return new HttpResponse(null, {
-          status: 500,
-          statusText: "Internal Server Error",
-        });
-      }),
-    );
-
-    await expect(repo.getBundles({ limit: 20 })).rejects.toThrow(
-      "API Error: Internal Server Error",
-    );
-  });
-
-  it("updateBundle & commitBundle: updates an existing bundle and commits", async () => {
-    let postCalled = false;
-
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json(
-          createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
-        );
-      }),
-      http.get(
-        "http://localhost/hot-updater/api/bundles/:bundleId",
-        ({ params, request }) => {
-          const { bundleId } = params;
-          if (bundleId === testBundles[0].id) {
-            expect(request.headers.get("Accept")).toEqual("application/json");
-            return HttpResponse.json(testBundles[0]);
-          }
-          return HttpResponse.error();
-        },
-      ),
-      http.patch(
-        "http://localhost/hot-updater/api/bundles/:bundleId",
-        async ({ params, request }) => {
-          postCalled = true;
-          expect(params.bundleId).toBe("00000000-0000-0000-0000-000000000001");
-          const body = (await request.json()) as Bundle;
-          expect(Array.isArray(body)).toBe(false);
-          expect(body.id).toBe("00000000-0000-0000-0000-000000000001");
-          expect(body.enabled).toBe(false);
-          return HttpResponse.json({ success: true });
-        },
-      ),
-    );
-
-    await repo.updateBundle("00000000-0000-0000-0000-000000000001", {
-      enabled: false,
+  it("counts distinct bundle values through the local compatibility view", async () => {
+    // Given
+    const first = bundle("00000000-0000-0000-0000-000000000041");
+    const second = bundle("00000000-0000-0000-0000-000000000042");
+    const preview = bundle("00000000-0000-0000-0000-000000000043", {
+      channel: "preview",
     });
-    await repo.commitBundle();
-    expect(postCalled).toBe(true);
-    expect(onDatabaseUpdated).toHaveBeenCalled();
+    bundles.set(first.id, first);
+    bundles.set(second.id, second);
+    bundles.set(preview.id, preview);
+
+    // When
+    const result = await createRepository().count({
+      model: "bundles",
+      distinct: ["channel"],
+    });
+
+    // Then
+    expect(result).toBe(2);
   });
 
-  it("updateBundle: throws error if target bundle does not exist", async () => {
+  it("counts compound distinct bundle tuples", async () => {
+    // Given
+    const productionIos = bundle("00000000-0000-0000-0000-000000000044");
+    const productionAndroid = bundle("00000000-0000-0000-0000-000000000045", {
+      platform: "android",
+    });
+    const previewIos = bundle("00000000-0000-0000-0000-000000000046", {
+      channel: "preview",
+    });
+    bundles.set(productionIos.id, productionIos);
+    bundles.set(productionAndroid.id, productionAndroid);
+    bundles.set(previewIos.id, previewIos);
+
+    // When
+    const result = await createRepository().count({
+      model: "bundles",
+      distinct: ["channel", "platform"],
+    });
+
+    // Then
+    expect(result).toBe(3);
+  });
+
+  it("counts patch rows independently from bundle rows", async () => {
+    // Given
+    const base = bundle("00000000-0000-0000-0000-000000000047");
+    const target = bundle("00000000-0000-0000-0000-000000000048", {
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "patch-hash",
+          patchStorageUri: "storage://patch",
+        },
+      ],
+    });
+    bundles.set(base.id, base);
+    bundles.set(target.id, target);
+
+    // When
+    const result = await createRepository().count({
+      model: "bundle_patches",
+    });
+
+    // Then
+    expect(result).toBe(1);
+  });
+
+  it("keeps the highest id per channel for ordered distinct bundle rows", async () => {
+    // Given
+    const production = bundle("00000000-0000-0000-0000-000000000051");
+    const previewLow = bundle("00000000-0000-0000-0000-000000000052", {
+      channel: "preview",
+    });
+    const previewHigh = bundle("00000000-0000-0000-0000-000000000053", {
+      channel: "preview",
+    });
+    bundles.set(production.id, production);
+    bundles.set(previewLow.id, previewLow);
+    bundles.set(previewHigh.id, previewHigh);
+
+    // When
+    const result = await createRepository().findMany({
+      model: "bundles",
+      distinctOn: { fields: ["channel"] },
+      orderBy: [
+        { field: "channel", direction: "asc" },
+        { field: "id", direction: "desc" },
+      ],
+    });
+
+    // Then
+    expect(result.map(({ id }) => id)).toEqual([previewHigh.id, production.id]);
+  });
+
+  it("returns an empty bundle window without sending an invalid zero limit", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000023");
+    bundles.set(value.id, value);
+
+    await expect(
+      createRepository().findMany({ model: "bundles", limit: 0 }),
+    ).resolves.toEqual([]);
+    expect(requestPaths).toEqual([]);
+  });
+
+  it("preserves repeated filter semantics through the local fallback", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000024");
+    bundles.set(value.id, value);
+    let requestedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json(
-          createPaginatedResult([], { limit: 20, offset: 0 }),
-        );
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [...bundles.values()],
+          pagination: {
+            total: bundles.size,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
+        });
       }),
     );
 
     await expect(
-      repo.updateBundle("non-existent-id", { enabled: false }),
-    ).rejects.toThrow("targetBundleId not found");
+      createRepository().findMany({
+        model: "bundles",
+        where: [
+          { field: "channel", value: "production" },
+          { field: "channel", value: "preview" },
+        ],
+      }),
+    ).resolves.toEqual([]);
+    expect(requestedUrl?.searchParams.has("channel")).toBe(false);
   });
 
-  it("appendBundle & commitBundle: appends a new bundle and commits", async () => {
+  it("forwards direct channel filters to the aggregate endpoint", async () => {
+    const value = bundle("00000000-0000-0000-0000-000000000025");
+    bundles.set(value.id, value);
+    let requestedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json(
-          createPaginatedResult([], { limit: 20, offset: 0 }),
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        const channel = requestedUrl.searchParams.get("channel");
+        const filtered = [...bundles.values()].filter(
+          (bundle) => channel === null || bundle.channel === channel,
         );
-      }),
-    );
-
-    const newBundle: Bundle = {
-      ...DEFAULT_BUNDLE,
-      targetAppVersion: "1.0.0",
-      shouldForceUpdate: false,
-      enabled: true,
-      id: "00000000-0000-0000-0000-000000000002",
-      channel: "production",
-      storageUri: "gs://test-bucket/test-key",
-      fingerprintHash: null,
-    };
-
-    await repo.appendBundle(newBundle);
-
-    let postCalled = false;
-    server.use(
-      http.post(
-        "http://localhost/hot-updater/api/bundles",
-        async ({ request }) => {
-          postCalled = true;
-          const body = await request.json();
-          expect(body).toEqual([newBundle]);
-          return HttpResponse.json({ success: true });
-        },
-      ),
-    );
-
-    await repo.commitBundle();
-    expect(postCalled).toBe(true);
-  });
-
-  it("commitBundle: does nothing if there are no changes", async () => {
-    const spy = vi.spyOn(global, "fetch");
-    await repo.commitBundle();
-    expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
-  });
-
-  it("commitBundle: throws exception on API error", async () => {
-    server.use(
-      http.get("http://localhost/hot-updater/api/bundles", () => {
-        return HttpResponse.json(
-          createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
-        );
-      }),
-      http.get("http://localhost/hot-updater/api/bundles/:bundleId", () => {
-        return HttpResponse.json(testBundles[0]);
-      }),
-      http.patch("http://localhost/hot-updater/api/bundles/:bundleId", () => {
-        return new HttpResponse(null, {
-          status: 500,
-          statusText: "Internal Server Error",
+        return HttpResponse.json({
+          data: filtered,
+          pagination: {
+            total: filtered.length,
+            hasNextPage: false,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 1,
+          },
         });
       }),
     );
 
-    await repo.updateBundle("00000000-0000-0000-0000-000000000001", {
-      enabled: false,
+    await expect(
+      createDatabaseClient(createRepository()).getBundles({
+        limit: 50,
+        where: { channel: "missing" },
+      }),
+    ).resolves.toMatchObject({ data: [], pagination: { total: 0 } });
+    expect(requestedUrl?.searchParams.get("channel")).toBe("missing");
+    expect(requestedUrl?.searchParams.has("idIn")).toBe(false);
+  });
+
+  it("queries patch rows from aggregate bundle responses", async () => {
+    const base = bundle("00000000-0000-0000-0000-000000000011");
+    const target = bundle("00000000-0000-0000-0000-000000000012", {
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "patch-hash",
+          patchStorageUri: "storage://patch",
+        },
+      ],
+    });
+    bundles.set(base.id, base);
+    bundles.set(target.id, target);
+    channels.add("production");
+
+    const rows = await createRepository().findMany({
+      model: "bundle_patches",
+      where: [{ field: "bundle_id", value: target.id }],
+      sortBy: { field: "order_index", direction: "asc" },
     });
 
-    await expect(repo.commitBundle()).rejects.toStrictEqual(
-      new Error("API Error: Internal Server Error"),
-    );
+    expect(rows).toEqual([
+      expect.objectContaining({
+        bundle_id: target.id,
+        base_bundle_id: base.id,
+        patch_file_hash: "patch-hash",
+      }),
+    ]);
   });
 
-  it("commitBundle: DELETE operation successfully deletes a bundle", async () => {
-    let deleteCalled = false;
-
-    server.use(
-      http.delete(
-        "http://localhost/hot-updater/api/bundles/:bundleId",
-        ({ params }) => {
-          deleteCalled = true;
-          const { bundleId } = params;
-          expect(bundleId).toBe(testBundles[0].id);
-          return HttpResponse.json({ success: true });
-        },
-      ),
-    );
-
-    await repo.deleteBundle(testBundles[0]);
-    await repo.commitBundle();
-
-    expect(deleteCalled).toBe(true);
-    expect(onDatabaseUpdated).toHaveBeenCalled();
+  it("does not expose a standalone update-info capability flag", () => {
+    expect(createRepository().getUpdateInfo).toBeUndefined();
   });
 
-  it("commitBundle: DELETE operation throws error when API returns 404", async () => {
+  it("preserves custom routes and common headers", async () => {
+    let authorization: string | null = null;
     server.use(
-      http.delete("http://localhost/hot-updater/api/bundles/:bundleId", () => {
-        return new HttpResponse(null, {
-          status: 404,
-          statusText: "Not Found",
-        });
+      http.get("http://localhost/custom/channels", ({ request }) => {
+        authorization = request.headers.get("Authorization");
+        return HttpResponse.json({ data: { channels: ["custom"] } });
       }),
     );
-
-    await repo.deleteBundle(testBundles[0]);
-    await expect(repo.commitBundle()).rejects.toThrow(
-      `Bundle with id ${testBundles[0].id} not found`,
-    );
-  });
-
-  it("commitBundle: DELETE operation throws error when API returns server error", async () => {
-    server.use(
-      http.delete("http://localhost/hot-updater/api/bundles/:bundleId", () => {
-        return new HttpResponse(null, {
-          status: 500,
-          statusText: "Internal Server Error",
-        });
-      }),
-    );
-
-    await repo.deleteBundle(testBundles[0]);
-    await expect(repo.commitBundle()).rejects.toThrow(
-      "API Error: 500 Internal Server Error",
-    );
-  });
-
-  // ─── Custom Routes Tests ────────────────────────────────
-  describe("Standalone Repository Plugin (Custom Routes)", () => {
-    let customRepo: DatabasePlugin;
-    const customConfig: StandaloneRepositoryConfig = {
-      baseUrl: "http://localhost/api",
+    const repository = standaloneRepository({
+      baseUrl: "http://localhost",
       commonHeaders: { Authorization: "Bearer token" },
-      routes: {
-        create: () => ({
-          path: "/custom/bundles",
-          headers: { "X-Custom": "create" },
-        }),
-        update: (bundleId: string) => ({
-          path: `/custom/bundles/${bundleId}`,
-          headers: { "X-Custom": "update" },
-        }),
-        list: () => ({
-          path: "/custom/bundles",
-          headers: { "Cache-Control": "max-age=60" },
-        }),
-        retrieve: (bundleId: string) => ({
-          path: `/custom/bundles/${bundleId}`,
-          headers: { Accept: "application/custom+json" },
-        }),
-        delete: (bundleId: string) => ({
-          path: `/custom/bundles/${bundleId}`,
-          headers: { "X-Custom": "delete" },
-        }),
-      },
-    };
-
-    beforeEach(() => {
-      customRepo = standaloneRepository(customConfig)();
+      routes: { channels: () => ({ path: "/custom/channels" }) },
     });
 
-    it("getBundles: uses custom list route and headers", async () => {
-      server.use(
-        http.get("http://localhost/api/custom/bundles", ({ request }) => {
-          expect(request.headers.get("Authorization")).toEqual("Bearer token");
-          expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
-          return HttpResponse.json(
-            createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
-          );
-        }),
-      );
+    await expect(repository.getChannels?.()).resolves.toEqual(["custom"]);
+    expect(authorization).toBe("Bearer token");
+  });
 
-      const bundles = await customRepo.getBundles({ limit: 20 });
-      expect(bundles.data).toEqual(testBundles);
-    });
+  it("rejects malformed existing-route responses", async () => {
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, () =>
+        HttpResponse.json({ data: "invalid" }),
+      ),
+    );
 
-    it("getBundleById: uses custom retrieve route and headers", async () => {
-      server.use(
-        http.get(
-          "http://localhost/api/custom/bundles/:bundleId",
-          ({ params, request }) => {
-            expect(request.headers.get("Authorization")).toEqual(
-              "Bearer token",
-            );
-            expect(request.headers.get("Accept")).toEqual(
-              "application/custom+json",
-            );
-            const { bundleId } = params;
-            if (bundleId === testBundles[0].id) {
-              return HttpResponse.json(testBundles[0]);
-            }
-            return HttpResponse.error();
-          },
-        ),
-      );
+    await expect(
+      createRepository().findMany({ model: "bundles" }),
+    ).rejects.toEqual(
+      new StandaloneDatabaseError(
+        "invalid-response",
+        "Invalid bundle list response.",
+        200,
+      ),
+    );
+  });
 
-      const bundle = await customRepo.getBundleById(
-        "00000000-0000-0000-0000-000000000001",
-      );
-      expect(bundle).toEqual(testBundles[0]);
-    });
+  it("rejects incomplete pagination metadata", async () => {
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, () =>
+        HttpResponse.json({ data: [], pagination: {} }),
+      ),
+    );
 
-    it("commitBundle: DELETE operation uses custom delete route and headers", async () => {
-      server.use(
-        http.delete(
-          "http://localhost/api/custom/bundles/:bundleId",
-          ({ request, params }) => {
-            expect(request.headers.get("Authorization")).toEqual(
-              "Bearer token",
-            );
-            expect(request.headers.get("X-Custom")).toEqual("delete");
-            const { bundleId } = params;
-            expect(bundleId).toBe(testBundles[0].id);
-            return HttpResponse.json({ success: true });
-          },
-        ),
-      );
-
-      await customRepo.deleteBundle(testBundles[0]);
-      await customRepo.commitBundle();
-    });
-
-    it("commitBundle: INSERT operations use custom create route and headers", async () => {
-      server.use(
-        http.post(
-          "http://localhost/api/custom/bundles",
-          async ({ request }) => {
-            expect(request.headers.get("Authorization")).toEqual(
-              "Bearer token",
-            );
-            expect(request.headers.get("X-Custom")).toEqual("create");
-            const body = (await request.json()) as Bundle[];
-            expect(body).toHaveLength(1);
-            expect(body[0]).toEqual(testBundles[0]);
-            return HttpResponse.json({ success: true });
-          },
-        ),
-      );
-
-      await customRepo.appendBundle(testBundles[0]);
-      await customRepo.commitBundle();
-    });
-
-    it("commitBundle: UPDATE operations use custom update route and headers", async () => {
-      server.use(
-        http.get("http://localhost/api/custom/bundles", () => {
-          return HttpResponse.json(
-            createPaginatedResult(testBundles, { limit: 20, offset: 0 }),
-          );
-        }),
-        http.get(
-          "http://localhost/api/custom/bundles/:bundleId",
-          ({ params }) => {
-            if (params.bundleId === testBundles[0].id) {
-              return HttpResponse.json(testBundles[0]);
-            }
-            return HttpResponse.error();
-          },
-        ),
-        http.patch(
-          "http://localhost/api/custom/bundles/:bundleId",
-          async ({ params, request }) => {
-            expect(params.bundleId).toBe(testBundles[0].id);
-            expect(request.headers.get("Authorization")).toEqual(
-              "Bearer token",
-            );
-            expect(request.headers.get("X-Custom")).toEqual("update");
-            const body = (await request.json()) as Bundle;
-            expect(body.id).toBe(testBundles[0].id);
-            expect(body.enabled).toBe(false);
-            return HttpResponse.json({ success: true });
-          },
-        ),
-      );
-
-      await customRepo.updateBundle(testBundles[0].id, { enabled: false });
-      await customRepo.commitBundle();
-    });
-
-    it("getChannels", async () => {
-      server.use(
-        http.get(
-          "http://localhost/api/custom/bundles/channels",
-          ({ request }) => {
-            expect(request.headers.get("Authorization")).toEqual(
-              "Bearer token",
-            );
-            expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
-            return HttpResponse.json({
-              data: {
-                channels: [
-                  ...new Set(testBundles.map((bundle) => bundle.channel)),
-                ],
-              },
-            });
-          },
-        ),
-      );
-
-      const channels = await customRepo.getChannels();
-      expect(channels).toEqual([
-        ...new Set(testBundles.map((bundle) => bundle.channel)),
-      ]);
-    });
-
-    it("getChannels: includes channels beyond the first 50 bundles", async () => {
-      const bundlesWithChannelAfter50: Bundle[] = Array.from(
-        { length: 51 },
-        (_, index) => ({
-          ...DEFAULT_BUNDLE,
-          id: `bundle-${index + 1}`,
-          channel: index < 50 ? "production" : "qa",
-          enabled: true,
-          shouldForceUpdate: false,
-          targetAppVersion: "*",
-          storageUri: "gs://test-bucket/test-key",
-          fingerprintHash: null,
-        }),
-      );
-
-      server.use(
-        http.get(
-          "http://localhost/api/custom/bundles/channels",
-          ({ request }) => {
-            expect(request.headers.get("Authorization")).toEqual(
-              "Bearer token",
-            );
-            expect(request.headers.get("Cache-Control")).toEqual("max-age=60");
-            return HttpResponse.json({
-              data: {
-                channels: [
-                  ...new Set(
-                    bundlesWithChannelAfter50.map((bundle) => bundle.channel),
-                  ),
-                ],
-              },
-            });
-          },
-        ),
-      );
-
-      const channels = await customRepo.getChannels();
-      expect(channels).toEqual(["production", "qa"]);
-    });
+    await expect(
+      createRepository().findMany({ model: "bundles" }),
+    ).rejects.toEqual(
+      new StandaloneDatabaseError(
+        "invalid-response",
+        "Invalid bundle list response.",
+        200,
+      ),
+    );
   });
 });

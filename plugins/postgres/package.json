@@ -45,6 +45,7 @@
     "@types/node": "catalog:",
     "@types/pg": "^8.11.10",
     "camelcase-keys": "^9.1.3",
+    "kysely-pglite-dialect": "catalog:db",
     "pg-minify": "^1.6.5"
   },
   "inlinedDependencies": {

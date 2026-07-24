@@ -4,9 +4,7 @@ import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
 
-import { s3Database } from "../src/s3Database";
-import { s3Storage } from "../src/s3Storage";
-import { withCloudFrontSignedUrl } from "../src/withCloudFrontSignedUrl";
+import { s3Database, s3Storage } from "../src/lambda";
 
 declare global {
   var HotUpdater: {
@@ -68,23 +66,20 @@ const hotUpdater = createHotUpdater<SignedUrlContext>({
     region: SSM_REGION,
   }),
   storages: [
-    withCloudFrontSignedUrl(
-      s3Storage({
-        bucketName: S3_BUCKET_NAME,
-        region: SSM_REGION,
-      }),
-      {
-        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-        ssmRegion: SSM_REGION,
-        ssmParameterName: SSM_PARAMETER_NAME,
-        publicBaseUrl: resolveRequestOrigin,
-      },
-    ),
+    s3Storage({
+      bucketName: S3_BUCKET_NAME,
+      region: SSM_REGION,
+      keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+      ssmRegion: SSM_REGION,
+      ssmParameterName: SSM_PARAMETER_NAME,
+      publicBaseUrl: resolveRequestOrigin,
+    }),
   ],
   basePath: HOT_UPDATER_BASE_PATH,
   routes: {
     updateCheck: true,
     bundles: false,
+    analytics: false,
   },
 });
 

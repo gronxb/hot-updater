@@ -1,6 +1,6 @@
 ---
 title: "Custom Database Plugin"
-description: Create your own database plugin for any database provider
+description: Create a fixed-model database plugin for your own database provider.
 icon: Hammer
 ---
 
@@ -10,269 +10,366 @@ icon: Hammer
 npm install @hot-updater/plugin-core --save-dev
 ```
 
+Install the public conformance suites in the project that tests your plugin:
+
+```package-install
+npm install @hot-updater/test-utils vitest --save-dev
+```
+
 ## Overview
 
-Build a custom database plugin to integrate any database provider. This guide shows how to use `createDatabasePlugin` to build and configure your own database plugin.
+A custom database plugin maps your database driver to Hot Updater's row-level
+CRUD contract. The models are fixed:
 
-## Creating a Database Plugin
+- `bundles` stores one row per OTA bundle.
+- `bundle_patches` stores patch artifacts owned by bundles.
+- `bundle_events` stores append-only app-ready Analytics reports.
 
-Use `createDatabasePlugin` to build custom database plugins:
+Hot Updater composes these rows into complete bundles. Your plugin does not
+implement bundle staging, patch orchestration, or Console routes.
 
-```typescript
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+The configured value is a plugin object:
 
-export const myDatabase = createDatabasePlugin<MyConfig>({
-  name: "myDatabase",              // Plugin identifier
-  factory: (config) => ({
-    // Return these required methods:
-    getBundleById: async (bundleId) => { /* ... */ },
-    getBundles: async (options) => ({ data: [], pagination: {} }),
-    getChannels: async () => [],
-    commitBundle: async ({ changedSets }) => { /* ... */ },
-    onUnmount: async () => { /* optional cleanup */ }
-  })
+```ts
+export default defineConfig({
+  database: myDatabase({ db }),
 });
 ```
 
-### Factory Function Return Type
+## Migrate from database plugin v1
 
-Your factory function must return an object with these methods:
+Database plugin v2 intentionally replaces the aggregate, staged-mutation API.
+Upgrade the Hot Updater packages and every custom or official database
+provider together.
 
-```typescript
-{
-  // Fetch single bundle by ID
-  getBundleById: (bundleId: string) => Promise<Bundle | null>;
+| v1 contract | v2 contract | Migration |
+| --- | --- | --- |
+| `createDatabasePlugin<MyConfig>({ factory(config) })` returned a configured plugin factory | Your provider function returns the plugin object from `createDatabasePlugin({ name, plugin })` | Accept configuration in the provider function and close over it in the zero-argument `plugin` callback. Pass the returned object directly to `defineConfig` or `createHotUpdater`. |
+| The configured factory initialized its implementation lazily | `createDatabasePlugin` calls `plugin()` while constructing the plugin object | Resolve required bindings before creating the plugin. Put only driver-level lazy connection behavior behind the implementation when needed. |
+| Providers read and wrote aggregate `Bundle` objects | Providers implement fixed rows for `bundles`, `bundle_patches`, and `bundle_events` | Split nested patches into `bundle_patches`. Let the shared database client compose rows into bundles. |
+| `getBundleById`, `getBundles`, and `getChannels` implemented aggregate reads | `findOne`, `findMany`, and `count` implement row reads; `getChannels` is optional | Push filtering, ordered pagination, projection, and distinct operations into the database. |
+| `appendBundle`, `updateBundle`, and `deleteBundle` staged changes until `commitBundle` | `create`, `update`, and `delete` write rows directly | Remove the provider-owned unit of work and `commitBundle`. Expose `transaction` when a group of writes can be rolled back together. |
+| Database methods received `HotUpdaterContext` | Database methods receive only their typed operation input | Bind one database client or binding to each configured plugin. Keep request-scoped authorization and URL behavior in handlers and storage plugins. |
+| `mockDatabase({ initialBundles })` seeded aggregate bundles | `mockDatabase({ data })` accepts `MockDatabaseData` | Create data with `createMockDatabaseData()`, then populate its `bundles`, `bundlePatches`, and `bundleEvents` maps with fixed rows. |
+| `onUnmount` was returned from `factory`; `onDatabaseUpdated` was passed as a factory hook | `onUnmount` belongs to `DatabasePluginImplementation`; `onDatabaseUpdated` belongs to the returned `DatabasePlugin` | Keep resource cleanup inside the implementation. Attach cache invalidation to the returned plugin or use a provider helper that exposes the lifecycle hook. |
 
-  // Optional but recommended: direct update-check fast path
-  getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
+There is no compatibility adapter for the removed factory, request-context,
+unit-of-work, `commitBundle`, or aggregate provider methods. Consumers that
+cannot migrate all database call sites in one release must pin the v1 package
+set until their provider is ready.
 
-  // Fetch paginated bundles with optional filtering
-  getBundles: (options: {
-    where?: { channel?: string; platform?: string };
-    limit: number;
-    page?: number;
-    cursor?: { after?: string; before?: string };
-  }) => Promise<Paginated<Bundle[]>>;
+### Route tenants without database request context
 
-  // Get all available channels
-  getChannels: () => Promise<string[]>;
+Resolve the tenant at the server boundary from trusted authentication or host
+configuration, then select a separately configured Hot Updater runtime for that
+tenant. Each runtime must close over its own database client or binding.
 
-  // Commit all pending changes (batch operation)
-  commitBundle: (params: {
-    changedSets: {
-      operation: "insert" | "update" | "delete";
-      data: Bundle;
-    }[];
-  }) => Promise<void>;
+Do not change tenant state on a shared plugin while requests are in flight, and
+do not select a tenant from an unverified event payload. The handler context is
+still available to storage plugins; it is not forwarded to database
+operations.
 
-  // Optional: cleanup resources on unmount
-  onUnmount?: () => Promise<void>;
-}
+For a worker-style deployment, bind the database before constructing the
+runtime. For a long-lived server, create or cache one runtime per tenant and
+dispatch the request to that runtime only after tenant authorization. Pass an
+explicit `createHotUpdater<MyHandlerContext>` generic when handler or storage
+plugins use a custom context; the default context type is `undefined`.
+
+## Operation matrix
+
+Implement only the supported model and method combinations:
+
+| Model | `create` | `update` | `delete` | `count` | `findOne` | `findMany` |
+| --- | --- | --- | --- | --- | --- | --- |
+| `bundles` | Yes | Yes | Yes | Yes | Yes | Yes |
+| `bundle_patches` | Yes | No | Yes | Yes | Yes | Yes |
+| `bundle_events` | Yes | No | No | Yes | Yes | Yes |
+
+`bundle_events` is append-only. Hot Updater never updates or deletes an event
+through the public plugin contract.
+
+Import the canonical row and operation types instead of declaring a second
+schema mapping:
+
+```ts
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  DatabasePluginImplementation,
+} from "@hot-updater/plugin-core";
 ```
 
-Implement `getUpdateInfo` whenever your backend can answer update checks
-without scanning the full management list. This is especially important for
-blob/object-storage plugins, where the hot path should read only the manifest
-objects needed for the request.
+Physical row fields use snake case. Keep those field names in your database
+mapping so filtering, sorting, projection, and distinct queries remain
+portable across providers.
 
-**Note**: The factory does NOT need to implement `updateBundle`, `appendBundle`, or `deleteBundle` - these are auto-generated by `createDatabasePlugin` and tracked internally.
+## Create a plugin
 
-## Implementation Example
+Export a function that accepts provider configuration, then close over the
+configured client inside `createDatabasePlugin`:
 
-Here's a complete custom database plugin using a REST API:
-
-```typescript title="customDatabase.ts"
+```ts title="myDatabase.ts"
 import {
-  type Bundle,
-  type Paginated,
   createDatabasePlugin,
+  type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 
-export interface CustomDatabaseConfig {
-  baseUrl: string;
-  apiKey: string;
+interface MyDatabaseConfig {
+  readonly db: MyDatabaseClient;
 }
 
-export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
-  name: "customDatabase",
-  factory: (config) => {
-    const headers = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    };
-
-    return {
-      async getBundleById(bundleId) {
-        const response = await fetch(
-          `${config.baseUrl}/bundles/${bundleId}`,
-          { headers }
-        );
-
-        if (!response.ok) {
-          if (response.status === 404) return null;
-          throw new Error(`Failed to fetch bundle: ${response.statusText}`);
-        }
-
-        return response.json();
-      },
-
-      async getBundles(options): Promise<Paginated<Bundle[]>> {
-        const params = new URLSearchParams({
-          limit: String(options.limit),
-        });
-
-        if (options.page !== undefined) {
-          params.set("page", String(options.page));
-        }
-        if (options.cursor?.after) {
-          params.set("after", options.cursor.after);
-        }
-        if (options.cursor?.before) {
-          params.set("before", options.cursor.before);
-        }
-
-        if (options.where?.channel) {
-          params.set("channel", options.where.channel);
-        }
-        if (options.where?.platform) {
-          params.set("platform", options.where.platform);
-        }
-
-        const response = await fetch(
-          `${config.baseUrl}/bundles?${params}`,
-          { headers }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch bundles: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        return {
-          data: result.data,
-          pagination: result.pagination,
-        };
-      },
-
-      async getChannels() {
-        const response = await fetch(`${config.baseUrl}/channels`, {
-          headers,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch channels: ${response.statusText}`);
-        }
-
-        return response.json();
-      },
-
-      async commitBundle({ changedSets }) {
-        // Process all changes in batch
-        for (const change of changedSets) {
-          if (change.operation === "insert" || change.operation === "update") {
-            await fetch(`${config.baseUrl}/bundles`, {
-              method: "POST",
-              headers,
-              body: JSON.stringify(change.data),
-            });
-          } else if (change.operation === "delete") {
-            await fetch(`${config.baseUrl}/bundles/${change.data.id}`, {
-              method: "DELETE",
-              headers,
-            });
-          }
-        }
-      },
-
-      async onUnmount() {
-        // Optional: cleanup resources, close connections, etc.
-        console.log("Database plugin unmounted");
-      },
-    };
+const createImplementation = (
+  db: MyDatabaseClient,
+): DatabasePluginImplementation => ({
+  create: async ({ model, data, select }) => {
+    return db.insert({ model, data, select });
+  },
+  update: async ({ model, where, update, select }) => {
+    return db.update({ model, where, update, select });
+  },
+  delete: async ({ model, where }) => {
+    await db.delete({ model, where });
+  },
+  count: async ({ model, where, distinct }) => {
+    return db.count({ model, where, distinct });
+  },
+  findOne: async ({ model, where, select }) => {
+    return db.findOne({ model, where, select });
+  },
+  findMany: async ({
+    model,
+    where,
+    limit,
+    offset,
+    orderBy,
+    sortBy,
+    distinctOn,
+    select,
+  }) => {
+    return db.findMany({
+      model,
+      where,
+      limit,
+      offset,
+      orderBy,
+      sortBy,
+      distinctOn,
+      select,
+    });
   },
 });
+
+export const myDatabase = ({ db }: MyDatabaseConfig) =>
+  createDatabasePlugin({
+    name: "my-database",
+    plugin: () => createImplementation(db),
+  });
 ```
 
-Use cursor pagination as the contract for bundle-management queries. The
-`offset` query parameter has been removed from the public API.
+`MyDatabaseClient` represents your ORM or database driver. Adapt each method to
+the driver's query API. The `DatabasePluginImplementation` annotation keeps
+the fixed model and operation inputs typed while you build the mapping.
 
-## Helper Utilities
+`createDatabasePlugin` validates inputs and provider results. It also exposes
+Analytics support because a row-oriented plugin can append `bundle_events`
+safely.
 
-The `@hot-updater/plugin-core` package provides helper functions:
+## Implement each operation
 
-### calculatePagination
+### Create
 
-Generates pagination metadata after your implementation resolves a cursor into
-an internal start index:
+`create` receives a complete row and returns the created row. When `select` is
+present, return at least the requested fields.
 
-```typescript
-import { calculatePagination } from "@hot-updater/plugin-core";
+Reject duplicate IDs in the database. Keep event creation concurrency-safe so
+two app-ready reports cannot overwrite each other.
 
-const startIndex = resolvedCursorStartIndex;
-const pagination = calculatePagination(totalCount, {
-  limit: 10,
-  offset: startIndex,
+### Update
+
+Only `bundles` can be updated. Hot Updater uses an exact `id` predicate and
+expects the updated row, or `null` when the bundle does not exist.
+
+The `update` object never changes the bundle ID. Only fields present in the
+caller's update are forwarded. Omitted scalar fields and omitted patches stay
+unchanged.
+
+### Delete
+
+`delete` removes every row matched by its non-empty predicate. It applies to
+`bundles` and `bundle_patches` only.
+
+Deleting a bundle must also remove patch rows that reference it. Do not delete
+`bundle_events`; historical reports may reference old or unknown bundle IDs.
+
+### Count and reads
+
+`count` returns a non-negative safe integer. It may receive `distinct` fields
+for Analytics queries.
+
+`findOne` returns one matching row or `null`. `findMany` returns an array and
+receives normalized `limit` and `offset` values. Filtering and ordering happen
+before pagination.
+
+Apply `select` at the database boundary when your driver supports projection.
+Every requested field must be present in the returned row.
+
+## Filtering and ordering
+
+Each `where` item contains a field, value, and optional operator, connector, or
+string comparison mode:
+
+```ts
+const rows = await plugin.findMany({
+  model: "bundles",
+  where: [
+    { field: "channel", value: "production" },
+    {
+      field: "platform",
+      operator: "in",
+      value: ["ios", "android"],
+      connector: "AND",
+    },
+  ],
+  orderBy: [
+    { field: "id", direction: "desc" },
+  ],
+  limit: 50,
+  offset: 0,
 });
-// Result: { total, hasNextPage, hasPreviousPage, currentPage, totalPages }
 ```
 
-## CLI Configuration
+Supported operators are `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `in`,
+`not_in`, `contains`, `starts_with`, and `ends_with`, subject to the selected
+field's type.
 
-Use your custom plugin in `hot-updater.config.ts`:
+- Missing or empty read predicates match all rows.
+- Mutation predicates must not be empty.
+- `in: []` matches no rows; `not_in: []` matches all rows.
+- String comparisons may use `mode: "sensitive"` or `"insensitive"`.
+- Later predicates default to the `AND` connector.
+- `orderBy` preserves clause order and may specify `nulls: "first"` or
+  `"last"`.
+- `distinctOn` selects the first row for each distinct field tuple after
+  ordering.
 
-```typescript
-import { defineConfig } from "@hot-updater/core";
-import { customDatabase } from "./customDatabase";
+Translate these values to parameterized ORM or database-driver queries. Never
+concatenate field values into raw SQL.
+
+## Optional capabilities
+
+### Channel aggregation
+
+Implement `getChannels` when the database can return sorted, distinct bundle
+channels efficiently. If omitted, Hot Updater derives channels from bundle
+pages.
+
+### Update-check fast path
+
+Implement `getUpdateInfo` when the backend can answer update checks more
+efficiently than the shared row-query path.
+
+The optimized result must match the shared behavior for channel defaults,
+rollout cohorts, rollback constraints, patches, and manifest fields. Leave the
+method out when the database cannot preserve those semantics.
+
+### Transactions
+
+Expose `transaction` only when the database can roll back the complete
+callback:
+
+```ts
+transaction: async (callback) => {
+  return db.transaction(async (transactionDb) => {
+    return callback(createImplementation(transactionDb));
+  });
+},
+```
+
+If `transaction` is absent, scalar-only bundle updates remain available.
+Replacing `patches` requires a real provider transaction. A non-transactional
+provider throws `DatabasePatchUpdateUnsupportedError` before changing any row
+when `patches` is caller-present. Omitting `patches` preserves existing patch
+rows; passing `patches: []` clears them on a transactional provider.
+
+### Lifecycle
+
+Use `onUnmount` to close resources owned by the plugin implementation. Attach
+`onDatabaseUpdated` to the returned plugin only when an aggregate mutation
+must invalidate an external cache.
+
+Database plugin operations do not receive request context. Close over the
+configured client or binding. Request context remains available to server
+handlers and storage plugins.
+
+## Test the plugin
+
+Use both public conformance suites:
+
+```ts title="myDatabase.spec.ts"
+import { createDatabaseClient } from "@hot-updater/plugin-core";
+import {
+  setupDatabaseClientTestSuite,
+  setupDatabasePluginTestSuite,
+} from "@hot-updater/test-utils";
+
+const lifecycle = {
+  name: "my database",
+  createPlugin: () => myDatabase({ db }),
+  migrate: () => migrateDatabase(db),
+  reset: () => resetDatabase(db),
+  dispose: () => closeDatabase(db),
+};
+
+setupDatabasePluginTestSuite(lifecycle);
+
+setupDatabaseClientTestSuite({
+  ...lifecycle,
+  createClient: createDatabaseClient,
+});
+```
+
+The plugin suite covers CRUD inputs, projections, predicates, ordering,
+pagination, distinct queries, relations, and optional capabilities. The client
+suite verifies bundle aggregation, patch replacement, channels, and bundle
+management behavior.
+
+Run these suites against the real database used by the plugin. They should own
+their schema, reset data between tests, and close connections after the suite.
+
+## Configure Hot Updater
+
+Use the same plugin factory in the CLI and self-hosted server:
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+import { myDatabase } from "./myDatabase";
 
 export default defineConfig({
-  database: customDatabase({
-    baseUrl: process.env.DATABASE_BASE_URL!,
-    apiKey: process.env.DATABASE_API_KEY!,
-  }),
-  // ... other config
+  database: myDatabase({ db }),
+  // build: ...
+  // storage: ...
 });
 ```
 
-## Custom Server Usage
-
-Use your plugin with `createHotUpdater` for self-hosted servers:
-
-```typescript
+```ts title="server.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { customDatabase } from "./customDatabase";
+import { myDatabase } from "./myDatabase";
 
-const hotUpdater = createHotUpdater({
-  database: customDatabase({
-    baseUrl: process.env.DATABASE_BASE_URL!,
-    apiKey: process.env.DATABASE_API_KEY!,
-  }),
-  // ... other options
+export const hotUpdater = createHotUpdater({
+  database: myDatabase({ db }),
+  storages,
 });
 ```
 
-## Best Practices
+Keep the database schema in sync with the installed Hot Updater version. Add
+the `bundle_events` model before enabling client Analytics.
 
-### Security
+## Blob-backed databases
 
-- Never hardcode credentials in plugin code
-- Use environment variables for sensitive data
-- Implement proper authentication headers
-- Validate input data before storing
+Use `createBlobDatabasePlugin` only when the backend stores and replaces a
+shared snapshot. Blob-backed plugins do not expose Analytics because concurrent
+event appends can overwrite each other.
 
-### Performance
-
-- Prefer `getUpdateInfo` for the update-check hot path so runtime requests do
-  not fall back to wide `getBundles` scans
-- Implement efficient filtering in `getBundles`
-- Use database indexes for common queries
-- Batch operations in `commitBundle` when possible
-- Cache channel lists if they don't change frequently
-- Add deterministic I/O or query-counter tests that fail if update checks or
-  cursor-backed management reads regress into broad scans
-
-### Error Handling
-
-- Return `null` from `getBundleById` when not found (don't throw)
-- Throw descriptive errors for other failures
-- Handle network errors gracefully
-- Validate bundle data structure
+See [Analytics](/docs/guides/analytics) for database support, event ingestion,
+and deployment order.

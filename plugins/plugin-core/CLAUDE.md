@@ -4,11 +4,12 @@ This file provides guidance to Claude Code when working with the plugin-core pac
 
 ## Package Overview
 
-`@hot-updater/plugin-core` is a core utility package that provides shared functionality for building Hot Updater plugins. It contains helper functions, type definitions, and abstractions used by storage and database plugins.
+`@hot-updater/plugin-core` is a core utility package that provides shared functionality for storage and database plugins. It contains helper functions, type definitions, and abstractions used by both integration types.
 
 ## Runtime Compatibility
 
 **CRITICAL**: This package MUST be compatible with the following JavaScript runtimes:
+
 - **Node.js** (18+)
 - **Bun** (1.0+)
 - **Deno** (1.30+)
@@ -25,6 +26,7 @@ This file provides guidance to Claude Code when working with the plugin-core pac
 ### Testing Across Runtimes
 
 When making changes, ensure compatibility by testing:
+
 ```bash
 # Node.js (default)
 pnpm test
@@ -42,10 +44,13 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 ## Key Components
 
 ### Database Plugin Creation
-- `createDatabasePlugin()`: Factory for creating SQL-based database plugins
-- `createBlobDatabasePlugin()`: Factory for creating blob-storage-based database plugins (edge-compatible)
+
+- `createDatabasePlugin()`: Factory for fixed-model database plugins
+- `createBlobDatabasePlugin()`: Factory for blob-backed fixed-model plugins (edge-compatible)
+- `createDatabaseClient()`: Shared bundle aggregate client over a database plugin
 
 ### Utility Functions
+
 - `calculatePagination()`: Pagination calculation helper
 - `compressionFormat()`: Compression format detection and handling
 - `filterCompatibleAppVersions()`: App version compatibility filtering
@@ -54,27 +59,32 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 - `semverSatisfies()`: Semantic version comparison
 
 ### Type Definitions
+
 Located in `src/types/`, provides TypeScript interfaces for plugins and core functionality.
 
 ## Development Guidelines
 
 ### Code Style
+
 - Follow the root OXC configuration
 - Use Web Standard APIs wherever possible
 - Avoid runtime-specific code paths unless absolutely necessary
 
 ### Dependencies
+
 - Current dependencies are edge-compatible: `es-toolkit`, `mime`, `semver`
 - When adding new dependencies, verify they work in Cloudflare Workers
 - Prefer pure JavaScript implementations over native bindings
 
 ### Testing
+
 - Write tests in `.spec.ts` files alongside source files
 - Test edge cases for runtime compatibility
 - Use Vitest for testing
 - Tests should pass in all supported runtimes
 
 ### Build Configuration
+
 - Uses `tsdown` for building (see `tsdown.config.ts`)
 - Outputs both ESM and CJS formats
 - Generates TypeScript declarations
@@ -104,6 +114,7 @@ pnpm test
 ## Related Packages
 
 This package is used by:
+
 - Storage plugins (AWS, Cloudflare, Supabase, Firebase, Standalone)
 - Database plugins (PostgreSQL, Cloudflare D1, Supabase)
 - Build plugins (Expo, Bare, Re.Pack, Rock)

@@ -3,7 +3,7 @@ import { MongoClient } from "mongodb";
 // Use TEST_MONGODB_URL for testing (from CI), otherwise use default local URL
 const mongoUrl =
   process.env.TEST_MONGODB_URL ||
-  "mongodb://hot_updater:hot_updater_dev@localhost:27018/hot_updater?authSource=admin";
+  "mongodb://localhost:27018/hot_updater?replicaSet=rs0&directConnection=true";
 
 export const client = new MongoClient(mongoUrl);
 

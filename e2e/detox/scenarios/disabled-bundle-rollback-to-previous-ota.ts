@@ -65,11 +65,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "runtime-scenario-marker",
         "previous-ota-detox",
       );
-      await app.assertText(
-        "assert previous bundle launch status",
-        "launch-status-result",
-        "Current Launch Status: STABLE",
-      );
+      await app.assertStableLaunch("assert previous bundle launch status");
       await app.control(
         "assert previous bundle active",
         "/e2e/assert-metadata-active",
@@ -124,11 +120,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "runtime-scenario-marker",
         "disabled-next-detox",
       );
-      await app.assertText(
-        "assert next bundle launch status",
-        "launch-status-result",
-        "Current Launch Status: STABLE",
-      );
+      await app.assertStableLaunch("assert next bundle launch status");
       await app.control(
         "assert next bundle active",
         "/e2e/assert-metadata-active",
@@ -172,10 +164,8 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
         "runtime-scenario-marker",
         "previous-ota-detox",
       );
-      await app.assertText(
+      await app.assertStableLaunch(
         "assert previous ota rollback launch status",
-        "launch-status-result",
-        "Current Launch Status: STABLE",
       );
       await app.assertText(
         "assert previous ota rollback crashed bundle",

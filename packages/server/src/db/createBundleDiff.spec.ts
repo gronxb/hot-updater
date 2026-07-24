@@ -7,7 +7,10 @@ import type {
   NodeStoragePlugin,
   NodeStorageProfile,
 } from "@hot-updater/plugin-core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 
 vi.mock("@hot-updater/bsdiff", () => ({
   hdiff: vi.fn(async () => new Uint8Array([1, 2, 3, 4])),
@@ -33,47 +36,14 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   ...overrides,
 });
 
-const createDatabasePlugin = (
-  bundles: Map<string, Bundle>,
-): DatabasePlugin => ({
-  name: "mockDatabase",
-  async appendBundle() {},
-  async commitBundle() {},
-  async deleteBundle() {},
-  async getBundleById(bundleId) {
-    return bundles.get(bundleId) ?? null;
-  },
-  async getBundles() {
-    return {
-      data: Array.from(bundles.values()),
-      pagination: {
-        currentPage: 1,
-        hasNextPage: false,
-        hasPreviousPage: false,
-        total: bundles.size,
-        totalPages: 1,
-      },
-    };
-  },
-  async getChannels() {
-    return ["production"];
-  },
-  async onUnmount() {},
-  async updateBundle(bundleId, nextBundle) {
-    const currentBundle = bundles.get(bundleId);
-    if (!currentBundle) {
-      return;
-    }
-    bundles.set(bundleId, {
-      ...currentBundle,
-      ...nextBundle,
-      metadata: {
-        ...currentBundle.metadata,
-        ...nextBundle.metadata,
-      },
-    });
-  },
-});
+const createDatabasePlugin = async (
+  bundles: readonly Bundle[],
+): Promise<DatabasePlugin> => {
+  const plugin = createInMemoryDatabasePlugin();
+  const client = createDatabaseClient(plugin);
+  for (const bundle of bundles) await client.insertBundle(bundle);
+  return plugin;
+};
 
 const createStoragePlugin = (
   upload: NodeStorageProfile["upload"],
@@ -113,10 +83,13 @@ describe("createBundleDiff", () => {
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002", {
       message: "target",
     });
-    const bundles = new Map([
-      [baseBundle.id, baseBundle],
-      [targetBundle.id, targetBundle],
-    ]);
+    const plugin = await createDatabasePlugin([baseBundle, targetBundle]);
+    const onDatabaseUpdated = vi.fn(async () => {});
+    const databasePlugin: DatabasePlugin = {
+      ...plugin,
+      onDatabaseUpdated,
+    };
+    const transaction = vi.spyOn(databasePlugin, "transaction");
     const upload = vi.fn<NodeStorageProfile["upload"]>(
       async (key, filePath) => ({
         storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
@@ -181,12 +154,14 @@ describe("createBundleDiff", () => {
           bundleId: targetBundle.id,
         },
         {
-          databasePlugin: createDatabasePlugin(bundles),
+          databasePlugin,
           storagePlugin: createStoragePlugin(upload),
         },
       );
 
       expect(upload).toHaveBeenCalledOnce();
+      expect(transaction).toHaveBeenCalledOnce();
+      expect(onDatabaseUpdated).toHaveBeenCalledOnce();
       expect(updatedBundle).toMatchObject({
         patchBaseBundleId: baseBundle.id,
         patchBaseFileHash: "hash-old",
@@ -211,9 +186,9 @@ describe("createBundleDiff", () => {
   it("rejects ambiguous Hermes bundle assets in manifests", async () => {
     const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
-    const bundles = new Map([
-      [baseBundle.id, baseBundle],
-      [targetBundle.id, targetBundle],
+    const databasePlugin = await createDatabasePlugin([
+      baseBundle,
+      targetBundle,
     ]);
     const upload = vi.fn<NodeStorageProfile["upload"]>(
       async (key, filePath) => ({
@@ -270,7 +245,7 @@ describe("createBundleDiff", () => {
             bundleId: targetBundle.id,
           },
           {
-            databasePlugin: createDatabasePlugin(bundles),
+            databasePlugin,
             storagePlugin: createStoragePlugin(upload),
           },
         ),
@@ -302,10 +277,10 @@ describe("createBundleDiff", () => {
       patchFileHash: "hash-primary-patch",
       patchStorageUri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
     });
-    const bundles = new Map([
-      [primaryBaseBundle.id, primaryBaseBundle],
-      [secondaryBaseBundle.id, secondaryBaseBundle],
-      [targetBundle.id, targetBundle],
+    const databasePlugin = await createDatabasePlugin([
+      primaryBaseBundle,
+      secondaryBaseBundle,
+      targetBundle,
     ]);
     const upload = vi.fn<NodeStorageProfile["upload"]>(
       async (key, filePath) => ({
@@ -373,7 +348,7 @@ describe("createBundleDiff", () => {
           bundleId: targetBundle.id,
         },
         {
-          databasePlugin: createDatabasePlugin(bundles),
+          databasePlugin,
           storagePlugin: createStoragePlugin(upload),
         },
         {

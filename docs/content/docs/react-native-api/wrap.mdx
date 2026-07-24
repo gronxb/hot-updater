@@ -40,6 +40,11 @@ export default HotUpdater.wrap({ // [!code hl:8]
 })(App);
 ```
 
+To enable Analytics, keep this wrapper and call
+`HotUpdater.init({ analytics: true })` once before exporting the wrapped app.
+The `analytics` option is not accepted by `HotUpdater.wrap`. See the
+[Analytics guide](/docs/guides/analytics) for the complete setup.
+
 ### Manual Updates
 
 Use [`HotUpdater.init`](/docs/react-native-api/init) for manual update flows.

@@ -1,6 +1,17 @@
 import type { AppUpdateInfo } from "@hot-updater/core";
 
-import type { NotifyAppReadyResult } from "./native";
+import type {
+  NotifyAppReadyResult,
+  ResolverNotifyAppReadyAnalyticsParams,
+  ResolverNotifyAppReadyParams,
+  ResolverNotifyAppReadyResult,
+} from "./notifyAppReadyTypes";
+
+export type {
+  ResolverNotifyAppReadyAnalyticsParams,
+  ResolverNotifyAppReadyParams,
+  ResolverNotifyAppReadyResult,
+} from "./notifyAppReadyTypes";
 
 export type HotUpdaterBaseURL = string | (() => string | Promise<string>);
 
@@ -60,33 +71,6 @@ export interface ResolverCheckUpdateParams {
 }
 
 /**
- * Parameters passed to resolver.notifyAppReady method
- */
-export interface ResolverNotifyAppReadyParams {
-  /**
-   * The bundle state from native notifyAppReady
-   * - "RECOVERED": App recovered from crash, rollback occurred
-   * - "STABLE": No changes, bundle is stable
-   */
-  status: "RECOVERED" | "STABLE";
-
-  /**
-   * Present only when status is "RECOVERED"
-   */
-  crashedBundleId?: string;
-
-  /**
-   * Request headers from global config (for optional use)
-   */
-  requestHeaders?: Record<string, string>;
-
-  /**
-   * Request timeout from global config (for optional use)
-   */
-  requestTimeout?: number;
-}
-
-/**
  * Resolver interface for custom network operations
  */
 export interface HotUpdaterResolver {
@@ -121,7 +105,7 @@ export interface HotUpdaterResolver {
    * Note: Native rollback/promotion semantics are already finalized before this callback runs.
    *
    * @param params - All parameters about the current app state
-   * @returns Notification result
+   * @returns Optional legacy readiness result
    *
    * @example
    * ```typescript
@@ -137,7 +121,16 @@ export interface HotUpdaterResolver {
    */
   notifyAppReady?: (
     params: ResolverNotifyAppReadyParams,
-  ) => Promise<NotifyAppReadyResult | undefined>;
+  ) => Promise<ResolverNotifyAppReadyResult | NotifyAppReadyResult | undefined>;
+
+  /**
+   * Optional transport for automatic Analytics event ingestion.
+   *
+   * This is independent from the legacy notifyAppReady readiness callback.
+   */
+  notifyAppReadyAnalytics?: (
+    params: ResolverNotifyAppReadyAnalyticsParams,
+  ) => Promise<void>;
 }
 
 /**

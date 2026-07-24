@@ -37,7 +37,7 @@ import { s3Storage } from "@hot-updater/aws";
 import { client } from "./mongodb";
 
 export const hotUpdater = createHotUpdater({
-  database: mongoAdapter({ client }),
+  database: mongoAdapter({ client, transactions: true }),
   storages: [
     s3Storage({
       region: "auto",
@@ -52,6 +52,11 @@ export const hotUpdater = createHotUpdater({
   basePath: "/hot-updater",
 });
 ```
+
+Set `transactions: true` when MongoDB runs as a replica set or sharded cluster.
+Hot Updater uses transactions to replace a bundle and its patch rows atomically.
+Leave the option disabled only when using a standalone MongoDB server; scalar
+bundle updates remain available, but patch replacement is rejected.
 
 ## Schema Generation
 

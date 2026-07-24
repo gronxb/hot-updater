@@ -65,7 +65,8 @@ Generate the Prisma schema for Hot Updater tables.
 npx hot-updater db generate src/hotUpdater.ts --yes
 ```
 
-This command generates the schema. Copy it into your `prisma/schema.prisma` file.
+This command creates `prisma/schema.prisma` when it is missing or merges the
+Hot Updater models into the existing schema.
 
 <Callout>
 Need to generate SQL without config? See [SQL Export](/docs/custom/database/sql-export) for standalone SQL generation with the `--sql` flag.

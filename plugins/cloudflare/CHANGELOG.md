@@ -1,5 +1,24 @@
 # @hot-updater/cloudflare
 
+## Unreleased
+
+### Minor Changes
+
+- Replace the aggregate D1 database plugin with the fixed `bundles`,
+  `bundle_patches`, and `bundle_events` row contract. D1 now exposes structural
+  Analytics support and implements exact distinct counts, ordered
+  `distinctOn`, and every requested order clause, including an explicit `id`
+  tie-break.
+- Add the forward-only `0.38` D1 migration for `bundle_events`. Back up D1
+  before upgrading; do not manually replay the migration after it succeeds.
+- Enable the public Analytics route group on the managed Worker by default,
+  including `POST /events` and Analytics queries. Deployments remain
+  responsible for provider-level access controls, rate limits, quotas, logging,
+  and retention.
+- Publish `@hot-updater/cloudflare/worker` as a Worker ESM-only subpath. It no
+  longer advertises CommonJS or fallback export conditions, including
+  CommonJS declaration files.
+
 ## 0.35.6
 
 ### Patch Changes

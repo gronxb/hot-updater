@@ -18,6 +18,7 @@ config({ path: path.join(__dirname, ".env.hotupdater") });
 export const hotUpdater = createHotUpdater({
   database: mongoAdapter({
     client,
+    transactions: true,
   }),
   storages: [
     mockStorage({}),
@@ -50,6 +51,7 @@ export const hotUpdater = createHotUpdater({
   routes: {
     updateCheck: true,
     bundles: true,
+    analytics: true,
   },
 });
 

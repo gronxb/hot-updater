@@ -17,9 +17,21 @@ import {
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
+import {
+  createDatabaseClient,
+  type DatabaseClient,
+} from "../../../plugins/plugin-core/dist/index.mjs";
 import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
 import {
+  ConsoleAnalyticsQaError,
+  readObservedAnalyticsEvent,
+  verifyConsoleAnalytics,
+  type ConsoleAnalyticsQaClient,
+  type ObservedAnalyticsEvent,
+} from "../console-analytics-qa.ts";
+import {
   createCrashRecoveryArtifactNames,
+  getLaunchReportState,
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
@@ -80,6 +92,7 @@ type SessionState = {
   largeArchiveAssetBackupPath: string | null;
   largeArchiveAssetPath: string;
   multiAssetBackupPaths: Record<string, string | null>;
+  observedAnalyticsEvents: ObservedAnalyticsEvent[];
   platform: Platform;
   resultsDir: string;
   storePath: string | null;
@@ -246,7 +259,6 @@ const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
 const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
   "HOT_UPDATER_E2E_DEPLOY_MAX_OLD_SPACE_SIZE_MB";
-const DEPLOY_PROCESS_LOCK_DIR_ENV_KEY = "HOT_UPDATER_E2E_DEPLOY_LOCK_DIR";
 const DEFAULT_DEPLOY_MAX_OLD_SPACE_SIZE_MB = 8192;
 const NODE_MAX_OLD_SPACE_SIZE_PATTERN = /^--max-old-space-size(?:=|$)/;
 const E2E_REMOTE_RESET_LOGICAL_CHANNELS = ["production", "beta"] as const;
@@ -461,6 +473,7 @@ const fixtureSession: SessionState = {
     LARGE_ARCHIVE_ASSET_RELATIVE_PATH,
   ),
   multiAssetBackupPaths: {},
+  observedAnalyticsEvents: [],
   platform,
   resultsDir,
   storePath: null,
@@ -690,19 +703,6 @@ function bareBuildCacheRoot() {
   }
 
   return path.resolve(REPO_DIR, cacheDir);
-}
-
-function deployProcessLockRoot() {
-  const lockDir = process.env[DEPLOY_PROCESS_LOCK_DIR_ENV_KEY];
-  if (lockDir) {
-    return path.resolve(REPO_DIR, lockDir);
-  }
-
-  const worktreeHash = createHash("sha256")
-    .update(REPO_DIR)
-    .digest("hex")
-    .slice(0, 16);
-  return path.join(os.tmpdir(), "hot-updater-e2e-deploy-lock", worktreeHash);
 }
 
 function readGitTrackedInputFiles(inputPaths: string[]) {
@@ -1310,29 +1310,162 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
   });
 }
 
-async function withDatabasePlugin<T>(
-  callback: (databasePlugin: DatabasePlugin) => Promise<T>,
+async function withDatabaseClient<T>(
+  callback: (databaseClient: DatabaseClient) => Promise<T>,
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (
-        options: null,
-      ) => Promise<{ database: () => Promise<DatabasePlugin> }>;
+      loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
     };
   const originalCwd = process.cwd();
-  let databasePlugin: DatabasePlugin | null = null;
 
   try {
     process.chdir(fixtureSession.exampleDir);
     return await withHotUpdaterControlEnv(async () => {
       const config = await loadConfig(null);
-      databasePlugin = await config.database();
-      return await callback(databasePlugin);
+      try {
+        return await callback(createDatabaseClient(config.database));
+      } finally {
+        await config.database.onUnmount?.();
+      }
     });
   } finally {
-    await databasePlugin?.onUnmount?.();
     process.chdir(originalCwd);
   }
+}
+
+type AnalyticsRuntime = {
+  readonly getActiveInstallationOverview?: (input: {
+    readonly window: "24h";
+  }) => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["getActiveOverview"]>>
+  >;
+  readonly getBundleEventAnalytics?: (
+    bundleId: string,
+    window: "30d",
+    limit: number,
+    offset: number,
+  ) => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["getBundleAnalytics"]>>
+  >;
+  readonly getBundleEventOverview?: () => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["getOverview"]>>
+  >;
+  readonly getBundleEventSummary?: (
+    bundleId: string,
+  ) => Promise<Awaited<ReturnType<ConsoleAnalyticsQaClient["getSummary"]>>>;
+  readonly getInstallationHistory?: (
+    installId: string,
+    limit: number,
+    offset: number,
+  ) => Promise<Awaited<ReturnType<ConsoleAnalyticsQaClient["getHistory"]>>>;
+  readonly searchInstallations?: (
+    query: string,
+    limit: number,
+    offset: number,
+  ) => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["searchInstallations"]>>
+  >;
+};
+
+const hasAnalyticsRuntime = (runtime: AnalyticsRuntime) =>
+  typeof runtime.getActiveInstallationOverview === "function" &&
+  typeof runtime.getBundleEventAnalytics === "function" &&
+  typeof runtime.getBundleEventOverview === "function" &&
+  typeof runtime.getBundleEventSummary === "function" &&
+  typeof runtime.getInstallationHistory === "function" &&
+  typeof runtime.searchInstallations === "function";
+
+async function withAnalyticsRuntime<T>(
+  callback: (runtime: AnalyticsRuntime) => Promise<T>,
+): Promise<T> {
+  const { loadConfig } =
+    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+      loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
+    };
+  const { createHotUpdater } =
+    (await import("../../../packages/server/dist/index.mjs")) as {
+      createHotUpdater: (options: {
+        database: DatabasePlugin;
+      }) => AnalyticsRuntime;
+    };
+  const originalCwd = process.cwd();
+
+  try {
+    process.chdir(fixtureSession.exampleDir);
+    return await withHotUpdaterControlEnv(async () => {
+      const config = await loadConfig(null);
+      try {
+        return await callback(createHotUpdater({ database: config.database }));
+      } finally {
+        await config.database.onUnmount?.();
+      }
+    });
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
+async function verifyConfiguredConsoleAnalytics(args: {
+  bundleIds: readonly string[];
+  sinceMs: number;
+}) {
+  return withAnalyticsRuntime(async (runtime) => {
+    if (!hasAnalyticsRuntime(runtime)) {
+      return { skipped: true, reason: "unsupported" };
+    }
+    const probe = Reflect.get(
+      runtime,
+      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    );
+    if (typeof probe === "function") {
+      const capability: unknown = await Reflect.apply(probe, runtime, []);
+      if (
+        typeof capability !== "object" ||
+        capability === null ||
+        Reflect.get(capability, "analytics") !== true
+      ) {
+        return { skipped: true, reason: "unsupported" };
+      }
+    }
+
+    const client: ConsoleAnalyticsQaClient = {
+      getActiveOverview: () =>
+        runtime.getActiveInstallationOverview!({ window: "24h" }),
+      getBundleAnalytics: (bundleId) =>
+        runtime.getBundleEventAnalytics!(bundleId, "30d", 50, 0),
+      getCapabilities: async () => ({ analytics: true }),
+      getHistory: (installId) =>
+        runtime.getInstallationHistory!(installId, 50, 0),
+      getOverview: () => runtime.getBundleEventOverview!(),
+      getSummary: (bundleId) => runtime.getBundleEventSummary!(bundleId),
+      searchInstallations: (query) =>
+        runtime.searchInstallations!(query, 50, 0),
+    };
+    const bundleIds = [
+      ...args.bundleIds,
+      "00000000-0000-0000-0000-000000000000",
+    ];
+    for (let attempt = 1; attempt <= 30; attempt += 1) {
+      try {
+        const evidence = await verifyConsoleAnalytics(client, bundleIds, {
+          observedEvents: fixtureSession.observedAnalyticsEvents,
+          sinceMs: args.sinceMs,
+        });
+        return { skipped: false, ...evidence };
+      } catch (error) {
+        if (
+          !(error instanceof ConsoleAnalyticsQaError) ||
+          error.code === "unsupported" ||
+          attempt === 30
+        ) {
+          throw error;
+        }
+        await sleep(1_000);
+      }
+    }
+    throw new Error("Console Analytics verification exhausted its retries.");
+  });
 }
 
 async function fetchProviderBundlesPage(args: {
@@ -1446,32 +1579,13 @@ async function patchProviderBundle(bundleId: string, patch: Partial<Bundle>) {
   ) as Partial<Bundle>;
   const patchKeys = Object.keys(definedPatch);
   if (patchKeys.length > 0) {
-    await withDatabasePlugin(async (databasePlugin) => {
-      const bundle = await databasePlugin.getBundleById(bundleId);
+    await withDatabaseClient(async (databaseClient) => {
+      const bundle = await databaseClient.getBundleById(bundleId);
       if (!bundle) {
         throw new Error(`No bundle with id ${bundleId}.`);
       }
 
-      await databasePlugin.updateBundle(bundleId, definedPatch);
-      await databasePlugin.commitBundle();
-
-      const refetched = await databasePlugin.getBundleById(bundleId);
-      if (!refetched) {
-        throw new Error(
-          `Verification failed: ${bundleId} is missing after patch.`,
-        );
-      }
-      for (const key of patchKeys) {
-        const expected = definedPatch[key as keyof Bundle];
-        const observed = refetched[key as keyof Bundle];
-        if (
-          JSON.stringify(observed ?? null) !== JSON.stringify(expected ?? null)
-        ) {
-          throw new Error(
-            `Verification failed: ${bundleId} ${key} expected ${JSON.stringify(expected)} but observed ${JSON.stringify(observed)}.`,
-          );
-        }
-      }
+      await databaseClient.updateBundleById(bundleId, definedPatch);
     });
   }
 
@@ -1731,28 +1845,15 @@ async function clearProviderBundles({
     }
 
     if (mode === "disable") {
-      await withDatabasePlugin(async (databasePlugin) => {
-        await forEachWithConcurrency(
-          nextBatch,
-          REMOTE_RESET_DATABASE_CONCURRENCY,
-          (bundle) =>
-            databasePlugin.updateBundle(bundle.id, { enabled: false }),
-        );
-        await databasePlugin.commitBundle();
-
-        const refetched = await mapWithConcurrency(
-          nextBatch,
-          REMOTE_RESET_DATABASE_CONCURRENCY,
-          (bundle) => databasePlugin.getBundleById(bundle.id),
-        );
-        const stillEnabled = refetched.find(
-          (bundle) => bundle?.enabled !== false,
-        );
-        if (stillEnabled) {
-          throw new Error(
-            `Failed to disable bundle ${stillEnabled.id} during reset.`,
+      await withDatabaseClient(async (databaseClient) => {
+        await databaseClient.mutate(async (transaction) => {
+          await forEachWithConcurrency(
+            nextBatch,
+            REMOTE_RESET_DATABASE_CONCURRENCY,
+            (bundle) =>
+              transaction.updateBundleById(bundle.id, { enabled: false }),
           );
-        }
+        });
       });
       for (const bundle of nextBatch) {
         clearedIds.add(bundle.id);
@@ -1795,7 +1896,9 @@ async function clearProviderBundles({
     });
 
     if (mode === "disable") {
-      await patchProviderBundle(remainingActiveBundle.id, { enabled: false });
+      await patchProviderBundle(remainingActiveBundle.id, {
+        enabled: false,
+      });
     } else {
       await deleteProviderBundle(remainingActiveBundle.id);
     }
@@ -2146,7 +2249,8 @@ function assertMetadataReset(metadata: Record<string, unknown>) {
 function assertLaunchReport(
   filePath: string,
   expectedStatus: string,
-  expectedCrashBundleId = "",
+  expectedFromBundleId = "",
+  expectedToBundleId = "",
 ) {
   const report = readJson(filePath);
 
@@ -2156,12 +2260,15 @@ function assertLaunchReport(
     );
   }
 
-  if (
-    expectedCrashBundleId &&
-    report.crashedBundleId !== expectedCrashBundleId
-  ) {
+  if (expectedFromBundleId && report.fromBundleId !== expectedFromBundleId) {
     throw new Error(
-      `Expected crashedBundleId ${expectedCrashBundleId} but received ${String(report.crashedBundleId)}`,
+      `Expected fromBundleId ${expectedFromBundleId} but received ${String(report.fromBundleId)}`,
+    );
+  }
+
+  if (expectedToBundleId && report.toBundleId !== expectedToBundleId) {
+    throw new Error(
+      `Expected toBundleId ${expectedToBundleId} but received ${String(report.toBundleId)}`,
     );
   }
 }
@@ -2323,8 +2430,9 @@ function isExpectedCrashRecoveryReached(
     verificationPending: boolean | null;
   },
   launchReportState: {
-    crashedBundleId: string | null;
+    fromBundleId: string | null;
     status: string | null;
+    toBundleId: string | null;
   },
   crashedBundleId: string,
   stableBundleId: string | undefined,
@@ -2334,7 +2442,8 @@ function isExpectedCrashRecoveryReached(
     metadataState.stagingBundleId === stableBundleId &&
     metadataState.verificationPending === false &&
     launchReportState.status === "RECOVERED" &&
-    launchReportState.crashedBundleId === crashedBundleId
+    launchReportState.fromBundleId === crashedBundleId &&
+    launchReportState.toBundleId === stableBundleId
   );
 }
 
@@ -2724,16 +2833,6 @@ function readFirstOtaArchiveState(bundleId: string) {
     bundleFile,
     diagnostics,
     metadataState,
-  };
-}
-
-function getLaunchReportState(report: Record<string, unknown> | null) {
-  return {
-    crashedBundleId:
-      (report?.crashedBundleId as string | undefined) ??
-      (report?.crashed_bundle_id as string | undefined) ??
-      null,
-    status: (report?.status as string | undefined) ?? null,
   };
 }
 
@@ -3253,14 +3352,29 @@ export async function handleProxyUpdateRequest(request: Request) {
   const headers = new Headers(request.headers);
   headers.delete("host");
 
+  const requestBody =
+    request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : await request.arrayBuffer();
   const response = await fetch(targetUrl, {
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer(),
+    body: requestBody,
     headers,
     method: request.method,
   });
+
+  if (requestUrl.pathname.endsWith("/events") && response.ok && requestBody) {
+    try {
+      const event = readObservedAnalyticsEvent(
+        JSON.parse(new TextDecoder().decode(requestBody)),
+        Date.now(),
+      );
+      if (event) fixtureSession.observedAnalyticsEvents.push(event);
+    } catch (error) {
+      logDetoxFixture("analytics event observation skipped", {
+        error: formatErrorMessage(error),
+      });
+    }
+  }
 
   logDetoxFixture("proxied update request", {
     method: request.method,
@@ -3835,9 +3949,9 @@ function createWaitForRecoveryTimeoutError(args: {
   const launchReportState = getLaunchReportState(args.launchReport.value);
   const message = [
     "Timed out waiting for crash recovery state.",
-    `Expected stagingBundleId=${args.stableBundleId}, verificationPending=false, launchReport.status=RECOVERED, crashedBundleId=${args.crashedBundleId}.`,
+    `Expected stagingBundleId=${args.stableBundleId}, verificationPending=false, launchReport.status=RECOVERED, fromBundleId=${args.crashedBundleId}, toBundleId=${args.stableBundleId}.`,
     `${formatObservedMetadataState(metadataState)}.`,
-    `Observed launchReport.status=${String(launchReportState.status)} and crashedBundleId=${String(launchReportState.crashedBundleId)}.`,
+    `Observed launchReport.status=${String(launchReportState.status)}, fromBundleId=${String(launchReportState.fromBundleId)}, and toBundleId=${String(launchReportState.toBundleId)}.`,
     `Metadata path: ${args.metadata.path}`,
   ].join("\n");
 
@@ -4389,6 +4503,7 @@ async function bootstrap() {
 
   fixtureSession.builtInBundleId = null;
   fixtureSession.deployedBundles = [];
+  fixtureSession.observedAnalyticsEvents = [];
   fixtureSession.storePath = null;
 
   await waitForLocalProviderReady();
@@ -4564,103 +4679,6 @@ async function acquireBareBuildCacheLock(
   }
 }
 
-async function readDeployProcessLockOwner(lockPath: string) {
-  try {
-    return JSON.parse(
-      await fsPromises.readFile(path.join(lockPath, "owner.json"), "utf8"),
-    ) as { pid?: unknown; platform?: unknown; startedAt?: unknown };
-  } catch {
-    return null;
-  }
-}
-
-function isDeployProcessLockOwnerAlive(
-  owner: Awaited<ReturnType<typeof readDeployProcessLockOwner>>,
-) {
-  if (!owner || typeof owner.pid !== "number" || !Number.isInteger(owner.pid)) {
-    return true;
-  }
-
-  return isProcessRunning(owner.pid);
-}
-
-async function acquireDeployProcessLock(signal?: AbortSignal) {
-  const lockRoot = deployProcessLockRoot();
-  const lockPath = path.join(lockRoot, "deploy.lock");
-  await fsPromises.mkdir(lockRoot, { recursive: true });
-  let loggedWait = false;
-
-  while (true) {
-    throwIfAborted(signal);
-    try {
-      await fsPromises.mkdir(lockPath);
-      await fsPromises.writeFile(
-        path.join(lockPath, "owner.json"),
-        JSON.stringify(
-          {
-            pid: process.pid,
-            platform: fixtureSession.platform,
-            startedAt: new Date().toISOString(),
-          },
-          null,
-          2,
-        ),
-      );
-      logDetoxFixture("deploy process lock acquired", {
-        lockPath,
-        platform: fixtureSession.platform,
-      });
-      return lockPath;
-    } catch (error) {
-      if (
-        !error ||
-        typeof error !== "object" ||
-        !("code" in error) ||
-        error.code !== "EEXIST"
-      ) {
-        throw error;
-      }
-
-      const stats = await fsPromises.stat(lockPath).catch(() => null);
-      const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
-      const owner = await readDeployProcessLockOwner(lockPath);
-      if (!isDeployProcessLockOwnerAlive(owner)) {
-        logDetoxFixture("deploy process lock owner exited; removing", {
-          lockPath,
-          owner,
-        });
-        await fsPromises.rm(lockPath, { force: true, recursive: true });
-        loggedWait = false;
-        continue;
-      }
-
-      if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
-        logDetoxFixture("deploy process lock stale; removing", {
-          ageMs,
-          lockPath,
-          owner,
-        });
-        await fsPromises.rm(lockPath, { force: true, recursive: true });
-        continue;
-      }
-
-      if (!loggedWait) {
-        logDetoxFixture("deploy process lock waiting", {
-          lockPath,
-          owner,
-          platform: fixtureSession.platform,
-        });
-        loggedWait = true;
-      }
-      await abortableSleep(BARE_BUILD_CACHE_LOCK_WAIT_MS, signal);
-    }
-  }
-}
-
-async function releaseDeployProcessLock(lockPath: string) {
-  await fsPromises.rm(lockPath, { force: true, recursive: true });
-}
-
 async function deployFixtureBundle(
   request: DeployBundleRequest,
   context?: JobExecutionContext,
@@ -4744,7 +4762,6 @@ async function deployFixtureBundle(
     targetAppVersion: request.targetAppVersion,
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
-  const deployProcessLockPath = await acquireDeployProcessLock(signal);
   let bareBuildLockPath: string | null = null;
   let deployDurationMs = 0;
   const deployOutput = await (async () => {
@@ -4766,7 +4783,6 @@ async function deployFixtureBundle(
           recursive: true,
         });
       }
-      await releaseDeployProcessLock(deployProcessLockPath);
     }
   })();
   const bundleId = extractDeployBundleId(deployOutput);
@@ -5546,6 +5562,7 @@ async function resetRemoteBundles() {
 
 async function resetLocalAppState() {
   resetE2eScreenState();
+  fixtureSession.observedAnalyticsEvents = [];
   if (fixtureSession.platform === "ios") {
     await clearIosLocalBundleState();
   } else {
@@ -5720,7 +5737,12 @@ async function assertLaunchReportState({
     throw new Error("launch-report.json is missing");
   }
 
-  assertLaunchReport(launchReportPath, status, crashedBundleId ?? "");
+  assertLaunchReport(
+    launchReportPath,
+    status,
+    crashedBundleId ?? "",
+    stableBundleId ?? "",
+  );
   return {};
 }
 
@@ -6012,4 +6034,11 @@ export async function handleWriteSummary(args: {
 
 export async function handleCleanup() {
   return cleanup();
+}
+
+export async function handleVerifyConsoleAnalytics(args: {
+  bundleIds: readonly string[];
+  sinceMs: number;
+}) {
+  return verifyConfiguredConsoleAnalytics(args);
 }

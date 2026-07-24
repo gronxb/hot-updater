@@ -298,7 +298,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   }
 
   const firebaseRootDir = path.dirname(
-    path.dirname(require.resolve("@hot-updater/firebase/functions")),
+    path.dirname(require.resolve("@hot-updater/firebase/functions/handler")),
   );
 
   const { tmpDir, removeTmpDir, functionsDir } =

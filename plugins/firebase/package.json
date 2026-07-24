@@ -18,6 +18,11 @@
       "require": "./dist/iac/index.cjs"
     },
     "./functions": {
+      "types": "./dist/functions.d.cts",
+      "import": "./dist/functions.mjs",
+      "require": "./dist/functions.cjs"
+    },
+    "./functions/handler": {
       "require": "./dist/firebase/functions/index.cjs"
     },
     "./package.json": "./package.json"

@@ -1,18 +1,7 @@
 import type { Bundle, Platform } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
-  const mockDatabasePlugin = {
-    appendBundle: vi.fn(),
-    commitBundle: vi.fn(),
-    deleteBundle: vi.fn(),
-    getBundleById: vi.fn(),
-    getBundles: vi.fn(),
-    getChannels: vi.fn(),
-    name: "mock-database",
-    onUnmount: vi.fn(),
-    updateBundle: vi.fn(),
-  };
+const { mockCli, mockPrintBanner } = vi.hoisted(() => {
   const mockCli = {
     loadConfig: vi.fn(),
     p: {
@@ -28,7 +17,7 @@ const { mockCli, mockDatabasePlugin, mockPrintBanner } = vi.hoisted(() => {
     },
   };
   const mockPrintBanner = vi.fn();
-  return { mockCli, mockDatabasePlugin, mockPrintBanner };
+  return { mockCli, mockPrintBanner };
 });
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
@@ -44,6 +33,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 vi.mock("@/utils/printBanner", () => ({
   printBanner: mockPrintBanner,
 }));
+
+import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
+
+const databaseHarness = createDatabasePluginHarness();
 
 const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
@@ -63,9 +56,7 @@ const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
 });
 
 const stubLoadedConfig = () => {
-  mockCli.loadConfig.mockResolvedValue({
-    database: vi.fn().mockResolvedValue(mockDatabasePlugin),
-  } as never);
+  mockCli.loadConfig.mockResolvedValue({ database: databaseHarness.plugin });
 };
 
 const expectExit = (code: number) => {
@@ -82,19 +73,13 @@ const setupConsoleSpies = () => {
 const stubGetBundlesByPlatform = (
   byPlatform: Partial<Record<Platform, Bundle[]>>,
 ) => {
-  mockDatabasePlugin.getBundles.mockImplementation((options) => {
-    const platform = options.where?.platform as Platform | undefined;
-    const bundles = (platform && byPlatform[platform]) ?? [];
-    return Promise.resolve({
-      data: bundles.slice(0, options.limit ?? bundles.length),
-      pagination: { total: bundles.length },
-    });
-  });
+  databaseHarness.setBundles(Object.values(byPlatform).flat());
 };
 
 describe("handleRollback", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    databaseHarness.reset();
     stubLoadedConfig();
     setupConsoleSpies();
   });
@@ -113,20 +98,15 @@ describe("handleRollback", () => {
         buildBundle({ id: "and-1", platform: "android" }),
       ],
     });
-    mockDatabasePlugin.getBundleById.mockImplementation((id: string) =>
-      Promise.resolve(buildBundle({ id, enabled: false })),
-    );
-
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { yes: true });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-2", {
-      enabled: false,
-    });
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("and-2", {
-      enabled: false,
-    });
-    expect(mockDatabasePlugin.commitBundle).toHaveBeenCalledTimes(1);
+    expect(await databaseHarness.bundles()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "ios-2", enabled: false }),
+        expect.objectContaining({ id: "and-2", enabled: false }),
+      ]),
+    );
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       expect.stringContaining("ios-2"),
     );
@@ -151,20 +131,12 @@ describe("handleRollback", () => {
         buildBundle({ id: "ios-1", platform: "ios" }),
       ],
     });
-    mockDatabasePlugin.getBundleById.mockImplementation((id: string) =>
-      Promise.resolve(buildBundle({ id, enabled: false })),
-    );
-
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { platform: "ios", yes: true });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-2", {
-      enabled: false,
-    });
-    expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalledWith(
-      expect.stringMatching(/^and-/),
-      expect.anything(),
-    );
+    const bundles = await databaseHarness.bundles();
+    expect(bundles.find(({ id }) => id === "ios-2")?.enabled).toBe(false);
+    expect(bundles.some(({ id }) => id.startsWith("and-"))).toBe(false);
   });
 
   it("rolls back to binary-shipped JS when a platform has one enabled bundle", async () => {
@@ -175,19 +147,15 @@ describe("handleRollback", () => {
         buildBundle({ id: "and-1", platform: "android" }),
       ],
     });
-    mockDatabasePlugin.getBundleById.mockImplementation((id: string) =>
-      Promise.resolve(buildBundle({ id, enabled: false })),
-    );
-
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { yes: true });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-1", {
-      enabled: false,
-    });
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("and-2", {
-      enabled: false,
-    });
+    expect(await databaseHarness.bundles()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "ios-1", enabled: false }),
+        expect.objectContaining({ id: "and-2", enabled: false }),
+      ]),
+    );
     expect(mockCli.p.log.message).toHaveBeenCalledWith(
       expect.stringContaining("binary-shipped JS"),
     );
@@ -197,17 +165,12 @@ describe("handleRollback", () => {
     stubGetBundlesByPlatform({
       ios: [buildBundle({ id: "ios-1", platform: "ios" })],
     });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(
-      buildBundle({ id: "ios-1", enabled: false }),
-    );
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", {
       platform: "ios",
       yes: true,
     });
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-1", {
-      enabled: false,
-    });
+    expect((await databaseHarness.bundles())[0]?.enabled).toBe(false);
     expect(mockCli.p.log.success).toHaveBeenCalled();
   });
 
@@ -219,16 +182,13 @@ describe("handleRollback", () => {
       ],
       android: [],
     });
-    mockDatabasePlugin.getBundleById.mockResolvedValue(
-      buildBundle({ id: "ios-2", enabled: false }),
-    );
     const { handleRollback } = await import("./rollback");
     await handleRollback("dev", { yes: true });
 
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledTimes(1);
-    expect(mockDatabasePlugin.updateBundle).toHaveBeenCalledWith("ios-2", {
-      enabled: false,
-    });
+    expect(
+      (await databaseHarness.bundles()).find(({ id }) => id === "ios-2")
+        ?.enabled,
+    ).toBe(false);
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("No enabled bundle on dev/android"),
     );
@@ -275,7 +235,7 @@ describe("handleRollback", () => {
       message: "Apply this rollback plan to dev?",
       initialValue: false,
     });
-    expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalled();
+    expect(databaseHarness.uploadObject).not.toHaveBeenCalled();
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
     }
@@ -304,7 +264,7 @@ describe("handleRollback", () => {
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", {})).rejects.toThrow("process.exit(1)");
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(mockDatabasePlugin.updateBundle).not.toHaveBeenCalled();
+    expect(databaseHarness.uploadObject).not.toHaveBeenCalled();
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
     }
@@ -321,15 +281,7 @@ describe("handleRollback", () => {
         buildBundle({ id: "and-1", platform: "android" }),
       ],
     });
-    // ios commit "succeeds" (returns disabled), android commit appears to
-    // have not taken effect (still enabled).
-    mockDatabasePlugin.getBundleById.mockImplementation((id: string) => {
-      if (id === "ios-2")
-        return Promise.resolve(buildBundle({ id, enabled: false }));
-      if (id === "and-2")
-        return Promise.resolve(buildBundle({ id, enabled: true }));
-      return Promise.resolve(null);
-    });
+    databaseHarness.compareAndSwapObject.mockResolvedValue(true);
     const { exitSpy } = expectExit(1);
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
@@ -342,11 +294,11 @@ describe("handleRollback", () => {
   });
 
   it("calls onUnmount even when getBundles throws", async () => {
-    mockDatabasePlugin.getBundles.mockRejectedValue(new Error("DB down"));
+    databaseHarness.loadObject.mockRejectedValueOnce(new Error("DB down"));
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
       "DB down",
     );
-    expect(mockDatabasePlugin.onUnmount).toHaveBeenCalled();
+    expect(databaseHarness.onUnmount).toHaveBeenCalled();
   });
 });

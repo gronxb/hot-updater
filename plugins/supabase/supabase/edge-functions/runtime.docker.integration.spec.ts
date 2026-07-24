@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
+import { supportsAnalytics } from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -337,7 +338,12 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   const seedRuntimeBundles = async (bundles: Bundle[]) => {
     for (const bundle of bundles.map(toRuntimeBundle)) {
-      await seedHotUpdater.insertBundle(bundle);
+      const existing = await seedHotUpdater.getBundleById(bundle.id);
+      if (existing) {
+        await seedHotUpdater.updateBundleById(bundle.id, bundle);
+      } else {
+        await seedHotUpdater.insertBundle(bundle);
+      }
     }
   };
 
@@ -515,6 +521,58 @@ describe.sequential("supabase edge runtime acceptance", () => {
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
+  });
+
+  it("ingests events from the managed edge function by default", async () => {
+    // Given: the client sends a valid OTA transition.
+    const bundleId = "00000000-0000-0000-0000-000000000001";
+
+    // When: the event is sent to the managed runtime default.
+    const response = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/events`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0",
+          channel: "production",
+          cohort: "782",
+          fingerprintHash: null,
+          fromBundleId: NIL_UUID,
+          installId: "supabase-e2e-install",
+          platform: "ios",
+          toBundleId: bundleId,
+          type: "UPDATE_APPLIED",
+          updateStrategy: "appVersion",
+        }),
+      },
+    );
+
+    // Then: the managed runtime persists the event.
+    expect(response.status).toBe(204);
+    if (!supportsAnalytics(seedHotUpdater)) {
+      throw new Error("Expected Supabase Analytics support.");
+    }
+    await expect(
+      seedHotUpdater.getBundleEventSummary(bundleId),
+    ).resolves.toEqual({ installed: 1, recovered: 0 });
+  });
+
+  it("exposes the managed Analytics route group by default", async () => {
+    const versionResponse = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/version`,
+    );
+    const queryResponse = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/api/bundles/bundle-1/events/summary`,
+    );
+
+    await expect(versionResponse.json()).resolves.toMatchObject({
+      capabilities: {
+        eventIngestion: true,
+        analyticsQueries: true,
+      },
+    });
+    expect(queryResponse.status).toBe(200);
   });
 
   it("does not support the legacy exact path", async () => {
@@ -928,7 +986,7 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/server": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
       ).href,
-      "@hot-updater/supabase": pathToFileURL(
+      "@hot-updater/supabase/edge": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
     },
@@ -937,8 +995,8 @@ const writeSupabaseRuntimeFiles = async ({
   await writeFile(
     path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
     `
-export { supabaseEdgeFunctionDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionDatabase.ts")).href)};
-export { supabaseEdgeFunctionStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
+export { supabaseEdgeFunctionDatabase as supabaseDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionDatabase.ts")).href)};
+export { supabaseEdgeFunctionStorage as supabaseStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
 `.trim(),
   );
   await writeFile(

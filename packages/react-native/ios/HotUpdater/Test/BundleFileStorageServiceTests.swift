@@ -80,6 +80,204 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func notifyAppReadyReturnsUnchangedWithoutRecordedTransition() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+
+        #expect(service.notifyAppReady()["status"] as? String == "UNCHANGED")
+    }
+
+    @Test
+    func markLaunchCompletedRecordsUpdateAppliedTransition() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            builtInBundleId: "builtin-bundle"
+        )
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "next-bundle"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagingDirectory, bundleId: "next-bundle")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: nil,
+                stagingBundleId: "next-bundle",
+                verificationPending: true,
+                pendingTransition: PendingBundleTransition(
+                    fromBundleId: "builtin-bundle",
+                    toBundleId: "next-bundle",
+                    updateStrategy: .fingerprint
+                )
+            )
+        )
+
+        #expect(service.notifyAppReady()["status"] as? String == "PENDING")
+
+        service.markLaunchCompleted(bundleId: "next-bundle")
+        let report = service.notifyAppReady()
+
+        #expect(report["status"] as? String == "UPDATE_APPLIED")
+        #expect(report["fromBundleId"] as? String == "builtin-bundle")
+        #expect(report["toBundleId"] as? String == "next-bundle")
+        #expect(report["updateStrategy"] as? String == "fingerprint")
+    }
+
+    @Test
+    func prepareLaunchRecordsRecoveredTransitionAfterPendingRollback() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            builtInBundleId: "builtin-bundle"
+        )
+        let stableDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "stable-bundle"
+        )
+        try writeBundle(in: stableDirectory, bundleFileName: "main.jsbundle")
+        try writeManifest(in: stableDirectory, bundleId: "stable-bundle")
+
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "next-bundle"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagingDirectory, bundleId: "next-bundle")
+
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: "stable-bundle",
+                stagingBundleId: "next-bundle",
+                verificationPending: true,
+                pendingTransition: PendingBundleTransition(
+                    fromBundleId: "stable-bundle",
+                    toBundleId: "next-bundle",
+                    updateStrategy: .appVersion
+                )
+            )
+        )
+
+        let selection = service.prepareLaunch(
+            bundle: .main,
+            pendingRecovery: PendingCrashRecovery(
+                launchedBundleId: "next-bundle",
+                shouldRollback: true
+            )
+        )
+        let report = service.notifyAppReady()
+
+        #expect(selection.launchedBundleId == "stable-bundle")
+        #expect(report["status"] as? String == "RECOVERED")
+        #expect(report["fromBundleId"] as? String == "next-bundle")
+        #expect(report["crashedBundleId"] as? String == "next-bundle")
+        #expect(report["toBundleId"] as? String == "stable-bundle")
+        #expect(report["updateStrategy"] as? String == "appVersion")
+    }
+
+    @Test
+    func prepareLaunchRecordsRecoveredTransitionToBuiltInBundle() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(
+            documentsDirectory: workingDirectory,
+            builtInBundleId: "builtin-bundle"
+        )
+        let stagingDirectory = try createBundleDirectory(
+            documentsDirectory: workingDirectory,
+            bundleId: "next-bundle"
+        )
+        try writeBundle(in: stagingDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stagingDirectory, bundleId: "next-bundle")
+
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(
+                isolationKey: testIsolationKey,
+                stableBundleId: nil,
+                stagingBundleId: "next-bundle",
+                verificationPending: true,
+                pendingTransition: PendingBundleTransition(
+                    fromBundleId: "builtin-bundle",
+                    toBundleId: "next-bundle",
+                    updateStrategy: .fingerprint
+                )
+            )
+        )
+
+        let selection = service.prepareLaunch(
+            bundle: .main,
+            pendingRecovery: PendingCrashRecovery(
+                launchedBundleId: "next-bundle",
+                shouldRollback: true
+            )
+        )
+        let report = service.notifyAppReady()
+
+        #expect(selection.launchedBundleId == nil)
+        #expect(report["status"] as? String == "RECOVERED")
+        #expect(report["fromBundleId"] as? String == "next-bundle")
+        #expect(report["crashedBundleId"] as? String == "next-bundle")
+        #expect(report["toBundleId"] as? String == "builtin-bundle")
+        #expect(report["updateStrategy"] as? String == "fingerprint")
+    }
+
+    @Test
+    func installIdPersistsForTheSameAppInstall() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let firstInstallId = service.getInstallId()
+        let secondInstallId = makeStorageService(documentsDirectory: workingDirectory).getInstallId()
+
+        #expect(firstInstallId.isEmpty == false)
+        #expect(firstInstallId == secondInstallId)
+    }
+
+    @Test
+    func setUserPersistsAndClearsTheUserEnvelope() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer {
+            cleanupWorkingDirectory(workingDirectory)
+        }
+
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        service.setUser(userId: " user-123 ", username: " alice ")
+
+        let userIdentityURL = workingDirectory
+            .appendingPathComponent("bundle-store", isDirectory: true)
+            .appendingPathComponent(UserIdentity.userIdentityFilename)
+        let storedIdentity = try #require(UserIdentity.load(from: userIdentityURL))
+        #expect(storedIdentity.userId == "user-123")
+        #expect(storedIdentity.username == "alice")
+
+        service.setUser(userId: nil, username: "  ")
+        #expect(FileManager.default.fileExists(atPath: userIdentityURL.path) == false)
+    }
+
+    @Test
     func manifestDrivenInstallIsDisabledBeforeFirstOTA() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer {
@@ -227,14 +425,16 @@ private func cleanupWorkingDirectory(_ workingDirectory: URL) {
 
 private func makeStorageService(
     documentsDirectory: URL,
-    preferences: PreferencesService = InMemoryPreferencesService()
+    preferences: PreferencesService = InMemoryPreferencesService(),
+    builtInBundleId: String = "builtin-bundle"
 ) -> BundleFileStorageService {
     BundleFileStorageService(
         fileSystem: TestFileSystemService(documentsDirectory: documentsDirectory),
         downloadService: UnusedDownloadService(),
         decompressService: DecompressService(),
         preferences: preferences,
-        isolationKey: testIsolationKey
+        isolationKey: testIsolationKey,
+        builtInBundleIdProvider: { builtInBundleId }
     )
 }
 

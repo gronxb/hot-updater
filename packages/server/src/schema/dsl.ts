@@ -88,6 +88,9 @@ export const uuid = (ormName: string): HotUpdaterColumnDsl =>
 export const integer = (ormName: string): HotUpdaterColumnDsl =>
   column(ormName, "integer");
 
+export const float = (ormName: string): HotUpdaterColumnDsl =>
+  column(ormName, "float");
+
 export const bool = (ormName: string): HotUpdaterColumnDsl =>
   column(ormName, "bool");
 
@@ -107,18 +110,32 @@ export const index = (
   ...(providers ? { providers } : {}),
 });
 
+export const uniqueIndex = (
+  name: string,
+  columns: readonly string[],
+  providers?: HotUpdaterIndexSchema["providers"],
+): HotUpdaterIndexSchema => ({
+  name,
+  columns,
+  ...(providers ? { providers } : {}),
+  unique: true,
+});
+
 export const foreignKey = (
   name: string,
   columns: readonly string[],
   referencedTable: string,
   referencedColumns: readonly string[],
+  options: {
+    readonly onDelete?: HotUpdaterForeignKeySchema["onDelete"];
+  } = {},
 ): HotUpdaterForeignKeySchema => ({
   name,
   columns,
   referencedTable,
   referencedColumns,
   onUpdate: "restrict",
-  onDelete: "cascade",
+  onDelete: options.onDelete ?? "cascade",
 });
 
 export const check = (config: HotUpdaterCheckSchema): HotUpdaterCheckSchema =>

@@ -25,6 +25,18 @@ type WaitForConsoleReadyOptions = {
 
 const getConsoleServerUrl = (port: number) => `http://127.0.0.1:${port}`;
 
+export const getConsoleServerEnv = (
+  port: number,
+  processEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv => ({
+  ...processEnv,
+  PORT: port.toString(),
+  NITRO_PORT: port.toString(),
+  NITRO_HOST: processEnv["NITRO_HOST"]?.trim()
+    ? processEnv["NITRO_HOST"]
+    : "127.0.0.1",
+});
+
 export const isConsoleServerReady = async (port: number) => {
   try {
     const response = await fetch(getConsoleServerUrl(port), {
@@ -98,11 +110,7 @@ export const openConsole = async (
   );
 
   const child = execa("node", [nitroServerPath], {
-    env: {
-      ...process.env,
-      PORT: port.toString(),
-      NITRO_PORT: port.toString(),
-    },
+    env: getConsoleServerEnv(port),
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",

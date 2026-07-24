@@ -40,19 +40,16 @@ describe(
 
       // Generate unique test database name
       testDbName = `hot_updater_test_${Date.now()}`;
-      const testMongoUrl = `mongodb://hot_updater:hot_updater_dev@localhost:27018/${testDbName}?authSource=admin`;
+      const testMongoUrl = `mongodb://localhost:27018/${testDbName}?replicaSet=rs0&directConnection=true`;
 
       process.env.TEST_MONGODB_URL = testMongoUrl;
 
       baseUrl = `http://localhost:${port}`;
 
-      // Ensure Docker Compose is running
-      await execa("docker", ["compose", "up", "-d"], {
+      // Ensure Docker Compose is healthy before migration.
+      await execa("docker", ["compose", "up", "-d", "--wait"], {
         cwd: projectRoot,
       });
-
-      // Wait for MongoDB to be ready
-      await new Promise((resolve) => setTimeout(resolve, 5000));
 
       // Run database migrations
       const hotUpdaterPkgPath = require.resolve("hot-updater/package.json");

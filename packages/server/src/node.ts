@@ -1,3 +1,5 @@
+import { MAX_EVENT_BODY_BYTES } from "./handlerEventIngestionRoutes";
+
 /**
  * Node.js request/response types (compatible with Express, Connect, etc.)
  */
@@ -6,6 +8,7 @@ interface NodeRequest {
   url?: string;
   headers: Record<string, string | string[] | undefined>;
   body?: unknown;
+  rawBody?: Uint8Array;
   protocol?: string;
   get?(name: string): string | undefined;
   [key: string]: unknown;
@@ -36,8 +39,9 @@ export { HOT_UPDATER_SERVER_VERSION } from "./version";
  *
  * const app = express();
  *
- * // Mount middleware
- * app.use(express.json());
+ * // Preserve the original bytes so ingestion limits apply before JSON
+ * // normalization.
+ * app.use("/hot-updater", express.raw({ type: "application/json" }));
  *
  * // Mount hot-updater handler
  * app.all("/hot-updater/*", toNodeHandler(hotUpdater));
@@ -62,15 +66,38 @@ export function toNodeHandler(
       }
 
       // Handle request body
-      let body: string | undefined;
+      let body: RequestInit["body"];
+      const requestBody = req.rawBody ?? req.body;
       if (
         req.method &&
         req.method !== "GET" &&
         req.method !== "HEAD" &&
-        req.body
+        requestBody !== undefined
       ) {
-        // If body is already parsed (by express.json()), stringify it
-        body = JSON.stringify(req.body);
+        if (requestBody instanceof Uint8Array) {
+          body = Uint8Array.from(requestBody);
+        } else if (typeof requestBody === "string") {
+          body = requestBody;
+        } else {
+          const path = new URL(url).pathname;
+          const declaredLength = headers.get("Content-Length");
+          const hasDeclaredLength =
+            declaredLength !== null &&
+            /^\d+$/.test(declaredLength) &&
+            Number.isSafeInteger(Number(declaredLength));
+          if (
+            req.method === "POST" &&
+            path.endsWith("/events") &&
+            (!hasDeclaredLength ||
+              Number(declaredLength) > MAX_EVENT_BODY_BYTES)
+          ) {
+            res.status(413);
+            res.setHeader("Content-Type", "application/json");
+            res.send(JSON.stringify({ error: "Payload too large" }));
+            return;
+          }
+          body = JSON.stringify(requestBody);
+        }
       }
 
       // Create Web Request

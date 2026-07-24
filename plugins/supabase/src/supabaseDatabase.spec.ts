@@ -1,558 +1,480 @@
-import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
-import { getUpdateInfo as getUpdateInfoJS } from "@hot-updater/js";
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import {
-  setupBundleMethodsTestSuite,
-  setupGetUpdateInfoTestSuite,
-} from "@hot-updater/test-utils";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+  databaseAnalyticsSupport,
+  type BundleEventRow,
+} from "@hot-updater/plugin-core";
+import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
+import { expect, it, vi } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
 
-type SupabaseBundleRow = {
-  id: string;
-  channel: string;
-  enabled: boolean;
-  should_force_update: boolean;
-  file_hash: string;
-  git_commit_hash: string | null;
-  message: string | null;
-  platform: "ios" | "android";
-  target_app_version: string | null;
-  fingerprint_hash: string | null;
-  storage_uri: string;
-  metadata: Record<string, unknown> | null;
-  manifest_storage_uri?: string | null;
-  manifest_file_hash?: string | null;
-  asset_base_storage_uri?: string | null;
-  rollout_cohort_count: number | null;
-  target_cohorts: string[] | null;
-};
+// allow: SIZE_OK — hoisted PostgREST query/filter state machine for public plugin conformance.
+const { createMockClient, getFromCalls, resetMockClient } = vi.hoisted(() => {
+  type Row = Record<string, unknown>;
+  type TableName = "bundle_events" | "bundle_patches" | "bundles";
+  type QueryError = { readonly message: string };
+  type QueryResult = {
+    readonly count: number | null;
+    readonly data: Row | readonly Row[] | null;
+    readonly error: QueryError | null;
+  };
 
-type SupabaseBundlePatchRow = {
-  id: string;
-  bundle_id: string;
-  base_bundle_id: string;
-  base_file_hash: string;
-  patch_file_hash: string;
-  patch_storage_uri: string;
-  order_index: number;
-};
+  const rows: Record<TableName, Map<string, Row>> = {
+    bundle_events: new Map(),
+    bundle_patches: new Map(),
+    bundles: new Map(),
+  };
+  const fromCalls: TableName[] = [];
 
-const { bundleRows, bundlePatchRows, createMockSupabaseClient } = vi.hoisted(
-  () => {
-    const bundleRows = new Map<string, SupabaseBundleRow>();
-    const bundlePatchRows = new Map<string, SupabaseBundlePatchRow>();
-
-    type QueryFilter =
-      | {
-          type: "eq" | "gt" | "gte" | "lt" | "lte" | "is";
-          column: string;
-          value: unknown;
-        }
-      | {
-          type: "in";
-          column: string;
-          values: unknown[];
-        }
-      | {
-          type: "not";
-          column: string;
-          operator: string;
-          value: unknown;
-        };
-
-    const compareValues = (left: unknown, right: unknown) => {
-      if (typeof left === "string" && typeof right === "string") {
-        return left.localeCompare(right);
-      }
-
-      if (typeof left === "number" && typeof right === "number") {
-        return left - right;
-      }
-
-      if (typeof left === "boolean" && typeof right === "boolean") {
-        return Number(left) - Number(right);
-      }
-
-      return String(left).localeCompare(String(right));
-    };
-
-    class QueryBuilder {
-      private readonly filters: QueryFilter[] = [];
-      private ascending = true;
-      private limitValue: number | undefined;
-      private rangeStart: number | undefined;
-      private rangeEnd: number | undefined;
-      private singleRow = false;
-
-      constructor(
-        private readonly table: "bundles" | "bundle_patches",
-        private readonly mode: "select" | "delete",
-        private readonly options?: { count?: string; head?: boolean },
-      ) {}
-
-      eq(column: string, value: unknown) {
-        this.filters.push({ type: "eq", column, value });
-        return this;
-      }
-
-      gt(column: string, value: unknown) {
-        this.filters.push({ type: "gt", column, value });
-        return this;
-      }
-
-      gte(column: string, value: unknown) {
-        this.filters.push({ type: "gte", column, value });
-        return this;
-      }
-
-      lt(column: string, value: unknown) {
-        this.filters.push({ type: "lt", column, value });
-        return this;
-      }
-
-      lte(column: string, value: unknown) {
-        this.filters.push({ type: "lte", column, value });
-        return this;
-      }
-
-      in(column: string, values: unknown[]) {
-        this.filters.push({ type: "in", column, values });
-        return this;
-      }
-
-      is(column: string, value: unknown) {
-        this.filters.push({ type: "is", column, value });
-        return this;
-      }
-
-      not(column: string, operator: string, value: unknown) {
-        this.filters.push({ type: "not", column, operator, value });
-        return this;
-      }
-
-      order(_column: string, options?: { ascending?: boolean }) {
-        this.ascending = options?.ascending ?? true;
-        return this;
-      }
-
-      limit(value: number) {
-        this.limitValue = value;
-        return this;
-      }
-
-      range(from: number, to: number) {
-        this.rangeStart = from;
-        this.rangeEnd = to;
-        return this;
-      }
-
-      single() {
-        this.singleRow = true;
-        return this;
-      }
-
-      // This mock must be awaitable to match the Supabase query builder API.
-      then<TResult1 = any, TResult2 = never>(
-        onfulfilled?: ((value: any) => TResult1 | PromiseLike<TResult1>) | null,
-        onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
-      ) {
-        return this.execute().then(onfulfilled, onrejected);
-      }
-
-      private async execute() {
-        if (this.mode === "delete") {
-          const filteredRows = this.getFilteredRows();
-          for (const row of filteredRows) {
-            if (this.table === "bundles") {
-              bundleRows.delete(row.id);
-            } else {
-              bundlePatchRows.delete(row.id);
-            }
-          }
-          return { error: null };
-        }
-
-        let filteredRows = this.getFilteredRows();
-        filteredRows = filteredRows.sort((a, b) =>
-          this.ascending ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id),
-        );
-
-        const total = filteredRows.length;
-
-        if (this.singleRow) {
-          const data = filteredRows[0] ?? null;
-          return {
-            data,
-            error: data ? null : { message: "Row not found" },
-          };
-        }
-
-        if (this.options?.head) {
-          return {
-            data: null,
-            count: total,
-            error: null,
-          };
-        }
-
-        if (this.rangeStart !== undefined && this.rangeEnd !== undefined) {
-          filteredRows = filteredRows.slice(this.rangeStart, this.rangeEnd + 1);
-        } else if (this.limitValue !== undefined) {
-          filteredRows = filteredRows.slice(0, this.limitValue);
-        }
-
-        return {
-          data: filteredRows,
-          count: total,
-          error: null,
-        };
-      }
-
-      private getFilteredRows() {
-        let filteredRows: Array<SupabaseBundleRow | SupabaseBundlePatchRow> =
-          this.table === "bundles"
-            ? Array.from(bundleRows.values())
-            : Array.from(bundlePatchRows.values());
-
-        for (const filter of this.filters) {
-          filteredRows = filteredRows.filter((row) => {
-            const rowValue = (row as Record<string, unknown>)[filter.column];
-
-            switch (filter.type) {
-              case "eq":
-                return rowValue === filter.value;
-              case "gt":
-                return compareValues(rowValue, filter.value) > 0;
-              case "gte":
-                return compareValues(rowValue, filter.value) >= 0;
-              case "lt":
-                return compareValues(rowValue, filter.value) < 0;
-              case "lte":
-                return compareValues(rowValue, filter.value) <= 0;
-              case "in":
-                return filter.values.includes(rowValue);
-              case "is":
-                return rowValue === filter.value;
-              case "not":
-                if (filter.operator === "is") {
-                  return rowValue !== filter.value;
-                }
-
-                throw new Error(
-                  `Unsupported not operator in Supabase mock: ${filter.operator}`,
-                );
-            }
-
-            return false;
-          });
-        }
-
-        return filteredRows;
+  const splitTopLevel = (value: string): readonly string[] => {
+    const parts: string[] = [];
+    let depth = 0;
+    let quoted = false;
+    let start = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      const character = value[index];
+      if (character === '"' && value[index - 1] !== "\\") quoted = !quoted;
+      if (!quoted && character === "(") depth += 1;
+      if (!quoted && character === ")") depth -= 1;
+      if (!quoted && depth === 0 && character === ",") {
+        parts.push(value.slice(start, index));
+        start = index + 1;
       }
     }
+    parts.push(value.slice(start));
+    return parts;
+  };
 
-    const createMockSupabaseClient = () => ({
-      from(table: string) {
-        if (table !== "bundles" && table !== "bundle_patches") {
-          throw new Error(`Unsupported table in Supabase mock: ${table}`);
-        }
+  const decode = (value: string): boolean | number | string => {
+    if (value === "true") return true;
+    if (value === "false") return false;
+    if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+    return value.startsWith('"') && value.endsWith('"')
+      ? value.slice(1, -1).replaceAll('\\"', '"').replaceAll("\\\\", "\\")
+      : value;
+  };
 
-        return {
-          select(
-            _columns: string,
-            options?: { count?: string; head?: boolean },
-          ) {
-            return new QueryBuilder(table, "select", options);
-          },
-          delete() {
-            return new QueryBuilder(table, "delete");
-          },
-          async upsert(
-            payload:
-              | SupabaseBundleRow
-              | SupabaseBundlePatchRow[]
-              | SupabaseBundlePatchRow,
-          ) {
-            const values = Array.isArray(payload) ? payload : [payload];
+  const compare = (left: unknown, right: unknown): number => {
+    if (typeof left === "number" && typeof right === "number") {
+      return left - right;
+    }
+    return String(left).localeCompare(String(right));
+  };
 
-            for (const value of values) {
-              if (table === "bundles") {
-                bundleRows.set(value.id, value as SupabaseBundleRow);
-              } else {
-                bundlePatchRows.set(value.id, value as SupabaseBundlePatchRow);
+  const matchesPredicate = (row: Row, expression: string): boolean => {
+    const markers = [
+      ".not.is.",
+      ".not.in.",
+      ".not.ilike.",
+      ".ilike.",
+      ".like.",
+      ".neq.",
+      ".gte.",
+      ".lte.",
+      ".is.",
+      ".in.",
+      ".eq.",
+      ".gt.",
+      ".lt.",
+    ] as const;
+    const marker = markers.find((candidate) => expression.includes(candidate));
+    if (marker === undefined) return false;
+    const markerIndex = expression.indexOf(marker);
+    const field = expression.slice(0, markerIndex);
+    const rawValue = expression.slice(markerIndex + marker.length);
+    const rowValue = row[field];
+    switch (marker) {
+      case ".not.is.":
+        return rowValue !== null;
+      case ".is.":
+        return rowValue === null;
+      case ".in.":
+      case ".not.in.": {
+        const candidates = splitTopLevel(rawValue.slice(1, -1)).map(decode);
+        const included = candidates.includes(
+          typeof rowValue === "string" || typeof rowValue === "number"
+            ? rowValue
+            : String(rowValue),
+        );
+        return marker === ".in." ? included : rowValue !== null && !included;
+      }
+      case ".eq.":
+        return rowValue === decode(rawValue);
+      case ".neq.":
+        return rowValue !== null && rowValue !== decode(rawValue);
+      case ".gt.":
+        return rowValue !== null && compare(rowValue, decode(rawValue)) > 0;
+      case ".gte.":
+        return rowValue !== null && compare(rowValue, decode(rawValue)) >= 0;
+      case ".lt.":
+        return rowValue !== null && compare(rowValue, decode(rawValue)) < 0;
+      case ".lte.":
+        return rowValue !== null && compare(rowValue, decode(rawValue)) <= 0;
+      case ".like.":
+      case ".not.ilike.":
+      case ".ilike.": {
+        const pattern = String(decode(rawValue));
+        const actual = String(rowValue);
+        const insensitive = marker === ".ilike." || marker === ".not.ilike.";
+        const left = insensitive ? actual.toLowerCase() : actual;
+        const right = insensitive ? pattern.toLowerCase() : pattern;
+        const matched =
+          right.startsWith("*") && right.endsWith("*")
+            ? left.includes(right.slice(1, -1))
+            : right.startsWith("*")
+              ? left.endsWith(right.slice(1))
+              : right.endsWith("*")
+                ? left.startsWith(right.slice(0, -1))
+                : left === right;
+        return marker === ".not.ilike."
+          ? rowValue !== null && !matched
+          : matched;
+      }
+    }
+  };
+
+  const matches = (row: Row, expression: string): boolean => {
+    if (
+      (expression.startsWith("and(") || expression.startsWith("or(")) &&
+      expression.endsWith(")")
+    ) {
+      const isAnd = expression.startsWith("and(");
+      const expressions = splitTopLevel(expression.slice(isAnd ? 4 : 3, -1));
+      return isAnd
+        ? expressions.every((part) => matches(row, part))
+        : expressions.some((part) => matches(row, part));
+    }
+    return matchesPredicate(row, expression);
+  };
+
+  class QueryBuilder {
+    private filter: string | undefined;
+    private head = false;
+    private limitValue: number | undefined;
+    private mode: "delete" | "insert" | "select" | "update" = "select";
+    private readonly orderClauses: {
+      readonly field: string;
+      readonly ascending: boolean;
+      readonly nullsFirst: boolean | undefined;
+    }[] = [];
+    private payload: Row | undefined;
+    private rangeStart = 0;
+    private rangeEnd: number | undefined;
+    private singleRow = false;
+
+    constructor(private readonly table: TableName) {}
+
+    insert(payload: Row) {
+      this.mode = "insert";
+      this.payload = payload;
+      return this;
+    }
+    update(payload: Row) {
+      this.mode = "update";
+      this.payload = payload;
+      return this;
+    }
+    delete() {
+      this.mode = "delete";
+      return this;
+    }
+    select(_columns = "*", options?: { readonly head?: boolean }) {
+      this.head = options?.head ?? false;
+      return this;
+    }
+    or(filter: string) {
+      this.filter = filter;
+      return this;
+    }
+    order(
+      field: string,
+      options?: {
+        readonly ascending?: boolean;
+        readonly nullsFirst?: boolean;
+      },
+    ) {
+      this.orderClauses.push({
+        field,
+        ascending: options?.ascending ?? true,
+        nullsFirst: options?.nullsFirst,
+      });
+      return this;
+    }
+    limit(value: number) {
+      this.limitValue = value;
+      return this;
+    }
+    range(start: number, end: number) {
+      this.rangeStart = start;
+      this.rangeEnd = end;
+      return this;
+    }
+    single() {
+      this.singleRow = true;
+      return this;
+    }
+    maybeSingle() {
+      this.singleRow = true;
+      return this;
+    }
+    then<TResult1 = QueryResult, TResult2 = never>(
+      onfulfilled?:
+        | ((value: QueryResult) => PromiseLike<TResult1> | TResult1)
+        | null,
+      onrejected?:
+        | ((reason: unknown) => PromiseLike<TResult2> | TResult2)
+        | null,
+    ) {
+      return this.execute().then(onfulfilled, onrejected);
+    }
+
+    private selectedRows(): Row[] {
+      return [...rows[this.table].values()]
+        .filter((row) => this.filter === undefined || matches(row, this.filter))
+        .sort((left, right) => {
+          const clauses = this.orderClauses.length
+            ? this.orderClauses
+            : [
+                {
+                  field: "id",
+                  ascending: true,
+                  nullsFirst: undefined,
+                },
+              ];
+          for (const clause of clauses) {
+            const leftValue = left[clause.field];
+            const rightValue = right[clause.field];
+            if (leftValue == null || rightValue == null) {
+              if (leftValue == null && rightValue == null) continue;
+              const nullsFirst = clause.nullsFirst ?? !clause.ascending;
+              const order = leftValue == null ? -1 : 1;
+              return nullsFirst ? order : -order;
+            }
+            const result = compare(leftValue, rightValue);
+            if (result !== 0) return clause.ascending ? result : -result;
+          }
+          return 0;
+        });
+    }
+
+    private async execute(): Promise<QueryResult> {
+      if (this.mode === "insert") return this.executeInsert();
+      const selected = this.selectedRows();
+      if (this.mode === "update") {
+        for (const row of selected) Object.assign(row, this.payload);
+      }
+      if (this.mode === "delete") {
+        for (const row of selected) {
+          const id = String(row.id);
+          rows[this.table].delete(id);
+          if (this.table === "bundles") {
+            for (const patch of rows.bundle_patches.values()) {
+              if (patch.bundle_id === id || patch.base_bundle_id === id) {
+                rows.bundle_patches.delete(String(patch.id));
               }
             }
+          }
+        }
+        return { count: null, data: null, error: null };
+      }
+      const end =
+        this.rangeEnd ??
+        (this.limitValue === undefined
+          ? undefined
+          : this.rangeStart + this.limitValue - 1);
+      const data =
+        end === undefined ? selected : selected.slice(this.rangeStart, end + 1);
+      return {
+        count: selected.length,
+        data: this.head ? null : this.singleRow ? (data[0] ?? null) : data,
+        error: null,
+      };
+    }
 
-            return { error: null };
-          },
+    private async executeInsert(): Promise<QueryResult> {
+      const payload = this.payload;
+      if (payload === undefined) {
+        return {
+          count: null,
+          data: null,
+          error: { message: "missing payload" },
         };
+      }
+      const id = String(payload.id);
+      if (rows[this.table].has(id)) {
+        return { count: null, data: null, error: { message: "duplicate id" } };
+      }
+      if (
+        this.table === "bundle_patches" &&
+        (!rows.bundles.has(String(payload.bundle_id)) ||
+          !rows.bundles.has(String(payload.base_bundle_id)))
+      ) {
+        return { count: null, data: null, error: { message: "foreign key" } };
+      }
+      rows[this.table].set(id, payload);
+      return { count: 1, data: payload, error: null };
+    }
+  }
+
+  return {
+    createMockClient: () => ({
+      from: (table: TableName) => {
+        fromCalls.push(table);
+        return new QueryBuilder(table);
       },
-      async rpc(name: string, params?: Record<string, unknown>) {
+      rpc: async (name: string) => {
+        const bundles = [...rows.bundles.values()];
+        if (name === "get_target_app_version_list") {
+          return {
+            data: bundles.map((bundle) => ({
+              target_app_version: bundle.target_app_version,
+            })),
+            error: null,
+          };
+        }
         if (name === "get_channels") {
           return {
-            data: Array.from(
-              new Set(
-                Array.from(bundleRows.values()).map((row) => row.channel),
-              ),
-            ).map((channel) => ({ channel })),
+            data: [...new Set(bundles.map((bundle) => String(bundle.channel)))]
+              .sort()
+              .map((channel) => ({ channel })),
             error: null,
           };
         }
-
-        if (name === "get_target_app_version_list") {
-          const platform =
-            params?.app_platform as SupabaseBundleRow["platform"];
-          const minBundleId = params?.min_bundle_id as string;
-
-          const data = Array.from(
-            new Set(
-              Array.from(bundleRows.values())
-                .filter(
-                  (row) =>
-                    row.platform === platform &&
-                    row.id.localeCompare(minBundleId) >= 0 &&
-                    row.target_app_version,
-                )
-                .map((row) => row.target_app_version),
-            ),
-          ).map((targetAppVersion) => ({
-            target_app_version: targetAppVersion,
-          }));
-
-          return { data, error: null };
-        }
-
-        if (name === "get_update_info_by_app_version") {
-          const platform =
-            params?.app_platform as SupabaseBundleRow["platform"];
-          const appVersion = params?.app_version as string;
-          const bundleId = params?.bundle_id as string;
-          const minBundleId = params?.min_bundle_id as string;
-          const channel = params?.target_channel as string;
-          const targetAppVersionList = (params?.target_app_version_list ??
-            []) as string[];
-          const cohort = (params?.cohort as string | null) ?? undefined;
-
-          const bundles = Array.from(bundleRows.values())
-            .filter(
-              (row) =>
-                row.enabled &&
-                row.platform === platform &&
-                row.channel === channel &&
-                row.id.localeCompare(minBundleId) >= 0 &&
-                targetAppVersionList.includes(row.target_app_version ?? ""),
-            )
-            .map(toBundle);
-
-          const updateInfo = (await getUpdateInfoJS(bundles, {
-            _updateStrategy: "appVersion",
-            appVersion,
-            bundleId,
-            minBundleId,
-            channel,
-            cohort,
-            platform,
-          })) as UpdateInfo | null;
-
-          return {
-            data: updateInfo ? [toUpdateInfoRow(updateInfo)] : [],
-            error: null,
-          };
-        }
-
-        if (name === "get_update_info_by_fingerprint_hash") {
-          const platform =
-            params?.app_platform as SupabaseBundleRow["platform"];
-          const bundleId = params?.bundle_id as string;
-          const minBundleId = params?.min_bundle_id as string;
-          const channel = params?.target_channel as string;
-          const fingerprintHash = params?.target_fingerprint_hash as string;
-          const cohort = (params?.cohort as string | null) ?? undefined;
-
-          const bundles = Array.from(bundleRows.values())
-            .filter(
-              (row) =>
-                row.enabled &&
-                row.platform === platform &&
-                row.channel === channel &&
-                row.id.localeCompare(minBundleId) >= 0 &&
-                row.fingerprint_hash === fingerprintHash,
-            )
-            .map(toBundle);
-
-          const updateInfo = (await getUpdateInfoJS(bundles, {
-            _updateStrategy: "fingerprint",
-            fingerprintHash,
-            bundleId,
-            minBundleId,
-            channel,
-            cohort,
-            platform,
-          })) as UpdateInfo | null;
-
-          return {
-            data: updateInfo ? [toUpdateInfoRow(updateInfo)] : [],
-            error: null,
-          };
-        }
-
-        return { data: null, error: new Error(`Unsupported RPC: ${name}`) };
+        const bundle = bundles.toSorted((left, right) =>
+          String(right.id).localeCompare(String(left.id)),
+        )[0];
+        return {
+          data:
+            bundle === undefined
+              ? []
+              : [
+                  {
+                    id: bundle.id,
+                    should_force_update: bundle.should_force_update,
+                    message: bundle.message,
+                    status: "UPDATE",
+                    storage_uri: bundle.storage_uri,
+                    file_hash: bundle.file_hash,
+                  },
+                ],
+          error: null,
+        };
       },
-    });
-
-    return { bundleRows, bundlePatchRows, createMockSupabaseClient };
-  },
-);
-
-const toBundle = (row: SupabaseBundleRow) => ({
-  channel: row.channel,
-  enabled: row.enabled,
-  shouldForceUpdate: row.should_force_update,
-  fileHash: row.file_hash,
-  gitCommitHash: row.git_commit_hash,
-  id: row.id,
-  message: row.message,
-  platform: row.platform,
-  targetAppVersion: row.target_app_version,
-  fingerprintHash: row.fingerprint_hash,
-  storageUri: row.storage_uri,
-  metadata: row.metadata ?? {},
-  manifestStorageUri: row.manifest_storage_uri ?? null,
-  manifestFileHash: row.manifest_file_hash ?? null,
-  assetBaseStorageUri: row.asset_base_storage_uri ?? null,
-  patches: Array.from(bundlePatchRows.values())
-    .filter((patch) => patch.bundle_id === row.id)
-    .sort(
-      (left, right) =>
-        left.order_index - right.order_index ||
-        left.base_bundle_id.localeCompare(right.base_bundle_id),
-    )
-    .map((patch) => ({
-      baseBundleId: patch.base_bundle_id,
-      baseFileHash: patch.base_file_hash,
-      patchFileHash: patch.patch_file_hash,
-      patchStorageUri: patch.patch_storage_uri,
-    })),
-  rolloutCohortCount: row.rollout_cohort_count ?? 1000,
-  targetCohorts: row.target_cohorts ?? null,
-});
-
-const toUpdateInfoRow = (updateInfo: UpdateInfo) => ({
-  id: updateInfo.id,
-  should_force_update: updateInfo.shouldForceUpdate,
-  message: updateInfo.message,
-  status: updateInfo.status,
-  storage_uri: updateInfo.storageUri,
-  file_hash: updateInfo.fileHash,
+    }),
+    getFromCalls: () => [...fromCalls],
+    resetMockClient: () => {
+      fromCalls.length = 0;
+      rows.bundle_events.clear();
+      rows.bundle_patches.clear();
+      rows.bundles.clear();
+    },
+  };
 });
 
 vi.mock("@supabase/supabase-js", () => ({
-  createClient: () => createMockSupabaseClient(),
+  createClient: () => createMockClient(),
 }));
 
-describe("supabaseDatabase plugin", () => {
-  let plugin: DatabasePlugin;
+const bundleEvent = (id: string, receivedAtMs: number): BundleEventRow => ({
+  id,
+  type: "UNCHANGED",
+  install_id: "install-1",
+  user_id: null,
+  username: null,
+  from_bundle_id: null,
+  to_bundle_id: "bundle-1",
+  platform: "ios",
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "stable",
+  update_strategy: null,
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: receivedAtMs,
+});
 
-  beforeEach(() => {
-    bundleRows.clear();
-    bundlePatchRows.clear();
-    plugin = supabaseDatabase({
+it("advertises Analytics support", () => {
+  // Given / When
+  const plugin = supabaseDatabase({
+    supabaseUrl: "https://test.supabase.invalid",
+    supabaseServiceRoleKey: "test-service-role-key",
+  });
+
+  // Then
+  expect(plugin[databaseAnalyticsSupport]).toBe(true);
+});
+
+it("applies compound ordering to bundle event pages", async () => {
+  resetMockClient();
+  const plugin = supabaseDatabase({
+    supabaseUrl: "https://test.supabase.invalid",
+    supabaseServiceRoleKey: "test-service-role-key",
+  });
+  await Promise.all(
+    [bundleEvent("b", 100), bundleEvent("c", 50), bundleEvent("a", 100)].map(
+      (data) => plugin.create({ model: "bundle_events", data }),
+    ),
+  );
+
+  const result = await plugin.findMany({
+    model: "bundle_events",
+    orderBy: [
+      { field: "received_at_ms", direction: "asc" },
+      { field: "id", direction: "asc" },
+    ],
+    limit: 10,
+    offset: 0,
+  });
+
+  expect(result.map(({ id }) => id)).toEqual(["c", "a", "b"]);
+});
+
+it("rejects distinct counts before opening a PostgREST query", async () => {
+  // Given
+  resetMockClient();
+  const plugin = supabaseDatabase({
+    supabaseUrl: "https://test.supabase.invalid",
+    supabaseServiceRoleKey: "test-service-role-key",
+  });
+
+  // When
+  const operation = plugin.count({
+    model: "bundle_events",
+    distinct: ["install_id"],
+  });
+
+  // Then
+  await expect(operation).rejects.toMatchObject({ code: "invalid-operation" });
+  expect(getFromCalls()).toEqual([]);
+});
+
+it("rejects distinct row selection before opening a PostgREST query", async () => {
+  // Given
+  resetMockClient();
+  const plugin = supabaseDatabase({
+    supabaseUrl: "https://test.supabase.invalid",
+    supabaseServiceRoleKey: "test-service-role-key",
+  });
+
+  // When
+  const operation = plugin.findMany({
+    model: "bundle_events",
+    distinctOn: { fields: ["install_id"] },
+    orderBy: [{ field: "install_id", direction: "asc" }],
+  });
+
+  // Then
+  await expect(operation).rejects.toMatchObject({ code: "invalid-operation" });
+  expect(getFromCalls()).toEqual([]);
+});
+
+setupDatabasePluginTestSuite({
+  name: "supabase fixed-model database plugin",
+  migrate: () => undefined,
+  createPlugin: () =>
+    supabaseDatabase({
       supabaseUrl: "https://test.supabase.invalid",
-      supabaseAnonKey: "test-anon-key",
-    })();
-  });
-
-  setupBundleMethodsTestSuite({
-    getBundleById: (id) => plugin.getBundleById(id),
-    getChannels: () => plugin.getChannels(),
-    insertBundle: async (bundle) => {
-      await plugin.appendBundle(bundle);
-      await plugin.commitBundle();
-    },
-    getBundles: (options) => plugin.getBundles(options),
-    updateBundleById: async (bundleId, newBundle) => {
-      await plugin.updateBundle(bundleId, newBundle);
-      await plugin.commitBundle();
-    },
-    deleteBundleById: async (bundleId) => {
-      const bundle = await plugin.getBundleById(bundleId);
-      if (!bundle) {
-        return;
-      }
-      await plugin.deleteBundle(bundle);
-      await plugin.commitBundle();
-    },
-  });
-
-  setupGetUpdateInfoTestSuite({
-    getUpdateInfo: async (bundles, args: GetBundlesArgs) => {
-      bundleRows.clear();
-      bundlePatchRows.clear();
-
-      for (const bundle of bundles) {
-        await plugin.appendBundle(bundle);
-      }
-      await plugin.commitBundle();
-
-      return plugin.getUpdateInfo?.(args) ?? null;
-    },
-  });
-
-  it("attaches update bundles without exposing internal fields", async () => {
-    const currentBundle: Bundle = {
-      channel: "production",
-      enabled: true,
-      fileHash: "current-file-hash",
-      fingerprintHash: "fingerprint-hash",
-      gitCommitHash: "current-git-hash",
-      id: "018f0000-0000-7000-8000-000000000001",
-      message: "current",
-      metadata: {},
-      platform: "ios",
-      shouldForceUpdate: false,
-      storageUri: "storage://app/current.zip",
-      targetAppVersion: "1.0.0",
-    };
-    const targetBundle: Bundle = {
-      ...currentBundle,
-      fileHash: "target-file-hash",
-      gitCommitHash: "target-git-hash",
-      id: "018f0000-0000-7000-8000-000000000002",
-      message: "target",
-      storageUri: "storage://app/target.zip",
-    };
-
-    await plugin.appendBundle(currentBundle);
-    await plugin.appendBundle(targetBundle);
-    await plugin.commitBundle();
-
-    const args: GetBundlesArgs = {
-      _updateStrategy: "fingerprint",
-      bundleId: currentBundle.id,
-      channel: "production",
-      fingerprintHash: "fingerprint-hash",
-      minBundleId: "00000000-0000-0000-0000-000000000000",
-      platform: "ios",
-    };
-
-    const updateInfo = await plugin.getUpdateInfo?.(args);
-
-    expect(updateInfo).toEqual({
-      fileHash: "target-file-hash",
-      id: targetBundle.id,
-      message: "target",
-      shouldForceUpdate: false,
-      status: "UPDATE",
-      storageUri: "storage://app/target.zip",
-    });
-    expect(Object.getOwnPropertyNames(updateInfo ?? {})).not.toContain(
-      "__hotUpdaterBundle",
-    );
-    expect(Object.getOwnPropertyNames(updateInfo ?? {})).not.toContain(
-      "__hotUpdaterCurrentBundle",
-    );
-    expect(JSON.stringify(updateInfo)).not.toContain("__hotUpdater");
-  });
+      supabaseServiceRoleKey: "test-service-role-key",
+    }),
+  reset: () => resetMockClient(),
+  dispose: () => undefined,
 });
