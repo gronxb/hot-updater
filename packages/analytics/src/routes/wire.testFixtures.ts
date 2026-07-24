@@ -37,7 +37,7 @@ export const createAnalyticsWireRuntime = (
   });
   const runtime = createHotUpdater({
     basePath: "/hot-updater",
-    coreRoutes: { bundles: false, updateCheck: false },
+    routes: { bundles: false, updateCheck: false },
     database: createInMemoryDatabasePlugin(),
     plugins: [manifest],
   });
@@ -60,7 +60,7 @@ export const createUnavailableAnalyticsWireRuntime =
     });
     return createHotUpdater({
       basePath: "/hot-updater",
-      coreRoutes: { bundles: false, updateCheck: false },
+      routes: { bundles: false, updateCheck: false },
       database: createInMemoryDatabasePlugin(),
       plugins: [manifest],
     });

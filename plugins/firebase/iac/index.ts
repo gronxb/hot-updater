@@ -15,10 +15,15 @@ import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
 import { prepareFirebaseTemplate } from "./prepareTemplate";
+import { prepareFirebaseRuntimeAuth } from "./runtimeAuth";
 import { initFirebaseUser, setEnv } from "./select";
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
+
+// This key is extractable from the app bundle. Treat it as an access gate,
+// not as an administrator credential or a user identity.
+const HOT_UPDATER_API_KEY = process.env.HOT_UPDATER_API_KEY!;
 
 function App() {
   return ...
@@ -26,6 +31,9 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
+  requestHeaders: {
+    "x-api-key": HOT_UPDATER_API_KEY,
+  },
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
 
@@ -315,6 +323,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     storageBucket: initializeVariable.storageBucket,
     build,
   });
+  const runtimeAuth = await prepareFirebaseRuntimeAuth(".env.hotupdater");
 
   if (
     runtimePackageInfo.serverPackageVersion !==
@@ -393,6 +402,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
         }
 
         const code = transformEnv(functionsIndexPath, {
+          ...runtimeAuth,
           REGION: currentRegion,
         });
         await fs.promises.writeFile(functionsIndexPath, code);

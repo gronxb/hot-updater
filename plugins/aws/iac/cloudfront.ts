@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-import { CloudFront } from "@aws-sdk/client-cloudfront";
+import { type CachePolicyConfig, CloudFront } from "@aws-sdk/client-cloudfront";
 import { p } from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 
@@ -8,6 +8,7 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
+  HOT_UPDATER_API_CACHE_POLICY_CONFIG,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 import { findInPaginatedCloudFrontList } from "./cloudfrontPagination";
@@ -33,8 +34,9 @@ export class CloudFrontManager {
     this.credentials = credentials;
   }
 
-  private async getOrCreateSharedCachePolicy(
+  private async getOrCreateCachePolicy(
     cloudfrontClient: CloudFront,
+    cachePolicyConfig: CachePolicyConfig,
   ): Promise<string> {
     const existingPolicy = await findInPaginatedCloudFrontList({
       listPage: async (marker) => {
@@ -49,8 +51,7 @@ export class CloudFrontManager {
         };
       },
       matches: (policy) =>
-        policy.CachePolicy?.CachePolicyConfig?.Name ===
-        HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG.Name,
+        policy.CachePolicy?.CachePolicyConfig?.Name === cachePolicyConfig.Name,
     });
     const existingPolicyId = existingPolicy?.CachePolicy?.Id;
 
@@ -59,7 +60,7 @@ export class CloudFrontManager {
     }
 
     const createPolicyResponse = await cloudfrontClient.createCachePolicy({
-      CachePolicyConfig: HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+      CachePolicyConfig: cachePolicyConfig,
     });
     const cachePolicyId = createPolicyResponse.CachePolicy?.Id;
     if (!cachePolicyId) {
@@ -172,13 +173,22 @@ export class CloudFrontManager {
     if (!oacId) throw new Error("Failed to get Origin Access Control ID");
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
+    let apiCachePolicyId: string;
     let sharedCachePolicyId: string;
     try {
-      sharedCachePolicyId =
-        await this.getOrCreateSharedCachePolicy(cloudfrontClient);
+      [apiCachePolicyId, sharedCachePolicyId] = await Promise.all([
+        this.getOrCreateCachePolicy(
+          cloudfrontClient,
+          HOT_UPDATER_API_CACHE_POLICY_CONFIG,
+        ),
+        this.getOrCreateCachePolicy(
+          cloudfrontClient,
+          HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+        ),
+      ]);
     } catch (error) {
       throw new Error(
-        `Failed to get or create shared cache policy: ${
+        `Failed to get or create cache policies: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -216,6 +226,7 @@ export class CloudFrontManager {
       selectedDistribution = JSON.parse(selectedDistributionStr);
     }
     const newOverrides = buildDistributionConfigOverrides({
+      apiCachePolicyId,
       bucketName: options.bucketName,
       bucketDomain,
       functionArn: options.functionArn,
@@ -252,7 +263,7 @@ export class CloudFrontManager {
           DistributionId: selectedDistribution.Id,
           InvalidationBatch: {
             CallerReference: new Date().toISOString(),
-            Paths: { Quantity: 1, Items: ["/*"] },
+            Paths: { Quantity: 1, Items: ["/api/check-update/*"] },
           },
         });
         p.log.success("Cache invalidation request completed.");
@@ -270,6 +281,7 @@ export class CloudFrontManager {
 
     // Create a new distribution if none exists
     const finalDistributionConfig = buildDistributionConfig({
+      apiCachePolicyId,
       bucketName: options.bucketName,
       bucketDomain,
       functionArn: options.functionArn,

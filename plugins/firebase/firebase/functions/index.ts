@@ -1,4 +1,5 @@
 import { analytics } from "@hot-updater/analytics";
+import { apiKey } from "@hot-updater/api-key";
 import { createHotUpdater } from "@hot-updater/server";
 import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
@@ -8,6 +9,7 @@ import { firebaseDatabase, firebaseStorage } from "../../src/functions";
 
 declare global {
   var HotUpdater: {
+    API_KEY_SHA256: string;
     REGION: string;
   };
 }
@@ -37,11 +39,11 @@ const hotUpdater = createHotUpdater({
     })(),
   ],
   basePath: "/",
-  coreRoutes: {
+  routes: {
     bundles: false,
     updateCheck: true,
   },
-  plugins: [analytics({ queryAccess: "public" })],
+  plugins: [apiKey({ sha256: HotUpdater.API_KEY_SHA256 }), analytics()],
 });
 
 const app = new Hono();

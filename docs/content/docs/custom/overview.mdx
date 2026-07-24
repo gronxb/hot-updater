@@ -123,7 +123,7 @@ export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
-  coreRoutes: {
+  routes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },
@@ -139,7 +139,7 @@ export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
-  coreRoutes: {
+  routes: {
     updateCheck: true,
     bundles: false,
   },

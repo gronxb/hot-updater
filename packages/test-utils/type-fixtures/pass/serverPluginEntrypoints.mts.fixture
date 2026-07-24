@@ -7,7 +7,17 @@ import {
   type AnalyticsProvider,
 } from "@hot-updater/analytics/provider";
 import {
+  apiKey,
+  type ApiKeyPluginOptions,
+} from "@hot-updater/api-key";
+import {
+  type ProvisionedApiKey,
+  provisionApiKey,
+} from "@hot-updater/api-key/provisioning";
+import {
   betterAuthPlugin,
+  type BetterAuthApiKeyConfiguration,
+  type BetterAuthApiKeyConfiguredInstance,
   type BetterAuthConfiguredInstance,
 } from "@hot-updater/better-auth";
 import type {
@@ -16,6 +26,8 @@ import type {
 } from "@hot-updater/plugin-core";
 import {
   createHotUpdater,
+  type HandlerOptions,
+  type HandlerRoutes,
   type HotUpdaterAuthenticationInput,
   type HotUpdaterAuthenticationProvider,
   type HotUpdaterAuthenticationResult,
@@ -60,9 +72,34 @@ assertType<
 >();
 
 declare const auth: BetterAuthConfiguredInstance;
+declare const apiKeyAuth: BetterAuthApiKeyConfiguredInstance;
 declare const database: DatabasePlugin;
 declare const provider: AnalyticsProvider;
 declare const storage: RuntimeStoragePlugin<TestContext>;
+
+const routes = {
+  bundles: false,
+  updateCheck: true,
+} satisfies HandlerRoutes;
+const handlerOptions = {
+  routes,
+} satisfies HandlerOptions;
+const apiKeyOptions = {
+  sha256: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+} satisfies ApiKeyPluginOptions;
+const apiKeyManifest = apiKey(apiKeyOptions);
+const betterAuthApiKeyOptions = {
+  configId: "hot-updater",
+  headerName: "x-hot-updater-key",
+  requiredPermissions: {
+    bundles: ["read"],
+  },
+} satisfies BetterAuthApiKeyConfiguration;
+const betterAuthApiKeyManifest = betterAuthPlugin({
+  apiKey: betterAuthApiKeyOptions,
+  auth: apiKeyAuth,
+});
+const betterAuthSessionManifest = betterAuthPlugin({ auth });
 
 const internalManifest = defineFirstPartyFeatureManifest<
   "type-fixture",
@@ -78,6 +115,7 @@ const internalManifest = defineFirstPartyFeatureManifest<
 const internalRuntime = createHotUpdater({
   database,
   plugins: [internalManifest],
+  routes,
 });
 assertType<Equal<keyof typeof internalRuntime.features, never>>();
 
@@ -135,7 +173,12 @@ assertType<
   >
 >();
 void internalRuntime;
+void apiKeyManifest;
+void betterAuthApiKeyManifest;
+void betterAuthSessionManifest;
+void handlerOptions;
 void legacyAnalytics;
 void legacyCore;
 void provider;
+void (provisionApiKey satisfies () => Promise<ProvisionedApiKey>);
 void publicRuntime;

@@ -30,6 +30,32 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
   },
 };
 
+export const HOT_UPDATER_API_CACHE_POLICY_CONFIG: CachePolicyConfig = {
+  Name: "HotUpdaterAuthenticatedNoCache",
+  Comment:
+    "Forward the managed API key without storing authenticated responses",
+  DefaultTTL: 0,
+  MaxTTL: 0,
+  MinTTL: 0,
+  ParametersInCacheKeyAndForwardedToOrigin: {
+    EnableAcceptEncodingBrotli: true,
+    EnableAcceptEncodingGzip: true,
+    HeadersConfig: {
+      HeaderBehavior: "whitelist",
+      Headers: {
+        Quantity: 1,
+        Items: ["x-api-key"],
+      },
+    },
+    CookiesConfig: {
+      CookieBehavior: "none",
+    },
+    QueryStringsConfig: {
+      QueryStringBehavior: "none",
+    },
+  },
+};
+
 export type DistributionConfigOverrides = {
   Origins: NonNullable<DistributionConfig["Origins"]>;
   DefaultCacheBehavior: NonNullable<DistributionConfig["DefaultCacheBehavior"]>;
@@ -171,13 +197,13 @@ const buildDefaultCacheBehavior = (options: {
 });
 
 const buildCacheBehavior = (options: {
+  apiCachePolicyId: string;
   bucketName: string;
   functionArn: string;
-  sharedCachePolicyId: string;
 }): CacheBehavior => ({
   ...buildSharedBehavior(options.bucketName),
   PathPattern: HOT_UPDATER_CACHE_BEHAVIOR_PATH,
-  CachePolicyId: options.sharedCachePolicyId,
+  CachePolicyId: options.apiCachePolicyId,
   LambdaFunctionAssociations: buildOriginRequestLambdaAssociations(
     options.functionArn,
   ),
@@ -211,6 +237,7 @@ const mergeBehaviorWithExisting = <T extends DefaultBehavior | CacheBehavior>(
 });
 
 export const buildDistributionConfigOverrides = (options: {
+  apiCachePolicyId: string;
   bucketName: string;
   bucketDomain: string;
   functionArn: string;
@@ -237,9 +264,9 @@ export const buildDistributionConfigOverrides = (options: {
     Quantity: 1,
     Items: [
       buildCacheBehavior({
+        apiCachePolicyId: options.apiCachePolicyId,
         bucketName: options.bucketName,
         functionArn: options.functionArn,
-        sharedCachePolicyId: options.sharedCachePolicyId,
       }),
     ],
   },
@@ -283,6 +310,7 @@ export const applyDistributionConfigOverrides = (
 };
 
 export const buildDistributionConfig = (options: {
+  apiCachePolicyId: string;
   bucketName: string;
   bucketDomain: string;
   functionArn: string;

@@ -178,7 +178,7 @@ const createBenchHotUpdater = () => {
       },
     ],
     basePath: BASE_PATH,
-    coreRoutes: {
+    routes: {
       bundles: false,
       updateCheck: true,
     },

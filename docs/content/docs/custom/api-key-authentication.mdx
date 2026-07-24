@@ -1,0 +1,202 @@
+---
+title: "Better Auth API Keys"
+description: Require a Better Auth API key on every Hot Updater route.
+icon: KeyRound
+---
+
+`@hot-updater/better-auth` can verify API keys created and stored by Better
+Auth. In API-key mode, the plugin changes every route emitted by
+`createHotUpdater` to protected access. This includes update checks,
+`/version`, bundle management, event ingestion, and feature routes.
+
+## Install
+
+```package-install
+better-auth @better-auth/api-key @hot-updater/better-auth
+```
+
+## Configure Better Auth
+
+Add a dedicated API-key configuration to the same Better Auth instance that
+owns your authentication database.
+
+```typescript title="src/auth.ts"
+import { apiKey } from "@better-auth/api-key";
+import { betterAuth } from "better-auth";
+
+export const auth = betterAuth({
+  database,
+  plugins: [
+    apiKey({
+      configId: "hot-updater",
+      defaultPrefix: "hu_",
+      enableSessionForAPIKeys: false,
+      permissions: {
+        defaultPermissions: {
+          hotUpdater: ["access"],
+        },
+      },
+      rateLimit: {
+        enabled: true,
+        maxRequests: 1_000,
+        timeWindow: 60 * 60 * 1_000,
+      },
+    }),
+  ],
+});
+```
+
+The API-key table belongs to Better Auth. Enabling the Hot Updater plugin does
+not add that table to the Hot Updater schema. With Better Auth's built-in
+Kysely adapter, apply its migration separately:
+
+```bash
+npx auth@latest migrate --config ./src/auth.ts
+```
+
+For Prisma, Drizzle, or another ORM adapter, generate the Better Auth schema
+and apply it with that ORM's migration workflow:
+
+```bash
+npx auth@latest generate --config ./src/auth.ts
+```
+
+## Protect the Hot Updater server
+
+Pass the configured instance and the same `configId` to
+`betterAuthPlugin`. The default header is `x-api-key`.
+
+```typescript title="src/hotUpdater.ts"
+import { betterAuthPlugin } from "@hot-updater/better-auth";
+import { createHotUpdater } from "@hot-updater/server";
+
+import { auth } from "./auth";
+
+export const hotUpdater = createHotUpdater({
+  database,
+  storages,
+  routes: {
+    bundles: true,
+    updateCheck: true,
+  },
+  plugins: [
+    betterAuthPlugin({
+      auth,
+      apiKey: {
+        configId: "hot-updater",
+        requiredPermissions: {
+          hotUpdater: ["access"],
+        },
+      },
+    }),
+  ],
+});
+```
+
+API-key mode calls `auth.api.verifyApiKey` directly. You do not need to enable
+Better Auth's `enableSessionForAPIKeys` option. A valid key is represented in
+the kernel only by its Better Auth `referenceId`; the raw key and the rest of
+the API-key record are not exposed to route handlers.
+
+To use a custom header, configure both integrations with the same name:
+
+```typescript
+apiKey([{ configId: "hot-updater", apiKeyHeaders: "x-hot-updater-key" }]);
+
+betterAuthPlugin({
+  auth,
+  apiKey: {
+    configId: "hot-updater",
+    headerName: "x-hot-updater-key",
+  },
+});
+```
+
+You can also require permissions during every verification:
+
+```typescript
+betterAuthPlugin({
+  auth,
+  apiKey: {
+    configId: "hot-updater",
+    requiredPermissions: {
+      hotUpdater: ["access"],
+    },
+  },
+});
+```
+
+## Create and distribute a key
+
+Create the key from a trusted server-side bootstrap path. For a user-owned
+configuration, use an existing Better Auth user's ID; it becomes the verified
+key's `referenceId`.
+
+```typescript title="scripts/create-hot-updater-key.ts"
+import { auth } from "../src/auth";
+
+const credential = await auth.api.createApiKey({
+  body: {
+    configId: "hot-updater",
+    name: "mobile-client",
+    permissions: {
+      hotUpdater: ["access"],
+    },
+    userId: existingBetterAuthUser.id,
+  },
+});
+
+await secretStore.write("HOT_UPDATER_API_KEY", credential.key);
+```
+
+Send the key from every Hot Updater consumer. The standalone CLI plugins share
+the same header configuration:
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "@hot-updater/core";
+import {
+  standaloneAnalytics,
+  standaloneRepository,
+} from "@hot-updater/standalone";
+
+import { env } from "./env";
+
+const repositoryConfig = {
+  baseUrl: env.HOT_UPDATER_URL,
+  commonHeaders: {
+    "x-api-key": env.HOT_UPDATER_API_KEY,
+  },
+};
+
+export default defineConfig({
+  database: standaloneRepository(repositoryConfig),
+  console: {
+    analytics: standaloneAnalytics(repositoryConfig),
+  },
+});
+```
+
+React Native update checks and app-ready notifications use `requestHeaders`:
+
+```typescript title="App.tsx"
+import { env } from "./env";
+
+export default HotUpdater.wrap({
+  baseURL: "https://updates.example.com",
+  requestHeaders: {
+    "x-api-key": env.HOT_UPDATER_API_KEY,
+  },
+})(App);
+```
+
+<Callout type="warn">
+  A key embedded in a React Native bundle can be extracted. Treat this as a
+  client access gate, not as end-user identity or strong administrator
+  authentication. Apply rate limits, expiration, rotation, and revocation, and
+  do not rely on an embedded key alone to protect sensitive management
+  operations. The example sends one key to every protected route, so add a
+  separate gateway policy if management APIs need stronger isolation.
+</Callout>
+
+Without the `apiKey` option, `betterAuthPlugin({ auth })` keeps its existing
+session behavior and protects only routes that are already marked protected.

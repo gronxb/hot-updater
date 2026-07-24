@@ -12,6 +12,7 @@ export type {
   HotUpdaterRequestPolicy,
   HotUpdaterRouteAccess,
   HotUpdaterRouteContext,
+  HotUpdaterRoutePolicy,
   HotUpdaterServerRoute,
   HotUpdaterVersionMetadataContribution,
   JsonValue,

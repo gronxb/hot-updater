@@ -99,7 +99,7 @@ describe("createHandler management routes", () => {
     const api = createApi();
     const handler = createHandler(api, {
       basePath: "/hot-updater",
-      coreRoutes: {
+      routes: {
         updateCheck: true,
         bundles: { access: { kind: "public" } },
       },

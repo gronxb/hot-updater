@@ -53,7 +53,7 @@ export const createApi = () =>
 export const createManagementHandler = (api: HandlerAPI<TestContext>) =>
   createHandler(api, {
     basePath: "/hot-updater",
-    coreRoutes: {
+    routes: {
       updateCheck: true,
       bundles: { access: { kind: "public" } },
     },

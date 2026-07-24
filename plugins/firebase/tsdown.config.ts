@@ -20,7 +20,7 @@ export default defineConfig([
     deps: {
       neverBundle: ["firebase-functions", "firebase-admin"],
       alwaysBundle: [
-        /^@hot-updater\/(?:analytics|core|js|plugin-core|server)(?:\/.*)?$/,
+        /^@hot-updater\/(?:analytics|api-key|core|js|plugin-core|server)(?:\/.*)?$/,
       ],
     },
     failOnWarn: true,

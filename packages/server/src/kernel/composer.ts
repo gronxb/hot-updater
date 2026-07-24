@@ -15,6 +15,7 @@ import type {
   HotUpdaterAuthenticationProvider,
   HotUpdaterMatchedRoute,
   HotUpdaterPostAuthMiddleware,
+  HotUpdaterRoutePolicy,
   HotUpdaterServerRoute,
   HotUpdaterVersionMetadataContribution,
 } from "./contracts";
@@ -84,6 +85,21 @@ const matchedRoute = (route: HotUpdaterServerRoute): HotUpdaterMatchedRoute =>
     pattern: route.path,
   });
 
+const applyRoutePolicies = (
+  routes: readonly HotUpdaterServerRoute[],
+  policies: readonly HotUpdaterRoutePolicy[],
+): readonly HotUpdaterServerRoute[] => {
+  if (!policies.some(({ kind }) => kind === "protect-all")) return routes;
+  return Object.freeze(
+    routes.map((route) =>
+      Object.freeze({
+        ...route,
+        access: Object.freeze({ kind: "protected" }),
+      }),
+    ),
+  );
+};
+
 export const composeServerKernel = (
   options: ComposeServerKernelOptions,
 ): ComposedServerKernel => {
@@ -131,6 +147,7 @@ export const composeServerKernel = (
   const metadata: HotUpdaterVersionMetadataContribution[] = [];
   const api: RuntimeFeatureApiContribution[] = [];
   const authentication: HotUpdaterAuthenticationProvider[] = [];
+  const routePolicies: HotUpdaterRoutePolicy[] = [];
 
   for (const manifest of manifests) {
     try {
@@ -165,13 +182,16 @@ export const composeServerKernel = (
       if (contribution.authentication !== undefined) {
         authentication.push(contribution.authentication);
       }
+      if (contribution.routePolicy !== undefined) {
+        routePolicies.push(contribution.routePolicy);
+      }
     } catch (error) {
       if (error instanceof HotUpdaterConstructionError) throw error;
       invalidContribution(manifest.id);
     }
   }
 
-  const router = compileRoutes(routes);
+  const router = compileRoutes(applyRoutePolicies(routes, routePolicies));
   const selectedAuthentication = selectAuthenticationProvider({
     providers: authentication,
     routes: router.routes.map(matchedRoute),

@@ -11,7 +11,7 @@ const AS_OF_MS = Date.UTC(2026, 6, 18, 12);
 const sourceManifest = analytics({ queryAccess: "public" });
 const source = createHotUpdater({
   basePath: "/hot-updater",
-  coreRoutes: { bundles: false, updateCheck: false },
+  routes: { bundles: false, updateCheck: false },
   database: createInMemoryDatabasePlugin(),
   plugins: [sourceManifest],
 });
@@ -132,7 +132,7 @@ describe("standalone active installation Analytics integration", () => {
     });
     const consoleRuntime = createHotUpdater({
       basePath: "/console",
-      coreRoutes: { bundles: false, updateCheck: false },
+      routes: { bundles: false, updateCheck: false },
       database: standaloneRepository(repositoryConfig),
       plugins: [consoleManifest],
     });

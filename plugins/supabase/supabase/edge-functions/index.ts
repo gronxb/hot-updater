@@ -1,15 +1,18 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { analytics } from "@hot-updater/analytics";
+import { apiKey } from "@hot-updater/api-key";
 import { createHotUpdater } from "@hot-updater/server";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase/edge";
 import { Hono } from "npm:hono";
 
 declare global {
   var HotUpdater: {
+    API_KEY_SHA256: string;
     FUNCTION_NAME: string;
   };
 }
 
+const apiKeySha256 = HotUpdater.API_KEY_SHA256;
 const functionName = HotUpdater.FUNCTION_NAME;
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -28,11 +31,11 @@ const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: hotUpdaterBasePath,
-  coreRoutes: {
+  routes: {
     bundles: false,
     updateCheck: true,
   },
-  plugins: [analytics({ queryAccess: "public" })],
+  plugins: [apiKey({ sha256: apiKeySha256 }), analytics()],
 });
 
 const app = new Hono().basePath(functionBasePath);

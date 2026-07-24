@@ -25,6 +25,8 @@ const exportedFunctions = [
   ["@hot-updater/analytics", "analytics"],
   ["@hot-updater/analytics/provider", "parseAnalyticsProvider"],
   ["@hot-updater/analytics/legacy-server", "createLegacyHotUpdater"],
+  ["@hot-updater/api-key", "apiKey"],
+  ["@hot-updater/api-key/provisioning", "provisionApiKey"],
   ["@hot-updater/better-auth", "betterAuthPlugin"],
   ["@hot-updater/standalone", "standaloneAnalytics"],
 ] as const;
@@ -74,6 +76,19 @@ const packedArtifactMatrix = [
     ],
   ],
   [
+    "@hot-updater/api-key",
+    [
+      "dist/index.cjs",
+      "dist/index.d.cts",
+      "dist/index.d.mts",
+      "dist/index.mjs",
+      "dist/provisioning.cjs",
+      "dist/provisioning.d.cts",
+      "dist/provisioning.d.mts",
+      "dist/provisioning.mjs",
+    ],
+  ],
+  [
     "@hot-updater/better-auth",
     [
       "dist/index.cjs",
@@ -100,22 +115,52 @@ const consumerSource = `
 import { analytics } from "@hot-updater/analytics";
 import { parseAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createLegacyHotUpdater } from "@hot-updater/analytics/legacy-server";
-import { betterAuthPlugin } from "@hot-updater/better-auth";
+import { apiKey } from "@hot-updater/api-key";
+import { provisionApiKey } from "@hot-updater/api-key/provisioning";
+import {
+  betterAuthPlugin,
+  type BetterAuthApiKeyConfiguredInstance,
+  type BetterAuthSessionConfiguredInstance,
+} from "@hot-updater/better-auth";
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server";
+import {
+  createHotUpdater,
+  type HandlerRoutes,
+} from "@hot-updater/server";
 import { defineFirstPartyFeatureManifest } from "@hot-updater/server/internal/first-party-plugin";
 import { standaloneAnalytics } from "@hot-updater/standalone";
 
+declare const apiKeyAuth: BetterAuthApiKeyConfiguredInstance;
 declare const database: DatabasePlugin;
+declare const sessionAuth: BetterAuthSessionConfiguredInstance;
+const routes = {
+  bundles: false,
+  updateCheck: true,
+} satisfies HandlerRoutes;
 const manifest = analytics();
 const standaloneManifest = standaloneAnalytics({
   baseUrl: "https://updates.example.com",
 });
-const runtime = createHotUpdater({ database, plugins: [manifest] });
+const apiKeyManifest = apiKey({
+  sha256: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+});
+const betterAuthApiKeyManifest = betterAuthPlugin({
+  apiKey: {
+    configId: "hot-updater",
+    headerName: "x-hot-updater-key",
+    requiredPermissions: { bundles: ["read"] },
+  },
+  auth: apiKeyAuth,
+});
+const sessionManifest = betterAuthPlugin({ auth: sessionAuth });
+const runtime = createHotUpdater({ database, plugins: [manifest], routes });
 void runtime.features.analytics.getBundleEventSummary;
+void apiKeyManifest;
+void betterAuthApiKeyManifest;
+void sessionManifest;
 void standaloneManifest;
 void parseAnalyticsProvider;
-void betterAuthPlugin;
+void provisionApiKey;
 void createLegacyHotUpdater;
 void defineFirstPartyFeatureManifest;
 `;
@@ -178,6 +223,29 @@ if (typeof runtime[${JSON.stringify(exportedFunction)}] !== "function") {
   throw new TypeError("missing packed export");
 }`,
         false,
+      );
+    },
+  );
+
+  it.each([
+    ["ESM import", true],
+    ["CommonJS require", false],
+  ] as const)(
+    "creates an API-key manifest through the packed %s condition",
+    async (_name, module) => {
+      const load = module
+        ? 'await import("@hot-updater/api-key")'
+        : 'require("@hot-updater/api-key")';
+      await runNode(
+        consumer.directory,
+        `const { apiKey } = ${load};
+const manifest = apiKey({
+  sha256: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+});
+if (manifest.id !== "api-key") {
+  throw new TypeError("unexpected API-key manifest");
+}`,
+        module,
       );
     },
   );

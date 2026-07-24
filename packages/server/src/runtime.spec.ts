@@ -14,6 +14,7 @@ import type {
   CreateHotUpdaterOptions,
   HandlerAPI,
   HandlerOptions,
+  HandlerRoutes,
 } from "./index";
 import {
   createRuntimeDatabase,
@@ -46,12 +47,13 @@ describe("runtime createHotUpdater", () => {
   it("exports runtime-safe handler types from the root entry", () => {
     // Given / When / Then
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
-    expectTypeOf<HandlerOptions>().toHaveProperty("coreRoutes");
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
-      "basePath" | "coreRoutes"
+    expectTypeOf<HandlerOptions>().toHaveProperty("routes");
+    expectTypeOf<HandlerOptions["routes"]>().toEqualTypeOf<
+      HandlerRoutes | undefined
     >();
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "basePath" | "coreRoutes" | "database" | "plugins" | "storages"
+      "basePath" | "database" | "plugins" | "routes" | "storages"
     >();
   });
 
@@ -177,7 +179,7 @@ describe("runtime createHotUpdater", () => {
       database,
       storages: [createRuntimeStorage(getDownloadUrl)],
       basePath: "/api/check-update",
-      coreRoutes: { updateCheck: true, bundles: false },
+      routes: { updateCheck: true, bundles: false },
     });
     expectTypeOf(hotUpdater.handler)
       .parameter(1)
@@ -218,7 +220,7 @@ describe("runtime createHotUpdater", () => {
         })),
       ],
       basePath: "/api/check-update",
-      coreRoutes: { updateCheck: true, bundles: false },
+      routes: { updateCheck: true, bundles: false },
     });
     const context: TestContext = {
       env: { assetHost: "https://assets.example.com" },
@@ -254,7 +256,7 @@ describe("runtime createHotUpdater", () => {
         })),
       ],
       basePath: "/api/check-update",
-      coreRoutes: { updateCheck: true, bundles: false },
+      routes: { updateCheck: true, bundles: false },
     });
     const request = new Request(updateUrl);
 
@@ -275,12 +277,12 @@ describe("runtime createHotUpdater", () => {
     { updateCheck: false, bundles: false },
   ])(
     "keeps the version route mounted for $updateCheck/$bundles",
-    async (coreRoutes) => {
+    async (routes) => {
       // Given
       const hotUpdater = createHotUpdater({
         database: createRuntimeDatabase(),
         basePath: "/api/check-update",
-        coreRoutes,
+        routes,
       });
 
       // When

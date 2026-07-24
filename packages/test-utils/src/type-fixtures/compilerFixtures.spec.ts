@@ -103,12 +103,14 @@ type CompileFailCase = readonly [
 
 const compileFailCases = [
   ["auth-input-boundary.mts", "TS2339", ["body", "json"]],
+  ["better-auth-api-key-contract.mts", "TS2345", ["verifyApiKey"]],
   [
     "auth-result-boundary.mts",
     "TS2353",
     ["response", "headers", "cookies", "session", "rawCredentials"],
   ],
   ["handler-options-generic.mts", "TS2315", []],
+  ["legacy-core-routes.mts", "TS2353", ["coreRoutes"]],
   ["invalid-internal-alias.mts", "TS2344", ["legacyMissing", "missing"]],
   ["omitted-analytics-access.mts", "TS2339", ["analytics"]],
   [

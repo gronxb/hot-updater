@@ -87,15 +87,20 @@ npx hot-updater init
   </Accordion>
 </Accordions>
 
-Once the setup is complete, `.env.hotupdater` will be generated with your bucket,
-region, CloudFront distribution ID, and any profile or key settings needed for the
-mode you selected.
+Once the setup is complete, `.env.hotupdater` will be generated with your
+bucket, region, CloudFront distribution ID, client access key, and any profile
+or credential settings needed for the mode you selected.
 
-```
+```bash title=".env.hotupdater"
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region
 HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
+HOT_UPDATER_API_KEY=your-generated-client-access-key
 ```
+
+`init` creates `HOT_UPDATER_API_KEY` once and reuses a valid existing value.
+The repository `.gitignore` excludes `.env.hotupdater`, and only the key's
+SHA-256 digest is deployed to Lambda@Edge. The raw key remains local.
 
 If you choose a shared AWS profile, the generated env file will also include:
 
@@ -117,12 +122,17 @@ HOT_UPDATER_S3_SECRET_ACCESS_KEY=your-secret-access-key
 
 <Callout type="warn">
 
-If you're **not** using the `react-native-dotenv` solution, the tokens from your `.env` file will not be included in your app bundle and are therefore not exposed to risks. However, if you're still concerned,
-
-please refer to the article below for more details:
-[Security](/docs/policy/security#plugin-token-protection)
+The managed API key is bundled into the mobile client and can be extracted. Use
+it only as an access-control key for Hot Updater traffic. Never reuse it as an
+AWS credential, administrator secret, or other infrastructure credential.
 
 </Callout>
+
+To rotate a known key or recover a lost one, replace
+`HOT_UPDATER_API_KEY` in `.env.hotupdater` with a new canonical 32-byte
+base64url value and run `hot-updater init` again to redeploy its digest. Update
+the client-side value at the same time; clients using the old key can no longer
+reach the update API.
 
 ## Step 3: Generated Configurations
 
@@ -199,7 +209,7 @@ export default HotUpdater.wrap({
   baseURL: "https://<your-cloudfront-distribution-url>/api/check-update", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
-    // if you want to use the request headers, you can add them here
+    "x-api-key": process.env.HOT_UPDATER_API_KEY!, // [!code ++]
   },
   fallbackComponent: ({ progress, status }) => (
     <View
@@ -228,8 +238,27 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed AWS runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ coreRoutes: { updateCheck: true, bundles: false }, plugins: [] })`, so management and Analytics query endpoints are not mounted on the public function URL.
+The managed AWS runtime mounts five Hot Updater routes: `/version` and four
+update-check variants. Every one requires `x-api-key`. It is equivalent to
+`createHotUpdater({ routes: { updateCheck: true, bundles: false }, ... })`;
+bundle management and Analytics routes are not mounted. CloudFront forwards
+`x-api-key`, disables caching for `/api/check-update/*`, and the runtime returns
+`Cache-Control: private, no-store` for authenticated responses. Signed
+CloudFront bundle downloads remain outside the API-key handler and continue to
+use their URL signature.
 </Callout>
+
+`requestHeaders` supplies the key to React Native update checks and app-ready
+notifications. If you configure an HTTP-backed Hot Updater client separately,
+use the same value through `commonHeaders`:
+
+```ts
+const commonHeaders = {
+  "x-api-key": process.env.HOT_UPDATER_API_KEY!,
+};
+```
+
+This does not enable routes that the managed AWS runtime does not mount.
 
 ## Step 6: If You Use Expo, Add the Config Plugin
 

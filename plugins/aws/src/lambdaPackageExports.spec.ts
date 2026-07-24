@@ -22,4 +22,13 @@ describe("AWS Lambda package exports", () => {
       require: "./dist/lambda/index.cjs",
     });
   });
+
+  it("declares the managed API-key verifier as a runtime dependency", () => {
+    // Given: the Lambda handler imports the API-key plugin.
+    // When: package runtime dependencies are inspected.
+    const dependency = packageJson.dependencies["@hot-updater/api-key"];
+
+    // Then: published installs always include the verifier.
+    expect(dependency).toBe("workspace:*");
+  });
 });

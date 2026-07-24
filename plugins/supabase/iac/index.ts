@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import { createRequire } from "node:module";
 import path from "path";
 
+import { provisionApiKey } from "@hot-updater/api-key/provisioning";
 import {
   type BuildType,
   ConfigBuilder,
@@ -111,8 +112,16 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
+  // This access key is extractable from the app bundle. Do not use it as an
+  // administrator secret.
+  requestHeaders: {
+    "x-api-key": process.env.HOT_UPDATER_API_KEY!,
+  },
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
+
+export const renderSupabaseSourceTemplate = (source: string) =>
+  transformTemplate(SOURCE_TEMPLATE, { source });
 
 type PackageExportTarget =
   | string
@@ -389,6 +398,16 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     exportName: ".",
   });
   await addWorkspacePackage({
+    importSpecifier: "@hot-updater/analytics",
+    packageName: "@hot-updater/analytics",
+    exportName: ".",
+  });
+  await addWorkspacePackage({
+    importSpecifier: "@hot-updater/api-key",
+    packageName: "@hot-updater/api-key",
+    exportName: ".",
+  });
+  await addWorkspacePackage({
     importSpecifier: "@hot-updater/supabase/edge",
     packageName: "@hot-updater/supabase",
     exportName: "./edge",
@@ -402,6 +421,21 @@ export const resolveEdgeFunctionDenoConfig = async (targetDir: string) => {
     imports: await buildEdgeFunctionImports(targetDir),
   };
 };
+
+export const provisionSupabaseApiKey = (envFilePath = ".env.hotupdater") =>
+  provisionApiKey({ envFilePath });
+
+export const transformEdgeFunctionSource = (
+  sourcePath: string,
+  input: {
+    readonly apiKeySha256: string;
+    readonly functionName: string;
+  },
+) =>
+  transformEnv(sourcePath, {
+    API_KEY_SHA256: input.apiKeySha256,
+    FUNCTION_NAME: input.functionName,
+  });
 
 export const selectProject = async (): Promise<{
   id: string;
@@ -566,7 +600,11 @@ export const selectBucket = async (
   return JSON.parse(selectedBucketId);
 };
 
-const deployEdgeFunction = async (workdir: string, projectId: string) => {
+const deployEdgeFunction = async (
+  workdir: string,
+  projectId: string,
+  apiKeySha256: string,
+) => {
   const functionName = await p.text({
     message: "Enter a name for the edge function",
     initialValue: "update-server",
@@ -578,8 +616,9 @@ const deployEdgeFunction = async (workdir: string, projectId: string) => {
   }
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
-  const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
-    FUNCTION_NAME: functionName,
+  const edgeFunctionsCode = transformEdgeFunctionSource(edgeFunctionsCodePath, {
+    apiKeySha256,
+    functionName,
   });
 
   const targetDir = path.join(workdir, "supabase", "functions", functionName);
@@ -664,6 +703,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     serviceRoleApiKey.api_key,
   );
   const bucket = await selectBucket(api);
+  const managedApiKey = await provisionSupabaseApiKey();
 
   const scaffoldLibPath = path.dirname(
     path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
@@ -702,7 +742,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   await linkSupabase(tmpDir, { projectId: project.id, dbPassword });
 
   await pushDB(tmpDir, { dbPassword });
-  await deployEdgeFunction(tmpDir, project.id);
+  await deployEdgeFunction(tmpDir, project.id, managedApiKey.sha256);
 
   await removeTmpDir();
 
@@ -732,9 +772,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   }
 
   p.note(
-    transformTemplate(SOURCE_TEMPLATE, {
-      source: `https://${project.id}.supabase.co/functions/v1/update-server`,
-    }),
+    renderSupabaseSourceTemplate(
+      `https://${project.id}.supabase.co/functions/v1/update-server`,
+    ),
   );
 
   p.log.message(

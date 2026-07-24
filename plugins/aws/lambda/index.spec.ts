@@ -12,6 +12,8 @@ const fakeHotUpdaterHandler = vi.fn(
       headers: { "Content-Type": "application/json" },
     }),
 );
+const fakeApiKeyManifest = Object.freeze({ id: "api-key" });
+const apiKey = vi.fn(() => fakeApiKeyManifest);
 
 vi.mock("../src/s3Database", () => ({
   s3Database: vi.fn(() => ({ name: "mockDatabase" })),
@@ -40,6 +42,8 @@ vi.mock("@hot-updater/server", async () => {
     })),
   };
 });
+
+vi.mock("@hot-updater/api-key", () => ({ apiKey }));
 
 const createCloudFrontRequest = (uri: string): CloudFrontRequestEvent => ({
   Records: [
@@ -112,6 +116,7 @@ describe("aws lambda entrypoint", () => {
     vi.resetModules();
     vi.clearAllMocks();
     globalThis.HotUpdater = {
+      API_KEY_SHA256: "managed-api-key-digest",
       CLOUDFRONT_KEY_PAIR_ID: "KTEST",
       SSM_PARAMETER_NAME: "/hot-updater/test",
       SSM_REGION: "us-east-1",
@@ -119,27 +124,32 @@ describe("aws lambda entrypoint", () => {
     };
   });
 
-  it("omits Analytics configuration from the managed preset", async () => {
-    // Given
-    const expectedCoreRoutes = {
+  it("protects every managed route with the provisioned API key digest", async () => {
+    // Given: the Lambda artifact contains only the provisioned digest.
+    const expectedRoutes = {
       bundles: false,
       updateCheck: true,
     };
 
-    // When
+    // When: the managed server is composed.
     await import("./index");
 
-    // Then
+    // Then: the API-key plugin protects the complete route surface.
+    expect(apiKey).toHaveBeenCalledWith({
+      sha256: "managed-api-key-digest",
+    });
     expect(createHotUpdater).toHaveBeenCalledWith(
-      expect.objectContaining({ coreRoutes: expectedCoreRoutes }),
+      expect.objectContaining({
+        plugins: [fakeApiKeyManifest],
+        routes: expectedRoutes,
+      }),
     );
     const [options] = vi.mocked(createHotUpdater).mock.calls[0] ?? [];
-    expect(options).not.toHaveProperty("plugins");
-    expect(options).not.toHaveProperty("routes");
+    expect(options).not.toHaveProperty("coreRoutes");
   });
 
   it("serves canonical app-version routes without a cohort segment for origin-request events", async () => {
-    const { handler, SHARED_EDGE_CACHE_CONTROL } = await import("./index");
+    const { handler, PRIVATE_EDGE_CACHE_CONTROL } = await import("./index");
 
     const response = await handler(
       createCloudFrontRequest(
@@ -154,13 +164,13 @@ describe("aws lambda entrypoint", () => {
       status: "200",
     });
     expect(response?.headers?.["cache-control"]?.[0]?.value).toBe(
-      SHARED_EDGE_CACHE_CONTROL,
+      PRIVATE_EDGE_CACHE_CONTROL,
     );
     expect(parseResponseBody(response?.body)).toEqual({ ok: true });
   });
 
   it("serves canonical app-version routes with a cohort segment for origin-request events", async () => {
-    const { handler, SHARED_EDGE_CACHE_CONTROL } = await import("./index");
+    const { handler, PRIVATE_EDGE_CACHE_CONTROL } = await import("./index");
 
     const response = await handler(
       createCloudFrontRequest(
@@ -175,7 +185,7 @@ describe("aws lambda entrypoint", () => {
       status: "200",
     });
     expect(response?.headers?.["cache-control"]?.[0]?.value).toBe(
-      SHARED_EDGE_CACHE_CONTROL,
+      PRIVATE_EDGE_CACHE_CONTROL,
     );
     expect(parseResponseBody(response?.body)).toEqual({ ok: true });
   });

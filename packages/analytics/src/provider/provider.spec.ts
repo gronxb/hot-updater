@@ -60,7 +60,7 @@ describe("analytics database ownership", () => {
 
     // When
     const runtime = createHotUpdater({
-      coreRoutes: { bundles: false, updateCheck: false },
+      routes: { bundles: false, updateCheck: false },
       database,
       plugins: [manifest],
     });
@@ -88,7 +88,7 @@ describe("analytics database ownership", () => {
 
     // When
     const runtime = createHotUpdater({
-      coreRoutes: { bundles: false, updateCheck: false },
+      routes: { bundles: false, updateCheck: false },
       database,
       plugins: [manifest],
     });

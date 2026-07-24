@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import {
   access,
   mkdir,
@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { analytics, type AnalyticsAPI } from "@hot-updater/analytics";
+import { apiKey } from "@hot-updater/api-key";
 import { transformEnv } from "@hot-updater/cli-tools";
 import {
   type AppUpdateInfo,
@@ -86,9 +87,21 @@ const POSTGRES_PASSWORD = "postgres";
 const POSTGRES_DB = "postgres";
 const JWT_SECRET = "super-secret-jwt-token-with-at-least-32-chars";
 const JWT_EXPIRY_SECONDS = 60 * 60 * 24 * 365;
+const API_KEY = Buffer.alloc(32, 7).toString("base64url");
+const INVALID_API_KEY = Buffer.alloc(32, 8).toString("base64url");
+const API_KEY_SHA256 = createHash("sha256").update(API_KEY).digest("base64url");
+const AUTHENTICATED_HEADERS = { "x-api-key": API_KEY } as const;
 const ANON_KEY = createLegacyJwt("anon");
 const SERVICE_ROLE_KEY = createLegacyJwt("service_role");
 const REQUIRED_BUILD_ARTIFACTS = [
+  {
+    command: "pnpm --filter @hot-updater/analytics build",
+    path: path.join(WORKSPACE_ROOT, "packages/analytics/dist/index.mjs"),
+  },
+  {
+    command: "pnpm --filter @hot-updater/api-key build",
+    path: path.join(WORKSPACE_ROOT, "packages/api-key/dist/index.mjs"),
+  },
   {
     command: "pnpm --filter @hot-updater/core build",
     path: path.join(WORKSPACE_ROOT, "packages/core/dist/index.mjs"),
@@ -266,11 +279,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
         }),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      coreRoutes: {
+      routes: {
         bundles: false,
         updateCheck: true,
       },
-      plugins: [analytics({ queryAccess: "public" })],
+      plugins: [apiKey({ sha256: API_KEY_SHA256 }), analytics()],
     });
 
     edgeRuntime = spawnRuntime({
@@ -382,6 +395,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
+      { headers: AUTHENTICATED_HEADERS },
     );
 
     if (!response.ok) {
@@ -548,6 +562,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         platform: "ios",
         _updateStrategy: "appVersion",
       })}`,
+      { headers: AUTHENTICATED_HEADERS },
     );
 
     expect(response.ok).toBe(true);
@@ -566,7 +581,10 @@ describe.sequential("supabase edge runtime acceptance", () => {
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/events`,
       {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          ...AUTHENTICATED_HEADERS,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
           appVersion: "1.0",
           channel: "production",
@@ -592,9 +610,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
   it("exposes the managed Analytics route group by default", async () => {
     const versionResponse = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/version`,
+      { headers: AUTHENTICATED_HEADERS },
     );
     const queryResponse = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/api/bundles/bundle-1/events/summary`,
+      { headers: AUTHENTICATED_HEADERS },
     );
 
     await expect(versionResponse.json()).resolves.toMatchObject({
@@ -605,6 +625,44 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
     expect(queryResponse.status).toBe(200);
   });
+
+  it("keeps the platform health check public", async () => {
+    const response = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/ping`,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("pong");
+  });
+
+  it.each([
+    ["core metadata", "GET", "/version"],
+    [
+      "update check",
+      "GET",
+      createCanonicalPath({
+        appVersion: "1.0",
+        bundleId: NIL_UUID,
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      }),
+    ],
+    ["analytics query", "GET", "/api/bundles/missing/events/summary"],
+    ["event ingestion", "POST", "/events"],
+  ])(
+    "requires the managed API key for %s routes",
+    async (_routeClass, method, routePath) => {
+      const url = `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${routePath}`;
+      const missing = await fetch(url, { method });
+      const wrong = await fetch(url, {
+        headers: { "x-api-key": INVALID_API_KEY },
+        method,
+      });
+
+      expect(missing.status).toBe(401);
+      expect(wrong.status).toBe(401);
+    },
+  );
 
   it("does not support the legacy exact path", async () => {
     const response = await fetch(
@@ -1009,13 +1067,26 @@ const writeSupabaseRuntimeFiles = async ({
       "plugins/supabase/supabase/edge-functions/index.ts",
     ),
     {
+      API_KEY_SHA256,
       FUNCTION_NAME,
     },
   );
   const importMap = {
     imports: {
+      "@hot-updater/analytics": pathToFileURL(
+        path.join(WORKSPACE_ROOT, "packages/analytics/dist/index.mjs"),
+      ).href,
+      "@hot-updater/api-key": pathToFileURL(
+        path.join(WORKSPACE_ROOT, "packages/api-key/dist/index.mjs"),
+      ).href,
       "@hot-updater/server": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
+      ).href,
+      "@hot-updater/server/internal/first-party-plugin": pathToFileURL(
+        path.join(
+          WORKSPACE_ROOT,
+          "packages/server/dist/internal/first-party-plugin.mjs",
+        ),
       ).href,
       "@hot-updater/supabase/edge": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),

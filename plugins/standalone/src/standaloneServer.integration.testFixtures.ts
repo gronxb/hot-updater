@@ -43,7 +43,7 @@ export const createInMemoryBlobDatabase = (values: Record<string, string>) =>
 export const api: HotUpdaterAPI = createHotUpdater({
   database: createInMemoryBlobDatabase(store),
   basePath: "/hot-updater",
-  coreRoutes: {
+  routes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },

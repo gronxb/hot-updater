@@ -9,8 +9,13 @@ import type {
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
-import type { CoreRouteOptions } from "./kernel/coreRoutes";
+import type { HotUpdaterRouteAccess } from "./kernel/contracts";
 import type { PaginatedResult } from "./types";
+
+export type HandlerRoutes = {
+  readonly bundles?: false | true | { readonly access: HotUpdaterRouteAccess };
+  readonly updateCheck?: boolean;
+};
 
 export interface HandlerAPI<TContext = unknown> {
   getAppUpdateInfo: (
@@ -48,8 +53,8 @@ export interface HandlerAPI<TContext = unknown> {
 export interface HandlerOptions {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
-  /** Core route policy. `/version` is always public. */
-  readonly coreRoutes?: CoreRouteOptions;
+  /** Routes exposed by the handler. */
+  readonly routes?: HandlerRoutes;
 }
 
 export type RouteHandler<TContext = unknown> = (

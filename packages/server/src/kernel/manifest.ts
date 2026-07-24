@@ -6,6 +6,7 @@ import type {
 import type {
   HotUpdaterAuthenticationProvider,
   HotUpdaterPostAuthMiddleware,
+  HotUpdaterRoutePolicy,
   HotUpdaterServerRoute,
   HotUpdaterVersionMetadataContribution,
 } from "./contracts";
@@ -78,6 +79,7 @@ export type HotUpdaterPluginContribution<
   readonly authentication?: HotUpdaterAuthenticationProvider;
   readonly metadata?: readonly HotUpdaterVersionMetadataContribution[];
   readonly middleware?: readonly HotUpdaterPostAuthMiddleware[];
+  readonly routePolicy?: HotUpdaterRoutePolicy;
   readonly routes?: readonly HotUpdaterServerRoute[];
 };
 

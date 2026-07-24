@@ -5,10 +5,12 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
+  HOT_UPDATER_API_CACHE_POLICY_CONFIG,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 
 const baseOptions = {
+  apiCachePolicyId: "api-cache-policy-id",
   bucketName: "hot-updater-bucket",
   bucketDomain: "hot-updater-bucket.s3.ap-northeast-2.amazonaws.com",
   functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
@@ -18,13 +20,32 @@ const baseOptions = {
 };
 
 describe("buildDistributionConfigOverrides", () => {
-  it("defines a shared cache policy that does not forward viewer headers", () => {
+  it("keeps bundle caching separate from authenticated API traffic", () => {
+    // Given: bundle downloads remain immutable while API responses are private.
+    // When: the two managed cache policies are generated.
+    // Then: only the API policy forwards credentials and disables caching.
     expect(HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG).toMatchObject({
       DefaultTTL: 0,
       MaxTTL: 31_536_000,
       MinTTL: 0,
       ParametersInCacheKeyAndForwardedToOrigin: {
-        HeadersConfig: { HeaderBehavior: "none" },
+        HeadersConfig: {
+          HeaderBehavior: "none",
+        },
+      },
+    });
+    expect(HOT_UPDATER_API_CACHE_POLICY_CONFIG).toMatchObject({
+      DefaultTTL: 0,
+      MaxTTL: 0,
+      MinTTL: 0,
+      ParametersInCacheKeyAndForwardedToOrigin: {
+        HeadersConfig: {
+          HeaderBehavior: "whitelist",
+          Headers: {
+            Quantity: 1,
+            Items: ["x-api-key"],
+          },
+        },
         CookiesConfig: { CookieBehavior: "none" },
         QueryStringsConfig: { QueryStringBehavior: "none" },
       },
@@ -58,7 +79,7 @@ describe("buildDistributionConfigOverrides", () => {
 
     expect(cachedEndpointBehavior.PathPattern).toBe("/api/check-update/*");
     expect(cachedEndpointBehavior.CachePolicyId).toBe(
-      baseOptions.sharedCachePolicyId,
+      baseOptions.apiCachePolicyId,
     );
     expect(cachedEndpointBehavior.FunctionAssociations).toEqual({
       Quantity: 0,

@@ -22,6 +22,11 @@ import { execa } from "execa";
 
 import { createWrangler } from "../src/utils/createWrangler";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
+import {
+  createManagedAppSnippet,
+  createManagedWorkerVariables,
+  provisionManagedApiKey,
+} from "./managedApiKey";
 
 const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
@@ -51,18 +56,6 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
       .setDatabase(databaseConfig),
   );
 };
-
-const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-function App() {
-  return ...
-}
-
-export default HotUpdater.wrap({
-  baseURL: "%%source%%",
-  updateStrategy: "appVersion", // or "fingerprint"
-})(App);`;
 
 const HOT_UPDATER_ENV_PATH = ".env.hotupdater";
 
@@ -167,11 +160,13 @@ const deployWorker = async (
   {
     d1DatabaseId,
     d1DatabaseName,
+    apiKeySha256,
     r2BucketName,
     workerName,
   }: {
     d1DatabaseId: string;
     d1DatabaseName: string;
+    apiKeySha256: string;
     r2BucketName: string;
     workerName?: string;
   },
@@ -209,9 +204,10 @@ const deployWorker = async (
 
     const jwtSecret = crypto.randomBytes(32).toString("hex");
 
-    wranglerConfig.vars = {
-      JWT_SECRET: jwtSecret,
-    };
+    wranglerConfig.vars = createManagedWorkerVariables({
+      apiKeySha256,
+      jwtSecret,
+    });
 
     await fs.writeFile(
       path.join(workerRoot, "wrangler.json"),
@@ -268,6 +264,7 @@ const deployWorker = async (
 
 export const runInit = async ({ build }: { build: BuildType }) => {
   const cwd = getCwd();
+  const managedApiKey = await provisionManagedApiKey(cwd);
   const existingEnv = await readHotUpdaterEnv(cwd);
 
   let auth = getWranglerLoginAuthToken();
@@ -641,6 +638,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   );
 
   const workerName = await deployWorker(auth.oauth_token, accountId, {
+    apiKeySha256: managedApiKey.sha256,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
     r2BucketName: selectedBucketName,
@@ -677,9 +675,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   if (subdomains.subdomain) {
     p.note(
-      transformTemplate(SOURCE_TEMPLATE, {
-        source: `https://${workerName}.${subdomains.subdomain}.workers.dev/api/check-update`,
-      }),
+      createManagedAppSnippet(
+        `https://${workerName}.${subdomains.subdomain}.workers.dev/api/check-update`,
+      ),
     );
   }
 

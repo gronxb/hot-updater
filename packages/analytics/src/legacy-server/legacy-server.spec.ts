@@ -1,3 +1,4 @@
+import type { CreateHotUpdaterOptions } from "@hot-updater/server";
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
@@ -115,5 +116,11 @@ describe("legacy server bridge", () => {
     expectTypeOf<keyof Routes>().toEqualTypeOf<
       "analytics" | "bundles" | "updateCheck"
     >();
+  });
+
+  it("keeps the current route group limited to core route controls", () => {
+    type Routes = NonNullable<CreateHotUpdaterOptions["routes"]>;
+
+    expectTypeOf<keyof Routes>().toEqualTypeOf<"bundles" | "updateCheck">();
   });
 });

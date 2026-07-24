@@ -41,6 +41,16 @@ const opaqueResponse = (status: 404 | 413 | 500): Response => {
   return Response.json({ error }, { status });
 };
 
+const preventCaching = (response: Response): Response => {
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "private, no-store");
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+};
+
 const authenticate = <TContext>(
   options: ExecuteKernelRequestOptions<TContext>,
   route: ReturnType<typeof matchCompiledRoute>,
@@ -117,11 +127,14 @@ export const executeKernelRequest = async <TContext = unknown>(
         throw error;
       }
     };
-    return executePostAuthMiddleware({
+    const response = await executePostAuthMiddleware({
       context: authentication.context,
       handler: executeRoute,
       middleware: options.middleware,
     });
+    return authentication.context.route.access.kind === "protected"
+      ? preventCaching(response)
+      : response;
   } catch {
     return opaqueResponse(500);
   }

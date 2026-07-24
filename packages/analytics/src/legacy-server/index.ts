@@ -15,7 +15,7 @@ type LegacyRouteOptions = {
 
 export type LegacyCreateHotUpdaterOptions<TContext = undefined> = Omit<
   CreateHotUpdaterOptions<TContext>,
-  "coreRoutes" | "plugins"
+  "plugins" | "routes"
 > & {
   readonly routes?: LegacyRouteOptions;
 };
@@ -42,7 +42,7 @@ type AnalyticsLegacyRuntime<TContext> = RuntimeHotUpdaterAPI<TContext> &
 
 const createLegacyCoreRoutes = (
   routes: LegacyRouteOptions,
-): NonNullable<CreateHotUpdaterOptions["coreRoutes"]> => ({
+): NonNullable<CreateHotUpdaterOptions["routes"]> => ({
   bundles: routes.bundles ? { access: { kind: "public" } } : false,
   updateCheck: routes.updateCheck,
 });
@@ -53,7 +53,7 @@ const createCoreLegacyRuntime = <TContext>(
 ): CoreLegacyRuntime<TContext> =>
   createHotUpdater<TContext, readonly []>({
     ...options,
-    coreRoutes: createLegacyCoreRoutes(routes),
+    routes: createLegacyCoreRoutes(routes),
   });
 
 const createAnalyticsLegacyRuntime = <TContext>(
@@ -63,8 +63,8 @@ const createAnalyticsLegacyRuntime = <TContext>(
   const manifest = analytics({ queryAccess: "public" });
   return createHotUpdater<TContext, readonly [typeof manifest]>({
     ...options,
-    coreRoutes: createLegacyCoreRoutes(routes),
     plugins: [manifest],
+    routes: createLegacyCoreRoutes(routes),
   });
 };
 

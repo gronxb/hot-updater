@@ -6,6 +6,7 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
+import { signToken } from "@hot-updater/js";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -31,6 +32,7 @@ declare module "vitest" {
 
 declare module "cloudflare:test" {
   interface ProvidedEnv {
+    API_KEY_SHA256: string;
     DB: D1Database;
     BUCKET: R2Bucket;
     JWT_SECRET: string;
@@ -38,6 +40,40 @@ declare module "cloudflare:test" {
 }
 
 const PUBLIC_BASE_URL = "https://updates.example.com";
+const API_KEY = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc";
+const WRONG_API_KEY = "CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg";
+const API_KEY_HEADERS = Object.freeze({ "x-api-key": API_KEY });
+
+const managedRouteCases = [
+  ["version", "GET", "/version"],
+  [
+    "fingerprint update",
+    "GET",
+    `/fingerprint/ios/fingerprint/production/${NIL_UUID}/${NIL_UUID}`,
+  ],
+  [
+    "fingerprint cohort update",
+    "GET",
+    `/fingerprint/ios/fingerprint/production/${NIL_UUID}/${NIL_UUID}/100`,
+  ],
+  [
+    "app-version update",
+    "GET",
+    `/app-version/ios/1.0/production/${NIL_UUID}/${NIL_UUID}`,
+  ],
+  [
+    "app-version cohort update",
+    "GET",
+    `/app-version/ios/1.0/production/${NIL_UUID}/${NIL_UUID}/100`,
+  ],
+  ["event ingestion", "POST", "/events"],
+  ["bundle event summary", "GET", "/api/bundles/bundle-1/events/summary"],
+  ["bundle event analytics", "GET", "/api/bundles/bundle-1/events/analytics"],
+  ["installation overview", "GET", "/api/installations/overview"],
+  ["active installations", "GET", "/api/installations/active"],
+  ["installation search", "GET", "/api/installations"],
+  ["installation history", "GET", "/api/installations/install-1/events"],
+] as const;
 
 const sqlString = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
@@ -172,7 +208,9 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${createCanonicalPath(args)}`),
+      new Request(`${PUBLIC_BASE_URL}${createCanonicalPath(args)}`, {
+        headers: API_KEY_HEADERS,
+      }),
       env,
     );
 
@@ -304,6 +342,28 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     },
   });
 
+  it("keeps exactly the 12 managed API routes behind the API key", async () => {
+    expect(managedRouteCases).toHaveLength(12);
+
+    for (const [, method, path] of managedRouteCases) {
+      for (const apiKey of [undefined, WRONG_API_KEY]) {
+        const headers = apiKey ? { "x-api-key": apiKey } : undefined;
+        const response = await worker.fetch(
+          new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}${path}`, {
+            headers,
+            method,
+          }),
+          env,
+        );
+
+        expect(response.status, `${method} ${path}`).toBe(401);
+        expect(response.headers.get("www-authenticate")).toBe(
+          'ApiKey realm="hot-updater"',
+        );
+      }
+    }
+  });
+
   it("serves canonical routes from the worker entrypoint", async () => {
     await seedBundles([
       {
@@ -329,6 +389,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
           platform: "ios",
           _updateStrategy: "appVersion",
         })}`,
+        { headers: API_KEY_HEADERS },
       ),
       env,
     );
@@ -347,7 +408,10 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     const response = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          ...API_KEY_HEADERS,
+          "content-type": "application/json",
+        },
         body: JSON.stringify({
           appVersion: "1.0",
           channel: "production",
@@ -376,12 +440,15 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
   it("exposes the managed Analytics route group by default", async () => {
     const versionResponse = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/version`),
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/version`, {
+        headers: API_KEY_HEADERS,
+      }),
       env,
     );
     const queryResponse = await worker.fetch(
       new Request(
         `${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/api/bundles/bundle-1/events/summary`,
+        { headers: API_KEY_HEADERS },
       ),
       env,
     );
@@ -393,6 +460,20 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       },
     });
     expect(queryResponse.status).toBe(200);
+  });
+
+  it("keeps signed R2 downloads outside API-key authentication", async () => {
+    const key = "bundles/download.zip";
+    await putR2Object("download.zip", "zip", "text/plain");
+    const token = await signToken(key, env.JWT_SECRET);
+
+    const response = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}/${key}?token=${token}`),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("zip");
   });
 
   it("does not support the legacy exact path", async () => {

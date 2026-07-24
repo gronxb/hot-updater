@@ -10,7 +10,7 @@ import { compileVersionMetadata } from "./kernel/metadata";
 import { compileRoutes } from "./kernel/routeCompiler";
 import { normalizeBasePath } from "./route";
 
-export type { HandlerAPI, HandlerOptions } from "./handlerTypes";
+export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
 
 const matchedRoute = (
   route: ReturnType<typeof createCoreServerRoutes>[number],
@@ -34,7 +34,7 @@ export function createHandler<TContext = unknown>(
   const metadata = compileVersionMetadata({ contributions: [] });
   const routes = createCoreServerRoutes({
     api,
-    descriptors: createCoreRouteDescriptors(options.coreRoutes),
+    descriptors: createCoreRouteDescriptors(options.routes),
     resolveMetadata: () => metadata,
   });
   const router = compileRoutes(routes);

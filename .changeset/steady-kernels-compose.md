@@ -1,5 +1,6 @@
 ---
 "@hot-updater/analytics": minor
+"@hot-updater/api-key": minor
 "@hot-updater/aws": minor
 "@hot-updater/better-auth": minor
 "@hot-updater/cloudflare": minor
@@ -20,7 +21,7 @@ as a minor version.
 
 Migrate server construction as follows:
 
-- Replace `routes.updateCheck` and `routes.bundles` with `coreRoutes`.
+- Keep `routes.updateCheck` and `routes.bundles` as the core route controls.
   Bundle-management routes are protected by default; use
   `bundles: { access: { kind: "public" } }` only when public compatibility is
   intentional.
@@ -48,7 +49,16 @@ Migrate server construction as follows:
 
 Protected routes now require exactly one authentication provider. Install
 `betterAuthPlugin({ auth })` from `@hot-updater/better-auth` to adapt a
-configured Better Auth instance; `better-auth` remains an optional peer.
+configured Better Auth session, or configure
+`betterAuthPlugin({ auth, apiKey: { configId } })` to verify Better Auth API
+keys and protect every HTTP route emitted by `createHotUpdater`. The API-key
+mode calls `auth.api.verifyApiKey` directly and does not treat cookie sessions
+as API keys. `better-auth` remains an optional peer.
+
+The new database-free `@hot-updater/api-key` package provides static
+SHA-256-backed API-key authentication for managed runtimes. Its Node-only
+provisioning entry creates or reuses `HOT_UPDATER_API_KEY` in
+`.env.hotupdater`; deployed runtimes receive only the digest.
 
 CLI config loading now keeps plugin-core capability identity and first-party
 manifest identity aligned while it evaluates TypeScript, ESM, or CommonJS
@@ -78,10 +88,14 @@ export default defineConfig({
 });
 ```
 
-Cloudflare, Firebase, and Supabase presets install public Analytics over their
-bare database plugins. PostgreSQL uses the same database-backed default.
-These managed server presets are independent from the local Console opt-in.
-`standaloneRepository(config)` remains Analytics-agnostic. AWS deliberately
-remains core-only because its preset omits the feature. Publish this package
-cohort together so provider presets, kernel declarations, and
-condition-specific ESM/CommonJS exports stay aligned.
+AWS, Cloudflare, Firebase, and Supabase presets require the managed API key on
+every route emitted by their `createHotUpdater` handler. Cloudflare, Firebase,
+and Supabase also install protected Analytics over their bare database
+plugins, including protected event ingestion; AWS deliberately remains
+core-only because its preset omits Analytics. AWS disables shared caching and
+forwards `x-api-key` on the authenticated update path. PostgreSQL keeps the
+same database-backed Analytics default for custom composition. These managed
+server presets are independent from the local Console opt-in.
+`standaloneRepository(config)` remains Analytics-agnostic. Publish this
+package cohort together so provider presets, authentication policy, kernel
+declarations, and condition-specific ESM/CommonJS exports stay aligned.

@@ -139,6 +139,7 @@ describe("security conformance: authentication and body denial", () => {
       // Then
       expect(response.status).toBe(expectedStatus);
       expect(await response.text()).not.toContain(SECRET);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
       expect(response.headers.get("set-cookie")).toBeNull();
       expect(response.headers.get("www-authenticate")).toBeNull();
       expect(source.request.bodyUsed).toBe(false);

@@ -219,7 +219,7 @@ describe("loadConfig capabilities", () => {
       expect(() =>
         Reflect.apply(createHotUpdater, undefined, [
           {
-            coreRoutes: { bundles: false, updateCheck: false },
+            routes: { bundles: false, updateCheck: false },
             database: config.database,
             plugins: [manifest],
           },
@@ -258,7 +258,7 @@ describe("loadConfig capabilities", () => {
 
     const runtime = Reflect.apply(createHotUpdater, undefined, [
       {
-        coreRoutes: { bundles: false, updateCheck: false },
+        routes: { bundles: false, updateCheck: false },
         database: config.database,
         plugins: [manifest],
       },

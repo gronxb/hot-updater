@@ -1,6 +1,7 @@
+import { HOT_UPDATER_API_KEY_ENV_NAME } from "@hot-updater/api-key/provisioning";
 import { describe, expect, it } from "vitest";
 
-import { getConfigScaffold } from "./templates";
+import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
 
 describe("AWS managed config scaffold", () => {
   it("renders access key credentials for account mode", () => {
@@ -55,6 +56,17 @@ describe("AWS managed config scaffold", () => {
     );
     expect(scaffold.text).toContain(
       "credentials: fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! })",
+    );
+  });
+
+  it("wires the provisioned client key into update-check request headers", () => {
+    // Given: initialization renders the React Native source template.
+    // When: its machine-consumed updater options are inspected.
+    // Then: the managed endpoint receives the provisioned API key.
+    expect(SOURCE_TEMPLATE).toContain("requestHeaders:");
+    expect(SOURCE_TEMPLATE).toContain('"x-api-key"');
+    expect(SOURCE_TEMPLATE).toContain(
+      `process.env.${HOT_UPDATER_API_KEY_ENV_NAME}!`,
     );
   });
 });

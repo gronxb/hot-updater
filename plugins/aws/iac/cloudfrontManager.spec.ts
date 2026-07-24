@@ -38,6 +38,7 @@ import { CloudFrontManager } from "./cloudfront";
 
 describe("CloudFrontManager", () => {
   const existingDistributionConfig = buildDistributionConfig({
+    apiCachePolicyId: "existing-api-cache-policy-id",
     bucketName: "hot-updater-storage",
     bucketDomain: "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
     functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
@@ -78,12 +79,17 @@ describe("CloudFrontManager", () => {
     });
     mockCloudFront.updateDistribution.mockResolvedValue({});
     mockCloudFront.createInvalidation.mockResolvedValue({});
-  });
-
-  it("paginates cache policy lookups before attempting creation", async () => {
-    mockCloudFront.listCachePolicies.mockResolvedValueOnce({
+    mockCloudFront.listCachePolicies.mockResolvedValue({
       CachePolicyList: {
         Items: [
+          {
+            CachePolicy: {
+              Id: "api-cache-policy-id",
+              CachePolicyConfig: {
+                Name: "HotUpdaterAuthenticatedNoCache",
+              },
+            },
+          },
           {
             CachePolicy: {
               Id: "shared-cache-policy-id",
@@ -95,7 +101,9 @@ describe("CloudFrontManager", () => {
         ],
       },
     });
+  });
 
+  it("reuses separate API and bundle cache policies before updating", async () => {
     const manager = new CloudFrontManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
       secretAccessKey: "test-secret-key",
@@ -109,6 +117,9 @@ describe("CloudFrontManager", () => {
     });
 
     expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(1, {
+      Type: "custom",
+    });
+    expect(mockCloudFront.listCachePolicies).toHaveBeenNthCalledWith(2, {
       Type: "custom",
     });
     expect(mockCloudFront.createCachePolicy).not.toHaveBeenCalled();
@@ -125,7 +136,7 @@ describe("CloudFrontManager", () => {
             Items: expect.arrayContaining([
               expect.objectContaining({
                 PathPattern: "/api/check-update/*",
-                CachePolicyId: "shared-cache-policy-id",
+                CachePolicyId: "api-cache-policy-id",
                 LambdaFunctionAssociations: expect.objectContaining({
                   Items: expect.arrayContaining([
                     expect.objectContaining({
@@ -139,5 +150,14 @@ describe("CloudFrontManager", () => {
         }),
       }),
     );
+    expect(mockCloudFront.createInvalidation).toHaveBeenCalledWith({
+      DistributionId: "dist-id",
+      InvalidationBatch: expect.objectContaining({
+        Paths: {
+          Quantity: 1,
+          Items: ["/api/check-update/*"],
+        },
+      }),
+    });
   });
 });

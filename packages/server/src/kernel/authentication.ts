@@ -33,7 +33,8 @@ const opaqueResponse = (status: 401 | 500 | 503): Response => {
       : status === 503
         ? "Service unavailable"
         : "Internal server error";
-  return Response.json({ error }, { status });
+  const headers = new Headers({ "cache-control": "private, no-store" });
+  return Response.json({ error }, { headers, status });
 };
 
 const hasExactKeys = (value: object, keys: readonly string[]): boolean => {

@@ -1,3 +1,4 @@
+import { apiKey } from "@hot-updater/api-key";
 import { createHotUpdater } from "@hot-updater/server";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
@@ -8,6 +9,7 @@ import { s3Database, s3Storage } from "../src/lambda";
 
 declare global {
   var HotUpdater: {
+    API_KEY_SHA256: string;
     CLOUDFRONT_KEY_PAIR_ID: string;
     SSM_PARAMETER_NAME: string;
     SSM_REGION: string;
@@ -15,19 +17,10 @@ declare global {
   };
 }
 
-export const ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365;
-export const SHARED_EDGE_CACHE_CONTROL = `public, max-age=0, s-maxage=${ONE_YEAR_IN_SECONDS}, must-revalidate`;
+export const PRIVATE_EDGE_CACHE_CONTROL = "private, no-store";
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
-const isCanonicalUpdateRoute = (path: string) => {
-  return (
-    path.startsWith("/app-version/") ||
-    path.startsWith("/fingerprint/") ||
-    path.startsWith(`${HOT_UPDATER_BASE_PATH}/app-version/`) ||
-    path.startsWith(`${HOT_UPDATER_BASE_PATH}/fingerprint/`)
-  );
-};
-
+const API_KEY_SHA256 = HotUpdater.API_KEY_SHA256;
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
 const SSM_REGION = HotUpdater.SSM_REGION;
@@ -60,7 +53,9 @@ const resolveRequestOrigin = (context?: SignedUrlContext) => {
   return new URL(context.request.url).origin;
 };
 
-const hotUpdater = createHotUpdater<SignedUrlContext>({
+const plugins = [apiKey({ sha256: API_KEY_SHA256 })] as const;
+
+const hotUpdater = createHotUpdater<SignedUrlContext, typeof plugins>({
   database: s3Database({
     bucketName: S3_BUCKET_NAME,
     region: SSM_REGION,
@@ -76,7 +71,8 @@ const hotUpdater = createHotUpdater<SignedUrlContext>({
     })(),
   ],
   basePath: "/",
-  coreRoutes: {
+  plugins,
+  routes: {
     bundles: false,
     updateCheck: true,
   },
@@ -92,12 +88,7 @@ app.mount(
       distributionDomainName,
     });
 
-    if (
-      request.method === "GET" &&
-      isCanonicalUpdateRoute(new URL(request.url).pathname)
-    ) {
-      response.headers.set("Cache-Control", SHARED_EDGE_CACHE_CONTROL);
-    }
+    response.headers.set("Cache-Control", PRIVATE_EDGE_CACHE_CONTROL);
 
     return response;
   },

@@ -106,6 +106,10 @@ describe("authenticateMatchedRoute", () => {
       if (result.kind === "response") {
         expect(result.response.status).toBe(status);
         expect(await result.response.text()).not.toContain("secret");
+        expect(result.response.headers.get("cache-control")).toBe(
+          "private, no-store",
+        );
+        expect(result.response.headers.get("www-authenticate")).toBeNull();
       }
     },
   );

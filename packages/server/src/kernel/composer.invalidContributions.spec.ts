@@ -58,6 +58,14 @@ const forbiddenContributions: ReadonlyArray<{
     value: { preAuthMiddleware: [] },
   },
   { label: "protect", value: { protect: () => undefined } },
+  {
+    label: "unknown route policy",
+    value: { routePolicy: { kind: "protect-matching" } },
+  },
+  {
+    label: "route policy with extra fields",
+    value: { routePolicy: { kind: "protect-all", matcher: "*" } },
+  },
   { label: "authorize", value: { authorize: () => undefined } },
   { label: "capabilities", value: { capabilities: [] } },
   {

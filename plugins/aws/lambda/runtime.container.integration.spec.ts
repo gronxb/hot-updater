@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +53,8 @@ const S3_BUCKET_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`
   .slice(0, 63);
 const SSM_PARAMETER_NAME = `/hot-updater/aws/${process.pid}/${Date.now()}`;
 const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
+const API_KEY = Buffer.alloc(32, 7).toString("base64url");
+const API_KEY_SHA256 = createHash("sha256").update(API_KEY).digest("base64url");
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
@@ -81,8 +83,7 @@ const isUpdateResponse = (
   );
 };
 
-const SHARED_EDGE_CACHE_CONTROL =
-  "public, max-age=0, s-maxage=31536000, must-revalidate";
+const PRIVATE_EDGE_CACHE_CONTROL = "private, no-store";
 const ORIGIN_HOST = `${S3_BUCKET_NAME}.s3.${REGION}.amazonaws.com`;
 const REQUIRED_BUILD_ARTIFACTS = [
   {
@@ -307,7 +308,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
         })(),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      coreRoutes: {
+      routes: {
         bundles: false,
         updateCheck: true,
       },
@@ -320,6 +321,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const transformedCode = transformEnv(
       path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda/index.cjs"),
       {
+        API_KEY_SHA256,
         CLOUDFRONT_KEY_PAIR_ID,
         SSM_PARAMETER_NAME,
         SSM_REGION: REGION,
@@ -413,7 +415,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       lambdaPort,
       createCloudFrontEvent({
         path: createCanonicalPath(args),
-        headers: new Headers(),
+        headers: new Headers({ "x-api-key": API_KEY }),
       }),
     );
     expect(response.ok).toBe(true);
@@ -572,7 +574,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
           platform: "ios",
           _updateStrategy: "appVersion",
         }),
-        headers: new Headers(),
+        headers: new Headers({ "x-api-key": API_KEY }),
       }),
     );
     const payload = (await response.json()) as {
@@ -581,7 +583,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     };
 
     expect(payload.headers?.["cache-control"]?.[0]?.value).toBe(
-      SHARED_EDGE_CACHE_CONTROL,
+      PRIVATE_EDGE_CACHE_CONTROL,
     );
     const body = (await readLambdaJson(payload)) as {
       fileUrl?: string;
@@ -597,6 +599,88 @@ describe.sequential("aws lambda runtime acceptance", () => {
     expect(new URL(body?.fileUrl ?? "").host).toBe(
       new URL(PUBLIC_BASE_URL).host,
     );
+  });
+
+  it.each([
+    ["version", `${HOT_UPDATER_BASE_PATH}/version`],
+    [
+      "app-version",
+      `${HOT_UPDATER_BASE_PATH}/app-version/ios/1.0/production/${NIL_UUID}/${NIL_UUID}`,
+    ],
+    [
+      "app-version cohort",
+      `${HOT_UPDATER_BASE_PATH}/app-version/ios/1.0/production/${NIL_UUID}/${NIL_UUID}/cohort-a`,
+    ],
+    [
+      "fingerprint",
+      `${HOT_UPDATER_BASE_PATH}/fingerprint/ios/fingerprint-a/production/${NIL_UUID}/${NIL_UUID}`,
+    ],
+    [
+      "fingerprint cohort",
+      `${HOT_UPDATER_BASE_PATH}/fingerprint/ios/fingerprint-a/production/${NIL_UUID}/${NIL_UUID}/cohort-a`,
+    ],
+  ])("rejects a missing API key on the %s route", async (_name, path) => {
+    // Given: a request targets one of the five managed server routes.
+    const event = createCloudFrontEvent({
+      path,
+      headers: new Headers(),
+    });
+
+    // When: the request reaches Lambda without a client key.
+    const response = await invokeLambda(lambdaPort, event);
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || !isRecord(payload.headers)) {
+      throw new InvalidRuntimeResponseError("Invalid Lambda response payload.");
+    }
+    const cacheControlValues = payload.headers["cache-control"];
+    const cacheControl = Array.isArray(cacheControlValues)
+      ? cacheControlValues[0]
+      : undefined;
+    if (!isRecord(cacheControl)) {
+      throw new InvalidRuntimeResponseError(
+        "Invalid Lambda cache-control header.",
+      );
+    }
+
+    // Then: authentication fails before the route executes or can be cached.
+    expect(payload.status).toBe("401");
+    expect(cacheControl.value).toBe(PRIVATE_EDGE_CACHE_CONTROL);
+  });
+
+  it("rejects a wrong API key and accepts the provisioned key", async () => {
+    // Given: the version endpoint does not require database fixtures.
+    const path = `${HOT_UPDATER_BASE_PATH}/version`;
+
+    // When: callers send a wrong key and the provisioned key.
+    const wrongResponse = await invokeLambda(
+      lambdaPort,
+      createCloudFrontEvent({
+        path,
+        headers: new Headers({
+          "x-api-key": Buffer.alloc(32, 9).toString("base64url"),
+        }),
+      }),
+    );
+    const validResponse = await invokeLambda(
+      lambdaPort,
+      createCloudFrontEvent({
+        path,
+        headers: new Headers({ "x-api-key": API_KEY }),
+      }),
+    );
+    const wrongPayload: unknown = await wrongResponse.json();
+    const validPayload: unknown = await validResponse.json();
+    if (!isRecord(wrongPayload) || !isRecord(validPayload)) {
+      throw new InvalidRuntimeResponseError("Invalid Lambda response payload.");
+    }
+
+    // Then: only the provisioned credential authenticates.
+    expect(wrongPayload.status).toBe("401");
+    expect(validPayload.status).toBe("200");
+    if (!lambdaRuntime) {
+      throw new Error("Lambda runtime was not started.");
+    }
+    expect(formatRuntimeLogs(lambdaRuntime.logs)).not.toContain(API_KEY);
   });
 
   it("does not support the legacy exact path", async () => {

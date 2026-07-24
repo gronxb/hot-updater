@@ -129,5 +129,9 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
+  // Client-bundled keys are extractable access controls, not admin secrets.
+  requestHeaders: {
+    "x-api-key": process.env.HOT_UPDATER_API_KEY!,
+  },
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;

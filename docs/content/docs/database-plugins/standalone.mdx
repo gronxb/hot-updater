@@ -299,7 +299,7 @@ const hotUpdater = createHotUpdater({
   database,
   storages: [storage],
   basePath: "/hot-updater",
-  coreRoutes: {
+  routes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },
@@ -308,7 +308,7 @@ const hotUpdater = createHotUpdater({
 ```
 
 This mounts the bundle routes consumed by `standaloneRepository` under
-`/hot-updater/api/bundles*`. `coreRoutes.bundles` is the explicit opt-in for
+`/hot-updater/api/bundles*`. `routes.bundles` is the explicit opt-in for
 those management APIs. The public access policy shown delegates protection to
 the framework or reverse proxy; configure matching `commonHeaders` in
 `standaloneRepository`.

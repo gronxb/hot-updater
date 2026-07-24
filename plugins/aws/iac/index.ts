@@ -3,6 +3,7 @@ import {
   fromNodeProviderChain,
   fromSSO,
 } from "@aws-sdk/credential-providers";
+import { provisionApiKey } from "@hot-updater/api-key/provisioning";
 import {
   type BuildType,
   colors,
@@ -268,10 +269,13 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   const { publicKeyId, keyGroupId } =
     await cloudFrontManager.getOrCreateKeyGroup(keyPair.publicKey);
 
+  const { sha256: apiKeySha256 } = await provisionApiKey();
+
   // Deploy Lambda@Edge: Using LambdaEdgeDeployer
   const lambdaEdgeDeployer = new LambdaEdgeDeployer(credentials);
   const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
   const { functionArn } = await lambdaEdgeDeployer.deploy(lambdaRoleArn, {
+    apiKeySha256,
     bucketName,
     publicKeyId: publicKeyId,
     ssmParameterName: ssmParameterName,

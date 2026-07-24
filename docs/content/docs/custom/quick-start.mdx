@@ -55,7 +55,7 @@ export const hotUpdater = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
-  coreRoutes: {
+  routes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },
@@ -95,8 +95,10 @@ serve({ fetch: app.fetch, port: 3000 }, (info) => {
 
 ## Security Settings
 
-The Hot Updater handler does not include built-in authentication. Always protect
-bundle management routes before mounting the handler.
+`createHotUpdater` does not select an authentication policy automatically.
+Protect public routes with framework middleware as shown above, or use the
+[Better Auth API-key plugin](./api-key-authentication) to require an API key on
+every Hot Updater route.
 
 Update-check routes are usually exposed for React Native clients, but that is a
 deployment choice:
@@ -105,7 +107,7 @@ deployment choice:
 - `/hot-updater/fingerprint/*`
 
 The bundle management routes under `/hot-updater/api/*` are used by the CLI.
-They are mounted only when `coreRoutes.bundles` is enabled, and your framework
+They are mounted only when `routes.bundles` is enabled, and your framework
 middleware must protect each management request before mounting the handler.
 The server example above uses Bearer authentication for `/hot-updater/api/*`.
 The same requirement applies to Analytics query routes when `analytics()` uses

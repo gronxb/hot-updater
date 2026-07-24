@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -39,7 +40,10 @@ vi.mock("execa", async (importOriginal) => {
 
 import {
   getLegacySupabaseConfigReference,
+  provisionSupabaseApiKey,
+  renderSupabaseSourceTemplate,
   resolveEdgeFunctionDenoConfig,
+  transformEdgeFunctionSource,
 } from "./index";
 import { linkSupabase, pushDB } from "./supabaseCli";
 
@@ -288,8 +292,14 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
+        "@hot-updater/analytics":
+          "./_hot-updater/hot-updater-analytics/dist/index.mjs",
+        "@hot-updater/api-key":
+          "./_hot-updater/hot-updater-api-key/dist/index.mjs",
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
+        "@hot-updater/server/internal/first-party-plugin":
+          "./_hot-updater/hot-updater-server/dist/internal/first-party-plugin.mjs",
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge/index.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
@@ -334,8 +344,70 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           "utf8",
         ),
       ).resolves.toContain("supabaseStorage");
+
+      const apiKeyRuntime = await fs.readFile(
+        path.join(targetDir, "_hot-updater/hot-updater-api-key/dist/index.mjs"),
+        "utf8",
+      );
+      expect(apiKeyRuntime).toContain("crypto.subtle.digest");
+      expect(apiKeyRuntime).not.toContain('from "node:');
     } finally {
       await fs.rm(targetDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("managed API key provisioning", () => {
+  it("reuses the same key and writes only one environment entry", async () => {
+    const targetDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-supabase-api-key-"),
+    );
+    const envFilePath = path.join(targetDir, ".env.hotupdater");
+
+    try {
+      const first = await provisionSupabaseApiKey(envFilePath);
+      const second = await provisionSupabaseApiKey(envFilePath);
+      const content = await fs.readFile(envFilePath, "utf8");
+
+      expect(second).toEqual(first);
+      expect(
+        content
+          .split(/\r?\n/u)
+          .filter((line) => line.startsWith("HOT_UPDATER_API_KEY=")),
+      ).toHaveLength(1);
+    } finally {
+      await fs.rm(targetDir, { force: true, recursive: true });
+    }
+  });
+
+  it("injects only the API key digest into the edge artifact", async () => {
+    const apiKey = Buffer.alloc(32, 7).toString("base64url");
+    const apiKeySha256 = createHash("sha256")
+      .update(apiKey)
+      .digest("base64url");
+    const sourcePath = path.resolve(
+      "plugins/supabase/supabase/edge-functions/index.ts",
+    );
+
+    const transformed = transformEdgeFunctionSource(sourcePath, {
+      apiKeySha256,
+      functionName: "update-server",
+    });
+
+    expect(transformed).toContain(JSON.stringify(apiKeySha256));
+    expect(transformed).toContain(JSON.stringify("update-server"));
+    expect(transformed).not.toContain(apiKey);
+    expect(transformed).not.toContain("HotUpdater.API_KEY_SHA256");
+  });
+
+  it("keeps the raw API key out of the user-facing source example", () => {
+    const apiKey = Buffer.alloc(32, 7).toString("base64url");
+    const example = renderSupabaseSourceTemplate(
+      "https://example.supabase.co/functions/v1/update-server",
+    );
+
+    expect(example).toContain("process.env.HOT_UPDATER_API_KEY!");
+    expect(example).toContain("extractable from the app bundle");
+    expect(example).not.toContain(apiKey);
   });
 });

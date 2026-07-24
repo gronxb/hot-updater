@@ -24,7 +24,7 @@ export const hotUpdater: HotUpdaterAPI = createHotUpdater({
     }),
   ],
   basePath: "/hot-updater",
-  coreRoutes: {
+  routes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },

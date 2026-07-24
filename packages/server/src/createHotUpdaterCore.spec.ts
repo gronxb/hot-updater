@@ -3,6 +3,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import { createHotUpdater } from "./index";
 import type {
   CreateHotUpdaterOptions,
+  HandlerRoutes,
   HandlerOptions,
   RuntimeHotUpdaterAPI,
 } from "./index";
@@ -90,11 +91,12 @@ describe("createHotUpdater generic kernel root", () => {
     expect(Object.isFrozen(hotUpdater)).toBe(true);
     expect(Object.isFrozen(hotUpdater.features)).toBe(true);
     expectTypeOf<keyof typeof hotUpdater.features>().toEqualTypeOf<never>();
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
-      "basePath" | "coreRoutes"
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
+    expectTypeOf<HandlerOptions["routes"]>().toEqualTypeOf<
+      HandlerRoutes | undefined
     >();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "basePath" | "coreRoutes" | "database" | "plugins" | "storages"
+      "basePath" | "database" | "plugins" | "routes" | "storages"
     >();
   });
 
@@ -142,7 +144,7 @@ describe("createHotUpdater generic kernel root", () => {
     // Given / When / Then
     expect(() =>
       createHotUpdater({
-        coreRoutes: { bundles: true },
+        routes: { bundles: true },
         database: createRuntimeDatabase(),
       }),
     ).toThrowError(
@@ -153,7 +155,7 @@ describe("createHotUpdater generic kernel root", () => {
 
     expect(() =>
       createHotUpdater({
-        coreRoutes: { bundles: true },
+        routes: { bundles: true },
         database: createRuntimeDatabase(),
         plugins: [authenticationPlugin()],
       }),
@@ -163,7 +165,7 @@ describe("createHotUpdater generic kernel root", () => {
   it("permits an explicit public bundle compatibility policy", async () => {
     // Given
     const hotUpdater = createHotUpdater({
-      coreRoutes: { bundles: { access: { kind: "public" } } },
+      routes: { bundles: { access: { kind: "public" } } },
       database: createRuntimeDatabase(),
     });
 

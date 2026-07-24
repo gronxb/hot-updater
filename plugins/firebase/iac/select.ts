@@ -77,7 +77,7 @@ export const setEnv = async ({
     },
     ".env.hotupdater",
     {
-      preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS"],
+      preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS", "HOT_UPDATER_API_KEY"],
     },
   );
 

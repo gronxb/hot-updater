@@ -269,7 +269,7 @@ describe("s3Database storage behavior", () => {
   it("supports explicitly installed bounded Analytics over S3", async () => {
     const database = s3Database({ bucketName });
     const runtime = createHotUpdater({
-      coreRoutes: { bundles: false, updateCheck: false },
+      routes: { bundles: false, updateCheck: false },
       database,
       plugins: [analytics({ queryAccess: "public" })],
     });

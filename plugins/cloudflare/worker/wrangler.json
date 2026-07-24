@@ -20,6 +20,7 @@
     }
   ],
   "vars": {
+    "API_KEY_SHA256": "USER_API_KEY_SHA256",
     "JWT_SECRET": "USER_JWT_SECRET"
   }
 }

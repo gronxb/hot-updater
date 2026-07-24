@@ -114,7 +114,32 @@ describe("executeKernelRequest", () => {
 
     // Then
     expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("www-authenticate")).toBeNull();
     expect(source.request.bodyUsed).toBe(false);
+  });
+
+  it("prevents caching successful protected responses", async () => {
+    // Given
+    const router = compileRoutes([
+      route({
+        access: { kind: "protected" },
+        method: "GET",
+      }),
+    ]);
+
+    // When
+    const response = await executeKernelRequest({
+      authentication: authenticatedProvider(),
+      basePath: "/api",
+      middleware: [],
+      request: new Request("https://example.com/api/route"),
+      router,
+    });
+
+    // Then
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("maps actual post-auth body overflow to 413", async () => {

@@ -155,7 +155,7 @@ export function createHotUpdaterCore<
   let metadata: CompiledVersionMetadata | undefined;
   const coreRoutes = createCoreServerRoutes({
     api: core.api,
-    descriptors: createCoreRouteDescriptors(options.coreRoutes),
+    descriptors: createCoreRouteDescriptors(options.routes),
     resolveMetadata: () => metadata,
   });
   const composed = composeServerKernel({

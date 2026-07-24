@@ -1,0 +1,11 @@
+import {
+  betterAuthPlugin,
+  type BetterAuthSessionConfiguredInstance,
+} from "@hot-updater/better-auth";
+
+declare const sessionAuth: BetterAuthSessionConfiguredInstance;
+
+betterAuthPlugin({
+  apiKey: { configId: "hot-updater" },
+  auth: sessionAuth,
+});

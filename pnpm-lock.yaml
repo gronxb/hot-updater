@@ -1322,6 +1322,16 @@ importers:
         specifier: 'catalog:'
         version: 20.19.43
 
+  packages/api-key:
+    dependencies:
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../server
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+
   packages/apple-helper:
     dependencies:
       '@hot-updater/cli-tools':
@@ -1903,6 +1913,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1066.0
         version: 3.1066.0
+      '@hot-updater/api-key':
+        specifier: workspace:*
+        version: link:../../packages/api-key
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -1986,6 +1999,9 @@ importers:
       '@hot-updater/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
+      '@hot-updater/api-key':
+        specifier: workspace:*
+        version: link:../../packages/api-key
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2109,6 +2125,9 @@ importers:
       '@hot-updater/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
+      '@hot-updater/api-key':
+        specifier: workspace:*
+        version: link:../../packages/api-key
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2345,6 +2364,9 @@ importers:
       '@hot-updater/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
+      '@hot-updater/api-key':
+        specifier: workspace:*
+        version: link:../../packages/api-key
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools

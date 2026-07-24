@@ -100,6 +100,28 @@ clarifications are normative where they narrow or repair the original prose:
   config must join this cohort and add a mixed CommonJS config-to-ESM runtime
   composition gate, or replace the bridge with an equivalent identity
   substrate.
+- **R15 — route options:** `HandlerOptions.routes` is the sole public route
+  selector and its named value type is `HandlerRoutes`. `coreRoutes` remains an
+  internal implementation name only and is not accepted by either public
+  handler entrypoint.
+- **R16 — monotonic protection:** a first-party manifest may contribute only
+  `routePolicy: { kind: "protect-all" }`. The composer applies this policy
+  after collecting every core and feature route, changing public access to
+  protected access without ever changing protected access back to public.
+- **R17 — API-key adapters:** `betterAuthPlugin({ auth, apiKey: ... })` verifies
+  configured Better Auth API keys through `auth.api.verifyApiKey` and
+  contributes protect-all. The managed runtimes instead use the native
+  `@hot-updater/api-key` plugin, which verifies one provisioned SHA-256 digest
+  without requiring Better Auth or a database.
+- **R18 — managed matrix:** AWS, Cloudflare, Firebase, and Supabase install the
+  native API-key plugin by default. Every route actually mounted by each
+  managed handler is protected. Cloudflare, Firebase, and Supabase also install
+  Analytics; AWS does not.
+- **R19 — managed provisioning and caching:** provisioning writes the raw
+  `HOT_UPDATER_API_KEY` only to a local environment file and injects only
+  `HotUpdater.API_KEY_SHA256` into the deployed runtime. AWS disables caching
+  for the handler behavior and protected responses use `no-store`; a CDN must
+  never serve an authenticated handler response without re-authentication.
 
 ## Decision summary
 
@@ -129,8 +151,11 @@ dedicated transport. Database plugins never install or advertise Analytics.
 
 Authentication is a mechanism-neutral kernel concept. A configured
 authentication plugin gates protected routes before their bodies or handlers
-are evaluated. API keys are not part of the kernel contract. A managed provider
-may configure Better Auth with its API-key plugin as one concrete preset.
+are evaluated. The kernel does not know API-key headers, hashing, Better Auth,
+or credential storage. Authentication manifests may, however, declare the
+single monotonic protect-all route policy. Better Auth and native API-key
+packages are two concrete first-party mechanisms built on that generic
+contract.
 
 The first version keeps update check, bundle management, and `/version` as core
 Hot Updater protocol surfaces. It extracts optional cross-cutting features
@@ -139,9 +164,9 @@ without turning the kernel into a general application framework.
 ## Reference model: Better Auth API Key
 
 The composition style intentionally follows Better Auth's
-`packages/api-key` package, version `1.6.20`, reviewed at commit
-`c342f42fff46043b5e195f7f757b0f2c1043414c`. The reference is architectural,
-not a copy of its authentication or persistence semantics.
+`packages/api-key` package from Better Auth `1.6.24`, the version pinned by this
+workspace. The reference is architectural, not a copy of its authentication or
+persistence semantics.
 
 | Reference pattern                                                                               | Hot Updater decision                                                                                                                         |
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -160,7 +185,8 @@ The following Better Auth details are deliberately not copied:
 - logging route conflicts while continuing construction;
 - arbitrary request/response hooks before authentication;
 - API-key headers, hashing, sessions, permissions, rate limits, or key storage
-  as kernel concepts.
+  as **kernel** concepts. Those details remain owned by the concrete Better Auth
+  or native API-key package.
 
 Hot Updater providers retain their existing migrations, plugin order is
 semantically irrelevant, and every ownership conflict is a construction error.
@@ -200,6 +226,15 @@ semantically irrelevant, and every ownership conflict is a construction error.
 15. Feature plugins cannot contribute database migrations or asynchronous
     lifecycle work. Infrastructure setup and cleanup remain database and
     storage responsibilities.
+16. `HandlerOptions.routes` is the only public selector for the built-in
+    handler routes and has the named, non-generic `HandlerRoutes` type.
+17. A `protect-all` contribution applies to the final union of core and feature
+    routes, independent of plugin order. No plugin policy can make a protected
+    route public.
+18. Better Auth API-key mode and the native API-key plugin both protect every
+    route produced by the composed handler.
+19. Managed AWS, Cloudflare, Firebase, and Supabase handlers require the
+    provisioned API key for every mounted HTTP API.
 
 ### Compatibility requirements
 
@@ -249,6 +284,11 @@ plugin-based entrypoint replaces `routes.analytics` with `analytics()`.
 Migration helpers are provided by the Analytics package, and the removal is
 released and documented as a breaking source change.
 
+Managed authentication is an intentional wire-policy change: unauthenticated
+requests that previously reached a managed handler now receive `401`, including
+update checks, `/version`, and Analytics ingestion. Clients must send the
+provisioned key in `x-api-key`.
+
 ### Security requirements
 
 - No protected handler runs without a successful authentication result.
@@ -265,6 +305,16 @@ released and documented as a breaking source change.
   `HotUpdaterContext<TContext>`.
 - Raw credentials, provider sessions, cookies, API keys, and provider errors
   never enter runtime metadata or logs.
+- Protect-all is monotonic: it may upgrade public route declarations to
+  protected, but no policy can downgrade a protected route.
+- Native API-key verification accepts only a configured SHA-256 digest at
+  runtime and compares the presented key without a timing-dependent digest
+  equality branch.
+- Managed provisioning never uploads, emits in generated source, or logs the
+  raw key. Only the local provisioning result and local environment file
+  receive it.
+- AWS managed handler responses are not shared-cacheable. Its CloudFront
+  handler behavior disables caching in addition to returning `no-store`.
 - Plugins are trusted in-process code. The capability registry is not a
   sandbox.
 
@@ -275,7 +325,8 @@ released and documented as a breaking source change.
 - Asynchronous route registration after `createHotUpdater` returns.
 - Generic plugin-owned database migration composition.
 - Deep merging arbitrary plugin metadata.
-- An API-key-specific Hot Updater authentication contract.
+- Making API keys a kernel primitive; API-key behavior belongs to
+  `@hot-updater/api-key` and `@hot-updater/better-auth`.
 - Mounting Better Auth's own handler or management routes.
 - Running Better Auth migrations from Hot Updater.
 - Reintroducing `authorize: () => true`.
@@ -287,32 +338,36 @@ released and documented as a breaking source change.
   release.
 - Feature-plugin lifecycle hooks or plugin-level dependency ordering.
 - Arbitrary unscoped API-object merging.
+- Treating a key shipped in a mobile binary as an administrator secret, user
+  identity, DRM mechanism, or durable defense against a determined client.
+- Managed multi-key overlap, remote rotation, revocation, per-device keys, and
+  permission policy in this release.
 
 Custom database and storage implementations remain supported. First-party
 feature manifests establish the initial kernel contract. Third-party feature
 authoring becomes supported only after a conformance suite and versioned ABI
 are published.
 
-## Current-state contradictions
+## Legacy contradictions addressed
 
-The current implementation violates the target boundary in several places:
+The pre-kernel implementation crossed the target boundary in several places:
 
-- `CreateHotUpdaterOptions` exposes `routes`, which includes
-  `routes.analytics`.
-- `createHandler` imports Analytics capability resolution and Analytics route
-  factories.
-- `HandlerAPI` and `DatabaseAPI` include Analytics APIs.
-- `createDatabasePluginCore` discovers and materializes Analytics services.
-- `createDatabasePlugin` automatically marks Analytics support.
-- the core `/version` handler constructs Analytics metadata;
-- `@hot-updater/server/node` imports the event body limit and recognizes
+- `CreateHotUpdaterOptions.routes` included `routes.analytics`;
+- `createHandler` imported Analytics capability resolution and Analytics route
+  factories;
+- `HandlerAPI` and `DatabaseAPI` included Analytics APIs;
+- `createDatabasePluginCore` discovered and materialized Analytics services;
+- `createDatabasePlugin` automatically marked Analytics support;
+- the core `/version` handler constructed Analytics metadata;
+- `@hot-updater/server/node` imported the event body limit and recognized
   `/events`;
-- standalone publicly enumerates Analytics operations and probes Analytics
+- standalone publicly enumerated Analytics operations and probed Analytics
   fields;
-- managed runtimes enable Analytics through `routes.analytics: true`.
+- managed runtimes enabled Analytics through `routes.analytics: true`.
 
-Moving route files alone is insufficient. Every item above must leave the final
-server kernel or become a generic kernel primitive.
+Moving route files alone would not have been sufficient. The implementation
+removes each feature-specific dependency above or replaces it with the generic
+kernel primitive specified in this document.
 
 ## Package ownership
 
@@ -336,8 +391,10 @@ Must not import `@hot-updater/analytics`.
 The kernel is an internal module of this package in the first release, not a
 new published `@hot-updater/server-kernel` package. Update check is enabled by
 default. Bundle management remains a separately mountable core surface.
-`/version` remains a public, credential-invariant core route. Feature manifests
-cannot override these core routes.
+`/version` has public access before policies are applied, and its metadata
+payload remains credential-invariant. A protect-all policy upgrades it to
+protected access together with every other route. Feature manifests cannot
+override core routes or downgrade their access.
 
 Separately packed first-party features use the explicitly unsupported,
 non-root `@hot-updater/server/internal/first-party-plugin` authoring subpath.
@@ -387,14 +444,37 @@ Provider authoring APIs are exported from
 
 Owns:
 
-- `betterAuthPlugin({ auth })`;
+- `betterAuthPlugin({ auth })` session adaptation;
+- `betterAuthPlugin({ auth, apiKey })` API-key verification mode;
 - conversion from a configured Better Auth instance to the generic
   authentication result;
+- extraction of the configured API-key header, `configId`, and optional
+  permissions passed to `auth.api.verifyApiKey`;
 - Better Auth-specific error normalization.
 
 `better-auth` remains an optional peer dependency. This package does not
-construct Better Auth, configure API keys, mount `auth.handler`, or own Better
-Auth schema migrations.
+construct Better Auth, install `@better-auth/api-key`, mount `auth.handler`, or
+own Better Auth schema migrations. The application configures and migrates
+Better Auth. Supplying the `apiKey` option selects verify-API-key mode and
+contributes protect-all.
+
+### `@hot-updater/api-key`
+
+Owns:
+
+- `apiKey({ sha256, headerName? })`;
+- header extraction, SHA-256 verification, and native API-key principal
+  projection;
+- the protect-all policy used by managed runtimes;
+- `@hot-updater/api-key/provisioning`, including
+  `provisionApiKey({ envFilePath? })`.
+
+The runtime package receives only a canonical base64url SHA-256 digest.
+Provisioning returns `{ apiKey, sha256 }` and writes the raw value as
+`HOT_UPDATER_API_KEY` only to the local environment file. It uses
+`.env.hotupdater` in the current directory by default; `envFilePath` selects an
+alternate local path. It does not provide a remote key registry, permissions,
+expiration, rotation, revocation, or database schema.
 
 ### Provider packages
 
@@ -405,7 +485,7 @@ Cloudflare, Firebase, Supabase, AWS, and custom providers retain ownership of:
 - provider contexts;
 - infrastructure provisioning;
 - optional Analytics provider implementations;
-- optional managed authentication presets.
+- managed digest injection and cache policy.
 
 Moving Analytics code does not move or replay provider database migrations.
 
@@ -421,21 +501,36 @@ createHotUpdater({
 ```
 
 Cloudflare, Firebase, Supabase, and PostgreSQL database plugins remain
-Analytics-agnostic. AWS and blob-backed providers remain valid core-only
-providers when their server presets omit `analytics()`.
+Analytics-agnostic. The Cloudflare, Firebase, and Supabase managed server
+entrypoints install `analytics()` explicitly. AWS and blob-backed providers
+remain valid core-only providers because their server presets omit it.
 
 ## Public composition
 
 ```typescript
+import { apiKey as betterAuthApiKey } from "@better-auth/api-key";
 import { analytics } from "@hot-updater/analytics";
 import { betterAuthPlugin } from "@hot-updater/better-auth";
 import { createHotUpdater } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
+import { betterAuth } from "better-auth";
+
+const auth = betterAuth({
+  plugins: [betterAuthApiKey()],
+});
 
 const hotUpdater = createHotUpdater({
   database: prismaAdapter(databaseOptions),
   storages,
-  plugins: [analytics(), betterAuthPlugin({ auth })],
+  plugins: [
+    analytics(),
+    betterAuthPlugin({
+      auth,
+      apiKey: {
+        configId: "hot-updater",
+      },
+    }),
+  ],
   basePath: "/api/check-update",
 });
 
@@ -443,6 +538,14 @@ const analyticsFeature = hotUpdater.features.analytics;
 
 await analyticsFeature.getBundleEventSummary(input);
 ```
+
+The Better Auth API-key record is created by the application with the matching
+`configId`. The adapter reads `x-api-key` by default and passes the key and
+`configId` to `auth.api.verifyApiKey`. Supplying `requiredPermissions` forwards
+the declared Better Auth permission map; `headerName` selects a different
+header. Because this mode contributes protect-all, `/version`, update checks,
+bundle management, Analytics ingestion, and Analytics queries all require a
+valid key whenever they are present.
 
 The same database without `analytics()` exposes no Analytics behavior or
 Analytics runtime API:
@@ -454,19 +557,21 @@ const hotUpdater = createHotUpdater({
 });
 ```
 
-During the managed compatibility stage, Cloudflare, Firebase, and Supabase
-spell their current public-query policy explicitly:
+Managed runtimes use the database-independent native verifier:
 
 ```typescript
+import { analytics } from "@hot-updater/analytics";
+import { apiKey } from "@hot-updater/api-key";
+
 createHotUpdater({
   database: managedAnalyticsDatabase,
-  plugins: [analytics({ queryAccess: "public" })],
+  plugins: [analytics(), apiKey({ sha256: HotUpdater.API_KEY_SHA256 })],
 });
 ```
 
-No no-op authenticator or `authorize: () => true` is installed. When a managed
-authentication preset is ready, that provider changes to the protected default
-and installs `betterAuthPlugin({ auth })` in the same release.
+No no-op authenticator or `authorize: () => true` is installed. The native
+plugin authenticates the request and contributes the monotonic policy; the
+managed database plugin remains unaware of API keys and Analytics.
 
 ### Public option and return types
 
@@ -474,17 +579,19 @@ and installs `betterAuthPlugin({ auth })` in the same release.
 to `CreateHotUpdaterOptions`, not the HTTP route composer.
 
 ```typescript
+export type HandlerRoutes = {
+  readonly updateCheck?: boolean;
+  readonly bundles?:
+    | false
+    | true
+    | {
+        readonly access: HotUpdaterRouteAccess;
+      };
+};
+
 export interface HandlerOptions {
   readonly basePath?: string;
-  readonly coreRoutes?: {
-    readonly updateCheck?: boolean;
-    readonly bundles?:
-      | false
-      | true
-      | {
-          readonly access: HotUpdaterRouteAccess;
-        };
-  };
+  readonly routes?: HandlerRoutes;
 }
 
 export interface CreateHotUpdaterOptions<TContext> extends HandlerOptions {
@@ -494,10 +601,13 @@ export interface CreateHotUpdaterOptions<TContext> extends HandlerOptions {
 }
 ```
 
-`GET /version` is always public. Update check is public and enabled by default.
-Bundle management is disabled by default; when enabled in the new API it is
-protected unless the deployment explicitly declares public compatibility
-access.
+`routes` is the sole public name; `coreRoutes` may be used by private composer
+implementation details but is not exported or accepted in public options.
+Before plugin policies, `GET /version` and update checks are public, and update
+check is enabled by default. Bundle management is disabled by default; when
+enabled it is protected unless the deployment explicitly declares public
+access. A protect-all policy then upgrades every mounted route, including
+explicitly public routes, to protected. There is no inverse policy.
 
 The call signature preserves the literal plugin tuple:
 
@@ -653,6 +763,7 @@ interface HotUpdaterPluginContribution<
   TAvailableApi extends object,
 > {
   readonly routes?: readonly HotUpdaterServerRoute[];
+  readonly routePolicy?: HotUpdaterRoutePolicy;
   readonly middleware?: readonly HotUpdaterPostAuthMiddleware[];
   readonly authentication?: HotUpdaterAuthenticationProvider;
   readonly metadata?: readonly HotUpdaterVersionMetadataContribution[];
@@ -703,6 +814,10 @@ available.
 ### Routes
 
 ```typescript
+export type HotUpdaterRoutePolicy = {
+  readonly kind: "protect-all";
+};
+
 export type HotUpdaterRouteAccess =
   | { readonly kind: "public" }
   | { readonly kind: "protected" };
@@ -749,6 +864,14 @@ import an Analytics constant.
 The route owner declares path, method, access, request policy, runtime input
 parser, and handler together. This follows the Better Auth endpoint pattern
 without importing its router or schema-merging behavior.
+
+Route policies are intentionally smaller than route declarations. The only
+policy in this release is `protect-all`. The composer applies it to the final
+route set after every plugin has contributed routes, so the result is
+independent of plugin order and includes routes owned by the same manifest.
+Applying it twice is idempotent. It can only replace `{ kind: "public" }` with
+`{ kind: "protected" }`; it cannot remove routes, select paths, change handlers,
+or downgrade access.
 
 ### Authentication and middleware
 
@@ -799,8 +922,10 @@ request-head view. It cannot return a `Response`.
 
 Every route declares access. A protected route without exactly one
 authentication provider fails construction. Public routes do not require an
-authentication provider and do not invoke one. The kernel, not the
-authentication plugin, decides whether a matched route is protected.
+authentication provider and do not invoke one. Route owners declare initial
+access, authentication manifests may contribute only the monotonic policy, and
+the kernel computes and freezes effective access. Authentication code never
+makes a per-request access decision.
 
 On a protected route, `anonymous` maps to an opaque `401`, `unavailable` maps to
 an opaque `503`, an invalid result or unexpected exception maps to an opaque
@@ -889,13 +1014,15 @@ Analytics capability keys, including its asynchronous standalone resolution.
 6. Validate plugin identities and capability requirements.
 7. Run synchronous plugin setup in stable plugin-ID order.
 8. Collect and normalize routes; reject route and route-ID conflicts.
-9. Collect feature APIs and transitional aliases; reject ownership conflicts.
-10. Collect metadata projections; reject namespace and wire-key conflicts.
-11. Select exactly zero or one authentication provider.
-12. Reject protected routes when no authentication provider is installed.
-13. Compile the post-auth middleware DAG.
-14. Freeze every route, middleware, capability, metadata, and API manifest.
-15. Return the runtime handler, core API, and plugin-inferred `features` API.
+9. Validate route policies and apply protect-all monotonically to the complete
+   route set.
+10. Collect feature APIs and transitional aliases; reject ownership conflicts.
+11. Collect metadata projections; reject namespace and wire-key conflicts.
+12. Select exactly zero or one authentication provider.
+13. Reject protected routes when no authentication provider is installed.
+14. Compile the post-auth middleware DAG.
+15. Freeze every route, middleware, capability, metadata, and API manifest.
+16. Return the runtime handler, core API, and plugin-inferred `features` API.
 
 Setup failures, missing required capabilities, invalid advertised
 capabilities, invalid contributions, middleware dependency cycles, unknown
@@ -927,12 +1054,16 @@ return types cannot be maintained in separate parallel maps. The feature
 manifest has no generic `options`, `schema`, `migrations`, `init`, or cleanup
 field.
 
-The public configuration does not gain `routes.eventIngestion`.
+The public configuration does not gain `routes.eventIngestion`. A protect-all
+policy can upgrade Analytics ingestion without adding an Analytics-specific
+route option.
 
 For an intentionally public, self-hosted Analytics deployment, the Analytics
-plugin receives `analytics({ queryAccess: "public" })`. Managed providers use
-that explicit override only for the compatibility stage. Protected routes are
-never silently downgraded because an authentication provider is absent.
+plugin receives `analytics({ queryAccess: "public" })` and does not install a
+protect-all authentication plugin. Managed providers use the Analytics
+default, then the native API-key policy upgrades ingestion and every other
+mounted route. Protected routes are never silently downgraded because an
+authentication provider is absent.
 
 The kernel passes the same guarded database runtime used by core operations to
 the feature factory. Every default Analytics database call therefore crosses
@@ -949,43 +1080,98 @@ available operation.
 
 ## Better Auth composition
 
-`betterAuthPlugin` receives a configured Better Auth instance. Its default
-operation is:
+`betterAuthPlugin` receives a configured Better Auth instance. Without an
+`apiKey` option, its session operation is:
 
 1. receive the already matched route and defensive copy of the request head;
 2. ask the configured Better Auth instance for its authentication result;
 3. normalize a valid session to a validated `HotUpdaterPrincipal`;
 4. return only `anonymous`, `authenticated`, or `unavailable`.
 
+With an `apiKey` option, the adapter instead:
+
+1. reads `headerName`, defaulting to `x-api-key`;
+2. returns `anonymous` when the header is missing or unusable;
+3. calls `auth.api.verifyApiKey` with a body containing `key`, the required
+   `configId`, and optional `requiredPermissions`;
+4. maps a valid Better Auth key identity to a minimal Hot Updater principal;
+5. maps invalid verification to `anonymous` and classifiable dependency
+   failure to `unavailable`;
+6. contributes `routePolicy: { kind: "protect-all" }`.
+
+```typescript
+betterAuthPlugin({
+  auth,
+  apiKey: {
+    configId: "hot-updater",
+    headerName: "x-api-key",
+    requiredPermissions: {
+      hotUpdater: ["read"],
+    },
+  },
+});
+```
+
 The actual adapter receives the body-less authentication input, not a
-body-capable `Request`. It cannot choose which routes are protected and cannot
-return an HTTP response. The adapter does not infer or require API-key support.
-There is no `protect` or `authorize` option.
+body-capable `Request`, and cannot return an HTTP response. It does not install
+or infer Better Auth's API-key plugin: selecting verify-API-key mode is
+explicit, and a misconfigured `auth.api.verifyApiKey` fails closed. There is no
+path predicate, downgrade-capable `protect`, or `authorize` callback.
 
-The kernel's status guarantee is exact for provider-classified results. Better
-Auth's public session API may collapse an internal dependency failure to the
-same `null` used for an absent session, which an adapter cannot disambiguate.
-Locked-version fault injection also proves that Better Auth 1.6.24 catches a
-session-store error carrying `status: 503` and surfaces an `APIError` with
-`status: "INTERNAL_SERVER_ERROR"` and `statusCode: 500`. The adapter therefore
-maps `null` to `anonymous`, only still-classified observable outage errors to
-`unavailable`, and classification-erased or otherwise unexpected throws to the
-kernel's opaque `500`. A swallowed outage remains fail-closed as `401`; a
-classification-erased outage remains fail-closed as `500`. These are
-documented provider-library limitations and deferred upstream issues, not
-claimed exact-`503` cases. A generic non-Better-Auth provider must exercise the
-exact `unavailable` to `503` conformance branch. No health-preflight workaround
-is introduced. Better Auth 1.6.24's default logger receives the original store
-error before its public API rewrites that error. The adapter neither receives
-nor re-logs that original value, and it cannot safely mutate the caller's
-configured Better Auth instance. Deployments with strict log-secrecy
-requirements must therefore disable or sanitize the Better Auth dependency
-logger when constructing that instance.
+The kernel's status guarantee is exact for provider-classified results. In
+session mode, Better Auth's public session API may collapse an internal
+dependency failure to the same `null` used for an absent session, which an
+adapter cannot disambiguate. Locked-version fault injection also proves that
+Better Auth 1.6.24 catches a session-store error carrying `status: 503` and
+surfaces an `APIError` with `status: "INTERNAL_SERVER_ERROR"` and
+`statusCode: 500`. The adapter therefore maps `null` to `anonymous`, only
+still-classified observable outage errors to `unavailable`, and
+classification-erased or otherwise unexpected throws to the kernel's opaque
+`500`. A swallowed outage remains fail-closed as `401`; a
+classification-erased outage remains fail-closed as `500`.
 
-A managed preset may configure Better Auth with API-key support and provide the
-resulting configured instance to the same adapter. Bootstrap, secret delivery,
-rotation, revocation, and Better Auth migrations remain provider/IaC
-responsibilities.
+Verify-API-key mode maps the endpoint's `{ valid: false }` result to anonymous.
+A thrown, still-classified dependency outage is unavailable; an unexpected or
+malformed result follows the opaque `500` branch. The adapter does not expose
+Better Auth's returned error detail.
+
+These are documented provider-library limitations and deferred upstream
+issues, not claimed exact-`503` cases. A generic non-Better-Auth provider must
+exercise the exact `unavailable` to `503` conformance branch. No
+health-preflight workaround is introduced. Better Auth 1.6.24's default logger
+receives the original store error before its public API rewrites that error.
+The adapter neither receives nor re-logs that original value, and it cannot
+safely mutate the caller's configured Better Auth instance. Deployments with
+strict log-secrecy requirements must therefore disable or sanitize the Better
+Auth dependency logger when constructing that instance.
+
+Better Auth key creation, secret delivery, rotation, revocation, permissions,
+and migrations remain application responsibilities. Managed Hot Updater
+runtimes do not construct a Better Auth database solely for this purpose; they
+use `@hot-updater/api-key`.
+
+## Native API-key composition
+
+`apiKey({ sha256, headerName? })` is the database-independent managed
+authentication manifest. It validates and freezes the configured digest at
+construction, defaults `headerName` to `x-api-key`, and contributes exactly one
+authentication provider plus protect-all. It contributes no HTTP route,
+metadata, feature API, migration, or lifecycle hook.
+
+For each protected request, the provider hashes the presented header value,
+compares the fixed-length digest without early exit, and then discards the
+presented value. Missing and mismatched keys are anonymous. The authenticated
+principal is exactly
+`{ issuer: "hot-updater-api-key", subject: "managed" }`; neither the raw key
+nor its digest becomes principal state, metadata, response detail, or a log
+field. Malformed configured digests fail construction rather than making every
+request anonymous.
+
+This plugin deliberately verifies one deployment key. Key generation and local
+delivery belong to the provisioning subpath, while provider IaC only transports
+the digest. The split keeps filesystem access and secret generation out of
+request runtimes and keeps provider-specific deployment logic out of the
+authentication package.
 
 ## Standalone boundaries
 
@@ -1010,7 +1196,8 @@ any configured credential is sent:
 - never use inbound headers or principal state as outbound configuration.
 
 A per-request outbound credential provider is a later additive API. It becomes
-mandatory before a managed preset relies on rotating standalone credentials.
+mandatory before any standalone deployment relies on rotating outbound
+credentials.
 At that point it owns sensitive authentication headers and route overrides
 cannot replace them.
 
@@ -1024,32 +1211,55 @@ free of Analytics wiring.
 
 ## Managed provider policy
 
-Managed Analytics defaults remain behavior-compatible during extraction:
+Every managed server preset installs
+`apiKey({ sha256: HotUpdater.API_KEY_SHA256 })`. The plugin contributes one
+authentication provider and protect-all; the policy applies after Analytics
+routes are installed. The exact default matrix is:
 
-- Cloudflare, Firebase, and Supabase explicitly install
-  `analytics({ queryAccess: "public" })`;
-- AWS/blob providers remain Analytics-off unless their preset installs the
-  feature.
+| Managed handler | `/version` | Update-check routes | Bundle routes | Analytics ingestion | Analytics queries |
+| --------------- | ---------- | ------------------- | ------------- | ------------------- | ----------------- |
+| AWS             | protected  | protected           | not mounted   | not mounted         | not mounted       |
+| Cloudflare      | protected  | protected           | not mounted   | protected           | protected         |
+| Firebase        | protected  | protected           | not mounted   | protected           | protected         |
+| Supabase        | protected  | protected           | not mounted   | protected           | protected         |
 
-Managed Better Auth API-key authentication is staged per provider rather than
-enabled universally in the kernel release.
+Cloudflare, Firebase, and Supabase explicitly install `analytics()`. AWS does
+not install Analytics. A route that is not mounted is not implied by the
+protect-all policy; every route that the resulting handler does expose requires
+the key.
 
-Before a managed provider claims API-key support, it must provide:
+Managed provisioning uses
+`@hot-updater/api-key/provisioning`:
 
-- idempotent first bootstrap;
-- one-time secret delivery without logs or source generation;
-- hashed server-side verification material;
-- least-privilege keys;
-- explicit expiration and revocation;
-- overlap rotation with old and new keys;
-- recovery when the active management credential is lost;
-- end-to-end tests for bootstrap, authentication, rotation, and revocation.
+```typescript
+import { provisionApiKey } from "@hot-updater/api-key/provisioning";
 
-Update checks and event ingestion remain public in the default managed policy.
-Analytics queries remain explicitly public only during the compatibility
-stage. Bundle management and Analytics queries use protected route manifests
-when a managed authentication preset is enabled. A key embedded in a React
-Native application is not treated as a management secret.
+const { apiKey, sha256 } = await provisionApiKey({
+  envFilePath: ".env.hotupdater",
+});
+```
+
+Provisioning generates the key locally, returns `{ apiKey, sha256 }`, and
+writes `HOT_UPDATER_API_KEY` to `envFilePath` or the default local
+`.env.hotupdater`. If that file already contains one canonical key, it reuses
+the key and derives the same digest rather than rotating implicitly. Provider
+IaC injects only the digest as `HotUpdater.API_KEY_SHA256`; the raw key must not
+appear in deployed environment variables, provider state, generated source,
+command arguments, or logs. The mobile client reads the local raw key and
+sends it as `x-api-key`.
+
+AWS additionally disables caching for the CloudFront behavior that reaches the
+handler and ensures authenticated handler responses are `Cache-Control:
+no-store`. Authentication must execute on every handler request; a cache key
+that includes `x-api-key` is not an acceptable substitute.
+
+This preset is a single-key deployment bootstrap, not a credential-management
+service. A key embedded in a React Native bundle is extractable by a motivated
+client. It is useful as a deployment access gate and abuse barrier, but it is
+not an administrator credential, user identity, per-device secret, or
+authorization boundary for privileged management APIs. Remote rotation,
+overlapping keys, revocation, expiry, permission policy, recovery, and a secret
+broker are explicit follow-up scope.
 
 ## Migration plan
 
@@ -1063,17 +1273,24 @@ the kernel extraction into its forward-only migrations.
 - add the generic plugin composer to `@hot-updater/server`;
 - add `@hot-updater/analytics`;
 - add `@hot-updater/better-auth`;
+- add `@hot-updater/api-key` and its provisioning subpath;
+- restore `HandlerOptions.routes` and `HandlerRoutes` as the only public
+  built-in route option surface;
+- add the monotonic protect-all contribution to the generic composer;
 - expose the guarded generic database runtime to first-party feature setup;
 - make `analytics()` own the default bounded provider and explicit dedicated
   provider factory;
-- preserve current HTTP behavior and provider migrations;
+- preserve self-hosted HTTP shapes and provider migrations while documenting
+  the managed authentication policy change;
 - migrate `@hot-updater/server/node` to generic lazy raw-body forwarding and
   route request policies; reject already parsed protected bodies;
 - remove plugin-core's public high-level Analytics service/domain/token
   surface and neutralize server adapter names while retaining the internal raw
   persistence model and existing migrations;
-- convert managed presets to
-  `plugins: [analytics({ queryAccess: "public" })]`;
+- convert Cloudflare, Firebase, and Supabase managed presets to
+  `plugins: [analytics(), apiKey({ sha256 })]`;
+- convert AWS to `plugins: [apiKey({ sha256 })]`, disable handler caching, and
+  provision only the digest to deployed runtime configuration;
 - expose the old `routes.analytics` composition only from
   `@hot-updater/analytics/legacy-server`, whose only exports are
   `createLegacyHotUpdater` and `LegacyCreateHotUpdaterOptions`;
@@ -1123,20 +1340,22 @@ service/domain/token exports already leave in Stage 1.
 | Existing surface                                    | New owner or replacement                          | Compatibility                                                                                            |
 | --------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `createHotUpdater({ routes: { analytics: true } })` | `plugins: [analytics()]`                          | Breaking source migration; legacy wrapper under `@hot-updater/analytics/legacy-server` during Stages 1-2 |
+| `HandlerOptions.coreRoutes`                         | `HandlerOptions.routes: HandlerRoutes`            | Unreleased kernel branch migration; `coreRoutes` remains internal only                                   |
 | Flat `getBundleEvent*` and installation methods     | `hotUpdater.features.analytics.*`                 | Generic flat aliases during Stages 1-2, then removed                                                     |
 | Server Analytics types and database Analytics API   | `@hot-updater/analytics`                          | Explicit import migration                                                                                |
 | Server generic DB adapters                          | Existing `@hot-updater/server/adapters/*` paths   | Preserved; adapters remain Analytics-free                                                                |
 | `@hot-updater/server`, `/db`, and `/node`           | Existing paths                                    | Preserved except documented Analytics exports                                                            |
-| Cloudflare `/worker`                                | Existing path                                    | Preserved                                                                                                |
+| Cloudflare `/worker`                                | Existing path                                     | Preserved                                                                                                |
 | Firebase `/functions` and `/functions/handler`      | Existing paths                                    | Preserved                                                                                                |
-| Supabase `/edge`                                    | Existing path                                    | Preserved                                                                                                |
+| Supabase `/edge`                                    | Existing path                                     | Preserved                                                                                                |
 | Standalone route overrides                          | `standaloneAnalytics(config)` plus existing paths | Explicit Console config migration; independent ingestion/query availability preserved                    |
 
 Provider migration assets keep their existing package, filename, version, and
 execution owner. The extraction creates no replacement migration, does not
 rename or replay D1/Supabase migrations, and does not recreate Firebase
-collections or indexes. Better Auth migrations are configured and run by the
-application or managed-provider IaC, never by Hot Updater.
+collections or indexes. Better Auth migrations are configured and run by an
+application that selects the Better Auth adapter, never by Hot Updater or a
+managed native API-key preset.
 
 ## Error model
 
@@ -1174,6 +1393,8 @@ runtime failures are owned by the feature plugin.
   or token; the temporary internal raw persistence row is not exported through
   the server feature API.
 - `HandlerOptions` has no type parameter.
+- `HandlerOptions.routes` is typed as `HandlerRoutes`; `coreRoutes` fails
+  excess-property type checks on both public handler entrypoints.
 - `routes.eventIngestion` fails excess-property type checks.
 - `routes.analytics` fails excess-property type checks on the new server
   entrypoint.
@@ -1187,6 +1408,8 @@ runtime failures are owned by the feature plugin.
   reject;
 - protected routes without authentication reject;
 - multiple authentication providers reject;
+- protect-all upgrades core and feature routes regardless of plugin order,
+  remains idempotent under duplicate policies, and has no downgrade form;
 - manifests cannot mutate after construction;
 - base path is applied exactly once;
 - static routes outrank parameter routes independent of registration order;
@@ -1214,7 +1437,8 @@ runtime failures are owned by the feature plugin.
 - AWS/blob managed presets omit `analytics()` and emit no warning; custom
   versioned-CAS blob servers may install it explicitly;
 - Cloudflare/Firebase/Supabase database plugins expose no Analytics
-  contributions while their server presets install `analytics()`;
+  contributions while their managed server presets install `analytics()` and
+  protect all of its routes;
 - Console preserves `.mts` and `.cts` manifest identity and uses
   `standaloneAnalytics(config)` for a dedicated remote provider, while an
   omitted Console setting installs no Analytics feature;
@@ -1231,10 +1455,19 @@ runtime failures are owned by the feature plugin.
 - no later middleware, handler, database, or storage operation runs;
 - principal state is isolated across concurrent requests;
 - a configured Better Auth instance is used without mutation;
+- Better Auth API-key mode forwards the configured header value, `configId`,
+  and permissions only to `auth.api.verifyApiKey`;
+- a missing or invalid Better Auth key denies `/version`, update-check, bundle,
+  ingestion, and query routes without invoking their handlers;
+- `@hot-updater/api-key` accepts a valid digest-matching key, rejects malformed
+  digests at construction, and denies missing or invalid keys;
+- native verification does not depend on a database and exposes neither the raw
+  key nor its digest through metadata or errors;
 - locked Better Auth outage behavior is characterized without leaking the
   provider error or secret sentinel through the adapter, kernel response, or
   Hot Updater logs;
-- no `protect` or `authorize` callback can downgrade route access;
+- no path-selective `protect` or `authorize` callback can downgrade route
+  access;
 - a non-API-key authentication implementation passes the same contract suite.
 
 ### Adapters and managed runtimes
@@ -1245,10 +1478,16 @@ runtime failures are owned by the feature plugin.
 - standalone rejects credential-bearing cross-origin destinations and
   redirects while preserving configured outbound headers;
 - Cloudflare worker, Firebase emulator, and Supabase Docker integration suites
-  preserve observable route behavior;
+  require `x-api-key` for version, update, ingestion, and query routes;
+- AWS integration tests prove the handler behavior has caching disabled,
+  authenticated responses are `no-store`, and no response is served without a
+  fresh authentication decision;
+- managed artifact tests prove deployed configuration and generated sources
+  contain only `HotUpdater.API_KEY_SHA256`, while the raw
+  `HOT_UPDATER_API_KEY` remains in the local environment file;
 - no provider migration is recreated, replayed, or moved;
-- managed authentication bootstrap and rotation pass provider-specific E2E
-  before being enabled.
+- provisioning reuses one valid existing local key, rejects duplicate or
+  malformed definitions, and never prints either credential representation.
 
 ### Package and type surface
 
@@ -1258,9 +1497,9 @@ runtime failures are owned by the feature plugin.
   condition;
 - real extracted tarballs resolve server root and
   `/internal/first-party-plugin`, plugin-core capability authoring/enumeration,
-  Analytics, Better Auth, and managed entrypoints in ESM and CommonJS, with
-  matching `.d.mts` and `.d.cts` declarations under NodeNext and
-  `skipLibCheck: false`;
+  Analytics, Better Auth, native API key, API-key provisioning, and managed
+  entrypoints in ESM and CommonJS, with matching `.d.mts` and `.d.cts`
+  declarations under NodeNext and `skipLibCheck: false`;
 - config-loader tests cover direct TypeScript, ESM, and CommonJS configs,
   transitive and functional CommonJS providers, concurrent evaluation,
   success/error cache restoration, and real mixed CommonJS-provider to
@@ -1285,4 +1524,8 @@ The following are intentionally deferred beyond the first release:
   namespaced feature API;
 - route-level authorization and permissions;
 - cross-plugin mutable services;
-- plugin hot reload.
+- plugin hot reload;
+- managed multi-key rotation, overlap, revocation, expiry, recovery, and remote
+  secret delivery;
+- per-user or per-device authorization and any claim that a mobile-embedded key
+  is non-extractable.

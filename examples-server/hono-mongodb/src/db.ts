@@ -48,7 +48,7 @@ export const hotUpdater = createHotUpdater({
     // }),
   ],
   basePath: "/hot-updater",
-  coreRoutes: {
+  routes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },

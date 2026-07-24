@@ -14,6 +14,10 @@ export type HotUpdaterRouteAccess =
   | { readonly kind: "public" }
   | { readonly kind: "protected" };
 
+export type HotUpdaterRoutePolicy = {
+  readonly kind: "protect-all";
+};
+
 export type HotUpdaterPayloadTooLargeResponse = {
   readonly body: JsonValue;
   readonly headers?: Readonly<Record<string, string>>;

@@ -2,6 +2,7 @@ import type { RuntimeFeatureApiContribution } from "./apiProjection";
 import type {
   HotUpdaterAuthenticationProvider,
   HotUpdaterPostAuthMiddleware,
+  HotUpdaterRoutePolicy,
   HotUpdaterServerRoute,
   HotUpdaterVersionMetadataContribution,
 } from "./contracts";
@@ -13,6 +14,7 @@ export type ValidatedPluginContribution = {
   readonly authentication?: HotUpdaterAuthenticationProvider;
   readonly metadata: readonly HotUpdaterVersionMetadataContribution[];
   readonly middleware: readonly HotUpdaterPostAuthMiddleware[];
+  readonly routePolicy?: HotUpdaterRoutePolicy;
   readonly routes: readonly HotUpdaterServerRoute[];
 };
 
@@ -41,6 +43,18 @@ const isAccess = (value: unknown): boolean =>
   hasOnlyKeys(value, ["kind"]) &&
   (Reflect.get(value, "kind") === "public" ||
     Reflect.get(value, "kind") === "protected");
+
+const readRoutePolicy = (value: unknown): HotUpdaterRoutePolicy | undefined => {
+  if (value === undefined) return undefined;
+  if (
+    !isObject(value) ||
+    !hasOnlyKeys(value, ["kind"]) ||
+    Reflect.get(value, "kind") !== "protect-all"
+  ) {
+    throw new Error("Invalid route policy contribution.");
+  }
+  return Object.freeze({ kind: "protect-all" });
+};
 
 const isRequestPolicy = (value: unknown): boolean => {
   if (!isObject(value)) return false;
@@ -199,6 +213,7 @@ export const validatePluginContribution = (
       "authentication",
       "metadata",
       "middleware",
+      "routePolicy",
       "routes",
     ])
   ) {
@@ -224,6 +239,7 @@ export const validatePluginContribution = (
     authentication,
     metadata: Object.freeze([...metadata]),
     middleware: Object.freeze([...middleware]),
+    routePolicy: readRoutePolicy(Reflect.get(value, "routePolicy")),
     routes: Object.freeze([...routes]),
   });
 };

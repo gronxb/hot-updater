@@ -156,7 +156,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const customApi = createHotUpdater({
       database: createInMemoryBlobDatabase(customStore),
       basePath: "/api/v2",
-      coreRoutes: {
+      routes: {
         updateCheck: true,
         bundles: { access: { kind: "public" } },
       },
@@ -193,7 +193,7 @@ describe("Handler <-> Standalone Repository Integration", () => {
     const blobApi = createHotUpdater({
       database: createInMemoryBlobDatabase(store),
       basePath: "/blob-hot-updater",
-      coreRoutes: {
+      routes: {
         updateCheck: true,
         bundles: { access: { kind: "public" } },
       },

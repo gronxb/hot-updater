@@ -2,6 +2,7 @@
 // After adding bindings to `wrangler.json`, regenerate this interface via `npm run cf-typegen`
 declare namespace Cloudflare {
   interface Env {
+    API_KEY_SHA256: string;
     DB: D1Database;
     BUCKET: R2Bucket;
     JWT_SECRET: string;

@@ -109,7 +109,7 @@ import { createHotUpdater } from "@hot-updater/server";
 export const hotUpdater = createHotUpdater({
   database,
   storages,
-  coreRoutes: {
+  routes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },

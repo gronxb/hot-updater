@@ -20,6 +20,7 @@ export class LambdaEdgeDeployer {
   async deploy(
     lambdaRoleArn: string,
     config: {
+      apiKeySha256: string;
       bucketName: string;
       publicKeyId: string;
       ssmParameterName: string;
@@ -41,6 +42,7 @@ export class LambdaEdgeDeployer {
     // Transform Lambda code with CloudFront key pair details and SSM config
     const indexPath = path.join(tmpDir, "index.cjs");
     const code = transformEnv(indexPath, {
+      API_KEY_SHA256: config.apiKeySha256,
       CLOUDFRONT_KEY_PAIR_ID: config.publicKeyId,
       SSM_PARAMETER_NAME: config.ssmParameterName,
       SSM_REGION: config.ssmRegion,

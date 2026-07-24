@@ -1,5 +1,7 @@
 import { analytics } from "@hot-updater/analytics";
+import { apiKey } from "@hot-updater/api-key";
 import { createHotUpdater } from "@hot-updater/server";
+import { env } from "cloudflare:workers";
 import { Hono } from "hono";
 
 import {
@@ -10,6 +12,7 @@ import {
 } from "../../src/worker";
 
 export type CloudflareWorkerEnv = {
+  API_KEY_SHA256: string;
   DB: {
     prepare: D1Database["prepare"];
   };
@@ -41,11 +44,11 @@ const hotUpdater = createHotUpdater({
     })(),
   ],
   basePath: "/",
-  coreRoutes: {
+  routes: {
     bundles: false,
     updateCheck: true,
   },
-  plugins: [analytics({ queryAccess: "public" })],
+  plugins: [apiKey({ sha256: env.API_KEY_SHA256 }), analytics()],
 });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();

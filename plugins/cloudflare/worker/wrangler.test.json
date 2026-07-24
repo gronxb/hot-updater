@@ -8,6 +8,7 @@
     "enabled": true
   },
   "vars": {
+    "API_KEY_SHA256": "3Ev4DHdHPRMPoN6GukAY_pi7IUAF5qWJHRK6kURvnoE",
     "JWT_SECRET": "test-secret"
   },
   "d1_databases": [

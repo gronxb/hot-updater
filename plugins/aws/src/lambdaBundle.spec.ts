@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { transformEnv } from "@hot-updater/cli-tools";
 import { describe, expect, it } from "vitest";
 
 const managedHandlerPath = path.resolve(
@@ -15,9 +16,28 @@ describe("AWS Lambda managed handler bundle", () => {
 
     // When
     const unresolvedInternalImport =
-      /require\(["']@hot-updater\/(?:plugin-core|server)\/internal\//;
+      /require\(["']@hot-updater\/(?:api-key|plugin-core|server)(?:\/.*)?["']\)/;
 
     // Then
     expect(source).not.toMatch(unresolvedInternalImport);
+  });
+
+  it("injects only the API-key digest into the deployable artifact", async () => {
+    // Given: provisioning produced separate raw-key and digest values.
+    const rawApiKey = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+    const apiKeySha256 = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+
+    // When: IAC generates the Lambda artifact.
+    const artifact = transformEnv(managedHandlerPath, {
+      API_KEY_SHA256: apiKeySha256,
+      CLOUDFRONT_KEY_PAIR_ID: "KTEST",
+      S3_BUCKET_NAME: "hot-updater-test",
+      SSM_PARAMETER_NAME: "/hot-updater/test",
+      SSM_REGION: "us-east-1",
+    });
+
+    // Then: deployment contains the verifier but never the extractable key.
+    expect(artifact).toContain(apiKeySha256);
+    expect(artifact).not.toContain(rawApiKey);
   });
 });

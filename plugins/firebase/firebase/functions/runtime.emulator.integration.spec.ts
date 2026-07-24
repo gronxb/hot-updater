@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   access,
   chmod,
@@ -14,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { analytics, type AnalyticsAPI } from "@hot-updater/analytics";
+import { apiKey } from "@hot-updater/api-key";
 import { transformEnv } from "@hot-updater/cli-tools";
 import {
   type AppUpdateInfo,
@@ -46,6 +48,9 @@ const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
 const FUNCTION_NAME = "hot-updater";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
+const API_KEY = Buffer.alloc(32, 1).toString("base64url");
+const INVALID_API_KEY = Buffer.alloc(32, 2).toString("base64url");
+const API_KEY_SHA256 = createHash("sha256").update(API_KEY).digest("base64url");
 
 class InvalidUpdateResponseError extends Error {}
 
@@ -149,6 +154,30 @@ const toRuntimeBundle = (bundle: Bundle, storageBucket: string): Bundle => {
     storageUri: `gs://${storageBucket}/${bundle.id}/bundle.zip`,
   };
 };
+
+describe("firebase functions deployment artifact", () => {
+  it("ships only the digest placeholder", async () => {
+    // Given: the built Firebase Functions deployment artifact.
+    const runtimeSource = await readFile(
+      path.join(
+        WORKSPACE_ROOT,
+        "plugins/firebase/dist/firebase/functions/index.cjs",
+      ),
+      "utf8",
+    );
+
+    // When: the deployable credential references are inspected.
+    const containsDigestPlaceholder = runtimeSource.includes(
+      "HotUpdater.API_KEY_SHA256",
+    );
+
+    // Then: the artifact never reads or embeds the local raw credential.
+    expect(containsDigestPlaceholder).toBe(true);
+    expect(runtimeSource).not.toContain("HOT_UPDATER_API_KEY=");
+    expect(runtimeSource).not.toContain("process.env.HOT_UPDATER_API_KEY");
+    expect(runtimeSource).not.toContain(API_KEY);
+  });
+});
 
 describe.sequential("firebase functions runtime acceptance", () => {
   const cdnObjects = new Map<string, { body: string; contentType: string }>();
@@ -255,6 +284,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
           "plugins/firebase/dist/firebase/functions/index.cjs",
         ),
         {
+          API_KEY_SHA256,
           REGION,
         },
       ),
@@ -278,11 +308,11 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         })(),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      coreRoutes: {
+      routes: {
         bundles: false,
         updateCheck: true,
       },
-      plugins: [analytics({ queryAccess: "public" })],
+      plugins: [apiKey({ sha256: API_KEY_SHA256 }), analytics()],
     });
 
     functionsRuntime = spawnRuntime({
@@ -343,10 +373,18 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     }
   });
 
-  const invokeHandler = async (routePath: string, init?: RequestInit) => {
+  const invokeHandler = async (
+    routePath: string,
+    init?: RequestInit,
+    apiKey: string | null = API_KEY,
+  ) => {
+    const headers = new Headers(init?.headers);
+    if (apiKey !== null) {
+      headers.set("x-api-key", apiKey);
+    }
     return await fetch(
       `http://127.0.0.1:${functionsPort}/${projectId}/${REGION}/${FUNCTION_NAME}${routePath}`,
-      init,
+      { ...init, headers },
     );
   };
 
@@ -614,6 +652,68 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       },
     });
     expect(queryResponse.status).toBe(200);
+  });
+
+  const protectedRoutes = [
+    ["GET", "/version"],
+    ["GET", `/fingerprint/ios/fingerprint/production/${NIL_UUID}/${NIL_UUID}`],
+    [
+      "GET",
+      `/fingerprint/ios/fingerprint/production/${NIL_UUID}/${NIL_UUID}/cohort`,
+    ],
+    ["GET", `/app-version/ios/1.0/production/${NIL_UUID}/${NIL_UUID}`],
+    ["GET", `/app-version/ios/1.0/production/${NIL_UUID}/${NIL_UUID}/cohort`],
+    ["POST", "/events"],
+    ["GET", "/api/bundles/bundle-1/events/summary"],
+    ["GET", "/api/bundles/bundle-1/events/analytics"],
+    ["GET", "/api/installations/overview"],
+    ["GET", "/api/installations/active"],
+    ["GET", "/api/installations"],
+    ["GET", "/api/installations/install-1/events"],
+  ] as const;
+
+  it("denies a missing API key on every managed handler route", async () => {
+    // Given: every route mounted by the managed Firebase handler.
+    const requests = protectedRoutes.map(([method, routePath]) =>
+      invokeHandler(`${HOT_UPDATER_BASE_PATH}${routePath}`, { method }, null),
+    );
+
+    // When: the client omits the managed API key.
+    const responses = await Promise.all(requests);
+
+    // Then: authentication rejects every route before its handler runs.
+    expect(responses.map((response) => response.status)).toEqual(
+      protectedRoutes.map(() => 401),
+    );
+  });
+
+  it("denies an invalid API key on every managed handler route", async () => {
+    // Given: every route mounted by the managed Firebase handler.
+    const requests = protectedRoutes.map(([method, routePath]) =>
+      invokeHandler(
+        `${HOT_UPDATER_BASE_PATH}${routePath}`,
+        { method },
+        INVALID_API_KEY,
+      ),
+    );
+
+    // When: the client sends a digest-mismatched key.
+    const responses = await Promise.all(requests);
+
+    // Then: authentication rejects every route before its handler runs.
+    expect(responses.map((response) => response.status)).toEqual(
+      protectedRoutes.map(() => 401),
+    );
+  });
+
+  it("keeps the Firebase health endpoint public", async () => {
+    // Given: the managed handler exposes a platform health endpoint.
+    // When: the client calls it without an API key.
+    const response = await invokeHandler("/ping", undefined, null);
+
+    // Then: Firebase health checks continue to work.
+    expect(response.status).toBe(200);
+    await expect(response.text()).resolves.toBe("pong");
   });
 
   it("does not support the legacy exact path", async () => {
