@@ -127,6 +127,7 @@ const getDefaultConfig = (): ConfigInput => {
       maxBaseBundles: 3,
     },
     console: {
+      analytics: "disabled",
       port: 1422,
     },
     platform: getDefaultPlatformConfig(),
@@ -152,7 +153,17 @@ const mergeConfigSources = (
   );
 
   const database = sources.find((source) => source?.database)?.database;
-  return database ? { ...mergedConfig, database } : mergedConfig;
+  const analytics = sources.find(
+    (source) => source?.console?.analytics !== undefined,
+  )?.console?.analytics;
+  return {
+    ...mergedConfig,
+    ...(database ? { database } : {}),
+    console: {
+      ...mergedConfig.console,
+      ...(analytics === undefined ? {} : { analytics }),
+    },
+  };
 };
 
 const getConfigLoaderOptions = (

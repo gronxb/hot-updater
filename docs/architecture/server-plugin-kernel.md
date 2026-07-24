@@ -2,8 +2,8 @@
 
 ## Status
 
-- Status: Accepted for implementation planning
-- Last updated: 2026-07-24
+- Status: Accepted; implementation in verification
+- Last updated: 2026-07-25
 - Scope: `@hot-updater/server`, server feature plugins, provider
   capabilities, managed runtimes, and standalone forwarding
 - Target release: after the current database-plugin-v2 and Analytics release
@@ -23,12 +23,15 @@ roles:
 | Security architect                       | PASS          |
 | Independent capability-contract mediator | PASS          |
 
-The proponent and opponent first disagreed on missing-provider behavior and
-the runtime API shape. The mediator selected a discriminated feature state,
-default warning behavior, and an opt-in strict construction error. Later
-objections about available-branch aliases and schema-readiness ordering were
-accepted, incorporated, and re-reviewed to PASS. No unresolved blocker remains
-in this design.
+An implementation review with kernel ownership, compatibility, provider,
+consumer, security, and architecture-opponent personas superseded the original
+missing-provider proposal. Following the Better Auth API Key precedent, a
+feature consumes the generic adapter but the adapter does not install the
+feature. Analytics therefore receives the frozen guarded database runtime
+directly, always constructs an available feature, and accepts an explicit
+provider factory for dedicated transports. Standalone uses a separate
+`standaloneAnalytics(config)` manifest. No unresolved blocker remains in this
+design.
 
 ### Implementation consensus addendum
 
@@ -80,9 +83,9 @@ clarifications are normative where they narrow or repair the original prose:
   `DUPLICATE_CAPABILITY_TOKEN_ID` and `DUPLICATE_CAPABILITY_PROVIDER`.
   Compilation uses stable lexical identities.
 - **R12 — Analytics/transport ownership:** Analytics owns operation, parsing,
-  provider, probe/cache, metadata, API, and bridge semantics. Provider/runtime
-  owns generic guarded transport, carriers, package wiring, and managed
-  presets.
+  provider selection, metadata, API, and bridge semantics. The standalone
+  companion owns its dedicated guarded transport and probe/cache behavior.
+  Database plugins own neither.
 - **R13 — legacy bridge:** `@hot-updater/analytics/legacy-server` exports
   exactly `createLegacyHotUpdater` and `LegacyCreateHotUpdaterOptions`. Only
   that option type recognizes `routes.analytics`; it never adds
@@ -91,12 +94,12 @@ clarifications are normative where they narrow or repair the original prose:
   condition-specific `.d.mts` and `.d.cts` declarations verified from a real
   packed tarball. Package runtime maps remain condition-specific. CLI config
   evaluation instead uses a serialized, temporary canonical module cohort for
-  plugin-core root/internal capability APIs and Analytics root/provider, the
-  sole current feature-token owner, then restores the CommonJS cache on
-  success or failure. Every future package that defines capability tokens and
-  is usable from config must join this cohort and add a mixed CommonJS
-  config-to-ESM runtime composition gate, or replace the bridge with an
-  equivalent nominal identity substrate.
+  plugin-core root/internal capability APIs, Analytics root, and the server's
+  private first-party manifest authoring entry, then restores the CommonJS
+  cache on success or failure. Every future nominal package surface usable from
+  config must join this cohort and add a mixed CommonJS config-to-ESM runtime
+  composition gate, or replace the bridge with an equivalent identity
+  substrate.
 
 ## Decision summary
 
@@ -120,8 +123,9 @@ source-compatibility bridge, when needed, lives under
 package.
 
 Installing `analytics()` is the only feature-level operation that enables
-Analytics. A provider capability alone never mounts Analytics routes or exposes
-Analytics API behavior.
+Analytics. The feature owns its provider selection: it uses the guarded generic
+database runtime by default and may receive an explicit provider factory for a
+dedicated transport. Database plugins never install or advertise Analytics.
 
 Authentication is a mechanism-neutral kernel concept. A configured
 authentication plugin gates protected routes before their bodies or handlers
@@ -169,14 +173,16 @@ semantically irrelevant, and every ownership conflict is a construction error.
 2. Omitting `analytics()` removes every Analytics route, handler, runtime
    metadata contribution, and Analytics-only public type.
 3. Installing `analytics()` contributes the complete Analytics HTTP feature.
-4. Analytics-capable providers expose a validated capability through a generic
-   provider capability carrier.
-5. Providers that do not expose that capability remain valid providers.
-6. Installing `analytics()` without a local provider capability succeeds with
-   one construction-time warning, publishes no Analytics routes, and exposes a
-   typed unavailable feature state. A strict Analytics option may instead
-   require a construction error.
-7. Remote standalone capability availability may remain asynchronous, but
+4. `analytics()` consumes the kernel's frozen, schema-guarded generic database
+   runtime and creates its bounded provider without modifying the database
+   plugin.
+5. Dedicated implementations are supplied to `analytics()` through its
+   provider-factory option; `standaloneAnalytics()` is the supported standalone
+   companion.
+6. Installing `analytics()` always yields an available feature at construction
+   time. Runtime availability metadata may still report independent remote
+   ingestion and query support.
+7. Remote standalone availability may remain asynchronous, but
    unavailable or indeterminate remote operations fail closed.
 8. The same plugin set produces the same route manifest and access behavior
    regardless of plugin array order.
@@ -190,8 +196,7 @@ semantically irrelevant, and every ownership conflict is a construction error.
 13. `routes.eventIngestion` is not introduced.
 14. The `plugins` tuple determines the returned feature API type. Omitting
     `analytics()` removes the Analytics namespace at compile time and runtime;
-    its literal missing-capability policy determines whether the installed
-    namespace is an availability union or a guaranteed available API.
+    installing it yields the available Analytics API.
 15. Feature plugins cannot contribute database migrations or asynchronous
     lifecycle work. Infrastructure setup and cleanup remain database and
     storage responsibilities.
@@ -364,9 +369,8 @@ Stage 1; shared boundaries use neutral model-indexed persistence names.
 Owns:
 
 - `analytics()`;
-- the Analytics provider capability token and runtime validator;
-- `withAnalyticsProvider(database)`, which attaches a deferred Analytics
-  provider factory to a generic database capability carrier;
+- the Analytics provider factory contract and runtime validator;
+- the default bounded provider over the guarded generic database runtime;
 - event and installation domain types;
 - ingestion and query route manifests;
 - payload parsing and body-size limits;
@@ -406,28 +410,30 @@ Cloudflare, Firebase, Supabase, AWS, and custom providers retain ownership of:
 Moving Analytics code does not move or replay provider database migrations.
 
 `@hot-updater/server/adapters/{drizzle,kysely,mongodb,prisma}` remain generic
-and never attach the Analytics token. A self-hosted consumer opts in at the
-Analytics boundary:
+and never attach Analytics metadata or provider wiring. A self-hosted consumer
+opts in only at the feature boundary:
 
 ```typescript
-const database = withAnalyticsProvider(prismaAdapter(options));
+createHotUpdater({
+  database: prismaAdapter(options),
+  plugins: [analytics()],
+});
 ```
 
-Cloudflare, Firebase, and Supabase apply the same wrapper inside their managed
-packages. AWS and blob-backed providers do not gain the capability unless they
-deliberately implement and attach the Analytics provider contract.
+Cloudflare, Firebase, Supabase, and PostgreSQL database plugins remain
+Analytics-agnostic. AWS and blob-backed providers remain valid core-only
+providers when their server presets omit `analytics()`.
 
 ## Public composition
 
 ```typescript
 import { analytics } from "@hot-updater/analytics";
-import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { betterAuthPlugin } from "@hot-updater/better-auth";
 import { createHotUpdater } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 
 const hotUpdater = createHotUpdater({
-  database: withAnalyticsProvider(prismaAdapter(databaseOptions)),
+  database: prismaAdapter(databaseOptions),
   storages,
   plugins: [analytics(), betterAuthPlugin({ auth })],
   basePath: "/api/check-update",
@@ -435,13 +441,11 @@ const hotUpdater = createHotUpdater({
 
 const analyticsFeature = hotUpdater.features.analytics;
 
-if (analyticsFeature.status === "available") {
-  await analyticsFeature.getBundleEventSummary(input);
-}
+await analyticsFeature.getBundleEventSummary(input);
 ```
 
-The same Analytics-capable database without `analytics()` exposes no Analytics
-behavior or Analytics runtime API:
+The same database without `analytics()` exposes no Analytics behavior or
+Analytics runtime API:
 
 ```typescript
 const hotUpdater = createHotUpdater({
@@ -456,12 +460,7 @@ spell their current public-query policy explicitly:
 ```typescript
 createHotUpdater({
   database: managedAnalyticsDatabase,
-  plugins: [
-    analytics({
-      queryAccess: "public",
-      missingCapability: "error",
-    }),
-  ],
+  plugins: [analytics({ queryAccess: "public" })],
 });
 ```
 
@@ -517,44 +516,36 @@ declare function createHotUpdater<
 `ProjectPlugins` is an internal type-level fold from each branded
 manifest's fixed namespace and private `FeatureApiKind` witness to its API type
 after applying `TContext`. Omitted plugins infer an exact frozen empty feature
-object, never the widened first-party manifest array. Available branches carry
-their required transitional aliases; unavailable branches carry none, so
-narrowing the feature state also narrows alias presence. `analytics()` has
-fixed plugin ID and namespace `"analytics"` and the package version as its
-manifest version; none can be overridden through options. `analytics()`
-accepts one normalized configuration object, not a configuration array or
-fallback ID. Two instances fail with `DUPLICATE_PLUGIN_ID` before setup.
+object, never the widened first-party manifest array. Installed features carry
+their transitional aliases. `analytics()` has fixed plugin ID and namespace
+`"analytics"` and the package version as its manifest version; none can be
+overridden through options. `analytics()` accepts one normalized configuration
+object, not a configuration array or fallback ID. Two instances fail with
+`DUPLICATE_PLUGIN_ID` before setup.
 
-The Analytics factory preserves the literal missing-capability policy:
+The Analytics factory accepts feature-owned provider selection:
 
 ```typescript
 export interface AnalyticsOptions {
+  readonly provider?: AnalyticsProviderFactory;
   readonly queryAccess?: "protected" | "public";
-  readonly missingCapability?: "warn" | "error";
 }
 
-export type AnalyticsFeatureUnavailable = Readonly<{
-  status: "unavailable";
-  reason: "missing-provider-capability";
-}>;
+export type AnalyticsProviderFactory = (
+  database: DatabaseCapabilityRuntime,
+) => AnalyticsProvider;
 
 export type AnalyticsFeatureAvailable = Readonly<
   AnalyticsAPI & {
     status: "available";
   }
 >;
-
-export type AnalyticsFeature =
-  | AnalyticsFeatureAvailable
-  | AnalyticsFeatureUnavailable;
 ```
 
-`analytics()` defaults to protected query access and the `"warn"`
-missing-capability policy, and carries `AnalyticsFeature`. A literal
-`analytics({ missingCapability: "error" })` carries
-`AnalyticsFeatureAvailable`; if the capability is absent, construction throws
-before a handler is returned. A widened `"warn" | "error"` option is inferred
-as the safe union.
+`analytics()` defaults to protected query access and a bounded provider over
+the guarded generic database runtime. A dedicated provider factory overrides
+only provider creation; the Analytics feature still owns routes, validation,
+metadata, and its API.
 
 ## Kernel contracts
 
@@ -645,6 +636,7 @@ interface HotUpdaterFeatureManifest<
 
 export interface HotUpdaterPluginSetupContext {
   readonly capabilities: CapabilityRegistry;
+  readonly database: DatabaseCapabilityRuntime;
   readonly diagnostics: HotUpdaterConstructionDiagnostics;
 }
 
@@ -905,12 +897,10 @@ Analytics capability keys, including its asynchronous standalone resolution.
 14. Freeze every route, middleware, capability, metadata, and API manifest.
 15. Return the runtime handler, core API, and plugin-inferred `features` API.
 
-Setup failures, strict missing capabilities, invalid advertised capabilities,
-invalid contributions, middleware dependency cycles, unknown middleware
-edges, and ownership collisions are typed construction errors. A continue-mode
-missing capability is an explicit unavailable contribution, never silent
-deduplication or partial feature mounting. No first-wins, last-wins, or
-array-order behavior is permitted.
+Setup failures, missing required capabilities, invalid advertised
+capabilities, invalid contributions, middleware dependency cycles, unknown
+middleware edges, and ownership collisions are typed construction errors. No
+first-wins, last-wins, or array-order behavior is permitted.
 
 ## Analytics composition
 
@@ -919,13 +909,11 @@ array-order behavior is permitted.
 1. validates, normalizes, and freezes its options in the factory;
 2. returns the concrete literal manifest with fixed ID, namespace, and package
    version without widening away its API type;
-3. requests the Analytics provider token from
-   `@hot-updater/analytics/provider` using the normalized missing-capability
-   policy;
-4. validates every advertised provider value before setup;
-5. in warn mode, represents a missing provider as a frozen unavailable feature,
-   emits one warning, and contributes no Analytics route or flat API alias;
-6. with a valid provider, contributes ingestion and query routes;
+3. receives the kernel's frozen, schema-guarded generic database runtime;
+4. creates the bounded provider from that runtime unless an explicit provider
+   factory is configured;
+5. validates the resulting provider before contributing anything;
+6. contributes ingestion and query routes;
 7. declares ingestion public by default;
 8. declares Analytics and installation queries protected by default;
 9. owns all parsing, limits, errors, and handlers;
@@ -939,21 +927,6 @@ return types cannot be maintained in separate parallel maps. The feature
 manifest has no generic `options`, `schema`, `migrations`, `init`, or cleanup
 field.
 
-Warn-mode capability absence contributes only:
-
-```json
-{
-  "analytics": false,
-  "eventIngestion": false,
-  "analyticsQueries": false
-}
-```
-
-It does not publish `mode`, `maxMatchingRows`, an Analytics handler, a
-transitional flat API alias, or a fake method that throws. Malformed advertised
-capabilities and duplicate providers are configuration errors in both modes.
-Strict missing capability is `MISSING_CAPABILITY`.
-
 The public configuration does not gain `routes.eventIngestion`.
 
 For an intentionally public, self-hosted Analytics deployment, the Analytics
@@ -961,19 +934,18 @@ plugin receives `analytics({ queryAccess: "public" })`. Managed providers use
 that explicit override only for the compatibility stage. Protected routes are
 never silently downgraded because an authentication provider is absent.
 
-`withAnalyticsProvider(database)` attaches a synchronous factory but does not
-instantiate an operational provider immediately. The kernel first creates the
-same guarded database runtime used by core operations, then passes it to the
-factory. Every Analytics database call therefore crosses the existing schema
-readiness guard. The wrapper does not run migrations, inspect a remote server,
-or make network calls during plugin setup. The server's generic Prisma,
-Drizzle, Kysely, and Mongo adapters never attach the token themselves.
+The kernel passes the same guarded database runtime used by core operations to
+the feature factory. Every default Analytics database call therefore crosses
+the existing schema-readiness guard. Database plugins are not wrapped, mutated,
+or asked to advertise Analytics.
 
-For standalone, construction validates only the attached capability shape.
-Remote ingestion and query availability are resolved independently at request
-and metadata time with the existing 30-second fresh cache, 5-minute bounded
-stale fallback, and 5-second timeout. An unavailable or indeterminate
-operation fails closed without disabling an independently available operation.
+For standalone, `standaloneAnalytics(config)` creates an Analytics manifest
+whose explicit provider factory owns the remote transport. Construction makes
+no network call. Remote ingestion and query availability are resolved
+independently at request and metadata time with the existing 30-second fresh
+cache, 5-minute bounded stale fallback, and 5-second timeout. An unavailable or
+indeterminate operation fails closed without disabling an independently
+available operation.
 
 ## Better Auth composition
 
@@ -1043,21 +1015,21 @@ At that point it owns sensitive authentication headers and route overrides
 cannot replace them.
 
 The standalone Analytics provider retains its bounded cache, stale fallback,
-timeout, and independent ingestion/query availability. These semantics move
-behind the Analytics provider capability and Analytics metadata resolver.
-Analytics owns those operation/probe/cache semantics. The standalone package
-owns one generic guarded transport, capability-carrier wiring, route
-configuration, and outbound credential enforcement; it does not reimplement
-Analytics parsing or availability rules.
+timeout, and independent ingestion/query availability. The dedicated provider
+is installed by `standaloneAnalytics(config)` at the feature boundary.
+Analytics owns route parsing, metadata, and availability interpretation. The
+standalone package owns one generic guarded transport, route configuration,
+and outbound credential enforcement; `standaloneRepository(config)` remains
+free of Analytics wiring.
 
 ## Managed provider policy
 
 Managed Analytics defaults remain behavior-compatible during extraction:
 
 - Cloudflare, Firebase, and Supabase explicitly install
-  `analytics({ queryAccess: "public", missingCapability: "error" })`;
-- AWS/blob providers remain Analytics-off unless they supply the provider
-  capability and install the feature.
+  `analytics({ queryAccess: "public" })`;
+- AWS/blob providers remain Analytics-off unless their preset installs the
+  feature.
 
 Managed Better Auth API-key authentication is staged per provider rather than
 enabled universally in the kernel release.
@@ -1091,8 +1063,9 @@ the kernel extraction into its forward-only migrations.
 - add the generic plugin composer to `@hot-updater/server`;
 - add `@hot-updater/analytics`;
 - add `@hot-updater/better-auth`;
-- introduce the generic provider capability carrier;
-- add `withAnalyticsProvider` and migrate capable provider packages to it;
+- expose the guarded generic database runtime to first-party feature setup;
+- make `analytics()` own the default bounded provider and explicit dedicated
+  provider factory;
 - preserve current HTTP behavior and provider migrations;
 - migrate `@hot-updater/server/node` to generic lazy raw-body forwarding and
   route request policies; reject already parsed protected bodies;
@@ -1100,7 +1073,7 @@ the kernel extraction into its forward-only migrations.
   surface and neutralize server adapter names while retaining the internal raw
   persistence model and existing migrations;
 - convert managed presets to
-  `plugins: [analytics({ queryAccess: "public", missingCapability: "error" })]`;
+  `plugins: [analytics({ queryAccess: "public" })]`;
 - expose the old `routes.analytics` composition only from
   `@hot-updater/analytics/legacy-server`, whose only exports are
   `createLegacyHotUpdater` and `LegacyCreateHotUpdaterOptions`;
@@ -1110,13 +1083,16 @@ the kernel extraction into its forward-only migrations.
   every new or changed dual-format entry.
 
 The new server entrypoint is Analytics-free in Stage 1. The legacy Analytics
-wrapper attaches the provider capability and Analytics manifest outside the
-server package. Existing root-import source compatibility is not claimed; this
-is a documented breaking source migration with preserved HTTP behavior.
+bridge attaches the Analytics manifest outside the server package. Existing
+root-import source compatibility is not claimed; this is a documented breaking
+source migration with preserved HTTP behavior.
 
 ### Stage 2: consumer migration
 
-- migrate standalone capability handling to the Analytics provider boundary;
+- migrate standalone handling to `standaloneAnalytics(config)` at the feature
+  boundary;
+- keep local Console Analytics disabled by default; opt a complete generic
+  database in with `"database"` or pass a branded dedicated manifest;
 - migrate Console and server consumers to
   `hotUpdater.features.analytics` and `@hot-updater/analytics` types;
 - remove direct `supportsAnalytics` usage from new paths;
@@ -1131,7 +1107,8 @@ is a documented breaking source migration with preserved HTTP behavior.
 - remove remaining transitional/internal Analytics aliases from server and
   plugin-core;
 - remove Analytics route and body-limit special cases from server adapters;
-- remove legacy Analytics capability symbols and probes;
+- remove legacy Analytics capability symbols while preserving dedicated
+  provider probes;
 - remove the legacy Analytics wrapper;
 - decide the final package home of the internal raw `bundle_events`
   persistence row without moving or replaying provider migrations.
@@ -1143,17 +1120,17 @@ service/domain/token exports already leave in Stage 1.
 
 ### Source, export, and migration matrix
 
-| Existing surface                                    | New owner or replacement                             | Compatibility                                                                                            |
-| --------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `createHotUpdater({ routes: { analytics: true } })` | `analytics()` plus `withAnalyticsProvider(database)` | Breaking source migration; legacy wrapper under `@hot-updater/analytics/legacy-server` during Stages 1-2 |
-| Flat `getBundleEvent*` and installation methods     | `hotUpdater.features.analytics.*`                    | Generic flat aliases during Stages 1-2, then removed                                                     |
-| Server Analytics types and database Analytics API   | `@hot-updater/analytics`                             | Explicit import migration                                                                                |
-| Server generic DB adapters                          | Existing `@hot-updater/server/adapters/*` paths      | Preserved; adapters remain Analytics-free                                                                |
-| `@hot-updater/server`, `/db`, and `/node`           | Existing paths                                       | Preserved except documented Analytics exports                                                            |
-| Cloudflare `/worker`                                | Existing path                                        | Preserved                                                                                                |
-| Firebase `/functions` and `/functions/handler`      | Existing paths                                       | Preserved                                                                                                |
-| Supabase `/edge`                                    | Existing path                                        | Preserved                                                                                                |
-| Standalone route overrides                          | Existing paths and behavior                          | Preserved, including independent ingestion/query availability                                            |
+| Existing surface                                    | New owner or replacement                          | Compatibility                                                                                            |
+| --------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `createHotUpdater({ routes: { analytics: true } })` | `plugins: [analytics()]`                          | Breaking source migration; legacy wrapper under `@hot-updater/analytics/legacy-server` during Stages 1-2 |
+| Flat `getBundleEvent*` and installation methods     | `hotUpdater.features.analytics.*`                 | Generic flat aliases during Stages 1-2, then removed                                                     |
+| Server Analytics types and database Analytics API   | `@hot-updater/analytics`                          | Explicit import migration                                                                                |
+| Server generic DB adapters                          | Existing `@hot-updater/server/adapters/*` paths   | Preserved; adapters remain Analytics-free                                                                |
+| `@hot-updater/server`, `/db`, and `/node`           | Existing paths                                    | Preserved except documented Analytics exports                                                            |
+| Cloudflare `/worker`                                | Existing path                                    | Preserved                                                                                                |
+| Firebase `/functions` and `/functions/handler`      | Existing paths                                    | Preserved                                                                                                |
+| Supabase `/edge`                                    | Existing path                                    | Preserved                                                                                                |
+| Standalone route overrides                          | `standaloneAnalytics(config)` plus existing paths | Explicit Console config migration; independent ingestion/query availability preserved                    |
 
 Provider migration assets keep their existing package, filename, version, and
 execution owner. The extraction creates no replacement migration, does not
@@ -1185,11 +1162,6 @@ Construction errors are typed and include stable machine-readable codes for:
 Runtime authentication failures do not expose provider errors. Feature-specific
 runtime failures are owned by the feature plugin.
 
-The default Analytics missing-provider path is not an error. It emits
-`ANALYTICS_PROVIDER_CAPABILITY_MISSING` exactly once for that construction,
-states that Analytics routes and runtime operations are disabled, and contains
-no dynamic provider or credential detail.
-
 ## Verification gates
 
 ### Static boundary
@@ -1220,6 +1192,8 @@ no dynamic provider or credential detail.
 - static routes outrank parameter routes independent of registration order;
 - database-backed capability operations pass through the same schema-readiness
   guard as core database operations;
+- feature setup receives only the frozen, guarded generic database runtime,
+  never adapter migration or schema-generation hooks;
 - `analytics()` preserves its literal namespace and API type rather than
   widening to the low-level manifest contract;
 - setup cannot contribute schema, migrations, lifecycle, or pre-auth hooks.
@@ -1228,23 +1202,22 @@ no dynamic provider or credential detail.
 
 - omitting `analytics()` exposes no Analytics routes, metadata, runtime API, or
   Analytics member in the returned TypeScript type;
-- installing `analytics()` with a valid provider preserves all existing wire
-  behavior;
-- default/warn mode without a local provider capability succeeds with exactly
-  one warning, no Analytics routes or aliases, false availability metadata, and
-  a frozen unavailable feature state;
-- default/warn mode with a valid provider yields the available union branch;
-- literal strict mode with a valid provider yields a non-union available API;
-- strict mode without a local provider capability fails with
-  `MISSING_CAPABILITY`;
-- malformed advertised and duplicate capabilities fail in both modes;
+- installing `analytics()` over a bare generic database preserves all existing
+  wire behavior without decorating that database;
+- its provider factory receives the frozen, schema-guarded database runtime;
+- a malformed explicit provider fails construction before routes or API aliases
+  are published;
 - request size, payload validation, scan bounds, and errors remain unchanged;
 - path, method, access, request policy, parser, and handler stay in one
   Analytics-owned endpoint declaration;
 - duplicate `analytics()` instances fail before setup;
-- AWS/blob managed presets omit `analytics()` and emit no warning;
-- Cloudflare/Firebase/Supabase packed presets use strict mode, and removing
-  their provider wrapper fails construction;
+- AWS/blob managed presets omit `analytics()` and emit no warning; custom
+  versioned-CAS blob servers may install it explicitly;
+- Cloudflare/Firebase/Supabase database plugins expose no Analytics
+  contributions while their server presets install `analytics()`;
+- Console preserves `.mts` and `.cts` manifest identity and uses
+  `standaloneAnalytics(config)` for a dedicated remote provider, while an
+  omitted Console setting installs no Analytics feature;
 - standalone covers ingestion-only, query-only, both, neither, stale probe, and
   timeout behavior.
 

@@ -20,16 +20,18 @@ You can configure additional console settings in the `hot-updater.config.ts` fil
 
 The `storage` and `database` plugins must be exist.
 
-| Option           | Description                                              | Default |
-| ---------------- | -------------------------------------------------------- | ------- |
-| `console.gitUrl` | Enables commit shortcuts by linking to git commit hashes | -       |
-| `console.port`   | Sets the console server port                             | `1422`  |
+| Option              | Description                                              | Default      |
+| ------------------- | -------------------------------------------------------- | ------------ |
+| `console.analytics` | Installs Console Analytics from the database or a feature manifest | `"disabled"` |
+| `console.gitUrl`    | Enables commit shortcuts by linking to git commit hashes | -            |
+| `console.port`      | Sets the console server port                             | `1422`       |
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   console: { // [!code hl]
+    analytics: "database", // [!code hl]
     port: 3000, // [!code hl]
   }, // [!code hl]
   build: ...,
@@ -38,6 +40,11 @@ export default defineConfig({
 });
 
 ```
+
+Use `"database"` only when the configured database implements the complete,
+concurrency-safe `bundle_events` contract. Standalone users must pass
+`standaloneAnalytics(...)` instead; see the
+[Standalone Database guide](/docs/database-plugins/standalone).
 
 ## Usage
 

@@ -40,7 +40,7 @@ describe("Analytics capability wire compatibility", () => {
     expect(queryResponse.status).toBe(200);
   });
 
-  it("reports the warn-mode missing capability and mounts no routes", async () => {
+  it("reports a remotely unavailable dedicated provider and fails closed", async () => {
     const runtime = createUnavailableAnalyticsWireRuntime();
 
     const versionResponse = await runtime.handler(
@@ -61,10 +61,7 @@ describe("Analytics capability wire compatibility", () => {
       },
       version: HOT_UPDATER_SERVER_VERSION,
     });
-    expect(runtime.features.analytics).toEqual({
-      reason: "missing-provider-capability",
-      status: "unavailable",
-    });
+    expect(runtime.features.analytics.status).toBe("available");
     expect(ingestionResponse.status).toBe(404);
     expect(queryResponse.status).toBe(404);
   });

@@ -1,4 +1,3 @@
-import { analyticsProviderToken } from "@hot-updater/analytics/provider";
 import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
@@ -15,6 +14,7 @@ import {
   it,
 } from "vitest";
 
+import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
 import {
   StandaloneDatabaseError,
   standaloneRepository,
@@ -131,16 +131,6 @@ afterAll(() => server.close());
 const createRepository = (): DatabasePlugin =>
   standaloneRepository({ baseUrl: BASE_URL });
 
-const getAnalyticsProvider = (repository: DatabasePlugin) => {
-  const [contribution] = getCapabilityContributions(repository);
-  if (contribution === undefined) {
-    throw new Error("Missing standalone Analytics provider.");
-  }
-  return analyticsProviderToken.parse(
-    contribution.create({ database: repository, storages: [] }),
-  );
-};
-
 describe("standaloneRepository", () => {
   it("keeps the existing user config source-compatible", () => {
     type ExistingUserConfig = {
@@ -167,9 +157,10 @@ describe("standaloneRepository", () => {
   it("discovers Analytics support without a public config option", async () => {
     // Given
     const repository = createRepository();
-    const provider = getAnalyticsProvider(repository);
+    const provider = createStandaloneAnalyticsProvider({ baseUrl: BASE_URL });
 
     // When / Then
+    expect(getCapabilityContributions(repository)).toEqual([]);
     await expect(
       provider.resolveAvailability?.(new AbortController().signal),
     ).resolves.toEqual({
@@ -379,8 +370,7 @@ describe("standaloneRepository", () => {
         }),
       ),
     );
-    const repository = standaloneRepository({ baseUrl: BASE_URL });
-    const analytics = getAnalyticsProvider(repository);
+    const analytics = createStandaloneAnalyticsProvider({ baseUrl: BASE_URL });
 
     await expect(analytics.getBundleEventSummary("bundle-1")).resolves.toEqual({
       installed: 1,

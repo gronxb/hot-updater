@@ -2,14 +2,9 @@ export {
   analytics,
   analyticsLegacyAliases,
   type AnalyticsAPI,
-  type AnalyticsFeature,
   type AnalyticsFeatureAvailable,
   type AnalyticsFeatureKind,
-  type AnalyticsFeatureUnavailable,
   type AnalyticsOptions,
-  type StrictAnalyticsFeatureKind,
-  type StrictAnalyticsOptions,
-  type WarnAnalyticsOptions,
 } from "./analytics";
 export type {
   ActiveInstallationInput,

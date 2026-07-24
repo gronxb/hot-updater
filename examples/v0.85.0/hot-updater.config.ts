@@ -1,6 +1,7 @@
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import {
+  standaloneAnalytics,
   standaloneRepository,
   standaloneStorage,
 } from "@hot-updater/standalone";
@@ -22,6 +23,10 @@ const managementAuthToken = process.env.HOT_UPDATER_AUTH_TOKEN?.trim();
 const managementHeaders = managementAuthToken
   ? { Authorization: `Bearer ${managementAuthToken}` }
   : undefined;
+const standaloneRepositoryConfig = {
+  baseUrl: standaloneRepositoryBaseUrl ?? "http://localhost:3007/hot-updater",
+  ...(managementHeaders ? { commonHeaders: managementHeaders } : {}),
+};
 
 export default defineConfig({
   nativeBuild: {
@@ -84,10 +89,12 @@ export default defineConfig({
           bucketName: process.env.R2_BUCKET_NAME!,
           basePath: providerNamespace,
         }),
-  database: standaloneRepository({
-    baseUrl: standaloneRepositoryBaseUrl ?? "http://localhost:3007/hot-updater",
-    ...(managementHeaders ? { commonHeaders: managementHeaders } : {}),
-  }),
+  database: standaloneRepository(standaloneRepositoryConfig),
+  console: {
+    analytics: standaloneAnalytics(standaloneRepositoryConfig, {
+      queryAccess: "public",
+    }),
+  },
   fingerprint: {
     debug: true,
   },

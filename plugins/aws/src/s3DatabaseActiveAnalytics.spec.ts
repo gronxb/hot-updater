@@ -9,8 +9,8 @@ const s3Mock = mockClient(S3Client);
 
 beforeEach(() => s3Mock.reset());
 
-describe("S3 Analytics provider capability", () => {
-  it("contributes no provider and sends no S3 request", () => {
+describe("S3 database feature isolation", () => {
+  it("contributes no capabilities and sends no S3 request", () => {
     const plugin = s3Database({ bucketName: "analytics-disabled" });
 
     expect(getCapabilityContributions(plugin)).toEqual([]);

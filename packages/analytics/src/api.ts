@@ -56,15 +56,6 @@ export type AnalyticsFeatureAvailable<TContext = unknown> = Readonly<
   AnalyticsAPI<TContext> & { readonly status: "available" }
 >;
 
-export type AnalyticsFeatureUnavailable = Readonly<{
-  readonly reason: "missing-provider-capability";
-  readonly status: "unavailable";
-}>;
-
-export type AnalyticsFeature<TContext = unknown> =
-  | AnalyticsFeatureAvailable<TContext>
-  | AnalyticsFeatureUnavailable;
-
 export const createAnalyticsFeature = <TContext>(
   provider: AnalyticsProvider,
 ): AnalyticsFeatureAvailable<TContext> => {
@@ -119,9 +110,3 @@ export const createAnalyticsFeature = <TContext>(
     },
   } satisfies AnalyticsFeatureAvailable<TContext>);
 };
-
-export const unavailableAnalyticsFeature =
-  Object.freeze<AnalyticsFeatureUnavailable>({
-    reason: "missing-provider-capability",
-    status: "unavailable",
-  });

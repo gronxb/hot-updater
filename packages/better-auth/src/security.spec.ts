@@ -6,17 +6,10 @@ import type {
   HotUpdaterMatchedRoute,
 } from "../../server/src/kernel/contracts";
 import { betterAuthPlugin, type BetterAuthConfiguredInstance } from "./index";
+import { createPluginSetupContext } from "./setupContext.testFixtures";
 
 const SECRET = "better-auth-secret-b6c2";
-const setupContext = {
-  capabilities: {
-    get: () => undefined,
-    require() {
-      throw new Error("unexpected capability access");
-    },
-  },
-  diagnostics: { warn() {} },
-};
+const setupContext = createPluginSetupContext();
 
 const route: HotUpdaterMatchedRoute = {
   access: { kind: "protected" },

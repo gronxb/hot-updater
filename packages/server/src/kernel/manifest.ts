@@ -1,4 +1,7 @@
-import type { CapabilityToken } from "@hot-updater/plugin-core";
+import type {
+  CapabilityToken,
+  DatabaseCapabilityRuntime,
+} from "@hot-updater/plugin-core";
 
 import type {
   HotUpdaterAuthenticationProvider,
@@ -50,6 +53,7 @@ export type HotUpdaterPluginSetupContext = {
     get<TValue>(token: CapabilityToken<TValue>): TValue | undefined;
     require<TValue>(token: CapabilityToken<TValue>): TValue;
   };
+  readonly database: DatabaseCapabilityRuntime;
   readonly diagnostics: {
     warn(diagnostic: HotUpdaterConstructionDiagnostic): void;
   };

@@ -47,6 +47,7 @@ describe("loadConfig", () => {
     expect(config.platform.android.androidManifestPaths).toEqual([]);
     expect(config.platform.android.stringResourcePaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
+    expect(config.console.analytics).toBe("disabled");
     expect(config.console.port).toBe(1422);
     expect(typeof config.database).toBe("object");
   });
@@ -63,6 +64,27 @@ describe("loadConfig", () => {
 
     expect(config.cacheDir).toBeNull();
   });
+
+  it.each(["database", "disabled"] as const)(
+    "preserves the explicit Console Analytics %s mode",
+    async (analytics) => {
+      await writeProjectFile(
+        projectRoot,
+        "hot-updater.config.ts",
+        [
+          "export default {",
+          `  console: { analytics: ${JSON.stringify(analytics)} },`,
+          "};",
+          "",
+        ].join("\n"),
+      );
+
+      const { loadConfig } = await import("./loadConfig");
+      const config = await loadConfig(null);
+
+      expect(config.console.analytics).toBe(analytics);
+    },
+  );
 
   it("discovers native config files from the project root by default", async () => {
     await writeProjectFile(

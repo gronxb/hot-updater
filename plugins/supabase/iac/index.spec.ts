@@ -292,8 +292,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           "./_hot-updater/hot-updater-server/dist/index.mjs",
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge/index.mjs",
-        "@hot-updater/analytics/provider":
-          "./_hot-updater/hot-updater-analytics/dist/provider/index.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
         "@hot-updater/js": "./_hot-updater/hot-updater-js/dist/index.mjs",
         "@hot-updater/plugin-core":

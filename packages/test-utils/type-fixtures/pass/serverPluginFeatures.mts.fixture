@@ -1,6 +1,5 @@
 import {
   analytics,
-  type AnalyticsFeature,
   type AnalyticsFeatureAvailable,
 } from "@hot-updater/analytics";
 import {
@@ -28,14 +27,6 @@ type AnalyticsAlias =
   | "getInstallationHistory"
   | "searchInstallations";
 
-type FeatureStatus<TRuntime> = TRuntime extends {
-  readonly features: {
-    readonly analytics: { readonly status: infer TStatus };
-  };
-}
-  ? TStatus
-  : never;
-
 type FeatureAliasKeys<TRuntime> = Exclude<
   keyof TRuntime,
   keyof RuntimeHotUpdaterAPI<TestContext> | "features"
@@ -43,70 +34,29 @@ type FeatureAliasKeys<TRuntime> = Exclude<
 
 declare const auth: BetterAuthConfiguredInstance;
 declare const database: DatabasePlugin;
-declare const policy: "error" | "warn";
 declare const storage: RuntimeStoragePlugin<TestContext>;
 
 const omitted = createHotUpdater({ database });
 assertType<Equal<keyof typeof omitted.features, never>>();
 
-const warning = createHotUpdater({
+const analyticsRuntime = createHotUpdater({
   database,
   plugins: [analytics()],
   storages: [storage],
 });
 assertType<
-  Equal<typeof warning.features.analytics, AnalyticsFeature<TestContext>>
->();
-type WarningAvailableRuntime = Extract<
-  typeof warning,
-  {
-    readonly features: {
-      readonly analytics: { readonly status: "available" };
-    };
-  }
->;
-type WarningUnavailableRuntime = Extract<
-  typeof warning,
-  {
-    readonly features: {
-      readonly analytics: { readonly status: "unavailable" };
-    };
-  }
->;
-assertType<Equal<FeatureAliasKeys<WarningAvailableRuntime>, AnalyticsAlias>>();
-assertType<Equal<FeatureAliasKeys<WarningUnavailableRuntime>, never>>();
-assertType<
   Equal<
-    Parameters<WarningAvailableRuntime["getBundleEventSummary"]>[1],
-    TestContext | undefined
-  >
->();
-
-const strict = createHotUpdater({
-  database,
-  plugins: [analytics({ missingCapability: "error" })],
-  storages: [storage],
-});
-assertType<
-  Equal<
-    typeof strict.features.analytics,
+    typeof analyticsRuntime.features.analytics,
     AnalyticsFeatureAvailable<TestContext>
   >
 >();
-assertType<Equal<FeatureAliasKeys<typeof strict>, AnalyticsAlias>>();
+assertType<Equal<FeatureAliasKeys<typeof analyticsRuntime>, AnalyticsAlias>>();
 assertType<
   Equal<
-    Parameters<typeof strict.getInstallationHistory>[3],
+    Parameters<typeof analyticsRuntime.getBundleEventSummary>[1],
     TestContext | undefined
   >
 >();
-
-const widened = createHotUpdater({
-  database,
-  plugins: [analytics({ missingCapability: policy })],
-  storages: [storage],
-});
-assertType<Equal<FeatureStatus<typeof widened>, "available" | "unavailable">>();
 
 const authOnly = createHotUpdater({
   database,
@@ -168,6 +118,4 @@ void analyticsAndAuth;
 void authAndAnalytics;
 void authOnly;
 void omitted;
-void strict;
-void warning;
-void widened;
+void analyticsRuntime;

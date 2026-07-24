@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
-import { analyticsProviderToken } from "@hot-updater/analytics/provider";
 import type { DatabaseRow } from "@hot-updater/plugin-core";
 import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
@@ -26,14 +25,12 @@ const getClient = (): PGlite => {
   return client;
 };
 
-it("contributes the Analytics provider capability", async () => {
+it("keeps the database free of Analytics provider capabilities", async () => {
   // Given / When
   const plugin = postgres({ connectionString: "postgres://localhost/test" });
 
   // Then
-  expect(getCapabilityContributions(plugin).map(({ token }) => token)).toEqual([
-    analyticsProviderToken,
-  ]);
+  expect(getCapabilityContributions(plugin)).toEqual([]);
   await plugin.onUnmount?.();
 });
 

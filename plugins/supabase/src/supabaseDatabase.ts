@@ -1,4 +1,3 @@
-import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import type {
   CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
@@ -212,15 +211,13 @@ const createSupabaseImplementation = (
 });
 
 export const supabaseDatabase = (config: SupabaseDatabaseConfig) =>
-  withAnalyticsProvider(
-    createDatabasePlugin({
-      name: "supabaseDatabase",
-      plugin: () =>
-        createSupabaseImplementation(
-          createClient<Database>(
-            config.supabaseUrl,
-            resolveSupabaseServiceRoleKey(config),
-          ),
+  createDatabasePlugin({
+    name: "supabaseDatabase",
+    plugin: () =>
+      createSupabaseImplementation(
+        createClient<Database>(
+          config.supabaseUrl,
+          resolveSupabaseServiceRoleKey(config),
         ),
-    }),
-  );
+      ),
+  });

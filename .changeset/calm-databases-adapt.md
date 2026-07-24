@@ -132,9 +132,12 @@ transaction callback accesses `bundle_events`, so normal bundle deploys and
 mutations do not scan Analytics history.
 
 Snapshot-backed plugins created with `createBlobDatabasePlugin`, including
-`s3Database`, deliberately leave Analytics disabled because concurrent event
-writes can conflict. The Console hides Analytics based only on capability
-presence, without provider-name branching.
+`s3Database`, commit through a versioned active-pointer compare-and-swap and
+merge disjoint row-ID changes after a lost race. This makes append-only
+`bundle_events` safe across concurrent writers. AWS's managed preset remains
+core-only, while custom servers can opt into bounded Analytics explicitly.
+Snapshot-backed Analytics trades higher object-write amplification and bounded
+commit retries for that concurrency guarantee.
 
 React Native preserves the legacy `resolver.notifyAppReady` readiness callback
 independently from Analytics and adds `resolver.notifyAppReadyAnalytics` for

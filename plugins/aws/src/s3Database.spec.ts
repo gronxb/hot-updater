@@ -11,10 +11,12 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { analytics } from "@hot-updater/analytics";
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   setupDatabasePluginTestSuite,
   setupDatabaseClientTestSuite,
@@ -226,6 +228,71 @@ describe("s3Database storage behavior", () => {
     ).resolves.toMatchObject(bundleRow("99"));
   });
 
+  it("merges concurrent Analytics events when the conditional write loses", async () => {
+    const plugin = s3Database({ bucketName });
+    await plugin.create({
+      model: "bundle_events",
+      data: bundleEventRow("1"),
+    });
+    const externalRevision = "00000000-0000-7000-8000-000000000099";
+    objects.set(
+      `_hot-updater/database/revisions/${externalRevision}/snapshot.json`,
+      JSON.stringify({
+        version: 2,
+        bundles: [],
+        bundle_patches: [],
+        bundle_events: [bundleEventRow("1"), bundleEventRow("99")],
+      }),
+    );
+    replacementBeforeConditionalPut = {
+      key: BLOB_DATABASE_SNAPSHOT_KEY,
+      value: JSON.stringify({
+        version: 2,
+        active_revision: externalRevision,
+      }),
+    };
+
+    await plugin.create({
+      model: "bundle_events",
+      data: bundleEventRow("2"),
+    });
+
+    await expect(plugin.count({ model: "bundle_events" })).resolves.toBe(3);
+    await expect(
+      plugin.findOne({
+        model: "bundle_events",
+        where: [{ field: "id", value: bundleEventRow("99").id }],
+      }),
+    ).resolves.toMatchObject(bundleEventRow("99"));
+  });
+
+  it("supports explicitly installed bounded Analytics over S3", async () => {
+    const database = s3Database({ bucketName });
+    const runtime = createHotUpdater({
+      coreRoutes: { bundles: false, updateCheck: false },
+      database,
+      plugins: [analytics({ queryAccess: "public" })],
+    });
+
+    await runtime.features.analytics.appendBundleEvent({
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      fingerprintHash: null,
+      fromBundleId: null,
+      installId: "install-1",
+      platform: "ios",
+      toBundleId: fixtureId("1"),
+      type: "UNCHANGED",
+      updateStrategy: null,
+    });
+
+    await expect(
+      runtime.features.analytics.getBundleEventSummary(fixtureId("1")),
+    ).resolves.toEqual({ installed: 0, recovered: 0 });
+    await expect(database.count({ model: "bundle_events" })).resolves.toBe(1);
+  });
+
   it("invalidates the existing CloudFront update route after a bundle write", async () => {
     const plugin = s3Database({
       bucketName,
@@ -378,4 +445,22 @@ const bundleRow = (suffix: string) => ({
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
+});
+
+const bundleEventRow = (suffix: string) => ({
+  id: fixtureId(suffix),
+  type: "UNCHANGED" as const,
+  install_id: `install-${suffix}`,
+  user_id: null,
+  username: null,
+  from_bundle_id: null,
+  to_bundle_id: fixtureId(suffix),
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "default",
+  update_strategy: null,
+  fingerprint_hash: null,
+  sdk_version: "0.37.0",
+  received_at_ms: 1_725_000_000_000 + Number(suffix),
 });

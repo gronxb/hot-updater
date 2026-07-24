@@ -41,7 +41,7 @@ const hotUpdater = createHotUpdater({
     bundles: false,
     updateCheck: true,
   },
-  plugins: [analytics({ missingCapability: "error", queryAccess: "public" })],
+  plugins: [analytics({ queryAccess: "public" })],
 });
 
 const app = new Hono();

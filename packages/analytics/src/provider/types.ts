@@ -1,3 +1,5 @@
+import type { DatabaseCapabilityRuntime } from "@hot-updater/plugin-core";
+
 import type {
   ActiveInstallationInput,
   ActiveInstallationOverview,
@@ -57,3 +59,7 @@ export type AnalyticsProvider = AnalyticsProviderOperations &
       signal: AbortSignal,
     ) => Promise<ReportedAnalyticsCapability>;
   };
+
+export type AnalyticsProviderFactory = (
+  database: DatabaseCapabilityRuntime,
+) => AnalyticsProvider;

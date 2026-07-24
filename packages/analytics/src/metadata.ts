@@ -19,17 +19,6 @@ const unavailableMetadata = Object.freeze({
   eventIngestion: false,
 });
 
-export const createUnavailableAnalyticsMetadata =
-  (): HotUpdaterVersionMetadataContribution =>
-    Object.freeze({
-      keys: ANALYTICS_METADATA_KEYS,
-      namespace: "analytics",
-      target: "capabilities",
-      async resolve() {
-        return unavailableMetadata;
-      },
-    } satisfies HotUpdaterVersionMetadataContribution);
-
 export const createAnalyticsMetadata = (
   provider: AnalyticsProvider,
 ): HotUpdaterVersionMetadataContribution =>

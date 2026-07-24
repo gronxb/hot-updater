@@ -5,12 +5,7 @@ import {
 } from "@hot-updater/server";
 
 import { analytics } from "../analytics";
-import type {
-  AnalyticsAPI,
-  AnalyticsFeatureAvailable,
-  AnalyticsFeatureUnavailable,
-} from "../api";
-import { withAnalyticsProvider } from "../provider";
+import type { AnalyticsAPI, AnalyticsFeatureAvailable } from "../api";
 
 type LegacyRouteOptions = {
   readonly analytics?: boolean;
@@ -39,18 +34,11 @@ type CoreLegacyRuntime<TContext> = RuntimeHotUpdaterAPI<TContext> & {
 };
 
 type AnalyticsLegacyRuntime<TContext> = RuntimeHotUpdaterAPI<TContext> &
-  (
-    | (Readonly<AnalyticsAPI<TContext>> & {
-        readonly features: Readonly<{
-          readonly analytics: AnalyticsFeatureAvailable<TContext>;
-        }>;
-      })
-    | {
-        readonly features: Readonly<{
-          readonly analytics: AnalyticsFeatureUnavailable;
-        }>;
-      }
-  );
+  Readonly<AnalyticsAPI<TContext>> & {
+    readonly features: Readonly<{
+      readonly analytics: AnalyticsFeatureAvailable<TContext>;
+    }>;
+  };
 
 const createLegacyCoreRoutes = (
   routes: LegacyRouteOptions,
@@ -72,14 +60,10 @@ const createAnalyticsLegacyRuntime = <TContext>(
   options: Omit<LegacyCreateHotUpdaterOptions<TContext>, "routes">,
   routes: LegacyRouteOptions,
 ): AnalyticsLegacyRuntime<TContext> => {
-  const manifest = analytics({
-    missingCapability: "warn",
-    queryAccess: "public",
-  });
+  const manifest = analytics({ queryAccess: "public" });
   return createHotUpdater<TContext, readonly [typeof manifest]>({
     ...options,
     coreRoutes: createLegacyCoreRoutes(routes),
-    database: withAnalyticsProvider(options.database),
     plugins: [manifest],
   });
 };

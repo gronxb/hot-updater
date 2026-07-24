@@ -1,8 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
-import { withAnalyticsProvider } from "../provider";
-import { createTestProvider } from "../testing/createTestProvider";
 import * as legacyServer from "./index";
 import {
   createLegacyHotUpdater,
@@ -80,7 +78,7 @@ describe("legacy server bridge", () => {
     expect(response.status).toBe(200);
   });
 
-  it("installs the warn/public Analytics compatibility manifest", async () => {
+  it("installs the public Analytics compatibility manifest", async () => {
     // Given
     const runtime = createLegacyHotUpdater({
       basePath: "/hot-updater",
@@ -109,26 +107,6 @@ describe("legacy server bridge", () => {
       runtime.features.analytics.searchInstallations,
     );
     expect(response.status).toBe(200);
-  });
-
-  it("preserves a dedicated provider already attached by the same helper", () => {
-    // Given
-    const database = withAnalyticsProvider(createInMemoryDatabasePlugin(), () =>
-      createTestProvider(),
-    );
-
-    // When
-    const runtime = createLegacyHotUpdater({
-      database,
-      routes: {
-        analytics: true,
-        bundles: false,
-        updateCheck: false,
-      },
-    });
-
-    // Then
-    expect(runtime.features.analytics.status).toBe("available");
   });
 
   it("keeps the legacy route group exact and excludes eventIngestion", () => {

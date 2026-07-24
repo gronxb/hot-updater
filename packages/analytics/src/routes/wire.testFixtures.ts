@@ -1,19 +1,11 @@
 import {
-  attachCapabilityContribution,
-  type DatabasePlugin,
-} from "@hot-updater/plugin-core";
-import {
   createHotUpdater,
   type RuntimeHotUpdaterAPI,
 } from "@hot-updater/server";
 
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
-import {
-  analytics,
-  type AnalyticsFeature,
-  type AnalyticsFeatureAvailable,
-} from "../analytics";
-import { analyticsProviderToken, type AnalyticsProvider } from "../provider";
+import { analytics, type AnalyticsFeatureAvailable } from "../analytics";
+import type { AnalyticsProvider } from "../provider";
 import { createTestProvider } from "../testing/createTestProvider";
 
 export const testEventPayload = Object.freeze({
@@ -29,15 +21,6 @@ export const testEventPayload = Object.freeze({
   updateStrategy: "appVersion",
 } as const);
 
-const withTestProvider = (
-  database: DatabasePlugin,
-  provider: AnalyticsProvider,
-): DatabasePlugin =>
-  attachCapabilityContribution(database, {
-    token: analyticsProviderToken,
-    create: () => provider,
-  });
-
 type WireRuntime<TFeature> = Pick<RuntimeHotUpdaterAPI, "handler"> & {
   readonly features: Readonly<{ readonly analytics: TFeature }>;
 };
@@ -49,22 +32,30 @@ export const createAnalyticsWireRuntime = (
   readonly runtime: WireRuntime<AnalyticsFeatureAvailable>;
 } => {
   const manifest = analytics({
-    missingCapability: "error",
+    provider: () => provider,
     queryAccess: "public",
   });
   const runtime = createHotUpdater({
     basePath: "/hot-updater",
     coreRoutes: { bundles: false, updateCheck: false },
-    database: withTestProvider(createInMemoryDatabasePlugin(), provider),
+    database: createInMemoryDatabasePlugin(),
     plugins: [manifest],
   });
   return { provider, runtime };
 };
 
 export const createUnavailableAnalyticsWireRuntime =
-  (): WireRuntime<AnalyticsFeature> => {
+  (): WireRuntime<AnalyticsFeatureAvailable> => {
+    const provider: AnalyticsProvider = {
+      ...createTestProvider(),
+      resolveAvailability: async () => ({
+        analytics: false,
+        analyticsQueries: false,
+        eventIngestion: false,
+      }),
+    };
     const manifest = analytics({
-      missingCapability: "warn",
+      provider: () => provider,
       queryAccess: "public",
     });
     return createHotUpdater({

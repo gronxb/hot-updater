@@ -27,16 +27,30 @@ Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts"
 import { defineConfig } from "@hot-updater/core";
-import { standaloneRepository } from "@hot-updater/standalone";
+import {
+  standaloneAnalytics,
+  standaloneRepository,
+} from "@hot-updater/standalone";
+
+const repositoryConfig = {
+  baseUrl: "http://localhost:3000/hot-updater",
+};
 
 export default defineConfig({
   build: /* your build plugin */,
   storage: /* your storage plugin */,
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
-  }),
+  database: standaloneRepository(repositoryConfig),
+  console: {
+    analytics: standaloneAnalytics(repositoryConfig, {
+      queryAccess: "public",
+    }),
+  },
 });
 ```
+
+`standaloneRepository` owns only the remote database contract. The separate
+`standaloneAnalytics` manifest lets the local Console proxy Analytics through
+the same remote configuration without decorating the database plugin.
 
 ## Configuration
 
@@ -279,23 +293,17 @@ If you want this contract without implementing it yourself, use
 
 ```typescript
 import { analytics } from "@hot-updater/analytics";
-import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
-  database: withAnalyticsProvider(database),
+  database,
   storages: [storage],
   basePath: "/hot-updater",
   coreRoutes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },
-  plugins: [
-    analytics({
-      missingCapability: "error",
-      queryAccess: "public",
-    }),
-  ],
+  plugins: [analytics({ queryAccess: "public" })],
 });
 ```
 
@@ -307,7 +315,6 @@ the framework or reverse proxy; configure matching `commonHeaders` in
 The installed `analytics()` plugin independently mounts
 `POST /hot-updater/events` and the Analytics routes consumed by Console under
 `/hot-updater/api/bundles/*/events*` and `/hot-updater/api/installations*`.
-The strict provider policy fails construction if the wrapper is missing.
 Standalone reads the upstream `/version` response before forwarding Analytics
 requests, so upstream `eventIngestion` and `analyticsQueries` availability is
 preserved independently.

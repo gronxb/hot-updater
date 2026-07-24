@@ -36,16 +36,13 @@ Create the Hot Updater instance with your database adapter and storage plugin (s
 
 ```typescript title="src/hotUpdater.ts"
 import { analytics } from "@hot-updater/analytics";
-import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./kysely";
 
 export const hotUpdater = createHotUpdater({
-  database: withAnalyticsProvider(
-    kyselyAdapter({ db, provider: "sqlite" }),
-  ),
+  database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [
     s3Storage({
       region: "auto",
@@ -62,12 +59,7 @@ export const hotUpdater = createHotUpdater({
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },
-  plugins: [
-    analytics({
-      missingCapability: "error",
-      queryAccess: "public",
-    }),
-  ],
+  plugins: [analytics({ queryAccess: "public" })],
 });
 ```
 
@@ -75,8 +67,8 @@ By default, `createHotUpdater` mounts update-check routes and `/version`.
 Bundle management routes used by the CLI `standaloneRepository` plugin must be
 enabled explicitly and protected by framework middleware before mounting the
 handler. The public core-route and Analytics query policies above deliberately
-delegate that protection to the Hono middleware below. Analytics is installed
-separately with `analytics()` and requires an attached provider.
+delegate that protection to the Hono middleware below. `analytics()` owns its
+database-backed provider and uses the adapter's generic CRUD contract directly.
 
 ## Server Setup
 
@@ -155,7 +147,17 @@ Configure your Hot Updater CLI to connect to this self-hosted server.
 import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
-import { standaloneRepository } from "@hot-updater/standalone";
+import {
+  standaloneAnalytics,
+  standaloneRepository,
+} from "@hot-updater/standalone";
+
+const repositoryConfig = {
+  baseUrl: "http://localhost:3000/hot-updater",
+  commonHeaders: {
+    Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
+  },
+};
 
 export default defineConfig({
   build: bare(),
@@ -168,12 +170,12 @@ export default defineConfig({
     },
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
-    commonHeaders: {
-      Authorization: `Bearer ${process.env.HOT_UPDATER_AUTH_TOKEN}`,
-    },
-  }),
+  database: standaloneRepository(repositoryConfig),
+  console: {
+    analytics: standaloneAnalytics(repositoryConfig, {
+      queryAccess: "public",
+    }),
+  },
 });
 ```
 

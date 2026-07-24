@@ -14,8 +14,8 @@ const createD1 = (): D1Like => ({
   }),
 });
 
-describe("Cloudflare Analytics provider capability", () => {
-  it("attaches one deferred capability to the Worker database", () => {
+describe("Cloudflare Analytics database ownership", () => {
+  it("keeps the Worker database Analytics-agnostic", () => {
     // Given
     const db = createD1();
 
@@ -23,12 +23,16 @@ describe("Cloudflare Analytics provider capability", () => {
     const database = d1WorkerDatabase(db);
 
     // Then
+    expect(getCapabilityContributions(database)).toEqual([]);
     expect(
-      getCapabilityContributions(database).map(({ token }) => token.id),
-    ).toEqual(["analytics-provider@1"]);
+      createHotUpdater({
+        database,
+        plugins: [analytics({ queryAccess: "public" })],
+      }).features.analytics.status,
+    ).toBe("available");
   });
 
-  it("attaches one deferred capability to the API database", () => {
+  it("keeps the API database Analytics-agnostic", () => {
     // Given
     const config = {
       accountId: "account-id",
@@ -40,29 +44,12 @@ describe("Cloudflare Analytics provider capability", () => {
     const database = d1Database(config);
 
     // Then
+    expect(getCapabilityContributions(database)).toEqual([]);
     expect(
-      getCapabilityContributions(database).map(({ token }) => token.id),
-    ).toEqual(["analytics-provider@1"]);
-  });
-
-  it("fails strict construction when the provider wrapper is removed", () => {
-    // Given
-    const database = { ...d1WorkerDatabase(createD1()) };
-    const plugin = analytics({
-      missingCapability: "error",
-      queryAccess: "public",
-    });
-
-    // When
-    const construct = () =>
       createHotUpdater({
         database,
-        plugins: [plugin],
-      });
-
-    // Then
-    expect(construct).toThrowError(
-      expect.objectContaining({ code: "MISSING_CAPABILITY" }),
-    );
+        plugins: [analytics({ queryAccess: "public" })],
+      }).features.analytics.status,
+    ).toBe("available");
   });
 });

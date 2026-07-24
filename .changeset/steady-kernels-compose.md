@@ -24,14 +24,14 @@ Migrate server construction as follows:
   Bundle-management routes are protected by default; use
   `bundles: { access: { kind: "public" } }` only when public compatibility is
   intentional.
-- Replace `routes.analytics` with an Analytics provider capability and
-  `plugins: [analytics()]`. Import the feature factory and public Analytics
-  API/domain types from `@hot-updater/analytics`, and import provider authoring
-  from `@hot-updater/analytics/provider`.
+- Replace `routes.analytics` with `plugins: [analytics()]`. The feature uses the
+  guarded generic database runtime by default; database plugins no longer need
+  an Analytics wrapper or capability contribution. Import explicit provider
+  authoring from `@hot-updater/analytics/provider` only for dedicated
+  transports.
 - Read Analytics through `hotUpdater.features.analytics`. The temporary flat
-  operation aliases remain only in the available branch for the announced
-  migration window. Default/warn mode must be narrowed by `status`; strict
-  `missingCapability: "error"` construction is available-only.
+  operation aliases remain for the announced migration window. Installing
+  `analytics()` now yields the available feature API at construction time.
 - Use `createLegacyHotUpdater` from
   `@hot-updater/analytics/legacy-server` only as the temporary bridge for the
   old `routes.analytics` spelling. The supported server root rejects
@@ -40,19 +40,48 @@ Migrate server construction as follows:
   imported from `@hot-updater/server` or `@hot-updater/plugin-core` with the
   Analytics package. Plugin-core now exposes only generic capability carriers
   plus neutral raw persistence models.
+- Remove `withAnalyticsProvider`, `analyticsProviderToken`,
+  `MissingAnalyticsProviderCapability`, `UnavailableAnalyticsFeature`, and
+  the `missingCapability` Analytics option. Database plugins no longer carry
+  Analytics provider factories. Use `analytics({ provider })` for a dedicated
+  provider or `standaloneAnalytics(config)` for the Standalone transport.
 
 Protected routes now require exactly one authentication provider. Install
 `betterAuthPlugin({ auth })` from `@hot-updater/better-auth` to adapt a
 configured Better Auth instance; `better-auth` remains an optional peer.
 
-CLI config loading now keeps plugin-core capability identity aligned while it
-evaluates TypeScript, ESM, or CommonJS config files. This adds `jiti` and
-`@hot-updater/analytics` as direct `@hot-updater/cli-tools` runtime
-dependencies; Analytics is the current feature-token owner registered in the
-canonical mixed-module config bridge.
+CLI config loading now keeps plugin-core capability identity and first-party
+manifest identity aligned while it evaluates TypeScript, ESM, or CommonJS
+config files. This adds `jiti`, `@hot-updater/analytics`, and
+`@hot-updater/server` as direct `@hot-updater/cli-tools` runtime dependencies.
 
-Cloudflare, Firebase, and Supabase presets install strict public Analytics,
-PostgreSQL and standalone expose Analytics providers, and AWS deliberately
-remains core-only without Analytics capability or warnings. Publish this
-package cohort together so provider presets, kernel declarations, and
+Local Console Analytics is now disabled by default. Opt a complete generic
+database into the bounded provider explicitly:
+
+```ts
+export default defineConfig({
+  console: { analytics: "database" },
+  database,
+});
+```
+
+Standalone uses its dedicated feature manifest instead:
+
+```ts
+const standalone = { baseUrl: "https://updates.example.com" };
+
+export default defineConfig({
+  console: {
+    analytics: standaloneAnalytics(standalone, { queryAccess: "public" }),
+  },
+  database: standaloneRepository(standalone),
+});
+```
+
+Cloudflare, Firebase, and Supabase presets install public Analytics over their
+bare database plugins. PostgreSQL uses the same database-backed default.
+These managed server presets are independent from the local Console opt-in.
+`standaloneRepository(config)` remains Analytics-agnostic. AWS deliberately
+remains core-only because its preset omits the feature. Publish this package
+cohort together so provider presets, kernel declarations, and
 condition-specific ESM/CommonJS exports stay aligned.

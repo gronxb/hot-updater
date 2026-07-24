@@ -180,9 +180,10 @@ export const myDatabase = ({ db }: MyDatabaseConfig) =>
 the driver's query API. The `DatabasePluginImplementation` annotation keeps
 the fixed model and operation inputs typed while you build the mapping.
 
-`createDatabasePlugin` validates inputs and provider results. It does not
-implicitly expose Analytics. An Analytics-capable deployment must opt in by
-wrapping the database with `withAnalyticsProvider`.
+`createDatabasePlugin` validates inputs and provider results. Installing
+`analytics()` opts into Analytics; the feature consumes these generic database
+operations directly, so the database plugin needs no Analytics-specific
+wrapper or import.
 
 ## Implement each operation
 
@@ -363,19 +364,13 @@ export default defineConfig({
 
 ```ts title="server.ts"
 import { analytics } from "@hot-updater/analytics";
-import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createHotUpdater } from "@hot-updater/server";
 import { myDatabase } from "./myDatabase";
 
 export const hotUpdater = createHotUpdater({
-  database: withAnalyticsProvider(myDatabase({ db })),
+  database: myDatabase({ db }),
   storages,
-  plugins: [
-    analytics({
-      missingCapability: "error",
-      queryAccess: "public",
-    }),
-  ],
+  plugins: [analytics({ queryAccess: "public" })],
 });
 ```
 
@@ -386,9 +381,12 @@ authentication plugin.
 
 ## Blob-backed databases
 
-Use `createBlobDatabasePlugin` only when the backend stores and replaces a
-shared snapshot. Blob-backed plugins do not expose Analytics because concurrent
-event appends can overwrite each other.
+`createBlobDatabasePlugin` stores immutable revisions and advances the active
+pointer with compare-and-swap. It merges disjoint row-ID changes after a lost
+race, including append-only `bundle_events`, so a compatible backend can opt
+into bounded Analytics. The backend's `compareAndSwapObject` must be truly
+atomic. Account for snapshot write amplification and bounded contention
+retries before enabling Analytics on a high-volume event stream.
 
 See [Analytics](/docs/guides/analytics) for database support, event ingestion,
 and deployment order.

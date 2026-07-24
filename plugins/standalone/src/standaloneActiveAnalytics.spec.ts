@@ -1,5 +1,3 @@
-import { analyticsProviderToken } from "@hot-updater/analytics/provider";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { HttpResponse, http, type JsonBodyType } from "msw";
 import { setupServer } from "msw/node";
 import {
@@ -12,10 +10,9 @@ import {
   it,
 } from "vitest";
 
-import {
-  StandaloneDatabaseError,
-  standaloneRepository,
-} from "./standaloneRepository";
+import { standaloneAnalytics } from "./standaloneAnalytics";
+import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
+import { StandaloneDatabaseError } from "./standaloneRepository";
 
 const BASE_URL = "http://localhost/hot-updater";
 const overview = {
@@ -59,7 +56,7 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 const activeService = () => {
-  const repository = standaloneRepository({
+  return createStandaloneAnalyticsProvider({
     baseUrl: BASE_URL,
     commonHeaders: { Authorization: "Bearer common" },
     routes: {
@@ -72,13 +69,6 @@ const activeService = () => {
       }),
     },
   });
-  const [contribution] = getCapabilityContributions(repository);
-  if (contribution === undefined) {
-    throw new Error("Missing standalone Analytics provider.");
-  }
-  return analyticsProviderToken.parse(
-    contribution.create({ database: repository, storages: [] }),
-  );
 };
 
 describe("standalone active installation Analytics", () => {
@@ -198,13 +188,12 @@ describe("standalone active installation Analytics", () => {
   });
 
   it("does not require a public Analytics support option", () => {
-    const repository = standaloneRepository({
+    const manifest = standaloneAnalytics({
       baseUrl: BASE_URL,
     });
 
-    expect(
-      getCapabilityContributions(repository).map(({ token }) => token.id),
-    ).toEqual(["analytics-provider@1"]);
+    expect(manifest.id).toBe("analytics");
+    expect(manifest.requires).toEqual([]);
     expect(requestCount).toBe(0);
   });
 });

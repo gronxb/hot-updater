@@ -907,6 +907,7 @@ export default {
     data: databaseData,
   }),
   console: {
+    analytics: "database",
     gitUrl: "https://github.com/gronxb/hot-updater",
   },
 };

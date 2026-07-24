@@ -2,6 +2,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { betterAuthPlugin, type BetterAuthConfiguredInstance } from "./index";
+import { createPluginSetupContext } from "./setupContext.testFixtures";
 
 const authenticationInput = () => ({
   headers: new Headers({ authorization: "Bearer opaque" }),
@@ -19,17 +20,7 @@ const authenticationInput = () => ({
 
 const providerFrom = (auth: BetterAuthConfiguredInstance) => {
   const manifest = betterAuthPlugin({ auth });
-  const contribution = manifest.setup({
-    capabilities: {
-      get: () => undefined,
-      require() {
-        throw new Error("No capabilities are required.");
-      },
-    },
-    diagnostics: {
-      warn() {},
-    },
-  });
+  const contribution = manifest.setup(createPluginSetupContext());
   const provider = contribution.authentication;
   if (provider === undefined) {
     throw new Error("Better Auth did not contribute authentication.");
@@ -166,15 +157,7 @@ describe("betterAuthPlugin", () => {
 
     // When
     const { manifest, provider } = providerFrom(auth);
-    const contribution = manifest.setup({
-      capabilities: {
-        get: () => undefined,
-        require() {
-          throw new Error("No capabilities are required.");
-        },
-      },
-      diagnostics: { warn() {} },
-    });
+    const contribution = manifest.setup(createPluginSetupContext());
     await provider.authenticate(input);
 
     // Then

@@ -23,9 +23,10 @@ const exportedFunctions = [
     "defineFirstPartyFeatureManifest",
   ],
   ["@hot-updater/analytics", "analytics"],
-  ["@hot-updater/analytics/provider", "withAnalyticsProvider"],
+  ["@hot-updater/analytics/provider", "parseAnalyticsProvider"],
   ["@hot-updater/analytics/legacy-server", "createLegacyHotUpdater"],
   ["@hot-updater/better-auth", "betterAuthPlugin"],
+  ["@hot-updater/standalone", "standaloneAnalytics"],
 ] as const;
 
 const packedArtifactMatrix = [
@@ -81,6 +82,15 @@ const packedArtifactMatrix = [
       "dist/index.mjs",
     ],
   ],
+  [
+    "@hot-updater/standalone",
+    [
+      "dist/index.cjs",
+      "dist/index.d.cts",
+      "dist/index.d.mts",
+      "dist/index.mjs",
+    ],
+  ],
 ] satisfies readonly (readonly [string, readonly string[]])[];
 
 const forbiddenPackedPath =
@@ -88,18 +98,23 @@ const forbiddenPackedPath =
 
 const consumerSource = `
 import { analytics } from "@hot-updater/analytics";
-import { analyticsProviderToken } from "@hot-updater/analytics/provider";
+import { parseAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createLegacyHotUpdater } from "@hot-updater/analytics/legacy-server";
 import { betterAuthPlugin } from "@hot-updater/better-auth";
 import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { defineFirstPartyFeatureManifest } from "@hot-updater/server/internal/first-party-plugin";
+import { standaloneAnalytics } from "@hot-updater/standalone";
 
 declare const database: DatabasePlugin;
-const manifest = analytics({ missingCapability: "error" });
+const manifest = analytics();
+const standaloneManifest = standaloneAnalytics({
+  baseUrl: "https://updates.example.com",
+});
 const runtime = createHotUpdater({ database, plugins: [manifest] });
 void runtime.features.analytics.getBundleEventSummary;
-void analyticsProviderToken;
+void standaloneManifest;
+void parseAnalyticsProvider;
 void betterAuthPlugin;
 void createLegacyHotUpdater;
 void defineFirstPartyFeatureManifest;

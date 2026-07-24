@@ -1,9 +1,8 @@
 import { createServer, type RequestListener, type Server } from "node:http";
 
-import { analyticsProviderToken } from "@hot-updater/analytics/provider";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
 import { standaloneRepository } from "./standaloneRepository";
 import { standaloneStorage } from "./standaloneStorage";
 import {
@@ -13,8 +12,6 @@ import {
 
 const SECRET = "security-canary-never-disclose";
 const servers: Server[] = [];
-
-class MissingCapabilityError extends Error {}
 
 const listen = async (handler: RequestListener): Promise<string> => {
   const server = createServer(handler);
@@ -200,11 +197,7 @@ describe("standalone transport security boundary", () => {
       },
     };
     const repository = standaloneRepository(repositoryConfig);
-    const [contribution] = getCapabilityContributions(repository);
-    if (contribution === undefined) throw new MissingCapabilityError();
-    const analytics = analyticsProviderToken.parse(
-      contribution.create({ database: repository, storages: [] }),
-    );
+    const analytics = createStandaloneAnalyticsProvider(repositoryConfig);
     const storage = standaloneStorage({
       baseUrl: repositoryConfig.baseUrl,
       commonHeaders: outbound,

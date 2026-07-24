@@ -1,10 +1,9 @@
-import { analyticsProviderToken } from "@hot-updater/analytics/provider";
 import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
 import { standaloneRepository } from "./standaloneRepository";
 
-class MissingAnalyticsCapabilityError extends Error {}
 class MissingAvailabilityResolverError extends Error {}
 
 afterEach(() => {
@@ -13,21 +12,21 @@ afterEach(() => {
 });
 
 describe("standalone Analytics provider", () => {
-  it("attaches exactly one deferred provider capability", () => {
+  it("keeps the repository undecorated and provider construction lazy", () => {
     // Given
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
 
     // When
-    const repository = standaloneRepository({
+    const config = {
       baseUrl: "https://trusted.example/provider",
-    });
+    };
+    const repository = standaloneRepository(config);
+    const provider = createStandaloneAnalyticsProvider(config);
 
     // Then
-    const contributions = getCapabilityContributions(repository);
-    expect(contributions.map(({ token }) => token)).toEqual([
-      analyticsProviderToken,
-    ]);
+    expect(getCapabilityContributions(repository)).toEqual([]);
+    expect(provider.mode).toBe("dedicated");
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -48,14 +47,9 @@ describe("standalone Analytics provider", () => {
         });
       }),
     );
-    const repository = standaloneRepository({
+    const provider = createStandaloneAnalyticsProvider({
       baseUrl: "https://trusted.example/provider",
     });
-    const [contribution] = getCapabilityContributions(repository);
-    if (contribution === undefined) throw new MissingAnalyticsCapabilityError();
-    const provider = analyticsProviderToken.parse(
-      contribution.create({ database: repository, storages: [] }),
-    );
     if (provider.resolveAvailability === undefined) {
       throw new MissingAvailabilityResolverError();
     }

@@ -416,6 +416,25 @@ describe("blob snapshot persistence", () => {
     await expect(reader.count({ model: "bundles" })).resolves.toBe(5);
   });
 
+  it("preserves concurrent Analytics event appends across plugin instances", async () => {
+    const plugins = Array.from({ length: 5 }, () =>
+      createMemoryPlugin(config()),
+    );
+
+    await Promise.all(
+      plugins.map((plugin, index) =>
+        plugin.create({
+          model: "bundle_events",
+          data: bundleEventRow(String(index + 1)),
+        }),
+      ),
+    );
+
+    const reader = plugins[0];
+    if (!reader) throw new Error("Expected a concurrent plugin fixture.");
+    await expect(reader.count({ model: "bundle_events" })).resolves.toBe(5);
+  });
+
   it("merges a disjoint concurrent write without rerunning the callback", async () => {
     let snapshotReads = 0;
     const externalSnapshot = {
@@ -448,6 +467,70 @@ describe("blob snapshot persistence", () => {
 
     expect(mutation).toHaveBeenCalledTimes(1);
     await expect(plugin.count({ model: "bundles" })).resolves.toBe(2);
+  });
+
+  it("merges a disjoint concurrent event without rerunning the callback", async () => {
+    let snapshotReads = 0;
+    const externalSnapshot = {
+      version: 2 as const,
+      bundles: [],
+      bundle_patches: [],
+      bundle_events: [bundleEventRow("2")],
+    };
+    const plugin = createMemoryPlugin({
+      ...config(),
+      onSnapshotRead: () => {
+        snapshotReads += 1;
+        if (snapshotReads === 2) {
+          store.set(BLOB_DATABASE_SNAPSHOT_KEY, externalSnapshot);
+        }
+      },
+    });
+    const mutation = vi.fn(async (database) => {
+      await database.create({
+        model: "bundle_events",
+        data: bundleEventRow("1"),
+      });
+      return "created";
+    });
+    if (!plugin.transaction) {
+      throw new Error("Expected a transactional blob plugin fixture.");
+    }
+
+    await expect(plugin.transaction(mutation)).resolves.toBe("created");
+
+    expect(mutation).toHaveBeenCalledTimes(1);
+    await expect(plugin.count({ model: "bundle_events" })).resolves.toBe(2);
+  });
+
+  it("rejects conflicting concurrent events with the same ID", async () => {
+    let snapshotReads = 0;
+    const externalSnapshot = {
+      version: 2 as const,
+      bundles: [],
+      bundle_patches: [],
+      bundle_events: [
+        { ...bundleEventRow("1"), install_id: "external-install" },
+      ],
+    };
+    const plugin = createMemoryPlugin({
+      ...config(),
+      onSnapshotRead: () => {
+        snapshotReads += 1;
+        if (snapshotReads === 2) {
+          store.set(BLOB_DATABASE_SNAPSHOT_KEY, externalSnapshot);
+        }
+      },
+    });
+
+    await expect(
+      plugin.create({
+        model: "bundle_events",
+        data: bundleEventRow("1"),
+      }),
+    ).rejects.toThrow("changed while a mutation was in progress");
+
+    expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toBe(externalSnapshot);
   });
 
   it("rejects conflicting writes to the same row without rerunning the callback", async () => {
@@ -510,6 +593,24 @@ const bundleRow = (suffix: string) => ({
   manifest_storage_uri: null,
   manifest_file_hash: null,
   asset_base_storage_uri: null,
+});
+
+const bundleEventRow = (suffix: string) => ({
+  id: fixtureId(suffix),
+  type: "UNCHANGED" as const,
+  install_id: `install-${suffix}`,
+  user_id: null,
+  username: null,
+  from_bundle_id: null,
+  to_bundle_id: fixtureId(suffix),
+  platform: "ios" as const,
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "default",
+  update_strategy: null,
+  fingerprint_hash: null,
+  sdk_version: "0.37.0",
+  received_at_ms: 1_725_000_000_000 + Number(suffix),
 });
 
 const legacyBundle = (suffix: string): Bundle => ({

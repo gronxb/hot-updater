@@ -95,33 +95,31 @@ configuration. This includes event ingestion and Analytics query routes. Treat
 all reported identifiers as untrusted telemetry and configure provider-level
 access controls, rate limits, quotas, logging, and retention.
 
-For a custom server, configure an Analytics-capable database:
+Managed server presets and the local Console are configured independently.
+Console Analytics is disabled unless `console.analytics` explicitly selects a
+database-backed or dedicated feature.
+
+For a custom server, install Analytics next to any database that implements the
+complete generic `DatabasePlugin` contract:
 
 ```ts
 import { analytics } from "@hot-updater/analytics";
-import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
-  database: withAnalyticsProvider(database),
+  database,
   storages,
   coreRoutes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },
-  plugins: [
-    analytics({
-      missingCapability: "error",
-      queryAccess: "public",
-    }),
-  ],
+  plugins: [analytics({ queryAccess: "public" })],
 });
 ```
 
-`withAnalyticsProvider` supplies the database-backed provider and `analytics()`
-mounts `POST /events` together with the Analytics and installation query
-routes. The strict missing-capability policy fails construction if the provider
-is absent. The example selects public kernel access because it delegates
+`analytics()` creates its database-backed provider from the guarded generic
+database runtime and mounts `POST /events` together with the Analytics and
+installation query routes. The example selects public kernel access because it delegates
 management and query authentication to the surrounding framework. Omit
 `queryAccess: "public"` and install an authentication plugin when the kernel
 should protect Analytics queries itself. Add rate limits and quotas at the
@@ -191,11 +189,12 @@ background.
 | Firestore Database | Supported | Uses append-only document storage. |
 | PostgreSQL Database | Supported | Uses append-only row storage. |
 | Drizzle, Kysely, Prisma, and MongoDB plugins | Supported | The plugin must include the `bundle_events` model. |
-| Standalone Database | Conditional | Discovers the remote database capability from the server automatically. |
-| AWS S3 Database (`s3Database`) | Not supported | S3 Database replaces a shared snapshot, so concurrent event appends are not safe. |
+| Standalone Database | Conditional | Requires an explicit `standaloneAnalytics(...)` companion and an upstream server that advertises the Analytics query routes. |
+| AWS S3 Database (`s3Database`) | Supported with explicit opt-in | Uses versioned ETag compare-and-swap plus row-ID merge. The managed AWS preset remains core-only. |
 
-The Console detects structural support and actual query-route availability. It
-hides Analytics when either one is unavailable.
+The Console installs Analytics only when `console.analytics` is configured. It
+then checks actual query-route availability and hides Analytics when the
+installed provider reports those routes unavailable.
 
 ### Upgrade an existing PostgreSQL plugin installation
 
@@ -211,30 +210,30 @@ psql "$DATABASE_URL" \
 Use `sql/bundles.sql` only for a new database. It recreates the complete
 PostgreSQL schema and is not an existing-install migration.
 
-Existing `standaloneRepository` configuration does not change. There is no
-`supportsAnalytics` option to set. Servers with an installed provider advertise
-structural support, while deployments without one advertise that Analytics is
-unavailable. The remote server must also advertise `analyticsQueries: true`.
+There is no `supportsAnalytics` database option to set. For a generic database
+that satisfies the complete `bundle_events` contract, opt the local Console in
+with `console.analytics: "database"`. Use
+`console.analytics: standaloneAnalytics(config, { queryAccess: "public" })`
+beside `database: standaloneRepository(config)` when Console Analytics must
+proxy to a standalone upstream. The remote server must also advertise
+`analyticsQueries: true`.
 
 ## Support Analytics in a custom database plugin
 
-Use `createDatabasePlugin` for a row- or document-oriented database plugin,
-then attach the bounded Analytics provider explicitly:
+Use `createDatabasePlugin` for a row- or document-oriented database plugin.
+No Analytics import or wrapper belongs in the database factory:
 
 ```ts
-import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import {
   createDatabasePlugin,
   type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 
 export const myDatabase = (implementation: DatabasePluginImplementation) =>
-  withAnalyticsProvider(
-    createDatabasePlugin({
-      name: "my-database",
-      plugin: () => implementation,
-    }),
-  );
+  createDatabasePlugin({
+    name: "my-database",
+    plugin: () => implementation,
+  });
 ```
 
 The implementation must provide `create`, `update`, `delete`, `count`,
@@ -252,9 +251,13 @@ If a query exceeds that limit, the server returns HTTP 503 with code
 `ANALYTICS_SCAN_LIMIT_EXCEEDED`. Narrow the query or provide a dedicated bundle
 event service for larger datasets.
 
-Do not attach the bounded Analytics provider to `createBlobDatabasePlugin`.
-Blob-backed database plugins replace a shared snapshot, so concurrent event
-appends are unsafe. This is why `s3Database` does not support Analytics.
+`createBlobDatabasePlugin` commits immutable revisions through a
+compare-and-swap active pointer and merges disjoint row-ID changes after a lost
+race. This makes concurrent append-only events safe for `s3Database`. It also
+means each event writes a new snapshot and revision objects, and a hot key can
+exhaust the bounded 16-attempt commit retry. Keep the managed AWS preset
+core-only unless that write amplification and contention profile is acceptable,
+then opt a custom server into `analytics()` explicitly.
 
 See [Custom Database Plugin](/docs/database-plugins/custom-database) for the
 complete fixed-model contract and conformance tests.
@@ -267,7 +270,7 @@ enabling Analytics in JavaScript:
 1. Back up the database, then add the `bundle_events` table or collection.
 2. Deploy the server and verify the `/version` route-capability fields.
 3. Release a store build containing the matching React Native native module.
-4. Confirm the Console sees structural support and the intended query route.
+4. Configure Console Analytics explicitly and confirm the intended query route.
 5. Enable `analytics: true` in JavaScript only after the native build is in
    service.
 

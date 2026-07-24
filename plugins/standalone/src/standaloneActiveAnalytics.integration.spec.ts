@@ -1,30 +1,18 @@
 import { type IncomingHttpHeaders, type Server, createServer } from "node:http";
 
-import {
-  attachCapabilityContribution,
-  type DatabasePlugin,
-} from "@hot-updater/plugin-core";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { createHotUpdater } from "@hot-updater/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { analytics } from "../../../packages/analytics/src/analytics";
-import {
-  analyticsProviderToken,
-  withAnalyticsProvider,
-} from "../../../packages/analytics/src/provider";
 import { createInMemoryDatabasePlugin } from "../../../packages/test-utils/test/inMemoryDatabasePlugin";
-import { standaloneRepository } from "./index";
+import { standaloneAnalytics, standaloneRepository } from "./index";
 
 const AS_OF_MS = Date.UTC(2026, 6, 18, 12);
-const sourceManifest = analytics({
-  missingCapability: "error",
-  queryAccess: "public",
-});
+const sourceManifest = analytics({ queryAccess: "public" });
 const source = createHotUpdater({
   basePath: "/hot-updater",
   coreRoutes: { bundles: false, updateCheck: false },
-  database: withAnalyticsProvider(createInMemoryDatabasePlugin()),
+  database: createInMemoryDatabasePlugin(),
   plugins: [sourceManifest],
 });
 let baseUrl = "";
@@ -116,22 +104,6 @@ const unchangedEvent = (installId: string, bundleId: string) => ({
   username: "Shared Alias",
 });
 
-const useWorkspaceAnalyticsToken = (
-  repository: DatabasePlugin,
-): DatabasePlugin => {
-  const [contribution] = getCapabilityContributions(repository);
-  if (contribution === undefined) {
-    throw new Error("Expected standalone Analytics capability.");
-  }
-  return attachCapabilityContribution(
-    { ...repository },
-    {
-      create: contribution.create,
-      token: analyticsProviderToken,
-    },
-  );
-};
-
 describe("standalone active installation Analytics integration", () => {
   it("delegates two installs sharing one exact alias", async () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(AS_OF_MS - 1_000);
@@ -144,26 +116,24 @@ describe("standalone active installation Analytics integration", () => {
       unchangedEvent("standalone-active-b", bundleId),
     );
     now.mockReturnValue(AS_OF_MS);
-    const consoleManifest = analytics({
-      missingCapability: "error",
+    const repositoryConfig = {
+      baseUrl: `${baseUrl}/hot-updater`,
+      routes: {
+        activeInstallationOverview: () => ({
+          headers: {
+            "X-Analytics-Context": "console-request",
+          },
+          path: "/api/installations/active",
+        }),
+      },
+    };
+    const consoleManifest = standaloneAnalytics(repositoryConfig, {
       queryAccess: "public",
     });
     const consoleRuntime = createHotUpdater({
       basePath: "/console",
       coreRoutes: { bundles: false, updateCheck: false },
-      database: useWorkspaceAnalyticsToken(
-        standaloneRepository({
-          baseUrl: `${baseUrl}/hot-updater`,
-          routes: {
-            activeInstallationOverview: () => ({
-              headers: {
-                "X-Analytics-Context": "console-request",
-              },
-              path: "/api/installations/active",
-            }),
-          },
-        }),
-      ),
+      database: standaloneRepository(repositoryConfig),
       plugins: [consoleManifest],
     });
 

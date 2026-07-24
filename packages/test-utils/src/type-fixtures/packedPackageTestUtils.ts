@@ -36,6 +36,7 @@ export const resolveServerPluginPackageDirectories = (
     "packages/server",
     "packages/analytics",
     "packages/better-auth",
+    "plugins/standalone",
   ].map((directory) => path.join(workspaceRoot, directory));
 
 const readPackageMetadata = async (

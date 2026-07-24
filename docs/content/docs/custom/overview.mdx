@@ -32,7 +32,14 @@ Configure your Hot Updater CLI to use the self-hosted database.
 import { defineConfig } from "@hot-updater/core";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
-import { standaloneRepository } from "@hot-updater/standalone";
+import {
+  standaloneAnalytics,
+  standaloneRepository,
+} from "@hot-updater/standalone";
+
+const repositoryConfig = {
+  baseUrl: "http://localhost:3000/hot-updater",
+};
 
 export default defineConfig({
   build: bare(),
@@ -45,9 +52,12 @@ export default defineConfig({
     },
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
-  database: standaloneRepository({
-    baseUrl: "http://localhost:3000/hot-updater",
-  }),
+  database: standaloneRepository(repositoryConfig),
+  console: {
+    analytics: standaloneAnalytics(repositoryConfig, {
+      queryAccess: "public",
+    }),
+  },
 });
 ```
 
@@ -100,31 +110,24 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 - `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin
 
 `updateCheck` is mounted by default and `bundles` is disabled by default.
-Analytics is a separate feature manifest with a separate provider. Protect
+Analytics is a separate feature manifest that consumes the generic database
+runtime. Protect
 management and query routes with a kernel authentication plugin, or declare
 them public explicitly and protect them with framework middleware. The
 `/version` endpoint is always mounted for diagnostics.
 
 ```typescript title="src/hotUpdater.ts"
 import { analytics } from "@hot-updater/analytics";
-import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 
 export const hotUpdater = createHotUpdater({
-  database: withAnalyticsProvider(
-    kyselyAdapter({ db, provider: "sqlite" }),
-  ),
+  database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
   coreRoutes: {
     updateCheck: true,
     bundles: { access: { kind: "public" } },
   },
-  plugins: [
-    analytics({
-      missingCapability: "error",
-      queryAccess: "public",
-    }),
-  ],
+  plugins: [analytics({ queryAccess: "public" })],
 });
 ```
 

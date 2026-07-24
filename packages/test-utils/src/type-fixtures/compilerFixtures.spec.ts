@@ -124,8 +124,6 @@ const compileFailCases = [
   ["routes-analytics.mts", "TS2353", []],
   ["routes-event-ingestion.mts", "TS2353", []],
   ["structural-manifest-forgery.mts", "TS2741", []],
-  ["warn-alias-without-narrowing.mts", "TS2339", ["getBundleEventSummary"]],
-  ["widened-policy-as-available.mts", "TS2322", []],
 ] satisfies readonly CompileFailCase[];
 
 describe("server plugin compile-fail fixtures", () => {

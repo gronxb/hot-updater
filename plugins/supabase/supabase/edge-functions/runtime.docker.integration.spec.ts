@@ -270,9 +270,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         bundles: false,
         updateCheck: true,
       },
-      plugins: [
-        analytics({ missingCapability: "error", queryAccess: "public" }),
-      ],
+      plugins: [analytics({ queryAccess: "public" })],
     });
 
     edgeRuntime = spawnRuntime({

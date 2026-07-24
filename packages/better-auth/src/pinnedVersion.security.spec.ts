@@ -6,17 +6,10 @@ import { authenticateMatchedRoute } from "../../server/src/kernel/authentication
 import type { HotUpdaterMatchedRoute } from "../../server/src/kernel/contracts";
 import betterAuthPackage from "../node_modules/better-auth/package.json";
 import { betterAuthPlugin } from "./index";
+import { createPluginSetupContext } from "./setupContext.testFixtures";
 
 const SECRET = "pinned-session-store-secret-e215";
-const setupContext = {
-  capabilities: {
-    get: () => undefined,
-    require() {
-      throw new Error("unexpected capability access");
-    },
-  },
-  diagnostics: { warn() {} },
-};
+const setupContext = createPluginSetupContext();
 const route: HotUpdaterMatchedRoute = {
   access: { kind: "protected" },
   id: "protected",

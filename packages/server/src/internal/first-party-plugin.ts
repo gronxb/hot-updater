@@ -18,8 +18,10 @@ export type {
 } from "../kernel/contracts";
 export {
   defineFirstPartyFeatureManifest,
+  isFirstPartyFeatureManifest,
   type FeatureApiKind,
   type FeatureApiAliases,
+  type FirstPartyFeatureManifest,
   type FirstPartyFeatureManifestDefinition,
   type HotUpdaterCapabilityRequirement,
   type HotUpdaterConstructionDiagnostic,

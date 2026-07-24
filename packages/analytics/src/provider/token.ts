@@ -1,5 +1,3 @@
-import { defineCapability } from "@hot-updater/plugin-core";
-
 import {
   InvalidAnalyticsCapabilityError,
   InvalidAnalyticsProviderError,
@@ -89,11 +87,6 @@ export const parseAnalyticsProvider = (value: unknown): AnalyticsProvider => {
   }
   return Object.freeze(value);
 };
-
-export const analyticsProviderToken = defineCapability<AnalyticsProvider>({
-  id: "analytics-provider@1",
-  parse: parseAnalyticsProvider,
-});
 
 export const resolveAnalyticsCapability = async (
   provider: AnalyticsProvider,

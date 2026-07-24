@@ -74,7 +74,12 @@ export const getConfig = createServerFn().handler(async () => {
   try {
     const { prepareConfig } = await import("./server/config.server");
     const { config } = await prepareConfig();
-    return { console: config.console };
+    return {
+      console: {
+        gitUrl: config.console.gitUrl,
+        port: config.console.port,
+      },
+    };
   } catch (error) {
     console.error("Error during config retrieval:", error);
     throw error;

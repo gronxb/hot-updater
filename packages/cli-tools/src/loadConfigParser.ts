@@ -2,10 +2,10 @@ import fs from "fs/promises";
 import { createRequire, Module } from "module";
 
 import * as analytics from "@hot-updater/analytics";
-import * as analyticsProvider from "@hot-updater/analytics/provider";
 import * as pluginCore from "@hot-updater/plugin-core";
 import type { ConfigInput, Platform } from "@hot-updater/plugin-core";
 import * as pluginCoreCapabilities from "@hot-updater/plugin-core/internal/capabilities";
+import * as firstPartyServerPlugin from "@hot-updater/server/internal/first-party-plugin";
 import { createJiti, type JitiOptions } from "jiti";
 
 export type HotUpdaterConfigOptions = {
@@ -31,16 +31,16 @@ const canonicalConfigModules = Object.freeze([
     specifier: "@hot-updater/analytics",
   }),
   Object.freeze({
-    exports: analyticsProvider,
-    specifier: "@hot-updater/analytics/provider",
-  }),
-  Object.freeze({
     exports: pluginCore,
     specifier: "@hot-updater/plugin-core",
   }),
   Object.freeze({
     exports: pluginCoreCapabilities,
     specifier: "@hot-updater/plugin-core/internal/capabilities",
+  }),
+  Object.freeze({
+    exports: firstPartyServerPlugin,
+    specifier: "@hot-updater/server/internal/first-party-plugin",
   }),
 ]);
 
@@ -107,7 +107,7 @@ export const parseConfig = (
           : configModule;
 
       return typeof configExport === "function"
-        ? configExport(options)
+        ? await configExport(options)
         : configExport;
     } finally {
       for (const snapshot of moduleCacheSnapshots.reverse()) {

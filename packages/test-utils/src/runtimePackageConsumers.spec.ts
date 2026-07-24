@@ -145,10 +145,7 @@ const database = provider.supabaseDatabase({
 });
 const runtime = server.createHotUpdater({
   database,
-  plugins: [analytics.analytics({
-    missingCapability: "error",
-    queryAccess: "public",
-  })],
+  plugins: [analytics.analytics({ queryAccess: "public" })],
 });
 if (runtime.features.analytics.status !== "available") {
   throw new Error("packed Analytics provider was not composed");
@@ -193,10 +190,7 @@ const server = await import("@hot-updater/server");
 const config = await loadConfig(null);
 const runtime = server.createHotUpdater({
   database: config.database,
-  plugins: [analytics.analytics({
-    missingCapability: "error",
-    queryAccess: "public",
-  })],
+  plugins: [analytics.analytics({ queryAccess: "public" })],
 });
 if (runtime.features.analytics.status !== "available") {
   throw new Error("mixed-condition Analytics provider was not composed");

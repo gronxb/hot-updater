@@ -21,17 +21,13 @@ export {
   InvalidAnalyticsProviderError,
 } from "../errors";
 export {
-  analyticsProviderToken,
   parseAnalyticsProvider,
   parseReportedAnalyticsCapability,
   resolveAnalyticsCapability,
 } from "./token";
 export type {
   AnalyticsProvider,
+  AnalyticsProviderFactory,
   AnalyticsProviderMode,
   ReportedAnalyticsCapability,
 } from "./types";
-export {
-  withAnalyticsProvider,
-  type AnalyticsProviderFactory,
-} from "./withAnalyticsProvider";

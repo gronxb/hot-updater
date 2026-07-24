@@ -136,6 +136,7 @@ export const composeServerKernel = (
     try {
       const setupResult = manifest.setup({
         capabilities: capabilities.forPlugin(manifest.id),
+        database: options.runtime.database,
         diagnostics: Object.freeze({
           warn(diagnostic: HotUpdaterConstructionDiagnostic) {
             if (

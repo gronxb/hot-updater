@@ -1,11 +1,8 @@
-import { analyticsProviderToken } from "@hot-updater/analytics/provider";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
 import { standaloneRepository } from "./standaloneRepository";
 import { standaloneStorage } from "./standaloneStorage";
-
-class MissingAnalyticsCapabilityError extends Error {}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -47,7 +44,7 @@ describe("standalone credentialed transport consumers", () => {
         return Response.json({});
       }),
     );
-    const repository = standaloneRepository({
+    const config = {
       baseUrl: "https://trusted.example/provider",
       commonHeaders: { "Hot-Updater-SDK-Version": "common-secret" },
       routes: {
@@ -56,12 +53,8 @@ describe("standalone credentialed transport consumers", () => {
           headers: { "Hot-Updater-SDK-Version": "route-secret" },
         }),
       },
-    });
-    const [contribution] = getCapabilityContributions(repository);
-    if (contribution === undefined) throw new MissingAnalyticsCapabilityError();
-    const provider = analyticsProviderToken.parse(
-      contribution.create({ database: repository, storages: [] }),
-    );
+    };
+    const provider = createStandaloneAnalyticsProvider(config);
 
     // When
     await provider.appendBundleEvent({

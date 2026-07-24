@@ -282,9 +282,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         bundles: false,
         updateCheck: true,
       },
-      plugins: [
-        analytics({ missingCapability: "error", queryAccess: "public" }),
-      ],
+      plugins: [analytics({ queryAccess: "public" })],
     });
 
     functionsRuntime = spawnRuntime({

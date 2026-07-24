@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { analytics } from "@hot-updater/analytics";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -18,17 +19,21 @@ import {
   searchInstallations,
 } from "./runtime.server";
 
-const createTestDatabasePlugin = () =>
+const createTestDatabaseOperations = () => ({
+  create: vi.fn(async ({ data }) => data),
+  update: vi.fn(async () => null),
+  delete: vi.fn(async () => undefined),
+  count: vi.fn(async () => 0),
+  findOne: vi.fn(async () => null),
+  findMany: vi.fn(async () => []),
+});
+
+const createTestDatabasePlugin = (
+  operations = createTestDatabaseOperations(),
+) =>
   createDatabasePlugin({
     name: "analytics-runtime-test",
-    plugin: () => ({
-      create: vi.fn(async ({ data }) => data),
-      update: vi.fn(async () => null),
-      delete: vi.fn(async () => undefined),
-      count: vi.fn(async () => 0),
-      findOne: vi.fn(async () => null),
-      findMany: vi.fn(async () => []),
-    }),
+    plugin: () => operations,
   });
 
 const createRuntime = () => {
@@ -52,16 +57,138 @@ const createRuntime = () => {
   };
 };
 
+const createDedicatedProvider = () => ({
+  appendBundleEvent: vi.fn(async () => undefined),
+  getActiveInstallationOverview: vi.fn(async () => ({
+    activeInstallations: 0,
+    asOfMs: 0,
+    bundleSeries: [],
+    bundles: [],
+    series: [],
+    window: "24h" as const,
+  })),
+  getBundleEventAnalytics: vi.fn(async (_bundleId, _window, limit, offset) => ({
+    cohorts: { installed: [], recovered: [] },
+    recentEvents: {
+      data: [],
+      pagination: { limit, offset, total: 0 },
+    },
+    series: { installed: [], recovered: [] },
+    summary: { installed: 0, recovered: 0 },
+  })),
+  getBundleEventOverview: vi.fn(async () => ({
+    bundles: [],
+    trackedInstallations: 0,
+  })),
+  getBundleEventSummary: vi.fn(async () => ({
+    installed: 0,
+    recovered: 0,
+  })),
+  getInstallationHistory: vi.fn(async (_installId, limit, offset) => ({
+    data: [],
+    pagination: { limit, offset, total: 0 },
+  })),
+  mode: "dedicated" as const,
+  searchInstallations: vi.fn(async (_query, limit, offset) => ({
+    data: [],
+    pagination: { limit, offset, total: 0 },
+  })),
+});
+
 describe("analytics runtime input validation", () => {
-  it("constructs the internal analytics runtime without authentication", () => {
+  it("keeps Analytics disabled when Console does not opt in", async () => {
+    const operations = createTestDatabaseOperations();
+    const runtime = Reflect.apply(createRuntimeHotUpdater, undefined, [
+      { database: createTestDatabasePlugin(operations) },
+    ]);
+    const versionResponse = await runtime.handler(
+      new Request(
+        new URL(`${runtime.basePath}/version`, "https://updates.example.com"),
+      ),
+    );
+    const version = await versionResponse.json();
+
+    expect(runtime.features.analytics).toBeUndefined();
+    expect(Reflect.has(version.capabilities, "analytics")).toBe(false);
+    await expect(
+      getBundleEventSummary(runtime, { bundleId: "bundle-1" }),
+    ).rejects.toThrow(/not supported/i);
+    expect(
+      Object.values(operations).every(
+        (operation) => operation.mock.calls.length === 0,
+      ),
+    ).toBe(true);
+  });
+
+  it("installs database-backed Analytics only when Console opts in", async () => {
+    const operations = createTestDatabaseOperations();
+    const runtime = Reflect.apply(createRuntimeHotUpdater, undefined, [
+      {
+        console: { analytics: "database" },
+        database: createTestDatabasePlugin(operations),
+      },
+    ]);
+
+    expect(runtime.features.analytics.status).toBe("available");
+    await runtime.features.analytics.appendBundleEvent({
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      fingerprintHash: null,
+      fromBundleId: "bundle-0",
+      installId: "install-1",
+      platform: "ios",
+      toBundleId: "bundle-1",
+      type: "UPDATE_APPLIED",
+      updateStrategy: "appVersion",
+    });
+    expect(operations.create).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "bundle_events" }),
+    );
+  });
+
+  it("uses the Analytics manifest configured for Console", async () => {
+    // Given
+    const provider = createDedicatedProvider();
+    const manifest = analytics({
+      provider: () => provider,
+      queryAccess: "public",
+    });
+    const database = createTestDatabasePlugin();
+
+    // When
+    const runtime = Reflect.apply(createRuntimeHotUpdater, undefined, [
+      {
+        console: { analytics: manifest },
+        database,
+      },
+    ]);
+    await runtime.features.analytics.getBundleEventSummary("bundle-1");
+
+    // Then
+    expect(provider.getBundleEventSummary).toHaveBeenCalledWith("bundle-1");
+  });
+
+  it("rejects a non-Analytics Console manifest", () => {
     // Given / When
     const construct = () =>
       Reflect.apply(createRuntimeHotUpdater, undefined, [
-        { database: createTestDatabasePlugin() },
+        {
+          console: {
+            analytics: {
+              id: "forged",
+              namespace: "analytics",
+              version: "1.0.0",
+            },
+          },
+          database: createTestDatabasePlugin(),
+        },
       ]);
 
     // Then
-    expect(construct).not.toThrow();
+    expect(construct).toThrow(
+      "Console analytics must be an Analytics manifest.",
+    );
   });
 
   it("rejects an unavailable Analytics feature", async () => {

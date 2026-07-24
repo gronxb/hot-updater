@@ -161,7 +161,6 @@ describe("loadConfig capabilities", () => {
 
       const require = createRequire(import.meta.url);
       const requiredPluginCoreBefore = require("@hot-updater/plugin-core");
-      const requiredAnalyticsBefore = require("@hot-updater/analytics/provider");
       const { loadConfig } = await import("./loadConfig");
       const { getCapabilityContributions } =
         await import("@hot-updater/plugin-core/internal/capabilities");
@@ -179,11 +178,98 @@ describe("loadConfig capabilities", () => {
       expect(require("@hot-updater/plugin-core")).toBe(
         requiredPluginCoreBefore,
       );
-      expect(require("@hot-updater/analytics/provider")).toBe(
-        requiredAnalyticsBefore,
-      );
     },
   );
+
+  it.each([
+    {
+      extension: "mts",
+      source: [
+        "import { analytics } from '@hot-updater/analytics';",
+        "export default {",
+        "  console: { analytics: analytics({ queryAccess: 'public' }) },",
+        "};",
+        "",
+      ].join("\n"),
+    },
+    {
+      extension: "cts",
+      source: [
+        "const { analytics } = require('@hot-updater/analytics');",
+        "module.exports = {",
+        "  console: { analytics: analytics({ queryAccess: 'public' }) },",
+        "};",
+        "",
+      ].join("\n"),
+    },
+  ])(
+    "preserves a branded Analytics manifest from .$extension configs",
+    async ({ extension, source }) => {
+      await writeProjectFile(
+        projectRoot,
+        `hot-updater.config.${extension}`,
+        source,
+      );
+
+      const { loadConfig } = await import("./loadConfig");
+      const { createHotUpdater } = await import("@hot-updater/server");
+      const config = await loadConfig(null);
+      const manifest = Reflect.get(config.console, "analytics");
+
+      expect(() =>
+        Reflect.apply(createHotUpdater, undefined, [
+          {
+            coreRoutes: { bundles: false, updateCheck: false },
+            database: config.database,
+            plugins: [manifest],
+          },
+        ]),
+      ).not.toThrow();
+    },
+  );
+
+  it("preserves a Standalone Analytics manifest created after an async CommonJS boundary", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.cts",
+      [
+        "module.exports = async () => {",
+        "  await new Promise((resolve) => setImmediate(resolve));",
+        "  const { standaloneAnalytics, standaloneRepository } = require('@hot-updater/standalone');",
+        "  const standalone = { baseUrl: 'https://updates.example.com' };",
+        "  return {",
+        "    console: {",
+        "      analytics: standaloneAnalytics(standalone, { queryAccess: 'public' }),",
+        "    },",
+        "    database: standaloneRepository(standalone),",
+        "  };",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const require = createRequire(import.meta.url);
+    const analyticsBefore = require("@hot-updater/analytics");
+    const serverManifestBefore = require("@hot-updater/server/internal/first-party-plugin");
+    const { loadConfig } = await import("./loadConfig");
+    const { createHotUpdater } = await import("@hot-updater/server");
+    const config = await loadConfig(null);
+    const manifest = Reflect.get(config.console, "analytics");
+
+    const runtime = Reflect.apply(createHotUpdater, undefined, [
+      {
+        coreRoutes: { bundles: false, updateCheck: false },
+        database: config.database,
+        plugins: [manifest],
+      },
+    ]);
+
+    expect(runtime.features.analytics.status).toBe("available");
+    expect(require("@hot-updater/analytics")).toBe(analyticsBefore);
+    expect(require("@hot-updater/server/internal/first-party-plugin")).toBe(
+      serverManifestBefore,
+    );
+  });
 
   it("restores module caches when config evaluation fails", async () => {
     await writeProjectFile(
@@ -192,14 +278,18 @@ describe("loadConfig capabilities", () => {
       "throw new Error('config failed');\n",
     );
     const require = createRequire(import.meta.url);
+    const analyticsBefore = require("@hot-updater/analytics");
     const pluginCoreBefore = require("@hot-updater/plugin-core");
-    const analyticsBefore = require("@hot-updater/analytics/provider");
+    const serverManifestBefore = require("@hot-updater/server/internal/first-party-plugin");
     const { loadConfig } = await import("./loadConfig");
 
     await expect(loadConfig(null)).rejects.toThrow("config failed");
 
+    expect(require("@hot-updater/analytics")).toBe(analyticsBefore);
     expect(require("@hot-updater/plugin-core")).toBe(pluginCoreBefore);
-    expect(require("@hot-updater/analytics/provider")).toBe(analyticsBefore);
+    expect(require("@hot-updater/server/internal/first-party-plugin")).toBe(
+      serverManifestBefore,
+    );
   });
 
   it("serializes concurrent functional config evaluation", async () => {

@@ -1379,6 +1379,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../server
       jiti:
         specifier: 2.7.0
         version: 2.7.0
@@ -1395,6 +1398,9 @@ importers:
       '@clack/prompts':
         specifier: catalog:tools
         version: 1.0.1
+      '@hot-updater/standalone':
+        specifier: workspace:*
+        version: link:../../plugins/standalone
       '@hot-updater/test-utils':
         specifier: workspace:*
         version: link:../test-utils
@@ -1913,6 +1919,9 @@ importers:
         specifier: catalog:hono
         version: 4.12.9
     devDependencies:
+      '@hot-updater/analytics':
+        specifier: workspace:*
+        version: link:../../packages/analytics
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -2218,9 +2227,6 @@ importers:
 
   plugins/postgres:
     dependencies:
-      '@hot-updater/analytics':
-        specifier: workspace:*
-        version: link:../../packages/analytics
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core

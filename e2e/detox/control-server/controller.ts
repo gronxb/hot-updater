@@ -1315,7 +1315,10 @@ async function withDatabaseClient<T>(
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
+      loadConfig: (options: null) => Promise<{
+        console: { analytics: "database" | "disabled" | object };
+        database: DatabasePlugin;
+      }>;
     };
   const originalCwd = process.cwd();
 
@@ -1406,8 +1409,6 @@ async function withAnalyticsRuntime<T>(
     };
   const { analytics } =
     await import("../../../packages/analytics/dist/index.mjs");
-  const { withAnalyticsProvider } =
-    await import("../../../packages/analytics/dist/provider/index.mjs");
   const { createHotUpdater } =
     await import("../../../packages/server/dist/index.mjs");
   const originalCwd = process.cwd();
@@ -1417,12 +1418,20 @@ async function withAnalyticsRuntime<T>(
     return await withHotUpdaterControlEnv(async () => {
       const config = await loadConfig(null);
       try {
-        const manifest = analytics({ queryAccess: "public" });
+        const configured = config.console.analytics;
+        const manifest =
+          configured === "database"
+            ? analytics({ queryAccess: "public" })
+            : configured === "disabled"
+              ? null
+              : configured;
         return await callback(
-          createHotUpdater({
-            database: withAnalyticsProvider(config.database),
-            plugins: [manifest],
-          }),
+          Reflect.apply(createHotUpdater, undefined, [
+            {
+              database: config.database,
+              plugins: manifest === null ? [] : [manifest],
+            },
+          ]),
         );
       } finally {
         await config.database.onUnmount?.();

@@ -1,4 +1,7 @@
-import type { CapabilityToken } from "@hot-updater/plugin-core";
+import type {
+  CapabilityToken,
+  DatabaseCapabilityRuntime,
+} from "@hot-updater/plugin-core";
 import type {
   HotUpdaterFeatureManifest,
   HotUpdaterPluginSetupContext,
@@ -10,61 +13,65 @@ import {
   analytics,
   analyticsLegacyAliases,
   type AnalyticsAPI,
-  type AnalyticsFeature,
   type AnalyticsFeatureAvailable,
   type AnalyticsFeatureKind,
-  type StrictAnalyticsFeatureKind,
 } from "./analytics";
-import { analyticsProviderToken, type AnalyticsProvider } from "./provider";
+import {
+  InvalidAnalyticsProviderError,
+  type AnalyticsProvider,
+} from "./provider";
 import { createTestProvider } from "./testing/createTestProvider";
 
-class MissingTestCapabilityError extends Error {
-  readonly name = "MissingTestCapabilityError";
+class UnimplementedDatabaseOperationError extends Error {
+  readonly name = "UnimplementedDatabaseOperationError";
 }
 
-const createSetupContext = (
-  provider: AnalyticsProvider | undefined,
-  warnings: string[],
-): HotUpdaterPluginSetupContext => {
-  const get = <TValue>(token: CapabilityToken<TValue>): TValue | undefined =>
-    provider === undefined || token !== analyticsProviderToken
-      ? undefined
-      : token.parse(provider);
-  return {
-    capabilities: {
-      get,
-      require<TValue>(token: CapabilityToken<TValue>): TValue {
-        const value = get(token);
-        if (value === undefined) throw new MissingTestCapabilityError();
-        return value;
-      },
-    },
-    diagnostics: {
-      warn(diagnostic) {
-        warnings.push(diagnostic.code);
-      },
-    },
-  };
+const unavailable = async (): Promise<never> => {
+  throw new UnimplementedDatabaseOperationError();
 };
 
-describe("analytics", () => {
-  it("keeps warn and strict manifest versions synchronized with the package", () => {
-    // Given / When
-    const warnManifest = analytics();
-    const strictManifest = analytics({ missingCapability: "error" });
+const database: DatabaseCapabilityRuntime = Object.freeze({
+  name: "analytics-test",
+  count: unavailable,
+  create: unavailable,
+  delete: unavailable,
+  findMany: unavailable,
+  findOne: unavailable,
+  update: unavailable,
+});
 
-    // Then
-    expect(warnManifest.version).toBe(packageJson.version);
-    expect(strictManifest.version).toBe(packageJson.version);
+const createSetupContext = (
+  warnings: string[] = [],
+): HotUpdaterPluginSetupContext => ({
+  capabilities: {
+    get<TValue>(_token: CapabilityToken<TValue>): TValue | undefined {
+      return undefined;
+    },
+    require<TValue>(_token: CapabilityToken<TValue>): TValue {
+      throw new Error("No test capability is registered.");
+    },
+  },
+  database,
+  diagnostics: {
+    warn(diagnostic) {
+      warnings.push(diagnostic.code);
+    },
+  },
+});
+
+describe("analytics", () => {
+  it("keeps its manifest version synchronized with the package", () => {
+    expect(analytics().version).toBe(packageJson.version);
   });
 
-  it("preserves its fixed manifest identity and default availability type", () => {
+  it("preserves its fixed identity and always-available feature type", () => {
     // Given / When
     const manifest = analytics();
 
     // Then
     expect(manifest.id).toBe("analytics");
     expect(manifest.namespace).toBe("analytics");
+    expect(manifest.requires).toEqual([]);
     expect(Object.isFrozen(manifest)).toBe(true);
     expectTypeOf(manifest.namespace).toEqualTypeOf<"analytics">();
     expectTypeOf(manifest).toMatchTypeOf<
@@ -75,56 +82,48 @@ describe("analytics", () => {
       >
     >();
     expectTypeOf<
-      AnalyticsFeature<{ readonly requestId: string }>
-    >().toMatchTypeOf<
-      | AnalyticsFeatureAvailable<{ readonly requestId: string }>
-      | { readonly status: "unavailable" }
-    >();
+      AnalyticsFeatureAvailable<{ readonly requestId: string }>
+    >().toMatchTypeOf<AnalyticsAPI<{ readonly requestId: string }>>();
   });
 
-  it("contributes one frozen unavailable state and warning in default mode", async () => {
+  it("builds the default bounded provider from the generic database", async () => {
     // Given
-    const warnings: string[] = [];
-    const manifest = analytics();
+    const manifest = analytics({ queryAccess: "public" });
 
     // When
-    const contribution = manifest.setup(
-      createSetupContext(undefined, warnings),
-    );
+    const contribution = manifest.setup(createSetupContext());
     const metadata = await contribution.metadata?.[0]?.resolve(
       new AbortController().signal,
     );
 
     // Then
-    expect(contribution.routes).toEqual([]);
-    expect(contribution.api?.value).toEqual({
-      reason: "missing-provider-capability",
-      status: "unavailable",
-    });
+    expect(contribution.routes).toHaveLength(7);
+    expect(contribution.api?.value.status).toBe("available");
     expect(metadata).toEqual({
-      analytics: false,
-      analyticsQueries: false,
-      eventIngestion: false,
+      analytics: true,
+      analyticsQueries: true,
+      eventIngestion: true,
+      maxMatchingRows: 50_000,
+      mode: "bounded",
     });
-    expect(warnings).toEqual(["ANALYTICS_PROVIDER_CAPABILITY_MISSING"]);
-    expect(Object.isFrozen(contribution)).toBe(true);
-    expect(Object.isFrozen(contribution.api?.value)).toBe(true);
   });
 
   it("contributes seven public compatibility routes and flat aliases", () => {
     // Given
     const provider = createTestProvider();
-    const manifest = analytics({ queryAccess: "public" });
+    const manifest = analytics({
+      provider: () => provider,
+      queryAccess: "public",
+    });
 
     // When
-    const contribution = manifest.setup(createSetupContext(provider, []));
+    const contribution = manifest.setup(createSetupContext());
 
     // Then
     expect(contribution.routes).toHaveLength(7);
     expect(
       contribution.routes?.every((route) => route.access.kind === "public"),
     ).toBe(true);
-    expect(contribution.api?.value.status).toBe("available");
     expect(Object.keys(contribution.api?.legacyAliases ?? {})).toEqual([
       "appendBundleEvent",
       "getActiveInstallationOverview",
@@ -136,51 +135,58 @@ describe("analytics", () => {
     ]);
   });
 
-  it("captures warn and strict query access before caller mutation", () => {
+  it("captures query access and provider factory before caller mutation", async () => {
     // Given
-    const provider = createTestProvider();
-    const warnOptions: {
-      queryAccess: "protected" | "public";
-    } = { queryAccess: "public" };
-    const strictOptions: {
-      missingCapability: "error";
+    const originalProvider = createTestProvider();
+    const replacementProvider = createTestProvider();
+    const options: {
+      provider: () => AnalyticsProvider;
       queryAccess: "protected" | "public";
     } = {
-      missingCapability: "error",
+      provider: () => originalProvider,
       queryAccess: "public",
     };
-    const warnManifest = analytics(warnOptions);
-    const strictManifest = analytics(strictOptions);
+    const manifest = analytics(options);
 
     // When
-    warnOptions.queryAccess = "protected";
-    strictOptions.queryAccess = "protected";
-    const warnContribution = warnManifest.setup(
-      createSetupContext(provider, []),
-    );
-    const strictContribution = strictManifest.setup(
-      createSetupContext(provider, []),
-    );
+    options.provider = () => replacementProvider;
+    options.queryAccess = "protected";
+    const contribution = manifest.setup(createSetupContext());
 
     // Then
     expect(
-      warnContribution.routes?.every((route) => route.access.kind === "public"),
+      contribution.routes?.every((route) => route.access.kind === "public"),
     ).toBe(true);
-    expect(
-      strictContribution.routes?.every(
-        (route) => route.access.kind === "public",
-      ),
-    ).toBe(true);
-    expect(Object.isFrozen(warnOptions)).toBe(false);
-    expect(Object.isFrozen(strictOptions)).toBe(false);
+    await contribution.api?.value.getBundleEventOverview();
+    expect(originalProvider.getBundleEventOverview).toHaveBeenCalledOnce();
+    expect(replacementProvider.getBundleEventOverview).not.toHaveBeenCalled();
+    expect(Object.isFrozen(options)).toBe(false);
+  });
+
+  it("rejects an async provider factory without leaking its rejection", async () => {
+    const manifest = Reflect.apply(analytics, undefined, [
+      {
+        provider: async () => {
+          throw new Error("async providers are unsupported");
+        },
+      },
+    ]);
+
+    expect(() => manifest.setup(createSetupContext())).toThrowError(
+      InvalidAnalyticsProviderError,
+    );
+    await new Promise<void>((resolve) => {
+      setImmediate(resolve);
+    });
   });
 
   it.each([
     null,
     [],
     "public",
-    { missingCapability: "ignore" },
-    { missingCapability: null },
+    { missingCapability: "error" },
+    { provider: null },
+    { provider: {} },
     { queryAccess: "private" },
     { queryAccess: null },
     { pluginId: "analytics", queryAccess: "public" },
@@ -195,7 +201,7 @@ describe("analytics", () => {
   it("resolves dedicated and remotely unavailable metadata shapes", async () => {
     // Given
     const dedicated = createTestProvider();
-    const unavailable: AnalyticsProvider = {
+    const unavailableProvider: AnalyticsProvider = {
       ...createTestProvider(),
       resolveAvailability: async () => ({
         analytics: false,
@@ -206,11 +212,15 @@ describe("analytics", () => {
     const signal = new AbortController().signal;
 
     // When
-    const dedicatedMetadata = await analytics()
-      .setup(createSetupContext(dedicated, []))
+    const dedicatedMetadata = await analytics({
+      provider: () => dedicated,
+    })
+      .setup(createSetupContext())
       .metadata?.[0]?.resolve(signal);
-    const unavailableMetadata = await analytics()
-      .setup(createSetupContext(unavailable, []))
+    const unavailableMetadata = await analytics({
+      provider: () => unavailableProvider,
+    })
+      .setup(createSetupContext())
       .metadata?.[0]?.resolve(signal);
 
     // Then
@@ -225,26 +235,5 @@ describe("analytics", () => {
       analyticsQueries: false,
       eventIngestion: false,
     });
-  });
-
-  it("makes literal strict mode require the provider and available API type", () => {
-    // Given / When
-    const manifest = analytics({ missingCapability: "error" });
-
-    // Then
-    expect(manifest.requires[0]?.missing).toBe("error");
-    expectTypeOf(manifest).toMatchTypeOf<
-      HotUpdaterFeatureManifest<
-        "analytics",
-        StrictAnalyticsFeatureKind,
-        typeof analyticsLegacyAliases
-      >
-    >();
-    expectTypeOf<
-      AnalyticsFeatureAvailable<{ readonly requestId: string }>
-    >().toMatchTypeOf<AnalyticsAPI<{ readonly requestId: string }>>();
-    expect(() =>
-      manifest.setup(createSetupContext(undefined, [])),
-    ).toThrowError(MissingTestCapabilityError);
   });
 });
