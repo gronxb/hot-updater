@@ -37,21 +37,19 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 
 new Elysia()
   .use(bearer()) // [!code ++]
+  // [!code ++:12]
   .onBeforeHandle(({ bearer, request }) => {
-    // [!code ++]
-    const pathname = new URL(request.url).pathname; // [!code ++]
+    const pathname = new URL(request.url).pathname;
     if (
       pathname === "/hot-updater/api" ||
       pathname.startsWith("/hot-updater/api/")
     ) {
-      // [!code ++]
       if (bearer !== process.env.HOT_UPDATER_AUTH_TOKEN) {
-        // [!code ++]
-        return new Response("Unauthorized", { status: 401 }); // [!code ++]
-      } // [!code ++]
-    } // [!code ++]
-  }) // [!code ++]
-  .mount("/hot-updater", hotUpdater.handler) // [!code ++]
+        return new Response("Unauthorized", { status: 401 });
+      }
+    }
+  })
+  .mount("/hot-updater", hotUpdater.handler)
   .listen(3000);
 ```
 
