@@ -2,6 +2,8 @@ import type {
   RouteConfig,
   StandaloneRepositoryConfig,
 } from "./standaloneRoutes";
+import { createStandaloneTransport } from "./standaloneTransport";
+import type { StandaloneRequestOptions } from "./standaloneTransport";
 
 type StandaloneDatabaseErrorCode = "invalid-response" | "request-failed";
 
@@ -17,31 +19,26 @@ export class StandaloneDatabaseError extends Error {
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 export const createStandaloneHttp = (config: StandaloneRepositoryConfig) => {
-  const buildUrl = (path: string): string => `${config.baseUrl}${path}`;
-  const headers = (routeHeaders?: Readonly<Record<string, string>>) => ({
-    "Content-Type": "application/json",
-    ...config.commonHeaders,
-    ...routeHeaders,
-  });
+  const transport = createStandaloneTransport(config);
+  const request = (
+    route: RouteConfig,
+    options: StandaloneRequestOptions,
+  ): Promise<Response> =>
+    transport.request(
+      {
+        ...route,
+        headers: {
+          "Content-Type": "application/json",
+          ...route.headers,
+        },
+      },
+      options,
+    );
   const requestFailed = async (response: Response): Promise<never> => {
-    let message = `Database request failed with status ${response.status}.`;
-    try {
-      const body: unknown = await response.json();
-      if (isRecord(body) && typeof body.message === "string") {
-        message = body.message;
-      } else if (isRecord(body) && typeof body.error === "string") {
-        message = body.error;
-      }
-    } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
-    }
     throw new StandaloneDatabaseError(
       "request-failed",
-      message,
+      `Database request failed with status ${response.status}.`,
       response.status,
     );
   };
@@ -64,13 +61,9 @@ export const createStandaloneHttp = (config: StandaloneRepositoryConfig) => {
     invalidMessage: string,
     signal?: AbortSignal,
   ): Promise<TResult> => {
-    const url = new URL(buildUrl(route.path));
-    for (const [key, value] of Object.entries(searchParams)) {
-      url.searchParams.set(key, value);
-    }
-    const response = await fetch(url, {
+    const response = await request(route, {
       method: "GET",
-      headers: headers(route.headers),
+      searchParams: new URLSearchParams(searchParams),
       signal,
     });
     const value = await parseJson(response);
@@ -84,5 +77,5 @@ export const createStandaloneHttp = (config: StandaloneRepositoryConfig) => {
     return value;
   };
 
-  return { buildUrl, headers, load, parseJson, requestFailed };
+  return { load, parseJson, request, requestFailed };
 };

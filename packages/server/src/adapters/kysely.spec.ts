@@ -52,7 +52,7 @@ setupDatabasePluginTestSuite({
   },
 });
 
-const createBundleEventRow = (
+const createAppendOnlyRow = (
   id: string,
   installId: string,
   receivedAtMs: number,
@@ -208,19 +208,19 @@ describe("kyselyAdapter bundle_events distinct semantics", () => {
     try {
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-a-1", "install-a", 100),
+        data: createAppendOnlyRow("event-a-1", "install-a", 100),
       });
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-a-2", "install-a", 200),
+        data: createAppendOnlyRow("event-a-2", "install-a", 200),
       });
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-b-1", "install-b", 150),
+        data: createAppendOnlyRow("event-b-1", "install-b", 150),
       });
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-b-2", "install-b", 150),
+        data: createAppendOnlyRow("event-b-2", "install-b", 150),
       });
 
       await expect(
@@ -259,12 +259,12 @@ describe("kyselyAdapter bundle_events distinct semantics", () => {
     try {
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-null", "install-a", 100),
+        data: createAppendOnlyRow("event-null", "install-a", 100),
       });
       await plugin.create({
         model: "bundle_events",
         data: {
-          ...createBundleEventRow("event-user", "install-b", 200),
+          ...createAppendOnlyRow("event-user", "install-b", 200),
           user_id: "user-123",
         },
       });

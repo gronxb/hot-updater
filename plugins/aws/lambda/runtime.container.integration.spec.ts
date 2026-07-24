@@ -16,7 +16,13 @@ import {
 import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { transformEnv } from "@hot-updater/cli-tools";
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type AppUpdateInfo,
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -50,6 +56,31 @@ const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
+
+class InvalidRuntimeResponseError extends Error {}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isUpdateResponse = (
+  value: unknown,
+): value is AppUpdateInfo | UpdateInfo | null => {
+  if (value === null) return true;
+  if (!isRecord(value) || typeof value.status !== "string") return false;
+  if (value.status === "UP_TO_DATE") return true;
+  return (
+    (value.status === "ROLLBACK" || value.status === "UPDATE") &&
+    typeof value.id === "string" &&
+    typeof value.shouldForceUpdate === "boolean" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.fileHash === null || typeof value.fileHash === "string") &&
+    (value.fileUrl === null ||
+      typeof value.fileUrl === "string" ||
+      value.storageUri === null ||
+      typeof value.storageUri === "string")
+  );
+};
+
 const SHARED_EDGE_CACHE_CONTROL =
   "public, max-age=0, s-maxage=31536000, must-revalidate";
 const ORIGIN_HOST = `${S3_BUCKET_NAME}.s3.${REGION}.amazonaws.com`;
@@ -163,15 +194,18 @@ const invokeLambda = async (port: number, event: unknown) => {
   );
 };
 
-const readLambdaJson = async (payload: {
-  body?: string;
-  headers?: Record<string, { key: string; value: string }[]>;
-}) => {
-  if (!payload.body) {
+const readLambdaJson = (payload: unknown): unknown => {
+  if (!isRecord(payload)) {
+    throw new InvalidRuntimeResponseError("Invalid Lambda response payload.");
+  }
+  if (payload.body === undefined || payload.body === "") {
     return null;
   }
+  if (typeof payload.body !== "string") {
+    throw new InvalidRuntimeResponseError("Invalid Lambda response body.");
+  }
 
-  return JSON.parse(payload.body) as Record<string, unknown> | null;
+  return JSON.parse(payload.body);
 };
 
 const toRuntimeBundle = (bundle: Bundle): Bundle => {
@@ -270,12 +304,12 @@ describe.sequential("aws lambda runtime acceptance", () => {
           ssmRegion: REGION,
           ssmParameterName: SSM_PARAMETER_NAME,
           publicBaseUrl: PUBLIC_BASE_URL,
-        }),
+        })(),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      routes: {
-        updateCheck: true,
+      coreRoutes: {
         bundles: false,
+        updateCheck: true,
       },
     });
 
@@ -384,12 +418,9 @@ describe.sequential("aws lambda runtime acceptance", () => {
     );
     expect(response.ok).toBe(true);
 
-    const payload = (await response.json()) as {
-      body?: string;
-      headers?: Record<string, { key: string; value: string }[]>;
-    };
-
-    return (await readLambdaJson(payload)) as any;
+    const result = readLambdaJson(await response.json());
+    if (!isUpdateResponse(result)) throw new InvalidRuntimeResponseError();
+    return result;
   };
 
   const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
@@ -597,7 +628,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       body?: string;
     };
 
-    await expect(readLambdaJson(payload)).resolves.toEqual({
+    expect(readLambdaJson(payload)).toEqual({
       error: "Not found",
     });
   });
@@ -628,8 +659,8 @@ const createRuntimeS3Client = () => {
 };
 
 const createRuntimeReadableS3Url = async (key: string) => {
-  return await getS3SignedUrl(
-    createRuntimeS3Client() as unknown as Parameters<typeof getS3SignedUrl>[0],
+  const signedUrl: unknown = await Reflect.apply(getS3SignedUrl, undefined, [
+    createRuntimeS3Client(),
     new GetObjectCommand({
       Bucket: S3_BUCKET_NAME,
       Key: key,
@@ -637,7 +668,11 @@ const createRuntimeReadableS3Url = async (key: string) => {
     {
       expiresIn: 3600,
     },
-  );
+  ]);
+  if (typeof signedUrl !== "string") {
+    throw new InvalidRuntimeResponseError("Invalid S3 signed URL.");
+  }
+  return signedUrl;
 };
 
 const putS3Object = async (

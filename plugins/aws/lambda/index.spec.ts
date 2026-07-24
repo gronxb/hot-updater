@@ -1,3 +1,4 @@
+import { createHotUpdater } from "@hot-updater/server";
 import type { CloudFrontRequest, CloudFrontRequestEvent } from "aws-lambda";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -116,6 +117,25 @@ describe("aws lambda entrypoint", () => {
       SSM_REGION: "us-east-1",
       S3_BUCKET_NAME: "hot-updater-test",
     };
+  });
+
+  it("omits Analytics configuration from the managed preset", async () => {
+    // Given
+    const expectedCoreRoutes = {
+      bundles: false,
+      updateCheck: true,
+    };
+
+    // When
+    await import("./index");
+
+    // Then
+    expect(createHotUpdater).toHaveBeenCalledWith(
+      expect.objectContaining({ coreRoutes: expectedCoreRoutes }),
+    );
+    const [options] = vi.mocked(createHotUpdater).mock.calls[0] ?? [];
+    expect(options).not.toHaveProperty("plugins");
+    expect(options).not.toHaveProperty("routes");
   });
 
   it("serves canonical app-version routes without a cohort segment for origin-request events", async () => {

@@ -183,9 +183,9 @@ const createMemoryHotUpdater = () => {
       },
     ],
     basePath: BASE_PATH,
-    routes: {
-      updateCheck: true,
+    coreRoutes: {
       bundles: false,
+      updateCheck: true,
     },
   });
 };

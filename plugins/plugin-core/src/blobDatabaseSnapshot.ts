@@ -5,7 +5,7 @@ import {
   parsePatchRow,
 } from "./blobDatabaseSnapshotRows";
 import { blobArray, blobProperty, blobRecord } from "./blobDatabaseValue";
-import type { BundleEventRow, BundlePatchRow, BundleRow } from "./types";
+import type { BundlePatchRow, BundleRow, DatabaseRow } from "./types";
 
 export const BLOB_DATABASE_SNAPSHOT_KEY =
   "_hot-updater/database/v2.json" as const;
@@ -16,7 +16,7 @@ export type BlobDatabaseSnapshot = {
   readonly version: 2;
   readonly bundles: readonly BundleRow[];
   readonly bundle_patches: readonly BundlePatchRow[];
-  readonly bundle_events: readonly BundleEventRow[];
+  readonly bundle_events: readonly DatabaseRow<"bundle_events">[];
 };
 
 export const emptyBlobDatabaseSnapshot = (): BlobDatabaseSnapshot => ({

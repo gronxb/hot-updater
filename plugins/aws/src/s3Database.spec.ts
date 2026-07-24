@@ -14,7 +14,6 @@ import {
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
   createDatabaseClient,
-  databaseAnalyticsSupport,
 } from "@hot-updater/plugin-core";
 import {
   setupDatabasePluginTestSuite,
@@ -136,14 +135,6 @@ setupDatabaseClientTestSuite({
 });
 
 describe("s3Database storage behavior", () => {
-  it("does not opt in to concurrent bundle event writes", () => {
-    // Given / When
-    const plugin = s3Database({ bucketName });
-
-    // Then
-    expect(plugin[databaseAnalyticsSupport]).toBeUndefined();
-  });
-
   it("writes an immutable revision below the configured base path", async () => {
     const plugin = s3Database({ bucketName, basePath: "/metadata/" });
 

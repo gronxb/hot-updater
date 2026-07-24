@@ -13,10 +13,16 @@ import {
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { analytics, type AnalyticsAPI } from "@hot-updater/analytics";
 import { transformEnv } from "@hot-updater/cli-tools";
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type AppUpdateInfo,
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
-import { supportsAnalytics } from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -43,6 +49,31 @@ const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
 const HOT_UPDATER_BASE_PATH = "/";
 const LEGACY_HOT_UPDATER_BASE_PATH = "/api/check-update";
+
+class InvalidUpdateResponseError extends Error {}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isUpdateResponse = (
+  value: unknown,
+): value is AppUpdateInfo | UpdateInfo | null => {
+  if (value === null) return true;
+  if (!isRecord(value) || typeof value.status !== "string") return false;
+  if (value.status === "UP_TO_DATE") return true;
+  return (
+    (value.status === "ROLLBACK" || value.status === "UPDATE") &&
+    typeof value.id === "string" &&
+    typeof value.shouldForceUpdate === "boolean" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.fileHash === null || typeof value.fileHash === "string") &&
+    (value.fileUrl === null ||
+      typeof value.fileUrl === "string" ||
+      value.storageUri === null ||
+      typeof value.storageUri === "string")
+  );
+};
+
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
@@ -132,7 +163,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let edgePort = 0;
   let gatewayBaseUrl = "";
   let edgeRuntime: ReturnType<typeof spawnRuntime> | undefined;
-  let seedHotUpdater: ReturnType<typeof createHotUpdater>;
+  let seedHotUpdater: ReturnType<typeof createHotUpdater> & AnalyticsAPI;
   let supabaseAdmin: ReturnType<typeof createClient>;
 
   beforeAll(async () => {
@@ -235,10 +266,13 @@ describe.sequential("supabase edge runtime acceptance", () => {
         }),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      routes: {
-        updateCheck: true,
+      coreRoutes: {
         bundles: false,
+        updateCheck: true,
       },
+      plugins: [
+        analytics({ missingCapability: "error", queryAccess: "public" }),
+      ],
     });
 
     edgeRuntime = spawnRuntime({
@@ -362,7 +396,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
       );
     }
 
-    return (await response.json()) as any;
+    const result: unknown = await response.json();
+    if (!isUpdateResponse(result)) throw new InvalidUpdateResponseError();
+    return result;
   };
 
   const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
@@ -550,9 +586,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     // Then: the managed runtime persists the event.
     expect(response.status).toBe(204);
-    if (!supportsAnalytics(seedHotUpdater)) {
-      throw new Error("Expected Supabase Analytics support.");
-    }
     await expect(
       seedHotUpdater.getBundleEventSummary(bundleId),
     ).resolves.toEqual({ installed: 1, recovered: 0 });

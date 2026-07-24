@@ -1,0 +1,29 @@
+import { analytics } from "@hot-updater/analytics";
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import type {
+  HotUpdaterFeatureManifest,
+  HotUpdaterPrincipal,
+  NoFeatureApiKind,
+} from "@hot-updater/server/internal/first-party-plugin";
+
+declare const database: DatabasePlugin;
+declare const manifest: HotUpdaterFeatureManifest<
+  "readonly",
+  NoFeatureApiKind,
+  Record<never, never>
+>;
+declare const principal: HotUpdaterPrincipal;
+
+const runtime = createHotUpdater({
+  database,
+  plugins: [analytics()],
+});
+declare const replacementAnalytics: typeof runtime.features.analytics;
+declare const replacementFeatures: typeof runtime.features;
+
+principal.subject = "mutated";
+manifest.id = "mutated";
+runtime.features.analytics.status = "available";
+runtime.features.analytics = replacementAnalytics;
+runtime.features = replacementFeatures;

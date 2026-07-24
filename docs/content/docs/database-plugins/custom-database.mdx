@@ -10,6 +10,13 @@ icon: Hammer
 npm install @hot-updater/plugin-core --save-dev
 ```
 
+Install the Analytics feature when this database will receive app-ready events
+or serve Analytics queries:
+
+```package-install
+npm install @hot-updater/analytics
+```
+
 Install the public conformance suites in the project that tests your plugin:
 
 ```package-install
@@ -93,11 +100,13 @@ schema mapping:
 
 ```ts
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   DatabasePluginImplementation,
+  DatabaseRow,
 } from "@hot-updater/plugin-core";
+
+type BundleEventRow = DatabaseRow<"bundle_events">;
 ```
 
 Physical row fields use snake case. Keep those field names in your database
@@ -171,9 +180,9 @@ export const myDatabase = ({ db }: MyDatabaseConfig) =>
 the driver's query API. The `DatabasePluginImplementation` annotation keeps
 the fixed model and operation inputs typed while you build the mapping.
 
-`createDatabasePlugin` validates inputs and provider results. It also exposes
-Analytics support because a row-oriented plugin can append `bundle_events`
-safely.
+`createDatabasePlugin` validates inputs and provider results. It does not
+implicitly expose Analytics. An Analytics-capable deployment must opt in by
+wrapping the database with `withAnalyticsProvider`.
 
 ## Implement each operation
 
@@ -353,17 +362,27 @@ export default defineConfig({
 ```
 
 ```ts title="server.ts"
+import { analytics } from "@hot-updater/analytics";
+import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createHotUpdater } from "@hot-updater/server";
 import { myDatabase } from "./myDatabase";
 
 export const hotUpdater = createHotUpdater({
-  database: myDatabase({ db }),
+  database: withAnalyticsProvider(myDatabase({ db })),
   storages,
+  plugins: [
+    analytics({
+      missingCapability: "error",
+      queryAccess: "public",
+    }),
+  ],
 });
 ```
 
 Keep the database schema in sync with the installed Hot Updater version. Add
-the `bundle_events` model before enabling client Analytics.
+the `bundle_events` model before enabling client Analytics. Use the default
+protected Analytics query access only when the server also installs an
+authentication plugin.
 
 ## Blob-backed databases
 

@@ -1,11 +1,10 @@
-import {
-  databaseAnalyticsSupport,
-  type BundleEventRow,
-} from "@hot-updater/plugin-core";
+import { type DatabaseRow } from "@hot-updater/plugin-core";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { expect, it, vi } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
+
+type BundleEventPersistenceRow = DatabaseRow<"bundle_events">;
 
 // allow: SIZE_OK — hoisted PostgREST query/filter state machine for public plugin conformance.
 const { createMockClient, getFromCalls, resetMockClient } = vi.hoisted(() => {
@@ -374,7 +373,10 @@ vi.mock("@supabase/supabase-js", () => ({
   createClient: () => createMockClient(),
 }));
 
-const bundleEvent = (id: string, receivedAtMs: number): BundleEventRow => ({
+const bundleEvent = (
+  id: string,
+  receivedAtMs: number,
+): BundleEventPersistenceRow => ({
   id,
   type: "UNCHANGED",
   install_id: "install-1",
@@ -390,17 +392,6 @@ const bundleEvent = (id: string, receivedAtMs: number): BundleEventRow => ({
   fingerprint_hash: null,
   sdk_version: null,
   received_at_ms: receivedAtMs,
-});
-
-it("advertises Analytics support", () => {
-  // Given / When
-  const plugin = supabaseDatabase({
-    supabaseUrl: "https://test.supabase.invalid",
-    supabaseServiceRoleKey: "test-service-role-key",
-  });
-
-  // Then
-  expect(plugin[databaseAnalyticsSupport]).toBe(true);
 });
 
 it("applies compound ordering to bundle event pages", async () => {

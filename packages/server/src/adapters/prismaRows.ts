@@ -1,8 +1,8 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   DatabaseModel,
+  DatabaseRow,
 } from "@hot-updater/plugin-core";
 
 import type { PrismaQuery } from "./prismaQuery";
@@ -140,9 +140,11 @@ export const parsePrismaPatchRow = (value: unknown): BundlePatchRow => {
   };
 };
 
-export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
+export const parsePrismaAppendOnlyRow = (
+  value: unknown,
+): DatabaseRow<"bundle_events"> => {
   if (!isRecord(value)) {
-    throw new PrismaAdapterError("invalid bundle event row");
+    throw new PrismaAdapterError("invalid append-only row");
   }
   const type = readString(value, "type");
   const platformValue = readString(value, "platform");
@@ -150,11 +152,11 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
   const updateStrategy = readNullableString(value, "update_strategy");
   const receivedAtMs = value["received_at_ms"];
   if (platformValue !== "android" && platformValue !== "ios") {
-    throw new PrismaAdapterError("invalid bundle event platform");
+    throw new PrismaAdapterError("invalid append-only row platform");
   }
   const platform = platformValue === "ios" ? "ios" : "android";
   if (typeof receivedAtMs !== "number") {
-    throw new PrismaAdapterError("invalid bundle event timestamp");
+    throw new PrismaAdapterError("invalid append-only row timestamp");
   }
 
   const common = {
@@ -174,7 +176,7 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
   switch (type) {
     case "UNCHANGED":
       if (fromBundleId !== null || updateStrategy !== null) {
-        throw new PrismaAdapterError("invalid unchanged bundle event shape");
+        throw new PrismaAdapterError("invalid unchanged row shape");
       }
       return {
         ...common,
@@ -188,7 +190,7 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
         fromBundleId === null ||
         (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion")
       ) {
-        throw new PrismaAdapterError("invalid transition bundle event shape");
+        throw new PrismaAdapterError("invalid transition row shape");
       }
       return {
         ...common,
@@ -202,7 +204,7 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
         fromBundleId === null ||
         (updateStrategy !== "fingerprint" && updateStrategy !== "appVersion")
       ) {
-        throw new PrismaAdapterError("invalid transition bundle event shape");
+        throw new PrismaAdapterError("invalid transition row shape");
       }
       return {
         ...common,
@@ -212,7 +214,7 @@ export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
         update_strategy: updateStrategy,
       };
     default:
-      throw new PrismaAdapterError("invalid bundle event type");
+      throw new PrismaAdapterError("invalid append-only row type");
   }
 };
 

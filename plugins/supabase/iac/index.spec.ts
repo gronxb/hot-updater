@@ -280,7 +280,7 @@ describe("Supabase database password failures", () => {
 });
 
 describe("resolveEdgeFunctionDenoConfig", () => {
-  it("vendors package dist files into the edge function directory", async () => {
+  it("vendors runtime defaults from flat and nested package exports", async () => {
     const targetDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-supabase-edge-"),
     );
@@ -292,10 +292,14 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           "./_hot-updater/hot-updater-server/dist/index.mjs",
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge/index.mjs",
+        "@hot-updater/analytics/provider":
+          "./_hot-updater/hot-updater-analytics/dist/provider/index.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
         "@hot-updater/js": "./_hot-updater/hot-updater-js/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
+        "@hot-updater/plugin-core/internal/capabilities":
+          "./_hot-updater/hot-updater-plugin-core/dist/internal/capabilities.mjs",
         "@supabase/supabase-js": `npm:@supabase/supabase-js@${resolvePackageVersion(
           "@supabase/supabase-js",
           {
@@ -309,6 +313,9 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,
       });
+      expect(Object.values(result.imports)).not.toContainEqual(
+        expect.stringContaining(".d.mts"),
+      );
 
       await expect(
         fs.readFile(

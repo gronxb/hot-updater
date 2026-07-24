@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
-import { isDatabasePlugin, supportsAnalytics } from "./types";
+import { isDatabasePlugin } from "./types";
 
 describe("isDatabasePlugin", () => {
   it("accepts a direct fixed-model plugin object", () => {
@@ -28,27 +28,5 @@ describe("isDatabasePlugin", () => {
     // Then
     expect(factoryResult).toBe(false);
     expect(malformedResult).toBe(false);
-  });
-});
-
-describe("supportsAnalytics", () => {
-  const analyticsMethods = () => ({
-    appendBundleEvent: () => undefined,
-    getBundleEventSummary: () => undefined,
-    getBundleEventAnalytics: () => undefined,
-    getBundleEventOverview: () => undefined,
-    searchInstallations: () => undefined,
-    getInstallationHistory: () => undefined,
-  });
-
-  it("requires the active-installation overview method", () => {
-    const withoutActiveOverview = analyticsMethods();
-    const withActiveOverview = {
-      ...withoutActiveOverview,
-      getActiveInstallationOverview: () => undefined,
-    };
-
-    expect(supportsAnalytics(withoutActiveOverview)).toBe(false);
-    expect(supportsAnalytics(withActiveOverview)).toBe(true);
   });
 });

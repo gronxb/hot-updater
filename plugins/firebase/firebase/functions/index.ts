@@ -1,3 +1,4 @@
+import { analytics } from "@hot-updater/analytics";
 import { createHotUpdater } from "@hot-updater/server";
 import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
@@ -33,14 +34,14 @@ const hotUpdater = createHotUpdater({
     firebaseStorage({
       storageBucket,
       cdnUrl,
-    }),
+    })(),
   ],
-  basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
-    updateCheck: true,
+  basePath: "/",
+  coreRoutes: {
     bundles: false,
-    analytics: true,
+    updateCheck: true,
   },
+  plugins: [analytics({ missingCapability: "error", queryAccess: "public" })],
 });
 
 const app = new Hono();

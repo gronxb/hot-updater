@@ -38,7 +38,7 @@ export interface BundlePatchRow {
   readonly order_index: number;
 }
 
-interface BundleEventRowBase {
+interface BundleEventPersistenceRowBase {
   readonly id: string;
   readonly install_id: string;
   readonly user_id: string | null;
@@ -53,18 +53,18 @@ interface BundleEventRowBase {
   readonly received_at_ms: number;
 }
 
-export type BundleEventRow =
-  | (BundleEventRowBase & {
+type BundleEventPersistenceRow =
+  | (BundleEventPersistenceRowBase & {
       readonly type: "UPDATE_APPLIED";
       readonly from_bundle_id: string;
       readonly update_strategy: "fingerprint" | "appVersion";
     })
-  | (BundleEventRowBase & {
+  | (BundleEventPersistenceRowBase & {
       readonly type: "RECOVERED";
       readonly from_bundle_id: string;
       readonly update_strategy: "fingerprint" | "appVersion";
     })
-  | (BundleEventRowBase & {
+  | (BundleEventPersistenceRowBase & {
       readonly type: "UNCHANGED";
       readonly from_bundle_id: null;
       readonly update_strategy: null;
@@ -73,7 +73,7 @@ export type BundleEventRow =
 export interface DatabaseModelMap {
   readonly bundles: BundleRow;
   readonly bundle_patches: BundlePatchRow;
-  readonly bundle_events: BundleEventRow;
+  readonly bundle_events: BundleEventPersistenceRow;
 }
 
 export type DatabaseModel = keyof DatabaseModelMap;

@@ -30,6 +30,74 @@ objections about available-branch aliases and schema-readiness ordering were
 accepted, incorporated, and re-reviewed to PASS. No unresolved blocker remains
 in this design.
 
+### Implementation consensus addendum
+
+The implementation-planning review resolved the following details. These
+clarifications are normative where they narrow or repair the original prose:
+
+- **R1 — Node adapter stage:** generic lazy raw-body forwarding and request
+  policies in `@hot-updater/server/node` are Stage 1. Stage 2 retains downstream
+  framework adoption. An already parsed protected body is unsupported.
+- **R2 — plugin-core cleanup:** its public high-level Analytics service,
+  domain, support boolean, and token leave in Stage 1. Only the internal raw
+  persistence model may remain until its Stage 3 ownership decision.
+- **R3 — manifest branding:** first-party packages use the unsupported non-root
+  `@hot-updater/server/internal/first-party-plugin` subpath. The brand remains
+  private and the supported root exposes no authoring factory.
+- **R4 — capability ownership:** plugin-core owns nominal tokens, authoring,
+  immutable carrier attachment, and a narrow internal enumeration seam. Server
+  owns guarded materialization and the read-only registry.
+- **R5 — guarded persistence:** database-backed factories receive a frozen
+  CRUD/transaction-only `DatabaseCapabilityRuntime`; each operation enters the
+  existing readiness guard. No raw database or infrastructure escape is
+  exposed.
+- **R6 — type projection:** omitted plugins infer an exact empty feature
+  object. A private `FeatureApiKind` applies `TContext` and preserves the
+  available-with-aliases versus unavailable-without-aliases correlation.
+- **R7 — Analytics metadata scope:** compatibility applies when `analytics()`
+  or the bridge is installed. Omission contributes no keys or warning;
+  warn-mode absence contributes only the three false keys; AWS/blob omit it.
+- **R8 — metadata bounds:** resolvers run concurrently under one five-second
+  deadline and kernel-owned `AbortSignal`. Limits are 16 KiB UTF-8 per
+  contribution and 64 KiB aggregate. Validation is atomic; failure yields one
+  opaque `500` with no partial metadata.
+- **R9 — principal validation:** copy an exact frozen two-field object.
+  `subject` and `issuer` are primitive, well-formed, already-trimmed, non-empty
+  Unicode without C0/DEL controls, capped at 1,024 and 2,048 UTF-8 bytes. No
+  normalization, case folding, or issuer-URL rule applies.
+- **R10 — Better Auth outages:** provider-classified `anonymous`,
+  `unavailable`, and unexpected/malformed results map to opaque `401`, `503`,
+  and `500`. Better Auth `null` is anonymous; a swallowed outage remains
+  fail-closed as `401`. In locked Better Auth 1.6.24, a session-store `503` is
+  surfaced as an `INTERNAL_SERVER_ERROR`/`500` with its original
+  classification erased, so it correctly follows the unexpected-error
+  branch. Better Auth's own default logger observes the original store error
+  before that rewrite; deployments requiring strict log secrecy must disable
+  or sanitize that dependency logger. Neither upstream limitation is a claimed
+  exact-`503` case or a Hot Updater logging path.
+- **R11 — capability conflicts:** token-ID and provider duplication are
+  distinct, checked in that order, and use
+  `DUPLICATE_CAPABILITY_TOKEN_ID` and `DUPLICATE_CAPABILITY_PROVIDER`.
+  Compilation uses stable lexical identities.
+- **R12 — Analytics/transport ownership:** Analytics owns operation, parsing,
+  provider, probe/cache, metadata, API, and bridge semantics. Provider/runtime
+  owns generic guarded transport, carriers, package wiring, and managed
+  presets.
+- **R13 — legacy bridge:** `@hot-updater/analytics/legacy-server` exports
+  exactly `createLegacyHotUpdater` and `LegacyCreateHotUpdaterOptions`. Only
+  that option type recognizes `routes.analytics`; it never adds
+  `routes.eventIngestion`.
+- **R14 — declarations:** every new or changed dual-format entry publishes
+  condition-specific `.d.mts` and `.d.cts` declarations verified from a real
+  packed tarball. Package runtime maps remain condition-specific. CLI config
+  evaluation instead uses a serialized, temporary canonical module cohort for
+  plugin-core root/internal capability APIs and Analytics root/provider, the
+  sole current feature-token owner, then restores the CommonJS cache on
+  success or failure. Every future package that defines capability tokens and
+  is usable from config must join this cohort and add a mixed CommonJS
+  config-to-ESM runtime composition gate, or replace the bridge with an
+  equivalent nominal identity substrate.
+
 ## Decision summary
 
 `createHotUpdater` becomes a setup-time plugin composer. It knows only the
@@ -158,6 +226,10 @@ statuses, and SDK-version forwarding are preserved by golden fixtures.
 
 Changing or removing this shape requires a separately versioned standalone
 protocol migration. It is not silently removed with the old source API.
+This byte-preservation rule applies when `analytics()` or the legacy bridge is
+installed. Intentionally omitting the plugin contributes no Analytics keys;
+warn-mode provider absence contributes only the three false availability keys,
+and AWS/blob presets omit them.
 
 The extraction also preserves:
 
@@ -262,16 +334,30 @@ default. Bundle management remains a separately mountable core surface.
 `/version` remains a public, credential-invariant core route. Feature manifests
 cannot override these core routes.
 
+Separately packed first-party features use the explicitly unsupported,
+non-root `@hot-updater/server/internal/first-party-plugin` authoring subpath.
+It exports the factory and contract witnesses required to construct a nominal
+manifest, while keeping the unique brand private. The supported server root
+exposes only opaque manifests and no third-party authoring API.
+
 ### `@hot-updater/plugin-core`
 
 Owns generic database, storage, and capability-carrier primitives. It carries
 opaque values but does not define Analytics domain tokens or high-level event
 and installation result types.
 
+It also owns `CapabilityToken<T>`, `defineCapability`, immutable contribution
+attachment, frozen carrier contracts, generic infrastructure-runtime types,
+and a narrow unsupported enumeration seam used by server. Server remains
+responsible for guarded runtime construction, factory invocation, parser
+validation, duplicate detection, and the read-only registry.
+
 During the first migration stage, the raw `bundle_events` persistence row and
 model may remain an internal provider/storage contract so existing SQL, Mongo,
 Firebase, and D1 adapters continue to compile against their released schemas.
 That temporary persistence shape is not a public Analytics service API.
+High-level Analytics service/domain/token exports leave plugin-core during
+Stage 1; shared boundaries use neutral model-indexed persistence names.
 
 ### `@hot-updater/analytics`
 
@@ -418,23 +504,26 @@ The call signature preserves the literal plugin tuple:
 
 ```typescript
 declare function createHotUpdater<
-  TContext,
-  const TPlugins extends readonly FirstPartyFeatureManifest[],
+  TContext = undefined,
+  const TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
 >(
-  options: CreateHotUpdaterOptions<TContext> & {
-    readonly plugins: TPlugins;
+  options: Omit<CreateHotUpdaterOptions<TContext>, "plugins"> & {
+    readonly plugins?: TPlugins;
   },
-): RuntimeHotUpdaterAPI<TContext> & {
-  readonly features: Readonly<FeaturesFromPlugins<TPlugins>>;
-};
+): RuntimeHotUpdaterAPI<TContext> &
+  Readonly<ProjectPlugins<TPlugins, TContext>>;
 ```
 
-`FeaturesFromPlugins` is an internal type-level fold from each branded
-manifest's fixed namespace to its API type. `analytics()` has fixed plugin ID
-and namespace `"analytics"` and the package version as its manifest version;
-none can be overridden through options. `analytics()` accepts one normalized
-configuration object, not a configuration array or fallback ID. Two instances
-fail with `DUPLICATE_PLUGIN_ID` before setup.
+`ProjectPlugins` is an internal type-level fold from each branded
+manifest's fixed namespace and private `FeatureApiKind` witness to its API type
+after applying `TContext`. Omitted plugins infer an exact frozen empty feature
+object, never the widened first-party manifest array. Available branches carry
+their required transitional aliases; unavailable branches carry none, so
+narrowing the feature state also narrows alias presence. `analytics()` has
+fixed plugin ID and namespace `"analytics"` and the package version as its
+manifest version; none can be overridden through options. `analytics()`
+accepts one normalized configuration object, not a configuration array or
+fallback ID. Two instances fail with `DUPLICATE_PLUGIN_ID` before setup.
 
 The Analytics factory preserves the literal missing-capability policy:
 
@@ -514,10 +603,13 @@ with the token parser. Feature plugins declare requirements but cannot provide
 their own required capability. The registry is passed as a read-only view to
 feature setup and is not exposed as a mutable service locator.
 
-Every database-backed capability receives the same guarded database runtime as
-core operations. It cannot bypass schema readiness or storage access policy.
-The wrapper itself does not claim that schema is ready and does not run
-migrations, network calls, or queries.
+Every database-backed capability receives a frozen, narrow
+`DatabaseCapabilityRuntime` that is compatible only with generic CRUD and
+transaction operations. Each method enters the same memoized schema-readiness
+gate as core operations. The facade exposes no raw database, callback escape,
+migrator, schema generator, adapter/provider fields, configuration, or
+credentials. The wrapper itself does not claim that schema is ready and does
+not run migrations, network calls, or queries.
 
 The Analytics token and parser live in `@hot-updater/analytics/provider`.
 Provider packages may know that contract. `@hot-updater/server` and
@@ -724,6 +816,15 @@ an opaque `503`, an invalid result or unexpected exception maps to an opaque
 kernel creates these responses; provider messages, headers, cookies, and error
 objects are never exposed.
 
+For an authenticated result, the kernel reads and copies only `subject` and
+`issuer` into a new plain frozen request-local object. Both must be primitive,
+well-formed Unicode strings that are already trimmed, non-empty, and contain no
+U+0000-U+001F or U+007F control character. Their serialized UTF-8 limits are
+1,024 bytes for `subject` and 2,048 bytes for `issuer`. The kernel performs no
+Unicode normalization, case folding, or issuer-URL validation. Extra session
+fields, accessor failures, or an invalid principal map to the same opaque
+`500`.
+
 The first version uses fixed security phases:
 
 ```text
@@ -761,15 +862,22 @@ export interface HotUpdaterVersionMetadataContribution {
   readonly namespace: string;
   readonly target: "capabilities";
   readonly keys: readonly string[];
-  readonly resolve: () => Promise<Readonly<Record<string, JsonValue>>>;
+  readonly resolve: (
+    signal: AbortSignal,
+  ) => Promise<Readonly<Record<string, JsonValue>>>;
 }
 ```
 
 Duplicate namespaces, duplicate declared wire keys, and reserved core fields
-fail construction. The core invokes every resolver without an inbound request,
-validates that it returned exactly its declared keys and valid JSON, enforces a
-size limit and timeout, then shallow-merges the result into
-`/version.capabilities`. It does not allowlist Analytics names.
+fail construction. The core invokes all resolvers concurrently without an
+inbound request under one aggregate five-second deadline and passes one
+kernel-owned `AbortSignal` that every first-party resolver must honor. It
+validates exact declared keys and recursive `JsonValue`, then enforces 16 KiB
+of serialized UTF-8 per contribution and 64 KiB aggregate. Only after every
+contribution passes does it atomically shallow-merge the result into
+`/version.capabilities`. Timeout, throw, invalid keys or JSON, or oversize
+produces one opaque `500` with no partial metadata or dynamic detail. The core
+does not allowlist Analytics names.
 
 Metadata is byte-for-byte invariant to inbound credentials. Secrets,
 authentication mechanisms, policies, principals, provider configuration, and
@@ -785,7 +893,7 @@ Analytics capability keys, including its asynchronous standalone resolution.
 3. Collect capability factories from infrastructure carriers only.
 4. Invoke the factories synchronously with the guarded runtime and validate
    each returned value with its token parser.
-5. Reject duplicate capability providers.
+5. Reject duplicate capability token IDs, then duplicate providers.
 6. Validate plugin identities and capability requirements.
 7. Run synchronous plugin setup in stable plugin-ID order.
 8. Collect and normalize routes; reject route and route-ID conflicts.
@@ -882,6 +990,26 @@ body-capable `Request`. It cannot choose which routes are protected and cannot
 return an HTTP response. The adapter does not infer or require API-key support.
 There is no `protect` or `authorize` option.
 
+The kernel's status guarantee is exact for provider-classified results. Better
+Auth's public session API may collapse an internal dependency failure to the
+same `null` used for an absent session, which an adapter cannot disambiguate.
+Locked-version fault injection also proves that Better Auth 1.6.24 catches a
+session-store error carrying `status: 503` and surfaces an `APIError` with
+`status: "INTERNAL_SERVER_ERROR"` and `statusCode: 500`. The adapter therefore
+maps `null` to `anonymous`, only still-classified observable outage errors to
+`unavailable`, and classification-erased or otherwise unexpected throws to the
+kernel's opaque `500`. A swallowed outage remains fail-closed as `401`; a
+classification-erased outage remains fail-closed as `500`. These are
+documented provider-library limitations and deferred upstream issues, not
+claimed exact-`503` cases. A generic non-Better-Auth provider must exercise the
+exact `unavailable` to `503` conformance branch. No health-preflight workaround
+is introduced. Better Auth 1.6.24's default logger receives the original store
+error before its public API rewrites that error. The adapter neither receives
+nor re-logs that original value, and it cannot safely mutate the caller's
+configured Better Auth instance. Deployments with strict log-secrecy
+requirements must therefore disable or sanitize the Better Auth dependency
+logger when constructing that instance.
+
 A managed preset may configure Better Auth with API-key support and provide the
 resulting configured instance to the same adapter. Bootstrap, secret delivery,
 rotation, revocation, and Better Auth migrations remain provider/IaC
@@ -902,10 +1030,11 @@ header configuration. It nevertheless adds mandatory transport guards before
 any configured credential is sent:
 
 - canonicalize `baseUrl` and every destination;
-- reject URL user information and absolute custom-route URLs;
+- reject URL user information and absolute, scheme-relative, backslash,
+  fragment, or base-path-escaping custom routes;
+- preserve the configured base pathname when resolving a relative route;
 - require the destination origin to equal the canonical `baseUrl` origin;
-- reject credential-bearing redirects with `redirect: "error"` or follow only
-  after an explicit same-origin validation;
+- reject credential-bearing redirects with `redirect: "error"` in Stage 1;
 - never use inbound headers or principal state as outbound configuration.
 
 A per-request outbound credential provider is a later additive API. It becomes
@@ -916,6 +1045,10 @@ cannot replace them.
 The standalone Analytics provider retains its bounded cache, stale fallback,
 timeout, and independent ingestion/query availability. These semantics move
 behind the Analytics provider capability and Analytics metadata resolver.
+Analytics owns those operation/probe/cache semantics. The standalone package
+owns one generic guarded transport, capability-carrier wiring, route
+configuration, and outbound credential enforcement; it does not reimplement
+Analytics parsing or availability rules.
 
 ## Managed provider policy
 
@@ -961,12 +1094,20 @@ the kernel extraction into its forward-only migrations.
 - introduce the generic provider capability carrier;
 - add `withAnalyticsProvider` and migrate capable provider packages to it;
 - preserve current HTTP behavior and provider migrations;
+- migrate `@hot-updater/server/node` to generic lazy raw-body forwarding and
+  route request policies; reject already parsed protected bodies;
+- remove plugin-core's public high-level Analytics service/domain/token
+  surface and neutralize server adapter names while retaining the internal raw
+  persistence model and existing migrations;
 - convert managed presets to
   `plugins: [analytics({ queryAccess: "public", missingCapability: "error" })]`;
 - expose the old `routes.analytics` composition only from
-  `@hot-updater/analytics/legacy-server`;
+  `@hot-updater/analytics/legacy-server`, whose only exports are
+  `createLegacyHotUpdater` and `LegacyCreateHotUpdaterOptions`;
 - add the namespaced `features.analytics` runtime API and temporary,
   collision-checked flat aliases.
+- emit and pack condition-specific `.d.mts` and `.d.cts` declarations for
+  every new or changed dual-format entry.
 
 The new server entrypoint is Analytics-free in Stage 1. The legacy Analytics
 wrapper attaches the provider capability and Analytics manifest outside the
@@ -979,14 +1120,16 @@ is a documented breaking source migration with preserved HTTP behavior.
 - migrate Console and server consumers to
   `hotUpdater.features.analytics` and `@hot-updater/analytics` types;
 - remove direct `supportsAnalytics` usage from new paths;
-- migrate Node/framework adapters to generic raw-body preservation;
+- migrate downstream applications and framework integrations to the generic
+  raw-body contract established by the Stage 1 server adapter;
 - announce final removal of legacy server Analytics exports.
 
 ### Stage 3: breaking cleanup
 
 - remove `routes.analytics`;
 - remove flat Analytics API aliases;
-- remove high-level Analytics APIs and types from server and plugin-core;
+- remove remaining transitional/internal Analytics aliases from server and
+  plugin-core;
 - remove Analytics route and body-limit special cases from server adapters;
 - remove legacy Analytics capability symbols and probes;
 - remove the legacy Analytics wrapper;
@@ -995,7 +1138,8 @@ is a documented breaking source migration with preserved HTTP behavior.
 
 The new `@hot-updater/server` entrypoint satisfies the static Analytics
 boundary in Stage 1. Stage 3 removes transitional public aliases and remaining
-high-level plugin-core types.
+internal persistence aliases; public high-level plugin-core Analytics
+service/domain/token exports already leave in Stage 1.
 
 ### Source, export, and migration matrix
 
@@ -1022,6 +1166,7 @@ application or managed-provider IaC, never by Hot Updater.
 Construction errors are typed and include stable machine-readable codes for:
 
 - duplicate plugin ID;
+- duplicate capability token ID;
 - duplicate capability provider;
 - missing capability;
 - invalid capability;
@@ -1030,6 +1175,7 @@ Construction errors are typed and include stable machine-readable codes for:
 - duplicate metadata namespace;
 - duplicate metadata wire key;
 - duplicate API namespace or alias;
+- duplicate middleware ID;
 - unknown middleware dependency;
 - middleware dependency cycle;
 - multiple authentication providers;
@@ -1112,6 +1258,9 @@ no dynamic provider or credential detail.
 - no later middleware, handler, database, or storage operation runs;
 - principal state is isolated across concurrent requests;
 - a configured Better Auth instance is used without mutation;
+- locked Better Auth outage behavior is characterized without leaking the
+  provider error or secret sentinel through the adapter, kernel response, or
+  Hot Updater logs;
 - no `protect` or `authorize` callback can downgrade route access;
 - a non-API-key authentication implementation passes the same contract suite.
 
@@ -1134,6 +1283,16 @@ no dynamic provider or credential detail.
   `@hot-updater/analytics/provider`, and
   `@hot-updater/analytics/legacy-server` through every advertised export
   condition;
+- real extracted tarballs resolve server root and
+  `/internal/first-party-plugin`, plugin-core capability authoring/enumeration,
+  Analytics, Better Auth, and managed entrypoints in ESM and CommonJS, with
+  matching `.d.mts` and `.d.cts` declarations under NodeNext and
+  `skipLibCheck: false`;
+- config-loader tests cover direct TypeScript, ESM, and CommonJS configs,
+  transitive and functional CommonJS providers, concurrent evaluation,
+  success/error cache restoration, and real mixed CommonJS-provider to
+  ESM-Analytics/server composition without weakening the dual-format package
+  maps;
 - package lint and type-compatibility checks cover the published declarations;
 - literal factory return types preserve the Analytics namespace and operation
   types;

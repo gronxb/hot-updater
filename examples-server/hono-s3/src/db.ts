@@ -39,10 +39,9 @@ export const hotUpdater = createHotUpdater({
   database: s3Database(options),
   storages: [mockStorage({}), s3Storage(options)],
   basePath: "/hot-updater",
-  routes: {
+  coreRoutes: {
     updateCheck: true,
-    bundles: true,
-    analytics: true,
+    bundles: { access: { kind: "public" } },
   },
 });
 

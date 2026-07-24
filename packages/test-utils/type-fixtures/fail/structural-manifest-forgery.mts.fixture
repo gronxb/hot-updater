@@ -1,0 +1,19 @@
+import type {
+  HotUpdaterFeatureManifest,
+  NoFeatureApiKind,
+} from "@hot-updater/server/internal/first-party-plugin";
+
+const forged: HotUpdaterFeatureManifest<
+  "forged",
+  NoFeatureApiKind,
+  Record<never, never>
+> = {
+  aliases: {},
+  id: "forged",
+  namespace: "forged",
+  requires: [],
+  setup: () => ({}),
+  version: "1.0.0",
+};
+
+void forged;

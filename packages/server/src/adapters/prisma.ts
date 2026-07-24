@@ -21,7 +21,7 @@ import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
 import {
   getPrismaDelegate,
-  parsePrismaBundleEventRow,
+  parsePrismaAppendOnlyRow,
   parsePrismaBundleRow,
   parsePrismaPatchRow,
   parsePrismaRows,
@@ -141,7 +141,7 @@ const findMany = async (
     case "bundle_patches":
       return parsePrismaRows(rows, parsePrismaPatchRow);
     case "bundle_events":
-      return parsePrismaRows(rows, parsePrismaBundleEventRow);
+      return parsePrismaRows(rows, parsePrismaAppendOnlyRow);
   }
 };
 
@@ -217,7 +217,7 @@ const createCrudImplementation = (
       case "bundle_patches":
         return parsePrismaPatchRow(row);
       case "bundle_events":
-        return parsePrismaBundleEventRow(row);
+        return parsePrismaAppendOnlyRow(row);
     }
   },
   update: async (input) => {
@@ -289,7 +289,7 @@ const createCrudImplementation = (
       case "bundle_patches":
         return parsePrismaPatchRow(row);
       case "bundle_events":
-        return parsePrismaBundleEventRow(row);
+        return parsePrismaAppendOnlyRow(row);
     }
   },
   findMany: (input) => findMany(client, input, provider),

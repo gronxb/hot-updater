@@ -278,29 +278,36 @@ If you want this contract without implementing it yourself, use
 `@hot-updater/server`:
 
 ```typescript
+import { analytics } from "@hot-updater/analytics";
+import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
-  database,
+  database: withAnalyticsProvider(database),
   storages: [storage],
   basePath: "/hot-updater",
-  routes: {
+  coreRoutes: {
     updateCheck: true,
-    bundles: true,
-    analytics: true,
+    bundles: { access: { kind: "public" } },
   },
+  plugins: [
+    analytics({
+      missingCapability: "error",
+      queryAccess: "public",
+    }),
+  ],
 });
 ```
 
 This mounts the bundle routes consumed by `standaloneRepository` under
-`/hot-updater/api/bundles*`. `routes.bundles: true` is the explicit opt-in for
-those management APIs; protect them at the framework or reverse proxy layer,
-and configure matching `commonHeaders` in `standaloneRepository`.
-`routes.analytics: true` independently mounts `POST /hot-updater/events` and
-the Analytics routes consumed by Console under
+`/hot-updater/api/bundles*`. `coreRoutes.bundles` is the explicit opt-in for
+those management APIs. The public access policy shown delegates protection to
+the framework or reverse proxy; configure matching `commonHeaders` in
+`standaloneRepository`.
+The installed `analytics()` plugin independently mounts
+`POST /hot-updater/events` and the Analytics routes consumed by Console under
 `/hot-updater/api/bundles/*/events*` and `/hot-updater/api/installations*`.
-Enabling it with an unsupported database logs a warning and mounts none of
-those routes.
+The strict provider policy fails construction if the wrapper is missing.
 Standalone reads the upstream `/version` response before forwarding Analytics
 requests, so upstream `eventIngestion` and `analyticsQueries` availability is
 preserved independently.

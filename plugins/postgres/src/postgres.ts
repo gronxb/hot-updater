@@ -1,3 +1,4 @@
+import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import type {
   CreateDatabaseImplementationInput,
   DatabasePluginImplementation,
@@ -217,20 +218,24 @@ const createPostgresImplementation = (
 });
 
 export const postgres = (config: PostgresConfig) =>
-  createDatabasePlugin({
-    name: "postgres",
-    plugin: () => {
-      const { dialect, ...poolConfig } = config;
-      if (dialect !== undefined) {
-        return createPostgresImplementation(new Kysely<Database>({ dialect }));
-      }
-      const pool = new Pool(poolConfig);
-      const implementation = createPostgresImplementation(
-        new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
-      );
-      return {
-        ...implementation,
-        getUpdateInfo: (args) => getUpdateInfo(pool, args),
-      };
-    },
-  });
+  withAnalyticsProvider(
+    createDatabasePlugin({
+      name: "postgres",
+      plugin: () => {
+        const { dialect, ...poolConfig } = config;
+        if (dialect !== undefined) {
+          return createPostgresImplementation(
+            new Kysely<Database>({ dialect }),
+          );
+        }
+        const pool = new Pool(poolConfig);
+        const implementation = createPostgresImplementation(
+          new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
+        );
+        return {
+          ...implementation,
+          getUpdateInfo: (args) => getUpdateInfo(pool, args),
+        };
+      },
+    }),
+  );

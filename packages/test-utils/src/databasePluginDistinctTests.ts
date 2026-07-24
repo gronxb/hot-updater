@@ -1,7 +1,7 @@
 import {
   DatabasePluginInputError,
-  type BundleEventRow,
   type DatabasePlugin,
+  type DatabaseRow,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +9,7 @@ import type { DatabasePluginTestState } from "./databasePluginTestRunner";
 import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type QueryTestState = DatabasePluginTestState<DatabasePlugin>;
+type BundleEventRow = DatabaseRow<"bundle_events">;
 
 type QueryOutcome<TValue> =
   | { readonly kind: "value"; readonly value: TValue }

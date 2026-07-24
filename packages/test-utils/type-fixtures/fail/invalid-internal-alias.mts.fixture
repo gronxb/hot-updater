@@ -1,0 +1,36 @@
+import {
+  defineFirstPartyFeatureManifest,
+  type FeatureApiKind,
+} from "@hot-updater/server/internal/first-party-plugin";
+
+type AvailableApi<TContext> = {
+  readonly operation: (context?: TContext) => string;
+};
+
+interface TestKind extends FeatureApiKind {
+  readonly availableApi: AvailableApi<this["context"]>;
+  readonly feature: AvailableApi<this["context"]> & {
+    readonly status: "available";
+  };
+}
+
+defineFirstPartyFeatureManifest<
+  "test",
+  TestKind,
+  { readonly legacyMissing: "missing" }
+>({
+  aliases: { legacyMissing: "missing" },
+  id: "test",
+  namespace: "test",
+  setup: () => ({
+    api: {
+      legacyAliases: { legacyMissing: "missing" },
+      namespace: "test",
+      value: {
+        operation: () => "ok",
+        status: "available",
+      },
+    },
+  }),
+  version: "1.0.0",
+});

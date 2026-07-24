@@ -1,0 +1,173 @@
+import {
+  analytics,
+  type AnalyticsFeature,
+  type AnalyticsFeatureAvailable,
+} from "@hot-updater/analytics";
+import {
+  betterAuthPlugin,
+  type BetterAuthConfiguredInstance,
+} from "@hot-updater/better-auth";
+import type {
+  DatabasePlugin,
+  RuntimeStoragePlugin,
+} from "@hot-updater/plugin-core";
+import {
+  createHotUpdater,
+  type RuntimeHotUpdaterAPI,
+} from "@hot-updater/server";
+
+import { assertType, type Equal } from "./typeAssertions.mjs";
+
+type TestContext = Readonly<{ requestId: string }>;
+type AnalyticsAlias =
+  | "appendBundleEvent"
+  | "getActiveInstallationOverview"
+  | "getBundleEventAnalytics"
+  | "getBundleEventOverview"
+  | "getBundleEventSummary"
+  | "getInstallationHistory"
+  | "searchInstallations";
+
+type FeatureStatus<TRuntime> = TRuntime extends {
+  readonly features: {
+    readonly analytics: { readonly status: infer TStatus };
+  };
+}
+  ? TStatus
+  : never;
+
+type FeatureAliasKeys<TRuntime> = Exclude<
+  keyof TRuntime,
+  keyof RuntimeHotUpdaterAPI<TestContext> | "features"
+>;
+
+declare const auth: BetterAuthConfiguredInstance;
+declare const database: DatabasePlugin;
+declare const policy: "error" | "warn";
+declare const storage: RuntimeStoragePlugin<TestContext>;
+
+const omitted = createHotUpdater({ database });
+assertType<Equal<keyof typeof omitted.features, never>>();
+
+const warning = createHotUpdater({
+  database,
+  plugins: [analytics()],
+  storages: [storage],
+});
+assertType<
+  Equal<typeof warning.features.analytics, AnalyticsFeature<TestContext>>
+>();
+type WarningAvailableRuntime = Extract<
+  typeof warning,
+  {
+    readonly features: {
+      readonly analytics: { readonly status: "available" };
+    };
+  }
+>;
+type WarningUnavailableRuntime = Extract<
+  typeof warning,
+  {
+    readonly features: {
+      readonly analytics: { readonly status: "unavailable" };
+    };
+  }
+>;
+assertType<Equal<FeatureAliasKeys<WarningAvailableRuntime>, AnalyticsAlias>>();
+assertType<Equal<FeatureAliasKeys<WarningUnavailableRuntime>, never>>();
+assertType<
+  Equal<
+    Parameters<WarningAvailableRuntime["getBundleEventSummary"]>[1],
+    TestContext | undefined
+  >
+>();
+
+const strict = createHotUpdater({
+  database,
+  plugins: [analytics({ missingCapability: "error" })],
+  storages: [storage],
+});
+assertType<
+  Equal<
+    typeof strict.features.analytics,
+    AnalyticsFeatureAvailable<TestContext>
+  >
+>();
+assertType<Equal<FeatureAliasKeys<typeof strict>, AnalyticsAlias>>();
+assertType<
+  Equal<
+    Parameters<typeof strict.getInstallationHistory>[3],
+    TestContext | undefined
+  >
+>();
+
+const widened = createHotUpdater({
+  database,
+  plugins: [analytics({ missingCapability: policy })],
+  storages: [storage],
+});
+assertType<Equal<FeatureStatus<typeof widened>, "available" | "unavailable">>();
+
+const authOnly = createHotUpdater({
+  database,
+  plugins: [betterAuthPlugin({ auth })],
+});
+assertType<Equal<keyof typeof authOnly.features, never>>();
+
+const analyticsAndAuth = createHotUpdater({
+  database,
+  plugins: [analytics(), betterAuthPlugin({ auth })],
+  storages: [storage],
+});
+assertType<Equal<keyof typeof analyticsAndAuth.features, "analytics">>();
+
+const authAndAnalytics = createHotUpdater({
+  database,
+  plugins: [betterAuthPlugin({ auth }), analytics()],
+  storages: [storage],
+});
+assertType<
+  Equal<
+    keyof typeof analyticsAndAuth.features,
+    keyof typeof authAndAnalytics.features
+  >
+>();
+assertType<
+  Equal<typeof analyticsAndAuth.features, typeof authAndAnalytics.features>
+>();
+assertType<
+  Equal<
+    FeatureAliasKeys<typeof analyticsAndAuth>,
+    FeatureAliasKeys<typeof authAndAnalytics>
+  >
+>();
+type AnalyticsAndAuthAvailable = Extract<
+  typeof analyticsAndAuth,
+  {
+    readonly features: {
+      readonly analytics: { readonly status: "available" };
+    };
+  }
+>;
+type AuthAndAnalyticsAvailable = Extract<
+  typeof authAndAnalytics,
+  {
+    readonly features: {
+      readonly analytics: { readonly status: "available" };
+    };
+  }
+>;
+assertType<
+  Equal<
+    Pick<AnalyticsAndAuthAvailable, AnalyticsAlias>,
+    Pick<AuthAndAnalyticsAvailable, AnalyticsAlias>
+  >
+>();
+
+void analyticsAndAuth;
+void authAndAnalytics;
+void authOnly;
+void omitted;
+void strict;
+void warning;
+void widened;

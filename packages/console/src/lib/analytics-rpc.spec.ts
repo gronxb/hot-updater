@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import type { Bundle } from "@hot-updater/plugin-core";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   AnalyticsBundlePaginationError,
@@ -23,25 +23,52 @@ const createBundle = (id: string): Bundle => ({
   rolloutCohortCount: 1000,
 });
 
-const createRuntime = () => ({
-  appendBundleEvent: vi.fn(),
-  getActiveInstallationOverview: vi.fn(),
-  getBundleEventSummary: vi.fn(),
-  getBundleEventAnalytics: vi.fn(),
-  getBundleEventOverview: vi.fn(),
-  searchInstallations: vi.fn(),
-  getInstallationHistory: vi.fn(),
-});
-
-beforeAll(async () => {
-  await import("@hot-updater/server/db");
-});
+const createRuntime = () => {
+  const methods = {
+    appendBundleEvent: vi.fn(),
+    getActiveInstallationOverview: vi.fn(),
+    getBundleEventSummary: vi.fn(),
+    getBundleEventAnalytics: vi.fn(),
+    getBundleEventOverview: vi.fn(),
+    searchInstallations: vi.fn(),
+    getInstallationHistory: vi.fn(),
+  };
+  return {
+    ...methods,
+    basePath: "/api",
+    features: {
+      analytics: {
+        ...methods,
+        status: "available",
+      },
+    },
+    handler: vi.fn(async () =>
+      Response.json({
+        capabilities: {
+          analytics: true,
+          analyticsQueries: true,
+          eventIngestion: true,
+          mode: "dedicated",
+        },
+        version: "test",
+      }),
+    ),
+  };
+};
 
 describe("collectAnalyticsOverview", () => {
   it("rejects incomplete support before collecting protected data", async () => {
     // Given
     const getBundles = vi.fn();
-    const runtime = { ...createRuntime(), searchInstallations: undefined };
+    const runtime = {
+      ...createRuntime(),
+      features: {
+        analytics: {
+          reason: "missing-provider-capability",
+          status: "unavailable",
+        },
+      },
+    };
 
     // When
     const result = collectAnalyticsOverview({ runtime, getBundles });

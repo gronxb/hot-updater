@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["esnext", "DOM", "DOM.Iterable"],
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "types": []
+  },
+  "include": ["src/**/*", "vitest.config.ts"],
+  "exclude": ["node_modules"]
+}

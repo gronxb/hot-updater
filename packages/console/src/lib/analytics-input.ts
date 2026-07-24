@@ -1,5 +1,9 @@
-import type { ActiveInstallationWindow } from "@hot-updater/plugin-core";
-import type { BundleEventAnalyticsWindow } from "@hot-updater/server/db";
+import type {
+  ActiveInstallationInput,
+  BundleEventAnalyticsWindow,
+} from "@hot-updater/analytics";
+
+export type { ActiveInstallationInput } from "@hot-updater/analytics";
 
 const MAX_ANALYTICS_STRING_LENGTH = 1024;
 const MAX_ANALYTICS_LIMIT = 100;
@@ -24,11 +28,6 @@ export type InstallationHistoryInput = {
   readonly installId: string;
   readonly limit?: number;
   readonly offset?: number;
-};
-
-export type ActiveInstallationInput = {
-  readonly window: ActiveInstallationWindow;
-  readonly userId?: string;
 };
 
 type AnalyticsPagination = {
@@ -116,7 +115,7 @@ const parseWindow = (
 
 const parseActiveWindow = (
   input: Record<string, unknown>,
-): ActiveInstallationWindow => {
+): ActiveInstallationInput["window"] => {
   const value = input.window;
   if (value === "24h" || value === "7d" || value === "30d") {
     return value;

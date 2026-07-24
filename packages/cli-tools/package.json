@@ -47,8 +47,10 @@
     "access": "public"
   },
   "dependencies": {
+    "@hot-updater/analytics": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
+    "jiti": "2.7.0",
     "oxc-transform": "0.121.0",
     "typescript": "6.0.2",
     "unconfig": "7.5.0"

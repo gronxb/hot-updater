@@ -1,7 +1,9 @@
-import type { BundleEventRow, BundleRow } from "@hot-updater/plugin-core";
+import type { BundleRow, DatabaseRow } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import { queryFirebaseDatabaseRows } from "./firebaseDatabaseQuery";
+
+type BundleEventPersistenceRow = DatabaseRow<"bundle_events">;
 
 const createBundle = (suffix: string, channel = "production"): BundleRow => ({
   id: `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`,
@@ -27,7 +29,7 @@ const createEvent = (
   id: string,
   installId: string,
   receivedAtMs: number,
-): BundleEventRow => ({
+): BundleEventPersistenceRow => ({
   id,
   type: "UPDATE_APPLIED",
   install_id: installId,

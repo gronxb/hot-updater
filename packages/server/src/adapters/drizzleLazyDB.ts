@@ -1,4 +1,4 @@
-import type { BundleEventRow, BundlePatchRow } from "@hot-updater/plugin-core";
+import type { BundlePatchRow, DatabaseRow } from "@hot-updater/plugin-core";
 
 import type { StoredBundleRow } from "./databasePluginUtils";
 import type { DrizzleConfig } from "./drizzle";
@@ -24,7 +24,7 @@ export type DrizzleDB = {
     values: (value: unknown) => DrizzleMutation;
   };
   readonly query: {
-    readonly bundle_events?: DrizzleQuery<BundleEventRow>;
+    readonly bundle_events?: DrizzleQuery<DatabaseRow<"bundle_events">>;
     readonly bundles: DrizzleQuery<StoredBundleRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
   };
@@ -92,13 +92,13 @@ const asDB = (db: unknown): DrizzleDB => {
   return db;
 };
 
-export const requireDrizzleBundleEventsQuery = (
+export const requireDrizzleAppendOnlyQuery = (
   db: DrizzleDB,
-): DrizzleQuery<BundleEventRow> => {
+): DrizzleQuery<DatabaseRow<"bundle_events">> => {
   const query = db.query.bundle_events;
   if (!query) {
     throw new InvalidDrizzleDatabaseError(
-      "Drizzle Analytics requires query mode with the bundle_events schema.",
+      'Drizzle query mode requires the "bundle_events" schema table.',
     );
   }
   return query;
@@ -155,9 +155,9 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
     query: {
       bundle_events: {
         findFirst: async (args) =>
-          requireDrizzleBundleEventsQuery(await getDB()).findFirst(args),
+          requireDrizzleAppendOnlyQuery(await getDB()).findFirst(args),
         findMany: async (args) =>
-          requireDrizzleBundleEventsQuery(await getDB()).findMany(args),
+          requireDrizzleAppendOnlyQuery(await getDB()).findMany(args),
       },
       bundle_patches: {
         findFirst: async (args) =>

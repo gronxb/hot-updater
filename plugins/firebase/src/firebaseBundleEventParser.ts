@@ -1,4 +1,4 @@
-import type { BundleEventRow } from "@hot-updater/plugin-core";
+import type { DatabaseRow } from "@hot-updater/plugin-core";
 
 import {
   hasFirebaseProperty,
@@ -11,10 +11,12 @@ import {
   FirebaseDatabaseDataError,
 } from "./firebaseDatabaseParserShared";
 
+type BundleEventPersistenceRow = DatabaseRow<"bundle_events">;
+
 export const parseFirebaseBundleEventRow = (
   value: unknown,
   source: string,
-): BundleEventRow => {
+): BundleEventPersistenceRow => {
   const input = record(value, source);
   const type = string(property(input, "type"), source);
   if (

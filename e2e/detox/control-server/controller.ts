@@ -1334,13 +1334,14 @@ async function withDatabaseClient<T>(
   }
 }
 
-type AnalyticsRuntime = {
-  readonly getActiveInstallationOverview?: (input: {
+type AvailableAnalyticsFeature = {
+  readonly status: "available";
+  readonly getActiveInstallationOverview: (input: {
     readonly window: "24h";
   }) => Promise<
     Awaited<ReturnType<ConsoleAnalyticsQaClient["getActiveOverview"]>>
   >;
-  readonly getBundleEventAnalytics?: (
+  readonly getBundleEventAnalytics: (
     bundleId: string,
     window: "30d",
     limit: number,
@@ -1348,18 +1349,18 @@ type AnalyticsRuntime = {
   ) => Promise<
     Awaited<ReturnType<ConsoleAnalyticsQaClient["getBundleAnalytics"]>>
   >;
-  readonly getBundleEventOverview?: () => Promise<
+  readonly getBundleEventOverview: () => Promise<
     Awaited<ReturnType<ConsoleAnalyticsQaClient["getOverview"]>>
   >;
-  readonly getBundleEventSummary?: (
+  readonly getBundleEventSummary: (
     bundleId: string,
   ) => Promise<Awaited<ReturnType<ConsoleAnalyticsQaClient["getSummary"]>>>;
-  readonly getInstallationHistory?: (
+  readonly getInstallationHistory: (
     installId: string,
     limit: number,
     offset: number,
   ) => Promise<Awaited<ReturnType<ConsoleAnalyticsQaClient["getHistory"]>>>;
-  readonly searchInstallations?: (
+  readonly searchInstallations: (
     query: string,
     limit: number,
     offset: number,
@@ -1368,13 +1369,33 @@ type AnalyticsRuntime = {
   >;
 };
 
-const hasAnalyticsRuntime = (runtime: AnalyticsRuntime) =>
-  typeof runtime.getActiveInstallationOverview === "function" &&
-  typeof runtime.getBundleEventAnalytics === "function" &&
-  typeof runtime.getBundleEventOverview === "function" &&
-  typeof runtime.getBundleEventSummary === "function" &&
-  typeof runtime.getInstallationHistory === "function" &&
-  typeof runtime.searchInstallations === "function";
+type AnalyticsRuntime = {
+  readonly basePath: string;
+  readonly features: {
+    readonly analytics?:
+      | AvailableAnalyticsFeature
+      | { readonly status: string };
+  };
+  readonly handler: (request: Request) => Promise<Response>;
+};
+
+const hasAnalyticsRuntime = (
+  runtime: AnalyticsRuntime,
+): runtime is AnalyticsRuntime & {
+  readonly features: { readonly analytics: AvailableAnalyticsFeature };
+} => {
+  const feature = runtime.features.analytics;
+  return (
+    feature?.status === "available" &&
+    typeof Reflect.get(feature, "getActiveInstallationOverview") ===
+      "function" &&
+    typeof Reflect.get(feature, "getBundleEventAnalytics") === "function" &&
+    typeof Reflect.get(feature, "getBundleEventOverview") === "function" &&
+    typeof Reflect.get(feature, "getBundleEventSummary") === "function" &&
+    typeof Reflect.get(feature, "getInstallationHistory") === "function" &&
+    typeof Reflect.get(feature, "searchInstallations") === "function"
+  );
+};
 
 async function withAnalyticsRuntime<T>(
   callback: (runtime: AnalyticsRuntime) => Promise<T>,
@@ -1383,12 +1404,12 @@ async function withAnalyticsRuntime<T>(
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
       loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
     };
+  const { analytics } =
+    await import("../../../packages/analytics/dist/index.mjs");
+  const { withAnalyticsProvider } =
+    await import("../../../packages/analytics/dist/provider/index.mjs");
   const { createHotUpdater } =
-    (await import("../../../packages/server/dist/index.mjs")) as {
-      createHotUpdater: (options: {
-        database: DatabasePlugin;
-      }) => AnalyticsRuntime;
-    };
+    await import("../../../packages/server/dist/index.mjs");
   const originalCwd = process.cwd();
 
   try {
@@ -1396,7 +1417,13 @@ async function withAnalyticsRuntime<T>(
     return await withHotUpdaterControlEnv(async () => {
       const config = await loadConfig(null);
       try {
-        return await callback(createHotUpdater({ database: config.database }));
+        const manifest = analytics({ missingCapability: "warn" });
+        return await callback(
+          createHotUpdater({
+            database: withAnalyticsProvider(config.database),
+            plugins: [manifest],
+          }),
+        );
       } finally {
         await config.database.onUnmount?.();
       }
@@ -1414,33 +1441,35 @@ async function verifyConfiguredConsoleAnalytics(args: {
     if (!hasAnalyticsRuntime(runtime)) {
       return { skipped: true, reason: "unsupported" };
     }
-    const probe = Reflect.get(
-      runtime,
-      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
+    const versionResponse = await runtime.handler(
+      new Request(`http://localhost${runtime.basePath}/version`),
     );
-    if (typeof probe === "function") {
-      const capability: unknown = await Reflect.apply(probe, runtime, []);
-      if (
-        typeof capability !== "object" ||
-        capability === null ||
-        Reflect.get(capability, "analytics") !== true
-      ) {
-        return { skipped: true, reason: "unsupported" };
-      }
+    const versionBody: unknown = await versionResponse.json();
+    const capabilities =
+      typeof versionBody === "object" && versionBody !== null
+        ? Reflect.get(versionBody, "capabilities")
+        : undefined;
+    if (
+      typeof capabilities !== "object" ||
+      capabilities === null ||
+      Reflect.get(capabilities, "analytics") !== true ||
+      Reflect.get(capabilities, "analyticsQueries") !== true
+    ) {
+      return { skipped: true, reason: "unsupported" };
     }
 
+    const feature = runtime.features.analytics;
     const client: ConsoleAnalyticsQaClient = {
       getActiveOverview: () =>
-        runtime.getActiveInstallationOverview!({ window: "24h" }),
+        feature.getActiveInstallationOverview({ window: "24h" }),
       getBundleAnalytics: (bundleId) =>
-        runtime.getBundleEventAnalytics!(bundleId, "30d", 50, 0),
+        feature.getBundleEventAnalytics(bundleId, "30d", 50, 0),
       getCapabilities: async () => ({ analytics: true }),
       getHistory: (installId) =>
-        runtime.getInstallationHistory!(installId, 50, 0),
-      getOverview: () => runtime.getBundleEventOverview!(),
-      getSummary: (bundleId) => runtime.getBundleEventSummary!(bundleId),
-      searchInstallations: (query) =>
-        runtime.searchInstallations!(query, 50, 0),
+        feature.getInstallationHistory(installId, 50, 0),
+      getOverview: () => feature.getBundleEventOverview(),
+      getSummary: (bundleId) => feature.getBundleEventSummary(bundleId),
+      searchInstallations: (query) => feature.searchInstallations(query, 50, 0),
     };
     const bundleIds = [
       ...args.bundleIds,
@@ -3370,8 +3399,10 @@ export async function handleProxyUpdateRequest(request: Request) {
       );
       if (event) fixtureSession.observedAnalyticsEvents.push(event);
     } catch (error) {
+      const observedError =
+        error instanceof Error ? error : new Error(String(error));
       logDetoxFixture("analytics event observation skipped", {
-        error: formatErrorMessage(error),
+        error: formatErrorMessage(observedError),
       });
     }
   }

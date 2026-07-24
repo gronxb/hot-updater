@@ -14,7 +14,6 @@ import type {
   CreateHotUpdaterOptions,
   HandlerAPI,
   HandlerOptions,
-  HandlerRoutes,
 } from "./index";
 import {
   createRuntimeDatabase,
@@ -47,16 +46,13 @@ describe("runtime createHotUpdater", () => {
   it("exports runtime-safe handler types from the root entry", () => {
     // Given / When / Then
     expectTypeOf<HandlerAPI>().toHaveProperty("getBundles");
-    expectTypeOf<HandlerOptions>().toHaveProperty("routes");
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
-    expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      "database" | "storages" | "storagePlugins" | "basePath" | "cwd" | "routes"
+    expectTypeOf<HandlerOptions>().toHaveProperty("coreRoutes");
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
+      "basePath" | "coreRoutes"
     >();
-    expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
-      readonly updateCheck: boolean;
-      readonly bundles: boolean;
-      readonly analytics?: boolean;
-    }>();
+    expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
+      "basePath" | "coreRoutes" | "database" | "plugins" | "storages"
+    >();
   });
 
   it("accepts a direct v2 plugin object without exposing maintenance methods", () => {
@@ -77,7 +73,7 @@ describe("runtime createHotUpdater", () => {
     });
 
     // When
-    const hotUpdater = createHotUpdater({ database, storages: [storage] });
+    const hotUpdater = createHotUpdater({ database, storages: [storage()] });
 
     // Then
     expect(hotUpdater.basePath).toBe("/api");
@@ -88,6 +84,24 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf(hotUpdater).not.toHaveProperty("createMigrator");
     expectTypeOf(hotUpdater).not.toHaveProperty("generateSchema");
     expectTypeOf(hotUpdater.handler).parameter(1).toEqualTypeOf<undefined>();
+  });
+
+  it("materializes storage plugin factories exactly once", () => {
+    // Given
+    const database = createRuntimeDatabase();
+    const storageFactory = vi.fn(() =>
+      createRuntimeStorage(async () => ({ fileUrl: "https://example.com" })),
+    );
+
+    // When
+    const hotUpdater = createHotUpdater({
+      database,
+      storages: [storageFactory],
+    });
+
+    // Then
+    expect(storageFactory).toHaveBeenCalledOnce();
+    expect(hotUpdater.adapterName).toBe(database.name);
   });
 
   it("rejects access when a managed schema is not initialized", async () => {
@@ -163,7 +177,7 @@ describe("runtime createHotUpdater", () => {
       database,
       storages: [createRuntimeStorage(getDownloadUrl)],
       basePath: "/api/check-update",
-      routes: { updateCheck: true, bundles: false },
+      coreRoutes: { updateCheck: true, bundles: false },
     });
     expectTypeOf(hotUpdater.handler)
       .parameter(1)
@@ -204,7 +218,7 @@ describe("runtime createHotUpdater", () => {
         })),
       ],
       basePath: "/api/check-update",
-      routes: { updateCheck: true, bundles: false },
+      coreRoutes: { updateCheck: true, bundles: false },
     });
     const context: TestContext = {
       env: { assetHost: "https://assets.example.com" },
@@ -240,9 +254,9 @@ describe("runtime createHotUpdater", () => {
         })),
       ],
       basePath: "/api/check-update",
-      routes: { updateCheck: true, bundles: false },
+      coreRoutes: { updateCheck: true, bundles: false },
     });
-    const request = new Request(updateUrl.replace("/api/check-update", ""));
+    const request = new Request(updateUrl);
 
     // When
     const response = await Reflect.apply(hotUpdater.handler, undefined, [
@@ -261,12 +275,12 @@ describe("runtime createHotUpdater", () => {
     { updateCheck: false, bundles: false },
   ])(
     "keeps the version route mounted for $updateCheck/$bundles",
-    async (routes) => {
+    async (coreRoutes) => {
       // Given
       const hotUpdater = createHotUpdater({
         database: createRuntimeDatabase(),
         basePath: "/api/check-update",
-        routes,
+        coreRoutes,
       });
 
       // When
@@ -278,13 +292,7 @@ describe("runtime createHotUpdater", () => {
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({
         version: HOT_UPDATER_SERVER_VERSION,
-        capabilities: {
-          analytics: true,
-          mode: "bounded",
-          maxMatchingRows: 50_000,
-          eventIngestion: false,
-          analyticsQueries: false,
-        },
+        capabilities: {},
       });
     },
   );

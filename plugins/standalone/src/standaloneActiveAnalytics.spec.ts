@@ -1,7 +1,5 @@
-import {
-  databaseAnalyticsSupport,
-  databaseBundleEventService,
-} from "@hot-updater/plugin-core";
+import { analyticsProviderToken } from "@hot-updater/analytics/provider";
+import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { HttpResponse, http, type JsonBodyType } from "msw";
 import { setupServer } from "msw/node";
 import {
@@ -74,9 +72,13 @@ const activeService = () => {
       }),
     },
   });
-  const service = repository[databaseBundleEventService];
-  if (!service) throw new Error("Missing standalone Analytics service.");
-  return service;
+  const [contribution] = getCapabilityContributions(repository);
+  if (contribution === undefined) {
+    throw new Error("Missing standalone Analytics provider.");
+  }
+  return analyticsProviderToken.parse(
+    contribution.create({ database: repository, storages: [] }),
+  );
 };
 
 describe("standalone active installation Analytics", () => {
@@ -102,6 +104,8 @@ describe("standalone active installation Analytics", () => {
       "getBundleEventOverview",
       "getBundleEventSummary",
       "getInstallationHistory",
+      "mode",
+      "resolveAvailability",
       "searchInstallations",
     ]);
   });
@@ -147,14 +151,18 @@ describe("standalone active installation Analytics", () => {
     );
   });
 
-  it.each([404, 500])("preserves a %i remote failure", async (status) => {
+  it.each([404, 500])("keeps a %i remote failure opaque", async (status) => {
     responseStatus = status;
     responseBody = { error: `remote-${status}` };
 
     await expect(
       activeService().getActiveInstallationOverview({ window: "24h" }),
     ).rejects.toEqual(
-      new StandaloneDatabaseError("request-failed", `remote-${status}`, status),
+      new StandaloneDatabaseError(
+        "request-failed",
+        `Database request failed with status ${status}.`,
+        status,
+      ),
     );
   });
 
@@ -194,8 +202,9 @@ describe("standalone active installation Analytics", () => {
       baseUrl: BASE_URL,
     });
 
-    expect(Reflect.get(repository, databaseAnalyticsSupport)).toBeUndefined();
-    expect(repository[databaseBundleEventService]).toBeDefined();
+    expect(
+      getCapabilityContributions(repository).map(({ token }) => token.id),
+    ).toEqual(["analytics-provider@1"]);
     expect(requestCount).toBe(0);
   });
 });

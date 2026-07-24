@@ -1,15 +1,14 @@
 import type {
+  ActiveInstallationInput,
   ActiveInstallationOverview,
-  ActiveInstallationWindow,
-  Bundle,
   BundleEventAnalyticsResult,
   BundleEventOverview,
   BundleEventSummary,
   InstallationHistoryRow,
   InstallationSearchRow,
   OffsetPaginationResult,
-  PaginatedResult,
-} from "@hot-updater/plugin-core";
+} from "@hot-updater/analytics/provider";
+import type { Bundle, PaginatedResult } from "@hot-updater/plugin-core";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -185,7 +184,7 @@ const isActiveInstallationSeries = (
 
 export const isActiveInstallationOverview = (
   value: unknown,
-  expectedWindow: ActiveInstallationWindow,
+  expectedWindow: ActiveInstallationInput["window"],
 ): value is ActiveInstallationOverview => {
   if (
     !isRecord(value) ||

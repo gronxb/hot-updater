@@ -9,8 +9,10 @@ import {
   bundleToPatchRows,
   bundleToRow,
   type Bundle,
-  type BundleEventRow,
+  type DatabaseRow,
 } from "@hot-updater/plugin-core";
+
+type BundleEventRow = DatabaseRow<"bundle_events">;
 
 type BundleSeed = Omit<Bundle, "storageUri"> &
   Partial<

@@ -2,15 +2,16 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
-import {
-  databaseAnalyticsSupport,
-  type BundleEventRow,
-} from "@hot-updater/plugin-core";
+import { analyticsProviderToken } from "@hot-updater/analytics/provider";
+import type { DatabaseRow } from "@hot-updater/plugin-core";
+import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { setupDatabasePluginTestSuite } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { expect, it } from "vitest";
 
 import { postgres } from "./postgres";
+
+type BundleEventRow = DatabaseRow<"bundle_events">;
 
 class PostgresTestStateError extends Error {
   readonly name = "PostgresTestStateError";
@@ -25,12 +26,14 @@ const getClient = (): PGlite => {
   return client;
 };
 
-it("advertises Analytics support", async () => {
+it("contributes the Analytics provider capability", async () => {
   // Given / When
   const plugin = postgres({ connectionString: "postgres://localhost/test" });
 
   // Then
-  expect(plugin[databaseAnalyticsSupport]).toBe(true);
+  expect(getCapabilityContributions(plugin).map(({ token }) => token)).toEqual([
+    analyticsProviderToken,
+  ]);
   await plugin.onUnmount?.();
 });
 

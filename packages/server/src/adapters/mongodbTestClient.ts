@@ -1,8 +1,4 @@
-import type {
-  BundleEventRow,
-  BundlePatchRow,
-  BundleRow,
-} from "@hot-updater/plugin-core";
+import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
 import { MongoClient } from "mongodb";
 
 import {
@@ -200,5 +196,4 @@ export const createMongoTestHarness = () => {
 };
 
 export type MongoTestBundleRow = BundleRow;
-export type MongoTestBundleEventRow = BundleEventRow;
 export type MongoTestBundlePatchRow = BundlePatchRow;

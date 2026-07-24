@@ -4,48 +4,53 @@ import type {
 } from "@hot-updater/plugin-core";
 import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 
+import { createCoreServerRoutes } from "./coreRoutes";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
-  type DatabasePlugin,
   type DatabaseAdapterCapabilities,
   type DatabaseAPI,
+  type DatabasePlugin,
   isDatabasePlugin,
-  type StoragePluginFactory,
 } from "./db/types";
-import { createHandler, type HandlerRoutes } from "./handler";
+import type { HandlerOptions } from "./handlerTypes";
+import type {
+  ProjectedFeatureApis,
+  ProjectPlugins,
+} from "./kernel/apiProjection";
+import { composeServerKernel } from "./kernel/composer";
+import { createCoreRouteDescriptors } from "./kernel/coreRoutes";
+import { executeKernelRequest } from "./kernel/execute";
+import { createGuardedInfrastructureRuntime } from "./kernel/guardedRuntime";
+import type { FirstPartyFeatureManifest } from "./kernel/manifest";
+import type { CompiledVersionMetadata } from "./kernel/metadata";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
 export type RuntimeHotUpdaterAPI<TContext = undefined> =
   DatabaseAPI<TContext> & {
+    readonly adapterName: string;
     readonly basePath: string;
     readonly handler: (
       request: Request,
       context?: HotUpdaterContext<TContext>,
     ) => Promise<Response>;
-    readonly adapterName: string;
   };
 
 export type HotUpdaterAPI<TContext = undefined> =
   RuntimeHotUpdaterAPI<TContext>;
 
-export interface CreateHotUpdaterOptions<TContext = undefined> {
+type RuntimeStorageInput<TContext> =
+  | RuntimeStoragePlugin<TContext>
+  | (() => RuntimeStoragePlugin<TContext>);
+
+export interface CreateHotUpdaterOptions<
+  TContext = undefined,
+  TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
+> extends HandlerOptions {
   readonly database: DatabasePlugin;
-  readonly storages?: readonly (
-    | RuntimeStoragePlugin<TContext>
-    | StoragePluginFactory<TContext>
-  )[];
-  /**
-   * @deprecated Use `storages` instead. This field will be removed in a future version.
-   */
-  readonly storagePlugins?: readonly (
-    | RuntimeStoragePlugin<TContext>
-    | StoragePluginFactory<TContext>
-  )[];
-  readonly basePath?: string;
-  readonly cwd?: string;
-  readonly routes?: HandlerRoutes;
+  readonly plugins?: TPlugins;
+  readonly storages?: readonly RuntimeStorageInput<TContext>[];
 }
 
 type DatabasePluginCore<TContext> = {
@@ -55,107 +60,160 @@ type DatabasePluginCore<TContext> = {
   readonly generateSchema: () => never;
 };
 
-export const hotUpdaterCoreMetadata = Symbol.for(
-  "@hot-updater/server/core-metadata",
-);
+export type HotUpdaterCoreMetadata = {
+  readonly adapterCapabilities: DatabaseAdapterCapabilities;
+  readonly core: Pick<
+    DatabasePluginCore<unknown>,
+    "createMigrator" | "generateSchema"
+  >;
+};
 
-export type HotUpdaterCoreMetadata<TContext = undefined> = {
+export type HotUpdaterCore<
+  TContext = undefined,
+  TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
+> = {
+  readonly api: RuntimeHotUpdaterAPI<TContext> &
+    Readonly<ProjectPlugins<TPlugins, TContext>>;
   readonly adapterCapabilities: DatabaseAdapterCapabilities;
   readonly core: DatabasePluginCore<TContext>;
 };
 
-export type HotUpdaterCore<TContext = undefined> = {
-  readonly api: RuntimeHotUpdaterAPI<TContext>;
-  readonly adapterCapabilities: DatabaseAdapterCapabilities;
-  readonly core: DatabasePluginCore<TContext>;
-};
+const coreMetadata = new WeakMap<object, HotUpdaterCoreMetadata>();
 
-export function getHotUpdaterCoreMetadata<TContext = undefined>(
-  hotUpdater: RuntimeHotUpdaterAPI<TContext>,
-): HotUpdaterCoreMetadata<TContext> | undefined {
-  return (
-    hotUpdater as RuntimeHotUpdaterAPI<TContext> & {
-      readonly [hotUpdaterCoreMetadata]?: HotUpdaterCoreMetadata<TContext>;
-    }
-  )[hotUpdaterCoreMetadata];
+export function getHotUpdaterCoreMetadata(
+  hotUpdater: object,
+): HotUpdaterCoreMetadata | undefined {
+  return coreMetadata.get(hotUpdater);
 }
 
-export function createHotUpdaterCore<TContext = undefined>(
-  options: CreateHotUpdaterOptions<TContext>,
-): HotUpdaterCore<TContext> {
-  const database = options.database;
-  const basePath = normalizeBasePath(options.basePath ?? "/api");
-  const storagePlugins = (options.storages ?? options.storagePlugins ?? []).map(
-    (plugin) => {
-      const storagePlugin = typeof plugin === "function" ? plugin() : plugin;
-      assertRuntimeStoragePlugin(storagePlugin);
-      return storagePlugin;
-    },
-  );
-  const { readStorageText, resolveFileUrl } =
-    createStorageAccess(storagePlugins);
-  const adapterCapabilities: DatabaseAdapterCapabilities = database;
+type RuntimeFields<TContext> = {
+  readonly adapterName: string;
+  readonly basePath: string;
+  readonly handler: (
+    request: Request,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<Response>;
+};
 
-  if (!isDatabasePlugin(database)) {
+function createRuntimeApi<
+  TContext,
+  TPlugins extends readonly FirstPartyFeatureManifest[],
+>(
+  coreApi: DatabaseAPI<TContext>,
+  fields: RuntimeFields<TContext>,
+  projected: ProjectedFeatureApis,
+): RuntimeHotUpdaterAPI<TContext> &
+  Readonly<ProjectPlugins<TPlugins, TContext>>;
+function createRuntimeApi<TContext>(
+  coreApi: DatabaseAPI<TContext>,
+  fields: RuntimeFields<TContext>,
+  projected: ProjectedFeatureApis,
+): object {
+  return Object.freeze(
+    Object.assign(
+      {},
+      coreApi,
+      fields,
+      { features: projected.features },
+      projected.aliases,
+    ),
+  );
+}
+
+export function createHotUpdaterCore<
+  TContext = undefined,
+  const TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
+>(
+  options: CreateHotUpdaterOptions<TContext, TPlugins>,
+): HotUpdaterCore<TContext, TPlugins> {
+  if (!isDatabasePlugin(options.database)) {
     throw new Error("@hot-updater/server only supports database plugins.");
   }
-
-  const plugin: DatabasePlugin = database;
-  const adapterName = adapterCapabilities.adapterName ?? plugin.name;
+  const database = options.database;
+  const storages = (options.storages ?? []).map((storage) =>
+    typeof storage === "function" ? storage() : storage,
+  );
+  storages.forEach(assertRuntimeStoragePlugin);
+  const basePath = normalizeBasePath(options.basePath ?? "/api");
+  const adapterCapabilities: DatabaseAdapterCapabilities = database;
+  const adapterName = adapterCapabilities.adapterName ?? database.name;
   const assertSchemaReady = createSchemaReadinessChecker(
     adapterName,
     adapterCapabilities.createMigrator,
   );
-  const core = createDatabasePluginCore<TContext>(plugin, resolveFileUrl, {
+  const { readStorageText, resolveFileUrl } = createStorageAccess(storages);
+  const core = createDatabasePluginCore<TContext>(database, resolveFileUrl, {
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
-
-  const internalHandler = createHandler(core.api, {
-    basePath,
-    routes: options.routes,
+  const runtime = createGuardedInfrastructureRuntime({
+    beforeDatabaseOperation: assertSchemaReady,
+    database,
+    storages,
   });
+  const manifests = options.plugins ?? [];
+  let metadata: CompiledVersionMetadata | undefined;
+  const coreRoutes = createCoreServerRoutes({
+    api: core.api,
+    descriptors: createCoreRouteDescriptors(options.coreRoutes),
+    resolveMetadata: () => metadata,
+  });
+  const composed = composeServerKernel({
+    carriers: [database, ...storages],
+    coreApiKeys: [
+      ...Object.keys(core.api),
+      "adapterName",
+      "basePath",
+      "features",
+      "handler",
+    ],
+    coreRoutes,
+    manifests,
+    runtime,
+  });
+  metadata = composed.metadata;
 
-  // Some framework adapters strip the mounted base path or pass extra
-  // bindings/execution context arguments. Ignore those extras here so the
-  // handler can still be mounted directly as a plain Request handler.
-  const handler: RuntimeHotUpdaterAPI<TContext>["handler"] = (
+  const internalHandler = (
+    request: Request,
+    context?: HotUpdaterContext<TContext>,
+  ) =>
+    executeKernelRequest({
+      authentication: composed.authentication,
+      basePath,
+      middleware: composed.middleware,
+      platformContext: context,
+      request,
+      router: composed.router,
+    });
+  const handler: RuntimeFields<TContext>["handler"] = (
     request,
     context,
     ...extraArgs: unknown[]
-  ) => {
-    if (extraArgs.length > 0) {
-      return internalHandler(request);
-    }
-
-    return internalHandler(request, context);
-  };
-
-  const api: RuntimeHotUpdaterAPI<TContext> = Object.assign(
-    {
-      basePath,
-      adapterName: adapterCapabilities.adapterName ?? core.adapterName,
-      handler,
-    },
+  ) =>
+    extraArgs.length > 0
+      ? internalHandler(request)
+      : internalHandler(request, context);
+  const api = createRuntimeApi<TContext, TPlugins>(
     core.api,
+    { adapterName, basePath, handler },
+    composed.api,
   );
-  Object.defineProperty(api, hotUpdaterCoreMetadata, {
-    enumerable: false,
-    value: {
-      adapterCapabilities,
-      core,
-    } satisfies HotUpdaterCoreMetadata<TContext>,
-  });
-
-  return {
-    api,
+  coreMetadata.set(api, {
     adapterCapabilities,
-    core,
-  };
+    core: {
+      createMigrator: core.createMigrator,
+      generateSchema: core.generateSchema,
+    },
+  });
+  return Object.freeze({ adapterCapabilities, api, core });
 }
 
-export function createHotUpdater<TContext = undefined>(
-  options: CreateHotUpdaterOptions<TContext>,
-): RuntimeHotUpdaterAPI<TContext> {
+export function createHotUpdater<
+  TContext = undefined,
+  const TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
+>(
+  options: CreateHotUpdaterOptions<TContext, TPlugins>,
+): RuntimeHotUpdaterAPI<TContext> &
+  Readonly<ProjectPlugins<TPlugins, TContext>> {
   return createHotUpdaterCore(options).api;
 }

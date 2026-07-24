@@ -1,3 +1,4 @@
+import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 import { createD1Implementation } from "./d1Implementation";
@@ -23,16 +24,18 @@ export interface CloudflareWorkerDatabaseEnv {
 }
 
 export const d1WorkerDatabase = (db: D1Like) =>
-  createDatabasePlugin({
-    name: "d1WorkerDatabase",
-    plugin: () =>
-      createD1Implementation({
-        async query(sql, params) {
-          const result = await db
-            .prepare(sql)
-            .bind(...params)
-            .all();
-          return result.results ?? [];
-        },
-      }),
-  });
+  withAnalyticsProvider(
+    createDatabasePlugin({
+      name: "d1WorkerDatabase",
+      plugin: () =>
+        createD1Implementation({
+          async query(sql, params) {
+            const result = await db
+              .prepare(sql)
+              .bind(...params)
+              .all();
+            return result.results ?? [];
+          },
+        }),
+    }),
+  );

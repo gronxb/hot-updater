@@ -18,7 +18,7 @@ import {
 } from "./databasePluginUtils";
 import type { DrizzleProvider } from "./drizzle";
 import {
-  requireDrizzleBundleEventsQuery,
+  requireDrizzleAppendOnlyQuery,
   type DrizzleDB,
   type DrizzleTable,
 } from "./drizzleLazyDB";
@@ -119,7 +119,7 @@ export const createDrizzleCrud = (
 ): TransactionDatabasePluginImplementation => {
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
-  const bundleEvents = getDrizzleTable(db, "bundle_events");
+  const appendOnlyTable = getDrizzleTable(db, "bundle_events");
   return {
     async create(input) {
       switch (input.model) {
@@ -133,7 +133,7 @@ export const createDrizzleCrud = (
           await db.insert(patches).values(input.data).execute();
           return input.data;
         case "bundle_events":
-          await db.insert(bundleEvents).values(input.data).execute();
+          await db.insert(appendOnlyTable).values(input.data).execute();
           return input.data;
       }
     },
@@ -229,19 +229,19 @@ export const createDrizzleCrud = (
           );
         case "bundle_events": {
           if (input.distinct && input.distinct.length > 0) {
-            const rows = await requireDrizzleBundleEventsQuery(db).findMany({
+            const rows = await requireDrizzleAppendOnlyQuery(db).findMany({
               where:
                 buildDrizzleWhere(
                   provider,
-                  bundleEvents,
+                  appendOnlyTable,
                   input.where as never,
                 ) ?? undefined,
             });
             return countDistinctRows(rows, input.distinct);
           }
           return db.$count(
-            bundleEvents,
-            buildDrizzleWhere(provider, bundleEvents, input.where as never),
+            appendOnlyTable,
+            buildDrizzleWhere(provider, appendOnlyTable, input.where as never),
           );
         }
       }
@@ -262,11 +262,11 @@ export const createDrizzleCrud = (
           );
         case "bundle_events": {
           return (
-            (await requireDrizzleBundleEventsQuery(db).findFirst({
+            (await requireDrizzleAppendOnlyQuery(db).findFirst({
               where:
                 buildDrizzleWhere(
                   provider,
-                  bundleEvents,
+                  appendOnlyTable,
                   input.where as never,
                 ) ?? undefined,
             })) ?? null
@@ -293,11 +293,14 @@ export const createDrizzleCrud = (
             offset: input.offset,
           });
         case "bundle_events": {
-          const orderBy = toOrderBy(bundleEvents, input as never);
-          const rows = await requireDrizzleBundleEventsQuery(db).findMany({
+          const orderBy = toOrderBy(appendOnlyTable, input as never);
+          const rows = await requireDrizzleAppendOnlyQuery(db).findMany({
             where:
-              buildDrizzleWhere(provider, bundleEvents, input.where as never) ??
-              undefined,
+              buildDrizzleWhere(
+                provider,
+                appendOnlyTable,
+                input.where as never,
+              ) ?? undefined,
             orderBy,
             ...(input.distinctOn
               ? {}

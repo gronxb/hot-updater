@@ -8,17 +8,9 @@ import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
   createRequestBundleResolver,
-  databaseBundleEventService,
-  databaseAnalyticsSupport,
   type HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
-import {
-  analyticsCapabilityMetadata,
-  internalAnalyticsCapabilityProbe,
-} from "./analyticsCapability";
-import { createBundleEventService } from "./bundleEvents";
-import { BUNDLE_EVENT_SCAN_MAX_ROWS } from "./bundleEventScan";
 import { assertBundlePersistenceConstraints } from "./schemaEnhancements";
 import type { DatabaseAPI, DatabasePlugin } from "./types";
 import { resolveManifestArtifacts } from "./updateArtifacts";
@@ -44,28 +36,8 @@ export function createDatabasePluginCore<TContext = unknown>(
 } {
   const client = createDatabaseClient(database);
   const beforeOperation = options?.beforeOperation;
-  const dedicatedBundleEvents = database[databaseBundleEventService];
-  const analyticsCapabilityProbe = Reflect.get(
-    database,
-    internalAnalyticsCapabilityProbe,
-  );
-  const bundleEvents =
-    dedicatedBundleEvents ??
-    (database[databaseAnalyticsSupport]
-      ? createBundleEventService(database)
-      : undefined);
 
   const api: DatabaseAPI<TContext> = {
-    ...(bundleEvents
-      ? {
-          [analyticsCapabilityMetadata]: dedicatedBundleEvents
-            ? { mode: "dedicated" as const }
-            : {
-                mode: "bounded" as const,
-                maxMatchingRows: BUNDLE_EVENT_SCAN_MAX_ROWS,
-              },
-        }
-      : {}),
     async getBundleById(
       id: string,
       _context?: HotUpdaterContext<TContext>,
@@ -186,62 +158,7 @@ export function createDatabasePluginCore<TContext = unknown>(
       await beforeOperation?.();
       await client.deleteBundleById(bundleId);
     },
-
-    ...(bundleEvents
-      ? {
-          async appendBundleEvent(input) {
-            await beforeOperation?.();
-            await bundleEvents.appendBundleEvent(input);
-          },
-
-          async getBundleEventSummary(bundleId) {
-            await beforeOperation?.();
-            return bundleEvents.getBundleEventSummary(bundleId);
-          },
-
-          async getBundleEventAnalytics(bundleId, window, limit, offset) {
-            await beforeOperation?.();
-            return bundleEvents.getBundleEventAnalytics(
-              bundleId,
-              window,
-              limit,
-              offset,
-            );
-          },
-
-          async getBundleEventOverview() {
-            await beforeOperation?.();
-            return bundleEvents.getBundleEventOverview();
-          },
-
-          async getActiveInstallationOverview(input) {
-            await beforeOperation?.();
-            return bundleEvents.getActiveInstallationOverview(input);
-          },
-
-          async searchInstallations(query, limit, offset) {
-            await beforeOperation?.();
-            return bundleEvents.searchInstallations(query, limit, offset);
-          },
-
-          async getInstallationHistory(installId, limit, offset) {
-            await beforeOperation?.();
-            return bundleEvents.getInstallationHistory(
-              installId,
-              limit,
-              offset,
-            );
-          },
-        }
-      : {}),
   };
-
-  if (typeof analyticsCapabilityProbe === "function") {
-    Object.assign(api, {
-      [internalAnalyticsCapabilityProbe]: () =>
-        Reflect.apply(analyticsCapabilityProbe, database, []),
-    });
-  }
 
   return {
     api,

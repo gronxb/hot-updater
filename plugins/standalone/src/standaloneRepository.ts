@@ -1,14 +1,7 @@
-import {
-  createDatabasePlugin,
-  databaseAnalyticsSupport,
-  databaseBundleEventService,
-} from "@hot-updater/plugin-core";
+import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
-import {
-  createAnalyticsCapabilityProbe,
-  internalAnalyticsCapabilityProbe,
-} from "./standaloneAnalyticsCapability";
-import { createBundleEventService } from "./standaloneBundleEventService";
+import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
 import { createLegacyCompatibilityImplementation } from "./standaloneLegacyImplementation";
 import { runLegacyAggregateTransaction } from "./standaloneLegacyTransaction";
@@ -28,7 +21,7 @@ export type {
  * synthetic fixed-model relation.
  */
 export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
-  const recordRepository = createDatabasePlugin({
+  const repository = createDatabasePlugin({
     name: "standalone-repository",
     plugin: () => {
       const remote = createStandaloneBundleRemote(config);
@@ -40,11 +33,7 @@ export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
       };
     },
   });
-  const { [databaseAnalyticsSupport]: analyticsSupport, ...repository } =
-    recordRepository;
-  void analyticsSupport;
-  return Object.assign(repository, {
-    [databaseBundleEventService]: createBundleEventService(config),
-    [internalAnalyticsCapabilityProbe]: createAnalyticsCapabilityProbe(config),
-  });
+  return withAnalyticsProvider(repository, () =>
+    createStandaloneAnalyticsProvider(config),
+  );
 };

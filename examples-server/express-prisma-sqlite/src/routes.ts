@@ -1,5 +1,6 @@
 import { toNodeHandler } from "@hot-updater/server/node";
 import type { Request, Router } from "express";
+
 import { hotUpdater } from "./db";
 
 const isAuthorizedManagementRequest = (req: Request) => {
@@ -8,7 +9,8 @@ const isAuthorizedManagementRequest = (req: Request) => {
 };
 
 export function setupRoutes(router: Router) {
-  // Mount Hot Updater handler using toNodeHandler adapter
+  // Register this router before body parsers so management authentication runs
+  // before the lazy request stream is consumed.
   router.use("/hot-updater/api", (req, res, next) => {
     if (!isAuthorizedManagementRequest(req)) {
       res.status(401).json({ error: "Unauthorized" });

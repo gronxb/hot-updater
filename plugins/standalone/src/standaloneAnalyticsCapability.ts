@@ -32,10 +32,6 @@ const unavailableAnalyticsCapability = {
   analyticsQueries: false,
 } as const satisfies RemoteAnalyticsCapability;
 
-export const internalAnalyticsCapabilityProbe = Symbol.for(
-  "@hot-updater/internal/analytics-capability-probe",
-);
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -92,8 +88,14 @@ export const createAnalyticsCapabilityProbe = (
     | undefined;
   let pending: Promise<RemoteAnalyticsCapability> | undefined;
 
-  const loadCapability = async (): Promise<RemoteAnalyticsCapability> => {
+  const loadCapability = async (
+    signal?: AbortSignal,
+  ): Promise<RemoteAnalyticsCapability> => {
     const controller = new AbortController();
+    const requestSignal =
+      signal === undefined
+        ? controller.signal
+        : AbortSignal.any([controller.signal, signal]);
     const timeout = setTimeout(
       () => controller.abort(),
       ANALYTICS_CAPABILITY_TIMEOUT_MS,
@@ -104,7 +106,7 @@ export const createAnalyticsCapabilityProbe = (
         {},
         isVersionResponse,
         "Invalid server version response.",
-        controller.signal,
+        requestSignal,
       );
       const capabilities = response.capabilities;
       if (!capabilities || !isRouteAwareAnalyticsCapability(capabilities)) {
@@ -124,7 +126,7 @@ export const createAnalyticsCapabilityProbe = (
     }
   };
 
-  return async (): Promise<RemoteAnalyticsCapability> => {
+  return async (signal?: AbortSignal): Promise<RemoteAnalyticsCapability> => {
     const now = Date.now();
     if (
       cached &&
@@ -135,7 +137,7 @@ export const createAnalyticsCapabilityProbe = (
 
     const refresh =
       pending ??
-      loadCapability().then((capability) => {
+      loadCapability(signal).then((capability) => {
         cached = {
           capability,
           fetchedAtMs: Date.now(),

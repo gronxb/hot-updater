@@ -6,6 +6,10 @@ import {
   type AnalyticsOverview,
   createAnalyticsOverviewFromCounts,
 } from "./analytics-overview";
+import {
+  getAvailableAnalyticsFeature,
+  isAnalyticsKernelRuntime,
+} from "./analytics-runtime";
 
 const DEFAULT_ANALYTICS_PAGE_SIZE = 100;
 const MAX_ANALYTICS_BUNDLE_PAGES = 100;
@@ -46,10 +50,6 @@ export class AnalyticsNotSupportedError extends Error {
     this.name = "AnalyticsNotSupportedError";
   }
 }
-
-const internalAnalyticsCapabilityProbe = Symbol.for(
-  "@hot-updater/internal/analytics-capability-probe",
-);
 
 export const parseProbedAnalyticsCapabilities = (
   capabilities: unknown,
@@ -94,39 +94,27 @@ export class AnalyticsBundlePaginationError extends Error {
 export const getAnalyticsCapabilities = async (
   runtime: unknown,
 ): Promise<AnalyticsCapabilities> => {
-  if (typeof runtime !== "object" || runtime === null) {
+  if (
+    getAvailableAnalyticsFeature(runtime) === null ||
+    !isAnalyticsKernelRuntime(runtime)
+  ) {
     return { capabilities: { analytics: false } };
   }
-  const { supportsAnalytics } = await import("@hot-updater/server/db");
-  if (!supportsAnalytics(runtime)) {
-    return { capabilities: { analytics: false } };
-  }
-  const probe = Reflect.get(runtime, internalAnalyticsCapabilityProbe);
-  if (typeof probe === "function") {
-    const capabilities: unknown = await Reflect.apply(probe, runtime, []);
-    return {
-      capabilities: parseProbedAnalyticsCapabilities(capabilities),
-    };
-  }
-  const metadata = Reflect.get(
-    runtime,
-    Symbol.for("@hot-updater/server/analytics-capability"),
+  const response = await runtime.handler(
+    new Request(`http://localhost${runtime.basePath}/version`),
   );
-  if (typeof metadata === "object" && metadata !== null) {
-    const mode = Reflect.get(metadata, "mode");
-    const maxMatchingRows = Reflect.get(metadata, "maxMatchingRows");
-    if (
-      mode === "bounded" &&
-      typeof maxMatchingRows === "number" &&
-      Number.isFinite(maxMatchingRows) &&
-      maxMatchingRows > 0
-    ) {
-      return {
-        capabilities: { analytics: true, mode, maxMatchingRows },
-      };
-    }
+  if (!response.ok) {
+    return { capabilities: { analytics: false } };
   }
-  return { capabilities: { analytics: true, mode: "dedicated" } };
+  const body: unknown = await response.json();
+  if (typeof body !== "object" || body === null) {
+    return { capabilities: { analytics: false } };
+  }
+  return {
+    capabilities: parseProbedAnalyticsCapabilities(
+      Reflect.get(body, "capabilities"),
+    ),
+  };
 };
 
 const collectBundles = async (
@@ -201,12 +189,8 @@ export const collectAnalyticsOverview = async ({
   getBundles,
   pageSize = DEFAULT_ANALYTICS_PAGE_SIZE,
 }: AnalyticsOverviewDependencies): Promise<AnalyticsOverview> => {
-  const { supportsAnalytics } = await import("@hot-updater/server/db");
-  if (
-    typeof runtime !== "object" ||
-    runtime === null ||
-    !supportsAnalytics(runtime)
-  ) {
+  const feature = getAvailableAnalyticsFeature(runtime);
+  if (feature === null) {
     throw new AnalyticsNotSupportedError();
   }
   const { capabilities } = await getAnalyticsCapabilities(runtime);
@@ -215,7 +199,7 @@ export const collectAnalyticsOverview = async ({
   }
 
   const bundles = await collectBundles(getBundles, pageSize);
-  const overview = await runtime.getBundleEventOverview();
+  const overview = await feature.getBundleEventOverview();
   return createAnalyticsOverviewFromCounts(
     bundles,
     overview.trackedInstallations,

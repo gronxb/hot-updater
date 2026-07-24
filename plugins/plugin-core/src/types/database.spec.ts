@@ -1,22 +1,18 @@
 import { describe, expectTypeOf, it } from "vitest";
 
 import type {
-  BundleEventRow,
   BundleRow,
   CountDatabaseInput,
   DatabasePlugin,
   DatabaseModel,
+  DatabaseRow,
   DeleteDatabaseInput,
   FindManyDatabaseInput,
   FindOneDatabaseInput,
   TransactionDatabasePlugin,
 } from "./database";
-import type {
-  ActiveInstallationOverview,
-  ActiveInstallationWindow,
-  CreateBundleEventRequest,
-  DatabaseBundleEventService,
-} from "./databaseBundleEvents";
+
+type BundleEventPersistenceRow = DatabaseRow<"bundle_events">;
 
 describe("database plugin types", () => {
   it("keeps unsupported model and operation pairs outside the contract", () => {
@@ -67,7 +63,10 @@ describe("database plugin types", () => {
       });
 
       expectTypeOf(rows).toEqualTypeOf<
-        Pick<BundleEventRow, "id" | "install_id" | "received_at_ms">[]
+        Pick<
+          BundleEventPersistenceRow,
+          "id" | "install_id" | "received_at_ms"
+        >[]
       >();
     };
 
@@ -111,59 +110,24 @@ describe("database plugin types", () => {
     }>();
   });
 
-  it("correlates event variants with transition-only fields", () => {
+  it("correlates persisted event variants with transition-only fields", () => {
     type AppliedRow = Extract<
-      BundleEventRow,
+      BundleEventPersistenceRow,
       { readonly type: "UPDATE_APPLIED" }
     >;
-    type RecoveredRow = Extract<BundleEventRow, { readonly type: "RECOVERED" }>;
-    type UnchangedRow = Extract<BundleEventRow, { readonly type: "UNCHANGED" }>;
-    type AppliedRequest = Extract<
-      CreateBundleEventRequest,
-      { readonly type: "UPDATE_APPLIED" }
+    type RecoveredRow = Extract<
+      BundleEventPersistenceRow,
+      { readonly type: "RECOVERED" }
     >;
-    type UnchangedRequest = Extract<
-      CreateBundleEventRequest,
+    type UnchangedRow = Extract<
+      BundleEventPersistenceRow,
       { readonly type: "UNCHANGED" }
     >;
-
     expectTypeOf<AppliedRow["from_bundle_id"]>().toEqualTypeOf<string>();
     expectTypeOf<RecoveredRow["update_strategy"]>().toEqualTypeOf<
       "fingerprint" | "appVersion"
     >();
     expectTypeOf<UnchangedRow["from_bundle_id"]>().toEqualTypeOf<null>();
     expectTypeOf<UnchangedRow["update_strategy"]>().toEqualTypeOf<null>();
-    expectTypeOf<AppliedRequest["fromBundleId"]>().toEqualTypeOf<string>();
-    expectTypeOf<UnchangedRequest["fromBundleId"]>().toEqualTypeOf<null>();
-    expectTypeOf<UnchangedRequest["updateStrategy"]>().toEqualTypeOf<null>();
-  });
-
-  it("exposes the bounded active installation overview contract", () => {
-    expectTypeOf<ActiveInstallationWindow>().toEqualTypeOf<
-      "24h" | "7d" | "30d"
-    >();
-    expectTypeOf<ActiveInstallationOverview>().toMatchTypeOf<{
-      readonly asOfMs: number;
-      readonly window: ActiveInstallationWindow;
-      readonly activeInstallations: number;
-      readonly series: readonly {
-        readonly bucketStartMs: number;
-        readonly value: number;
-      }[];
-      readonly bundleSeries: readonly {
-        readonly bundleId: string;
-        readonly series: readonly {
-          readonly bucketStartMs: number;
-          readonly value: number;
-        }[];
-      }[];
-      readonly bundles: readonly {
-        readonly bundleId: string;
-        readonly installations: number;
-      }[];
-    }>();
-    expectTypeOf<
-      DatabaseBundleEventService["getActiveInstallationOverview"]
-    >().toBeFunction();
   });
 });

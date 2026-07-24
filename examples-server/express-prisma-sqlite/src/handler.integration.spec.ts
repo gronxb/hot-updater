@@ -1,3 +1,8 @@
+import fs from "fs/promises";
+import { randomUUID } from "node:crypto";
+import path from "path";
+import { fileURLToPath } from "url";
+
 import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import {
@@ -10,12 +15,10 @@ import {
   createTestDbPath,
   killPort,
   spawnServerProcess,
+  TEST_MANAGEMENT_AUTH_TOKEN,
   waitForServer,
 } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
@@ -133,6 +136,48 @@ describe("Hot Updater Handler Integration Tests (Express)", () => {
       hotUpdater.updateBundleById(bundleId, newBundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  it("authenticates before reading bodies larger than the Express default", async () => {
+    const id = randomUUID();
+    const bundle = {
+      channel: "large-body",
+      enabled: true,
+      fileHash: "large-body",
+      fingerprintHash: null,
+      gitCommitHash: null,
+      id,
+      message: "x".repeat(128 * 1024),
+      platform: "ios",
+      shouldForceUpdate: false,
+      storageUri: "mock://large-body",
+      targetAppVersion: "1.0.0",
+    } satisfies Bundle;
+    const body = JSON.stringify(bundle);
+    expect(Buffer.byteLength(body)).toBeGreaterThan(100 * 1024);
+
+    const unauthorized = await fetch(`${baseUrl}/hot-updater/api/bundles`, {
+      body,
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+    expect(unauthorized.status).toBe(401);
+    await expect(unauthorized.json()).resolves.toEqual({
+      error: "Unauthorized",
+    });
+
+    const authorized = await fetch(`${baseUrl}/hot-updater/api/bundles`, {
+      body,
+      headers: {
+        Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+    expect(authorized.status).toBe(201);
+    await expect(authorized.json()).resolves.toEqual({ success: true });
+    await expect(hotUpdater.getBundleById(id)).resolves.toMatchObject({ id });
+    await hotUpdater.deleteBundleById(id);
   });
 
   it("should preserve User model and add hot-updater models in schema.prisma", async () => {

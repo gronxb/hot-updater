@@ -1,10 +1,10 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  DatabaseRow,
 } from "@hot-updater/plugin-core";
 
-type Row = BundleEventRow | BundlePatchRow | BundleRow;
+type Row = BundlePatchRow | BundleRow | DatabaseRow<"bundle_events">;
 type Table = Row[];
 type Tables = {
   bundle_events: Table;

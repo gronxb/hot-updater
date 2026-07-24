@@ -1,0 +1,35 @@
+import type { HotUpdaterAuthenticationResult } from "@hot-updater/server/internal/first-party-plugin";
+
+const principal = { issuer: "issuer", subject: "subject" };
+
+const withResponse: HotUpdaterAuthenticationResult = {
+  kind: "authenticated",
+  principal,
+  response: new Response(),
+};
+const withHeaders: HotUpdaterAuthenticationResult = {
+  headers: new Headers(),
+  kind: "authenticated",
+  principal,
+};
+const withCookies: HotUpdaterAuthenticationResult = {
+  cookies: ["secret"],
+  kind: "authenticated",
+  principal,
+};
+const withSession: HotUpdaterAuthenticationResult = {
+  kind: "authenticated",
+  principal,
+  session: { token: "secret" },
+};
+const withRawCredentials: HotUpdaterAuthenticationResult = {
+  kind: "authenticated",
+  principal,
+  rawCredentials: "secret",
+};
+
+void withCookies;
+void withHeaders;
+void withRawCredentials;
+void withResponse;
+void withSession;
