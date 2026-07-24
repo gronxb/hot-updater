@@ -1,26 +1,50 @@
-import type { Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { Readable } from "node:stream";
 
-import express from "express";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { createHandler } from "./handler";
-import { createApi, testEventPayload } from "./handler.testFixtures";
 import { toNodeHandler } from "./node";
 
-const listen = async (server: Server): Promise<string> => {
-  await new Promise<void>((resolve) => server.once("listening", resolve));
-  const address = server.address() as AddressInfo;
-  return `http://127.0.0.1:${address.port}`;
-};
-
-const close = async (server: Server): Promise<void> => {
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => (error ? reject(error) : resolve()));
-  });
-};
-
 describe("server node entry", () => {
+  it("adapts an unread Node body as a lazy Web stream", async () => {
+    // Given
+    const read = vi.fn(function (this: Readable) {
+      this.push(new Uint8Array([1, 2, 3]));
+      this.push(null);
+    });
+    const request = Object.assign(new Readable({ read }), {
+      get: (name: string) => (name === "host" ? "example.com" : undefined),
+      headers: { host: "example.com" },
+      method: "POST",
+      protocol: "https",
+      url: "/api/body",
+    });
+    let observedBody: ReadableStream<Uint8Array> | null = null;
+    let observedBodyUsed = true;
+    const middleware = toNodeHandler({
+      handler: async (webRequest) => {
+        observedBody = webRequest.body;
+        observedBodyUsed = webRequest.bodyUsed;
+        return new Response(null, { status: 204 });
+      },
+    });
+    const response = {
+      end() {},
+      send() {},
+      setHeader() {},
+      status() {
+        return this;
+      },
+    };
+
+    // When
+    await middleware(request, response);
+
+    // Then
+    expect(observedBody).not.toBeNull();
+    expect(observedBodyUsed).toBe(false);
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it("converts a Web Request handler to Node middleware", async () => {
     const hotUpdater = {
       handler: async (request: Request) =>
@@ -64,159 +88,5 @@ describe("server node entry", () => {
       method: "GET",
       pathname: "/api/check",
     });
-  });
-
-  it("preserves raw Express request bytes for event payload limits", async () => {
-    // Given
-    const api = createApi();
-    const app = express();
-    app.use("/hot-updater", express.raw({ type: "application/json" }));
-    app.all(
-      "/hot-updater/*",
-      toNodeHandler({
-        handler: createHandler(api, {
-          basePath: "/hot-updater",
-          routes: {
-            updateCheck: true,
-            bundles: false,
-            analytics: true,
-          },
-        }),
-      }),
-    );
-    const server = app.listen(0, "127.0.0.1");
-    const baseUrl = await listen(server);
-    const oversizedBody = new TextEncoder().encode(
-      `${JSON.stringify(testEventPayload)}${" ".repeat(17 * 1024)}`,
-    );
-    const oversizedInit: RequestInit & { duplex: "half" } = {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(oversizedBody);
-          controller.close();
-        },
-      }),
-      duplex: "half",
-    };
-
-    try {
-      // When
-      const oversizedResponse = await fetch(
-        `${baseUrl}/hot-updater/events`,
-        oversizedInit,
-      );
-      const validResponse = await fetch(`${baseUrl}/hot-updater/events`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(testEventPayload),
-      });
-
-      // Then
-      expect(oversizedResponse.status).toBe(413);
-      expect(validResponse.status).toBe(204);
-      expect(api.appendBundleEvent).toHaveBeenCalledOnce();
-    } finally {
-      await close(server);
-    }
-  });
-
-  it("fails closed when parsed event JSON cannot prove a valid raw size", async () => {
-    // Given
-    const api = createApi();
-    const app = express();
-    app.use(express.json());
-    app.all(
-      "/hot-updater/*",
-      toNodeHandler({
-        handler: createHandler(api, {
-          basePath: "/hot-updater",
-          routes: {
-            updateCheck: true,
-            bundles: false,
-            analytics: true,
-          },
-        }),
-      }),
-    );
-    const server = app.listen(0, "127.0.0.1");
-    const baseUrl = await listen(server);
-    const parsedBody = new TextEncoder().encode(
-      `${JSON.stringify(testEventPayload)}${" ".repeat(17 * 1024)}`,
-    );
-    const chunkedInit: RequestInit & { duplex: "half" } = {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(parsedBody);
-          controller.close();
-        },
-      }),
-      duplex: "half",
-    };
-
-    try {
-      // When
-      const oversizedResponse = await fetch(`${baseUrl}/hot-updater/events`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: parsedBody,
-      });
-      const chunkedResponse = await fetch(
-        `${baseUrl}/hot-updater/events`,
-        chunkedInit,
-      );
-
-      // Then
-      expect(oversizedResponse.status).toBe(413);
-      expect(chunkedResponse.status).toBe(413);
-      expect(api.appendBundleEvent).not.toHaveBeenCalled();
-    } finally {
-      await close(server);
-    }
-  });
-
-  it("accepts parsed event JSON when Content-Length proves the raw size", async () => {
-    // Given
-    const api = createApi();
-    const app = express();
-    app.use(express.json());
-    app.all(
-      "/hot-updater/*",
-      toNodeHandler({
-        handler: createHandler(api, {
-          basePath: "/hot-updater",
-          routes: {
-            updateCheck: true,
-            bundles: false,
-            analytics: true,
-          },
-        }),
-      }),
-    );
-    const server = app.listen(0, "127.0.0.1");
-    const baseUrl = await listen(server);
-    const body = JSON.stringify(testEventPayload);
-    const contentLength = new TextEncoder().encode(body).byteLength;
-
-    try {
-      // When
-      const response = await fetch(`${baseUrl}/hot-updater/events`, {
-        method: "POST",
-        headers: {
-          "content-length": String(contentLength),
-          "content-type": "application/json",
-        },
-        body,
-      });
-
-      // Then
-      expect(response.status).toBe(204);
-      expect(api.appendBundleEvent).toHaveBeenCalledOnce();
-    } finally {
-      await close(server);
-    }
   });
 });

@@ -9,38 +9,89 @@
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./adapters/drizzle": {
-      "import": "./dist/adapters/drizzle.mjs",
-      "require": "./dist/adapters/drizzle.cjs"
+      "import": {
+        "types": "./dist/adapters/drizzle.d.mts",
+        "default": "./dist/adapters/drizzle.mjs"
+      },
+      "require": {
+        "types": "./dist/adapters/drizzle.d.cts",
+        "default": "./dist/adapters/drizzle.cjs"
+      }
     },
     "./adapters/kysely": {
-      "import": "./dist/adapters/kysely.mjs",
-      "require": "./dist/adapters/kysely.cjs"
+      "import": {
+        "types": "./dist/adapters/kysely.d.mts",
+        "default": "./dist/adapters/kysely.mjs"
+      },
+      "require": {
+        "types": "./dist/adapters/kysely.d.cts",
+        "default": "./dist/adapters/kysely.cjs"
+      }
     },
     "./adapters/mongodb": {
-      "import": "./dist/adapters/mongodb.mjs",
-      "require": "./dist/adapters/mongodb.cjs"
+      "import": {
+        "types": "./dist/adapters/mongodb.d.mts",
+        "default": "./dist/adapters/mongodb.mjs"
+      },
+      "require": {
+        "types": "./dist/adapters/mongodb.d.cts",
+        "default": "./dist/adapters/mongodb.cjs"
+      }
     },
     "./adapters/prisma": {
-      "import": "./dist/adapters/prisma.mjs",
-      "require": "./dist/adapters/prisma.cjs"
+      "import": {
+        "types": "./dist/adapters/prisma.d.mts",
+        "default": "./dist/adapters/prisma.mjs"
+      },
+      "require": {
+        "types": "./dist/adapters/prisma.d.cts",
+        "default": "./dist/adapters/prisma.cjs"
+      }
     },
     "./db": {
-      "import": "./dist/db/index.mjs",
-      "require": "./dist/db/index.cjs"
+      "import": {
+        "types": "./dist/db/index.d.mts",
+        "default": "./dist/db/index.mjs"
+      },
+      "require": {
+        "types": "./dist/db/index.d.cts",
+        "default": "./dist/db/index.cjs"
+      }
+    },
+    "./internal/first-party-plugin": {
+      "import": {
+        "types": "./dist/internal/first-party-plugin.d.mts",
+        "default": "./dist/internal/first-party-plugin.mjs"
+      },
+      "require": {
+        "types": "./dist/internal/first-party-plugin.d.cts",
+        "default": "./dist/internal/first-party-plugin.cjs"
+      }
     },
     "./node": {
-      "import": "./dist/node.mjs",
-      "require": "./dist/node.cjs"
+      "import": {
+        "types": "./dist/node.d.mts",
+        "default": "./dist/node.mjs"
+      },
+      "require": {
+        "types": "./dist/node.d.cts",
+        "default": "./dist/node.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
-    "src",
     "package.json"
   ],
   "license": "MIT",
@@ -83,7 +134,6 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "catalog:db",
-    "@hot-updater/standalone": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/express": "^5.0.0",
     "@types/node": "catalog:",

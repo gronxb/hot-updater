@@ -89,8 +89,8 @@ installations with the same `userId` remain separate installations.
 
 ## Configure a custom server
 
-Managed Cloudflare, Firebase, and Supabase presets enable the public Analytics
-route group by default so `analytics: true` works without additional server
+Managed Cloudflare, Firebase, and Supabase presets install the public Analytics
+feature by default so `analytics: true` works without additional server
 configuration. This includes event ingestion and Analytics query routes. Treat
 all reported identifiers as untrusted telemetry and configure provider-level
 access controls, rate limits, quotas, logging, and retention.
@@ -98,44 +98,52 @@ access controls, rate limits, quotas, logging, and retention.
 For a custom server, configure an Analytics-capable database:
 
 ```ts
+import { analytics } from "@hot-updater/analytics";
+import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
-  database,
+  database: withAnalyticsProvider(database),
   storages,
-  routes: {
+  coreRoutes: {
     updateCheck: true,
-    bundles: true,
-    analytics: true,
+    bundles: { access: { kind: "public" } },
   },
+  plugins: [
+    analytics({
+      missingCapability: "error",
+      queryAccess: "public",
+    }),
+  ],
 });
 ```
 
-When the database supports Analytics, `routes.analytics: true` mounts
-`POST /events` together with the Analytics and installation query routes.
-Enabling the option with an unsupported database logs a warning and mounts none
-of those routes. Hot Updater does not provide route-specific authentication in
-this release; protect the group with the same framework or provider boundary
-used for other routes. Add rate limits and quotas at that boundary because
-event payloads are untrusted telemetry.
+`withAnalyticsProvider` supplies the database-backed provider and `analytics()`
+mounts `POST /events` together with the Analytics and installation query
+routes. The strict missing-capability policy fails construction if the provider
+is absent. The example selects public kernel access because it delegates
+management and query authentication to the surrounding framework. Omit
+`queryAccess: "public"` and install an authentication plugin when the kernel
+should protect Analytics queries itself. Add rate limits and quotas at the
+public ingestion boundary because event payloads are untrusted telemetry.
 
 Standalone proxies also check the upstream `/version` capability before
 forwarding ingestion or query requests. An upstream route reported as
 unavailable remains unavailable locally, and the two route capabilities are
 preserved independently.
 
-The Analytics route group is disabled by default and is independent from
-bundle management. Protect `/events`, `/api/bundles/*/events*`, and
-`/api/installations*` with the appropriate framework authentication or public
+Analytics is omitted by default and is independent from bundle management.
+Protect `/events`, `/api/bundles/*/events*`, and `/api/installations*` with the
+appropriate kernel authentication plugin, framework authentication, or public
 telemetry controls for your deployment.
 
 `GET /version` reports these states independently:
 
 | Capability | Meaning |
 | --- | --- |
-| `capabilities.analytics` | The database has structural event storage and shared Analytics support. It does not mean a route is public. |
-| `capabilities.eventIngestion` | The database supports event writes and this server mounts `POST /events`. |
-| `capabilities.analyticsQueries` | This server mounts the Analytics and installation query routes used by Console. |
+| `capabilities.analytics` | The installed Analytics provider is available. It does not mean a route is public. |
+| `capabilities.eventIngestion` | The provider supports event writes and the Analytics plugin mounts `POST /events`. |
+| `capabilities.analyticsQueries` | The Analytics plugin mounts the query routes used by Console. |
 
 When `analytics` is true, `mode` and the optional `maxMatchingRows` describe
 the structural query implementation and its scan bound. They do not imply that
@@ -204,27 +212,29 @@ Use `sql/bundles.sql` only for a new database. It recreates the complete
 PostgreSQL schema and is not an existing-install migration.
 
 Existing `standaloneRepository` configuration does not change. There is no
-`supportsAnalytics` option to set. Record-backed servers advertise structural
-support, while snapshot-backed servers such as S3 advertise that Analytics is
+`supportsAnalytics` option to set. Servers with an installed provider advertise
+structural support, while deployments without one advertise that Analytics is
 unavailable. The remote server must also advertise `analyticsQueries: true`.
 
 ## Support Analytics in a custom database plugin
 
-Use `createDatabasePlugin` for a row- or document-oriented database plugin. It
-marks the plugin as Analytics-capable, and the server provides the shared
-Analytics queries:
+Use `createDatabasePlugin` for a row- or document-oriented database plugin,
+then attach the bounded Analytics provider explicitly:
 
 ```ts
+import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
 import {
   createDatabasePlugin,
   type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 
 export const myDatabase = (implementation: DatabasePluginImplementation) =>
-  createDatabasePlugin({
-    name: "my-database",
-    plugin: () => implementation,
-  });
+  withAnalyticsProvider(
+    createDatabasePlugin({
+      name: "my-database",
+      plugin: () => implementation,
+    }),
+  );
 ```
 
 The implementation must provide `create`, `update`, `delete`, `count`,
@@ -242,9 +252,9 @@ If a query exceeds that limit, the server returns HTTP 503 with code
 `ANALYTICS_SCAN_LIMIT_EXCEEDED`. Narrow the query or provide a dedicated bundle
 event service for larger datasets.
 
-Do not use `createBlobDatabasePlugin` when Analytics is required. Blob-backed
-database plugins replace a shared snapshot and intentionally do not expose the
-Analytics capability. This is why `s3Database` does not support Analytics.
+Do not attach the bounded Analytics provider to `createBlobDatabasePlugin`.
+Blob-backed database plugins replace a shared snapshot, so concurrent event
+appends are unsafe. This is why `s3Database` does not support Analytics.
 
 See [Custom Database Plugin](/docs/database-plugins/custom-database) for the
 complete fixed-model contract and conformance tests.

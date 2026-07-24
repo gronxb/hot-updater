@@ -1,4 +1,3 @@
-import { databaseAnalyticsSupport } from "@hot-updater/plugin-core";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -39,18 +38,6 @@ vi.mock("cloudflare", () => ({
 beforeEach(() => {
   state.queries.length = 0;
   state.results.length = 0;
-});
-
-it("advertises Analytics support", () => {
-  // Given / When
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-
-  // Then
-  expect(plugin[databaseAnalyticsSupport]).toBe(true);
 });
 
 it("projects selected fields after querying physical bundle columns", async () => {

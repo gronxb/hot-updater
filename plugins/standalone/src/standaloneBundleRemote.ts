@@ -74,12 +74,12 @@ export const createStandaloneBundleRemote = (
     const bundles: Bundle[] = [];
     for (let page = 1; ; page += 1) {
       const route = routes.list();
-      const url = new URL(http.buildUrl(route.path));
-      url.searchParams.set("limit", String(PAGE_SIZE));
-      url.searchParams.set("page", String(page));
-      const response = await fetch(url, {
+      const response = await http.request(route, {
         method: "GET",
-        headers: http.headers(route.headers),
+        searchParams: new URLSearchParams({
+          limit: String(PAGE_SIZE),
+          page: String(page),
+        }),
       });
       const value = await http.parseJson(response);
       if (!isPaginatedResult(value)) {
@@ -106,22 +106,22 @@ export const createStandaloneBundleRemote = (
       return null;
     }
     const route = routes.list();
-    const url = new URL(http.buildUrl(route.path));
-    if (!appendBundleWhere(url, input.where)) return null;
+    const searchParams = new URLSearchParams();
+    if (!appendBundleWhere(searchParams, input.where)) return null;
     if (input.sortBy !== undefined) {
-      url.searchParams.set("orderDirection", input.sortBy.direction);
+      searchParams.set("orderDirection", input.sortBy.direction);
     }
     const pageAligned = input.limit > 0 && input.offset % input.limit === 0;
     const remoteLimit = pageAligned ? input.limit : input.offset + input.limit;
     if (remoteLimit > PAGE_SIZE) return null;
-    url.searchParams.set("limit", String(remoteLimit));
-    url.searchParams.set(
+    searchParams.set("limit", String(remoteLimit));
+    searchParams.set(
       "page",
       String(pageAligned ? input.offset / input.limit + 1 : 1),
     );
-    const response = await fetch(url, {
+    const response = await http.request(route, {
       method: "GET",
-      headers: http.headers(route.headers),
+      searchParams,
     });
     const value = await http.parseJson(response);
     if (!isPaginatedResult(value)) {
@@ -142,9 +142,8 @@ export const createStandaloneBundleRemote = (
 
   const loadChannels = async (): Promise<string[]> => {
     const route = routes.channels();
-    const response = await fetch(http.buildUrl(route.path), {
+    const response = await http.request(route, {
       method: "GET",
-      headers: http.headers(route.headers),
     });
     const value = await http.parseJson(response);
     if (!hasChannels(value)) {
@@ -159,9 +158,8 @@ export const createStandaloneBundleRemote = (
 
   const loadBundle = async (bundleId: string): Promise<Bundle | null> => {
     const route = routes.retrieve(bundleId);
-    const response = await fetch(http.buildUrl(route.path), {
+    const response = await http.request(route, {
       method: "GET",
-      headers: http.headers(route.headers),
     });
     if (response.status === 404) return null;
     const value = await http.parseJson(response);
@@ -177,9 +175,8 @@ export const createStandaloneBundleRemote = (
 
   const updateBundle = async (bundle: Bundle): Promise<void> => {
     const route = routes.update(bundle.id);
-    const response = await fetch(http.buildUrl(route.path), {
+    const response = await http.request(route, {
       method: "PATCH",
-      headers: http.headers(route.headers),
       body: JSON.stringify(bundle),
     });
     await http.parseJson(response);
@@ -187,9 +184,8 @@ export const createStandaloneBundleRemote = (
 
   const createBundles = async (bundles: readonly Bundle[]): Promise<void> => {
     const route = routes.create();
-    const response = await fetch(http.buildUrl(route.path), {
+    const response = await http.request(route, {
       method: "POST",
-      headers: http.headers(route.headers),
       body: JSON.stringify(bundles),
     });
     await http.parseJson(response);
@@ -197,9 +193,8 @@ export const createStandaloneBundleRemote = (
 
   const deleteBundle = async (bundleId: string): Promise<void> => {
     const route = routes.delete(bundleId);
-    const response = await fetch(http.buildUrl(route.path), {
+    const response = await http.request(route, {
       method: "DELETE",
-      headers: http.headers(route.headers),
     });
     await http.parseJson(response);
   };

@@ -6,43 +6,8 @@ import type {
   UpdateInfo,
 } from "@hot-updater/core";
 import type {
-  BundleEventAnalyticsResult,
-  BundleEventOverview,
-  BundleEventAnalyticsWindow,
-  BundleEventSummary,
-  ActiveInstallationOverview,
-  ActiveInstallationWindow,
-  CreateBundleEventRequest,
   DatabasePlugin as DatabasePluginContract,
   HotUpdaterContext,
-  InstallationHistoryRow,
-  InstallationSearchRow,
-  OffsetPaginationResult,
-  RuntimeStoragePlugin,
-} from "@hot-updater/plugin-core";
-
-import {
-  analyticsCapabilityMetadata,
-  type AnalyticsCapability,
-} from "./analyticsCapability";
-
-export type { AnalyticsCapability } from "./analyticsCapability";
-export {
-  getAnalyticsCapability,
-  supportsAnalytics,
-} from "./analyticsCapability";
-
-export type {
-  BundleEventAnalyticsResult,
-  BundleEventOverview,
-  BundleEventAnalyticsWindow,
-  BundleEventSummary,
-  ActiveInstallationOverview,
-  ActiveInstallationWindow,
-  CreateBundleEventRequest,
-  InstallationHistoryRow,
-  InstallationSearchRow,
-  OffsetPaginationResult,
 } from "@hot-updater/plugin-core";
 
 import type { PaginatedResult } from "../types";
@@ -152,50 +117,7 @@ export function getSQLProvider(
     : undefined;
 }
 
-export interface BundleEventAPI<TContext = unknown> {
-  appendBundleEvent(
-    input: CreateBundleEventRequest,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<void>;
-  getBundleEventSummary(
-    bundleId: string,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<BundleEventSummary>;
-  getBundleEventAnalytics(
-    bundleId: string,
-    window: BundleEventAnalyticsWindow,
-    limit: number,
-    offset: number,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<BundleEventAnalyticsResult>;
-  getBundleEventOverview(
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<BundleEventOverview>;
-  getActiveInstallationOverview(
-    input: {
-      readonly window: ActiveInstallationWindow;
-      readonly userId?: string;
-    },
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<ActiveInstallationOverview>;
-  searchInstallations(
-    query: string,
-    limit: number,
-    offset: number,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<OffsetPaginationResult<InstallationSearchRow>>;
-  getInstallationHistory(
-    installId: string,
-    limit: number,
-    offset: number,
-    context?: HotUpdaterContext<TContext>,
-  ): Promise<OffsetPaginationResult<InstallationHistoryRow>>;
-}
-
-export interface DatabaseAPI<TContext = unknown> extends Partial<
-  BundleEventAPI<TContext>
-> {
-  readonly [analyticsCapabilityMetadata]?: AnalyticsCapability;
+export interface DatabaseAPI<TContext = unknown> {
   getAppUpdateInfo: (
     args: AppVersionGetBundlesArgs | FingerprintGetBundlesArgs,
     context?: HotUpdaterContext<TContext>,
@@ -231,6 +153,3 @@ export interface DatabaseAPI<TContext = unknown> extends Partial<
     context?: HotUpdaterContext<TContext>,
   ): Promise<void>;
 }
-
-export type StoragePluginFactory<TContext = unknown> =
-  () => RuntimeStoragePlugin<TContext>;

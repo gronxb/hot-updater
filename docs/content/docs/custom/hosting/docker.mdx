@@ -90,7 +90,7 @@ When using Hono `mount()`, update-check routes such as
 `/hot-updater/app-version/*` and `/hot-updater/fingerprint/*` are usually
 exposed for React Native clients, but that is a deployment choice.
 `/hot-updater/version` is always mounted for diagnostics. Always protect
-`/hot-updater/api/*` when `routes.bundles: true`.
+`/hot-updater/api/*` when `coreRoutes.bundles` is enabled.
 </Callout>
 
 ## Schema Generation

@@ -1,0 +1,6 @@
+import type { HotUpdaterAuthenticationInput } from "@hot-updater/server/internal/first-party-plugin";
+
+declare const input: HotUpdaterAuthenticationInput;
+
+void input.body;
+void input.json();

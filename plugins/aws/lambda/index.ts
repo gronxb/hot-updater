@@ -73,13 +73,12 @@ const hotUpdater = createHotUpdater<SignedUrlContext>({
       ssmRegion: SSM_REGION,
       ssmParameterName: SSM_PARAMETER_NAME,
       publicBaseUrl: resolveRequestOrigin,
-    }),
+    })(),
   ],
-  basePath: HOT_UPDATER_BASE_PATH,
-  routes: {
-    updateCheck: true,
+  basePath: "/",
+  coreRoutes: {
     bundles: false,
-    analytics: false,
+    updateCheck: true,
   },
 });
 

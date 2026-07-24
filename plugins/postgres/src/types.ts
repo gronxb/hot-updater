@@ -1,8 +1,10 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  DatabaseRow,
 } from "@hot-updater/plugin-core";
+
+type BundleEventRow = DatabaseRow<"bundle_events">;
 
 export interface Database {
   readonly bundles: BundleRow;

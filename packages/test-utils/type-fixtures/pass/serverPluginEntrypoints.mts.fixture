@@ -1,0 +1,147 @@
+import { analytics } from "@hot-updater/analytics";
+import {
+  createLegacyHotUpdater,
+  type LegacyCreateHotUpdaterOptions,
+} from "@hot-updater/analytics/legacy-server";
+import {
+  analyticsProviderToken,
+  type AnalyticsProvider,
+  withAnalyticsProvider,
+} from "@hot-updater/analytics/provider";
+import {
+  betterAuthPlugin,
+  type BetterAuthConfiguredInstance,
+} from "@hot-updater/better-auth";
+import type {
+  DatabasePlugin,
+  RuntimeStoragePlugin,
+} from "@hot-updater/plugin-core";
+import {
+  createHotUpdater,
+  type HotUpdaterAuthenticationInput,
+  type HotUpdaterAuthenticationProvider,
+  type HotUpdaterAuthenticationResult,
+  type HotUpdaterMatchedRoute,
+  type HotUpdaterPrincipal,
+  type HotUpdaterRequestPolicy,
+  type HotUpdaterRouteAccess,
+} from "@hot-updater/server";
+import {
+  defineFirstPartyFeatureManifest,
+  type NoFeatureApiKind,
+} from "@hot-updater/server/internal/first-party-plugin";
+
+import { assertType, type Equal } from "./typeAssertions.mjs";
+
+type TestContext = Readonly<{ requestId: string }>;
+
+assertType<
+  Equal<
+    keyof HotUpdaterAuthenticationInput,
+    "headers" | "method" | "route" | "signal" | "url"
+  >
+>();
+assertType<
+  Equal<
+    Parameters<HotUpdaterAuthenticationProvider["authenticate"]>[0],
+    HotUpdaterAuthenticationInput
+  >
+>();
+assertType<
+  Equal<
+    Extract<
+      HotUpdaterAuthenticationResult,
+      { readonly kind: "authenticated" }
+    >["principal"],
+    HotUpdaterPrincipal
+  >
+>();
+assertType<Equal<HotUpdaterMatchedRoute["access"], HotUpdaterRouteAccess>>();
+assertType<
+  Equal<HotUpdaterRequestPolicy["maximumBodyBytes"], number | undefined>
+>();
+
+declare const auth: BetterAuthConfiguredInstance;
+declare const database: DatabasePlugin;
+declare const provider: AnalyticsProvider;
+declare const storage: RuntimeStoragePlugin<TestContext>;
+
+const internalManifest = defineFirstPartyFeatureManifest<
+  "type-fixture",
+  NoFeatureApiKind,
+  Record<never, never>
+>({
+  aliases: Object.freeze({}),
+  id: "type-fixture",
+  namespace: "type-fixture",
+  setup: () => Object.freeze({}),
+  version: "0.0.0",
+});
+const internalRuntime = createHotUpdater({
+  database,
+  plugins: [internalManifest],
+});
+assertType<Equal<keyof typeof internalRuntime.features, never>>();
+
+const analyticsManifest = analytics();
+const publicRuntime = createHotUpdater({
+  database: withAnalyticsProvider(database),
+  plugins: [analyticsManifest, betterAuthPlugin({ auth })],
+  storages: [storage],
+});
+assertType<Equal<keyof typeof publicRuntime.features, "analytics">>();
+
+const legacyAnalytics = createLegacyHotUpdater({
+  database,
+  routes: {
+    analytics: true,
+    bundles: false,
+    updateCheck: true,
+  },
+  storages: [storage],
+});
+assertType<
+  Equal<
+    Parameters<
+      Extract<
+        typeof legacyAnalytics,
+        {
+          readonly features: {
+            readonly analytics: { readonly status: "available" };
+          };
+        }
+      >["getBundleEventSummary"]
+    >[1],
+    TestContext | undefined
+  >
+>();
+
+const legacyCore = createLegacyHotUpdater({
+  database,
+  routes: {
+    analytics: false,
+    bundles: false,
+    updateCheck: true,
+  },
+});
+assertType<Equal<keyof typeof legacyCore.features, never>>();
+
+assertType<
+  Equal<
+    LegacyCreateHotUpdaterOptions<TestContext>["storages"],
+    | readonly (
+        | RuntimeStoragePlugin<TestContext>
+        | (() => RuntimeStoragePlugin<TestContext>)
+      )[]
+    | undefined
+  >
+>();
+assertType<
+  Equal<ReturnType<typeof analyticsProviderToken.parse>, AnalyticsProvider>
+>();
+
+void internalRuntime;
+void legacyAnalytics;
+void legacyCore;
+void provider;
+void publicRuntime;

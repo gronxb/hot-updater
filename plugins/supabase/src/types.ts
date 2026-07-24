@@ -1,9 +1,11 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  DatabaseRow,
   Platform,
 } from "@hot-updater/plugin-core";
+
+type BundleEventPersistenceRow = DatabaseRow<"bundle_events">;
 
 export type SupabaseBundleRow = {
   [TField in keyof BundleRow]: BundleRow[TField];
@@ -13,8 +15,8 @@ export type SupabaseBundlePatchRow = {
   [TField in keyof BundlePatchRow]: BundlePatchRow[TField];
 };
 
-export type SupabaseBundleEventRow = {
-  [TField in keyof BundleEventRow]: BundleEventRow[TField];
+export type SupabaseBundleEventPersistenceRow = {
+  [TField in keyof BundleEventPersistenceRow]: BundleEventPersistenceRow[TField];
 };
 
 type Table<TRow> = {
@@ -38,7 +40,7 @@ export type Database = {
     Tables: {
       bundles: Table<SupabaseBundleRow>;
       bundle_patches: Table<SupabaseBundlePatchRow>;
-      bundle_events: Table<SupabaseBundleEventRow>;
+      bundle_events: Table<SupabaseBundleEventPersistenceRow>;
     };
     Views: { [_ in never]: never };
     Functions: {

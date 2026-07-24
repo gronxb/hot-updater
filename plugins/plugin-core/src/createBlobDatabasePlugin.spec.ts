@@ -12,7 +12,6 @@ import {
   type BlobInvalidationFailure,
 } from "./createBlobDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
-import { databaseAnalyticsSupport } from "./types";
 
 type MemoryConfig = {
   readonly store: Map<string, unknown>;
@@ -98,14 +97,6 @@ const activeManifest = (key: string): unknown =>
   store.get(`${blobDatabaseRevisionManifestPrefix(activeRevision())}/${key}`);
 
 describe("blob snapshot persistence", () => {
-  it("does not advertise Analytics support", () => {
-    // Given / When
-    const plugin = createMemoryPlugin(config());
-
-    // Then
-    expect(plugin[databaseAnalyticsSupport]).toBeUndefined();
-  });
-
   it("migrates legacy manifests including scalar patch fields", async () => {
     const base = legacyBundle("1");
     const target = {

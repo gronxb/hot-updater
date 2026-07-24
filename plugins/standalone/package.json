@@ -43,10 +43,12 @@
     "access": "public"
   },
   "dependencies": {
+    "@hot-updater/analytics": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
+    "@hot-updater/server": "workspace:*",
     "mime": "2.6.0",
     "@types/mime": "^2.0.3",
     "@types/node": "catalog:",

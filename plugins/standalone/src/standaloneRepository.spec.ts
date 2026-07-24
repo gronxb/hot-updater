@@ -1,8 +1,7 @@
+import { analyticsProviderToken } from "@hot-updater/analytics/provider";
 import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
-import {
-  createDatabaseClient,
-  databaseBundleEventService,
-} from "@hot-updater/plugin-core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
+import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import {
@@ -132,6 +131,16 @@ afterAll(() => server.close());
 const createRepository = (): DatabasePlugin =>
   standaloneRepository({ baseUrl: BASE_URL });
 
+const getAnalyticsProvider = (repository: DatabasePlugin) => {
+  const [contribution] = getCapabilityContributions(repository);
+  if (contribution === undefined) {
+    throw new Error("Missing standalone Analytics provider.");
+  }
+  return analyticsProviderToken.parse(
+    contribution.create({ database: repository, storages: [] }),
+  );
+};
+
 describe("standaloneRepository", () => {
   it("keeps the existing user config source-compatible", () => {
     type ExistingUserConfig = {
@@ -158,14 +167,12 @@ describe("standaloneRepository", () => {
   it("discovers Analytics support without a public config option", async () => {
     // Given
     const repository = createRepository();
-    const probe = Reflect.get(
-      repository,
-      Symbol.for("@hot-updater/internal/analytics-capability-probe"),
-    ) as () => Promise<unknown>;
+    const provider = getAnalyticsProvider(repository);
 
     // When / Then
-    expect(repository[databaseBundleEventService]).toBeDefined();
-    await expect(probe()).resolves.toEqual({
+    await expect(
+      provider.resolveAvailability?.(new AbortController().signal),
+    ).resolves.toEqual({
       analytics: true,
       mode: "dedicated",
       eventIngestion: false,
@@ -373,8 +380,7 @@ describe("standaloneRepository", () => {
       ),
     );
     const repository = standaloneRepository({ baseUrl: BASE_URL });
-    const analytics = repository[databaseBundleEventService];
-    if (!analytics) throw new Error("Missing standalone analytics service");
+    const analytics = getAnalyticsProvider(repository);
 
     await expect(analytics.getBundleEventSummary("bundle-1")).resolves.toEqual({
       installed: 1,

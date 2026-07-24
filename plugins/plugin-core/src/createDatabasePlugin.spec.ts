@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createDatabasePlugin } from "./createDatabasePlugin";
-import {
-  databaseAnalyticsSupport,
-  type DatabasePluginImplementation,
-} from "./types";
+import { type DatabasePluginImplementation } from "./types";
 
 class UnimplementedPluginMethodError extends Error {}
 
@@ -68,20 +65,6 @@ describe("createDatabasePlugin", () => {
 
     expect(typeof plugin).toBe("object");
     expect(plugin.name).toBe("memory");
-  });
-
-  it("advertises Analytics support for record plugins", () => {
-    // Given
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: createMethods,
-    });
-
-    // When
-    const capability = plugin[databaseAnalyticsSupport];
-
-    // Then
-    expect(capability).toBe(true);
   });
 
   it("calls the provider-native channel aggregate without request context", async () => {

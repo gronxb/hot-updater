@@ -1,0 +1,8 @@
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+
+declare const database: DatabasePlugin;
+
+const runtime = createHotUpdater({ database });
+
+void runtime.features.analytics;

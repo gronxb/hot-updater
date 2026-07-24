@@ -13,10 +13,16 @@ import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { analytics, type AnalyticsAPI } from "@hot-updater/analytics";
 import { transformEnv } from "@hot-updater/cli-tools";
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type AppUpdateInfo,
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
-import { supportsAnalytics } from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -40,6 +46,31 @@ const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
 const FUNCTION_NAME = "hot-updater";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
+
+class InvalidUpdateResponseError extends Error {}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isUpdateResponse = (
+  value: unknown,
+): value is AppUpdateInfo | UpdateInfo | null => {
+  if (value === null) return true;
+  if (!isRecord(value) || typeof value.status !== "string") return false;
+  if (value.status === "UP_TO_DATE") return true;
+  return (
+    (value.status === "ROLLBACK" || value.status === "UPDATE") &&
+    typeof value.id === "string" &&
+    typeof value.shouldForceUpdate === "boolean" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.fileHash === null || typeof value.fileHash === "string") &&
+    (value.fileUrl === null ||
+      typeof value.fileUrl === "string" ||
+      value.storageUri === null ||
+      typeof value.storageUri === "string")
+  );
+};
+
 const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
   "@hot-updater/firebase",
@@ -126,7 +157,7 @@ describe.sequential("firebase functions runtime acceptance", () => {
   let tempRoot: string | undefined;
   let functionsPort = 0;
   let functionsRuntime: ReturnType<typeof spawnRuntime> | undefined;
-  let seedHotUpdater: ReturnType<typeof createHotUpdater>;
+  let seedHotUpdater: ReturnType<typeof createHotUpdater> & AnalyticsAPI;
   const projectId = process.env.GCLOUD_PROJECT ?? "";
   const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST ?? "";
   const storageEmulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST ?? "";
@@ -244,13 +275,16 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         firebaseFunctionsStorage({
           ...adminOptions,
           cdnUrl: cdnBaseUrl,
-        }),
+        })(),
       ],
       basePath: HOT_UPDATER_BASE_PATH,
-      routes: {
-        updateCheck: true,
+      coreRoutes: {
         bundles: false,
+        updateCheck: true,
       },
+      plugins: [
+        analytics({ missingCapability: "error", queryAccess: "public" }),
+      ],
     });
 
     functionsRuntime = spawnRuntime({
@@ -334,7 +368,9 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await invokeHandler(createCanonicalPath(args));
 
-    return (await response.json()) as any;
+    const result: unknown = await response.json();
+    if (!isUpdateResponse(result)) throw new InvalidUpdateResponseError();
+    return result;
   };
 
   const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
@@ -519,9 +555,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 
     // Then: the managed runtime persists the event.
     expect(response.status).toBe(204);
-    if (!supportsAnalytics(seedHotUpdater)) {
-      throw new Error("Expected Firebase Analytics support.");
-    }
     await expect(
       seedHotUpdater.getBundleEventSummary(bundleId),
     ).resolves.toEqual({ installed: 1, recovered: 0 });

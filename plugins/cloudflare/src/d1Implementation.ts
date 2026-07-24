@@ -1,8 +1,8 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   CreateDatabaseImplementationInput,
+  DatabaseRow,
   DatabasePluginImplementation,
   DeleteDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
@@ -12,6 +12,8 @@ import type {
 import { countD1Rows, d1TableNames, findManyD1Rows } from "./d1Query";
 import { parseD1Row } from "./d1Rows";
 import { buildD1Where, d1Placeholders, encodeD1Values } from "./d1Sql";
+
+type BundleEventPersistenceRow = DatabaseRow<"bundle_events">;
 
 export interface D1Executor {
   query(sql: string, params: readonly string[]): Promise<readonly unknown[]>;
@@ -62,7 +64,9 @@ const patchValues = (row: BundlePatchRow): readonly unknown[] => [
   row.order_index,
 ];
 
-const bundleEventValues = (row: BundleEventRow): readonly unknown[] => [
+const bundleEventValues = (
+  row: BundleEventPersistenceRow,
+): readonly unknown[] => [
   row.id,
   row.type,
   row.install_id,

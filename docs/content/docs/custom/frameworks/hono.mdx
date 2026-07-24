@@ -47,12 +47,13 @@ app.mount("/hot-updater", hotUpdater.handler); // [!code ++]
 export default app;
 ```
 
-If you set
-`routes: { updateCheck: true, bundles: false, analytics: false }`,
+If you set `coreRoutes: { updateCheck: true, bundles: false }` and omit
+Analytics from `plugins`,
 `/hot-updater/api/*` is not mounted and `/hot-updater/version` stays
 available for diagnostics.
-Set `bundles: true` only when this server accepts bundle-management requests;
-then the `/hot-updater/api/*` middleware above protects those routes.
+Enable public `coreRoutes.bundles` only when this server accepts
+bundle-management requests; then the `/hot-updater/api/*` middleware above
+protects those routes.
 
 Set your auth token in environment variables:
 
@@ -79,9 +80,9 @@ export default defineConfig({
 ## API Endpoints
 
 The server automatically creates these endpoints. Bundle management endpoints
-are mounted only when `routes.bundles` is enabled. Event ingestion and
-Analytics query endpoints are mounted when `routes.analytics` is enabled and
-the database supports Analytics:
+are mounted only when `coreRoutes.bundles` is enabled. Event ingestion and
+Analytics query endpoints are mounted by an installed `analytics()` plugin
+when its provider is available:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|

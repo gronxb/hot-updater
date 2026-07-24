@@ -8,12 +8,13 @@ import type {
 import mime from "mime";
 
 import type { RouteConfig } from "./standaloneRepository";
+import { createStandaloneTransport } from "./standaloneTransport";
 
 export interface StorageRoutes {
-  upload: (key: string, filePath: string) => RouteConfig;
-  delete: (storageUri: string) => RouteConfig;
-  readText: (storageUri: string) => RouteConfig;
-  getDownloadUrl: (storageUri: string) => RouteConfig;
+  readonly upload: (key: string, filePath: string) => RouteConfig;
+  readonly delete: (storageUri: string) => RouteConfig;
+  readonly readText: (storageUri: string) => RouteConfig;
+  readonly getDownloadUrl: (storageUri: string) => RouteConfig;
 }
 
 const defaultRoutes: StorageRoutes = {
@@ -43,14 +44,15 @@ const createRoute = (
 });
 
 export interface StandaloneStorageConfig {
-  baseUrl: string;
-  commonHeaders?: Record<string, string>;
-  routes?: StorageRoutes;
+  readonly baseUrl: string;
+  readonly commonHeaders?: Readonly<Record<string, string>>;
+  readonly routes?: StorageRoutes;
 }
 
 export const standaloneStorage =
   (config: StandaloneStorageConfig, hooks?: StoragePluginHooks) =>
   (): UniversalStoragePlugin => {
+    const transport = createStandaloneTransport(config);
     const routes: StorageRoutes = {
       upload: (key: string, filePath: string) =>
         createRoute(
@@ -74,11 +76,6 @@ export const standaloneStorage =
         ),
     };
 
-    const getHeaders = (routeHeaders?: Record<string, string>) => ({
-      ...config.commonHeaders,
-      ...routeHeaders,
-    });
-
     return {
       name: "standaloneStorage",
       supportedProtocol: "http",
@@ -87,15 +84,17 @@ export const standaloneStorage =
           async delete(storageUri: string) {
             const { path: routePath, headers: routeHeaders } =
               routes.delete(storageUri);
-            const response = await fetch(`${config.baseUrl}${routePath}`, {
-              method: "DELETE",
-              headers: getHeaders(routeHeaders),
-              body: JSON.stringify({ storageUri }),
-            });
+            const response = await transport.request(
+              { path: routePath, headers: routeHeaders },
+              {
+                method: "DELETE",
+                body: JSON.stringify({ storageUri }),
+              },
+            );
 
             if (!response.ok) {
               const error = new Error(
-                `Failed to delete bundle: ${response.statusText}`,
+                `Failed to delete bundle with status ${response.status}.`,
               );
               console.error(error);
               throw error;
@@ -120,23 +119,23 @@ export const standaloneStorage =
             );
             formData.append("key", key);
 
-            const response = await fetch(`${config.baseUrl}${routePath}`, {
-              method: "POST",
-              headers: getHeaders(routeHeaders),
-              body: formData,
-            });
+            const response = await transport.request(
+              { path: routePath, headers: routeHeaders },
+              { method: "POST", body: formData },
+            );
 
             if (!response.ok) {
-              const error = `Failed to upload bundle: ${response.statusText}`;
+              const error = `Failed to upload bundle with status ${response.status}.`;
               console.error(`[upload] ${error}`);
               throw new Error(error);
             }
 
-            const result = (await response.json()) as {
-              storageUri: string;
-            };
-
-            if (!result.storageUri) {
+            const result: unknown = await response.json();
+            const storageUri =
+              typeof result === "object" && result !== null
+                ? Reflect.get(result, "storageUri")
+                : undefined;
+            if (typeof storageUri !== "string" || storageUri === "") {
               const error =
                 "Failed to upload bundle - no storageUri in response";
               console.error(`[upload] ${error}`);
@@ -146,7 +145,7 @@ export const standaloneStorage =
             await hooks?.onStorageUploaded?.();
 
             return {
-              storageUri: result.storageUri,
+              storageUri,
             };
           },
           async exists(storageUri: string) {
@@ -159,7 +158,7 @@ export const standaloneStorage =
             const response = await fetch(fileUrl);
             if (!response.ok) {
               throw new Error(
-                `Failed to download bundle: ${response.statusText}`,
+                `Failed to download bundle with status ${response.status}.`,
               );
             }
 
@@ -174,11 +173,13 @@ export const standaloneStorage =
           async readText(storageUri: string) {
             const { path: routePath, headers: routeHeaders } =
               routes.readText(storageUri);
-            const response = await fetch(`${config.baseUrl}${routePath}`, {
-              method: "POST",
-              headers: getHeaders(routeHeaders),
-              body: JSON.stringify({ storageUri }),
-            });
+            const response = await transport.request(
+              { path: routePath, headers: routeHeaders },
+              {
+                method: "POST",
+                body: JSON.stringify({ storageUri }),
+              },
+            );
             if (!response.ok) {
               return null;
             }
@@ -193,24 +194,31 @@ export const standaloneStorage =
     async function getDownloadUrl(storageUri: string) {
       const { path: routePath, headers: routeHeaders } =
         routes.getDownloadUrl(storageUri);
-      const response = await fetch(`${config.baseUrl}${routePath}`, {
-        method: "POST",
-        headers: getHeaders(routeHeaders),
-        body: JSON.stringify({ storageUri }),
-      });
+      const response = await transport.request(
+        { path: routePath, headers: routeHeaders },
+        {
+          method: "POST",
+          body: JSON.stringify({ storageUri }),
+        },
+      );
 
       if (!response.ok) {
         const error = new Error(
-          `Failed to get download URL: ${response.statusText}`,
+          `Failed to get download URL with status ${response.status}.`,
         );
         console.error(error);
         throw error;
       }
-      const result = (await response.json()) as {
-        fileUrl: string;
-      };
+      const result: unknown = await response.json();
+      const fileUrl =
+        typeof result === "object" && result !== null
+          ? Reflect.get(result, "fileUrl")
+          : undefined;
+      if (typeof fileUrl !== "string") {
+        throw new Error("Failed to get download URL: invalid response");
+      }
       return {
-        fileUrl: result.fileUrl,
+        fileUrl,
       };
     }
   };

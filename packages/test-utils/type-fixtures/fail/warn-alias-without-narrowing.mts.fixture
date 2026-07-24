@@ -1,0 +1,12 @@
+import { analytics } from "@hot-updater/analytics";
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+
+declare const database: DatabasePlugin;
+
+const runtime = createHotUpdater({
+  database,
+  plugins: [analytics()],
+});
+
+void runtime.getBundleEventSummary;

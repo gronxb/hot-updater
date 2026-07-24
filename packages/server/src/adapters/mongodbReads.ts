@@ -1,5 +1,4 @@
 import type {
-  BundleEventRow,
   DatabaseImplementationResult,
   DatabasePluginImplementation,
   FindManyDatabaseImplementationInput,
@@ -9,7 +8,7 @@ import type { ClientSession } from "mongodb";
 import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import {
   activeBundleFilter,
-  createMongoEventWhere,
+  createMongoAppendOnlyWhere,
   type MongoCollections,
   MongoAdapterConstraintError,
   mongoSessionOptions,
@@ -122,12 +121,12 @@ const findMongoRows = async (
     }
     case "bundle_events": {
       if (input.distinctOn || needsInMemoryOrder) {
-        const rows = (await collections.bundleEvents
-          .find(createMongoEventWhere(input.where), {
+        const rows = await collections.appendOnlyRows
+          .find(createMongoAppendOnlyWhere(input.where), {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),
           })
-          .toArray()) as BundleEventRow[];
+          .toArray();
         const orderedRows = sortRowsByOrder(rows, rawOrderBy as never);
         if (input.distinctOn) {
           return applyDistinctOnRows(
@@ -139,8 +138,8 @@ const findMongoRows = async (
         }
         return orderedRows.slice(input.offset, input.offset + input.limit);
       }
-      const cursor = collections.bundleEvents.find(
-        createMongoEventWhere(input.where),
+      const cursor = collections.appendOnlyRows.find(
+        createMongoAppendOnlyWhere(input.where),
         {
           projection: WITHOUT_MONGO_ID,
           ...mongoSessionOptions(session),
@@ -178,16 +177,16 @@ export const createMongoReads = (
         );
       case "bundle_events": {
         if (input.distinct && input.distinct.length > 0) {
-          const rows = (await collections.bundleEvents
-            .find(createMongoEventWhere(input.where), {
+          const rows = await collections.appendOnlyRows
+            .find(createMongoAppendOnlyWhere(input.where), {
               projection: WITHOUT_MONGO_ID,
               ...mongoSessionOptions(session),
             })
-            .toArray()) as BundleEventRow[];
+            .toArray();
           return countDistinctRows(rows, input.distinct);
         }
-        return collections.bundleEvents.countDocuments(
-          createMongoEventWhere(input.where),
+        return collections.appendOnlyRows.countDocuments(
+          createMongoAppendOnlyWhere(input.where),
           mongoSessionOptions(session),
         );
       }
@@ -212,8 +211,8 @@ export const createMongoReads = (
           },
         );
       case "bundle_events":
-        return collections.bundleEvents.findOne(
-          createMongoEventWhere(input.where),
+        return collections.appendOnlyRows.findOne(
+          createMongoAppendOnlyWhere(input.where),
           {
             projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),

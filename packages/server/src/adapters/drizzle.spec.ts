@@ -47,7 +47,7 @@ const bundlePatches = pgTable("bundle_patches", {
   patch_storage_uri: text("patch_storage_uri").notNull(),
   order_index: integer("order_index").notNull(),
 });
-const bundleEvents = pgTable("bundle_events", {
+const appendOnlyTable = pgTable("bundle_events", {
   id: text("id").primaryKey(),
   type: text("type").notNull(),
   install_id: text("install_id").notNull(),
@@ -65,7 +65,7 @@ const bundleEvents = pgTable("bundle_events", {
   received_at_ms: doublePrecision("received_at_ms").notNull(),
 });
 const schema = {
-  bundle_events: bundleEvents,
+  bundle_events: appendOnlyTable,
   bundle_patches: bundlePatches,
   bundles,
 };
@@ -106,7 +106,7 @@ setupDatabasePluginTestSuite({
   },
 });
 
-const createBundleEventRow = (
+const createAppendOnlyRow = (
   id: string,
   installId: string,
   receivedAtMs: number,
@@ -143,7 +143,7 @@ describe("drizzleAdapter schema requirements", () => {
     try {
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("lazy-event", "lazy-install", 100),
+        data: createAppendOnlyRow("lazy-event", "lazy-install", 100),
       });
 
       await expect(
@@ -200,19 +200,19 @@ describe("drizzleAdapter bundle_events distinct semantics", () => {
     try {
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-a-1", "install-a", 100),
+        data: createAppendOnlyRow("event-a-1", "install-a", 100),
       });
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-a-2", "install-a", 200),
+        data: createAppendOnlyRow("event-a-2", "install-a", 200),
       });
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-b-1", "install-b", 150),
+        data: createAppendOnlyRow("event-b-1", "install-b", 150),
       });
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-b-2", "install-b", 150),
+        data: createAppendOnlyRow("event-b-2", "install-b", 150),
       });
 
       await expect(
@@ -248,12 +248,12 @@ describe("drizzleAdapter bundle_events distinct semantics", () => {
     try {
       await plugin.create({
         model: "bundle_events",
-        data: createBundleEventRow("event-null", "install-a", 100),
+        data: createAppendOnlyRow("event-null", "install-a", 100),
       });
       await plugin.create({
         model: "bundle_events",
         data: {
-          ...createBundleEventRow("event-user", "install-b", 200),
+          ...createAppendOnlyRow("event-user", "install-b", 200),
           user_id: "user-123",
         },
       });

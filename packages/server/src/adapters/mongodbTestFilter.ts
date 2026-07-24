@@ -1,10 +1,13 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  DatabaseRow,
 } from "@hot-updater/plugin-core";
 
-export type MongoTestRow = BundleEventRow | BundlePatchRow | BundleRow;
+export type MongoTestRow =
+  | BundlePatchRow
+  | BundleRow
+  | DatabaseRow<"bundle_events">;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;

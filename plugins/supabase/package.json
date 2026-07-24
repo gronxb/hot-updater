@@ -50,6 +50,7 @@
     "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
   },
   "dependencies": {
+    "@hot-updater/analytics": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",

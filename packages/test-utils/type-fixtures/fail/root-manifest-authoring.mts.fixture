@@ -1,0 +1,14 @@
+import {
+  defineFirstPartyFeatureManifest,
+  type FirstPartyFeatureManifestDefinition,
+  type HotUpdaterPluginContribution,
+} from "@hot-updater/server";
+
+void defineFirstPartyFeatureManifest;
+
+type AuthoringTypes =
+  | FirstPartyFeatureManifestDefinition<string, never, Record<never, never>>
+  | HotUpdaterPluginContribution<string, never, Record<never, never>>;
+
+declare const authoring: AuthoringTypes;
+void authoring;

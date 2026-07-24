@@ -1,7 +1,7 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  DatabaseRow,
   DatabaseWhere,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
@@ -23,6 +23,8 @@ class KyselyAdapterInvariantError extends Error {
     super(`Kysely plugin invariant failed: ${reason}`);
   }
 }
+
+type AppendOnlyRow = DatabaseRow<"bundle_events">;
 
 const empty = sql``;
 
@@ -379,7 +381,7 @@ export const createKyselyCrud = (
         const where = whereClause(
           buildKyselyWhere(provider, input.where as never),
         );
-        const result = await sql<BundleEventRow>`select * from ${sql.table(
+        const result = await sql<AppendOnlyRow>`select * from ${sql.table(
           "bundle_events",
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
@@ -414,7 +416,7 @@ export const createKyselyCrud = (
           buildKyselyWhere(provider, input.where as never),
         );
         const order = orderClause(input as never);
-        const baseQuery = sql<BundleEventRow>`select * from ${sql.table(
+        const baseQuery = sql<AppendOnlyRow>`select * from ${sql.table(
           "bundle_events",
         )}${where}${order}`;
         if (input.distinctOn) {
@@ -426,7 +428,7 @@ export const createKyselyCrud = (
             input.limit,
           );
         }
-        const result = await sql<BundleEventRow>`select * from ${sql.table(
+        const result = await sql<AppendOnlyRow>`select * from ${sql.table(
           "bundle_events",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];

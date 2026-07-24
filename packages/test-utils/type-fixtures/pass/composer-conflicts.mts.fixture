@@ -1,0 +1,58 @@
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import {
+  defineFirstPartyFeatureManifest,
+  type FeatureApiKind,
+} from "@hot-updater/server/internal/first-party-plugin";
+
+import { assertType, type Equal } from "./typeAssertions.mjs";
+
+type TestApi = {
+  readonly operation: () => string;
+};
+
+interface TestKind extends FeatureApiKind {
+  readonly availableApi: TestApi;
+  readonly feature: TestApi & { readonly status: "available" };
+}
+
+const createManifest = <
+  TNamespace extends string,
+  const TAliases extends Readonly<Record<string, "operation">>,
+>(
+  id: string,
+  namespace: TNamespace,
+  aliases: TAliases,
+) =>
+  defineFirstPartyFeatureManifest<TNamespace, TestKind, TAliases>({
+    aliases,
+    id,
+    namespace,
+    setup: () => ({
+      api: {
+        legacyAliases: aliases,
+        namespace,
+        value: {
+          operation: () => "ok",
+          status: "available",
+        },
+      },
+    }),
+    version: "1.0.0",
+  });
+
+const manifests = [
+  createManifest("duplicate-one", "duplicate", { firstAlias: "operation" }),
+  createManifest("duplicate-two", "duplicate", { secondAlias: "operation" }),
+  createManifest("alias-one", "alias-one", { sharedAlias: "operation" }),
+  createManifest("alias-two", "alias-two", { sharedAlias: "operation" }),
+] as const;
+
+assertType<Equal<(typeof manifests)["length"], 4>>();
+assertType<Equal<(typeof manifests)[0]["namespace"], "duplicate">>();
+assertType<Equal<(typeof manifests)[2]["namespace"], "alias-one">>();
+assertType<Equal<(typeof manifests)[3]["namespace"], "alias-two">>();
+
+declare const database: DatabasePlugin;
+const runtime = createHotUpdater({ database, plugins: manifests });
+void runtime;

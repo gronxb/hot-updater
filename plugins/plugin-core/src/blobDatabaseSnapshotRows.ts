@@ -9,7 +9,9 @@ import {
   blobString,
   blobStringArray,
 } from "./blobDatabaseValue";
-import type { BundleEventRow, BundlePatchRow, BundleRow } from "./types";
+import type { BundlePatchRow, BundleRow, DatabaseRow } from "./types";
+
+type BundleEventPersistenceRow = DatabaseRow<"bundle_events">;
 
 export const parseBundleRow = (value: unknown, source: string): BundleRow => {
   const input = blobRecord(value, source);
@@ -83,7 +85,7 @@ export const parsePatchRow = (
 export const parseBundleEventRow = (
   value: unknown,
   source: string,
-): BundleEventRow => {
+): BundleEventPersistenceRow => {
   const input = blobRecord(value, source);
   const type = blobString(blobProperty(input, "type"), source);
   const fromBundleValue = blobProperty(input, "from_bundle_id");

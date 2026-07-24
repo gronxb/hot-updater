@@ -114,6 +114,40 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
 
+type PackageExportTarget =
+  | string
+  | null
+  | PackageExportTarget[]
+  | {
+      readonly [condition: string]: PackageExportTarget | undefined;
+    };
+
+const runtimeExportConditions = [
+  "deno",
+  "import",
+  "default",
+  "require",
+] as const;
+
+const resolveRuntimeExportTarget = (
+  target: PackageExportTarget | undefined,
+): string | undefined => {
+  if (typeof target === "string") return target;
+  if (Array.isArray(target)) {
+    for (const fallback of target) {
+      const resolved = resolveRuntimeExportTarget(fallback);
+      if (resolved) return resolved;
+    }
+    return undefined;
+  }
+  if (target === null || target === undefined) return undefined;
+  for (const condition of runtimeExportConditions) {
+    const resolved = resolveRuntimeExportTarget(target[condition]);
+    if (resolved) return resolved;
+  }
+  return undefined;
+};
+
 const resolvePackageExportPath = async (
   packageName: string,
   exportName: string,
@@ -122,23 +156,10 @@ const resolvePackageExportPath = async (
   const packageJson = JSON.parse(
     await fs.readFile(packageJsonPath, "utf-8"),
   ) as {
-    exports?: Record<
-      string,
-      | string
-      | {
-          import?: string;
-          require?: string;
-          default?: string;
-        }
-    >;
+    exports?: Record<string, PackageExportTarget>;
   };
   const exportTarget = packageJson.exports?.[exportName];
-  const relativePath =
-    typeof exportTarget === "string"
-      ? exportTarget
-      : (exportTarget?.import ??
-        exportTarget?.default ??
-        exportTarget?.require);
+  const relativePath = resolveRuntimeExportTarget(exportTarget);
 
   if (!relativePath) {
     throw new Error(

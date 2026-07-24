@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 
-import { parsePrismaBundleEventRow } from "./prismaRows";
+import { parsePrismaAppendOnlyRow } from "./prismaRows";
 
-const bundleEventFields = {
+const appendOnlyFields = {
   id: "event-1",
   install_id: "install-1",
   user_id: "user-1",
@@ -17,21 +17,21 @@ const bundleEventFields = {
   received_at_ms: 1_725_000_000_000,
 } as const;
 
-it("parses all three Prisma bundle event variants", () => {
-  const unchanged = parsePrismaBundleEventRow({
-    ...bundleEventFields,
+it("parses all three Prisma append-only row variants", () => {
+  const unchanged = parsePrismaAppendOnlyRow({
+    ...appendOnlyFields,
     type: "UNCHANGED",
     from_bundle_id: null,
     update_strategy: null,
   });
-  const applied = parsePrismaBundleEventRow({
-    ...bundleEventFields,
+  const applied = parsePrismaAppendOnlyRow({
+    ...appendOnlyFields,
     type: "UPDATE_APPLIED",
     from_bundle_id: "bundle-0",
     update_strategy: "appVersion",
   });
-  const recovered = parsePrismaBundleEventRow({
-    ...bundleEventFields,
+  const recovered = parsePrismaAppendOnlyRow({
+    ...appendOnlyFields,
     type: "RECOVERED",
     from_bundle_id: "bundle-1",
     update_strategy: "fingerprint",
@@ -54,26 +54,26 @@ it("parses all three Prisma bundle event variants", () => {
   });
 });
 
-it("rejects mixed Prisma bundle event transition shapes", () => {
+it("rejects mixed Prisma append-only transition shapes", () => {
   expect(() =>
-    parsePrismaBundleEventRow({
-      ...bundleEventFields,
+    parsePrismaAppendOnlyRow({
+      ...appendOnlyFields,
       type: "UNCHANGED",
       from_bundle_id: "bundle-0",
       update_strategy: null,
     }),
   ).toThrow();
   expect(() =>
-    parsePrismaBundleEventRow({
-      ...bundleEventFields,
+    parsePrismaAppendOnlyRow({
+      ...appendOnlyFields,
       type: "RECOVERED",
       from_bundle_id: null,
       update_strategy: "appVersion",
     }),
   ).toThrow();
   expect(() =>
-    parsePrismaBundleEventRow({
-      ...bundleEventFields,
+    parsePrismaAppendOnlyRow({
+      ...appendOnlyFields,
       type: "NOT_AN_EVENT",
       from_bundle_id: null,
       update_strategy: null,

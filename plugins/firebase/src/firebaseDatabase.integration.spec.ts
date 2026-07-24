@@ -1,6 +1,5 @@
 import {
   createDatabaseClient,
-  databaseAnalyticsSupport,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
@@ -30,12 +29,6 @@ const createPlugin = (): DatabasePlugin =>
     projectId: PROJECT_ID,
     storageBucket: `${PROJECT_ID}.appspot.com`,
   });
-
-it("advertises Analytics support", () => {
-  const plugin = createPlugin();
-
-  expect(plugin[databaseAnalyticsSupport]).toBe(true);
-});
 
 setupDatabasePluginTestSuite({
   name: "firebase fixed-model database plugin",

@@ -97,7 +97,7 @@ export const createMongoWrites = (
         }
         return input.data;
       case "bundle_events":
-        await collections.bundleEvents.insertOne(
+        await collections.appendOnlyRows.insertOne(
           input.data,
           mongoSessionOptions(session),
         );

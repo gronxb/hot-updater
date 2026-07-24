@@ -1,32 +1,61 @@
 // @vitest-environment node
 
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   getAnalyticsCapabilities,
   parseProbedAnalyticsCapabilities,
 } from "./analytics-rpc";
 
-const createRuntime = () => ({
-  appendBundleEvent: vi.fn(),
-  getActiveInstallationOverview: vi.fn(),
-  getBundleEventSummary: vi.fn(),
-  getBundleEventAnalytics: vi.fn(),
-  getBundleEventOverview: vi.fn(),
-  searchInstallations: vi.fn(),
-  getInstallationHistory: vi.fn(),
-});
+const ANALYTICS_METHODS = [
+  "appendBundleEvent",
+  "getActiveInstallationOverview",
+  "getBundleEventSummary",
+  "getBundleEventAnalytics",
+  "getBundleEventOverview",
+  "searchInstallations",
+  "getInstallationHistory",
+] as const;
 
-beforeAll(async () => {
-  await import("@hot-updater/server/db");
-});
+const createRuntime = (
+  capabilities: object = {
+    analytics: true,
+    analyticsQueries: true,
+    eventIngestion: true,
+    mode: "dedicated",
+  },
+) => {
+  const methods = {
+    appendBundleEvent: vi.fn(),
+    getActiveInstallationOverview: vi.fn(),
+    getBundleEventSummary: vi.fn(),
+    getBundleEventAnalytics: vi.fn(),
+    getBundleEventOverview: vi.fn(),
+    searchInstallations: vi.fn(),
+    getInstallationHistory: vi.fn(),
+  };
+  return {
+    ...methods,
+    basePath: "/api",
+    features: {
+      analytics: {
+        ...methods,
+        status: "available",
+      },
+    },
+    handler: vi.fn(async () =>
+      Response.json({ capabilities, version: "test" }),
+    ),
+  };
+};
 
 describe("getAnalyticsCapabilities", () => {
-  it("uses an internal remote capability probe before exposing Analytics", async () => {
+  it("uses version metadata before exposing Analytics", async () => {
     // Given
-    const probe = vi.fn().mockResolvedValue({ analytics: false as const });
-    const runtime = Object.assign(createRuntime(), {
-      [Symbol.for("@hot-updater/internal/analytics-capability-probe")]: probe,
+    const runtime = createRuntime({
+      analytics: false,
+      analyticsQueries: false,
+      eventIngestion: false,
     });
 
     // When
@@ -34,20 +63,17 @@ describe("getAnalyticsCapabilities", () => {
 
     // Then
     expect(result).toEqual({ capabilities: { analytics: false } });
-    expect(probe).toHaveBeenCalledOnce();
+    expect(runtime.handler).toHaveBeenCalledOnce();
   });
 
   it("preserves route-aware bounded capability metadata", async () => {
     // Given
-    const runtime = Object.assign(createRuntime(), {
-      [Symbol.for("@hot-updater/internal/analytics-capability-probe")]: () =>
-        Promise.resolve({
-          analytics: true as const,
-          mode: "bounded" as const,
-          maxMatchingRows: 12_345,
-          eventIngestion: false,
-          analyticsQueries: true,
-        }),
+    const runtime = createRuntime({
+      analytics: true,
+      mode: "bounded",
+      maxMatchingRows: 12_345,
+      eventIngestion: false,
+      analyticsQueries: true,
     });
 
     // When
@@ -65,11 +91,12 @@ describe("getAnalyticsCapabilities", () => {
 
   it("exposes the CRUD-derived Analytics scan boundary", async () => {
     // Given
-    const runtime = Object.assign(createRuntime(), {
-      [Symbol.for("@hot-updater/server/analytics-capability")]: {
-        mode: "bounded",
-        maxMatchingRows: 50_000,
-      },
+    const runtime = createRuntime({
+      analytics: true,
+      mode: "bounded",
+      maxMatchingRows: 50_000,
+      eventIngestion: true,
+      analyticsQueries: true,
     });
 
     // When
@@ -88,14 +115,13 @@ describe("getAnalyticsCapabilities", () => {
   it("reports support only for the complete callable Analytics contract", async () => {
     // Given
     const supported = createRuntime();
-    const methodNames = Object.keys(supported);
 
     // When
     const complete = await getAnalyticsCapabilities(supported);
     const incomplete = await Promise.all(
-      methodNames.map((missingMethod) => {
+      ANALYTICS_METHODS.map((missingMethod) => {
         const runtime = createRuntime();
-        Reflect.deleteProperty(runtime, missingMethod);
+        Reflect.deleteProperty(runtime.features.analytics, missingMethod);
         return getAnalyticsCapabilities(runtime);
       }),
     );
@@ -105,9 +131,11 @@ describe("getAnalyticsCapabilities", () => {
       capabilities: { analytics: true, mode: "dedicated" },
     });
     expect(incomplete).toEqual(
-      methodNames.map(() => ({ capabilities: { analytics: false } })),
+      ANALYTICS_METHODS.map(() => ({ capabilities: { analytics: false } })),
     );
-    for (const method of Object.values(supported)) {
+    for (const method of ANALYTICS_METHODS.map(
+      (name) => supported.features.analytics[name],
+    )) {
       expect(method).not.toHaveBeenCalled();
     }
   });

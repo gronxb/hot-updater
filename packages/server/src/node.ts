@@ -1,4 +1,4 @@
-import { MAX_EVENT_BODY_BYTES } from "./handlerEventIngestionRoutes";
+import { Readable } from "node:stream";
 
 /**
  * Node.js request/response types (compatible with Express, Connect, etc.)
@@ -11,7 +11,6 @@ interface NodeRequest {
   rawBody?: Uint8Array;
   protocol?: string;
   get?(name: string): string | undefined;
-  [key: string]: unknown;
 }
 
 interface NodeResponse {
@@ -19,11 +18,41 @@ interface NodeResponse {
   setHeader(name: string, value: string | string[]): void;
   send(body: string): void;
   end(): void;
-  [key: string]: unknown;
 }
 
 type HandlerHotUpdaterAPI = {
   readonly handler: (request: Request) => Promise<Response>;
+};
+
+type NodeBodyDecision =
+  | { readonly kind: "body"; readonly value?: RequestInit["body"] }
+  | { readonly kind: "reject" };
+
+const isBodyMethod = (method: string): boolean =>
+  method !== "GET" && method !== "HEAD";
+
+const readNodeBody = (
+  request: NodeRequest,
+  method: string,
+): NodeBodyDecision => {
+  if (!isBodyMethod(method)) return { kind: "body" };
+  if (request instanceof Readable && !request.readableEnded) {
+    return { kind: "body", value: Readable.toWeb(request) };
+  }
+
+  const parsedBody = request.rawBody ?? request.body;
+  if (parsedBody === undefined) return { kind: "body" };
+  if (parsedBody instanceof Uint8Array) {
+    return {
+      kind: "body",
+      value: Uint8Array.from(parsedBody),
+    };
+  }
+  if (typeof parsedBody === "string") {
+    return { kind: "body", value: parsedBody };
+  }
+
+  return { kind: "reject" };
 };
 
 export { HOT_UPDATER_SERVER_VERSION } from "./version";
@@ -39,17 +68,18 @@ export { HOT_UPDATER_SERVER_VERSION } from "./version";
  *
  * const app = express();
  *
- * // Preserve the original bytes so ingestion limits apply before JSON
- * // normalization.
- * app.use("/hot-updater", express.raw({ type: "application/json" }));
- *
- * // Mount hot-updater handler
+ * // Mount before body parsers. The adapter forwards the unread Node request
+ * // as a lazy Web stream, so protected routes authenticate before any body
+ * // bytes are consumed.
  * app.all("/hot-updater/*", toNodeHandler(hotUpdater));
+ *
+ * // Register parsers only for routes handled after Hot Updater.
+ * app.use(express.json());
  * ```
  */
 export function toNodeHandler(
   hotUpdater: HandlerHotUpdaterAPI,
-): (req: any, res: any, next?: any) => Promise<void> {
+): (req: NodeRequest, res: NodeResponse) => Promise<void> {
   return async (req: NodeRequest, res: NodeResponse) => {
     try {
       // Build full URL
@@ -65,47 +95,25 @@ export function toNodeHandler(
         }
       }
 
-      // Handle request body
-      let body: RequestInit["body"];
-      const requestBody = req.rawBody ?? req.body;
-      if (
-        req.method &&
-        req.method !== "GET" &&
-        req.method !== "HEAD" &&
-        requestBody !== undefined
-      ) {
-        if (requestBody instanceof Uint8Array) {
-          body = Uint8Array.from(requestBody);
-        } else if (typeof requestBody === "string") {
-          body = requestBody;
-        } else {
-          const path = new URL(url).pathname;
-          const declaredLength = headers.get("Content-Length");
-          const hasDeclaredLength =
-            declaredLength !== null &&
-            /^\d+$/.test(declaredLength) &&
-            Number.isSafeInteger(Number(declaredLength));
-          if (
-            req.method === "POST" &&
-            path.endsWith("/events") &&
-            (!hasDeclaredLength ||
-              Number(declaredLength) > MAX_EVENT_BODY_BYTES)
-          ) {
-            res.status(413);
-            res.setHeader("Content-Type", "application/json");
-            res.send(JSON.stringify({ error: "Payload too large" }));
-            return;
-          }
-          body = JSON.stringify(requestBody);
-        }
+      const method = req.method || "GET";
+      const body = readNodeBody(req, method);
+      if (body.kind === "reject") {
+        res.status(413);
+        res.setHeader("Content-Type", "application/json");
+        res.send(JSON.stringify({ error: "Payload too large" }));
+        return;
       }
 
       // Create Web Request
-      const webRequest = new globalThis.Request(url, {
-        method: req.method || "GET",
-        headers,
-        body,
-      });
+      const webRequest =
+        body.value === undefined
+          ? new globalThis.Request(url, { headers, method })
+          : new globalThis.Request(url, {
+              body: body.value,
+              duplex: "half",
+              headers,
+              method,
+            });
 
       // Call hot-updater handler
       const response = await hotUpdater.handler(webRequest);
@@ -125,9 +133,8 @@ export function toNodeHandler(
       } else {
         res.end();
       }
-    } catch (error) {
+    } catch {
       // Handle errors gracefully
-      console.error("Hot Updater handler error:", error);
       res.status(500);
       res.send("Internal Server Error");
     }

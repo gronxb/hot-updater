@@ -1,20 +1,20 @@
 import type { DatabaseWhere } from "@hot-updater/plugin-core";
 
 export const appendBundleWhere = (
-  url: URL,
+  searchParams: URLSearchParams,
   where: readonly DatabaseWhere<"bundles">[] | undefined,
 ): boolean => {
   const usedParameters = new Set<string>();
   const setParameter = (parameter: string, value: string): boolean => {
     if (usedParameters.has(parameter)) return false;
     usedParameters.add(parameter);
-    url.searchParams.set(parameter, value);
+    searchParams.set(parameter, value);
     return true;
   };
   const appendParameter = (parameter: string, values: readonly string[]) => {
     if (values.length === 0 || usedParameters.has(parameter)) return false;
     usedParameters.add(parameter);
-    for (const value of values) url.searchParams.append(parameter, value);
+    for (const value of values) searchParams.append(parameter, value);
     return true;
   };
 

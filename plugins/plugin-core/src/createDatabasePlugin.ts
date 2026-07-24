@@ -1,8 +1,6 @@
 import { createDatabasePluginCrud } from "./databasePluginCrud";
 import { createTransactionDatabasePlugin } from "./databasePluginTransaction";
 import {
-  databaseAnalyticsSupport,
-  databaseBundleEventService,
   type DatabasePlugin,
   type DatabasePluginImplementation,
 } from "./types";
@@ -17,13 +15,7 @@ export interface CreateDatabasePluginOptions {
   readonly plugin: () => DatabasePluginImplementation;
 }
 
-export type DatabasePluginBase = Omit<
-  DatabasePlugin,
-  typeof databaseAnalyticsSupport | typeof databaseBundleEventService
-> & {
-  readonly [databaseAnalyticsSupport]?: never;
-  readonly [databaseBundleEventService]?: never;
-};
+export type DatabasePluginBase = DatabasePlugin;
 
 export const createDatabasePluginBase = (
   options: CreateDatabasePluginOptions,
@@ -55,7 +47,4 @@ export const createDatabasePluginBase = (
 
 export const createDatabasePlugin = (
   options: CreateDatabasePluginOptions,
-): DatabasePlugin => ({
-  ...createDatabasePluginBase(options),
-  [databaseAnalyticsSupport]: true,
-});
+): DatabasePlugin => createDatabasePluginBase(options);

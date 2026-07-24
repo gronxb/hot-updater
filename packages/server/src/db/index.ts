@@ -1,29 +1,9 @@
-import {
-  getHotUpdaterCoreMetadata,
-  type RuntimeHotUpdaterAPI,
-} from "../createHotUpdaterCore";
+import { getHotUpdaterCoreMetadata } from "../createHotUpdaterCore";
 import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
 import { type Migrator, type SchemaGenerator } from "./types";
 
 export * from "./createBundleDiff";
-export type {
-  BundleEventAnalyticsResult,
-  BundleEventAnalyticsWindow,
-  BundleEventAPI,
-  BundleEventSummary,
-  CreateBundleEventRequest,
-  InstallationHistoryRow,
-  InstallationSearchRow,
-  Migrator,
-  OffsetPaginationResult,
-  SchemaGenerator,
-} from "./types";
-export type { AnalyticsCapability } from "./analyticsCapability";
-export {
-  getAnalyticsCapability,
-  supportsAnalytics,
-} from "./analyticsCapability";
-export { BundleEventScanLimitExceededError } from "./bundleEventScan";
+export type { Migrator, SchemaGenerator } from "./types";
 export { HotUpdaterSchemaMigrationRequiredError } from "./schemaReadiness";
 export { HOT_UPDATER_SERVER_VERSION } from "../version";
 
@@ -32,9 +12,7 @@ export type HotUpdaterDBTarget = {
 };
 
 const getDBMetadata = (hotUpdater: HotUpdaterDBTarget) => {
-  const metadata = getHotUpdaterCoreMetadata(
-    hotUpdater as RuntimeHotUpdaterAPI,
-  );
+  const metadata = getHotUpdaterCoreMetadata(hotUpdater);
   if (!metadata) {
     throw new Error(
       "Database tooling requires a hotUpdater instance created by @hot-updater/server.",

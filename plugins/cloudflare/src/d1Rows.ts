@@ -1,10 +1,11 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
   DatabaseModel,
   DatabaseRow,
 } from "@hot-updater/plugin-core";
+
+type BundleEventPersistenceRow = DatabaseRow<"bundle_events">;
 
 class InvalidD1RowError extends Error {
   readonly name = "InvalidD1RowError";
@@ -115,7 +116,9 @@ const patchRow = (row: Record<string, unknown>): BundlePatchRow => ({
   order_index: numberValue(row, "order_index", "bundle_patches"),
 });
 
-const bundleEventRow = (row: Record<string, unknown>): BundleEventRow => {
+const bundleEventRow = (
+  row: Record<string, unknown>,
+): BundleEventPersistenceRow => {
   const type = stringValue(row, "type", "bundle_events");
   const fromBundleId = nullableString(row, "from_bundle_id", "bundle_events");
   const updateStrategy = nullableString(
@@ -195,7 +198,7 @@ export function parseD1Row(
 export function parseD1Row(
   model: "bundle_events",
   value: unknown,
-): BundleEventRow;
+): BundleEventPersistenceRow;
 export function parseD1Row(
   model: DatabaseModel,
   value: unknown,

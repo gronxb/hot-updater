@@ -1,4 +1,10 @@
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type AppUpdateInfo,
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../../../packages/server/src/index";
@@ -7,16 +13,40 @@ import { mockDatabase, mockStorage } from "./index";
 
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
+class InvalidUpdateResponseError extends Error {}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isUpdateResponse = (
+  value: unknown,
+): value is AppUpdateInfo | UpdateInfo | null => {
+  if (value === null) return true;
+  if (!isRecord(value) || typeof value.status !== "string") return false;
+  if (value.status === "UP_TO_DATE") return true;
+  return (
+    (value.status === "ROLLBACK" || value.status === "UPDATE") &&
+    typeof value.id === "string" &&
+    typeof value.shouldForceUpdate === "boolean" &&
+    (value.message === null || typeof value.message === "string") &&
+    (value.fileHash === null || typeof value.fileHash === "string") &&
+    (value.fileUrl === null ||
+      typeof value.fileUrl === "string" ||
+      value.storageUri === null ||
+      typeof value.storageUri === "string")
+  );
+};
+
 const createTestHotUpdater = () =>
   createHotUpdater({
     database: mockDatabase({
       latency: { min: 0, max: 0 },
     }),
-    storages: [mockStorage({})],
+    storages: [mockStorage({})()],
     basePath: HOT_UPDATER_BASE_PATH,
-    routes: {
-      updateCheck: true,
+    coreRoutes: {
       bundles: false,
+      updateCheck: true,
     },
   });
 
@@ -69,7 +99,9 @@ describe("cloudflare worker runtime integration", () => {
       new Request(`https://example.com${createCanonicalPath(args)}`),
     );
 
-    return (await response.json()) as any;
+    const result: unknown = await response.json();
+    if (!isUpdateResponse(result)) throw new InvalidUpdateResponseError();
+    return result;
   };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });

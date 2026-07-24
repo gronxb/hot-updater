@@ -1,28 +1,27 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
-import {
-  type AnalyticsRouteCapability,
-  warnAnalyticsRoutesUnavailable,
-} from "./db/analyticsCapability";
-import { BundleEventScanLimitExceededError } from "./db/bundleEventScan";
-import { supportsAnalytics } from "./db/types";
-import { createAnalyticsRouteHandlers } from "./handlerAnalyticsRoutes";
-import { createBundleRouteHandlers } from "./handlerBundleRoutes";
-import {
-  HandlerBadRequestError,
-  HandlerPayloadTooLargeError,
-} from "./handlerErrors";
-import { createEventIngestionRouteHandlers } from "./handlerEventIngestionRoutes";
-import type {
-  HandlerAPI,
-  HandlerOptions,
-  HandlerRoutes,
-  RouteHandler,
-} from "./handlerTypes";
-import { createUpdateRouteHandlers } from "./handlerUpdateRoutes";
-import { addRoute, createRouter, findRoute } from "./internalRouter";
+import { createCoreServerRoutes } from "./coreRoutes";
+import type { HandlerAPI, HandlerOptions } from "./handlerTypes";
+import { selectAuthenticationProvider } from "./kernel/authentication";
+import type { HotUpdaterMatchedRoute } from "./kernel/contracts";
+import { createCoreRouteDescriptors } from "./kernel/coreRoutes";
+import { executeKernelRequest } from "./kernel/execute";
+import { compileVersionMetadata } from "./kernel/metadata";
+import { compileRoutes } from "./kernel/routeCompiler";
+import { normalizeBasePath } from "./route";
 
-export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
+export type { HandlerAPI, HandlerOptions } from "./handlerTypes";
+
+const matchedRoute = (
+  route: ReturnType<typeof createCoreServerRoutes>[number],
+): HotUpdaterMatchedRoute =>
+  Object.freeze({
+    access: route.access,
+    id: route.id,
+    method: route.method,
+    params: Object.freeze({}),
+    pattern: route.path,
+  });
 
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
@@ -31,158 +30,26 @@ export function createHandler<TContext = unknown>(
   request: Request,
   context?: HotUpdaterContext<TContext>,
 ) => Promise<Response> {
-  const basePath = options.basePath ?? "/api";
-  const routeOptions = {
-    updateCheck: options.routes?.updateCheck ?? true,
-    bundles: options.routes?.bundles ?? false,
-    analytics: options.routes?.analytics ?? false,
-  } satisfies HandlerRoutes;
-  const analyticsSupported = supportsAnalytics(api);
-  const analyticsRoutesEnabled =
-    analyticsSupported && routeOptions.analytics === true;
-  if (routeOptions.analytics && !analyticsSupported) {
-    warnAnalyticsRoutesUnavailable(api);
-  }
-  const mountedAnalyticsRoutes = {
-    eventIngestion: analyticsRoutesEnabled,
-    analyticsQueries: analyticsRoutesEnabled,
-  } satisfies AnalyticsRouteCapability;
-  const router = createRouter<string>();
-  const routeHandlers: Record<string, RouteHandler<TContext>> = {
-    ...createUpdateRouteHandlers<TContext>(mountedAnalyticsRoutes),
-    ...createBundleRouteHandlers<TContext>(),
-    ...createEventIngestionRouteHandlers<TContext>(),
-    ...createAnalyticsRouteHandlers<TContext>(),
-  };
+  const basePath = normalizeBasePath(options.basePath ?? "/api");
+  const metadata = compileVersionMetadata({ contributions: [] });
+  const routes = createCoreServerRoutes({
+    api,
+    descriptors: createCoreRouteDescriptors(options.coreRoutes),
+    resolveMetadata: () => metadata,
+  });
+  const router = compileRoutes(routes);
+  const authentication = selectAuthenticationProvider({
+    providers: [],
+    routes: routes.map(matchedRoute),
+  });
 
-  addRoute(router, "GET", "/version", "version");
-  if (routeOptions.updateCheck) {
-    addRoute(
+  return (request, context) =>
+    executeKernelRequest({
+      authentication,
+      basePath,
+      middleware: [],
+      platformContext: context,
+      request,
       router,
-      "GET",
-      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-      "fingerprintUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
-      "fingerprintUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
-      "appVersionUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
-      "appVersionUpdateWithCohort",
-    );
-  }
-
-  if (mountedAnalyticsRoutes.eventIngestion) {
-    addRoute(router, "POST", "/events", "appendBundleEvent");
-  }
-
-  if (mountedAnalyticsRoutes.analyticsQueries) {
-    addRoute(
-      router,
-      "GET",
-      "/api/bundles/:id/events/summary",
-      "getBundleEventSummary",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/api/bundles/:id/events/analytics",
-      "getBundleEventAnalytics",
-    );
-    addRoute(router, "GET", "/api/installations", "searchInstallations");
-    addRoute(
-      router,
-      "GET",
-      "/api/installations/overview",
-      "getBundleEventOverview",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/api/installations/active",
-      "getActiveInstallationOverview",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/api/installations/:installId/events",
-      "getInstallationHistory",
-    );
-  }
-
-  if (routeOptions.bundles) {
-    addRoute(router, "GET", "/api/bundles/channels", "getChannels");
-    addRoute(router, "GET", "/api/bundles/:id", "getBundle");
-    addRoute(router, "GET", "/api/bundles", "getBundles");
-    addRoute(router, "POST", "/api/bundles", "createBundles");
-    addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
-    addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
-  }
-
-  return async (request, context): Promise<Response> => {
-    try {
-      const path = new URL(request.url).pathname;
-      const routePath = path.startsWith(basePath)
-        ? path.slice(basePath.length)
-        : path;
-      const match = findRoute(router, request.method, routePath);
-      if (!match) {
-        return new Response(JSON.stringify({ error: "Not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      const handler = routeHandlers[match.data];
-      if (!handler) {
-        return new Response(JSON.stringify({ error: "Handler not found" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      return await handler(match.params, request, api, context);
-    } catch (error) {
-      if (error instanceof HandlerBadRequestError) {
-        return new Response(JSON.stringify({ error: error.message }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (error instanceof HandlerPayloadTooLargeError) {
-        return new Response(JSON.stringify({ error: error.message }), {
-          status: 413,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (error instanceof BundleEventScanLimitExceededError) {
-        return new Response(
-          JSON.stringify({
-            error: {
-              code: "ANALYTICS_SCAN_LIMIT_EXCEEDED",
-              limit: error.limit,
-            },
-          }),
-          {
-            status: 503,
-            headers: { "Content-Type": "application/json" },
-          },
-        );
-      }
-      console.error("Hot Updater handler error:", error);
-      return new Response(JSON.stringify({ error: "Internal server error" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-  };
+    });
 }

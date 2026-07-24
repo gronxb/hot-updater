@@ -1,7 +1,7 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  DatabaseRow,
   DatabaseImplementationResult,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
@@ -11,10 +11,12 @@ import {
   queryFirebaseDatabaseRows,
 } from "./firebaseDatabaseQuery";
 
+type BundleEventPersistenceRow = DatabaseRow<"bundle_events">;
+
 export interface FirebaseDatabaseSnapshot {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
-  readonly bundleEvents: Map<string, BundleEventRow>;
+  readonly bundleEvents: Map<string, BundleEventPersistenceRow>;
 }
 
 export class FirebaseDatabaseConstraintError extends Error {

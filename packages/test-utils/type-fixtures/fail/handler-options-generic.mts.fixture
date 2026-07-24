@@ -1,0 +1,7 @@
+import type { HandlerOptions } from "@hot-updater/server";
+
+type InvalidHandlerOptions = HandlerOptions<{
+  readonly requestId: string;
+}>;
+
+void (undefined satisfies InvalidHandlerOptions);

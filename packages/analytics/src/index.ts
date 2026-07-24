@@ -1,0 +1,35 @@
+export {
+  analytics,
+  analyticsLegacyAliases,
+  type AnalyticsAPI,
+  type AnalyticsFeature,
+  type AnalyticsFeatureAvailable,
+  type AnalyticsFeatureKind,
+  type AnalyticsFeatureUnavailable,
+  type AnalyticsOptions,
+  type StrictAnalyticsFeatureKind,
+  type StrictAnalyticsOptions,
+  type WarnAnalyticsOptions,
+} from "./analytics";
+export type {
+  ActiveInstallationInput,
+  ActiveInstallationOverview,
+  ActiveInstallationWindow,
+  AnalyticsCohortPoint,
+  AnalyticsSeriesPoint,
+  BundleEventAnalyticsResult,
+  BundleEventAnalyticsWindow,
+  BundleEventOverview,
+  BundleEventSummary,
+  CreateBundleEventRequest,
+  CreateBundleEventRequestBase,
+  InstallationHistoryRow,
+  InstallationSearchRow,
+  OffsetPaginationResult,
+} from "./domain";
+export {
+  AnalyticsScanLimitExceededError,
+  AnalyticsUnavailableError,
+  InvalidAnalyticsCapabilityError,
+  InvalidAnalyticsProviderError,
+} from "./errors";

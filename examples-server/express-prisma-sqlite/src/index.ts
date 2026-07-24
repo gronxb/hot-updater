@@ -1,35 +1,26 @@
 import cors from "cors";
 import express from "express";
-import { closeDatabase, hotUpdater } from "./db";
-import { toNodeHandler } from "@hot-updater/server/node";
+
+import { closeDatabase } from "./db";
+import { setupRoutes } from "./routes";
 
 const app = express();
 const port = process.env.PORT || 3002;
 
-const isAuthorizedManagementRequest = (req: express.Request) => {
-  const token = process.env.HOT_UPDATER_AUTH_TOKEN;
-  return Boolean(token) && req.get("Authorization") === `Bearer ${token}`;
-};
-
 // Middleware
 app.use(cors());
-app.use(express.json());
 
 // Health check endpoint
 app.get("/", (_req, res) => {
   res.json({ status: "ok", message: "Hot Updater Server (Express)" });
 });
 
-// Hot Updater routes
-app.use("/hot-updater/api", (req, res, next) => {
-  if (!isAuthorizedManagementRequest(req)) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
+const hotUpdaterRoutes = express.Router();
+setupRoutes(hotUpdaterRoutes);
+app.use(hotUpdaterRoutes);
 
-  next();
-});
-app.all("/hot-updater/*", toNodeHandler(hotUpdater));
+// Parse bodies only after Hot Updater has authenticated and handled its routes.
+app.use(express.json());
 
 if (process.env.NODE_ENV === "test") {
   app.post("/shutdown", (_req, res) => {

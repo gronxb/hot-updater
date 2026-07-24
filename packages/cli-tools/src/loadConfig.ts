@@ -1,21 +1,18 @@
 import path from "path";
 
-import type {
-  ConfigInput,
-  Platform,
-  RequiredDeep,
-} from "@hot-updater/plugin-core";
+import type { ConfigInput, RequiredDeep } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
 import { getCwd } from "./cwd.js";
+import {
+  parseConfig,
+  type HotUpdaterConfigOptions,
+} from "./loadConfigParser.js";
 
-export type HotUpdaterConfigOptions = {
-  platform: Platform;
-  channel: string;
-} | null;
+export type { HotUpdaterConfigOptions } from "./loadConfigParser.js";
 
 const missingDatabase = createDatabasePlugin({
   name: "missingDatabase",
@@ -171,13 +168,7 @@ const getConfigLoaderOptions = (
       {
         files: "hot-updater.config",
         extensions: ["js", "cjs", "ts", "cts", "mjs", "mts"],
-        rewrite: async (config: unknown) => {
-          return typeof config === "function"
-            ? (config as (options: HotUpdaterConfigOptions) => ConfigInput)(
-                options,
-              )
-            : (config as ConfigInput);
-        },
+        parser: (filepath) => parseConfig(filepath, options),
       },
     ],
   };

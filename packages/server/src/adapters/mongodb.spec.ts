@@ -1,14 +1,9 @@
 import { NIL_UUID } from "@hot-updater/core";
-import {
-  createDatabaseClient,
-  databaseAnalyticsSupport,
-} from "@hot-updater/plugin-core";
+import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import { createBundleRowFixture } from "../../../test-utils/src/databaseTestFixtures";
 import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
-import { createDatabasePluginCore } from "../db/databasePluginCore";
-import { supportsAnalytics } from "../db/types";
 import { mongoAdapter } from "./mongodb";
 import { createMongoBundleWhere } from "./mongodbQuery";
 import { createMongoTestHarness } from "./mongodbTestClient";
@@ -23,7 +18,7 @@ setupDatabasePluginTestSuite({
   dispose: () => harness.close(),
 });
 
-const createBundleEventRow = (
+const createAppendOnlyRow = (
   id: string,
   installId: string,
   receivedAtMs: number,
@@ -48,15 +43,12 @@ const createBundleEventRow = (
 describe("mongoAdapter capabilities", () => {
   it("returns an plugin object without an unsafe transaction fallback", () => {
     const plugin = mongoAdapter({ client: harness.client });
-    const core = createDatabasePluginCore(plugin, async () => null);
 
     expect(plugin).toBeTypeOf("object");
     expect(plugin.name).toBe("mongodb");
     expect(plugin.adapterName).toBe("mongodb");
     expect(plugin.provider).toBe("mongodb");
     expect(plugin.transaction).toBeUndefined();
-    expect(Reflect.get(plugin, databaseAnalyticsSupport)).toBe(true);
-    expect(supportsAnalytics(core.api)).toBe(true);
   });
 
   it("removes a patch inserted concurrently with bundle deletion", async () => {
@@ -182,19 +174,19 @@ describe("mongoAdapter bundle_events distinct semantics", () => {
 
     await plugin.create({
       model: "bundle_events",
-      data: createBundleEventRow("event-a-1", "install-a", 100),
+      data: createAppendOnlyRow("event-a-1", "install-a", 100),
     });
     await plugin.create({
       model: "bundle_events",
-      data: createBundleEventRow("event-a-2", "install-a", 200),
+      data: createAppendOnlyRow("event-a-2", "install-a", 200),
     });
     await plugin.create({
       model: "bundle_events",
-      data: createBundleEventRow("event-b-1", "install-b", 150),
+      data: createAppendOnlyRow("event-b-1", "install-b", 150),
     });
     await plugin.create({
       model: "bundle_events",
-      data: createBundleEventRow("event-b-2", "install-b", 150),
+      data: createAppendOnlyRow("event-b-2", "install-b", 150),
     });
 
     await expect(
@@ -221,12 +213,12 @@ describe("mongoAdapter bundle_events distinct semantics", () => {
 
     await plugin.create({
       model: "bundle_events",
-      data: createBundleEventRow("event-null", "install-a", 100),
+      data: createAppendOnlyRow("event-null", "install-a", 100),
     });
     await plugin.create({
       model: "bundle_events",
       data: {
-        ...createBundleEventRow("event-user", "install-b", 200),
+        ...createAppendOnlyRow("event-user", "install-b", 200),
         user_id: "user-123",
       },
     });

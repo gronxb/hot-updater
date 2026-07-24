@@ -1,0 +1,6 @@
+export type Equal<TLeft, TRight> =
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
+    ? true
+    : false;
+
+export const assertType = <_TValue extends true>(): undefined => undefined;

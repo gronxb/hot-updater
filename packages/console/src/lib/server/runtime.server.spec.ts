@@ -16,23 +16,39 @@ import {
   searchInstallations,
 } from "./runtime.server";
 
-const createRuntime = () => ({
-  appendBundleEvent: vi.fn(),
-  getActiveInstallationOverview: vi.fn(),
-  getBundleEventSummary: vi.fn(),
-  getBundleEventAnalytics: vi.fn(),
-  getBundleEventOverview: vi.fn(),
-  searchInstallations: vi.fn(),
-  getInstallationHistory: vi.fn(),
-});
+const createRuntime = () => {
+  const methods = {
+    appendBundleEvent: vi.fn(),
+    getActiveInstallationOverview: vi.fn(),
+    getBundleEventSummary: vi.fn(),
+    getBundleEventAnalytics: vi.fn(),
+    getBundleEventOverview: vi.fn(),
+    searchInstallations: vi.fn(),
+    getInstallationHistory: vi.fn(),
+  };
+  return {
+    ...methods,
+    features: {
+      analytics: {
+        ...methods,
+        status: "available",
+      },
+    },
+  };
+};
 
 describe("analytics runtime input validation", () => {
-  it("rejects a remote that internally reports Analytics unsupported", async () => {
+  it("rejects an unavailable Analytics feature", async () => {
     // Given
-    const runtime = Object.assign(createRuntime(), {
-      [Symbol.for("@hot-updater/internal/analytics-capability-probe")]: () =>
-        Promise.resolve({ analytics: false }),
-    });
+    const runtime = {
+      ...createRuntime(),
+      features: {
+        analytics: {
+          reason: "missing-provider-capability",
+          status: "unavailable",
+        },
+      },
+    };
 
     // When
     const result = getBundleEventSummary(runtime, { bundleId: "bundle-1" });

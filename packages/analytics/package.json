@@ -1,0 +1,64 @@
+{
+  "name": "@hot-updater/analytics",
+  "version": "0.35.6",
+  "type": "module",
+  "description": "Analytics feature for Hot Updater",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./legacy-server": {
+      "import": {
+        "types": "./dist/legacy-server/index.d.mts",
+        "default": "./dist/legacy-server/index.mjs"
+      },
+      "require": {
+        "types": "./dist/legacy-server/index.d.cts",
+        "default": "./dist/legacy-server/index.cjs"
+      }
+    },
+    "./provider": {
+      "import": {
+        "types": "./dist/provider/index.d.mts",
+        "default": "./dist/provider/index.mjs"
+      },
+      "require": {
+        "types": "./dist/provider/index.d.cts",
+        "default": "./dist/provider/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:"
+  }
+}

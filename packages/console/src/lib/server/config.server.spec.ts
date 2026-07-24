@@ -79,7 +79,10 @@ describe("config.server", () => {
 
     expect(loadConfigMock).toHaveBeenCalledTimes(1);
     expect(createHotUpdaterMock).toHaveBeenCalledTimes(1);
-    expect(createHotUpdaterMock).toHaveBeenCalledWith({ database });
+    expect(createHotUpdaterMock).toHaveBeenCalledWith({
+      database: expect.objectContaining({ name: "db" }),
+      plugins: [expect.objectContaining({ id: "analytics" })],
+    });
     expect(storage).toHaveBeenCalledTimes(1);
     expect(first.databaseClient).toBe(second.databaseClient);
     expect(first.hotUpdater).toBe(second.hotUpdater);

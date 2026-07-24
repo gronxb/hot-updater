@@ -2,16 +2,11 @@ import type { AppUpdateAvailableInfo, AppUpdateInfo } from "@hot-updater/core";
 import semver from "semver";
 
 import {
-  type AnalyticsRouteCapability,
-  resolveReportedAnalyticsCapability,
-} from "./db/analyticsCapability";
-import {
   decodeMaybe,
   requirePlatformParam,
   requireRouteParam,
 } from "./handlerParameters";
 import type { RouteHandler } from "./handlerTypes";
-import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 const SDK_VERSION_HEADER = "Hot-Updater-SDK-Version";
 const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.31.0";
@@ -39,27 +34,10 @@ const serializeUpdateInfo = (
   return JSON.stringify(null);
 };
 
-export const createUpdateRouteHandlers = <TContext>(
-  mountedRouteCapability: AnalyticsRouteCapability,
-): Record<string, RouteHandler<TContext>> => ({
-  version: async (_params, _request, api) => {
-    const capabilities = await resolveReportedAnalyticsCapability(
-      api,
-      mountedRouteCapability.eventIngestion,
-      mountedRouteCapability.analyticsQueries,
-    );
-    return new Response(
-      JSON.stringify({
-        version: HOT_UPDATER_SERVER_VERSION,
-        capabilities,
-      }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  },
-
+export const createUpdateRouteHandlers = <TContext>(): Record<
+  string,
+  RouteHandler<TContext>
+> => ({
   fingerprintUpdateWithCohort: async (params, request, api, context) => {
     const updateInfo = await api.getAppUpdateInfo(
       {

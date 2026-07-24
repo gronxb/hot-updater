@@ -38,9 +38,6 @@ import { hotUpdater } from "./hotUpdater"; // [!code ++]
 const app = express();
 const handler = toNodeHandler(hotUpdater); // [!code ++]
 
-// Preserve original JSON bytes for the event-ingestion size limit. // [!code ++]
-app.use("/hot-updater", express.raw({ type: "application/json" })); // [!code ++]
-
 const authMiddleware = (req, res, next) => {
   // [!code ++]
   if (
@@ -52,12 +49,29 @@ const authMiddleware = (req, res, next) => {
   next(); // [!code ++]
 }; // [!code ++]
 
+// 1. Authenticate protected routes from headers before reading the body. // [!code ++]
 app.use("/hot-updater/api", authMiddleware); // [!code ++]
 
+// 2. Give Hot Updater the unread Node request stream. // [!code ++]
 app.all("/hot-updater/*", handler); // [!code ++]
+
+// 3. Install body parsers only for unrelated application routes. // [!code ++]
+app.use("/api", express.json()); // [!code ++]
 
 app.listen(3000);
 ```
+
+Do not install `express.raw()`, `express.json()`, or another body parser on
+`/hot-updater` before authentication. `toNodeHandler` forwards the unread
+`IncomingMessage` as a lazy stream, allowing authentication and declared-size
+checks to finish before the kernel pulls any bytes. The authentication
+middleware must inspect request heads only: do not read `req.body`, pipe the
+request, or attach `data` listeners.
+
+If the application already has a global body parser, mount the Hot Updater
+authentication and handler before it, as shown above, or scope the parser to
+paths that cannot match `/hot-updater`. Passing a pre-parsed protected body is
+unsupported.
 
 Set your auth token in environment variables:
 
@@ -84,9 +98,9 @@ export default defineConfig({
 ## API Endpoints
 
 The server automatically creates these endpoints. Bundle management endpoints
-are mounted only when `routes.bundles` is enabled. Event ingestion and
-Analytics query endpoints are mounted when `routes.analytics` is enabled and
-the database supports Analytics:
+are mounted only when `coreRoutes.bundles` is enabled. Event ingestion and
+Analytics query endpoints are mounted by an installed `analytics()` plugin
+when its provider is available:
 
 | Method | Endpoint                                                                              | Description                                                         |
 | ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |

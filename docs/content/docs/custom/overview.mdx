@@ -10,7 +10,7 @@ version: "v0.22.0"
 Install the server package and standalone plugin.
 
 ```package-install
-npm install @hot-updater/server @hot-updater/standalone --save-dev
+npm install @hot-updater/analytics @hot-updater/server @hot-updater/standalone --save-dev
 ```
 
 ## Architecture
@@ -92,46 +92,55 @@ export const hotUpdater = createHotUpdater({
 
 The server automatically uses the correct plugin to decode each `storageUri` based on its format.
 
-## Route Groups
+## Core Routes and Features
 
-`createHotUpdater` exposes three configurable route groups:
+`createHotUpdater` exposes two configurable core route groups:
 
 - `updateCheck`: update-check endpoints used by React Native clients
 - `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin
-- `analytics`: client event ingestion and Analytics/installation queries
 
-`updateCheck` is mounted by default. `bundles` and `analytics` are disabled by
-default and must be enabled explicitly. Protect all routes with framework
-middleware. The `/version` endpoint is always mounted for diagnostics. Enabling
-`analytics` with an unsupported database logs a warning and mounts no Analytics
-routes.
+`updateCheck` is mounted by default and `bundles` is disabled by default.
+Analytics is a separate feature manifest with a separate provider. Protect
+management and query routes with a kernel authentication plugin, or declare
+them public explicitly and protect them with framework middleware. The
+`/version` endpoint is always mounted for diagnostics.
 
 ```typescript title="src/hotUpdater.ts"
+import { analytics } from "@hot-updater/analytics";
+import { withAnalyticsProvider } from "@hot-updater/analytics/provider";
+
 export const hotUpdater = createHotUpdater({
-  database: kyselyAdapter({ db, provider: "sqlite" }),
+  database: withAnalyticsProvider(
+    kyselyAdapter({ db, provider: "sqlite" }),
+  ),
   storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
-  routes: {
+  coreRoutes: {
     updateCheck: true,
-    bundles: true,
-    analytics: true,
+    bundles: { access: { kind: "public" } },
   },
+  plugins: [
+    analytics({
+      missingCapability: "error",
+      queryAccess: "public",
+    }),
+  ],
 });
 ```
 
-If you want to hide bundle management endpoints but keep `/version`, disable the
-`bundles` group:
+If you want only update checks and `/version`, omit Analytics and disable the
+bundle-management group:
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "sqlite" }),
   storages: [s3Storage({ /* storage config */ })],
   basePath: "/hot-updater",
-  routes: {
+  coreRoutes: {
     updateCheck: true,
     bundles: false,
-    analytics: false,
   },
+  plugins: [],
 });
 ```
 

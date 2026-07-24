@@ -1,7 +1,7 @@
 import type {
-  BundleEventRow,
   BundlePatchRow,
   BundleRow,
+  DatabaseRow,
 } from "@hot-updater/plugin-core";
 import type { ClientSession, Collection, MongoClient } from "mongodb";
 
@@ -34,7 +34,7 @@ export const activeBundleFilter = (where: object) => ({
 export type MongoCollections = {
   readonly bundles: Collection<MongoBundleDocument>;
   readonly bundlePatches: Collection<BundlePatchRow>;
-  readonly bundleEvents: Collection<BundleEventRow>;
+  readonly appendOnlyRows: Collection<DatabaseRow<"bundle_events">>;
 };
 
 export const createMongoCollections = (
@@ -44,12 +44,13 @@ export const createMongoCollections = (
   return {
     bundles: database.collection<MongoBundleDocument>("bundles"),
     bundlePatches: database.collection<BundlePatchRow>("bundle_patches"),
-    bundleEvents: database.collection<BundleEventRow>("bundle_events"),
+    appendOnlyRows:
+      database.collection<DatabaseRow<"bundle_events">>("bundle_events"),
   };
 };
 
 export const mongoSessionOptions = (session?: ClientSession) =>
   session === undefined ? {} : { session };
 
-export const createMongoEventWhere = (where: unknown): object =>
+export const createMongoAppendOnlyWhere = (where: unknown): object =>
   createMongoBundleWhere(where as never) as object;
