@@ -1,6 +1,9 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
-import type { AnalyticsRouteCapability } from "./db/analyticsCapability";
+import {
+  type AnalyticsRouteCapability,
+  warnAnalyticsRoutesUnavailable,
+} from "./db/analyticsCapability";
 import { BundleEventScanLimitExceededError } from "./db/bundleEventScan";
 import { supportsAnalytics } from "./db/types";
 import { createAnalyticsRouteHandlers } from "./handlerAnalyticsRoutes";
@@ -35,9 +38,14 @@ export function createHandler<TContext = unknown>(
     analytics: options.routes?.analytics ?? false,
   } satisfies HandlerRoutes;
   const analyticsSupported = supportsAnalytics(api);
+  const analyticsRoutesEnabled =
+    analyticsSupported && routeOptions.analytics === true;
+  if (routeOptions.analytics && !analyticsSupported) {
+    warnAnalyticsRoutesUnavailable(api);
+  }
   const mountedAnalyticsRoutes = {
-    eventIngestion: analyticsSupported,
-    analyticsQueries: analyticsSupported && routeOptions.analytics === true,
+    eventIngestion: analyticsRoutesEnabled,
+    analyticsQueries: analyticsRoutesEnabled,
   } satisfies AnalyticsRouteCapability;
   const router = createRouter<string>();
   const routeHandlers: Record<string, RouteHandler<TContext>> = {

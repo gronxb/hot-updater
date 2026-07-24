@@ -374,7 +374,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     expect(row).not.toBeNull();
   });
 
-  it("reports ingestion without exposing Analytics queries", async () => {
+  it("exposes the managed Analytics route group by default", async () => {
     const versionResponse = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/version`),
       env,
@@ -389,10 +389,10 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await expect(versionResponse.json()).resolves.toMatchObject({
       capabilities: {
         eventIngestion: true,
-        analyticsQueries: false,
+        analyticsQueries: true,
       },
     });
-    expect(queryResponse.status).toBe(404);
+    expect(queryResponse.status).toBe(200);
   });
 
   it("does not support the legacy exact path", async () => {

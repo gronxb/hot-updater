@@ -84,8 +84,9 @@ export default defineConfig({
 ## API Endpoints
 
 The server automatically creates these endpoints. Bundle management endpoints
-are mounted only when `routes.bundles` is enabled. Analytics query endpoints
-are mounted independently when `routes.analytics` is enabled:
+are mounted only when `routes.bundles` is enabled. Event ingestion and
+Analytics query endpoints are mounted when `routes.analytics` is enabled and
+the database supports Analytics:
 
 | Method | Endpoint                                                                              | Description                                                         |
 | ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |

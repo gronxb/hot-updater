@@ -83,8 +83,10 @@ export interface HandlerRoutes {
    */
   readonly bundles: boolean;
   /**
-   * Mounts the Analytics and installation query endpoints used by Console:
+   * Mounts client event ingestion and the Analytics/installation query
+   * endpoints used by Console:
    *
+   * - `POST /events`
    * - `GET /api/bundles/:id/events/summary`
    * - `GET /api/bundles/:id/events/analytics`
    * - `GET /api/installations`
@@ -92,8 +94,9 @@ export interface HandlerRoutes {
    * - `GET /api/installations/active`
    * - `GET /api/installations/:installId/events`
    *
-   * These endpoints require a database with Analytics support. This field does
-   * not control `POST /events`, which is mounted automatically when supported.
+   * These endpoints require a database with Analytics support. Enabling this
+   * option with an unsupported database logs a warning and mounts no Analytics
+   * routes.
    *
    * @default false
    */

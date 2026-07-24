@@ -85,23 +85,26 @@ those arrays. Servers that cannot guarantee an atomic batch reject it before
 inserting any bundle. The standalone adapter uses this route for transactions
 that contain only new bundles; mixed multi-bundle mutations remain unsupported.
 
-Client event ingestion is mounted automatically when the configured database
-supports Analytics. The managed Cloudflare, Firebase, and Supabase presets
-therefore mount `POST /events` by default so mobile Analytics works without
-additional server configuration. This release does not add route-specific
-authentication; event payloads remain untrusted telemetry and deployments are
-responsible for their framework or provider access controls, rate limits,
-quotas, logging, and retention.
+`routes.analytics: true` now mounts client event ingestion together with the
+Analytics and installation query routes when the configured database supports
+Analytics. Enabling it with an unsupported database logs a warning and mounts
+none of those routes. The managed Cloudflare, Firebase, and Supabase presets
+enable the group by default so mobile Analytics works without additional server
+configuration.
+
+This release does not add route-specific authentication. Event payloads remain
+untrusted telemetry, and managed Analytics query routes are public by default.
+Deployments are responsible for their framework or provider access controls,
+rate limits, quotas, logging, and retention.
 
 The managed Firebase template no longer emits the unsupported Functions
 `gen` property. Firebase Functions v2 continues to be selected by the
 `firebase-functions/v2` entrypoint, and the generated project now passes
 Firebase CLI schema validation and emulator trigger discovery.
 
-Analytics and installation query routes are also closed by default. Self-hosted
-servers expose them explicitly with `routes.analytics: true`, independently
-from bundle management routes. Event ingestion is independent of that query
-flag and follows database Analytics support automatically.
+Self-hosted servers keep the Analytics route group closed by default and expose
+it explicitly with `routes.analytics: true`, independently from bundle
+management routes.
 
 `GET /version` now distinguishes structural database Analytics support from
 the mounted routes through `capabilities.analytics`,

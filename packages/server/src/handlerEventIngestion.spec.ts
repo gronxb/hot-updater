@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { internalAnalyticsCapabilityProbe } from "./db/analyticsCapability";
 import { createHandler } from "./handler";
@@ -12,6 +12,11 @@ import {
 const createEventHandler = (api: ReturnType<typeof createApi>) =>
   createHandler(api, {
     basePath: "/hot-updater",
+    routes: {
+      updateCheck: true,
+      bundles: false,
+      analytics: true,
+    },
   });
 
 describe("createHandler event ingestion", () => {
@@ -82,6 +87,7 @@ describe("createHandler event ingestion", () => {
   );
 
   it("does not mount event routes when the database omits the capability", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const {
       appendBundleEvent: _appendBundleEvent,
       getBundleEventSummary: _getBundleEventSummary,
@@ -118,9 +124,12 @@ describe("createHandler event ingestion", () => {
     expect(appendResponse.status).toBe(404);
     expect(summaryResponse.status).toBe(404);
     expect(bundlesResponse.status).toBe(200);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 
   it("rejects standalone ingestion before reading the body when the upstream route is unavailable", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const api = createApi();
     Reflect.set(api, internalAnalyticsCapabilityProbe, async () => ({
       analytics: true,
@@ -136,6 +145,8 @@ describe("createHandler event ingestion", () => {
 
     expect(response.status).toBe(404);
     expect(api.appendBundleEvent).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 
   it("returns 400 JSON for invalid event payloads", async () => {
@@ -226,7 +237,7 @@ describe("createHandler event ingestion", () => {
     });
   });
 
-  it("mounts event ingestion independently from update-check routes", async () => {
+  it("does not mount event ingestion when Analytics routes are disabled", async () => {
     const api = createApi();
     const handler = createHandler(api, {
       basePath: "/hot-updater",
@@ -242,6 +253,7 @@ describe("createHandler event ingestion", () => {
       }),
     );
 
-    expect(response.status).toBe(204);
+    expect(response.status).toBe(404);
+    expect(api.appendBundleEvent).not.toHaveBeenCalled();
   });
 });

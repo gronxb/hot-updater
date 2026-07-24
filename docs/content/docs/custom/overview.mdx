@@ -98,13 +98,13 @@ The server automatically uses the correct plugin to decode each `storageUri` bas
 
 - `updateCheck`: update-check endpoints used by React Native clients
 - `bundles`: bundle management endpoints used by the CLI `standaloneRepository` plugin
-- `analytics`: Analytics and installation query endpoints used by Console
+- `analytics`: client event ingestion and Analytics/installation queries
 
 `updateCheck` is mounted by default. `bundles` and `analytics` are disabled by
 default and must be enabled explicitly. Protect all routes with framework
-middleware. The `/version` endpoint is always mounted for diagnostics. When the
-database supports Analytics, event ingestion is mounted automatically and
-remains independent from Analytics query routes.
+middleware. The `/version` endpoint is always mounted for diagnostics. Enabling
+`analytics` with an unsupported database logs a warning and mounts no Analytics
+routes.
 
 ```typescript title="src/hotUpdater.ts"
 export const hotUpdater = createHotUpdater({

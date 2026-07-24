@@ -43,7 +43,7 @@ const hotUpdater = createHotUpdater<WorkerContext>({
   routes: {
     updateCheck: true,
     bundles: false,
-    analytics: false,
+    analytics: true,
   },
 });
 

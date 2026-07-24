@@ -568,7 +568,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     expect(persisted.empty).toBe(true);
   });
 
-  it("reports ingestion without exposing Analytics queries", async () => {
+  it("exposes the managed Analytics route group by default", async () => {
     const versionResponse = await invokeHandler(
       `${HOT_UPDATER_BASE_PATH}/version`,
     );
@@ -579,10 +579,10 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     await expect(versionResponse.json()).resolves.toMatchObject({
       capabilities: {
         eventIngestion: true,
-        analyticsQueries: false,
+        analyticsQueries: true,
       },
     });
-    expect(queryResponse.status).toBe(404);
+    expect(queryResponse.status).toBe(200);
   });
 
   it("does not support the legacy exact path", async () => {

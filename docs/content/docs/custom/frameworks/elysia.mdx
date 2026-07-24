@@ -74,7 +74,9 @@ export default defineConfig({
 ## API Endpoints
 
 The server automatically creates these endpoints. Bundle management endpoints
-under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled:
+under `/hot-updater/api/*` are mounted only when `routes.bundles` is enabled.
+Event ingestion and Analytics query endpoints are mounted when
+`routes.analytics` is enabled and the database supports Analytics:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|

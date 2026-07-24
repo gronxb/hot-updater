@@ -120,7 +120,7 @@ describe("createHandler update routes", () => {
       capabilities: {
         analytics: true,
         mode: "dedicated",
-        eventIngestion: true,
+        eventIngestion: false,
         analyticsQueries: false,
       },
     });

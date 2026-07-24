@@ -89,11 +89,11 @@ installations with the same `userId` remain separate installations.
 
 ## Configure a custom server
 
-Managed Cloudflare, Firebase, and Supabase presets mount public event ingestion
-by default so `analytics: true` works without additional server configuration.
-The managed presets still leave Analytics query routes disabled. Treat all
-reported identifiers as untrusted telemetry and configure provider-level rate
-limits, quotas, logging, and retention.
+Managed Cloudflare, Firebase, and Supabase presets enable the public Analytics
+route group by default so `analytics: true` works without additional server
+configuration. This includes event ingestion and Analytics query routes. Treat
+all reported identifiers as untrusted telemetry and configure provider-level
+access controls, rate limits, quotas, logging, and retention.
 
 For a custom server, configure an Analytics-capable database:
 
@@ -111,21 +111,23 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-When the database supports Analytics, the server mounts `POST /events`
-automatically. Hot Updater does not provide route-specific authentication in
-this release; protect it with the same framework or provider boundary used for
-other routes. Add rate limits and quotas at that boundary because event
-payloads are untrusted telemetry.
+When the database supports Analytics, `routes.analytics: true` mounts
+`POST /events` together with the Analytics and installation query routes.
+Enabling the option with an unsupported database logs a warning and mounts none
+of those routes. Hot Updater does not provide route-specific authentication in
+this release; protect the group with the same framework or provider boundary
+used for other routes. Add rate limits and quotas at that boundary because
+event payloads are untrusted telemetry.
 
 Standalone proxies also check the upstream `/version` capability before
 forwarding ingestion or query requests. An upstream route reported as
 unavailable remains unavailable locally, and the two route capabilities are
 preserved independently.
 
-`routes.analytics: true` mounts the Analytics and installation query routes
-used by Console. It is disabled by default and is independent from bundle
-management. Protect `/api/bundles/*/events*` and `/api/installations*` with the
-same framework authentication used for your other management routes.
+The Analytics route group is disabled by default and is independent from
+bundle management. Protect `/events`, `/api/bundles/*/events*`, and
+`/api/installations*` with the appropriate framework authentication or public
+telemetry controls for your deployment.
 
 `GET /version` reports these states independently:
 

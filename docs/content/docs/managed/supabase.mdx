@@ -165,10 +165,10 @@ export default HotUpdater.wrap({
 
 <Callout type="info">
 The managed Supabase runtime exposes the public update-check endpoints,
-`POST /events`, and `/version`. Management and Analytics query routes are not
+the Analytics route group, and `/version`. Bundle management routes are not
 mounted on the public function URL by default. The version response reports
-`eventIngestion: true` and `analyticsQueries: false`, independently from the
-database's structural Analytics support.
+`eventIngestion: true` and `analyticsQueries: true` because the database
+supports Analytics.
 </Callout>
 
 Enabling `analytics: true` in the app sends events to this public ingestion

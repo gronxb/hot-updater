@@ -39,7 +39,7 @@ const hotUpdater = createHotUpdater({
   routes: {
     updateCheck: true,
     bundles: false,
-    analytics: false,
+    analytics: true,
   },
 });
 

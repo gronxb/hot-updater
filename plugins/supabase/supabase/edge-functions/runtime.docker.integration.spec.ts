@@ -558,7 +558,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     ).resolves.toEqual({ installed: 1, recovered: 0 });
   });
 
-  it("reports ingestion without exposing Analytics queries", async () => {
+  it("exposes the managed Analytics route group by default", async () => {
     const versionResponse = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/version`,
     );
@@ -569,10 +569,10 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await expect(versionResponse.json()).resolves.toMatchObject({
       capabilities: {
         eventIngestion: true,
-        analyticsQueries: false,
+        analyticsQueries: true,
       },
     });
-    expect(queryResponse.status).toBe(404);
+    expect(queryResponse.status).toBe(200);
   });
 
   it("does not support the legacy exact path", async () => {

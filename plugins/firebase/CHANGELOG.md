@@ -10,9 +10,10 @@
 - Migrate legacy inline and scalar patch fields into `bundle_patches`, remove
   the legacy fields, and record database adapter version 2. This migration is
   forward-only; back up Firestore before upgrading.
-- Mount public `POST /events` ingestion on the managed Firebase function by
-  default while leaving Analytics query routes unmounted. Deployments remain
-  responsible for provider-level rate limits, quotas, logging, and retention.
+- Enable the public Analytics route group on the managed Firebase function by
+  default, including `POST /events` and Analytics queries. Deployments remain
+  responsible for provider-level access controls, rate limits, quotas, logging,
+  and retention.
 - Publish runtime factories from `@hot-updater/firebase/functions` and move the
   managed handler to `@hot-updater/firebase/functions/handler`.
 

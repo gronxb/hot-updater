@@ -74,7 +74,14 @@ describe("server node entry", () => {
     app.all(
       "/hot-updater/*",
       toNodeHandler({
-        handler: createHandler(api, { basePath: "/hot-updater" }),
+        handler: createHandler(api, {
+          basePath: "/hot-updater",
+          routes: {
+            updateCheck: true,
+            bundles: false,
+            analytics: true,
+          },
+        }),
       }),
     );
     const server = app.listen(0, "127.0.0.1");
@@ -123,7 +130,14 @@ describe("server node entry", () => {
     app.all(
       "/hot-updater/*",
       toNodeHandler({
-        handler: createHandler(api, { basePath: "/hot-updater" }),
+        handler: createHandler(api, {
+          basePath: "/hot-updater",
+          routes: {
+            updateCheck: true,
+            bundles: false,
+            analytics: true,
+          },
+        }),
       }),
     );
     const server = app.listen(0, "127.0.0.1");
@@ -172,7 +186,14 @@ describe("server node entry", () => {
     app.all(
       "/hot-updater/*",
       toNodeHandler({
-        handler: createHandler(api, { basePath: "/hot-updater" }),
+        handler: createHandler(api, {
+          basePath: "/hot-updater",
+          routes: {
+            updateCheck: true,
+            bundles: false,
+            analytics: true,
+          },
+        }),
       }),
     );
     const server = app.listen(0, "127.0.0.1");

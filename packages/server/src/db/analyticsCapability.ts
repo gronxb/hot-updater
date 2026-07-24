@@ -15,6 +15,16 @@ export const internalAnalyticsCapabilityProbe = Symbol.for(
   "@hot-updater/internal/analytics-capability-probe",
 );
 
+const warnedAnalyticsAPIs = new WeakSet<object>();
+
+export const warnAnalyticsRoutesUnavailable = (api: object): void => {
+  if (warnedAnalyticsAPIs.has(api)) return;
+  warnedAnalyticsAPIs.add(api);
+  console.warn(
+    "Hot Updater Analytics routes are enabled, but the configured database does not expose Analytics.",
+  );
+};
+
 export type ReportedAnalyticsCapability = (
   | { readonly analytics: false }
   | ({ readonly analytics: true } & AnalyticsCapability)
@@ -89,11 +99,15 @@ export const resolveAnalyticsRouteAPI = async <TContext>(
   const probe = Reflect.get(api, internalAnalyticsCapabilityProbe);
   if (typeof probe !== "function") return api;
   const capability: unknown = await Reflect.apply(probe, api, []);
-  return isReportedAnalyticsCapability(capability) &&
+  if (
+    isReportedAnalyticsCapability(capability) &&
     capability.analytics &&
     capability[route]
-    ? api
-    : null;
+  ) {
+    return api;
+  }
+  warnAnalyticsRoutesUnavailable(api);
+  return null;
 };
 
 export const resolveReportedAnalyticsCapability = async (

@@ -282,7 +282,7 @@ describe("runtime createHotUpdater", () => {
           analytics: true,
           mode: "bounded",
           maxMatchingRows: 50_000,
-          eventIngestion: true,
+          eventIngestion: false,
           analyticsQueries: false,
         },
       });

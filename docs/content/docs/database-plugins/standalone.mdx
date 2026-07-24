@@ -296,10 +296,11 @@ This mounts the bundle routes consumed by `standaloneRepository` under
 `/hot-updater/api/bundles*`. `routes.bundles: true` is the explicit opt-in for
 those management APIs; protect them at the framework or reverse proxy layer,
 and configure matching `commonHeaders` in `standaloneRepository`.
-`routes.analytics: true` independently mounts the Analytics routes consumed by
-Console under `/hot-updater/api/bundles/*/events*` and
-`/hot-updater/api/installations*`. When the database supports Analytics,
-`POST /hot-updater/events` is mounted automatically for client telemetry.
+`routes.analytics: true` independently mounts `POST /hot-updater/events` and
+the Analytics routes consumed by Console under
+`/hot-updater/api/bundles/*/events*` and `/hot-updater/api/installations*`.
+Enabling it with an unsupported database logs a warning and mounts none of
+those routes.
 Standalone reads the upstream `/version` response before forwarding Analytics
 requests, so upstream `eventIngestion` and `analyticsQueries` availability is
 preserved independently.

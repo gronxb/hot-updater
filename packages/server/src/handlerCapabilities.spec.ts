@@ -18,31 +18,31 @@ const ANALYTICS_METHODS = [
 
 const routeCases = [
   {
-    name: "unsupported without requested queries",
+    name: "unsupported with Analytics disabled",
     analyticsSupported: false,
-    analyticsQueries: false,
+    analyticsRoutes: false,
   },
   {
-    name: "unsupported with requested queries",
+    name: "unsupported with Analytics enabled",
     analyticsSupported: false,
-    analyticsQueries: true,
+    analyticsRoutes: true,
   },
   {
-    name: "supported without requested queries",
+    name: "supported with Analytics disabled",
     analyticsSupported: true,
-    analyticsQueries: false,
+    analyticsRoutes: false,
   },
   {
-    name: "supported with requested queries",
+    name: "supported with Analytics enabled",
     analyticsSupported: true,
-    analyticsQueries: true,
+    analyticsRoutes: true,
   },
 ] as const;
 
 describe("createHandler route capabilities", () => {
   it.each(routeCases)(
     "reports only reachable Analytics routes when $name",
-    async ({ analyticsSupported, analyticsQueries }) => {
+    async ({ analyticsSupported, analyticsRoutes }) => {
       // Given
       const api = createApi();
       if (!analyticsSupported) {
@@ -55,7 +55,7 @@ describe("createHandler route capabilities", () => {
         routes: {
           updateCheck: false,
           bundles: false,
-          analytics: analyticsQueries,
+          analytics: analyticsRoutes,
         },
       });
 
@@ -69,15 +69,15 @@ describe("createHandler route capabilities", () => {
       );
 
       // Then
-      const expectedAnalyticsQueries = analyticsSupported && analyticsQueries;
+      const expectedAnalyticsRoutes = analyticsSupported && analyticsRoutes;
       await expect(versionResponse.json()).resolves.toEqual({
         version: HOT_UPDATER_SERVER_VERSION,
         capabilities: analyticsSupported
           ? {
               analytics: true,
               mode: "dedicated",
-              eventIngestion: true,
-              analyticsQueries: expectedAnalyticsQueries,
+              eventIngestion: expectedAnalyticsRoutes,
+              analyticsQueries: expectedAnalyticsRoutes,
             }
           : {
               analytics: false,
@@ -85,8 +85,8 @@ describe("createHandler route capabilities", () => {
               analyticsQueries: false,
             },
       });
-      expect(ingestionResponse.status !== 404).toBe(analyticsSupported);
-      expect(queryResponse.status !== 404).toBe(expectedAnalyticsQueries);
+      expect(ingestionResponse.status !== 404).toBe(expectedAnalyticsRoutes);
+      expect(queryResponse.status !== 404).toBe(expectedAnalyticsRoutes);
     },
   );
 
