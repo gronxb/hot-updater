@@ -1417,7 +1417,7 @@ async function withAnalyticsRuntime<T>(
     return await withHotUpdaterControlEnv(async () => {
       const config = await loadConfig(null);
       try {
-        const manifest = analytics({ missingCapability: "warn" });
+        const manifest = analytics({ queryAccess: "public" });
         return await callback(
           createHotUpdater({
             database: withAnalyticsProvider(config.database),

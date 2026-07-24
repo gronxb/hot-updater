@@ -23,7 +23,7 @@ export type InstallationSearchResult =
 export type InstallationHistoryResult =
   OffsetPaginationResult<InstallationHistoryRow>;
 export function createRuntimeHotUpdater(config: ConfigResponse) {
-  const manifest = analytics({ missingCapability: "warn" });
+  const manifest = analytics({ queryAccess: "public" });
   return createHotUpdater({
     database: withAnalyticsProvider(config.database),
     plugins: [manifest],

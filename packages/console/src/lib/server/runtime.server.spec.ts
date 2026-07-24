@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,12 +10,26 @@ import {
   parseSearchInstallationsInput,
 } from "../analytics-input";
 import {
+  createRuntimeHotUpdater,
   getActiveInstallationOverview,
   getBundleEventAnalytics,
   getBundleEventSummary,
   getInstallationHistory,
   searchInstallations,
 } from "./runtime.server";
+
+const createTestDatabasePlugin = () =>
+  createDatabasePlugin({
+    name: "analytics-runtime-test",
+    plugin: () => ({
+      create: vi.fn(async ({ data }) => data),
+      update: vi.fn(async () => null),
+      delete: vi.fn(async () => undefined),
+      count: vi.fn(async () => 0),
+      findOne: vi.fn(async () => null),
+      findMany: vi.fn(async () => []),
+    }),
+  });
 
 const createRuntime = () => {
   const methods = {
@@ -38,6 +53,17 @@ const createRuntime = () => {
 };
 
 describe("analytics runtime input validation", () => {
+  it("constructs the internal analytics runtime without authentication", () => {
+    // Given / When
+    const construct = () =>
+      Reflect.apply(createRuntimeHotUpdater, undefined, [
+        { database: createTestDatabasePlugin() },
+      ]);
+
+    // Then
+    expect(construct).not.toThrow();
+  });
+
   it("rejects an unavailable Analytics feature", async () => {
     // Given
     const runtime = {
