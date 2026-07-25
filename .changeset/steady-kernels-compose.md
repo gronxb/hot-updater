@@ -1,6 +1,5 @@
 ---
 "@hot-updater/analytics": minor
-"@hot-updater/api-key": minor
 "@hot-updater/aws": minor
 "@hot-updater/better-auth": minor
 "@hot-updater/cloudflare": minor
@@ -49,16 +48,11 @@ Migrate server construction as follows:
 
 Protected routes now require exactly one authentication provider. Install
 `betterAuthPlugin({ auth })` from `@hot-updater/better-auth` to adapt a
-configured Better Auth session, or configure
-`betterAuthPlugin({ auth, apiKey: { configId } })` to verify Better Auth API
-keys and protect every HTTP route emitted by `createHotUpdater`. The API-key
-mode calls `auth.api.verifyApiKey` directly and does not treat cookie sessions
-as API keys. `better-auth` remains an optional peer.
-
-The new database-free `@hot-updater/api-key` package provides static
-SHA-256-backed API-key authentication for managed runtimes. Its Node-only
-provisioning entry creates or reuses `HOT_UPDATER_API_KEY` in
-`.env.hotupdater`; deployed runtimes receive only the digest.
+configured Better Auth session and protect every HTTP route emitted by
+`createHotUpdater`. To use API keys, install Better Auth's
+`@better-auth/api-key` plugin with `enableSessionForAPIKeys: true`; Hot Updater
+then authenticates the API-key-backed session through `auth.api.getSession`.
+There is no separate Hot Updater API-key mode or package.
 
 CLI config loading now keeps plugin-core capability identity and first-party
 manifest identity aligned while it evaluates TypeScript, ESM, or CommonJS
@@ -89,7 +83,9 @@ export default defineConfig({
 ```
 
 AWS, Cloudflare, Firebase, and Supabase presets require the managed API key on
-every route emitted by their `createHotUpdater` handler. Cloudflare, Firebase,
+every route emitted by their `createHotUpdater` handler. They use the same
+Better Auth session path as custom servers, with an ephemeral in-memory
+managed projection of the provisioned API-key digest. Cloudflare, Firebase,
 and Supabase also install protected Analytics over their bare database
 plugins, including protected event ingestion; AWS deliberately remains
 core-only because its preset omits Analytics. AWS disables shared caching and

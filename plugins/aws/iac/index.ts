@@ -3,7 +3,7 @@ import {
   fromNodeProviderChain,
   fromSSO,
 } from "@aws-sdk/credential-providers";
-import { provisionApiKey } from "@hot-updater/api-key/provisioning";
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   type BuildType,
   colors,
@@ -269,7 +269,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   const { publicKeyId, keyGroupId } =
     await cloudFrontManager.getOrCreateKeyGroup(keyPair.publicKey);
 
-  const { sha256: apiKeySha256 } = await provisionApiKey();
+  const { sha256: apiKeySha256 } = await provisionManagedBetterAuthApiKey();
 
   // Deploy Lambda@Edge: Using LambdaEdgeDeployer
   const lambdaEdgeDeployer = new LambdaEdgeDeployer(credentials);

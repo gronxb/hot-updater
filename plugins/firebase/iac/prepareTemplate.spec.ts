@@ -52,6 +52,10 @@ describe("prepareFirebaseTemplate", () => {
       path.join(builtFunctionsDir, "index.cjs"),
       "module.exports = {};",
     );
+    await writeFile(
+      path.join(builtFunctionsDir, "better-auth-runtime.cjs"),
+      "module.exports = { auth: true };",
+    );
 
     copyDirToTmpMock.mockImplementation(async (dir: string) => {
       await mkdir(outputDir, { recursive: true });
@@ -81,6 +85,12 @@ describe("prepareFirebaseTemplate", () => {
     expect(
       await readFile(path.join(outputDir, "functions", "index.cjs"), "utf8"),
     ).toBe("module.exports = {};");
+    expect(
+      await readFile(
+        path.join(outputDir, "functions", "better-auth-runtime.cjs"),
+        "utf8",
+      ),
+    ).toBe("module.exports = { auth: true };");
     await expect(
       readFile(path.join(outputDir, "functions", "_package.json"), "utf8"),
     ).rejects.toMatchObject({ code: "ENOENT" });

@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import { createRequire } from "node:module";
 import path from "path";
 
-import { provisionApiKey } from "@hot-updater/api-key/provisioning";
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   type BuildType,
   ConfigBuilder,
@@ -268,14 +268,17 @@ const collectBareImportSpecifiers = async (entryPath: string) => {
 const toVendorDirName = (packageName: string) =>
   packageName.replace(/^@/, "").replaceAll("/", "-");
 
-const parseWorkspacePackageSpecifier = (specifier: string) => {
+const parsePackageSpecifier = (specifier: string) => {
   const parts = specifier.split("/");
-  const packageName = parts.slice(0, 2).join("/");
-  const subpath = parts.slice(2).join("/");
+  const packageNameParts = specifier.startsWith("@")
+    ? parts.slice(0, 2)
+    : parts.slice(0, 1);
+  const packageName = packageNameParts.join("/");
+  const subpath = parts.slice(packageNameParts.length).join("/");
 
   return {
     packageName,
-    exportName: subpath ? `./${subpath}` : ".",
+    subpath,
   };
 };
 
@@ -334,8 +337,9 @@ const resolveBareSpecifierImportTarget = async (
   specifier: string,
   searchFrom: string,
 ) => {
-  const version = resolvePackageVersion(specifier, { searchFrom });
-  return `npm:${specifier}@${version}`;
+  const { packageName, subpath } = parsePackageSpecifier(specifier);
+  const version = resolvePackageVersion(packageName, { searchFrom });
+  return `npm:${packageName}@${version}${subpath ? `/${subpath}` : ""}`;
 };
 
 const buildEdgeFunctionImports = async (targetDir: string) => {
@@ -375,12 +379,13 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       }
 
       if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
-        const workspacePackage =
-          parseWorkspacePackageSpecifier(nestedSpecifier);
+        const workspacePackage = parsePackageSpecifier(nestedSpecifier);
         await addWorkspacePackage({
           importSpecifier: nestedSpecifier,
           packageName: workspacePackage.packageName,
-          exportName: workspacePackage.exportName,
+          exportName: workspacePackage.subpath
+            ? `./${workspacePackage.subpath}`
+            : ".",
         });
         continue;
       }
@@ -403,9 +408,9 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     exportName: ".",
   });
   await addWorkspacePackage({
-    importSpecifier: "@hot-updater/api-key",
-    packageName: "@hot-updater/api-key",
-    exportName: ".",
+    importSpecifier: "@hot-updater/better-auth/managed",
+    packageName: "@hot-updater/better-auth",
+    exportName: "./managed",
   });
   await addWorkspacePackage({
     importSpecifier: "@hot-updater/supabase/edge",
@@ -423,7 +428,7 @@ export const resolveEdgeFunctionDenoConfig = async (targetDir: string) => {
 };
 
 export const provisionSupabaseApiKey = (envFilePath = ".env.hotupdater") =>
-  provisionApiKey({ envFilePath });
+  provisionManagedBetterAuthApiKey({ envFilePath });
 
 export const transformEdgeFunctionSource = (
   sourcePath: string,

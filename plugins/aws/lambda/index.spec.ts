@@ -12,8 +12,8 @@ const fakeHotUpdaterHandler = vi.fn(
       headers: { "Content-Type": "application/json" },
     }),
 );
-const fakeApiKeyManifest = Object.freeze({ id: "api-key" });
-const apiKey = vi.fn(() => fakeApiKeyManifest);
+const fakeBetterAuthManifest = Object.freeze({ id: "better-auth" });
+const managedBetterAuthPlugin = vi.fn(() => fakeBetterAuthManifest);
 
 vi.mock("../src/s3Database", () => ({
   s3Database: vi.fn(() => ({ name: "mockDatabase" })),
@@ -43,7 +43,9 @@ vi.mock("@hot-updater/server", async () => {
   };
 });
 
-vi.mock("@hot-updater/api-key", () => ({ apiKey }));
+vi.mock("@hot-updater/better-auth/managed", () => ({
+  managedBetterAuthPlugin,
+}));
 
 const createCloudFrontRequest = (uri: string): CloudFrontRequestEvent => ({
   Records: [
@@ -134,13 +136,13 @@ describe("aws lambda entrypoint", () => {
     // When: the managed server is composed.
     await import("./index");
 
-    // Then: the API-key plugin protects the complete route surface.
-    expect(apiKey).toHaveBeenCalledWith({
-      sha256: "managed-api-key-digest",
+    // Then: Better Auth protects the complete route surface with that key.
+    expect(managedBetterAuthPlugin).toHaveBeenCalledWith({
+      apiKeySha256: "managed-api-key-digest",
     });
     expect(createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
-        plugins: [fakeApiKeyManifest],
+        plugins: [fakeBetterAuthManifest],
         routes: expectedRoutes,
       }),
     );

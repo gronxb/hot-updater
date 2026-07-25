@@ -4,8 +4,8 @@ import path from "node:path";
 
 import {
   HOT_UPDATER_API_KEY_ENV_NAME,
-  provisionApiKey,
-} from "@hot-updater/api-key/provisioning";
+  provisionManagedBetterAuthApiKey,
+} from "@hot-updater/better-auth/managed/provisioning";
 import { afterEach, describe, expect, it } from "vitest";
 
 const temporaryDirectories: string[] = [];
@@ -26,8 +26,8 @@ describe("AWS managed API-key provisioning", () => {
     const envFilePath = path.join(directory, ".env.hotupdater");
 
     // When: initialization provisions the credential twice.
-    const first = await provisionApiKey({ envFilePath });
-    const second = await provisionApiKey({ envFilePath });
+    const first = await provisionManagedBetterAuthApiKey({ envFilePath });
+    const second = await provisionManagedBetterAuthApiKey({ envFilePath });
 
     // Then: both deployments receive the same digest and only one raw key is stored.
     expect(second).toEqual(first);

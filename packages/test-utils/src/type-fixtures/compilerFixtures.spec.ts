@@ -103,7 +103,7 @@ type CompileFailCase = readonly [
 
 const compileFailCases = [
   ["auth-input-boundary.mts", "TS2339", ["body", "json"]],
-  ["better-auth-api-key-contract.mts", "TS2345", ["verifyApiKey"]],
+  ["better-auth-api-key-contract.mts", "TS2353", ["apiKey"]],
   [
     "auth-result-boundary.mts",
     "TS2353",

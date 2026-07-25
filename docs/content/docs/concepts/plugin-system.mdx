@@ -83,8 +83,9 @@ Database plugins store bundle metadata that your app uses to check for updates. 
 
 `createHotUpdater` accepts first-party server feature manifests through its
 `plugins` option. `@hot-updater/analytics` owns Analytics routes and APIs,
-while `@hot-updater/better-auth` and `@hot-updater/api-key` provide
-authentication without changing database plugins.
+while `@hot-updater/better-auth` adapts a configured Better Auth session
+without changing database plugins. API-key support comes from Better Auth's
+`@better-auth/api-key` plugin.
 
 See [Better Auth API Keys](../custom/api-key-authentication) for a complete
 configuration that requires `x-api-key` on every route emitted by the server.

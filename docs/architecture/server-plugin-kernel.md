@@ -108,15 +108,17 @@ clarifications are normative where they narrow or repair the original prose:
   `routePolicy: { kind: "protect-all" }`. The composer applies this policy
   after collecting every core and feature route, changing public access to
   protected access without ever changing protected access back to public.
-- **R17 — API-key adapters:** `betterAuthPlugin({ auth, apiKey: ... })` verifies
-  configured Better Auth API keys through `auth.api.verifyApiKey` and
-  contributes protect-all. The managed runtimes instead use the native
-  `@hot-updater/api-key` plugin, which verifies one provisioned SHA-256 digest
-  without requiring Better Auth or a database.
+- **R17 — Better Auth adaptation:** `betterAuthPlugin({ auth })` authenticates
+  through `auth.api.getSession` and contributes protect-all. Applications that
+  need API keys configure Better Auth's `@better-auth/api-key` plugin with
+  `enableSessionForAPIKeys: true`; Hot Updater has no separate API-key mode.
+  Managed runtimes use `managedBetterAuthPlugin({ apiKeySha256 })` from
+  `@hot-updater/better-auth/managed`, which projects one provisioned digest
+  into the same Better Auth session contract.
 - **R18 — managed matrix:** AWS, Cloudflare, Firebase, and Supabase install the
-  native API-key plugin by default. Every route actually mounted by each
-  managed handler is protected. Cloudflare, Firebase, and Supabase also install
-  Analytics; AWS does not.
+  managed Better Auth plugin by default. Every route actually mounted by each
+  managed handler is protected. Cloudflare, Firebase, and Supabase also
+  install Analytics; AWS does not.
 - **R19 — managed provisioning and caching:** provisioning writes the raw
   `HOT_UPDATER_API_KEY` only to a local environment file and injects only
   `HotUpdater.API_KEY_SHA256` into the deployed runtime. AWS disables caching
@@ -153,9 +155,9 @@ Authentication is a mechanism-neutral kernel concept. A configured
 authentication plugin gates protected routes before their bodies or handlers
 are evaluated. The kernel does not know API-key headers, hashing, Better Auth,
 or credential storage. Authentication manifests may, however, declare the
-single monotonic protect-all route policy. Better Auth and native API-key
-packages are two concrete first-party mechanisms built on that generic
-contract.
+single monotonic protect-all route policy. Better Auth is the concrete
+first-party mechanism built on that generic contract; its managed subpath
+supplies the digest-backed preset.
 
 The first version keeps update check, bundle management, and `/version` as core
 Hot Updater protocol surfaces. It extracts optional cross-cutting features
@@ -185,8 +187,8 @@ The following Better Auth details are deliberately not copied:
 - logging route conflicts while continuing construction;
 - arbitrary request/response hooks before authentication;
 - API-key headers, hashing, sessions, permissions, rate limits, or key storage
-  as **kernel** concepts. Those details remain owned by the concrete Better Auth
-  or native API-key package.
+  as **kernel** concepts. Those details remain owned by Better Auth and
+  `@better-auth/api-key`.
 
 Hot Updater providers retain their existing migrations, plugin order is
 semantically irrelevant, and every ownership conflict is a construction error.
@@ -231,8 +233,8 @@ semantically irrelevant, and every ownership conflict is a construction error.
 17. A `protect-all` contribution applies to the final union of core and feature
     routes, independent of plugin order. No plugin policy can make a protected
     route public.
-18. Better Auth API-key mode and the native API-key plugin both protect every
-    route produced by the composed handler.
+18. `betterAuthPlugin({ auth })` and the managed Better Auth preset both
+    protect every route produced by the composed handler.
 19. Managed AWS, Cloudflare, Firebase, and Supabase handlers require the
     provisioned API key for every mounted HTTP API.
 
@@ -307,9 +309,8 @@ provisioned key in `x-api-key`.
   never enter runtime metadata or logs.
 - Protect-all is monotonic: it may upgrade public route declarations to
   protected, but no policy can downgrade a protected route.
-- Native API-key verification accepts only a configured SHA-256 digest at
-  runtime and compares the presented key without a timing-dependent digest
-  equality branch.
+- Managed Better Auth verification accepts only a configured SHA-256 digest at
+  runtime and does not retain the raw key.
 - Managed provisioning never uploads, emits in generated source, or logs the
   raw key. Only the local provisioning result and local environment file
   receive it.
@@ -325,8 +326,8 @@ provisioned key in `x-api-key`.
 - Asynchronous route registration after `createHotUpdater` returns.
 - Generic plugin-owned database migration composition.
 - Deep merging arbitrary plugin metadata.
-- Making API keys a kernel primitive; API-key behavior belongs to
-  `@hot-updater/api-key` and `@hot-updater/better-auth`.
+- Making API keys a kernel primitive; API-key behavior belongs to Better Auth,
+  `@better-auth/api-key`, and `@hot-updater/better-auth`.
 - Mounting Better Auth's own handler or management routes.
 - Running Better Auth migrations from Hot Updater.
 - Reintroducing `authorize: () => true`.
@@ -445,36 +446,29 @@ Provider authoring APIs are exported from
 Owns:
 
 - `betterAuthPlugin({ auth })` session adaptation;
-- `betterAuthPlugin({ auth, apiKey })` API-key verification mode;
 - conversion from a configured Better Auth instance to the generic
   authentication result;
-- extraction of the configured API-key header, `configId`, and optional
-  permissions passed to `auth.api.verifyApiKey`;
+- a monotonic protect-all policy for every route emitted by
+  `createHotUpdater`;
 - Better Auth-specific error normalization.
+- `@hot-updater/better-auth/managed`, including
+  `managedBetterAuthPlugin({ apiKeySha256 })`;
+- `@hot-updater/better-auth/managed/provisioning`, including
+  `provisionManagedBetterAuthApiKey({ envFilePath? })`.
 
-`better-auth` remains an optional peer dependency. This package does not
-construct Better Auth, install `@better-auth/api-key`, mount `auth.handler`, or
-own Better Auth schema migrations. The application configures and migrates
-Better Auth. Supplying the `apiKey` option selects verify-API-key mode and
-contributes protect-all.
+The root package does not construct Better Auth, install
+`@better-auth/api-key`, mount `auth.handler`, or own Better Auth schema
+migrations. The application configures and migrates Better Auth, and enables
+`enableSessionForAPIKeys` when API keys must become sessions.
 
-### `@hot-updater/api-key`
-
-Owns:
-
-- `apiKey({ sha256, headerName? })`;
-- header extraction, SHA-256 verification, and native API-key principal
-  projection;
-- the protect-all policy used by managed runtimes;
-- `@hot-updater/api-key/provisioning`, including
-  `provisionApiKey({ envFilePath? })`.
-
-The runtime package receives only a canonical base64url SHA-256 digest.
+The managed subpath is a narrow preset for one deployment key. It receives only
+a canonical base64url SHA-256 digest and projects it through the same
+Better Auth session authentication contract without a provider database.
 Provisioning returns `{ apiKey, sha256 }` and writes the raw value as
 `HOT_UPDATER_API_KEY` only to the local environment file. It uses
 `.env.hotupdater` in the current directory by default; `envFilePath` selects an
 alternate local path. It does not provide a remote key registry, permissions,
-expiration, rotation, revocation, or database schema.
+expiration, overlapping rotation, revocation, or database schema.
 
 ### Provider packages
 
@@ -516,21 +510,18 @@ import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import { betterAuth } from "better-auth";
 
 const auth = betterAuth({
-  plugins: [betterAuthApiKey()],
+  database: authDatabase,
+  plugins: [
+    betterAuthApiKey({
+      enableSessionForAPIKeys: true,
+    }),
+  ],
 });
 
 const hotUpdater = createHotUpdater({
   database: prismaAdapter(databaseOptions),
   storages,
-  plugins: [
-    analytics(),
-    betterAuthPlugin({
-      auth,
-      apiKey: {
-        configId: "hot-updater",
-      },
-    }),
-  ],
+  plugins: [analytics(), betterAuthPlugin({ auth })],
   basePath: "/api/check-update",
 });
 
@@ -539,13 +530,14 @@ const analyticsFeature = hotUpdater.features.analytics;
 await analyticsFeature.getBundleEventSummary(input);
 ```
 
-The Better Auth API-key record is created by the application with the matching
-`configId`. The adapter reads `x-api-key` by default and passes the key and
-`configId` to `auth.api.verifyApiKey`. Supplying `requiredPermissions` forwards
-the declared Better Auth permission map; `headerName` selects a different
-header. Because this mode contributes protect-all, `/version`, update checks,
-bundle management, Analytics ingestion, and Analytics queries all require a
-valid key whenever they are present.
+The application creates and stores the API-key record through Better Auth.
+Better Auth reads `x-api-key` by default and, because
+`enableSessionForAPIKeys` is enabled, exposes a valid key through
+`auth.api.getSession`. `betterAuthPlugin({ auth })` contributes protect-all, so
+`/version`, update checks, bundle management, Analytics ingestion, and
+Analytics queries all require a valid Better Auth session whenever they are
+present. The Hot Updater plugin has no header, `configId`, permission, or
+direct API-key verification option.
 
 The same database without `analytics()` exposes no Analytics behavior or
 Analytics runtime API:
@@ -557,21 +549,27 @@ const hotUpdater = createHotUpdater({
 });
 ```
 
-Managed runtimes use the database-independent native verifier:
+Managed runtimes use the digest-backed Better Auth preset:
 
 ```typescript
 import { analytics } from "@hot-updater/analytics";
-import { apiKey } from "@hot-updater/api-key";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 
 createHotUpdater({
   database: managedAnalyticsDatabase,
-  plugins: [analytics(), apiKey({ sha256: HotUpdater.API_KEY_SHA256 })],
+  plugins: [
+    analytics(),
+    managedBetterAuthPlugin({
+      apiKeySha256: HotUpdater.API_KEY_SHA256,
+    }),
+  ],
 });
 ```
 
-No no-op authenticator or `authorize: () => true` is installed. The native
-plugin authenticates the request and contributes the monotonic policy; the
-managed database plugin remains unaware of API keys and Analytics.
+No no-op authenticator or `authorize: () => true` is installed. The managed
+plugin authenticates through the Better Auth session contract and contributes
+the monotonic policy; the managed database plugin remains unaware of API keys
+and Analytics.
 
 ### Public option and return types
 
@@ -1061,9 +1059,9 @@ route option.
 For an intentionally public, self-hosted Analytics deployment, the Analytics
 plugin receives `analytics({ queryAccess: "public" })` and does not install a
 protect-all authentication plugin. Managed providers use the Analytics
-default, then the native API-key policy upgrades ingestion and every other
-mounted route. Protected routes are never silently downgraded because an
-authentication provider is absent.
+default, then the managed Better Auth policy upgrades ingestion and every
+other mounted route. Protected routes are never silently downgraded because
+an authentication provider is absent.
 
 The kernel passes the same guarded database runtime used by core operations to
 the feature factory. Every default Analytics database call therefore crosses
@@ -1080,43 +1078,36 @@ available operation.
 
 ## Better Auth composition
 
-`betterAuthPlugin` receives a configured Better Auth instance. Without an
-`apiKey` option, its session operation is:
+`betterAuthPlugin` receives a configured Better Auth instance. Its session
+operation is:
 
 1. receive the already matched route and defensive copy of the request head;
-2. ask the configured Better Auth instance for its authentication result;
+2. call `auth.api.getSession({ headers })`;
 3. normalize a valid session to a validated `HotUpdaterPrincipal`;
-4. return only `anonymous`, `authenticated`, or `unavailable`.
-
-With an `apiKey` option, the adapter instead:
-
-1. reads `headerName`, defaulting to `x-api-key`;
-2. returns `anonymous` when the header is missing or unusable;
-3. calls `auth.api.verifyApiKey` with a body containing `key`, the required
-   `configId`, and optional `requiredPermissions`;
-4. maps a valid Better Auth key identity to a minimal Hot Updater principal;
-5. maps invalid verification to `anonymous` and classifiable dependency
-   failure to `unavailable`;
-6. contributes `routePolicy: { kind: "protect-all" }`.
+4. return only `anonymous`, `authenticated`, or `unavailable`;
+5. contribute `routePolicy: { kind: "protect-all" }`.
 
 ```typescript
-betterAuthPlugin({
-  auth,
-  apiKey: {
-    configId: "hot-updater",
-    headerName: "x-api-key",
-    requiredPermissions: {
-      hotUpdater: ["read"],
-    },
-  },
+const auth = betterAuth({
+  database,
+  plugins: [
+    apiKey({
+      enableSessionForAPIKeys: true,
+    }),
+  ],
 });
+
+betterAuthPlugin({ auth });
 ```
 
 The actual adapter receives the body-less authentication input, not a
-body-capable `Request`, and cannot return an HTTP response. It does not install
-or infer Better Auth's API-key plugin: selecting verify-API-key mode is
-explicit, and a misconfigured `auth.api.verifyApiKey` fails closed. There is no
-path predicate, downgrade-capable `protect`, or `authorize` callback.
+body-capable `Request`, and cannot return an HTTP response. It neither installs
+nor infers Better Auth's API-key plugin. An application that wants API keys
+must install `@better-auth/api-key` and enable its session integration.
+Header names, key configuration, permissions, rate limits, key creation, and
+revocation remain Better Auth concerns. There is no Hot Updater `apiKey`,
+`configId`, header, permission, path predicate, downgrade-capable `protect`, or
+`authorize` option.
 
 The kernel's status guarantee is exact for provider-classified results. In
 session mode, Better Auth's public session API may collapse an internal
@@ -1130,11 +1121,6 @@ classification-erased or otherwise unexpected throws to the kernel's opaque
 `500`. A swallowed outage remains fail-closed as `401`; a
 classification-erased outage remains fail-closed as `500`.
 
-Verify-API-key mode maps the endpoint's `{ valid: false }` result to anonymous.
-A thrown, still-classified dependency outage is unavailable; an unexpected or
-malformed result follows the opaque `500` branch. The adapter does not expose
-Better Auth's returned error detail.
-
 These are documented provider-library limitations and deferred upstream
 issues, not claimed exact-`503` cases. A generic non-Better-Auth provider must
 exercise the exact `unavailable` to `503` conformance branch. No
@@ -1146,32 +1132,31 @@ strict log-secrecy requirements must therefore disable or sanitize the Better
 Auth dependency logger when constructing that instance.
 
 Better Auth key creation, secret delivery, rotation, revocation, permissions,
-and migrations remain application responsibilities. Managed Hot Updater
-runtimes do not construct a Better Auth database solely for this purpose; they
-use `@hot-updater/api-key`.
+and migrations remain application responsibilities.
 
-## Native API-key composition
+## Managed Better Auth composition
 
-`apiKey({ sha256, headerName? })` is the database-independent managed
+`managedBetterAuthPlugin({ apiKeySha256 })` is the database-independent managed
 authentication manifest. It validates and freezes the configured digest at
-construction, defaults `headerName` to `x-api-key`, and contributes exactly one
-authentication provider plus protect-all. It contributes no HTTP route,
-metadata, feature API, migration, or lifecycle hook.
+construction and contributes exactly one Better Auth authentication provider
+plus protect-all. It contributes no HTTP route, metadata, feature API,
+migration, or lifecycle hook.
 
 For each protected request, the provider hashes the presented header value,
-compares the fixed-length digest without early exit, and then discards the
-presented value. Missing and mismatched keys are anonymous. The authenticated
-principal is exactly
-`{ issuer: "hot-updater-api-key", subject: "managed" }`; neither the raw key
-nor its digest becomes principal state, metadata, response detail, or a log
-field. Malformed configured digests fail construction rather than making every
-request anonymous.
+compares it with the projected key record, and resolves the result through the
+same Better Auth session contract used by `betterAuthPlugin({ auth })`. Missing
+and mismatched keys are anonymous. Neither the raw key nor its digest becomes
+principal state, metadata, response detail, or a log field. Malformed
+configured digests fail construction rather than making every request
+anonymous.
 
-This plugin deliberately verifies one deployment key. Key generation and local
-delivery belong to the provisioning subpath, while provider IaC only transports
-the digest. The split keeps filesystem access and secret generation out of
-request runtimes and keeps provider-specific deployment logic out of the
-authentication package.
+The managed projection is ephemeral and in-memory, and deliberately verifies one deployment
+key. It is not a general Better Auth database and does not support remote
+revocation, per-user keys, or overlapping rotation. Key generation and local
+delivery belong to `@hot-updater/better-auth/managed/provisioning`, while
+provider IaC transports only the digest. The split keeps filesystem access and
+secret generation out of request runtimes and keeps provider-specific
+deployment logic out of the authentication package.
 
 ## Standalone boundaries
 
@@ -1212,9 +1197,10 @@ free of Analytics wiring.
 ## Managed provider policy
 
 Every managed server preset installs
-`apiKey({ sha256: HotUpdater.API_KEY_SHA256 })`. The plugin contributes one
-authentication provider and protect-all; the policy applies after Analytics
-routes are installed. The exact default matrix is:
+`managedBetterAuthPlugin({ apiKeySha256: HotUpdater.API_KEY_SHA256 })`. The
+plugin contributes one Better Auth authentication provider and protect-all;
+the policy applies after Analytics routes are installed. The exact default
+matrix is:
 
 | Managed handler | `/version` | Update-check routes | Bundle routes | Analytics ingestion | Analytics queries |
 | --------------- | ---------- | ------------------- | ------------- | ------------------- | ----------------- |
@@ -1229,12 +1215,12 @@ protect-all policy; every route that the resulting handler does expose requires
 the key.
 
 Managed provisioning uses
-`@hot-updater/api-key/provisioning`:
+`@hot-updater/better-auth/managed/provisioning`:
 
 ```typescript
-import { provisionApiKey } from "@hot-updater/api-key/provisioning";
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 
-const { apiKey, sha256 } = await provisionApiKey({
+const { apiKey, sha256 } = await provisionManagedBetterAuthApiKey({
   envFilePath: ".env.hotupdater",
 });
 ```
@@ -1246,7 +1232,9 @@ the key and derives the same digest rather than rotating implicitly. Provider
 IaC injects only the digest as `HotUpdater.API_KEY_SHA256`; the raw key must not
 appear in deployed environment variables, provider state, generated source,
 command arguments, or logs. The mobile client reads the local raw key and
-sends it as `x-api-key`.
+sends it as `x-api-key`. The runtime projects that digest into an ephemeral in-memory
+Better Auth API-key session; it does not persist a Better Auth user or API-key
+table in the provider database.
 
 AWS additionally disables caching for the CloudFront behavior that reaches the
 handler and ensures authenticated handler responses are `Cache-Control:
@@ -1259,7 +1247,8 @@ client. It is useful as a deployment access gate and abuse barrier, but it is
 not an administrator credential, user identity, per-device secret, or
 authorization boundary for privileged management APIs. Remote rotation,
 overlapping keys, revocation, expiry, permission policy, recovery, and a secret
-broker are explicit follow-up scope.
+broker are explicit follow-up scope. Rotation replaces the one projected
+digest, so the old and new key cannot overlap.
 
 ## Migration plan
 
@@ -1272,8 +1261,8 @@ the kernel extraction into its forward-only migrations.
 
 - add the generic plugin composer to `@hot-updater/server`;
 - add `@hot-updater/analytics`;
-- add `@hot-updater/better-auth`;
-- add `@hot-updater/api-key` and its provisioning subpath;
+- add `@hot-updater/better-auth`, its managed preset, and its provisioning
+  subpath;
 - restore `HandlerOptions.routes` and `HandlerRoutes` as the only public
   built-in route option surface;
 - add the monotonic protect-all contribution to the generic composer;
@@ -1288,9 +1277,10 @@ the kernel extraction into its forward-only migrations.
   surface and neutralize server adapter names while retaining the internal raw
   persistence model and existing migrations;
 - convert Cloudflare, Firebase, and Supabase managed presets to
-  `plugins: [analytics(), apiKey({ sha256 })]`;
-- convert AWS to `plugins: [apiKey({ sha256 })]`, disable handler caching, and
-  provision only the digest to deployed runtime configuration;
+  `plugins: [analytics(), managedBetterAuthPlugin({ apiKeySha256 })]`;
+- convert AWS to
+  `plugins: [managedBetterAuthPlugin({ apiKeySha256 })]`, disable handler
+  caching, and provision only the digest to deployed runtime configuration;
 - expose the old `routes.analytics` composition only from
   `@hot-updater/analytics/legacy-server`, whose only exports are
   `createLegacyHotUpdater` and `LegacyCreateHotUpdaterOptions`;
@@ -1355,7 +1345,7 @@ execution owner. The extraction creates no replacement migration, does not
 rename or replay D1/Supabase migrations, and does not recreate Firebase
 collections or indexes. Better Auth migrations are configured and run by an
 application that selects the Better Auth adapter, never by Hot Updater or a
-managed native API-key preset.
+managed digest projection.
 
 ## Error model
 
@@ -1455,14 +1445,16 @@ runtime failures are owned by the feature plugin.
 - no later middleware, handler, database, or storage operation runs;
 - principal state is isolated across concurrent requests;
 - a configured Better Auth instance is used without mutation;
-- Better Auth API-key mode forwards the configured header value, `configId`,
-  and permissions only to `auth.api.verifyApiKey`;
-- a missing or invalid Better Auth key denies `/version`, update-check, bundle,
-  ingestion, and query routes without invoking their handlers;
-- `@hot-updater/api-key` accepts a valid digest-matching key, rejects malformed
-  digests at construction, and denies missing or invalid keys;
-- native verification does not depend on a database and exposes neither the raw
-  key nor its digest through metadata or errors;
+- Better Auth API keys become sessions only when the application configures
+  `apiKey({ enableSessionForAPIKeys: true })`;
+- `betterAuthPlugin({ auth })` uses only `auth.api.getSession` and has no
+  Hot Updater API-key, `configId`, header, or permission option;
+- a missing or invalid Better Auth session denies `/version`, update-check,
+  bundle, ingestion, and query routes without invoking their handlers;
+- the managed Better Auth preset accepts a valid digest-matching key, rejects
+  malformed digests at construction, and denies missing or invalid keys;
+- managed verification does not depend on a provider database and exposes
+  neither the raw key nor its digest through metadata or errors;
 - locked Better Auth outage behavior is characterized without leaking the
   provider error or secret sentinel through the adapter, kernel response, or
   Hot Updater logs;
@@ -1497,9 +1489,9 @@ runtime failures are owned by the feature plugin.
   condition;
 - real extracted tarballs resolve server root and
   `/internal/first-party-plugin`, plugin-core capability authoring/enumeration,
-  Analytics, Better Auth, native API key, API-key provisioning, and managed
-  entrypoints in ESM and CommonJS, with matching `.d.mts` and `.d.cts`
-  declarations under NodeNext and `skipLibCheck: false`;
+  Analytics, Better Auth, the managed Better Auth preset, its provisioning
+  subpath, and managed entrypoints in ESM and CommonJS, with matching `.d.mts`
+  and `.d.cts` declarations under NodeNext and `skipLibCheck: false`;
 - config-loader tests cover direct TypeScript, ESM, and CommonJS configs,
   transitive and functional CommonJS providers, concurrent evaluation,
   success/error cache restoration, and real mixed CommonJS-provider to

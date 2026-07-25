@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   access,
   chmod,
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -15,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { analytics, type AnalyticsAPI } from "@hot-updater/analytics";
-import { apiKey } from "@hot-updater/api-key";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import {
   type AppUpdateInfo,
@@ -243,6 +244,11 @@ describe.sequential("firebase functions runtime acceptance", () => {
 
     const functionsDir = path.join(tempRoot, "functions");
     await mkdir(functionsDir, { recursive: true });
+    await cp(
+      path.join(WORKSPACE_ROOT, "plugins/firebase/dist/firebase/functions"),
+      functionsDir,
+      { recursive: true },
+    );
     await writeFile(
       path.join(functionsDir, "package.json"),
       await readFile(
@@ -278,16 +284,10 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     await chmod(firebaseFunctionsBinPath, 0o755);
     await writeFile(
       path.join(functionsDir, "index.cjs"),
-      transformEnv(
-        path.join(
-          WORKSPACE_ROOT,
-          "plugins/firebase/dist/firebase/functions/index.cjs",
-        ),
-        {
-          API_KEY_SHA256,
-          REGION,
-        },
-      ),
+      transformEnv(path.join(functionsDir, "index.cjs"), {
+        API_KEY_SHA256,
+        REGION,
+      }),
     );
 
     const firebaseAdminApp = admin.apps.length
@@ -312,7 +312,10 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         bundles: false,
         updateCheck: true,
       },
-      plugins: [apiKey({ sha256: API_KEY_SHA256 }), analytics()],
+      plugins: [
+        managedBetterAuthPlugin({ apiKeySha256: API_KEY_SHA256 }),
+        analytics(),
+      ],
     });
 
     functionsRuntime = spawnRuntime({

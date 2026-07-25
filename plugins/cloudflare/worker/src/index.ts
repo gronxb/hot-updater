@@ -1,5 +1,5 @@
 import { analytics } from "@hot-updater/analytics";
-import { apiKey } from "@hot-updater/api-key";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
@@ -48,7 +48,10 @@ const hotUpdater = createHotUpdater({
     bundles: false,
     updateCheck: true,
   },
-  plugins: [apiKey({ sha256: env.API_KEY_SHA256 }), analytics()],
+  plugins: [
+    managedBetterAuthPlugin({ apiKeySha256: env.API_KEY_SHA256 }),
+    analytics(),
+  ],
 });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();

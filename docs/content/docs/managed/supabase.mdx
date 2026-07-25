@@ -4,19 +4,25 @@ description: "This guide walks you through setting up `hot-updater` with Supabas
 icon: supabase
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
-import { Accordion, Accordions } from 'fumadocs-ui/components/accordion';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
-<video src={"/docs/get-started/init-supabase.mov"} controls autoPlay loop muted />
+<video
+  src={"/docs/get-started/init-supabase.mov"}
+  controls
+  autoPlay
+  loop
+  muted
+/>
 
 ## Prerequisites
 
 Before you begin, make sure the following are ready:
+
 - **Docker Or OrbStack**: Install it via [Docker](https://docs.docker.com/get-docker/) or [OrbStack](https://orbstack.dev/).
 - **Node.js**: Version 20 or later is recommended.
 - **Supabase CLI**: Install it via `npx supabase`.
 - **Supabase Account**: Sign up at [Supabase](https://supabase.com) if you don't have one.
-
 
 ## Step 1: Install Required Packages
 
@@ -42,6 +48,7 @@ npx hot-updater init
 2. **Select a Provider**: Select Supabase as the provider for handling updates.
 
 During the setup, you will be prompted to:
+
 1. **Create or Select a Supabase Organization**: Choose an existing organization or create a new one.
 2. **Create or Select a Project**: Choose an existing project or create a new one within your organization.
 3. **Configure Storage**: Select an existing storage bucket or create a new public bucket to store updates.
@@ -61,8 +68,6 @@ HOT_UPDATER_SUPABASE_URL=https://your-project-id.supabase.co
 HOT_UPDATER_API_KEY=your-generated-client-access-key
 ```
 
-
-
 <Callout type="warn">
 
 The managed API key is bundled into the mobile client and can be extracted. Use
@@ -74,13 +79,17 @@ credential.
 
 `init` creates `HOT_UPDATER_API_KEY` once and reuses a valid existing value.
 The repository `.gitignore` excludes `.env.hotupdater`, and only the key's
-SHA-256 digest is embedded in the Edge Function runtime. To rotate a known key
-or recover a lost one, replace the local value with a new canonical 32-byte
-base64url value and run `hot-updater init` again to redeploy its digest. Update
-the client-side value at the same time; clients using the old key can no longer
-reach the update API.
+SHA-256 digest is embedded in the Edge Function runtime. The runtime uses that
+digest to create an ephemeral in-memory managed Better Auth API-key session; it does not
+add Better Auth tables to Postgres or store the raw key in the runtime. To
+rotate a known key or recover a lost one, replace the local value with a new
+canonical 32-byte base64url value and run `hot-updater init` again to redeploy
+its digest. Update the client-side value at the same time; clients using the old
+key can no longer reach the update API. Rotation replaces the single projected
+digest; the old and new keys do not overlap.
 
 ## Step 3: Generated Configurations
+
 During the initialization process, the following file is automatically generated:
 
 - `hot-updater.config.ts`: This file contains the configuration settings for integrating Supabase with your project.
@@ -97,14 +106,12 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: supabaseStorage({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey:
-      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   }),
   database: supabaseDatabase({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey:
-      process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
 });
 ```
@@ -141,7 +148,7 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://<project-id>.supabase.co/functions/v1/update-server",  // [!code ++]
+  baseURL: "https://<project-id>.supabase.co/functions/v1/update-server", // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
   requestHeaders: {
     "x-api-key": process.env.HOT_UPDATER_API_KEY!, // [!code ++]
@@ -170,16 +177,17 @@ export default HotUpdater.wrap({
     </View>
   ),
 })(App);
-
 ```
 
 <Callout type="info">
-The managed Supabase runtime mounts 12 Hot Updater routes: `/version`, four
-update-check variants, `/events`, and six Analytics query routes. Every one
-requires `x-api-key`; bundle management routes are not mounted. The version
-response reports `eventIngestion: true` and `analyticsQueries: true` because the
-database supports Analytics. The Supabase platform health endpoint `/ping`
-stays public and is not part of the `createHotUpdater` handler.
+  The managed Supabase runtime mounts 12 Hot Updater routes: `/version`, four
+  update-check variants, `/events`, and six Analytics query routes. Every one
+  requires `x-api-key`; bundle management routes are not mounted. The version
+  response reports `eventIngestion: true` and `analyticsQueries: true` because
+  the database supports Analytics. The Supabase platform health endpoint `/ping`
+  stays public and is not part of the `createHotUpdater` handler. The managed
+  preset authenticates the key through the same Better Auth session contract as
+  `betterAuthPlugin({auth})`.
 </Callout>
 
 Enabling `analytics: true` in the app sends events to the authenticated
@@ -222,14 +230,15 @@ npx expo prebuild
 ```
 
 <Callout>
-This process automatically generates the code that needs to be added in Step 6.
-Skip this step if you are using bare or Rock.
+  This process automatically generates the code that needs to be added in Step
+  6. Skip this step if you are using bare or Rock.
 </Callout>
 
 <Callout type="info">
-If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the additional Babel plugin setup.
+  If you use Expo DOM components (`use dom`), see the [Expo DOM Components (`use
+  dom`)](/docs/build-plugins/expo#expo-dom-components-use-dom) section for the
+  additional Babel plugin setup.
 </Callout>
-
 
 ## Step 6: Add Native Code
 
@@ -292,13 +301,13 @@ import com.hotupdater.HotUpdater // [!code ++]
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost =
-      object : DefaultReactNativeHost(this) {
-        override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
-            }
+override val reactNativeHost: ReactNativeHost =
+object : DefaultReactNativeHost(this) {
+override fun getPackages(): List<ReactPackage> =
+PackageList(this).packages.apply {
+// Packages that cannot be autolinked yet can be added manually here, for example:
+// add(MyReactNativePackage())
+}
 
         override fun getJSMainModuleName(): String = "index"
 
@@ -312,19 +321,20 @@ class MainApplication : Application(), ReactApplication {
         }  // [!code ++]
       }
 
-  override val reactHost: ReactHost
-    get() = getDefaultReactHost(applicationContext, reactNativeHost)
+override val reactHost: ReactHost
+get() = getDefaultReactHost(applicationContext, reactNativeHost)
 
-  override fun onCreate() {
-    super.onCreate()
-    SoLoader.init(this, OpenSourceMergedSoMapping)
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // If you opted-in for the New Architecture, we load the native entry point for this app.
-      load()
-    }
-  }
+override fun onCreate() {
+super.onCreate()
+SoLoader.init(this, OpenSourceMergedSoMapping)
+if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+// If you opted-in for the New Architecture, we load the native entry point for this app.
+load()
 }
-```
+}
+}
+
+````
   </Tab>
   <Tab value="Java">
   ```java title="android/app/src/main/java/com/<your-app-name>/MainApplication.java"
@@ -398,7 +408,7 @@ public class MainApplication extends Application implements ReactApplication {
   }
 }
 
-```
+````
 
   </Tab>
 </Tabs>
@@ -416,32 +426,33 @@ import HotUpdater // [!code ++]
 
 @main
 class AppDelegate: RCTAppDelegate {
-  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    self.moduleName = "HotUpdaterExample"
-    self.dependencyProvider = RCTAppDependencyProvider()
+override func application(\_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+self.moduleName = "HotUpdaterExample"
+self.dependencyProvider = RCTAppDependencyProvider()
 
     // You can add your custom initial props in the dictionary below.
     // They will be passed down to the ViewController used by React Native.
     self.initialProps = [:]
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
 
-  override func sourceURL(for bridge: RCTBridge) -> URL? {
-    self.bundleURL()
-  }
-
-  override func bundleURL() -> URL? {
-#if DEBUG
-    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
-#else
-    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
-    HotUpdater.bundleURL() // [!code ++]
-#endif
-  }
 }
 
-```
+override func sourceURL(for bridge: RCTBridge) -> URL? {
+self.bundleURL()
+}
+
+override func bundleURL() -> URL? {
+#if DEBUG
+RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+#else
+Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+HotUpdater.bundleURL() // [!code ++]
+#endif
+}
+}
+
+````
 </Tab>
 <Tab value="Objective-C">
 ```objc title="ios/<your-app-name>/AppDelegate.mm"
@@ -477,18 +488,22 @@ class AppDelegate: RCTAppDelegate {
 }
 
 @end
-```
+````
+
 </Tab>
 </Tabs>
 
 <Callout type="info">
-For brownfield apps where the JS bundle is embedded in an XCFramework, you can pass a custom `Bundle` instance to lookup the JavaScript bundle resource: `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
+  For brownfield apps where the JS bundle is embedded in an XCFramework, you can
+  pass a custom `Bundle` instance to lookup the JavaScript bundle resource:
+  `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
+  bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
 </Callout>
 
 ## Verifying the Setup
+
 1. Check your Supabase dashboard for the newly created bucket and edge function.
 2. Test the HotUpdater integration in your React Native app.
-
 
 You're all set! 🎉 Start using hot-updater with Supabase for seamless updates in your React Native app.
 

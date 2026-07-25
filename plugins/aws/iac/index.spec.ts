@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   lambdaDeploy: vi.fn(),
   makeEnv: vi.fn(),
   note: vi.fn(),
-  provisionApiKey: vi.fn(),
+  provisionManagedBetterAuthApiKey: vi.fn(),
   s3ListBuckets: vi.fn(),
   s3RunMigrations: vi.fn(),
   s3UpdateBucketPolicy: vi.fn(),
@@ -19,8 +19,8 @@ const mocks = vi.hoisted(() => ({
   writeHotUpdaterConfig: vi.fn(),
 }));
 
-vi.mock("@hot-updater/api-key/provisioning", () => ({
-  provisionApiKey: mocks.provisionApiKey,
+vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
+  provisionManagedBetterAuthApiKey: mocks.provisionManagedBetterAuthApiKey,
 }));
 
 vi.mock("@aws-sdk/credential-providers", () => ({
@@ -131,7 +131,7 @@ describe("AWS managed initialization", () => {
       keyGroupId: "key-group",
       publicKeyId: "public-key-id",
     });
-    mocks.provisionApiKey.mockResolvedValue({
+    mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
       apiKey: "raw-client-key",
       sha256: "client-key-digest",
     });
@@ -155,7 +155,7 @@ describe("AWS managed initialization", () => {
     await runInit({ build: "bare" });
 
     // Then: the raw key stays in .env.hotupdater and only its digest is deployed.
-    expect(mocks.provisionApiKey).toHaveBeenCalledOnce();
+    expect(mocks.provisionManagedBetterAuthApiKey).toHaveBeenCalledOnce();
     expect(mocks.lambdaDeploy).toHaveBeenCalledWith(
       "arn:aws:iam::123456789012:role/hot-updater",
       expect.objectContaining({

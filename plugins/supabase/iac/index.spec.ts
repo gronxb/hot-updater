@@ -292,10 +292,16 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
+        "@better-auth/api-key": `npm:@better-auth/api-key@${resolvePackageVersion(
+          "@better-auth/api-key",
+          {
+            searchFrom: path.resolve("packages/better-auth"),
+          },
+        )}`,
         "@hot-updater/analytics":
           "./_hot-updater/hot-updater-analytics/dist/index.mjs",
-        "@hot-updater/api-key":
-          "./_hot-updater/hot-updater-api-key/dist/index.mjs",
+        "@hot-updater/better-auth/managed":
+          "./_hot-updater/hot-updater-better-auth/dist/managed.mjs",
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
         "@hot-updater/server/internal/first-party-plugin":
@@ -314,6 +320,15 @@ describe("resolveEdgeFunctionDenoConfig", () => {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
+        "better-auth": `npm:better-auth@${resolvePackageVersion("better-auth", {
+          searchFrom: path.resolve("packages/better-auth"),
+        })}`,
+        "better-auth/adapters/memory": `npm:better-auth@${resolvePackageVersion(
+          "better-auth",
+          {
+            searchFrom: path.resolve("packages/better-auth"),
+          },
+        )}/adapters/memory`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,
@@ -345,12 +360,15 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         ),
       ).resolves.toContain("supabaseStorage");
 
-      const apiKeyRuntime = await fs.readFile(
-        path.join(targetDir, "_hot-updater/hot-updater-api-key/dist/index.mjs"),
+      const betterAuthRuntime = await fs.readFile(
+        path.join(
+          targetDir,
+          "_hot-updater/hot-updater-better-auth/dist/managed.mjs",
+        ),
         "utf8",
       );
-      expect(apiKeyRuntime).toContain("crypto.subtle.digest");
-      expect(apiKeyRuntime).not.toContain('from "node:');
+      expect(betterAuthRuntime).toContain("managedBetterAuthPlugin");
+      expect(betterAuthRuntime).not.toContain('from "node:');
     } finally {
       await fs.rm(targetDir, { recursive: true, force: true });
     }

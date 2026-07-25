@@ -1,4 +1,4 @@
-import { apiKey } from "@hot-updater/api-key";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
@@ -53,7 +53,9 @@ const resolveRequestOrigin = (context?: SignedUrlContext) => {
   return new URL(context.request.url).origin;
 };
 
-const plugins = [apiKey({ sha256: API_KEY_SHA256 })] as const;
+const plugins = [
+  managedBetterAuthPlugin({ apiKeySha256: API_KEY_SHA256 }),
+] as const;
 
 const hotUpdater = createHotUpdater<SignedUrlContext, typeof plugins>({
   database: s3Database({

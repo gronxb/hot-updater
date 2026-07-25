@@ -1,5 +1,5 @@
 import { analytics } from "@hot-updater/analytics";
-import { apiKey } from "@hot-updater/api-key";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
@@ -43,7 +43,12 @@ const hotUpdater = createHotUpdater({
     bundles: false,
     updateCheck: true,
   },
-  plugins: [apiKey({ sha256: HotUpdater.API_KEY_SHA256 }), analytics()],
+  plugins: [
+    managedBetterAuthPlugin({
+      apiKeySha256: HotUpdater.API_KEY_SHA256,
+    }),
+    analytics(),
+  ],
 });
 
 const app = new Hono();

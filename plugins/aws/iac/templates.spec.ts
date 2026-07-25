@@ -1,4 +1,4 @@
-import { HOT_UPDATER_API_KEY_ENV_NAME } from "@hot-updater/api-key/provisioning";
+import { HOT_UPDATER_API_KEY_ENV_NAME } from "@hot-updater/better-auth/managed/provisioning";
 import { describe, expect, it } from "vitest";
 
 import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";

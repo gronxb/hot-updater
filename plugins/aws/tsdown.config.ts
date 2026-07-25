@@ -15,7 +15,9 @@ export default defineConfig([
     failOnWarn: true,
     deps: {
       alwaysBundle: [
-        /^@hot-updater\/(?:api-key|plugin-core|server)(?:\/.*)?$/,
+        /^@better-auth\/.*$/,
+        /^@hot-updater\/(?:better-auth|plugin-core|server)(?:\/.*)?$/,
+        /^better-auth(?:\/.*)?$/,
         "hono/lambda-edge",
         "hono",
       ],

@@ -287,7 +287,10 @@ describe("Better Auth security conformance", () => {
       expect(Reflect.has(surface, "protect")).toBe(false);
       expect(Reflect.has(surface, "routes")).toBe(false);
     }
-    expect(Reflect.ownKeys(contribution)).toEqual(["authentication"]);
+    expect(Reflect.ownKeys(contribution).sort()).toEqual([
+      "authentication",
+      "routePolicy",
+    ]);
     expect(handlerRead).not.toHaveBeenCalled();
   });
 });

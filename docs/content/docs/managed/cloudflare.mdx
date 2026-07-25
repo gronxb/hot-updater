@@ -82,11 +82,14 @@ Cloudflare API token, administrator secret, or other infrastructure credential.
 
 `init` creates `HOT_UPDATER_API_KEY` once and reuses a valid existing value.
 The repository `.gitignore` excludes `.env.hotupdater`, and only the key's
-SHA-256 digest is deployed as a Worker variable. To rotate a known key or
-recover a lost one, replace the local value with a new canonical 32-byte
-base64url value and run `hot-updater init` again to redeploy its digest. Update
-the client-side value at the same time; clients using the old key can no longer
-reach the update API.
+SHA-256 digest is deployed as a Worker variable. The runtime uses that digest
+to create an ephemeral in-memory managed Better Auth API-key session; it does not add
+Better Auth tables to D1 or store the raw key in the runtime. To rotate a known
+key or recover a lost one, replace the local value with a new canonical
+32-byte base64url value and run `hot-updater init` again to redeploy its digest.
+Update the client-side value at the same time; clients using the old key can no
+longer reach the update API. Rotation replaces the single projected digest;
+the old and new keys do not overlap.
 
 ## Step 3: Generated Configurations
 
@@ -180,12 +183,14 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed Cloudflare runtime mounts 12 Hot Updater routes: `/version`, four
-update-check variants, `/events`, and six Analytics query routes. Every one
-requires `x-api-key`; bundle management routes are not mounted. The version
-response reports `eventIngestion: true` and `analyticsQueries: true` because D1
-supports Analytics. JWT-signed R2 download URLs remain outside the Hot Updater
-handler and do not require the API-key header.
+  The managed Cloudflare runtime mounts 12 Hot Updater routes: `/version`, four
+  update-check variants, `/events`, and six Analytics query routes. Every one
+  requires `x-api-key`; bundle management routes are not mounted. The version
+  response reports `eventIngestion: true` and `analyticsQueries: true` because
+  D1 supports Analytics. JWT-signed R2 download URLs remain outside the Hot
+  Updater handler and do not require the API-key header. The managed preset
+  authenticates the key through the same Better Auth session contract as
+  `betterAuthPlugin({auth})`.
 </Callout>
 
 Enabling `analytics: true` in the app sends events to the authenticated

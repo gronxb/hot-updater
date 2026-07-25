@@ -59,6 +59,30 @@ describe("betterAuthPlugin", () => {
     expect(result).toEqual({ kind: "anonymous" });
   });
 
+  it.each([
+    { status: "UNAUTHORIZED" },
+    { status: "FORBIDDEN" },
+    { statusCode: 401 },
+    { statusCode: 403 },
+  ])("maps a Better Auth credential rejection to anonymous", async (error) => {
+    // Given
+    const auth: BetterAuthConfiguredInstance = {
+      api: {
+        async getSession() {
+          throw error;
+        },
+      },
+    };
+
+    // When
+    const result = await providerFrom(auth).provider.authenticate(
+      authenticationInput(),
+    );
+
+    // Then
+    expect(result).toEqual({ kind: "anonymous" });
+  });
+
   it("copies only the Better Auth user id into the principal", async () => {
     // Given
     const auth: BetterAuthConfiguredInstance = {
@@ -166,7 +190,11 @@ describe("betterAuthPlugin", () => {
     expect(Reflect.ownKeys(received[0] ?? {}).sort()).toEqual(["headers"]);
     expect(input.headers.has("x-mutated")).toBe(false);
     expect(manifest.requires).toEqual([]);
-    expect(Reflect.ownKeys(contribution)).toEqual(["authentication"]);
+    expect(Reflect.ownKeys(contribution).sort()).toEqual([
+      "authentication",
+      "routePolicy",
+    ]);
+    expect(contribution.routePolicy).toEqual({ kind: "protect-all" });
     expect(Reflect.ownKeys(provider).sort()).toEqual(["authenticate", "id"]);
     expect(provider.id).toBe("better-auth");
   });

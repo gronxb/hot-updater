@@ -34,7 +34,6 @@ export const resolveServerPluginPackageDirectories = (
     "packages/bsdiff",
     "plugins/plugin-core",
     "packages/server",
-    "packages/api-key",
     "packages/analytics",
     "packages/better-auth",
     "plugins/standalone",

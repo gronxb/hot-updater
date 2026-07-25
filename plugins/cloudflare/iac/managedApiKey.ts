@@ -1,9 +1,6 @@
 import { join } from "node:path";
 
-import {
-  provisionApiKey,
-  type ProvisionedApiKey,
-} from "@hot-updater/api-key/provisioning";
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 
 const HOT_UPDATER_ENV_FILE = ".env.hotupdater";
 
@@ -26,10 +23,10 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
 
-export const provisionManagedApiKey = (
-  cwd: string,
-): Promise<ProvisionedApiKey> =>
-  provisionApiKey({ envFilePath: join(cwd, HOT_UPDATER_ENV_FILE) });
+export const provisionManagedApiKey = (cwd: string) =>
+  provisionManagedBetterAuthApiKey({
+    envFilePath: join(cwd, HOT_UPDATER_ENV_FILE),
+  });
 
 export const createManagedWorkerVariables = ({
   apiKeySha256,

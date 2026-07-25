@@ -7,17 +7,7 @@ import {
   type AnalyticsProvider,
 } from "@hot-updater/analytics/provider";
 import {
-  apiKey,
-  type ApiKeyPluginOptions,
-} from "@hot-updater/api-key";
-import {
-  type ProvisionedApiKey,
-  provisionApiKey,
-} from "@hot-updater/api-key/provisioning";
-import {
   betterAuthPlugin,
-  type BetterAuthApiKeyConfiguration,
-  type BetterAuthApiKeyConfiguredInstance,
   type BetterAuthConfiguredInstance,
 } from "@hot-updater/better-auth";
 import type {
@@ -72,7 +62,6 @@ assertType<
 >();
 
 declare const auth: BetterAuthConfiguredInstance;
-declare const apiKeyAuth: BetterAuthApiKeyConfiguredInstance;
 declare const database: DatabasePlugin;
 declare const provider: AnalyticsProvider;
 declare const storage: RuntimeStoragePlugin<TestContext>;
@@ -84,21 +73,6 @@ const routes = {
 const handlerOptions = {
   routes,
 } satisfies HandlerOptions;
-const apiKeyOptions = {
-  sha256: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-} satisfies ApiKeyPluginOptions;
-const apiKeyManifest = apiKey(apiKeyOptions);
-const betterAuthApiKeyOptions = {
-  configId: "hot-updater",
-  headerName: "x-hot-updater-key",
-  requiredPermissions: {
-    bundles: ["read"],
-  },
-} satisfies BetterAuthApiKeyConfiguration;
-const betterAuthApiKeyManifest = betterAuthPlugin({
-  apiKey: betterAuthApiKeyOptions,
-  auth: apiKeyAuth,
-});
 const betterAuthSessionManifest = betterAuthPlugin({ auth });
 
 const internalManifest = defineFirstPartyFeatureManifest<
@@ -173,12 +147,9 @@ assertType<
   >
 >();
 void internalRuntime;
-void apiKeyManifest;
-void betterAuthApiKeyManifest;
 void betterAuthSessionManifest;
 void handlerOptions;
 void legacyAnalytics;
 void legacyCore;
 void provider;
-void (provisionApiKey satisfies () => Promise<ProvisionedApiKey>);
 void publicRuntime;

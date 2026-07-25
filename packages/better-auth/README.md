@@ -1,88 +1,59 @@
-# @hot-updater/better-auth
+# `@hot-updater/better-auth`
 
-Connect a configured Better Auth instance to the Hot Updater server kernel.
+Protect every HTTP route created by `createHotUpdater` with a configured
+[Better Auth](https://www.better-auth.com/) instance.
 
-```ts
-import { betterAuthPlugin } from "@hot-updater/better-auth";
+## Better Auth API keys
 
-const plugin = betterAuthPlugin({ auth });
-```
-
-Session mode reads `auth.api.getSession({ headers })` and maps only `user.id`
-to the kernel principal. It protects routes that are already declared
-protected.
-
-API-key mode calls `auth.api.verifyApiKey` and protects every route emitted by
-`createHotUpdater`:
-
-```ts
-const plugin = betterAuthPlugin({
-  auth,
-  apiKey: {
-    configId: "hot-updater",
-    // headerName: "x-api-key",
-    requiredPermissions: { hotUpdater: ["access"] },
-  },
-});
-```
-
-Configure the API-key plugin and its database schema in Better Auth:
+Configure API keys in Better Auth itself. The Hot Updater plugin only asks
+Better Auth for the session represented by the request headers.
 
 ```ts
 import { apiKey } from "@better-auth/api-key";
 import { betterAuth } from "better-auth";
+import { betterAuthPlugin } from "@hot-updater/better-auth";
+import { createHotUpdater } from "@hot-updater/server";
 
-export const auth = betterAuth({
-  database,
+const auth = betterAuth({
+  database: yourBetterAuthDatabase,
   plugins: [
     apiKey({
-      configId: "hot-updater",
-      defaultPrefix: "hu_",
-      enableSessionForAPIKeys: false,
-      permissions: {
-        defaultPermissions: { hotUpdater: ["access"] },
-      },
-      rateLimit: {
-        enabled: true,
-        maxRequests: 1_000,
-        timeWindow: 60 * 60 * 1_000,
-      },
+      enableSessionForAPIKeys: true,
     }),
   ],
 });
-```
 
-Create the key from a trusted server-side path and keep the raw value in a
-secret store:
-
-```ts
-const credential = await auth.api.createApiKey({
-  body: {
-    configId: "hot-updater",
-    name: "mobile-client",
-    permissions: { hotUpdater: ["access"] },
-    userId: existingBetterAuthUser.id,
-  },
+export const hotUpdater = createHotUpdater({
+  database: yourHotUpdaterDatabase,
+  plugins: [betterAuthPlugin({ auth })],
 });
 ```
 
-Send `credential.key` as the `x-api-key` request header from standalone
-plugins and React Native `requestHeaders`. A key embedded in a React Native
-bundle is extractable; treat it as a client access gate, not strong
-administrator authentication.
+Installing `betterAuthPlugin({ auth })` contributes a `protect-all` route
+policy. Core routes and routes added by other Hot Updater plugins therefore
+require a Better Auth session. With `enableSessionForAPIKeys`, the default
+`x-api-key` header can supply that session.
 
-The plugin does not construct or mutate Better Auth, mount Better Auth HTTP
-handlers, run Better Auth migrations, or expose session, cookie, and raw
-API-key data. Better Auth `503` errors that remain observable are mapped to
-authentication unavailability.
-Better Auth 1.6.24 rewrites a memory-adapter session lookup `503` to an
-`APIError` with status `INTERNAL_SERVER_ERROR` and status code `500`; that
-erased classification is treated as an unexpected failure, so the kernel
-returns an opaque `500`.
-Better Auth's default logger can receive the original store error before that
-rewrite. Deployments with strict log-secrecy requirements must disable or
-sanitize the configured Better Auth logger; this plugin cannot safely mutate
-the caller-owned instance.
-Upstream integrations that catch an outage and return `null` make that outage
-indistinguishable from an anonymous session, so the kernel will respond as it
-does for anonymous authentication.
+The Better Auth handler is not mounted or exposed by this plugin. Mount it
+separately if your application needs Better Auth's own HTTP endpoints.
+
+## Managed providers
+
+Managed provider runtimes use a digest-only projection of a provisioned key:
+
+```ts
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
+
+const authentication = managedBetterAuthPlugin({
+  apiKeySha256: env.API_KEY_SHA256,
+});
+```
+
+Node-based infrastructure code can provision the raw key into
+`.env.hotupdater` and pass only its SHA-256 projection to the runtime:
+
+```ts
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
+
+const { sha256 } = await provisionManagedBetterAuthApiKey();
+```

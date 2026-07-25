@@ -23,12 +23,13 @@ describe("AWS Lambda package exports", () => {
     });
   });
 
-  it("declares the managed API-key verifier as a runtime dependency", () => {
-    // Given: the Lambda handler imports the API-key plugin.
+  it("declares the managed Better Auth plugin as a runtime dependency", () => {
+    // Given: the Lambda handler imports the managed Better Auth plugin.
     // When: package runtime dependencies are inspected.
-    const dependency = packageJson.dependencies["@hot-updater/api-key"];
+    const dependency = packageJson.dependencies["@hot-updater/better-auth"];
 
-    // Then: published installs always include the verifier.
+    // Then: published installs always include Better Auth authentication.
     expect(dependency).toBe("workspace:*");
+    expect(packageJson.dependencies).not.toHaveProperty("@hot-updater/api-key");
   });
 });

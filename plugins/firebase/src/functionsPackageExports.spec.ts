@@ -22,4 +22,16 @@ describe("Firebase Functions package exports", () => {
       require: "./dist/firebase/functions/index.cjs",
     });
   });
+
+  it("uses the Better Auth integration for managed authentication", () => {
+    // Given: the published Firebase provider manifest.
+    const dependencies = packageJson.dependencies;
+
+    // When: managed authentication dependencies are inspected.
+    const betterAuthVersion = dependencies["@hot-updater/better-auth"];
+
+    // Then: Firebase consumes the shared Better Auth integration only.
+    expect(betterAuthVersion).toBe("workspace:*");
+    expect(dependencies).not.toHaveProperty("@hot-updater/api-key");
+  });
 });

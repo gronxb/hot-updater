@@ -2,18 +2,25 @@ import { createHash, randomBytes } from "node:crypto";
 import { appendFile, chmod, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { decodeBase64Url32 } from "./base64url";
+import { isCanonicalBase64Url32 } from "../base64url";
 
 export const HOT_UPDATER_API_KEY_ENV_NAME = "HOT_UPDATER_API_KEY";
 
-export type ProvisionApiKeyOptions = {
+export type ProvisionManagedBetterAuthApiKeyOptions = {
   readonly envFilePath?: string;
 };
 
-export type ProvisionedApiKey = {
+export type ProvisionedManagedBetterAuthApiKey = {
   readonly apiKey: string;
   readonly sha256: string;
 };
+
+class ManagedBetterAuthProvisioningError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ManagedBetterAuthProvisioningError";
+  }
+}
 
 const envLinePattern = new RegExp(
   `^\\s*(?:export\\s+)?${HOT_UPDATER_API_KEY_ENV_NAME}\\s*=(.*)$`,
@@ -25,12 +32,36 @@ const isMissingFileError = (error: unknown): boolean =>
   error !== null &&
   Reflect.get(error, "code") === "ENOENT";
 
-const readEnvFile = async (filePath: string): Promise<string> => {
+const isUnsupportedPermissionsError = (error: unknown): boolean => {
+  if (typeof error !== "object" || error === null) return false;
+  const code = Reflect.get(error, "code");
+  return code === "ENOSYS" || code === "ENOTSUP" || code === "EOPNOTSUPP";
+};
+
+type EnvFileState = {
+  readonly content: string;
+  readonly exists: boolean;
+};
+
+const readEnvFile = async (filePath: string): Promise<EnvFileState> => {
   try {
-    return await readFile(filePath, "utf8");
+    return Object.freeze({
+      content: await readFile(filePath, "utf8"),
+      exists: true,
+    });
   } catch (error) {
-    if (isMissingFileError(error)) return "";
+    if (isMissingFileError(error)) {
+      return Object.freeze({ content: "", exists: false });
+    }
     throw error;
+  }
+};
+
+const secureEnvFile = async (filePath: string): Promise<void> => {
+  try {
+    await chmod(filePath, 0o600);
+  } catch (error) {
+    if (!isUnsupportedPermissionsError(error)) throw error;
   }
 };
 
@@ -52,42 +83,36 @@ const readExistingApiKey = (content: string): string | undefined => {
     const match = envLinePattern.exec(line);
     return match === null ? [] : [unquote(match[1] ?? "")];
   });
-
   if (values.length > 1) {
-    throw new Error(
+    throw new ManagedBetterAuthProvisioningError(
       `.env.hotupdater contains multiple ${HOT_UPDATER_API_KEY_ENV_NAME} definitions.`,
     );
   }
   const value = values[0];
   if (value === undefined) return undefined;
-  if (decodeBase64Url32(value) === undefined) {
-    throw new Error(
+  if (!isCanonicalBase64Url32(value)) {
+    throw new ManagedBetterAuthProvisioningError(
       `${HOT_UPDATER_API_KEY_ENV_NAME} must be a canonical 32-byte base64url value.`,
     );
   }
   return value;
 };
 
-const digest = (apiKey: string): string =>
-  createHash("sha256").update(apiKey).digest("base64url");
+const resultFor = (apiKey: string): ProvisionedManagedBetterAuthApiKey =>
+  Object.freeze({
+    apiKey,
+    sha256: createHash("sha256").update(apiKey).digest("base64url"),
+  });
 
-const resultFor = (apiKey: string): ProvisionedApiKey =>
-  Object.freeze({ apiKey, sha256: digest(apiKey) });
-
-const restrictPermissions = async (filePath: string): Promise<void> => {
-  try {
-    await chmod(filePath, 0o600);
-  } catch {
-    // Some filesystems do not support POSIX modes.
-  }
-};
-
-export const provisionApiKey = async (
-  options: ProvisionApiKeyOptions = {},
-): Promise<ProvisionedApiKey> => {
+export const provisionManagedBetterAuthApiKey = async (
+  options: ProvisionManagedBetterAuthApiKeyOptions = {},
+): Promise<ProvisionedManagedBetterAuthApiKey> => {
   const envFilePath =
     options.envFilePath ?? resolve(process.cwd(), ".env.hotupdater");
-  const content = await readEnvFile(envFilePath);
+  const { content, exists } = await readEnvFile(envFilePath);
+  if (exists) {
+    await secureEnvFile(envFilePath);
+  }
   const existing = readExistingApiKey(content);
   if (existing !== undefined) return resultFor(existing);
 
@@ -98,6 +123,8 @@ export const provisionApiKey = async (
     `${separator}${HOT_UPDATER_API_KEY_ENV_NAME}=${apiKey}\n`,
     { encoding: "utf8", mode: 0o600 },
   );
-  await restrictPermissions(envFilePath);
+  if (!exists) {
+    await secureEnvFile(envFilePath);
+  }
   return resultFor(apiKey);
 };

@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync } from "node:crypto";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -318,17 +318,18 @@ describe.sequential("aws lambda runtime acceptance", () => {
       path.join(WORKSPACE_ROOT, "plugins/aws/runtime-acceptance-"),
     );
 
-    const transformedCode = transformEnv(
-      path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda/index.cjs"),
-      {
-        API_KEY_SHA256,
-        CLOUDFRONT_KEY_PAIR_ID,
-        SSM_PARAMETER_NAME,
-        SSM_REGION: REGION,
-        S3_BUCKET_NAME,
-      },
-    );
-    await writeFile(path.join(runtimeDir, "index.cjs"), transformedCode);
+    await cp(path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda"), runtimeDir, {
+      recursive: true,
+    });
+    const runtimeIndexPath = path.join(runtimeDir, "index.cjs");
+    const transformedCode = transformEnv(runtimeIndexPath, {
+      API_KEY_SHA256,
+      CLOUDFRONT_KEY_PAIR_ID,
+      SSM_PARAMETER_NAME,
+      SSM_REGION: REGION,
+      S3_BUCKET_NAME,
+    });
+    await writeFile(runtimeIndexPath, transformedCode);
 
     lambdaPort = await findOpenPort();
     lambdaRuntime = spawnRuntime({

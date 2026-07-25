@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { transformEnv } from "@hot-updater/cli-tools";
@@ -16,10 +16,29 @@ describe("AWS Lambda managed handler bundle", () => {
 
     // When
     const unresolvedInternalImport =
-      /require\(["']@hot-updater\/(?:api-key|plugin-core|server)(?:\/.*)?["']\)/;
+      /require\(["'](?:@better-auth\/[^"']+|better-auth|@hot-updater\/(?:better-auth|plugin-core|server)(?:\/.*)?)["']\)/;
 
     // Then
     expect(source).not.toMatch(unresolvedInternalImport);
+  });
+
+  it("ships every relative CommonJS chunk referenced by the handler", async () => {
+    // Given
+    const source = await readFile(managedHandlerPath, "utf8");
+    const relativeChunks = [
+      ...source.matchAll(/require\(["'](\.\/[^"']+\.cjs)["']\)/gu),
+    ].flatMap((match) => {
+      const relativeChunk = match[1];
+      return relativeChunk === undefined ? [] : [relativeChunk];
+    });
+
+    // When / Then
+    expect(relativeChunks.length).toBeGreaterThan(0);
+    await Promise.all(
+      relativeChunks.map((relativeChunk) =>
+        access(path.resolve(path.dirname(managedHandlerPath), relativeChunk)),
+      ),
+    );
   });
 
   it("injects only the API-key digest into the deployable artifact", async () => {

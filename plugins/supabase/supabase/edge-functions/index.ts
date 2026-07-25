@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { analytics } from "@hot-updater/analytics";
-import { apiKey } from "@hot-updater/api-key";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase/edge";
 import { Hono } from "npm:hono";
@@ -35,7 +35,7 @@ const hotUpdater = createHotUpdater({
     bundles: false,
     updateCheck: true,
   },
-  plugins: [apiKey({ sha256: apiKeySha256 }), analytics()],
+  plugins: [managedBetterAuthPlugin({ apiKeySha256 }), analytics()],
 });
 
 const app = new Hono().basePath(functionBasePath);

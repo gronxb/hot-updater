@@ -14,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { analytics, type AnalyticsAPI } from "@hot-updater/analytics";
-import { apiKey } from "@hot-updater/api-key";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import {
   type AppUpdateInfo,
@@ -91,6 +91,36 @@ const API_KEY = Buffer.alloc(32, 7).toString("base64url");
 const INVALID_API_KEY = Buffer.alloc(32, 8).toString("base64url");
 const API_KEY_SHA256 = createHash("sha256").update(API_KEY).digest("base64url");
 const AUTHENTICATED_HEADERS = { "x-api-key": API_KEY } as const;
+const PROTECTED_ROUTES = [
+  ["version", "GET", "/version"],
+  [
+    "fingerprint update",
+    "GET",
+    `/fingerprint/ios/fingerprint/production/${NIL_UUID}/${NIL_UUID}`,
+  ],
+  [
+    "fingerprint cohort update",
+    "GET",
+    `/fingerprint/ios/fingerprint/production/${NIL_UUID}/${NIL_UUID}/100`,
+  ],
+  [
+    "app-version update",
+    "GET",
+    `/app-version/ios/1.0/production/${NIL_UUID}/${NIL_UUID}`,
+  ],
+  [
+    "app-version cohort update",
+    "GET",
+    `/app-version/ios/1.0/production/${NIL_UUID}/${NIL_UUID}/100`,
+  ],
+  ["event ingestion", "POST", "/events"],
+  ["bundle event summary", "GET", "/api/bundles/bundle-1/events/summary"],
+  ["bundle event analytics", "GET", "/api/bundles/bundle-1/events/analytics"],
+  ["installation overview", "GET", "/api/installations/overview"],
+  ["active installations", "GET", "/api/installations/active"],
+  ["installation search", "GET", "/api/installations"],
+  ["installation history", "GET", "/api/installations/install-1/events"],
+] as const;
 const ANON_KEY = createLegacyJwt("anon");
 const SERVICE_ROLE_KEY = createLegacyJwt("service_role");
 const REQUIRED_BUILD_ARTIFACTS = [
@@ -99,8 +129,8 @@ const REQUIRED_BUILD_ARTIFACTS = [
     path: path.join(WORKSPACE_ROOT, "packages/analytics/dist/index.mjs"),
   },
   {
-    command: "pnpm --filter @hot-updater/api-key build",
-    path: path.join(WORKSPACE_ROOT, "packages/api-key/dist/index.mjs"),
+    command: "pnpm --filter @hot-updater/better-auth build",
+    path: path.join(WORKSPACE_ROOT, "packages/better-auth/dist/managed.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/core build",
@@ -283,7 +313,10 @@ describe.sequential("supabase edge runtime acceptance", () => {
         bundles: false,
         updateCheck: true,
       },
-      plugins: [apiKey({ sha256: API_KEY_SHA256 }), analytics()],
+      plugins: [
+        managedBetterAuthPlugin({ apiKeySha256: API_KEY_SHA256 }),
+        analytics(),
+      ],
     });
 
     edgeRuntime = spawnRuntime({
@@ -635,21 +668,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await expect(response.text()).resolves.toBe("pong");
   });
 
-  it.each([
-    ["core metadata", "GET", "/version"],
-    [
-      "update check",
-      "GET",
-      createCanonicalPath({
-        appVersion: "1.0",
-        bundleId: NIL_UUID,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      }),
-    ],
-    ["analytics query", "GET", "/api/bundles/missing/events/summary"],
-    ["event ingestion", "POST", "/events"],
-  ])(
+  it.each(PROTECTED_ROUTES)(
     "requires the managed API key for %s routes",
     async (_routeClass, method, routePath) => {
       const url = `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${routePath}`;
@@ -1076,8 +1095,8 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/analytics": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/analytics/dist/index.mjs"),
       ).href,
-      "@hot-updater/api-key": pathToFileURL(
-        path.join(WORKSPACE_ROOT, "packages/api-key/dist/index.mjs"),
+      "@hot-updater/better-auth/managed": pathToFileURL(
+        path.join(WORKSPACE_ROOT, "packages/better-auth/dist/managed.mjs"),
       ).href,
       "@hot-updater/server": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),

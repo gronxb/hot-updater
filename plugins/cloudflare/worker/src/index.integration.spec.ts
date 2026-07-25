@@ -357,9 +357,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
         );
 
         expect(response.status, `${method} ${path}`).toBe(401);
-        expect(response.headers.get("www-authenticate")).toBe(
-          'ApiKey realm="hot-updater"',
-        );
+        expect(response.headers.get("www-authenticate")).toBeNull();
       }
     }
   });

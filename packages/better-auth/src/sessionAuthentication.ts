@@ -3,6 +3,7 @@ import type {
   HotUpdaterAuthenticationProvider,
 } from "@hot-updater/server/internal/first-party-plugin";
 
+import { isCredentialRejectionError } from "./credentialRejection";
 import { isUnavailableError } from "./outage";
 
 export type BetterAuthSession = {
@@ -20,6 +21,19 @@ export type BetterAuthSessionConfiguredInstance = {
   };
 };
 
+class BetterAuthSessionContractError extends Error {
+  constructor() {
+    super("Better Auth returned an invalid session.");
+    this.name = "BetterAuthSessionContractError";
+  }
+}
+
+const isUserId = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  value === value.trim() &&
+  value.isWellFormed();
+
 export const createSessionAuthenticationProvider = (
   auth: BetterAuthSessionConfiguredInstance,
 ): HotUpdaterAuthenticationProvider =>
@@ -31,6 +45,9 @@ export const createSessionAuthenticationProvider = (
           headers: new Headers(input.headers),
         });
         if (result === null) return Object.freeze({ kind: "anonymous" });
+        if (!isUserId(result.user.id)) {
+          throw new BetterAuthSessionContractError();
+        }
         return Object.freeze({
           kind: "authenticated",
           principal: Object.freeze({
@@ -39,6 +56,9 @@ export const createSessionAuthenticationProvider = (
           }),
         });
       } catch (error) {
+        if (isCredentialRejectionError(error)) {
+          return Object.freeze({ kind: "anonymous" });
+        }
         if (isUnavailableError(error)) {
           return Object.freeze({ kind: "unavailable" });
         }
