@@ -1,17 +1,29 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import * as Repack from '@callstack/repack';
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import * as Repack from "@callstack/repack";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const appNodeModules = path.join(__dirname, 'node_modules');
+const appNodeModules = path.join(__dirname, "node_modules");
 const resolveOptions = Repack.getResolveOptions();
 
 const runtimeAliases = {
-  react$: path.join(appNodeModules, 'react'),
-  'react/jsx-dev-runtime$': path.join(appNodeModules, 'react/jsx-dev-runtime.js'),
-  'react/jsx-runtime$': path.join(appNodeModules, 'react/jsx-runtime.js'),
-  'react-native$': path.join(appNodeModules, 'react-native'),
+  "@hot-updater/analytics/react-native$": path.join(
+    appNodeModules,
+    "@hot-updater/analytics/dist/react-native/index.mjs",
+  ),
+  "@hot-updater/react-native/internal/runtime-metadata$": path.join(
+    appNodeModules,
+    "@hot-updater/react-native/lib/module/internal/runtime-metadata.js",
+  ),
+  react$: path.join(appNodeModules, "react"),
+  "react/jsx-dev-runtime$": path.join(
+    appNodeModules,
+    "react/jsx-dev-runtime.js",
+  ),
+  "react/jsx-runtime$": path.join(appNodeModules, "react/jsx-runtime.js"),
+  "react-native$": path.join(appNodeModules, "react-native"),
 };
 
 /**
@@ -23,7 +35,7 @@ const runtimeAliases = {
 
 export default Repack.defineRspackConfig({
   context: __dirname,
-  entry: './index.js',
+  entry: "./index.js",
   resolve: {
     ...resolveOptions,
     alias: {
@@ -35,9 +47,9 @@ export default Repack.defineRspackConfig({
     rules: [
       {
         test: /\.[cm]?[jt]sx?$/,
-        type: 'javascript/auto',
+        type: "javascript/auto",
         use: {
-          loader: '@callstack/repack/babel-swc-loader',
+          loader: "@callstack/repack/babel-swc-loader",
           parallel: true,
           options: {},
         },
