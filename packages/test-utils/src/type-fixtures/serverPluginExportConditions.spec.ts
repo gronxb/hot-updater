@@ -97,6 +97,16 @@ describe("server plugin declaration export conditions", () => {
       },
     ],
     [
+      "analytics",
+      "./react-native",
+      {
+        cjs: "./dist/react-native/index.cjs",
+        cts: "./dist/react-native/index.d.cts",
+        mjs: "./dist/react-native/index.mjs",
+        mts: "./dist/react-native/index.d.mts",
+      },
+    ],
+    [
       "better-auth",
       ".",
       {

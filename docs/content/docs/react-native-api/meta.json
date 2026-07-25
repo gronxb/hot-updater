@@ -15,8 +15,6 @@
     "isChannelSwitched",
     "resetChannel",
     "getAppVersion",
-    "getInstallId",
-    "setUser",
     "notifyAppReady",
     "useHotUpdaterStore",
     "addListener",

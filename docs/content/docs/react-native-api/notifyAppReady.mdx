@@ -30,17 +30,17 @@ switch (result.status) {
 
 ## Result
 
-| Status | Additional fields | Meaning |
-| --- | --- | --- |
-| `UPDATE_APPLIED` | `fromBundleId`, `toBundleId` | A downloaded update became active. |
-| `RECOVERED` | `fromBundleId`, `toBundleId` | Hot Updater recovered from a failed bundle. |
-| `UNCHANGED` | None | The active bundle did not change. |
+| Status           | Additional fields                                       | Meaning                                     |
+| ---------------- | ------------------------------------------------------- | ------------------------------------------- |
+| `UPDATE_APPLIED` | `fromBundleId`, `toBundleId`, optional `updateStrategy` | A downloaded update became active.          |
+| `RECOVERED`      | `fromBundleId`, `toBundleId`, optional `updateStrategy` | Hot Updater recovered from a failed bundle. |
+| `UNCHANGED`      | None                                                    | The active bundle did not change.           |
 
 ## Important notes
 
 - This API reads the native launch result. It does not send an Analytics event.
-- Normal apps should use `HotUpdater.init({ analytics: true })` for automatic
-  reporting.
+- Normal apps should pass the result to a client created with
+  `createReactNativeAnalytics` for reporting.
 - Prefer `onNotifyAppReady` when you only need to observe the result produced
   by `HotUpdater.wrap` or `HotUpdater.init`.
 

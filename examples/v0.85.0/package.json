@@ -18,6 +18,7 @@
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
     "@callstack/repack": "^5.2.5",
+    "@hot-updater/analytics": "workspace:*",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",

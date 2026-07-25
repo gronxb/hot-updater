@@ -103,6 +103,24 @@ describe("notifyAppReady", () => {
     expect(nativeModuleMock.notifyAppReady).toHaveBeenCalledWith();
   });
 
+  it("includes updateStrategy in UPDATE_APPLIED launch reports", async () => {
+    nativeModuleMock.notifyAppReady.mockReturnValue({
+      fromBundleId: "bundle-123",
+      status: "UPDATE_APPLIED",
+      toBundleId: "bundle-456",
+      updateStrategy: "fingerprint",
+    });
+
+    const { notifyAppReady } = await import("./native");
+
+    expect(notifyAppReady()).toEqual({
+      fromBundleId: "bundle-123",
+      status: "UPDATE_APPLIED",
+      toBundleId: "bundle-456",
+      updateStrategy: "fingerprint",
+    });
+  });
+
   it("returns RECOVERED launch reports with directional ids", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue({
       fromBundleId: "bundle-123",
@@ -117,19 +135,15 @@ describe("notifyAppReady", () => {
       fromBundleId: "bundle-123",
       status: "RECOVERED",
       toBundleId: "bundle-122",
+      updateStrategy: "appVersion",
     });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: {
-        fromBundleId: "bundle-123",
-        toBundleId: "bundle-122",
-        type: "RECOVERED",
-        updateStrategy: "appVersion",
-      },
       pending: false,
       result: {
         fromBundleId: "bundle-123",
         status: "RECOVERED",
         toBundleId: "bundle-122",
+        updateStrategy: "appVersion",
       },
     });
   });
@@ -149,7 +163,6 @@ describe("notifyAppReady", () => {
       toBundleId: "bundle-recovered",
     });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: null,
       pending: false,
       result: {
         fromBundleId: "bundle-crashed",
@@ -171,7 +184,6 @@ describe("notifyAppReady", () => {
     const { readNotifyAppReady } = await import("./native");
 
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: null,
       pending: false,
       result: {
         fromBundleId: "bundle-crashed",
@@ -181,7 +193,7 @@ describe("notifyAppReady", () => {
     });
   });
 
-  it("returns UNCHANGED when automatic analytics metadata is incomplete", async () => {
+  it("returns UNCHANGED when transition metadata is incomplete", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue({
       status: "UPDATE_APPLIED",
     });
@@ -190,7 +202,6 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: null,
       pending: false,
       result: { status: "UNCHANGED" },
     });
@@ -203,7 +214,6 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: null,
       pending: false,
       result: { status: "UNCHANGED" },
     });
@@ -216,7 +226,6 @@ describe("notifyAppReady", () => {
 
     expect(notifyAppReady()).toEqual({ status: "UNCHANGED" });
     expect(readNotifyAppReady()).toEqual({
-      analyticsEvent: null,
       pending: true,
       result: { status: "UNCHANGED" },
     });

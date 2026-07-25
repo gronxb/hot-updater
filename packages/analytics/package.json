@@ -38,6 +38,16 @@
         "default": "./dist/provider/index.cjs"
       }
     },
+    "./react-native": {
+      "import": {
+        "types": "./dist/react-native/index.d.mts",
+        "default": "./dist/react-native/index.mjs"
+      },
+      "require": {
+        "types": "./dist/react-native/index.d.cts",
+        "default": "./dist/react-native/index.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -49,6 +59,11 @@
     "build": "tsdown",
     "test:type": "tsc --noEmit"
   },
+  "nx": {
+    "implicitDependencies": [
+      "!@hot-updater/react-native"
+    ]
+  },
   "repository": "https://github.com/gronxb/hot-updater",
   "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
   "publishConfig": {
@@ -58,7 +73,21 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*"
   },
+  "peerDependencies": {
+    "@hot-updater/react-native": "*",
+    "react-native": ">=0.77.0"
+  },
+  "peerDependenciesMeta": {
+    "@hot-updater/react-native": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@types/node": "catalog:"
+    "@hot-updater/react-native": "workspace:*",
+    "@types/node": "catalog:",
+    "react-native": "0.79.1"
   }
 }

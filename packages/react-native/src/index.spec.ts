@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HotUpdater as HotUpdaterValue } from "./index";
 import type { NotifyAppReadyResult } from "./native";
+import type { HotUpdaterResolver } from "./types";
 import type { HotUpdaterInitOptions, HotUpdaterOptions } from "./wrap";
 
 const mocks = vi.hoisted(() => {
@@ -293,12 +294,32 @@ describe("HotUpdater client initialization", () => {
   });
 
   it("types public init options with onError", () => {
+    type InitHasAnalytics = "analytics" extends keyof HotUpdaterInitOptions
+      ? true
+      : false;
+    type ResolverHasAnalyticsTransport =
+      "notifyAppReadyAnalytics" extends keyof HotUpdaterResolver ? true : false;
+    type RootHasInstallId = "getInstallId" extends keyof typeof HotUpdaterValue
+      ? true
+      : false;
+    type RootHasSetUser = "setUser" extends keyof typeof HotUpdaterValue
+      ? true
+      : false;
+
     const options = {
       baseURL: "https://updates.example.com",
       onError: vi.fn(),
     } satisfies HotUpdaterInitOptions;
+    const initHasAnalytics: InitHasAnalytics = false;
+    const resolverHasAnalyticsTransport: ResolverHasAnalyticsTransport = false;
+    const rootHasInstallId: RootHasInstallId = false;
+    const rootHasSetUser: RootHasSetUser = false;
 
     expect(options.baseURL).toBe("https://updates.example.com");
+    expect(initHasAnalytics).toBe(false);
+    expect(resolverHasAnalyticsTransport).toBe(false);
+    expect(rootHasInstallId).toBe(false);
+    expect(rootHasSetUser).toBe(false);
   });
 
   it("uses init configuration for later manual update checks", async () => {
@@ -336,18 +357,12 @@ describe("HotUpdater client initialization", () => {
     });
   });
 
-  it("exposes install identity and user setters from native", async () => {
+  it("does not expose runtime identity metadata APIs", async () => {
     const HotUpdater = await importHotUpdater();
 
-    expect(HotUpdater.getInstallId()).toBe("install-id");
-
-    HotUpdater.setUser({ userId: "user-123", username: "alice" });
-
-    expect(mocks.getInstallId).toHaveBeenCalledWith();
-    expect(mocks.setUser).toHaveBeenCalledWith({
-      userId: "user-123",
-      username: "alice",
-    });
+    expect("getInstallId" in HotUpdater).toBe(false);
+    expect("setUser" in HotUpdater).toBe(false);
+    expect("getUser" in HotUpdater).toBe(false);
   });
 
   it("exposes notifyAppReady from native", async () => {

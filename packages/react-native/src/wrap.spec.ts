@@ -1,28 +1,13 @@
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-  NotifyAppReadyAnalyticsEvent,
-  NotifyAppReadyResult,
-} from "./native";
+import type { NotifyAppReadyResult } from "./native";
 import type { HotUpdaterOptions } from "./wrap";
-
-vi.mock("react-native", () => ({
-  Platform: {
-    OS: "ios",
-  },
-}));
 
 const createNotifyReadResult = (
   result: NotifyAppReadyResult = { status: "UNCHANGED" },
-  analyticsEvent: NotifyAppReadyAnalyticsEvent | null = null,
   pending = false,
-): {
-  analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
-  pending: boolean;
-  result: NotifyAppReadyResult;
-} => ({
-  analyticsEvent,
+) => ({
   pending,
   result,
 });
@@ -30,20 +15,8 @@ const createNotifyReadResult = (
 const mocks = vi.hoisted(() => ({
   addListener: vi.fn(() => () => {}),
   checkForUpdate: vi.fn(),
-  getAppVersion: vi.fn(() => "1.0.0"),
   getBundleId: vi.fn(() => "bundle-id"),
-  getChannel: vi.fn(() => "production"),
-  getCohort: vi.fn(() => "123"),
-  getFingerprintHash: vi.fn(() => "fingerprint-hash"),
-  getInstallId: vi.fn(() => "install-id"),
-  getPersistedUserIdentity: vi.fn(() => ({})),
-  readNotifyAppReady: vi.fn<
-    () => {
-      analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
-      pending: boolean;
-      result: NotifyAppReadyResult;
-    }
-  >(() => createNotifyReadResult()),
+  readNotifyAppReady: vi.fn(() => createNotifyReadResult()),
   reload: vi.fn(),
 }));
 
@@ -53,16 +26,21 @@ vi.mock("./checkForUpdate", () => ({
 
 vi.mock("./native", () => ({
   addListener: mocks.addListener,
-  getAppVersion: mocks.getAppVersion,
   getBundleId: mocks.getBundleId,
-  getChannel: mocks.getChannel,
-  getCohort: mocks.getCohort,
-  getFingerprintHash: mocks.getFingerprintHash,
-  getInstallId: mocks.getInstallId,
-  getPersistedUserIdentity: mocks.getPersistedUserIdentity,
   readNotifyAppReady: mocks.readNotifyAppReady,
   reload: mocks.reload,
 }));
+
+const stubNotifyFrame = () => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    vi.fn((callback: (timestamp: number) => void) => {
+      setTimeout(() => callback(0), 0);
+      return 1;
+    }),
+  );
+};
 
 describe("HotUpdater wrap initialization", () => {
   beforeEach(() => {
@@ -74,29 +52,14 @@ describe("HotUpdater wrap initialization", () => {
       mock.mockReset();
     }
 
-    mocks.checkForUpdate.mockResolvedValue(null);
     mocks.addListener.mockReturnValue(() => {});
-    mocks.getAppVersion.mockReturnValue("1.0.0");
-    mocks.getPersistedUserIdentity.mockReturnValue({});
+    mocks.checkForUpdate.mockResolvedValue(null);
     mocks.getBundleId.mockReturnValue("bundle-id");
-    mocks.getChannel.mockReturnValue("production");
-    mocks.getCohort.mockReturnValue("123");
-    mocks.getFingerprintHash.mockReturnValue("fingerprint-hash");
-    mocks.getInstallId.mockReturnValue("install-id");
     mocks.readNotifyAppReady.mockReturnValue(createNotifyReadResult());
   });
 
   it("returns void from init and defers notifyAppReady to the next frame", async () => {
-    vi.useFakeTimers();
-
-    const requestAnimationFrame = vi.fn(
-      (callback: (timestamp: number) => void) => {
-        setTimeout(() => callback(0), 0);
-        return 1;
-      },
-    );
-    vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
-
+    stubNotifyFrame();
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
@@ -105,9 +68,7 @@ describe("HotUpdater wrap initialization", () => {
 
     const result = init({
       resolver,
-      requestHeaders: {
-        Authorization: "Bearer token",
-      },
+      requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
     });
 
@@ -115,232 +76,68 @@ describe("HotUpdater wrap initialization", () => {
     expect(mocks.readNotifyAppReady).not.toHaveBeenCalled();
     expect(resolver.notifyAppReady).not.toHaveBeenCalled();
 
-    expect(requestAnimationFrame).toHaveBeenCalled();
-
     await vi.runOnlyPendingTimersAsync();
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledWith();
     expect(resolver.notifyAppReady).toHaveBeenCalledWith({
-      requestHeaders: {
-        Authorization: "Bearer token",
-      },
+      requestHeaders: { Authorization: "Bearer token" },
       requestTimeout: 1000,
       status: "STABLE",
     });
   });
 
-  it("waits for native launch verification before sending analytics", async () => {
-    vi.useFakeTimers();
-
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: (timestamp: number) => void) => {
-        setTimeout(() => callback(0), 0);
-        return 1;
-      }),
-    );
-
+  it("waits for native launch verification before reporting recovery", async () => {
+    stubNotifyFrame();
+    const recoveredResult = {
+      fromBundleId: "bundle-b",
+      status: "RECOVERED",
+      toBundleId: "bundle-a",
+      updateStrategy: "appVersion",
+    } as const satisfies NotifyAppReadyResult;
     mocks.readNotifyAppReady
-      .mockReturnValueOnce(createNotifyReadResult(undefined, null, true))
-      .mockReturnValueOnce(
-        createNotifyReadResult(
-          {
-            fromBundleId: "bundle-a",
-            status: "UPDATE_APPLIED",
-            toBundleId: "bundle-b",
-          },
-          {
-            fromBundleId: "bundle-a",
-            toBundleId: "bundle-b",
-            type: "UPDATE_APPLIED",
-            updateStrategy: "appVersion",
-          },
-        ),
-      );
-
+      .mockReturnValueOnce(createNotifyReadResult(undefined, true))
+      .mockReturnValueOnce(createNotifyReadResult(recoveredResult));
     const resolver = {
       checkUpdate: vi.fn(),
       notifyAppReady: vi.fn().mockResolvedValue(undefined),
-      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
     };
+    const onNotifyAppReady = vi.fn();
     const { init } = await import("./wrap");
 
-    init({ analytics: true, resolver });
-
+    init({ onNotifyAppReady, resolver });
     await vi.runAllTimersAsync();
 
     expect(mocks.readNotifyAppReady).toHaveBeenCalledTimes(2);
-    expect(resolver.notifyAppReady).toHaveBeenCalledTimes(1);
-    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledTimes(1);
+    expect(resolver.notifyAppReady).toHaveBeenCalledWith({
+      crashedBundleId: "bundle-b",
+      requestHeaders: undefined,
+      requestTimeout: undefined,
+      status: "RECOVERED",
+    });
+    expect(onNotifyAppReady).toHaveBeenCalledWith(recoveredResult);
   });
 
-  it("sends automatic analytics only from init when enabled", async () => {
-    vi.useFakeTimers();
-
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: (timestamp: number) => void) => {
-        setTimeout(() => callback(0), 0);
-        return 1;
-      }),
-    );
-
-    mocks.readNotifyAppReady.mockReturnValue(
-      createNotifyReadResult(
-        {
-          fromBundleId: "bundle-a",
-          status: "UPDATE_APPLIED",
-          toBundleId: "bundle-b",
-        },
-        {
-          fromBundleId: "bundle-a",
-          toBundleId: "bundle-b",
-          type: "UPDATE_APPLIED",
-          updateStrategy: "fingerprint",
-        },
-      ),
-    );
-
-    mocks.getPersistedUserIdentity.mockReturnValue({
-      userId: "user-123",
-      username: "alice",
-    });
-
-    const resolver = {
-      checkUpdate: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
-    };
-    const { init } = await import("./wrap");
-
-    init({
-      analytics: true,
-      requestHeaders: {
-        Authorization: "Bearer token",
-      },
-      requestTimeout: 1000,
-      resolver,
-    });
-
-    await vi.runOnlyPendingTimersAsync();
-
-    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledWith({
-      appVersion: "1.0.0",
-      channel: "production",
-      cohort: "123",
-      fingerprintHash: "fingerprint-hash",
-      fromBundleId: "bundle-a",
-      installId: "install-id",
-      platform: "ios",
-      requestHeaders: {
-        Authorization: "Bearer token",
-      },
-      requestTimeout: 1000,
-      toBundleId: "bundle-b",
-      type: "UPDATE_APPLIED",
-      updateStrategy: "fingerprint",
-      userId: "user-123",
-      username: "alice",
-    });
-  });
-
-  it("guards automatic analytics to a single delivery attempt per runtime", async () => {
-    vi.useFakeTimers();
-
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: (timestamp: number) => void) => {
-        setTimeout(() => callback(0), 0);
-        return 1;
-      }),
-    );
-
-    mocks.readNotifyAppReady.mockReturnValue(
-      createNotifyReadResult(
-        {
-          fromBundleId: "bundle-a",
-          status: "RECOVERED",
-          toBundleId: "bundle-b",
-        },
-        {
-          fromBundleId: "bundle-a",
-          toBundleId: "bundle-b",
-          type: "RECOVERED",
-          updateStrategy: "appVersion",
-        },
-      ),
-    );
-
-    const resolver = {
-      checkUpdate: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-      notifyAppReadyAnalytics: vi.fn().mockResolvedValue(undefined),
-    };
-    const { init } = await import("./wrap");
-
-    init({ analytics: true, resolver });
-    init({ analytics: true, resolver });
-
-    await vi.runOnlyPendingTimersAsync();
-
-    expect(resolver.notifyAppReadyAnalytics).toHaveBeenCalledTimes(1);
-  });
-
-  it("warns without interrupting app readiness when analytics transport fails", async () => {
-    vi.useFakeTimers();
-
+  it("reports resolver readiness errors without suppressing the callback", async () => {
+    stubNotifyFrame();
+    const failure = new Error("readiness failed");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const error = new Error("Expected HTTP 204 from /events, received 404");
     const onError = vi.fn();
     const onNotifyAppReady = vi.fn();
-    vi.stubGlobal(
-      "requestAnimationFrame",
-      vi.fn((callback: (timestamp: number) => void) => {
-        setTimeout(() => callback(0), 0);
-        return 1;
-      }),
-    );
-    mocks.readNotifyAppReady.mockReturnValue(
-      createNotifyReadResult(
-        {
-          fromBundleId: "bundle-a",
-          status: "UPDATE_APPLIED",
-          toBundleId: "bundle-b",
-        },
-        {
-          fromBundleId: "bundle-a",
-          toBundleId: "bundle-b",
-          type: "UPDATE_APPLIED",
-          updateStrategy: "appVersion",
-        },
-      ),
-    );
     const resolver = {
       checkUpdate: vi.fn(),
-      notifyAppReady: vi.fn().mockResolvedValue(undefined),
-      notifyAppReadyAnalytics: vi.fn().mockRejectedValue(error),
+      notifyAppReady: vi.fn().mockRejectedValue(failure),
     };
     const { init } = await import("./wrap");
 
-    init({
-      analytics: true,
-      onError,
-      onNotifyAppReady,
-      resolver,
-    });
-
+    init({ onError, onNotifyAppReady, resolver });
     await vi.runOnlyPendingTimersAsync();
 
-    expect(onError).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(failure);
+    expect(onNotifyAppReady).toHaveBeenCalledWith({ status: "UNCHANGED" });
     expect(warn).toHaveBeenCalledWith(
-      "[HotUpdater] Automatic notifyAppReady analytics failed:",
-      error,
+      "[HotUpdater] Resolver notifyAppReady failed:",
+      failure,
     );
-    expect(onNotifyAppReady).toHaveBeenCalledWith({
-      fromBundleId: "bundle-a",
-      status: "UPDATE_APPLIED",
-      toBundleId: "bundle-b",
-    });
     warn.mockRestore();
   });
 

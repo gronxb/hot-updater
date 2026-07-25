@@ -609,7 +609,12 @@ describe("Detox scenario contract", () => {
 
     expect(exampleAppSource).toContain("./src/e2eApp");
     expect(e2eRuntimeSource).toContain("../e2eRuntimeConfig");
-    expect(e2eRuntimeSource).toContain("analytics: true");
+    expect(e2eRuntimeSource).toContain(
+      'from "@hot-updater/analytics/react-native"',
+    );
+    expect(e2eRuntimeSource).toContain("createReactNativeAnalytics");
+    expect(e2eRuntimeSource).toContain("recordAppReady(result)");
+    expect(e2eRuntimeSource).not.toContain("analytics: true");
     expect(e2eRuntimeSource).toContain('userId: "detox-e2e"');
     expect(e2eRuntimeSource).toContain('username: "hot-updater-e2e"');
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");

@@ -125,7 +125,7 @@ interface BundleStorageService {
     fun getUsername(): String?
 
     /**
-     * Persists the optional user envelope for analytics.
+     * Persists optional user identity metadata.
      * Passing null clears the stored user identity.
      */
     fun setUser(

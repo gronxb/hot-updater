@@ -1,3 +1,4 @@
+import { createReactNativeAnalytics } from "@hot-updater/analytics/react-native";
 import { HotUpdater } from "@hot-updater/react-native";
 import { proxy } from "valtio";
 
@@ -37,16 +38,21 @@ type UpdateProgressDetails = {
   }[];
 };
 
-HotUpdater.setUser({
+const analytics = createReactNativeAnalytics({
+  baseURL: resolveHotUpdaterBaseURL,
+  requestTimeout: 15000,
+});
+
+analytics.setUser({
   userId: "detox-e2e",
   username: "hot-updater-e2e",
 });
 
 HotUpdater.init({
-  analytics: true,
   baseURL: resolveHotUpdaterBaseURL,
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
+    analytics.recordAppReady(result);
     notify.status = result.status;
     notify.crashedBundleId =
       result.status === "RECOVERED" ? result.fromBundleId : undefined;

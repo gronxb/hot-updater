@@ -8,6 +8,7 @@
 "@hot-updater/firebase": minor
 "@hot-updater/plugin-core": minor
 "@hot-updater/postgres": minor
+"@hot-updater/react-native": minor
 "@hot-updater/server": minor
 "@hot-updater/standalone": minor
 "@hot-updater/supabase": minor
@@ -45,6 +46,20 @@ Migrate server construction as follows:
   the `missingCapability` Analytics option. Database plugins no longer carry
   Analytics provider factories. Use `analytics({ provider })` for a dedicated
   provider or `standaloneAnalytics(config)` for the Standalone transport.
+
+Migrate React Native Analytics to the feature-owned client:
+
+- Create the client with `createReactNativeAnalytics` from
+  `@hot-updater/analytics/react-native`.
+- Replace the React Native root `analytics` option with
+  `analytics.recordAppReady(result)` in the existing `onNotifyAppReady`
+  callback.
+- Replace `HotUpdater.setUser` and `HotUpdater.getInstallId` with the client
+  methods. The React Native root no longer exposes Analytics-specific options
+  or identity helpers.
+- Custom resolvers keep their generic `notifyAppReady` callback. Compose the
+  Analytics client through `onNotifyAppReady`; do not add an
+  Analytics-specific resolver callback.
 
 Protected routes now require exactly one authentication provider. Install
 `betterAuthPlugin({ auth })` from `@hot-updater/better-auth` to adapt a

@@ -253,9 +253,9 @@ use their URL signature. The managed preset authenticates the key through the
 same Better Auth session contract as `betterAuthPlugin({ auth })`.
 </Callout>
 
-`requestHeaders` supplies the key to React Native update checks and app-ready
-notifications. If you configure an HTTP-backed Hot Updater client separately,
-use the same value through `commonHeaders`:
+`requestHeaders` supplies the key to React Native update checks. If you
+configure another HTTP-backed Hot Updater client, use the same value through
+`commonHeaders`:
 
 ```ts
 const commonHeaders = {

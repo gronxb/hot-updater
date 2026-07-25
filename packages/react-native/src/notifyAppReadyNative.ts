@@ -1,5 +1,4 @@
 import type {
-  NotifyAppReadyAnalyticsEvent,
   NotifyAppReadyResult,
   PersistedUpdateStrategy,
 } from "./notifyAppReadyTypes";
@@ -18,7 +17,6 @@ type NotifyAppReadyNativeDependencies = {
 };
 
 export type NotifyAppReadyReadResult = {
-  readonly analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
   readonly pending: boolean;
   readonly result: NotifyAppReadyResult;
 };
@@ -95,7 +93,14 @@ const getPublicResult = (
       dependencies.resolveBundleId,
     );
     if (fromBundleId && toBundleId) {
-      return { fromBundleId, status: "UPDATE_APPLIED", toBundleId };
+      return {
+        fromBundleId,
+        status: "UPDATE_APPLIED",
+        toBundleId,
+        ...(isPersistedUpdateStrategy(rawResult.updateStrategy)
+          ? { updateStrategy: rawResult.updateStrategy }
+          : {}),
+      };
     }
   }
 
@@ -115,55 +120,18 @@ const getPublicResult = (
         dependencies.resolveBundleId,
       ) ?? (fromBundleId ? dependencies.getActiveBundleId() : null);
     if (fromBundleId && toBundleId) {
-      return { fromBundleId, status: "RECOVERED", toBundleId };
+      return {
+        fromBundleId,
+        status: "RECOVERED",
+        toBundleId,
+        ...(isPersistedUpdateStrategy(rawResult.updateStrategy)
+          ? { updateStrategy: rawResult.updateStrategy }
+          : {}),
+      };
     }
   }
 
   return { status: "UNCHANGED" };
-};
-
-const getAnalyticsEvent = (
-  rawResult: RawNotifyAppReadyResult,
-  resolveBundleId: NotifyAppReadyNativeDependencies["resolveBundleId"],
-): NotifyAppReadyAnalyticsEvent | null => {
-  if (!isPersistedUpdateStrategy(rawResult.updateStrategy)) {
-    return null;
-  }
-
-  const fromBundleId = readDirectionalBundleId(
-    rawResult.fromBundleId,
-    resolveBundleId,
-  );
-  const toBundleId = readDirectionalBundleId(
-    rawResult.toBundleId,
-    resolveBundleId,
-  );
-  if (!fromBundleId || !toBundleId) {
-    return null;
-  }
-
-  if (
-    rawResult.status === "UPDATE_APPLIED" ||
-    rawResult.status === "PROMOTED"
-  ) {
-    return {
-      fromBundleId,
-      toBundleId,
-      type: "UPDATE_APPLIED",
-      updateStrategy: rawResult.updateStrategy,
-    };
-  }
-
-  if (rawResult.status === "RECOVERED") {
-    return {
-      fromBundleId,
-      toBundleId,
-      type: "RECOVERED",
-      updateStrategy: rawResult.updateStrategy,
-    };
-  }
-
-  return null;
 };
 
 export const readNativeNotifyAppReady = (
@@ -173,7 +141,6 @@ export const readNativeNotifyAppReady = (
   const rawResult = readRawResult(value);
 
   return {
-    analyticsEvent: getAnalyticsEvent(rawResult, dependencies.resolveBundleId),
     pending: rawResult.status === "PENDING",
     result: getPublicResult(rawResult, dependencies),
   };

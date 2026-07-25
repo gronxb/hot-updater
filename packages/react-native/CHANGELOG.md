@@ -4,7 +4,11 @@
 
 ### Minor Changes
 
-- Add opt-in OTA analytics with the exact `UNCHANGED | UPDATE_APPLIED | RECOVERED` app-ready contract, persisted install/user identity helpers, and `/events` reporting from `HotUpdater.init({ analytics: true })`.
+- Preserve the exact `UNCHANGED | UPDATE_APPLIED | RECOVERED` app-ready
+  contract while moving Analytics transport and installation identity to
+  `createReactNativeAnalytics` from `@hot-updater/analytics/react-native`.
+  Compose `recordAppReady` through `onNotifyAppReady`; the React Native root no
+  longer exposes the `analytics` option, `getInstallId`, or `setUser`.
 
 ## 0.35.6
 
@@ -210,7 +214,6 @@
   `baseURL` can now be a string or a function returning a string or promise. The
   default resolver calls the function before each update check so apps can resolve
   the update server URL at runtime.
-
   - @hot-updater/cli-tools@0.30.12
   - @hot-updater/core@0.30.12
   - @hot-updater/js@0.30.12

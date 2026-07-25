@@ -177,7 +177,7 @@ persistence semantics.
 | Options are normalized once and duplicate configuration identities fail early.                  | Plugin options are normalized during construction; duplicate plugin, route, API, capability, middleware, and metadata ownership is rejected. |
 | Endpoint declarations carry method, path, input schema, and documentation metadata together.    | A Hot Updater route manifest carries method, path, access, request policy, runtime parser, and handler together.                             |
 | Server endpoint declarations drive typed client/server API inference.                           | The plugin tuple passed to `createHotUpdater` drives the namespaced `features` API type.                                                     |
-| A separate client companion can infer the server plugin.                                        | A future Analytics client package may infer the Analytics manifest; it is not required for the kernel release.                               |
+| A separate client companion owns feature-specific client behavior.                              | `@hot-updater/analytics/react-native` owns React Native event transport and installation identity outside the server kernel.                 |
 
 The following Better Auth details are deliberately not copied:
 
@@ -436,10 +436,19 @@ Owns:
 - bounded and dedicated query behavior;
 - remote standalone availability semantics;
 - Analytics metadata for the current `/version.capabilities` protocol;
-- the namespaced Analytics runtime API and temporary flat API aliases.
+- the namespaced Analytics runtime API and temporary flat API aliases;
+- the React Native client factory from
+  `@hot-updater/analytics/react-native`, including `recordAppReady`, `setUser`,
+  and `getInstallId`.
 
 Provider authoring APIs are exported from
 `@hot-updater/analytics/provider`.
+
+The React Native Analytics client is feature-owned and is not exported from
+`@hot-updater/react-native`. The React Native root owns the generic
+`onNotifyAppReady` lifecycle only; it has no Analytics option, installation ID,
+or user-alias API. No React Native client implementation or type belongs in
+`@hot-updater/server`, `@hot-updater/plugin-core`, or another core package.
 
 ### `@hot-updater/better-auth`
 

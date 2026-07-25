@@ -61,10 +61,7 @@ export type ManualUpdateOptions = CommonHotUpdaterOptions &
     updateMode: "manual";
   };
 
-export type HotUpdaterInitOptions = CommonHotUpdaterOptions &
-  NetworkConfig & {
-    analytics?: boolean;
-  };
+export type HotUpdaterInitOptions = CommonHotUpdaterOptions & NetworkConfig;
 
 export type HotUpdaterOptions = AutoUpdateOptions | ManualUpdateOptions;
 
@@ -89,9 +86,7 @@ type InternalManualUpdateOptions = InternalCommonOptions & {
   updateMode: "manual";
 };
 
-export type InternalInitOptions = InternalCommonOptions & {
-  analytics?: boolean;
-};
+export type InternalInitOptions = InternalCommonOptions;
 
 export type InternalWrapOptions =
   | InternalAutoUpdateOptions

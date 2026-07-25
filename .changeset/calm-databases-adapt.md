@@ -85,26 +85,22 @@ those arrays. Servers that cannot guarantee an atomic batch reject it before
 inserting any bundle. The standalone adapter uses this route for transactions
 that contain only new bundles; mixed multi-bundle mutations remain unsupported.
 
-`routes.analytics: true` now mounts client event ingestion together with the
-Analytics and installation query routes when the configured database supports
-Analytics. Enabling it with an unsupported database logs a warning and mounts
-none of those routes. The managed Cloudflare, Firebase, and Supabase presets
-enable the group by default so mobile Analytics works without additional server
-configuration.
+The feature-owned `analytics()` server plugin mounts client event ingestion
+together with the Analytics and installation query routes when the configured
+database supports Analytics. The managed Cloudflare, Firebase, and Supabase
+presets install the feature by default so mobile Analytics works without
+additional server configuration.
 
-This release does not add route-specific authentication. Event payloads remain
-untrusted telemetry, and managed Analytics query routes are public by default.
-Deployments are responsible for their framework or provider access controls,
-rate limits, quotas, logging, and retention.
+Event payloads remain untrusted telemetry. Deployments are responsible for
+their authentication policy, rate limits, quotas, logging, and retention.
 
 The managed Firebase template no longer emits the unsupported Functions
 `gen` property. Firebase Functions v2 continues to be selected by the
 `firebase-functions/v2` entrypoint, and the generated project now passes
 Firebase CLI schema validation and emulator trigger discovery.
 
-Self-hosted servers keep the Analytics route group closed by default and expose
-it explicitly with `routes.analytics: true`, independently from bundle
-management routes.
+Self-hosted servers install `analytics()` explicitly and independently from
+bundle-management routes.
 
 `GET /version` now distinguishes structural database Analytics support from
 the mounted routes through `capabilities.analytics`,
@@ -139,12 +135,14 @@ core-only, while custom servers can opt into bounded Analytics explicitly.
 Snapshot-backed Analytics trades higher object-write amplification and bounded
 commit retries for that concurrency guarantee.
 
-React Native preserves the legacy `resolver.notifyAppReady` readiness callback
-independently from Analytics and adds `resolver.notifyAppReadyAnalytics` for
-best-effort event transport. New JavaScript preserves recovery reported by an
+React Native preserves the generic `resolver.notifyAppReady` readiness callback
+independently from Analytics. Best-effort event transport now belongs to the
+client created by `createReactNativeAnalytics` from
+`@hot-updater/analytics/react-native`; compose its `recordAppReady` method
+through `onNotifyAppReady`. New JavaScript preserves recovery reported by an
 older native binary; if the native payload lacks the directional metadata
 needed for an Analytics event, only telemetry is skipped. Roll out the native
-binary before enabling Analytics through JavaScript OTA.
+binary before enabling the Analytics client through JavaScript OTA.
 
 Official providers no longer silently ignore distinct counts, `distinctOn`, or
 multi-clause ordering. Supported distinct operations are exact, and providers

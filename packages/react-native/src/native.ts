@@ -18,10 +18,7 @@ import HotUpdaterNative, {
 } from "./specs/NativeHotUpdater";
 
 export { HotUpdaterErrorCode, isHotUpdaterError };
-export type {
-  NotifyAppReadyAnalyticsEvent,
-  NotifyAppReadyResult,
-} from "./notifyAppReadyTypes";
+export type { NotifyAppReadyResult } from "./notifyAppReadyTypes";
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 

@@ -16,46 +16,68 @@ can collect and display reports.
 
 ## Enable analytics
 
-### Apps using `HotUpdater.init`
+Install the Analytics client next to the React Native SDK:
 
-Enable Analytics when you initialize a manual update flow:
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-  analytics: true,
-});
+```package-install
+npm install @hot-updater/analytics @hot-updater/react-native
 ```
 
-Call `HotUpdater.init` once, when the runtime is ready to report the current
-launch.
-
-### Apps using `HotUpdater.wrap`
-
-Keep `HotUpdater.wrap` in place for automatic updates. Call
-`HotUpdater.init({ analytics: true })` once before exporting the wrapped app:
+Create one client and compose `recordAppReady` into the updater's existing
+`onNotifyAppReady` callback:
 
 ```tsx
+import { createReactNativeAnalytics } from "@hot-updater/analytics/react-native";
 import { HotUpdater } from "@hot-updater/react-native";
 
 const baseURL = "<your-update-server-url>";
-
-HotUpdater.init({
-  baseURL,
-  analytics: true,
-});
+const analytics = createReactNativeAnalytics({ baseURL });
 
 export default HotUpdater.wrap({
   baseURL,
   updateStrategy: "appVersion",
+  onNotifyAppReady: (result) => {
+    analytics.recordAppReady(result);
+    observeAppReady(result);
+  },
 })(App);
 ```
 
-Do not replace `HotUpdater.wrap` with `HotUpdater.init` unless your app also
-implements a manual update flow. The `analytics` option belongs to
-`HotUpdater.init`; it is not a `HotUpdater.wrap` option.
+For a manual update flow, use the same composition with `HotUpdater.init`:
+
+```tsx
+HotUpdater.init({
+  baseURL,
+  onNotifyAppReady: (result) => {
+    analytics.recordAppReady(result);
+  },
+});
+```
+
+The Analytics client owns event transport and installation identity.
+`HotUpdater.wrap` and `HotUpdater.init` continue to own update checks and
+produce the generic app-ready result.
+
+When an app uses a custom updater resolver, give Analytics its own transport
+instead of adding an Analytics method to `HotUpdaterResolver`:
+
+```tsx
+const analytics = createReactNativeAnalytics({
+  transport: {
+    async send(event) {
+      await sendAnalyticsEvent(event);
+    },
+  },
+  onError: (error) => {
+    reportAnalyticsDeliveryError(error);
+  },
+});
+```
+
+The default transport accepts `baseURL`, `requestHeaders`, and
+`requestTimeout`. It sends `POST <baseURL>/events`, requires HTTP 204, makes one
+best-effort attempt per JavaScript runtime, and never retries. When the server
+requires an API key, pass the same immutable headers to the updater and the
+Analytics client.
 
 ## Associate reports with a user
 
@@ -63,34 +85,34 @@ Analytics always counts installations by `installId`. You can attach a
 `userId` and `username` as searchable aliases:
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-HotUpdater.setUser({
+analytics.setUser({
   userId: currentUser.id,
   username: currentUser.username,
 });
-
-HotUpdater.init({
-  baseURL: "<your-update-server-url>",
-  analytics: true,
-});
 ```
 
-Call `setUser` before `init` when the identity is already available. If the
-user signs in later, call `setUser` then; the identity appears on future
-app-ready reports. Clear the persisted aliases on sign-out:
+Call `setUser` before the app-ready callback when the identity is already
+available. If the user signs in later, call `setUser` then; the identity
+appears on future app-ready reports. Clear the persisted aliases on sign-out:
 
 ```tsx
-HotUpdater.setUser(null);
+analytics.setUser(null);
 ```
 
 Changing or clearing an alias does not rewrite historical reports. Multiple
 installations with the same `userId` remain separate installations.
 
+Use `analytics.getInstallId()` when you need to correlate app diagnostics with
+the stable installation identifier used by Analytics:
+
+```tsx
+const installId = analytics.getInstallId();
+```
+
 ## Configure a custom server
 
-Managed Cloudflare, Firebase, and Supabase presets install the public Analytics
-feature by default so `analytics: true` works without additional server
+Managed Cloudflare, Firebase, and Supabase presets install the Analytics
+feature by default, so the client works without additional server
 configuration. This includes event ingestion and Analytics query routes. Treat
 all reported identifiers as untrusted telemetry and configure provider-level
 access controls, rate limits, quotas, logging, and retention.
@@ -137,11 +159,11 @@ telemetry controls for your deployment.
 
 `GET /version` reports these states independently:
 
-| Capability | Meaning |
-| --- | --- |
-| `capabilities.analytics` | The installed Analytics provider is available. It does not mean a route is public. |
-| `capabilities.eventIngestion` | The provider supports event writes and the Analytics plugin mounts `POST /events`. |
-| `capabilities.analyticsQueries` | The Analytics plugin mounts the query routes used by Console. |
+| Capability                      | Meaning                                                                            |
+| ------------------------------- | ---------------------------------------------------------------------------------- |
+| `capabilities.analytics`        | The installed Analytics provider is available. It does not mean a route is public. |
+| `capabilities.eventIngestion`   | The provider supports event writes and the Analytics plugin mounts `POST /events`. |
+| `capabilities.analyticsQueries` | The Analytics plugin mounts the query routes used by Console.                      |
 
 When `analytics` is true, `mode` and the optional `maxMatchingRows` describe
 the structural query implementation and its scan bound. They do not imply that
@@ -154,13 +176,13 @@ remote server and Standalone/Console packages together.
 
 ## Understand the Console data
 
-| Console value | Meaning |
-| --- | --- |
-| Active installations | Distinct `installId` values that reported app ready during the selected 24-hour, 7-day, or 30-day window |
-| Latest reported bundle | The bundle from the latest report received for each installation in the window |
-| Applied on | Distinct installations that reported an `UPDATE_APPLIED` transition to a bundle |
-| Recovered from | Distinct installations that reported a `RECOVERED` transition away from a bundle |
-| Configured rollout | The rollout availability stored on the bundle, independent from received reports |
+| Console value          | Meaning                                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| Active installations   | Distinct `installId` values that reported app ready during the selected 24-hour, 7-day, or 30-day window |
+| Latest reported bundle | The bundle from the latest report received for each installation in the window                           |
+| Applied on             | Distinct installations that reported an `UPDATE_APPLIED` transition to a bundle                          |
+| Recovered from         | Distinct installations that reported a `RECOVERED` transition away from a bundle                         |
+| Configured rollout     | The rollout availability stored on the bundle, independent from received reports                         |
 
 An active installation is not realtime presence or a complete fleet count. A
 device appears only after the app starts and its report reaches the server.
@@ -182,15 +204,15 @@ background.
 
 ## Database support
 
-| Database plugin | Analytics | Notes |
-| --- | --- | --- |
-| Supabase Database | Supported | Uses append-only row storage. |
-| Cloudflare D1 Database | Supported | Uses append-only row storage. |
-| Firestore Database | Supported | Uses append-only document storage. |
-| PostgreSQL Database | Supported | Uses append-only row storage. |
-| Drizzle, Kysely, Prisma, and MongoDB plugins | Supported | The plugin must include the `bundle_events` model. |
-| Standalone Database | Conditional | Requires an explicit `standaloneAnalytics(...)` companion and an upstream server that advertises the Analytics query routes. |
-| AWS S3 Database (`s3Database`) | Supported with explicit opt-in | Uses versioned ETag compare-and-swap plus row-ID merge. The managed AWS preset remains core-only. |
+| Database plugin                              | Analytics                      | Notes                                                                                                                        |
+| -------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Supabase Database                            | Supported                      | Uses append-only row storage.                                                                                                |
+| Cloudflare D1 Database                       | Supported                      | Uses append-only row storage.                                                                                                |
+| Firestore Database                           | Supported                      | Uses append-only document storage.                                                                                           |
+| PostgreSQL Database                          | Supported                      | Uses append-only row storage.                                                                                                |
+| Drizzle, Kysely, Prisma, and MongoDB plugins | Supported                      | The plugin must include the `bundle_events` model.                                                                           |
+| Standalone Database                          | Conditional                    | Requires an explicit `standaloneAnalytics(...)` companion and an upstream server that advertises the Analytics query routes. |
+| AWS S3 Database (`s3Database`)               | Supported with explicit opt-in | Uses versioned ETag compare-and-swap plus row-ID merge. The managed AWS preset remains core-only.                            |
 
 The Console installs Analytics only when `console.analytics` is configured. It
 then checks actual query-route availability and hides Analytics when the
@@ -271,8 +293,8 @@ enabling Analytics in JavaScript:
 2. Deploy the server and verify the `/version` route-capability fields.
 3. Release a store build containing the matching React Native native module.
 4. Configure Console Analytics explicitly and confirm the intended query route.
-5. Enable `analytics: true` in JavaScript only after the native build is in
-   service.
+5. Create the React Native Analytics client and compose `recordAppReady` only
+   after the native build is in service.
 
 Old clients continue to work with the new server. A new client connected to an
 old or unsupported server logs a warning and continues, but that report is not
@@ -285,12 +307,11 @@ can. Legacy native payloads do not contain all directional and strategy
 metadata required by Analytics, so Hot Updater skips that telemetry event
 without discarding the readiness result.
 
-For a custom resolver, `notifyAppReady` remains the legacy readiness callback.
-It runs whether Analytics is enabled or disabled, and its failures continue to
-reach `onError`. Automatic Analytics uses the separate best-effort
-`notifyAppReadyAnalytics` callback; its transport failures warn but do not call
-`onError` or block app readiness. Implement the new callback when a custom
-resolver opts into Analytics. The default resolver already provides it.
+Custom resolvers continue to use their generic `notifyAppReady` callback.
+Analytics no longer adds a resolver-specific callback. Compose
+`analytics.recordAppReady(result)` in `onNotifyAppReady` alongside any existing
+readiness observer. Analytics transport failures remain best effort and do not
+call the updater's `onError` or block app readiness.
 
 ## Retention and downgrade policy
 
@@ -312,6 +333,4 @@ backup as a coordinated recovery. Do not partially reverse the
 ## Related APIs
 
 - [`HotUpdater.init()`](/docs/react-native-api/init)
-- [`HotUpdater.getInstallId()`](/docs/react-native-api/getInstallId)
-- [`HotUpdater.setUser()`](/docs/react-native-api/setUser)
 - [`HotUpdater.notifyAppReady()`](/docs/react-native-api/notifyAppReady)

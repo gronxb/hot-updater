@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { checkForUpdate } from "./checkForUpdate";
 import { useEventCallback } from "./hooks/useEventCallback";
 import { getBundleId, reload } from "./native";
-import { handleNotifyAppReady } from "./notifyAppReadyAnalytics";
+import { handleNotifyAppReady } from "./notifyAppReady";
 import { useHotUpdaterStore } from "./store";
 import type {
   InternalInitOptions,

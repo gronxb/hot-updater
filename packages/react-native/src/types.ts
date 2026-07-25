@@ -2,13 +2,11 @@ import type { AppUpdateInfo } from "@hot-updater/core";
 
 import type {
   NotifyAppReadyResult,
-  ResolverNotifyAppReadyAnalyticsParams,
   ResolverNotifyAppReadyParams,
   ResolverNotifyAppReadyResult,
 } from "./notifyAppReadyTypes";
 
 export type {
-  ResolverNotifyAppReadyAnalyticsParams,
   ResolverNotifyAppReadyParams,
   ResolverNotifyAppReadyResult,
 } from "./notifyAppReadyTypes";
@@ -122,15 +120,6 @@ export interface HotUpdaterResolver {
   notifyAppReady?: (
     params: ResolverNotifyAppReadyParams,
   ) => Promise<ResolverNotifyAppReadyResult | NotifyAppReadyResult | undefined>;
-
-  /**
-   * Optional transport for automatic Analytics event ingestion.
-   *
-   * This is independent from the legacy notifyAppReady readiness callback.
-   */
-  notifyAppReadyAnalytics?: (
-    params: ResolverNotifyAppReadyAnalyticsParams,
-  ) => Promise<void>;
 }
 
 /**

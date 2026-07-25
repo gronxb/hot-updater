@@ -6,6 +6,7 @@ export default defineConfig([
       "src/index.ts",
       "src/legacy-server/index.ts",
       "src/provider/index.ts",
+      "src/react-native/index.ts",
     ],
     format: ["esm", "cjs"],
     outDir: "dist",
@@ -40,6 +41,16 @@ export default defineConfig([
           require: {
             types: "./dist/provider/index.d.cts",
             default: "./dist/provider/index.cjs",
+          },
+        },
+        "./react-native": {
+          import: {
+            types: "./dist/react-native/index.d.mts",
+            default: "./dist/react-native/index.mjs",
+          },
+          require: {
+            types: "./dist/react-native/index.d.cts",
+            default: "./dist/react-native/index.cjs",
           },
         },
       },

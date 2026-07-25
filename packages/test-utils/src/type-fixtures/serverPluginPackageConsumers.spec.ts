@@ -71,6 +71,10 @@ const packedArtifactMatrix = [
       "dist/provider/index.d.cts",
       "dist/provider/index.d.mts",
       "dist/provider/index.mjs",
+      "dist/react-native/index.cjs",
+      "dist/react-native/index.d.cts",
+      "dist/react-native/index.d.mts",
+      "dist/react-native/index.mjs",
     ],
   ],
   [

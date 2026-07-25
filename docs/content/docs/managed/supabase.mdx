@@ -137,7 +137,17 @@ pre-migration backup.
 The HotUpdater component wraps your application, enabling seamless delivery of updates and fallback UI during updates. Follow these steps to integrate it into your App.tsx:
 
 ```tsx title="App.tsx"
+import { createReactNativeAnalytics } from "@hot-updater/analytics/react-native";
 import { HotUpdater } from "@hot-updater/react-native";
+
+const baseURL = "https://<project-id>.supabase.co/functions/v1/update-server";
+const commonHeaders = {
+  "x-api-key": process.env.HOT_UPDATER_API_KEY!,
+} as const;
+const analytics = createReactNativeAnalytics({
+  baseURL,
+  requestHeaders: commonHeaders,
+});
 
 function App() {
   return (
@@ -148,10 +158,11 @@ function App() {
 }
 
 export default HotUpdater.wrap({
-  baseURL: "https://<project-id>.supabase.co/functions/v1/update-server", // [!code ++]
+  baseURL, // [!code ++]
   updateStrategy: "appVersion", // or "fingerprint" // [!code ++]
-  requestHeaders: {
-    "x-api-key": process.env.HOT_UPDATER_API_KEY!, // [!code ++]
+  requestHeaders: commonHeaders, // [!code ++]
+  onNotifyAppReady: (result) => {
+    analytics.recordAppReady(result); // [!code ++]
   },
   fallbackComponent: ({ progress, status }) => (
     <View
@@ -190,17 +201,9 @@ export default HotUpdater.wrap({
   `betterAuthPlugin({auth})`.
 </Callout>
 
-Enabling `analytics: true` in the app sends events to the authenticated
-`/events` route without additional server configuration. `requestHeaders`
-supplies the key to both update checks and Analytics ingestion. If you configure
-an HTTP-backed Hot Updater client separately, use the same key through
-`commonHeaders`:
-
-```ts
-const commonHeaders = {
-  "x-api-key": process.env.HOT_UPDATER_API_KEY!,
-};
-```
+The updater and Analytics client use the same `baseURL` and immutable
+`commonHeaders`, so the managed API key is sent to both update checks and the
+authenticated `/events` route.
 
 Treat installation and user identifiers as untrusted telemetry, and configure
 Supabase rate limits, quotas, logging, and retention for your deployment. See
