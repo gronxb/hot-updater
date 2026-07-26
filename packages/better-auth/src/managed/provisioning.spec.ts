@@ -452,10 +452,12 @@ describe("provisionManagedBetterAuthApiKey", () => {
   it("rejects an ancestor owned by another non-root user", async () => {
     // Given
     const directory = await createTemporaryDirectory();
-    const parentPath = join(directory, "configuration");
+    const foreignAncestorPath = join(directory, "foreign");
+    const parentPath = join(foreignAncestorPath, "configuration");
     const envFilePath = join(parentPath, ".env.hotupdater");
+    await mkdir(foreignAncestorPath, { mode: 0o700 });
     await mkdir(parentPath, { mode: 0o700 });
-    fileSystemMock.foreignOwnedAncestorPath = directory;
+    fileSystemMock.foreignOwnedAncestorPath = foreignAncestorPath;
 
     // When
     const pending = provisionManagedBetterAuthApiKey({ envFilePath });
