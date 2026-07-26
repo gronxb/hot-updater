@@ -119,22 +119,30 @@ clarifications are normative where they narrow or repair the original prose:
 - **R18 — managed matrix:** AWS, Cloudflare, Firebase, and Supabase install the
   managed Better Auth plugin by default. Every route actually mounted by each
   managed handler is protected. Cloudflare, Firebase, and Supabase also
-  install Analytics; AWS does not.
+  install Analytics; AWS does not. The managed key is intentionally a
+  client-extractable shared access gate, not a privileged authorization
+  boundary. Anyone holding it can call every mounted route, including
+  management and Analytics query routes. Deployments that need privileged or
+  tenant-scoped authorization must use a custom server-side authorization
+  gateway and must not distribute its administrator credential.
 - **R19 — managed provisioning and caching:** provisioning writes the raw
   `HOT_UPDATER_API_KEY` only to a local environment file and injects only
   `HotUpdater.API_KEY_SHA256` into the deployed runtime. AWS disables caching
   for the handler behavior and protected responses use `no-store`; a CDN must
   never serve an authenticated handler response without re-authentication.
   Provisioning serializes writers with an adjacent owner-only lock directory,
-  rejects symbolic links and multiply linked files, and holds one verified
-  user-owned file handle from read through append. The target's user-owned
-  parent directory must not be group- or other-writable, and its complete
-  requested and canonicalized directory chains are checked for replaceable
-  ancestors after rejecting non-root-owned symbolic links. Every ancestor must
-  be owned by root or the effective user. Sticky temporary directories are
-  accepted only when the next child is user-owned. Provisioning fails before
-  writing a key on Windows or any filesystem that cannot prove these POSIX
-  ownership guarantees and mode `0600`.
+  rejects symbolic links and multiply linked files, and reads existing content
+  through one verified user-owned handle. Adding a key to an existing file
+  writes the complete next content to a fresh verified `0600` inode and
+  atomically replaces the path, so a descriptor opened on the old inode cannot
+  observe the new key. The target's user-owned parent directory must not be
+  group- or other-writable, and its complete requested and canonicalized
+  directory chains are checked for replaceable ancestors after rejecting
+  non-root-owned symbolic links. Every ancestor must be owned by root or the
+  effective user. Sticky temporary directories are accepted only when the next
+  child is user-owned. Provisioning fails before writing a key on Windows or
+  any filesystem that cannot prove these POSIX ownership guarantees and mode
+  `0600`.
 
 ## Decision summary
 

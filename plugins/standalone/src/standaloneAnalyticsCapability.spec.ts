@@ -165,6 +165,76 @@ describe("createAnalyticsCapabilityProbe", () => {
     );
   });
 
+  it("isolates an aborted first caller from a shared refresh", async () => {
+    // Given
+    let resolveResponse: ((response: Response) => void) | undefined;
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveResponse = resolve;
+        }),
+    );
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const probe = createAnalyticsCapabilityProbe({ baseUrl: BASE_URL });
+
+    // When
+    const first = probe(firstController.signal);
+    const second = probe(secondController.signal);
+    firstController.abort();
+    resolveResponse?.(
+      Response.json({
+        version: "0.0.0-test",
+        capabilities: {
+          analytics: true,
+          mode: "dedicated",
+          eventIngestion: true,
+          analyticsQueries: true,
+        },
+      }),
+    );
+
+    // Then
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await expect(second).resolves.toMatchObject({ analytics: true });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("isolates an aborted later caller from a shared refresh", async () => {
+    // Given
+    let resolveResponse: ((response: Response) => void) | undefined;
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveResponse = resolve;
+        }),
+    );
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const probe = createAnalyticsCapabilityProbe({ baseUrl: BASE_URL });
+
+    // When
+    const first = probe(firstController.signal);
+    const second = probe(secondController.signal);
+    secondController.abort();
+    resolveResponse?.(
+      Response.json({
+        version: "0.0.0-test",
+        capabilities: {
+          analytics: true,
+          mode: "dedicated",
+          eventIngestion: true,
+          analyticsQueries: true,
+        },
+      }),
+    );
+
+    // Then
+    await expect(first).resolves.toMatchObject({ analytics: true });
+    await expect(second).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("uses a bounded stale capability and then fails closed", async () => {
     // Given
     const now = vi.spyOn(Date, "now").mockReturnValue(1_000);

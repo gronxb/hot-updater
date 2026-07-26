@@ -7,6 +7,7 @@ import {
   open,
   readdir,
   realpath,
+  rename,
   rmdir,
   unlink,
 } from "node:fs/promises";
@@ -46,6 +47,10 @@ const MAX_ENV_FILE_BYTES = 1_048_576n;
 const LOCK_RETRY_INTERVAL_MS = 10;
 const LOCK_TIMEOUT_MS = 5_000;
 const LOCK_OWNER_PATTERN = /^owner-([1-9]\d*)-([a-f0-9]{32})$/u;
+const pendingProvisioning = new Map<
+  string,
+  Promise<ProvisionedManagedBetterAuthApiKey>
+>();
 
 const hasErrorCode = (error: unknown, code: string): boolean =>
   typeof error === "object" &&
@@ -58,8 +63,14 @@ type FileIdentity = Readonly<{
 }>;
 
 type OpenEnvironmentFile = Readonly<{
+  created: boolean;
   handle: FileHandle;
   identity: FileIdentity;
+}>;
+
+type ReplacementEnvironmentFile = Readonly<{
+  handle: FileHandle;
+  path: string;
 }>;
 
 type ProvisioningLock = Readonly<{
@@ -365,6 +376,7 @@ const openEnvironmentFile = async (
   filePath: string,
 ): Promise<OpenEnvironmentFile> => {
   let handle: FileHandle;
+  let created = false;
   try {
     handle = await open(filePath, openFlags);
   } catch (error) {
@@ -375,6 +387,7 @@ const openEnvironmentFile = async (
         openFlags | fileSystemConstants.O_CREAT | fileSystemConstants.O_EXCL,
         OWNER_ONLY_FILE_MODE,
       );
+      created = true;
     } catch (createError) {
       if (!hasErrorCode(createError, "EEXIST")) throw createError;
       handle = await open(filePath, openFlags);
@@ -387,11 +400,26 @@ const openEnvironmentFile = async (
       handle,
       "Managed API-key environment path",
     );
-    return Object.freeze({ handle, identity });
+    return Object.freeze({ created, handle, identity });
   } catch (error) {
     const cleanupFailures = await collectFailures([() => handle.close()]);
     throw combineFailure(error, cleanupFailures);
   }
+};
+
+const openReplacementEnvironmentFile = async (
+  envFilePath: string,
+): Promise<ReplacementEnvironmentFile> => {
+  const replacementPath = `${envFilePath}.${process.pid}.${randomBytes(16).toString("hex")}.tmp`;
+  const handle = await open(
+    replacementPath,
+    fileSystemConstants.O_CREAT |
+      fileSystemConstants.O_EXCL |
+      fileSystemConstants.O_NOFOLLOW |
+      fileSystemConstants.O_RDWR,
+    OWNER_ONLY_FILE_MODE,
+  );
+  return Object.freeze({ handle, path: replacementPath });
 };
 
 const parseLockOwnerPid = (entryName: string): number | undefined => {
@@ -640,12 +668,7 @@ const releaseProvisioningLock = async (
     () => removeEmptyLockDirectory(lock.path),
   ]);
 
-const closeEnvironmentFile = async (
-  opened: OpenEnvironmentFile,
-): Promise<readonly unknown[]> =>
-  collectFailures([() => opened.handle.close()]);
-
-const rollbackAppend = async (
+const rollbackWrite = async (
   handle: FileHandle,
   originalSize: bigint,
 ): Promise<void> => {
@@ -697,14 +720,8 @@ const provisionEnvironmentFile = async (
 ): Promise<ProvisionedManagedBetterAuthApiKey> => {
   await assertSecureParentDirectory(envFilePath);
   const opened = await openEnvironmentFile(envFilePath);
+  let replacement: ReplacementEnvironmentFile | undefined;
   const outcome = await captureOutcome(async () => {
-    await assertSecureParentDirectory(envFilePath);
-    await assertPathIdentity(envFilePath, opened.identity);
-    await restrictRegularFile(
-      opened.handle,
-      opened.identity,
-      "Managed API-key environment path",
-    );
     await assertSecureParentDirectory(envFilePath);
     await assertPathIdentity(envFilePath, opened.identity);
     const stats = await opened.handle.stat({ bigint: true });
@@ -716,6 +733,12 @@ const provisionEnvironmentFile = async (
     const content = await opened.handle.readFile("utf8");
     const existing = readExistingApiKey(content);
     if (existing !== undefined) {
+      await restrictRegularFile(
+        opened.handle,
+        opened.identity,
+        "Managed API-key environment path",
+      );
+      await assertSecureParentDirectory(envFilePath);
       await assertPathIdentity(envFilePath, opened.identity);
       return resultFor(existing);
     }
@@ -723,6 +746,42 @@ const provisionEnvironmentFile = async (
     const apiKey = randomBytes(32).toString("base64url");
     const separator =
       content.length === 0 || content.endsWith("\n") ? "" : "\n";
+    const nextContent = `${content}${separator}${HOT_UPDATER_API_KEY_ENV_NAME}=${apiKey}\n`;
+    if (!opened.created) {
+      const replacementFile = await openReplacementEnvironmentFile(envFilePath);
+      replacement = replacementFile;
+      const replacementIdentity = await secureRegularFile(
+        replacementFile.handle,
+        "Managed API-key replacement environment path",
+      );
+      try {
+        await replacementFile.handle.writeFile(nextContent, "utf8");
+        await replacementFile.handle.sync();
+      } catch (error) {
+        const rollbackFailure = await captureFailure(() =>
+          rollbackWrite(replacementFile.handle, 0n),
+        );
+        throw combineFailure(
+          error,
+          rollbackFailure === undefined ? [] : [rollbackFailure],
+        );
+      }
+      await assertSecureParentDirectory(envFilePath);
+      await assertPathIdentity(envFilePath, opened.identity);
+      await assertPathIdentity(replacementFile.path, replacementIdentity);
+      await rename(replacementFile.path, envFilePath);
+      await assertSecureParentDirectory(envFilePath);
+      await assertPathIdentity(envFilePath, replacementIdentity);
+      return resultFor(apiKey);
+    }
+
+    await restrictRegularFile(
+      opened.handle,
+      opened.identity,
+      "Managed API-key environment path",
+    );
+    await assertSecureParentDirectory(envFilePath);
+    await assertPathIdentity(envFilePath, opened.identity);
     try {
       await opened.handle.writeFile(
         `${separator}${HOT_UPDATER_API_KEY_ENV_NAME}=${apiKey}\n`,
@@ -732,7 +791,7 @@ const provisionEnvironmentFile = async (
       await assertPathIdentity(envFilePath, opened.identity);
     } catch (error) {
       const rollbackFailure = await captureFailure(() =>
-        rollbackAppend(opened.handle, stats.size),
+        rollbackWrite(opened.handle, stats.size),
       );
       throw combineFailure(
         error,
@@ -741,7 +800,16 @@ const provisionEnvironmentFile = async (
     }
     return resultFor(apiKey);
   });
-  const cleanupFailures = await closeEnvironmentFile(opened);
+  const replacementForCleanup = replacement;
+  const cleanupFailures = await collectFailures(
+    replacementForCleanup === undefined
+      ? [() => opened.handle.close()]
+      : [
+          () => replacementForCleanup.handle.close(),
+          () => unlinkIfPresent(replacementForCleanup.path),
+          () => opened.handle.close(),
+        ],
+  );
   return finishOutcome(
     outcome,
     cleanupFailures,
@@ -749,16 +817,9 @@ const provisionEnvironmentFile = async (
   );
 };
 
-export const provisionManagedBetterAuthApiKey = async (
-  options: ProvisionManagedBetterAuthApiKeyOptions = {},
+const provisionCanonicalEnvironmentFile = async (
+  envFilePath: string,
 ): Promise<ProvisionedManagedBetterAuthApiKey> => {
-  assertPermissionHardeningSupported();
-  const requestedPath = resolve(options.envFilePath ?? ".env.hotupdater");
-  await assertTrustedRequestedDirectoryChain(requestedPath);
-  const envFilePath = join(
-    await realpath(dirname(requestedPath)),
-    basename(requestedPath),
-  );
   await assertSecureParentDirectory(envFilePath);
   const lock = await acquireProvisioningLock(envFilePath);
   const directoryOutcome = await captureOutcome(() =>
@@ -777,4 +838,30 @@ export const provisionManagedBetterAuthApiKey = async (
     cleanupFailures,
     "Managed API-key provisioning lock cleanup failed.",
   );
+};
+
+export const provisionManagedBetterAuthApiKey = async (
+  options: ProvisionManagedBetterAuthApiKeyOptions = {},
+): Promise<ProvisionedManagedBetterAuthApiKey> => {
+  assertPermissionHardeningSupported();
+  const requestedPath = resolve(options.envFilePath ?? ".env.hotupdater");
+  await assertTrustedRequestedDirectoryChain(requestedPath);
+  const envFilePath = join(
+    await realpath(dirname(requestedPath)),
+    basename(requestedPath),
+  );
+  await assertSecureParentDirectory(envFilePath);
+
+  const existing = pendingProvisioning.get(envFilePath);
+  if (existing !== undefined) return existing;
+
+  const provisioning = provisionCanonicalEnvironmentFile(envFilePath);
+  pendingProvisioning.set(envFilePath, provisioning);
+  try {
+    return await provisioning;
+  } finally {
+    if (pendingProvisioning.get(envFilePath) === provisioning) {
+      pendingProvisioning.delete(envFilePath);
+    }
+  }
 };

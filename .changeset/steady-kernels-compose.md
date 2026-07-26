@@ -122,7 +122,9 @@ directory, rejects symbolic and multiple hard links, requires a user-owned
 parent that is not group- or other-writable, rejects replaceable ancestors in
 the requested and canonical root- or effective-user-owned directory chains,
 rejects non-root-owned symbolic links, and verifies owner-only POSIX
-permissions before writing the raw key. It fails closed on Windows or
+permissions before writing the raw key. Existing keyless files are copied into
+a fresh `0600` inode and atomically replaced, so pre-opened descriptors to the
+old inode cannot observe the generated key. It fails closed on Windows or
 filesystems that cannot prove the resulting ownership and mode.
 `standaloneRepository(config)` contributes only an internal transport
 implementation; it does not install Analytics or expose an Analytics option.

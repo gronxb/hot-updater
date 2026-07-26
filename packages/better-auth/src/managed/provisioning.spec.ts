@@ -6,6 +6,7 @@ import {
   link,
   mkdtemp,
   mkdir,
+  open,
   readFile,
   realpath,
   rm,
@@ -24,6 +25,8 @@ import {
 } from "./provisioning";
 
 const fileSystemMock = vi.hoisted<{
+  environmentOpenCount?: number;
+  environmentOpenPath?: string;
   foreignOwnedAncestorPath?: string;
   chmodError?: unknown;
   closeError?: unknown;
@@ -56,6 +59,10 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     ...actual,
     async open(...args: Parameters<typeof actual.open>) {
       const filePath = String(args[0]);
+      if (filePath === fileSystemMock.environmentOpenPath) {
+        fileSystemMock.environmentOpenCount =
+          (fileSystemMock.environmentOpenCount ?? 0) + 1;
+      }
       if (
         filePath.includes(".lock/owner-") &&
         fileSystemMock.delayNextLockOwnerOpenMs !== undefined
@@ -258,6 +265,8 @@ const createTerminatedProvisioningLock = async (
 };
 
 afterEach(async () => {
+  fileSystemMock.environmentOpenCount = undefined;
+  fileSystemMock.environmentOpenPath = undefined;
   fileSystemMock.foreignOwnedAncestorPath = undefined;
   fileSystemMock.chmodError = undefined;
   fileSystemMock.closeError = undefined;
@@ -314,12 +323,36 @@ describe("provisionManagedBetterAuthApiKey", () => {
     expect(await readFile(envFilePath, "utf8")).toBe(afterFirst);
   });
 
+  it("does not expose a generated key through a pre-opened descriptor", async () => {
+    // Given
+    const directory = await createTemporaryDirectory();
+    const envFilePath = join(directory, ".env.hotupdater");
+    const original = "EXISTING=value\n";
+    await writeFile(envFilePath, original, { encoding: "utf8", mode: 0o644 });
+    const preopened = await open(envFilePath, "r");
+
+    // When
+    const result = await provisionManagedBetterAuthApiKey({ envFilePath });
+    const retainedContent = await preopened.readFile("utf8");
+    await preopened.close();
+
+    // Then
+    expect(retainedContent).toBe(original);
+    expect(retainedContent).not.toContain(result.apiKey);
+    expect(await readFile(envFilePath, "utf8")).toBe(
+      `${original}${HOT_UPDATER_API_KEY_ENV_NAME}=${result.apiKey}\n`,
+    );
+    expect((await stat(envFilePath)).mode & 0o777).toBe(0o600);
+  });
+
   it("serializes concurrent provisioning for an existing keyless env file", async () => {
     // Given
     const directory = await createTemporaryDirectory();
     const envFilePath = join(directory, ".env.hotupdater");
     const original = "EXISTING=value\n";
     await writeFile(envFilePath, original, "utf8");
+    fileSystemMock.environmentOpenCount = 0;
+    fileSystemMock.environmentOpenPath = envFilePath;
 
     // When
     const results = await Promise.all(
@@ -331,6 +364,7 @@ describe("provisionManagedBetterAuthApiKey", () => {
     // Then
     expect(new Set(results.map((result) => result.apiKey))).toHaveLength(1);
     expect(new Set(results.map((result) => result.sha256))).toHaveLength(1);
+    expect(fileSystemMock.environmentOpenCount).toBe(1);
     const content = await readFile(envFilePath, "utf8");
     expect(content.startsWith(original)).toBe(true);
     expect(
@@ -781,9 +815,7 @@ describe("provisionManagedBetterAuthApiKey", () => {
     expect(error.errors).toEqual(
       expect.arrayContaining([appendError, rollbackError]),
     );
-    expect(await readFile(envFilePath, "utf8")).toBe(
-      `${original}${HOT_UPDATER_API_KEY_ENV_NAME.slice(0, 8)}`,
-    );
+    expect(await readFile(envFilePath, "utf8")).toBe(original);
   });
 
   it("reports lock cleanup failure together with the provisioning error", async () => {

@@ -49,6 +49,12 @@ const authentication = managedBetterAuthPlugin({
 });
 ```
 
+This shared key is bundled into managed mobile clients. Anyone who extracts it
+can call every Hot Updater route mounted by that managed runtime, including
+management and Analytics query routes. It is an access gate, not privileged or
+tenant-scoped authorization. Use a custom server-side authorization gateway
+when route-level privilege separation is required.
+
 Node-based infrastructure code can provision the raw key into
 `.env.hotupdater` and pass only its SHA-256 projection to the runtime:
 
@@ -64,6 +70,8 @@ its user-owned parent must not be writable by group or other users, and the
 requested and canonicalized directory chains are checked for replaceable
 ancestors after rejecting non-root-owned symbolic links; every ancestor must
 be owned by root or the effective user. Sticky temporary directories are
-supported when the next child is user-owned. Provisioning verifies mode `0600`
-before writing the raw key and fails on Windows or filesystems that cannot
-prove these POSIX guarantees.
+supported when the next child is user-owned. When adding a generated key to an
+existing file, provisioning writes the complete next content to a fresh
+verified `0600` inode and atomically replaces the path; it never appends the
+secret to the old inode. Provisioning fails on Windows or filesystems that
+cannot prove these POSIX guarantees.

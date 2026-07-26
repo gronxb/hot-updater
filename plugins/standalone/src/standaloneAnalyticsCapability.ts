@@ -88,14 +88,8 @@ export const createAnalyticsCapabilityProbe = (
     | undefined;
   let pending: Promise<RemoteAnalyticsCapability> | undefined;
 
-  const loadCapability = async (
-    signal?: AbortSignal,
-  ): Promise<RemoteAnalyticsCapability> => {
+  const loadCapability = async (): Promise<RemoteAnalyticsCapability> => {
     const controller = new AbortController();
-    const requestSignal =
-      signal === undefined
-        ? controller.signal
-        : AbortSignal.any([controller.signal, signal]);
     const timeout = setTimeout(
       () => controller.abort(),
       ANALYTICS_CAPABILITY_TIMEOUT_MS,
@@ -106,7 +100,7 @@ export const createAnalyticsCapabilityProbe = (
         {},
         isVersionResponse,
         "Invalid server version response.",
-        requestSignal,
+        controller.signal,
       );
       const capabilities = response.capabilities;
       if (!capabilities || !isRouteAwareAnalyticsCapability(capabilities)) {
@@ -126,6 +120,28 @@ export const createAnalyticsCapabilityProbe = (
     }
   };
 
+  const waitForRefresh = async (
+    refresh: Promise<RemoteAnalyticsCapability>,
+    signal?: AbortSignal,
+  ): Promise<RemoteAnalyticsCapability> => {
+    if (signal === undefined) return refresh;
+    signal.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      signal.addEventListener("abort", abort, { once: true });
+      void refresh.then(
+        (capability) => {
+          signal.removeEventListener("abort", abort);
+          resolve(capability);
+        },
+        (error: unknown) => {
+          signal.removeEventListener("abort", abort);
+          reject(error);
+        },
+      );
+    });
+  };
+
   return async (signal?: AbortSignal): Promise<RemoteAnalyticsCapability> => {
     const now = Date.now();
     if (
@@ -135,20 +151,30 @@ export const createAnalyticsCapabilityProbe = (
       return cached.capability;
     }
 
-    const refresh =
-      pending ??
-      loadCapability(signal).then((capability) => {
+    let refresh = pending;
+    if (refresh === undefined) {
+      refresh = loadCapability().then((capability) => {
         cached = {
           capability,
           fetchedAtMs: Date.now(),
         };
         return capability;
       });
-    pending = refresh;
+      pending = refresh;
+      void refresh.then(
+        () => {
+          if (pending === refresh) pending = undefined;
+        },
+        () => {
+          if (pending === refresh) pending = undefined;
+        },
+      );
+    }
 
     try {
-      return await refresh;
+      return await waitForRefresh(refresh, signal);
     } catch (error) {
+      if (signal?.aborted) throw error;
       if (
         cached &&
         Date.now() - cached.fetchedAtMs <= ANALYTICS_CAPABILITY_MAX_STALENESS_MS
@@ -156,10 +182,6 @@ export const createAnalyticsCapabilityProbe = (
         return cached.capability;
       }
       throw error;
-    } finally {
-      if (pending === refresh) {
-        pending = undefined;
-      }
     }
   };
 };

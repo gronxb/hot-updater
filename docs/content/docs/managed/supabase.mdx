@@ -74,6 +74,10 @@ The managed API key is bundled into the mobile client and can be extracted. Use
 it only as an access-control key for Hot Updater traffic. Never reuse it as a
 Supabase service-role key, administrator secret, or other infrastructure
 credential.
+Anyone who extracts it can call every Hot Updater route mounted by this managed
+runtime, including bundle management and Analytics query routes. Use a custom
+server-side authorization gateway when those routes require privileged or
+tenant-scoped access.
 
 </Callout>
 
@@ -83,9 +87,10 @@ target must be a user-owned regular file with one hard link, and its user-owned
 parent must not be writable by group or other users. Its complete directory
 requested and canonicalized directory chains are checked for replaceable
 ancestors. Provisioning rejects non-root-owned symbolic links, requires every
-ancestor to be owned by root or the effective user, verifies mode `0600` before
-writing, and fails on Windows or filesystems that cannot prove these POSIX
-guarantees.
+ancestor to be owned by root or the effective user, and writes a generated key
+for an existing file into a fresh verified `0600` inode before atomically
+replacing the path. It fails on Windows or filesystems that cannot prove these
+POSIX guarantees.
 The repository `.gitignore` excludes `.env.hotupdater`, and only the key's
 SHA-256 digest is embedded in the Edge Function runtime. The runtime uses that
 digest to create an ephemeral in-memory managed Better Auth API-key session; it does not

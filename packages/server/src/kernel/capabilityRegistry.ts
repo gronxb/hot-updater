@@ -26,17 +26,6 @@ const invalidCapability = (tokenId: string): never => {
   throw new HotUpdaterConstructionError("INVALID_CAPABILITY", { tokenId });
 };
 
-const parseCapability = <TValue>(
-  token: CapabilityToken<TValue>,
-  value: unknown,
-): TValue => {
-  try {
-    return token.parse(value);
-  } catch {
-    return invalidCapability(token.id);
-  }
-};
-
 const isThenable = (value: unknown): boolean => {
   if (
     (typeof value !== "object" || value === null) &&
@@ -45,6 +34,27 @@ const isThenable = (value: unknown): boolean => {
     return false;
   }
   return typeof Reflect.get(value, "then") === "function";
+};
+
+const rejectThenable = (value: unknown, tokenId: string): void => {
+  if (!isThenable(value)) return;
+  if (value instanceof Promise) {
+    void value.catch(() => undefined);
+  }
+  invalidCapability(tokenId);
+};
+
+const parseCapability = <TValue>(
+  token: CapabilityToken<TValue>,
+  value: unknown,
+): TValue => {
+  try {
+    const parsed = token.parse(value);
+    rejectThenable(parsed, token.id);
+    return parsed;
+  } catch {
+    return invalidCapability(token.id);
+  }
 };
 
 export const createCapabilityRegistry = (
@@ -96,12 +106,7 @@ export const createCapabilityRegistry = (
   for (const contribution of contributions) {
     try {
       const advertised = contribution.create(options.runtime);
-      if (isThenable(advertised)) {
-        if (advertised instanceof Promise) {
-          void advertised.catch(() => undefined);
-        }
-        invalidCapability(contribution.token.id);
-      }
+      rejectThenable(advertised, contribution.token.id);
       const parsed = parseCapability(contribution.token, advertised);
       parsedValues.set(contribution.token, Object.freeze({ value: parsed }));
     } catch (error) {

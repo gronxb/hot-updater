@@ -152,6 +152,36 @@ describe("createCapabilityRegistry", () => {
     );
   });
 
+  it.each([
+    ["resolved", async () => "secret"],
+    [
+      "rejected",
+      async () => {
+        throw new Error("provider secret");
+      },
+    ],
+  ])("rejects a %s async parser synchronously", (_name, parse) => {
+    // Given
+    const token = defineCapability({
+      id: "async-parser@1",
+      parse,
+    });
+    const carrier = attachCapabilityContribution(
+      {},
+      { create: () => "value", token },
+    );
+
+    // When / Then
+    expect(() =>
+      createCapabilityRegistry({ carriers: [carrier], runtime: runtime() }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "INVALID_CAPABILITY",
+        details: { tokenId: "async-parser@1" },
+      }),
+    );
+  });
+
   it("throws a scoped missing-capability error from require", () => {
     // Given
     const token = defineCapability({
