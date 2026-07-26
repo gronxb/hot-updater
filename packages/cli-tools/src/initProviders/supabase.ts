@@ -1,5 +1,37 @@
 import type { InitProviderDefinition } from "../initProvider";
 
+export const SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY =
+  "HOT_UPDATER_SUPABASE_DB_PASSWORD_PROJECT_ID";
+
+export const SUPABASE_REGION_VALUES = [
+  "ap-east-1",
+  "ap-northeast-1",
+  "ap-northeast-2",
+  "ap-south-1",
+  "ap-southeast-1",
+  "ap-southeast-2",
+  "ca-central-1",
+  "eu-central-1",
+  "eu-central-2",
+  "eu-north-1",
+  "eu-west-1",
+  "eu-west-2",
+  "eu-west-3",
+  "sa-east-1",
+  "us-east-1",
+  "us-east-2",
+  "us-west-1",
+  "us-west-2",
+] as const;
+
+export type SupabaseRegion = (typeof SUPABASE_REGION_VALUES)[number];
+
+export const isSupabaseRegion = (
+  value: string | undefined,
+): value is SupabaseRegion =>
+  value !== undefined &&
+  SUPABASE_REGION_VALUES.some((region) => region === value);
+
 export const isSupabaseFunctionName = (
   value: string | undefined,
 ): value is string =>
@@ -11,6 +43,37 @@ export const SUPABASE_INIT_PROVIDER = {
     projectId: {
       envKey: "HOT_UPDATER_SUPABASE_PROJECT_ID",
       help: "Supabase project reference",
+    },
+    projectName: {
+      envKey: "HOT_UPDATER_SUPABASE_PROJECT_NAME",
+      help: "Project name used when creating a Supabase project",
+      optional: true,
+      prompt: {
+        defaultValue: "hot-updater",
+        message: "Enter a name for the new Supabase project",
+        placeholder: "hot-updater",
+        type: "text",
+      },
+    },
+    organizationSlug: {
+      envKey: "HOT_UPDATER_SUPABASE_ORGANIZATION_SLUG",
+      help: "Organization slug used when creating a Supabase project",
+      optional: true,
+      prompt: {
+        message: "Select a Supabase organization",
+        type: "select",
+      },
+    },
+    region: {
+      envKey: "HOT_UPDATER_SUPABASE_REGION",
+      help: "Region used when creating a Supabase project",
+      optional: true,
+      prompt: {
+        defaultValue: "us-east-1",
+        message: "Select a region for the new Supabase project",
+        type: "select",
+      },
+      validate: isSupabaseRegion,
     },
     accessToken: {
       envKey: "SUPABASE_ACCESS_TOKEN",
@@ -24,6 +87,10 @@ export const SUPABASE_INIT_PROVIDER = {
     bucketName: {
       envKey: "HOT_UPDATER_SUPABASE_BUCKET_NAME",
       help: "Storage bucket name",
+      prompt: {
+        message: "Enter a name for the new storage bucket",
+        type: "text",
+      },
     },
     functionName: {
       envKey: "HOT_UPDATER_SUPABASE_FUNCTION_NAME",

@@ -9,6 +9,7 @@ import {
   p,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  shouldAutoSelectOnlyInitResource,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
@@ -137,7 +138,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         if (createSavedBucket) {
           return Promise.resolve(createKey);
         }
-        if (availableBuckets.length === 1 && availableBuckets[0]) {
+        if (
+          shouldAutoSelectOnlyInitResource({
+            availableResourceCount: availableBuckets.length,
+            savedIdentifier: savedBucketName,
+          }) &&
+          availableBuckets[0]
+        ) {
           return Promise.resolve(availableBuckets[0].name);
         }
         return p.select<string>({

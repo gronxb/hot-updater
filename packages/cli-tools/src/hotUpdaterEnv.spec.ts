@@ -90,7 +90,7 @@ describe("readHotUpdaterEnv", () => {
     );
 
     // When
-    const { env, managedEnv } = await readHotUpdaterInitEnv(
+    const { env, inputEnv, managedEnv } = await readHotUpdaterInitEnv(
       directory,
       "init.env",
     );
@@ -105,6 +105,11 @@ describe("readHotUpdaterEnv", () => {
     expect(managedEnv).toEqual({
       HOT_UPDATER_INIT_BUILD: "bare",
       HOT_UPDATER_INIT_PROVIDER: "cloudflare",
+    });
+    expect(inputEnv).toEqual({
+      HOT_UPDATER_INIT_BUILD: "expo",
+      HOT_UPDATER_SUPABASE_DB_PASSWORD: "temporary-secret",
+      TOKEN: 'value with "quotes"',
     });
   });
 

@@ -41,7 +41,9 @@ describe("resolveSupabaseInitInputs", () => {
     // Given
     const existingEnv = {
       HOT_UPDATER_SUPABASE_DB_PASSWORD: "saved-password",
+      HOT_UPDATER_SUPABASE_DB_PASSWORD_PROJECT_ID: "saved-project",
       HOT_UPDATER_SUPABASE_FUNCTION_NAME: "update-server",
+      HOT_UPDATER_SUPABASE_PROJECT_ID: "saved-project",
     };
 
     // When
@@ -64,15 +66,43 @@ describe("resolveSupabaseInitInputs", () => {
 
   it("accepts a database password from an overlaid init env", () => {
     // Given
-    const overlaidEnv = {
+    const managedEnv = {
+      HOT_UPDATER_SUPABASE_DB_PASSWORD: "old-password",
+      HOT_UPDATER_SUPABASE_DB_PASSWORD_PROJECT_ID: "old-project",
+      HOT_UPDATER_SUPABASE_PROJECT_ID: "old-project",
+    };
+    const inputEnv = {
       HOT_UPDATER_SUPABASE_DB_PASSWORD: "temporary-password",
+      HOT_UPDATER_SUPABASE_PROJECT_ID: "new-project",
     };
 
     // When
-    const inputs = resolveSupabaseInitInputs(overlaidEnv);
+    const inputs = resolveSupabaseInitInputs(
+      { ...managedEnv, ...inputEnv },
+      { inputEnv, managedEnv },
+    );
 
     // Then
     expect(inputs.databasePassword).toBe("temporary-password");
+  });
+
+  it("does not reuse a managed password when an input file changes projects", () => {
+    const managedEnv = {
+      HOT_UPDATER_SUPABASE_DB_PASSWORD: "old-password",
+      HOT_UPDATER_SUPABASE_DB_PASSWORD_PROJECT_ID: "old-project",
+      HOT_UPDATER_SUPABASE_PROJECT_ID: "old-project",
+    };
+    const inputEnv = {
+      HOT_UPDATER_SUPABASE_PROJECT_ID: "new-project",
+    };
+
+    const inputs = resolveSupabaseInitInputs(
+      { ...managedEnv, ...inputEnv },
+      { inputEnv, managedEnv },
+    );
+
+    expect(inputs.projectId).toBe("new-project");
+    expect(inputs.databasePassword).toBeUndefined();
   });
 });
 
@@ -149,9 +179,30 @@ describe("Supabase non-interactive inputs", () => {
         nonInteractive: false,
       }),
     ).resolves.toBe("new-password");
-    expect(mocks.password).toHaveBeenCalledWith({
-      message:
-        "Enter your Supabase database password (press Enter to skip if none)",
+    expect(mocks.password).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message:
+          "Enter your Supabase database password (press Enter to skip if none)",
+      }),
+    );
+  });
+
+  it("requires a database password before planning project creation", async () => {
+    mocks.password.mockResolvedValue("");
+
+    await inputSupabaseDatabasePassword({
+      nonInteractive: false,
+      required: true,
     });
+
+    expect(mocks.password).toHaveBeenCalledWith(
+      expect.objectContaining({
+        validate: expect.any(Function),
+      }),
+    );
+    const validate = mocks.password.mock.calls[0]?.[0]?.validate;
+    expect(validate("")).toBe(
+      "A database password is required to create a Supabase project",
+    );
   });
 });

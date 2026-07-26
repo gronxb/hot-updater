@@ -10,7 +10,10 @@ import {
   buildDistributionConfigOverrides,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
-import { findInPaginatedCloudFrontList } from "./cloudfrontPagination";
+import {
+  collectPaginatedCloudFrontList,
+  findInPaginatedCloudFrontList,
+} from "./cloudfrontPagination";
 import type { AwsRegion } from "./regionLocationMap";
 
 export type CloudFrontDistribution = {
@@ -334,10 +337,17 @@ export class CloudFrontManager {
       region: this.region,
       credentials: this.credentials,
     });
-    const listResp = await cloudfrontClient.listDistributions({});
-    const matchingDistributions = (
-      listResp.DistributionList?.Items ?? []
-    ).flatMap((distribution) => {
+    const distributions = await collectPaginatedCloudFrontList({
+      listPage: async (marker) => {
+        const options = marker ? { Marker: marker } : {};
+        const response = await cloudfrontClient.listDistributions(options);
+        return {
+          items: response.DistributionList?.Items ?? [],
+          nextMarker: response.DistributionList?.NextMarker,
+        };
+      },
+    });
+    const matchingDistributions = distributions.flatMap((distribution) => {
       const matchesBucket = (distribution.Origins?.Items ?? []).some(
         (origin) => origin.DomainName === bucketDomain,
       );

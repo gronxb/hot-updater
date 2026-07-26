@@ -17,6 +17,7 @@ import {
   p,
   readHotUpdaterInitEnv,
   type RunInitOptions,
+  shouldAutoSelectOnlyInitResource,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
@@ -304,7 +305,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   } else if (nonInteractive && existingBucketName) {
     selectedBucketName = existingBucketName;
     createBucket = true;
-  } else if (availableBuckets.length === 1 && availableBuckets[0]) {
+  } else if (
+    shouldAutoSelectOnlyInitResource({
+      availableResourceCount: availableBuckets.length,
+      savedIdentifier: existingBucketName,
+    }) &&
+    availableBuckets[0]
+  ) {
     selectedBucketName = availableBuckets[0].name;
     p.log.info("Using the only Cloudflare R2 bucket.");
   } else {
@@ -411,7 +418,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   } else if (nonInteractive && existingD1DatabaseId && existingD1DatabaseName) {
     createD1Database = true;
     d1DatabaseName = existingD1DatabaseName;
-  } else if (availableD1List.length === 1 && availableD1List[0]) {
+  } else if (
+    shouldAutoSelectOnlyInitResource({
+      availableResourceCount: availableD1List.length,
+      savedIdentifier: existingD1DatabaseId ?? existingD1DatabaseName,
+    }) &&
+    availableD1List[0]
+  ) {
     selectedD1DatabaseId = availableD1List[0].uuid;
     d1DatabaseName = availableD1List[0].name;
     p.log.info("Using the only Cloudflare D1 database.");

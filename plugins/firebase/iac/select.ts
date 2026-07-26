@@ -10,6 +10,7 @@ import {
   MissingInitInputsError,
   type ProviderConfig,
   p,
+  shouldAutoSelectOnlyInitResource,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
@@ -226,7 +227,12 @@ export const initFirebaseUser = async (
     }
     p.log.warn("Saved Firebase project was not found. Select a project again.");
   }
-  const onlyProject = projects.length === 1 ? projects[0] : undefined;
+  const onlyProject = shouldAutoSelectOnlyInitResource({
+    availableResourceCount: projects.length,
+    savedIdentifier: preferredProjectId,
+  })
+    ? projects[0]
+    : undefined;
   if (!preferredProject && onlyProject) {
     p.log.info("Using the only Firebase project.");
   }

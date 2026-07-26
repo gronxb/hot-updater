@@ -14,6 +14,8 @@ const { mockCli, mockExeca } = vi.hoisted(() => ({
         success: vi.fn(),
         warn: vi.fn(),
       },
+      isCancel: vi.fn(() => false),
+      select: vi.fn(),
       spinner: vi.fn(() => ({
         start: vi.fn(),
         stop: vi.fn(),
@@ -140,9 +142,12 @@ describe("selectProject", () => {
 
     // Then
     expect(project).toEqual({
-      id: "saved-project",
-      name: "Saved project",
-      region: "ap-northeast-2",
+      create: false,
+      project: {
+        id: "saved-project",
+        name: "Saved project",
+        region: "ap-northeast-2",
+      },
     });
   });
 
@@ -163,10 +168,52 @@ describe("selectProject", () => {
 
     // Then
     expect(project).toEqual({
-      id: "only-project",
-      name: "Only project",
-      region: "ap-northeast-2",
+      create: false,
+      project: {
+        id: "only-project",
+        name: "Only project",
+        region: "ap-northeast-2",
+      },
     });
+    expect(mockCli.p.select).not.toHaveBeenCalled();
+  });
+
+  it("prompts instead of replacing a missing saved project with a singleton", async () => {
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          id: "only-project",
+          name: "Only project",
+          region: "ap-northeast-2",
+        },
+      ]),
+    });
+    mockCli.p.select.mockResolvedValue("only-project");
+
+    await expect(selectProject("deleted-project")).resolves.toEqual({
+      create: false,
+      project: {
+        id: "only-project",
+        name: "Only project",
+        region: "ap-northeast-2",
+      },
+    });
+    expect(mockCli.p.select).toHaveBeenCalledOnce();
+  });
+
+  it("plans project creation without provisioning during selection", async () => {
+    mockExeca.mockResolvedValue({ stdout: "[]" });
+    mockCli.p.select.mockImplementation(async ({ options }) => {
+      return options.at(-1)?.value;
+    });
+
+    await expect(selectProject()).resolves.toEqual({ create: true });
+    expect(mockExeca).toHaveBeenCalledOnce();
+    expect(mockExeca).not.toHaveBeenCalledWith(
+      "npx",
+      expect.arrayContaining(["projects", "create"]),
+      expect.anything(),
+    );
   });
 });
 

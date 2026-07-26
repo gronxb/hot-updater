@@ -316,4 +316,52 @@ describe("CloudFrontManager", () => {
     ).resolves.toBeNull();
     expect(mockPrompt.select).not.toHaveBeenCalled();
   });
+
+  it("finds a saved distribution on a later page", async () => {
+    mockCloudFront.listDistributions
+      .mockResolvedValueOnce({
+        DistributionList: {
+          Items: [],
+          NextMarker: "next-page",
+        },
+      })
+      .mockResolvedValueOnce({
+        DistributionList: {
+          Items: [
+            {
+              Id: "saved-dist-id",
+              DomainName: "saved.cloudfront.net",
+              Origins: {
+                Items: [
+                  {
+                    DomainName:
+                      "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      });
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await expect(
+      manager.selectDistribution({
+        bucketName: "hot-updater-storage",
+        distributionId: "saved-dist-id",
+        nonInteractive: true,
+      }),
+    ).resolves.toEqual({
+      Id: "saved-dist-id",
+      DomainName: "saved.cloudfront.net",
+    });
+    expect(mockCloudFront.listDistributions).toHaveBeenNthCalledWith(1, {});
+    expect(mockCloudFront.listDistributions).toHaveBeenNthCalledWith(2, {
+      Marker: "next-page",
+    });
+    expect(mockPrompt.select).not.toHaveBeenCalled();
+  });
 });

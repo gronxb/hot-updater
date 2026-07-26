@@ -11,6 +11,7 @@ import {
   INIT_PROVIDER_NAMES,
   isInitProvider,
   resolveInitProviderInputs,
+  shouldAutoSelectOnlyInitResource,
 } from "./initProvider";
 import { p } from "./prompts";
 
@@ -50,6 +51,20 @@ describe("init provider registry", () => {
       "HOT_UPDATER_AWS_AUTH_MODE",
       "HOT_UPDATER_S3_REGION",
     ]);
+  });
+
+  it("auto-selects a singleton only when no saved resource was requested", () => {
+    expect(
+      shouldAutoSelectOnlyInitResource({
+        availableResourceCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldAutoSelectOnlyInitResource({
+        availableResourceCount: 1,
+        savedIdentifier: "deleted-resource",
+      }),
+    ).toBe(false);
   });
 });
 

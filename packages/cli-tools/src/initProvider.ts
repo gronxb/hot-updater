@@ -16,7 +16,11 @@ import {
 } from "./initProviders/firebase";
 import {
   isSupabaseFunctionName,
+  isSupabaseRegion,
+  SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
   SUPABASE_INIT_PROVIDER,
+  SUPABASE_REGION_VALUES,
+  type SupabaseRegion,
 } from "./initProviders/supabase";
 import { p } from "./prompts";
 
@@ -31,9 +35,12 @@ export {
   isAwsRegionValue,
   isFirebaseRegion,
   isSupabaseFunctionName,
+  isSupabaseRegion,
+  SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
   SUPABASE_INIT_PROVIDER,
+  SUPABASE_REGION_VALUES,
 };
-export type { AwsRegionValue };
+export type { AwsRegionValue, SupabaseRegion };
 
 export type InitProviderInputPersistence = "always" | "with-consent";
 
@@ -89,6 +96,14 @@ export const isInitProvider = (
 export const INIT_PROVIDER_NAMES = Object.keys(
   INIT_PROVIDER_DEFINITIONS,
 ).filter(isInitProvider);
+
+export const shouldAutoSelectOnlyInitResource = ({
+  availableResourceCount,
+  savedIdentifier,
+}: {
+  readonly availableResourceCount: number;
+  readonly savedIdentifier?: string;
+}) => savedIdentifier === undefined && availableResourceCount === 1;
 
 export const resolveInitProviderInput = (
   env: Readonly<Record<string, string>>,

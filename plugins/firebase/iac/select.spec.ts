@@ -147,4 +147,24 @@ describe("initFirebaseUser", () => {
     expect(mocks.select).not.toHaveBeenCalled();
     expect(vi.mocked(makeEnv)).not.toHaveBeenCalled();
   });
+
+  it("prompts instead of replacing a missing saved project with a singleton", async () => {
+    mocks.select.mockResolvedValue("demo-project");
+
+    await initFirebaseUser("/tmp/firebase-init", "deleted-project", false, {});
+
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Select a Firebase project",
+      }),
+    );
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      ["firebase", "use", "--add", "demo-project"],
+      {
+        cwd: "/tmp/firebase-init",
+        env: {},
+      },
+    );
+  });
 });

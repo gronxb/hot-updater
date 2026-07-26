@@ -63,6 +63,7 @@ const readEnvFile = async (
 
 export type HotUpdaterInitEnv = {
   readonly env: Readonly<Record<string, string>>;
+  readonly inputEnv?: Readonly<Record<string, string>>;
   readonly managedEnv: Readonly<Record<string, string>>;
 };
 
@@ -88,6 +89,7 @@ export const readHotUpdaterInitEnv = async (
       ...savedEnv,
       ...inputEnv,
     },
+    inputEnv,
     managedEnv: savedEnv,
   };
 };
