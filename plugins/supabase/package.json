@@ -16,6 +16,68 @@
       "import": "./dist/edge/index.mjs",
       "require": "./dist/edge/index.cjs"
     },
+    "./storage": {
+      "worker": {
+        "import": {
+          "types": "./dist/storage/edge.d.mts",
+          "default": "./dist/storage/edge.mjs"
+        },
+        "require": {
+          "types": "./dist/storage/edge.d.cts",
+          "default": "./dist/storage/edge.cjs"
+        }
+      },
+      "edge": {
+        "import": {
+          "types": "./dist/storage/edge.d.mts",
+          "default": "./dist/storage/edge.mjs"
+        },
+        "require": {
+          "types": "./dist/storage/edge.d.cts",
+          "default": "./dist/storage/edge.cjs"
+        }
+      },
+      "node": {
+        "import": {
+          "types": "./dist/storage/node.d.mts",
+          "default": "./dist/storage/node.mjs"
+        },
+        "require": {
+          "types": "./dist/storage/node.d.cts",
+          "default": "./dist/storage/node.cjs"
+        }
+      },
+      "default": {
+        "import": {
+          "types": "./dist/storage/unsupported.d.mts",
+          "default": "./dist/storage/unsupported.mjs"
+        },
+        "require": {
+          "types": "./dist/storage/unsupported.d.cts",
+          "default": "./dist/storage/unsupported.cjs"
+        }
+      }
+    },
+    "./storage/node": {
+      "import": {
+        "types": "./dist/storage/node.d.mts",
+        "default": "./dist/storage/node.mjs"
+      },
+      "require": {
+        "types": "./dist/storage/node.d.cts",
+        "default": "./dist/storage/node.cjs"
+      }
+    },
+    "./storage/edge": {
+      "import": {
+        "types": "./dist/storage/edge.d.mts",
+        "default": "./dist/storage/edge.mjs"
+      },
+      "require": {
+        "types": "./dist/storage/edge.d.cts",
+        "default": "./dist/storage/edge.cjs"
+      }
+    },
     "./scaffold": {
       "import": "./supabase/index.ts",
       "require": "./supabase/index.ts"
