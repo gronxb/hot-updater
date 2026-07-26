@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { CloudFront } from "@aws-sdk/client-cloudfront";
-import { makeEnv, p } from "@hot-updater/cli-tools";
+import { makeEnv, MissingInitInputsError, p } from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 
 import {
@@ -134,6 +134,7 @@ export class CloudFrontManager {
     bucketName: string;
     functionArn: string;
     distributionId?: string;
+    nonInteractive?: boolean;
   }): Promise<{ distributionId: string; distributionDomain: string }> {
     const cloudfrontClient = new CloudFront({
       region: this.region,
@@ -213,6 +214,11 @@ export class CloudFrontManager {
     if (!selectedDistribution && matchingDistributions.length === 1) {
       selectedDistribution = matchingDistributions[0];
     } else if (!selectedDistribution && matchingDistributions.length > 1) {
+      if (options.nonInteractive) {
+        throw new MissingInitInputsError([
+          "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
+        ]);
+      }
       const selectedDistributionStr = await p.select({
         message:
           "Multiple CloudFront distributions found. Please select one to use:",

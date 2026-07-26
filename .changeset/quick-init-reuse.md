@@ -7,4 +7,5 @@
 "@hot-updater/supabase": patch
 ---
 
-Reuse saved init choices and collect missing provider input before deployment.
+Add secure `init --env-file <path>` input, reusing existing values and
+reporting all missing provider inputs before deployment.

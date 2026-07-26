@@ -1,4 +1,4 @@
-import { p } from "@hot-updater/cli-tools";
+import { MissingInitInputsError, p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 const REGIONS = [
@@ -29,13 +29,19 @@ const REGIONS = [
 
 export const resolveFirebaseRegion = async ({
   cwd,
+  nonInteractive,
   savedRegion,
 }: {
   readonly cwd: string;
+  readonly nonInteractive?: boolean;
   readonly savedRegion?: string;
 }): Promise<string> => {
   if (savedRegion) {
     return savedRegion;
+  }
+
+  if (nonInteractive) {
+    throw new MissingInitInputsError(["HOT_UPDATER_FIREBASE_REGION"]);
   }
 
   const functionsList = await execa(

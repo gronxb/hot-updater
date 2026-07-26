@@ -39,4 +39,22 @@ describe("resolveFirebaseRegion", () => {
     expect(mocks.execa).not.toHaveBeenCalled();
     expect(mocks.select).not.toHaveBeenCalled();
   });
+
+  it("does not run discovery or prompt when a non-interactive region is missing", async () => {
+    // Given
+    const options = {
+      cwd: "/tmp/firebase-init",
+      nonInteractive: true,
+    };
+
+    // When
+    const resolveRegion = resolveFirebaseRegion(options);
+
+    // Then
+    await expect(resolveRegion).rejects.toMatchObject({
+      missingInputs: ["HOT_UPDATER_FIREBASE_REGION"],
+    });
+    expect(mocks.execa).not.toHaveBeenCalled();
+    expect(mocks.select).not.toHaveBeenCalled();
+  });
 });

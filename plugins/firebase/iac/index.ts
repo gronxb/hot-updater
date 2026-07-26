@@ -2,20 +2,23 @@ import fs from "fs";
 import path from "path";
 
 import {
-  type BuildType,
-  getHotUpdaterEnvValue,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
   p,
-  readHotUpdaterEnv,
+  readHotUpdaterInitEnv,
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
+  type RunInitOptions,
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import {
+  assertFirebaseNonInteractiveInputs,
+  resolveFirebaseInitInputs,
+} from "./firebaseInitInputs";
 import { resolveFirebaseRegion } from "./firebaseRegion";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { initFirebaseUser, setEnv } from "./select";
@@ -151,11 +154,19 @@ const mergeIndexes = (
   };
 };
 
-const deployFirestore = async (cwd: string) => {
-  const original = await execa("npx", ["firebase", "firestore:indexes"], {
-    cwd,
-    shell: true,
-  });
+const deployFirestore = async (cwd: string, nonInteractive = false) => {
+  const original = await execa(
+    "npx",
+    [
+      "firebase",
+      "firestore:indexes",
+      ...(nonInteractive ? ["--non-interactive"] : []),
+    ],
+    {
+      cwd,
+      shell: true,
+    },
+  );
 
   let originalIndexes: {
     indexes: FirebaseIndex[];
@@ -184,11 +195,21 @@ const deployFirestore = async (cwd: string) => {
   );
 
   try {
-    await execa("npx", ["firebase", "deploy", "--only", "firestore"], {
-      cwd,
-      stdio: "inherit",
-      shell: true,
-    });
+    await execa(
+      "npx",
+      [
+        "firebase",
+        "deploy",
+        "--only",
+        "firestore",
+        ...(nonInteractive ? ["--non-interactive"] : []),
+      ],
+      {
+        cwd,
+        stdio: "inherit",
+        shell: true,
+      },
+    );
   } catch (e) {
     if (e instanceof ExecaError) {
       p.log.error(e.stderr || e.stdout || e.message);
@@ -199,13 +220,23 @@ const deployFirestore = async (cwd: string) => {
   }
 };
 
-const deployFunctions = async (cwd: string) => {
+const deployFunctions = async (cwd: string, nonInteractive = false) => {
   try {
-    await execa("npx", ["firebase", "deploy", "--only", "functions"], {
-      cwd,
-      stdio: "inherit",
-      shell: true,
-    });
+    await execa(
+      "npx",
+      [
+        "firebase",
+        "deploy",
+        "--only",
+        "functions",
+        ...(nonInteractive ? ["--non-interactive"] : []),
+      ],
+      {
+        cwd,
+        stdio: "inherit",
+        shell: true,
+      },
+    );
   } catch (e) {
     if (e instanceof ExecaError) {
       p.log.error(e.stderr || e.stdout || e.message);
@@ -265,8 +296,15 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
-export const runInit = async ({ build }: { build: BuildType }) => {
-  const existingEnv = await readHotUpdaterEnv(process.cwd());
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
+  const nonInteractive = envFile !== undefined;
+  const { env: existingEnv } = await readHotUpdaterInitEnv(
+    process.cwd(),
+    envFile,
+  );
+  const savedInputs = resolveFirebaseInitInputs(existingEnv);
+  assertFirebaseNonInteractiveInputs(savedInputs, nonInteractive);
+
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
     p.log.error("gcloud CLI is not installed");
@@ -286,15 +324,14 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   const initializeVariable = await initFirebaseUser(
     tmpDir,
-    getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_FIREBASE_PROJECT_ID"),
+    savedInputs.projectId,
+    nonInteractive,
   );
 
   const currentRegion = await resolveFirebaseRegion({
     cwd: tmpDir,
-    savedRegion: getHotUpdaterEnvValue(
-      existingEnv,
-      "HOT_UPDATER_FIREBASE_REGION",
-    ),
+    nonInteractive,
+    savedRegion: savedInputs.region,
   });
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
@@ -338,8 +375,8 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     },
   ]);
 
-  await deployFirestore(tmpDir);
-  await deployFunctions(tmpDir);
+  await deployFirestore(tmpDir, nonInteractive);
+  await deployFunctions(tmpDir, nonInteractive);
 
   await p.tasks([
     {
@@ -347,7 +384,12 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       async task(message) {
         const functionsList = await execa(
           "npx",
-          ["firebase", "functions:list", "--json"],
+          [
+            "firebase",
+            "functions:list",
+            "--json",
+            ...(nonInteractive ? ["--non-interactive"] : []),
+          ],
           {
             cwd: tmpDir,
             shell: true,

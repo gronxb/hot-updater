@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   fromSSO: vi.fn(),
   group: vi.fn(),
   select: vi.fn(),
+  execa: vi.fn(),
 }));
 
 vi.mock("@aws-sdk/credential-providers", () => ({
@@ -13,6 +14,14 @@ vi.mock("@aws-sdk/credential-providers", () => ({
   fromNodeProviderChain: mocks.fromNodeProviderChain,
   fromSSO: mocks.fromSSO,
 }));
+
+vi.mock("execa", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("execa")>();
+  return {
+    ...actual,
+    execa: mocks.execa,
+  };
+});
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -61,5 +70,33 @@ describe("resolveAwsAuth", () => {
     });
     expect(mocks.select).not.toHaveBeenCalled();
     expect(mocks.group).not.toHaveBeenCalled();
+  });
+
+  it("does not launch SSO login in non-interactive mode", async () => {
+    // Given
+    mocks.group.mockResolvedValue({
+      accessKeyId: undefined,
+      mode: "sso",
+      profile: "company-sso",
+      secretAccessKey: undefined,
+    });
+    mocks.fromSSO.mockReturnValue(async () => {
+      throw new Error("SSO session expired");
+    });
+
+    // When
+    const auth = resolveAwsAuth(
+      {
+        HOT_UPDATER_AWS_AUTH_MODE: "sso",
+        HOT_UPDATER_AWS_PROFILE: "company-sso",
+      },
+      true,
+    );
+
+    // Then
+    await expect(auth).rejects.toMatchObject({
+      missingInputs: ["active AWS SSO session (`aws sso login`)"],
+    });
+    expect(mocks.execa).not.toHaveBeenCalled();
   });
 });

@@ -1,18 +1,21 @@
 import {
-  type BuildType,
   colors,
   ensureInstallPackages,
-  getHotUpdaterEnvValue,
   link,
   makeEnv,
   p,
-  readHotUpdaterEnv,
+  readHotUpdaterInitEnv,
+  type RunInitOptions,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 import { resolveAwsAuth } from "./awsAuth";
+import {
+  assertAwsNonInteractiveInputs,
+  resolveAwsInitInputs,
+} from "./awsInitInputs";
 import { CloudFrontManager } from "./cloudfront";
 import { IAMManager } from "./iam";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
@@ -36,7 +39,15 @@ const isAwsRegion = (value: string | undefined): value is AwsRegion => {
   return value !== undefined && Object.hasOwn(regionLocationMap, value);
 };
 
-export const runInit = async ({ build }: { build: BuildType }) => {
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
+  const nonInteractive = envFile !== undefined;
+  const { env: existingEnv, inputEnv } = await readHotUpdaterInitEnv(
+    process.cwd(),
+    envFile,
+  );
+  const savedInputs = resolveAwsInitInputs(existingEnv, inputEnv);
+  assertAwsNonInteractiveInputs(savedInputs, nonInteractive);
+
   const isAwsCliInstalled = await checkIfAwsCliInstalled();
   if (!isAwsCliInstalled) {
     p.log.error(
@@ -62,9 +73,8 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     `${colors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
   );
 
-  const existingEnv = await readHotUpdaterEnv(process.cwd());
   const { awsProfile, configAuthMode, credentials, mode } =
-    await resolveAwsAuth(existingEnv);
+    await resolveAwsAuth(existingEnv, nonInteractive);
   await makeEnv({
     HOT_UPDATER_AWS_AUTH_MODE: mode,
     ...(mode === "account"
@@ -102,20 +112,20 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   }
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
-  const savedBucketName = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_S3_BUCKET_NAME",
-  );
+  const savedBucketName = savedInputs.bucketName;
+  const savedBucketRegion = savedInputs.bucketRegion;
   const existingBucket = availableBuckets.find(
     (bucket) => bucket.name === savedBucketName,
   );
-  if (savedBucketName && !existingBucket) {
+  const createSavedBucket =
+    nonInteractive &&
+    savedBucketName !== undefined &&
+    isAwsRegion(savedBucketRegion) &&
+    !existingBucket;
+  if (savedBucketName && !existingBucket && !createSavedBucket) {
     p.log.warn("Saved S3 bucket was not found. Select a bucket again.");
   }
-  const savedLambdaName = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_AWS_LAMBDA_NAME",
-  );
+  const savedLambdaName = savedInputs.lambdaName;
   const resourceInputs = await p.group<{
     bucketSelection: string | symbol;
     bucketName: string | symbol | undefined;
@@ -126,6 +136,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       bucketSelection: () => {
         if (existingBucket) {
           return Promise.resolve(existingBucket.name);
+        }
+        if (createSavedBucket) {
+          return Promise.resolve(createKey);
         }
         if (availableBuckets.length === 1 && availableBuckets[0]) {
           return Promise.resolve(availableBuckets[0].name);
@@ -143,23 +156,27 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       },
       bucketName: ({ results }) =>
         results.bucketSelection === createKey
-          ? p.text({
-              message: "Enter the name of the new S3 Bucket",
-              defaultValue: "hot-updater-storage",
-              placeholder: "hot-updater-storage",
-            })
+          ? createSavedBucket
+            ? Promise.resolve(savedBucketName)
+            : p.text({
+                message: "Enter the name of the new S3 Bucket",
+                defaultValue: "hot-updater-storage",
+                placeholder: "hot-updater-storage",
+              })
           : Promise.resolve(results.bucketSelection),
       bucketRegion: ({ results }) =>
         results.bucketSelection === createKey
-          ? p.select({
-              message: "Enter AWS region for the S3 bucket",
-              options: Object.entries(regionLocationMap).map(
-                ([region, location]) => ({
-                  label: `${region} (${location})`,
-                  value: region,
-                }),
-              ),
-            })
+          ? createSavedBucket
+            ? Promise.resolve(savedBucketRegion)
+            : p.select({
+                message: "Enter AWS region for the S3 bucket",
+                options: Object.entries(regionLocationMap).map(
+                  ([region, location]) => ({
+                    label: `${region} (${location})`,
+                    value: region,
+                  }),
+                ),
+              })
           : Promise.resolve(
               availableBuckets.find(
                 (bucket) => bucket.name === results.bucketSelection,
@@ -207,6 +224,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   // Run S3 migrations
   await s3Manager.runMigrations({
+    approved: savedInputs.migrationApproved === "true",
     bucketName,
     region: bucketRegion,
     migrations: [
@@ -252,10 +270,8 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       keyGroupId,
       bucketName,
       functionArn,
-      distributionId: getHotUpdaterEnvValue(
-        existingEnv,
-        "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
-      ),
+      distributionId: savedInputs.distributionId,
+      nonInteractive,
     });
 
   // Update S3 bucket policy (allow CloudFront access)

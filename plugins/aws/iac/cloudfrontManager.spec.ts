@@ -32,10 +32,15 @@ vi.mock("@aws-sdk/client-cloudfront", () => ({
   }),
 }));
 
-vi.mock("@hot-updater/cli-tools", () => ({
-  makeEnv: mockMakeEnv,
-  p: mockPrompt,
-}));
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  return {
+    ...actual,
+    makeEnv: mockMakeEnv,
+    p: mockPrompt,
+  };
+});
 
 import { CloudFrontManager } from "./cloudfront";
 
@@ -219,5 +224,58 @@ describe("CloudFrontManager", () => {
     expect(mockMakeEnv.mock.invocationCallOrder[0]).toBeLessThan(
       mockCloudFront.getDistributionConfig.mock.invocationCallOrder[0] ?? 0,
     );
+  });
+
+  it("does not prompt for an ambiguous distribution in non-interactive mode", async () => {
+    // Given
+    mockCloudFront.listCachePolicies.mockResolvedValue({
+      CachePolicyList: {
+        Items: [
+          {
+            CachePolicy: {
+              Id: "shared-cache-policy-id",
+              CachePolicyConfig: {
+                Name: "HotUpdaterOriginCacheControl",
+              },
+            },
+          },
+        ],
+      },
+    });
+    mockCloudFront.listDistributions.mockResolvedValue({
+      DistributionList: {
+        Items: ["first", "second"].map((id) => ({
+          Id: `${id}-dist-id`,
+          DomainName: `${id}.cloudfront.net`,
+          Origins: {
+            Items: [
+              {
+                DomainName:
+                  "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
+              },
+            ],
+          },
+        })),
+      },
+    });
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    const updateDistribution = manager.createOrUpdateDistribution({
+      bucketName: "hot-updater-storage",
+      functionArn:
+        "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+      keyGroupId: "new-key-group-id",
+      nonInteractive: true,
+    });
+
+    // Then
+    await expect(updateDistribution).rejects.toMatchObject({
+      missingInputs: ["HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID"],
+    });
+    expect(mockPrompt.select).not.toHaveBeenCalled();
   });
 });

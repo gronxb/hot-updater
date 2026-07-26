@@ -1,6 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 
+import { InitEnvFileError } from "./initOptions";
+
 const HOT_UPDATER_ENV_PATH = ".env.hotupdater";
 
 const unquoteEnvValue = (value: string) => {
@@ -12,19 +14,7 @@ const unquoteEnvValue = (value: string) => {
   return hasMatchingQuotes ? trimmed.slice(1, -1) : trimmed;
 };
 
-export const readHotUpdaterEnv = async (
-  cwd: string,
-): Promise<Readonly<Record<string, string>>> => {
-  let content: string;
-  try {
-    content = await fs.readFile(path.join(cwd, HOT_UPDATER_ENV_PATH), "utf-8");
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      content = "";
-    } else {
-      throw error;
-    }
-  }
+const parseEnv = (content: string): Readonly<Record<string, string>> => {
   const env: Record<string, string> = {};
 
   for (const line of content.split("\n")) {
@@ -40,6 +30,68 @@ export const readHotUpdaterEnv = async (
     }
   }
 
+  return env;
+};
+
+const readEnvFile = async (
+  filePath: string,
+  allowMissing: boolean,
+): Promise<Readonly<Record<string, string>>> => {
+  let content: string;
+  try {
+    content = await fs.readFile(filePath, "utf-8");
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      if (allowMissing) {
+        return {};
+      }
+      throw new InitEnvFileError(
+        `Init environment file not found: ${filePath}`,
+      );
+    }
+    throw error;
+  }
+
+  return parseEnv(content);
+};
+
+export type HotUpdaterInitEnv = {
+  readonly env: Readonly<Record<string, string>>;
+  readonly inputEnv: Readonly<Record<string, string>>;
+};
+
+export const readHotUpdaterInitEnv = async (
+  cwd: string,
+  envFile?: string,
+): Promise<HotUpdaterInitEnv> => {
+  const savedEnvPath = path.resolve(cwd, HOT_UPDATER_ENV_PATH);
+  const savedEnv = await readEnvFile(savedEnvPath, true);
+
+  if (!envFile) {
+    return { env: savedEnv, inputEnv: {} };
+  }
+
+  const inputEnvPath = path.resolve(cwd, envFile);
+  if (inputEnvPath === savedEnvPath) {
+    throw new InitEnvFileError(
+      `Init input file must be separate from managed output: ${savedEnvPath}`,
+    );
+  }
+  const inputEnv = await readEnvFile(inputEnvPath, false);
+
+  return {
+    env: {
+      ...savedEnv,
+      ...inputEnv,
+    },
+    inputEnv,
+  };
+};
+
+export const readHotUpdaterEnv = async (
+  cwd: string,
+): Promise<Readonly<Record<string, string>>> => {
+  const { env } = await readHotUpdaterInitEnv(cwd);
   return env;
 };
 

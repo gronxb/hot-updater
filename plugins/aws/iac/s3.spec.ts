@@ -99,4 +99,28 @@ describe("S3Manager", () => {
     // Then
     expect(mockPrompt.confirm).not.toHaveBeenCalled();
   });
+
+  it("runs approved migrations without prompting", async () => {
+    // Given
+    mockMigrator.list.mockResolvedValue({
+      pending: [{ name: "Migration0001" }],
+    });
+    mockMigrator.migrate.mockResolvedValue(undefined);
+    const manager = new S3Manager({
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.runMigrations({
+      approved: true,
+      bucketName: "existing-bucket",
+      region: "ap-northeast-2",
+      migrations: [],
+    });
+
+    // Then
+    expect(mockPrompt.confirm).not.toHaveBeenCalled();
+    expect(mockMigrator.migrate).toHaveBeenLastCalledWith({ dryRun: false });
+  });
 });

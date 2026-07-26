@@ -1,4 +1,4 @@
-import { link, p } from "@hot-updater/cli-tools";
+import { assertInitInputs, link, p } from "@hot-updater/cli-tools";
 
 type CloudflareInitSecrets = {
   readonly apiToken: string;
@@ -14,6 +14,7 @@ export const inputCloudflareInitSecrets = async ({
   accessKeyId,
   secretAccessKey,
   workerName,
+  nonInteractive,
 }: {
   readonly accountId: string;
   readonly bucketName: string;
@@ -21,8 +22,27 @@ export const inputCloudflareInitSecrets = async ({
   readonly accessKeyId?: string;
   readonly secretAccessKey?: string;
   readonly workerName?: string;
+  readonly nonInteractive?: boolean;
 }): Promise<CloudflareInitSecrets> => {
-  if (apiToken === undefined) {
+  assertInitInputs({
+    inputs: {
+      HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: accessKeyId,
+      HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY: secretAccessKey,
+      HOT_UPDATER_CLOUDFLARE_WORKER_NAME: workerName,
+    },
+    strict: nonInteractive,
+  });
+
+  if (nonInteractive && accessKeyId && secretAccessKey && workerName) {
+    return {
+      accessKeyId,
+      apiToken: apiToken ?? "",
+      secretAccessKey,
+      workerName,
+    };
+  }
+
+  if (apiToken === undefined && !nonInteractive) {
     p.log.step(
       `D1 API Token dashboard: ${link(
         `https://dash.cloudflare.com/${accountId}/api-tokens`,

@@ -1,10 +1,12 @@
-import type { BuildType } from "@hot-updater/cli-tools";
+import type { BuildType, RunInitOptions } from "@hot-updater/cli-tools";
 import {
+  assertInitInputs,
   getHotUpdaterEnvValue,
   HotUpdateDirUtil,
+  InitError,
   makeEnv,
   p,
-  readHotUpdaterEnv,
+  readHotUpdaterInitEnv,
 } from "@hot-updater/cli-tools";
 import { ExecaError } from "execa";
 
@@ -87,8 +89,9 @@ type BuildPluginKey = keyof typeof BUILD_PLUGINS;
 type Provider = keyof typeof PACKAGE_MAP;
 
 export interface InitOptions {
-  build?: BuildPluginKey;
-  provider?: Provider;
+  readonly build?: BuildPluginKey;
+  readonly envFile?: string;
+  readonly provider?: Provider;
 }
 
 const isBuildPluginKey = (
@@ -109,7 +112,10 @@ const isProvider = (value: string | undefined): value is Provider => {
 const collectInitChoices = async (
   options: InitOptions,
 ): Promise<{ build: BuildPluginKey; provider: Provider }> => {
-  const existingEnv = await readHotUpdaterEnv(process.cwd());
+  const { env: existingEnv } = await readHotUpdaterInitEnv(
+    process.cwd(),
+    options.envFile,
+  );
   const savedBuild = getHotUpdaterEnvValue(existingEnv, INIT_BUILD_ENV_KEY);
   const savedProvider = getHotUpdaterEnvValue(
     existingEnv,
@@ -119,6 +125,14 @@ const collectInitChoices = async (
     options.build ?? (isBuildPluginKey(savedBuild) ? savedBuild : null);
   const provider =
     options.provider ?? (isProvider(savedProvider) ? savedProvider : null);
+
+  assertInitInputs({
+    inputs: {
+      [INIT_BUILD_ENV_KEY]: build ?? undefined,
+      [INIT_PROVIDER_ENV_KEY]: provider ?? undefined,
+    },
+    strict: options.envFile !== undefined,
+  });
 
   if (build && provider) {
     return { build, provider };
@@ -156,8 +170,28 @@ const collectInitChoices = async (
   return choices;
 };
 
+const handleInitError = (error: unknown): boolean => {
+  if (!(error instanceof InitError)) {
+    return false;
+  }
+
+  p.log.error(error.message);
+  process.exitCode = 1;
+  return true;
+};
+
 export const init = async (options: InitOptions = {}) => {
   printBanner();
+
+  let choices: Awaited<ReturnType<typeof collectInitChoices>>;
+  try {
+    choices = await collectInitChoices(options);
+  } catch (error) {
+    if (handleInitError(error)) {
+      return;
+    }
+    throw error;
+  }
 
   if (
     appendToProjectRootGitignore({
@@ -171,7 +205,6 @@ export const init = async (options: InitOptions = {}) => {
     p.log.info(".gitignore has been modified to include hot-updater entries");
   }
 
-  const choices = await collectInitChoices(options);
   const buildPluginPackage = BUILD_PLUGINS[choices.build];
   const provider = choices.provider;
 
@@ -204,28 +237,39 @@ export const init = async (options: InitOptions = {}) => {
   }
 
   const build = buildPluginPackage.name;
-  switch (provider) {
-    case "supabase": {
-      const supabase = await import("@hot-updater/supabase/iac");
-      await supabase.runInit({ build });
-      break;
+  const runInitOptions = {
+    build,
+    envFile: options.envFile,
+  } satisfies RunInitOptions;
+  try {
+    switch (provider) {
+      case "supabase": {
+        const supabase = await import("@hot-updater/supabase/iac");
+        await supabase.runInit(runInitOptions);
+        break;
+      }
+      case "cloudflare": {
+        const cloudflare = await import("@hot-updater/cloudflare/iac");
+        await cloudflare.runInit(runInitOptions);
+        break;
+      }
+      case "aws": {
+        const aws = await import("@hot-updater/aws/iac");
+        await aws.runInit(runInitOptions);
+        break;
+      }
+      case "firebase": {
+        const firebase = await import("@hot-updater/firebase/iac");
+        await firebase.runInit(runInitOptions);
+        break;
+      }
+      default:
+        throw new Error("Invalid provider");
     }
-    case "cloudflare": {
-      const cloudflare = await import("@hot-updater/cloudflare/iac");
-      await cloudflare.runInit({ build });
-      break;
+  } catch (error) {
+    if (handleInitError(error)) {
+      return;
     }
-    case "aws": {
-      const aws = await import("@hot-updater/aws/iac");
-      await aws.runInit({ build });
-      break;
-    }
-    case "firebase": {
-      const firebase = await import("@hot-updater/firebase/iac");
-      await firebase.runInit({ build });
-      break;
-    }
-    default:
-      throw new Error("Invalid provider");
+    throw error;
   }
 };

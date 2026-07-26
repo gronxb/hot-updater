@@ -67,10 +67,12 @@ export class S3Manager {
   }
 
   async runMigrations({
+    approved,
     bucketName,
     region,
     migrations,
   }: {
+    approved?: boolean;
     bucketName: string;
     region: AwsRegion;
     migrations: S3Migration[];
@@ -91,10 +93,12 @@ export class S3Manager {
     for (const migration of pending) {
       p.log.step(`- ${migration.name}`);
     }
-    const confirm = await p.confirm({ message: "Do you want to continue?" });
-    if (p.isCancel(confirm) || !confirm) {
-      p.log.info("Migration cancelled.");
-      process.exit(1);
+    if (!approved) {
+      const confirm = await p.confirm({ message: "Do you want to continue?" });
+      if (p.isCancel(confirm) || !confirm) {
+        p.log.info("Migration cancelled.");
+        process.exit(1);
+      }
     }
     await migrator.migrate({ dryRun: false });
   }

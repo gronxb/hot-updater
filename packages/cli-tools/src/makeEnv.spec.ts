@@ -11,7 +11,9 @@ vi.mock("fs/promises", async () => {
     ...actual,
     default: {
       ...actual,
+      chmod: vi.fn(),
       readFile: vi.fn(),
+      writeFile: vi.fn(),
     },
     readFile: vi.fn(),
   };
@@ -148,5 +150,54 @@ describe("makeEnv", () => {
     expect(result).toBe(
       "# Existing credential\nGOOGLE_APPLICATION_CREDENTIALS=existing.json",
     );
+  });
+
+  it("removes sensitive keys when requested", async () => {
+    // Given
+    vi.mocked(fs.readFile).mockResolvedValueOnce(
+      [
+        "HOT_UPDATER_SUPABASE_URL=https://project.supabase.co",
+        "# Init-only secret",
+        "HOT_UPDATER_SUPABASE_DB_PASSWORD=secret",
+      ].join("\n"),
+    );
+
+    // When
+    const result = await makeEnv(
+      {
+        HOT_UPDATER_SUPABASE_FUNCTION_NAME: "update-server",
+      },
+      ".env.hotupdater",
+      {
+        removeKeys: ["HOT_UPDATER_SUPABASE_DB_PASSWORD"],
+      },
+    );
+
+    // Then
+    expect(result).toBe(
+      [
+        "HOT_UPDATER_SUPABASE_URL=https://project.supabase.co",
+        "HOT_UPDATER_SUPABASE_FUNCTION_NAME=update-server",
+      ].join("\n"),
+    );
+  });
+
+  it("writes environment files with owner-only permissions", async () => {
+    // Given
+    vi.mocked(fs.readFile).mockResolvedValueOnce("");
+
+    // When
+    await makeEnv({ HOT_UPDATER_INIT_BUILD: "bare" });
+
+    // Then
+    expect(fs.writeFile).toHaveBeenCalledWith(
+      ".env.hotupdater",
+      "HOT_UPDATER_INIT_BUILD=bare",
+      {
+        encoding: "utf-8",
+        mode: 0o600,
+      },
+    );
+    expect(fs.chmod).toHaveBeenCalledWith(".env.hotupdater", 0o600);
   });
 });

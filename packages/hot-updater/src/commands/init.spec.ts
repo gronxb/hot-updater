@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   ensureInstallPackages: vi.fn(),
   group: vi.fn(),
   makeEnv: vi.fn(),
-  readHotUpdaterEnv: vi.fn(),
+  readHotUpdaterInitEnv: vi.fn(),
   runAwsInit: vi.fn(),
 }));
 
@@ -24,10 +24,11 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       group: mocks.group,
       log: {
         ...actual.p.log,
+        error: vi.fn(),
         info: vi.fn(),
       },
     },
-    readHotUpdaterEnv: mocks.readHotUpdaterEnv,
+    readHotUpdaterInitEnv: mocks.readHotUpdaterInitEnv,
   };
 });
 
@@ -52,20 +53,25 @@ import { init } from "./init";
 describe("init choices", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.exitCode = undefined;
     mocks.ensureInstallPackages.mockResolvedValue(undefined);
     mocks.makeEnv.mockResolvedValue("");
     mocks.runAwsInit.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
+    process.exitCode = undefined;
     vi.restoreAllMocks();
   });
 
   it("reuses saved build and provider without prompting", async () => {
     // Given
-    mocks.readHotUpdaterEnv.mockResolvedValue({
-      HOT_UPDATER_INIT_BUILD: "expo",
-      HOT_UPDATER_INIT_PROVIDER: "aws",
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {
+        HOT_UPDATER_INIT_BUILD: "expo",
+        HOT_UPDATER_INIT_PROVIDER: "aws",
+      },
+      inputEnv: {},
     });
 
     // When
@@ -83,12 +89,18 @@ describe("init choices", () => {
     expect(mocks.makeEnv.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.ensureInstallPackages.mock.invocationCallOrder[0] ?? Infinity,
     );
-    expect(mocks.runAwsInit).toHaveBeenCalledWith({ build: "expo" });
+    expect(mocks.runAwsInit).toHaveBeenCalledWith({
+      build: "expo",
+      envFile: undefined,
+    });
   });
 
   it("collects missing build and provider in one prompt group", async () => {
     // Given
-    mocks.readHotUpdaterEnv.mockResolvedValue({});
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {},
+      inputEnv: {},
+    });
     mocks.group.mockResolvedValue({
       build: "bare",
       provider: "aws",
@@ -103,6 +115,52 @@ describe("init choices", () => {
       HOT_UPDATER_INIT_BUILD: "bare",
       HOT_UPDATER_INIT_PROVIDER: "aws",
     });
-    expect(mocks.runAwsInit).toHaveBeenCalledWith({ build: "bare" });
+    expect(mocks.runAwsInit).toHaveBeenCalledWith({
+      build: "bare",
+      envFile: undefined,
+    });
+  });
+
+  it("stops before prompting when the init env file is incomplete", async () => {
+    // Given
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {},
+      inputEnv: {},
+    });
+
+    // When
+    await init({ envFile: "init.env" });
+
+    // Then
+    expect(mocks.group).not.toHaveBeenCalled();
+    expect(mocks.appendToProjectRootGitignore).not.toHaveBeenCalled();
+    expect(mocks.makeEnv).not.toHaveBeenCalled();
+    expect(mocks.ensureInstallPackages).not.toHaveBeenCalled();
+    expect(mocks.runAwsInit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("passes the init env file to the selected provider", async () => {
+    // Given
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {
+        HOT_UPDATER_INIT_BUILD: "expo",
+        HOT_UPDATER_INIT_PROVIDER: "aws",
+      },
+      inputEnv: {
+        HOT_UPDATER_INIT_BUILD: "expo",
+        HOT_UPDATER_INIT_PROVIDER: "aws",
+      },
+    });
+
+    // When
+    await init({ envFile: "init.env" });
+
+    // Then
+    expect(mocks.group).not.toHaveBeenCalled();
+    expect(mocks.runAwsInit).toHaveBeenCalledWith({
+      build: "expo",
+      envFile: "init.env",
+    });
   });
 });

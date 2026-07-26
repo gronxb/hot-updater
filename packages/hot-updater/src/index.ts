@@ -94,6 +94,10 @@ program
       "build plugin to use; skips the prompt",
     ).choices(["bare", "rock", "expo"]),
   )
+  .option(
+    "--env-file <path>",
+    "load init inputs from a dotenv file and fail if any are missing",
+  )
   .action((options) => init(options));
 
 program

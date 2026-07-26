@@ -6,6 +6,7 @@ import {
   link,
   makeEnv,
   type ManagedHelperStatement,
+  MissingInitInputsError,
   type ProviderConfig,
   p,
   writeHotUpdaterConfig,
@@ -117,7 +118,9 @@ const handleError = (err: unknown) => {
   process.exit(1);
 };
 
-const listProjects = async (): Promise<
+const listProjects = async (
+  nonInteractive = false,
+): Promise<
   {
     projectId: string;
     projectNumber: string;
@@ -130,7 +133,12 @@ const listProjects = async (): Promise<
   try {
     const projects = await execa(
       "npx",
-      ["firebase", "projects:list", "--json"],
+      [
+        "firebase",
+        "projects:list",
+        "--json",
+        ...(nonInteractive ? ["--non-interactive"] : []),
+      ],
       {
         shell: true,
       },
@@ -138,6 +146,11 @@ const listProjects = async (): Promise<
     const projectsJson = JSON.parse(projects.stdout);
     return projectsJson?.result ?? [];
   } catch {
+    if (nonInteractive) {
+      throw new MissingInitInputsError([
+        "Firebase CLI authentication (`firebase login`)",
+      ]);
+    }
     return [];
   }
 };
@@ -145,41 +158,56 @@ const listProjects = async (): Promise<
 export const initFirebaseUser = async (
   cwd: string,
   preferredProjectId?: string,
+  nonInteractive = false,
 ): Promise<{
   projectId: string;
   projectNumber: number;
   storageBucket: string;
 }> => {
-  try {
-    await execa("npx", ["firebase", "login"], {
-      stdio: "inherit",
-      shell: true,
-    });
-  } catch (err) {
-    handleError(err);
+  if (!nonInteractive) {
+    try {
+      await execa("npx", ["firebase", "login"], {
+        stdio: "inherit",
+        shell: true,
+      });
+    } catch (err) {
+      handleError(err);
+    }
   }
+
   try {
     const authList = await execa("gcloud", ["auth", "list", "--format=json"], {
       shell: true,
     });
     const authListJson = JSON.parse(authList.stdout);
     if (authListJson.length === 0) {
+      if (nonInteractive) {
+        throw new MissingInitInputsError([
+          "active gcloud authentication (`gcloud auth login`)",
+        ]);
+      }
       await execa("gcloud", ["auth", "login"], {
         stdio: "inherit",
         shell: true,
       });
     }
   } catch (err) {
+    if (err instanceof MissingInitInputsError) {
+      throw err;
+    }
     handleError(err);
   }
 
-  const projects = await listProjects();
+  const projects = await listProjects(nonInteractive);
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
   const preferredProject = projects.find(
     (project) => project.projectId === preferredProjectId,
   );
   if (preferredProjectId && !preferredProject) {
+    if (nonInteractive) {
+      throw new MissingInitInputsError(["HOT_UPDATER_FIREBASE_PROJECT_ID"]);
+    }
     p.log.warn("Saved Firebase project was not found. Select a project again.");
   }
   const onlyProject = projects.length === 1 ? projects[0] : undefined;
@@ -249,10 +277,20 @@ export const initFirebaseUser = async (
       title: `Select Firebase project (${projectId})...`,
       task: async () => {
         try {
-          await execa("npx", ["firebase", "use", "--add", projectId], {
-            cwd,
-            shell: true,
-          });
+          await execa(
+            "npx",
+            [
+              "firebase",
+              "use",
+              ...(nonInteractive ? [] : ["--add"]),
+              projectId,
+              ...(nonInteractive ? ["--non-interactive"] : []),
+            ],
+            {
+              cwd,
+              shell: true,
+            },
+          );
         } catch (error) {
           if (error instanceof ExecaError) {
             p.log.error(error.stderr || error.stdout || error.message);

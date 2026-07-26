@@ -1,7 +1,18 @@
 import { makeEnv, writeHotUpdaterConfig } from "@hot-updater/cli-tools";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { setEnv } from "./select";
+const mocks = vi.hoisted(() => ({
+  execa: vi.fn(),
+  select: vi.fn(),
+}));
+
+vi.mock("execa", async () => {
+  const actual = await vi.importActual<typeof import("execa")>("execa");
+  return {
+    ...actual,
+    execa: mocks.execa,
+  };
+});
 
 vi.mock("@hot-updater/cli-tools", async () => {
   const actual = await vi.importActual<typeof import("@hot-updater/cli-tools")>(
@@ -14,10 +25,17 @@ vi.mock("@hot-updater/cli-tools", async () => {
     createHotUpdaterConfigScaffoldFromBuilder: vi.fn().mockReturnValue({}),
     makeEnv: vi.fn().mockResolvedValue(""),
     p: {
+      ...actual.p,
       log: {
         success: vi.fn(),
         warn: vi.fn(),
       },
+      select: mocks.select,
+      tasks: vi.fn(async (tasks) => {
+        for (const task of tasks) {
+          await task.task(vi.fn());
+        }
+      }),
     },
     writeHotUpdaterConfig: vi.fn().mockResolvedValue({
       status: "created",
@@ -25,6 +43,8 @@ vi.mock("@hot-updater/cli-tools", async () => {
     }),
   };
 });
+
+import { initFirebaseUser, setEnv } from "./select";
 
 describe("setEnv", () => {
   it("preserves GOOGLE_APPLICATION_CREDENTIALS when updating Firebase env vars", async () => {
@@ -52,5 +72,79 @@ describe("setEnv", () => {
       },
     );
     expect(vi.mocked(writeHotUpdaterConfig)).toHaveBeenCalledOnce();
+  });
+});
+
+describe("initFirebaseUser", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.execa.mockImplementation(async (command, args) => {
+      const invocation = [command, ...args].join(" ");
+
+      if (invocation === "gcloud auth list --format=json") {
+        return { stdout: JSON.stringify([{ account: "user@example.com" }]) };
+      }
+      if (
+        invocation === "npx firebase projects:list --json --non-interactive"
+      ) {
+        return {
+          stdout: JSON.stringify({
+            result: [
+              {
+                projectId: "demo-project",
+                displayName: "Demo",
+              },
+            ],
+          }),
+        };
+      }
+      if (
+        invocation ===
+        "gcloud firestore databases list --project=demo-project --format=json"
+      ) {
+        return { stdout: JSON.stringify([{ name: "(default)" }]) };
+      }
+      if (
+        invocation ===
+        "gcloud storage buckets list --project=demo-project --format=json"
+      ) {
+        return {
+          stdout: JSON.stringify([
+            { name: "demo-project.firebasestorage.app" },
+          ]),
+        };
+      }
+      if (
+        invocation === "gcloud projects describe demo-project --format=json"
+      ) {
+        return { stdout: JSON.stringify({ projectNumber: "123" }) };
+      }
+
+      return { stdout: "" };
+    });
+  });
+
+  it("uses the saved project without login or selection in non-interactive mode", async () => {
+    await initFirebaseUser("/tmp/firebase-init", "demo-project", true);
+
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      ["firebase", "use", "demo-project", "--non-interactive"],
+      {
+        cwd: "/tmp/firebase-init",
+        shell: true,
+      },
+    );
+    expect(mocks.execa).not.toHaveBeenCalledWith(
+      "npx",
+      ["firebase", "login"],
+      expect.anything(),
+    );
+    expect(mocks.execa).not.toHaveBeenCalledWith(
+      "gcloud",
+      ["auth", "login"],
+      expect.anything(),
+    );
+    expect(mocks.select).not.toHaveBeenCalled();
   });
 });

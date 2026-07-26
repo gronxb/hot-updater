@@ -7,13 +7,14 @@ import {
   ConfigBuilder,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
-  getHotUpdaterEnvValue,
   link,
   makeEnv,
   type HotUpdaterConfigScaffold,
+  MissingInitInputsError,
   type ProviderConfig,
   p,
-  readHotUpdaterEnv,
+  readHotUpdaterInitEnv,
+  type RunInitOptions,
   resolvePackageVersion,
   transformEnv,
   transformTemplate,
@@ -24,6 +25,12 @@ import { ExecaError, execa } from "execa";
 
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 import { linkSupabase, pushDB } from "./supabaseCli";
+import {
+  assertSupabaseNonInteractiveInputs,
+  inputSupabaseDeploymentInputs,
+  resolveSupabaseInitInputs,
+  SUPABASE_DATABASE_PASSWORD_ENV_KEY,
+} from "./supabaseInitInputs";
 
 const require = createRequire(import.meta.url);
 const EDGE_VENDOR_DIR = "_hot-updater";
@@ -373,6 +380,7 @@ export const resolveEdgeFunctionDenoConfig = async (targetDir: string) => {
 
 export const selectProject = async (
   preferredProjectId?: string,
+  nonInteractive = false,
 ): Promise<{
   id: string;
   name: string;
@@ -409,6 +417,9 @@ export const selectProject = async (
     return preferredProject;
   }
   if (preferredProjectId) {
+    if (nonInteractive) {
+      throw new MissingInitInputsError(["HOT_UPDATER_SUPABASE_PROJECT_ID"]);
+    }
     p.log.warn("Saved Supabase project was not found. Select a project again.");
   }
   if (projectsProcess.length === 1 && projectsProcess[0]) {
@@ -470,6 +481,7 @@ export const selectProject = async (
 export const selectBucket = async (
   api: SupabaseApi,
   preferredBucketName?: string,
+  nonInteractive = false,
 ): Promise<{
   id: string;
   name: string;
@@ -510,6 +522,9 @@ export const selectBucket = async (
     return { id: preferredBucket.id, name: preferredBucket.name };
   }
   if (preferredBucketName) {
+    if (nonInteractive) {
+      throw new MissingInitInputsError(["HOT_UPDATER_SUPABASE_BUCKET_NAME"]);
+    }
     p.log.warn("Saved Supabase bucket was not found. Select a bucket again.");
   }
   if (buckets.length === 1 && buckets[0]) {
@@ -625,14 +640,15 @@ const deployEdgeFunction = async (
   ]);
 };
 
-export const runInit = async ({ build }: { build: BuildType }) => {
-  const existingEnv = await readHotUpdaterEnv(process.cwd());
-  const savedProjectId =
-    getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_SUPABASE_PROJECT_ID") ??
-    getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_SUPABASE_URL")?.match(
-      /^https:\/\/([^.]+)\.supabase\.co/,
-    )?.[1];
-  const project = await selectProject(savedProjectId);
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
+  const nonInteractive = envFile !== undefined;
+  const { env: existingEnv, inputEnv } = await readHotUpdaterInitEnv(
+    process.cwd(),
+    envFile,
+  );
+  const savedInputs = resolveSupabaseInitInputs(existingEnv, inputEnv);
+  assertSupabaseNonInteractiveInputs(savedInputs, nonInteractive);
+  const project = await selectProject(savedInputs.projectId, nonInteractive);
   await makeEnv({
     HOT_UPDATER_SUPABASE_PROJECT_ID: project.id,
   });
@@ -670,49 +686,27 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   );
   const bucket = await selectBucket(
     api,
-    getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_SUPABASE_BUCKET_NAME"),
+    savedInputs.bucketName,
+    nonInteractive,
   );
-  await makeEnv({
-    HOT_UPDATER_SUPABASE_PROJECT_ID: project.id,
-    HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: serviceRoleApiKey.api_key,
-    HOT_UPDATER_SUPABASE_BUCKET_NAME: bucket.name,
-    HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
+  await makeEnv(
+    {
+      HOT_UPDATER_SUPABASE_PROJECT_ID: project.id,
+      HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: serviceRoleApiKey.api_key,
+      HOT_UPDATER_SUPABASE_BUCKET_NAME: bucket.name,
+      HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
+    },
+    ".env.hotupdater",
+    {
+      removeKeys: [SUPABASE_DATABASE_PASSWORD_ENV_KEY],
+    },
+  );
+  const initInputs = await inputSupabaseDeploymentInputs({
+    ...savedInputs,
+    nonInteractive,
   });
-  const databasePasswordKey = "HOT_UPDATER_SUPABASE_DB_PASSWORD";
-  const savedDatabasePassword =
-    process.env[databasePasswordKey] ??
-    (Object.hasOwn(existingEnv, databasePasswordKey)
-      ? existingEnv[databasePasswordKey]
-      : undefined);
-  const savedFunctionName = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_SUPABASE_FUNCTION_NAME",
-  );
-  const initInputs = await p.group(
-    {
-      dbPassword: () =>
-        savedDatabasePassword !== undefined
-          ? Promise.resolve(savedDatabasePassword)
-          : p.password({
-              message:
-                "Enter your Supabase database password (press Enter to skip if none)",
-            }),
-      functionName: () =>
-        savedFunctionName
-          ? Promise.resolve(savedFunctionName)
-          : p.text({
-              message: "Enter a name for the edge function",
-              initialValue: "update-server",
-              placeholder: "update-server",
-            }),
-    },
-    {
-      onCancel: () => process.exit(0),
-    },
-  );
   const { dbPassword, functionName } = initInputs;
   await makeEnv({
-    HOT_UPDATER_SUPABASE_DB_PASSWORD: dbPassword,
     HOT_UPDATER_SUPABASE_FUNCTION_NAME: functionName,
   });
 

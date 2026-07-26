@@ -37,6 +37,39 @@ This interactive CLI will guide you through:
 
 3. **Provider Configuration**: Follow provider-specific prompts for authentication and resource setup.
 
+#### Provide all initialization inputs from a file
+
+To avoid prompts, put the initialization choices and provider values in a
+separate dotenv file:
+
+```bash title=".hot-updater-init.env"
+HOT_UPDATER_INIT_BUILD=bare
+HOT_UPDATER_INIT_PROVIDER=cloudflare
+
+HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID=your-account-id
+HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME=your-r2-bucket-name
+HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID=your-r2-access-key-id
+HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
+HOT_UPDATER_CLOUDFLARE_WORKER_NAME=your-worker-name
+HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID=your-d1-database-id
+HOT_UPDATER_CLOUDFLARE_R2_PRIVATE=true
+```
+
+Then pass it to `init`:
+
+```package-install
+npx hot-updater init --env-file .hot-updater-init.env
+```
+
+When `--env-file` is present, `init` does not open configuration prompts. It
+reports all missing provider values and exits instead. Process environment
+variables take precedence over this file, and this file takes precedence over
+values already present in `.env.hotupdater`.
+
+The input file is never modified and must be separate from the managed
+`.env.hotupdater` output. Keep it out of version control and delete it after
+initialization if it contains temporary secrets.
+
 ### Step 3: Generated Configuration
 
 After initialization, two files will be generated:

@@ -6,11 +6,13 @@ export const makeEnv = async (
   newEnvVars: Record<string, EnvVarValue>,
   filePath = ".env.hotupdater",
   options?: {
-    preserveKeys?: string[];
+    readonly preserveKeys?: readonly string[];
+    readonly removeKeys?: readonly string[];
   },
 ): Promise<string> => {
   try {
     const preserveKeys = new Set(options?.preserveKeys ?? []);
+    const removeKeys = new Set(options?.removeKeys ?? []);
     // Read the existing .env.hotupdater file or initialize with an empty string if not found
     const existingContent = await fs
       .readFile(filePath, "utf-8")
@@ -36,6 +38,9 @@ export const makeEnv = async (
           const nextLine = (lines[i + 1] ?? "").trim();
           if (nextLine && !nextLine.startsWith("#") && nextLine.includes("=")) {
             const [possibleKey = ""] = nextLine.split("=");
+            if (removeKeys.has(possibleKey.trim())) {
+              continue;
+            }
             if (
               Object.hasOwn(newEnvVars, possibleKey.trim()) &&
               !preserveKeys.has(possibleKey.trim())
@@ -53,6 +58,9 @@ export const makeEnv = async (
       if (trimmedLine.includes("=")) {
         const [keyPart] = line.split("=");
         const key = keyPart?.trim() ?? "";
+        if (removeKeys.has(key)) {
+          continue;
+        }
         if (Object.hasOwn(newEnvVars, key)) {
           processedKeys.add(key);
           if (preserveKeys.has(key)) {
@@ -88,7 +96,11 @@ export const makeEnv = async (
     }
 
     const updatedContent = updatedLines.join("\n");
-    await fs.writeFile(filePath, updatedContent, "utf-8");
+    await fs.writeFile(filePath, updatedContent, {
+      encoding: "utf-8",
+      mode: 0o600,
+    });
+    await fs.chmod(filePath, 0o600);
     return updatedContent;
   } catch (error) {
     console.error("Error while updating .env.hotupdater file:", error);

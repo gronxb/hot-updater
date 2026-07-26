@@ -53,4 +53,45 @@ describe("inputCloudflareInitSecrets", () => {
     expect(inputs.apiToken).toBe("");
     expect(mocks.password).not.toHaveBeenCalled();
   });
+
+  it("reports all required Cloudflare inputs before prompting in non-interactive mode", async () => {
+    // Given
+    const options = {
+      accountId: "account-id",
+      bucketName: "bucket-name",
+      nonInteractive: true,
+    };
+
+    // When
+    const inputs = inputCloudflareInitSecrets(options);
+
+    // Then
+    await expect(inputs).rejects.toMatchObject({
+      missingInputs: [
+        "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
+        "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+        "HOT_UPDATER_CLOUDFLARE_WORKER_NAME",
+      ],
+    });
+    expect(mocks.group).not.toHaveBeenCalled();
+  });
+
+  it("treats the optional API token as skipped in non-interactive mode", async () => {
+    // Given
+    const options = {
+      accountId: "account-id",
+      bucketName: "bucket-name",
+      accessKeyId: "access-key-id",
+      secretAccessKey: "secret-access-key",
+      workerName: "worker-name",
+      nonInteractive: true,
+    };
+
+    // When
+    const inputs = await inputCloudflareInitSecrets(options);
+
+    // Then
+    expect(inputs.apiToken).toBe("");
+    expect(mocks.password).not.toHaveBeenCalled();
+  });
 });

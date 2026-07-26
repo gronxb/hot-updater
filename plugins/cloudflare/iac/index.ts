@@ -3,18 +3,18 @@ import fs from "fs/promises";
 import path from "path";
 
 import {
-  type BuildType,
   ConfigBuilder,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
   getCwd,
-  getHotUpdaterEnvValue,
   type HotUpdaterConfigScaffold,
   link,
   makeEnv,
+  MissingInitInputsError,
   type ProviderConfig,
   p,
-  readHotUpdaterEnv,
+  readHotUpdaterInitEnv,
+  type RunInitOptions,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
@@ -23,10 +23,16 @@ import dayjs from "dayjs";
 import { execa } from "execa";
 
 import { createWrangler } from "../src/utils/createWrangler";
+import {
+  assertCloudflareNonInteractiveInputs,
+  resolveCloudflareInitInputs,
+} from "./cloudflareInitInputs";
 import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 
-const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
+const getConfigScaffold = (
+  build: RunInitOptions["build"],
+): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
     configString: `r2Storage({
@@ -157,13 +163,31 @@ const deployWorker = async (
   }
 };
 
-export const runInit = async ({ build }: { build: BuildType }) => {
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cwd = getCwd();
-  const existingEnv = await readHotUpdaterEnv(cwd);
+  const nonInteractive = envFile !== undefined;
+  const { env: existingEnv } = await readHotUpdaterInitEnv(cwd, envFile);
+  const existingInputs = resolveCloudflareInitInputs(existingEnv);
+  assertCloudflareNonInteractiveInputs(existingInputs, nonInteractive);
+  const {
+    accessKeyId: existingR2AccessKeyId,
+    accountId: existingAccountId,
+    apiToken: existingApiToken,
+    bucketName: existingBucketName,
+    d1DatabaseId: existingD1DatabaseId,
+    r2Private: savedPrivateSetting,
+    secretAccessKey: existingR2SecretAccessKey,
+    workerName: existingWorkerName,
+  } = existingInputs;
 
   let auth = getWranglerLoginAuthToken();
 
   if (!auth || dayjs(auth?.expiration_time).isBefore(dayjs())) {
+    if (nonInteractive) {
+      throw new MissingInitInputsError([
+        "Cloudflare authentication (`npx wrangler login`)",
+      ]);
+    }
     await execa(
       "npx",
       [
@@ -189,11 +213,6 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   });
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
-
-  const existingAccountId = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID",
-  );
 
   let accountId = existingAccountId;
   if (accountId) {
@@ -244,18 +263,6 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   await makeEnv({
     HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: accountId,
   });
-
-  const apiTokenKey = "HOT_UPDATER_CLOUDFLARE_API_TOKEN";
-  const existingApiToken =
-    process.env[apiTokenKey]?.trim() ??
-    (Object.hasOwn(existingEnv, apiTokenKey)
-      ? existingEnv[apiTokenKey]
-      : undefined);
-
-  const existingBucketName = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME",
-  );
 
   let selectedBucketName: string;
   if (existingBucketName) {
@@ -340,18 +347,6 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: selectedBucketName,
   });
 
-  const existingR2AccessKeyId = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
-  );
-  const existingR2SecretAccessKey = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
-  );
-  const existingWorkerName = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_WORKER_NAME",
-  );
   if (existingR2AccessKeyId && existingR2SecretAccessKey) {
     p.log.info("Using existing Cloudflare R2 API credentials.");
   } else if (existingR2AccessKeyId || existingR2SecretAccessKey) {
@@ -364,6 +359,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     accessKeyId: existingR2AccessKeyId,
     secretAccessKey: existingR2SecretAccessKey,
     workerName: existingWorkerName,
+    nonInteractive,
   });
   const { apiToken, accessKeyId, secretAccessKey, workerName } = initSecrets;
   if (!apiToken) {
@@ -383,10 +379,6 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   });
 
   if (domains.enabled) {
-    const savedPrivateSetting = getHotUpdaterEnvValue(
-      existingEnv,
-      "HOT_UPDATER_CLOUDFLARE_R2_PRIVATE",
-    );
     const isPrivate =
       savedPrivateSetting === "true"
         ? true
@@ -450,13 +442,12 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     throw e;
   }
 
-  const existingD1DatabaseId = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID",
-  );
   const hasExistingD1Database = availableD1List.some(
     (d1) => d1.uuid === existingD1DatabaseId,
   );
+  if (nonInteractive && existingD1DatabaseId && !hasExistingD1Database) {
+    throw new MissingInitInputsError(["HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID"]);
+  }
 
   let selectedD1DatabaseId: string;
   if (existingD1DatabaseId && hasExistingD1Database) {

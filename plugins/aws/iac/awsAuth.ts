@@ -3,19 +3,15 @@ import {
   fromNodeProviderChain,
   fromSSO,
 } from "@aws-sdk/credential-providers";
-import { getHotUpdaterEnvValue, p } from "@hot-updater/cli-tools";
+import {
+  getHotUpdaterEnvValue,
+  MissingInitInputsError,
+  p,
+} from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
+import { type AwsAuthMode, isAwsAuthMode } from "./awsInitInputs";
 import type { AwsConfigScaffoldAuthMode } from "./templates";
-
-const AWS_AUTH_MODES = [
-  "local-session",
-  "shared-profile",
-  "sso",
-  "account",
-] as const;
-
-type AwsAuthMode = (typeof AWS_AUTH_MODES)[number];
 
 type AwsCredentials = {
   readonly accessKeyId: string;
@@ -30,10 +26,6 @@ export type ResolvedAwsAuth = {
   readonly mode: AwsAuthMode;
 };
 
-const isAwsAuthMode = (value: string | undefined): value is AwsAuthMode => {
-  return AWS_AUTH_MODES.some((mode) => mode === value);
-};
-
 const exitWithCredentialError = (error: Error): never => {
   if (error instanceof ExecaError) {
     p.log.error(error.stdout || error.stderr || error.message);
@@ -45,6 +37,7 @@ const exitWithCredentialError = (error: Error): never => {
 
 export const resolveAwsAuth = async (
   existingEnv: Readonly<Record<string, string>>,
+  nonInteractive = false,
 ): Promise<ResolvedAwsAuth> => {
   const savedMode = getHotUpdaterEnvValue(
     existingEnv,
@@ -213,6 +206,11 @@ export const resolveAwsAuth = async (
         try {
           credentials = await fromSSO({ profile })();
         } catch {
+          if (nonInteractive) {
+            throw new MissingInitInputsError([
+              "active AWS SSO session (`aws sso login`)",
+            ]);
+          }
           await execa("aws", ["sso", "login", "--profile", profile], {
             stdio: "inherit",
           });
@@ -225,6 +223,9 @@ export const resolveAwsAuth = async (
           mode: inputs.mode,
         };
       } catch (error) {
+        if (error instanceof MissingInitInputsError) {
+          throw error;
+        }
         if (error instanceof Error) {
           return exitWithCredentialError(error);
         }
