@@ -1,0 +1,20 @@
+import {
+  HotUpdaterConstructionError,
+  isHotUpdaterConstructionError,
+} from "@hot-updater/server";
+
+const correlateCaughtError = (error: unknown): string => {
+  if (
+    isHotUpdaterConstructionError(error, "DUPLICATE_ROUTE_ID")
+  ) {
+    return error.details.routeId;
+  }
+  return "unrelated";
+};
+
+const inspectBroadError = (
+  error: HotUpdaterConstructionError,
+): string => error.code;
+
+void correlateCaughtError;
+void inspectBroadError;

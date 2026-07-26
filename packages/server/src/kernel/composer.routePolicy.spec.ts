@@ -6,15 +6,9 @@ import type { HotUpdaterServerRoute } from "./contracts";
 import { createGuardedInfrastructureRuntime } from "./guardedRuntime";
 import {
   defineFirstPartyFeatureManifest,
-  type FeatureApiKind,
   type FirstPartyFeatureManifest,
+  type NoFeatureApiKind,
 } from "./manifest";
-
-interface RoutePolicyKind extends FeatureApiKind {
-  readonly availableApi: object;
-  readonly context: unknown;
-  readonly feature: object;
-}
 
 const infrastructure = () => {
   const database = createRuntimeDatabase();
@@ -38,7 +32,7 @@ const publicRoute = (
 });
 
 const policyManifest = (id = "policy") =>
-  defineFirstPartyFeatureManifest<string, RoutePolicyKind, {}>({
+  defineFirstPartyFeatureManifest<string, NoFeatureApiKind, {}>({
     aliases: {},
     id,
     namespace: id,
@@ -51,7 +45,7 @@ describe("composeServerKernel route policy", () => {
     // Given
     const authentication = defineFirstPartyFeatureManifest<
       "authentication",
-      RoutePolicyKind,
+      NoFeatureApiKind,
       {}
     >({
       aliases: {},
@@ -72,7 +66,7 @@ describe("composeServerKernel route policy", () => {
     });
     const feature = defineFirstPartyFeatureManifest<
       "feature-route",
-      RoutePolicyKind,
+      NoFeatureApiKind,
       {}
     >({
       aliases: {},

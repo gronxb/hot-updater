@@ -99,6 +99,7 @@ export function toNodeHandler(
       const body = readNodeBody(req, method);
       if (body.kind === "reject") {
         res.status(413);
+        res.setHeader("Cache-Control", "private, no-store");
         res.setHeader("Content-Type", "application/json");
         res.send(JSON.stringify({ error: "Payload too large" }));
         return;

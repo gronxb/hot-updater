@@ -20,6 +20,7 @@ export type {
 export {
   defineFirstPartyFeatureManifest,
   isFirstPartyFeatureManifest,
+  type FeatureApiMode,
   type FeatureApiKind,
   type FeatureApiAliases,
   type FirstPartyFeatureManifest,

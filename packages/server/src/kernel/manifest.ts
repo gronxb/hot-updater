@@ -75,12 +75,37 @@ export type HotUpdaterFeatureApiContribution<
   readonly value: ApplyFeature<TKind, unknown>;
 };
 
+export type FeatureApiMode<TKind extends FeatureApiKind> = [
+  ApplyFeature<TKind, unknown>,
+] extends [never]
+  ? "none"
+  : "required";
+
+type FeatureApiContribution<
+  TNamespace extends string,
+  TKind extends FeatureApiKind,
+  TAliases extends Readonly<Record<string, string>>,
+> =
+  FeatureApiMode<TKind> extends "required"
+    ? {
+        readonly api: HotUpdaterFeatureApiContribution<
+          TNamespace,
+          TKind,
+          TAliases
+        >;
+      }
+    : { readonly api?: never };
+
+type FeatureApiDefinition<TKind extends FeatureApiKind> =
+  FeatureApiMode<TKind> extends "required"
+    ? { readonly featureApi: "required" }
+    : { readonly featureApi?: "none" };
+
 export type HotUpdaterPluginContribution<
   TNamespace extends string,
   TKind extends FeatureApiKind,
   TAliases extends Readonly<Record<string, string>>,
-> = {
-  readonly api?: HotUpdaterFeatureApiContribution<TNamespace, TKind, TAliases>;
+> = FeatureApiContribution<TNamespace, TKind, TAliases> & {
   readonly authentication?: HotUpdaterAuthenticationProvider;
   readonly metadata?: readonly HotUpdaterVersionMetadataContribution[];
   readonly middleware?: readonly HotUpdaterPostAuthMiddleware[];
@@ -99,6 +124,7 @@ export interface HotUpdaterFeatureManifest<
     readonly namespace: TNamespace;
   };
   readonly aliases: TAliases;
+  readonly featureApi: "none" | "required";
   readonly id: string;
   readonly namespace: TNamespace;
   readonly requires: readonly HotUpdaterCapabilityRequirement[];
@@ -115,6 +141,7 @@ type BrandedManifest = {
 export type FirstPartyFeatureManifest = ConfigFeatureManifest &
   BrandedManifest & {
     readonly aliases: Readonly<Record<string, string>>;
+    readonly featureApi: "none" | "required";
     readonly id: string;
     readonly namespace: string;
     readonly requires: readonly HotUpdaterCapabilityRequirement[];
@@ -147,7 +174,7 @@ export type FirstPartyFeatureManifestDefinition<
   TNamespace extends string,
   TKind extends FeatureApiKind,
   TAliases extends FeatureApiAliases<TKind>,
-> = {
+> = FeatureApiDefinition<TKind> & {
   readonly aliases: TAliases;
   readonly id: string;
   readonly namespace: TNamespace;
@@ -182,6 +209,7 @@ export const defineFirstPartyFeatureManifest = <
       namespace: definition.namespace,
     }),
     aliases,
+    featureApi: definition.featureApi ?? "none",
     id: definition.id,
     namespace: definition.namespace,
     requires,
@@ -196,5 +224,7 @@ export const isFirstPartyFeatureManifest = (
   isConfigFeatureManifest(value) &&
   typeof Reflect.get(value, "aliases") === "object" &&
   Reflect.get(value, "aliases") !== null &&
+  (Reflect.get(value, "featureApi") === "none" ||
+    Reflect.get(value, "featureApi") === "required") &&
   Array.isArray(Reflect.get(value, "requires")) &&
   typeof Reflect.get(value, "setup") === "function";

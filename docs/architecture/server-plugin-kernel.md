@@ -3,11 +3,11 @@
 ## Status
 
 - Status: Accepted; implementation in verification
-- Last updated: 2026-07-25
+- Last updated: 2026-07-26
 - Scope: `@hot-updater/server`, server feature plugins, provider
   capabilities, managed runtimes, and standalone forwarding
-- Target release: after the current database-plugin-v2 and Analytics release
-  cohort
+- Target release: the active coordinated database-plugin-v2, Analytics, and
+  server-kernel changeset cohort
 
 ## Consensus record
 
@@ -55,11 +55,11 @@ clarifications are normative where they narrow or repair the original prose:
   existing readiness guard. No raw database or infrastructure escape is
   exposed.
 - **R6 — type projection:** omitted plugins infer an exact empty feature
-  object. A private `FeatureApiKind` applies `TContext` and preserves the
-  available-with-aliases versus unavailable-without-aliases correlation.
+  object. A private `FeatureApiKind` applies `TContext` while preserving each
+  installed feature's exact namespace, API, and aliases.
 - **R7 — Analytics metadata scope:** compatibility applies when `analytics()`
-  or the bridge is installed. Omission contributes no keys or warning;
-  warn-mode absence contributes only the three false keys; AWS/blob omit it.
+  or the bridge is installed. Omission contributes no Analytics keys;
+  AWS/blob omit it.
 - **R8 — metadata bounds:** resolvers run concurrently under one five-second
   deadline and kernel-owned `AbortSignal`. Limits are 16 KiB UTF-8 per
   contribution and 64 KiB aggregate. Validation is atomic; failure yields one
@@ -270,8 +270,7 @@ Changing or removing this shape requires a separately versioned standalone
 protocol migration. It is not silently removed with the old source API.
 This byte-preservation rule applies when `analytics()` or the legacy bridge is
 installed. Intentionally omitting the plugin contributes no Analytics keys;
-warn-mode provider absence contributes only the three false availability keys,
-and AWS/blob presets omit them.
+AWS/blob presets omit them.
 
 The extraction also preserves:
 
@@ -738,9 +737,11 @@ migrator, schema generator, adapter/provider fields, configuration, or
 credentials. The wrapper itself does not claim that schema is ready and does
 not run migrations, network calls, or queries.
 
-The Analytics token and parser live in `@hot-updater/analytics/provider`.
-Provider packages may know that contract. `@hot-updater/server` and
-`@hot-updater/plugin-core` do not.
+Analytics provider authoring types and runtime validators live in
+`@hot-updater/analytics/provider`. The feature receives a provider factory
+directly rather than resolving an Analytics-specific capability token.
+Provider packages may implement the authoring contract, while
+`@hot-updater/server` and `@hot-updater/plugin-core` remain Analytics-agnostic.
 
 ### Plugin manifest
 
@@ -764,6 +765,7 @@ interface HotUpdaterFeatureManifest<
   };
   readonly id: string;
   readonly version: string;
+  readonly featureApi: "none" | "required";
   readonly requires?: readonly CapabilityRequirement<unknown>[];
   readonly setup: (
     context: HotUpdaterPluginSetupContext,
@@ -793,6 +795,8 @@ interface HotUpdaterPluginContribution<
   readonly middleware?: readonly HotUpdaterPostAuthMiddleware[];
   readonly authentication?: HotUpdaterAuthenticationProvider;
   readonly metadata?: readonly HotUpdaterVersionMetadataContribution[];
+  // Required when the manifest declares featureApi: "required";
+  // forbidden when it declares featureApi: "none".
   readonly api?: HotUpdaterFeatureApiContribution<
     TNamespace,
     TFeature,
@@ -829,13 +833,15 @@ configuration values. An `"error"` requirement fails before setup with
 
 `createHotUpdater` infers the intersection of namespaced feature states from
 the literal plugin tuple and exposes them under `hotUpdater.features`. The
-manifest separately carries the API type of its available branch so
-transitional aliases do not collapse to the common keys of an availability
-union. Contributions and the final API object are frozen. Duplicate namespaces
-and aliases, aliases that shadow core APIs, and aliases that do not name an
-available API member fail construction. Flat aliases exist only for the source
-migration window and are installed only when the runtime feature state is
-available.
+manifest separately carries the exact feature API type so transitional aliases
+retain their operation types. Contributions and the final API object are
+frozen. A feature-bearing first-party manifest declares
+`featureApi: "required"`; its setup result must contain the matching API at
+both the type and runtime boundaries. A no-feature manifest normalizes to
+`featureApi: "none"` and cannot contribute an API. Duplicate namespaces and
+aliases, aliases that shadow core APIs, and aliases that do not name an API
+member fail construction. Flat aliases exist only for the source migration
+window.
 
 ### Routes
 
@@ -1067,10 +1073,12 @@ first-wins, last-wins, or array-order behavior is permitted.
 
 `@hot-updater/server` exports `HotUpdaterConstructionError`,
 `HotUpdaterConstructionErrorCode`, `HotUpdaterConstructionErrorDetails`, and
-`CONSTRUCTION_ERROR_CODES` from its supported root. Callers may narrow
-construction failures with `instanceof`, branch on the stable literal `code`,
-and inspect the corresponding frozen, non-secret `details`. Error messages
-contain the code but never interpolate provider values or dynamic details.
+`CONSTRUCTION_ERROR_CODES`, plus `isHotUpdaterConstructionError`, from its
+supported root. Callers may identify the broad error class with `instanceof`.
+To retain the stable literal `code` and its corresponding frozen, non-secret
+`details` after catching `unknown`, they use
+`isHotUpdaterConstructionError(error, code)`. Error messages contain the code
+but never interpolate provider values or dynamic details.
 
 ## Analytics composition
 
@@ -1303,10 +1311,12 @@ digest, so the old and new key cannot overlap.
 
 ## Migration plan
 
-### Stage 0: release isolation
+### Stage 0: migration lineage and release cohort
 
-Ship the current database-plugin-v2 and Analytics schema cohort without mixing
-the kernel extraction into its forward-only migrations.
+Keep the existing database-plugin-v2 and Analytics schema migrations
+forward-only and unchanged. Publish the kernel extraction in the same active
+package changeset cohort without adding, replaying, or moving provider
+migrations.
 
 ### Stage 1: kernel and first-party packages
 
@@ -1484,8 +1494,8 @@ runtime failures are owned by the feature plugin.
 - path, method, access, request policy, parser, and handler stay in one
   Analytics-owned endpoint declaration;
 - duplicate `analytics()` instances fail before setup;
-- AWS/blob managed presets omit `analytics()` and emit no warning; custom
-  versioned-CAS blob servers may install it explicitly;
+- AWS/blob managed presets omit `analytics()`; custom versioned-CAS blob
+  servers may install it explicitly;
 - Cloudflare/Firebase/Supabase database plugins expose no Analytics
   contributions while their managed server presets install `analytics()` and
   protect all of its routes;

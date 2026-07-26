@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { createRuntimeDatabase } from "../runtime.testFixtures";
 import { composeServerKernel } from "./composer";
 import { createGuardedInfrastructureRuntime } from "./guardedRuntime";
-import type { FeatureApiKind } from "./manifest";
+import type { FeatureApiKind, NoFeatureApiKind } from "./manifest";
 import { defineFirstPartyFeatureManifest } from "./manifest";
 
 interface ExampleKind extends FeatureApiKind {
@@ -54,6 +54,7 @@ describe("composeServerKernel", () => {
       { readonly ping: "ping" }
     >({
       aliases: { ping: "ping" },
+      featureApi: "required",
       id: "a-feature",
       namespace: "feature",
       requires: [{ missing: "error", token }],
@@ -105,7 +106,7 @@ describe("composeServerKernel", () => {
     });
     const observer = defineFirstPartyFeatureManifest<
       "observer",
-      ExampleKind,
+      NoFeatureApiKind,
       {}
     >({
       aliases: {},
@@ -157,7 +158,7 @@ describe("composeServerKernel", () => {
     });
     const manifest = defineFirstPartyFeatureManifest<
       "feature",
-      ExampleKind,
+      NoFeatureApiKind,
       {}
     >({
       aliases: {},
@@ -191,7 +192,7 @@ describe("composeServerKernel", () => {
     // Given
     const manifest = defineFirstPartyFeatureManifest<
       "feature",
-      ExampleKind,
+      NoFeatureApiKind,
       {}
     >({
       aliases: {},
@@ -217,7 +218,7 @@ describe("composeServerKernel", () => {
 
   it("rejects an empty manifest namespace", () => {
     // Given
-    const manifest = defineFirstPartyFeatureManifest<"", ExampleKind, {}>({
+    const manifest = defineFirstPartyFeatureManifest<"", NoFeatureApiKind, {}>({
       aliases: {},
       id: "feature",
       namespace: "",
@@ -241,7 +242,7 @@ describe("composeServerKernel", () => {
     // Given
     const manifest = defineFirstPartyFeatureManifest<
       "feature",
-      ExampleKind,
+      NoFeatureApiKind,
       {}
     >({
       aliases: {},

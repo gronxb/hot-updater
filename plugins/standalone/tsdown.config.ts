@@ -6,6 +6,9 @@ export default defineConfig([
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
+    deps: {
+      neverBundle: [/^@hot-updater\/analytics(?:\/.*)?$/],
+    },
     exports: {
       customExports: {
         ".": {

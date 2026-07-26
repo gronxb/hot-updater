@@ -21,6 +21,7 @@ export type {
 export {
   CONSTRUCTION_ERROR_CODES,
   HotUpdaterConstructionError,
+  isHotUpdaterConstructionError,
   type HotUpdaterConstructionErrorCode,
   type HotUpdaterConstructionErrorDetails,
 } from "./kernel/errors";

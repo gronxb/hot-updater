@@ -1,0 +1,21 @@
+import type { FeatureApiKind } from "@hot-updater/server/internal/first-party-plugin";
+import { defineFirstPartyFeatureManifest } from "@hot-updater/server/internal/first-party-plugin";
+
+interface FeatureBearingKind extends FeatureApiKind {
+  readonly availableApi: {
+    readonly ping: () => string;
+  };
+  readonly feature: {
+    readonly ping: () => string;
+    readonly status: "available";
+  };
+}
+
+defineFirstPartyFeatureManifest<"feature", FeatureBearingKind, {}>({
+  aliases: {},
+  featureApi: "required",
+  id: "feature",
+  namespace: "feature",
+  setup: () => ({}),
+  version: "1.0.0",
+});

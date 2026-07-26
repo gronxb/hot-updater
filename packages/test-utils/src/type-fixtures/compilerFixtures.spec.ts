@@ -82,6 +82,7 @@ afterAll(async () => {
 describe("server plugin compile-pass fixtures", () => {
   it.each([
     "composer-conflicts.mts",
+    "constructionErrorNarrowing.mts",
     "serverPluginEntrypoints.mts",
     "serverPluginFeatures.mts",
     "typeAssertions.mts",
@@ -110,6 +111,7 @@ const compileFailCases = [
     ["response", "headers", "cookies", "session", "rawCredentials"],
   ],
   ["handler-options-generic.mts", "TS2315", []],
+  ["feature-api-omission.mts", "TS2322", ["api"]],
   ["legacy-core-routes.mts", "TS2353", ["coreRoutes"]],
   ["invalid-internal-alias.mts", "TS2344", ["legacyMissing", "missing"]],
   ["omitted-analytics-access.mts", "TS2339", ["analytics"]],

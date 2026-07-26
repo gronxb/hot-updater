@@ -57,7 +57,8 @@ export type HotUpdaterConstructionErrorDetails = {
 };
 
 export class HotUpdaterConstructionError<
-  TCode extends HotUpdaterConstructionErrorCode,
+  TCode extends HotUpdaterConstructionErrorCode =
+    HotUpdaterConstructionErrorCode,
 > extends Error {
   readonly name = "HotUpdaterConstructionError";
   readonly details: Readonly<HotUpdaterConstructionErrorDetails[TCode]>;
@@ -69,4 +70,20 @@ export class HotUpdaterConstructionError<
     super(`Hot Updater construction failed (${code}).`);
     this.details = Object.freeze(details);
   }
+}
+
+export function isHotUpdaterConstructionError(
+  value: unknown,
+): value is HotUpdaterConstructionError;
+export function isHotUpdaterConstructionError<
+  TCode extends HotUpdaterConstructionErrorCode,
+>(value: unknown, code: TCode): value is HotUpdaterConstructionError<TCode>;
+export function isHotUpdaterConstructionError(
+  value: unknown,
+  code?: HotUpdaterConstructionErrorCode,
+): value is HotUpdaterConstructionError {
+  return (
+    value instanceof HotUpdaterConstructionError &&
+    (code === undefined || value.code === code)
+  );
 }

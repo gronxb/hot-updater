@@ -134,6 +134,7 @@ describe("Node adapter security", () => {
 
     // Then
     expect(response.statusCode).toBe(413);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(handler).not.toHaveBeenCalled();
   });
 });

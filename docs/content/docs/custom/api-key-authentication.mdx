@@ -81,6 +81,11 @@ The policy applies only to routes emitted by this `createHotUpdater` instance.
 Framework-owned endpoints such as `/ping`, and signed bundle download URLs
 served by storage or a CDN, remain outside its scope.
 
+The direct core and feature methods returned by `createHotUpdater` are runtime
+APIs, not HTTP routes. Calling them in-process does not pass through the
+handler's Better Auth policy. Authenticate and authorize any application
+endpoint or job that exposes those methods at that boundary.
+
 ## Create and distribute a key
 
 Create the key from a trusted server-side bootstrap path. For a user-owned key,

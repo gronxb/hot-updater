@@ -9,6 +9,7 @@ import {
   type ManifestAliases,
   type ManifestKind,
   type ManifestNamespace,
+  type NoFeatureApiKind,
 } from "./manifest";
 
 type TestFeature<TContext> = Readonly<{
@@ -37,9 +38,19 @@ describe("defineFirstPartyFeatureManifest", () => {
       typeof aliases
     >({
       aliases,
+      featureApi: "required",
       id: "test-feature",
       namespace: "test-feature",
-      setup: () => ({}),
+      setup: () => ({
+        api: {
+          legacyAliases: aliases,
+          namespace: "test-feature",
+          value: {
+            status: "available",
+            useContext: () => undefined,
+          },
+        },
+      }),
       version: "1.0.0",
     });
 
@@ -82,7 +93,7 @@ describe("defineFirstPartyFeatureManifest", () => {
     // When
     const manifest = defineFirstPartyFeatureManifest<
       "test-feature",
-      TestFeatureKind,
+      NoFeatureApiKind,
       {}
     >({
       aliases: {},

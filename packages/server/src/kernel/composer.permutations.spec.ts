@@ -8,6 +8,7 @@ import {
   defineFirstPartyFeatureManifest,
   type FeatureApiKind,
   type FirstPartyFeatureManifest,
+  type NoFeatureApiKind,
 } from "./manifest";
 import { resolveVersionMetadata } from "./metadata";
 
@@ -27,6 +28,7 @@ const alpha = defineFirstPartyFeatureManifest<
   { readonly alphaOperation: "operation" }
 >({
   aliases: { alphaOperation: "operation" },
+  featureApi: "required",
   id: "alpha",
   namespace: "alpha",
   setup: () => ({
@@ -65,7 +67,7 @@ const alpha = defineFirstPartyFeatureManifest<
 
 const authentication = defineFirstPartyFeatureManifest<
   "authentication",
-  PermutationFeatureKind,
+  NoFeatureApiKind,
   Record<never, never>
 >({
   aliases: {},
@@ -87,7 +89,7 @@ const authentication = defineFirstPartyFeatureManifest<
 
 const secure = defineFirstPartyFeatureManifest<
   "secure",
-  PermutationFeatureKind,
+  NoFeatureApiKind,
   Record<never, never>
 >({
   aliases: {},

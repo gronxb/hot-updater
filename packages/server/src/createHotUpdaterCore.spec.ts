@@ -10,6 +10,7 @@ import type {
 import {
   defineFirstPartyFeatureManifest,
   type FeatureApiKind,
+  type NoFeatureApiKind,
 } from "./internal/first-party-plugin";
 import { createRuntimeDatabase } from "./runtime.testFixtures";
 
@@ -33,6 +34,7 @@ const examplePlugin = () =>
     { readonly legacyPing: "examplePing" }
   >({
     aliases: { legacyPing: "examplePing" },
+    featureApi: "required",
     id: "example",
     namespace: "example",
     setup: () => ({
@@ -59,25 +61,27 @@ const examplePlugin = () =>
   });
 
 const authenticationPlugin = () =>
-  defineFirstPartyFeatureManifest<"auth", FeatureApiKind, Record<never, never>>(
-    {
-      aliases: {},
-      id: "auth",
-      namespace: "auth",
-      setup: () => ({
-        authentication: {
-          id: "auth",
-          async authenticate() {
-            return {
-              kind: "authenticated",
-              principal: { issuer: "test", subject: "user" },
-            };
-          },
+  defineFirstPartyFeatureManifest<
+    "auth",
+    NoFeatureApiKind,
+    Record<never, never>
+  >({
+    aliases: {},
+    id: "auth",
+    namespace: "auth",
+    setup: () => ({
+      authentication: {
+        id: "auth",
+        async authenticate() {
+          return {
+            kind: "authenticated",
+            principal: { issuer: "test", subject: "user" },
+          };
         },
-      }),
-      version: "1.0.0",
-    },
-  );
+      },
+    }),
+    version: "1.0.0",
+  });
 
 describe("createHotUpdater generic kernel root", () => {
   it("infers an exact empty feature object when plugins are omitted", () => {

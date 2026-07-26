@@ -8,7 +8,7 @@ export type StandaloneAnalyticsOptions = Pick<AnalyticsOptions, "queryAccess">;
 export const standaloneAnalytics = (
   config: StandaloneRepositoryConfig,
   options: StandaloneAnalyticsOptions = {},
-) =>
+): ReturnType<typeof analytics> =>
   analytics({
     ...options,
     provider: () => createStandaloneAnalyticsProvider(config),

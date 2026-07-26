@@ -26,6 +26,7 @@ const createManifest = <
 ) =>
   defineFirstPartyFeatureManifest<TNamespace, TestKind, TAliases>({
     aliases,
+    featureApi: "required",
     id,
     namespace,
     setup: () => ({

@@ -9,14 +9,9 @@ import { composeServerKernel } from "./composer";
 import { createGuardedInfrastructureRuntime } from "./guardedRuntime";
 import {
   defineFirstPartyFeatureManifest,
-  type FeatureApiKind,
   type FirstPartyFeatureManifest,
+  type NoFeatureApiKind,
 } from "./manifest";
-
-interface EmptyFeatureKind extends FeatureApiKind {
-  readonly availableApi: object;
-  readonly feature: object;
-}
 
 const runtime = () => {
   const database = createRuntimeDatabase();
@@ -26,7 +21,7 @@ const runtime = () => {
 const manifest = (id: string, namespace: string) =>
   defineFirstPartyFeatureManifest<
     typeof namespace,
-    EmptyFeatureKind,
+    NoFeatureApiKind,
     Record<never, never>
   >({
     aliases: {},
@@ -187,7 +182,7 @@ describe("composeServerKernel invalid contributions", () => {
     );
     const feature = defineFirstPartyFeatureManifest<
       "ordered",
-      EmptyFeatureKind,
+      NoFeatureApiKind,
       Record<never, never>
     >({
       aliases: {},

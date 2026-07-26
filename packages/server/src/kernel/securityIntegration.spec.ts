@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHotUpdater } from "../index";
 import {
   defineFirstPartyFeatureManifest,
-  type FeatureApiKind,
+  type NoFeatureApiKind,
 } from "../internal/first-party-plugin";
 import { createRuntimeDatabase } from "../runtime.testFixtures";
 import type {
@@ -21,7 +21,7 @@ const authenticationPlugin = (
 ) =>
   defineFirstPartyFeatureManifest<
     "security-auth",
-    FeatureApiKind,
+    NoFeatureApiKind,
     Record<never, never>
   >({
     aliases: {},
@@ -43,7 +43,7 @@ type RoutePluginOptions = {
 const routePlugin = (options: RoutePluginOptions) =>
   defineFirstPartyFeatureManifest<
     "security-route",
-    FeatureApiKind,
+    NoFeatureApiKind,
     Record<never, never>
   >({
     aliases: {},
@@ -70,7 +70,7 @@ const metadataPlugin = (
 ) =>
   defineFirstPartyFeatureManifest<
     "security-metadata",
-    FeatureApiKind,
+    NoFeatureApiKind,
     Record<never, never>
   >({
     aliases: {},

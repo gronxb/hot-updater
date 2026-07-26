@@ -130,6 +130,7 @@ const createManifest = (
     AnalyticsAliases
   >({
     aliases: analyticsLegacyAliases,
+    featureApi: "required",
     id: "analytics",
     namespace: "analytics",
     requires: Object.freeze([]),

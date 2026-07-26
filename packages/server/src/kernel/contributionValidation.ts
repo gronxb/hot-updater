@@ -220,6 +220,7 @@ export const validatePluginContribution = (
     throw new Error("Invalid plugin contribution.");
   }
   const authentication = Reflect.get(value, "authentication");
+  const api = readApi(Reflect.get(value, "api"), manifest);
   const metadata = Reflect.get(value, "metadata") ?? [];
   const middleware = Reflect.get(value, "middleware") ?? [];
   const routes = Reflect.get(value, "routes") ?? [];
@@ -230,12 +231,13 @@ export const validatePluginContribution = (
     !Array.isArray(middleware) ||
     !middleware.every((item: unknown) => isMiddleware(item)) ||
     !Array.isArray(routes) ||
-    !routes.every((item: unknown) => isRoute(item))
+    !routes.every((item: unknown) => isRoute(item)) ||
+    (manifest.featureApi === "required" ? api === undefined : api !== undefined)
   ) {
     throw new Error("Invalid plugin contribution.");
   }
   return Object.freeze({
-    api: readApi(Reflect.get(value, "api"), manifest),
+    api,
     authentication,
     metadata: Object.freeze([...metadata]),
     middleware: Object.freeze([...middleware]),

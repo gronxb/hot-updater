@@ -14,10 +14,14 @@ export interface DefineCapabilityOptions<TValue> {
 }
 
 const capabilityTokens = new WeakSet<object>();
+const capabilityIdPattern = /^[^@]+@[0-9]+$/;
 
 export const defineCapability = <TValue>(
   options: DefineCapabilityOptions<TValue>,
 ): CapabilityToken<TValue> => {
+  if (capabilityIdPattern.exec(options.id)?.[0] !== options.id) {
+    throw new TypeError("Capability id must use the name@integer format.");
+  }
   const token = Object.freeze({
     id: options.id,
     parse: options.parse,

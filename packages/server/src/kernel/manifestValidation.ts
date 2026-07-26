@@ -68,6 +68,8 @@ export const validateManifestIdentity = (
       Reflect.get(manifest, "namespace").length === 0 ||
       typeof Reflect.get(manifest, "version") !== "string" ||
       Reflect.get(manifest, "version").length === 0 ||
+      (Reflect.get(manifest, "featureApi") !== "none" &&
+        Reflect.get(manifest, "featureApi") !== "required") ||
       typeof Reflect.get(manifest, "setup") !== "function" ||
       !isObject(aliases) ||
       Array.isArray(aliases) ||
