@@ -8,11 +8,13 @@ import {
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
   getCwd,
+  getHotUpdaterEnvValue,
   type HotUpdaterConfigScaffold,
   link,
   makeEnv,
   type ProviderConfig,
   p,
+  readHotUpdaterEnv,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
@@ -21,6 +23,7 @@ import dayjs from "dayjs";
 import { execa } from "execa";
 
 import { createWrangler } from "../src/utils/createWrangler";
+import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 
 const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
@@ -64,103 +67,6 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
 
-const HOT_UPDATER_ENV_PATH = ".env.hotupdater";
-
-type R2ApiCredentials = {
-  accessKeyId: string;
-  secretAccessKey: string;
-};
-
-const unquoteEnvValue = (value: string) => {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-
-  return trimmed;
-};
-
-const readHotUpdaterEnv = async (cwd: string) => {
-  const envPath = path.join(cwd, HOT_UPDATER_ENV_PATH);
-  const content = await fs.readFile(envPath, "utf-8").catch(() => "");
-  const env: Record<string, string> = {};
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
-      continue;
-    }
-
-    const [key, ...valueParts] = trimmed.split("=");
-    if (!key) {
-      continue;
-    }
-
-    env[key.trim()] = unquoteEnvValue(valueParts.join("="));
-  }
-
-  return env;
-};
-
-const getEnvValue = (env: Record<string, string>, key: string) => {
-  const value = process.env[key]?.trim() || env[key]?.trim();
-  return value || undefined;
-};
-
-const inputR2ApiCredentials = async ({
-  accountId,
-  bucketName,
-  accessKeyId,
-  secretAccessKey,
-}: {
-  accountId: string;
-  bucketName: string;
-  accessKeyId?: string;
-  secretAccessKey?: string;
-}): Promise<R2ApiCredentials> => {
-  p.log.step(
-    `R2 API Tokens dashboard: ${link(
-      `https://dash.cloudflare.com/${accountId}/r2/api-tokens`,
-    )}`,
-  );
-  p.log.step("Required permission: Object Read & Write");
-  p.log.step(`Target bucket: ${bucketName}`);
-
-  let resolvedAccessKeyId = accessKeyId;
-  if (!resolvedAccessKeyId) {
-    const inputR2AccessKeyId = await p.password({
-      message: "Enter the R2 Access Key ID",
-    });
-
-    if (p.isCancel(inputR2AccessKeyId)) {
-      process.exit(1);
-    }
-
-    resolvedAccessKeyId = inputR2AccessKeyId;
-  }
-
-  let resolvedSecretAccessKey = secretAccessKey;
-  if (!resolvedSecretAccessKey) {
-    const inputR2SecretAccessKey = await p.password({
-      message: "Enter the R2 Secret Access Key",
-    });
-
-    if (p.isCancel(inputR2SecretAccessKey)) {
-      process.exit(1);
-    }
-
-    resolvedSecretAccessKey = inputR2SecretAccessKey;
-  }
-
-  return {
-    accessKeyId: resolvedAccessKeyId,
-    secretAccessKey: resolvedSecretAccessKey,
-  };
-};
-
 const deployWorker = async (
   oauth_token: string,
   accountId: string,
@@ -173,7 +79,7 @@ const deployWorker = async (
     d1DatabaseId: string;
     d1DatabaseName: string;
     r2BucketName: string;
-    workerName?: string;
+    workerName: string;
   },
 ) => {
   const cwd = getCwd();
@@ -242,23 +148,8 @@ const deployWorker = async (
 
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    let resolvedWorkerName = workerName;
-    if (resolvedWorkerName) {
-      p.log.info("Using existing Cloudflare Worker name.");
-    } else {
-      const inputWorkerName = await p.text({
-        message: "Enter the name of the worker",
-        defaultValue: "hot-updater",
-        placeholder: "hot-updater",
-      });
-      if (p.isCancel(inputWorkerName)) {
-        process.exit(1);
-      }
-      resolvedWorkerName = inputWorkerName;
-    }
-
-    await wrangler("deploy", "--name", resolvedWorkerName);
-    return resolvedWorkerName;
+    await wrangler("deploy", "--name", workerName);
+    return workerName;
   } catch (error) {
     throw new Error("Failed to deploy worker", { cause: error });
   } finally {
@@ -299,7 +190,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
-  const existingAccountId = getEnvValue(
+  const existingAccountId = getHotUpdaterEnvValue(
     existingEnv,
     "HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID",
   );
@@ -331,55 +222,37 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       throw e;
     }
 
-    const selectedAccountId = await p.select({
-      message: "Account List",
-      options: accounts.map((account) => ({
-        value: account.id,
-        label: `${account.name} (${account.id})`,
-      })),
-    });
+    if (accounts.length === 1 && accounts[0]) {
+      accountId = accounts[0].id;
+      p.log.info("Using the only Cloudflare account.");
+    } else {
+      const selectedAccountId = await p.select({
+        message: "Account List",
+        options: accounts.map((account) => ({
+          value: account.id,
+          label: `${account.name} (${account.id})`,
+        })),
+      });
 
-    if (p.isCancel(selectedAccountId)) {
-      process.exit(1);
-    }
+      if (p.isCancel(selectedAccountId)) {
+        process.exit(1);
+      }
 
-    accountId = selectedAccountId;
-  }
-
-  const existingApiToken = getEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
-  );
-  let apiToken = existingApiToken;
-  if (apiToken) {
-    p.log.info("Using existing Cloudflare API token.");
-  } else {
-    p.log.step(
-      `D1 API Token dashboard: ${link(
-        `https://dash.cloudflare.com/${accountId}/api-tokens`,
-      )}`,
-    );
-    p.log.step("Required permission: D1 Edit");
-    p.log.step("Used for bundle metadata writes after init.");
-
-    const inputApiToken = await p.password({
-      message: "Enter the D1 API Token",
-    });
-
-    if (p.isCancel(inputApiToken)) {
-      process.exit(1);
-    }
-
-    apiToken = inputApiToken;
-
-    if (!apiToken) {
-      p.log.warn(
-        "Skipping API Token. You can set it later in .env HOT_UPDATER_CLOUDFLARE_API_TOKEN file.",
-      );
+      accountId = selectedAccountId;
     }
   }
+  await makeEnv({
+    HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: accountId,
+  });
 
-  const existingBucketName = getEnvValue(
+  const apiTokenKey = "HOT_UPDATER_CLOUDFLARE_API_TOKEN";
+  const existingApiToken =
+    process.env[apiTokenKey]?.trim() ??
+    (Object.hasOwn(existingEnv, apiTokenKey)
+      ? existingEnv[apiTokenKey]
+      : undefined);
+
+  const existingBucketName = getHotUpdaterEnvValue(
     existingEnv,
     "HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME",
   );
@@ -463,51 +336,70 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     }
   }
   p.log.info(`Selected R2: ${selectedBucketName}`);
+  await makeEnv({
+    HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: selectedBucketName,
+  });
 
-  const existingR2AccessKeyId = getEnvValue(
+  const existingR2AccessKeyId = getHotUpdaterEnvValue(
     existingEnv,
     "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
   );
-  const existingR2SecretAccessKey = getEnvValue(
+  const existingR2SecretAccessKey = getHotUpdaterEnvValue(
     existingEnv,
     "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
   );
-
-  let r2AccessKeyId = existingR2AccessKeyId;
-  let r2SecretAccessKey = existingR2SecretAccessKey;
-
-  if (r2AccessKeyId && r2SecretAccessKey) {
+  const existingWorkerName = getHotUpdaterEnvValue(
+    existingEnv,
+    "HOT_UPDATER_CLOUDFLARE_WORKER_NAME",
+  );
+  if (existingR2AccessKeyId && existingR2SecretAccessKey) {
     p.log.info("Using existing Cloudflare R2 API credentials.");
-  } else if (r2AccessKeyId || r2SecretAccessKey) {
+  } else if (existingR2AccessKeyId || existingR2SecretAccessKey) {
     p.log.warn("Existing Cloudflare R2 API credentials are incomplete.");
-    const credentials = await inputR2ApiCredentials({
-      accountId,
-      bucketName: selectedBucketName,
-      accessKeyId: r2AccessKeyId,
-      secretAccessKey: r2SecretAccessKey,
-    });
-    r2AccessKeyId = credentials.accessKeyId;
-    r2SecretAccessKey = credentials.secretAccessKey;
-  } else {
-    const credentials = await inputR2ApiCredentials({
-      accountId,
-      bucketName: selectedBucketName,
-    });
-    r2AccessKeyId = credentials.accessKeyId;
-    r2SecretAccessKey = credentials.secretAccessKey;
   }
+  const initSecrets = await inputCloudflareInitSecrets({
+    accountId,
+    bucketName: selectedBucketName,
+    apiToken: existingApiToken,
+    accessKeyId: existingR2AccessKeyId,
+    secretAccessKey: existingR2SecretAccessKey,
+    workerName: existingWorkerName,
+  });
+  const { apiToken, accessKeyId, secretAccessKey, workerName } = initSecrets;
+  if (!apiToken) {
+    p.log.warn(
+      "Skipping API Token. You can set it later in .env HOT_UPDATER_CLOUDFLARE_API_TOKEN file.",
+    );
+  }
+  await makeEnv({
+    HOT_UPDATER_CLOUDFLARE_API_TOKEN: apiToken,
+    HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: accessKeyId,
+    HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY: secretAccessKey,
+    HOT_UPDATER_CLOUDFLARE_WORKER_NAME: workerName,
+  });
 
-  //
-
-  const domains = existingBucketName
-    ? { enabled: false }
-    : await cf.r2.buckets.domains.managed.list(selectedBucketName, {
-        account_id: accountId,
-      });
+  const domains = await cf.r2.buckets.domains.managed.list(selectedBucketName, {
+    account_id: accountId,
+  });
 
   if (domains.enabled) {
-    const isPrivate = await p.confirm({
-      message: "Make R2 bucket private?",
+    const savedPrivateSetting = getHotUpdaterEnvValue(
+      existingEnv,
+      "HOT_UPDATER_CLOUDFLARE_R2_PRIVATE",
+    );
+    const isPrivate =
+      savedPrivateSetting === "true"
+        ? true
+        : savedPrivateSetting === "false"
+          ? false
+          : await p.confirm({
+              message: "Make R2 bucket private?",
+            });
+    if (p.isCancel(isPrivate)) {
+      process.exit(1);
+    }
+    await makeEnv({
+      HOT_UPDATER_CLOUDFLARE_R2_PRIVATE: String(isPrivate),
     });
 
     if (isPrivate) {
@@ -558,7 +450,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     throw e;
   }
 
-  const existingD1DatabaseId = getEnvValue(
+  const existingD1DatabaseId = getHotUpdaterEnvValue(
     existingEnv,
     "HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID",
   );
@@ -570,6 +462,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   if (existingD1DatabaseId && hasExistingD1Database) {
     selectedD1DatabaseId = existingD1DatabaseId;
     p.log.info("Using existing Cloudflare D1 database ID.");
+  } else if (availableD1List.length === 1 && availableD1List[0]) {
+    selectedD1DatabaseId = availableD1List[0].uuid;
+    p.log.info("Using the only Cloudflare D1 database.");
   } else {
     if (existingD1DatabaseId) {
       p.log.warn(
@@ -622,6 +517,9 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   } else {
     p.log.info(`Selected D1: ${selectedD1DatabaseId}`);
   }
+  await makeEnv({
+    HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: selectedD1DatabaseId,
+  });
 
   const d1DatabaseName = availableD1List.find(
     (d1) => d1.uuid === selectedD1DatabaseId,
@@ -635,31 +533,17 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     account_id: accountId,
   });
 
-  const existingWorkerName = getEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_WORKER_NAME",
-  );
-
-  const workerName = await deployWorker(auth.oauth_token, accountId, {
+  await deployWorker(auth.oauth_token, accountId, {
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
     r2BucketName: selectedBucketName,
-    workerName: existingWorkerName,
+    workerName,
   });
 
   const configWriteResult = await writeHotUpdaterConfig(
     getConfigScaffold(build),
   );
 
-  await makeEnv({
-    HOT_UPDATER_CLOUDFLARE_API_TOKEN: apiToken,
-    HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: accountId,
-    HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: selectedBucketName,
-    HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: r2AccessKeyId,
-    HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY: r2SecretAccessKey,
-    HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: selectedD1DatabaseId,
-    HOT_UPDATER_CLOUDFLARE_WORKER_NAME: workerName,
-  });
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
   if (configWriteResult.status === "created") {
     p.log.success(

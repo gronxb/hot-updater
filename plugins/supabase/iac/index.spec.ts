@@ -10,6 +10,8 @@ const { mockCli, mockExeca } = vi.hoisted(() => ({
     p: {
       log: {
         error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
       },
       spinner: vi.fn(() => ({
         start: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock("execa", async (importOriginal) => {
 import {
   getLegacySupabaseConfigReference,
   resolveEdgeFunctionDenoConfig,
+  selectProject,
 } from "./index";
 import { linkSupabase, pushDB } from "./supabaseCli";
 
@@ -97,6 +100,58 @@ describe("getLegacySupabaseConfigReference", () => {
         "supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!",
       ),
     ).toBeNull();
+  });
+});
+
+describe("selectProject", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("reuses a saved project without prompting", async () => {
+    // Given
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          id: "saved-project",
+          name: "Saved project",
+          region: "ap-northeast-2",
+        },
+      ]),
+    });
+
+    // When
+    const project = await selectProject("saved-project");
+
+    // Then
+    expect(project).toEqual({
+      id: "saved-project",
+      name: "Saved project",
+      region: "ap-northeast-2",
+    });
+  });
+
+  it("uses the only available project without prompting", async () => {
+    // Given
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          id: "only-project",
+          name: "Only project",
+          region: "ap-northeast-2",
+        },
+      ]),
+    });
+
+    // When
+    const project = await selectProject();
+
+    // Then
+    expect(project).toEqual({
+      id: "only-project",
+      name: "Only project",
+      region: "ap-northeast-2",
+    });
   });
 });
 

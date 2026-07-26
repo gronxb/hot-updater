@@ -3,9 +3,11 @@ import path from "path";
 
 import {
   type BuildType,
+  getHotUpdaterEnvValue,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
   p,
+  readHotUpdaterEnv,
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   transformEnv,
@@ -14,6 +16,7 @@ import {
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import { resolveFirebaseRegion } from "./firebaseRegion";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { initFirebaseUser, setEnv } from "./select";
 
@@ -28,32 +31,6 @@ export default HotUpdater.wrap({
   baseURL: "%%source%%",
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
-
-const REGIONS = [
-  { value: "us-central1", label: "US Central (Iowa)" },
-  { value: "us-east1", label: "US East (South Carolina)" },
-  { value: "us-east4", label: "US East (Northern Virginia)" },
-  { value: "us-west1", label: "US West (Oregon)" },
-  { value: "us-west2", label: "US West (Los Angeles)" },
-  { value: "us-west3", label: "US West (Salt Lake City)" },
-  { value: "us-west4", label: "US West (Las Vegas)" },
-  { value: "europe-west1", label: "Europe West (Belgium)" },
-  { value: "europe-west2", label: "Europe West (London)" },
-  { value: "europe-west3", label: "Europe West (Frankfurt)" },
-  { value: "europe-west6", label: "Europe West (Zurich)" },
-  { value: "asia-east1", label: "Asia East (Taiwan)" },
-  { value: "asia-east2", label: "Asia East (Hong Kong)" },
-  { value: "asia-northeast1", label: "Asia Northeast (Tokyo)" },
-  { value: "asia-northeast2", label: "Asia Northeast (Osaka)" },
-  { value: "asia-northeast3", label: "Asia Northeast (Seoul)" },
-  { value: "asia-south1", label: "Asia South (Mumbai)" },
-  { value: "asia-southeast1", label: "Asia Southeast (Singapore)" },
-  { value: "asia-southeast2", label: "Asia Southeast (Jakarta)" },
-  {
-    value: "australia-southeast1",
-    label: "Australia Southeast (Sydney)",
-  },
-];
 
 const getFirebaseRuntimePackageInfo = () => {
   const firebasePackageRoot = path.dirname(
@@ -289,6 +266,7 @@ const checkIfGcloudCliInstalled = async () => {
 };
 
 export const runInit = async ({ build }: { build: BuildType }) => {
+  const existingEnv = await readHotUpdaterEnv(process.cwd());
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
     p.log.error("gcloud CLI is not installed");
@@ -306,14 +284,27 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   const functionsIndexPath = path.join(functionsDir, "index.cjs");
   const runtimePackageInfo = await syncFunctionsPackageJson(functionsDir);
 
-  const initializeVariable = await initFirebaseUser(tmpDir);
+  const initializeVariable = await initFirebaseUser(
+    tmpDir,
+    getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_FIREBASE_PROJECT_ID"),
+  );
 
-  let currentRegion: string | undefined;
-
+  const currentRegion = await resolveFirebaseRegion({
+    cwd: tmpDir,
+    savedRegion: getHotUpdaterEnvValue(
+      existingEnv,
+      "HOT_UPDATER_FIREBASE_REGION",
+    ),
+  });
+  const functionsCode = transformEnv(functionsIndexPath, {
+    REGION: currentRegion,
+  });
+  await fs.promises.writeFile(functionsIndexPath, functionsCode);
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
     build,
+    region: currentRegion,
   });
 
   if (
@@ -343,60 +334,6 @@ export const runInit = async ({ build }: { build: BuildType }) => {
           }
           process.exit(1);
         }
-      },
-    },
-    {
-      title: "Checking existing functions and setting region",
-      task: async () => {
-        let isFunctionsExist = false;
-
-        try {
-          const { stdout } = await execa(
-            "npx",
-            ["firebase", "functions:list", "--json"],
-            {
-              cwd: tmpDir,
-              shell: true,
-            },
-          );
-          const parsedData = JSON.parse(stdout);
-          const functionsData = parsedData.result || [];
-          const hotUpdater = functionsData.find(
-            (fn: FirebaseFunction) => fn.id === "hot-updater",
-          );
-
-          if (hotUpdater?.region) {
-            currentRegion = hotUpdater.region;
-            isFunctionsExist = true;
-          }
-        } catch {
-          // no-op
-        }
-
-        if (!isFunctionsExist) {
-          const selectedRegion = await p.select({
-            message: "Select Region",
-            options: REGIONS,
-            initialValue: REGIONS[0].value,
-          });
-          if (p.isCancel(selectedRegion)) {
-            p.cancel("Operation cancelled.");
-            process.exit(1);
-          }
-          currentRegion = selectedRegion;
-        }
-
-        if (!currentRegion) {
-          p.log.error("Region is not set");
-          await removeTmpDir();
-          process.exit(1);
-        }
-
-        const code = transformEnv(functionsIndexPath, {
-          REGION: currentRegion,
-        });
-        await fs.promises.writeFile(functionsIndexPath, code);
-        return `Using ${isFunctionsExist ? "existing" : "new"} functions in region: ${currentRegion}`;
       },
     },
   ]);

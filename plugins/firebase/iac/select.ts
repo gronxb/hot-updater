@@ -60,10 +60,12 @@ export const setEnv = async ({
   projectId,
   storageBucket,
   build,
+  region,
 }: {
   projectId: string;
   storageBucket: string;
   build: BuildType;
+  region: string;
 }) => {
   await makeEnv(
     {
@@ -73,6 +75,7 @@ export const setEnv = async ({
         value: "your-credentials.json",
       },
       HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
+      HOT_UPDATER_FIREBASE_REGION: region,
       HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
     },
     ".env.hotupdater",
@@ -141,6 +144,7 @@ const listProjects = async (): Promise<
 
 export const initFirebaseUser = async (
   cwd: string,
+  preferredProjectId?: string,
 ): Promise<{
   projectId: string;
   projectNumber: number;
@@ -172,16 +176,29 @@ export const initFirebaseUser = async (
   const projects = await listProjects();
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
-  const projectId = await p.select({
-    message: "Select a Firebase project",
-    options: [
-      ...projects.map((project) => ({
-        label: project.displayName,
-        value: project.projectId,
-      })),
-      { value: createKey, label: "Create new Firebase project" },
-    ],
-  });
+  const preferredProject = projects.find(
+    (project) => project.projectId === preferredProjectId,
+  );
+  if (preferredProjectId && !preferredProject) {
+    p.log.warn("Saved Firebase project was not found. Select a project again.");
+  }
+  const onlyProject = projects.length === 1 ? projects[0] : undefined;
+  if (!preferredProject && onlyProject) {
+    p.log.info("Using the only Firebase project.");
+  }
+  const projectId =
+    preferredProject?.projectId ??
+    onlyProject?.projectId ??
+    (await p.select({
+      message: "Select a Firebase project",
+      options: [
+        ...projects.map((project) => ({
+          label: project.displayName,
+          value: project.projectId,
+        })),
+        { value: createKey, label: "Create new Firebase project" },
+      ],
+    }));
 
   if (p.isCancel(projectId)) {
     p.log.error("Project ID is required");
@@ -215,12 +232,18 @@ export const initFirebaseUser = async (
           `https://console.firebase.google.com/project/${newProjectId}/storage`,
         ),
       );
+      await makeEnv({
+        HOT_UPDATER_FIREBASE_PROJECT_ID: newProjectId,
+      });
     } catch (err) {
       handleError(err);
     }
     process.exit(0);
   }
 
+  await makeEnv({
+    HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
+  });
   await p.tasks([
     {
       title: `Select Firebase project (${projectId})...`,

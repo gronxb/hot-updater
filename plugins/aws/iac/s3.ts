@@ -83,11 +83,13 @@ export class S3Manager {
 
     const { pending } = await migrator.list();
     await migrator.migrate({ dryRun: true });
-    if (pending.length > 0) {
-      p.log.step("Pending migrations:");
-      for (const m of pending) {
-        p.log.step(`- ${m.name}`);
-      }
+    if (pending.length === 0) {
+      return;
+    }
+
+    p.log.step("Pending migrations:");
+    for (const migration of pending) {
+      p.log.step(`- ${migration.name}`);
     }
     const confirm = await p.confirm({ message: "Do you want to continue?" });
     if (p.isCancel(confirm) || !confirm) {

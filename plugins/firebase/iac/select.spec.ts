@@ -32,6 +32,7 @@ describe("setEnv", () => {
       projectId: "demo-project",
       storageBucket: "demo-bucket",
       build: "bare",
+      region: "asia-northeast3",
     });
 
     expect(vi.mocked(makeEnv)).toHaveBeenCalledWith(
@@ -42,6 +43,7 @@ describe("setEnv", () => {
           value: "your-credentials.json",
         },
         HOT_UPDATER_FIREBASE_PROJECT_ID: "demo-project",
+        HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
         HOT_UPDATER_FIREBASE_STORAGE_BUCKET: "demo-bucket",
       },
       ".env.hotupdater",

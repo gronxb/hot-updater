@@ -24,6 +24,8 @@ const mockPrompt = vi.hoisted(() => ({
   isCancel: vi.fn(() => false),
 }));
 
+const mockMakeEnv = vi.hoisted(() => vi.fn());
+
 vi.mock("@aws-sdk/client-cloudfront", () => ({
   CloudFront: vi.fn(function CloudFront() {
     return mockCloudFront;
@@ -31,6 +33,7 @@ vi.mock("@aws-sdk/client-cloudfront", () => ({
 }));
 
 vi.mock("@hot-updater/cli-tools", () => ({
+  makeEnv: mockMakeEnv,
   p: mockPrompt,
 }));
 
@@ -138,6 +141,83 @@ describe("CloudFrontManager", () => {
           }),
         }),
       }),
+    );
+  });
+
+  it("persists a selected distribution before updating it", async () => {
+    mockCloudFront.listCachePolicies.mockResolvedValue({
+      CachePolicyList: {
+        Items: [
+          {
+            CachePolicy: {
+              Id: "shared-cache-policy-id",
+              CachePolicyConfig: {
+                Name: "HotUpdaterOriginCacheControl",
+              },
+            },
+          },
+        ],
+      },
+    });
+    mockCloudFront.listDistributions.mockResolvedValue({
+      DistributionList: {
+        Items: [
+          {
+            Id: "first-dist-id",
+            DomainName: "first.cloudfront.net",
+            Origins: {
+              Items: [
+                {
+                  DomainName:
+                    "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
+                },
+              ],
+            },
+          },
+          {
+            Id: "selected-dist-id",
+            DomainName: "selected.cloudfront.net",
+            Origins: {
+              Items: [
+                {
+                  DomainName:
+                    "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    mockPrompt.select.mockResolvedValue(
+      JSON.stringify({
+        Id: "selected-dist-id",
+        DomainName: "selected.cloudfront.net",
+      }),
+    );
+    mockCloudFront.getDistributionConfig.mockRejectedValue(
+      new Error("update failed"),
+    );
+
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await expect(
+      manager.createOrUpdateDistribution({
+        keyGroupId: "new-key-group-id",
+        bucketName: "hot-updater-storage",
+        functionArn:
+          "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+      }),
+    ).rejects.toThrow("update failed");
+
+    expect(mockMakeEnv).toHaveBeenCalledWith({
+      HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: "selected-dist-id",
+    });
+    expect(mockMakeEnv.mock.invocationCallOrder[0]).toBeLessThan(
+      mockCloudFront.getDistributionConfig.mock.invocationCallOrder[0] ?? 0,
     );
   });
 });

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { CloudFront } from "@aws-sdk/client-cloudfront";
-import { p } from "@hot-updater/cli-tools";
+import { makeEnv, p } from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 
 import {
@@ -133,6 +133,7 @@ export class CloudFrontManager {
     keyGroupId: string;
     bucketName: string;
     functionArn: string;
+    distributionId?: string;
   }): Promise<{ distributionId: string; distributionDomain: string }> {
     const cloudfrontClient = new CloudFront({
       region: this.region,
@@ -200,10 +201,18 @@ export class CloudFrontManager {
     } catch (error) {
       console.error("Error listing CloudFront distributions:", error);
     }
-    let selectedDistribution: { Id: string; DomainName: string } | null = null;
-    if (matchingDistributions.length === 1) {
+    let selectedDistribution =
+      matchingDistributions.find(
+        (distribution) => distribution.Id === options.distributionId,
+      ) ?? null;
+    if (options.distributionId && !selectedDistribution) {
+      p.log.warn(
+        "Saved CloudFront distribution was not found. Select a distribution again.",
+      );
+    }
+    if (!selectedDistribution && matchingDistributions.length === 1) {
       selectedDistribution = matchingDistributions[0];
-    } else if (matchingDistributions.length > 1) {
+    } else if (!selectedDistribution && matchingDistributions.length > 1) {
       const selectedDistributionStr = await p.select({
         message:
           "Multiple CloudFront distributions found. Please select one to use:",
@@ -225,6 +234,9 @@ export class CloudFrontManager {
     });
 
     if (selectedDistribution) {
+      await makeEnv({
+        HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: selectedDistribution.Id,
+      });
       p.log.success(
         `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
       );
@@ -289,6 +301,9 @@ export class CloudFrontManager {
       }
       const distributionId = distResp.Distribution.Id;
       const distributionDomain = distResp.Distribution.DomainName;
+      await makeEnv({
+        HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
+      });
       p.log.success(
         `Created new CloudFront distribution. Distribution ID: ${distributionId}`,
       );

@@ -15,6 +15,11 @@ const mockPrompt = vi.hoisted(() => ({
   isCancel: vi.fn(() => false),
 }));
 
+const mockMigrator = vi.hoisted(() => ({
+  list: vi.fn(),
+  migrate: vi.fn(),
+}));
+
 vi.mock("@aws-sdk/client-s3", () => ({
   S3: vi.fn(function S3() {
     return mockS3;
@@ -23,6 +28,12 @@ vi.mock("@aws-sdk/client-s3", () => ({
 
 vi.mock("@hot-updater/cli-tools", () => ({
   p: mockPrompt,
+}));
+
+vi.mock("./migrations/migrator", () => ({
+  S3Migrator: vi.fn(function S3Migrator() {
+    return mockMigrator;
+  }),
 }));
 
 import { S3Manager } from "./s3";
@@ -67,5 +78,25 @@ describe("S3Manager", () => {
     await expect(manager.listBuckets()).resolves.toEqual([
       { name: "legacy-eu-bucket", region: "eu-west-1" },
     ]);
+  });
+
+  it("does not prompt when there are no pending migrations", async () => {
+    // Given
+    mockMigrator.list.mockResolvedValue({ pending: [] });
+    mockMigrator.migrate.mockResolvedValue(undefined);
+    const manager = new S3Manager({
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.runMigrations({
+      bucketName: "existing-bucket",
+      region: "ap-northeast-2",
+      migrations: [],
+    });
+
+    // Then
+    expect(mockPrompt.confirm).not.toHaveBeenCalled();
   });
 });

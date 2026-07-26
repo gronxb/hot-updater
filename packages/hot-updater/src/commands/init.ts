@@ -1,10 +1,21 @@
 import type { BuildType } from "@hot-updater/cli-tools";
-import { HotUpdateDirUtil, p } from "@hot-updater/cli-tools";
+import {
+  getHotUpdaterEnvValue,
+  HotUpdateDirUtil,
+  makeEnv,
+  p,
+  readHotUpdaterEnv,
+} from "@hot-updater/cli-tools";
 import { ExecaError } from "execa";
 
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { appendToProjectRootGitignore } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
+
+const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
+const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
+const BUILD_PLUGIN_KEYS = ["bare", "rock", "expo"] as const;
+const PROVIDERS = ["cloudflare", "aws", "supabase", "firebase"] as const;
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
@@ -12,7 +23,7 @@ const REQUIRED_PACKAGES = {
 };
 
 interface BuildPluginChoice {
-  name: string;
+  name: BuildType;
   label: string;
   hint?: string;
   dependencies: string[];
@@ -80,52 +91,94 @@ export interface InitOptions {
   provider?: Provider;
 }
 
-const resolveBuildPlugin = async (flag?: BuildPluginKey) => {
-  if (flag) {
-    return BUILD_PLUGINS[flag];
-  }
-
-  const selected = await p.select<BuildPluginChoice>({
-    message: "Select a build plugin",
-    options: Object.values(BUILD_PLUGINS).map((plugin) => ({
-      value: plugin,
-      label: plugin.label,
-      hint: plugin.hint,
-    })),
-  });
-
-  if (p.isCancel(selected)) {
-    process.exit(0);
-  }
-
-  return selected;
+const isBuildPluginKey = (
+  value: string | undefined,
+): value is BuildPluginKey => {
+  return value === "bare" || value === "rock" || value === "expo";
 };
 
-const resolveProvider = async (flag?: Provider): Promise<Provider> => {
-  if (flag) {
-    return flag;
+const isProvider = (value: string | undefined): value is Provider => {
+  return (
+    value === "cloudflare" ||
+    value === "aws" ||
+    value === "supabase" ||
+    value === "firebase"
+  );
+};
+
+const collectInitChoices = async (
+  options: InitOptions,
+): Promise<{ build: BuildPluginKey; provider: Provider }> => {
+  const existingEnv = await readHotUpdaterEnv(process.cwd());
+  const savedBuild = getHotUpdaterEnvValue(existingEnv, INIT_BUILD_ENV_KEY);
+  const savedProvider = getHotUpdaterEnvValue(
+    existingEnv,
+    INIT_PROVIDER_ENV_KEY,
+  );
+  const build =
+    options.build ?? (isBuildPluginKey(savedBuild) ? savedBuild : null);
+  const provider =
+    options.provider ?? (isProvider(savedProvider) ? savedProvider : null);
+
+  if (build && provider) {
+    return { build, provider };
   }
 
-  const selected = await p.select<Provider>({
-    message: "Select a provider",
-    options: (Object.keys(PROVIDER_LABELS) as Provider[]).map((value) => ({
-      value,
-      label: PROVIDER_LABELS[value],
-    })),
-  });
+  const choices = await p.group(
+    {
+      build: () =>
+        build
+          ? Promise.resolve(build)
+          : p.select<BuildPluginKey>({
+              message: "Select a build plugin",
+              options: BUILD_PLUGIN_KEYS.map((value) => ({
+                value,
+                label: BUILD_PLUGINS[value].label,
+                hint: BUILD_PLUGINS[value].hint,
+              })),
+            }),
+      provider: () =>
+        provider
+          ? Promise.resolve(provider)
+          : p.select<Provider>({
+              message: "Select a provider",
+              options: PROVIDERS.map((value) => ({
+                value,
+                label: PROVIDER_LABELS[value],
+              })),
+            }),
+    },
+    {
+      onCancel: () => process.exit(0),
+    },
+  );
 
-  if (p.isCancel(selected)) {
-    process.exit(0);
-  }
-
-  return selected;
+  return choices;
 };
 
 export const init = async (options: InitOptions = {}) => {
   printBanner();
 
-  const buildPluginPackage = await resolveBuildPlugin(options.build);
-  const provider = await resolveProvider(options.provider);
+  if (
+    appendToProjectRootGitignore({
+      globLines: [
+        ".env.hotupdater",
+        HotUpdateDirUtil.outputGitignorePath,
+        HotUpdateDirUtil.logGitignorePath,
+      ],
+    })
+  ) {
+    p.log.info(".gitignore has been modified to include hot-updater entries");
+  }
+
+  const choices = await collectInitChoices(options);
+  const buildPluginPackage = BUILD_PLUGINS[choices.build];
+  const provider = choices.provider;
+
+  await makeEnv({
+    [INIT_BUILD_ENV_KEY]: choices.build,
+    [INIT_PROVIDER_ENV_KEY]: provider,
+  });
 
   try {
     await ensureInstallPackages({
@@ -150,7 +203,7 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
-  const build = buildPluginPackage.name as BuildType;
+  const build = buildPluginPackage.name;
   switch (provider) {
     case "supabase": {
       const supabase = await import("@hot-updater/supabase/iac");
@@ -174,17 +227,5 @@ export const init = async (options: InitOptions = {}) => {
     }
     default:
       throw new Error("Invalid provider");
-  }
-
-  if (
-    appendToProjectRootGitignore({
-      globLines: [
-        ".env.hotupdater",
-        HotUpdateDirUtil.outputGitignorePath,
-        HotUpdateDirUtil.logGitignorePath,
-      ],
-    })
-  ) {
-    p.log.info(".gitignore has been modified to include hot-updater entries");
   }
 };
