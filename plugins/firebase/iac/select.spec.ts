@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   execa: vi.fn(),
   select: vi.fn(),
+  text: vi.fn(),
 }));
 
 vi.mock("execa", async () => {
@@ -27,10 +28,13 @@ vi.mock("@hot-updater/cli-tools", async () => {
     p: {
       ...actual.p,
       log: {
+        error: vi.fn(),
+        step: vi.fn(),
         success: vi.fn(),
         warn: vi.fn(),
       },
       select: mocks.select,
+      text: mocks.text,
       tasks: vi.fn(async (tasks) => {
         for (const task of tasks) {
           await task.task(vi.fn());
@@ -44,7 +48,7 @@ vi.mock("@hot-updater/cli-tools", async () => {
   };
 });
 
-import { initFirebaseUser, setEnv } from "./select";
+import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 
 describe("setEnv", () => {
   it("preserves GOOGLE_APPLICATION_CREDENTIALS when updating Firebase env vars", async () => {
@@ -96,6 +100,11 @@ describe("initFirebaseUser", () => {
               },
             ],
           }),
+        };
+      }
+      if (invocation === "npx firebase projects:list --json") {
+        return {
+          stdout: JSON.stringify({ result: [] }),
         };
       }
       if (
@@ -164,6 +173,46 @@ describe("initFirebaseUser", () => {
       {
         cwd: "/tmp/firebase-init",
         env: {},
+      },
+    );
+  });
+
+  it("returns a creation plan without provisioning during input collection", async () => {
+    mocks.select.mockImplementation(
+      async ({ options }) =>
+        options.find(
+          (option: { label: string }) =>
+            option.label === "Create new Firebase project",
+        ).value,
+    );
+    mocks.text.mockResolvedValue("new-project");
+
+    await expect(
+      initFirebaseUser("/tmp/firebase-init", undefined, false, {}),
+    ).resolves.toEqual({
+      status: "create",
+      projectId: "new-project",
+    });
+    expect(mocks.execa).not.toHaveBeenCalledWith(
+      "npx",
+      ["firebase", "projects:create", "new-project"],
+      expect.anything(),
+    );
+    expect(vi.mocked(makeEnv)).not.toHaveBeenCalled();
+  });
+
+  it("provisions a Firebase project only when the creation plan is applied", async () => {
+    await createFirebaseProject({
+      cliEnv: {},
+      projectId: "new-project",
+    });
+
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      ["firebase", "projects:create", "new-project"],
+      {
+        env: {},
+        stdio: "inherit",
       },
     );
   });

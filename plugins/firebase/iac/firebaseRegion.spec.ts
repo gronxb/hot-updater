@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   execa: vi.fn(),
@@ -24,6 +24,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 import { resolveFirebaseRegion } from "./firebaseRegion";
 
 describe("resolveFirebaseRegion", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("reuses a saved region without running discovery or prompting", async () => {
     // Given
     const options = {
@@ -70,5 +74,18 @@ describe("resolveFirebaseRegion", () => {
     });
     expect(mocks.execa).not.toHaveBeenCalled();
     expect(mocks.select).not.toHaveBeenCalled();
+  });
+
+  it("prompts without discovery for a project that has not been created", async () => {
+    mocks.select.mockResolvedValue("asia-northeast3");
+
+    await expect(
+      resolveFirebaseRegion({
+        cwd: "/tmp/firebase-init",
+        discoverExistingProject: false,
+      }),
+    ).resolves.toBe("asia-northeast3");
+    expect(mocks.execa).not.toHaveBeenCalled();
+    expect(mocks.select).toHaveBeenCalledOnce();
   });
 });

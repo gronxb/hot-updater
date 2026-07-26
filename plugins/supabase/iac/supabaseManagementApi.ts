@@ -29,6 +29,17 @@ export interface SupabaseManagementApi {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+class SupabaseManagementApiStatusError extends Error {}
+
+const projectCreationMayHaveSucceededError = (
+  message = "Supabase project creation could not be confirmed.",
+  cause?: unknown,
+) =>
+  new Error(
+    `${message} The request may have succeeded; check the organization's projects before retrying init.`,
+    { cause },
+  );
+
 const request = async (
   accessToken: string,
   path: string,
@@ -44,9 +55,8 @@ const request = async (
     SUPABASE_MANAGEMENT_API_TIMEOUT_MS,
   );
   timeout.unref();
-  let response: Response;
   try {
-    response = await fetch(`${SUPABASE_MANAGEMENT_API_URL}${path}`, {
+    const response = await fetch(`${SUPABASE_MANAGEMENT_API_URL}${path}`, {
       body: init?.body ? JSON.stringify(init.body) : undefined,
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -55,35 +65,42 @@ const request = async (
       method,
       signal: controller.signal,
     });
+
+    if (!response.ok) {
+      throw new SupabaseManagementApiStatusError(
+        `Supabase Management API request failed with status ${response.status}.`,
+      );
+    }
+
+    const body: unknown = await response.json();
+    return body;
   } catch (error) {
     if (!controller.signal.aborted) {
+      if (
+        method === "POST" &&
+        !(error instanceof SupabaseManagementApiStatusError)
+      ) {
+        throw projectCreationMayHaveSucceededError(undefined, error);
+      }
       throw error;
     }
     if (method === "POST") {
-      throw new Error(
-        "Supabase project creation timed out. The request may have succeeded; check the organization's projects before retrying init.",
+      throw projectCreationMayHaveSucceededError(
+        "Supabase project creation timed out.",
+        error,
       );
     }
     throw new Error("Supabase Management API request timed out.");
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!response.ok) {
-    throw new Error(
-      `Supabase Management API request failed with status ${response.status}.`,
-    );
-  }
-
-  return response;
 };
 
 export const supabaseManagementApi = (
   accessToken: string,
 ): SupabaseManagementApi => ({
   listOrganizations: async () => {
-    const response = await request(accessToken, "/organizations");
-    const body: unknown = await response.json();
+    const body = await request(accessToken, "/organizations");
     if (!Array.isArray(body)) {
       throw new Error("Supabase organizations response was invalid.");
     }
@@ -109,7 +126,7 @@ export const supabaseManagementApi = (
     organizationSlug,
     region,
   }) => {
-    const response = await request(accessToken, "/projects", {
+    const body = await request(accessToken, "/projects", {
       body: {
         db_pass: databasePassword,
         name,
@@ -118,14 +135,15 @@ export const supabaseManagementApi = (
       },
       method: "POST",
     });
-    const body: unknown = await response.json();
     if (
       !isRecord(body) ||
       typeof body.ref !== "string" ||
       typeof body.name !== "string" ||
       typeof body.region !== "string"
     ) {
-      throw new Error("Supabase project creation response was invalid.");
+      throw projectCreationMayHaveSucceededError(
+        "Supabase project creation response was invalid.",
+      );
     }
 
     return {
@@ -135,11 +153,10 @@ export const supabaseManagementApi = (
     };
   },
   getProjectStatus: async (projectId) => {
-    const response = await request(
+    const body = await request(
       accessToken,
       `/projects/${encodeURIComponent(projectId)}`,
     );
-    const body: unknown = await response.json();
     if (!isRecord(body) || typeof body.status !== "string") {
       throw new Error("Supabase project response was invalid.");
     }

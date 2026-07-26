@@ -24,6 +24,20 @@ const rejectWhenAborted = (_url: string, init?: RequestInit) =>
     });
   });
 
+const respondWithStalledBody = (_url: string, init?: RequestInit) =>
+  Promise.resolve({
+    ok: true,
+    status: 200,
+    json: () =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(init.signal?.reason),
+          { once: true },
+        );
+      }),
+  } as Response);
+
 describe("supabaseManagementApi", () => {
   it("lists organizations with the access token in a header", async () => {
     mockFetch.mockResolvedValue(
@@ -138,6 +152,90 @@ describe("supabaseManagementApi", () => {
   it("reports an ambiguous project creation timeout without retrying", async () => {
     vi.useFakeTimers();
     mockFetch.mockImplementation(rejectWhenAborted);
+
+    const request = supabaseManagementApi("access-token").createProject({
+      databasePassword: "database-password",
+      name: "Hot Updater",
+      organizationSlug: "team-slug",
+      region: "us-east-1",
+    });
+    const assertion = expect(request).rejects.toThrow(
+      "The request may have succeeded; check the organization's projects before retrying init.",
+    );
+    await vi.advanceTimersByTimeAsync(SUPABASE_MANAGEMENT_API_TIMEOUT_MS);
+
+    await assertion;
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
+  it("reports an ambiguous project creation transport failure without retrying", async () => {
+    const transportError = new Error("socket reset after upload");
+    mockFetch.mockRejectedValue(transportError);
+
+    const request = supabaseManagementApi("access-token").createProject({
+      databasePassword: "database-password",
+      name: "Hot Updater",
+      organizationSlug: "team-slug",
+      region: "us-east-1",
+    });
+
+    await expect(request).rejects.toMatchObject({
+      cause: transportError,
+      message: expect.stringContaining(
+        "The request may have succeeded; check the organization's projects before retrying init.",
+      ),
+    });
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
+  it("reports an ambiguous malformed project response without retrying", async () => {
+    mockFetch.mockResolvedValue(new Response("{", { status: 201 }));
+
+    const request = supabaseManagementApi("access-token").createProject({
+      databasePassword: "database-password",
+      name: "Hot Updater",
+      organizationSlug: "team-slug",
+      region: "us-east-1",
+    });
+
+    await expect(request).rejects.toThrow(
+      "The request may have succeeded; check the organization's projects before retrying init.",
+    );
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
+  it("reports an ambiguous invalid project response without retrying", async () => {
+    mockFetch.mockResolvedValue(new Response("{}", { status: 201 }));
+
+    const request = supabaseManagementApi("access-token").createProject({
+      databasePassword: "database-password",
+      name: "Hot Updater",
+      organizationSlug: "team-slug",
+      region: "us-east-1",
+    });
+
+    await expect(request).rejects.toThrow(
+      "Supabase project creation response was invalid. The request may have succeeded",
+    );
+    expect(mockFetch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the read deadline active while consuming the response body", async () => {
+    vi.useFakeTimers();
+    mockFetch.mockImplementation(respondWithStalledBody);
+
+    const request = supabaseManagementApi("access-token").listOrganizations();
+    const assertion = expect(request).rejects.toThrow(
+      "Supabase Management API request timed out.",
+    );
+    await vi.advanceTimersByTimeAsync(SUPABASE_MANAGEMENT_API_TIMEOUT_MS);
+
+    await assertion;
+  });
+
+  it("keeps the ambiguous create deadline active while consuming the response body", async () => {
+    vi.useFakeTimers();
+    mockFetch.mockImplementation(respondWithStalledBody);
 
     const request = supabaseManagementApi("access-token").createProject({
       databasePassword: "database-password",

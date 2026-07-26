@@ -36,12 +36,14 @@ const REGIONS = [
 
 export const resolveFirebaseRegion = async ({
   cwd,
+  discoverExistingProject = true,
   nonInteractive,
   savedRegion,
   cliEnv,
 }: {
   readonly cliEnv?: FirebaseCliEnv;
   readonly cwd: string;
+  readonly discoverExistingProject?: boolean;
   readonly nonInteractive?: boolean;
   readonly savedRegion?: string;
 }): Promise<string> => {
@@ -53,31 +55,33 @@ export const resolveFirebaseRegion = async ({
     throw new MissingInitInputsError(["HOT_UPDATER_FIREBASE_REGION"]);
   }
 
-  const functionsList = await execa(
-    "npx",
-    ["firebase", "functions:list", "--json"],
-    { cwd, env: cliEnv, reject: false },
-  );
   let discoveredRegion: string | undefined;
-  if (functionsList.exitCode === 0) {
-    const parsed: unknown = JSON.parse(functionsList.stdout);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "result" in parsed &&
-      Array.isArray(parsed.result)
-    ) {
-      for (const entry of parsed.result) {
-        if (
-          typeof entry === "object" &&
-          entry !== null &&
-          "id" in entry &&
-          entry.id === "hot-updater" &&
-          "region" in entry &&
-          typeof entry.region === "string"
-        ) {
-          discoveredRegion = entry.region;
-          break;
+  if (discoverExistingProject) {
+    const functionsList = await execa(
+      "npx",
+      ["firebase", "functions:list", "--json"],
+      { cwd, env: cliEnv, reject: false },
+    );
+    if (functionsList.exitCode === 0) {
+      const parsed: unknown = JSON.parse(functionsList.stdout);
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        "result" in parsed &&
+        Array.isArray(parsed.result)
+      ) {
+        for (const entry of parsed.result) {
+          if (
+            typeof entry === "object" &&
+            entry !== null &&
+            "id" in entry &&
+            entry.id === "hot-updater" &&
+            "region" in entry &&
+            typeof entry.region === "string"
+          ) {
+            discoveredRegion = entry.region;
+            break;
+          }
         }
       }
     }

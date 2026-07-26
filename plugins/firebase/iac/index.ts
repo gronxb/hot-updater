@@ -7,6 +7,7 @@ import {
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
+  makeEnv,
   p,
   readHotUpdaterInitEnv,
   resolveHotUpdaterServerVersion,
@@ -26,7 +27,7 @@ import {
 } from "./firebaseInitInputs";
 import { resolveFirebaseRegion } from "./firebaseRegion";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
-import { initFirebaseUser, setEnv } from "./select";
+import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -364,6 +365,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const currentRegion = await resolveFirebaseRegion({
     cwd: tmpDir,
+    discoverExistingProject: initializeVariable.status === "ready",
     nonInteractive,
     savedRegion: savedInputs.region,
     cliEnv,
@@ -385,6 +387,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     inputs: resolvedInputs,
     provider: FIREBASE_INIT_PROVIDER,
   });
+  if (initializeVariable.status === "create") {
+    await createFirebaseProject({
+      cliEnv,
+      projectId: initializeVariable.projectId,
+    });
+    await makeEnv(persistedInputs);
+    await removeTmpDir();
+    return;
+  }
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
   });

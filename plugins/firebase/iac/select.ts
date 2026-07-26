@@ -127,6 +127,46 @@ const handleError = (err: unknown) => {
   process.exit(1);
 };
 
+export type FirebaseUserInitialization =
+  | {
+      readonly status: "create";
+      readonly projectId: string;
+    }
+  | {
+      readonly status: "ready";
+      readonly projectId: string;
+      readonly projectNumber: number;
+      readonly storageBucket: string;
+    };
+
+export const createFirebaseProject = async ({
+  cliEnv,
+  projectId,
+}: {
+  readonly cliEnv?: FirebaseCliEnv;
+  readonly projectId: string;
+}): Promise<void> => {
+  try {
+    await execa("npx", ["firebase", "projects:create", projectId], {
+      env: cliEnv,
+      stdio: "inherit",
+    });
+  } catch (error) {
+    handleError(error instanceof Error ? error : new Error(String(error)));
+  }
+
+  p.log.success("Firebase project created successfully");
+  p.log.step(
+    "Enable Firestore, Storage, and Billing before running init again:",
+  );
+  p.log.step(
+    link(`https://console.firebase.google.com/project/${projectId}/firestore`),
+  );
+  p.log.step(
+    link(`https://console.firebase.google.com/project/${projectId}/storage`),
+  );
+};
+
 const listProjects = async (
   nonInteractive = false,
   cliEnv?: FirebaseCliEnv,
@@ -170,11 +210,7 @@ export const initFirebaseUser = async (
   preferredProjectId?: string,
   nonInteractive = false,
   cliEnv?: FirebaseCliEnv,
-): Promise<{
-  projectId: string;
-  projectNumber: number;
-  storageBucket: string;
-}> => {
+): Promise<FirebaseUserInitialization> => {
   if (!nonInteractive && !cliEnv) {
     try {
       await execa("npx", ["firebase", "login"], {
@@ -262,33 +298,10 @@ export const initFirebaseUser = async (
       p.log.error("Project ID is required");
       process.exit(1);
     }
-    try {
-      await execa("npx", ["firebase", "projects:create", newProjectId], {
-        env: cliEnv,
-        stdio: "inherit",
-      });
-      p.log.success("Firebase project created successfully");
-
-      p.log.step(
-        "Please Go to the following links to enable Firestore and Storage and Billing",
-      );
-      p.log.step(
-        link(
-          `https://console.firebase.google.com/project/${newProjectId}/firestore`,
-        ),
-      );
-      p.log.step(
-        link(
-          `https://console.firebase.google.com/project/${newProjectId}/storage`,
-        ),
-      );
-      await makeEnv({
-        HOT_UPDATER_FIREBASE_PROJECT_ID: newProjectId,
-      });
-    } catch (err) {
-      handleError(err instanceof Error ? err : new Error(String(err)));
-    }
-    process.exit(0);
+    return {
+      status: "create",
+      projectId: newProjectId,
+    };
   }
 
   await p.tasks([
@@ -421,6 +434,7 @@ export const initFirebaseUser = async (
   }
 
   return {
+    status: "ready",
     storageBucket,
     projectNumber,
     projectId,
