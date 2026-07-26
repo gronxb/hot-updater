@@ -9,6 +9,8 @@ import type {
   UniversalStoragePlugin,
 } from "./types";
 
+export { createStoragePlugin } from "./storage";
+
 type StorageProfileFactory<TConfig, TProfiles> = (config: TConfig) => TProfiles;
 
 interface BaseStoragePluginOptions<
