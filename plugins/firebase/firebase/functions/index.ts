@@ -1,4 +1,7 @@
-import { analytics } from "@hot-updater/analytics";
+import {
+  analytics,
+  ANALYTICS_EVENT_BODY_MAX_BYTES,
+} from "@hot-updater/analytics";
 import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import admin from "firebase-admin";
@@ -6,6 +9,12 @@ import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
 
 import { firebaseDatabase, firebaseStorage } from "../../src/functions";
+import {
+  createFirebaseWebRequest,
+  FIREBASE_FUNCTION_CONCURRENCY,
+  FIREBASE_FUNCTION_MAX_INSTANCES,
+  sendFirebasePayloadTooLarge,
+} from "./requestAdapter";
 
 declare global {
   var HotUpdater: {
@@ -61,21 +70,21 @@ app.mount(HOT_UPDATER_BASE_PATH, hotUpdater.handler);
 
 const handler = onRequest(
   {
+    concurrency: FIREBASE_FUNCTION_CONCURRENCY,
+    maxInstances: FIREBASE_FUNCTION_MAX_INSTANCES,
     region: HotUpdater.REGION,
   },
   async (req, res) => {
-    const host = req.hostname;
-    const requestPath = req.originalUrl || req.url;
-    const fullUrl = new URL(requestPath, `https://${host}`).toString();
-    const request = new Request(fullUrl, {
-      method: req.method,
-      headers: req.headers as Record<string, string>,
-      body:
-        req.method !== "GET" && req.method !== "HEAD"
-          ? new Uint8Array(req.rawBody)
-          : undefined,
-    });
-    const honoResponse = await app.fetch(request);
+    const requestResult = createFirebaseWebRequest(
+      req,
+      ANALYTICS_EVENT_BODY_MAX_BYTES,
+    );
+    if (requestResult.kind === "payload-too-large") {
+      sendFirebasePayloadTooLarge(res);
+      return;
+    }
+
+    const honoResponse = await app.fetch(requestResult.request);
     res.status(honoResponse.status);
     for (const [key, value] of honoResponse.headers.entries()) {
       res.setHeader(key, value);

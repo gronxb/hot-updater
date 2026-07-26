@@ -12,8 +12,8 @@ const runtimeAliases = {
   "@hot-updater/analytics/react-native$": fileURLToPath(
     import.meta.resolve("@hot-updater/analytics/react-native"),
   ),
-  "@hot-updater/react-native/internal/runtime-metadata$": fileURLToPath(
-    import.meta.resolve("@hot-updater/react-native/internal/runtime-metadata"),
+  "@hot-updater/react-native/runtime-metadata$": fileURLToPath(
+    import.meta.resolve("@hot-updater/react-native/runtime-metadata"),
   ),
   react$: path.join(appNodeModules, "react"),
   "react/jsx-dev-runtime$": path.join(

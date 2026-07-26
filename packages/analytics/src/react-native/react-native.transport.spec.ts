@@ -21,7 +21,7 @@ vi.mock("@hot-updater/react-native", () => ({
   },
 }));
 
-vi.mock("@hot-updater/react-native/internal/runtime-metadata", () => ({
+vi.mock("@hot-updater/react-native/runtime-metadata", () => ({
   getInstallId: mocks.getInstallId,
   getPersistedUserIdentity: mocks.getPersistedUserIdentity,
   HOT_UPDATER_SDK_VERSION: "test-sdk",

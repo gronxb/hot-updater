@@ -449,6 +449,11 @@ The React Native Analytics client is feature-owned and is not exported from
 `onNotifyAppReady` lifecycle only; it has no Analytics option, installation ID,
 or user-alias API. No React Native client implementation or type belongs in
 `@hot-updater/server`, `@hot-updater/plugin-core`, or another core package.
+`@hot-updater/analytics/react-native` consumes the supported
+`@hot-updater/react-native/runtime-metadata` bridge for installation identity,
+persisted user identity, and SDK version. First-party packages and bundler
+aliases must resolve that public bridge; they must not import a private source,
+`dist`, `lib`, or `internal/*` path.
 
 ### `@hot-updater/better-auth`
 

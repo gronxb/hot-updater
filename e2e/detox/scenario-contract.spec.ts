@@ -612,6 +612,11 @@ describe("Detox scenario contract", () => {
     expect(e2eRuntimeSource).toContain(
       'from "@hot-updater/analytics/react-native"',
     );
+    expect(e2eRuntimeSource).toContain(
+      'import { HOT_UPDATER_API_KEY } from "@env";',
+    );
+    expect(e2eRuntimeSource).toContain('"x-api-key": HOT_UPDATER_API_KEY');
+    expect(e2eRuntimeSource.match(/\brequestHeaders,\n/gmu)).toHaveLength(2);
     expect(e2eRuntimeSource).toContain("createReactNativeAnalytics");
     expect(e2eRuntimeSource).toContain("recordAppReady(result)");
     expect(e2eRuntimeSource).not.toContain("analytics: true");

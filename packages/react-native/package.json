@@ -18,7 +18,7 @@
         "default": "./lib/commonjs/index.js"
       }
     },
-    "./internal/runtime-metadata": {
+    "./runtime-metadata": {
       "source": "./src/internal/runtime-metadata.ts",
       "import": {
         "types": "./lib/typescript/module/internal/runtime-metadata.d.ts",

@@ -5,7 +5,7 @@ import {
   getPersistedUserIdentity,
   HOT_UPDATER_SDK_VERSION,
   setPersistedUserIdentity,
-} from "@hot-updater/react-native/internal/runtime-metadata";
+} from "@hot-updater/react-native/runtime-metadata";
 import { Platform } from "react-native";
 
 import type { CreateBundleEventRequest } from "../domain";

@@ -1,3 +1,4 @@
+import { HOT_UPDATER_API_KEY } from "@env";
 import { createReactNativeAnalytics } from "@hot-updater/analytics/react-native";
 import { HotUpdater } from "@hot-updater/react-native";
 import { proxy } from "valtio";
@@ -38,8 +39,13 @@ type UpdateProgressDetails = {
   }[];
 };
 
+const requestHeaders = Object.freeze({
+  "x-api-key": HOT_UPDATER_API_KEY,
+});
+
 const analytics = createReactNativeAnalytics({
   baseURL: resolveHotUpdaterBaseURL,
+  requestHeaders,
   requestTimeout: 15000,
 });
 
@@ -50,6 +56,7 @@ analytics.setUser({
 
 HotUpdater.init({
   baseURL: resolveHotUpdaterBaseURL,
+  requestHeaders,
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
     analytics.recordAppReady(result);
