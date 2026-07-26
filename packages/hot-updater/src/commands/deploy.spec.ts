@@ -1,59 +1,66 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockBuildPlugin, mockCli, mockServer, mockStoragePlugin } = vi.hoisted(
-  () => {
-    const mockBuildPlugin = {
-      build: vi.fn(),
-      name: "mock-build",
-    };
-    const mockStoragePlugin = {
-      name: "mock-storage",
-      supportedProtocol: "s3",
-      profiles: {
-        node: {
-          delete: vi.fn(),
-          downloadFile: vi.fn(),
-          exists: vi.fn(),
-          upload: vi.fn(),
-        },
+const {
+  mockBuildPlugin,
+  mockCli,
+  mockDisposeStorage,
+  mockServer,
+  mockStoragePlugin,
+} = vi.hoisted(() => {
+  const mockBuildPlugin = {
+    build: vi.fn(),
+    name: "mock-build",
+  };
+  const mockStoragePlugin = {
+    name: "mock-storage",
+    onUnmount: vi.fn(),
+    supportedProtocol: "s3",
+    profiles: {
+      node: {
+        delete: vi.fn(),
+        downloadFile: vi.fn(),
+        exists: vi.fn(),
+        upload: vi.fn(),
       },
-    };
-    const mockServer = {
-      createBundleDiff: vi.fn(),
-    };
-    const mockCli = {
-      appendToProjectRootGitignore: vi.fn(),
-      createTarBrTargetFiles: vi.fn(),
-      createTarGzTargetFiles: vi.fn(),
-      createZipTargetFiles: vi.fn(),
-      getCwd: vi.fn(),
-      loadConfig: vi.fn(),
-      p: {
-        confirm: vi.fn(),
-        isCancel: vi.fn(),
-        log: {
-          error: vi.fn(),
-          info: vi.fn(),
-          step: vi.fn(),
-          success: vi.fn(),
-          warn: vi.fn(),
-        },
-        note: vi.fn(),
-        outro: vi.fn(),
-        spinner: vi.fn(),
-        tasks: vi.fn(),
-        text: vi.fn(),
+    },
+  };
+  const mockServer = {
+    createBundleDiff: vi.fn(),
+  };
+  const mockDisposeStorage = vi.fn(async () => {});
+  const mockCli = {
+    appendToProjectRootGitignore: vi.fn(),
+    createTarBrTargetFiles: vi.fn(),
+    createTarGzTargetFiles: vi.fn(),
+    createZipTargetFiles: vi.fn(),
+    getCwd: vi.fn(),
+    loadConfig: vi.fn(),
+    p: {
+      confirm: vi.fn(),
+      isCancel: vi.fn(),
+      log: {
+        error: vi.fn(),
+        info: vi.fn(),
+        step: vi.fn(),
+        success: vi.fn(),
+        warn: vi.fn(),
       },
-    };
+      note: vi.fn(),
+      outro: vi.fn(),
+      spinner: vi.fn(),
+      tasks: vi.fn(),
+      text: vi.fn(),
+    },
+  };
 
-    return {
-      mockBuildPlugin,
-      mockCli,
-      mockServer,
-      mockStoragePlugin,
-    };
-  },
-);
+  return {
+    mockBuildPlugin,
+    mockCli,
+    mockDisposeStorage,
+    mockServer,
+    mockStoragePlugin,
+  };
+});
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -200,7 +207,11 @@ vi.mock("./console", () => ({
 import fs from "fs";
 import path from "path";
 
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePlugin,
+  StorageOperationContext,
+} from "@hot-updater/plugin-core";
 import { BLOB_DATABASE_SNAPSHOT_KEY } from "@hot-updater/plugin-core";
 
 import { writeBundleManifest } from "@/utils/bundleManifest";
@@ -297,6 +308,7 @@ describe("normalizePatchMaxBaseBundles", () => {
 
 describe("deploy rollout wiring", () => {
   beforeEach(() => {
+    process.exitCode = undefined;
     vi.clearAllMocks();
     databaseHarness.reset();
 
@@ -331,6 +343,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: databasePlugin,
+      disposeStorage: mockDisposeStorage,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -397,6 +410,10 @@ describe("deploy rollout wiring", () => {
     } as ReturnType<typeof fs.statSync>);
   });
 
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
   it("stores rolloutCohortCount=1000 when deploy options omit rollout", async () => {
     await deploy({
       channel: "production",
@@ -409,6 +426,392 @@ describe("deploy rollout wiring", () => {
     expect((await databaseHarness.bundles())[0]).toMatchObject({
       rolloutCohortCount: 1000,
     });
+  });
+
+  it("passes one frozen Node context to storage and disposes its owner after use", async () => {
+    // Given
+    const events: string[] = [];
+    const storage = vi.fn(async (_context: StorageOperationContext) => {
+      events.push("storage");
+      return mockStoragePlugin;
+    });
+    mockStoragePlugin.profiles.node.upload.mockImplementation(
+      async (key: string) => {
+        events.push(`upload:${key}`);
+        return {
+          storageUri: `s3://bundles/${key}/bundle.tar.br`,
+        };
+      },
+    );
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      disposeStorage: async () => {
+        events.push("dispose");
+      },
+      fingerprint: {},
+      patch: {
+        enabled: false,
+        maxBaseBundles: 3,
+      },
+      signing: { enabled: false },
+      storage,
+      updateStrategy: "appVersion",
+    });
+
+    // When
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    // Then
+    const context = storage.mock.calls[0]?.[0];
+    expect(context).toMatchObject({
+      bindings: {},
+      target: "node",
+    });
+    expect(Object.isFrozen(context)).toBe(true);
+    expect(Object.isFrozen(context?.environment)).toBe(true);
+    expect(Object.isFrozen(context?.bindings)).toBe(true);
+    expect(
+      Object.values(context?.environment ?? {}).every(
+        (value) => typeof value === "string",
+      ),
+    ).toBe(true);
+    expect(storage).toHaveBeenCalledOnce();
+    expect(events.at(-1)).toBe("dispose");
+    expect(mockStoragePlugin.onUnmount).not.toHaveBeenCalled();
+  });
+
+  it("shares one context across platforms and disposes owners in reverse order after deferred patches", async () => {
+    // Given
+    const events: string[] = [];
+    const contexts: StorageOperationContext[] = [];
+    const createConfig = (platform: "ios" | "android") => ({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br" as const,
+      database: databasePlugin,
+      disposeStorage: async () => {
+        events.push(`dispose:${platform}`);
+      },
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: false },
+      storage: async (context: StorageOperationContext) => {
+        contexts.push(context);
+        events.push(`storage:${platform}`);
+        return mockStoragePlugin;
+      },
+      updateStrategy: "appVersion" as const,
+    });
+    mockCli.loadConfig.mockImplementation(async ({ platform }) =>
+      createConfig(platform),
+    );
+    mockBuildPlugin.build.mockImplementation(async ({ platform }) => ({
+      buildPath: "/mock/build",
+      bundleId: platform === "ios" ? "bundle-ios" : "bundle-android",
+      stdout: null,
+    }));
+    mockGetBundlesWithFixtures([
+      { id: "bundle-base", targetAppVersion: "1.0.x" },
+    ]);
+    mockServer.createBundleDiff.mockImplementation(async () => {
+      events.push("deferred-patch");
+      return { id: "patch" };
+    });
+    databaseHarness.onUnmount.mockImplementationOnce(async () => {
+      events.push("database-dispose");
+    });
+
+    // When
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      targetAppVersion: "1.0.x",
+    });
+
+    // Then
+    expect(contexts).toHaveLength(2);
+    expect(contexts[0]).toBe(contexts[1]);
+    expect(events.filter((event) => event.startsWith("dispose:"))).toEqual([
+      "dispose:android",
+      "dispose:ios",
+    ]);
+    expect(events.slice(-4)).toEqual([
+      "deferred-patch",
+      "dispose:android",
+      "dispose:ios",
+      "database-dispose",
+    ]);
+  });
+
+  it("disposes a fulfilled storage owner when build acquisition rejects", async () => {
+    // Given
+    const buildError = new Error("build acquisition failed");
+    const events: string[] = [];
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => {
+        events.push("build:reject");
+        throw buildError;
+      },
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      disposeStorage: async () => {
+        events.push("storage:dispose");
+      },
+      fingerprint: {},
+      patch: {
+        enabled: false,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: false },
+      storage: async () => {
+        events.push("storage:fulfilled");
+        return mockStoragePlugin;
+      },
+      updateStrategy: "appVersion",
+    });
+
+    // When
+    const deployment = deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    // Then
+    await expect(deployment).rejects.toBe(buildError);
+    expect(events).toEqual([
+      "build:reject",
+      "storage:fulfilled",
+      "storage:dispose",
+    ]);
+  });
+
+  it("disposes the registered owner and database when a later config load rejects", async () => {
+    // Given
+    const configError = new Error("android config failed");
+    const events: string[] = [];
+    mockCli.loadConfig
+      .mockResolvedValueOnce({
+        build: async () => mockBuildPlugin,
+        compressStrategy: "tar.br",
+        database: databasePlugin,
+        disposeStorage: async () => {
+          events.push("storage:dispose");
+        },
+        fingerprint: {},
+        patch: {
+          enabled: false,
+          maxBaseBundles: 1,
+        },
+        signing: { enabled: false },
+        storage: async () => mockStoragePlugin,
+        updateStrategy: "appVersion",
+      })
+      .mockRejectedValueOnce(configError);
+    databaseHarness.onUnmount.mockImplementationOnce(async () => {
+      events.push("database:dispose");
+    });
+
+    // When
+    const deployment = deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      targetAppVersion: "1.0.x",
+    });
+
+    // Then
+    await expect(deployment).rejects.toBe(configError);
+    expect(events).toEqual(["storage:dispose", "database:dispose"]);
+  });
+
+  it("preserves the operation error while warning for storage and database cleanup failures", async () => {
+    // Given
+    const operationError = new Error("storage acquisition failed");
+    const storageCleanupError = new Error("storage cleanup failed");
+    const databaseCleanupError = new Error("database cleanup failed");
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      disposeStorage: async () => {
+        throw storageCleanupError;
+      },
+      fingerprint: {},
+      patch: {
+        enabled: false,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: false },
+      storage: async () => {
+        throw operationError;
+      },
+      updateStrategy: "appVersion",
+    });
+    databaseHarness.onUnmount.mockRejectedValueOnce(databaseCleanupError);
+
+    // When
+    const deployment = deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    // Then
+    await expect(deployment).rejects.toBe(operationError);
+    expect(mockCli.p.log.warn).toHaveBeenNthCalledWith(
+      1,
+      "Storage cleanup failed: storage cleanup failed",
+    );
+    expect(mockCli.p.log.warn).toHaveBeenNthCalledWith(
+      2,
+      "Database cleanup failed: database cleanup failed",
+    );
+  });
+
+  it("uses the first cleanup failure when deployment succeeds and warns for later failures", async () => {
+    // Given
+    const storageCleanupError = new Error("storage cleanup failed");
+    const databaseCleanupError = new Error("database cleanup failed");
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      disposeStorage: async () => {
+        throw storageCleanupError;
+      },
+      fingerprint: {},
+      patch: {
+        enabled: false,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    databaseHarness.onUnmount.mockRejectedValueOnce(databaseCleanupError);
+
+    // When
+    const deployment = deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+
+    // Then
+    await expect(deployment).rejects.toBe(storageCleanupError);
+    expect(mockCli.p.log.warn).toHaveBeenCalledWith(
+      "Database cleanup failed: database cleanup failed",
+    );
+  });
+
+  it("disposes storage and database after an interactive abort", async () => {
+    // Given
+    const events: string[] = [];
+    mockCli.p.isCancel.mockReturnValue(true);
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      disposeStorage: async () => {
+        events.push("storage:dispose");
+      },
+      fingerprint: {},
+      patch: {
+        enabled: false,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    databaseHarness.onUnmount.mockImplementationOnce(async () => {
+      events.push("database:dispose");
+    });
+
+    // When
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: true,
+      platform: "ios",
+    });
+
+    // Then
+    expect(events).toEqual(["storage:dispose", "database:dispose"]);
+  });
+
+  it("defers the requested exit code until storage and database cleanup finish", async () => {
+    // Given
+    const events: string[] = [];
+    const previousExitCode = process.exitCode;
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      disposeStorage: async () => {
+        events.push("storage:dispose");
+      },
+      fingerprint: {},
+      patch: {
+        enabled: false,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: true, privateKeyPath: "" },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    vi.mocked(validateSigningConfig).mockResolvedValueOnce({
+      isValid: false,
+      issues: [
+        {
+          code: "MISSING_PUBLIC_KEY",
+          message: "missing key",
+          platform: "ios",
+          resolution: "configure key",
+          type: "error",
+        },
+      ],
+      nativePublicKeys: {
+        android: { exists: false, paths: [] },
+        ios: { exists: false, paths: [] },
+      },
+      signingEnabled: true,
+    });
+    databaseHarness.onUnmount.mockImplementationOnce(async () => {
+      events.push("database:dispose");
+    });
+
+    // When
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.x",
+    });
+    events.push(`exit:${process.exitCode}`);
+    process.exitCode = previousExitCode;
+
+    // Then
+    expect(events).toEqual(["storage:dispose", "database:dispose", "exit:1"]);
   });
 
   it("stores an explicit rolloutCohortCount on the created bundle", async () => {
@@ -543,6 +946,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: failingDatabasePlugin,
+      disposeStorage: mockDisposeStorage,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -607,6 +1011,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: retryingDatabasePlugin,
+      disposeStorage: mockDisposeStorage,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -821,6 +1226,7 @@ describe("deploy rollout wiring", () => {
       cacheDir: "node_modules/.hot-updater",
       compressStrategy: "tar.br",
       database: databasePlugin,
+      disposeStorage: mockDisposeStorage,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -881,7 +1287,7 @@ describe("deploy rollout wiring", () => {
         platform: "ios",
         targetAppVersion: "1.0.x",
       }),
-    ).rejects.toThrow("process.exit unexpectedly called");
+    ).rejects.toThrow("Failed to upload bundle to storage");
 
     expect(mockCli.p.log.error).toHaveBeenCalledWith("asset upload failed");
     expect(fs.promises.writeFile).not.toHaveBeenCalledWith(
@@ -962,6 +1368,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: databasePlugin,
+      disposeStorage: mockDisposeStorage,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1014,6 +1421,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: databasePlugin,
+      disposeStorage: mockDisposeStorage,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1071,6 +1479,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: databasePlugin,
+      disposeStorage: mockDisposeStorage,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1115,6 +1524,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: databasePlugin,
+      disposeStorage: mockDisposeStorage,
       fingerprint: {},
       patch: {
         enabled: true,
@@ -1163,6 +1573,7 @@ describe("deploy rollout wiring", () => {
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
       database: databasePlugin,
+      disposeStorage: mockDisposeStorage,
       fingerprint: {},
       patch: {
         enabled: true,

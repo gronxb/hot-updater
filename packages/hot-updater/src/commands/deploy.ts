@@ -7,6 +7,7 @@ import {
   createTarBrTargetFiles,
   createTarGzTargetFiles,
   createZipTargetFiles,
+  type ConfigResponse,
   getCwd,
   HotUpdateDirUtil,
   loadConfig,
@@ -18,12 +19,14 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
   Platform,
+  StorageOperationContext,
 } from "@hot-updater/plugin-core";
 import {
   assertNodeStoragePlugin,
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
 import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
+import { createNodeStorageContext } from "@hot-updater/plugin-core/storage/node";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
 import open from "open";
@@ -59,6 +62,14 @@ const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
 
 class DeployAbortedError extends Error {
   override readonly name = "DeployAbortedError";
+}
+
+class DeployExitError extends Error {
+  override readonly name = "DeployExitError";
+
+  constructor(readonly exitCode: number) {
+    super(`Deploy requested exit code ${exitCode}`);
+  }
 }
 
 type DeployPlatformResult = {
@@ -506,20 +517,17 @@ const getBundleOutputRoot = ({
 
 const getMultiPlatformDeploymentContext = async ({
   channel,
+  config,
   options,
   platforms,
   rolloutPercentage,
 }: {
   channel: string;
+  config: ConfigResponse;
   options: DeployOptions;
   platforms: Platform[];
   rolloutPercentage: number;
 }) => {
-  const config = await loadConfig({ platform: platforms[0]!, channel });
-  if (!config) {
-    return null;
-  }
-
   const lines = [
     `Platform: Both (${platforms.map(getPlatformName).join(", ")})`,
     `Channel: ${channel}`,
@@ -536,6 +544,7 @@ const getMultiPlatformDeploymentContext = async ({
 };
 
 const deployPlatform = async ({
+  config,
   databasePlugin,
   deferAutoPatches,
   deferredDatabase,
@@ -544,7 +553,9 @@ const deployPlatform = async ({
   platform,
   platformIndex,
   platformCount,
+  storageContext,
 }: {
+  config: ConfigResponse;
   databasePlugin: DatabasePlugin;
   deferAutoPatches: boolean;
   deferredDatabase: DatabaseMutationClient;
@@ -553,6 +564,7 @@ const deployPlatform = async ({
   platform: Platform;
   platformIndex: number;
   platformCount: number;
+  storageContext: StorageOperationContext;
 }): Promise<DeployPlatformResult | null> => {
   const cwd = getCwd();
   const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
@@ -567,11 +579,6 @@ const deployPlatform = async ({
   ];
 
   const channel = options.channel;
-  const config = await loadConfig({ platform, channel });
-  if (!config) {
-    console.error("No config found. Please run `hot-updater init` first.");
-    process.exit(1);
-  }
   const maxPatchBaseBundles = config.patch.enabled
     ? normalizePatchMaxBaseBundles(config.patch.maxBaseBundles)
     : 0;
@@ -596,7 +603,7 @@ const deployPlatform = async ({
       p.log.error(
         "Deployment blocked. Fix the signing configuration and try again.",
       );
-      process.exit(1);
+      throw new DeployExitError(1);
     }
 
     if (warnings.length > 0) {
@@ -625,7 +632,7 @@ const deployPlatform = async ({
       s.error(
         "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
       );
-      process.exit(1);
+      throw new DeployExitError(1);
     }
     const newFingerprint = await nativeFingerprint(cwd, {
       platform,
@@ -650,7 +657,7 @@ const deployPlatform = async ({
         }
       }
 
-      process.exit(1);
+      throw new DeployExitError(1);
     }
 
     target.fingerprintHash = newFingerprint.hash;
@@ -697,7 +704,7 @@ const deployPlatform = async ({
         "Target app version not found. -t <targetAppVersion> semver format (e.g. 1.0.0, 1.x.x)",
       );
     }
-    process.exit(1);
+    throw new DeployExitError(1);
   }
 
   if (
@@ -749,11 +756,11 @@ const deployPlatform = async ({
     p.note(deploymentContext, deploymentTitle);
   }
 
+  const buildPluginPromise = Promise.resolve(config.build({ cwd }));
+  const storagePluginPromise = Promise.resolve(config.storage(storageContext));
   const [buildPlugin, storagePlugin] = await Promise.all([
-    config.build({
-      cwd,
-    }),
-    config.storage(),
+    buildPluginPromise,
+    storagePluginPromise,
   ]);
   assertNodeStoragePlugin(storagePlugin);
 
@@ -1173,7 +1180,7 @@ const deployPlatform = async ({
   } catch (e) {
     await fs.promises.rm(bundlePath, { force: true });
     console.error(e);
-    process.exit(1);
+    throw e;
   }
 };
 
@@ -1189,58 +1196,92 @@ export const deploy = async (options: DeployOptions) => {
     return;
   }
 
-  const databaseConfig = await loadConfig({
-    channel: options.channel,
-    platform: firstPlatform,
-  });
-  if (!databaseConfig) {
-    console.error("No config found. Please run `hot-updater init` first.");
-    process.exit(1);
-  }
-  const databasePlugin = databaseConfig.database;
-  const database = createDatabaseClient(databasePlugin);
-
-  const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
-
-  if (platforms.length > 1) {
-    const deploymentContext = await getMultiPlatformDeploymentContext({
-      channel: options.channel,
-      options,
-      platforms,
-      rolloutPercentage,
-    });
-
-    if (deploymentContext) {
-      p.note(deploymentContext, "Deployment");
+  const environment: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      environment[key] = value;
     }
   }
-
-  const deployPlatforms = async (
-    persistBundle: DatabaseMutationClient["insertBundle"],
-  ): Promise<DeployPlatformResult[]> => {
-    const preparedResults: DeployPlatformResult[] = [];
-    for (const [platformIndex, platform] of platforms.entries()) {
-      const result = await deployPlatform({
-        databasePlugin,
-        deferAutoPatches: platforms.length > 1,
-        deferredDatabase: database,
-        options,
-        persistBundle,
-        platform,
-        platformCount: platforms.length,
-        platformIndex,
-      });
-
-      if (!result) {
-        throw new DeployAbortedError();
-      }
-
-      preparedResults.push(result);
-    }
-    return preparedResults;
+  const storageContext = createNodeStorageContext({ environment });
+  const configOwners: ConfigResponse[] = [];
+  let databasePlugin: DatabasePlugin | undefined;
+  let outcome:
+    | { readonly kind: "success" }
+    | { readonly kind: "aborted" }
+    | { readonly kind: "exit"; readonly code: number }
+    | { readonly kind: "error"; readonly error: unknown } = {
+    kind: "success",
   };
 
   try {
+    const platformConfigs: ConfigResponse[] = [];
+    for (const platform of platforms) {
+      const config = await loadConfig({
+        channel: options.channel,
+        platform,
+      });
+      if (!config) {
+        console.error("No config found. Please run `hot-updater init` first.");
+        throw new DeployExitError(1);
+      }
+      configOwners.push(config);
+      platformConfigs.push(config);
+      if (databasePlugin === undefined) {
+        databasePlugin = config.database;
+      }
+    }
+
+    const firstConfig = platformConfigs[0];
+    if (!firstConfig) {
+      return;
+    }
+    const activeDatabasePlugin = firstConfig.database;
+    databasePlugin = activeDatabasePlugin;
+    const database = createDatabaseClient(activeDatabasePlugin);
+    const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
+
+    if (platforms.length > 1) {
+      const deploymentContext = await getMultiPlatformDeploymentContext({
+        channel: options.channel,
+        config: firstConfig,
+        options,
+        platforms,
+        rolloutPercentage,
+      });
+      p.note(deploymentContext, "Deployment");
+    }
+
+    const deployPlatforms = async (
+      persistBundle: DatabaseMutationClient["insertBundle"],
+    ): Promise<DeployPlatformResult[]> => {
+      const preparedResults: DeployPlatformResult[] = [];
+      for (const [platformIndex, platform] of platforms.entries()) {
+        const config = platformConfigs[platformIndex];
+        if (!config) {
+          throw new TypeError(`Missing deploy config for ${platform}`);
+        }
+        const result = await deployPlatform({
+          config,
+          databasePlugin: activeDatabasePlugin,
+          deferAutoPatches: platforms.length > 1,
+          deferredDatabase: database,
+          options,
+          persistBundle,
+          platform,
+          platformCount: platforms.length,
+          platformIndex,
+          storageContext,
+        });
+
+        if (!result) {
+          throw new DeployAbortedError();
+        }
+
+        preparedResults.push(result);
+      }
+      return preparedResults;
+    };
+
     const results =
       platforms.length > 1
         ? await prepareAndCommitBundles({ database, prepare: deployPlatforms })
@@ -1261,10 +1302,61 @@ export const deploy = async (options: DeployOptions) => {
       );
     }
   } catch (error) {
-    if (!(error instanceof DeployAbortedError)) {
-      throw error;
+    if (error instanceof DeployAbortedError) {
+      outcome = { kind: "aborted" };
+    } else if (error instanceof DeployExitError) {
+      outcome = { code: error.exitCode, kind: "exit" };
+    } else {
+      outcome = { error, kind: "error" };
     }
   } finally {
-    await databasePlugin.onUnmount?.();
+    let firstCleanupError: unknown;
+    let hasCleanupError = false;
+    const recordCleanupError = (error: unknown, owner: string) => {
+      if (outcome.kind === "success" && !hasCleanupError) {
+        firstCleanupError = error;
+        hasCleanupError = true;
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      p.log.warn(`${owner} cleanup failed: ${message}`);
+    };
+
+    for (const config of [...configOwners].reverse()) {
+      try {
+        await config.disposeStorage();
+      } catch (error) {
+        if (error instanceof Error) {
+          recordCleanupError(error, "Storage");
+        } else {
+          recordCleanupError(error, "Storage");
+        }
+      }
+    }
+    try {
+      await databasePlugin?.onUnmount?.();
+    } catch (error) {
+      if (error instanceof Error) {
+        recordCleanupError(error, "Database");
+      } else {
+        recordCleanupError(error, "Database");
+      }
+    }
+
+    if (outcome.kind === "success" && hasCleanupError) {
+      outcome = { error: firstCleanupError, kind: "error" };
+    }
+  }
+
+  switch (outcome.kind) {
+    case "success":
+    case "aborted":
+      return;
+    case "exit":
+      process.exitCode = outcome.code;
+      return;
+    case "error":
+      process.exitCode = 1;
+      throw outcome.error;
   }
 };
