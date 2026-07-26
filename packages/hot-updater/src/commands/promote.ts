@@ -8,6 +8,7 @@ import {
   assertNodeStoragePlugin,
   createDatabaseClient,
 } from "@hot-updater/plugin-core";
+import { createNodeStorageContext } from "@hot-updater/plugin-core/storage/node";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -21,16 +22,18 @@ export interface PromoteOptions {
   yes?: boolean;
 }
 
-const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
-  try {
-    await databasePlugin.onUnmount?.();
-  } catch (err) {
-    p.log.warn(
-      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
-        (err as Error)?.message ?? String(err)
-      }`,
-    );
+class PromoteExitError extends Error {
+  override readonly name = "PromoteExitError";
+
+  constructor(readonly exitCode: number) {
+    super(`Promote exited with code ${exitCode}`);
   }
+}
+
+const warnCleanupFailure = (owner: string, message: string): void => {
+  p.log.warn(
+    `${owner} cleanup failed (cleanup-only, earlier outcome preserved): ${message}`,
+  );
 };
 
 const summarizePlan = (params: {
@@ -66,26 +69,40 @@ export const handlePromote = async (
     process.exit(1);
   }
 
-  const config = await loadConfig(null);
-  const databasePlugin = config.database;
-  const databaseClient = createDatabaseClient(databasePlugin);
-  let storagePlugin: NodeStoragePlugin | null = null;
+  let config: Awaited<ReturnType<typeof loadConfig>> | null = null;
+  let databasePlugin: DatabasePlugin | null = null;
+  let operationError: unknown;
+  let operationFailed = false;
+  let cleanupError: unknown;
+  let cleanupFailed = false;
+  let exitCode: number | undefined;
   try {
-    storagePlugin = await config.storage();
-    assertNodeStoragePlugin(storagePlugin);
-  } catch {
-    storagePlugin = null;
-  }
+    config = await loadConfig(null);
+    databasePlugin = config.database;
+    const databaseClient = createDatabaseClient(databasePlugin);
+    const environment: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) {
+        environment[key] = value;
+      }
+    }
+    const context = createNodeStorageContext({ environment });
+    let storagePlugin: NodeStoragePlugin | null = null;
+    try {
+      storagePlugin = await config.storage(context);
+      assertNodeStoragePlugin(storagePlugin);
+    } catch {
+      storagePlugin = null;
+    }
 
-  try {
     const bundle = await databaseClient.getBundleById(bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
-      process.exit(1);
+      throw new PromoteExitError(1);
     }
     if (bundle.channel === target) {
       p.log.error(`Bundle ${bundleId} is already on channel "${target}".`);
-      process.exit(1);
+      throw new PromoteExitError(1);
     }
 
     p.log.message(summarizePlan({ target, action, bundle }));
@@ -95,7 +112,7 @@ export const handlePromote = async (
         p.log.error(
           "Cannot prompt for confirmation in a non-interactive shell. Re-run with -y, or use a TTY.",
         );
-        process.exit(1);
+        throw new PromoteExitError(1);
       }
       const confirmed = await p.confirm({
         message: `${action === "copy" ? "Copy" : "Move"} ${bundle.id} from ${bundle.channel} to ${target}?`,
@@ -103,7 +120,7 @@ export const handlePromote = async (
       });
       if (p.isCancel(confirmed) || !confirmed) {
         p.log.info("Aborted.");
-        process.exit(2);
+        throw new PromoteExitError(2);
       }
     }
 
@@ -127,7 +144,46 @@ export const handlePromote = async (
       p.log.success(`Moved bundle to ${target}.`);
       p.log.info(`  ${ui.id(promoted.id)}`);
     }
-  } finally {
-    await safeOnUnmount(databasePlugin);
+  } catch (error) {
+    if (error instanceof PromoteExitError) {
+      exitCode = error.exitCode;
+    } else {
+      operationError = error;
+      operationFailed = true;
+    }
+  }
+
+  try {
+    await config?.disposeStorage();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (operationFailed || exitCode !== undefined) {
+      warnCleanupFailure("Storage", message);
+    } else {
+      cleanupError = error;
+      cleanupFailed = true;
+    }
+  }
+
+  try {
+    await databasePlugin?.onUnmount?.();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (operationFailed || exitCode !== undefined || cleanupFailed) {
+      warnCleanupFailure("Database", message);
+    } else {
+      cleanupError = error;
+      cleanupFailed = true;
+    }
+  }
+
+  if (operationFailed) {
+    throw operationError;
+  }
+  if (cleanupFailed) {
+    throw cleanupError;
+  }
+  if (exitCode !== undefined) {
+    process.exitCode = exitCode;
   }
 };
