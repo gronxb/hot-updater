@@ -48,6 +48,16 @@
         "default": "./dist/storage.cjs"
       }
     },
+    "./storage/node": {
+      "import": {
+        "types": "./dist/storage/node.d.mts",
+        "default": "./dist/storage/node.mjs"
+      },
+      "require": {
+        "types": "./dist/storage/node.d.cts",
+        "default": "./dist/storage/node.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
