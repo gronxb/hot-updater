@@ -16,7 +16,7 @@ export const createWrangler = ({
   const $ = execa({
     stdio,
     extendsEnv: true,
-    shell: stdio === "inherit",
+    shell: false,
     cwd,
     env: {
       ...(nonInteractive ? { CI: "true" } : {}),

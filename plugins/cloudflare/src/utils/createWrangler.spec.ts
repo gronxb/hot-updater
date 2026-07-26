@@ -37,7 +37,7 @@ describe("createWrangler", () => {
         CLOUDFLARE_API_TOKEN: "api-token",
       },
       extendsEnv: true,
-      shell: true,
+      shell: false,
       stdio: "inherit",
     });
     expect(mocks.command).toHaveBeenCalledWith("npx", [
@@ -47,6 +47,29 @@ describe("createWrangler", () => {
       "apply",
       "hot-updater",
       "--remote",
+    ]);
+  });
+
+  it("passes shell metacharacters as one argument", async () => {
+    const wrangler = createWrangler({
+      accountId: "account-id",
+      cloudflareApiToken: "api-token",
+      cwd: "/tmp/cloudflare-init",
+      stdio: "inherit",
+    });
+
+    await wrangler("deploy", "--name", "safe; printf INJECTED");
+
+    expect(mocks.execa).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shell: false,
+      }),
+    );
+    expect(mocks.command).toHaveBeenCalledWith("npx", [
+      "wrangler",
+      "deploy",
+      "--name",
+      "safe; printf INJECTED",
     ]);
   });
 });
