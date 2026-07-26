@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { appendFile, chmod, readFile } from "node:fs/promises";
+import { appendFile, chmod, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { isCanonicalBase64Url32 } from "../base64url";
@@ -32,12 +32,6 @@ const isMissingFileError = (error: unknown): boolean =>
   error !== null &&
   Reflect.get(error, "code") === "ENOENT";
 
-const isUnsupportedPermissionsError = (error: unknown): boolean => {
-  if (typeof error !== "object" || error === null) return false;
-  const code = Reflect.get(error, "code");
-  return code === "ENOSYS" || code === "ENOTSUP" || code === "EOPNOTSUPP";
-};
-
 type EnvFileState = {
   readonly content: string;
   readonly exists: boolean;
@@ -58,10 +52,20 @@ const readEnvFile = async (filePath: string): Promise<EnvFileState> => {
 };
 
 const secureEnvFile = async (filePath: string): Promise<void> => {
+  await chmod(filePath, 0o600);
+};
+
+const createSecureEnvFile = async (filePath: string): Promise<void> => {
+  await appendFile(filePath, "", {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o600,
+  });
   try {
-    await chmod(filePath, 0o600);
+    await secureEnvFile(filePath);
   } catch (error) {
-    if (!isUnsupportedPermissionsError(error)) throw error;
+    await rm(filePath, { force: true });
+    throw error;
   }
 };
 
@@ -112,6 +116,8 @@ export const provisionManagedBetterAuthApiKey = async (
   const { content, exists } = await readEnvFile(envFilePath);
   if (exists) {
     await secureEnvFile(envFilePath);
+  } else {
+    await createSecureEnvFile(envFilePath);
   }
   const existing = readExistingApiKey(content);
   if (existing !== undefined) return resultFor(existing);
@@ -121,10 +127,7 @@ export const provisionManagedBetterAuthApiKey = async (
   await appendFile(
     envFilePath,
     `${separator}${HOT_UPDATER_API_KEY_ENV_NAME}=${apiKey}\n`,
-    { encoding: "utf8", mode: 0o600 },
+    { encoding: "utf8" },
   );
-  if (!exists) {
-    await secureEnvFile(envFilePath);
-  }
   return resultFor(apiKey);
 };

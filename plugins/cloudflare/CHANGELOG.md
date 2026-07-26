@@ -11,10 +11,11 @@
   tie-break.
 - Add the forward-only `0.38` D1 migration for `bundle_events`. Back up D1
   before upgrading; do not manually replay the migration after it succeeds.
-- Enable the public Analytics route group on the managed Worker by default,
-  including `POST /events` and Analytics queries. Deployments remain
-  responsible for provider-level access controls, rate limits, quotas, logging,
-  and retention.
+- Enable the API-key-protected Analytics route group on the managed Worker by
+  default. Every managed Hot Updater route, including `POST /events` and
+  Analytics queries, requires the provisioned `x-api-key`. Deployments remain
+  responsible for additional provider-level access controls, rate limits,
+  quotas, logging, and retention.
 - Publish `@hot-updater/cloudflare/worker` as a Worker ESM-only subpath. It no
   longer advertises CommonJS or fallback export conditions, including
   CommonJS declaration files.

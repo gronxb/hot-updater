@@ -10,10 +10,11 @@
 - Migrate legacy inline and scalar patch fields into `bundle_patches`, remove
   the legacy fields, and record database adapter version 2. This migration is
   forward-only; back up Firestore before upgrading.
-- Enable the public Analytics route group on the managed Firebase function by
-  default, including `POST /events` and Analytics queries. Deployments remain
-  responsible for provider-level access controls, rate limits, quotas, logging,
-  and retention.
+- Enable the API-key-protected Analytics route group on the managed Firebase
+  function by default. Every managed Hot Updater route, including
+  `POST /events` and Analytics queries, requires the provisioned `x-api-key`.
+  Deployments remain responsible for additional provider-level access
+  controls, rate limits, quotas, logging, and retention.
 - Publish runtime factories from `@hot-updater/firebase/functions` and move the
   managed handler to `@hot-updater/firebase/functions/handler`.
 

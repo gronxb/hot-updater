@@ -118,4 +118,45 @@ describe("provisionManagedBetterAuthApiKey", () => {
     await expect(pending).rejects.toThrow("permission denied");
     expect(await readFile(envFilePath, "utf8")).toBe(original);
   });
+
+  it.each(["ENOSYS", "ENOTSUP", "EOPNOTSUPP"])(
+    "rejects unsupported permission hardening for an existing env file (%s)",
+    async (code) => {
+      // Given
+      const directory = await createTemporaryDirectory();
+      const envFilePath = join(directory, ".env.hotupdater");
+      const original = "EXISTING=value\n";
+      await writeFile(envFilePath, original, "utf8");
+      fileSystemMock.chmodError = Object.assign(
+        new Error("permission hardening unsupported"),
+        { code },
+      );
+
+      // When
+      const pending = provisionManagedBetterAuthApiKey({ envFilePath });
+
+      // Then
+      await expect(pending).rejects.toMatchObject({ code });
+      expect(await readFile(envFilePath, "utf8")).toBe(original);
+    },
+  );
+
+  it("does not leave a generated key when a new env file cannot be secured", async () => {
+    // Given
+    const directory = await createTemporaryDirectory();
+    const envFilePath = join(directory, ".env.hotupdater");
+    fileSystemMock.chmodError = Object.assign(
+      new Error("permission hardening unsupported"),
+      { code: "ENOTSUP" },
+    );
+
+    // When
+    const pending = provisionManagedBetterAuthApiKey({ envFilePath });
+
+    // Then
+    await expect(pending).rejects.toMatchObject({ code: "ENOTSUP" });
+    await expect(readFile(envFilePath, "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
 });
