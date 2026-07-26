@@ -31,6 +31,46 @@
       "import": "./dist/lambda.mjs",
       "require": "./dist/lambda.cjs"
     },
+    "./storage": {
+      "node": {
+        "import": {
+          "types": "./dist/storage/node.d.mts",
+          "default": "./dist/storage/node.mjs"
+        },
+        "require": {
+          "types": "./dist/storage/node.d.cts",
+          "default": "./dist/storage/node.cjs"
+        }
+      },
+      "import": {
+        "types": "./dist/storage/index.d.mts",
+        "default": "./dist/storage/index.mjs"
+      },
+      "require": {
+        "types": "./dist/storage/index.d.cts",
+        "default": "./dist/storage/index.cjs"
+      }
+    },
+    "./storage/node": {
+      "import": {
+        "types": "./dist/storage/node.d.mts",
+        "default": "./dist/storage/node.mjs"
+      },
+      "require": {
+        "types": "./dist/storage/node.d.cts",
+        "default": "./dist/storage/node.cjs"
+      }
+    },
+    "./storage/lambda": {
+      "import": {
+        "types": "./dist/storage/lambda.d.mts",
+        "default": "./dist/storage/lambda.mjs"
+      },
+      "require": {
+        "types": "./dist/storage/lambda.d.cts",
+        "default": "./dist/storage/lambda.cjs"
+      }
+    },
     "./lambda/handler": {
       "require": "./dist/lambda/index.cjs"
     },
@@ -46,7 +86,6 @@
   },
   "devDependencies": {
     "@hot-updater/analytics": "workspace:*",
-    "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
@@ -70,6 +109,7 @@
     "@aws-sdk/client-sts": "3.1066.0",
     "@aws-sdk/credential-providers": "3.1066.0",
     "@aws-sdk/lib-storage": "3.1066.0",
+    "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "hono": "catalog:hono",

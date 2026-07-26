@@ -9,6 +9,17 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
+    entry: [
+      "src/storage/index.ts",
+      "src/storage/node.ts",
+      "src/storage/lambda.ts",
+    ],
+    format: ["esm", "cjs"],
+    outDir: "dist/storage",
+    dts: true,
+    failOnWarn: true,
+  },
+  {
     entry: ["lambda/index.ts"],
     format: ["cjs"],
     outDir: "dist/lambda",
