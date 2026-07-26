@@ -10,7 +10,6 @@ import {
   it,
 } from "vitest";
 
-import { standaloneAnalytics } from "./standaloneAnalytics";
 import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
 import { StandaloneDatabaseError } from "./standaloneRepository";
 
@@ -184,16 +183,6 @@ describe("standalone active installation Analytics", () => {
     await expect(
       activeService().getActiveInstallationOverview(input as never),
     ).rejects.toEqual(new TypeError(message as string));
-    expect(requestCount).toBe(0);
-  });
-
-  it("does not require a public Analytics support option", () => {
-    const manifest = standaloneAnalytics({
-      baseUrl: BASE_URL,
-    });
-
-    expect(manifest.id).toBe("analytics");
-    expect(manifest.requires).toEqual([]);
     expect(requestCount).toBe(0);
   });
 });

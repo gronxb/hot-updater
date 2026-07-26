@@ -15,11 +15,9 @@ import {
   type AnalyticsAPI,
   type AnalyticsFeatureAvailable,
   type AnalyticsFeatureKind,
+  type AnalyticsOptions,
 } from "./analytics";
-import {
-  InvalidAnalyticsProviderError,
-  type AnalyticsProvider,
-} from "./provider";
+import { type AnalyticsProvider } from "./provider";
 import { createTestProvider } from "./testing/createTestProvider";
 
 class UnimplementedDatabaseOperationError extends Error {
@@ -41,11 +39,12 @@ const database: DatabaseCapabilityRuntime = Object.freeze({
 });
 
 const createSetupContext = (
+  provider?: AnalyticsProvider,
   warnings: string[] = [],
 ): HotUpdaterPluginSetupContext => ({
   capabilities: {
-    get<TValue>(_token: CapabilityToken<TValue>): TValue | undefined {
-      return undefined;
+    get<TValue>(token: CapabilityToken<TValue>): TValue | undefined {
+      return provider === undefined ? undefined : token.parse(provider);
     },
     require<TValue>(_token: CapabilityToken<TValue>): TValue {
       throw new Error("No test capability is registered.");
@@ -71,7 +70,14 @@ describe("analytics", () => {
     // Then
     expect(manifest.id).toBe("analytics");
     expect(manifest.namespace).toBe("analytics");
-    expect(manifest.requires).toEqual([]);
+    expect(manifest.requires).toEqual([
+      {
+        missing: "continue",
+        token: expect.objectContaining({
+          id: "hot-updater.analytics.provider@1",
+        }),
+      },
+    ]);
     expect(Object.isFrozen(manifest)).toBe(true);
     expectTypeOf(manifest.namespace).toEqualTypeOf<"analytics">();
     expectTypeOf(manifest).toMatchTypeOf<
@@ -84,6 +90,7 @@ describe("analytics", () => {
     expectTypeOf<
       AnalyticsFeatureAvailable<{ readonly requestId: string }>
     >().toMatchTypeOf<AnalyticsAPI<{ readonly requestId: string }>>();
+    expectTypeOf<keyof AnalyticsOptions>().toEqualTypeOf<"queryAccess">();
   });
 
   it("builds the default bounded provider from the generic database", async () => {
@@ -111,13 +118,10 @@ describe("analytics", () => {
   it("contributes seven public compatibility routes and flat aliases", () => {
     // Given
     const provider = createTestProvider();
-    const manifest = analytics({
-      provider: () => provider,
-      queryAccess: "public",
-    });
+    const manifest = analytics({ queryAccess: "public" });
 
     // When
-    const contribution = manifest.setup(createSetupContext());
+    const contribution = manifest.setup(createSetupContext(provider));
 
     // Then
     expect(contribution.routes).toHaveLength(7);
@@ -135,49 +139,27 @@ describe("analytics", () => {
     ]);
   });
 
-  it("captures query access and provider factory before caller mutation", async () => {
+  it("captures query access before caller mutation", async () => {
     // Given
-    const originalProvider = createTestProvider();
-    const replacementProvider = createTestProvider();
+    const provider = createTestProvider();
     const options: {
-      provider: () => AnalyticsProvider;
       queryAccess: "protected" | "public";
     } = {
-      provider: () => originalProvider,
       queryAccess: "public",
     };
     const manifest = analytics(options);
 
     // When
-    options.provider = () => replacementProvider;
     options.queryAccess = "protected";
-    const contribution = manifest.setup(createSetupContext());
+    const contribution = manifest.setup(createSetupContext(provider));
 
     // Then
     expect(
       contribution.routes?.every((route) => route.access.kind === "public"),
     ).toBe(true);
     await contribution.api?.value.getBundleEventOverview();
-    expect(originalProvider.getBundleEventOverview).toHaveBeenCalledOnce();
-    expect(replacementProvider.getBundleEventOverview).not.toHaveBeenCalled();
+    expect(provider.getBundleEventOverview).toHaveBeenCalledOnce();
     expect(Object.isFrozen(options)).toBe(false);
-  });
-
-  it("rejects an async provider factory without leaking its rejection", async () => {
-    const manifest = Reflect.apply(analytics, undefined, [
-      {
-        provider: async () => {
-          throw new Error("async providers are unsupported");
-        },
-      },
-    ]);
-
-    expect(() => manifest.setup(createSetupContext())).toThrowError(
-      InvalidAnalyticsProviderError,
-    );
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
   });
 
   it.each([
@@ -185,6 +167,7 @@ describe("analytics", () => {
     [],
     "public",
     { missingCapability: "error" },
+    { provider: () => createTestProvider() },
     { provider: null },
     { provider: {} },
     { queryAccess: "private" },
@@ -212,15 +195,11 @@ describe("analytics", () => {
     const signal = new AbortController().signal;
 
     // When
-    const dedicatedMetadata = await analytics({
-      provider: () => dedicated,
-    })
-      .setup(createSetupContext())
+    const dedicatedMetadata = await analytics()
+      .setup(createSetupContext(dedicated))
       .metadata?.[0]?.resolve(signal);
-    const unavailableMetadata = await analytics({
-      provider: () => unavailableProvider,
-    })
-      .setup(createSetupContext())
+    const unavailableMetadata = await analytics()
+      .setup(createSetupContext(unavailableProvider))
       .metadata?.[0]?.resolve(signal);
 
     // Then

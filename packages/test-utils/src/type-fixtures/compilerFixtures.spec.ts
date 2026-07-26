@@ -103,6 +103,8 @@ type CompileFailCase = readonly [
 ];
 
 const compileFailCases = [
+  ["analytics-provider-option.mts", "TS2353", ["provider"]],
+  ["analytics-provider-subpath.mts", "TS2307", []],
   ["auth-input-boundary.mts", "TS2339", ["body", "json"]],
   ["better-auth-api-key-contract.mts", "TS2353", ["apiKey"]],
   [
@@ -128,6 +130,7 @@ const compileFailCases = [
   ["root-analytics-legacy-alias.mts", "TS2459", ["analyticsLegacyAliases"]],
   ["routes-analytics.mts", "TS2353", []],
   ["routes-event-ingestion.mts", "TS2353", []],
+  ["standalone-analytics-export.mts", "TS2305", ["standaloneAnalytics"]],
   ["structural-config-feature-manifest.mts", "TS2322", []],
   ["structural-manifest-forgery.mts", "TS2739", []],
 ] satisfies readonly CompileFailCase[];

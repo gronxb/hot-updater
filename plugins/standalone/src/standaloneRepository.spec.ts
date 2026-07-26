@@ -160,7 +160,13 @@ describe("standaloneRepository", () => {
     const provider = createStandaloneAnalyticsProvider({ baseUrl: BASE_URL });
 
     // When / Then
-    expect(getCapabilityContributions(repository)).toEqual([]);
+    expect(getCapabilityContributions(repository)).toEqual([
+      expect.objectContaining({
+        token: expect.objectContaining({
+          id: "hot-updater.analytics.provider@1",
+        }),
+      }),
+    ]);
     await expect(
       provider.resolveAvailability?.(new AbortController().signal),
     ).resolves.toEqual({

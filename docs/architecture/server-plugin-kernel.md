@@ -26,12 +26,13 @@ roles:
 An implementation review with kernel ownership, compatibility, provider,
 consumer, security, and architecture-opponent personas superseded the original
 missing-provider proposal. Following the Better Auth API Key precedent, a
-feature consumes the generic adapter but the adapter does not install the
-feature. Analytics therefore receives the frozen guarded database runtime
-directly, always constructs an available feature, and accepts an explicit
-provider factory for dedicated transports. Standalone uses a separate
-`standaloneAnalytics(config)` Console runtime plugin. No unresolved blocker
-remains in this design.
+feature consumes the host adapter but the adapter does not install the feature.
+Analytics therefore receives the frozen guarded database runtime directly and
+always constructs an available feature. A first-party repository may advertise
+an internal Analytics transport capability, but `analytics()` remains the only
+feature-level opt-in. `standaloneRepository(config)` contributes that private
+transport automatically; there is no Standalone-specific Analytics plugin or
+public provider wiring. No unresolved blocker remains in this design.
 
 ### Implementation consensus addendum
 
@@ -83,7 +84,7 @@ clarifications are normative where they narrow or repair the original prose:
   `DUPLICATE_CAPABILITY_TOKEN_ID` and `DUPLICATE_CAPABILITY_PROVIDER`.
   Compilation uses stable lexical identities.
 - **R12 — Analytics/transport ownership:** Analytics owns operation, parsing,
-  provider selection, metadata, API, and bridge semantics. The standalone
+  implementation resolution, metadata, API, and bridge semantics. The standalone
   companion owns its dedicated guarded transport and probe/cache behavior.
   Database plugins own neither.
 - **R13 — legacy bridge:** `@hot-updater/analytics/legacy-server` exports
@@ -147,9 +148,9 @@ source-compatibility bridge, when needed, lives under
 package.
 
 Installing `analytics()` is the only feature-level operation that enables
-Analytics. The feature owns its provider selection: it uses the guarded generic
-database runtime by default and may receive an explicit provider factory for a
-dedicated transport. Database plugins never install or advertise Analytics.
+Analytics. The feature uses the guarded generic database runtime by default and
+may consume an Analytics-owned private transport capability from a first-party
+repository. Database plugins never install Analytics.
 
 Authentication is a mechanism-neutral kernel concept. A configured
 authentication plugin gates protected routes before their bodies or handlers
@@ -204,9 +205,9 @@ semantically irrelevant, and every ownership conflict is a construction error.
 4. `analytics()` consumes the kernel's frozen, schema-guarded generic database
    runtime and creates its bounded provider without modifying the database
    plugin.
-5. Dedicated implementations are supplied to `analytics()` through its
-   provider-factory option; `standaloneAnalytics()` is the supported standalone
-   companion.
+5. `standaloneRepository(config)` contributes an internal Analytics transport
+   capability using the same remote configuration. `analytics()` prefers it
+   when present; no public provider option or companion plugin is required.
 6. Installing `analytics()` always yields an available feature at construction
    time. Runtime availability metadata may still report independent remote
    ingestion and query support.
@@ -426,7 +427,7 @@ Stage 1; shared boundaries use neutral model-indexed persistence names.
 Owns:
 
 - `analytics()`;
-- the Analytics provider factory contract and runtime validator;
+- the private Analytics transport capability and runtime validator;
 - the default bounded provider over the guarded generic database runtime;
 - event and installation domain types;
 - ingestion and query route manifests;
@@ -440,8 +441,8 @@ Owns:
   `@hot-updater/analytics/react-native`, including `recordAppReady`, `setUser`,
   and `getInstallId`.
 
-Provider authoring APIs are exported from
-`@hot-updater/analytics/provider`.
+The first-party transport capability is available only through the explicitly
+unsupported `@hot-updater/analytics/internal/provider-capability` seam.
 
 The React Native Analytics client is feature-owned and is not exported from
 `@hot-updater/react-native`. The React Native root owns the generic
@@ -491,7 +492,7 @@ Cloudflare, Firebase, Supabase, AWS, and custom providers retain ownership of:
 - database and storage credentials;
 - provider contexts;
 - infrastructure provisioning;
-- optional Analytics provider implementations;
+- first-party private Analytics transport contributions where required;
 - managed digest injection and cache policy.
 
 Moving Analytics code does not move or replay provider database migrations.
@@ -655,17 +656,12 @@ construction. The resulting guarded storage facade forwards the exact optional
 `TContext` supplied to `getDownloadUrl` and `readText` while hiding provider
 profiles, configuration, and credentials.
 
-The Analytics factory accepts feature-owned provider selection:
+The Analytics factory accepts only feature-owned access policy:
 
 ```typescript
 export interface AnalyticsOptions {
-  readonly provider?: AnalyticsProviderFactory;
   readonly queryAccess?: "protected" | "public";
 }
-
-export type AnalyticsProviderFactory = (
-  database: DatabaseCapabilityRuntime,
-) => AnalyticsProvider;
 
 export type AnalyticsFeatureAvailable = Readonly<
   AnalyticsAPI & {
@@ -674,10 +670,10 @@ export type AnalyticsFeatureAvailable = Readonly<
 >;
 ```
 
-`analytics()` defaults to protected query access and a bounded provider over
-the guarded generic database runtime. A dedicated provider factory overrides
-only provider creation; the Analytics feature still owns routes, validation,
-metadata, and its API.
+`analytics()` defaults to protected query access and a bounded implementation
+over the guarded generic database runtime. When the database carrier provides
+the private first-party transport capability, Analytics uses it instead while
+continuing to own routes, validation, metadata, and its API.
 
 ## Kernel contracts
 
@@ -737,11 +733,11 @@ migrator, schema generator, adapter/provider fields, configuration, or
 credentials. The wrapper itself does not claim that schema is ready and does
 not run migrations, network calls, or queries.
 
-Analytics provider authoring types and runtime validators live in
-`@hot-updater/analytics/provider`. The feature receives a provider factory
-directly rather than resolving an Analytics-specific capability token.
-Provider packages may implement the authoring contract, while
-`@hot-updater/server` and `@hot-updater/plugin-core` remain Analytics-agnostic.
+Analytics owns a private, versioned transport capability and its runtime
+validator under `@hot-updater/analytics/internal/provider-capability`.
+`standaloneRepository` attaches the capability without installing the feature.
+The public server and plugin-core contracts remain Analytics-agnostic, and v1
+does not promise third-party dedicated Analytics transport authoring.
 
 ### Plugin manifest
 
@@ -1088,8 +1084,8 @@ but never interpolate provider values or dynamic details.
 2. returns the concrete literal manifest with fixed ID, namespace, and package
    version without widening away its API type;
 3. receives the kernel's frozen, schema-guarded generic database runtime;
-4. creates the bounded provider from that runtime unless an explicit provider
-   factory is configured;
+4. consumes the private first-party transport capability when present,
+   otherwise creates the bounded provider from that runtime;
 5. validates the resulting provider before contributing anything;
 6. contributes ingestion and query routes;
 7. declares ingestion public by default;
@@ -1121,12 +1117,13 @@ the feature factory. Every default Analytics database call therefore crosses
 the existing schema-readiness guard. Database plugins are not wrapped, mutated,
 or asked to advertise Analytics.
 
-For standalone, `standaloneAnalytics(config)` creates an Analytics manifest
-whose explicit provider factory owns the remote transport. Construction makes
-no network call. Remote ingestion and query availability are resolved
-independently at request and metadata time with the existing 30-second fresh
-cache, 5-minute bounded stale fallback, and 5-second timeout. An unavailable or
-indeterminate operation fails closed without disabling an independently
+For standalone, `standaloneRepository(config)` attaches the private remote
+transport capability and `analytics()` consumes it automatically. Constructing
+the repository or manifest makes no network call. Remote ingestion and query
+availability are resolved independently at request and metadata time with the
+existing 30-second fresh cache, 5-minute bounded stale fallback, and 5-second
+timeout. An unavailable or indeterminate operation fails closed without
+disabling an independently
 available operation.
 
 `ConfigInput.console.plugins` is consumed only when the local Console builds
@@ -1246,12 +1243,14 @@ cannot replace them.
 
 The standalone Analytics provider retains its bounded cache, stale fallback,
 timeout, and independent ingestion/query availability. The dedicated provider
-is installed by `standaloneAnalytics(config)` in the Console runtime plugin
-array.
+is advertised by `standaloneRepository(config)` and activated only when the
+Console runtime installs `analytics()`.
 Analytics owns route parsing, metadata, and availability interpretation. The
 standalone package owns one generic guarded transport, route configuration,
-and outbound credential enforcement; `standaloneRepository(config)` remains
-free of Analytics wiring.
+and outbound credential enforcement. `standaloneRepository(config)` remains
+free of Analytics feature installation, routes, metadata, and API wiring; it
+only contributes the private transport implementation that `analytics()` may
+consume.
 
 ## Managed provider policy
 
@@ -1328,8 +1327,8 @@ migrations.
   built-in route option surface;
 - add the monotonic protect-all contribution to the generic composer;
 - expose the guarded generic database runtime to first-party feature setup;
-- make `analytics()` own the default bounded provider and explicit dedicated
-  provider factory;
+- make `analytics()` own the default bounded implementation and optional
+  private first-party transport capability;
 - preserve self-hosted HTTP shapes and provider migrations while documenting
   the managed authentication policy change;
 - migrate `@hot-updater/server/node` to generic lazy raw-body forwarding and
@@ -1357,13 +1356,11 @@ source migration with preserved HTTP behavior.
 
 ### Stage 2: consumer migration
 
-- migrate standalone handling to `standaloneAnalytics(config)` as a Console
-  runtime plugin;
+- make `standaloneRepository(config)` advertise its internal remote Analytics
+  transport without installing the feature;
 - replace the Console Analytics sentinel with
-  `console.plugins: [analytics({ queryAccess: "public" })]` for a complete
-  generic database or
-  `console.plugins: [standaloneAnalytics(config, { queryAccess: "public" })]`
-  for a dedicated remote provider;
+  `console.plugins: [analytics({ queryAccess: "public" })]` for both generic
+  databases and standalone repositories;
 - migrate Console and server consumers to
   `hotUpdater.features.analytics` and `@hot-updater/analytics` types;
 - remove direct `supportsAnalytics` usage from new paths;
@@ -1402,7 +1399,7 @@ service/domain/token exports already leave in Stage 1.
 | Cloudflare `/worker`                                | Existing path                                    | Preserved                                                                                                |
 | Firebase `/functions` and `/functions/handler`      | Existing paths                                   | Preserved                                                                                                |
 | Supabase `/edge`                                    | Existing path                                    | Preserved                                                                                                |
-| Standalone route overrides                          | `console.plugins: [standaloneAnalytics(config)]` | Explicit Console runtime plugin migration; independent ingestion/query availability preserved            |
+| Standalone route overrides                          | `console.plugins: [analytics()]`                 | Repository transport is selected internally; independent ingestion/query availability preserved           |
 
 Provider migration assets keep their existing package, filename, version, and
 execution owner. The extraction creates no replacement migration, does not
@@ -1487,9 +1484,10 @@ runtime failures are owned by the feature plugin.
   Analytics member in the returned TypeScript type;
 - installing `analytics()` over a bare generic database preserves all existing
   wire behavior without decorating that database;
-- its provider factory receives the frozen, schema-guarded database runtime;
-- a malformed explicit provider fails construction before routes or API aliases
-  are published;
+- its default implementation receives the frozen, schema-guarded database
+  runtime;
+- a malformed internal transport capability fails construction before routes
+  or API aliases are published;
 - request size, payload validation, scan bounds, and errors remain unchanged;
 - path, method, access, request policy, parser, and handler stay in one
   Analytics-owned endpoint declaration;
@@ -1499,9 +1497,9 @@ runtime failures are owned by the feature plugin.
 - Cloudflare/Firebase/Supabase database plugins expose no Analytics
   contributions while their managed server presets install `analytics()` and
   protect all of its routes;
-- Console preserves `.mts` and `.cts` manifest identity and installs
-  `standaloneAnalytics(config)` as a dedicated Console runtime plugin, while
-  an omitted `console.plugins` array installs no Analytics feature;
+- Console preserves `.mts` and `.cts` manifest/capability identity and installs
+  the same `analytics()` plugin for standalone, while an omitted
+  `console.plugins` array installs no Analytics feature;
 - standalone covers ingestion-only, query-only, both, neither, stale probe, and
   timeout behavior.
 
@@ -1554,7 +1552,7 @@ runtime failures are owned by the feature plugin.
 ### Package and type surface
 
 - packed-artifact tests resolve `@hot-updater/analytics`,
-  `@hot-updater/analytics/provider`, and
+  `@hot-updater/analytics/internal/provider-capability`, and
   `@hot-updater/analytics/legacy-server` through every advertised export
   condition;
 - real extracted tarballs resolve server root and

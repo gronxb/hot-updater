@@ -11,12 +11,9 @@ import {
   type AnalyticsAPI,
   type AnalyticsFeatureAvailable,
 } from "./api";
+import { analyticsProviderCapability } from "./internal/provider-capability";
 import { createAnalyticsMetadata } from "./metadata";
-import {
-  parseAnalyticsProvider,
-  type AnalyticsProvider,
-  type AnalyticsProviderFactory,
-} from "./provider";
+import { parseAnalyticsProvider, type AnalyticsProvider } from "./provider";
 import { createBoundedAnalyticsProvider } from "./provider/bounded/provider";
 import { createAnalyticsRoutes } from "./routes/operations";
 
@@ -28,18 +25,14 @@ export interface AnalyticsFeatureKind extends FeatureApiKind {
 }
 
 export type AnalyticsOptions = {
-  readonly provider?: AnalyticsProviderFactory;
   readonly queryAccess?: "protected" | "public";
 };
 
 type NormalizedAnalyticsOptions = Readonly<{
-  provider: AnalyticsProviderFactory;
   queryAccess: "protected" | "public";
 }>;
 
-const supportedOptionKeys = new Set(["provider", "queryAccess"]);
-const createDefaultProvider: AnalyticsProviderFactory = (database) =>
-  createBoundedAnalyticsProvider(database);
+const supportedOptionKeys = new Set(["queryAccess"]);
 
 const isOptionsRecord = (
   value: unknown,
@@ -50,10 +43,6 @@ const isOptionsRecord = (
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 };
-
-const isAnalyticsProviderFactory = (
-  value: unknown,
-): value is AnalyticsProviderFactory => typeof value === "function";
 
 const normalizeAnalyticsOptions = (
   input: unknown,
@@ -67,10 +56,6 @@ const normalizeAnalyticsOptions = (
   if (unknownKey !== undefined) {
     throw new TypeError(`Unsupported Analytics option: ${unknownKey}.`);
   }
-  const provider = input.provider;
-  if (provider !== undefined && !isAnalyticsProviderFactory(provider)) {
-    throw new TypeError("Invalid Analytics provider option.");
-  }
   const queryAccess = input.queryAccess;
   if (
     queryAccess !== undefined &&
@@ -80,7 +65,6 @@ const normalizeAnalyticsOptions = (
     throw new TypeError("Invalid Analytics queryAccess option.");
   }
   return Object.freeze({
-    provider: provider ?? createDefaultProvider,
     queryAccess: queryAccess ?? "protected",
   });
 };
@@ -123,7 +107,7 @@ const createAvailableContribution = (
 const createManifest = (
   options: NormalizedAnalyticsOptions,
 ): AnalyticsManifest => {
-  const { provider: createProvider, queryAccess } = options;
+  const { queryAccess } = options;
   return defineFirstPartyFeatureManifest<
     "analytics",
     AnalyticsFeatureKind,
@@ -133,14 +117,19 @@ const createManifest = (
     featureApi: "required",
     id: "analytics",
     namespace: "analytics",
-    requires: Object.freeze([]),
+    requires: Object.freeze([
+      Object.freeze({
+        missing: "continue",
+        token: analyticsProviderCapability,
+      }),
+    ]),
     setup(context) {
-      const providerCandidate = createProvider(context.database);
-      void Promise.resolve(providerCandidate).catch(() => undefined);
-      return createAvailableContribution(
-        parseAnalyticsProvider(providerCandidate),
-        queryAccess,
-      );
+      const provider =
+        context.capabilities.get(analyticsProviderCapability) ??
+        parseAnalyticsProvider(
+          createBoundedAnalyticsProvider(context.database),
+        );
+      return createAvailableContribution(provider, queryAccess);
     },
     version: packageJson.version,
   });

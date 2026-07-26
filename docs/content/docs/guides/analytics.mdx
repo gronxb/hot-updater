@@ -253,7 +253,7 @@ background.
 | Firestore Database                           | Supported                      | Uses append-only document storage.                                                                                           |
 | PostgreSQL Database                          | Supported                      | Uses append-only row storage.                                                                                                |
 | Drizzle, Kysely, Prisma, and MongoDB plugins | Supported                      | The plugin must include the `bundle_events` model.                                                                           |
-| Standalone Database                          | Conditional                    | Requires an explicit `standaloneAnalytics(...)` companion and an upstream server that advertises the Analytics query routes. |
+| Standalone Database                          | Conditional                    | `standaloneRepository` automatically supplies its remote transport when `analytics()` is installed; the upstream must advertise the Analytics query routes. |
 | AWS S3 Database (`s3Database`)               | Supported with explicit opt-in | Uses versioned ETag compare-and-swap plus row-ID merge. The managed AWS preset remains core-only.                            |
 
 The Console installs Analytics only when `console.plugins` includes an
@@ -276,12 +276,12 @@ PostgreSQL schema and is not an existing-install migration.
 
 There is no `supportsAnalytics` database option to set. For a generic database
 that satisfies the complete `bundle_events` contract, install
-`analytics({ queryAccess: "public" })` through `console.plugins`. Use
-`standaloneAnalytics(config, { queryAccess: "public" })` in the same array
-beside `database: standaloneRepository(config)` when Console Analytics must
-proxy to a standalone upstream. These are local Console runtime plugins only;
-they do not configure a deployment handler. The remote server must also
-advertise `capabilities.analyticsQueries === true`.
+`analytics({ queryAccess: "public" })` through `console.plugins`.
+`standaloneRepository(config)` automatically provides the remote transport to
+that same plugin, reusing its URL, headers, and route overrides. These are
+local Console runtime plugins only; they do not configure a deployment
+handler. The remote server must also advertise
+`capabilities.analyticsQueries === true`.
 
 ## Support Analytics in a custom database plugin
 

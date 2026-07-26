@@ -84,12 +84,12 @@ describe("server plugin declaration export conditions", () => {
     ],
     [
       "analytics",
-      "./provider",
+      "./internal/provider-capability",
       {
-        cjs: "./dist/provider/index.cjs",
-        cts: "./dist/provider/index.d.cts",
-        mjs: "./dist/provider/index.mjs",
-        mts: "./dist/provider/index.d.mts",
+        cjs: "./dist/internal/provider-capability.cjs",
+        cts: "./dist/internal/provider-capability.d.cts",
+        mjs: "./dist/internal/provider-capability.mjs",
+        mts: "./dist/internal/provider-capability.d.mts",
       },
     ],
     [

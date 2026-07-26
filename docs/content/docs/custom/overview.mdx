@@ -30,12 +30,10 @@ This approach gives you full control over metadata while leveraging reliable clo
 Configure your Hot Updater CLI to use the self-hosted database.
 
 ```typescript title="hot-updater.config.ts"
+import { analytics } from "@hot-updater/analytics";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
-import {
-  standaloneAnalytics,
-  standaloneRepository,
-} from "@hot-updater/standalone";
+import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
 const repositoryConfig = {
@@ -55,11 +53,7 @@ export default defineConfig({
   }),
   database: standaloneRepository(repositoryConfig),
   console: {
-    plugins: [
-      standaloneAnalytics(repositoryConfig, {
-        queryAccess: "public",
-      }),
-    ],
+    plugins: [analytics({ queryAccess: "public" })],
   },
 });
 ```

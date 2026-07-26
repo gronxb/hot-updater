@@ -27,7 +27,6 @@ export {
 } from "./token";
 export type {
   AnalyticsProvider,
-  AnalyticsProviderFactory,
   AnalyticsProviderMode,
   ReportedAnalyticsCapability,
 } from "./types";

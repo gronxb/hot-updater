@@ -7,7 +7,7 @@ import type {
   InstallationHistoryRow,
   InstallationSearchRow,
   OffsetPaginationResult,
-} from "@hot-updater/analytics/provider";
+} from "@hot-updater/analytics/internal/provider-capability";
 import type { Bundle, PaginatedResult } from "@hot-updater/plugin-core";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

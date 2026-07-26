@@ -109,10 +109,8 @@ Hot Updater consumer. The standalone CLI plugins share headers through their
 repository configuration:
 
 ```typescript title="hot-updater.config.ts"
-import {
-  standaloneAnalytics,
-  standaloneRepository,
-} from "@hot-updater/standalone";
+import { analytics } from "@hot-updater/analytics";
+import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
 import { env } from "./env";
@@ -127,11 +125,7 @@ const repositoryConfig = {
 export default defineConfig({
   database: standaloneRepository(repositoryConfig),
   console: {
-    plugins: [
-      standaloneAnalytics(repositoryConfig, {
-        queryAccess: "public",
-      }),
-    ],
+    plugins: [analytics({ queryAccess: "public" })],
   },
 });
 ```

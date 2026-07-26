@@ -105,7 +105,7 @@ describe("loadConfig", () => {
       const { loadConfig } = await import("./loadConfig");
 
       await expect(loadConfig(null)).rejects.toThrow(
-        /console\.plugins.*analytics\(\.\.\.\).*standaloneAnalytics\(\.\.\.\)/,
+        /console\.plugins.*analytics\(\.\.\.\)/,
       );
     },
   );

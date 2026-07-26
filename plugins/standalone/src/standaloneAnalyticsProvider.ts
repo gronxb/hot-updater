@@ -1,4 +1,4 @@
-import type { AnalyticsProvider } from "@hot-updater/analytics/provider";
+import type { AnalyticsProvider } from "@hot-updater/analytics/internal/provider-capability";
 
 import { createAnalyticsCapabilityProbe } from "./standaloneAnalyticsCapability";
 import { createStandaloneAnalyticsOperations } from "./standaloneAnalyticsOperations";

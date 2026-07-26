@@ -3,7 +3,7 @@ import type {
   InstallationHistoryRow,
   InstallationSearchRow,
   OffsetPaginationResult,
-} from "@hot-updater/analytics/provider";
+} from "@hot-updater/analytics/internal/provider-capability";
 
 import { createStandaloneHttp } from "./standaloneHttp";
 import {

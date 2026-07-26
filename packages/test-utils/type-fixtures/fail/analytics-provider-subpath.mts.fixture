@@ -1,0 +1,4 @@
+import type { AnalyticsProvider } from "@hot-updater/analytics/provider";
+
+declare const provider: AnalyticsProvider;
+void provider;

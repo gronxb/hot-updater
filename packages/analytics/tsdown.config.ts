@@ -4,8 +4,8 @@ export default defineConfig([
   {
     entry: [
       "src/index.ts",
+      "src/internal/provider-capability.ts",
       "src/legacy-server/index.ts",
-      "src/provider/index.ts",
       "src/react-native/index.ts",
     ],
     format: ["esm", "cjs"],
@@ -33,14 +33,14 @@ export default defineConfig([
             default: "./dist/legacy-server/index.cjs",
           },
         },
-        "./provider": {
+        "./internal/provider-capability": {
           import: {
-            types: "./dist/provider/index.d.mts",
-            default: "./dist/provider/index.mjs",
+            types: "./dist/internal/provider-capability.d.mts",
+            default: "./dist/internal/provider-capability.mjs",
           },
           require: {
-            types: "./dist/provider/index.d.cts",
-            default: "./dist/provider/index.cjs",
+            types: "./dist/internal/provider-capability.d.cts",
+            default: "./dist/internal/provider-capability.cjs",
           },
         },
         "./react-native": {

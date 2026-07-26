@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 describe("standalone Analytics provider", () => {
-  it("keeps the repository undecorated and provider construction lazy", () => {
+  it("attaches the provider capability without remote work", () => {
     // Given
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
@@ -25,7 +25,14 @@ describe("standalone Analytics provider", () => {
     const provider = createStandaloneAnalyticsProvider(config);
 
     // Then
-    expect(getCapabilityContributions(repository)).toEqual([]);
+    expect(getCapabilityContributions(repository)).toEqual([
+      expect.objectContaining({
+        create: expect.any(Function),
+        token: expect.objectContaining({
+          id: "hot-updater.analytics.provider@1",
+        }),
+      }),
+    ]);
     expect(provider.mode).toBe("dedicated");
     expect(fetch).not.toHaveBeenCalled();
   });

@@ -232,18 +232,19 @@ describe("loadConfig capabilities", () => {
     },
   );
 
-  it("preserves a Standalone Analytics manifest created after an async CommonJS boundary", async () => {
+  it("composes Standalone Analytics after an async CommonJS boundary", async () => {
     await writeProjectFile(
       projectRoot,
       "hot-updater.config.cts",
       [
         "module.exports = async () => {",
         "  await new Promise((resolve) => setImmediate(resolve));",
-        "  const { standaloneAnalytics, standaloneRepository } = require('@hot-updater/standalone');",
+        "  const { analytics } = require('@hot-updater/analytics');",
+        "  const { standaloneRepository } = require('@hot-updater/standalone');",
         "  const standalone = { baseUrl: 'https://updates.example.com' };",
         "  return {",
         "    console: {",
-        "      plugins: [standaloneAnalytics(standalone, { queryAccess: 'public' })],",
+        "      plugins: [analytics({ queryAccess: 'public' })],",
         "    },",
         "    database: standaloneRepository(standalone),",
         "  };",

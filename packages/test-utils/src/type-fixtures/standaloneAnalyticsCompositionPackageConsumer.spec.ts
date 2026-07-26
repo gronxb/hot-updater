@@ -14,19 +14,18 @@ const workspaceRoot = path.resolve(import.meta.dirname, "../../../..");
 const packageDirectories = resolveServerPluginPackageDirectories(workspaceRoot);
 
 const consumerSource = `
-import type { AnalyticsFeatureAvailable } from "@hot-updater/analytics";
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  analytics,
+  type AnalyticsFeatureAvailable,
+} from "@hot-updater/analytics";
 import { createHotUpdater } from "@hot-updater/server";
-import { standaloneAnalytics } from "@hot-updater/standalone";
+import { standaloneRepository } from "@hot-updater/standalone";
 
-declare const database: DatabasePlugin;
 const runtime = createHotUpdater({
-  database,
-  plugins: [
-    standaloneAnalytics({
-      baseUrl: "https://updates.example.com",
-    }),
-  ],
+  database: standaloneRepository({
+    baseUrl: "https://updates.example.com",
+  }),
+  plugins: [analytics()],
 });
 runtime.features.analytics satisfies AnalyticsFeatureAvailable<undefined>;
 void runtime.features.analytics.getBundleEventSummary;
@@ -42,7 +41,7 @@ afterAll(async () => {
   await consumer.dispose();
 });
 
-describe("packed standalone analytics declaration consumers", () => {
+describe("packed standalone Analytics composition consumers", () => {
   it.each(["consumer.mts", "consumer.cts"])(
     "projects the analytics API for strict NodeNext %s",
     async (file) => {

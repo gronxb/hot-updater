@@ -1,0 +1,3 @@
+import { standaloneAnalytics } from "@hot-updater/standalone";
+
+void standaloneAnalytics;

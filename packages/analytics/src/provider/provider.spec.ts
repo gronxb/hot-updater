@@ -4,6 +4,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { describe, expect, it } from "vitest";
 
 import { analytics } from "../analytics";
+import { attachAnalyticsProviderCapability } from "../internal/provider-capability";
 import { createTestProvider } from "../testing/createTestProvider";
 import { InvalidAnalyticsProviderError, parseAnalyticsProvider } from "./index";
 
@@ -70,26 +71,21 @@ describe("analytics database ownership", () => {
     expect(getCapabilityContributions(database)).toEqual([]);
   });
 
-  it("lets the feature own an explicit dedicated provider factory", async () => {
+  it("prefers an attached dedicated provider capability", async () => {
     // Given
     const database = createDatabase();
     const provider = createTestProvider();
     let factoryCalls = 0;
-    const manifest = analytics({
-      provider: (runtimeDatabase) => {
-        factoryCalls += 1;
-        expect(runtimeDatabase.name).toBe(database.name);
-        expect(runtimeDatabase).not.toBe(database);
-        expect(Object.isFrozen(runtimeDatabase)).toBe(true);
-        return provider;
-      },
-      queryAccess: "public",
+    const capableDatabase = attachAnalyticsProviderCapability(database, () => {
+      factoryCalls += 1;
+      return provider;
     });
+    const manifest = analytics({ queryAccess: "public" });
 
     // When
     const runtime = createHotUpdater({
       routes: { bundles: false, updateCheck: false },
-      database,
+      database: capableDatabase,
       plugins: [manifest],
     });
 
@@ -99,5 +95,6 @@ describe("analytics database ownership", () => {
     await runtime.features.analytics.getBundleEventSummary("bundle-id");
     expect(provider.getBundleEventSummary).toHaveBeenCalledWith("bundle-id");
     expect(getCapabilityContributions(database)).toEqual([]);
+    expect(getCapabilityContributions(capableDatabase)).toHaveLength(1);
   });
 });

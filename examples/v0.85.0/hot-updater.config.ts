@@ -1,7 +1,7 @@
+import { analytics } from "@hot-updater/analytics";
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import {
-  standaloneAnalytics,
   standaloneRepository,
   standaloneStorage,
 } from "@hot-updater/standalone";
@@ -91,11 +91,7 @@ export default defineConfig({
         }),
   database: standaloneRepository(standaloneRepositoryConfig),
   console: {
-    plugins: [
-      standaloneAnalytics(standaloneRepositoryConfig, {
-        queryAccess: "public",
-      }),
-    ],
+    plugins: [analytics({ queryAccess: "public" })],
   },
   fingerprint: {
     debug: true,

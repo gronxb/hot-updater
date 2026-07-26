@@ -27,7 +27,6 @@ const exportedFunctions = [
     "isConfigFeatureManifest",
   ],
   ["@hot-updater/analytics", "analytics"],
-  ["@hot-updater/analytics/provider", "parseAnalyticsProvider"],
   ["@hot-updater/analytics/legacy-server", "createLegacyHotUpdater"],
   ["@hot-updater/better-auth", "betterAuthPlugin"],
   ["@hot-updater/better-auth/managed", "managedBetterAuthPlugin"],
@@ -35,7 +34,7 @@ const exportedFunctions = [
     "@hot-updater/better-auth/managed/provisioning",
     "provisionManagedBetterAuthApiKey",
   ],
-  ["@hot-updater/standalone", "standaloneAnalytics"],
+  ["@hot-updater/standalone", "standaloneRepository"],
 ] as const;
 
 const packedArtifactMatrix = [
@@ -80,10 +79,10 @@ const packedArtifactMatrix = [
       "dist/legacy-server/index.d.cts",
       "dist/legacy-server/index.d.mts",
       "dist/legacy-server/index.mjs",
-      "dist/provider/index.cjs",
-      "dist/provider/index.d.cts",
-      "dist/provider/index.d.mts",
-      "dist/provider/index.mjs",
+      "dist/internal/provider-capability.cjs",
+      "dist/internal/provider-capability.d.cts",
+      "dist/internal/provider-capability.d.mts",
+      "dist/internal/provider-capability.mjs",
       "dist/react-native/index.cjs",
       "dist/react-native/index.d.cts",
       "dist/react-native/index.d.mts",
@@ -123,7 +122,6 @@ const forbiddenPackedPath =
 
 const consumerSource = `
 import { analytics } from "@hot-updater/analytics";
-import { parseAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { createLegacyHotUpdater } from "@hot-updater/analytics/legacy-server";
 import {
   betterAuthPlugin,
@@ -140,7 +138,7 @@ import {
   type HandlerRoutes,
 } from "@hot-updater/server";
 import { defineFirstPartyFeatureManifest } from "@hot-updater/server/internal/first-party-plugin";
-import { standaloneAnalytics } from "@hot-updater/standalone";
+import { standaloneRepository } from "@hot-updater/standalone";
 
 declare const database: DatabasePlugin;
 declare const provisioned: ProvisionedManagedBetterAuthApiKey;
@@ -150,22 +148,25 @@ const routes = {
   updateCheck: true,
 } satisfies HandlerRoutes;
 const manifest = analytics();
-const standaloneManifest = standaloneAnalytics({
+const standaloneDatabase = standaloneRepository({
   baseUrl: "https://updates.example.com",
 });
 const sessionManifest = betterAuthPlugin({ auth: sessionAuth });
 const consoleConfig = {
-  plugins: [manifest, sessionManifest, standaloneManifest],
+  plugins: [manifest, sessionManifest],
 } satisfies NonNullable<ConfigInput["console"]>;
-const runtime = createHotUpdater({ database, plugins: [manifest], routes });
+const runtime = createHotUpdater({
+  database: standaloneDatabase,
+  plugins: [manifest],
+  routes,
+});
 void runtime.features.analytics.getBundleEventSummary;
 void consoleConfig;
 void managedBetterAuthPlugin;
 void provisionManagedBetterAuthApiKey;
 void provisioned;
 void sessionManifest;
-void standaloneManifest;
-void parseAnalyticsProvider;
+void database;
 void createLegacyHotUpdater;
 void defineFirstPartyFeatureManifest;
 `;
@@ -179,11 +180,6 @@ const mixedManifestConsumers = [
     create:
       "runtime.betterAuthPlugin({ auth: { api: { getSession: async () => null } } })",
     packageName: "@hot-updater/better-auth",
-  },
-  {
-    create:
-      'runtime.standaloneAnalytics({ baseUrl: "https://updates.example.com" })',
-    packageName: "@hot-updater/standalone",
   },
 ] as const;
 
@@ -265,6 +261,60 @@ if (!isFirstPartyFeatureManifest(${create})) {
       );
     },
   );
+
+  it("shares the Analytics transport capability across ESM and CommonJS", async () => {
+    await runNode(
+      consumer.directory,
+      `import { createRequire } from "node:module";
+import { analyticsProviderCapability as esmToken } from "@hot-updater/analytics/internal/provider-capability";
+const require = createRequire(import.meta.url);
+const { analyticsProviderCapability: cjsToken } = require("@hot-updater/analytics/internal/provider-capability");
+if (esmToken !== cjsToken) {
+  throw new TypeError("Analytics capability token identity diverged");
+}`,
+      true,
+    );
+  });
+
+  it("composes a CommonJS Standalone repository with ESM Analytics", async () => {
+    await runNode(
+      consumer.directory,
+      `import { createRequire } from "node:module";
+import { analytics } from "@hot-updater/analytics";
+import { createHotUpdater } from "@hot-updater/server";
+const require = createRequire(import.meta.url);
+const { standaloneRepository } = require("@hot-updater/standalone");
+const runtime = createHotUpdater({
+  database: standaloneRepository({ baseUrl: "https://updates.example.com" }),
+  plugins: [analytics({ queryAccess: "public" })],
+  routes: { bundles: false, updateCheck: false },
+});
+if (runtime.features.analytics.status !== "available") {
+  throw new TypeError("Standalone Analytics capability was not resolved");
+}`,
+      true,
+    );
+  });
+
+  it("composes an ESM Standalone repository with CommonJS Analytics", async () => {
+    await runNode(
+      consumer.directory,
+      `(async () => {
+  const { analytics } = require("@hot-updater/analytics");
+  const { createHotUpdater } = require("@hot-updater/server");
+  const { standaloneRepository } = await import("@hot-updater/standalone");
+  const runtime = createHotUpdater({
+    database: standaloneRepository({ baseUrl: "https://updates.example.com" }),
+    plugins: [analytics({ queryAccess: "public" })],
+    routes: { bundles: false, updateCheck: false },
+  });
+  if (runtime.features.analytics.status !== "available") {
+    throw new TypeError("Standalone Analytics capability was not resolved");
+  }
+})();`,
+      false,
+    );
+  });
 
   it.each(mixedManifestConsumers)(
     "recognizes an ESM $packageName manifest from the CommonJS server",

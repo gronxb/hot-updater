@@ -20,8 +20,7 @@ class RemovedConsoleAnalyticsOptionError extends TypeError {
   constructor() {
     super(
       'The "console.analytics" option was removed. Migrate local Console ' +
-        'features to "console.plugins: [analytics(...)]" or ' +
-        '"console.plugins: [standaloneAnalytics(...)]".',
+        'features to "console.plugins: [analytics(...)]".',
     );
   }
 }

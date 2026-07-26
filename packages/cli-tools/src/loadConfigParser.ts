@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import { createRequire, Module } from "module";
 
 import * as analytics from "@hot-updater/analytics";
+import * as analyticsProviderCapability from "@hot-updater/analytics/internal/provider-capability";
 import * as pluginCore from "@hot-updater/plugin-core";
 import type { ConfigInput, Platform } from "@hot-updater/plugin-core";
 import * as pluginCoreCapabilities from "@hot-updater/plugin-core/internal/capabilities";
@@ -29,6 +30,10 @@ const canonicalConfigModules = Object.freeze([
   Object.freeze({
     exports: analytics,
     specifier: "@hot-updater/analytics",
+  }),
+  Object.freeze({
+    exports: analyticsProviderCapability,
+    specifier: "@hot-updater/analytics/internal/provider-capability",
   }),
   Object.freeze({
     exports: pluginCore,

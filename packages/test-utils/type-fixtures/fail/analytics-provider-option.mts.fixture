@@ -1,0 +1,5 @@
+import { analytics } from "@hot-updater/analytics";
+
+analytics({
+  provider: () => ({}),
+});

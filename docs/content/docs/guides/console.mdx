@@ -42,9 +42,10 @@ export default defineConfig({
 
 ```
 
-Use `analytics({ queryAccess: "public" })` only when the configured database
-implements the complete, concurrency-safe `bundle_events` contract.
-Standalone users must install `standaloneAnalytics(...)` instead; see the
+`analytics()` is the only Analytics plugin. Generic databases use their
+concurrency-safe `bundle_events` contract, while `standaloneRepository`
+automatically supplies its remote Analytics transport when the same
+`analytics({ queryAccess: "public" })` manifest is installed. See the
 [Standalone Database guide](/docs/database-plugins/standalone).
 
 `console.plugins` belongs only to the local Console runtime. These manifests

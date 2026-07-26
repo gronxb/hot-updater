@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import { analytics } from "@hot-updater/analytics";
+import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -149,14 +150,14 @@ describe("analytics runtime input validation", () => {
     );
   });
 
-  it("passes dedicated feature manifests to the Console runtime", async () => {
+  it("uses an Analytics transport contributed by the database", async () => {
     // Given
     const provider = createDedicatedProvider();
-    const manifest = analytics({
-      provider: () => provider,
-      queryAccess: "public",
-    });
-    const database = createTestDatabasePlugin();
+    const manifest = analytics({ queryAccess: "public" });
+    const database = attachAnalyticsProviderCapability(
+      createTestDatabasePlugin(),
+      () => provider,
+    );
 
     // When
     const runtime = Reflect.apply(createRuntimeHotUpdater, undefined, [

@@ -1,1 +1,4 @@
-export { getCapabilityContributions } from "../capabilities";
+export {
+  defineSharedCapability,
+  getCapabilityContributions,
+} from "../capabilities";

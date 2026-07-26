@@ -4,9 +4,6 @@ import {
   type LegacyCreateHotUpdaterOptions,
 } from "@hot-updater/analytics/legacy-server";
 import {
-  type AnalyticsProvider,
-} from "@hot-updater/analytics/provider";
-import {
   betterAuthPlugin,
   type BetterAuthConfiguredInstance,
 } from "@hot-updater/better-auth";
@@ -63,7 +60,6 @@ assertType<
 
 declare const auth: BetterAuthConfiguredInstance;
 declare const database: DatabasePlugin;
-declare const provider: AnalyticsProvider;
 declare const storage: RuntimeStoragePlugin<TestContext>;
 
 const routes = {
@@ -93,7 +89,7 @@ const internalRuntime = createHotUpdater({
 });
 assertType<Equal<keyof typeof internalRuntime.features, never>>();
 
-const analyticsManifest = analytics({ provider: () => provider });
+const analyticsManifest = analytics();
 const publicRuntime = createHotUpdater({
   database,
   plugins: [analyticsManifest, betterAuthPlugin({ auth })],
@@ -151,5 +147,4 @@ void betterAuthSessionManifest;
 void handlerOptions;
 void legacyAnalytics;
 void legacyCore;
-void provider;
 void publicRuntime;

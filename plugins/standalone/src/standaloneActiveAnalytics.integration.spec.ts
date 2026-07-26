@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { analytics } from "../../../packages/analytics/src/analytics";
 import { createInMemoryDatabasePlugin } from "../../../packages/test-utils/test/inMemoryDatabasePlugin";
-import { standaloneAnalytics, standaloneRepository } from "./index";
+import { standaloneRepository } from "./index";
 
 const AS_OF_MS = Date.UTC(2026, 6, 18, 12);
 const sourceManifest = analytics({ queryAccess: "public" });
@@ -127,9 +127,7 @@ describe("standalone active installation Analytics integration", () => {
         }),
       },
     };
-    const consoleManifest = standaloneAnalytics(repositoryConfig, {
-      queryAccess: "public",
-    });
+    const consoleManifest = analytics({ queryAccess: "public" });
     const consoleRuntime = createHotUpdater({
       basePath: "/console",
       routes: { bundles: false, updateCheck: false },

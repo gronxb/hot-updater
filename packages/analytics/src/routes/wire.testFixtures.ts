@@ -5,6 +5,7 @@ import {
 
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import { analytics, type AnalyticsFeatureAvailable } from "../analytics";
+import { attachAnalyticsProviderCapability } from "../internal/provider-capability";
 import type { AnalyticsProvider } from "../provider";
 import { createTestProvider } from "../testing/createTestProvider";
 
@@ -31,14 +32,14 @@ export const createAnalyticsWireRuntime = (
   readonly provider: AnalyticsProvider;
   readonly runtime: WireRuntime<AnalyticsFeatureAvailable>;
 } => {
-  const manifest = analytics({
-    provider: () => provider,
-    queryAccess: "public",
-  });
+  const manifest = analytics({ queryAccess: "public" });
   const runtime = createHotUpdater({
     basePath: "/hot-updater",
     routes: { bundles: false, updateCheck: false },
-    database: createInMemoryDatabasePlugin(),
+    database: attachAnalyticsProviderCapability(
+      createInMemoryDatabasePlugin(),
+      () => provider,
+    ),
     plugins: [manifest],
   });
   return { provider, runtime };
@@ -54,14 +55,14 @@ export const createUnavailableAnalyticsWireRuntime =
         eventIngestion: false,
       }),
     };
-    const manifest = analytics({
-      provider: () => provider,
-      queryAccess: "public",
-    });
+    const manifest = analytics({ queryAccess: "public" });
     return createHotUpdater({
       basePath: "/hot-updater",
       routes: { bundles: false, updateCheck: false },
-      database: createInMemoryDatabasePlugin(),
+      database: attachAnalyticsProviderCapability(
+        createInMemoryDatabasePlugin(),
+        () => provider,
+      ),
       plugins: [manifest],
     });
   };

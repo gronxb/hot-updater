@@ -26,10 +26,9 @@ Migrate server construction as follows:
   `bundles: { access: { kind: "public" } }` only when public compatibility is
   intentional.
 - Replace `routes.analytics` with `plugins: [analytics()]`. The feature uses the
-  guarded generic database runtime by default; database plugins no longer need
-  an Analytics wrapper or capability contribution. Import explicit provider
-  authoring from `@hot-updater/analytics/provider` only for dedicated
-  transports.
+  guarded generic database runtime by default. A first-party repository may
+  advertise an internal transport capability without installing Analytics;
+  there is no public provider-authoring option.
 - Read Analytics through `hotUpdater.features.analytics`. The temporary flat
   operation aliases remain for the announced migration window. Installing
   `analytics()` now yields the available feature API at construction time.
@@ -44,8 +43,9 @@ Migrate server construction as follows:
 - Remove `withAnalyticsProvider`, `analyticsProviderToken`,
   `MissingAnalyticsProviderCapability`, `UnavailableAnalyticsFeature`, and
   the `missingCapability` Analytics option. Database plugins no longer carry
-  Analytics provider factories. Use `analytics({ provider })` for a dedicated
-  provider or `standaloneAnalytics(config)` for the Standalone transport.
+  public Analytics provider factories. `standaloneRepository(config)`
+  advertises its private remote transport automatically, while `analytics()`
+  remains the only operation that installs the feature.
 
 Migrate React Native Analytics to the feature-owned client:
 
@@ -75,7 +75,7 @@ config files. This adds `jiti`, `@hot-updater/analytics`, and
 `@hot-updater/server` as direct `@hot-updater/cli-tools` runtime dependencies.
 
 The local Console now installs feature manifests through `console.plugins`.
-Opt a complete generic database into the bounded Analytics provider explicitly:
+Enable Analytics over a complete generic database explicitly:
 
 ```ts
 export default defineConfig({
@@ -86,14 +86,14 @@ export default defineConfig({
 });
 ```
 
-Standalone uses its dedicated feature manifest instead:
+Standalone uses the same Analytics manifest:
 
 ```ts
 const standalone = { baseUrl: "https://updates.example.com" };
 
 export default defineConfig({
   console: {
-    plugins: [standaloneAnalytics(standalone, { queryAccess: "public" })],
+    plugins: [analytics({ queryAccess: "public" })],
   },
   database: standaloneRepository(standalone),
 });
@@ -117,6 +117,8 @@ core-only because its preset omits Analytics. AWS disables shared caching and
 forwards `x-api-key` on the authenticated update path. PostgreSQL keeps the
 same database-backed Analytics default for custom composition. These managed
 server presets are independent from the local Console opt-in.
-`standaloneRepository(config)` remains Analytics-agnostic. Publish this
-package cohort together so provider presets, authentication policy, kernel
-declarations, and condition-specific ESM/CommonJS exports stay aligned.
+`standaloneRepository(config)` contributes only an internal transport
+implementation; it does not install Analytics or expose an Analytics option.
+Publish this package cohort together so provider presets, authentication
+policy, kernel declarations, and condition-specific ESM/CommonJS exports stay
+aligned.

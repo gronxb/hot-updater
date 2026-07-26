@@ -1,5 +1,7 @@
+import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
+import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
 import { createStandaloneBundleRemote } from "./standaloneBundleRemote";
 import { createLegacyCompatibilityImplementation } from "./standaloneLegacyImplementation";
 import { runLegacyAggregateTransaction } from "./standaloneLegacyTransaction";
@@ -31,5 +33,7 @@ export const standaloneRepository = (config: StandaloneRepositoryConfig) => {
       };
     },
   });
-  return repository;
+  return attachAnalyticsProviderCapability(repository, () =>
+    createStandaloneAnalyticsProvider(config),
+  );
 };

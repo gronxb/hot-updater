@@ -13,23 +13,6 @@ export interface DefineCapabilityOptions<TValue> {
   readonly parse: (value: unknown) => TValue;
 }
 
-const capabilityTokens = new WeakSet<object>();
-const capabilityIdPattern = /^[^@]+@[0-9]+$/;
-
-export const defineCapability = <TValue>(
-  options: DefineCapabilityOptions<TValue>,
-): CapabilityToken<TValue> => {
-  if (capabilityIdPattern.exec(options.id)?.[0] !== options.id) {
-    throw new TypeError("Capability id must use the name@integer format.");
-  }
-  const token = Object.freeze({
-    id: options.id,
-    parse: options.parse,
-  }) as CapabilityToken<TValue>;
-  capabilityTokens.add(token);
-  return token;
-};
-
 export type DatabaseCapabilityRuntime = Readonly<
   Pick<
     DatabasePlugin,
@@ -73,31 +56,43 @@ export interface CapabilityContribution<TValue> {
   readonly create: (runtime: HotUpdaterInfrastructureRuntime) => unknown;
 }
 
+const capabilityAuthorityKey = Symbol.for(
+  "@hot-updater/plugin-core/capability-authority/v1",
+);
+const capabilityAuthorityVersion = 1;
+const capabilityAuthorityMethods = [
+  "attach",
+  "define",
+  "defineShared",
+  "get",
+] as const;
+const capabilityIdPattern = /^[^@]+@[0-9]+$/;
 const emptyCapabilityContributions: readonly CapabilityContribution<unknown>[] =
   Object.freeze([]);
-const capabilityContributionSnapshots = new WeakMap<
-  object,
-  readonly CapabilityContribution<unknown>[]
->();
 
 const isObject = (value: unknown): value is object =>
   typeof value === "object" && value !== null;
 
-const isCapabilityToken = (value: unknown): value is CapabilityToken<unknown> =>
-  isObject(value) &&
-  capabilityTokens.has(value) &&
-  typeof Reflect.get(value, "id") === "string" &&
-  typeof Reflect.get(value, "parse") === "function";
-
-const isCapabilityContribution = (
-  value: unknown,
-): value is CapabilityContribution<unknown> =>
-  isObject(value) &&
-  isCapabilityToken(Reflect.get(value, "token")) &&
-  typeof Reflect.get(value, "create") === "function";
+const validateCapabilityOptions = <TValue>(
+  options: DefineCapabilityOptions<TValue>,
+): void => {
+  if (
+    !isObject(options) ||
+    capabilityIdPattern.exec(options.id)?.[0] !== options.id ||
+    typeof options.parse !== "function"
+  ) {
+    throw new TypeError(
+      "Capability options require a name@integer id and parser.",
+    );
+  }
+};
 
 export class InvalidCapabilityCarrierError extends Error {
   readonly name = "InvalidCapabilityCarrierError";
+}
+
+class InvalidCapabilityAuthorityError extends Error {
+  readonly name = "InvalidCapabilityAuthorityError";
 }
 
 const createImmutableCarrier = <TCarrier extends object>(
@@ -137,27 +132,138 @@ const createImmutableCarrier = <TCarrier extends object>(
   return Object.freeze(wrapper) as TCarrier;
 };
 
+const createCapabilityAuthority = () => {
+  const capabilityTokens = new WeakSet<object>();
+  const capabilityContributionSnapshots = new WeakMap<
+    object,
+    readonly CapabilityContribution<unknown>[]
+  >();
+  const sharedCapabilityTokens = new Map<string, CapabilityToken<unknown>>();
+
+  const define = <TValue>(
+    options: DefineCapabilityOptions<TValue>,
+  ): CapabilityToken<TValue> => {
+    validateCapabilityOptions(options);
+    const token = Object.freeze({
+      id: options.id,
+      parse: options.parse,
+    }) as CapabilityToken<TValue>;
+    capabilityTokens.add(token);
+    return token;
+  };
+
+  return Object.freeze({
+    attach<TCarrier extends object, TValue>(
+      carrier: TCarrier,
+      contribution: CapabilityContribution<TValue>,
+    ): TCarrier | undefined {
+      if (!isObject(carrier) || !isObject(contribution)) return undefined;
+      const token = Reflect.get(contribution, "token");
+      const create = Reflect.get(contribution, "create");
+      if (
+        !isObject(token) ||
+        !capabilityTokens.has(token) ||
+        typeof Reflect.get(token, "id") !== "string" ||
+        typeof Reflect.get(token, "parse") !== "function" ||
+        typeof create !== "function"
+      ) {
+        return undefined;
+      }
+      const nextContribution = Object.freeze({ create, token });
+      const contributions = Object.freeze([
+        ...(capabilityContributionSnapshots.get(carrier) ??
+          emptyCapabilityContributions),
+        nextContribution,
+      ]);
+      const attached = createImmutableCarrier(carrier);
+      capabilityContributionSnapshots.set(attached, contributions);
+      return attached;
+    },
+    define,
+    defineShared<TValue>(
+      options: DefineCapabilityOptions<TValue>,
+    ): CapabilityToken<TValue> {
+      validateCapabilityOptions(options);
+      const existing = sharedCapabilityTokens.get(options.id);
+      if (existing !== undefined) {
+        return existing as CapabilityToken<TValue>;
+      }
+      const token = define(options);
+      sharedCapabilityTokens.set(options.id, token);
+      return token;
+    },
+    get: (carrier: object) =>
+      capabilityContributionSnapshots.get(carrier) ??
+      emptyCapabilityContributions,
+    version: capabilityAuthorityVersion,
+  });
+};
+
+type CapabilityAuthority = ReturnType<typeof createCapabilityAuthority>;
+
+const isCapabilityAuthority = (value: unknown): value is CapabilityAuthority =>
+  isObject(value) &&
+  Object.isFrozen(value) &&
+  Reflect.ownKeys(value).length === capabilityAuthorityMethods.length + 1 &&
+  capabilityAuthorityMethods.every(
+    (method) =>
+      Object.hasOwn(value, method) &&
+      typeof Reflect.get(value, method) === "function",
+  ) &&
+  Object.hasOwn(value, "version") &&
+  Reflect.get(value, "version") === capabilityAuthorityVersion;
+
+const resolveCapabilityAuthority = (): CapabilityAuthority => {
+  const descriptor = Reflect.getOwnPropertyDescriptor(
+    globalThis,
+    capabilityAuthorityKey,
+  );
+  if (descriptor !== undefined) {
+    if (
+      descriptor.configurable ||
+      descriptor.enumerable ||
+      descriptor.writable ||
+      !isCapabilityAuthority(descriptor.value)
+    ) {
+      throw new InvalidCapabilityAuthorityError();
+    }
+    return descriptor.value;
+  }
+
+  const authority = createCapabilityAuthority();
+  if (
+    !Reflect.defineProperty(globalThis, capabilityAuthorityKey, {
+      configurable: false,
+      enumerable: false,
+      value: authority,
+      writable: false,
+    })
+  ) {
+    throw new InvalidCapabilityAuthorityError();
+  }
+  return authority;
+};
+
+const capabilityAuthority = resolveCapabilityAuthority();
+
+export const defineCapability = <TValue>(
+  options: DefineCapabilityOptions<TValue>,
+): CapabilityToken<TValue> => capabilityAuthority.define(options);
+
+export const defineSharedCapability = <TValue>(
+  options: DefineCapabilityOptions<TValue>,
+): CapabilityToken<TValue> => capabilityAuthority.defineShared(options);
+
 export const getCapabilityContributions = (
   carrier: object,
 ): readonly CapabilityContribution<unknown>[] =>
-  capabilityContributionSnapshots.get(carrier) ?? emptyCapabilityContributions;
+  capabilityAuthority.get(carrier);
 
 export const attachCapabilityContribution = <TCarrier extends object, TValue>(
   carrier: TCarrier,
   contribution: CapabilityContribution<TValue>,
 ): TCarrier => {
-  if (!isCapabilityContribution(contribution)) {
-    throw new InvalidCapabilityCarrierError();
-  }
-  const nextContribution = Object.freeze({
-    token: contribution.token,
-    create: contribution.create,
-  });
-  const contributions = Object.freeze([
-    ...getCapabilityContributions(carrier),
-    nextContribution,
-  ]);
-  const attached = createImmutableCarrier(carrier);
-  capabilityContributionSnapshots.set(attached, contributions);
+  const attached = capabilityAuthority.attach(carrier, contribution);
+  if (attached === undefined) throw new InvalidCapabilityCarrierError();
   return attached;
 };
