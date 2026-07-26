@@ -12,6 +12,7 @@ import { CLOUDFLARE_INIT_PROVIDER } from "./initProviders/cloudflare";
 import {
   FIREBASE_INIT_PROVIDER,
   FIREBASE_REGION_VALUES,
+  isFirebaseProjectId,
   isFirebaseRegion,
 } from "./initProviders/firebase";
 import {
@@ -33,6 +34,7 @@ export {
   FIREBASE_REGION_VALUES,
   isAwsAuthMode,
   isAwsRegionValue,
+  isFirebaseProjectId,
   isFirebaseRegion,
   isSupabaseFunctionName,
   isSupabaseRegion,

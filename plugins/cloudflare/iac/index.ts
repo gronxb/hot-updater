@@ -83,11 +83,13 @@ const deployWorker = async (
   {
     d1DatabaseId,
     d1DatabaseName,
+    nonInteractive,
     r2BucketName,
     workerName,
   }: {
     d1DatabaseId: string;
     d1DatabaseName: string;
+    nonInteractive: boolean;
     r2BucketName: string;
     workerName: string;
   },
@@ -139,6 +141,7 @@ const deployWorker = async (
       cloudflareApiToken: oauth_token,
       cwd: workerRoot,
       accountId: accountId,
+      nonInteractive,
     });
 
     const migrationPath = await path.join(workerRoot, "migrations");
@@ -573,6 +576,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   await deployWorker(infrastructureApiToken, accountId, {
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
+    nonInteractive,
     r2BucketName: selectedBucketName,
     workerName,
   });

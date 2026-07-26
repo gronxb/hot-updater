@@ -29,12 +29,18 @@ export const isFirebaseRegion = (
   value !== undefined &&
   FIREBASE_REGION_VALUES.some((region) => region === value);
 
+export const isFirebaseProjectId = (
+  value: string | undefined,
+): value is string =>
+  value !== undefined && /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(value);
+
 export const FIREBASE_INIT_PROVIDER = {
   label: "Firebase",
   inputs: {
     projectId: {
       envKey: "HOT_UPDATER_FIREBASE_PROJECT_ID",
       help: "Firebase project ID",
+      validate: isFirebaseProjectId,
     },
     region: {
       envKey: "HOT_UPDATER_FIREBASE_REGION",

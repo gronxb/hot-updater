@@ -198,6 +198,13 @@ describe("initFirebaseUser", () => {
       expect.arrayContaining(["firebase", "projects:create"]),
       expect.anything(),
     );
+    const [{ validate }] = mocks.text.mock.calls[0] as [
+      {
+        validate: (value: string) => string | undefined;
+      },
+    ];
+    expect(validate("new-project")).toBeUndefined();
+    expect(validate("--")).toMatch("Use 6-30 lowercase letters");
     expect(vi.mocked(makeEnv)).not.toHaveBeenCalled();
   });
 
@@ -212,10 +219,10 @@ describe("initFirebaseUser", () => {
       [
         "firebase",
         "projects:create",
-        "new-project",
-        "--display-name",
-        "new-project",
+        "--display-name=new-project",
         "--non-interactive",
+        "--",
+        "new-project",
       ],
       {
         env: {},
@@ -224,4 +231,18 @@ describe("initFirebaseUser", () => {
     );
     expect(mocks.text).not.toHaveBeenCalled();
   });
+
+  it.each(["--", "--display-name", "Uppercase-project", "short"])(
+    "rejects an unsafe Firebase project ID before provisioning: %s",
+    async (projectId) => {
+      await expect(
+        createFirebaseProject({
+          cliEnv: {},
+          projectId,
+        }),
+      ).rejects.toThrow(`Invalid Firebase project ID: ${projectId}`);
+
+      expect(mocks.execa).not.toHaveBeenCalled();
+    },
+  );
 });

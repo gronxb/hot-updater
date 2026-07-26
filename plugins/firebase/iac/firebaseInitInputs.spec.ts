@@ -41,6 +41,22 @@ describe("Firebase non-interactive init inputs", () => {
     );
   });
 
+  it.each(["--", "--display-name", "Uppercase-project", "short"])(
+    "reports an invalid saved project ID as missing: %s",
+    (projectId) => {
+      const inputs = resolveFirebaseInitInputs({
+        HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
+        HOT_UPDATER_FIREBASE_REGION: "us-central1",
+      });
+
+      expect(() => assertFirebaseNonInteractiveInputs(inputs, true)).toThrow(
+        expect.objectContaining({
+          missingInputs: ["HOT_UPDATER_FIREBASE_PROJECT_ID"],
+        }),
+      );
+    },
+  );
+
   it("uses the credential file for Firebase and gcloud commands", () => {
     expect(getFirebaseCliEnv("/tmp/firebase-credentials.json")).toEqual({
       CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: "/tmp/firebase-credentials.json",

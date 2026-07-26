@@ -4,6 +4,7 @@ import {
   createHotUpdaterConfigScaffoldFromBuilder,
   FIREBASE_INIT_PROVIDER,
   type HotUpdaterConfigScaffold,
+  isFirebaseProjectId,
   link,
   makeEnv,
   type ManagedHelperStatement,
@@ -146,16 +147,20 @@ export const createFirebaseProject = async ({
   readonly cliEnv?: FirebaseCliEnv;
   readonly projectId: string;
 }): Promise<void> => {
+  if (!isFirebaseProjectId(projectId)) {
+    throw new Error(`Invalid Firebase project ID: ${projectId}`);
+  }
+
   try {
     await execa(
       "npx",
       [
         "firebase",
         "projects:create",
-        projectId,
-        "--display-name",
-        projectId,
+        `--display-name=${projectId}`,
         "--non-interactive",
+        "--",
+        projectId,
       ],
       {
         env: cliEnv,
@@ -304,6 +309,10 @@ export const initFirebaseUser = async (
   if (projectId === createKey) {
     const newProjectId = await p.text({
       message: "Enter the Firebase project ID:",
+      validate: (value) =>
+        isFirebaseProjectId(value)
+          ? undefined
+          : "Use 6-30 lowercase letters, numbers, or hyphens; start with a letter and end with a letter or number.",
     });
     if (p.isCancel(newProjectId)) {
       p.log.error("Project ID is required");
