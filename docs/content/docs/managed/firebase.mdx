@@ -271,12 +271,14 @@ export default HotUpdater.wrap({
 </Callout>
 
 Firebase Functions v2 buffers an inbound body before invoking JavaScript. The
-managed adapter rejects bodies larger than the Analytics `/events` limit of
-16 KiB before constructing the Web `Request`, returns an opaque
-`Cache-Control: private, no-store` 413 response, and bounds the request
-normalization copy to 16 KiB. The generated handler also sets concurrency to 10
-and `maxInstances` to 10 to bound pre-authentication buffering and cost at the
-platform boundary.
+managed adapter keeps access to that buffered `rawBody` lazy until the kernel
+has authenticated the request. The kernel then measures the consumed bytes and
+enforces the Analytics `/events` limit of 16 KiB, returning an opaque
+`Cache-Control: private, no-store` 413 response for an authenticated oversized
+body. A declared oversized `Content-Length` may still be rejected by the
+request-head guard without reading the body. The generated handler also sets
+concurrency to 10 and `maxInstances` to 10 to bound concurrent platform
+buffering and cost.
 
 The updater and Analytics client use the same `baseURL` and immutable
 `commonHeaders`, so the managed API key is sent to both update checks and the
