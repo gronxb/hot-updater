@@ -57,3 +57,13 @@ import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/manag
 
 const { sha256 } = await provisionManagedBetterAuthApiKey();
 ```
+
+Provisioning serializes concurrent writes with an adjacent owner-only lock
+directory. The target must be a user-owned regular file with one hard link,
+its user-owned parent must not be writable by group or other users, and the
+requested and canonicalized directory chains are checked for replaceable
+ancestors after rejecting non-root-owned symbolic links; every ancestor must
+be owned by root or the effective user. Sticky temporary directories are
+supported when the next child is user-owned. Provisioning verifies mode `0600`
+before writing the raw key and fails on Windows or filesystems that cannot
+prove these POSIX guarantees.

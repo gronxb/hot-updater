@@ -125,6 +125,16 @@ clarifications are normative where they narrow or repair the original prose:
   `HotUpdater.API_KEY_SHA256` into the deployed runtime. AWS disables caching
   for the handler behavior and protected responses use `no-store`; a CDN must
   never serve an authenticated handler response without re-authentication.
+  Provisioning serializes writers with an adjacent owner-only lock directory,
+  rejects symbolic links and multiply linked files, and holds one verified
+  user-owned file handle from read through append. The target's user-owned
+  parent directory must not be group- or other-writable, and its complete
+  requested and canonicalized directory chains are checked for replaceable
+  ancestors after rejecting non-root-owned symbolic links. Every ancestor must
+  be owned by root or the effective user. Sticky temporary directories are
+  accepted only when the next child is user-owned. Provisioning fails before
+  writing a key on Windows or any filesystem that cannot prove these POSIX
+  ownership guarantees and mode `0600`.
 
 ## Decision summary
 
@@ -170,6 +180,10 @@ The composition style intentionally follows Better Auth's
 `packages/api-key` package from Better Auth `1.6.24`, the version pinned by this
 workspace. The reference is architectural, not a copy of its authentication or
 persistence semantics.
+[Better Auth's plugin authoring guide](https://better-auth.com/docs/guides/your-first-plugin)
+defines the same composition boundary: a factory returns a declarative object
+that satisfies `BetterAuthPlugin`, and the configured `betterAuth({ plugins })`
+host supplies the runtime and database context.
 
 | Reference pattern                                                                               | Hot Updater decision                                                                                                                         |
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1388,18 +1402,18 @@ service/domain/token exports already leave in Stage 1.
 
 ### Source, export, and migration matrix
 
-| Existing surface                                    | New owner or replacement                         | Compatibility                                                                                            |
-| --------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `createHotUpdater({ routes: { analytics: true } })` | `plugins: [analytics()]`                         | Breaking source migration; legacy wrapper under `@hot-updater/analytics/legacy-server` during Stages 1-2 |
-| `HandlerOptions.coreRoutes`                         | `HandlerOptions.routes: HandlerRoutes`           | Unreleased kernel branch migration; `coreRoutes` remains internal only                                   |
-| Flat `getBundleEvent*` and installation methods     | `hotUpdater.features.analytics.*`                | Generic flat aliases during Stages 1-2, then removed                                                     |
-| Server Analytics types and database Analytics API   | `@hot-updater/analytics`                         | Explicit import migration                                                                                |
-| Server generic DB adapters                          | Existing `@hot-updater/server/adapters/*` paths  | Preserved; adapters remain Analytics-free                                                                |
-| `@hot-updater/server`, `/db`, and `/node`           | Existing paths                                   | Preserved except documented Analytics exports                                                            |
-| Cloudflare `/worker`                                | Existing path                                    | Preserved                                                                                                |
-| Firebase `/functions` and `/functions/handler`      | Existing paths                                   | Preserved                                                                                                |
-| Supabase `/edge`                                    | Existing path                                    | Preserved                                                                                                |
-| Standalone route overrides                          | `console.plugins: [analytics()]`                 | Repository transport is selected internally; independent ingestion/query availability preserved           |
+| Existing surface                                    | New owner or replacement                        | Compatibility                                                                                            |
+| --------------------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `createHotUpdater({ routes: { analytics: true } })` | `plugins: [analytics()]`                        | Breaking source migration; legacy wrapper under `@hot-updater/analytics/legacy-server` during Stages 1-2 |
+| `HandlerOptions.coreRoutes`                         | `HandlerOptions.routes: HandlerRoutes`          | Unreleased kernel branch migration; `coreRoutes` remains internal only                                   |
+| Flat `getBundleEvent*` and installation methods     | `hotUpdater.features.analytics.*`               | Generic flat aliases during Stages 1-2, then removed                                                     |
+| Server Analytics types and database Analytics API   | `@hot-updater/analytics`                        | Explicit import migration                                                                                |
+| Server generic DB adapters                          | Existing `@hot-updater/server/adapters/*` paths | Preserved; adapters remain Analytics-free                                                                |
+| `@hot-updater/server`, `/db`, and `/node`           | Existing paths                                  | Preserved except documented Analytics exports                                                            |
+| Cloudflare `/worker`                                | Existing path                                   | Preserved                                                                                                |
+| Firebase `/functions` and `/functions/handler`      | Existing paths                                  | Preserved                                                                                                |
+| Supabase `/edge`                                    | Existing path                                   | Preserved                                                                                                |
+| Standalone route overrides                          | `console.plugins: [analytics()]`                | Repository transport is selected internally; independent ingestion/query availability preserved          |
 
 Provider migration assets keep their existing package, filename, version, and
 execution owner. The extraction creates no replacement migration, does not

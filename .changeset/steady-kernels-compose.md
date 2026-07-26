@@ -117,6 +117,13 @@ core-only because its preset omits Analytics. AWS disables shared caching and
 forwards `x-api-key` on the authenticated update path. PostgreSQL keeps the
 same database-backed Analytics default for custom composition. These managed
 server presets are independent from the local Console opt-in.
+Managed key provisioning serializes concurrent writers with an owner-only lock
+directory, rejects symbolic and multiple hard links, requires a user-owned
+parent that is not group- or other-writable, rejects replaceable ancestors in
+the requested and canonical root- or effective-user-owned directory chains,
+rejects non-root-owned symbolic links, and verifies owner-only POSIX
+permissions before writing the raw key. It fails closed on Windows or
+filesystems that cannot prove the resulting ownership and mode.
 `standaloneRepository(config)` contributes only an internal transport
 implementation; it does not install Analytics or expose an Analytics option.
 Publish this package cohort together so provider presets, authentication

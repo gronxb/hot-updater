@@ -78,6 +78,14 @@ infrastructure credential.
 </Callout>
 
 `init` creates `HOT_UPDATER_API_KEY` once and reuses a valid existing value.
+It serializes concurrent provisioning with an owner-only lock directory. The
+target must be a user-owned regular file with one hard link, and its user-owned
+parent must not be writable by group or other users. Its complete directory
+requested and canonicalized directory chains are checked for replaceable
+ancestors. Provisioning rejects non-root-owned symbolic links, requires every
+ancestor to be owned by root or the effective user, verifies mode `0600` before
+writing, and fails on Windows or filesystems that cannot prove these POSIX
+guarantees.
 The repository `.gitignore` excludes `.env.hotupdater`, and only the key's
 SHA-256 digest is deployed with the Firebase Function. The runtime uses that
 digest to create an ephemeral in-memory managed Better Auth API-key session; it does not
