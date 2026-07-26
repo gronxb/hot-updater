@@ -38,6 +38,21 @@ const resolveContext = (
   return context;
 };
 
+const appendSourceBasename = (key: string, filePath: string): string => {
+  const pathSegments = filePath.split(/[\\/]+/u).filter(Boolean);
+  const sourceBasename = pathSegments[pathSegments.length - 1] ?? filePath;
+  const normalizedKey = key.replaceAll("\\", "/").replace(/\/+$/u, "");
+
+  if (
+    normalizedKey === sourceBasename ||
+    normalizedKey.endsWith(`/${sourceBasename}`)
+  ) {
+    return normalizedKey;
+  }
+
+  return [normalizedKey, sourceBasename].filter(Boolean).join("/");
+};
+
 export const createNodeStoragePluginFacade = (
   plugin: StoragePlugin,
   contextSource: NodeStorageContextSource,
@@ -54,7 +69,7 @@ export const createNodeStoragePluginFacade = (
           try {
             const result = await plugin.put({
               context,
-              key,
+              key: appendSourceBasename(key, filePath),
               body,
               contentLength: file.size,
             });

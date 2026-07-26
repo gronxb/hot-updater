@@ -100,6 +100,96 @@ export const registerFacadeCases = (temporaryDirectory: () => string): void => {
       expect(operations).toEqual([{ context, name: "put" }]);
     });
 
+    it("appends the source basename to the legacy prefix before v2 put", async () => {
+      // Given
+      const keys: string[] = [];
+      const plugin: StoragePlugin = {
+        ...createRecordingPlugin([]),
+        async put(input) {
+          keys.push(input.key);
+          await new Response(input.body).arrayBuffer();
+          return {
+            kind: "stored",
+            storageUri: `memory://bucket/${input.key}`,
+          };
+        },
+      };
+      const facade = createNodeStoragePluginFacade(
+        plugin,
+        createContext("basename"),
+      );
+      const filePath = `${temporaryDirectory()}/bundle.zip`;
+      await writeFile(filePath, new Uint8Array([1, 2, 3]));
+
+      // When
+      const result = await facade.profiles.node.upload(
+        "updates/bundle-id",
+        filePath,
+      );
+
+      // Then
+      expect(keys).toEqual(["updates/bundle-id/bundle.zip"]);
+      expect(result.storageUri).toBe(
+        "memory://bucket/updates/bundle-id/bundle.zip",
+      );
+    });
+
+    it("does not duplicate a basename already present in the legacy key", async () => {
+      // Given
+      const keys: string[] = [];
+      const plugin: StoragePlugin = {
+        ...createRecordingPlugin([]),
+        async put(input) {
+          keys.push(input.key);
+          await new Response(input.body).arrayBuffer();
+          return { kind: "stored", storageUri: "memory://bucket/stored" };
+        },
+      };
+      const facade = createNodeStoragePluginFacade(
+        plugin,
+        createContext("basename-present"),
+      );
+      const filePath = `${temporaryDirectory()}/manifest.json`;
+      await writeFile(filePath, new Uint8Array([1]));
+
+      // When
+      await facade.profiles.node.upload(
+        "updates/bundle-id/manifest.json",
+        filePath,
+      );
+
+      // Then
+      expect(keys).toEqual(["updates/bundle-id/manifest.json"]);
+    });
+
+    it("normalizes Windows-like separators while preserving URI key layout", async () => {
+      // Given
+      const keys: string[] = [];
+      const plugin: StoragePlugin = {
+        ...createRecordingPlugin([]),
+        async put(input) {
+          keys.push(input.key);
+          await new Response(input.body).arrayBuffer();
+          return { kind: "stored", storageUri: "memory://bucket/stored" };
+        },
+      };
+      const facade = createNodeStoragePluginFacade(
+        plugin,
+        createContext("windows-path"),
+      );
+      const filePath = `${temporaryDirectory()}/source\\patch.bsdiff`;
+      await writeFile(filePath, new Uint8Array([2]));
+
+      // When
+      await facade.profiles.node.upload(
+        "updates\\bundle-id\\patches",
+        filePath,
+      );
+
+      // Then
+      expect(keys).toEqual(["updates/bundle-id/patches/patch.bsdiff"]);
+    });
+
     it("maps get, head, and exact delete to legacy operations", async () => {
       // Given
       const operations: RecordedOperation[] = [];
