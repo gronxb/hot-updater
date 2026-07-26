@@ -28,6 +28,19 @@ describe("Firebase non-interactive init inputs", () => {
     expect(inputs.applicationCredentials).toBeUndefined();
   });
 
+  it("reports an invalid saved region as missing", () => {
+    const inputs = resolveFirebaseInitInputs({
+      HOT_UPDATER_FIREBASE_PROJECT_ID: "demo-project",
+      HOT_UPDATER_FIREBASE_REGION: "us-central1; touch /tmp/injected",
+    });
+
+    expect(() => assertFirebaseNonInteractiveInputs(inputs, true)).toThrow(
+      expect.objectContaining({
+        missingInputs: ["HOT_UPDATER_FIREBASE_REGION"],
+      }),
+    );
+  });
+
   it("uses the credential file for Firebase and gcloud commands", () => {
     expect(getFirebaseCliEnv("/tmp/firebase-credentials.json")).toEqual({
       CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: "/tmp/firebase-credentials.json",

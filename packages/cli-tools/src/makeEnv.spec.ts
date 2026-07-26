@@ -1,4 +1,6 @@
 import fs from "fs/promises";
+import type { Stats } from "node:fs";
+import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,8 +13,10 @@ vi.mock("fs/promises", async () => {
     ...actual,
     default: {
       ...actual,
-      chmod: vi.fn(),
+      lstat: vi.fn(),
       readFile: vi.fn(),
+      rename: vi.fn(),
+      rm: vi.fn(),
       writeFile: vi.fn(),
     },
     readFile: vi.fn(),
@@ -22,6 +26,12 @@ vi.mock("fs/promises", async () => {
 describe("makeEnv", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fs.lstat).mockRejectedValue(
+      Object.assign(new Error("missing"), { code: "ENOENT" }),
+    );
+    vi.mocked(fs.rename).mockResolvedValue(undefined);
+    vi.mocked(fs.rm).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -190,14 +200,41 @@ describe("makeEnv", () => {
     await makeEnv({ HOT_UPDATER_INIT_BUILD: "bare" });
 
     // Then
+    const temporaryPath = vi.mocked(fs.writeFile).mock.calls[0]?.[0];
+    expect(temporaryPath).toEqual(expect.stringContaining(".env.hotupdater."));
     expect(fs.writeFile).toHaveBeenCalledWith(
-      ".env.hotupdater",
+      temporaryPath,
       "HOT_UPDATER_INIT_BUILD=bare",
       {
         encoding: "utf-8",
+        flag: "wx",
         mode: 0o600,
       },
     );
-    expect(fs.chmod).toHaveBeenCalledWith(".env.hotupdater", 0o600);
+    expect(fs.rename).toHaveBeenCalledWith(
+      temporaryPath,
+      path.resolve(".env.hotupdater"),
+    );
+  });
+
+  it("refuses to follow a managed env symlink", async () => {
+    vi.mocked(fs.lstat).mockResolvedValue({
+      isFile: () => false,
+      isSymbolicLink: () => true,
+    } as Stats);
+
+    await expect(makeEnv({ TOKEN: "secret" })).rejects.toThrow(
+      "Refusing to write init environment values to a non-regular file",
+    );
+    expect(fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects values that could inject another environment assignment", async () => {
+    vi.mocked(fs.readFile).mockResolvedValueOnce("");
+
+    await expect(makeEnv({ TOKEN: "secret\nINJECTED=true" })).rejects.toThrow(
+      "Environment values cannot contain NUL or newlines",
+    );
+    expect(fs.writeFile).not.toHaveBeenCalled();
   });
 });

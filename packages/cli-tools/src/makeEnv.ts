@@ -1,6 +1,78 @@
-import fs from "fs/promises";
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 type EnvVarValue = string | { comment: string; value: string };
+
+const isFileSystemError = (error: unknown): error is NodeJS.ErrnoException =>
+  error instanceof Error && "code" in error;
+
+const assertSafeExistingTarget = async (filePath: string) => {
+  try {
+    const target = await fs.lstat(filePath);
+    if (target.isSymbolicLink() || !target.isFile()) {
+      throw new Error(
+        `Refusing to write init environment values to a non-regular file: ${filePath}`,
+      );
+    }
+  } catch (error) {
+    if (isFileSystemError(error) && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+};
+
+const serializeEnvValue = (value: string) => {
+  if (
+    value.includes("\u0000") ||
+    value.includes("\r") ||
+    value.includes("\n")
+  ) {
+    throw new Error("Environment values cannot contain NUL or newlines.");
+  }
+  return /^[A-Za-z0-9_./:@%+,=-]*$/.test(value) ? value : JSON.stringify(value);
+};
+
+const formatEnvLine = (key: string, value: string) => {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+    throw new Error(`Invalid environment variable name: ${key}`);
+  }
+  return `${key}=${serializeEnvValue(value)}`;
+};
+
+const formatComment = (comment: string) => {
+  if (
+    comment.includes("\u0000") ||
+    comment.includes("\r") ||
+    comment.includes("\n")
+  ) {
+    throw new Error("Environment comments cannot contain NUL or newlines.");
+  }
+  return `# ${comment}`;
+};
+
+const writeEnvAtomically = async (filePath: string, content: string) => {
+  const resolvedPath = path.resolve(filePath);
+  const temporaryPath = path.join(
+    path.dirname(resolvedPath),
+    `.${path.basename(resolvedPath)}.${randomUUID()}.tmp`,
+  );
+  let renamed = false;
+  try {
+    await fs.writeFile(temporaryPath, content, {
+      encoding: "utf-8",
+      flag: "wx",
+      mode: 0o600,
+    });
+    await fs.rename(temporaryPath, resolvedPath);
+    renamed = true;
+  } finally {
+    if (!renamed) {
+      await fs.rm(temporaryPath, { force: true });
+    }
+  }
+};
 
 export const makeEnv = async (
   newEnvVars: Record<string, EnvVarValue>,
@@ -11,13 +83,18 @@ export const makeEnv = async (
   },
 ): Promise<string> => {
   try {
+    const resolvedFilePath = path.resolve(filePath);
+    await assertSafeExistingTarget(resolvedFilePath);
     const preserveKeys = new Set(options?.preserveKeys ?? []);
     const removeKeys = new Set(options?.removeKeys ?? []);
-    // Read the existing .env.hotupdater file or initialize with an empty string if not found
     const existingContent = await fs
-      .readFile(filePath, "utf-8")
-      .catch(() => "");
-    // If file is empty, use an empty array to avoid an initial empty line.
+      .readFile(resolvedFilePath, "utf-8")
+      .catch((error) => {
+        if (isFileSystemError(error) && error.code === "ENOENT") {
+          return "";
+        }
+        throw error;
+      });
     const lines = existingContent ? existingContent.split("\n") : [];
     const processedKeys = new Set<string>();
     const updatedLines: string[] = [];
@@ -70,10 +147,10 @@ export const makeEnv = async (
 
           const newValue = newEnvVars[key];
           if (typeof newValue === "object" && newValue !== null) {
-            updatedLines.push(`# ${newValue.comment}`);
-            updatedLines.push(`${key}=${newValue.value}`);
+            updatedLines.push(formatComment(newValue.comment));
+            updatedLines.push(formatEnvLine(key, newValue.value));
           } else {
-            updatedLines.push(`${key}=${newValue}`);
+            updatedLines.push(formatEnvLine(key, newValue));
           }
         } else {
           updatedLines.push(line);
@@ -87,20 +164,16 @@ export const makeEnv = async (
     for (const [key, val] of Object.entries(newEnvVars)) {
       if (!processedKeys.has(key)) {
         if (typeof val === "object" && val !== null) {
-          updatedLines.push(`# ${val.comment}`);
-          updatedLines.push(`${key}=${val.value}`);
+          updatedLines.push(formatComment(val.comment));
+          updatedLines.push(formatEnvLine(key, val.value));
         } else {
-          updatedLines.push(`${key}=${val}`);
+          updatedLines.push(formatEnvLine(key, val));
         }
       }
     }
 
     const updatedContent = updatedLines.join("\n");
-    await fs.writeFile(filePath, updatedContent, {
-      encoding: "utf-8",
-      mode: 0o600,
-    });
-    await fs.chmod(filePath, 0o600);
+    await writeEnvAtomically(resolvedFilePath, updatedContent);
     return updatedContent;
   } catch (error) {
     console.error("Error while updating .env.hotupdater file:", error);

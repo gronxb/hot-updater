@@ -1,5 +1,67 @@
 import type { InitProviderDefinition } from "../initProvider";
 
+export const AWS_AUTH_MODES = [
+  "local-session",
+  "shared-profile",
+  "sso",
+  "account",
+] as const;
+
+export type AwsAuthMode = (typeof AWS_AUTH_MODES)[number];
+
+export const isAwsAuthMode = (
+  value: string | undefined,
+): value is AwsAuthMode =>
+  value !== undefined && AWS_AUTH_MODES.some((mode) => mode === value);
+
+export const AWS_REGION_VALUES = [
+  "af-south-1",
+  "ap-east-1",
+  "ap-east-2",
+  "ap-northeast-1",
+  "ap-northeast-2",
+  "ap-northeast-3",
+  "ap-south-1",
+  "ap-south-2",
+  "ap-southeast-1",
+  "ap-southeast-2",
+  "ap-southeast-3",
+  "ap-southeast-4",
+  "ap-southeast-5",
+  "ap-southeast-6",
+  "ap-southeast-7",
+  "ca-central-1",
+  "ca-west-1",
+  "cn-north-1",
+  "cn-northwest-1",
+  "eu-central-1",
+  "eu-central-2",
+  "eu-north-1",
+  "eu-south-1",
+  "eu-south-2",
+  "eu-west-1",
+  "eu-west-2",
+  "eu-west-3",
+  "il-central-1",
+  "me-central-1",
+  "me-south-1",
+  "mx-central-1",
+  "sa-east-1",
+  "us-east-1",
+  "us-east-2",
+  "us-gov-east-1",
+  "us-gov-west-1",
+  "us-west-1",
+  "us-west-2",
+] as const;
+
+export type AwsRegionValue = (typeof AWS_REGION_VALUES)[number];
+
+export const isAwsRegionValue = (
+  value: string | undefined,
+): value is AwsRegionValue =>
+  value !== undefined && AWS_REGION_VALUES.some((region) => region === value);
+
 export const AWS_INIT_PROVIDER = {
   label: "AWS S3 + Lambda@Edge",
   inputs: {
@@ -10,6 +72,7 @@ export const AWS_INIT_PROVIDER = {
         message: "Select the mode to login to AWS",
         type: "select",
       },
+      validate: isAwsAuthMode,
     },
     profile: {
       envKey: "HOT_UPDATER_AWS_PROFILE",
@@ -63,6 +126,7 @@ export const AWS_INIT_PROVIDER = {
         message: "Enter AWS region for the S3 bucket",
         type: "select",
       },
+      validate: isAwsRegionValue,
     },
     lambdaName: {
       envKey: "HOT_UPDATER_AWS_LAMBDA_NAME",

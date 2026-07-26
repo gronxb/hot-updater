@@ -44,7 +44,7 @@ const isAwsRegion = (value: string | undefined): value is AwsRegion => {
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const { env: existingEnv } = await readHotUpdaterInitEnv(
+  const { env: existingEnv, managedEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     envFile,
   );
@@ -89,40 +89,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         ? credentials.secretAccessKey
         : savedInputs.secretAccessKey,
   };
-  const persistCredentialInputs = await confirmInitInputPersistence({
-    existingEnv,
-    inputs: resolvedAuthInputs,
-    nonInteractive,
-    provider: AWS_INIT_PROVIDER,
-  });
-  const authEnv = getInitProviderEnvVars({
-    includeConsentInputs: persistCredentialInputs,
-    inputs: resolvedAuthInputs,
-    provider: AWS_INIT_PROVIDER,
-  });
-  const accessKeyEnvKey = AWS_INIT_PROVIDER.inputs.accessKeyId.envKey;
-  const secretAccessKeyEnvKey = AWS_INIT_PROVIDER.inputs.secretAccessKey.envKey;
-  await makeEnv({
-    ...authEnv,
-    ...(authEnv[accessKeyEnvKey]
-      ? {
-          [accessKeyEnvKey]: {
-            comment:
-              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
-            value: authEnv[accessKeyEnvKey],
-          },
-        }
-      : {}),
-    ...(authEnv[secretAccessKeyEnvKey]
-      ? {
-          [secretAccessKeyEnvKey]: {
-            comment:
-              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
-            value: authEnv[secretAccessKeyEnvKey],
-          },
-        }
-      : {}),
-  });
 
   // S3 related tasks: Create S3Manager instance
   const s3Manager = new S3Manager(credentials);
@@ -254,25 +220,62 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     process.exit(1);
   }
 
-  if (resourceInputs.bucketSelection === createKey) {
-    if (!isAwsRegion(bucketRegion)) {
-      p.log.error("AWS bucket region is required.");
-      process.exit(1);
-    }
-    await s3Manager.createBucket(bucketName, bucketRegion);
-  }
-
   if (!isAwsRegion(bucketRegion)) {
-    p.log.error("Failed to get S3 bucket region");
+    p.log.error("AWS bucket region is required.");
     process.exit(1);
   }
-  await makeEnv({
-    [AWS_INIT_PROVIDER.inputs.bucketName.envKey]: bucketName,
-    [AWS_INIT_PROVIDER.inputs.bucketRegion.envKey]: bucketRegion,
-    [AWS_INIT_PROVIDER.inputs.lambdaName.envKey]: lambdaName,
-    [AWS_INIT_PROVIDER.inputs.migrationApproved.envKey]:
-      String(migrationApproved),
+  const cloudFrontManager = new CloudFrontManager(bucketRegion, credentials);
+  const selectedDistribution = await cloudFrontManager.selectDistribution({
+    bucketName,
+    distributionId: savedInputs.distributionId,
+    nonInteractive,
   });
+  const resolvedInputs = {
+    ...resolvedAuthInputs,
+    bucketName,
+    bucketRegion,
+    distributionId: selectedDistribution?.Id,
+    lambdaName,
+    migrationApproved: String(migrationApproved),
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv: managedEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: AWS_INIT_PROVIDER,
+  });
+  const initEnv = getInitProviderEnvVars({
+    includeConsentInputs: persistCredentialInputs,
+    inputs: resolvedInputs,
+    provider: AWS_INIT_PROVIDER,
+  });
+  const accessKeyEnvKey = AWS_INIT_PROVIDER.inputs.accessKeyId.envKey;
+  const secretAccessKeyEnvKey = AWS_INIT_PROVIDER.inputs.secretAccessKey.envKey;
+  await makeEnv({
+    ...initEnv,
+    ...(initEnv[accessKeyEnvKey]
+      ? {
+          [accessKeyEnvKey]: {
+            comment:
+              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
+            value: initEnv[accessKeyEnvKey],
+          },
+        }
+      : {}),
+    ...(initEnv[secretAccessKeyEnvKey]
+      ? {
+          [secretAccessKeyEnvKey]: {
+            comment:
+              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
+            value: initEnv[secretAccessKeyEnvKey],
+          },
+        }
+      : {}),
+  });
+
+  if (resourceInputs.bucketSelection === createKey) {
+    await s3Manager.createBucket(bucketName, bucketRegion);
+  }
 
   p.log.info(`Selected S3 Bucket: ${bucketName} (${bucketRegion})`);
 
@@ -297,9 +300,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     `/hot-updater/${bucketName}/keypair`,
   );
 
-  // CloudFront related tasks: Create CloudFrontManager instance
-  const cloudFrontManager = new CloudFrontManager(bucketRegion, credentials);
-
   // Create CloudFront key group
   const { publicKeyId, keyGroupId } =
     await cloudFrontManager.getOrCreateKeyGroup(keyPair.publicKey);
@@ -323,9 +323,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await cloudFrontManager.createOrUpdateDistribution({
       keyGroupId,
       bucketName,
+      distribution: selectedDistribution,
       functionArn,
-      distributionId: savedInputs.distributionId,
-      nonInteractive,
     });
 
   // Update S3 bucket policy (allow CloudFront access)

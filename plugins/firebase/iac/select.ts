@@ -150,7 +150,6 @@ const listProjects = async (
       ],
       {
         env: cliEnv,
-        shell: true,
       },
     );
     const projectsJson = JSON.parse(projects.stdout);
@@ -180,7 +179,6 @@ export const initFirebaseUser = async (
       await execa("npx", ["firebase", "login"], {
         env: cliEnv,
         stdio: "inherit",
-        shell: true,
       });
     } catch (err) {
       handleError(err instanceof Error ? err : new Error(String(err)));
@@ -194,7 +192,6 @@ export const initFirebaseUser = async (
         ["auth", "list", "--format=json"],
         {
           env: cliEnv,
-          shell: true,
         },
       );
       const authListJson = JSON.parse(authList.stdout);
@@ -207,7 +204,6 @@ export const initFirebaseUser = async (
         await execa("gcloud", ["auth", "login"], {
           env: cliEnv,
           stdio: "inherit",
-          shell: true,
         });
       }
     } catch (err) {
@@ -264,7 +260,6 @@ export const initFirebaseUser = async (
       await execa("npx", ["firebase", "projects:create", newProjectId], {
         env: cliEnv,
         stdio: "inherit",
-        shell: true,
       });
       p.log.success("Firebase project created successfully");
 
@@ -290,9 +285,6 @@ export const initFirebaseUser = async (
     process.exit(0);
   }
 
-  await makeEnv({
-    HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
-  });
   await p.tasks([
     {
       title: `Select Firebase project (${projectId})...`,
@@ -310,7 +302,6 @@ export const initFirebaseUser = async (
             {
               cwd,
               env: cliEnv,
-              shell: true,
             },
           );
         } catch (error) {
@@ -337,7 +328,6 @@ export const initFirebaseUser = async (
       ],
       {
         env: cliEnv,
-        shell: true,
         /**
          * API [firestore.googleapis.com] not enabled on project [xxx]. Would you
          like to enable and retry (this will take a few minutes)? (y/N)?
@@ -380,7 +370,6 @@ export const initFirebaseUser = async (
           ],
           {
             env: cliEnv,
-            shell: true,
           },
         );
         const bucketsJson = JSON.parse(buckets.stdout);
@@ -416,7 +405,6 @@ export const initFirebaseUser = async (
     ["projects", "describe", projectId, "--format=json"],
     {
       env: cliEnv,
-      shell: true,
     },
   );
   const projectJson = JSON.parse(project.stdout);

@@ -1,5 +1,10 @@
 import type { InitProviderDefinition } from "../initProvider";
 
+export const isSupabaseFunctionName = (
+  value: string | undefined,
+): value is string =>
+  value !== undefined && /^[A-Za-z][A-Za-z0-9_-]*$/.test(value);
+
 export const SUPABASE_INIT_PROVIDER = {
   label: "Supabase",
   inputs: {
@@ -29,6 +34,7 @@ export const SUPABASE_INIT_PROVIDER = {
         placeholder: "update-server",
         type: "text",
       },
+      validate: isSupabaseFunctionName,
     },
     databasePassword: {
       envKey: "HOT_UPDATER_SUPABASE_DB_PASSWORD",

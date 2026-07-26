@@ -132,7 +132,6 @@ describe("initFirebaseUser", () => {
       ["firebase", "use", "demo-project", "--non-interactive"],
       {
         cwd: "/tmp/firebase-init",
-        shell: true,
       },
     );
     expect(mocks.execa).not.toHaveBeenCalledWith(
@@ -146,5 +145,6 @@ describe("initFirebaseUser", () => {
       expect.anything(),
     );
     expect(mocks.select).not.toHaveBeenCalled();
+    expect(vi.mocked(makeEnv)).not.toHaveBeenCalled();
   });
 });

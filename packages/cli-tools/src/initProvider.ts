@@ -1,17 +1,39 @@
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
 import { MissingInitInputsError } from "./initOptions";
-import { AWS_INIT_PROVIDER } from "./initProviders/aws";
+import {
+  AWS_AUTH_MODES,
+  AWS_INIT_PROVIDER,
+  AWS_REGION_VALUES,
+  type AwsRegionValue,
+  isAwsAuthMode,
+  isAwsRegionValue,
+} from "./initProviders/aws";
 import { CLOUDFLARE_INIT_PROVIDER } from "./initProviders/cloudflare";
-import { FIREBASE_INIT_PROVIDER } from "./initProviders/firebase";
-import { SUPABASE_INIT_PROVIDER } from "./initProviders/supabase";
+import {
+  FIREBASE_INIT_PROVIDER,
+  FIREBASE_REGION_VALUES,
+  isFirebaseRegion,
+} from "./initProviders/firebase";
+import {
+  isSupabaseFunctionName,
+  SUPABASE_INIT_PROVIDER,
+} from "./initProviders/supabase";
 import { p } from "./prompts";
 
 export {
+  AWS_AUTH_MODES,
   AWS_INIT_PROVIDER,
+  AWS_REGION_VALUES,
   CLOUDFLARE_INIT_PROVIDER,
   FIREBASE_INIT_PROVIDER,
+  FIREBASE_REGION_VALUES,
+  isAwsAuthMode,
+  isAwsRegionValue,
+  isFirebaseRegion,
+  isSupabaseFunctionName,
   SUPABASE_INIT_PROVIDER,
 };
+export type { AwsRegionValue };
 
 export type InitProviderInputPersistence = "always" | "with-consent";
 
@@ -73,6 +95,35 @@ export const resolveInitProviderInput = (
   input: InitProviderInputDefinition,
 ): string | undefined => getHotUpdaterEnvValue(env, input.envKey);
 
+export const resolveInitProviderInputs = (
+  env: Readonly<Record<string, string>>,
+  provider: InitProviderDefinition,
+): Readonly<Record<string, string | undefined>> =>
+  Object.fromEntries(
+    Object.entries(provider.inputs).map(([name, input]) => [
+      name,
+      resolveInitProviderInput(env, input),
+    ]),
+  );
+
+export const getMissingInitProviderInputs = ({
+  inputs,
+  provider,
+}: {
+  readonly inputs: Readonly<Record<string, string | undefined>>;
+  readonly provider: InitProviderDefinition;
+}): readonly string[] =>
+  Object.entries(provider.inputs)
+    .filter(([name, input]) => {
+      const required = input.requiredWhen
+        ? input.requiredWhen(inputs)
+        : !input.optional;
+      const value = inputs[name];
+
+      return required && (!value?.trim() || input.validate?.(value) === false);
+    })
+    .map(([, input]) => input.envKey);
+
 export const assertInitProviderInputs = <
   TInputs extends InitProviderInputsDefinition,
 >({
@@ -88,17 +139,7 @@ export const assertInitProviderInputs = <
     return;
   }
 
-  const missingInputs = Object.entries(provider.inputs)
-    .filter(([name, input]) => {
-      const required = input.requiredWhen
-        ? input.requiredWhen(inputs)
-        : !input.optional;
-      const value = inputs[name];
-
-      return required && (!value?.trim() || input.validate?.(value) === false);
-    })
-    .map(([, input]) => input.envKey);
-
+  const missingInputs = getMissingInitProviderInputs({ inputs, provider });
   if (missingInputs.length > 0) {
     throw new MissingInitInputsError(missingInputs);
   }
@@ -131,8 +172,11 @@ export const confirmInitInputPersistence = async <
   readonly nonInteractive: boolean;
   readonly provider: InitProviderDefinition<TInputs>;
 }): Promise<boolean> => {
-  if (nonInteractive || !hasNewConsentInput(provider, inputs, existingEnv)) {
+  if (!hasNewConsentInput(provider, inputs, existingEnv)) {
     return true;
+  }
+  if (nonInteractive) {
+    return false;
   }
 
   const confirmed = await p.confirm({

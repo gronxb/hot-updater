@@ -5,9 +5,12 @@ import {
   assertInitProviderInputs,
   confirmInitInputPersistence,
   defineInitProvider,
+  getMissingInitProviderInputs,
   getInitProviderEnvVars,
+  INIT_PROVIDER_DEFINITIONS,
   INIT_PROVIDER_NAMES,
   isInitProvider,
+  resolveInitProviderInputs,
 } from "./initProvider";
 import { p } from "./prompts";
 
@@ -28,6 +31,25 @@ describe("init provider registry", () => {
     expect(results).toEqual([true, true, true, true]);
     expect(isInitProvider("unknown")).toBe(false);
     expect(isInitProvider(undefined)).toBe(false);
+  });
+
+  it("validates AWS auth mode and region through its declaration", () => {
+    const provider = INIT_PROVIDER_DEFINITIONS.aws;
+    const inputs = resolveInitProviderInputs(
+      {
+        HOT_UPDATER_AWS_AUTH_MODE: "invalid",
+        HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
+        HOT_UPDATER_AWS_MIGRATION_APPROVED: "true",
+        HOT_UPDATER_S3_BUCKET_NAME: "updates",
+        HOT_UPDATER_S3_REGION: "not-a-region",
+      },
+      provider,
+    );
+
+    expect(getMissingInitProviderInputs({ inputs, provider })).toEqual([
+      "HOT_UPDATER_AWS_AUTH_MODE",
+      "HOT_UPDATER_S3_REGION",
+    ]);
   });
 });
 
@@ -71,12 +93,26 @@ describe("confirmInitInputPersistence", () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("does not ask when init is replayed from an env file", async () => {
+  it("does not persist a new credential during prompt-free replay", async () => {
     const confirm = vi.spyOn(p, "confirm");
 
     await expect(
       confirmInitInputPersistence({
         existingEnv: {},
+        inputs: { credential: "secret" },
+        nonInteractive: true,
+        provider,
+      }),
+    ).resolves.toBe(false);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("keeps a credential already stored in the managed env during replay", async () => {
+    const confirm = vi.spyOn(p, "confirm");
+
+    await expect(
+      confirmInitInputPersistence({
+        existingEnv: { TEST_CREDENTIAL: "secret" },
         inputs: { credential: "secret" },
         nonInteractive: true,
         provider,
@@ -145,6 +181,23 @@ describe("assertInitProviderInputs", () => {
         strict: true,
       }),
     ).not.toThrow();
+  });
+
+  it("resolves and reports missing inputs through the declaration", () => {
+    const env = {
+      TEST_AUTH_MODE: "account",
+      TEST_TOKEN: "optional",
+    };
+    const inputs = resolveInitProviderInputs(env, provider);
+
+    expect(inputs).toEqual({
+      accessKey: undefined,
+      authMode: "account",
+      token: "optional",
+    });
+    expect(getMissingInitProviderInputs({ inputs, provider })).toEqual([
+      "TEST_ACCESS_KEY",
+    ]);
   });
 
   it("only includes consent-protected inputs after approval", () => {

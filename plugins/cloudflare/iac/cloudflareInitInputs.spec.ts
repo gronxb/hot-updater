@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   assertCloudflareNonInteractiveInputs,
   resolveCloudflareInitInputs,
+  shouldUpdateR2ManagedDomain,
 } from "./cloudflareInitInputs";
 
 const processEnvKeys = [
@@ -35,6 +36,25 @@ describe("resolveCloudflareInitInputs", () => {
     expect(inputs.bucketName).toBe("process-bucket");
     expect(inputs.apiToken).toBeUndefined();
   });
+});
+
+describe("shouldUpdateR2ManagedDomain", () => {
+  it.each([
+    { isPrivate: false, managedDomainEnabled: false, expected: true },
+    { isPrivate: true, managedDomainEnabled: true, expected: true },
+    { isPrivate: false, managedDomainEnabled: true, expected: false },
+    { isPrivate: true, managedDomainEnabled: false, expected: false },
+  ])(
+    "returns $expected for private=$isPrivate and enabled=$managedDomainEnabled",
+    ({ expected, isPrivate, managedDomainEnabled }) => {
+      expect(
+        shouldUpdateR2ManagedDomain({
+          isPrivate,
+          managedDomainEnabled,
+        }),
+      ).toBe(expected);
+    },
+  );
 });
 
 describe("assertCloudflareNonInteractiveInputs", () => {

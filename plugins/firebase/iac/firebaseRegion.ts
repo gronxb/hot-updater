@@ -1,5 +1,6 @@
 import {
   FIREBASE_INIT_PROVIDER,
+  isFirebaseRegion,
   MissingInitInputsError,
   p,
 } from "@hot-updater/cli-tools";
@@ -44,7 +45,7 @@ export const resolveFirebaseRegion = async ({
   readonly nonInteractive?: boolean;
   readonly savedRegion?: string;
 }): Promise<string> => {
-  if (savedRegion) {
+  if (isFirebaseRegion(savedRegion)) {
     return savedRegion;
   }
 
@@ -55,7 +56,7 @@ export const resolveFirebaseRegion = async ({
   const functionsList = await execa(
     "npx",
     ["firebase", "functions:list", "--json"],
-    { cwd, env: cliEnv, reject: false, shell: true },
+    { cwd, env: cliEnv, reject: false },
   );
   let discoveredRegion: string | undefined;
   if (functionsList.exitCode === 0) {
@@ -82,7 +83,7 @@ export const resolveFirebaseRegion = async ({
     }
   }
 
-  if (discoveredRegion) {
+  if (isFirebaseRegion(discoveredRegion)) {
     return discoveredRegion;
   }
 

@@ -22,6 +22,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
 import {
   assertSupabaseNonInteractiveInputs,
+  inputSupabaseDatabasePassword,
   inputSupabaseDeploymentInputs,
   resolveSupabaseInitInputs,
 } from "./supabaseInitInputs";
@@ -81,7 +82,6 @@ describe("Supabase non-interactive inputs", () => {
     mocks.group.mockImplementation(
       async (prompts: Record<string, () => Promise<string>>) => ({
         accessToken: await prompts.accessToken?.(),
-        dbPassword: await prompts.dbPassword?.(),
         functionName: await prompts.functionName?.(),
       }),
     );
@@ -118,10 +118,40 @@ describe("Supabase non-interactive inputs", () => {
     // Then
     expect(deploymentInputs).toEqual({
       accessToken: "access-token",
-      dbPassword: "",
       functionName: "update-server",
     });
     expect(mocks.password).not.toHaveBeenCalled();
     expect(mocks.text).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsafe saved Edge Function name in non-interactive mode", () => {
+    const inputs = resolveSupabaseInitInputs({
+      HOT_UPDATER_SUPABASE_BUCKET_NAME: "updates",
+      HOT_UPDATER_SUPABASE_FUNCTION_NAME: "../outside",
+      HOT_UPDATER_SUPABASE_PROJECT_ID: "project-ref",
+      SUPABASE_ACCESS_TOKEN: "access-token",
+    });
+
+    expect(() => assertSupabaseNonInteractiveInputs(inputs, true)).toThrow(
+      expect.objectContaining({
+        missingInputs: ["HOT_UPDATER_SUPABASE_FUNCTION_NAME"],
+      }),
+    );
+  });
+
+  it("asks for the database password again when the selected project changes", async () => {
+    mocks.password.mockResolvedValue("new-password");
+
+    await expect(
+      inputSupabaseDatabasePassword({
+        databasePassword: "old-password",
+        forcePrompt: true,
+        nonInteractive: false,
+      }),
+    ).resolves.toBe("new-password");
+    expect(mocks.password).toHaveBeenCalledWith({
+      message:
+        "Enter your Supabase database password (press Enter to skip if none)",
+    });
   });
 });

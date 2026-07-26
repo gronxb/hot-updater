@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   appendToProjectRootGitignore: vi.fn(() => false),
   ensureInstallPackages: vi.fn(),
   group: vi.fn(),
+  isProjectFileTracked: vi.fn(() => false),
+  logError: vi.fn(),
   makeEnv: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
   runAwsInit: vi.fn(),
@@ -24,7 +26,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       group: mocks.group,
       log: {
         ...actual.p.log,
-        error: vi.fn(),
+        error: mocks.logError,
         info: vi.fn(),
       },
     },
@@ -38,6 +40,7 @@ vi.mock("@/utils/ensureInstallPackages", () => ({
 
 vi.mock("@/utils/git", () => ({
   appendToProjectRootGitignore: mocks.appendToProjectRootGitignore,
+  isProjectFileTracked: mocks.isProjectFileTracked,
 }));
 
 vi.mock("@/utils/printBanner", () => ({
@@ -55,6 +58,7 @@ describe("init choices", () => {
     vi.clearAllMocks();
     process.exitCode = undefined;
     mocks.ensureInstallPackages.mockResolvedValue(undefined);
+    mocks.isProjectFileTracked.mockReturnValue(false);
     mocks.makeEnv.mockResolvedValue("");
     mocks.runAwsInit.mockResolvedValue(undefined);
   });
@@ -126,15 +130,51 @@ describe("init choices", () => {
     });
 
     // When
-    await init({ envFile: "init.env" });
+    await init({ envFile: "init.env", provider: "aws" });
 
     // Then
     expect(mocks.group).not.toHaveBeenCalled();
     expect(mocks.appendToProjectRootGitignore).not.toHaveBeenCalled();
+    expect(mocks.isProjectFileTracked).not.toHaveBeenCalled();
     expect(mocks.makeEnv).not.toHaveBeenCalled();
     expect(mocks.ensureInstallPackages).not.toHaveBeenCalled();
     expect(mocks.runAwsInit).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
+    expect(mocks.logError).toHaveBeenCalledWith(
+      [
+        "Init is missing required inputs:",
+        "- HOT_UPDATER_INIT_BUILD",
+        "- HOT_UPDATER_AWS_AUTH_MODE",
+        "- HOT_UPDATER_S3_BUCKET_NAME",
+        "- HOT_UPDATER_S3_REGION",
+        "- HOT_UPDATER_AWS_LAMBDA_NAME",
+        "- HOT_UPDATER_AWS_MIGRATION_APPROVED",
+      ].join("\n"),
+    );
+  });
+
+  it("refuses to write credentials to a tracked managed env file", async () => {
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {
+        HOT_UPDATER_INIT_BUILD: "expo",
+        HOT_UPDATER_INIT_PROVIDER: "aws",
+      },
+    });
+    mocks.isProjectFileTracked.mockReturnValue(true);
+
+    await init();
+
+    expect(mocks.makeEnv).not.toHaveBeenCalled();
+    expect(mocks.ensureInstallPackages).not.toHaveBeenCalled();
+    expect(mocks.runAwsInit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(mocks.isProjectFileTracked).toHaveBeenCalledWith({
+      cwd: process.cwd(),
+      filePath: ".env.hotupdater",
+    });
+    expect(mocks.logError).toHaveBeenCalledWith(
+      expect.stringContaining(".env.hotupdater is tracked by Git"),
+    );
   });
 
   it("passes .env.hotupdater to the selected provider for replay", async () => {
@@ -143,6 +183,11 @@ describe("init choices", () => {
       env: {
         HOT_UPDATER_INIT_BUILD: "expo",
         HOT_UPDATER_INIT_PROVIDER: "aws",
+        HOT_UPDATER_AWS_AUTH_MODE: "local-session",
+        HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
+        HOT_UPDATER_AWS_MIGRATION_APPROVED: "true",
+        HOT_UPDATER_S3_BUCKET_NAME: "hot-updater-storage",
+        HOT_UPDATER_S3_REGION: "us-east-1",
       },
     });
 

@@ -174,7 +174,6 @@ const deployFirestore = async (
     {
       cwd,
       env: cliEnv,
-      shell: true,
     },
   );
 
@@ -220,7 +219,6 @@ const deployFirestore = async (
         cwd,
         env: cliEnv,
         stdio: "inherit",
-        shell: true,
       },
     );
   } catch (e) {
@@ -252,7 +250,6 @@ const deployFunctions = async (
         cwd,
         env: cliEnv,
         stdio: "inherit",
-        shell: true,
       },
     );
   } catch (e) {
@@ -285,7 +282,6 @@ const printTemplate = async (
       ],
       {
         env: cliEnv,
-        shell: true,
       },
     );
     const parsedData = JSON.parse(stdout);
@@ -310,9 +306,7 @@ const printTemplate = async (
 
 const checkIfGcloudCliInstalled = async () => {
   try {
-    await execa("gcloud", ["--version"], {
-      shell: true,
-    });
+    await execa("gcloud", ["--version"]);
     return true;
   } catch {
     return false;
@@ -321,7 +315,7 @@ const checkIfGcloudCliInstalled = async () => {
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const { env: existingEnv } = await readHotUpdaterInitEnv(
+  const { env: existingEnv, managedEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     envFile,
   );
@@ -338,21 +332,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   if (p.isCancel(applicationCredentials)) {
     process.exit(1);
   }
-  const resolvedInputs = {
-    ...savedInputs,
-    applicationCredentials: applicationCredentials || undefined,
-  };
-  const persistCredentialInputs = await confirmInitInputPersistence({
-    existingEnv,
-    inputs: resolvedInputs,
-    nonInteractive,
-    provider: FIREBASE_INIT_PROVIDER,
-  });
-  const persistedInputs = getInitProviderEnvVars({
-    includeConsentInputs: persistCredentialInputs,
-    inputs: resolvedInputs,
-    provider: FIREBASE_INIT_PROVIDER,
-  });
   const cliEnv = getFirebaseCliEnv(
     applicationCredentials
       ? path.resolve(process.cwd(), applicationCredentials)
@@ -389,6 +368,23 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     savedRegion: savedInputs.region,
     cliEnv,
   });
+  const resolvedInputs = {
+    ...savedInputs,
+    applicationCredentials: applicationCredentials || undefined,
+    projectId: initializeVariable.projectId,
+    region: currentRegion,
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv: managedEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: FIREBASE_INIT_PROVIDER,
+  });
+  const persistedInputs = getInitProviderEnvVars({
+    includeConsentInputs: persistCredentialInputs,
+    inputs: resolvedInputs,
+    provider: FIREBASE_INIT_PROVIDER,
+  });
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
   });
@@ -420,7 +416,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         try {
           await execa("npm", ["install"], {
             cwd: functionsDir,
-            shell: true,
           });
           return "Installed dependencies";
         } catch (error) {
@@ -453,7 +448,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           {
             cwd: tmpDir,
             env: cliEnv,
-            shell: true,
           },
         );
         const functionsListJson = JSON.parse(functionsList.stdout);
@@ -479,7 +473,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           ],
           {
             env: cliEnv,
-            shell: true,
           },
         );
         const iamJson = JSON.parse(checkIam.stdout);
@@ -505,7 +498,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
               {
                 env: cliEnv,
                 stdio: "inherit",
-                shell: true,
               },
             );
             p.log.success(

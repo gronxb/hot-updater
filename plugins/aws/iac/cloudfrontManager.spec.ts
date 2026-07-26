@@ -194,12 +194,7 @@ describe("CloudFrontManager", () => {
         ],
       },
     });
-    mockPrompt.select.mockResolvedValue(
-      JSON.stringify({
-        Id: "selected-dist-id",
-        DomainName: "selected.cloudfront.net",
-      }),
-    );
+    mockPrompt.select.mockResolvedValue("selected-dist-id");
     mockCloudFront.getDistributionConfig.mockRejectedValue(
       new Error("update failed"),
     );
@@ -276,6 +271,49 @@ describe("CloudFrontManager", () => {
     await expect(updateDistribution).rejects.toMatchObject({
       missingInputs: ["HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID"],
     });
+    expect(mockPrompt.select).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing saved distribution before mutating CloudFront", async () => {
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await expect(
+      manager.createOrUpdateDistribution({
+        bucketName: "hot-updater-storage",
+        distributionId: "deleted-dist-id",
+        functionArn:
+          "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+        keyGroupId: "new-key-group-id",
+        nonInteractive: true,
+      }),
+    ).rejects.toMatchObject({
+      missingInputs: ["HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID"],
+    });
+    expect(mockCloudFront.listOriginAccessControls).not.toHaveBeenCalled();
+    expect(mockCloudFront.listCachePolicies).not.toHaveBeenCalled();
+    expect(mockCloudFront.updateDistribution).not.toHaveBeenCalled();
+    expect(mockPrompt.select).not.toHaveBeenCalled();
+  });
+
+  it("recreates a deleted saved distribution when no replacement exists", async () => {
+    mockCloudFront.listDistributions.mockResolvedValue({
+      DistributionList: { Items: [] },
+    });
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    await expect(
+      manager.selectDistribution({
+        bucketName: "hot-updater-storage",
+        distributionId: "deleted-dist-id",
+        nonInteractive: true,
+      }),
+    ).resolves.toBeNull();
     expect(mockPrompt.select).not.toHaveBeenCalled();
   });
 });

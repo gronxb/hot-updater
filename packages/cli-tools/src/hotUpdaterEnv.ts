@@ -7,9 +7,15 @@ const HOT_UPDATER_ENV_PATH = ".env.hotupdater";
 
 const unquoteEnvValue = (value: string) => {
   const trimmed = value.trim();
-  const hasMatchingQuotes =
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"));
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      return typeof parsed === "string" ? parsed : trimmed.slice(1, -1);
+    } catch {
+      return trimmed.slice(1, -1);
+    }
+  }
+  const hasMatchingQuotes = trimmed.startsWith("'") && trimmed.endsWith("'");
 
   return hasMatchingQuotes ? trimmed.slice(1, -1) : trimmed;
 };
@@ -57,6 +63,7 @@ const readEnvFile = async (
 
 export type HotUpdaterInitEnv = {
   readonly env: Readonly<Record<string, string>>;
+  readonly managedEnv: Readonly<Record<string, string>>;
 };
 
 export const readHotUpdaterInitEnv = async (
@@ -67,12 +74,12 @@ export const readHotUpdaterInitEnv = async (
   const savedEnv = await readEnvFile(savedEnvPath, true);
 
   if (!envFile) {
-    return { env: savedEnv };
+    return { env: savedEnv, managedEnv: savedEnv };
   }
 
   const inputEnvPath = path.resolve(cwd, envFile);
   if (inputEnvPath === savedEnvPath) {
-    return { env: savedEnv };
+    return { env: savedEnv, managedEnv: savedEnv };
   }
   const inputEnv = await readEnvFile(inputEnvPath, false);
 
@@ -81,20 +88,24 @@ export const readHotUpdaterInitEnv = async (
       ...savedEnv,
       ...inputEnv,
     },
+    managedEnv: savedEnv,
   };
 };
 
 export const readHotUpdaterEnv = async (
   cwd: string,
 ): Promise<Readonly<Record<string, string>>> => {
-  const { env } = await readHotUpdaterInitEnv(cwd);
-  return env;
+  const { managedEnv } = await readHotUpdaterInitEnv(cwd);
+  return managedEnv;
 };
 
 export const getHotUpdaterEnvValue = (
   env: Readonly<Record<string, string>>,
   key: string,
 ) => {
-  const value = process.env[key]?.trim() || env[key]?.trim();
-  return value || undefined;
+  if (process.env[key] !== undefined) {
+    return process.env[key]?.trim() || undefined;
+  }
+
+  return env[key]?.trim() || undefined;
 };

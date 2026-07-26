@@ -28,6 +28,7 @@ import { createWrangler } from "../src/utils/createWrangler";
 import {
   assertCloudflareNonInteractiveInputs,
   resolveCloudflareInitInputs,
+  shouldUpdateR2ManagedDomain,
 } from "./cloudflareInitInputs";
 import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
@@ -168,7 +169,10 @@ const deployWorker = async (
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
-  const { env: existingEnv } = await readHotUpdaterInitEnv(cwd, envFile);
+  const { env: existingEnv, managedEnv } = await readHotUpdaterInitEnv(
+    cwd,
+    envFile,
+  );
   const existingInputs = resolveCloudflareInitInputs(existingEnv);
   assertCloudflareNonInteractiveInputs(existingInputs, nonInteractive);
   const {
@@ -261,10 +265,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       accountId = selectedAccountId;
     }
   }
-  await makeEnv({
-    HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: accountId,
-  });
-
   const availableBuckets: { name: string }[] = [];
   try {
     await p.tasks([
@@ -345,10 +345,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     }
   }
 
-  await makeEnv({
-    [CLOUDFLARE_INIT_PROVIDER.inputs.bucketName.envKey]: selectedBucketName,
-  });
-
   if (existingR2AccessKeyId && existingR2SecretAccessKey) {
     p.log.info("Using existing Cloudflare R2 API credentials.");
   } else if (existingR2AccessKeyId || existingR2SecretAccessKey) {
@@ -364,83 +360,17 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     nonInteractive,
   });
   const { apiToken, accessKeyId, secretAccessKey, workerName } = initSecrets;
-  const resolvedInputs = {
-    ...existingInputs,
-    accessKeyId,
-    accountId,
-    apiToken,
-    bucketName: selectedBucketName,
-    secretAccessKey,
-    workerName,
-  };
-  const persistCredentialInputs = await confirmInitInputPersistence({
-    existingEnv,
-    inputs: resolvedInputs,
-    nonInteractive,
-    provider: CLOUDFLARE_INIT_PROVIDER,
-  });
-  await makeEnv({
-    ...getInitProviderEnvVars({
-      includeConsentInputs: persistCredentialInputs,
-      inputs: resolvedInputs,
-      provider: CLOUDFLARE_INIT_PROVIDER,
-    }),
-  });
-  infrastructureApiToken = apiToken;
-
-  if (createBucket) {
-    const newR2 = await cf.r2.buckets.create({
-      account_id: accountId,
-      name: selectedBucketName,
-    });
-    if (!newR2.name) {
-      throw new Error("Failed to create new R2 Bucket");
-    }
-    p.log.info(`Created R2: ${newR2.name}`);
-  } else {
-    p.log.info(`Selected R2: ${selectedBucketName}`);
-  }
-
-  const domains = await cf.r2.buckets.domains.managed.list(selectedBucketName, {
-    account_id: accountId,
-  });
-
   const isPrivate =
     savedPrivateSetting === "true"
       ? true
       : savedPrivateSetting === "false"
         ? false
-        : domains.enabled
-          ? await p.confirm({
-              message: CLOUDFLARE_INIT_PROVIDER.inputs.r2Private.prompt.message,
-            })
-          : true;
+        : await p.confirm({
+            message: CLOUDFLARE_INIT_PROVIDER.inputs.r2Private.prompt.message,
+            initialValue: true,
+          });
   if (p.isCancel(isPrivate)) {
     process.exit(1);
-  }
-  await makeEnv({
-    [CLOUDFLARE_INIT_PROVIDER.inputs.r2Private.envKey]: String(isPrivate),
-  });
-
-  if (domains.enabled === isPrivate) {
-    try {
-      await p.tasks([
-        {
-          title: `Making R2 bucket ${isPrivate ? "private" : "public"}...`,
-          task: async () => {
-            await cf.r2.buckets.domains.managed.update(selectedBucketName, {
-              account_id: accountId,
-              enabled: !isPrivate,
-            });
-          },
-        },
-      ]);
-    } catch (e) {
-      if (e instanceof Error) {
-        p.log.error(e.message);
-      }
-      throw e;
-    }
   }
 
   const availableD1List: { name: string; uuid: string }[] = [];
@@ -471,23 +401,16 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       d1.uuid === existingD1DatabaseId ||
       (nonInteractive && d1.name === existingD1DatabaseName),
   );
-  let selectedD1DatabaseId: string;
+  let createD1Database = false;
+  let selectedD1DatabaseId: string | undefined;
   let d1DatabaseName: string;
   if (existingD1Database) {
     selectedD1DatabaseId = existingD1Database.uuid;
     d1DatabaseName = existingD1Database.name;
     p.log.info("Using existing Cloudflare D1 database.");
   } else if (nonInteractive && existingD1DatabaseId && existingD1DatabaseName) {
-    const newD1 = await cf.d1.database.create({
-      account_id: accountId,
-      name: existingD1DatabaseName,
-    });
-    if (!newD1.uuid || !newD1.name) {
-      throw new Error("Failed to recreate the saved D1 Database");
-    }
-    selectedD1DatabaseId = newD1.uuid;
-    d1DatabaseName = newD1.name;
-    p.log.info(`Recreated D1 Database: ${newD1.name} (${newD1.uuid})`);
+    createD1Database = true;
+    d1DatabaseName = existingD1DatabaseName;
   } else if (availableD1List.length === 1 && availableD1List[0]) {
     selectedD1DatabaseId = availableD1List[0].uuid;
     d1DatabaseName = availableD1List[0].name;
@@ -526,16 +449,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       if (p.isCancel(name)) {
         process.exit(1);
       }
-      const newD1 = await cf.d1.database.create({
-        account_id: accountId,
-        name,
-      });
-      if (!newD1.uuid || !newD1.name) {
-        throw new Error("Failed to create new D1 Database");
-      }
-      selectedD1DatabaseId = newD1.uuid;
-      d1DatabaseName = newD1.name;
-      p.log.info(`Created new D1 Database: ${newD1.name} (${newD1.uuid})`);
+      createD1Database = true;
+      d1DatabaseName = name;
     } else {
       const selectedDatabase = availableD1List.find(
         (d1) => d1.uuid === selectedD1,
@@ -547,6 +462,91 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       d1DatabaseName = selectedDatabase.name;
       p.log.info(`Selected D1: ${selectedD1DatabaseId}`);
     }
+  }
+
+  const resolvedInputs = {
+    ...existingInputs,
+    accessKeyId,
+    accountId,
+    apiToken,
+    bucketName: selectedBucketName,
+    d1DatabaseId: selectedD1DatabaseId,
+    d1DatabaseName,
+    r2Private: String(isPrivate),
+    secretAccessKey,
+    workerName,
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv: managedEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: CLOUDFLARE_INIT_PROVIDER,
+  });
+  await makeEnv({
+    ...getInitProviderEnvVars({
+      includeConsentInputs: persistCredentialInputs,
+      inputs: resolvedInputs,
+      provider: CLOUDFLARE_INIT_PROVIDER,
+    }),
+  });
+  infrastructureApiToken = apiToken;
+
+  if (createBucket) {
+    const newR2 = await cf.r2.buckets.create({
+      account_id: accountId,
+      name: selectedBucketName,
+    });
+    if (!newR2.name) {
+      throw new Error("Failed to create new R2 Bucket");
+    }
+    p.log.info(`Created R2: ${newR2.name}`);
+  } else {
+    p.log.info(`Selected R2: ${selectedBucketName}`);
+  }
+
+  const domains = await cf.r2.buckets.domains.managed.list(selectedBucketName, {
+    account_id: accountId,
+  });
+  if (
+    shouldUpdateR2ManagedDomain({
+      isPrivate,
+      managedDomainEnabled: domains.enabled,
+    })
+  ) {
+    try {
+      await p.tasks([
+        {
+          title: `Making R2 bucket ${isPrivate ? "private" : "public"}...`,
+          task: async () => {
+            await cf.r2.buckets.domains.managed.update(selectedBucketName, {
+              account_id: accountId,
+              enabled: !isPrivate,
+            });
+          },
+        },
+      ]);
+    } catch (e) {
+      if (e instanceof Error) {
+        p.log.error(e.message);
+      }
+      throw e;
+    }
+  }
+
+  if (createD1Database) {
+    const newD1 = await cf.d1.database.create({
+      account_id: accountId,
+      name: d1DatabaseName,
+    });
+    if (!newD1.uuid || !newD1.name) {
+      throw new Error("Failed to create the requested D1 Database");
+    }
+    selectedD1DatabaseId = newD1.uuid;
+    d1DatabaseName = newD1.name;
+    p.log.info(`Created D1 Database: ${newD1.name} (${newD1.uuid})`);
+  }
+  if (!selectedD1DatabaseId) {
+    throw new Error("Failed to resolve the D1 Database");
   }
   await makeEnv({
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseId.envKey]: selectedD1DatabaseId,

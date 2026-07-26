@@ -4,21 +4,27 @@ import type {
   RunInitOptions,
 } from "@hot-updater/cli-tools";
 import {
-  assertInitInputs,
   getHotUpdaterEnvValue,
+  getMissingInitInputs,
+  getMissingInitProviderInputs,
   HotUpdateDirUtil,
   INIT_PROVIDER_DEFINITIONS,
   INIT_PROVIDER_NAMES,
   InitError,
   isInitProvider,
   makeEnv,
+  MissingInitInputsError,
   p,
   readHotUpdaterInitEnv,
+  resolveInitProviderInputs,
 } from "@hot-updater/cli-tools";
 import { ExecaError } from "execa";
 
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
-import { appendToProjectRootGitignore } from "@/utils/git";
+import {
+  appendToProjectRootGitignore,
+  isProjectFileTracked,
+} from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
 
 const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
@@ -133,13 +139,26 @@ const collectInitChoices = async (
   const provider =
     options.provider ?? (isInitProvider(savedProvider) ? savedProvider : null);
 
-  assertInitInputs({
-    inputs: {
-      [INIT_BUILD_ENV_KEY]: build ?? undefined,
-      [INIT_PROVIDER_ENV_KEY]: provider ?? undefined,
-    },
-    strict: options.envFile !== undefined,
-  });
+  if (options.envFile !== undefined) {
+    const missingInputs = [
+      ...getMissingInitInputs({
+        [INIT_BUILD_ENV_KEY]: build ?? undefined,
+        [INIT_PROVIDER_ENV_KEY]: provider ?? undefined,
+      }),
+      ...(provider
+        ? getMissingInitProviderInputs({
+            inputs: resolveInitProviderInputs(
+              existingEnv,
+              INIT_PROVIDER_DEFINITIONS[provider],
+            ),
+            provider: INIT_PROVIDER_DEFINITIONS[provider],
+          })
+        : []),
+    ];
+    if (missingInputs.length > 0) {
+      throw new MissingInitInputsError([...new Set(missingInputs)]);
+    }
+  }
 
   if (build && provider) {
     return { build, provider };
@@ -198,6 +217,19 @@ export const init = async (options: InitOptions = {}) => {
       return;
     }
     throw error;
+  }
+
+  if (
+    isProjectFileTracked({
+      cwd: process.cwd(),
+      filePath: ".env.hotupdater",
+    })
+  ) {
+    p.log.error(
+      "Refusing to save init credentials because .env.hotupdater is tracked by Git. Untrack it before running init.",
+    );
+    process.exitCode = 1;
+    return;
   }
 
   if (

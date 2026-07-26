@@ -16,6 +16,14 @@ export type CloudflareInitInputs = {
   readonly workerName?: string;
 };
 
+export const shouldUpdateR2ManagedDomain = ({
+  isPrivate,
+  managedDomainEnabled,
+}: {
+  readonly isPrivate: boolean;
+  readonly managedDomainEnabled: boolean;
+}) => managedDomainEnabled !== !isPrivate;
+
 export const resolveCloudflareInitInputs = (
   existingEnv: Readonly<Record<string, string>>,
 ): CloudflareInitInputs => {

@@ -2,11 +2,19 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { readHotUpdaterEnv, readHotUpdaterInitEnv } from "./hotUpdaterEnv";
+import {
+  getHotUpdaterEnvValue,
+  readHotUpdaterEnv,
+  readHotUpdaterInitEnv,
+} from "./hotUpdaterEnv";
 
 const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("readHotUpdaterEnv", () => {
   afterEach(async () => {
@@ -77,17 +85,26 @@ describe("readHotUpdaterEnv", () => {
       [
         "HOT_UPDATER_INIT_BUILD=expo",
         "HOT_UPDATER_SUPABASE_DB_PASSWORD=temporary-secret",
+        'TOKEN="value with \\"quotes\\""',
       ].join("\n"),
     );
 
     // When
-    const { env } = await readHotUpdaterInitEnv(directory, "init.env");
+    const { env, managedEnv } = await readHotUpdaterInitEnv(
+      directory,
+      "init.env",
+    );
 
     // Then
     expect(env).toEqual({
       HOT_UPDATER_INIT_BUILD: "expo",
       HOT_UPDATER_INIT_PROVIDER: "cloudflare",
       HOT_UPDATER_SUPABASE_DB_PASSWORD: "temporary-secret",
+      TOKEN: 'value with "quotes"',
+    });
+    expect(managedEnv).toEqual({
+      HOT_UPDATER_INIT_BUILD: "bare",
+      HOT_UPDATER_INIT_PROVIDER: "cloudflare",
     });
   });
 
@@ -122,6 +139,34 @@ describe("readHotUpdaterEnv", () => {
         HOT_UPDATER_INIT_BUILD: "bare",
         HOT_UPDATER_INIT_PROVIDER: "aws",
       },
+      managedEnv: {
+        HOT_UPDATER_INIT_BUILD: "bare",
+        HOT_UPDATER_INIT_PROVIDER: "aws",
+      },
     });
+  });
+});
+
+describe("getHotUpdaterEnvValue", () => {
+  it("does not let a lower-priority file override an explicit false value", () => {
+    vi.stubEnv("HOT_UPDATER_AWS_MIGRATION_APPROVED", "false");
+
+    expect(
+      getHotUpdaterEnvValue(
+        { HOT_UPDATER_AWS_MIGRATION_APPROVED: "true" },
+        "HOT_UPDATER_AWS_MIGRATION_APPROVED",
+      ),
+    ).toBe("false");
+  });
+
+  it("does not fall back when the process environment explicitly clears a value", () => {
+    vi.stubEnv("HOT_UPDATER_AWS_MIGRATION_APPROVED", "");
+
+    expect(
+      getHotUpdaterEnvValue(
+        { HOT_UPDATER_AWS_MIGRATION_APPROVED: "true" },
+        "HOT_UPDATER_AWS_MIGRATION_APPROVED",
+      ),
+    ).toBeUndefined();
   });
 });

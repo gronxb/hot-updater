@@ -52,6 +52,7 @@ vi.mock("execa", async (importOriginal) => {
 });
 
 import {
+  createSelectedBucket,
   getLegacySupabaseConfigReference,
   resolveEdgeFunctionDenoConfig,
   selectBucket,
@@ -170,7 +171,7 @@ describe("selectProject", () => {
 });
 
 describe("selectBucket", () => {
-  it("recreates a missing saved bucket during non-interactive init", async () => {
+  it("plans a missing saved bucket before creating it", async () => {
     const api: SupabaseApi = {
       createBucket: vi.fn().mockResolvedValue({ name: "saved-bucket" }),
       listBuckets: vi
@@ -186,7 +187,15 @@ describe("selectBucket", () => {
         ]),
     };
 
-    await expect(selectBucket(api, "saved-bucket", true)).resolves.toEqual({
+    const selection = await selectBucket(api, "saved-bucket", true);
+
+    expect(selection).toEqual({
+      create: true,
+      name: "saved-bucket",
+    });
+    expect(api.createBucket).not.toHaveBeenCalled();
+
+    await expect(createSelectedBucket(api, selection)).resolves.toEqual({
       id: "saved-bucket-id",
       name: "saved-bucket",
     });

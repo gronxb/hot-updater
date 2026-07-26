@@ -13,6 +13,11 @@ import {
 import { findInPaginatedCloudFrontList } from "./cloudfrontPagination";
 import type { AwsRegion } from "./regionLocationMap";
 
+export type CloudFrontDistribution = {
+  readonly DomainName: string;
+  readonly Id: string;
+};
+
 export class CloudFrontManager {
   private region: AwsRegion;
   private credentials: {
@@ -83,7 +88,7 @@ export class CloudFrontManager {
       credentials: this.credentials,
     });
     const listKgResp = await cloudfrontClient.listKeyGroups({});
-    const existingKeyGroup = listKgResp.KeyGroupList?.Items?.find((kg: any) =>
+    const existingKeyGroup = listKgResp.KeyGroupList?.Items?.find((kg) =>
       kg.KeyGroup?.KeyGroupConfig?.Name?.startsWith(
         `HotUpdaterKeyGroup-${publicKeyHash}`,
       ),
@@ -133,6 +138,7 @@ export class CloudFrontManager {
     keyGroupId: string;
     bucketName: string;
     functionArn: string;
+    distribution?: CloudFrontDistribution | null;
     distributionId?: string;
     nonInteractive?: boolean;
   }): Promise<{ distributionId: string; distributionDomain: string }> {
@@ -140,6 +146,14 @@ export class CloudFrontManager {
       region: this.region,
       credentials: this.credentials,
     });
+    const selectedDistribution =
+      options.distribution === undefined
+        ? await this.selectDistribution({
+            bucketName: options.bucketName,
+            distributionId: options.distributionId,
+            nonInteractive: options.nonInteractive,
+          })
+        : options.distribution;
     let oacId: string;
     const accountId = options.functionArn.split(":")[4];
     if (!accountId) {
@@ -186,50 +200,6 @@ export class CloudFrontManager {
       );
     }
 
-    const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
-    try {
-      const listResp = await cloudfrontClient.listDistributions({});
-      const items = listResp.DistributionList?.Items || [];
-      for (const dist of items) {
-        const origins = dist.Origins?.Items || [];
-        if (origins.some((origin) => origin.DomainName === bucketDomain)) {
-          matchingDistributions.push({
-            Id: dist.Id!,
-            DomainName: dist.DomainName!,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error listing CloudFront distributions:", error);
-    }
-    let selectedDistribution =
-      matchingDistributions.find(
-        (distribution) => distribution.Id === options.distributionId,
-      ) ?? null;
-    if (options.distributionId && !selectedDistribution) {
-      p.log.warn(
-        "Saved CloudFront distribution was not found. Select a distribution again.",
-      );
-    }
-    if (!selectedDistribution && matchingDistributions.length === 1) {
-      selectedDistribution = matchingDistributions[0];
-    } else if (!selectedDistribution && matchingDistributions.length > 1) {
-      if (options.nonInteractive) {
-        throw new MissingInitInputsError([
-          "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
-        ]);
-      }
-      const selectedDistributionStr = await p.select({
-        message:
-          "Multiple CloudFront distributions found. Please select one to use:",
-        options: matchingDistributions.map((dist) => ({
-          value: JSON.stringify(dist),
-          label: `${dist.Id} (${dist.DomainName})`,
-        })),
-      });
-      if (p.isCancel(selectedDistributionStr)) process.exit(0);
-      selectedDistribution = JSON.parse(selectedDistributionStr);
-    }
     const newOverrides = buildDistributionConfigOverrides({
       bucketName: options.bucketName,
       bucketDomain,
@@ -348,5 +318,82 @@ export class CloudFrontManager {
       );
       throw error;
     }
+  }
+
+  async selectDistribution({
+    bucketName,
+    distributionId,
+    nonInteractive,
+  }: {
+    readonly bucketName: string;
+    readonly distributionId?: string;
+    readonly nonInteractive?: boolean;
+  }): Promise<CloudFrontDistribution | null> {
+    const bucketDomain = `${bucketName}.s3.${this.region}.amazonaws.com`;
+    const cloudfrontClient = new CloudFront({
+      region: this.region,
+      credentials: this.credentials,
+    });
+    const listResp = await cloudfrontClient.listDistributions({});
+    const matchingDistributions = (
+      listResp.DistributionList?.Items ?? []
+    ).flatMap((distribution) => {
+      const matchesBucket = (distribution.Origins?.Items ?? []).some(
+        (origin) => origin.DomainName === bucketDomain,
+      );
+      return matchesBucket && distribution.Id && distribution.DomainName
+        ? [{ Id: distribution.Id, DomainName: distribution.DomainName }]
+        : [];
+    });
+    const savedDistribution = matchingDistributions.find(
+      (distribution) => distribution.Id === distributionId,
+    );
+    if (savedDistribution) {
+      return savedDistribution;
+    }
+    if (distributionId) {
+      if (matchingDistributions.length === 0) {
+        p.log.warn(
+          "Saved CloudFront distribution was not found. A new distribution will be created.",
+        );
+        return null;
+      }
+      if (nonInteractive) {
+        throw new MissingInitInputsError([
+          "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
+        ]);
+      }
+      p.log.warn(
+        "Saved CloudFront distribution was not found. Select a distribution again.",
+      );
+    }
+    if (matchingDistributions.length === 0) {
+      return null;
+    }
+    if (!distributionId && matchingDistributions.length === 1) {
+      return matchingDistributions[0] ?? null;
+    }
+    if (nonInteractive) {
+      throw new MissingInitInputsError([
+        "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
+      ]);
+    }
+
+    const selectedDistributionId = await p.select({
+      message:
+        "Multiple CloudFront distributions found. Please select one to use:",
+      options: matchingDistributions.map((distribution) => ({
+        value: distribution.Id,
+        label: `${distribution.Id} (${distribution.DomainName})`,
+      })),
+    });
+    if (p.isCancel(selectedDistributionId)) {
+      process.exit(0);
+    }
+    return (
+      matchingDistributions.find(
+        (distribution) => distribution.Id === selectedDistributionId,
+      ) ?? null
+    );
   }
 }

@@ -57,4 +57,18 @@ describe("resolveFirebaseRegion", () => {
     expect(mocks.execa).not.toHaveBeenCalled();
     expect(mocks.select).not.toHaveBeenCalled();
   });
+
+  it("rejects an unsafe saved region before running a command", async () => {
+    const resolveRegion = resolveFirebaseRegion({
+      cwd: "/tmp/firebase-init",
+      nonInteractive: true,
+      savedRegion: "us-central1; touch /tmp/injected",
+    });
+
+    await expect(resolveRegion).rejects.toMatchObject({
+      missingInputs: ["HOT_UPDATER_FIREBASE_REGION"],
+    });
+    expect(mocks.execa).not.toHaveBeenCalled();
+    expect(mocks.select).not.toHaveBeenCalled();
+  });
 });

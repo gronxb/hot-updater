@@ -1,11 +1,12 @@
 import fs from "fs";
+import { spawnSync } from "node:child_process";
 import path from "path";
 
 import { HotUpdateDirUtil } from "@hot-updater/cli-tools";
 import { mockReactNativeProjectRoot } from "@hot-updater/test-utils/node";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { appendToProjectRootGitignore } from "./git";
+import { appendToProjectRootGitignore, isProjectFileTracked } from "./git";
 
 describe("appendToProjectRootGitignore", () => {
   let rootDir: string;
@@ -59,5 +60,18 @@ ${HotUpdateDirUtil.outputGitignorePath}
         globLines: [line],
       }),
     ).toBe(false);
+  });
+
+  it("detects a managed env file already tracked by Git", () => {
+    spawnSync("git", ["init"], { cwd: rootDir });
+    fs.writeFileSync(path.join(rootDir, ".env.hotupdater"), "TOKEN=secret");
+    spawnSync("git", ["add", "-f", ".env.hotupdater"], { cwd: rootDir });
+
+    expect(
+      isProjectFileTracked({
+        cwd: rootDir,
+        filePath: ".env.hotupdater",
+      }),
+    ).toBe(true);
   });
 });

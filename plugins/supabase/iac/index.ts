@@ -9,6 +9,7 @@ import {
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
   getInitProviderEnvVars,
+  isSupabaseFunctionName,
   link,
   makeEnv,
   type HotUpdaterConfigScaffold,
@@ -30,6 +31,7 @@ import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 import { linkSupabase, pushDB } from "./supabaseCli";
 import {
   assertSupabaseNonInteractiveInputs,
+  inputSupabaseDatabasePassword,
   inputSupabaseDeploymentInputs,
   resolveSupabaseInitInputs,
 } from "./supabaseInitInputs";
@@ -468,7 +470,6 @@ export const selectProject = async (
             }
           : undefined,
         stdio: "inherit",
-        shell: true,
       });
     } catch (err) {
       if (err instanceof ExecaError) {
@@ -493,14 +494,22 @@ export const selectProject = async (
   return selectedProject;
 };
 
+export type SupabaseBucketSelection =
+  | {
+      readonly create: false;
+      readonly id: string;
+      readonly name: string;
+    }
+  | {
+      readonly create: true;
+      readonly name: string;
+    };
+
 export const selectBucket = async (
   api: SupabaseApi,
   preferredBucketName?: string,
   nonInteractive = false,
-): Promise<{
-  id: string;
-  name: string;
-}> => {
+): Promise<SupabaseBucketSelection> => {
   let buckets: { id: string; name: string; isPublic: boolean }[] = [];
   let retryCount = 0;
 
@@ -532,31 +541,27 @@ export const selectBucket = async (
   const preferredBucket = buckets.find(
     (bucket) => bucket.name === preferredBucketName,
   );
-  const createAndSelectBucket = async (bucketName: string) => {
-    await api.createBucket(bucketName, { public: false });
-    p.log.success(`Bucket "${bucketName}" created successfully.`);
-    const updatedBuckets = await api.listBuckets();
-    const newBucket = updatedBuckets.find(
-      (bucket) => bucket.name === bucketName,
-    );
-    if (!newBucket) {
-      throw new Error("Failed to create and select new bucket");
-    }
-    return { id: newBucket.id, name: newBucket.name };
-  };
   if (preferredBucket) {
     p.log.info(`Using saved Supabase bucket: ${preferredBucket.name}`);
-    return { id: preferredBucket.id, name: preferredBucket.name };
+    return {
+      create: false,
+      id: preferredBucket.id,
+      name: preferredBucket.name,
+    };
   }
   if (preferredBucketName) {
     if (nonInteractive) {
-      return createAndSelectBucket(preferredBucketName);
+      return { create: true, name: preferredBucketName };
     }
     p.log.warn("Saved Supabase bucket was not found. Select a bucket again.");
   }
   if (buckets.length === 1 && buckets[0]) {
     p.log.info(`Using the only Supabase bucket: ${buckets[0].name}`);
-    return { id: buckets[0].id, name: buckets[0].name };
+    return {
+      create: false,
+      id: buckets[0].id,
+      name: buckets[0].name,
+    };
   }
 
   const createBucketOption = `create/${Math.random()
@@ -568,7 +573,7 @@ export const selectBucket = async (
     options: [
       ...buckets.map((bucket) => ({
         label: bucket.name,
-        value: JSON.stringify({ id: bucket.id, name: bucket.name }),
+        value: bucket.id,
       })),
       {
         label: "Create a new private bucket",
@@ -590,16 +595,38 @@ export const selectBucket = async (
       process.exit(0);
     }
 
-    try {
-      return await createAndSelectBucket(bucketName);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      p.log.error(`Failed to create new bucket: ${message}`);
-      process.exit(1);
-    }
+    return { create: true, name: bucketName };
   }
 
-  return JSON.parse(selectedBucketId);
+  const selectedBucket = buckets.find(
+    (bucket) => bucket.id === selectedBucketId,
+  );
+  if (!selectedBucket) {
+    throw new Error("Selected Supabase bucket was not found.");
+  }
+  return {
+    create: false,
+    id: selectedBucket.id,
+    name: selectedBucket.name,
+  };
+};
+
+export const createSelectedBucket = async (
+  api: SupabaseApi,
+  selection: SupabaseBucketSelection,
+): Promise<{ readonly id: string; readonly name: string }> => {
+  if (!selection.create) {
+    return selection;
+  }
+
+  await api.createBucket(selection.name, { public: false });
+  p.log.success(`Bucket "${selection.name}" created successfully.`);
+  const buckets = await api.listBuckets();
+  const bucket = buckets.find((item) => item.name === selection.name);
+  if (!bucket) {
+    throw new Error("Failed to create and select new bucket");
+  }
+  return { id: bucket.id, name: bucket.name };
 };
 
 const deployEdgeFunction = async (
@@ -614,7 +641,16 @@ const deployEdgeFunction = async (
     FUNCTION_NAME: functionName,
   });
 
-  const targetDir = path.join(workdir, "supabase", "functions", functionName);
+  if (!isSupabaseFunctionName(functionName)) {
+    throw new Error("Invalid Supabase Edge Function name.");
+  }
+  const functionsDir = path.resolve(workdir, "supabase", "functions");
+  const targetDir = path.resolve(functionsDir, functionName);
+  if (!targetDir.startsWith(`${functionsDir}${path.sep}`)) {
+    throw new Error(
+      "Supabase Edge Function path escaped its output directory.",
+    );
+  }
   await fs.mkdir(targetDir, { recursive: true });
   const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
 
@@ -666,7 +702,7 @@ const deployEdgeFunction = async (
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const { env: existingEnv } = await readHotUpdaterInitEnv(
+  const { env: existingEnv, managedEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     envFile,
   );
@@ -676,34 +712,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     ...savedInputs,
     nonInteractive,
   });
-  const resolvedInputs = {
-    ...savedInputs,
-    accessToken: initInputs.accessToken,
-    databasePassword: initInputs.dbPassword || undefined,
-    functionName: initInputs.functionName,
-  };
-  const persistCredentialInputs = await confirmInitInputPersistence({
-    existingEnv,
-    inputs: resolvedInputs,
-    nonInteractive,
-    provider: SUPABASE_INIT_PROVIDER,
-  });
-  await makeEnv({
-    ...getInitProviderEnvVars({
-      includeConsentInputs: persistCredentialInputs,
-      inputs: resolvedInputs,
-      provider: SUPABASE_INIT_PROVIDER,
-    }),
-  });
-
-  const { accessToken, dbPassword, functionName } = initInputs;
+  const { accessToken, functionName } = initInputs;
   const project = await selectProject(
     savedInputs.projectId,
     nonInteractive,
     accessToken,
   );
-  await makeEnv({
-    HOT_UPDATER_SUPABASE_PROJECT_ID: project.id,
+  const projectChanged =
+    savedInputs.projectId !== undefined && savedInputs.projectId !== project.id;
+  const dbPassword = await inputSupabaseDatabasePassword({
+    databasePassword: savedInputs.databasePassword,
+    forcePrompt: projectChanged,
+    nonInteractive,
   });
 
   const spinner = p.spinner();
@@ -746,11 +766,36 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     `https://${project.id}.supabase.co`,
     serviceRoleApiKey.api_key,
   );
-  const bucket = await selectBucket(
+  const bucketSelection = await selectBucket(
     api,
     savedInputs.bucketName,
     nonInteractive,
   );
+  const resolvedInputs = {
+    ...savedInputs,
+    accessToken,
+    bucketName: bucketSelection.name,
+    databasePassword: dbPassword,
+    functionName,
+    projectId: project.id,
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv: managedEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: SUPABASE_INIT_PROVIDER,
+  });
+  const providerEnv = getInitProviderEnvVars({
+    includeConsentInputs: persistCredentialInputs,
+    inputs: resolvedInputs,
+    provider: SUPABASE_INIT_PROVIDER,
+  });
+  if (projectChanged && !persistCredentialInputs) {
+    providerEnv[SUPABASE_INIT_PROVIDER.inputs.databasePassword.envKey] = "";
+  }
+  await makeEnv(providerEnv);
+
+  const bucket = await createSelectedBucket(api, bucketSelection);
   await makeEnv({
     [SUPABASE_INIT_PROVIDER.inputs.projectId.envKey]: project.id,
     HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: serviceRoleApiKey.api_key,

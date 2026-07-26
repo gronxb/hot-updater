@@ -2,6 +2,7 @@ import {
   assertInitInputs,
   assertInitProviderInputs,
   getHotUpdaterEnvValue,
+  isSupabaseFunctionName,
   p,
   resolveInitProviderInput,
   SUPABASE_INIT_PROVIDER,
@@ -48,14 +49,12 @@ export const assertSupabaseNonInteractiveInputs = (
 
 export const inputSupabaseDeploymentInputs = async ({
   accessToken,
-  databasePassword,
   functionName,
   nonInteractive,
 }: SupabaseInitInputs & {
   readonly nonInteractive: boolean;
 }): Promise<{
   readonly accessToken: string;
-  readonly dbPassword: string;
   readonly functionName: string;
 }> => {
   const { inputs } = SUPABASE_INIT_PROVIDER;
@@ -70,10 +69,13 @@ export const inputSupabaseDeploymentInputs = async ({
   if (nonInteractive && accessToken && functionName) {
     return {
       accessToken,
-      dbPassword: databasePassword ?? "",
       functionName,
     };
   }
+
+  const savedFunctionName = isSupabaseFunctionName(functionName)
+    ? functionName
+    : undefined;
 
   return p.group(
     {
@@ -85,25 +87,43 @@ export const inputSupabaseDeploymentInputs = async ({
               validate: (value) =>
                 value ? undefined : "Supabase access token is required",
             }),
-      dbPassword: () =>
-        databasePassword !== undefined
-          ? Promise.resolve(databasePassword)
-          : p.password({
-              message: inputs.databasePassword.prompt.message,
-            }),
       functionName: () =>
-        functionName
-          ? Promise.resolve(functionName)
+        savedFunctionName
+          ? Promise.resolve(savedFunctionName)
           : p.text({
               message: inputs.functionName.prompt.message,
               initialValue: inputs.functionName.prompt.defaultValue,
               placeholder: inputs.functionName.prompt.placeholder,
               validate: (value) =>
-                value ? undefined : "Edge Function name is required",
+                isSupabaseFunctionName(value)
+                  ? undefined
+                  : "Start with a letter and use only letters, numbers, underscores, or hyphens",
             }),
     },
     {
       onCancel: () => process.exit(0),
     },
   );
+};
+
+export const inputSupabaseDatabasePassword = async ({
+  databasePassword,
+  forcePrompt = false,
+  nonInteractive,
+}: {
+  readonly databasePassword?: string;
+  readonly forcePrompt?: boolean;
+  readonly nonInteractive: boolean;
+}): Promise<string> => {
+  if (nonInteractive || (!forcePrompt && databasePassword !== undefined)) {
+    return databasePassword ?? "";
+  }
+
+  const password = await p.password({
+    message: SUPABASE_INIT_PROVIDER.inputs.databasePassword.prompt.message,
+  });
+  if (p.isCancel(password)) {
+    process.exit(0);
+  }
+  return password;
 };

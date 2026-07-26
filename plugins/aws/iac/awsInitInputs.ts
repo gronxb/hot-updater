@@ -1,17 +1,14 @@
 import {
   assertInitProviderInputs,
+  AWS_AUTH_MODES,
   AWS_INIT_PROVIDER,
+  isAwsAuthMode,
   resolveInitProviderInput,
 } from "@hot-updater/cli-tools";
 
 import { regionLocationMap } from "./regionLocationMap";
 
-export const AWS_AUTH_MODES = [
-  "local-session",
-  "shared-profile",
-  "sso",
-  "account",
-] as const;
+export { AWS_AUTH_MODES, isAwsAuthMode };
 
 export type AwsAuthMode = (typeof AWS_AUTH_MODES)[number];
 
@@ -26,10 +23,6 @@ export type AwsInitInputs = {
   readonly profile?: string;
   readonly secretAccessKey?: string;
 };
-
-export const isAwsAuthMode = (
-  value: string | undefined,
-): value is AwsAuthMode => AWS_AUTH_MODES.some((mode) => mode === value);
 
 export const resolveAwsInitInputs = (
   existingEnv: Readonly<Record<string, string>>,

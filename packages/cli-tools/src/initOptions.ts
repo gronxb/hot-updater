@@ -37,11 +37,16 @@ export const assertInitInputs = ({
     return;
   }
 
-  const missingInputs = Object.entries(inputs)
-    .filter(([, value]) => !value?.trim())
-    .map(([key]) => key);
+  const missingInputs = getMissingInitInputs(inputs);
 
   if (missingInputs.length > 0) {
     throw new MissingInitInputsError(missingInputs);
   }
 };
+
+export const getMissingInitInputs = (
+  inputs: Readonly<Record<string, string | undefined>>,
+): readonly string[] =>
+  Object.entries(inputs)
+    .filter(([, value]) => !value?.trim())
+    .map(([key]) => key);
