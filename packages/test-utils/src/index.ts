@@ -4,3 +4,4 @@ export * from "./setupGetUpdateInfoTestSuite";
 export * from "./setupSemverSatisfiesTestSuite";
 export * from "./setupDatabasePluginTestSuite";
 export * from "./setupDatabaseClientTestSuite";
+export * from "./storage";

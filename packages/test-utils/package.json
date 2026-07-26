@@ -22,6 +22,10 @@
         "default": "./dist/node.cjs"
       }
     },
+    "./storage": {
+      "types": "./dist/storage.d.mts",
+      "import": "./dist/storage.mjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
