@@ -9,6 +9,33 @@ import {
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 describe("createHandler update routes", () => {
+  it("serves a versioned handler extension without changing core routes", async () => {
+    // Given
+    const api = createApi();
+    const handler = createHandler(api, {
+      basePath: "/hot-updater",
+      handlerExtensions: [
+        async (request) =>
+          new URL(request.url).pathname === "/hot-updater/storage/v2/objects"
+            ? new Response("object-v2", { status: 206 })
+            : undefined,
+      ],
+    });
+
+    // When
+    const extensionResponse = await handler(
+      new Request("http://localhost/hot-updater/storage/v2/objects"),
+    );
+    const coreResponse = await handler(
+      new Request("http://localhost/hot-updater/version"),
+    );
+
+    // Then
+    expect(extensionResponse.status).toBe(206);
+    await expect(extensionResponse.text()).resolves.toBe("object-v2");
+    expect(coreResponse.status).toBe(200);
+  });
+
   it("supports the app-version route without a cohort segment", async () => {
     const api = createApi();
     const handler = createHandler(api, { basePath: "/hot-updater" });

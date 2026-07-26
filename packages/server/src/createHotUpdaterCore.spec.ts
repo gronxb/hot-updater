@@ -98,13 +98,16 @@ describe("createHotUpdater generic kernel root", () => {
     expect(Object.isFrozen(hotUpdater)).toBe(true);
     expect(Object.isFrozen(hotUpdater.features)).toBe(true);
     expectTypeOf<keyof typeof hotUpdater.features>().toEqualTypeOf<never>();
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
+      "basePath" | "handlerExtensions" | "routes"
+    >();
     expectTypeOf<HandlerOptions["routes"]>().toEqualTypeOf<
       HandlerRoutes | undefined
     >();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
       | "basePath"
       | "database"
+      | "handlerExtensions"
       | "plugins"
       | "routes"
       | "storageContext"

@@ -30,7 +30,7 @@ export type { RuntimeStorageInput } from "@hot-updater/plugin-core";
 export interface CreateHotUpdaterOptions<
   TContext = undefined,
   TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
-> extends HandlerOptions {
+> extends HandlerOptions<TContext> {
   readonly database: DatabasePlugin;
   readonly plugins?: TPlugins;
   readonly storageContext?: StorageContextResolver<TContext>;

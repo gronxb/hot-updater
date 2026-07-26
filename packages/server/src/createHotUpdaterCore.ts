@@ -11,6 +11,7 @@ import {
   type DatabaseAPI,
   isDatabasePlugin,
 } from "./db/types";
+import { executeHandlerExtensions } from "./handlerExtensions";
 import type { ProjectPlugins } from "./kernel/apiProjection";
 import { composeServerKernel } from "./kernel/composer";
 import { createCoreRouteDescriptors } from "./kernel/coreRoutes";
@@ -196,7 +197,7 @@ export function createHotUpdaterCore<
     });
     metadata = composed.metadata;
 
-    const internalHandler = (
+    const kernelHandler = (
       request: Request,
       context?: HotUpdaterContext<TContext>,
     ) =>
@@ -226,6 +227,17 @@ export function createHotUpdaterCore<
         request,
         router: composed.router,
       });
+    const internalHandler = async (
+      request: Request,
+      context?: HotUpdaterContext<TContext>,
+    ): Promise<Response> => {
+      const extensionResponse = await executeHandlerExtensions(
+        options.handlerExtensions ?? [],
+        request,
+        context,
+      );
+      return extensionResponse ?? kernelHandler(request, context);
+    };
     const handler: RuntimeFields<TContext>["handler"] = (
       request,
       context,

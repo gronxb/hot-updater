@@ -9,6 +9,7 @@ import type {
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
+import type { HandlerExtension } from "./handlerExtensions";
 import type { HotUpdaterRouteAccess } from "./kernel/contracts";
 import type { PaginatedResult } from "./types";
 
@@ -50,11 +51,12 @@ export interface HandlerAPI<TContext = unknown> {
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
 }
 
-export interface HandlerOptions {
+export interface HandlerOptions<TContext = unknown> {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
   /** Routes exposed by the handler. */
   readonly routes?: HandlerRoutes;
+  readonly handlerExtensions?: readonly HandlerExtension<TContext>[];
 }
 
 export type RouteHandler<TContext = unknown> = (

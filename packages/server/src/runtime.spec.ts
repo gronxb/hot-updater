@@ -161,10 +161,13 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<HandlerOptions["routes"]>().toEqualTypeOf<
       HandlerRoutes | undefined
     >();
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
+      "basePath" | "handlerExtensions" | "routes"
+    >();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
       | "basePath"
       | "database"
+      | "handlerExtensions"
       | "plugins"
       | "routes"
       | "storageContext"

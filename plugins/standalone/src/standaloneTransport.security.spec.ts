@@ -1,14 +1,22 @@
 import { createServer, type RequestListener, type Server } from "node:http";
+// allow: SIZE_OK — security scenarios share one canary and redirect harness.
 
+import { env, secret } from "@hot-updater/core/config";
+import type { StorageOperationContext } from "@hot-updater/plugin-core/storage";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
 import { standaloneRepository } from "./standaloneRepository";
 import { standaloneStorage } from "./standaloneStorage";
 import {
+  createStandaloneStorageHandler,
+  STANDALONE_STORAGE_V2,
+} from "./standaloneStorageHandler";
+import {
   createStandaloneTransport,
   StandaloneTransportError,
 } from "./standaloneTransport";
+import { standaloneStorage as standaloneStorageV2 } from "./storage";
 
 const SECRET = "security-canary-never-disclose";
 const servers: Server[] = [];
@@ -278,5 +286,264 @@ describe("standalone transport security boundary", () => {
         }),
       }),
     );
+  });
+});
+
+const storageContext = (
+  environment: Readonly<Record<string, string>>,
+): StorageOperationContext =>
+  Object.freeze({
+    target: "node",
+    environment: Object.freeze(environment),
+    bindings: Object.freeze({}),
+  });
+
+describe("standalone storage v2 security boundary", () => {
+  it("resolves tagged endpoint and headers per operation in A-B-A order", async () => {
+    // Given
+    const requests: Request[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const request = new Request(input, init);
+        requests.push(request);
+        return Response.json({
+          downloadUrl: `https://cdn.example/${requests.length}`,
+        });
+      }),
+    );
+    const storage = standaloneStorageV2({
+      baseUrl: env("BASE_URL"),
+      commonHeaders: { Authorization: secret("TOKEN") },
+      routes: {
+        delivery: {
+          path: "/custom/v2/delivery",
+          headers: { "X-Route-Context": env("ROUTE_CONTEXT") },
+        },
+      },
+    });
+    const contexts = [
+      storageContext({
+        BASE_URL: "https://a.example/api",
+        TOKEN: "token-a-1",
+        ROUTE_CONTEXT: "route-a-1",
+      }),
+      storageContext({
+        BASE_URL: "https://b.example/api",
+        TOKEN: "token-b",
+        ROUTE_CONTEXT: "route-b",
+      }),
+      storageContext({
+        BASE_URL: "https://a.example/api",
+        TOKEN: "token-a-2",
+        ROUTE_CONTEXT: "route-a-2",
+      }),
+    ];
+
+    // When
+    for (const context of contexts) {
+      await storage.issueDownload?.({
+        context,
+        storageUri: "https://objects.example/item",
+      });
+    }
+
+    // Then
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://a.example/api/custom/v2/delivery",
+      "https://b.example/api/custom/v2/delivery",
+      "https://a.example/api/custom/v2/delivery",
+    ]);
+    expect(
+      requests.map((request) => request.headers.get("authorization")),
+    ).toEqual(["token-a-1", "token-b", "token-a-2"]);
+    expect(
+      requests.map((request) => request.headers.get("x-route-context")),
+    ).toEqual(["route-a-1", "route-b", "route-a-2"]);
+  });
+
+  it.each([
+    [401, "unauthorized"],
+    [403, "forbidden"],
+    [429, "rate-limited"],
+    [500, "provider"],
+  ] as const)("maps HTTP %i to the typed %s error", async (status, code) => {
+    // Given
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(SECRET, { status })),
+    );
+    const storage = standaloneStorageV2({
+      baseUrl: "https://trusted.example",
+      commonHeaders: { Authorization: `Bearer ${SECRET}` },
+    });
+
+    // When
+    const operation = storage.head({
+      context: storageContext({}),
+      storageUri: "https://objects.example/item",
+    });
+
+    // Then
+    await expect(operation).rejects.toMatchObject({
+      code,
+      message: "Standalone storage request failed.",
+      status,
+    });
+    await expect(operation).rejects.not.toThrow(SECRET);
+  });
+
+  it("rejects malformed and truncated object responses", async () => {
+    // Given
+    const responses = [
+      new Response("ab", {
+        status: 206,
+        headers: {
+          "content-range": "bytes invalid",
+          "content-length": "2",
+          [STANDALONE_STORAGE_V2.headers.contentLength]: "3",
+          [STANDALONE_STORAGE_V2.headers.metadata]: "%7B%7D",
+          [STANDALONE_STORAGE_V2.headers.storageUri]:
+            "https%3A%2F%2Fobjects.example%2Fitem",
+        },
+      }),
+      new Response("ab", {
+        status: 200,
+        headers: {
+          "content-length": "2",
+          [STANDALONE_STORAGE_V2.headers.contentLength]: "3",
+          [STANDALONE_STORAGE_V2.headers.metadata]: "%7B%7D",
+          [STANDALONE_STORAGE_V2.headers.storageUri]:
+            "https%3A%2F%2Fobjects.example%2Fitem",
+        },
+      }),
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => responses.shift()),
+    );
+    const storage = standaloneStorageV2({
+      baseUrl: "https://trusted.example",
+    });
+    const context = storageContext({});
+
+    // When
+    const badRange = storage.get({
+      context,
+      storageUri: "https://objects.example/item",
+      range: { start: 0, end: 1 },
+    });
+
+    // Then
+    await expect(badRange).rejects.toMatchObject({ code: "provider" });
+    const truncated = await storage.get({
+      context,
+      storageUri: "https://objects.example/item",
+    });
+    if (truncated.kind !== "found") {
+      throw new Error("Expected the truncation fixture to be found.");
+    }
+    await expect(
+      new Response(truncated.body).arrayBuffer(),
+    ).rejects.toMatchObject({ code: "integrity" });
+  });
+
+  it("maps aborted control requests without leaking common headers", async () => {
+    // Given
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException("The operation was aborted.", "AbortError");
+      }),
+    );
+    const storage = standaloneStorageV2({
+      baseUrl: "https://trusted.example",
+      commonHeaders: { Authorization: `Bearer ${SECRET}` },
+    });
+
+    // When
+    const operation = storage.head({
+      context: storageContext({}),
+      storageUri: "https://objects.example/item",
+    });
+
+    // Then
+    await expect(operation).rejects.toMatchObject({ code: "aborted" });
+    await expect(operation).rejects.not.toThrow(SECRET);
+  });
+
+  it("authorizes every v2 control method before storage access", async () => {
+    // Given
+    const calls: string[] = [];
+    const storage = {
+      name: "guarded",
+      protocol: "http",
+      async put() {
+        calls.push("put");
+        return {
+          kind: "stored" as const,
+          storageUri: "https://objects.example/item",
+        };
+      },
+      async head() {
+        calls.push("head");
+        return { kind: "not-found" as const };
+      },
+      async get() {
+        calls.push("get");
+        return { kind: "not-found" as const };
+      },
+      async delete() {
+        calls.push("delete");
+        return { kind: "not-found" as const };
+      },
+      async issueDownload() {
+        calls.push("delivery");
+        return {
+          kind: "issued" as const,
+          downloadUrl: "https://cdn.example/item",
+        };
+      },
+    };
+    const handler = createStandaloneStorageHandler({
+      storage,
+      context: storageContext({}),
+      authorize: () => false,
+    });
+    const cases = [
+      ["PUT", STANDALONE_STORAGE_V2.routes.object],
+      ["HEAD", STANDALONE_STORAGE_V2.routes.object],
+      ["GET", STANDALONE_STORAGE_V2.routes.object],
+      ["DELETE", STANDALONE_STORAGE_V2.routes.object],
+      ["POST", STANDALONE_STORAGE_V2.routes.delivery],
+    ] as const;
+
+    // When
+    const responses = await Promise.all(
+      cases.map(([method, route]) =>
+        handler(new Request(`https://server.example${route}`, { method })),
+      ),
+    );
+
+    // Then
+    expect(responses.map((response) => response?.status)).toEqual([
+      401, 401, 401, 401, 401,
+    ]);
+    expect(calls).toEqual([]);
+  });
+
+  it("keeps the root custom-server storage export legacy-only", () => {
+    // Given
+    const legacy = standaloneStorage({
+      baseUrl: "https://legacy.example",
+    })();
+
+    // When
+    const publicKeys = Object.keys(legacy);
+
+    // Then
+    expect(publicKeys).toEqual(["name", "supportedProtocol", "profiles"]);
+    expect("protocol" in legacy).toBe(false);
+    expect("put" in legacy).toBe(false);
   });
 });

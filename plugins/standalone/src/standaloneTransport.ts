@@ -21,6 +21,10 @@ export interface StandaloneRequestOptions {
   readonly signal?: AbortSignal;
 }
 
+type StreamingRequestInit = RequestInit & {
+  readonly duplex: "half";
+};
+
 export class StandaloneTransportError extends Error {
   readonly name = "StandaloneTransportError";
 
@@ -111,13 +115,17 @@ export const createStandaloneTransport = (
     )) {
       headers.set(key, value);
     }
-    return fetch(destination, {
+    const init: RequestInit | StreamingRequestInit = {
       ...(options.body === undefined ? {} : { body: options.body }),
       headers,
       method: options.method,
       redirect: "error",
       ...(options.signal === undefined ? {} : { signal: options.signal }),
-    });
+      ...(options.body instanceof ReadableStream ? { duplex: "half" } : {}),
+    };
+    return options.body instanceof ReadableStream
+      ? fetch(new Request(destination, init))
+      : fetch(destination, init);
   };
   return Object.freeze({ request, resolve });
 };

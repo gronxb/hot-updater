@@ -1,6 +1,7 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
 import { createCoreServerRoutes } from "./coreRoutes";
+import { executeHandlerExtensions } from "./handlerExtensions";
 import type { HandlerAPI, HandlerOptions } from "./handlerTypes";
 import { selectAuthenticationProvider } from "./kernel/authentication";
 import type { HotUpdaterMatchedRoute } from "./kernel/contracts";
@@ -10,6 +11,7 @@ import { compileVersionMetadata } from "./kernel/metadata";
 import { compileRoutes } from "./kernel/routeCompiler";
 import { normalizeBasePath } from "./route";
 
+export type { HandlerExtension } from "./handlerExtensions";
 export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
 
 const matchedRoute = (
@@ -25,7 +27,7 @@ const matchedRoute = (
 
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
-  options: HandlerOptions = {},
+  options: HandlerOptions<TContext> = {},
 ): (
   request: Request,
   context?: HotUpdaterContext<TContext>,
@@ -44,8 +46,14 @@ export function createHandler<TContext = unknown>(
     routes: routes.map(matchedRoute),
   });
 
-  return (request, context) =>
-    executeKernelRequest({
+  return async (request, context) => {
+    const extensionResponse = await executeHandlerExtensions(
+      options.handlerExtensions ?? [],
+      request,
+      context,
+    );
+    if (extensionResponse !== undefined) return extensionResponse;
+    return executeKernelRequest({
       authentication,
       basePath,
       middleware: [],
@@ -53,4 +61,5 @@ export function createHandler<TContext = unknown>(
       request,
       router,
     });
+  };
 }
