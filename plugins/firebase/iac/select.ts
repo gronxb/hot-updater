@@ -147,10 +147,21 @@ export const createFirebaseProject = async ({
   readonly projectId: string;
 }): Promise<void> => {
   try {
-    await execa("npx", ["firebase", "projects:create", projectId], {
-      env: cliEnv,
-      stdio: "inherit",
-    });
+    await execa(
+      "npx",
+      [
+        "firebase",
+        "projects:create",
+        projectId,
+        "--display-name",
+        projectId,
+        "--non-interactive",
+      ],
+      {
+        env: cliEnv,
+        stdio: "inherit",
+      },
+    );
   } catch (error) {
     handleError(error instanceof Error ? error : new Error(String(error)));
   }

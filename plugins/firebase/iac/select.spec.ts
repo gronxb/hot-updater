@@ -195,7 +195,7 @@ describe("initFirebaseUser", () => {
     });
     expect(mocks.execa).not.toHaveBeenCalledWith(
       "npx",
-      ["firebase", "projects:create", "new-project"],
+      expect.arrayContaining(["firebase", "projects:create"]),
       expect.anything(),
     );
     expect(vi.mocked(makeEnv)).not.toHaveBeenCalled();
@@ -209,11 +209,19 @@ describe("initFirebaseUser", () => {
 
     expect(mocks.execa).toHaveBeenCalledWith(
       "npx",
-      ["firebase", "projects:create", "new-project"],
+      [
+        "firebase",
+        "projects:create",
+        "new-project",
+        "--display-name",
+        "new-project",
+        "--non-interactive",
+      ],
       {
         env: {},
         stdio: "inherit",
       },
     );
+    expect(mocks.text).not.toHaveBeenCalled();
   });
 });
