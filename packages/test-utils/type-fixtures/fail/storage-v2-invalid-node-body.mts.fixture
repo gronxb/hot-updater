@@ -1,0 +1,27 @@
+import type {
+  StorageOperationContext,
+  StoragePlugin,
+} from "@hot-updater/plugin-core/storage";
+
+interface NodeReadableStream {
+  readonly readable: boolean;
+  read(size?: number): unknown;
+  pipe(destination: unknown): unknown;
+}
+
+declare const plugin: StoragePlugin;
+declare const context: StorageOperationContext;
+declare const nodeReadableStream: NodeReadableStream;
+
+plugin.put({
+  key: "node-stream",
+  body: nodeReadableStream,
+  contentLength: 0,
+  context,
+});
+plugin.put({
+  key: "file",
+  body: { filePath: "/tmp/bundle.zip" },
+  contentLength: 1,
+  context,
+});

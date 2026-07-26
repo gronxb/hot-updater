@@ -1,0 +1,5 @@
+import type { StorageInvocationToken } from "@hot-updater/plugin-core";
+
+const token: StorageInvocationToken = Object.freeze({});
+
+void token;

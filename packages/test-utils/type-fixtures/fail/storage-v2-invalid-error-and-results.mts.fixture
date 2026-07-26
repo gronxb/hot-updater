@@ -1,0 +1,23 @@
+import {
+  StoragePluginError,
+  type StorageGetResult,
+  type StorageHeadResult,
+  type StoragePutResult,
+} from "@hot-updater/plugin-core/storage";
+
+new StoragePluginError("network", "invalid code");
+
+const missingMetadata: StorageGetResult = {
+  kind: "found",
+  storageUri: "memory://bundle",
+  body: new ReadableStream<Uint8Array>(),
+};
+const missingStorageUri: StoragePutResult = { kind: "stored" };
+const malformedNotFound: StorageHeadResult = {
+  kind: "not-found",
+  metadata: { contentLength: 1 },
+};
+
+void missingMetadata;
+void missingStorageUri;
+void malformedNotFound;

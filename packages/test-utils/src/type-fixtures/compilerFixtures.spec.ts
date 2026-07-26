@@ -85,6 +85,8 @@ describe("server plugin compile-pass fixtures", () => {
     "constructionErrorNarrowing.mts",
     "serverPluginEntrypoints.mts",
     "serverPluginFeatures.mts",
+    "storage-v2-contract.mts",
+    "storage-v2-legacy-characterization.mts",
     "typeAssertions.mts",
   ])("accepts %s through packed public declarations", (file) => {
     // Given / When
@@ -98,7 +100,7 @@ describe("server plugin compile-pass fixtures", () => {
 
 type CompileFailCase = readonly [
   file: string,
-  diagnostic: string,
+  diagnostics: string | readonly string[],
   rejectedMembers: readonly string[],
 ];
 
@@ -144,12 +146,56 @@ const compileFailCases = [
   ["standalone-analytics-export.mts", "TS2305", ["standaloneAnalytics"]],
   ["structural-config-feature-manifest.mts", "TS2322", []],
   ["structural-manifest-forgery.mts", "TS2739", []],
+  [
+    "storage-v2-invalid-context-and-inputs.mts",
+    ["TS2322", "TS2741"],
+    ["browser", "environment", "bindings"],
+  ],
+  [
+    "storage-v2-invalid-missing-content-length.mts",
+    "TS2345",
+    ["contentLength"],
+  ],
+  ["storage-v2-invalid-positional.mts", "TS2554", []],
+  ["storage-v2-invalid-prefix-delete.mts", "TS2353", ["prefix"]],
+  [
+    "storage-v2-invalid-node-body.mts",
+    "TS2322",
+    ["NodeReadableStream", "filePath"],
+  ],
+  [
+    "storage-v2-invalid-ranges.mts",
+    ["TS2322", "TS2353"],
+    ["start", "end", "length"],
+  ],
+  [
+    "storage-v2-invalid-token-authority.mts",
+    "TS2724",
+    ["StorageInvocationAuthority"],
+  ],
+  [
+    "storage-v2-invalid-token-construction.mts",
+    "TS2741",
+    ["storageInvocationTokenBrand"],
+  ],
+  ["storage-v2-invalid-tokenless-calls.mts", "TS2554", []],
+  ["storage-v2-invalid-public-invocation.mts", "TS2554", []],
+  [
+    "storage-v2-invalid-root-storage-error.mts",
+    "TS2724",
+    ["StoragePluginError"],
+  ],
+  [
+    "storage-v2-invalid-error-and-results.mts",
+    "TS2345",
+    ["network", "metadata", "storageUri"],
+  ],
 ] satisfies readonly CompileFailCase[];
 
 describe("server plugin compile-fail fixtures", () => {
   it.each(compileFailCases)(
     "rejects %s at the intended boundary",
-    (file, diagnostic, rejectedMembers) => {
+    (file, diagnostics, rejectedMembers) => {
       // Given / When
       const result = compileFixture(failDirectory, file);
       const output = `${result.stdout}${result.stderr}`;
@@ -157,7 +203,11 @@ describe("server plugin compile-fail fixtures", () => {
       // Then
       expect(result.status).not.toBe(0);
       expect(output).toContain(file);
-      expect(output).toContain(diagnostic);
+      for (const diagnostic of typeof diagnostics === "string"
+        ? [diagnostics]
+        : diagnostics) {
+        expect(output).toContain(diagnostic);
+      }
       for (const member of rejectedMembers) {
         expect(output).toContain(member);
       }

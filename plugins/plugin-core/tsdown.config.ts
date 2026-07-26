@@ -4,6 +4,7 @@ export default defineConfig([
   {
     entry: [
       "./src/index.ts",
+      "./src/storage.ts",
       "./src/internal/capabilities.ts",
       "./src/internal/config-feature-manifest.ts",
     ],
@@ -20,6 +21,16 @@ export default defineConfig([
           require: {
             types: "./dist/index.d.cts",
             default: "./dist/index.cjs",
+          },
+        },
+        "./storage": {
+          import: {
+            types: "./dist/storage.d.mts",
+            default: "./dist/storage.mjs",
+          },
+          require: {
+            types: "./dist/storage.d.cts",
+            default: "./dist/storage.cjs",
           },
         },
         "./internal/capabilities": {

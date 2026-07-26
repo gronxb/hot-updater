@@ -387,6 +387,8 @@ export interface StoragePlugin<TContext = unknown> {
   name: string;
 
   profiles: StoragePluginProfiles<TContext>;
+
+  onUnmount?(): void | Promise<void>;
 }
 
 export interface NodeStoragePlugin<

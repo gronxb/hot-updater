@@ -38,6 +38,16 @@
         "default": "./dist/internal/config-feature-manifest.cjs"
       }
     },
+    "./storage": {
+      "import": {
+        "types": "./dist/storage.d.mts",
+        "default": "./dist/storage.mjs"
+      },
+      "require": {
+        "types": "./dist/storage.d.cts",
+        "default": "./dist/storage.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [

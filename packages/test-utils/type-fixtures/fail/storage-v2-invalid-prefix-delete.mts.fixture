@@ -1,0 +1,9 @@
+import type {
+  StorageOperationContext,
+  StoragePlugin,
+} from "@hot-updater/plugin-core/storage";
+
+declare const plugin: StoragePlugin;
+declare const context: StorageOperationContext;
+
+plugin.delete({ context, prefix: "bundles/" });

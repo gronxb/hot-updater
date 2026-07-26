@@ -1,4 +1,4 @@
-import type { DatabasePlugin, StorageResolveContext } from "./types";
+import type { DatabasePlugin } from "./types";
 
 declare const capabilityTokenBrand: unique symbol;
 
@@ -27,16 +27,52 @@ export type DatabaseCapabilityRuntime = Readonly<
   >
 >;
 
-export interface RuntimeStorageAccess<TContext = unknown> {
+declare const storageInvocationTokenBrand: unique symbol;
+
+export type StorageInvocationToken = Readonly<{
+  readonly [storageInvocationTokenBrand]: never;
+}>;
+
+export type HotUpdaterFeatureInvocation<TContext = undefined> = Readonly<{
+  readonly platformContext: TContext | undefined;
+  readonly storageToken: StorageInvocationToken;
+}>;
+
+export type FeatureMemberInvocationMetadata = Readonly<{
+  readonly publicArity: number;
+  readonly contextIndex: number;
+}>;
+
+export type FeatureInvocationMap = Readonly<
+  Record<string, FeatureMemberInvocationMetadata>
+>;
+
+export type InvocationAwareFeatureValue<
+  TPublicApi extends object,
+  TContext,
+> = Readonly<{
+  [TKey in keyof TPublicApi]: TPublicApi[TKey] extends (
+    ...args: infer TArguments
+  ) => infer TResult
+    ? (
+        ...args: [
+          ...TArguments,
+          invocation?: HotUpdaterFeatureInvocation<TContext>,
+        ]
+      ) => TResult
+    : TPublicApi[TKey];
+}>;
+
+export interface RuntimeStorageAccess {
   readonly name: string;
   readonly supportedProtocol: string;
   getDownloadUrl(
     storageUri: string,
-    context?: StorageResolveContext<TContext>,
+    token: StorageInvocationToken,
   ): Promise<{ readonly fileUrl: string }>;
   readText(
     storageUri: string,
-    context?: StorageResolveContext<TContext>,
+    token: StorageInvocationToken,
   ): Promise<string | null>;
 }
 
@@ -48,7 +84,7 @@ export interface RuntimeStorageAccess<TContext = unknown> {
  */
 export interface HotUpdaterInfrastructureRuntime<TContext = unknown> {
   readonly database: DatabaseCapabilityRuntime;
-  readonly storages: readonly RuntimeStorageAccess<TContext>[];
+  readonly storages: readonly RuntimeStorageAccess[];
 }
 
 export interface CapabilityContribution<TValue> {

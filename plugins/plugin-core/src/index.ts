@@ -6,8 +6,13 @@ export {
   type CapabilityToken,
   type DatabaseCapabilityRuntime,
   type DefineCapabilityOptions,
+  type FeatureInvocationMap,
+  type FeatureMemberInvocationMetadata,
+  type HotUpdaterFeatureInvocation,
   type HotUpdaterInfrastructureRuntime,
+  type InvocationAwareFeatureValue,
   type RuntimeStorageAccess,
+  type StorageInvocationToken,
 } from "./capabilities";
 export * from "./compressionFormat";
 export * from "./assetStorageLayout";
@@ -33,5 +38,10 @@ export { createRequestBundleResolver } from "./requestBundleCache";
 export * from "./resolveUpdateInfoFromBundles";
 export * from "./semverSatisfies";
 export * from "./storageProfile";
+export {
+  createStoragePlugin,
+  type StoragePlugin as StoragePluginV2,
+  type StoragePluginImplementation as StoragePluginImplementationV2,
+} from "./storage";
 export * from "./types";
 export * from "./uuidv7";
