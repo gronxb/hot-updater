@@ -31,6 +31,7 @@ export * from "./databaseClient";
 export * from "./databaseRows";
 export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
+export * from "./normalizeStorageInput";
 export * from "./parseStorageUri";
 export * from "./paginateBundles";
 export * from "./queryBundles";
@@ -40,6 +41,7 @@ export * from "./semverSatisfies";
 export * from "./storageProfile";
 export {
   createStoragePlugin,
+  type StorageOperationContext,
   type StoragePlugin as StoragePluginV2,
   type StoragePluginImplementation as StoragePluginImplementationV2,
 } from "./storage";

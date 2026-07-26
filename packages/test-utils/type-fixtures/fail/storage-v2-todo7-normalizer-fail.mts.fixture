@@ -1,0 +1,26 @@
+import type {
+  NormalizedStorageInput,
+  RequestEnvContext,
+  RuntimeStoragePlugin,
+  StorageInput,
+  StoragePluginV2,
+} from "@hot-updater/plugin-core";
+
+type Context = RequestEnvContext<{
+  readonly BUCKET: object;
+}>;
+type CallableLegacy = RuntimeStoragePlugin<Context> & (() => void);
+
+declare const callableLegacy: CallableLegacy;
+declare const v2Plugin: StoragePluginV2;
+
+const callableInput: StorageInput<CallableLegacy> = callableLegacy;
+const invalidGeneric: NormalizedStorageInput<StoragePluginV2> = {
+  origin: "direct",
+  plugin: v2Plugin,
+};
+const secondThunk: StorageInput<RuntimeStoragePlugin<Context>> = () => v2Plugin;
+
+void callableInput;
+void invalidGeneric;
+void secondThunk;

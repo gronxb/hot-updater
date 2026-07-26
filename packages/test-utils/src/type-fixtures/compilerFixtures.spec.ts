@@ -87,6 +87,7 @@ describe("server plugin compile-pass fixtures", () => {
     "serverPluginFeatures.mts",
     "storage-v2-contract.mts",
     "storage-v2-legacy-characterization.mts",
+    "storage-v2-todo7-normalizer-pass.mts",
     "typeAssertions.mts",
   ])("accepts %s through packed public declarations", (file) => {
     // Given / When
@@ -189,6 +190,11 @@ const compileFailCases = [
     "storage-v2-invalid-error-and-results.mts",
     "TS2345",
     ["network", "metadata", "storageUri"],
+  ],
+  [
+    "storage-v2-todo7-normalizer-fail.mts",
+    ["TS2322", "TS2344"],
+    ["supportedProtocol"],
   ],
 ] satisfies readonly CompileFailCase[];
 

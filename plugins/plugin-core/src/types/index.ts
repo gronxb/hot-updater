@@ -1,6 +1,7 @@
 import type { Bundle, Platform } from "@hot-updater/core";
 
 import type { ConfigFeatureManifest } from "../internal/config-feature-manifest";
+import type { StorageInput } from "../normalizeStorageInput";
 
 export type { ConfigFeatureManifest } from "../internal/config-feature-manifest";
 export type {
@@ -586,7 +587,7 @@ export type ConfigInput = {
    */
   signing?: SigningConfig;
   build: (args: BasePluginArgs) => Promise<BuildPlugin> | BuildPlugin;
-  storage: () => Promise<NodeStoragePlugin> | NodeStoragePlugin;
+  storage: StorageInput<NodeStoragePlugin>;
   database: import("./database").DatabasePlugin;
 };
 

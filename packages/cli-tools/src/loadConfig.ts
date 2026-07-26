@@ -6,6 +6,10 @@ import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
+import {
+  createConfigResponse,
+  type ConfigResponse,
+} from "./configStorageResponse.js";
 import { getCwd } from "./cwd.js";
 import {
   parseConfig,
@@ -13,6 +17,7 @@ import {
 } from "./loadConfigParser.js";
 
 export type { HotUpdaterConfigOptions } from "./loadConfigParser.js";
+export type { ConfigResponse } from "./configStorageResponse.js";
 
 class RemovedConsoleAnalyticsOptionError extends TypeError {
   readonly name = "RemovedConsoleAnalyticsOptionError";
@@ -153,8 +158,6 @@ const getDefaultConfig = (): ConfigInput => {
   };
 };
 
-export type ConfigResponse = RequiredDeep<ConfigInput>;
-
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
 ) => {
@@ -164,12 +167,14 @@ const mergeConfigSources = (
   );
 
   const database = sources.find((source) => source?.database)?.database;
+  const storage = sources.find((source) => source?.storage)?.storage;
   const plugins = sources.find(
     (source) => source?.console?.plugins !== undefined,
   )?.console?.plugins;
   return {
     ...mergedConfig,
     ...(database ? { database } : {}),
+    ...(storage ? { storage } : {}),
     console: {
       ...mergedConfig.console,
       ...(plugins === undefined ? {} : { plugins }),
@@ -214,5 +219,7 @@ export const loadConfig = async (
     }
   }
 
-  return mergeConfigSources(config, getDefaultConfig()) as ConfigResponse;
+  return createConfigResponse(
+    mergeConfigSources(config, getDefaultConfig()) as RequiredDeep<ConfigInput>,
+  );
 };

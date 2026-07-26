@@ -1,0 +1,50 @@
+import {
+  materializeRuntimeStorageInputSync,
+  materializeStorageInput,
+  materializeStorageInputSync,
+  normalizeStoragePlugin,
+  type NormalizedStorageInput,
+  type RequestEnvContext,
+  type RuntimeStoragePlugin,
+  type StorageInput,
+} from "@hot-updater/plugin-core";
+
+type Context = RequestEnvContext<{
+  readonly BUCKET: {
+    readonly name: string;
+  };
+}>;
+
+const runtimePlugin: RuntimeStoragePlugin<Context> = {
+  name: "runtime",
+  supportedProtocol: "runtime",
+  profiles: {
+    runtime: {
+      getDownloadUrl: async (_storageUri, context) => ({
+        fileUrl: `https://example.com/${context?.env?.BUCKET.name ?? "none"}`,
+      }),
+      readText: async (_storageUri, context) =>
+        context?.env?.BUCKET.name ?? null,
+    },
+  },
+};
+
+const direct: NormalizedStorageInput<RuntimeStoragePlugin<Context>> =
+  normalizeStoragePlugin(runtimePlugin);
+const asynchronous: Promise<
+  NormalizedStorageInput<RuntimeStoragePlugin<Context>>
+> = materializeStorageInput<RuntimeStoragePlugin<Context>>(
+  async () => runtimePlugin,
+);
+const synchronous: NormalizedStorageInput<RuntimeStoragePlugin<Context>> =
+  materializeStorageInputSync<RuntimeStoragePlugin<Context>>(
+    () => runtimePlugin,
+  );
+const runtime = materializeRuntimeStorageInputSync<Context>(runtimePlugin);
+const input: StorageInput<RuntimeStoragePlugin<Context>> = runtimePlugin;
+
+void direct;
+void asynchronous;
+void synchronous;
+void runtime;
+void input;
