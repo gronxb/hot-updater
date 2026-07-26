@@ -8,8 +8,34 @@
   "module": "./dist/index.mjs",
   "exports": {
     ".": {
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./storage": {
+      "import": {
+        "types": "./dist/storage.d.mts",
+        "default": "./dist/storage.mjs"
+      },
+      "require": {
+        "types": "./dist/storage.d.cts",
+        "default": "./dist/storage.cjs"
+      }
+    },
+    "./storage/node": {
+      "import": {
+        "types": "./dist/storage/node.d.mts",
+        "default": "./dist/storage/node.mjs"
+      },
+      "require": {
+        "types": "./dist/storage/node.d.cts",
+        "default": "./dist/storage/node.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
@@ -36,6 +62,7 @@
     "@hot-updater/plugin-core": "workspace:*"
   },
   "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
     "vitest": "catalog:"
   }
