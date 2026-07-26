@@ -4,13 +4,11 @@ import type {
 } from "@hot-updater/plugin-core";
 
 const assertRemoteDownloadUrl = (fileUrl: string) => {
-  try {
+  if (URL.canParse(fileUrl)) {
     const protocol = new URL(fileUrl).protocol.replace(":", "");
     if (protocol === "http" || protocol === "https") {
       return fileUrl;
     }
-  } catch {
-    // Fall through to the runtime-specific error below.
   }
 
   throw new Error(
@@ -18,17 +16,37 @@ const assertRemoteDownloadUrl = (fileUrl: string) => {
   );
 };
 
-const getStorageProtocol = (storageUri: string) =>
-  new URL(storageUri).protocol.replace(":", "");
+const getStorageProtocol = (storageUri: string) => {
+  try {
+    return new URL(storageUri).protocol.replace(":", "");
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(`Invalid storage URI: ${storageUri}`);
+    }
+    throw error;
+  }
+};
 
 const isRemoteUrlProtocol = (protocol: string) =>
   protocol === "http" || protocol === "https";
 
 export const createStorageAccess = <TContext>(
-  storagePlugins: RuntimeStoragePlugin<TContext>[],
+  storagePlugins: readonly RuntimeStoragePlugin<TContext>[],
 ) => {
+  const pluginsByProtocol = new Map<string, RuntimeStoragePlugin<TContext>>();
+  for (const plugin of storagePlugins) {
+    const protocol = plugin.supportedProtocol.toLowerCase();
+    const existing = pluginsByProtocol.get(protocol);
+    if (existing) {
+      throw new Error(
+        `Duplicate storage protocol "${protocol}" from plugins "${existing.name}" and "${plugin.name}".`,
+      );
+    }
+    pluginsByProtocol.set(protocol, plugin);
+  }
+
   const findStoragePlugin = (protocol: string) => {
-    return storagePlugins.find((item) => item.supportedProtocol === protocol);
+    return pluginsByProtocol.get(protocol.toLowerCase());
   };
 
   const resolveFileUrl = async (
