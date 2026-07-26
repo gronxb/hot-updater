@@ -19,7 +19,7 @@ const request = (
 });
 
 describe("Firebase request adapter", () => {
-  it("defers body access for request-head guards", () => {
+  it("defers body access across request-head guard microtasks", async () => {
     const source = request({ headers: { "content-length": "17" } });
     Object.defineProperty(source, "rawBody", {
       get(): never {
@@ -28,6 +28,7 @@ describe("Firebase request adapter", () => {
     });
 
     const result = createFirebaseWebRequest(source);
+    await Promise.resolve();
 
     expect(result.headers.get("content-length")).toBe("17");
     expect(result.bodyUsed).toBe(false);

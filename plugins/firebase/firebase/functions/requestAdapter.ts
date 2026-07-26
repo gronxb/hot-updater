@@ -37,15 +37,18 @@ export const createFirebaseWebRequest = (
   }
 
   const init: RequestInit & { duplex: "half" } = {
-    body: new ReadableStream<Uint8Array>({
-      pull(controller) {
-        const rawBody = source.rawBody;
-        if (rawBody !== undefined && rawBody.byteLength > 0) {
-          controller.enqueue(rawBody);
-        }
-        controller.close();
+    body: new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          const rawBody = source.rawBody;
+          if (rawBody !== undefined && rawBody.byteLength > 0) {
+            controller.enqueue(rawBody);
+          }
+          controller.close();
+        },
       },
-    }),
+      { highWaterMark: 0 },
+    ),
     duplex: "half",
     headers,
     method,
