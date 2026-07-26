@@ -1,5 +1,6 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
+import { createNodeStorageContext } from "@hot-updater/plugin-core/storage/node";
 import { createBundleDiff } from "@hot-updater/server/db";
 
 import { getPlatform } from "@/prompts/getPlatform";
@@ -35,9 +36,25 @@ export const createPatch = async (options: PatchOptions) => {
 
   const config = await loadConfig({ channel: options.channel, platform });
   const databasePlugin = config.database;
-  const storagePlugin = await config.storage();
+  const environment: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      environment[key] = value;
+    }
+  }
+  const storageContext = createNodeStorageContext({ environment });
+  let outcome:
+    | { readonly kind: "success" }
+    | { readonly kind: "exit"; readonly code: number }
+    | { readonly kind: "error"; readonly error: unknown } = {
+    kind: "success",
+  };
+  let storageInitialized = false;
 
   try {
+    const storagePlugin = await config.storage(storageContext);
+    storageInitialized = true;
+
     p.note(
       [
         `Channel: ${options.channel}`,
@@ -64,9 +81,61 @@ export const createPatch = async (options: PatchOptions) => {
 
     p.outro(`⚡ Patch Ready (${updatedBundle.id})`);
   } catch (error) {
-    console.error(error);
-    process.exit(1);
+    if (storageInitialized) {
+      console.error(error);
+      outcome = { code: 1, kind: "exit" };
+    } else {
+      outcome = { error, kind: "error" };
+      throw error;
+    }
   } finally {
-    await databasePlugin.onUnmount?.();
+    let hasCleanupError = false;
+    let firstCleanupError: unknown;
+    const recordCleanupError = (
+      error: unknown,
+      owner: string,
+      message: string,
+    ): void => {
+      if (outcome.kind === "success" && !hasCleanupError) {
+        hasCleanupError = true;
+        firstCleanupError = error;
+        return;
+      }
+      p.log.warn(`${owner} cleanup failed: ${message}`);
+    };
+
+    try {
+      await config.disposeStorage();
+    } catch (error) {
+      recordCleanupError(
+        error,
+        "Storage",
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      try {
+        await databasePlugin.onUnmount?.();
+      } catch (error) {
+        recordCleanupError(
+          error,
+          "Database",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
+
+    if (outcome.kind === "success" && hasCleanupError) {
+      outcome = { error: firstCleanupError, kind: "error" };
+    }
+  }
+
+  switch (outcome.kind) {
+    case "success":
+      return;
+    case "exit":
+      process.exitCode = outcome.code;
+      return;
+    case "error":
+      throw outcome.error;
   }
 };
