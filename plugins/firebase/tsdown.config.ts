@@ -9,6 +9,20 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
+    entry: [
+      "./src/storage/node.ts",
+      "./src/storage/functions.ts",
+      "./src/storage/unsupported.ts",
+    ],
+    format: ["esm", "cjs"],
+    outDir: "dist/storage",
+    dts: true,
+    deps: {
+      neverBundle: ["firebase-admin"],
+    },
+    failOnWarn: true,
+  },
+  {
     entry: ["firebase/functions/index.ts"],
     format: ["cjs"],
     dts: false,
