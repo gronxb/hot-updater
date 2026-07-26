@@ -37,20 +37,16 @@ describe("standalone Analytics provider", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("propagates availability cancellation to the upstream request", async () => {
+  it("isolates availability cancellation from the shared upstream request", async () => {
     // Given
-    vi.useFakeTimers();
     let upstreamSignal: AbortSignal | undefined;
+    let resolveResponse: ((response: Response) => void) | undefined;
     vi.stubGlobal(
       "fetch",
       vi.fn((_input: string | URL | Request, init?: RequestInit) => {
         upstreamSignal = init?.signal ?? undefined;
-        return new Promise<Response>((_resolve, reject) => {
-          upstreamSignal?.addEventListener(
-            "abort",
-            () => reject(new DOMException("Aborted", "AbortError")),
-            { once: true },
-          );
+        return new Promise<Response>((resolve) => {
+          resolveResponse = resolve;
         });
       }),
     );
@@ -64,14 +60,24 @@ describe("standalone Analytics provider", () => {
 
     // When
     const availability = provider.resolveAvailability(controller.signal);
-    const rejection = expect(availability).rejects.toMatchObject({
-      name: "AbortError",
-    });
     controller.abort();
-    await vi.advanceTimersByTimeAsync(1);
 
     // Then
-    expect(upstreamSignal?.aborted).toBe(true);
-    await rejection;
+    await expect(availability).rejects.toMatchObject({ name: "AbortError" });
+    expect(upstreamSignal?.aborted).toBe(false);
+    resolveResponse?.(
+      Response.json({
+        version: "0.0.0-test",
+        capabilities: {
+          analytics: true,
+          mode: "dedicated",
+          eventIngestion: true,
+          analyticsQueries: true,
+        },
+      }),
+    );
+    await expect(
+      provider.resolveAvailability(new AbortController().signal),
+    ).resolves.toMatchObject({ analytics: true });
   });
 });
