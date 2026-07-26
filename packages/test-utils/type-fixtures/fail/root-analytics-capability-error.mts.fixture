@@ -1,0 +1,3 @@
+import { InvalidAnalyticsCapabilityError } from "@hot-updater/analytics";
+
+void InvalidAnalyticsCapabilityError;

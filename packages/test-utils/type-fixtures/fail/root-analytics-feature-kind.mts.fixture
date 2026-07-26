@@ -1,0 +1,4 @@
+import type { AnalyticsFeatureKind } from "@hot-updater/analytics";
+
+declare const featureKind: AnalyticsFeatureKind;
+void featureKind;

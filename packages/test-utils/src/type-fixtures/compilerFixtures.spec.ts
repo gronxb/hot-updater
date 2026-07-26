@@ -127,7 +127,18 @@ const compileFailCases = [
     "TS2305",
     ["defineFirstPartyFeatureManifest"],
   ],
+  [
+    "root-analytics-capability-error.mts",
+    "TS2305",
+    ["InvalidAnalyticsCapabilityError"],
+  ],
+  ["root-analytics-feature-kind.mts", "TS2459", ["AnalyticsFeatureKind"]],
   ["root-analytics-legacy-alias.mts", "TS2459", ["analyticsLegacyAliases"]],
+  [
+    "root-analytics-provider-error.mts",
+    "TS2305",
+    ["InvalidAnalyticsProviderError"],
+  ],
   ["routes-analytics.mts", "TS2353", []],
   ["routes-event-ingestion.mts", "TS2353", []],
   ["standalone-analytics-export.mts", "TS2305", ["standaloneAnalytics"]],

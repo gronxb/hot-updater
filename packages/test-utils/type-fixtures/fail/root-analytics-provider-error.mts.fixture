@@ -1,0 +1,3 @@
+import { InvalidAnalyticsProviderError } from "@hot-updater/analytics";
+
+void InvalidAnalyticsProviderError;
