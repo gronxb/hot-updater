@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildDistributionConfig } from "./cloudfrontDistributionConfig";
+import {
+  buildDistributionConfig,
+  HOT_UPDATER_API_CACHE_POLICY_CONFIG,
+  HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+} from "./cloudfrontDistributionConfig";
 
 const mockCloudFront = vi.hoisted(() => ({
   listOriginAccessControls: vi.fn(),
   createOriginAccessControl: vi.fn(),
   listCachePolicies: vi.fn(),
+  getCachePolicy: vi.fn(),
   createCachePolicy: vi.fn(),
   listDistributions: vi.fn(),
   getDistributionConfig: vi.fn(),
@@ -101,6 +106,20 @@ describe("CloudFrontManager", () => {
         ],
       },
     });
+    mockCloudFront.getCachePolicy.mockImplementation(
+      ({ Id }: { Id: string }) => {
+        const CachePolicyConfig =
+          Id === "api-cache-policy-id"
+            ? HOT_UPDATER_API_CACHE_POLICY_CONFIG
+            : HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG;
+        return Promise.resolve({
+          CachePolicy: {
+            CachePolicyConfig,
+            Id,
+          },
+        });
+      },
+    );
   });
 
   it("reuses separate API and bundle cache policies before updating", async () => {
@@ -123,6 +142,12 @@ describe("CloudFrontManager", () => {
       Type: "custom",
     });
     expect(mockCloudFront.createCachePolicy).not.toHaveBeenCalled();
+    expect(mockCloudFront.getCachePolicy).toHaveBeenCalledWith({
+      Id: "api-cache-policy-id",
+    });
+    expect(mockCloudFront.getCachePolicy).toHaveBeenCalledWith({
+      Id: "shared-cache-policy-id",
+    });
 
     expect(mockCloudFront.updateDistribution).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -159,5 +184,34 @@ describe("CloudFrontManager", () => {
         },
       }),
     });
+  });
+
+  it("fails closed when an existing cache policy has drifted", async () => {
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+    mockCloudFront.getCachePolicy.mockResolvedValue({
+      CachePolicy: {
+        Id: "api-cache-policy-id",
+        CachePolicyConfig: {
+          ...HOT_UPDATER_API_CACHE_POLICY_CONFIG,
+          MinTTL: 60,
+        },
+      },
+    });
+
+    await expect(
+      manager.createOrUpdateDistribution({
+        keyGroupId: "new-key-group-id",
+        bucketName: "hot-updater-storage",
+        functionArn:
+          "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:2",
+      }),
+    ).rejects.toThrow(
+      "does not match the required Hot Updater security configuration",
+    );
+    expect(mockCloudFront.createCachePolicy).not.toHaveBeenCalled();
+    expect(mockCloudFront.updateDistribution).not.toHaveBeenCalled();
   });
 });

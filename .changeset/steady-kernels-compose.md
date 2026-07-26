@@ -114,9 +114,12 @@ managed projection of the provisioned API-key digest. Cloudflare, Firebase,
 and Supabase also install protected Analytics over their bare database
 plugins, including protected event ingestion; AWS deliberately remains
 core-only because its preset omits Analytics. AWS disables shared caching and
-forwards `x-api-key` on the authenticated update path. PostgreSQL keeps the
-same database-backed Analytics default for custom composition. These managed
-server presets are independent from the local Console opt-in.
+forwards `x-api-key` on the authenticated update path. Existing AWS CloudFront
+cache policies are reused only when their complete configuration matches the
+managed no-cache contract. Firebase keeps raw-body access lazy so authentication
+finishes before the kernel measures the actual Analytics payload. PostgreSQL
+keeps the same database-backed Analytics default for custom composition. These
+managed server presets are independent from the local Console opt-in.
 Managed key provisioning serializes concurrent writers with an owner-only lock
 directory, rejects symbolic and multiple hard links, requires a user-owned
 parent that is not group- or other-writable, rejects replaceable ancestors in

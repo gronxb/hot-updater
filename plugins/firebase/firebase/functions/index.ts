@@ -1,7 +1,4 @@
-import {
-  analytics,
-  ANALYTICS_EVENT_BODY_MAX_BYTES,
-} from "@hot-updater/analytics";
+import { analytics } from "@hot-updater/analytics";
 import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import admin from "firebase-admin";
@@ -13,7 +10,6 @@ import {
   createFirebaseWebRequest,
   FIREBASE_FUNCTION_CONCURRENCY,
   FIREBASE_FUNCTION_MAX_INSTANCES,
-  sendFirebasePayloadTooLarge,
 } from "./requestAdapter";
 
 declare global {
@@ -75,16 +71,7 @@ const handler = onRequest(
     region: HotUpdater.REGION,
   },
   async (req, res) => {
-    const requestResult = createFirebaseWebRequest(
-      req,
-      ANALYTICS_EVENT_BODY_MAX_BYTES,
-    );
-    if (requestResult.kind === "payload-too-large") {
-      sendFirebasePayloadTooLarge(res);
-      return;
-    }
-
-    const honoResponse = await app.fetch(requestResult.request);
+    const honoResponse = await app.fetch(createFirebaseWebRequest(req));
     res.status(honoResponse.status);
     for (const [key, value] of honoResponse.headers.entries()) {
       res.setHeader(key, value);

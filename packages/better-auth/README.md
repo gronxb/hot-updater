@@ -50,8 +50,10 @@ const authentication = managedBetterAuthPlugin({
 ```
 
 This shared key is bundled into managed mobile clients. Anyone who extracts it
-can call every Hot Updater route mounted by that managed runtime, including
-management and Analytics query routes. It is an access gate, not privileged or
+can call every Hot Updater route mounted by that managed runtime. AWS mounts
+`/version` and update checks; Cloudflare, Firebase, and Supabase additionally
+mount Analytics ingestion and query routes. The managed presets do not mount
+bundle management routes. The key is an access gate, not privileged or
 tenant-scoped authorization. Use a custom server-side authorization gateway
 when route-level privilege separation is required.
 

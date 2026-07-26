@@ -11,8 +11,8 @@ Install all required dependencies at once.
 
 ```package-install
 npm install hot-updater @hot-updater/analytics @hot-updater/aws @hot-updater/bare @hot-updater/server @hot-updater/standalone
-npm install hono @hono/node-server
-npm install kysely better-sqlite3 @types/better-sqlite3 --save-dev
+npm install hono @hono/node-server kysely better-sqlite3
+npm install @types/better-sqlite3 tsx --save-dev
 ```
 
 ## Database Setup
@@ -137,7 +137,7 @@ npx hot-updater db generate src/hotUpdater.ts --yes
 Start your server.
 
 ```bash
-node src/index.ts
+npx tsx src/index.ts
 ```
 
 Your Hot Updater server is now running at `http://localhost:3000/hot-updater`!

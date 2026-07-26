@@ -75,9 +75,9 @@ it only as an access-control key for Hot Updater traffic. Never reuse it as a
 Firebase service-account credential, administrator secret, or other
 infrastructure credential.
 Anyone who extracts it can call every Hot Updater route mounted by this managed
-runtime, including bundle management and Analytics query routes. Use a custom
-server-side authorization gateway when those routes require privileged or
-tenant-scoped access.
+runtime: `/version`, update checks, Analytics ingestion, and Analytics queries.
+Use a custom server-side authorization gateway when those routes require
+privileged or tenant-scoped access.
 
 </Callout>
 

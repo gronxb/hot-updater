@@ -4,7 +4,6 @@ import {
   createFirebaseWebRequest,
   FIREBASE_FUNCTION_CONCURRENCY,
   FIREBASE_FUNCTION_MAX_INSTANCES,
-  sendFirebasePayloadTooLarge,
 } from "./requestAdapter";
 
 const request = (
@@ -20,7 +19,7 @@ const request = (
 });
 
 describe("Firebase request adapter", () => {
-  it("rejects an oversized declared body without reading rawBody", () => {
+  it("defers body access for request-head guards", () => {
     const source = request({ headers: { "content-length": "17" } });
     Object.defineProperty(source, "rawBody", {
       get(): never {
@@ -28,49 +27,37 @@ describe("Firebase request adapter", () => {
       },
     });
 
-    expect(createFirebaseWebRequest(source, 16)).toEqual({
-      kind: "payload-too-large",
-    });
+    const result = createFirebaseWebRequest(source);
+
+    expect(result.headers.get("content-length")).toBe("17");
+    expect(result.bodyUsed).toBe(false);
   });
 
-  it("rejects an oversized body without constructing a Request", () => {
-    const requestConstructor = vi.spyOn(globalThis, "Request");
-    try {
-      expect(
-        createFirebaseWebRequest(
-          request({
-            headers: { "transfer-encoding": "chunked" },
-            rawBody: new Uint8Array(17),
-          }),
-          16,
-        ),
-      ).toEqual({ kind: "payload-too-large" });
-      expect(requestConstructor).not.toHaveBeenCalled();
-    } finally {
-      requestConstructor.mockRestore();
-    }
+  it("streams the Firebase body only when the kernel consumes it", async () => {
+    const rawBody = new TextEncoder().encode("accepted");
+    const source = request();
+    const readRawBody = vi.fn(() => rawBody);
+    Object.defineProperty(source, "rawBody", { get: readRawBody });
+
+    const result = createFirebaseWebRequest(source);
+
+    expect(readRawBody).not.toHaveBeenCalled();
+    await expect(result.text()).resolves.toBe("accepted");
+    expect(readRawBody).toHaveBeenCalledOnce();
   });
 
-  it("copies a bounded accepted body into the Web Request", async () => {
+  it("forwards an accepted body into the Web Request", async () => {
     const result = createFirebaseWebRequest(
       request({ rawBody: new TextEncoder().encode("accepted") }),
-      16,
     );
 
-    expect(result.kind).toBe("request");
-    if (result.kind !== "request") return;
-    await expect(result.request.text()).resolves.toBe("accepted");
+    await expect(result.text()).resolves.toBe("accepted");
   });
 
   it("accepts body methods when Firebase omits an empty rawBody", async () => {
-    const result = createFirebaseWebRequest(
-      request({ rawBody: undefined }),
-      16,
-    );
+    const result = createFirebaseWebRequest(request({ rawBody: undefined }));
 
-    expect(result.kind).toBe("request");
-    if (result.kind !== "request") return;
-    await expect(result.request.text()).resolves.toBe("");
+    await expect(result.text()).resolves.toBe("");
   });
 
   it("does not inspect rawBody for GET requests", () => {
@@ -80,33 +67,9 @@ describe("Firebase request adapter", () => {
         throw new Error("rawBody accessed");
       },
     });
-    const result = createFirebaseWebRequest(source, 16);
+    const result = createFirebaseWebRequest(source);
 
-    expect(result.kind).toBe("request");
-  });
-
-  it("returns an opaque no-store 413 response", () => {
-    const response = {
-      send: vi.fn(),
-      setHeader: vi.fn(),
-      status: vi.fn(),
-    };
-    response.status.mockReturnValue(response);
-
-    sendFirebasePayloadTooLarge(response);
-
-    expect(response.status).toHaveBeenCalledWith(413);
-    expect(response.setHeader).toHaveBeenCalledWith(
-      "Cache-Control",
-      "private, no-store",
-    );
-    expect(response.setHeader).toHaveBeenCalledWith(
-      "Content-Type",
-      "application/json",
-    );
-    expect(response.send).toHaveBeenCalledWith(
-      JSON.stringify({ error: "Request payload too large" }),
-    );
+    expect(result.body).toBeNull();
   });
 
   it("bounds per-instance and fleet-level body buffering", () => {

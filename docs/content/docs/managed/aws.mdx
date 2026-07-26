@@ -138,8 +138,8 @@ The managed API key is bundled into the mobile client and can be extracted. Use
 it only as an access-control key for Hot Updater traffic. Never reuse it as an
 AWS credential, administrator secret, or other infrastructure credential.
 Anyone who extracts it can call every Hot Updater route mounted by this managed
-runtime, including bundle management routes. Use a custom server-side
-authorization gateway when those routes require privileged access.
+runtime: `/version` and the update-check routes. Use a custom server-side
+authorization gateway before adding routes that require privileged access.
 
 </Callout>
 

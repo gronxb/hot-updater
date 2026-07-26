@@ -121,10 +121,12 @@ clarifications are normative where they narrow or repair the original prose:
   managed handler is protected. Cloudflare, Firebase, and Supabase also
   install Analytics; AWS does not. The managed key is intentionally a
   client-extractable shared access gate, not a privileged authorization
-  boundary. Anyone holding it can call every mounted route, including
-  management and Analytics query routes. Deployments that need privileged or
-  tenant-scoped authorization must use a custom server-side authorization
-  gateway and must not distribute its administrator credential.
+  boundary. Anyone holding it can call every mounted route. AWS mounts only
+  `/version` and update checks; Cloudflare, Firebase, and Supabase additionally
+  mount Analytics ingestion and query routes. The managed presets do not mount
+  bundle management routes. Deployments that need privileged or tenant-scoped
+  authorization must use a custom server-side authorization gateway and must
+  not distribute its administrator credential.
 - **R19 — managed provisioning and caching:** provisioning writes the raw
   `HOT_UPDATER_API_KEY` only to a local environment file and injects only
   `HotUpdater.API_KEY_SHA256` into the deployed runtime. AWS disables caching

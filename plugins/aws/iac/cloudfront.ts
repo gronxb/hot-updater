@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import { type CachePolicyConfig, CloudFront } from "@aws-sdk/client-cloudfront";
 import { p } from "@hot-updater/cli-tools";
@@ -56,6 +57,19 @@ export class CloudFrontManager {
     const existingPolicyId = existingPolicy?.CachePolicy?.Id;
 
     if (existingPolicyId) {
+      const existingPolicyResponse = await cloudfrontClient.getCachePolicy({
+        Id: existingPolicyId,
+      });
+      if (
+        !isDeepStrictEqual(
+          existingPolicyResponse.CachePolicy?.CachePolicyConfig,
+          cachePolicyConfig,
+        )
+      ) {
+        throw new Error(
+          `Existing CloudFront cache policy ${cachePolicyConfig.Name} does not match the required Hot Updater security configuration.`,
+        );
+      }
       return existingPolicyId;
     }
 

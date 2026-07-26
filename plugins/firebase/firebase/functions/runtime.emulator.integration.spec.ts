@@ -11,7 +11,11 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import {
+  createServer,
+  request as createHttpRequest,
+  type Server,
+} from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -391,6 +395,47 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
   };
 
+  const invokeChunkedHandler = async (
+    routePath: string,
+    body: Uint8Array,
+    apiKey: string | null = API_KEY,
+  ): Promise<Response> =>
+    await new Promise((resolve, reject) => {
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+      };
+      if (apiKey !== null) headers["x-api-key"] = apiKey;
+
+      const request = createHttpRequest(
+        `http://127.0.0.1:${functionsPort}/${projectId}/${REGION}/${FUNCTION_NAME}${routePath}`,
+        { headers, method: "POST" },
+        (incoming) => {
+          const chunks: Buffer[] = [];
+          incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
+          incoming.on("end", () => {
+            const responseHeaders = new Headers();
+            for (const [name, value] of Object.entries(incoming.headers)) {
+              if (value === undefined) continue;
+              if (Array.isArray(value)) {
+                for (const item of value) responseHeaders.append(name, item);
+              } else {
+                responseHeaders.set(name, value);
+              }
+            }
+            resolve(
+              new Response(Buffer.concat(chunks), {
+                headers: responseHeaders,
+                status: incoming.statusCode ?? 500,
+              }),
+            );
+          });
+        },
+      );
+      request.on("error", reject);
+      request.write(body);
+      request.end();
+    });
+
   const seedRuntimeBundles = async (bundles: Bundle[]) => {
     for (const bundle of bundles.map((bundle) =>
       toRuntimeBundle(bundle, storageBucket),
@@ -599,7 +644,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     ).resolves.toEqual({ installed: 1, recovered: 0 });
   });
 
-  it("measures the original Firebase request body before ingesting", async () => {
+  it("authenticates before measuring the original Firebase request body", async () => {
     const payload = JSON.stringify({
       appVersion: "1.0",
       channel: "production",
@@ -615,20 +660,19 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     const oversizedBody = new TextEncoder().encode(
       `${payload}${" ".repeat(17 * 1024)}`,
     );
-    const init: RequestInit & { duplex: "half" } = {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(oversizedBody);
-          controller.close();
-        },
-      }),
-      duplex: "half",
-    };
-    const response = await invokeHandler(
+    const missingKeyResponse = await invokeChunkedHandler(
       `${HOT_UPDATER_BASE_PATH}/events`,
-      init,
+      oversizedBody,
+      null,
+    );
+    const invalidKeyResponse = await invokeChunkedHandler(
+      `${HOT_UPDATER_BASE_PATH}/events`,
+      oversizedBody,
+      INVALID_API_KEY,
+    );
+    const validKeyResponse = await invokeChunkedHandler(
+      `${HOT_UPDATER_BASE_PATH}/events`,
+      oversizedBody,
     );
     const persisted = await admin
       .firestore()
@@ -636,7 +680,12 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       .where("install_id", "==", "firebase-oversized-install")
       .get();
 
-    expect(response.status).toBe(413);
+    expect(missingKeyResponse.status).toBe(401);
+    expect(invalidKeyResponse.status).toBe(401);
+    expect(validKeyResponse.status).toBe(413);
+    expect(validKeyResponse.headers.get("cache-control")).toBe(
+      "private, no-store",
+    );
     expect(persisted.empty).toBe(true);
   });
 
