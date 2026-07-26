@@ -55,13 +55,16 @@ vi.mock("execa", async (importOriginal) => {
 
 import {
   createSelectedBucket,
+  getSupabaseProjectAccess,
   getLegacySupabaseConfigReference,
   resolveEdgeFunctionDenoConfig,
   selectBucket,
   selectProject,
+  waitForSupabaseProjectReady,
 } from "./index";
 import type { SupabaseApi } from "./supabaseApi";
 import { linkSupabase, pushDB } from "./supabaseCli";
+import type { SupabaseManagementApi } from "./supabaseManagementApi";
 
 const createExecaError = async (
   command: readonly string[],
@@ -249,6 +252,124 @@ describe("selectBucket", () => {
     expect(api.createBucket).toHaveBeenCalledWith("saved-bucket", {
       public: false,
     });
+  });
+});
+
+describe("Supabase project readiness", () => {
+  const project = {
+    id: "project-ref",
+    name: "Hot Updater",
+    region: "us-east-1",
+  };
+  const createManagementApi = (): SupabaseManagementApi => ({
+    createProject: vi.fn(),
+    getProjectStatus: vi.fn(),
+    listOrganizations: vi.fn(),
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("recovers from the recognized provisioning status", async () => {
+    vi.useFakeTimers();
+    const getProjectStatus = vi
+      .fn()
+      .mockResolvedValueOnce("COMING_UP")
+      .mockResolvedValueOnce("ACTIVE_HEALTHY");
+    const readiness = waitForSupabaseProjectReady({
+      getProjectStatus,
+      onLongWait: vi.fn(),
+    });
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(readiness).resolves.toBeUndefined();
+    expect(getProjectStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails immediately when the status request is unauthorized", async () => {
+    const getProjectStatus = vi
+      .fn()
+      .mockRejectedValue(new Error("Management API status 401"));
+
+    await expect(
+      waitForSupabaseProjectReady({
+        getProjectStatus,
+        onLongWait: vi.fn(),
+      }),
+    ).rejects.toThrow("Management API status 401");
+    expect(getProjectStatus).toHaveBeenCalledOnce();
+  });
+
+  it("fails immediately for an unexpected project status", async () => {
+    const getProjectStatus = vi.fn().mockResolvedValue("INACTIVE");
+
+    await expect(
+      waitForSupabaseProjectReady({
+        getProjectStatus,
+        onLongWait: vi.fn(),
+      }),
+    ).rejects.toThrow("Supabase project entered unexpected status: INACTIVE.");
+    expect(getProjectStatus).toHaveBeenCalledOnce();
+  });
+
+  it("retains the last provisioning status in timeout errors", async () => {
+    vi.useFakeTimers();
+    const getProjectStatus = vi.fn().mockResolvedValue("COMING_UP");
+    const readiness = waitForSupabaseProjectReady({
+      getProjectStatus,
+      maxAttempts: 2,
+      onLongWait: vi.fn(),
+      pollIntervalMs: 1000,
+    });
+    const assertion = expect(readiness).rejects.toThrow(
+      "Last status: COMING_UP.",
+    );
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await assertion;
+  });
+
+  it("surfaces CLI failures immediately after the project is ready", async () => {
+    const managementApi = createManagementApi();
+    vi.mocked(managementApi.getProjectStatus).mockResolvedValue(
+      "ACTIVE_HEALTHY",
+    );
+    mockExeca.mockRejectedValue(new Error("Supabase CLI authorization failed"));
+
+    await expect(
+      getSupabaseProjectAccess({
+        accessToken: "access-token",
+        managementApi,
+        project,
+        waitForProject: true,
+      }),
+    ).rejects.toThrow("Supabase CLI authorization failed");
+    expect(mockExeca).toHaveBeenCalledOnce();
+  });
+
+  it("surfaces malformed API key JSON immediately", async () => {
+    const managementApi = createManagementApi();
+    vi.mocked(managementApi.getProjectStatus).mockResolvedValue(
+      "ACTIVE_HEALTHY",
+    );
+    mockExeca.mockResolvedValue({ stdout: "not-json" });
+
+    await expect(
+      getSupabaseProjectAccess({
+        accessToken: "access-token",
+        managementApi,
+        project,
+        waitForProject: true,
+      }),
+    ).rejects.toBeInstanceOf(SyntaxError);
+    expect(mockExeca).toHaveBeenCalledOnce();
   });
 });
 

@@ -1,6 +1,7 @@
 import type { SupabaseRegion } from "@hot-updater/cli-tools";
 
 const SUPABASE_MANAGEMENT_API_URL = "https://api.supabase.com/v1";
+export const SUPABASE_MANAGEMENT_API_TIMEOUT_MS = 30_000;
 
 export type SupabaseOrganization = {
   readonly id: string;
@@ -21,6 +22,7 @@ export interface SupabaseManagementApi {
     readonly organizationSlug: string;
     readonly region: SupabaseRegion;
   }) => Promise<SupabaseProject>;
+  getProjectStatus: (projectId: string) => Promise<string>;
   listOrganizations: () => Promise<readonly SupabaseOrganization[]>;
 }
 
@@ -35,14 +37,37 @@ const request = async (
     readonly method?: "GET" | "POST";
   },
 ) => {
-  const response = await fetch(`${SUPABASE_MANAGEMENT_API_URL}${path}`, {
-    body: init?.body ? JSON.stringify(init.body) : undefined,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    method: init?.method ?? "GET",
-  });
+  const method = init?.method ?? "GET";
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    SUPABASE_MANAGEMENT_API_TIMEOUT_MS,
+  );
+  timeout.unref();
+  let response: Response;
+  try {
+    response = await fetch(`${SUPABASE_MANAGEMENT_API_URL}${path}`, {
+      body: init?.body ? JSON.stringify(init.body) : undefined,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      throw error;
+    }
+    if (method === "POST") {
+      throw new Error(
+        "Supabase project creation timed out. The request may have succeeded; check the organization's projects before retrying init.",
+      );
+    }
+    throw new Error("Supabase Management API request timed out.");
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -108,5 +133,17 @@ export const supabaseManagementApi = (
       name: body.name,
       region: body.region,
     };
+  },
+  getProjectStatus: async (projectId) => {
+    const response = await request(
+      accessToken,
+      `/projects/${encodeURIComponent(projectId)}`,
+    );
+    const body: unknown = await response.json();
+    if (!isRecord(body) || typeof body.status !== "string") {
+      throw new Error("Supabase project response was invalid.");
+    }
+
+    return body.status;
   },
 });

@@ -40,12 +40,17 @@ import {
 } from "./supabaseInitInputs";
 import {
   supabaseManagementApi,
+  type SupabaseManagementApi,
   type SupabaseProject,
 } from "./supabaseManagementApi";
 
 const require = createRequire(import.meta.url);
 const EDGE_VENDOR_DIR = "_hot-updater";
 const WORKSPACE_PACKAGE_PREFIX = "@hot-updater/";
+const SUPABASE_PROJECT_READY_STATUS = "ACTIVE_HEALTHY";
+const SUPABASE_PROJECT_PROVISIONING_STATUS = "COMING_UP";
+const SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS = 60 * 5;
+const SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS = 1000;
 const STATIC_IMPORT_SPECIFIER_PATTERN =
   /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`]+?\s+from\s+)?["']([^"']+)["'];?/gm;
 const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
@@ -705,12 +710,48 @@ const deployEdgeFunction = async (
   ]);
 };
 
-const getSupabaseProjectAccess = async ({
+export const waitForSupabaseProjectReady = async ({
+  getProjectStatus,
+  maxAttempts = SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS,
+  onLongWait,
+  pollIntervalMs = SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS,
+}: {
+  readonly getProjectStatus: () => Promise<string>;
+  readonly maxAttempts?: number;
+  readonly onLongWait: () => void;
+  readonly pollIntervalMs?: number;
+}): Promise<void> => {
+  let lastStatus: string | undefined;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    lastStatus = await getProjectStatus();
+    if (lastStatus === SUPABASE_PROJECT_READY_STATUS) {
+      return;
+    }
+    if (lastStatus !== SUPABASE_PROJECT_PROVISIONING_STATUS) {
+      throw new Error(
+        `Supabase project entered unexpected status: ${lastStatus}.`,
+      );
+    }
+    if (attempt === 5) {
+      onLongWait();
+    }
+    if (attempt < maxAttempts - 1) {
+      await delay(pollIntervalMs);
+    }
+  }
+  throw new Error(
+    `Timed out while waiting for the Supabase project. Last status: ${lastStatus ?? "unknown"}.`,
+  );
+};
+
+export const getSupabaseProjectAccess = async ({
   accessToken,
+  managementApi,
   project,
   waitForProject,
 }: {
   readonly accessToken: string;
+  readonly managementApi: SupabaseManagementApi;
   readonly project: SupabaseProject;
   readonly waitForProject: boolean;
 }): Promise<{
@@ -748,21 +789,16 @@ const getSupabaseProjectAccess = async ({
       {
         title: `Waiting for ${project.name} to become ready...`,
         task: async (message) => {
-          for (let retryCount = 0; retryCount < 60 * 5; retryCount++) {
-            serviceRoleApiKey = await getServiceRoleApiKey().catch(
-              () => undefined,
-            );
-            if (serviceRoleApiKey) {
-              return "Supabase project is ready.";
-            }
-            if (retryCount === 5) {
+          await waitForSupabaseProjectReady({
+            getProjectStatus: () => managementApi.getProjectStatus(project.id),
+            onLongWait: () => {
               message(
                 "Supabase project is still provisioning. This might take a few minutes.",
               );
-            }
-            await delay(1000);
-          }
-          throw new Error("Timed out while waiting for the Supabase project.");
+            },
+          });
+          serviceRoleApiKey = await getServiceRoleApiKey();
+          return "Supabase project is ready.";
         },
       },
     ]);
@@ -837,6 +873,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       ? undefined
       : await getSupabaseProjectAccess({
           accessToken,
+          managementApi,
           project,
           waitForProject: false,
         });
@@ -896,6 +933,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     });
     projectAccess = await getSupabaseProjectAccess({
       accessToken,
+      managementApi,
       project,
       waitForProject: true,
     });
