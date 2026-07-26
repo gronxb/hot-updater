@@ -411,6 +411,9 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         { headers, method: "POST" },
         (incoming) => {
           const chunks: Buffer[] = [];
+          incoming.on("aborted", () => {
+            reject(new Error("Firebase runtime response was aborted."));
+          });
           incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
           incoming.on("end", () => {
             const responseHeaders = new Headers();
@@ -429,9 +432,13 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
               }),
             );
           });
+          incoming.on("error", reject);
         },
       );
       request.on("error", reject);
+      request.setTimeout(30_000, () => {
+        request.destroy(new Error("Firebase runtime request timed out."));
+      });
       request.write(body);
       request.end();
     });
