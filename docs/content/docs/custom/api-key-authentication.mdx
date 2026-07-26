@@ -55,6 +55,7 @@ Pass the configured Better Auth instance to `betterAuthPlugin`. The Hot Updater
 plugin does not configure or verify API keys itself.
 
 ```typescript title="src/hotUpdater.ts"
+import { analytics } from "@hot-updater/analytics";
 import { betterAuthPlugin } from "@hot-updater/better-auth";
 import { createHotUpdater } from "@hot-updater/server";
 
@@ -67,15 +68,16 @@ export const hotUpdater = createHotUpdater({
     bundles: true,
     updateCheck: true,
   },
-  plugins: [betterAuthPlugin({ auth })],
+  plugins: [analytics(), betterAuthPlugin({ auth })],
 });
 ```
 
 This configuration requires an authenticated Better Auth session on every
 route mounted by `createHotUpdater`, including `/version`, update checks,
-bundle management, and any installed feature routes. A valid API key satisfies
-that requirement because Better Auth exposes it as a session. Cookie-backed
-Better Auth sessions continue to work through the same path.
+bundle management, Analytics ingestion and queries, and any other installed
+feature routes. A valid API key satisfies that requirement because Better Auth
+exposes it as a session. Cookie-backed Better Auth sessions continue to work
+through the same path.
 
 The policy applies only to routes emitted by this `createHotUpdater` instance.
 Framework-owned endpoints such as `/ping`, and signed bundle download URLs
