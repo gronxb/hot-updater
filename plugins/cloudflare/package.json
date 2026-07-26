@@ -17,6 +17,50 @@
         "default": "./dist/worker/index.mjs"
       }
     },
+    "./storage": {
+      "workerd": {
+        "types": "./dist/storage/worker.d.mts",
+        "default": "./dist/storage/worker.mjs"
+      },
+      "worker": {
+        "types": "./dist/storage/worker.d.mts",
+        "default": "./dist/storage/worker.mjs"
+      },
+      "node": {
+        "import": {
+          "types": "./dist/storage/node.d.mts",
+          "default": "./dist/storage/node.mjs"
+        },
+        "require": {
+          "types": "./dist/storage/node.d.cts",
+          "default": "./dist/storage/node.cjs"
+        }
+      },
+      "default": {
+        "import": {
+          "types": "./dist/storage/unsupported.d.mts",
+          "default": "./dist/storage/unsupported.mjs"
+        },
+        "require": {
+          "types": "./dist/storage/unsupported.d.cts",
+          "default": "./dist/storage/unsupported.cjs"
+        }
+      }
+    },
+    "./storage/node": {
+      "import": {
+        "types": "./dist/storage/node.d.mts",
+        "default": "./dist/storage/node.mjs"
+      },
+      "require": {
+        "types": "./dist/storage/node.d.cts",
+        "default": "./dist/storage/node.cjs"
+      }
+    },
+    "./storage/worker": {
+      "types": "./dist/storage/worker.d.mts",
+      "import": "./dist/storage/worker.mjs"
+    },
     "./worker/config": "./worker/wrangler.json",
     "./worker/wrangler.json": "./worker/wrangler.json",
     "./iac": {
