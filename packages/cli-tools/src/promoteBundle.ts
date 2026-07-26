@@ -10,15 +10,12 @@ import {
   getManifestFileHash,
   stripBundleArtifactMetadata,
 } from "@hot-updater/core";
-import type {
-  Bundle,
-  DatabaseClient,
-  NodeStoragePlugin,
-} from "@hot-updater/plugin-core";
+import type { Bundle, DatabaseClient } from "@hot-updater/plugin-core";
 import {
   createUUIDv7,
   detectCompressionFormat,
 } from "@hot-updater/plugin-core";
+import type { BorrowedNodeStoragePlugin } from "@hot-updater/plugin-core/storage/node";
 import JSZip from "jszip";
 import * as tar from "tar";
 
@@ -46,7 +43,7 @@ export interface PromoteBundleInput {
 export interface PromoteBundleDependencies {
   config: ConfigResponse;
   databaseClient: DatabaseClient;
-  storagePlugin: NodeStoragePlugin | null;
+  storagePlugin: BorrowedNodeStoragePlugin | null;
 }
 
 function isSignedFileHash(fileHash: string) {
@@ -155,46 +152,10 @@ function resolveExtractedPath(rootDir: string, entryName: string) {
 
 async function downloadArchive(
   storageUri: string,
-  storagePlugin: NodeStoragePlugin | null,
+  storagePlugin: BorrowedNodeStoragePlugin,
   archivePath: string,
 ) {
-  const protocol = new URL(storageUri).protocol.replace(":", "");
-
-  if (protocol === "http" || protocol === "https") {
-    const archiveBuffer = await downloadFromUrl(storageUri);
-    await fs.writeFile(archivePath, archiveBuffer);
-    return;
-  }
-
-  await downloadFromStorage(storageUri, storagePlugin, archivePath);
-}
-
-async function downloadFromUrl(fileUrl: string) {
-  const response = await fetch(fileUrl);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to download bundle archive: ${response.statusText}`,
-    );
-  }
-
-  return new Uint8Array(await response.arrayBuffer());
-}
-
-async function downloadFromStorage(
-  storageUri: string,
-  storagePlugin: NodeStoragePlugin | null,
-  filePath: string,
-) {
-  if (!storagePlugin) {
-    throw new Error("Storage plugin is not configured");
-  }
-
-  const protocol = new URL(storageUri).protocol.replace(":", "");
-  if (storagePlugin.supportedProtocol !== protocol) {
-    throw new Error(`No storage plugin for protocol: ${protocol}`);
-  }
-
-  await storagePlugin.profiles.node.downloadFile(storageUri, filePath);
+  await storagePlugin.profiles.node.downloadFile(storageUri, archivePath);
 }
 
 async function extractZipArchive(archivePath: string, extractDir: string) {
@@ -331,7 +292,7 @@ export async function createCopiedBundleArchive({
   bundle: Bundle;
   config: ConfigResponse;
   nextBundleId: string;
-  storagePlugin: NodeStoragePlugin;
+  storagePlugin: BorrowedNodeStoragePlugin;
   targetChannel: string;
 }) {
   // Re-upload follows deploy.ts after build: repackage, hash/sign, upload.
@@ -446,7 +407,7 @@ export async function createCopiedBundleArchive({
 }
 
 async function deleteUploadedCopy(
-  storagePlugin: NodeStoragePlugin,
+  storagePlugin: BorrowedNodeStoragePlugin,
   storageUris: string[],
 ) {
   if (storageUris.length === 0) {
@@ -457,7 +418,10 @@ async function deleteUploadedCopy(
     try {
       await storagePlugin.profiles.node.delete(storageUri);
     } catch (error) {
-      console.error("Failed to delete uploaded bundle copy:", error);
+      console.error(
+        "Failed to delete uploaded bundle copy:",
+        error instanceof Error ? error : String(error),
+      );
     }
   }
 }
