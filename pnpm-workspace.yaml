@@ -47,7 +47,7 @@ catalogs:
   supabase:
     "@supabase/supabase-js": 2.76.1
   tools:
-    "@clack/prompts": 1.0.1
+    "@clack/prompts": 1.7.0
     "execa": 9.5.2
     tsdown: 0.21.6
 

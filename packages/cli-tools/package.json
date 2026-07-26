@@ -71,8 +71,8 @@
   "inlinedDependencies": {
     "@babel/code-frame": "7.29.0",
     "@babel/helper-validator-identifier": "7.28.5",
-    "@clack/core": "1.0.1",
-    "@clack/prompts": "1.0.1",
+    "@clack/core": "1.4.3",
+    "@clack/prompts": "1.7.0",
     "@isaacs/fs-minipass": "4.0.1",
     "@nodelib/fs.scandir": "2.1.5",
     "@nodelib/fs.stat": "2.0.5",
