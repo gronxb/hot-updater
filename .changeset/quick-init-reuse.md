@@ -7,5 +7,6 @@
 "@hot-updater/supabase": patch
 ---
 
-Add secure `init --env-file <path>` input, reusing existing values and
-reporting all missing provider inputs before deployment.
+Declare provider init inputs in one shared contract, ask once before saving
+credential inputs, and support prompt-free infrastructure reconciliation with
+`init --env-file .env.hotupdater`.

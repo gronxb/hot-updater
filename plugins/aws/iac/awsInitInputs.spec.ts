@@ -24,17 +24,17 @@ describe("AWS non-interactive init inputs", () => {
     expect(assertInputs).toThrow(
       expect.objectContaining({
         missingInputs: [
+          "HOT_UPDATER_S3_ACCESS_KEY_ID",
+          "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
           "HOT_UPDATER_S3_REGION",
           "HOT_UPDATER_AWS_LAMBDA_NAME",
           "HOT_UPDATER_AWS_MIGRATION_APPROVED",
-          "HOT_UPDATER_S3_ACCESS_KEY_ID",
-          "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
         ],
       }),
     );
   });
 
-  it("accepts migration approval from the explicit init env only", () => {
+  it("reuses saved migration approval", () => {
     // Given
     const existingEnv = {
       HOT_UPDATER_AWS_AUTH_MODE: "local-session",
@@ -43,16 +43,10 @@ describe("AWS non-interactive init inputs", () => {
       HOT_UPDATER_S3_BUCKET_NAME: "bucket-name",
       HOT_UPDATER_S3_REGION: "ap-northeast-2",
     };
-    const inputEnv = {
-      HOT_UPDATER_AWS_MIGRATION_APPROVED: "true",
-    };
-
     // When
-    const inputsWithoutExplicitApproval = resolveAwsInitInputs(existingEnv);
-    const inputs = resolveAwsInitInputs(existingEnv, inputEnv);
+    const inputs = resolveAwsInitInputs(existingEnv);
 
     // Then
-    expect(inputsWithoutExplicitApproval.migrationApproved).toBeUndefined();
     expect(inputs.migrationApproved).toBe("true");
     expect(() => assertAwsNonInteractiveInputs(inputs, true)).not.toThrow();
   });

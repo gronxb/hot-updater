@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --
 import {
   Command,
   InvalidArgumentError,
@@ -6,7 +6,7 @@ import {
 } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, p } from "@hot-updater/cli-tools";
+import { banner, INIT_PROVIDER_NAMES, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 
@@ -28,6 +28,7 @@ import {
   normalizeRolloutPercentage,
 } from "@/commands/deploy";
 import { init } from "@/commands/init";
+import { initHelp } from "@/commands/initHelp";
 import { type PatchOptions, createPatch } from "@/commands/patch";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
@@ -86,7 +87,7 @@ program
     new Option(
       "--provider <provider>",
       "provider to use; skips the prompt",
-    ).choices(["cloudflare", "aws", "supabase", "firebase"]),
+    ).choices(INIT_PROVIDER_NAMES),
   )
   .addOption(
     new Option(
@@ -96,8 +97,9 @@ program
   )
   .option(
     "--env-file <path>",
-    "load init inputs from a dotenv file and fail if any are missing",
+    "load saved init inputs and fail if any are missing",
   )
+  .addHelpText("after", initHelp)
   .action((options) => init(options));
 
 program
@@ -314,8 +316,11 @@ program
         try {
           return normalizeRolloutPercentage(value);
         } catch (error) {
-          p.log.error((error as Error).message);
-          process.exit(1);
+          if (error instanceof Error) {
+            p.log.error(error.message);
+            process.exit(1);
+          }
+          throw error;
         }
       })
       .default(100),

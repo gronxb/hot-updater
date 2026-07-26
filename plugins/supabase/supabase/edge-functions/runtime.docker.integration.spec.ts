@@ -14,7 +14,12 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
-import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import {
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+  type UpdateInfo,
+} from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -310,24 +315,20 @@ describe.sequential("supabase edge runtime acceptance", () => {
     }
 
     if (composeFilePath) {
-      try {
-        runCheckedCommand({
-          command: "docker",
-          args: [
-            "compose",
-            "-p",
-            composeProjectName,
-            "-f",
-            composeFilePath,
-            "down",
-            "-v",
-            "--remove-orphans",
-          ],
-          cwd: WORKSPACE_ROOT,
-        });
-      } catch {
-        // ignore cleanup failures
-      }
+      runCheckedCommand({
+        command: "docker",
+        args: [
+          "compose",
+          "-p",
+          composeProjectName,
+          "-f",
+          composeFilePath,
+          "down",
+          "-v",
+          "--remove-orphans",
+        ],
+        cwd: WORKSPACE_ROOT,
+      });
     }
 
     if (runtimeRoot) {
@@ -341,7 +342,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
     }
   };
 
-  const requestUpdateInfo = async (args: GetBundlesArgs) => {
+  const requestUpdateInfo = async (
+    args: GetBundlesArgs,
+  ): Promise<UpdateInfo | null> => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
     );
@@ -356,7 +359,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
       );
     }
 
-    return (await response.json()) as any;
+    return response.json();
   };
 
   const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {
@@ -808,6 +811,7 @@ services:
 
   storage:
     image: ${STORAGE_IMAGE}
+    restart: on-failure
     depends_on:
       db:
         condition: service_healthy

@@ -5,8 +5,10 @@ import path from "path";
 import {
   type BuildType,
   ConfigBuilder,
+  confirmInitInputPersistence,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
+  getInitProviderEnvVars,
   link,
   makeEnv,
   type HotUpdaterConfigScaffold,
@@ -16,6 +18,7 @@ import {
   readHotUpdaterInitEnv,
   type RunInitOptions,
   resolvePackageVersion,
+  SUPABASE_INIT_PROVIDER,
   transformEnv,
   transformTemplate,
   writeHotUpdaterConfig,
@@ -29,7 +32,6 @@ import {
   assertSupabaseNonInteractiveInputs,
   inputSupabaseDeploymentInputs,
   resolveSupabaseInitInputs,
-  SUPABASE_DATABASE_PASSWORD_ENV_KEY,
 } from "./supabaseInitInputs";
 
 const require = createRequire(import.meta.url);
@@ -381,6 +383,7 @@ export const resolveEdgeFunctionDenoConfig = async (targetDir: string) => {
 export const selectProject = async (
   preferredProjectId?: string,
   nonInteractive = false,
+  accessToken?: string,
 ): Promise<{
   id: string;
   name: string;
@@ -394,7 +397,13 @@ export const selectProject = async (
     const listProjects = await execa(
       "npx",
       ["-y", "supabase", "projects", "list", "--output", "json"],
-      {},
+      {
+        env: accessToken
+          ? {
+              [SUPABASE_INIT_PROVIDER.inputs.accessToken.envKey]: accessToken,
+            }
+          : undefined,
+      },
     );
 
     projectsProcess =
@@ -403,7 +412,8 @@ export const selectProject = async (
         : JSON.parse(listProjects?.stdout ?? "[]");
   } catch (err) {
     spinner.stop();
-    console.error("Failed to fetch Supabase projects:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Failed to fetch Supabase projects: ${message}`);
     process.exit(1);
   }
 
@@ -452,6 +462,11 @@ export const selectProject = async (
   if (selectedProjectId === createProjectOption) {
     try {
       await execa("npx", ["-y", "supabase", "projects", "create"], {
+        env: accessToken
+          ? {
+              [SUPABASE_INIT_PROVIDER.inputs.accessToken.envKey]: accessToken,
+            }
+          : undefined,
         stdio: "inherit",
         shell: true,
       });
@@ -465,7 +480,7 @@ export const selectProject = async (
     }
 
     // Re-run the selection after creating a new project
-    return selectProject();
+    return selectProject(undefined, false, accessToken);
   }
 
   const selectedProject = projectsProcess.find(
@@ -517,13 +532,25 @@ export const selectBucket = async (
   const preferredBucket = buckets.find(
     (bucket) => bucket.name === preferredBucketName,
   );
+  const createAndSelectBucket = async (bucketName: string) => {
+    await api.createBucket(bucketName, { public: false });
+    p.log.success(`Bucket "${bucketName}" created successfully.`);
+    const updatedBuckets = await api.listBuckets();
+    const newBucket = updatedBuckets.find(
+      (bucket) => bucket.name === bucketName,
+    );
+    if (!newBucket) {
+      throw new Error("Failed to create and select new bucket");
+    }
+    return { id: newBucket.id, name: newBucket.name };
+  };
   if (preferredBucket) {
     p.log.info(`Using saved Supabase bucket: ${preferredBucket.name}`);
     return { id: preferredBucket.id, name: preferredBucket.name };
   }
   if (preferredBucketName) {
     if (nonInteractive) {
-      throw new MissingInitInputsError(["HOT_UPDATER_SUPABASE_BUCKET_NAME"]);
+      return createAndSelectBucket(preferredBucketName);
     }
     p.log.warn("Saved Supabase bucket was not found. Select a bucket again.");
   }
@@ -564,17 +591,10 @@ export const selectBucket = async (
     }
 
     try {
-      await api.createBucket(bucketName, { public: false });
-      p.log.success(`Bucket "${bucketName}" created successfully.`);
-      const buckets = await api.listBuckets();
-
-      const newBucket = buckets.find((bucket) => bucket.name === bucketName);
-      if (!newBucket) {
-        throw new Error("Failed to create and select new bucket");
-      }
-      return { id: newBucket.id, name: newBucket.name };
+      return await createAndSelectBucket(bucketName);
     } catch (err) {
-      p.log.error(`Failed to create new bucket: ${err}`);
+      const message = err instanceof Error ? err.message : String(err);
+      p.log.error(`Failed to create new bucket: ${message}`);
       process.exit(1);
     }
   }
@@ -583,6 +603,7 @@ export const selectBucket = async (
 };
 
 const deployEdgeFunction = async (
+  accessToken: string,
   workdir: string,
   projectId: string,
   functionName: string,
@@ -624,14 +645,17 @@ const deployEdgeFunction = async (
             ],
             {
               cwd: workdir,
+              env: {
+                SUPABASE_ACCESS_TOKEN: accessToken,
+              },
             },
           );
           return dbPush.stdout;
         } catch (err) {
           if (err instanceof ExecaError && err.stderr) {
             p.log.error(err.stderr);
-          } else {
-            console.error(err);
+          } else if (err instanceof Error) {
+            p.log.error(err.message);
           }
           process.exit(1);
         }
@@ -642,13 +666,42 @@ const deployEdgeFunction = async (
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const { env: existingEnv, inputEnv } = await readHotUpdaterInitEnv(
+  const { env: existingEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     envFile,
   );
-  const savedInputs = resolveSupabaseInitInputs(existingEnv, inputEnv);
+  const savedInputs = resolveSupabaseInitInputs(existingEnv);
   assertSupabaseNonInteractiveInputs(savedInputs, nonInteractive);
-  const project = await selectProject(savedInputs.projectId, nonInteractive);
+  const initInputs = await inputSupabaseDeploymentInputs({
+    ...savedInputs,
+    nonInteractive,
+  });
+  const resolvedInputs = {
+    ...savedInputs,
+    accessToken: initInputs.accessToken,
+    databasePassword: initInputs.dbPassword || undefined,
+    functionName: initInputs.functionName,
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: SUPABASE_INIT_PROVIDER,
+  });
+  await makeEnv({
+    ...getInitProviderEnvVars({
+      includeConsentInputs: persistCredentialInputs,
+      inputs: resolvedInputs,
+      provider: SUPABASE_INIT_PROVIDER,
+    }),
+  });
+
+  const { accessToken, dbPassword, functionName } = initInputs;
+  const project = await selectProject(
+    savedInputs.projectId,
+    nonInteractive,
+    accessToken,
+  );
   await makeEnv({
     HOT_UPDATER_SUPABASE_PROJECT_ID: project.id,
   });
@@ -657,20 +710,29 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   spinner.start(`Getting API keys for ${project.name}...`);
   let apiKeys: { api_key: string; name: string }[] = [];
   try {
-    const keysProcess = await execa("npx", [
-      "-y",
-      "supabase",
-      "projects",
-      "api-keys",
-      "--project-ref",
-      project.id,
-      "--output",
-      "json",
-    ]);
+    const keysProcess = await execa(
+      "npx",
+      [
+        "-y",
+        "supabase",
+        "projects",
+        "api-keys",
+        "--project-ref",
+        project.id,
+        "--output",
+        "json",
+      ],
+      {
+        env: {
+          SUPABASE_ACCESS_TOKEN: accessToken,
+        },
+      },
+    );
     apiKeys = JSON.parse(keysProcess.stdout ?? "[]");
   } catch (err) {
     spinner.stop();
-    console.error("Failed to get API keys:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Failed to get API keys: ${message}`);
     process.exit(1);
   }
   spinner.stop();
@@ -689,27 +751,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     savedInputs.bucketName,
     nonInteractive,
   );
-  await makeEnv(
-    {
-      HOT_UPDATER_SUPABASE_PROJECT_ID: project.id,
-      HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: serviceRoleApiKey.api_key,
-      HOT_UPDATER_SUPABASE_BUCKET_NAME: bucket.name,
-      HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
-    },
-    ".env.hotupdater",
-    {
-      removeKeys: [SUPABASE_DATABASE_PASSWORD_ENV_KEY],
-    },
-  );
-  const initInputs = await inputSupabaseDeploymentInputs({
-    ...savedInputs,
-    nonInteractive,
-  });
-  const { dbPassword, functionName } = initInputs;
   await makeEnv({
-    HOT_UPDATER_SUPABASE_FUNCTION_NAME: functionName,
+    [SUPABASE_INIT_PROVIDER.inputs.projectId.envKey]: project.id,
+    HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY: serviceRoleApiKey.api_key,
+    [SUPABASE_INIT_PROVIDER.inputs.bucketName.envKey]: bucket.name,
+    HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
-
   const scaffoldLibPath = path.dirname(
     path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
   );
@@ -734,10 +781,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     }
   }
 
-  await linkSupabase(tmpDir, { projectId: project.id, dbPassword });
+  await linkSupabase(tmpDir, {
+    accessToken,
+    projectId: project.id,
+    dbPassword,
+  });
 
-  await pushDB(tmpDir, { dbPassword });
-  await deployEdgeFunction(tmpDir, project.id, functionName);
+  await pushDB(tmpDir, { accessToken, dbPassword });
+  await deployEdgeFunction(accessToken, tmpDir, project.id, functionName);
 
   await removeTmpDir();
 

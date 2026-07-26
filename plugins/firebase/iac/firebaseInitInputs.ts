@@ -1,32 +1,53 @@
 import {
-  assertInitInputs,
-  getHotUpdaterEnvValue,
+  assertInitProviderInputs,
+  FIREBASE_INIT_PROVIDER,
+  resolveInitProviderInput,
 } from "@hot-updater/cli-tools";
 
 export type FirebaseInitInputs = {
+  readonly applicationCredentials?: string;
   readonly projectId?: string;
   readonly region?: string;
 };
 
+export type FirebaseCliEnv = Readonly<Record<string, string>>;
+
+export const getFirebaseCliEnv = (
+  applicationCredentials?: string,
+): FirebaseCliEnv | undefined =>
+  applicationCredentials
+    ? {
+        CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: applicationCredentials,
+        [FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey]:
+          applicationCredentials,
+      }
+    : undefined;
+
 export const resolveFirebaseInitInputs = (
   existingEnv: Record<string, string>,
-): FirebaseInitInputs => ({
-  projectId: getHotUpdaterEnvValue(
+): FirebaseInitInputs => {
+  const { inputs } = FIREBASE_INIT_PROVIDER;
+  const applicationCredentials = resolveInitProviderInput(
     existingEnv,
-    "HOT_UPDATER_FIREBASE_PROJECT_ID",
-  ),
-  region: getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_FIREBASE_REGION"),
-});
+    inputs.applicationCredentials,
+  );
+  return {
+    applicationCredentials:
+      applicationCredentials === "your-credentials.json"
+        ? undefined
+        : applicationCredentials,
+    projectId: resolveInitProviderInput(existingEnv, inputs.projectId),
+    region: resolveInitProviderInput(existingEnv, inputs.region),
+  };
+};
 
 export const assertFirebaseNonInteractiveInputs = (
   inputs: FirebaseInitInputs,
   nonInteractive = false,
 ): void => {
-  assertInitInputs({
-    inputs: {
-      HOT_UPDATER_FIREBASE_PROJECT_ID: inputs.projectId,
-      HOT_UPDATER_FIREBASE_REGION: inputs.region,
-    },
+  assertInitProviderInputs({
+    inputs,
+    provider: FIREBASE_INIT_PROVIDER,
     strict: nonInteractive,
   });
 };

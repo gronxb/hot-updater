@@ -1,6 +1,7 @@
 import {
-  assertInitInputs,
-  getHotUpdaterEnvValue,
+  assertInitProviderInputs,
+  AWS_INIT_PROVIDER,
+  resolveInitProviderInput,
 } from "@hot-updater/cli-tools";
 
 import { regionLocationMap } from "./regionLocationMap";
@@ -32,41 +33,28 @@ export const isAwsAuthMode = (
 
 export const resolveAwsInitInputs = (
   existingEnv: Readonly<Record<string, string>>,
-  inputEnv: Readonly<Record<string, string>> = {},
 ): AwsInitInputs => {
-  const savedAuthMode = getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_AWS_AUTH_MODE",
-  );
+  const { inputs } = AWS_INIT_PROVIDER;
+  const savedAuthMode = resolveInitProviderInput(existingEnv, inputs.authMode);
 
   return {
-    accessKeyId: getHotUpdaterEnvValue(
-      existingEnv,
-      "HOT_UPDATER_S3_ACCESS_KEY_ID",
-    ),
+    accessKeyId: resolveInitProviderInput(existingEnv, inputs.accessKeyId),
     authMode: isAwsAuthMode(savedAuthMode) ? savedAuthMode : undefined,
-    bucketName: getHotUpdaterEnvValue(
+    bucketName: resolveInitProviderInput(existingEnv, inputs.bucketName),
+    bucketRegion: resolveInitProviderInput(existingEnv, inputs.bucketRegion),
+    distributionId: resolveInitProviderInput(
       existingEnv,
-      "HOT_UPDATER_S3_BUCKET_NAME",
+      inputs.distributionId,
     ),
-    bucketRegion: getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_S3_REGION"),
-    distributionId: getHotUpdaterEnvValue(
+    lambdaName: resolveInitProviderInput(existingEnv, inputs.lambdaName),
+    migrationApproved: resolveInitProviderInput(
       existingEnv,
-      "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
+      inputs.migrationApproved,
     ),
-    lambdaName: getHotUpdaterEnvValue(
+    profile: resolveInitProviderInput(existingEnv, inputs.profile),
+    secretAccessKey: resolveInitProviderInput(
       existingEnv,
-      "HOT_UPDATER_AWS_LAMBDA_NAME",
-    ),
-    migrationApproved:
-      process.env.HOT_UPDATER_AWS_MIGRATION_APPROVED?.trim() === "true" ||
-      inputEnv.HOT_UPDATER_AWS_MIGRATION_APPROVED?.trim() === "true"
-        ? "true"
-        : undefined,
-    profile: getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_AWS_PROFILE"),
-    secretAccessKey: getHotUpdaterEnvValue(
-      existingEnv,
-      "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
+      inputs.secretAccessKey,
     ),
   };
 };
@@ -75,27 +63,16 @@ export const assertAwsNonInteractiveInputs = (
   inputs: AwsInitInputs,
   nonInteractive: boolean,
 ): void => {
-  assertInitInputs({
+  assertInitProviderInputs({
     inputs: {
-      HOT_UPDATER_AWS_AUTH_MODE: inputs.authMode,
-      HOT_UPDATER_S3_BUCKET_NAME: inputs.bucketName,
-      HOT_UPDATER_S3_REGION:
+      ...inputs,
+      bucketRegion:
         inputs.bucketRegion &&
         Object.hasOwn(regionLocationMap, inputs.bucketRegion)
           ? inputs.bucketRegion
           : undefined,
-      HOT_UPDATER_AWS_LAMBDA_NAME: inputs.lambdaName,
-      HOT_UPDATER_AWS_MIGRATION_APPROVED: inputs.migrationApproved,
-      ...(inputs.authMode === "account"
-        ? {
-            HOT_UPDATER_S3_ACCESS_KEY_ID: inputs.accessKeyId,
-            HOT_UPDATER_S3_SECRET_ACCESS_KEY: inputs.secretAccessKey,
-          }
-        : {}),
-      ...(inputs.authMode === "shared-profile" || inputs.authMode === "sso"
-        ? { HOT_UPDATER_AWS_PROFILE: inputs.profile }
-        : {}),
     },
+    provider: AWS_INIT_PROVIDER,
     strict: nonInteractive,
   });
 };

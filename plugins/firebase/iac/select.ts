@@ -2,6 +2,7 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
+  FIREBASE_INIT_PROVIDER,
   type HotUpdaterConfigScaffold,
   link,
   makeEnv,
@@ -12,6 +13,8 @@ import {
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
+
+import type { FirebaseCliEnv } from "./firebaseInitInputs";
 
 const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
@@ -58,11 +61,13 @@ const credential = admin.credential.applicationDefault();`.trim(),
 };
 
 export const setEnv = async ({
+  applicationCredentials,
   projectId,
   storageBucket,
   build,
   region,
 }: {
+  applicationCredentials?: string;
   projectId: string;
   storageBucket: string;
   build: BuildType;
@@ -70,18 +75,20 @@ export const setEnv = async ({
 }) => {
   await makeEnv(
     {
-      GOOGLE_APPLICATION_CREDENTIALS: {
+      [FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey]: {
         comment:
           "Project Settings > Service Accounts > New Private Key > Download JSON",
-        value: "your-credentials.json",
+        value: applicationCredentials ?? "your-credentials.json",
       },
-      HOT_UPDATER_FIREBASE_PROJECT_ID: projectId,
-      HOT_UPDATER_FIREBASE_REGION: region,
+      [FIREBASE_INIT_PROVIDER.inputs.projectId.envKey]: projectId,
+      [FIREBASE_INIT_PROVIDER.inputs.region.envKey]: region,
       HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
     },
     ".env.hotupdater",
     {
-      preserveKeys: ["GOOGLE_APPLICATION_CREDENTIALS"],
+      preserveKeys: applicationCredentials
+        ? []
+        : [FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey],
     },
   );
 
@@ -104,8 +111,9 @@ export const setEnv = async ({
         `Existing 'hot-updater.config.ts' was left unchanged: ${configWriteResult.reason}`,
       );
     }
-  } catch (error: any) {
-    console.error("Error writing configuration file:", error.message);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Error writing configuration file:", message);
   }
 };
 
@@ -120,6 +128,7 @@ const handleError = (err: unknown) => {
 
 const listProjects = async (
   nonInteractive = false,
+  cliEnv?: FirebaseCliEnv,
 ): Promise<
   {
     projectId: string;
@@ -140,6 +149,7 @@ const listProjects = async (
         ...(nonInteractive ? ["--non-interactive"] : []),
       ],
       {
+        env: cliEnv,
         shell: true,
       },
     );
@@ -159,46 +169,56 @@ export const initFirebaseUser = async (
   cwd: string,
   preferredProjectId?: string,
   nonInteractive = false,
+  cliEnv?: FirebaseCliEnv,
 ): Promise<{
   projectId: string;
   projectNumber: number;
   storageBucket: string;
 }> => {
-  if (!nonInteractive) {
+  if (!nonInteractive && !cliEnv) {
     try {
       await execa("npx", ["firebase", "login"], {
+        env: cliEnv,
         stdio: "inherit",
         shell: true,
       });
     } catch (err) {
+      handleError(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  if (!cliEnv) {
+    try {
+      const authList = await execa(
+        "gcloud",
+        ["auth", "list", "--format=json"],
+        {
+          env: cliEnv,
+          shell: true,
+        },
+      );
+      const authListJson = JSON.parse(authList.stdout);
+      if (authListJson.length === 0) {
+        if (nonInteractive) {
+          throw new MissingInitInputsError([
+            "active gcloud authentication (`gcloud auth login`)",
+          ]);
+        }
+        await execa("gcloud", ["auth", "login"], {
+          env: cliEnv,
+          stdio: "inherit",
+          shell: true,
+        });
+      }
+    } catch (err) {
+      if (err instanceof MissingInitInputsError) {
+        throw err;
+      }
       handleError(err);
     }
   }
 
-  try {
-    const authList = await execa("gcloud", ["auth", "list", "--format=json"], {
-      shell: true,
-    });
-    const authListJson = JSON.parse(authList.stdout);
-    if (authListJson.length === 0) {
-      if (nonInteractive) {
-        throw new MissingInitInputsError([
-          "active gcloud authentication (`gcloud auth login`)",
-        ]);
-      }
-      await execa("gcloud", ["auth", "login"], {
-        stdio: "inherit",
-        shell: true,
-      });
-    }
-  } catch (err) {
-    if (err instanceof MissingInitInputsError) {
-      throw err;
-    }
-    handleError(err);
-  }
-
-  const projects = await listProjects(nonInteractive);
+  const projects = await listProjects(nonInteractive, cliEnv);
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
   const preferredProject = projects.find(
@@ -242,6 +262,7 @@ export const initFirebaseUser = async (
     }
     try {
       await execa("npx", ["firebase", "projects:create", newProjectId], {
+        env: cliEnv,
         stdio: "inherit",
         shell: true,
       });
@@ -264,7 +285,7 @@ export const initFirebaseUser = async (
         HOT_UPDATER_FIREBASE_PROJECT_ID: newProjectId,
       });
     } catch (err) {
-      handleError(err);
+      handleError(err instanceof Error ? err : new Error(String(err)));
     }
     process.exit(0);
   }
@@ -288,6 +309,7 @@ export const initFirebaseUser = async (
             ],
             {
               cwd,
+              env: cliEnv,
               shell: true,
             },
           );
@@ -314,6 +336,7 @@ export const initFirebaseUser = async (
         "--format=json",
       ],
       {
+        env: cliEnv,
         shell: true,
         /**
          * API [firestore.googleapis.com] not enabled on project [xxx]. Would you
@@ -338,7 +361,7 @@ export const initFirebaseUser = async (
       process.exit(1);
     }
   } catch (err) {
-    handleError(err);
+    handleError(err instanceof Error ? err : new Error(String(err)));
   }
 
   let storageBucket: string | null = null;
@@ -356,6 +379,7 @@ export const initFirebaseUser = async (
             "--format=json",
           ],
           {
+            env: cliEnv,
             shell: true,
           },
         );
@@ -391,6 +415,7 @@ export const initFirebaseUser = async (
     "gcloud",
     ["projects", "describe", projectId, "--format=json"],
     {
+      env: cliEnv,
       shell: true,
     },
   );

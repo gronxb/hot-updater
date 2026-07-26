@@ -1,6 +1,9 @@
 import {
+  AWS_INIT_PROVIDER,
   colors,
+  confirmInitInputPersistence,
   ensureInstallPackages,
+  getInitProviderEnvVars,
   link,
   makeEnv,
   p,
@@ -41,11 +44,11 @@ const isAwsRegion = (value: string | undefined): value is AwsRegion => {
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const { env: existingEnv, inputEnv } = await readHotUpdaterInitEnv(
+  const { env: existingEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     envFile,
   );
-  const savedInputs = resolveAwsInitInputs(existingEnv, inputEnv);
+  const savedInputs = resolveAwsInitInputs(existingEnv);
   assertAwsNonInteractiveInputs(savedInputs, nonInteractive);
 
   const isAwsCliInstalled = await checkIfAwsCliInstalled();
@@ -75,23 +78,50 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const { awsProfile, configAuthMode, credentials, mode } =
     await resolveAwsAuth(existingEnv, nonInteractive);
+  const resolvedAuthInputs = {
+    ...savedInputs,
+    accessKeyId:
+      mode === "account" ? credentials.accessKeyId : savedInputs.accessKeyId,
+    authMode: mode,
+    profile: awsProfile ?? undefined,
+    secretAccessKey:
+      mode === "account"
+        ? credentials.secretAccessKey
+        : savedInputs.secretAccessKey,
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv,
+    inputs: resolvedAuthInputs,
+    nonInteractive,
+    provider: AWS_INIT_PROVIDER,
+  });
+  const authEnv = getInitProviderEnvVars({
+    includeConsentInputs: persistCredentialInputs,
+    inputs: resolvedAuthInputs,
+    provider: AWS_INIT_PROVIDER,
+  });
+  const accessKeyEnvKey = AWS_INIT_PROVIDER.inputs.accessKeyId.envKey;
+  const secretAccessKeyEnvKey = AWS_INIT_PROVIDER.inputs.secretAccessKey.envKey;
   await makeEnv({
-    HOT_UPDATER_AWS_AUTH_MODE: mode,
-    ...(mode === "account"
+    ...authEnv,
+    ...(authEnv[accessKeyEnvKey]
       ? {
-          HOT_UPDATER_S3_ACCESS_KEY_ID: {
+          [accessKeyEnvKey]: {
             comment:
               "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
-            value: credentials.accessKeyId,
-          },
-          HOT_UPDATER_S3_SECRET_ACCESS_KEY: {
-            comment:
-              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
-            value: credentials.secretAccessKey,
+            value: authEnv[accessKeyEnvKey],
           },
         }
       : {}),
-    ...(awsProfile === null ? {} : { HOT_UPDATER_AWS_PROFILE: awsProfile }),
+    ...(authEnv[secretAccessKeyEnvKey]
+      ? {
+          [secretAccessKeyEnvKey]: {
+            comment:
+              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
+            value: authEnv[secretAccessKeyEnvKey],
+          },
+        }
+      : {}),
   });
 
   // S3 related tasks: Create S3Manager instance
@@ -131,6 +161,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     bucketName: string | symbol | undefined;
     bucketRegion: string | symbol | undefined;
     lambdaName: string | symbol;
+    migrationApproved: boolean | symbol;
   }>(
     {
       bucketSelection: () => {
@@ -159,9 +190,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           ? createSavedBucket
             ? Promise.resolve(savedBucketName)
             : p.text({
-                message: "Enter the name of the new S3 Bucket",
-                defaultValue: "hot-updater-storage",
-                placeholder: "hot-updater-storage",
+                message: AWS_INIT_PROVIDER.inputs.bucketName.prompt.message,
+                defaultValue:
+                  AWS_INIT_PROVIDER.inputs.bucketName.prompt.defaultValue,
+                placeholder:
+                  AWS_INIT_PROVIDER.inputs.bucketName.prompt.placeholder,
+                validate: (value) =>
+                  value ? undefined : "S3 bucket name is required",
               })
           : Promise.resolve(results.bucketSelection),
       bucketRegion: ({ results }) =>
@@ -169,7 +204,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           ? createSavedBucket
             ? Promise.resolve(savedBucketRegion)
             : p.select({
-                message: "Enter AWS region for the S3 bucket",
+                message: AWS_INIT_PROVIDER.inputs.bucketRegion.prompt.message,
                 options: Object.entries(regionLocationMap).map(
                   ([region, location]) => ({
                     label: `${region} (${location})`,
@@ -186,17 +221,34 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         savedLambdaName
           ? Promise.resolve(savedLambdaName)
           : p.text({
-              message: "Enter the name of the Lambda@Edge function",
-              defaultValue: "hot-updater-edge",
-              placeholder: "hot-updater-edge",
+              message: AWS_INIT_PROVIDER.inputs.lambdaName.prompt.message,
+              defaultValue:
+                AWS_INIT_PROVIDER.inputs.lambdaName.prompt.defaultValue,
+              placeholder:
+                AWS_INIT_PROVIDER.inputs.lambdaName.prompt.placeholder,
+              validate: (value) =>
+                value ? undefined : "Lambda function name is required",
+            }),
+      migrationApproved: () =>
+        savedInputs.migrationApproved === "true"
+          ? Promise.resolve(true)
+          : p.confirm({
+              message:
+                AWS_INIT_PROVIDER.inputs.migrationApproved.prompt.message,
+              initialValue: true,
             }),
     },
     {
       onCancel: () => process.exit(1),
     },
   );
-  const { bucketName, bucketRegion, lambdaName } = resourceInputs;
+  const { bucketName, bucketRegion, lambdaName, migrationApproved } =
+    resourceInputs;
 
+  if (migrationApproved !== true) {
+    p.log.info("Init cancelled.");
+    process.exit(1);
+  }
   if (!bucketName || !lambdaName) {
     p.log.error("AWS resource names are required.");
     process.exit(1);
@@ -215,16 +267,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     process.exit(1);
   }
   await makeEnv({
-    HOT_UPDATER_AWS_LAMBDA_NAME: lambdaName,
-    HOT_UPDATER_S3_BUCKET_NAME: bucketName,
-    HOT_UPDATER_S3_REGION: bucketRegion,
+    [AWS_INIT_PROVIDER.inputs.bucketName.envKey]: bucketName,
+    [AWS_INIT_PROVIDER.inputs.bucketRegion.envKey]: bucketRegion,
+    [AWS_INIT_PROVIDER.inputs.lambdaName.envKey]: lambdaName,
+    [AWS_INIT_PROVIDER.inputs.migrationApproved.envKey]:
+      String(migrationApproved),
   });
 
   p.log.info(`Selected S3 Bucket: ${bucketName} (${bucketRegion})`);
 
   // Run S3 migrations
   await s3Manager.runMigrations({
-    approved: savedInputs.migrationApproved === "true",
+    approved: true,
     bucketName,
     region: bucketRegion,
     migrations: [
@@ -289,7 +343,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
 
   await makeEnv({
-    HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
+    [AWS_INIT_PROVIDER.inputs.distributionId.envKey]: distributionId,
   });
 
   // Install @aws-sdk/credential-provider-sso if SSO mode is selected

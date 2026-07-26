@@ -33,9 +33,10 @@ describe("resolveSupabaseInitInputs", () => {
 
   afterEach(() => {
     delete process.env.HOT_UPDATER_SUPABASE_DB_PASSWORD;
+    delete process.env.SUPABASE_ACCESS_TOKEN;
   });
 
-  it("does not reuse a database password saved in the env file", () => {
+  it("reuses a database password saved for infrastructure updates", () => {
     // Given
     const existingEnv = {
       HOT_UPDATER_SUPABASE_DB_PASSWORD: "saved-password",
@@ -46,7 +47,7 @@ describe("resolveSupabaseInitInputs", () => {
     const inputs = resolveSupabaseInitInputs(existingEnv);
 
     // Then
-    expect(inputs.databasePassword).toBeUndefined();
+    expect(inputs.databasePassword).toBe("saved-password");
   });
 
   it("accepts a database password from the process environment", () => {
@@ -60,17 +61,14 @@ describe("resolveSupabaseInitInputs", () => {
     expect(inputs.databasePassword).toBe("injected-password");
   });
 
-  it("accepts a database password from the explicit init env", () => {
+  it("accepts a database password from an overlaid init env", () => {
     // Given
-    const existingEnv = {
-      HOT_UPDATER_SUPABASE_DB_PASSWORD: "saved-password",
-    };
-    const inputEnv = {
+    const overlaidEnv = {
       HOT_UPDATER_SUPABASE_DB_PASSWORD: "temporary-password",
     };
 
     // When
-    const inputs = resolveSupabaseInitInputs(existingEnv, inputEnv);
+    const inputs = resolveSupabaseInitInputs(overlaidEnv);
 
     // Then
     expect(inputs.databasePassword).toBe("temporary-password");
@@ -82,6 +80,7 @@ describe("Supabase non-interactive inputs", () => {
     vi.clearAllMocks();
     mocks.group.mockImplementation(
       async (prompts: Record<string, () => Promise<string>>) => ({
+        accessToken: await prompts.accessToken?.(),
         dbPassword: await prompts.dbPassword?.(),
         functionName: await prompts.functionName?.(),
       }),
@@ -95,6 +94,7 @@ describe("Supabase non-interactive inputs", () => {
       expect.objectContaining({
         missingInputs: [
           "HOT_UPDATER_SUPABASE_PROJECT_ID",
+          "SUPABASE_ACCESS_TOKEN",
           "HOT_UPDATER_SUPABASE_BUCKET_NAME",
           "HOT_UPDATER_SUPABASE_FUNCTION_NAME",
         ],
@@ -106,6 +106,7 @@ describe("Supabase non-interactive inputs", () => {
     // Given
     const inputs = resolveSupabaseInitInputs({
       HOT_UPDATER_SUPABASE_FUNCTION_NAME: "update-server",
+      SUPABASE_ACCESS_TOKEN: "access-token",
     });
 
     // When
@@ -116,6 +117,7 @@ describe("Supabase non-interactive inputs", () => {
 
     // Then
     expect(deploymentInputs).toEqual({
+      accessToken: "access-token",
       dbPassword: "",
       functionName: "update-server",
     });

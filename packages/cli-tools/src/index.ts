@@ -15,6 +15,7 @@ export * from "./getReactNativeMetadatas";
 export * from "./hotUpdaterConfig";
 export * from "./hotUpdaterEnv";
 export * from "./HotUpdateDirUtil";
+export * from "./initProvider";
 export * from "./initOptions";
 export * from "./LogWriter";
 export * from "./loadConfig";

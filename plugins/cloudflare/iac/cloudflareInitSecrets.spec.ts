@@ -35,7 +35,7 @@ describe("inputCloudflareInitSecrets", () => {
     );
   });
 
-  it("reuses an intentionally empty API token without prompting", async () => {
+  it("prompts again when the saved API token is empty", async () => {
     // Given
     const options = {
       accountId: "account-id",
@@ -45,13 +45,14 @@ describe("inputCloudflareInitSecrets", () => {
       secretAccessKey: "secret-access-key",
       workerName: "worker-name",
     };
+    mocks.password.mockResolvedValueOnce("new-api-token");
 
     // When
     const inputs = await inputCloudflareInitSecrets(options);
 
     // Then
-    expect(inputs.apiToken).toBe("");
-    expect(mocks.password).not.toHaveBeenCalled();
+    expect(inputs.apiToken).toBe("new-api-token");
+    expect(mocks.password).toHaveBeenCalledOnce();
   });
 
   it("reports all required Cloudflare inputs before prompting in non-interactive mode", async () => {
@@ -68,6 +69,7 @@ describe("inputCloudflareInitSecrets", () => {
     // Then
     await expect(inputs).rejects.toMatchObject({
       missingInputs: [
+        "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
         "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
         "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
         "HOT_UPDATER_CLOUDFLARE_WORKER_NAME",
@@ -76,10 +78,11 @@ describe("inputCloudflareInitSecrets", () => {
     expect(mocks.group).not.toHaveBeenCalled();
   });
 
-  it("treats the optional API token as skipped in non-interactive mode", async () => {
+  it("reuses the API token without prompting in non-interactive mode", async () => {
     // Given
     const options = {
       accountId: "account-id",
+      apiToken: "api-token",
       bucketName: "bucket-name",
       accessKeyId: "access-key-id",
       secretAccessKey: "secret-access-key",
@@ -91,7 +94,7 @@ describe("inputCloudflareInitSecrets", () => {
     const inputs = await inputCloudflareInitSecrets(options);
 
     // Then
-    expect(inputs.apiToken).toBe("");
+    expect(inputs.apiToken).toBe("api-token");
     expect(mocks.password).not.toHaveBeenCalled();
   });
 });

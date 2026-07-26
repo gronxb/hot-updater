@@ -1,13 +1,14 @@
 import {
   assertInitInputs,
+  assertInitProviderInputs,
   getHotUpdaterEnvValue,
   p,
+  resolveInitProviderInput,
+  SUPABASE_INIT_PROVIDER,
 } from "@hot-updater/cli-tools";
 
-export const SUPABASE_DATABASE_PASSWORD_ENV_KEY =
-  "HOT_UPDATER_SUPABASE_DB_PASSWORD";
-
 export type SupabaseInitInputs = {
+  readonly accessToken?: string;
   readonly bucketName?: string;
   readonly databasePassword?: string;
   readonly functionName?: string;
@@ -16,59 +17,59 @@ export type SupabaseInitInputs = {
 
 export const resolveSupabaseInitInputs = (
   existingEnv: Readonly<Record<string, string>>,
-  inputEnv: Readonly<Record<string, string>> = {},
-): SupabaseInitInputs => ({
-  bucketName: getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_SUPABASE_BUCKET_NAME",
-  ),
-  databasePassword:
-    process.env[SUPABASE_DATABASE_PASSWORD_ENV_KEY] ??
-    inputEnv[SUPABASE_DATABASE_PASSWORD_ENV_KEY],
-  functionName: getHotUpdaterEnvValue(
-    existingEnv,
-    "HOT_UPDATER_SUPABASE_FUNCTION_NAME",
-  ),
-  projectId:
-    getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_SUPABASE_PROJECT_ID") ??
-    getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_SUPABASE_URL")?.match(
-      /^https:\/\/([^.]+)\.supabase\.co/,
-    )?.[1],
-});
+): SupabaseInitInputs => {
+  const { inputs } = SUPABASE_INIT_PROVIDER;
+  return {
+    accessToken: resolveInitProviderInput(existingEnv, inputs.accessToken),
+    bucketName: resolveInitProviderInput(existingEnv, inputs.bucketName),
+    databasePassword: resolveInitProviderInput(
+      existingEnv,
+      inputs.databasePassword,
+    ),
+    functionName: resolveInitProviderInput(existingEnv, inputs.functionName),
+    projectId:
+      resolveInitProviderInput(existingEnv, inputs.projectId) ??
+      getHotUpdaterEnvValue(existingEnv, "HOT_UPDATER_SUPABASE_URL")?.match(
+        /^https:\/\/([^.]+)\.supabase\.co/,
+      )?.[1],
+  };
+};
 
 export const assertSupabaseNonInteractiveInputs = (
   inputs: SupabaseInitInputs,
   nonInteractive: boolean,
 ): void => {
-  assertInitInputs({
-    inputs: {
-      HOT_UPDATER_SUPABASE_PROJECT_ID: inputs.projectId,
-      HOT_UPDATER_SUPABASE_BUCKET_NAME: inputs.bucketName,
-      HOT_UPDATER_SUPABASE_FUNCTION_NAME: inputs.functionName,
-    },
+  assertInitProviderInputs({
+    inputs,
+    provider: SUPABASE_INIT_PROVIDER,
     strict: nonInteractive,
   });
 };
 
 export const inputSupabaseDeploymentInputs = async ({
+  accessToken,
   databasePassword,
   functionName,
   nonInteractive,
 }: SupabaseInitInputs & {
   readonly nonInteractive: boolean;
 }): Promise<{
+  readonly accessToken: string;
   readonly dbPassword: string;
   readonly functionName: string;
 }> => {
+  const { inputs } = SUPABASE_INIT_PROVIDER;
   assertInitInputs({
     inputs: {
-      HOT_UPDATER_SUPABASE_FUNCTION_NAME: functionName,
+      [inputs.accessToken.envKey]: accessToken,
+      [inputs.functionName.envKey]: functionName,
     },
     strict: nonInteractive,
   });
 
-  if (nonInteractive && functionName) {
+  if (nonInteractive && accessToken && functionName) {
     return {
+      accessToken,
       dbPassword: databasePassword ?? "",
       functionName,
     };
@@ -76,20 +77,29 @@ export const inputSupabaseDeploymentInputs = async ({
 
   return p.group(
     {
+      accessToken: () =>
+        accessToken
+          ? Promise.resolve(accessToken)
+          : p.password({
+              message: inputs.accessToken.prompt.message,
+              validate: (value) =>
+                value ? undefined : "Supabase access token is required",
+            }),
       dbPassword: () =>
         databasePassword !== undefined
           ? Promise.resolve(databasePassword)
           : p.password({
-              message:
-                "Enter your Supabase database password (press Enter to skip if none)",
+              message: inputs.databasePassword.prompt.message,
             }),
       functionName: () =>
         functionName
           ? Promise.resolve(functionName)
           : p.text({
-              message: "Enter a name for the edge function",
-              initialValue: "update-server",
-              placeholder: "update-server",
+              message: inputs.functionName.prompt.message,
+              initialValue: inputs.functionName.prompt.defaultValue,
+              placeholder: inputs.functionName.prompt.placeholder,
+              validate: (value) =>
+                value ? undefined : "Edge Function name is required",
             }),
     },
     {

@@ -57,7 +57,6 @@ const readEnvFile = async (
 
 export type HotUpdaterInitEnv = {
   readonly env: Readonly<Record<string, string>>;
-  readonly inputEnv: Readonly<Record<string, string>>;
 };
 
 export const readHotUpdaterInitEnv = async (
@@ -68,14 +67,12 @@ export const readHotUpdaterInitEnv = async (
   const savedEnv = await readEnvFile(savedEnvPath, true);
 
   if (!envFile) {
-    return { env: savedEnv, inputEnv: {} };
+    return { env: savedEnv };
   }
 
   const inputEnvPath = path.resolve(cwd, envFile);
   if (inputEnvPath === savedEnvPath) {
-    throw new InitEnvFileError(
-      `Init input file must be separate from managed output: ${savedEnvPath}`,
-    );
+    return { env: savedEnv };
   }
   const inputEnv = await readEnvFile(inputEnvPath, false);
 
@@ -84,7 +81,6 @@ export const readHotUpdaterInitEnv = async (
       ...savedEnv,
       ...inputEnv,
     },
-    inputEnv,
   };
 };
 

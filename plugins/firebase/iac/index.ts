@@ -2,6 +2,9 @@ import fs from "fs";
 import path from "path";
 
 import {
+  confirmInitInputPersistence,
+  FIREBASE_INIT_PROVIDER,
+  getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
   p,
@@ -16,6 +19,8 @@ import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
 import {
+  type FirebaseCliEnv,
+  getFirebaseCliEnv,
   assertFirebaseNonInteractiveInputs,
   resolveFirebaseInitInputs,
 } from "./firebaseInitInputs";
@@ -154,7 +159,11 @@ const mergeIndexes = (
   };
 };
 
-const deployFirestore = async (cwd: string, nonInteractive = false) => {
+const deployFirestore = async (
+  cwd: string,
+  nonInteractive = false,
+  cliEnv?: FirebaseCliEnv,
+) => {
   const original = await execa(
     "npx",
     [
@@ -164,6 +173,7 @@ const deployFirestore = async (cwd: string, nonInteractive = false) => {
     ],
     {
       cwd,
+      env: cliEnv,
       shell: true,
     },
   );
@@ -178,7 +188,9 @@ const deployFirestore = async (cwd: string, nonInteractive = false) => {
   try {
     const originalStdout = JSON.parse(original.stdout);
     originalIndexes = originalStdout ?? { indexes: [], fieldOverrides: [] };
-  } catch {}
+  } catch {
+    originalIndexes = { indexes: [], fieldOverrides: [] };
+  }
 
   const newIndexes = JSON.parse(
     await fs.promises.readFile(
@@ -206,6 +218,7 @@ const deployFirestore = async (cwd: string, nonInteractive = false) => {
       ],
       {
         cwd,
+        env: cliEnv,
         stdio: "inherit",
         shell: true,
       },
@@ -220,7 +233,11 @@ const deployFirestore = async (cwd: string, nonInteractive = false) => {
   }
 };
 
-const deployFunctions = async (cwd: string, nonInteractive = false) => {
+const deployFunctions = async (
+  cwd: string,
+  nonInteractive = false,
+  cliEnv?: FirebaseCliEnv,
+) => {
   try {
     await execa(
       "npx",
@@ -233,6 +250,7 @@ const deployFunctions = async (cwd: string, nonInteractive = false) => {
       ],
       {
         cwd,
+        env: cliEnv,
         stdio: "inherit",
         shell: true,
       },
@@ -247,7 +265,11 @@ const deployFunctions = async (cwd: string, nonInteractive = false) => {
   }
 };
 
-const printTemplate = async (projectId: string, region: string) => {
+const printTemplate = async (
+  projectId: string,
+  region: string,
+  cliEnv?: FirebaseCliEnv,
+) => {
   try {
     const { stdout } = await execa(
       "gcloud",
@@ -262,6 +284,7 @@ const printTemplate = async (projectId: string, region: string) => {
         "--format=json",
       ],
       {
+        env: cliEnv,
         shell: true,
       },
     );
@@ -304,6 +327,37 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
   const savedInputs = resolveFirebaseInitInputs(existingEnv);
   assertFirebaseNonInteractiveInputs(savedInputs, nonInteractive);
+  const applicationCredentials =
+    savedInputs.applicationCredentials ??
+    (nonInteractive
+      ? undefined
+      : await p.text({
+          message:
+            FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.prompt.message,
+        }));
+  if (p.isCancel(applicationCredentials)) {
+    process.exit(1);
+  }
+  const resolvedInputs = {
+    ...savedInputs,
+    applicationCredentials: applicationCredentials || undefined,
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: FIREBASE_INIT_PROVIDER,
+  });
+  const persistedInputs = getInitProviderEnvVars({
+    includeConsentInputs: persistCredentialInputs,
+    inputs: resolvedInputs,
+    provider: FIREBASE_INIT_PROVIDER,
+  });
+  const cliEnv = getFirebaseCliEnv(
+    applicationCredentials
+      ? path.resolve(process.cwd(), applicationCredentials)
+      : undefined,
+  );
 
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
@@ -326,12 +380,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     tmpDir,
     savedInputs.projectId,
     nonInteractive,
+    cliEnv,
   );
 
   const currentRegion = await resolveFirebaseRegion({
     cwd: tmpDir,
     nonInteractive,
     savedRegion: savedInputs.region,
+    cliEnv,
   });
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
@@ -342,6 +398,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     storageBucket: initializeVariable.storageBucket,
     build,
     region: currentRegion,
+    applicationCredentials:
+      persistedInputs[
+        FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey
+      ],
   });
 
   if (
@@ -375,8 +435,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     },
   ]);
 
-  await deployFirestore(tmpDir, nonInteractive);
-  await deployFunctions(tmpDir, nonInteractive);
+  await deployFirestore(tmpDir, nonInteractive, cliEnv);
+  await deployFunctions(tmpDir, nonInteractive, cliEnv);
 
   await p.tasks([
     {
@@ -392,6 +452,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           ],
           {
             cwd: tmpDir,
+            env: cliEnv,
             shell: true,
           },
         );
@@ -417,6 +478,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
             "--format=json",
           ],
           {
+            env: cliEnv,
             shell: true,
           },
         );
@@ -441,6 +503,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
                 "--role=roles/iam.serviceAccountTokenCreator",
               ],
               {
+                env: cliEnv,
                 stdio: "inherit",
                 shell: true,
               },
@@ -471,7 +534,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await removeTmpDir();
     process.exit(1);
   }
-  await printTemplate(initializeVariable.projectId, currentRegion);
+  await printTemplate(initializeVariable.projectId, currentRegion, cliEnv);
   await removeTmpDir();
 
   p.log.message(
@@ -479,8 +542,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       "https://hot-updater.dev/docs/managed/firebase#step-3-generated-configurations",
     )}`,
   );
-  p.log.message(
-    "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env file",
-  );
+  if (!applicationCredentials) {
+    p.log.message(
+      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env file",
+    );
+  }
   p.log.success("Done! 🎉");
 };

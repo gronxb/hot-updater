@@ -71,7 +71,6 @@ describe("init choices", () => {
         HOT_UPDATER_INIT_BUILD: "expo",
         HOT_UPDATER_INIT_PROVIDER: "aws",
       },
-      inputEnv: {},
     });
 
     // When
@@ -99,7 +98,6 @@ describe("init choices", () => {
     // Given
     mocks.readHotUpdaterInitEnv.mockResolvedValue({
       env: {},
-      inputEnv: {},
     });
     mocks.group.mockResolvedValue({
       build: "bare",
@@ -125,7 +123,6 @@ describe("init choices", () => {
     // Given
     mocks.readHotUpdaterInitEnv.mockResolvedValue({
       env: {},
-      inputEnv: {},
     });
 
     // When
@@ -140,27 +137,23 @@ describe("init choices", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it("passes the init env file to the selected provider", async () => {
+  it("passes .env.hotupdater to the selected provider for replay", async () => {
     // Given
     mocks.readHotUpdaterInitEnv.mockResolvedValue({
       env: {
         HOT_UPDATER_INIT_BUILD: "expo",
         HOT_UPDATER_INIT_PROVIDER: "aws",
       },
-      inputEnv: {
-        HOT_UPDATER_INIT_BUILD: "expo",
-        HOT_UPDATER_INIT_PROVIDER: "aws",
-      },
     });
 
     // When
-    await init({ envFile: "init.env" });
+    await init({ envFile: ".env.hotupdater", provider: "aws" });
 
     // Then
     expect(mocks.group).not.toHaveBeenCalled();
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "expo",
-      envFile: "init.env",
+      envFile: ".env.hotupdater",
     });
   });
 });

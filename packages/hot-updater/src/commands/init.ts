@@ -1,9 +1,16 @@
-import type { BuildType, RunInitOptions } from "@hot-updater/cli-tools";
+import type {
+  BuildType,
+  InitProvider,
+  RunInitOptions,
+} from "@hot-updater/cli-tools";
 import {
   assertInitInputs,
   getHotUpdaterEnvValue,
   HotUpdateDirUtil,
+  INIT_PROVIDER_DEFINITIONS,
+  INIT_PROVIDER_NAMES,
   InitError,
+  isInitProvider,
   makeEnv,
   p,
   readHotUpdaterInitEnv,
@@ -17,7 +24,6 @@ import { printBanner } from "@/utils/printBanner";
 const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
 const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
 const BUILD_PLUGIN_KEYS = ["bare", "rock", "expo"] as const;
-const PROVIDERS = ["cloudflare", "aws", "supabase", "firebase"] as const;
 
 const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
@@ -55,25 +61,27 @@ const BUILD_PLUGINS: Record<"bare" | "rock" | "expo", BuildPluginChoice> = {
   },
 };
 
-const PROVIDER_LABELS = {
-  cloudflare: "Cloudflare D1 + R2 + Worker",
-  aws: "AWS S3 + Lambda@Edge",
-  supabase: "Supabase",
-  firebase: "Firebase",
-} as const;
+type InitProviderModule = {
+  runInit(options: RunInitOptions): Promise<void>;
+};
 
-const PACKAGE_MAP = {
+const PROVIDERS = {
   supabase: {
     dependencies: [],
     devDependencies: ["@hot-updater/supabase"],
+    load: (): Promise<InitProviderModule> =>
+      import("@hot-updater/supabase/iac"),
   },
   aws: {
     dependencies: [],
     devDependencies: ["@hot-updater/aws"],
+    load: (): Promise<InitProviderModule> => import("@hot-updater/aws/iac"),
   },
   cloudflare: {
     dependencies: [],
     devDependencies: ["wrangler", "@hot-updater/cloudflare"],
+    load: (): Promise<InitProviderModule> =>
+      import("@hot-updater/cloudflare/iac"),
   },
   firebase: {
     dependencies: [],
@@ -82,16 +90,24 @@ const PACKAGE_MAP = {
       "firebase-admin",
       "@hot-updater/firebase",
     ],
+    load: (): Promise<InitProviderModule> =>
+      import("@hot-updater/firebase/iac"),
   },
-} as const;
+} satisfies Record<
+  InitProvider,
+  {
+    readonly dependencies: readonly string[];
+    readonly devDependencies: readonly string[];
+    readonly load: () => Promise<InitProviderModule>;
+  }
+>;
 
 type BuildPluginKey = keyof typeof BUILD_PLUGINS;
-type Provider = keyof typeof PACKAGE_MAP;
 
 export interface InitOptions {
   readonly build?: BuildPluginKey;
   readonly envFile?: string;
-  readonly provider?: Provider;
+  readonly provider?: InitProvider;
 }
 
 const isBuildPluginKey = (
@@ -100,18 +116,9 @@ const isBuildPluginKey = (
   return value === "bare" || value === "rock" || value === "expo";
 };
 
-const isProvider = (value: string | undefined): value is Provider => {
-  return (
-    value === "cloudflare" ||
-    value === "aws" ||
-    value === "supabase" ||
-    value === "firebase"
-  );
-};
-
 const collectInitChoices = async (
   options: InitOptions,
-): Promise<{ build: BuildPluginKey; provider: Provider }> => {
+): Promise<{ build: BuildPluginKey; provider: InitProvider }> => {
   const { env: existingEnv } = await readHotUpdaterInitEnv(
     process.cwd(),
     options.envFile,
@@ -124,7 +131,7 @@ const collectInitChoices = async (
   const build =
     options.build ?? (isBuildPluginKey(savedBuild) ? savedBuild : null);
   const provider =
-    options.provider ?? (isProvider(savedProvider) ? savedProvider : null);
+    options.provider ?? (isInitProvider(savedProvider) ? savedProvider : null);
 
   assertInitInputs({
     inputs: {
@@ -154,11 +161,11 @@ const collectInitChoices = async (
       provider: () =>
         provider
           ? Promise.resolve(provider)
-          : p.select<Provider>({
+          : p.select<InitProvider>({
               message: "Select a provider",
-              options: PROVIDERS.map((value) => ({
+              options: INIT_PROVIDER_NAMES.map((value) => ({
                 value,
-                label: PROVIDER_LABELS[value],
+                label: INIT_PROVIDER_DEFINITIONS[value].label,
               })),
             }),
     },
@@ -218,12 +225,12 @@ export const init = async (options: InitOptions = {}) => {
       dependencies: [
         ...buildPluginPackage.dependencies,
         ...REQUIRED_PACKAGES.dependencies,
-        ...PACKAGE_MAP[provider].dependencies,
+        ...PROVIDERS[provider].dependencies,
       ],
       devDependencies: [
         ...buildPluginPackage.devDependencies,
         ...REQUIRED_PACKAGES.devDependencies,
-        ...PACKAGE_MAP[provider].devDependencies,
+        ...PROVIDERS[provider].devDependencies,
       ],
     });
   } catch (e) {
@@ -242,30 +249,8 @@ export const init = async (options: InitOptions = {}) => {
     envFile: options.envFile,
   } satisfies RunInitOptions;
   try {
-    switch (provider) {
-      case "supabase": {
-        const supabase = await import("@hot-updater/supabase/iac");
-        await supabase.runInit(runInitOptions);
-        break;
-      }
-      case "cloudflare": {
-        const cloudflare = await import("@hot-updater/cloudflare/iac");
-        await cloudflare.runInit(runInitOptions);
-        break;
-      }
-      case "aws": {
-        const aws = await import("@hot-updater/aws/iac");
-        await aws.runInit(runInitOptions);
-        break;
-      }
-      case "firebase": {
-        const firebase = await import("@hot-updater/firebase/iac");
-        await firebase.runInit(runInitOptions);
-        break;
-      }
-      default:
-        throw new Error("Invalid provider");
-    }
+    const providerModule = await PROVIDERS[provider].load();
+    await providerModule.runInit(runInitOptions);
   } catch (error) {
     if (handleInitError(error)) {
       return;

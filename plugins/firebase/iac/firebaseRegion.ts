@@ -1,5 +1,11 @@
-import { MissingInitInputsError, p } from "@hot-updater/cli-tools";
+import {
+  FIREBASE_INIT_PROVIDER,
+  MissingInitInputsError,
+  p,
+} from "@hot-updater/cli-tools";
 import { execa } from "execa";
+
+import type { FirebaseCliEnv } from "./firebaseInitInputs";
 
 const REGIONS = [
   { value: "us-central1", label: "US Central (Iowa)" },
@@ -31,7 +37,9 @@ export const resolveFirebaseRegion = async ({
   cwd,
   nonInteractive,
   savedRegion,
+  cliEnv,
 }: {
+  readonly cliEnv?: FirebaseCliEnv;
   readonly cwd: string;
   readonly nonInteractive?: boolean;
   readonly savedRegion?: string;
@@ -47,7 +55,7 @@ export const resolveFirebaseRegion = async ({
   const functionsList = await execa(
     "npx",
     ["firebase", "functions:list", "--json"],
-    { cwd, reject: false, shell: true },
+    { cwd, env: cliEnv, reject: false, shell: true },
   );
   let discoveredRegion: string | undefined;
   if (functionsList.exitCode === 0) {
@@ -79,7 +87,7 @@ export const resolveFirebaseRegion = async ({
   }
 
   const selectedRegion = await p.select<string>({
-    message: "Select Region",
+    message: FIREBASE_INIT_PROVIDER.inputs.region.prompt.message,
     options: REGIONS,
     initialValue: REGIONS[0].value,
   });

@@ -1,4 +1,9 @@
-import { assertInitInputs, link, p } from "@hot-updater/cli-tools";
+import {
+  assertInitInputs,
+  CLOUDFLARE_INIT_PROVIDER,
+  link,
+  p,
+} from "@hot-updater/cli-tools";
 
 type CloudflareInitSecrets = {
   readonly apiToken: string;
@@ -24,32 +29,44 @@ export const inputCloudflareInitSecrets = async ({
   readonly workerName?: string;
   readonly nonInteractive?: boolean;
 }): Promise<CloudflareInitSecrets> => {
+  const inputDefinitions = CLOUDFLARE_INIT_PROVIDER.inputs;
   assertInitInputs({
     inputs: {
-      HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: accessKeyId,
-      HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY: secretAccessKey,
-      HOT_UPDATER_CLOUDFLARE_WORKER_NAME: workerName,
+      [inputDefinitions.apiToken.envKey]: apiToken,
+      [inputDefinitions.accessKeyId.envKey]: accessKeyId,
+      [inputDefinitions.secretAccessKey.envKey]: secretAccessKey,
+      [inputDefinitions.workerName.envKey]: workerName,
     },
     strict: nonInteractive,
   });
 
-  if (nonInteractive && accessKeyId && secretAccessKey && workerName) {
+  if (
+    nonInteractive &&
+    apiToken &&
+    accessKeyId &&
+    secretAccessKey &&
+    workerName
+  ) {
     return {
       accessKeyId,
-      apiToken: apiToken ?? "",
+      apiToken,
       secretAccessKey,
       workerName,
     };
   }
 
-  if (apiToken === undefined && !nonInteractive) {
+  if (!apiToken && !nonInteractive) {
     p.log.step(
       `D1 API Token dashboard: ${link(
         `https://dash.cloudflare.com/${accountId}/api-tokens`,
       )}`,
     );
-    p.log.step("Required permission: D1 Edit");
-    p.log.step("Used for bundle metadata writes after init.");
+    p.log.step(
+      "Required permissions: Account Read, D1 Edit, R2 Edit, Workers Scripts Edit",
+    );
+    p.log.step(
+      "Used for bundle metadata writes and future infrastructure updates.",
+    );
   }
   if (!accessKeyId || !secretAccessKey) {
     p.log.step(
@@ -64,30 +81,38 @@ export const inputCloudflareInitSecrets = async ({
   const inputs = await p.group(
     {
       apiToken: () =>
-        apiToken !== undefined
+        apiToken
           ? Promise.resolve(apiToken)
           : p.password({
-              message: "Enter the D1 API Token",
+              message: inputDefinitions.apiToken.prompt.message,
+              validate: (value) =>
+                value ? undefined : "Cloudflare API Token is required",
             }),
       accessKeyId: () =>
         accessKeyId
           ? Promise.resolve(accessKeyId)
           : p.password({
-              message: "Enter the R2 Access Key ID",
+              message: inputDefinitions.accessKeyId.prompt.message,
+              validate: (value) =>
+                value ? undefined : "R2 Access Key ID is required",
             }),
       secretAccessKey: () =>
         secretAccessKey
           ? Promise.resolve(secretAccessKey)
           : p.password({
-              message: "Enter the R2 Secret Access Key",
+              message: inputDefinitions.secretAccessKey.prompt.message,
+              validate: (value) =>
+                value ? undefined : "R2 Secret Access Key is required",
             }),
       workerName: () =>
         workerName
           ? Promise.resolve(workerName)
           : p.text({
-              message: "Enter the name of the worker",
-              defaultValue: "hot-updater",
-              placeholder: "hot-updater",
+              message: inputDefinitions.workerName.prompt.message,
+              defaultValue: inputDefinitions.workerName.prompt.defaultValue,
+              placeholder: inputDefinitions.workerName.prompt.placeholder,
+              validate: (value) =>
+                value ? undefined : "Worker name is required",
             }),
     },
     {

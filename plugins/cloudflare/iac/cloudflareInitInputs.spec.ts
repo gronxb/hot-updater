@@ -33,7 +33,7 @@ describe("resolveCloudflareInitInputs", () => {
     // Then
     expect(inputs.accountId).toBe("process-account");
     expect(inputs.bucketName).toBe("process-bucket");
-    expect(inputs.apiToken).toBe("");
+    expect(inputs.apiToken).toBeUndefined();
   });
 });
 
@@ -53,10 +53,12 @@ describe("assertCloudflareNonInteractiveInputs", () => {
     expect(assertInputs).toThrow(
       expect.objectContaining({
         missingInputs: [
+          "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
           "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
           "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
           "HOT_UPDATER_CLOUDFLARE_WORKER_NAME",
           "HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID",
+          "HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME",
           "HOT_UPDATER_CLOUDFLARE_R2_PRIVATE",
         ],
       }),

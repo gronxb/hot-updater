@@ -4,9 +4,10 @@ import {
   fromSSO,
 } from "@aws-sdk/credential-providers";
 import {
-  getHotUpdaterEnvValue,
+  AWS_INIT_PROVIDER,
   MissingInitInputsError,
   p,
+  resolveInitProviderInput,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
@@ -39,22 +40,23 @@ export const resolveAwsAuth = async (
   existingEnv: Readonly<Record<string, string>>,
   nonInteractive = false,
 ): Promise<ResolvedAwsAuth> => {
-  const savedMode = getHotUpdaterEnvValue(
+  const inputDefinitions = AWS_INIT_PROVIDER.inputs;
+  const savedMode = resolveInitProviderInput(
     existingEnv,
-    "HOT_UPDATER_AWS_AUTH_MODE",
+    inputDefinitions.authMode,
   );
   const mode = isAwsAuthMode(savedMode) ? savedMode : undefined;
-  const savedProfile = getHotUpdaterEnvValue(
+  const savedProfile = resolveInitProviderInput(
     existingEnv,
-    "HOT_UPDATER_AWS_PROFILE",
+    inputDefinitions.profile,
   );
-  const savedAccessKeyId = getHotUpdaterEnvValue(
+  const savedAccessKeyId = resolveInitProviderInput(
     existingEnv,
-    "HOT_UPDATER_S3_ACCESS_KEY_ID",
+    inputDefinitions.accessKeyId,
   );
-  const savedSecretAccessKey = getHotUpdaterEnvValue(
+  const savedSecretAccessKey = resolveInitProviderInput(
     existingEnv,
-    "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
+    inputDefinitions.secretAccessKey,
   );
 
   if (mode === "account" && savedAccessKeyId && savedSecretAccessKey) {
@@ -80,7 +82,7 @@ export const resolveAwsAuth = async (
         mode
           ? Promise.resolve(mode)
           : p.select<AwsAuthMode>({
-              message: "Select the mode to login to AWS",
+              message: inputDefinitions.authMode.prompt.message,
               options: [
                 {
                   label: "Current AWS CLI Session / Default Credential Chain",
@@ -102,12 +104,13 @@ export const resolveAwsAuth = async (
           return Promise.resolve(savedProfile);
         }
         return p.text({
-          message:
-            results.mode === "sso"
-              ? "Enter the SSO profile name"
-              : "Enter the AWS profile name",
-          defaultValue: process.env.AWS_PROFILE ?? "default",
-          placeholder: process.env.AWS_PROFILE ?? "default",
+          message: inputDefinitions.profile.prompt.message,
+          defaultValue:
+            process.env.AWS_PROFILE ??
+            inputDefinitions.profile.prompt.defaultValue,
+          placeholder:
+            process.env.AWS_PROFILE ??
+            inputDefinitions.profile.prompt.placeholder,
           validate: (value) =>
             (value ?? "").trim() ? undefined : "AWS profile name is required",
         });
@@ -120,7 +123,7 @@ export const resolveAwsAuth = async (
           return Promise.resolve(savedAccessKeyId);
         }
         return p.text({
-          message: "Enter your AWS Access Key ID",
+          message: inputDefinitions.accessKeyId.prompt.message,
           validate: (value) =>
             value ? undefined : "Access Key ID is required",
         });
@@ -133,7 +136,7 @@ export const resolveAwsAuth = async (
           return Promise.resolve(savedSecretAccessKey);
         }
         return p.password({
-          message: "Enter your AWS Secret Access Key",
+          message: inputDefinitions.secretAccessKey.prompt.message,
           validate: (value) =>
             value ? undefined : "Secret Access Key is required",
         });

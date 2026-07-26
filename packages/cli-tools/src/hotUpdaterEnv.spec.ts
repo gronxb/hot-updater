@@ -81,19 +81,12 @@ describe("readHotUpdaterEnv", () => {
     );
 
     // When
-    const { env, inputEnv } = await readHotUpdaterInitEnv(
-      directory,
-      "init.env",
-    );
+    const { env } = await readHotUpdaterInitEnv(directory, "init.env");
 
     // Then
     expect(env).toEqual({
       HOT_UPDATER_INIT_BUILD: "expo",
       HOT_UPDATER_INIT_PROVIDER: "cloudflare",
-      HOT_UPDATER_SUPABASE_DB_PASSWORD: "temporary-secret",
-    });
-    expect(inputEnv).toEqual({
-      HOT_UPDATER_INIT_BUILD: "expo",
       HOT_UPDATER_SUPABASE_DB_PASSWORD: "temporary-secret",
     });
   });
@@ -110,14 +103,25 @@ describe("readHotUpdaterEnv", () => {
     );
   });
 
-  it("keeps the explicit init env file separate from managed output", async () => {
+  it("reuses the managed env file as explicit init input", async () => {
     const directory = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-env-"),
     );
     temporaryDirectories.push(directory);
+    await fs.writeFile(
+      path.join(directory, ".env.hotupdater"),
+      ["HOT_UPDATER_INIT_BUILD=bare", "HOT_UPDATER_INIT_PROVIDER=aws"].join(
+        "\n",
+      ),
+    );
 
     await expect(
       readHotUpdaterInitEnv(directory, ".env.hotupdater"),
-    ).rejects.toThrow("Init input file must be separate from managed output");
+    ).resolves.toEqual({
+      env: {
+        HOT_UPDATER_INIT_BUILD: "bare",
+        HOT_UPDATER_INIT_PROVIDER: "aws",
+      },
+    });
   });
 });

@@ -11,12 +11,24 @@ const { mockCli, mockExeca } = vi.hoisted(() => ({
       log: {
         error: vi.fn(),
         info: vi.fn(),
+        success: vi.fn(),
         warn: vi.fn(),
       },
       spinner: vi.fn(() => ({
         start: vi.fn(),
         stop: vi.fn(),
       })),
+      tasks: vi.fn(
+        async (
+          tasks: {
+            task: (message: (value: string) => void) => Promise<unknown>;
+          }[],
+        ) => {
+          for (const task of tasks) {
+            await task.task(vi.fn());
+          }
+        },
+      ),
     },
   },
   mockExeca: vi.fn(),
@@ -42,8 +54,10 @@ vi.mock("execa", async (importOriginal) => {
 import {
   getLegacySupabaseConfigReference,
   resolveEdgeFunctionDenoConfig,
+  selectBucket,
   selectProject,
 } from "./index";
+import type { SupabaseApi } from "./supabaseApi";
 import { linkSupabase, pushDB } from "./supabaseCli";
 
 const createExecaError = async (
@@ -155,6 +169,33 @@ describe("selectProject", () => {
   });
 });
 
+describe("selectBucket", () => {
+  it("recreates a missing saved bucket during non-interactive init", async () => {
+    const api: SupabaseApi = {
+      createBucket: vi.fn().mockResolvedValue({ name: "saved-bucket" }),
+      listBuckets: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            createdAt: "2026-07-26",
+            id: "saved-bucket-id",
+            isPublic: false,
+            name: "saved-bucket",
+          },
+        ]),
+    };
+
+    await expect(selectBucket(api, "saved-bucket", true)).resolves.toEqual({
+      id: "saved-bucket-id",
+      name: "saved-bucket",
+    });
+    expect(api.createBucket).toHaveBeenCalledWith("saved-bucket", {
+      public: false,
+    });
+  });
+});
+
 describe("Supabase database password failures", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -186,6 +227,7 @@ describe("Supabase database password failures", () => {
       // When
       await expect(
         linkSupabase(workdir, {
+          accessToken: "test-access-token",
           dbPassword: secret,
           projectId: "project-ref",
         }),
@@ -207,7 +249,10 @@ describe("Supabase database password failures", () => {
           workdir,
         ],
         expect.objectContaining({
-          env: { SUPABASE_DB_PASSWORD: secret },
+          env: {
+            SUPABASE_ACCESS_TOKEN: "test-access-token",
+            SUPABASE_DB_PASSWORD: secret,
+          },
         }),
       );
     } finally {
@@ -233,6 +278,7 @@ describe("Supabase database password failures", () => {
       // When
       await expect(
         linkSupabase(workdir, {
+          accessToken: "test-access-token",
           dbPassword: secret,
           projectId: "project-ref",
         }),
@@ -263,7 +309,10 @@ describe("Supabase database password failures", () => {
 
     // When
     await expect(
-      pushDB("/tmp/hot-updater-supabase-push", { dbPassword: secret }),
+      pushDB("/tmp/hot-updater-supabase-push", {
+        accessToken: "test-access-token",
+        dbPassword: secret,
+      }),
     ).rejects.toThrow("process.exit(1)");
 
     // Then
@@ -275,7 +324,10 @@ describe("Supabase database password failures", () => {
       "npx",
       ["supabase", "db", "push", "--include-all"],
       expect.objectContaining({
-        env: { SUPABASE_DB_PASSWORD: secret },
+        env: {
+          SUPABASE_ACCESS_TOKEN: "test-access-token",
+          SUPABASE_DB_PASSWORD: secret,
+        },
         stderr: ["pipe", "inherit"],
         stdin: "inherit",
         stdout: "inherit",
@@ -301,7 +353,10 @@ describe("Supabase database password failures", () => {
 
     // When
     await expect(
-      pushDB("/tmp/hot-updater-supabase-push", { dbPassword: secret }),
+      pushDB("/tmp/hot-updater-supabase-push", {
+        accessToken: "test-access-token",
+        dbPassword: secret,
+      }),
     ).rejects.toThrow("process.exit(1)");
 
     // Then
@@ -323,14 +378,17 @@ describe("Supabase database password failures", () => {
 
     // When
     await expect(
-      pushDB("/tmp/hot-updater-supabase-push", { dbPassword: secret }),
+      pushDB("/tmp/hot-updater-supabase-push", {
+        accessToken: "test-access-token",
+        dbPassword: secret,
+      }),
     ).rejects.toThrow("process.exit(1)");
 
     // Then
     const output = collectUserFacingErrorOutput().join("\n");
     expect(output).not.toContain("Supabase database connection failed");
     expect(output).not.toContain(secret);
-    expect(console.error).toHaveBeenCalledWith(error);
+    expect(mockCli.p.log.error).toHaveBeenCalledWith(error.message);
   });
 });
 
