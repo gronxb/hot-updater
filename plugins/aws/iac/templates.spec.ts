@@ -72,5 +72,7 @@ describe("AWS managed config scaffold", () => {
     expect(SOURCE_TEMPLATE).not.toContain("process.env.HOT_UPDATER_API_KEY");
     expect(SOURCE_TEMPLATE).not.toContain("createReactNativeAnalytics");
     expect(SOURCE_TEMPLATE).not.toContain("HOT_UPDATER_S3_SECRET_ACCESS_KEY");
+    expect(SOURCE_TEMPLATE).toContain("return null;");
+    expect(SOURCE_TEMPLATE).not.toContain("return ...");
   });
 });

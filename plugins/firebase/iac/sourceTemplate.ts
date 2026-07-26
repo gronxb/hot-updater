@@ -17,7 +17,7 @@ const analytics = createReactNativeAnalytics({
 });
 
 function App() {
-  return ...
+  return null;
 }
 
 export default HotUpdater.wrap({

@@ -50,6 +50,8 @@ describe("Cloudflare managed API-key provisioning", () => {
         "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
       );
       expect(initOutput).not.toContain("HOT_UPDATER_CLOUDFLARE_API_TOKEN");
+      expect(initOutput).toContain("return null;");
+      expect(initOutput).not.toContain("return ...");
     } finally {
       await rm(cwd, { force: true, recursive: true });
     }

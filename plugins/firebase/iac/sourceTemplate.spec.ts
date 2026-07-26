@@ -14,5 +14,7 @@ describe("Firebase managed React Native source template", () => {
     expect(source).toContain("analytics.recordAppReady(result)");
     expect(source).not.toContain("process.env.HOT_UPDATER_API_KEY");
     expect(source).not.toContain("GOOGLE_APPLICATION_CREDENTIALS");
+    expect(source).toContain("return null;");
+    expect(source).not.toContain("return ...");
   });
 });

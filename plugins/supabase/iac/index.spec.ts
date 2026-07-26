@@ -434,5 +434,7 @@ describe("managed API key provisioning", () => {
     expect(example).not.toContain("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY");
     expect(example).toContain("extractable from the app bundle");
     expect(example).not.toContain(apiKey);
+    expect(example).toContain("return null;");
+    expect(example).not.toContain("return ...");
   });
 });

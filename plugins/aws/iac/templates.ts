@@ -125,7 +125,7 @@ import { HotUpdater } from "@hot-updater/react-native";
 import { HOT_UPDATER_API_KEY } from "@env";
 
 function App() {
-  return ...;
+  return null;
 }
 
 const requestHeaders = Object.freeze({
