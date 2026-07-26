@@ -27,7 +27,7 @@ module.exports = {
         process.env.HOT_UPDATER_E2E_IOS_BINARY_PATH ||
         "examples/v0.85.0/ios/build/Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
       build:
-        `cd examples/v0.85.0/ios && RCT_USE_PREBUILT_RNCORE=1 RCT_USE_RN_DEP=1 bundle exec pod install && xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator -destination ${shellSingleQuote(iosDestination)} -derivedDataPath build -quiet HOT_UPDATER_MIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000`,
+        `cd examples/v0.85.0/ios && RCT_USE_PREBUILT_RNCORE=1 RCT_USE_RN_DEP=1 bundle exec pod install && xcodebuild -workspace HotUpdaterExample.xcworkspace -scheme HotUpdaterExample -configuration Release -sdk iphonesimulator -destination ${shellSingleQuote(iosDestination)} -derivedDataPath build -quiet ONLY_ACTIVE_ARCH=YES HOT_UPDATER_MIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000`,
     },
     "android.release": {
       type: "android.apk",

@@ -211,6 +211,15 @@ describe("Detox E2E harness contract", () => {
     );
   });
 
+  it("builds only the active iOS simulator architecture", async () => {
+    // Given: the dashboard builds for one resolved simulator destination.
+    const detoxConfig = await fs.readFile(detoxConfigPath, "utf8");
+
+    // When: Detox builds the release binary used by that simulator.
+    // Then: xcodebuild avoids compiling unused simulator architectures.
+    expect(detoxConfig).toContain("ONLY_ACTIVE_ARCH=YES");
+  });
+
   it("pins the iOS Detox build to the resolved simulator destination", () => {
     // Given: dashboard split jobs resolve simulator names to UDIDs.
     const result = spawnSync(
