@@ -1,4 +1,5 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
+import type { HotUpdaterFeatureInvocation } from "@hot-updater/plugin-core";
 
 import {
   authenticateMatchedRoute,
@@ -6,6 +7,7 @@ import {
 } from "./authentication";
 import type {
   HotUpdaterAuthenticationProvider,
+  HotUpdaterMatchedRoute,
   HotUpdaterPostAuthMiddleware,
   HotUpdaterRouteContext,
 } from "./contracts";
@@ -26,6 +28,16 @@ export type ExecuteKernelRequestOptions<TContext> = {
   readonly authentication?: HotUpdaterAuthenticationProvider;
   readonly basePath: string;
   readonly middleware: readonly HotUpdaterPostAuthMiddleware[];
+  readonly invokeRoute?: (
+    input: Readonly<{
+      context: TContext | undefined;
+      request: Request;
+      route: HotUpdaterMatchedRoute;
+    }>,
+    callback: (
+      invocation: HotUpdaterFeatureInvocation<TContext> | undefined,
+    ) => Promise<Response>,
+  ) => Promise<Response>;
   readonly platformContext?: HotUpdaterContext<TContext>;
   readonly request: Request;
   readonly router: CompiledRouter;
@@ -132,7 +144,25 @@ export const executeKernelRequest = async <TContext = unknown>(
           matchedRoute.route.input === undefined
             ? undefined
             : await matchedRoute.route.input.parse(boundedRequest);
-        return matchedRoute.route.handle(context, input);
+        const invokeRoute = options.invokeRoute;
+        if (invokeRoute === undefined) {
+          return matchedRoute.route.handle(context, input);
+        }
+        return invokeRoute(
+          {
+            context: options.platformContext,
+            request: boundedRequest,
+            route: matchedRoute.descriptor,
+          },
+          (invocation) =>
+            matchedRoute.route.handle(
+              Object.freeze({
+                ...context,
+                ...(invocation === undefined ? {} : { invocation }),
+              }),
+              input,
+            ),
+        );
       } catch (error) {
         if (error instanceof HotUpdaterPayloadTooLargeError) {
           return payloadTooLargeResponse(

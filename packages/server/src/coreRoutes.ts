@@ -16,10 +16,13 @@ import {
 } from "./kernel/metadata";
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
-export type CreateCoreServerRoutesOptions<TContext> = {
-  readonly api: HandlerAPI<TContext>;
+export type CreateCoreServerRoutesOptions<TContext, TDatabaseContext> = {
+  readonly api: HandlerAPI<TDatabaseContext>;
   readonly descriptors: readonly CoreRouteDescriptor[];
   readonly resolveMetadata: () => CompiledVersionMetadata | undefined;
+  readonly toDatabaseContext: (
+    context: HotUpdaterRouteContext<TContext>,
+  ) => TDatabaseContext | undefined;
 };
 
 const requestParser = Object.freeze({
@@ -60,19 +63,15 @@ const resolveRouteHandler = <TContext>(
   }
 };
 
-const executeRouteHandler = async <TContext>(
-  api: HandlerAPI<TContext>,
+const executeRouteHandler = async <TContext, TDatabaseContext>(
+  api: HandlerAPI<TDatabaseContext>,
   context: HotUpdaterRouteContext<TContext>,
-  handler: RouteHandler<TContext>,
+  handler: RouteHandler<TDatabaseContext>,
   request: Request,
+  databaseContext: TDatabaseContext | undefined,
 ): Promise<Response> => {
   try {
-    return await handler(
-      context.route.params,
-      request,
-      api,
-      context.platformContext,
-    );
+    return await handler(context.route.params, request, api, databaseContext);
   } catch (error) {
     if (error instanceof HandlerBadRequestError) {
       return errorResponse(error);
@@ -110,11 +109,11 @@ const createVersionRoute = <TContext>(
     },
   });
 
-export const createCoreServerRoutes = <TContext>(
-  options: CreateCoreServerRoutesOptions<TContext>,
+export const createCoreServerRoutes = <TContext, TDatabaseContext>(
+  options: CreateCoreServerRoutesOptions<TContext, TDatabaseContext>,
 ): readonly HotUpdaterServerRoute[] => {
-  const updates = createUpdateRouteHandlers<TContext>();
-  const bundles = createBundleRouteHandlers<TContext>();
+  const updates = createUpdateRouteHandlers<TDatabaseContext>();
+  const bundles = createBundleRouteHandlers<TDatabaseContext>();
   return Object.freeze(
     options.descriptors.map((descriptor) => {
       if (descriptor.id === "core.version") {
@@ -134,7 +133,13 @@ export const createCoreServerRoutes = <TContext>(
         method: descriptor.method,
         path: descriptor.path,
         handle(context: HotUpdaterRouteContext<TContext>, request: Request) {
-          return executeRouteHandler(options.api, context, handler, request);
+          return executeRouteHandler(
+            options.api,
+            context,
+            handler,
+            request,
+            options.toDatabaseContext(context),
+          );
         },
       }) satisfies HotUpdaterServerRoute<Request, TContext>;
     }),

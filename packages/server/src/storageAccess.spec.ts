@@ -1,7 +1,11 @@
-import type { RuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import type {
+  RuntimeStoragePlugin,
+  StorageOperationContext,
+  StoragePluginV2,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createStorageAccess } from "./storageAccess";
+import { createStorageAccess, createStorageCallContext } from "./storageAccess";
 
 describe("createStorageAccess", () => {
   afterEach(() => {
@@ -126,6 +130,104 @@ describe("createStorageAccess", () => {
       readStorageText("s3://release-bucket/updates/bundle.zip"),
     ).rejects.toThrow("No storage plugin for protocol: s3");
   });
+
+  it("reads v2 UTF-8 text with the exact supplied context", async () => {
+    // Given
+    const context: StorageOperationContext = Object.freeze({
+      target: "edge",
+      environment: Object.freeze({}),
+      bindings: Object.freeze({ requestId: "one" }),
+    });
+    const get = vi.fn<StoragePluginV2["get"]>(async ({ storageUri }) => ({
+      kind: "found",
+      storageUri,
+      body: new Blob(["manifest"]).stream(),
+      metadata: { contentLength: 8 },
+    }));
+    const access = createStorageAccess([createV2Storage(get)]);
+
+    // When
+    const text = access.readStorageText(
+      "storage://manifest",
+      createStorageCallContext(undefined, context),
+    );
+
+    // Then
+    await expect(text).resolves.toBe("manifest");
+    expect(get).toHaveBeenCalledWith({
+      context,
+      storageUri: "storage://manifest",
+    });
+  });
+
+  it("cancels a v2 stream when declared text size exceeds the limit", async () => {
+    // Given
+    const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({ cancel });
+    const access = createStorageAccess([
+      createV2Storage(async ({ storageUri }) => ({
+        kind: "found",
+        storageUri,
+        body: stream,
+        metadata: { contentLength: 1024 * 1024 + 1 },
+      })),
+    ]);
+
+    // When
+    const text = access.readStorageText(
+      "storage://manifest",
+      createStorageCallContext(
+        undefined,
+        Object.freeze({
+          target: "node",
+          environment: Object.freeze({}),
+          bindings: Object.freeze({}),
+        }),
+      ),
+    );
+
+    // Then
+    await expect(text).rejects.toThrow(
+      "Storage text exceeds the maximum size.",
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a v2 stream when UTF-8 decoding fails", async () => {
+    // Given
+    const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({
+      cancel,
+      start(controller) {
+        controller.enqueue(Uint8Array.of(0xff));
+      },
+    });
+    const access = createStorageAccess([
+      createV2Storage(async ({ storageUri }) => ({
+        kind: "found",
+        storageUri,
+        body: stream,
+        metadata: { contentLength: 1 },
+      })),
+    ]);
+
+    // When
+    const text = access.readStorageText(
+      "storage://manifest",
+      createStorageCallContext(
+        undefined,
+        Object.freeze({
+          target: "edge",
+          environment: Object.freeze({}),
+          bindings: Object.freeze({}),
+        }),
+      ),
+    );
+
+    // Then
+    await expect(text).rejects.toBeInstanceOf(TypeError);
+    expect(cancel).toHaveBeenCalledOnce();
+  });
 });
 
 const createRuntimeStoragePlugin = (
@@ -145,5 +247,20 @@ const createRuntimeStoragePlugin = (
       },
       ...overrides,
     },
+  },
+});
+
+const createV2Storage = (get: StoragePluginV2["get"]): StoragePluginV2 => ({
+  name: "v2Storage",
+  protocol: "storage",
+  async put() {
+    throw new Error("unused");
+  },
+  async head() {
+    return { kind: "not-found" };
+  },
+  get,
+  async delete() {
+    return { kind: "not-found" };
   },
 });

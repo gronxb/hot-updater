@@ -8,6 +8,11 @@ export type {
   RuntimeHotUpdaterAPI,
 } from "./createHotUpdaterCore";
 export type {
+  StorageContextResolver,
+  StorageContextResolverInput,
+  StorageResolverOperation,
+} from "./storageContext";
+export type {
   HotUpdaterAuthenticationInput,
   HotUpdaterAuthenticationProvider,
   HotUpdaterAuthenticationResult,

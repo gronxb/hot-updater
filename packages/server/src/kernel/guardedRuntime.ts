@@ -3,14 +3,24 @@ import type {
   DatabasePlugin,
   HotUpdaterInfrastructureRuntime,
   RuntimeStorageAccess,
-  RuntimeStoragePlugin,
+  StorageInvocationToken,
   TransactionDatabasePlugin,
 } from "@hot-updater/plugin-core";
+
+import {
+  createStorageCallContext,
+  createStorageAccess,
+  type RuntimeStorageEntry,
+} from "../storageAccess";
+import type { ResolvedStorageInvocation } from "../storageInvocation";
 
 export type CreateGuardedInfrastructureRuntimeOptions<TContext> = {
   readonly beforeDatabaseOperation?: () => Promise<void>;
   readonly database: DatabasePlugin;
-  readonly storages: readonly RuntimeStoragePlugin<TContext>[];
+  readonly resolveStorageInvocation?: (
+    token: StorageInvocationToken,
+  ) => ResolvedStorageInvocation<TContext>;
+  readonly storages: readonly RuntimeStorageEntry<TContext>[];
 };
 
 const createGuardedOperations = (
@@ -70,29 +80,52 @@ const createGuardedDatabase = (
   return Object.freeze(runtime);
 };
 
-const createStorageAccess = <TContext>(
-  storage: RuntimeStoragePlugin<TContext>,
-): RuntimeStorageAccess<TContext> => {
-  const access: RuntimeStorageAccess<TContext> = {
-    async getDownloadUrl(storageUri, context) {
-      return storage.profiles.runtime.getDownloadUrl(storageUri, context);
-    },
-    name: storage.name,
-    async readText(storageUri, context) {
-      return storage.profiles.runtime.readText(storageUri, context);
-    },
-    supportedProtocol: storage.supportedProtocol,
-  };
-  return Object.freeze(access);
-};
-
 export const createGuardedInfrastructureRuntime = <TContext = unknown>(
   options: CreateGuardedInfrastructureRuntimeOptions<TContext>,
 ): HotUpdaterInfrastructureRuntime<TContext> => {
   const beforeOperation =
     options.beforeDatabaseOperation ?? (async () => undefined);
+  const storage = createStorageAccess(options.storages);
+  const resolve = options.resolveStorageInvocation;
+  const storages = [...storage.records.values()].map((record) => {
+    const access: RuntimeStorageAccess = {
+      async getDownloadUrl(storageUri, token) {
+        if (resolve === undefined) {
+          throw new TypeError("Storage invocation authority is unavailable.");
+        }
+        const invocation = resolve(token);
+        const fileUrl = await storage.resolveFileUrl(
+          storageUri,
+          createStorageCallContext(
+            invocation.platformContext,
+            invocation.storageContext,
+          ),
+        );
+        if (fileUrl === null) {
+          throw new Error("Storage plugin returned empty fileUrl");
+        }
+        return { fileUrl };
+      },
+      name: record.plugin.name,
+      async readText(storageUri, token) {
+        if (resolve === undefined) {
+          throw new TypeError("Storage invocation authority is unavailable.");
+        }
+        const invocation = resolve(token);
+        return storage.readStorageText(
+          storageUri,
+          createStorageCallContext(
+            invocation.platformContext,
+            invocation.storageContext,
+          ),
+        );
+      },
+      supportedProtocol: record.protocol,
+    };
+    return Object.freeze(access);
+  });
   return Object.freeze({
     database: createGuardedDatabase(options.database, beforeOperation),
-    storages: Object.freeze(options.storages.map(createStorageAccess)),
+    storages: Object.freeze(storages),
   });
 };

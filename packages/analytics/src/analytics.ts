@@ -96,6 +96,36 @@ const createAvailableContribution = (
 > =>
   Object.freeze({
     api: Object.freeze({
+      invocation: Object.freeze({
+        appendBundleEvent: Object.freeze({
+          contextIndex: 1,
+          publicArity: 2,
+        }),
+        getActiveInstallationOverview: Object.freeze({
+          contextIndex: 1,
+          publicArity: 2,
+        }),
+        getBundleEventAnalytics: Object.freeze({
+          contextIndex: 4,
+          publicArity: 5,
+        }),
+        getBundleEventOverview: Object.freeze({
+          contextIndex: 0,
+          publicArity: 1,
+        }),
+        getBundleEventSummary: Object.freeze({
+          contextIndex: 1,
+          publicArity: 2,
+        }),
+        getInstallationHistory: Object.freeze({
+          contextIndex: 3,
+          publicArity: 4,
+        }),
+        searchInstallations: Object.freeze({
+          contextIndex: 3,
+          publicArity: 4,
+        }),
+      }),
       legacyAliases: analyticsLegacyAliases,
       namespace: "analytics",
       value: createAnalyticsFeature<unknown>(provider),

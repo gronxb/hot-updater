@@ -32,10 +32,11 @@ export function createHandler<TContext = unknown>(
 ) => Promise<Response> {
   const basePath = normalizeBasePath(options.basePath ?? "/api");
   const metadata = compileVersionMetadata({ contributions: [] });
-  const routes = createCoreServerRoutes({
+  const routes = createCoreServerRoutes<TContext, TContext>({
     api,
     descriptors: createCoreRouteDescriptors(options.routes),
     resolveMetadata: () => metadata,
+    toDatabaseContext: (context) => context.platformContext,
   });
   const router = compileRoutes(routes);
   const authentication = selectAuthenticationProvider({

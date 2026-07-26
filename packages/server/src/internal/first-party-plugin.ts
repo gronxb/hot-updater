@@ -33,3 +33,4 @@ export {
   type HotUpdaterPluginSetupContext,
   type NoFeatureApiKind,
 } from "../kernel/manifest";
+export { requireHotUpdaterFeatureInvocation } from "../storageInvocation";

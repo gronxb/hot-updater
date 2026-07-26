@@ -23,6 +23,9 @@ describe("projectFeatureApis", () => {
     const available = projectFeatureApis({
       contributions: [
         {
+          invocation: {
+            getSummary: { contextIndex: 0, publicArity: 1 },
+          },
           legacyAliases: { getSummary: "getSummary" },
           namespace: "analytics",
           value: { getSummary, status: "available" },
@@ -33,6 +36,7 @@ describe("projectFeatureApis", () => {
     const unavailable = projectFeatureApis({
       contributions: [
         {
+          invocation: {},
           legacyAliases: { getSummary: "getSummary" },
           namespace: "analytics",
           value: { status: "unavailable" },
@@ -53,6 +57,7 @@ describe("projectFeatureApis", () => {
     // Given
     const value = { operation: () => undefined, status: "available" };
     const base = {
+      invocation: { operation: { contextIndex: 0, publicArity: 1 } },
       legacyAliases: { legacyOperation: "operation" },
       namespace: "feature",
       value,
@@ -88,6 +93,9 @@ describe("projectFeatureApis", () => {
         projectFeatureApis({
           contributions: [
             {
+              invocation: {
+                operation: { contextIndex: 0, publicArity: 1 },
+              },
               legacyAliases: { missing: "missing" },
               namespace: "feature",
               value,
@@ -104,6 +112,7 @@ describe("projectFeatureApis", () => {
     const projected = projectFeatureApis({
       contributions: [
         {
+          invocation: { operation: { contextIndex: 0, publicArity: 1 } },
           legacyAliases: { ["__proto__"]: "operation" },
           namespace: "__proto__",
           value: { operation: () => "safe", status: "available" },

@@ -6,6 +6,7 @@ import type {
   HotUpdaterServerRoute,
   HotUpdaterVersionMetadataContribution,
 } from "./contracts";
+import { readFeatureInvocation } from "./invocationMetadata";
 import type { FirstPartyFeatureManifest } from "./manifest";
 import { copyPayloadTooLargeResponse } from "./staticResponse";
 
@@ -21,7 +22,9 @@ export type ValidatedPluginContribution = {
 const isObject = (value: unknown): value is object =>
   typeof value === "object" && value !== null;
 
-const isPlainRecord = (value: unknown): value is object =>
+const isPlainRecord = (
+  value: unknown,
+): value is Readonly<Record<string, unknown>> =>
   isObject(value) &&
   !Array.isArray(value) &&
   (Object.getPrototypeOf(value) === Object.prototype ||
@@ -182,7 +185,7 @@ const readApi = (
   if (value === undefined) return undefined;
   if (
     !isPlainRecord(value) ||
-    !hasOnlyKeys(value, ["legacyAliases", "namespace", "value"])
+    !hasOnlyKeys(value, ["invocation", "legacyAliases", "namespace", "value"])
   ) {
     throw new Error("Invalid API contribution.");
   }
@@ -195,7 +198,12 @@ const readApi = (
   ) {
     throw new Error("Invalid API contribution.");
   }
+  const invocation = readFeatureInvocation(
+    Reflect.get(value, "invocation"),
+    apiValue,
+  );
   return Object.freeze({
+    invocation,
     legacyAliases: Object.freeze({ ...aliases }),
     namespace: manifest.namespace,
     value: apiValue,
