@@ -1,7 +1,12 @@
 import type {
   CapabilityToken,
+  ConfigFeatureManifest,
   DatabaseCapabilityRuntime,
 } from "@hot-updater/plugin-core";
+import {
+  isConfigFeatureManifest,
+  stampConfigFeatureManifest,
+} from "@hot-updater/plugin-core/internal/config-feature-manifest";
 
 import type {
   HotUpdaterAuthenticationProvider,
@@ -87,7 +92,7 @@ export interface HotUpdaterFeatureManifest<
   TNamespace extends string = string,
   TKind extends FeatureApiKind = FeatureApiKind,
   TAliases extends FeatureApiAliases<TKind> = Readonly<Record<never, never>>,
-> {
+> extends ConfigFeatureManifest {
   readonly [featureManifestBrand]: {
     readonly aliases: TAliases;
     readonly kind: (kind: TKind) => TKind;
@@ -107,14 +112,15 @@ type BrandedManifest = {
   readonly [featureManifestBrand]: object;
 };
 
-export type FirstPartyFeatureManifest = BrandedManifest & {
-  readonly aliases: Readonly<Record<string, string>>;
-  readonly id: string;
-  readonly namespace: string;
-  readonly requires: readonly HotUpdaterCapabilityRequirement[];
-  readonly setup: (context: HotUpdaterPluginSetupContext) => unknown;
-  readonly version: string;
-};
+export type FirstPartyFeatureManifest = ConfigFeatureManifest &
+  BrandedManifest & {
+    readonly aliases: Readonly<Record<string, string>>;
+    readonly id: string;
+    readonly namespace: string;
+    readonly requires: readonly HotUpdaterCapabilityRequirement[];
+    readonly setup: (context: HotUpdaterPluginSetupContext) => unknown;
+    readonly version: string;
+  };
 
 export type ManifestNamespace<TManifest extends BrandedManifest> =
   TManifest[typeof featureManifestBrand] extends {
@@ -169,7 +175,7 @@ export const defineFirstPartyFeatureManifest = <
     ),
   );
 
-  return Object.freeze({
+  return stampConfigFeatureManifest({
     [featureManifestBrand]: Object.freeze({
       aliases,
       kind: (kind: TKind) => kind,
@@ -187,7 +193,8 @@ export const defineFirstPartyFeatureManifest = <
 export const isFirstPartyFeatureManifest = (
   value: unknown,
 ): value is FirstPartyFeatureManifest =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof Reflect.get(value, featureManifestBrand) === "object" &&
-  Reflect.get(value, featureManifestBrand) !== null;
+  isConfigFeatureManifest(value) &&
+  typeof Reflect.get(value, "aliases") === "object" &&
+  Reflect.get(value, "aliases") !== null &&
+  Array.isArray(Reflect.get(value, "requires")) &&
+  typeof Reflect.get(value, "setup") === "function";

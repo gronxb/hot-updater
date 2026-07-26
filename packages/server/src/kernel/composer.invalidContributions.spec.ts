@@ -83,6 +83,23 @@ const forbiddenContributions: ReadonlyArray<{
       ],
     },
   },
+  {
+    label: "request policy without a maximum body byte limit",
+    value: {
+      routes: [
+        {
+          access: { kind: "public" },
+          id: "missing-maximum-body-bytes",
+          method: "POST",
+          path: "/missing-maximum-body-bytes",
+          requestPolicy: {},
+          async handle() {
+            return new Response("invalid");
+          },
+        },
+      ],
+    },
+  },
 ];
 
 describe("composeServerKernel invalid contributions", () => {

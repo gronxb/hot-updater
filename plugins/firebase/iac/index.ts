@@ -9,7 +9,6 @@ import {
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
   transformEnv,
-  transformTemplate,
 } from "@hot-updater/cli-tools";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
@@ -17,25 +16,7 @@ import { ExecaError, execa } from "execa";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { prepareFirebaseRuntimeAuth } from "./runtimeAuth";
 import { initFirebaseUser, setEnv } from "./select";
-
-const SOURCE_TEMPLATE = `// add this to your App.tsx
-import { HotUpdater } from "@hot-updater/react-native";
-
-// This key is extractable from the app bundle. Treat it as an access gate,
-// not as an administrator credential or a user identity.
-const HOT_UPDATER_API_KEY = process.env.HOT_UPDATER_API_KEY!;
-
-function App() {
-  return ...
-}
-
-export default HotUpdater.wrap({
-  baseURL: "%%source%%",
-  requestHeaders: {
-    "x-api-key": HOT_UPDATER_API_KEY,
-  },
-  updateStrategy: "appVersion", // or "fingerprint"
-})(App);`;
+import { renderFirebaseSourceTemplate } from "./sourceTemplate";
 
 const REGIONS = [
   { value: "us-central1", label: "US Central (Iowa)" },
@@ -270,11 +251,7 @@ const printTemplate = async (projectId: string, region: string) => {
 
     const functionUrl = `${url}/api/check-update`;
 
-    p.note(
-      transformTemplate(SOURCE_TEMPLATE, {
-        source: functionUrl,
-      }),
-    );
+    p.note(renderFirebaseSourceTemplate(functionUrl));
   } catch (error) {
     if (error instanceof ExecaError) {
       p.log.error(error.stderr || error.stdout || error.message);

@@ -26,11 +26,11 @@ npm install @hot-updater/standalone --save-dev
 Configure your CLI to connect to your self-hosted server:
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import {
   standaloneAnalytics,
   standaloneRepository,
 } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
 
 const repositoryConfig = {
   baseUrl: "http://localhost:3000/hot-updater",
@@ -41,16 +41,20 @@ export default defineConfig({
   storage: /* your storage plugin */,
   database: standaloneRepository(repositoryConfig),
   console: {
-    analytics: standaloneAnalytics(repositoryConfig, {
-      queryAccess: "public",
-    }),
+    plugins: [
+      standaloneAnalytics(repositoryConfig, {
+        queryAccess: "public",
+      }),
+    ],
   },
 });
 ```
 
 `standaloneRepository` owns only the remote database contract. The separate
-`standaloneAnalytics` manifest lets the local Console proxy Analytics through
-the same remote configuration without decorating the database plugin.
+`standaloneAnalytics` Console runtime plugin lets the local Console proxy
+Analytics through the same remote configuration without decorating the
+database plugin. It configures only the local Console runtime and is not
+forwarded to the remote deployment handler or its `createHotUpdater` plugins.
 
 ## Configuration
 

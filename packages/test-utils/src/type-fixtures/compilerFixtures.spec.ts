@@ -123,9 +123,11 @@ const compileFailCases = [
     "TS2305",
     ["defineFirstPartyFeatureManifest"],
   ],
+  ["root-analytics-legacy-alias.mts", "TS2459", ["analyticsLegacyAliases"]],
   ["routes-analytics.mts", "TS2353", []],
   ["routes-event-ingestion.mts", "TS2353", []],
-  ["structural-manifest-forgery.mts", "TS2741", []],
+  ["structural-config-feature-manifest.mts", "TS2322", []],
+  ["structural-manifest-forgery.mts", "TS2739", []],
 ] satisfies readonly CompileFailCase[];
 
 describe("server plugin compile-fail fixtures", () => {

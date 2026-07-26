@@ -74,12 +74,14 @@ manifest identity aligned while it evaluates TypeScript, ESM, or CommonJS
 config files. This adds `jiti`, `@hot-updater/analytics`, and
 `@hot-updater/server` as direct `@hot-updater/cli-tools` runtime dependencies.
 
-Local Console Analytics is now disabled by default. Opt a complete generic
-database into the bounded provider explicitly:
+The local Console now installs feature manifests through `console.plugins`.
+Opt a complete generic database into the bounded Analytics provider explicitly:
 
 ```ts
 export default defineConfig({
-  console: { analytics: "database" },
+  console: {
+    plugins: [analytics({ queryAccess: "public" })],
+  },
   database,
 });
 ```
@@ -91,11 +93,19 @@ const standalone = { baseUrl: "https://updates.example.com" };
 
 export default defineConfig({
   console: {
-    analytics: standaloneAnalytics(standalone, { queryAccess: "public" }),
+    plugins: [standaloneAnalytics(standalone, { queryAccess: "public" })],
   },
   database: standaloneRepository(standalone),
 });
 ```
+
+`console.plugins` configures only the local Console runtime. Its manifests are
+not propagated into a managed preset, deployed handler, or separate
+`createHotUpdater` plugin list. Omitting the array leaves the Console without
+optional feature plugins; the former `"database"` and `"disabled"` sentinels
+and `console.analytics` field are removed. Config loading rejects an own
+`console.analytics` key with migration guidance for every supported JavaScript
+and TypeScript module extension.
 
 AWS, Cloudflare, Firebase, and Supabase presets require the managed API key on
 every route emitted by their `createHotUpdater` handler. They use the same

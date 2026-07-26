@@ -28,6 +28,16 @@
         "default": "./dist/internal/capabilities.cjs"
       }
     },
+    "./internal/config-feature-manifest": {
+      "import": {
+        "types": "./dist/internal/config-feature-manifest.d.mts",
+        "default": "./dist/internal/config-feature-manifest.mjs"
+      },
+      "require": {
+        "types": "./dist/internal/config-feature-manifest.d.cts",
+        "default": "./dist/internal/config-feature-manifest.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [

@@ -72,14 +72,14 @@ const createGuardedDatabase = (
 
 const createStorageAccess = <TContext>(
   storage: RuntimeStoragePlugin<TContext>,
-): RuntimeStorageAccess => {
-  const access: RuntimeStorageAccess = {
-    async getDownloadUrl(storageUri) {
-      return storage.profiles.runtime.getDownloadUrl(storageUri);
+): RuntimeStorageAccess<TContext> => {
+  const access: RuntimeStorageAccess<TContext> = {
+    async getDownloadUrl(storageUri, context) {
+      return storage.profiles.runtime.getDownloadUrl(storageUri, context);
     },
     name: storage.name,
-    async readText(storageUri) {
-      return storage.profiles.runtime.readText(storageUri);
+    async readText(storageUri, context) {
+      return storage.profiles.runtime.readText(storageUri, context);
     },
     supportedProtocol: storage.supportedProtocol,
   };
@@ -88,7 +88,7 @@ const createStorageAccess = <TContext>(
 
 export const createGuardedInfrastructureRuntime = <TContext = unknown>(
   options: CreateGuardedInfrastructureRuntimeOptions<TContext>,
-): HotUpdaterInfrastructureRuntime => {
+): HotUpdaterInfrastructureRuntime<TContext> => {
   const beforeOperation =
     options.beforeDatabaseOperation ?? (async () => undefined);
   return Object.freeze({

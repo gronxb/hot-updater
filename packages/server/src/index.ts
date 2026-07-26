@@ -4,6 +4,7 @@ export { createHotUpdater } from "./createHotUpdaterCore";
 export type {
   CreateHotUpdaterOptions,
   HotUpdaterAPI,
+  RuntimeStorageInput,
   RuntimeHotUpdaterAPI,
 } from "./createHotUpdaterCore";
 export type {
@@ -11,9 +12,17 @@ export type {
   HotUpdaterAuthenticationProvider,
   HotUpdaterAuthenticationResult,
   HotUpdaterMatchedRoute,
+  HotUpdaterPayloadTooLargeResponse,
   HotUpdaterPrincipal,
   HotUpdaterRequestPolicy,
   HotUpdaterRouteAccess,
+  JsonValue,
 } from "./kernel/contracts";
+export {
+  CONSTRUCTION_ERROR_CODES,
+  HotUpdaterConstructionError,
+  type HotUpdaterConstructionErrorCode,
+  type HotUpdaterConstructionErrorDetails,
+} from "./kernel/errors";
 export * from "./types";
 export { HOT_UPDATER_SERVER_VERSION } from "./version";

@@ -314,6 +314,8 @@ describe("resolveEdgeFunctionDenoConfig", () => {
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
         "@hot-updater/plugin-core/internal/capabilities":
           "./_hot-updater/hot-updater-plugin-core/dist/internal/capabilities.mjs",
+        "@hot-updater/plugin-core/internal/config-feature-manifest":
+          "./_hot-updater/hot-updater-plugin-core/dist/internal/config-feature-manifest.mjs",
         "@supabase/supabase-js": `npm:@supabase/supabase-js@${resolvePackageVersion(
           "@supabase/supabase-js",
           {
@@ -424,7 +426,12 @@ describe("managed API key provisioning", () => {
       "https://example.supabase.co/functions/v1/update-server",
     );
 
-    expect(example).toContain("process.env.HOT_UPDATER_API_KEY!");
+    expect(example).toContain('import { HOT_UPDATER_API_KEY } from "@env";');
+    expect(example).toContain("const commonHeaders = Object.freeze({");
+    expect(example.match(/requestHeaders: commonHeaders/gmu)).toHaveLength(2);
+    expect(example).toContain("analytics.recordAppReady(result)");
+    expect(example).not.toContain("process.env.HOT_UPDATER_API_KEY");
+    expect(example).not.toContain("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY");
     expect(example).toContain("extractable from the app bundle");
     expect(example).not.toContain(apiKey);
   });

@@ -25,7 +25,7 @@ export type HotUpdaterPayloadTooLargeResponse = {
 };
 
 export type HotUpdaterRequestPolicy = {
-  readonly maximumBodyBytes?: number;
+  readonly maximumBodyBytes: number;
   readonly payloadTooLargeResponse?: HotUpdaterPayloadTooLargeResponse;
 };
 

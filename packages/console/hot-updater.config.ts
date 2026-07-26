@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { analytics } from "@hot-updater/analytics";
 import {
   createMockDatabaseData,
   mockDatabase,
@@ -907,7 +908,7 @@ export default {
     data: databaseData,
   }),
   console: {
-    analytics: "database",
     gitUrl: "https://github.com/gronxb/hot-updater",
+    plugins: [analytics({ queryAccess: "public" })],
   },
 };

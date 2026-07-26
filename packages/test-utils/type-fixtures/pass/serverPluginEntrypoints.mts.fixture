@@ -58,7 +58,7 @@ assertType<
 >();
 assertType<Equal<HotUpdaterMatchedRoute["access"], HotUpdaterRouteAccess>>();
 assertType<
-  Equal<HotUpdaterRequestPolicy["maximumBodyBytes"], number | undefined>
+  Equal<HotUpdaterRequestPolicy["maximumBodyBytes"], number>
 >();
 
 declare const auth: BetterAuthConfiguredInstance;

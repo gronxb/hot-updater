@@ -1,0 +1,13 @@
+import type { ConfigInput } from "@hot-updater/plugin-core";
+
+type ConsolePlugin = NonNullable<
+  NonNullable<ConfigInput["console"]>["plugins"]
+>[number];
+
+const forged: ConsolePlugin = {
+  id: "forged",
+  namespace: "forged",
+  version: "1.0.0",
+};
+
+void forged;

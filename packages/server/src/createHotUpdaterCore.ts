@@ -40,7 +40,7 @@ export type RuntimeHotUpdaterAPI<TContext = undefined> =
 export type HotUpdaterAPI<TContext = undefined> =
   RuntimeHotUpdaterAPI<TContext>;
 
-type RuntimeStorageInput<TContext> =
+export type RuntimeStorageInput<TContext = undefined> =
   | RuntimeStoragePlugin<TContext>
   | (() => RuntimeStoragePlugin<TContext>);
 

@@ -15,6 +15,9 @@ import type {
   HandlerAPI,
   HandlerOptions,
   HandlerRoutes,
+  HotUpdaterPayloadTooLargeResponse,
+  HotUpdaterRequestPolicy,
+  RuntimeStorageInput,
 } from "./index";
 import {
   createRuntimeDatabase,
@@ -54,6 +57,15 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
       "basePath" | "database" | "plugins" | "routes" | "storages"
+    >();
+    expectTypeOf<HotUpdaterRequestPolicy>().toEqualTypeOf<{
+      readonly maximumBodyBytes: number;
+      readonly payloadTooLargeResponse?: HotUpdaterPayloadTooLargeResponse;
+    }>();
+    expectTypeOf<
+      CreateHotUpdaterOptions<TestContext>["storages"]
+    >().toEqualTypeOf<
+      readonly RuntimeStorageInput<TestContext>[] | undefined
     >();
   });
 

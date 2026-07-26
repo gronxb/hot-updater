@@ -47,7 +47,7 @@ describe("loadConfig", () => {
     expect(config.platform.android.androidManifestPaths).toEqual([]);
     expect(config.platform.android.stringResourcePaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
-    expect(config.console.analytics).toBe("disabled");
+    expect(config.console.plugins).toEqual([]);
     expect(config.console.port).toBe(1422);
     expect(typeof config.database).toBe("object");
   });
@@ -65,24 +65,48 @@ describe("loadConfig", () => {
     expect(config.cacheDir).toBeNull();
   });
 
-  it.each(["database", "disabled"] as const)(
-    "preserves the explicit Console Analytics %s mode",
-    async (analytics) => {
+  it("preserves the explicit Console runtime plugin list", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "const plugin = { id: 'example', namespace: 'example', version: '1' };",
+        "export default {",
+        "  console: { plugins: [plugin] },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(config.console.plugins).toEqual([
+      { id: "example", namespace: "example", version: "1" },
+    ]);
+  });
+
+  it.each([
+    { extension: "js", syntax: "module.exports =" },
+    { extension: "cjs", syntax: "module.exports =" },
+    { extension: "ts", syntax: "export default" },
+    { extension: "cts", syntax: "module.exports =" },
+    { extension: "mjs", syntax: "export default" },
+    { extension: "mts", syntax: "export default" },
+  ])(
+    "rejects the removed console.analytics option from .$extension configs",
+    async ({ extension, syntax }) => {
       await writeProjectFile(
         projectRoot,
-        "hot-updater.config.ts",
-        [
-          "export default {",
-          `  console: { analytics: ${JSON.stringify(analytics)} },`,
-          "};",
-          "",
-        ].join("\n"),
+        `hot-updater.config.${extension}`,
+        `${syntax} { console: { analytics: "database" } };\n`,
       );
 
       const { loadConfig } = await import("./loadConfig");
-      const config = await loadConfig(null);
 
-      expect(config.console.analytics).toBe(analytics);
+      await expect(loadConfig(null)).rejects.toThrow(
+        /console\.plugins.*analytics\(\.\.\.\).*standaloneAnalytics\(\.\.\.\)/,
+      );
     },
   );
 

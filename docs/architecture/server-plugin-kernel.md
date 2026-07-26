@@ -30,8 +30,8 @@ feature consumes the generic adapter but the adapter does not install the
 feature. Analytics therefore receives the frozen guarded database runtime
 directly, always constructs an available feature, and accepts an explicit
 provider factory for dedicated transports. Standalone uses a separate
-`standaloneAnalytics(config)` manifest. No unresolved blocker remains in this
-design.
+`standaloneAnalytics(config)` Console runtime plugin. No unresolved blocker
+remains in this design.
 
 ### Implementation consensus addendum
 
@@ -536,7 +536,7 @@ const hotUpdater = createHotUpdater({
 
 const analyticsFeature = hotUpdater.features.analytics;
 
-await analyticsFeature.getBundleEventSummary(input);
+await analyticsFeature.getBundleEventSummary("bundle-id");
 ```
 
 The application creates and stores the API-key record through Better Auth.
@@ -601,10 +601,17 @@ export interface HandlerOptions {
   readonly routes?: HandlerRoutes;
 }
 
-export interface CreateHotUpdaterOptions<TContext> extends HandlerOptions {
+export type RuntimeStorageInput<TContext = undefined> =
+  | RuntimeStoragePlugin<TContext>
+  | (() => RuntimeStoragePlugin<TContext>);
+
+export interface CreateHotUpdaterOptions<
+  TContext = undefined,
+  TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
+> extends HandlerOptions {
   readonly database: DatabasePlugin;
-  readonly storages?: readonly RuntimeStoragePlugin<TContext>[];
-  readonly plugins?: readonly FirstPartyFeatureManifest[];
+  readonly storages?: readonly RuntimeStorageInput<TContext>[];
+  readonly plugins?: TPlugins;
 }
 ```
 
@@ -623,9 +630,7 @@ declare function createHotUpdater<
   TContext = undefined,
   const TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
 >(
-  options: Omit<CreateHotUpdaterOptions<TContext>, "plugins"> & {
-    readonly plugins?: TPlugins;
-  },
+  options: CreateHotUpdaterOptions<TContext, TPlugins>,
 ): RuntimeHotUpdaterAPI<TContext> &
   Readonly<ProjectPlugins<TPlugins, TContext>>;
 ```
@@ -639,6 +644,12 @@ their transitional aliases. `analytics()` has fixed plugin ID and namespace
 overridden through options. `analytics()` accepts one normalized configuration
 object, not a configuration array or fallback ID. Two instances fail with
 `DUPLICATE_PLUGIN_ID` before setup.
+
+Each storage input is either a ready runtime storage plugin or a zero-argument
+factory. `createHotUpdater` materializes every factory exactly once during
+construction. The resulting guarded storage facade forwards the exact optional
+`TContext` supplied to `getDownloadUrl` and `readText` while hiding provider
+profiles, configuration, and credentials.
 
 The Analytics factory accepts feature-owned provider selection:
 
@@ -699,8 +710,11 @@ export interface CapabilityContribution<TValue> {
 }
 ```
 
-The internal `defineCapability` factory creates nominal, versioned tokens.
-Consumers cannot reproduce a token structurally. Duplicate token IDs or
+The public plugin-core `defineCapability` factory creates nominal, versioned
+tokens, and `attachCapabilityContribution` attaches their synchronous factories
+to immutable infrastructure carriers. Consumers cannot reproduce a token
+structurally. Only contribution enumeration is exposed through the unsupported
+`@hot-updater/plugin-core/internal/capabilities` seam. Duplicate token IDs or
 providers and advertised values that fail their parser fail construction.
 Missing values follow the requesting manifest's declared policy.
 
@@ -847,7 +861,12 @@ export interface HotUpdaterServerRoute<TInput = undefined> {
 }
 
 export interface HotUpdaterRequestPolicy {
-  readonly maximumBodyBytes?: number;
+  readonly maximumBodyBytes: number;
+  readonly payloadTooLargeResponse?: {
+    readonly body: JsonValue;
+    readonly headers?: Readonly<Record<string, string>>;
+    readonly status: 413;
+  };
 }
 ```
 
@@ -866,7 +885,10 @@ raw request streams for every method that may carry a body. A declared
 `Content-Length` may be rejected from request headers before authentication.
 The actual stream byte count and parsing occur only after successful
 authentication on protected routes. No adapter may recognize `/events` or
-import an Analytics constant.
+import an Analytics constant. When `requestPolicy` is present,
+`maximumBodyBytes` is a required non-negative safe integer. A route may
+optionally provide a static JSON 413 response; the kernel defensively copies it
+before use.
 
 The route owner declares path, method, access, request policy, runtime input
 parser, and handler together. This follows the Better Auth endpoint pattern
@@ -986,6 +1008,7 @@ export interface HotUpdaterVersionMetadataContribution {
   readonly namespace: string;
   readonly target: "capabilities";
   readonly keys: readonly string[];
+  readonly optionalKeys?: readonly string[];
   readonly resolve: (
     signal: AbortSignal,
   ) => Promise<Readonly<Record<string, JsonValue>>>;
@@ -996,12 +1019,13 @@ Duplicate namespaces, duplicate declared wire keys, and reserved core fields
 fail construction. The core invokes all resolvers concurrently without an
 inbound request under one aggregate five-second deadline and passes one
 kernel-owned `AbortSignal` that every first-party resolver must honor. It
-validates exact declared keys and recursive `JsonValue`, then enforces 16 KiB
-of serialized UTF-8 per contribution and 64 KiB aggregate. Only after every
-contribution passes does it atomically shallow-merge the result into
-`/version.capabilities`. Timeout, throw, invalid keys or JSON, or oversize
-produces one opaque `500` with no partial metadata or dynamic detail. The core
-does not allowlist Analytics names.
+requires every member of `keys`, permits only declared members of
+`optionalKeys`, rejects every undeclared member, and validates recursive
+`JsonValue`. It then enforces 16 KiB of serialized UTF-8 per contribution and
+64 KiB aggregate. Only after every contribution passes does it atomically
+shallow-merge the result into `/version.capabilities`. Timeout, throw, invalid
+keys or JSON, or oversize produces one opaque `500` with no partial metadata or
+dynamic detail. The core does not allowlist Analytics names.
 
 Metadata is byte-for-byte invariant to inbound credentials. Secrets,
 authentication mechanisms, policies, principals, provider configuration, and
@@ -1035,6 +1059,13 @@ Setup failures, missing required capabilities, invalid advertised
 capabilities, invalid contributions, middleware dependency cycles, unknown
 middleware edges, and ownership collisions are typed construction errors. No
 first-wins, last-wins, or array-order behavior is permitted.
+
+`@hot-updater/server` exports `HotUpdaterConstructionError`,
+`HotUpdaterConstructionErrorCode`, `HotUpdaterConstructionErrorDetails`, and
+`CONSTRUCTION_ERROR_CODES` from its supported root. Callers may narrow
+construction failures with `instanceof`, branch on the stable literal `code`,
+and inspect the corresponding frozen, non-secret `details`. Error messages
+contain the code but never interpolate provider values or dynamic details.
 
 ## Analytics composition
 
@@ -1084,6 +1115,11 @@ independently at request and metadata time with the existing 30-second fresh
 cache, 5-minute bounded stale fallback, and 5-second timeout. An unavailable or
 indeterminate operation fails closed without disabling an independently
 available operation.
+
+`ConfigInput.console.plugins` is consumed only when the local Console builds
+its internal `createHotUpdater` runtime. The array is not inherited by a
+deployment handler, a managed preset, or another `createHotUpdater` call.
+Deployment runtimes install their own feature manifests explicitly.
 
 ## Better Auth composition
 
@@ -1197,7 +1233,8 @@ cannot replace them.
 
 The standalone Analytics provider retains its bounded cache, stale fallback,
 timeout, and independent ingestion/query availability. The dedicated provider
-is installed by `standaloneAnalytics(config)` at the feature boundary.
+is installed by `standaloneAnalytics(config)` in the Console runtime plugin
+array.
 Analytics owns route parsing, metadata, and availability interpretation. The
 standalone package owns one generic guarded transport, route configuration,
 and outbound credential enforcement; `standaloneRepository(config)` remains
@@ -1305,10 +1342,13 @@ source migration with preserved HTTP behavior.
 
 ### Stage 2: consumer migration
 
-- migrate standalone handling to `standaloneAnalytics(config)` at the feature
-  boundary;
-- keep local Console Analytics disabled by default; opt a complete generic
-  database in with `"database"` or pass a branded dedicated manifest;
+- migrate standalone handling to `standaloneAnalytics(config)` as a Console
+  runtime plugin;
+- replace the Console Analytics sentinel with
+  `console.plugins: [analytics({ queryAccess: "public" })]` for a complete
+  generic database or
+  `console.plugins: [standaloneAnalytics(config, { queryAccess: "public" })]`
+  for a dedicated remote provider;
 - migrate Console and server consumers to
   `hotUpdater.features.analytics` and `@hot-updater/analytics` types;
 - remove direct `supportsAnalytics` usage from new paths;
@@ -1336,18 +1376,18 @@ service/domain/token exports already leave in Stage 1.
 
 ### Source, export, and migration matrix
 
-| Existing surface                                    | New owner or replacement                          | Compatibility                                                                                            |
-| --------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `createHotUpdater({ routes: { analytics: true } })` | `plugins: [analytics()]`                          | Breaking source migration; legacy wrapper under `@hot-updater/analytics/legacy-server` during Stages 1-2 |
-| `HandlerOptions.coreRoutes`                         | `HandlerOptions.routes: HandlerRoutes`            | Unreleased kernel branch migration; `coreRoutes` remains internal only                                   |
-| Flat `getBundleEvent*` and installation methods     | `hotUpdater.features.analytics.*`                 | Generic flat aliases during Stages 1-2, then removed                                                     |
-| Server Analytics types and database Analytics API   | `@hot-updater/analytics`                          | Explicit import migration                                                                                |
-| Server generic DB adapters                          | Existing `@hot-updater/server/adapters/*` paths   | Preserved; adapters remain Analytics-free                                                                |
-| `@hot-updater/server`, `/db`, and `/node`           | Existing paths                                    | Preserved except documented Analytics exports                                                            |
-| Cloudflare `/worker`                                | Existing path                                     | Preserved                                                                                                |
-| Firebase `/functions` and `/functions/handler`      | Existing paths                                    | Preserved                                                                                                |
-| Supabase `/edge`                                    | Existing path                                     | Preserved                                                                                                |
-| Standalone route overrides                          | `standaloneAnalytics(config)` plus existing paths | Explicit Console config migration; independent ingestion/query availability preserved                    |
+| Existing surface                                    | New owner or replacement                         | Compatibility                                                                                            |
+| --------------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `createHotUpdater({ routes: { analytics: true } })` | `plugins: [analytics()]`                         | Breaking source migration; legacy wrapper under `@hot-updater/analytics/legacy-server` during Stages 1-2 |
+| `HandlerOptions.coreRoutes`                         | `HandlerOptions.routes: HandlerRoutes`           | Unreleased kernel branch migration; `coreRoutes` remains internal only                                   |
+| Flat `getBundleEvent*` and installation methods     | `hotUpdater.features.analytics.*`                | Generic flat aliases during Stages 1-2, then removed                                                     |
+| Server Analytics types and database Analytics API   | `@hot-updater/analytics`                         | Explicit import migration                                                                                |
+| Server generic DB adapters                          | Existing `@hot-updater/server/adapters/*` paths  | Preserved; adapters remain Analytics-free                                                                |
+| `@hot-updater/server`, `/db`, and `/node`           | Existing paths                                   | Preserved except documented Analytics exports                                                            |
+| Cloudflare `/worker`                                | Existing path                                    | Preserved                                                                                                |
+| Firebase `/functions` and `/functions/handler`      | Existing paths                                   | Preserved                                                                                                |
+| Supabase `/edge`                                    | Existing path                                    | Preserved                                                                                                |
+| Standalone route overrides                          | `console.plugins: [standaloneAnalytics(config)]` | Explicit Console runtime plugin migration; independent ingestion/query availability preserved            |
 
 Provider migration assets keep their existing package, filename, version, and
 execution owner. The extraction creates no replacement migration, does not
@@ -1397,6 +1437,10 @@ runtime failures are owned by the feature plugin.
 - `routes.eventIngestion` fails excess-property type checks.
 - `routes.analytics` fails excess-property type checks on the new server
   entrypoint.
+- `HotUpdaterRequestPolicy.maximumBodyBytes` is required whenever a request
+  policy is present.
+- the root construction-error exports preserve literal error-code/detail
+  correlation.
 
 ### Kernel
 
@@ -1414,6 +1458,8 @@ runtime failures are owned by the feature plugin.
 - static routes outrank parameter routes independent of registration order;
 - database-backed capability operations pass through the same schema-readiness
   guard as core database operations;
+- guarded storage capability operations forward the exact optional platform
+  context while hiding provider profiles, configuration, and credentials;
 - feature setup receives only the frozen, guarded generic database runtime,
   never adapter migration or schema-generation hooks;
 - `analytics()` preserves its literal namespace and API type rather than
@@ -1438,9 +1484,9 @@ runtime failures are owned by the feature plugin.
 - Cloudflare/Firebase/Supabase database plugins expose no Analytics
   contributions while their managed server presets install `analytics()` and
   protect all of its routes;
-- Console preserves `.mts` and `.cts` manifest identity and uses
-  `standaloneAnalytics(config)` for a dedicated remote provider, while an
-  omitted Console setting installs no Analytics feature;
+- Console preserves `.mts` and `.cts` manifest identity and installs
+  `standaloneAnalytics(config)` as a dedicated Console runtime plugin, while
+  an omitted `console.plugins` array installs no Analytics feature;
 - standalone covers ingestion-only, query-only, both, neither, stale probe, and
   timeout behavior.
 

@@ -6,10 +6,7 @@ import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import { appendToProjectRootGitignore } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
 
-const REQUIRED_PACKAGES = {
-  dependencies: ["@hot-updater/react-native"],
-  devDependencies: ["dotenv"],
-};
+import { PACKAGE_MAP, REQUIRED_PACKAGES } from "./initPackages";
 
 interface BuildPluginChoice {
   name: string;
@@ -47,29 +44,6 @@ const PROVIDER_LABELS = {
   aws: "AWS S3 + Lambda@Edge",
   supabase: "Supabase",
   firebase: "Firebase",
-} as const;
-
-const PACKAGE_MAP = {
-  supabase: {
-    dependencies: [],
-    devDependencies: ["@hot-updater/supabase"],
-  },
-  aws: {
-    dependencies: [],
-    devDependencies: ["@hot-updater/aws"],
-  },
-  cloudflare: {
-    dependencies: [],
-    devDependencies: ["wrangler", "@hot-updater/cloudflare"],
-  },
-  firebase: {
-    dependencies: [],
-    devDependencies: [
-      "firebase-tools",
-      "firebase-admin",
-      "@hot-updater/firebase",
-    ],
-  },
 } as const;
 
 type BuildPluginKey = keyof typeof BUILD_PLUGINS;

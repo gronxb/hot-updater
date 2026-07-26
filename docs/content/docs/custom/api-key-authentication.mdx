@@ -104,11 +104,11 @@ Hot Updater consumer. The standalone CLI plugins share headers through their
 repository configuration:
 
 ```typescript title="hot-updater.config.ts"
-import { defineConfig } from "@hot-updater/core";
 import {
   standaloneAnalytics,
   standaloneRepository,
 } from "@hot-updater/standalone";
+import { defineConfig } from "hot-updater";
 
 import { env } from "./env";
 
@@ -122,10 +122,20 @@ const repositoryConfig = {
 export default defineConfig({
   database: standaloneRepository(repositoryConfig),
   console: {
-    analytics: standaloneAnalytics(repositoryConfig),
+    plugins: [
+      standaloneAnalytics(repositoryConfig, {
+        queryAccess: "public",
+      }),
+    ],
   },
 });
 ```
+
+The `console.plugins` array configures only the local Console runtime. It does
+not add Analytics to the authenticated deployment handler or alter its
+`createHotUpdater` plugin list. Adding `betterAuthPlugin(...)` to this array
+would not protect the Console UI or its RPC endpoints either; secure Console
+access at the network or hosting boundary.
 
 React Native update checks use `requestHeaders`:
 

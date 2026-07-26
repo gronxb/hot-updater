@@ -1,6 +1,5 @@
 export {
   analytics,
-  analyticsLegacyAliases,
   type AnalyticsAPI,
   type AnalyticsFeatureAvailable,
   type AnalyticsFeatureKind,

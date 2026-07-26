@@ -91,9 +91,11 @@ export default defineConfig({
         }),
   database: standaloneRepository(standaloneRepositoryConfig),
   console: {
-    analytics: standaloneAnalytics(standaloneRepositoryConfig, {
-      queryAccess: "public",
-    }),
+    plugins: [
+      standaloneAnalytics(standaloneRepositoryConfig, {
+        queryAccess: "public",
+      }),
+    ],
   },
   fingerprint: {
     debug: true,

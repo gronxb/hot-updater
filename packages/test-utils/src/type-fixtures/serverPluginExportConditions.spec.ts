@@ -5,7 +5,12 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 const workspaceRoot = path.resolve(import.meta.dirname, "../../../..");
 
-type PackageName = "analytics" | "better-auth" | "plugin-core" | "server";
+type PackageName =
+  | "analytics"
+  | "better-auth"
+  | "plugin-core"
+  | "server"
+  | "standalone";
 type PackageLocation = readonly [PackageName, string];
 type PackageExportEntry = readonly [PackageName, unknown];
 
@@ -14,6 +19,7 @@ const packageLocations = [
   ["better-auth", "packages/better-auth"],
   ["plugin-core", "plugins/plugin-core"],
   ["server", "packages/server"],
+  ["standalone", "plugins/standalone"],
 ] satisfies readonly PackageLocation[];
 
 let packageExports = new Map<PackageName, unknown>();
@@ -117,6 +123,26 @@ describe("server plugin declaration export conditions", () => {
       },
     ],
     [
+      "better-auth",
+      "./managed",
+      {
+        cjs: "./dist/managed.cjs",
+        cts: "./dist/managed.d.cts",
+        mjs: "./dist/managed.mjs",
+        mts: "./dist/managed.d.mts",
+      },
+    ],
+    [
+      "better-auth",
+      "./managed/provisioning",
+      {
+        cjs: "./dist/managed/provisioning.cjs",
+        cts: "./dist/managed/provisioning.d.cts",
+        mjs: "./dist/managed/provisioning.mjs",
+        mts: "./dist/managed/provisioning.d.mts",
+      },
+    ],
+    [
       "plugin-core",
       ".",
       {
@@ -137,6 +163,16 @@ describe("server plugin declaration export conditions", () => {
       },
     ],
     [
+      "plugin-core",
+      "./internal/config-feature-manifest",
+      {
+        cjs: "./dist/internal/config-feature-manifest.cjs",
+        cts: "./dist/internal/config-feature-manifest.d.cts",
+        mjs: "./dist/internal/config-feature-manifest.mjs",
+        mts: "./dist/internal/config-feature-manifest.d.mts",
+      },
+    ],
+    [
       "server",
       ".",
       {
@@ -154,6 +190,16 @@ describe("server plugin declaration export conditions", () => {
         cts: "./dist/internal/first-party-plugin.d.cts",
         mjs: "./dist/internal/first-party-plugin.mjs",
         mts: "./dist/internal/first-party-plugin.d.mts",
+      },
+    ],
+    [
+      "standalone",
+      ".",
+      {
+        cjs: "./dist/index.cjs",
+        cts: "./dist/index.d.cts",
+        mjs: "./dist/index.mjs",
+        mts: "./dist/index.d.mts",
       },
     ],
   ] satisfies readonly (readonly [PackageName, string, ExportPaths])[])(

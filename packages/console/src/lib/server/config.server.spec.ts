@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { analytics } from "@hot-updater/analytics";
 import type { NodeStoragePlugin } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -63,9 +64,10 @@ describe("config.server", () => {
     const database = createTestDatabasePlugin("db");
     const storagePlugin = createStoragePlugin();
     const storage = vi.fn().mockResolvedValue(storagePlugin);
+    const plugin = analytics({ queryAccess: "public" });
 
     loadConfigMock.mockResolvedValue({
-      console: { port: 1422 },
+      console: { plugins: [plugin], port: 1422 },
       database,
       storage,
     });
@@ -81,7 +83,7 @@ describe("config.server", () => {
     expect(createHotUpdaterMock).toHaveBeenCalledTimes(1);
     expect(createHotUpdaterMock).toHaveBeenCalledWith({
       database: expect.objectContaining({ name: "db" }),
-      plugins: [],
+      plugins: [plugin],
     });
     expect(storage).toHaveBeenCalledTimes(1);
     expect(first.databaseClient).toBe(second.databaseClient);

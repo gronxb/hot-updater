@@ -4,7 +4,8 @@ import {
   CONSTRUCTION_ERROR_CODES,
   HotUpdaterConstructionError,
   type HotUpdaterConstructionErrorCode,
-} from "./errors";
+  type HotUpdaterConstructionErrorDetails,
+} from "../index";
 
 describe("HotUpdaterConstructionError", () => {
   it("preserves a literal code with frozen safe details", () => {
@@ -36,5 +37,8 @@ describe("HotUpdaterConstructionError", () => {
     expectTypeOf<
       (typeof CONSTRUCTION_ERROR_CODES)[number]
     >().toEqualTypeOf<HotUpdaterConstructionErrorCode>();
+    expectTypeOf<
+      HotUpdaterConstructionErrorDetails["DUPLICATE_ROUTE_ID"]
+    >().toEqualTypeOf<{ readonly routeId: string }>();
   });
 });

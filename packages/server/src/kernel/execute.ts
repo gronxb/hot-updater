@@ -51,6 +51,14 @@ const preventCaching = (response: Response): Response => {
   });
 };
 
+const applyMatchedRouteCachePolicy = (
+  response: Response,
+  matched: ReturnType<typeof matchCompiledRoute>,
+): Response =>
+  matched?.route.access.kind === "protected"
+    ? preventCaching(response)
+    : response;
+
 const authenticate = <TContext>(
   options: ExecuteKernelRequestOptions<TContext>,
   route: ReturnType<typeof matchCompiledRoute>,
@@ -74,34 +82,41 @@ const authenticate = <TContext>(
 export const executeKernelRequest = async <TContext = unknown>(
   options: ExecuteKernelRequestOptions<TContext>,
 ): Promise<Response> => {
+  let matched: ReturnType<typeof matchCompiledRoute> = undefined;
   try {
     const url = new URL(options.request.url);
-    const matched = matchCompiledRoute({
+    matched = matchCompiledRoute({
       basePath: options.basePath,
       method: options.request.method,
       pathname: url.pathname,
       router: options.router,
     });
     if (matched === undefined) return opaqueResponse(404);
+    const matchedRoute = matched;
 
-    const maximumBodyBytes = matched.route.requestPolicy?.maximumBodyBytes;
+    const maximumBodyBytes = matchedRoute.route.requestPolicy?.maximumBodyBytes;
     if (maximumBodyBytes !== undefined) {
       const rejected = checkDeclaredBodyLength(
         options.request.headers,
         maximumBodyBytes,
-        matched.route.requestPolicy?.payloadTooLargeResponse,
+        matchedRoute.route.requestPolicy?.payloadTooLargeResponse,
       );
-      if (rejected !== undefined) return rejected;
+      if (rejected !== undefined) {
+        return applyMatchedRouteCachePolicy(rejected, matchedRoute);
+      }
     }
 
-    const authentication = await authenticate(options, matched, url);
+    const authentication = await authenticate(options, matchedRoute, url);
     if (authentication.kind === "response") {
-      return authentication.response;
+      return applyMatchedRouteCachePolicy(
+        authentication.response,
+        matchedRoute,
+      );
     }
 
     const boundedRequest =
       maximumBodyBytes !== undefined &&
-      isBodyCapableMethod(matched.route.method)
+      isBodyCapableMethod(matchedRoute.route.method)
         ? applyBoundedBody(options.request, maximumBodyBytes)
         : options.request;
     const context: HotUpdaterRouteContext<TContext> = Object.freeze({
@@ -114,14 +129,14 @@ export const executeKernelRequest = async <TContext = unknown>(
     const executeRoute = async (): Promise<Response> => {
       try {
         const input =
-          matched.route.input === undefined
+          matchedRoute.route.input === undefined
             ? undefined
-            : await matched.route.input.parse(boundedRequest);
-        return matched.route.handle(context, input);
+            : await matchedRoute.route.input.parse(boundedRequest);
+        return matchedRoute.route.handle(context, input);
       } catch (error) {
         if (error instanceof HotUpdaterPayloadTooLargeError) {
           return payloadTooLargeResponse(
-            matched.route.requestPolicy?.payloadTooLargeResponse,
+            matchedRoute.route.requestPolicy?.payloadTooLargeResponse,
           );
         }
         throw error;
@@ -132,10 +147,8 @@ export const executeKernelRequest = async <TContext = unknown>(
       handler: executeRoute,
       middleware: options.middleware,
     });
-    return authentication.context.route.access.kind === "protected"
-      ? preventCaching(response)
-      : response;
+    return applyMatchedRouteCachePolicy(response, matchedRoute);
   } catch {
-    return opaqueResponse(500);
+    return applyMatchedRouteCachePolicy(opaqueResponse(500), matched);
   }
 };

@@ -9,13 +9,11 @@ const appNodeModules = path.join(__dirname, "node_modules");
 const resolveOptions = Repack.getResolveOptions();
 
 const runtimeAliases = {
-  "@hot-updater/analytics/react-native$": path.join(
-    appNodeModules,
-    "@hot-updater/analytics/dist/react-native/index.mjs",
+  "@hot-updater/analytics/react-native$": fileURLToPath(
+    import.meta.resolve("@hot-updater/analytics/react-native"),
   ),
-  "@hot-updater/react-native/internal/runtime-metadata$": path.join(
-    appNodeModules,
-    "@hot-updater/react-native/lib/module/internal/runtime-metadata.js",
+  "@hot-updater/react-native/internal/runtime-metadata$": fileURLToPath(
+    import.meta.resolve("@hot-updater/react-native/internal/runtime-metadata"),
   ),
   react$: path.join(appNodeModules, "react"),
   "react/jsx-dev-runtime$": path.join(

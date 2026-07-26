@@ -1,8 +1,7 @@
-import {
-  analytics,
-  type InstallationHistoryRow,
-  type InstallationSearchRow,
-  type OffsetPaginationResult,
+import type {
+  InstallationHistoryRow,
+  InstallationSearchRow,
+  OffsetPaginationResult,
 } from "@hot-updater/analytics";
 import type { ConfigResponse } from "@hot-updater/cli-tools";
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
@@ -26,30 +25,22 @@ export type InstallationSearchResult =
 export type InstallationHistoryResult =
   OffsetPaginationResult<InstallationHistoryRow>;
 
-const resolveAnalyticsManifest = (
-  configured: ConfigResponse["console"]["analytics"] | undefined,
-): FirstPartyFeatureManifest | null => {
-  if (configured === undefined || configured === "disabled") {
-    return null;
-  }
-  if (configured === "database") {
-    return analytics({ queryAccess: "public" });
-  }
-  if (
-    !isFirstPartyFeatureManifest(configured) ||
-    configured.id !== "analytics" ||
-    configured.namespace !== "analytics"
-  ) {
-    throw new TypeError("Console analytics must be an Analytics manifest.");
-  }
-  return configured;
-};
+const resolveConsolePlugins = (
+  configured: ConfigResponse["console"]["plugins"] | undefined,
+): readonly FirstPartyFeatureManifest[] =>
+  (configured ?? []).map((plugin) => {
+    if (!isFirstPartyFeatureManifest(plugin)) {
+      throw new TypeError(
+        "Console plugins must be first-party feature manifests.",
+      );
+    }
+    return plugin;
+  });
 
 export function createRuntimeHotUpdater(config: ConfigResponse) {
-  const manifest = resolveAnalyticsManifest(config.console?.analytics);
   return createHotUpdater({
     database: config.database,
-    plugins: manifest === null ? [] : [manifest],
+    plugins: resolveConsolePlugins(config.console?.plugins),
   });
 }
 

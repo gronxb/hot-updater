@@ -22,10 +22,19 @@ const exportedFunctions = [
     "@hot-updater/server/internal/first-party-plugin",
     "defineFirstPartyFeatureManifest",
   ],
+  [
+    "@hot-updater/plugin-core/internal/config-feature-manifest",
+    "isConfigFeatureManifest",
+  ],
   ["@hot-updater/analytics", "analytics"],
   ["@hot-updater/analytics/provider", "parseAnalyticsProvider"],
   ["@hot-updater/analytics/legacy-server", "createLegacyHotUpdater"],
   ["@hot-updater/better-auth", "betterAuthPlugin"],
+  ["@hot-updater/better-auth/managed", "managedBetterAuthPlugin"],
+  [
+    "@hot-updater/better-auth/managed/provisioning",
+    "provisionManagedBetterAuthApiKey",
+  ],
   ["@hot-updater/standalone", "standaloneAnalytics"],
 ] as const;
 
@@ -41,6 +50,10 @@ const packedArtifactMatrix = [
       "dist/internal/capabilities.d.cts",
       "dist/internal/capabilities.d.mts",
       "dist/internal/capabilities.mjs",
+      "dist/internal/config-feature-manifest.cjs",
+      "dist/internal/config-feature-manifest.d.cts",
+      "dist/internal/config-feature-manifest.d.mts",
+      "dist/internal/config-feature-manifest.mjs",
     ],
   ],
   [
@@ -84,6 +97,14 @@ const packedArtifactMatrix = [
       "dist/index.d.cts",
       "dist/index.d.mts",
       "dist/index.mjs",
+      "dist/managed.cjs",
+      "dist/managed.d.cts",
+      "dist/managed.d.mts",
+      "dist/managed.mjs",
+      "dist/managed/provisioning.cjs",
+      "dist/managed/provisioning.d.cts",
+      "dist/managed/provisioning.d.mts",
+      "dist/managed/provisioning.mjs",
     ],
   ],
   [
@@ -108,7 +129,12 @@ import {
   betterAuthPlugin,
   type BetterAuthSessionConfiguredInstance,
 } from "@hot-updater/better-auth";
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
+import {
+  provisionManagedBetterAuthApiKey,
+  type ProvisionedManagedBetterAuthApiKey,
+} from "@hot-updater/better-auth/managed/provisioning";
+import type { ConfigInput, DatabasePlugin } from "@hot-updater/plugin-core";
 import {
   createHotUpdater,
   type HandlerRoutes,
@@ -117,6 +143,7 @@ import { defineFirstPartyFeatureManifest } from "@hot-updater/server/internal/fi
 import { standaloneAnalytics } from "@hot-updater/standalone";
 
 declare const database: DatabasePlugin;
+declare const provisioned: ProvisionedManagedBetterAuthApiKey;
 declare const sessionAuth: BetterAuthSessionConfiguredInstance;
 const routes = {
   bundles: false,
@@ -127,14 +154,38 @@ const standaloneManifest = standaloneAnalytics({
   baseUrl: "https://updates.example.com",
 });
 const sessionManifest = betterAuthPlugin({ auth: sessionAuth });
+const consoleConfig = {
+  plugins: [manifest, sessionManifest, standaloneManifest],
+} satisfies NonNullable<ConfigInput["console"]>;
 const runtime = createHotUpdater({ database, plugins: [manifest], routes });
 void runtime.features.analytics.getBundleEventSummary;
+void consoleConfig;
+void managedBetterAuthPlugin;
+void provisionManagedBetterAuthApiKey;
+void provisioned;
 void sessionManifest;
 void standaloneManifest;
 void parseAnalyticsProvider;
 void createLegacyHotUpdater;
 void defineFirstPartyFeatureManifest;
 `;
+
+const mixedManifestConsumers = [
+  {
+    create: 'runtime.analytics({ queryAccess: "public" })',
+    packageName: "@hot-updater/analytics",
+  },
+  {
+    create:
+      "runtime.betterAuthPlugin({ auth: { api: { getSession: async () => null } } })",
+    packageName: "@hot-updater/better-auth",
+  },
+  {
+    create:
+      'runtime.standaloneAnalytics({ baseUrl: "https://updates.example.com" })',
+    packageName: "@hot-updater/standalone",
+  },
+] as const;
 
 beforeAll(async () => {
   consumer = await createPackedConsumer(packageDirectories);
@@ -193,6 +244,39 @@ if (typeof runtime[${JSON.stringify(exportedFunction)}] !== "function") {
 if (typeof runtime[${JSON.stringify(exportedFunction)}] !== "function") {
   throw new TypeError("missing packed export");
 }`,
+        false,
+      );
+    },
+  );
+
+  it.each(mixedManifestConsumers)(
+    "recognizes a CommonJS $packageName manifest from the ESM server",
+    async ({ create, packageName }) => {
+      await runNode(
+        consumer.directory,
+        `import { createRequire } from "node:module";
+import { isFirstPartyFeatureManifest } from "@hot-updater/server/internal/first-party-plugin";
+const require = createRequire(import.meta.url);
+const runtime = require(${JSON.stringify(packageName)});
+if (!isFirstPartyFeatureManifest(${create})) {
+  throw new TypeError("mixed CommonJS manifest brand was not recognized");
+}`,
+        true,
+      );
+    },
+  );
+
+  it.each(mixedManifestConsumers)(
+    "recognizes an ESM $packageName manifest from the CommonJS server",
+    async ({ create, packageName }) => {
+      await runNode(
+        consumer.directory,
+        `const { isFirstPartyFeatureManifest } = require("@hot-updater/server/internal/first-party-plugin");
+void import(${JSON.stringify(packageName)}).then((runtime) => {
+  if (!isFirstPartyFeatureManifest(${create})) {
+    throw new TypeError("mixed ESM manifest brand was not recognized");
+  }
+});`,
         false,
       );
     },

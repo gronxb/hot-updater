@@ -39,7 +39,17 @@ describe("Cloudflare managed API-key provisioning", () => {
         "https://updates.example.com/api/check-update",
       );
       expect(initOutput).not.toContain(first.apiKey);
-      expect(initOutput).toContain("process.env.HOT_UPDATER_API_KEY!");
+      expect(initOutput).toContain(
+        'import { HOT_UPDATER_API_KEY } from "@env";',
+      );
+      expect(initOutput).toContain("const commonHeaders = Object.freeze({");
+      expect(initOutput).toContain("requestHeaders: commonHeaders");
+      expect(initOutput).toContain("analytics.recordAppReady(result)");
+      expect(initOutput).not.toContain("process.env.HOT_UPDATER_API_KEY");
+      expect(initOutput).not.toContain(
+        "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+      );
+      expect(initOutput).not.toContain("HOT_UPDATER_CLOUDFLARE_API_TOKEN");
     } finally {
       await rm(cwd, { force: true, recursive: true });
     }

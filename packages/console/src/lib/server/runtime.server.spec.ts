@@ -120,11 +120,13 @@ describe("analytics runtime input validation", () => {
     ).toBe(true);
   });
 
-  it("installs database-backed Analytics only when Console opts in", async () => {
+  it("installs database-backed Analytics as a Console runtime plugin", async () => {
     const operations = createTestDatabaseOperations();
     const runtime = Reflect.apply(createRuntimeHotUpdater, undefined, [
       {
-        console: { analytics: "database" },
+        console: {
+          plugins: [analytics({ queryAccess: "public" })],
+        },
         database: createTestDatabasePlugin(operations),
       },
     ]);
@@ -147,7 +149,7 @@ describe("analytics runtime input validation", () => {
     );
   });
 
-  it("uses the Analytics manifest configured for Console", async () => {
+  it("passes dedicated feature manifests to the Console runtime", async () => {
     // Given
     const provider = createDedicatedProvider();
     const manifest = analytics({
@@ -159,7 +161,7 @@ describe("analytics runtime input validation", () => {
     // When
     const runtime = Reflect.apply(createRuntimeHotUpdater, undefined, [
       {
-        console: { analytics: manifest },
+        console: { plugins: [manifest] },
         database,
       },
     ]);
@@ -169,17 +171,19 @@ describe("analytics runtime input validation", () => {
     expect(provider.getBundleEventSummary).toHaveBeenCalledWith("bundle-1");
   });
 
-  it("rejects a non-Analytics Console manifest", () => {
+  it("rejects an unbranded Console runtime plugin", () => {
     // Given / When
     const construct = () =>
       Reflect.apply(createRuntimeHotUpdater, undefined, [
         {
           console: {
-            analytics: {
-              id: "forged",
-              namespace: "analytics",
-              version: "1.0.0",
-            },
+            plugins: [
+              {
+                id: "forged",
+                namespace: "analytics",
+                version: "1.0.0",
+              },
+            ],
           },
           database: createTestDatabasePlugin(),
         },
@@ -187,7 +191,7 @@ describe("analytics runtime input validation", () => {
 
     // Then
     expect(construct).toThrow(
-      "Console analytics must be an Analytics manifest.",
+      "Console plugins must be first-party feature manifests.",
     );
   });
 

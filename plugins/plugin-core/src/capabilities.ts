@@ -1,8 +1,4 @@
-import type {
-  DatabasePlugin,
-  RuntimeStorageProfile,
-  StoragePlugin,
-} from "./types";
+import type { DatabasePlugin, StorageResolveContext } from "./types";
 
 declare const capabilityTokenBrand: unique symbol;
 
@@ -44,11 +40,25 @@ export type DatabaseCapabilityRuntime = Readonly<
   >
 >;
 
-export type RuntimeStorageAccess<TContext = unknown> = Readonly<
-  Pick<StoragePlugin<TContext>, "name" | "supportedProtocol"> &
-    RuntimeStorageProfile<TContext>
->;
+export interface RuntimeStorageAccess<TContext = unknown> {
+  readonly name: string;
+  readonly supportedProtocol: string;
+  getDownloadUrl(
+    storageUri: string,
+    context?: StorageResolveContext<TContext>,
+  ): Promise<{ readonly fileUrl: string }>;
+  readText(
+    storageUri: string,
+    context?: StorageResolveContext<TContext>,
+  ): Promise<string | null>;
+}
 
+/**
+ * Frozen infrastructure access passed to capability factories.
+ *
+ * Runtime storage methods preserve the caller's platform context while hiding
+ * provider profiles, configuration, and credentials.
+ */
 export interface HotUpdaterInfrastructureRuntime<TContext = unknown> {
   readonly database: DatabaseCapabilityRuntime;
   readonly storages: readonly RuntimeStorageAccess<TContext>[];

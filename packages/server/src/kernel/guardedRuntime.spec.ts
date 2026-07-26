@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createRuntimeDatabase,
   createRuntimeStorage,
+  type TestContext,
 } from "../runtime.testFixtures";
 import { createGuardedInfrastructureRuntime } from "./guardedRuntime";
 
@@ -77,5 +78,42 @@ describe("createGuardedInfrastructureRuntime", () => {
     expect(Reflect.has(runtime.database, "createMigrator")).toBe(false);
     expect(Reflect.has(runtime.storages[0] ?? {}, "credentials")).toBe(false);
     expect(Reflect.has(runtime.storages[0] ?? {}, "profiles")).toBe(false);
+  });
+
+  it("forwards runtime storage context without widening it", async () => {
+    // Given
+    const getDownloadUrl = vi.fn(
+      async (_storageUri: string, context?: TestContext) => ({
+        fileUrl: context?.env?.assetHost ?? "https://fallback.example.com",
+      }),
+    );
+    const readText = vi.fn(
+      async (_storageUri: string, context?: TestContext) =>
+        context?.env?.assetHost ?? null,
+    );
+    const runtime = createGuardedInfrastructureRuntime({
+      database: createRuntimeDatabase(),
+      storages: [createRuntimeStorage(getDownloadUrl, readText)],
+    });
+    const context: TestContext = {
+      env: { assetHost: "https://assets.example.com" },
+    };
+    const [storage] = runtime.storages;
+    if (storage === undefined) {
+      throw new Error("Expected guarded runtime storage.");
+    }
+
+    // When
+    const download = await storage.getDownloadUrl(
+      "s3://bucket/bundle",
+      context,
+    );
+    const text = await storage.readText("s3://bucket/manifest", context);
+
+    // Then
+    expect(download).toEqual({ fileUrl: "https://assets.example.com" });
+    expect(text).toBe("https://assets.example.com");
+    expect(getDownloadUrl).toHaveBeenCalledWith("s3://bucket/bundle", context);
+    expect(readText).toHaveBeenCalledWith("s3://bucket/manifest", context);
   });
 });

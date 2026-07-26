@@ -2,7 +2,11 @@ import { defineConfig } from "tsdown";
 
 export default defineConfig([
   {
-    entry: ["./src/index.ts", "./src/internal/capabilities.ts"],
+    entry: [
+      "./src/index.ts",
+      "./src/internal/capabilities.ts",
+      "./src/internal/config-feature-manifest.ts",
+    ],
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
@@ -26,6 +30,16 @@ export default defineConfig([
           require: {
             types: "./dist/internal/capabilities.d.cts",
             default: "./dist/internal/capabilities.cjs",
+          },
+        },
+        "./internal/config-feature-manifest": {
+          import: {
+            types: "./dist/internal/config-feature-manifest.d.mts",
+            default: "./dist/internal/config-feature-manifest.mjs",
+          },
+          require: {
+            types: "./dist/internal/config-feature-manifest.d.cts",
+            default: "./dist/internal/config-feature-manifest.cjs",
           },
         },
       },

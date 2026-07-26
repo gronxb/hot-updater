@@ -55,7 +55,9 @@ HotUpdater.init({
 
 The Analytics client owns event transport and installation identity.
 `HotUpdater.wrap` and `HotUpdater.init` continue to own update checks and
-produce the generic app-ready result.
+produce the generic app-ready result. Do not pass `analytics: true` to either
+React Native API; that option no longer exists. Analytics is enabled only by
+creating the feature-owned client and composing `recordAppReady`.
 
 When an app uses a custom updater resolver, give Analytics its own transport
 instead of adding an Analytics method to `HotUpdaterResolver`:
@@ -118,8 +120,10 @@ all reported identifiers as untrusted telemetry and configure provider-level
 access controls, rate limits, quotas, logging, and retention.
 
 Managed server presets and the local Console are configured independently.
-Console Analytics is disabled unless `console.analytics` explicitly selects a
-database-backed or dedicated feature.
+The Console has no Analytics feature unless `console.plugins` installs an
+Analytics manifest in its local runtime. Console runtime plugins are not
+forwarded to managed presets, deployment handlers, or separate
+`createHotUpdater` calls.
 
 For a custom server, install Analytics next to any database that implements the
 complete generic `DatabasePlugin` contract:
@@ -141,11 +145,23 @@ export const hotUpdater = createHotUpdater({
 
 `analytics()` creates its database-backed provider from the guarded generic
 database runtime and mounts `POST /events` together with the Analytics and
-installation query routes. The example selects public kernel access because it delegates
-management and query authentication to the surrounding framework. Omit
-`queryAccess: "public"` and install an authentication plugin when the kernel
-should protect Analytics queries itself. Add rate limits and quotas at the
-public ingestion boundary because event payloads are untrusted telemetry.
+installation query routes. `queryAccess` controls only these six query and
+history routes:
+
+- `GET /api/bundles/:id/events/summary`
+- `GET /api/bundles/:id/events/analytics`
+- `GET /api/installations`
+- `GET /api/installations/overview`
+- `GET /api/installations/active`
+- `GET /api/installations/:installId/events`
+
+It does not change `POST /events`, which remains public unless a protect-all
+authentication plugin protects the complete handler. The example selects
+public query access because it delegates management and query authentication to
+the surrounding framework. Omit `queryAccess: "public"` and install a
+protect-all authentication plugin when the kernel should protect every route,
+including event ingestion. Add rate limits and quotas at any public ingestion
+boundary because event payloads are untrusted telemetry.
 
 Standalone proxies also check the upstream `/version` capability before
 forwarding ingestion or query requests. An upstream route reported as
@@ -159,20 +175,46 @@ telemetry controls for your deployment.
 
 `GET /version` reports these states independently:
 
-| Capability                      | Meaning                                                                            |
-| ------------------------------- | ---------------------------------------------------------------------------------- |
-| `capabilities.analytics`        | The installed Analytics provider is available. It does not mean a route is public. |
-| `capabilities.eventIngestion`   | The provider supports event writes and the Analytics plugin mounts `POST /events`. |
-| `capabilities.analyticsQueries` | The Analytics plugin mounts the query routes used by Console.                      |
+| Capability                      | Meaning                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------- |
+| `capabilities.analytics`        | The installed Analytics provider is available.                                  |
+| `capabilities.eventIngestion`   | Event ingestion is available from the provider.                                 |
+| `capabilities.analyticsQueries` | All six Analytics query and history operations are available from the provider. |
 
-When `analytics` is true, `mode` and the optional `maxMatchingRows` describe
-the structural query implementation and its scan bound. They do not imply that
-either route group is mounted.
+When `capabilities.analytics === true`, `mode` and the optional
+`maxMatchingRows` describe the structural query implementation and its scan
+bound. Capability values describe availability, not route access. They never
+indicate that a route is public or that a request is authenticated.
 
-Standalone and Console require `analyticsQueries: true` before calling query
-routes. A legacy `/version` response without the route-specific fields is
-treated as unavailable, even when it reports `analytics: true`. Upgrade the
-remote server and Standalone/Console packages together.
+Standalone and Console require `capabilities.analyticsQueries === true` before
+calling query routes. A legacy `/version` response without the route-specific
+fields is treated as unavailable, even when it reports
+`capabilities.analytics === true`. Upgrade the remote server and
+Standalone/Console packages together.
+
+### Migrate legacy server configuration
+
+The supported `@hot-updater/server` entrypoint does not accept
+`routes.analytics`. New code must install `analytics()` through the `plugins`
+array. During the compatibility window, only the dedicated legacy subpath
+recognizes the old route flag:
+
+```ts
+import { createLegacyHotUpdater } from "@hot-updater/analytics/legacy-server";
+
+export const hotUpdater = createLegacyHotUpdater({
+  database,
+  routes: {
+    analytics: true,
+    bundles: false,
+    updateCheck: true,
+  },
+});
+```
+
+This bridge preserves the old public Analytics routes. It does not add a
+`routes.eventIngestion` option, and it should not be used for new server
+configurations.
 
 ## Understand the Console data
 
@@ -214,9 +256,9 @@ background.
 | Standalone Database                          | Conditional                    | Requires an explicit `standaloneAnalytics(...)` companion and an upstream server that advertises the Analytics query routes. |
 | AWS S3 Database (`s3Database`)               | Supported with explicit opt-in | Uses versioned ETag compare-and-swap plus row-ID merge. The managed AWS preset remains core-only.                            |
 
-The Console installs Analytics only when `console.analytics` is configured. It
-then checks actual query-route availability and hides Analytics when the
-installed provider reports those routes unavailable.
+The Console installs Analytics only when `console.plugins` includes an
+Analytics manifest. It then checks actual query-route availability and hides
+Analytics when the installed provider reports those routes unavailable.
 
 ### Upgrade an existing PostgreSQL plugin installation
 
@@ -233,12 +275,13 @@ Use `sql/bundles.sql` only for a new database. It recreates the complete
 PostgreSQL schema and is not an existing-install migration.
 
 There is no `supportsAnalytics` database option to set. For a generic database
-that satisfies the complete `bundle_events` contract, opt the local Console in
-with `console.analytics: "database"`. Use
-`console.analytics: standaloneAnalytics(config, { queryAccess: "public" })`
+that satisfies the complete `bundle_events` contract, install
+`analytics({ queryAccess: "public" })` through `console.plugins`. Use
+`standaloneAnalytics(config, { queryAccess: "public" })` in the same array
 beside `database: standaloneRepository(config)` when Console Analytics must
-proxy to a standalone upstream. The remote server must also advertise
-`analyticsQueries: true`.
+proxy to a standalone upstream. These are local Console runtime plugins only;
+they do not configure a deployment handler. The remote server must also
+advertise `capabilities.analyticsQueries === true`.
 
 ## Support Analytics in a custom database plugin
 

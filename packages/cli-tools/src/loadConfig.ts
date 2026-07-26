@@ -14,6 +14,18 @@ import {
 
 export type { HotUpdaterConfigOptions } from "./loadConfigParser.js";
 
+class RemovedConsoleAnalyticsOptionError extends TypeError {
+  readonly name = "RemovedConsoleAnalyticsOptionError";
+
+  constructor() {
+    super(
+      'The "console.analytics" option was removed. Migrate local Console ' +
+        'features to "console.plugins: [analytics(...)]" or ' +
+        '"console.plugins: [standaloneAnalytics(...)]".',
+    );
+  }
+}
+
 const missingDatabase = createDatabasePlugin({
   name: "missingDatabase",
   plugin: () => ({
@@ -127,7 +139,7 @@ const getDefaultConfig = (): ConfigInput => {
       maxBaseBundles: 3,
     },
     console: {
-      analytics: "disabled",
+      plugins: [],
       port: 1422,
     },
     platform: getDefaultPlatformConfig(),
@@ -153,15 +165,15 @@ const mergeConfigSources = (
   );
 
   const database = sources.find((source) => source?.database)?.database;
-  const analytics = sources.find(
-    (source) => source?.console?.analytics !== undefined,
-  )?.console?.analytics;
+  const plugins = sources.find(
+    (source) => source?.console?.plugins !== undefined,
+  )?.console?.plugins;
   return {
     ...mergedConfig,
     ...(database ? { database } : {}),
     console: {
       ...mergedConfig.console,
-      ...(analytics === undefined ? {} : { analytics }),
+      ...(plugins === undefined ? {} : { plugins }),
     },
   };
 };
@@ -191,6 +203,17 @@ export const loadConfig = async (
   const { config } = await loadUnconfig<ConfigInput>(
     getConfigLoaderOptions(options),
   );
+
+  if (typeof config === "object" && config !== null) {
+    const consoleConfig = Reflect.get(config, "console");
+    if (
+      typeof consoleConfig === "object" &&
+      consoleConfig !== null &&
+      Object.hasOwn(consoleConfig, "analytics")
+    ) {
+      throw new RemovedConsoleAnalyticsOptionError();
+    }
+  }
 
   return mergeConfigSources(config, getDefaultConfig()) as ConfigResponse;
 };

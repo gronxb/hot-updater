@@ -1,5 +1,8 @@
 import type { Bundle, Platform } from "@hot-updater/core";
 
+import type { ConfigFeatureManifest } from "../internal/config-feature-manifest";
+
+export type { ConfigFeatureManifest } from "../internal/config-feature-manifest";
 export type {
   AppVersionGetBundlesArgs,
   Bundle,
@@ -454,19 +457,6 @@ export type SigningConfig =
       privateKeyPath: string;
     };
 
-/**
- * Opaque transport shape for a first-party server feature manifest.
- *
- * The server validates the private runtime brand before composing it. This
- * structural view only lets config loaders preserve the original object
- * without making plugin-core depend on the server package.
- */
-export type ConfigFeatureManifest = Readonly<{
-  id: string;
-  namespace: string;
-  version: string;
-}>;
-
 export type ConfigInput = {
   /**
    * @hidden
@@ -549,15 +539,15 @@ export type ConfigInput = {
   };
   console?: {
     /**
-     * Analytics feature used by the local Console server.
+     * Feature plugins used by the local Console runtime.
      *
-     * `"disabled"` leaves Analytics uninstalled.
-     * `"database"` installs the default provider over the configured database.
-     * Dedicated transports can provide their first-party Analytics manifest.
+     * The Console passes these manifests to its internal `createHotUpdater`
+     * runtime. They do not configure separately deployed Hot Updater handlers
+     * or managed provider presets.
      *
-     * @default "disabled"
+     * @default []
      */
-    analytics?: "database" | "disabled" | ConfigFeatureManifest;
+    plugins?: readonly ConfigFeatureManifest[];
     /**
      * Git repository URL
      * If git commit hash exists in console, it allows viewing commit history from the git repository

@@ -1,4 +1,3 @@
-import { HOT_UPDATER_API_KEY_ENV_NAME } from "@hot-updater/better-auth/managed/provisioning";
 import { describe, expect, it } from "vitest";
 
 import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
@@ -63,10 +62,15 @@ describe("AWS managed config scaffold", () => {
     // Given: initialization renders the React Native source template.
     // When: its machine-consumed updater options are inspected.
     // Then: the managed endpoint receives the provisioned API key.
-    expect(SOURCE_TEMPLATE).toContain("requestHeaders:");
-    expect(SOURCE_TEMPLATE).toContain('"x-api-key"');
     expect(SOURCE_TEMPLATE).toContain(
-      `process.env.${HOT_UPDATER_API_KEY_ENV_NAME}!`,
+      'import { HOT_UPDATER_API_KEY } from "@env";',
     );
+    expect(SOURCE_TEMPLATE).toContain("Object.freeze({");
+    expect(SOURCE_TEMPLATE).toContain("requestHeaders,");
+    expect(SOURCE_TEMPLATE).toContain('"x-api-key"');
+    expect(SOURCE_TEMPLATE).toContain('"x-api-key": HOT_UPDATER_API_KEY');
+    expect(SOURCE_TEMPLATE).not.toContain("process.env.HOT_UPDATER_API_KEY");
+    expect(SOURCE_TEMPLATE).not.toContain("createReactNativeAnalytics");
+    expect(SOURCE_TEMPLATE).not.toContain("HOT_UPDATER_S3_SECRET_ACCESS_KEY");
   });
 });

@@ -187,7 +187,9 @@ describe("loadConfig capabilities", () => {
       source: [
         "import { analytics } from '@hot-updater/analytics';",
         "export default {",
-        "  console: { analytics: analytics({ queryAccess: 'public' }) },",
+        "  console: {",
+        "    plugins: [analytics({ queryAccess: 'public' })],",
+        "  },",
         "};",
         "",
       ].join("\n"),
@@ -197,7 +199,9 @@ describe("loadConfig capabilities", () => {
       source: [
         "const { analytics } = require('@hot-updater/analytics');",
         "module.exports = {",
-        "  console: { analytics: analytics({ queryAccess: 'public' }) },",
+        "  console: {",
+        "    plugins: [analytics({ queryAccess: 'public' })],",
+        "  },",
         "};",
         "",
       ].join("\n"),
@@ -214,7 +218,7 @@ describe("loadConfig capabilities", () => {
       const { loadConfig } = await import("./loadConfig");
       const { createHotUpdater } = await import("@hot-updater/server");
       const config = await loadConfig(null);
-      const manifest = Reflect.get(config.console, "analytics");
+      const [manifest] = config.console.plugins;
 
       expect(() =>
         Reflect.apply(createHotUpdater, undefined, [
@@ -239,7 +243,7 @@ describe("loadConfig capabilities", () => {
         "  const standalone = { baseUrl: 'https://updates.example.com' };",
         "  return {",
         "    console: {",
-        "      analytics: standaloneAnalytics(standalone, { queryAccess: 'public' }),",
+        "      plugins: [standaloneAnalytics(standalone, { queryAccess: 'public' })],",
         "    },",
         "    database: standaloneRepository(standalone),",
         "  };",
@@ -254,7 +258,7 @@ describe("loadConfig capabilities", () => {
     const { loadConfig } = await import("./loadConfig");
     const { createHotUpdater } = await import("@hot-updater/server");
     const config = await loadConfig(null);
-    const manifest = Reflect.get(config.console, "analytics");
+    const [manifest] = config.console.plugins;
 
     const runtime = Reflect.apply(createHotUpdater, undefined, [
       {

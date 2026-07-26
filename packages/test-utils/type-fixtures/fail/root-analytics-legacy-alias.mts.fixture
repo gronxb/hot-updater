@@ -1,0 +1,3 @@
+import { analyticsLegacyAliases } from "@hot-updater/analytics";
+
+void analyticsLegacyAliases;

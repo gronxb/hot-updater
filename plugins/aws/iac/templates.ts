@@ -122,16 +122,19 @@ export const getConfigTemplate = (
 
 export const SOURCE_TEMPLATE = `// Add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
+import { HOT_UPDATER_API_KEY } from "@env";
 
 function App() {
   return ...;
 }
 
+const requestHeaders = Object.freeze({
+  "x-api-key": HOT_UPDATER_API_KEY,
+});
+
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
   // Client-bundled keys are extractable access controls, not admin secrets.
-  requestHeaders: {
-    "x-api-key": process.env.HOT_UPDATER_API_KEY!,
-  },
+  requestHeaders,
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;

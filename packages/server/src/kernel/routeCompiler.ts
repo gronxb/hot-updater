@@ -60,7 +60,6 @@ const copyRequestPolicy = (
 ): HotUpdaterRequestPolicy | undefined => {
   if (policy === undefined) return undefined;
   if (
-    policy.maximumBodyBytes === undefined ||
     !Number.isSafeInteger(policy.maximumBodyBytes) ||
     policy.maximumBodyBytes < 0
   ) {
