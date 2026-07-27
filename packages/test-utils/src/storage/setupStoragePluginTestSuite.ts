@@ -23,6 +23,24 @@ export const setupStoragePluginTestSuite = <
     it("stream-round-trip", async () => {
       await storageConformanceAssertions.streamRoundTrip(getPlugin(), context);
     });
+    it("historical-uri-round-trip", async () => {
+      await storageConformanceAssertions.historicalUriRoundTrip(
+        getPlugin(),
+        context,
+      );
+    });
+    it("concurrent-distinct-requests", async () => {
+      await storageConformanceAssertions.concurrentDistinctRequests(
+        getPlugin(),
+        context,
+      );
+    });
+    it("large-body-bounded-backpressure", async () => {
+      await storageConformanceAssertions.largeBodyBoundedBackpressure(
+        getPlugin(),
+        context,
+      );
+    });
     it("atomic-create-only", async () => {
       await storageConformanceAssertions.atomicCreateOnly(getPlugin(), context);
     });

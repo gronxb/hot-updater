@@ -1,0 +1,289 @@
+{
+  "schema": "hot-updater.storage-v2-provider-matrix/v1",
+  "cells": [
+    {
+      "id": "mock-neutral",
+      "entry": "@hot-updater/mock/storage",
+      "entryTarget": "neutral",
+      "target": "node",
+      "acceptedTargets": ["node", "worker", "functions", "edge"],
+      "protocol": "storage",
+      "createOnly": true,
+      "range": true,
+      "delivery": "unsupported",
+      "list": "unsupported",
+      "ownership": "borrowed-direct",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": ["context", "stream"],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "borrowed"
+      }
+    },
+    {
+      "id": "mock-node",
+      "entry": "@hot-updater/mock/storage/node",
+      "entryTarget": "node",
+      "target": "node",
+      "acceptedTargets": ["node"],
+      "protocol": "storage",
+      "createOnly": true,
+      "range": true,
+      "delivery": "unsupported",
+      "list": "unsupported",
+      "ownership": "borrowed-direct",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": ["context", "stream"],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "borrowed"
+      }
+    },
+    {
+      "id": "aws-node",
+      "entry": "@hot-updater/aws/storage/node",
+      "entryTarget": "node",
+      "target": "node",
+      "acceptedTargets": ["node"],
+      "protocol": "s3",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "owned-factory",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": [
+          "endpoint",
+          "credential",
+          "bucket",
+          "client",
+          "stream"
+        ],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "response-owned"
+      }
+    },
+    {
+      "id": "aws-lambda",
+      "entry": "@hot-updater/aws/storage/lambda",
+      "entryTarget": "functions",
+      "target": "functions",
+      "acceptedTargets": ["functions"],
+      "protocol": "s3",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "owned-factory",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": [
+          "endpoint",
+          "credential",
+          "bucket",
+          "client",
+          "stream"
+        ],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "response-owned"
+      }
+    },
+    {
+      "id": "cloudflare-node",
+      "entry": "@hot-updater/cloudflare/storage/node",
+      "entryTarget": "node",
+      "target": "node",
+      "acceptedTargets": ["node"],
+      "protocol": "r2",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "owned-factory",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": [
+          "endpoint",
+          "credential",
+          "bucket",
+          "client",
+          "stream"
+        ],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "response-owned"
+      }
+    },
+    {
+      "id": "cloudflare-worker",
+      "entry": "@hot-updater/cloudflare/storage/worker",
+      "entryTarget": "worker",
+      "target": "worker",
+      "acceptedTargets": ["worker"],
+      "protocol": "r2",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "borrowed-direct",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": ["binding", "bucket", "stream"],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "borrowed"
+      }
+    },
+    {
+      "id": "firebase-node",
+      "entry": "@hot-updater/firebase/storage/node",
+      "entryTarget": "node",
+      "target": "node",
+      "acceptedTargets": ["node"],
+      "protocol": "gs",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "owned-factory",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": ["credential", "bucket", "client", "stream"],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "response-owned"
+      }
+    },
+    {
+      "id": "firebase-functions",
+      "entry": "@hot-updater/firebase/storage/functions",
+      "entryTarget": "functions",
+      "target": "functions",
+      "acceptedTargets": ["functions"],
+      "protocol": "gs",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "owned-factory",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": ["credential", "bucket", "client", "stream"],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "response-owned"
+      }
+    },
+    {
+      "id": "supabase-node",
+      "entry": "@hot-updater/supabase/storage/node",
+      "entryTarget": "node",
+      "target": "node",
+      "acceptedTargets": ["node"],
+      "protocol": "supabase-storage",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "owned-factory",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": [
+          "endpoint",
+          "credential",
+          "header",
+          "bucket",
+          "client",
+          "stream"
+        ],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "response-owned"
+      }
+    },
+    {
+      "id": "supabase-edge",
+      "entry": "@hot-updater/supabase/storage/edge",
+      "entryTarget": "edge",
+      "target": "edge",
+      "acceptedTargets": ["worker", "edge"],
+      "protocol": "supabase-storage",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "owned-factory",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": [
+          "endpoint",
+          "credential",
+          "header",
+          "bucket",
+          "client",
+          "stream"
+        ],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "response-owned"
+      }
+    },
+    {
+      "id": "standalone-neutral",
+      "entry": "@hot-updater/standalone/storage",
+      "entryTarget": "neutral",
+      "target": "node",
+      "acceptedTargets": ["node", "worker", "functions", "edge"],
+      "protocol": "http",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "remote-mount",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": ["endpoint", "header", "stream"],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "response-owned"
+      }
+    },
+    {
+      "id": "standalone-node",
+      "entry": "@hot-updater/standalone/storage/node",
+      "entryTarget": "node",
+      "target": "node",
+      "acceptedTargets": ["node"],
+      "protocol": "http",
+      "createOnly": true,
+      "range": true,
+      "delivery": "supported",
+      "list": "unsupported",
+      "ownership": "remote-mount",
+      "contractVersion": 2,
+      "operations": { "put": true, "head": true, "get": true, "delete": true },
+      "runtime": {
+        "observations": ["endpoint", "header", "stream"],
+        "literalCache": "allowed",
+        "taggedCache": "forbidden",
+        "streamLifetime": "response-owned"
+      }
+    }
+  ]
+}

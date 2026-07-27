@@ -1,0 +1,4 @@
+{
+  "schema": "hot-updater.storage-v2-matrix-fixture/v1",
+  "mutation": "flip-create-only"
+}

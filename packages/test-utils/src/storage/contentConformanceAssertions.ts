@@ -67,21 +67,22 @@ export const contentConformanceAssertions = {
     context: TContext,
   ): Promise<void> {
     const outcomes = await Promise.all(
-      [new Uint8Array([1]), new Uint8Array([2])].map((body) =>
-        plugin.put({
-          context,
-          key: "conformance/atomic",
-          body,
-          contentLength: body.byteLength,
-          condition: "create-only",
-        }),
+      Array.from({ length: 20 }, (_, index) => new Uint8Array([index + 1])).map(
+        (body) =>
+          plugin.put({
+            context,
+            key: "conformance/atomic",
+            body,
+            contentLength: body.byteLength,
+            condition: "create-only",
+          }),
       ),
     );
     const stored = outcomes.filter((result) => result.kind === "stored").length;
     const existing = outcomes.filter(
       (result) => result.kind === "already-exists",
     ).length;
-    if (stored !== 1 || existing !== 1) {
+    if (stored !== 1 || existing !== 19) {
       failConformance(
         "atomic-create-only",
         "concurrent create-only writes did not produce one winner",
