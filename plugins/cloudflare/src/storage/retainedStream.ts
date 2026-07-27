@@ -11,6 +11,7 @@ export const retainR2ClientThroughStream = (
     }
     settled = true;
     signal?.removeEventListener("abort", abort);
+    reader.releaseLock();
     release();
   };
   const abort = (): void => {

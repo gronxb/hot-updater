@@ -24,9 +24,14 @@ export const wrapFirebaseStream = (
   const reader = source.getReader();
   let settled: Promise<void> | undefined;
   let abortHandler: (() => void) | undefined;
+  let readerReleased = false;
 
   const finish = (): Promise<void> => {
     signal?.removeEventListener("abort", abortHandler ?? finish);
+    if (!readerReleased) {
+      reader.releaseLock();
+      readerReleased = true;
+    }
     settled ??= settle();
     return settled;
   };

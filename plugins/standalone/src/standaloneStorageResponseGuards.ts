@@ -114,6 +114,12 @@ export const guardStandaloneResponseBody = (
   if (body === null) throw invalidResponse();
   const reader = body.getReader();
   let received = 0;
+  let readerReleased = false;
+  const releaseReader = () => {
+    if (readerReleased) return;
+    reader.releaseLock();
+    readerReleased = true;
+  };
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
@@ -129,13 +135,16 @@ export const guardStandaloneResponseBody = (
           } else {
             controller.close();
           }
-          reader.releaseLock();
+          releaseReader();
           return;
         }
         received += next.value.byteLength;
         if (received > expectedLength) {
-          await reader.cancel();
-          reader.releaseLock();
+          try {
+            await reader.cancel();
+          } finally {
+            releaseReader();
+          }
           controller.error(
             new StoragePluginError(
               "integrity",
@@ -146,16 +155,16 @@ export const guardStandaloneResponseBody = (
         }
         controller.enqueue(next.value);
       } catch (error) {
-        if (error instanceof Error) {
-          controller.error(error);
-          return;
-        }
+        releaseReader();
         throw error;
       }
     },
     async cancel(reason) {
-      await reader.cancel(reason);
-      reader.releaseLock();
+      try {
+        await reader.cancel(reason);
+      } finally {
+        releaseReader();
+      }
     },
   });
 };

@@ -20,6 +20,7 @@ export const retainClientThroughStream = (
     }
     settled = true;
     signal?.removeEventListener("abort", abort);
+    reader.releaseLock();
     release();
   };
   const abort = (): void => {

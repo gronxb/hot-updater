@@ -16,6 +16,7 @@ import {
   createStandaloneStorageHandler,
   STANDALONE_STORAGE_V2,
 } from "./standaloneStorageHandler";
+import { guardStandaloneResponseBody } from "./standaloneStorageResponseGuards";
 import { standaloneStorage } from "./storage";
 
 const context = createStorageOperationContext({
@@ -344,5 +345,63 @@ describe("standalone storage v2 wire contract", () => {
       delivery: "/hot-updater/storage/v2/delivery",
       object: "/hot-updater/storage/v2/objects",
     });
+  });
+});
+
+describe("standalone storage v2 response body guard", () => {
+  it("preserves bytes and releases the upstream reader after close", async () => {
+    // Given
+    const expected = new Uint8Array([1, 2, 3]);
+    const upstream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(expected);
+        controller.close();
+      },
+    });
+    const guarded = guardStandaloneResponseBody(upstream, expected.byteLength);
+
+    // When
+    const actual = new Uint8Array(await new Response(guarded).arrayBuffer());
+
+    // Then
+    expect(actual).toEqual(expected);
+    expect(upstream.locked).toBe(false);
+  });
+
+  it("releases the upstream reader lock when reading rejects", async () => {
+    // Given
+    const readError = new Error("upstream read failed");
+    const upstream = new ReadableStream<Uint8Array>({
+      pull() {
+        throw readError;
+      },
+    });
+    const guarded = guardStandaloneResponseBody(upstream, 1);
+    const reader = guarded.getReader();
+
+    // When
+    const read = reader.read();
+
+    // Then
+    await expect(read).rejects.toBe(readError);
+    expect(upstream.locked).toBe(false);
+  });
+
+  it("cancels once and releases the upstream reader when the consumer cancels", async () => {
+    // Given
+    const reason = new Error("consumer cancelled");
+    const cancel = vi.fn();
+    const upstream = new ReadableStream<Uint8Array>({ cancel });
+    const guarded = guardStandaloneResponseBody(upstream, 1);
+    const reader = guarded.getReader();
+
+    // When
+    await reader.cancel(reason);
+    await reader.cancel(reason);
+
+    // Then
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledWith(reason);
+    expect(upstream.locked).toBe(false);
   });
 });
