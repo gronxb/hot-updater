@@ -6,7 +6,7 @@ import {
   readFile,
   readdir,
   rm,
-  symlink,
+  writeFile,
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -15,7 +15,6 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 type PackageMetadata = Readonly<{
-  dependencies: readonly string[];
   name: string;
 }>;
 
@@ -39,6 +38,27 @@ export const resolveServerPluginPackageDirectories = (
     "plugins/standalone",
   ].map((directory) => path.join(workspaceRoot, directory));
 
+export const resolveStorageV2PackageDirectories = (
+  workspaceRoot: string,
+): readonly string[] =>
+  [
+    "packages/core",
+    "packages/bsdiff",
+    "packages/analytics",
+    "packages/better-auth",
+    "packages/cli-tools",
+    "packages/server",
+    "packages/test-utils",
+    "plugins/js",
+    "plugins/plugin-core",
+    "plugins/mock",
+    "plugins/aws",
+    "plugins/cloudflare",
+    "plugins/firebase",
+    "plugins/supabase",
+    "plugins/standalone",
+  ].map((directory) => path.join(workspaceRoot, directory));
+
 const readPackageMetadata = async (
   packageDirectory: string,
 ): Promise<PackageMetadata> => {
@@ -49,33 +69,16 @@ const readPackageMetadata = async (
     throw new TypeError(`Invalid package metadata in ${packageDirectory}`);
   }
   const name = Reflect.get(parsed, "name");
-  const dependencies = Reflect.get(parsed, "dependencies");
   if (typeof name !== "string") {
     throw new TypeError(`Missing package name in ${packageDirectory}`);
   }
-  return {
-    dependencies:
-      typeof dependencies === "object" && dependencies !== null
-        ? Object.keys(dependencies)
-        : [],
-    name,
-  };
-};
-
-const linkModule = async (
-  nodeModulesDirectory: string,
-  name: string,
-  target: string,
-): Promise<void> => {
-  const destination = path.join(nodeModulesDirectory, name);
-  await mkdir(path.dirname(destination), { recursive: true });
-  await symlink(target, destination, "dir");
+  return { name };
 };
 
 const packPackage = async (
   sourceDirectory: string,
   temporaryDirectory: string,
-): Promise<Readonly<{ directory: string; metadata: PackageMetadata }>> => {
+): Promise<Readonly<{ archive: string; metadata: PackageMetadata }>> => {
   const packDirectory = path.join(
     temporaryDirectory,
     "packs",
@@ -91,22 +94,15 @@ const packPackage = async (
   if (archive === undefined) {
     throw new Error(`pnpm pack produced no archive for ${sourceDirectory}`);
   }
-  const extractDirectory = path.join(packDirectory, "extracted");
-  await mkdir(extractDirectory);
-  await execFileAsync(
-    "tar",
-    ["-xzf", path.join(packDirectory, archive), "-C", extractDirectory],
-    { cwd: sourceDirectory },
-  );
-  const directory = path.join(extractDirectory, "package");
   return {
-    directory,
-    metadata: await readPackageMetadata(directory),
+    archive: path.join(packDirectory, archive),
+    metadata: await readPackageMetadata(sourceDirectory),
   };
 };
 
 export const createPackedConsumer = async (
   sourceDirectories: readonly string[],
+  additionalDependencies: Readonly<Record<string, string>> = {},
 ): Promise<PackedConsumer> => {
   const temporaryDirectory = await mkdtemp(
     path.join(os.tmpdir(), "hot-updater-server-plugins-pack-"),
@@ -116,41 +112,59 @@ export const createPackedConsumer = async (
       packPackage(sourceDirectory, temporaryDirectory),
     ),
   );
-  const packedByName = new Map(
-    packedPackages.map(({ directory, metadata }) => [metadata.name, directory]),
+  const archiveByName = new Map(
+    packedPackages.map(({ archive, metadata }) => [metadata.name, archive]),
   );
-  const sourceByName = new Map(
-    await Promise.all(
-      sourceDirectories.map(
-        async (directory) =>
-          [(await readPackageMetadata(directory)).name, directory] as const,
-      ),
+  const directory = path.join(temporaryDirectory, "consumer");
+  await mkdir(directory);
+  const tarballDependencies = Object.fromEntries(
+    [...archiveByName].map(([name, archive]) => [name, `file:${archive}`]),
+  );
+  await writeFile(
+    path.join(directory, "package.json"),
+    JSON.stringify(
+      {
+        private: true,
+        dependencies: {
+          ...additionalDependencies,
+          ...tarballDependencies,
+        },
+      },
+      null,
+      2,
     ),
   );
-
-  for (const { directory, metadata } of packedPackages) {
-    const nodeModulesDirectory = path.join(directory, "node_modules");
-    await mkdir(nodeModulesDirectory);
-    for (const dependency of metadata.dependencies) {
-      const packedDependency = packedByName.get(dependency);
-      const target =
-        packedDependency ??
-        path.join(
-          sourceByName.get(metadata.name) ?? "",
-          "node_modules",
-          dependency,
-        );
-      await access(target);
-      await linkModule(nodeModulesDirectory, dependency, target);
-    }
-  }
-
-  const directory = path.join(temporaryDirectory, "consumer");
-  const nodeModulesDirectory = path.join(directory, "node_modules");
-  await mkdir(nodeModulesDirectory, { recursive: true });
-  for (const [name, packageDirectory] of packedByName) {
-    await linkModule(nodeModulesDirectory, name, packageDirectory);
-  }
+  await writeFile(
+    path.join(directory, "pnpm-workspace.yaml"),
+    [
+      "packages:",
+      '  - "."',
+      "overrides:",
+      ...Object.entries(tarballDependencies).map(
+        ([name, archive]) =>
+          `  ${JSON.stringify(name)}: ${JSON.stringify(archive)}`,
+      ),
+      "",
+    ].join("\n"),
+  );
+  await execFileAsync(
+    "pnpm",
+    [
+      "install",
+      "--ignore-scripts",
+      "--lockfile=false",
+      "--prefer-offline",
+      "--strict-peer-dependencies=false",
+    ],
+    { cwd: directory },
+  );
+  const packedByName = new Map(
+    [...archiveByName].map(([name]) => [
+      name,
+      path.join(directory, "node_modules", name),
+    ]),
+  );
+  await Promise.all([...packedByName.values()].map((target) => access(target)));
   return {
     directory,
     dispose: () => rm(temporaryDirectory, { force: true, recursive: true }),
@@ -166,5 +180,21 @@ export const runNode = (
   execFileAsync(
     process.execPath,
     [...(module ? ["--input-type=module"] : []), "--eval", source],
+    { cwd: consumerDirectory },
+  );
+
+export const runNodeWithConditions = (
+  consumerDirectory: string,
+  source: string,
+  conditions: readonly string[],
+) =>
+  execFileAsync(
+    process.execPath,
+    [
+      ...conditions.map((condition) => `--conditions=${condition}`),
+      "--input-type=module",
+      "--eval",
+      source,
+    ],
     { cwd: consumerDirectory },
   );
