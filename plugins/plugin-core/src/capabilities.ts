@@ -82,7 +82,7 @@ export interface RuntimeStorageAccess {
  * Runtime storage methods preserve the caller's platform context while hiding
  * provider profiles, configuration, and credentials.
  */
-export interface HotUpdaterInfrastructureRuntime<TContext = unknown> {
+export interface HotUpdaterInfrastructureRuntime<_TContext = unknown> {
   readonly database: DatabaseCapabilityRuntime;
   readonly storages: readonly RuntimeStorageAccess[];
 }
