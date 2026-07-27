@@ -5,6 +5,8 @@ packages:
   - examples/*
   - examples-server/*
 
+verifyDepsBeforeRun: false
+
 overrides:
   "recharts@3.8.0>es-toolkit": 1.46.0
 

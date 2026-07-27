@@ -13,6 +13,7 @@ import {
 import type { DetoxControlOptions, DetoxAppDriver } from "./scenarios.ts";
 
 const repoDir = path.resolve(import.meta.dirname, "../..");
+const pnpmWorkspacePath = path.join(repoDir, "pnpm-workspace.yaml");
 const detoxRunnerPath = path.join(repoDir, "e2e/detox/scripts/run.ts");
 const detoxPagePath = path.join(repoDir, "e2e/detox/detox-page.js");
 const detoxScreenRoutesDir = path.join(repoDir, "e2e/detox/screen-routes");
@@ -241,6 +242,12 @@ async function controlStepDefinition(
 }
 
 describe("Detox scenario contract", () => {
+  it("does not auto-install dependencies when split worktrees run scripts", async () => {
+    const pnpmWorkspaceSource = await fs.readFile(pnpmWorkspacePath, "utf8");
+
+    expect(pnpmWorkspaceSource).toMatch(/^verifyDepsBeforeRun:\s*false$/mu);
+  });
+
   it("defines the default suite from Detox-owned catalog modules", () => {
     const detoxScenarios = resolveDetoxSuiteScenarioNames("default");
 
