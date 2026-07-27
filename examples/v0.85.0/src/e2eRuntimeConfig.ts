@@ -1,7 +1,4 @@
-import {
-  HOT_UPDATER_APP_BASE_URL,
-  HOT_UPDATER_E2E_RUNTIME_CONFIG_URL,
-} from "@env";
+import { HOT_UPDATER_APP_BASE_URL } from "@env";
 import { LaunchArguments } from "react-native-launch-arguments";
 
 const DEFAULT_APP_BASE_URL = "http://localhost:3007/hot-updater";
@@ -42,9 +39,7 @@ export const fallbackHotUpdaterBaseURL =
 const hotUpdaterRuntimeConfigURL =
   detoxLaunchArgumentString(
     e2eLaunchArguments.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL,
-  ) ??
-  HOT_UPDATER_E2E_RUNTIME_CONFIG_URL ??
-  DEFAULT_E2E_RUNTIME_CONFIG_URL;
+  ) ?? DEFAULT_E2E_RUNTIME_CONFIG_URL;
 
 const screenStateURLFromRuntimeConfigURL = (runtimeConfigURL: string) => {
   if (runtimeConfigURL.endsWith("/runtime-config")) {

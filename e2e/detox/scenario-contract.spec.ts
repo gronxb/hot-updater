@@ -587,6 +587,18 @@ describe("Detox scenario contract", () => {
     expect(launchBody).not.toMatch(/\bsetTimeout\b/i);
   });
 
+  it("does not require the runtime config URL during the native build", async () => {
+    const runtimeConfigSource = await fs.readFile(runtimeConfigPath, "utf8");
+
+    expect(runtimeConfigSource).not.toMatch(
+      /import\s*\{[^}]*HOT_UPDATER_E2E_RUNTIME_CONFIG_URL[^}]*\}\s*from "@env"/su,
+    );
+    expect(runtimeConfigSource).toContain(
+      "e2eLaunchArguments.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL",
+    );
+    expect(runtimeConfigSource).toContain("DEFAULT_E2E_RUNTIME_CONFIG_URL");
+  });
+
   it("keeps Detox runtime config wiring outside App.tsx", async () => {
     // Given: provider-specific URLs must remain runtime values so native builds
     // can be reused across profiles and shards without bloating App.tsx.
