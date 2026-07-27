@@ -121,7 +121,7 @@ export const setEnv = async ({
   }
 };
 
-const handleError = (err: unknown) => {
+const handleError: (err: unknown) => never = (err) => {
   if (err instanceof ExecaError) {
     p.log.error(err.stderr || err.stdout || err.message);
   } else if (err instanceof Error) {
