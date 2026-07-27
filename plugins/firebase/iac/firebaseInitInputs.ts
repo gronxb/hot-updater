@@ -1,8 +1,9 @@
 import {
   assertInitProviderInputs,
-  FIREBASE_INIT_PROVIDER,
   resolveInitProviderInput,
 } from "@hot-updater/cli-tools";
+
+import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
 
 export type FirebaseInitInputs = {
   readonly applicationCredentials?: string;

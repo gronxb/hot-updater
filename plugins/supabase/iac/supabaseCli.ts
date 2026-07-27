@@ -1,12 +1,10 @@
 import fs from "fs/promises";
 import path from "path";
 
-import {
-  p,
-  SUPABASE_INIT_PROVIDER,
-  transformTemplate,
-} from "@hot-updater/cli-tools";
+import { p, transformTemplate } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
+
+import { initProvider as SUPABASE_INIT_PROVIDER } from "./init/index";
 
 const SUPABASE_CONFIG_TEMPLATE = `
 project_id = "%%projectId%%"

@@ -7,6 +7,6 @@
 "@hot-updater/supabase": patch
 ---
 
-Declare provider init inputs in one shared contract, ask once before saving
-credential inputs, and support prompt-free infrastructure reconciliation with
-`init --env-file .env.hotupdater`.
+Declare init inputs in each provider package through a shared contract, ask
+once before saving credential inputs, and support prompt-free infrastructure
+reconciliation with `init --env-file .env.hotupdater`.

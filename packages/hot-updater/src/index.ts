@@ -6,7 +6,7 @@ import {
 } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, INIT_PROVIDER_NAMES, p } from "@hot-updater/cli-tools";
+import { banner, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import semverValid from "semver/ranges/valid";
 
@@ -29,6 +29,7 @@ import {
 } from "@/commands/deploy";
 import { init } from "@/commands/init";
 import { initHelp } from "@/commands/initHelp";
+import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";

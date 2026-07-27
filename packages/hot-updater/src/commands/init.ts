@@ -1,17 +1,10 @@
-import type {
-  BuildType,
-  InitProvider,
-  RunInitOptions,
-} from "@hot-updater/cli-tools";
+import type { BuildType, RunInitOptions } from "@hot-updater/cli-tools";
 import {
   getHotUpdaterEnvValue,
   getMissingInitInputs,
   getMissingInitProviderInputs,
   HotUpdateDirUtil,
-  INIT_PROVIDER_DEFINITIONS,
-  INIT_PROVIDER_NAMES,
   InitError,
-  isInitProvider,
   makeEnv,
   MissingInitInputsError,
   p,
@@ -26,6 +19,13 @@ import {
   isProjectFileTracked,
 } from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
+
+import {
+  type InitProvider,
+  INIT_PROVIDER_NAMES,
+  INIT_PROVIDER_PACKAGES,
+  isInitProvider,
+} from "./initProviders";
 
 const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
 const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
@@ -66,47 +66,6 @@ const BUILD_PLUGINS: Record<"bare" | "rock" | "expo", BuildPluginChoice> = {
     devDependencies: ["@hot-updater/expo"],
   },
 };
-
-type InitProviderModule = {
-  runInit(options: RunInitOptions): Promise<void>;
-};
-
-const PROVIDERS = {
-  supabase: {
-    dependencies: [],
-    devDependencies: ["@hot-updater/supabase"],
-    load: (): Promise<InitProviderModule> =>
-      import("@hot-updater/supabase/iac"),
-  },
-  aws: {
-    dependencies: [],
-    devDependencies: ["@hot-updater/aws"],
-    load: (): Promise<InitProviderModule> => import("@hot-updater/aws/iac"),
-  },
-  cloudflare: {
-    dependencies: [],
-    devDependencies: ["wrangler", "@hot-updater/cloudflare"],
-    load: (): Promise<InitProviderModule> =>
-      import("@hot-updater/cloudflare/iac"),
-  },
-  firebase: {
-    dependencies: [],
-    devDependencies: [
-      "firebase-tools",
-      "firebase-admin",
-      "@hot-updater/firebase",
-    ],
-    load: (): Promise<InitProviderModule> =>
-      import("@hot-updater/firebase/iac"),
-  },
-} satisfies Record<
-  InitProvider,
-  {
-    readonly dependencies: readonly string[];
-    readonly devDependencies: readonly string[];
-    readonly load: () => Promise<InitProviderModule>;
-  }
->;
 
 type BuildPluginKey = keyof typeof BUILD_PLUGINS;
 
@@ -149,9 +108,9 @@ const collectInitChoices = async (
         ? getMissingInitProviderInputs({
             inputs: resolveInitProviderInputs(
               existingEnv,
-              INIT_PROVIDER_DEFINITIONS[provider],
+              INIT_PROVIDER_PACKAGES[provider].definition,
             ),
-            provider: INIT_PROVIDER_DEFINITIONS[provider],
+            provider: INIT_PROVIDER_PACKAGES[provider].definition,
           })
         : []),
     ];
@@ -184,7 +143,7 @@ const collectInitChoices = async (
               message: "Select a provider",
               options: INIT_PROVIDER_NAMES.map((value) => ({
                 value,
-                label: INIT_PROVIDER_DEFINITIONS[value].label,
+                label: INIT_PROVIDER_PACKAGES[value].definition.label,
               })),
             }),
     },
@@ -246,6 +205,7 @@ export const init = async (options: InitOptions = {}) => {
 
   const buildPluginPackage = BUILD_PLUGINS[choices.build];
   const provider = choices.provider;
+  const providerPackage = INIT_PROVIDER_PACKAGES[provider];
 
   await makeEnv({
     [INIT_BUILD_ENV_KEY]: choices.build,
@@ -257,12 +217,12 @@ export const init = async (options: InitOptions = {}) => {
       dependencies: [
         ...buildPluginPackage.dependencies,
         ...REQUIRED_PACKAGES.dependencies,
-        ...PROVIDERS[provider].dependencies,
       ],
       devDependencies: [
         ...buildPluginPackage.devDependencies,
         ...REQUIRED_PACKAGES.devDependencies,
-        ...PROVIDERS[provider].devDependencies,
+        ...providerPackage.devDependencies,
+        providerPackage.packageName,
       ],
     });
   } catch (e) {
@@ -281,7 +241,7 @@ export const init = async (options: InitOptions = {}) => {
     envFile: options.envFile,
   } satisfies RunInitOptions;
   try {
-    const providerModule = await PROVIDERS[provider].load();
+    const providerModule = await providerPackage.load();
     await providerModule.runInit(runInitOptions);
   } catch (error) {
     if (handleInitError(error)) {

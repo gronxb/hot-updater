@@ -4,7 +4,6 @@ import {
   fromSSO,
 } from "@aws-sdk/credential-providers";
 import {
-  AWS_INIT_PROVIDER,
   MissingInitInputsError,
   p,
   resolveInitProviderInput,
@@ -12,6 +11,7 @@ import {
 import { ExecaError, execa } from "execa";
 
 import { type AwsAuthMode, isAwsAuthMode } from "./awsInitInputs";
+import { initProvider as AWS_INIT_PROVIDER } from "./init/index";
 import type { AwsConfigScaffoldAuthMode } from "./templates";
 
 type AwsCredentials = {

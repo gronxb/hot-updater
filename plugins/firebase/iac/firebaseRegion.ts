@@ -1,12 +1,11 @@
-import {
-  FIREBASE_INIT_PROVIDER,
-  isFirebaseRegion,
-  MissingInitInputsError,
-  p,
-} from "@hot-updater/cli-tools";
+import { MissingInitInputsError, p } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 import type { FirebaseCliEnv } from "./firebaseInitInputs";
+import {
+  initProvider as FIREBASE_INIT_PROVIDER,
+  isFirebaseRegion,
+} from "./init/index";
 
 const REGIONS = [
   { value: "us-central1", label: "US Central (Iowa)" },

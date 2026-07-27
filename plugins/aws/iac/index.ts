@@ -1,5 +1,4 @@
 import {
-  AWS_INIT_PROVIDER,
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
@@ -22,6 +21,7 @@ import {
 } from "./awsInitInputs";
 import { CloudFrontManager } from "./cloudfront";
 import { IAMManager } from "./iam";
+import { initProvider as AWS_INIT_PROVIDER } from "./init/index";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
 import { Migration0001HotUpdater0_13_0 } from "./migrations/Migration0001HotUpdater0_13_0";
 import { Migration0001HotUpdater0_18_0 } from "./migrations/Migration0001HotUpdater0_18_0";

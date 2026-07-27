@@ -1,4 +1,4 @@
-import type { SupabaseRegion } from "@hot-updater/cli-tools";
+import type { SupabaseRegion } from "./init/index";
 
 const SUPABASE_MANAGEMENT_API_URL = "https://api.supabase.com/v1";
 export const SUPABASE_MANAGEMENT_API_TIMEOUT_MS = 30_000;

@@ -1,8 +1,9 @@
 import {
   assertInitProviderInputs,
-  CLOUDFLARE_INIT_PROVIDER,
   resolveInitProviderInput,
 } from "@hot-updater/cli-tools";
+
+import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
 
 export type CloudflareInitInputs = {
   readonly accessKeyId?: string;

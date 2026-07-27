@@ -3,7 +3,6 @@ import fs from "fs/promises";
 import path from "path";
 
 import {
-  CLOUDFLARE_INIT_PROVIDER,
   ConfigBuilder,
   confirmInitInputPersistence,
   copyDirToTmp,
@@ -33,6 +32,7 @@ import {
 } from "./cloudflareInitInputs";
 import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
 import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
+import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
 
 const getConfigScaffold = (
   build: RunInitOptions["build"],

@@ -12,6 +12,11 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./init": {
+      "types": "./dist/init/index.d.cts",
+      "import": "./dist/init/index.mjs",
+      "require": "./dist/init/index.cjs"
+    },
     "./iac": {
       "types": "./dist/iac/index.d.cts",
       "import": "./dist/iac/index.mjs",

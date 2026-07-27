@@ -9,7 +9,6 @@ import {
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
   getInitProviderEnvVars,
-  isSupabaseFunctionName,
   link,
   makeEnv,
   type HotUpdaterConfigScaffold,
@@ -20,8 +19,6 @@ import {
   type RunInitOptions,
   resolvePackageVersion,
   shouldAutoSelectOnlyInitResource,
-  SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
-  SUPABASE_INIT_PROVIDER,
   transformEnv,
   transformTemplate,
   writeHotUpdaterConfig,
@@ -29,6 +26,11 @@ import {
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import {
+  initProvider as SUPABASE_INIT_PROVIDER,
+  isSupabaseFunctionName,
+  SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
+} from "./init/index";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 import { linkSupabase, pushDB } from "./supabaseCli";
 import {

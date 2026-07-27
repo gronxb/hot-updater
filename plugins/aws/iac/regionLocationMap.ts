@@ -1,4 +1,4 @@
-import type { AwsRegionValue } from "@hot-updater/cli-tools";
+import type { AwsRegionValue } from "./init/index";
 
 export type AwsRegion = AwsRegionValue;
 

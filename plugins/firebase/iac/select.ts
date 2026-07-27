@@ -2,9 +2,7 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
-  FIREBASE_INIT_PROVIDER,
   type HotUpdaterConfigScaffold,
-  isFirebaseProjectId,
   link,
   makeEnv,
   type ManagedHelperStatement,
@@ -17,6 +15,10 @@ import {
 import { ExecaError, execa } from "execa";
 
 import type { FirebaseCliEnv } from "./firebaseInitInputs";
+import {
+  initProvider as FIREBASE_INIT_PROVIDER,
+  isFirebaseProjectId,
+} from "./init/index";
 
 const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {

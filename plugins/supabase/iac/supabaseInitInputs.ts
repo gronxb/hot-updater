@@ -2,17 +2,20 @@ import {
   assertInitInputs,
   assertInitProviderInputs,
   getHotUpdaterEnvValue,
-  isSupabaseFunctionName,
-  isSupabaseRegion,
   MissingInitInputsError,
   p,
   resolveInitProviderInput,
   shouldAutoSelectOnlyInitResource,
+} from "@hot-updater/cli-tools";
+
+import {
+  initProvider as SUPABASE_INIT_PROVIDER,
+  isSupabaseFunctionName,
+  isSupabaseRegion,
   SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
-  SUPABASE_INIT_PROVIDER,
   SUPABASE_REGION_VALUES,
   type SupabaseRegion,
-} from "@hot-updater/cli-tools";
+} from "./init/index";
 
 export type SupabaseInitInputs = {
   readonly accessToken?: string;

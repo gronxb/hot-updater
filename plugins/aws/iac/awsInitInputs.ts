@@ -1,11 +1,13 @@
 import {
   assertInitProviderInputs,
-  AWS_AUTH_MODES,
-  AWS_INIT_PROVIDER,
-  isAwsAuthMode,
   resolveInitProviderInput,
 } from "@hot-updater/cli-tools";
 
+import {
+  AWS_AUTH_MODES,
+  initProvider as AWS_INIT_PROVIDER,
+  isAwsAuthMode,
+} from "./init/index";
 import { regionLocationMap } from "./regionLocationMap";
 
 export { AWS_AUTH_MODES, isAwsAuthMode };

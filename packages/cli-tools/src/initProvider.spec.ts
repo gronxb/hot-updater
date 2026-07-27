@@ -7,9 +7,6 @@ import {
   defineInitProvider,
   getMissingInitProviderInputs,
   getInitProviderEnvVars,
-  INIT_PROVIDER_DEFINITIONS,
-  INIT_PROVIDER_NAMES,
-  isInitProvider,
   resolveInitProviderInputs,
   shouldAutoSelectOnlyInitResource,
 } from "./initProvider";
@@ -19,38 +16,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("init provider registry", () => {
-  it("derives provider guards from the declared registry", () => {
+describe("init provider utilities", () => {
+  it("does not expose provider-specific definitions", async () => {
     // Given
-    const declaredProviders = ["cloudflare", "aws", "supabase", "firebase"];
+    const providerExports = [
+      "AWS_INIT_PROVIDER",
+      "CLOUDFLARE_INIT_PROVIDER",
+      "FIREBASE_INIT_PROVIDER",
+      "INIT_PROVIDER_DEFINITIONS",
+      "INIT_PROVIDER_NAMES",
+      "SUPABASE_INIT_PROVIDER",
+    ];
 
     // When
-    const results = declaredProviders.map(isInitProvider);
-
-    // Then
-    expect(INIT_PROVIDER_NAMES).toEqual(declaredProviders);
-    expect(results).toEqual([true, true, true, true]);
-    expect(isInitProvider("unknown")).toBe(false);
-    expect(isInitProvider(undefined)).toBe(false);
-  });
-
-  it("validates AWS auth mode and region through its declaration", () => {
-    const provider = INIT_PROVIDER_DEFINITIONS.aws;
-    const inputs = resolveInitProviderInputs(
-      {
-        HOT_UPDATER_AWS_AUTH_MODE: "invalid",
-        HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
-        HOT_UPDATER_AWS_MIGRATION_APPROVED: "true",
-        HOT_UPDATER_S3_BUCKET_NAME: "updates",
-        HOT_UPDATER_S3_REGION: "not-a-region",
-      },
-      provider,
+    const cliTools = await import("./index");
+    const exposedProviderDefinitions = providerExports.filter((name) =>
+      Object.hasOwn(cliTools, name),
     );
 
-    expect(getMissingInitProviderInputs({ inputs, provider })).toEqual([
-      "HOT_UPDATER_AWS_AUTH_MODE",
-      "HOT_UPDATER_S3_REGION",
-    ]);
+    // Then
+    expect(exposedProviderDefinitions).toEqual([]);
   });
 
   it("auto-selects a singleton only when no saved resource was requested", () => {

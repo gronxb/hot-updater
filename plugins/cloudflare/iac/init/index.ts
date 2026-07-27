@@ -1,6 +1,6 @@
-import type { InitProviderDefinition } from "../initProvider";
+import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
-export const CLOUDFLARE_INIT_PROVIDER = {
+export const initProvider = {
   label: "Cloudflare D1 + R2 + Worker",
   inputs: {
     accountId: {

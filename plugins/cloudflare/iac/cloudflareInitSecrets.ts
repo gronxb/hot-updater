@@ -1,9 +1,6 @@
-import {
-  assertInitInputs,
-  CLOUDFLARE_INIT_PROVIDER,
-  link,
-  p,
-} from "@hot-updater/cli-tools";
+import { assertInitInputs, link, p } from "@hot-updater/cli-tools";
+
+import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
 
 type CloudflareInitSecrets = {
   readonly apiToken: string;

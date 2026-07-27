@@ -1,4 +1,4 @@
-import type { InitProviderDefinition } from "../initProvider";
+import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
 export const AWS_AUTH_MODES = [
   "local-session",
@@ -62,7 +62,7 @@ export const isAwsRegionValue = (
 ): value is AwsRegionValue =>
   value !== undefined && AWS_REGION_VALUES.some((region) => region === value);
 
-export const AWS_INIT_PROVIDER = {
+export const initProvider = {
   label: "AWS S3 + Lambda@Edge",
   inputs: {
     authMode: {

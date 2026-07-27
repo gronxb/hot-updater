@@ -1,7 +1,4 @@
-import {
-  INIT_PROVIDER_DEFINITIONS,
-  INIT_PROVIDER_NAMES,
-} from "@hot-updater/cli-tools";
+import { INIT_PROVIDER_NAMES, INIT_PROVIDER_PACKAGES } from "./initProviders";
 
 const formatInput = ({
   envKey,
@@ -33,7 +30,7 @@ export const initHelp = [
   "",
   "Provider inputs:",
   ...INIT_PROVIDER_NAMES.flatMap((providerName) => {
-    const provider = INIT_PROVIDER_DEFINITIONS[providerName];
+    const provider = INIT_PROVIDER_PACKAGES[providerName].definition;
     return [
       `\n${providerName} (${provider.label})`,
       ...Object.values(provider.inputs).map(formatInput),

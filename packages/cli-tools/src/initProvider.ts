@@ -1,48 +1,6 @@
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
 import { MissingInitInputsError } from "./initOptions";
-import {
-  AWS_AUTH_MODES,
-  AWS_INIT_PROVIDER,
-  AWS_REGION_VALUES,
-  type AwsRegionValue,
-  isAwsAuthMode,
-  isAwsRegionValue,
-} from "./initProviders/aws";
-import { CLOUDFLARE_INIT_PROVIDER } from "./initProviders/cloudflare";
-import {
-  FIREBASE_INIT_PROVIDER,
-  FIREBASE_REGION_VALUES,
-  isFirebaseProjectId,
-  isFirebaseRegion,
-} from "./initProviders/firebase";
-import {
-  isSupabaseFunctionName,
-  isSupabaseRegion,
-  SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
-  SUPABASE_INIT_PROVIDER,
-  SUPABASE_REGION_VALUES,
-  type SupabaseRegion,
-} from "./initProviders/supabase";
 import { p } from "./prompts";
-
-export {
-  AWS_AUTH_MODES,
-  AWS_INIT_PROVIDER,
-  AWS_REGION_VALUES,
-  CLOUDFLARE_INIT_PROVIDER,
-  FIREBASE_INIT_PROVIDER,
-  FIREBASE_REGION_VALUES,
-  isAwsAuthMode,
-  isAwsRegionValue,
-  isFirebaseProjectId,
-  isFirebaseRegion,
-  isSupabaseFunctionName,
-  isSupabaseRegion,
-  SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
-  SUPABASE_INIT_PROVIDER,
-  SUPABASE_REGION_VALUES,
-};
-export type { AwsRegionValue, SupabaseRegion };
 
 export type InitProviderInputPersistence = "always" | "with-consent";
 
@@ -80,24 +38,6 @@ export const defineInitProvider = <
 >(
   provider: InitProviderDefinition<TInputs>,
 ): InitProviderDefinition<TInputs> => provider;
-
-export const INIT_PROVIDER_DEFINITIONS = {
-  cloudflare: CLOUDFLARE_INIT_PROVIDER,
-  aws: AWS_INIT_PROVIDER,
-  supabase: SUPABASE_INIT_PROVIDER,
-  firebase: FIREBASE_INIT_PROVIDER,
-} as const;
-
-export type InitProvider = keyof typeof INIT_PROVIDER_DEFINITIONS;
-
-export const isInitProvider = (
-  value: string | undefined,
-): value is InitProvider =>
-  value !== undefined && Object.hasOwn(INIT_PROVIDER_DEFINITIONS, value);
-
-export const INIT_PROVIDER_NAMES = Object.keys(
-  INIT_PROVIDER_DEFINITIONS,
-).filter(isInitProvider);
 
 export const shouldAutoSelectOnlyInitResource = ({
   availableResourceCount,

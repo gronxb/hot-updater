@@ -3,7 +3,6 @@ import path from "path";
 
 import {
   confirmInitInputPersistence,
-  FIREBASE_INIT_PROVIDER,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
@@ -26,6 +25,7 @@ import {
   resolveFirebaseInitInputs,
 } from "./firebaseInitInputs";
 import { resolveFirebaseRegion } from "./firebaseRegion";
+import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 

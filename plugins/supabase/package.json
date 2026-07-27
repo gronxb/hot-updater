@@ -11,6 +11,11 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./init": {
+      "types": "./dist/init/index.d.cts",
+      "import": "./dist/init/index.mjs",
+      "require": "./dist/init/index.cjs"
+    },
     "./edge": {
       "import": "./dist/edge.mjs",
       "require": "./dist/edge.cjs"

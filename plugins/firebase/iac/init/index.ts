@@ -1,4 +1,4 @@
-import type { InitProviderDefinition } from "../initProvider";
+import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
 export const FIREBASE_REGION_VALUES = [
   "us-central1",
@@ -34,7 +34,7 @@ export const isFirebaseProjectId = (
 ): value is string =>
   value !== undefined && /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(value);
 
-export const FIREBASE_INIT_PROVIDER = {
+export const initProvider = {
   label: "Firebase",
   inputs: {
     projectId: {

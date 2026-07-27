@@ -1,4 +1,4 @@
-import type { InitProviderDefinition } from "../initProvider";
+import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
 export const SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY =
   "HOT_UPDATER_SUPABASE_DB_PASSWORD_PROJECT_ID";
@@ -37,7 +37,7 @@ export const isSupabaseFunctionName = (
 ): value is string =>
   value !== undefined && /^[A-Za-z][A-Za-z0-9_-]*$/.test(value);
 
-export const SUPABASE_INIT_PROVIDER = {
+export const initProvider = {
   label: "Supabase",
   inputs: {
     projectId: {
