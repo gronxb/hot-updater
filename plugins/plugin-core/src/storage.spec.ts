@@ -7,7 +7,7 @@ import {
 } from "./storage";
 
 describe("StorageOperationContext", () => {
-  it("composes one implementation into a named storage handle", () => {
+  it("composes one implementation into a named storage handle", async () => {
     // Given
     let factoryCalls = 0;
     const implementation: StoragePluginImplementation = {
@@ -34,12 +34,25 @@ describe("StorageOperationContext", () => {
         return implementation;
       },
     });
+    const result = await plugin.put({
+      key: "bundle",
+      body: new Uint8Array(),
+      contentLength: 0,
+      context: {
+        target: "node",
+        environment: {},
+        bindings: {},
+      },
+    });
 
     // Then
     expect(factoryCalls).toBe(1);
     expect(plugin.name).toBe("memory");
     expect(plugin.protocol).toBe("memory");
-    expect(plugin.put).toBe(implementation.put);
+    expect(result).toEqual({
+      kind: "stored",
+      storageUri: "memory://bundle",
+    });
   });
 
   it("preserves a live binding identity and state across operations", async () => {

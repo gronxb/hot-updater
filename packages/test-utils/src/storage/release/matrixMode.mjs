@@ -6,8 +6,8 @@ import { invariant, readJson, runCommand, sha256 } from "./driverSupport.mjs";
 const CANONICAL_CELL_COUNT = 12;
 const MATRIX_SPECS = [
   "packages/test-utils/src/storage/capabilityMatrix.spec.ts",
-  "e2e/storage-v2-certification/contextMatrix.spec.ts",
-  "e2e/storage-v2-certification/providerBackedMatrix.spec.ts",
+  "tests/storage-v2-certification/contextMatrix.spec.ts",
+  "tests/storage-v2-certification/providerBackedMatrix.spec.ts",
 ];
 
 const PROVIDERS = [
