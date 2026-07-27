@@ -6,6 +6,7 @@ import {
   parseArguments,
   writeReceipt,
 } from "../packages/test-utils/src/storage/release/driverSupport.mjs";
+import { handoffManualQaArchiveRoot } from "../packages/test-utils/src/storage/release/manualQaArchive.mjs";
 import { runManualQaMode } from "../packages/test-utils/src/storage/release/manualQaMode.mjs";
 import { runMatrixMode } from "../packages/test-utils/src/storage/release/matrixMode.mjs";
 import { createReleaseSourceBinding } from "../packages/test-utils/src/storage/release/releaseSourceBinding.mjs";
@@ -22,6 +23,7 @@ if (typeof options.mode !== "string" || typeof options.output !== "string") {
 }
 const output = path.resolve(workspace, options.output);
 const observedSha = currentSha(workspace);
+let receiptWritten = false;
 
 try {
   let result;
@@ -52,7 +54,14 @@ try {
       });
       break;
     case "manual-qa":
-      result = runManualQaMode({ workspace, output });
+      result = runManualQaMode({
+        workspace,
+        output,
+        archiveDestination:
+          options["archive-destination"] === undefined
+            ? undefined
+            : path.resolve(workspace, options["archive-destination"]),
+      });
       break;
     case "completion":
       result = runCompletionMode({
@@ -78,24 +87,30 @@ try {
       sourceBinding: createReleaseSourceBinding(workspace),
     },
   });
+  receiptWritten = true;
+  if (result.archiveHandoff !== undefined) {
+    handoffManualQaArchiveRoot(result.archiveHandoff);
+  }
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   const invariant =
     error instanceof Error && typeof error.code === "string"
       ? error.code
       : undefined;
-  writeReceipt({
-    output,
-    mode: options.mode,
-    observedSha,
-    verdict: "failed",
-    commands: [],
-    details: {
-      error: message,
-      ...(invariant === undefined ? {} : { invariant }),
-      sourceBinding: createReleaseSourceBinding(workspace),
-    },
-  });
+  if (!receiptWritten) {
+    writeReceipt({
+      output,
+      mode: options.mode,
+      observedSha,
+      verdict: "failed",
+      commands: [],
+      details: {
+        error: message,
+        ...(invariant === undefined ? {} : { invariant }),
+        sourceBinding: createReleaseSourceBinding(workspace),
+      },
+    });
+  }
   process.stderr.write(`${message}\n`);
   process.exitCode = 1;
 }

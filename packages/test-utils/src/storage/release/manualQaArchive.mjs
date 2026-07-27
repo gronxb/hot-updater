@@ -3,8 +3,11 @@ import {
   constants,
   copyFileSync,
   existsSync,
+  lstatSync,
   mkdirSync,
+  renameSync,
   rmSync,
+  statSync,
 } from "node:fs";
 import path from "node:path";
 
@@ -46,4 +49,44 @@ export const archiveManualQaTarballs = ({ archiveDirectory, tarballs }) => {
 
 export const discardManualQaTarballArchive = (archiveDirectory) => {
   rmSync(archiveDirectory, { force: true, recursive: true });
+};
+
+export const assertManualQaArchiveHandoffAvailable = ({
+  sourceRoot,
+  destinationRoot,
+}) => {
+  const source = lstatSync(sourceRoot);
+  if (!source.isDirectory() || source.isSymbolicLink()) {
+    throw new TypeError(
+      `Manual-QA archive source is not an exact directory: ${sourceRoot}`,
+    );
+  }
+  if (existsSync(destinationRoot)) {
+    throw new TypeError(
+      `Manual-QA archive destination already exists: ${destinationRoot}`,
+    );
+  }
+  const destinationParent = path.dirname(destinationRoot);
+  const parent = lstatSync(destinationParent);
+  if (!parent.isDirectory() || parent.isSymbolicLink()) {
+    throw new TypeError(
+      `Manual-QA archive destination parent is invalid: ${destinationParent}`,
+    );
+  }
+  if (
+    statSync(path.dirname(sourceRoot)).dev !== statSync(destinationParent).dev
+  ) {
+    throw new TypeError(
+      "Manual-QA archive handoff requires a same-device destination.",
+    );
+  }
+  return Object.freeze({ sourceRoot, destinationRoot });
+};
+
+export const handoffManualQaArchiveRoot = (input) => {
+  const handoff = assertManualQaArchiveHandoffAvailable(input);
+  renameSync(handoff.sourceRoot, handoff.destinationRoot);
+  if (existsSync(handoff.sourceRoot) || !existsSync(handoff.destinationRoot)) {
+    throw new TypeError("Manual-QA archive handoff did not complete.");
+  }
 };

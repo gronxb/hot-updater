@@ -13,6 +13,7 @@ import path from "node:path";
 import { invariant, runCommand, sha256 } from "./driverSupport.mjs";
 import {
   archiveManualQaTarballs,
+  assertManualQaArchiveHandoffAvailable,
   assertManualQaArchiveAvailable,
   discardManualQaTarballArchive,
 } from "./manualQaArchive.mjs";
@@ -42,8 +43,15 @@ const requireSuccess = (command, detail) => {
   return command;
 };
 
-export const runManualQaMode = ({ workspace, output }) => {
+export const runManualQaMode = ({ workspace, output, archiveDestination }) => {
   const archiveDirectory = assertManualQaArchiveAvailable(output);
+  const archiveHandoff =
+    archiveDestination === undefined
+      ? undefined
+      : assertManualQaArchiveHandoffAvailable({
+          sourceRoot: path.dirname(output),
+          destinationRoot: archiveDestination,
+        });
   const root = mkdtempSync(path.join(tmpdir(), "hot-updater-storage-v2-qa-"));
   const tarballDirectory = path.join(root, "tarballs");
   const commands = [];
@@ -195,7 +203,16 @@ export const runManualQaMode = ({ workspace, output }) => {
     const tarballHashes = Object.fromEntries(
       [...durableTarballs.entries()].map(([name, archive]) => [
         name,
-        { path: archive, sha256: sha256(readFileSync(archive)) },
+        {
+          path:
+            archiveHandoff === undefined
+              ? archive
+              : path.join(
+                  archiveHandoff.destinationRoot,
+                  path.relative(archiveHandoff.sourceRoot, archive),
+                ),
+          sha256: sha256(readFileSync(archive)),
+        },
       ]),
     );
     rmSync(root, { force: true, recursive: true });
@@ -208,6 +225,7 @@ export const runManualQaMode = ({ workspace, output }) => {
         cleanup: !existsSync(root),
         openHandles: false,
       },
+      archiveHandoff,
     };
   } catch (error) {
     rmSync(root, { force: true, recursive: true });
