@@ -81,6 +81,14 @@ const runtimeConfigPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
 );
+const exampleBabelConfigPath = path.join(
+  repoDir,
+  "examples/v0.85.0/babel.config.js",
+);
+const exampleEnvDeclarationPath = path.join(
+  repoDir,
+  "examples/v0.85.0/env.d.ts",
+);
 const defaultDetoxScenarioNames = [
   "release-ota-recovery",
   "multi-asset-replacement",
@@ -596,7 +604,12 @@ describe("Detox scenario contract", () => {
   });
 
   it("does not require the runtime config URL during the native build", async () => {
-    const runtimeConfigSource = await fs.readFile(runtimeConfigPath, "utf8");
+    const [runtimeConfigSource, babelConfigSource, envDeclarationSource] =
+      await Promise.all([
+        fs.readFile(runtimeConfigPath, "utf8"),
+        fs.readFile(exampleBabelConfigPath, "utf8"),
+        fs.readFile(exampleEnvDeclarationPath, "utf8"),
+      ]);
 
     expect(runtimeConfigSource).not.toMatch(
       /import\s*\{[^}]*HOT_UPDATER_E2E_RUNTIME_CONFIG_URL[^}]*\}\s*from "@env"/su,
@@ -605,6 +618,13 @@ describe("Detox scenario contract", () => {
       "e2eLaunchArguments.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL",
     );
     expect(runtimeConfigSource).toContain("DEFAULT_E2E_RUNTIME_CONFIG_URL");
+    expect(babelConfigSource).toContain("allowUndefined: false");
+    expect(babelConfigSource).not.toContain(
+      "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL",
+    );
+    expect(envDeclarationSource).not.toContain(
+      "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL",
+    );
   });
 
   it("keeps Detox runtime config wiring outside App.tsx", async () => {
