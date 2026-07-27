@@ -51,12 +51,12 @@ export interface HandlerAPI<TContext = unknown> {
   getChannels: (context?: HotUpdaterContext<TContext>) => Promise<string[]>;
 }
 
-export interface HandlerOptions<TContext = unknown> {
+export interface HandlerOptions {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
+  readonly handlerExtensions?: readonly HandlerExtension[];
   /** Routes exposed by the handler. */
   readonly routes?: HandlerRoutes;
-  readonly handlerExtensions?: readonly HandlerExtension<TContext>[];
 }
 
 export type RouteHandler<TContext = unknown> = (

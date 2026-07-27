@@ -1,7 +1,10 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
 import { createCoreServerRoutes } from "./coreRoutes";
-import { executeHandlerExtensions } from "./handlerExtensions";
+import {
+  executeHandlerExtensions,
+  type HandlerExtension,
+} from "./handlerExtensions";
 import type { HandlerAPI, HandlerOptions } from "./handlerTypes";
 import { selectAuthenticationProvider } from "./kernel/authentication";
 import type { HotUpdaterMatchedRoute } from "./kernel/contracts";
@@ -13,6 +16,13 @@ import { normalizeBasePath } from "./route";
 
 export type { HandlerExtension } from "./handlerExtensions";
 export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
+
+type HandlerRuntimeOptions<TContext> = Omit<
+  HandlerOptions,
+  "handlerExtensions"
+> & {
+  readonly handlerExtensions?: readonly HandlerExtension<TContext>[];
+};
 
 const matchedRoute = (
   route: ReturnType<typeof createCoreServerRoutes>[number],
@@ -27,7 +37,7 @@ const matchedRoute = (
 
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
-  options: HandlerOptions<TContext> = {},
+  options: HandlerRuntimeOptions<TContext> = {},
 ): (
   request: Request,
   context?: HotUpdaterContext<TContext>,

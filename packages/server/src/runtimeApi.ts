@@ -4,6 +4,7 @@ import type {
 } from "@hot-updater/plugin-core";
 
 import type { DatabaseAPI, DatabasePlugin } from "./db/types";
+import type { HandlerExtension } from "./handlerExtensions";
 import type { HandlerOptions } from "./handlerTypes";
 import type {
   ProjectedFeatureApis,
@@ -30,8 +31,9 @@ export type { RuntimeStorageInput } from "@hot-updater/plugin-core";
 export interface CreateHotUpdaterOptions<
   TContext = undefined,
   TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
-> extends HandlerOptions<TContext> {
+> extends Omit<HandlerOptions, "handlerExtensions"> {
   readonly database: DatabasePlugin;
+  readonly handlerExtensions?: readonly HandlerExtension<TContext>[];
   readonly plugins?: TPlugins;
   readonly storageContext?: StorageContextResolver<TContext>;
   readonly storages?: readonly RuntimeStorageInput<TContext>[];
