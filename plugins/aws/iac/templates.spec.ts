@@ -58,17 +58,20 @@ describe("AWS managed config scaffold", () => {
     );
   });
 
-  it("wires the provisioned client key into update-check request headers", () => {
+  it("wires a client key placeholder directly into request headers", () => {
     // Given: initialization renders the React Native source template.
     // When: its machine-consumed updater options are inspected.
     // Then: the managed endpoint receives the provisioned API key.
-    expect(SOURCE_TEMPLATE).toContain(
-      'import { HOT_UPDATER_API_KEY } from "@env";',
-    );
     expect(SOURCE_TEMPLATE).toContain("Object.freeze({");
     expect(SOURCE_TEMPLATE).toContain("requestHeaders,");
     expect(SOURCE_TEMPLATE).toContain('"x-api-key"');
-    expect(SOURCE_TEMPLATE).toContain('"x-api-key": HOT_UPDATER_API_KEY');
+    expect(SOURCE_TEMPLATE).toContain(
+      '"x-api-key": "<managed-client-access-key>"',
+    );
+    expect(SOURCE_TEMPLATE).not.toContain("hotUpdaterClientApiKey");
+    expect(SOURCE_TEMPLATE).not.toContain("hotUpdaterClientConfig");
+    expect(SOURCE_TEMPLATE).not.toContain('from "@env"');
+    expect(SOURCE_TEMPLATE).not.toContain("react-native-dotenv");
     expect(SOURCE_TEMPLATE).not.toContain("process.env.HOT_UPDATER_API_KEY");
     expect(SOURCE_TEMPLATE).not.toContain("createReactNativeAnalytics");
     expect(SOURCE_TEMPLATE).not.toContain("HOT_UPDATER_S3_SECRET_ACCESS_KEY");

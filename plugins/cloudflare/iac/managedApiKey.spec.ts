@@ -40,11 +40,15 @@ describe("Cloudflare managed API-key provisioning", () => {
       );
       expect(initOutput).not.toContain(first.apiKey);
       expect(initOutput).toContain(
-        'import { HOT_UPDATER_API_KEY } from "@env";',
+        '"x-api-key": "<managed-client-access-key>"',
       );
       expect(initOutput).toContain("const commonHeaders = Object.freeze({");
       expect(initOutput).toContain("requestHeaders: commonHeaders");
       expect(initOutput).toContain("analytics.recordAppReady(result)");
+      expect(initOutput).not.toContain("hotUpdaterClientApiKey");
+      expect(initOutput).not.toContain("hotUpdaterClientConfig");
+      expect(initOutput).not.toContain('from "@env"');
+      expect(initOutput).not.toContain("react-native-dotenv");
       expect(initOutput).not.toContain("process.env.HOT_UPDATER_API_KEY");
       expect(initOutput).not.toContain(
         "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",

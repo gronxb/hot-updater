@@ -122,14 +122,13 @@ export const getConfigTemplate = (
 
 export const SOURCE_TEMPLATE = `// Add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";
-import { HOT_UPDATER_API_KEY } from "@env";
 
 function App() {
   return null;
 }
 
 const requestHeaders = Object.freeze({
-  "x-api-key": HOT_UPDATER_API_KEY,
+  "x-api-key": "<managed-client-access-key>",
 });
 
 export default HotUpdater.wrap({

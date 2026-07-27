@@ -1,10 +1,10 @@
-import { HOT_UPDATER_API_KEY } from "@env";
 import { createReactNativeAnalytics } from "@hot-updater/analytics/react-native";
 import { HotUpdater } from "@hot-updater/react-native";
 import { proxy } from "valtio";
 
 import {
   fallbackHotUpdaterBaseURL,
+  hotUpdaterApiKey,
   resolveHotUpdaterBaseURL,
 } from "../e2eRuntimeConfig";
 
@@ -40,7 +40,7 @@ type UpdateProgressDetails = {
 };
 
 const requestHeaders = Object.freeze({
-  "x-api-key": HOT_UPDATER_API_KEY,
+  "x-api-key": hotUpdaterApiKey,
 });
 
 const analytics = createReactNativeAnalytics({

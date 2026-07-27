@@ -426,10 +426,14 @@ describe("managed API key provisioning", () => {
       "https://example.supabase.co/functions/v1/update-server",
     );
 
-    expect(example).toContain('import { HOT_UPDATER_API_KEY } from "@env";');
+    expect(example).toContain('"x-api-key": "<managed-client-access-key>"');
     expect(example).toContain("const commonHeaders = Object.freeze({");
     expect(example.match(/requestHeaders: commonHeaders/gmu)).toHaveLength(2);
     expect(example).toContain("analytics.recordAppReady(result)");
+    expect(example).not.toContain("hotUpdaterClientApiKey");
+    expect(example).not.toContain("hotUpdaterClientConfig");
+    expect(example).not.toContain('from "@env"');
+    expect(example).not.toContain("react-native-dotenv");
     expect(example).not.toContain("process.env.HOT_UPDATER_API_KEY");
     expect(example).not.toContain("HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY");
     expect(example).toContain("extractable from the app bundle");

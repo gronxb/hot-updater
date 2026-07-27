@@ -543,7 +543,7 @@ describe("Detox scenario contract", () => {
     expect(controllerSource).not.toContain('"builtin-android-detox"');
   });
 
-  it("passes runtime config through Detox launch arguments", async () => {
+  it("passes runtime config and the client key through launch arguments", async () => {
     // Given: split provider jobs assign a per-shard runtime config URL at test
     // runtime, after the native app has already been built.
     const detoxRuntimeSource = await readDetoxRuntimeSource();
@@ -552,6 +552,7 @@ describe("Detox scenario contract", () => {
     // Then: every launch goes through launchArgs instead of relying on @env.
     expect(detoxRuntimeSource).toContain("function runtimeLaunchArgs()");
     expect(detoxRuntimeSource).toContain("HOT_UPDATER_E2E_RUNTIME_CONFIG_URL");
+    expect(detoxRuntimeSource).toContain("HOT_UPDATER_API_KEY");
     expect(detoxRuntimeSource).toContain("launchArgs: runtimeLaunchArgs()");
     expect(detoxRuntimeSource).not.toContain(
       "device.launchApp({ newInstance: true })",
@@ -617,8 +618,8 @@ describe("Detox scenario contract", () => {
     const runtimeConfigSource = await fs.readFile(runtimeConfigPath, "utf8");
 
     // When: the example app wires HotUpdater.
-    // Then: App.tsx imports a runtime helper and the helper gives Detox launch
-    // arguments precedence over react-native-dotenv.
+    // Then: App.tsx imports a runtime helper and the helper reads E2E-only
+    // values from Detox launch arguments.
     const launchArgumentsIndex = runtimeConfigSource.indexOf(
       "LaunchArguments.value",
     );
@@ -631,10 +632,7 @@ describe("Detox scenario contract", () => {
     expect(e2eRuntimeSource).toContain(
       'from "@hot-updater/analytics/react-native"',
     );
-    expect(e2eRuntimeSource).toContain(
-      'import { HOT_UPDATER_API_KEY } from "@env";',
-    );
-    expect(e2eRuntimeSource).toContain('"x-api-key": HOT_UPDATER_API_KEY');
+    expect(e2eRuntimeSource).toContain('"x-api-key": hotUpdaterApiKey');
     expect(e2eRuntimeSource.match(/\brequestHeaders,\n/gmu)).toHaveLength(2);
     expect(e2eRuntimeSource).toContain("createReactNativeAnalytics");
     expect(e2eRuntimeSource).toContain("recordAppReady(result)");
@@ -643,7 +641,11 @@ describe("Detox scenario contract", () => {
     expect(e2eRuntimeSource).toContain('username: "hot-updater-e2e"');
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");
     expect(exampleAppSource).not.toContain('from "@env"');
+    expect(e2eRuntimeSource).not.toContain('from "@env"');
     expect(runtimeConfigSource).toContain("react-native-launch-arguments");
+    expect(runtimeConfigSource).toContain(
+      "e2eLaunchArguments.HOT_UPDATER_API_KEY",
+    );
     expect(launchArgumentsIndex).toBeGreaterThan(-1);
     expect(runtimeConfigIndex).toBe(-1);
     expect(runtimeConfigSource).toContain("detoxLaunchArgumentString");

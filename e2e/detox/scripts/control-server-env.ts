@@ -64,15 +64,15 @@ function parseEnvAssignment(text: string, key: string): string | undefined {
   return undefined;
 }
 
-function readEnvTargetAppBaseUrl(env: NodeJS.ProcessEnv): string | undefined {
+function readEnvTargetValue(
+  env: NodeJS.ProcessEnv,
+  key: string,
+): string | undefined {
   const targetPath = env.HOT_UPDATER_E2E_ENV_TARGET_PATH;
   if (!targetPath) return undefined;
 
   try {
-    return parseEnvAssignment(
-      fs.readFileSync(targetPath, "utf8"),
-      "HOT_UPDATER_APP_BASE_URL",
-    );
+    return parseEnvAssignment(fs.readFileSync(targetPath, "utf8"), key);
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return undefined;
@@ -88,7 +88,10 @@ function resolveAppBaseUrl(env: NodeJS.ProcessEnv): string {
   if (env.HOT_UPDATER_APP_BASE_URL) {
     return env.HOT_UPDATER_APP_BASE_URL;
   }
-  const envTargetAppBaseUrl = readEnvTargetAppBaseUrl(env);
+  const envTargetAppBaseUrl = readEnvTargetValue(
+    env,
+    "HOT_UPDATER_APP_BASE_URL",
+  );
   if (envTargetAppBaseUrl) {
     return envTargetAppBaseUrl;
   }
@@ -252,8 +255,11 @@ export function buildDetoxChildEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const controlBaseUrl = resolveControlBaseUrl(env);
+  const apiKey =
+    env.HOT_UPDATER_API_KEY ?? readEnvTargetValue(env, "HOT_UPDATER_API_KEY");
   return {
     ...env,
+    ...(apiKey ? { HOT_UPDATER_API_KEY: apiKey } : {}),
     CONTROL_URL: controlBaseUrl,
     HOT_UPDATER_E2E_CONTROL_BASE_URL: controlBaseUrl,
     HOT_UPDATER_E2E_PLATFORM: platform,

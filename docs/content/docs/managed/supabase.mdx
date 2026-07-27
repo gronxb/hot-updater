@@ -101,46 +101,17 @@ its digest. Update the client-side value at the same time; clients using the old
 key can no longer reach the update API. Rotation replaces the single projected
 digest; the old and new keys do not overlap.
 
-### Expose only the client access key to React Native
+### Add the client access key
 
-React Native does not expose arbitrary `process.env` values. Install
-`react-native-dotenv` and configure it to substitute only the managed client
-key at build time:
+The examples below hardcode a placeholder. Replace it with the current
+`HOT_UPDATER_API_KEY` value, then manage how that value is stored, injected,
+and rotated according to your app's own policy.
 
-```package-install
-npm install --save-dev react-native-dotenv
-```
-
-```js title="babel.config.js"
-module.exports = {
-  presets: ["module:@react-native/babel-preset"],
-  plugins: [
-    [
-      "module:react-native-dotenv",
-      {
-        moduleName: "@env",
-        path: ".env.hotupdater",
-        allowUndefined: false,
-        allowlist: ["HOT_UPDATER_API_KEY"],
-      },
-    ],
-  ],
-};
-```
-
-Preserve any existing Babel plugins when adding this entry. Do not add the
-Supabase service-role key or any other infrastructure setting from
-`.env.hotupdater` to the allowlist.
-
-```ts title="env.d.ts"
-declare module "@env" {
-  export const HOT_UPDATER_API_KEY: string;
-}
-```
-
-This build-time substitution intentionally embeds the extractable client
-access key in the app bundle. It does not embed provider credentials. Rebuild
-the app after changing the key.
+Keep `.env.hotupdater` on the development or deployment host and do not load
+the entire file into the React Native bundle because it can also contain
+infrastructure credentials. The client key is extractable from the installed
+app, so treat it as an access gate, not an administrator secret or user
+identity.
 
 ## Step 3: Generated Configurations
 
@@ -193,11 +164,10 @@ The HotUpdater component wraps your application, enabling seamless delivery of u
 ```tsx title="App.tsx"
 import { createReactNativeAnalytics } from "@hot-updater/analytics/react-native";
 import { HotUpdater } from "@hot-updater/react-native";
-import { HOT_UPDATER_API_KEY } from "@env";
 
 const baseURL = "https://<project-id>.supabase.co/functions/v1/update-server";
 const commonHeaders = Object.freeze({
-  "x-api-key": HOT_UPDATER_API_KEY,
+  "x-api-key": "<managed-client-access-key>",
 });
 const analytics = createReactNativeAnalytics({
   baseURL,

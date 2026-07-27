@@ -106,7 +106,6 @@ const assertSkippedConfigDoesNotUseLegacySupabaseKey = async (
 const SOURCE_TEMPLATE = `// add this to your App.tsx
 import { createReactNativeAnalytics } from "@hot-updater/analytics/react-native";
 import { HotUpdater } from "@hot-updater/react-native";
-import { HOT_UPDATER_API_KEY } from "@env";
 
 function App() {
   return null;
@@ -114,7 +113,7 @@ function App() {
 
 const baseURL = "%%source%%";
 const commonHeaders = Object.freeze({
-  "x-api-key": HOT_UPDATER_API_KEY,
+  "x-api-key": "<managed-client-access-key>",
 });
 const analytics = createReactNativeAnalytics({
   baseURL,

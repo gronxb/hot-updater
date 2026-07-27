@@ -1,6 +1,6 @@
 export const REQUIRED_PACKAGES = {
   dependencies: ["@hot-updater/react-native"],
-  devDependencies: ["dotenv", "react-native-dotenv"],
+  devDependencies: ["dotenv"],
 } as const;
 
 export const PACKAGE_MAP = {

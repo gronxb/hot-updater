@@ -4,7 +4,10 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { buildDetoxControlServerEnv } from "./scripts/control-server.ts";
+import {
+  buildDetoxChildEnv,
+  buildDetoxControlServerEnv,
+} from "./scripts/control-server.ts";
 
 describe("Detox control server environment", () => {
   it("uses a unique iOS DerivedData path for each split control server", () => {
@@ -104,6 +107,27 @@ describe("Detox control server environment", () => {
       expect(controlServerEnv.HOT_UPDATER_E2E_APP_BASE_URL).toBe(
         "http://127.0.0.1:3009/hot-updater",
       );
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("passes the managed client key from the env target to Detox", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-detox-env-"),
+    );
+    const envTargetPath = path.join(tempDir, ".env.hotupdater");
+    await fs.writeFile(
+      envTargetPath,
+      "HOT_UPDATER_API_KEY=managed-client-access-key\n",
+    );
+
+    try {
+      const detoxEnv = buildDetoxChildEnv("ios", {
+        HOT_UPDATER_E2E_ENV_TARGET_PATH: envTargetPath,
+      });
+
+      expect(detoxEnv.HOT_UPDATER_API_KEY).toBe("managed-client-access-key");
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }

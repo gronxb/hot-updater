@@ -43,11 +43,15 @@ function controlBaseUrl() {
 function runtimeLaunchArgs() {
   const launchArgs = {};
   const runtimeConfigURL = process.env.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL;
+  const apiKey = process.env.HOT_UPDATER_API_KEY;
   const appBaseURL =
     process.env.HOT_UPDATER_E2E_APP_BASE_URL ||
     process.env.HOT_UPDATER_APP_BASE_URL;
   if (runtimeConfigURL) {
     launchArgs.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL = runtimeConfigURL;
+  }
+  if (apiKey) {
+    launchArgs.HOT_UPDATER_API_KEY = apiKey;
   }
   if (appBaseURL) {
     launchArgs.HOT_UPDATER_APP_BASE_URL = appBaseURL;

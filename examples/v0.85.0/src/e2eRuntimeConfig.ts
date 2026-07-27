@@ -16,6 +16,7 @@ export type E2eScreenState = {
 type E2ELaunchArguments = {
   readonly HOT_UPDATER_APP_BASE_URL?: unknown;
   readonly HOT_UPDATER_E2E_RUNTIME_CONFIG_URL?: unknown;
+  readonly HOT_UPDATER_API_KEY?: unknown;
 };
 
 const defaultE2eScreenState = {
@@ -30,6 +31,19 @@ const e2eLaunchArguments = LaunchArguments.value<E2ELaunchArguments>();
 
 const detoxLaunchArgumentString = (value: unknown) =>
   typeof value === "string" && value.trim() ? value.trim() : null;
+
+const requireDetoxLaunchArgumentString = (value: unknown, name: string) => {
+  const parsed = detoxLaunchArgumentString(value);
+  if (parsed === null) {
+    throw new Error(`${name} launch argument is required.`);
+  }
+  return parsed;
+};
+
+export const hotUpdaterApiKey = requireDetoxLaunchArgumentString(
+  e2eLaunchArguments.HOT_UPDATER_API_KEY,
+  "HOT_UPDATER_API_KEY",
+);
 
 export const fallbackHotUpdaterBaseURL =
   detoxLaunchArgumentString(e2eLaunchArguments.HOT_UPDATER_APP_BASE_URL) ??
