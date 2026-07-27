@@ -4,6 +4,7 @@ export default defineConfig([
   {
     entry: [
       "./src/index.ts",
+      "./src/runtime.ts",
       "./src/storage.ts",
       "./src/storage/node.ts",
       "./src/internal/capabilities.ts",
@@ -13,8 +14,29 @@ export default defineConfig([
     outDir: "dist",
     dts: true,
     exports: {
+      exclude: ["runtime"],
       customExports: {
         ".": {
+          worker: {
+            import: {
+              types: "./dist/runtime.d.mts",
+              default: "./dist/runtime.mjs",
+            },
+            require: {
+              types: "./dist/runtime.d.cts",
+              default: "./dist/runtime.cjs",
+            },
+          },
+          edge: {
+            import: {
+              types: "./dist/runtime.d.mts",
+              default: "./dist/runtime.mjs",
+            },
+            require: {
+              types: "./dist/runtime.d.cts",
+              default: "./dist/runtime.cjs",
+            },
+          },
           import: {
             types: "./dist/index.d.mts",
             default: "./dist/index.mjs",
