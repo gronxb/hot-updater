@@ -67,6 +67,31 @@ describe("readHotUpdaterEnv", () => {
     expect(env).toEqual({});
   });
 
+  it("keeps saved values out of interactive init inputs", async () => {
+    // Given
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-env-"),
+    );
+    temporaryDirectories.push(directory);
+    await fs.writeFile(
+      path.join(directory, ".env.hotupdater"),
+      [
+        "HOT_UPDATER_INIT_BUILD=expo",
+        "HOT_UPDATER_INIT_PROVIDER=cloudflare",
+      ].join("\n"),
+    );
+
+    // When
+    const { env, managedEnv } = await readHotUpdaterInitEnv(directory);
+
+    // Then
+    expect(env).toEqual({});
+    expect(managedEnv).toEqual({
+      HOT_UPDATER_INIT_BUILD: "expo",
+      HOT_UPDATER_INIT_PROVIDER: "cloudflare",
+    });
+  });
+
   it("overlays an explicit init env file without modifying the saved file", async () => {
     // Given
     const directory = await fs.mkdtemp(

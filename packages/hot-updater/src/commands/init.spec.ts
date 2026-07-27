@@ -68,22 +68,27 @@ describe("init choices", () => {
     vi.restoreAllMocks();
   });
 
-  it("reuses saved build and provider without prompting", async () => {
+  it("prompts instead of reusing managed build and provider", async () => {
     // Given
     mocks.readHotUpdaterInitEnv.mockResolvedValue({
-      env: {
+      env: {},
+      managedEnv: {
         HOT_UPDATER_INIT_BUILD: "expo",
         HOT_UPDATER_INIT_PROVIDER: "aws",
       },
+    });
+    mocks.group.mockResolvedValue({
+      build: "bare",
+      provider: "aws",
     });
 
     // When
     await init();
 
     // Then
-    expect(mocks.group).not.toHaveBeenCalled();
+    expect(mocks.group).toHaveBeenCalledOnce();
     expect(mocks.makeEnv).toHaveBeenCalledWith({
-      HOT_UPDATER_INIT_BUILD: "expo",
+      HOT_UPDATER_INIT_BUILD: "bare",
       HOT_UPDATER_INIT_PROVIDER: "aws",
     });
     expect(
@@ -93,7 +98,7 @@ describe("init choices", () => {
       mocks.ensureInstallPackages.mock.invocationCallOrder[0] ?? Infinity,
     );
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
-      build: "expo",
+      build: "bare",
       envFile: undefined,
     });
   });

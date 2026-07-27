@@ -75,7 +75,7 @@ export const readHotUpdaterInitEnv = async (
   const savedEnv = await readEnvFile(savedEnvPath, true);
 
   if (!envFile) {
-    return { env: savedEnv, managedEnv: savedEnv };
+    return { env: {}, managedEnv: savedEnv };
   }
 
   const inputEnvPath = path.resolve(cwd, envFile);
