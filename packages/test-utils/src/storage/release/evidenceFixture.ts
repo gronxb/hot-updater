@@ -19,13 +19,33 @@ export type FixtureReceipt = Readonly<{
 
 export type EvidenceFixture = Readonly<{
   evidenceDirectory: string;
+  planPath: string;
   receipts: ReadonlyMap<string, FixtureReceipt>;
   receiptPaths: ReadonlyMap<string, string>;
   artifactPaths: ReadonlyMap<string, string>;
 }>;
 
+const fixtureDirectory = path.resolve(import.meta.dirname, "fixtures");
+const defaultPlanPath = path.join(fixtureDirectory, "storage-v2-plan.md");
+
 const sha256 = (value: string | Buffer): string =>
   createHash("sha256").update(value).digest("hex");
+
+const resolvePlanPath = (workspace: string, planPath?: string): string => {
+  if (planPath !== undefined) {
+    return path.resolve(workspace, planPath);
+  }
+  const relativePlanPath = path.relative(fixtureDirectory, defaultPlanPath);
+  if (
+    relativePlanPath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relativePlanPath)
+  ) {
+    throw new TypeError(
+      "Default evidence plan must stay inside committed fixtures.",
+    );
+  }
+  return defaultPlanPath;
+};
 
 export const writeFixtureReceipt = (
   receiptPath: string,
@@ -40,8 +60,10 @@ export const createEvidenceFixture = (
   workspace: string,
   finalSha: string,
   includeF4: boolean,
+  planPath?: string,
 ): EvidenceFixture => {
   const evidenceDirectory = path.join(root, "evidence");
+  const resolvedPlanPath = resolvePlanPath(workspace, planPath);
   const tasks = [
     ...Array.from({ length: 25 }, (_, index) => String(index + 1)),
     "F1",
@@ -52,9 +74,7 @@ export const createEvidenceFixture = (
   const receipts = new Map<string, FixtureReceipt>();
   const receiptPaths = new Map<string, string>();
   const artifactPaths = new Map<string, string>();
-  const planHash = sha256(
-    readFileSync(path.join(workspace, ".omo/plans/storage-v2.md")),
-  );
+  const planHash = sha256(readFileSync(resolvedPlanPath));
 
   for (const task of tasks) {
     const relativeArtifact =
@@ -91,5 +111,11 @@ export const createEvidenceFixture = (
     receiptPaths.set(task, receiptPath);
     artifactPaths.set(task, artifactPath);
   }
-  return { evidenceDirectory, receipts, receiptPaths, artifactPaths };
+  return {
+    evidenceDirectory,
+    planPath: resolvedPlanPath,
+    receipts,
+    receiptPaths,
+    artifactPaths,
+  };
 };

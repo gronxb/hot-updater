@@ -162,7 +162,7 @@ describe("Storage v2 release driver", () => {
       "--mode",
       "evidence",
       "--plan",
-      ".omo/plans/storage-v2.md",
+      fixture.planPath,
       "--evidence-dir",
       fixture.evidenceDirectory,
       "--sha",
@@ -232,5 +232,49 @@ describe("Storage v2 release driver", () => {
     assertFixtureReceipts(fixture.evidenceDirectory, [
       ...fixture.receiptPaths.values(),
     ]);
+  });
+
+  it("uses a committed plan fixture without a workspace .omo directory", () => {
+    const directory = createReleaseTestRoot("storage-v2-plan-fixture-");
+    const workspaceWithoutOmo = path.join(directory, "workspace");
+    mkdirSync(workspaceWithoutOmo);
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf8",
+    }).trim();
+    const fixture = createEvidenceFixture(
+      directory,
+      workspaceWithoutOmo,
+      sha,
+      false,
+    );
+    const fixtureDirectory = path.join(
+      workspace,
+      "packages/test-utils/src/storage/release/fixtures",
+    );
+    const relativePlanPath = path.relative(fixtureDirectory, fixture.planPath);
+
+    expect(relativePlanPath.startsWith(`..${path.sep}`)).toBe(false);
+    expect(path.isAbsolute(relativePlanPath)).toBe(false);
+    expect(fixture.planPath).toBe(
+      path.join(fixtureDirectory, "storage-v2-plan.md"),
+    );
+
+    const explicitRoot = createReleaseTestRoot(
+      "storage-v2-explicit-plan-fixture-",
+    );
+    const explicitWorkspace = path.join(explicitRoot, "workspace");
+    const explicitPlanPath = path.join(explicitWorkspace, "custom-plan.md");
+    mkdirSync(explicitWorkspace);
+    writeFileSync(explicitPlanPath, "# Explicit plan\n");
+    const explicitFixture = createEvidenceFixture(
+      explicitRoot,
+      explicitWorkspace,
+      sha,
+      false,
+      "custom-plan.md",
+    );
+
+    expect(explicitFixture.planPath).toBe(explicitPlanPath);
   });
 });

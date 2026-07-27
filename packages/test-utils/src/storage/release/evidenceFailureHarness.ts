@@ -75,7 +75,7 @@ export const expectEvidenceFailure = (
       "--mode",
       "evidence",
       "--plan",
-      ".omo/plans/storage-v2.md",
+      fixture.planPath,
       "--evidence-dir",
       fixture.evidenceDirectory,
       "--sha",
