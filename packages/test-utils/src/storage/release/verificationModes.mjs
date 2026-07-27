@@ -14,6 +14,38 @@ const FORBIDDEN_PATHS = [
   /^packages\/better-auth\//,
   /(?:^|\/)(?:nitro|template|auth)(?:\/|$)/,
 ];
+const SUCCESSFUL_CHECK_RUN_CONCLUSIONS = ["SUCCESS", "NEUTRAL", "SKIPPED"];
+
+const parseStatusCheck = (check) => {
+  if (typeof check !== "object" || check === null) {
+    return undefined;
+  }
+  const hasConclusion = Object.hasOwn(check, "conclusion");
+  const hasState = Object.hasOwn(check, "state");
+  const isCheckRun =
+    check.__typename === "CheckRun" && hasConclusion && !hasState;
+  if (isCheckRun) {
+    return typeof check.conclusion === "string" || check.conclusion === null
+      ? { kind: "check-run", conclusion: check.conclusion }
+      : undefined;
+  }
+  const isStatusContext =
+    check.__typename === "StatusContext" && hasState && !hasConclusion;
+  if (isStatusContext) {
+    return typeof check.state === "string"
+      ? { kind: "status-context", state: check.state }
+      : undefined;
+  }
+  return undefined;
+};
+
+const isSuccessfulStatusCheck = (check) => {
+  const parsed = parseStatusCheck(check);
+  if (parsed?.kind === "check-run") {
+    return SUCCESSFUL_CHECK_RUN_CONCLUSIONS.includes(parsed.conclusion);
+  }
+  return parsed?.kind === "status-context" && parsed.state === "SUCCESS";
+};
 
 const readScopeFixture = (workspace, fixture) => {
   const fixtureInput = readJson(path.resolve(workspace, fixture));
@@ -50,10 +82,7 @@ const readScopeFixture = (workspace, fixture) => {
         typeof fixtureInput.pr.headRefOid === "string" &&
         Array.isArray(fixtureInput.pr.statusCheckRollup) &&
         fixtureInput.pr.statusCheckRollup.every(
-          (check) =>
-            typeof check === "object" &&
-            check !== null &&
-            typeof check.conclusion === "string",
+          (check) => parseStatusCheck(check) !== undefined,
         )),
     "Scope fixture PR is invalid.",
   );
@@ -119,9 +148,9 @@ export const runScopeMode = ({
         : pr.headRefOid;
     invariant(prHeadSha === headSha, "PR head SHA does not match.");
     invariant(
-      (pr.statusCheckRollup ?? []).every((check) =>
-        ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(check.conclusion),
-      ),
+      Array.isArray(pr.statusCheckRollup) &&
+        pr.statusCheckRollup.length > 0 &&
+        pr.statusCheckRollup.every(isSuccessfulStatusCheck),
       "PR checks are incomplete or failed.",
     );
   }

@@ -24,6 +24,28 @@ const runDriver = (arguments_: readonly string[]) =>
     encoding: "utf8",
   });
 
+const writePrSnapshot = (
+  directory: string,
+  statusCheckRollup: readonly unknown[],
+): string => {
+  const prPath = path.join(directory, "pr.json");
+  const headRefOid = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: workspace,
+    encoding: "utf8",
+  }).trim();
+  writeFileSync(
+    prPath,
+    JSON.stringify({
+      state: "OPEN",
+      isDraft: false,
+      baseRefName: "codex/server-plugin-kernel",
+      headRefOid,
+      statusCheckRollup,
+    }),
+  );
+  return prPath;
+};
+
 describe("Storage v2 release driver", () => {
   afterEach(cleanupReleaseTestRoots);
 
@@ -107,6 +129,123 @@ describe("Storage v2 release driver", () => {
     ]);
 
     expect(result.status).toBe(0);
+  });
+
+  it("accepts successful CheckRun and StatusContext rollup entries", () => {
+    const directory = createReleaseTestRoot("storage-v2-scope-");
+    const prPath = path.join(directory, "pr.json");
+    const output = path.join(directory, "scope.json");
+    const headSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: workspace,
+      encoding: "utf8",
+    }).trim();
+    const fixture = readFileSync(
+      path.join(
+        workspace,
+        "packages/test-utils/src/storage/release/fixtures/scope-successful-mixed-rollup.json",
+      ),
+      "utf8",
+    );
+    writeFileSync(prPath, fixture.replace("$HEAD", headSha));
+
+    const result = runDriver([
+      "--mode",
+      "scope",
+      "--base",
+      "HEAD",
+      "--head",
+      "HEAD",
+      "--pr-json",
+      prPath,
+      "--output",
+      output,
+    ]);
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(readFileSync(output, "utf8"))).toMatchObject({
+      mode: "scope",
+      verdict: "passed",
+    });
+  });
+
+  it.each([
+    ["failed CheckRun", { __typename: "CheckRun", conclusion: "FAILURE" }],
+    ["pending CheckRun", { __typename: "CheckRun", conclusion: null }],
+    ["failed StatusContext", { __typename: "StatusContext", state: "FAILURE" }],
+    ["errored StatusContext", { __typename: "StatusContext", state: "ERROR" }],
+    [
+      "pending StatusContext",
+      { __typename: "StatusContext", state: "PENDING" },
+    ],
+    [
+      "expected StatusContext",
+      { __typename: "StatusContext", state: "EXPECTED" },
+    ],
+    [
+      "unknown successful entry",
+      { __typename: "DeploymentStatus", conclusion: "SUCCESS" },
+    ],
+    ["successful entry without a discriminator", { conclusion: "SUCCESS" }],
+    ["null entry", null],
+    ["missing terminal field", { __typename: "CheckRun" }],
+    [
+      "ambiguous terminal fields",
+      { __typename: "CheckRun", conclusion: "SUCCESS", state: "SUCCESS" },
+    ],
+    [
+      "wrong terminal field",
+      { __typename: "StatusContext", conclusion: "SUCCESS" },
+    ],
+  ])("rejects a %s in the PR rollup", (_label, check) => {
+    const directory = createReleaseTestRoot("storage-v2-scope-");
+    const output = path.join(directory, "scope.json");
+    const prPath = writePrSnapshot(directory, [check]);
+
+    const result = runDriver([
+      "--mode",
+      "scope",
+      "--base",
+      "HEAD",
+      "--head",
+      "HEAD",
+      "--pr-json",
+      prPath,
+      "--output",
+      output,
+    ]);
+
+    expect(result.status).not.toBe(0);
+    expect(JSON.parse(readFileSync(output, "utf8"))).toMatchObject({
+      mode: "scope",
+      verdict: "failed",
+      details: { error: "PR checks are incomplete or failed." },
+    });
+  });
+
+  it("rejects an empty PR status rollup", () => {
+    const directory = createReleaseTestRoot("storage-v2-scope-");
+    const output = path.join(directory, "scope.json");
+    const prPath = writePrSnapshot(directory, []);
+
+    const result = runDriver([
+      "--mode",
+      "scope",
+      "--base",
+      "HEAD",
+      "--head",
+      "HEAD",
+      "--pr-json",
+      prPath,
+      "--output",
+      output,
+    ]);
+
+    expect(result.status).not.toBe(0);
+    expect(JSON.parse(readFileSync(output, "utf8"))).toMatchObject({
+      mode: "scope",
+      verdict: "failed",
+      details: { error: "PR checks are incomplete or failed." },
+    });
   });
 
   it("accepts complete ancestor and exact-final evidence epochs", () => {
