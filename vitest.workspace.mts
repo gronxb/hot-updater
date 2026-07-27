@@ -27,6 +27,8 @@ const storageV2CertificationInclude = [
 ];
 const manualQaArchive =
   "packages/test-utils/src/storage/release/manualQaArchive.spec.ts";
+const pluginCorePackedArtifact =
+  "plugins/plugin-core/src/packedArtifact.spec.ts";
 const integrationInclude = [
   "packages/**/*.integration.spec.ts",
   "plugins/**/*.integration.spec.ts",
@@ -49,6 +51,7 @@ export default defineConfig({
             "packages/console/**",
             "packages/bsdiff/tests/runtime/*.manual.*",
             manualQaArchive,
+            pluginCorePackedArtifact,
           ],
           environment: "node",
           hookTimeout: 60000,
@@ -91,6 +94,20 @@ export default defineConfig({
             "packages/console/**/*.test.tsx",
           ],
           exclude: [...commonExclude, "**/*.integration.spec.ts"],
+        },
+      }),
+      defineProject({
+        test: {
+          name: "package-qa:plugin-core-artifact",
+          include: [pluginCorePackedArtifact],
+          exclude: rootExclude,
+          environment: "node",
+          fileParallelism: false,
+          hookTimeout: 60000,
+          maxConcurrency: 1,
+          maxWorkers: 1,
+          pool: "forks",
+          testTimeout: 60000,
         },
       }),
       defineProject({

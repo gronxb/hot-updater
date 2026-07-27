@@ -107,69 +107,78 @@ export const createPackedConsumer = async (
   const temporaryDirectory = await mkdtemp(
     path.join(os.tmpdir(), "hot-updater-server-plugins-pack-"),
   );
-  const packedPackages = await Promise.all(
-    sourceDirectories.map((sourceDirectory) =>
-      packPackage(sourceDirectory, temporaryDirectory),
-    ),
-  );
-  const archiveByName = new Map(
-    packedPackages.map(({ archive, metadata }) => [metadata.name, archive]),
-  );
-  const directory = path.join(temporaryDirectory, "consumer");
-  await mkdir(directory);
-  const tarballDependencies = Object.fromEntries(
-    [...archiveByName].map(([name, archive]) => [name, `file:${archive}`]),
-  );
-  await writeFile(
-    path.join(directory, "package.json"),
-    JSON.stringify(
-      {
-        private: true,
-        dependencies: {
-          ...additionalDependencies,
-          ...tarballDependencies,
-        },
-      },
-      null,
-      2,
-    ),
-  );
-  await writeFile(
-    path.join(directory, "pnpm-workspace.yaml"),
-    [
-      "packages:",
-      '  - "."',
-      "overrides:",
-      ...Object.entries(tarballDependencies).map(
-        ([name, archive]) =>
-          `  ${JSON.stringify(name)}: ${JSON.stringify(archive)}`,
+  try {
+    const packedPackages = await Promise.all(
+      sourceDirectories.map((sourceDirectory) =>
+        packPackage(sourceDirectory, temporaryDirectory),
       ),
-      "",
-    ].join("\n"),
-  );
-  await execFileAsync(
-    "pnpm",
-    [
-      "install",
-      "--ignore-scripts",
-      "--lockfile=false",
-      "--prefer-offline",
-      "--strict-peer-dependencies=false",
-    ],
-    { cwd: directory },
-  );
-  const packedByName = new Map(
-    [...archiveByName].map(([name]) => [
-      name,
-      path.join(directory, "node_modules", name),
-    ]),
-  );
-  await Promise.all([...packedByName.values()].map((target) => access(target)));
-  return {
-    directory,
-    dispose: () => rm(temporaryDirectory, { force: true, recursive: true }),
-    packageDirectories: packedByName,
-  };
+    );
+    const archiveByName = new Map(
+      packedPackages.map(({ archive, metadata }) => [metadata.name, archive]),
+    );
+    const directory = path.join(temporaryDirectory, "consumer");
+    await mkdir(directory);
+    const tarballDependencies = Object.fromEntries(
+      [...archiveByName].map(([name, archive]) => [name, `file:${archive}`]),
+    );
+    await writeFile(
+      path.join(directory, "package.json"),
+      JSON.stringify(
+        {
+          private: true,
+          dependencies: {
+            ...additionalDependencies,
+            ...tarballDependencies,
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    await writeFile(
+      path.join(directory, "pnpm-workspace.yaml"),
+      [
+        "packages:",
+        '  - "."',
+        "overrides:",
+        ...Object.entries(tarballDependencies).map(
+          ([name, archive]) =>
+            `  ${JSON.stringify(name)}: ${JSON.stringify(archive)}`,
+        ),
+        "",
+      ].join("\n"),
+    );
+    await execFileAsync(
+      "pnpm",
+      [
+        "install",
+        "--ignore-scripts",
+        "--lockfile=false",
+        "--prefer-offline",
+        "--strict-peer-dependencies=false",
+      ],
+      { cwd: directory },
+    );
+    const packedByName = new Map(
+      [...archiveByName].map(([name]) => [
+        name,
+        path.join(directory, "node_modules", name),
+      ]),
+    );
+    await Promise.all(
+      [...packedByName.values()].map((target) => access(target)),
+    );
+    return {
+      directory,
+      dispose: () => rm(temporaryDirectory, { force: true, recursive: true }),
+      packageDirectories: packedByName,
+    };
+  } catch (error) {
+    await rm(temporaryDirectory, { force: true, recursive: true }).catch(
+      () => undefined,
+    );
+    throw error;
+  }
 };
 
 export const runNode = (

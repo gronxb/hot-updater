@@ -8,7 +8,7 @@
     "lint:fix": "oxfmt --write \"packages/**/*.{ts,tsx}\" \"plugins/**/*.{ts,tsx}\" \"docs/**/*.{ts,tsx}\" && oxlint --fix --fix-suggestions --fix-dangerously packages plugins docs",
     "lint": "oxfmt --check \"packages/**/*.{ts,tsx}\" \"plugins/**/*.{ts,tsx}\" \"docs/**/*.{ts,tsx}\" && oxlint packages plugins docs",
     "clear": "rimraf --glob **/dist .nx",
-    "test": "vitest run --project=\"unit:*\" && vitest run --project=\"manual-qa:storage-v2-archive\"",
+    "test": "vitest run --project=\"unit:*\" && vitest run --project=\"package-qa:plugin-core-artifact\" && vitest run --project=\"manual-qa:storage-v2-archive\"",
     "test:integration": "vitest run --project=\"integration:*\"",
     "test:swift": "swift test --package-path packages/react-native/ios/HotUpdater",
     "bench": "node ./scripts/bench.mjs",
