@@ -218,7 +218,7 @@ describe("Supabase database password failures", () => {
     expect(output).not.toContain("--password");
     expect(mockExeca).toHaveBeenCalledWith(
       "npx",
-      ["supabase", "db", "push", "--include-all"],
+      ["supabase", "db", "push", "--include-all", "--yes"],
       expect.objectContaining({
         env: { SUPABASE_DB_PASSWORD: secret },
         stderr: ["pipe", "inherit"],
