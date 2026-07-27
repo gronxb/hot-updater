@@ -23,7 +23,6 @@ if (typeof options.mode !== "string" || typeof options.output !== "string") {
 }
 const output = path.resolve(workspace, options.output);
 const observedSha = currentSha(workspace);
-let receiptWritten = false;
 
 try {
   let result;
@@ -76,8 +75,18 @@ try {
         `Unsupported Storage v2 verifier mode: ${options.mode}`,
       );
   }
+  const receiptOutput =
+    result.archiveHandoff === undefined
+      ? output
+      : path.join(
+          result.archiveHandoff.destinationRoot,
+          path.relative(result.archiveHandoff.sourceRoot, output),
+        );
+  if (result.archiveHandoff !== undefined) {
+    handoffManualQaArchiveRoot(result.archiveHandoff);
+  }
   writeReceipt({
-    output,
+    output: receiptOutput,
     mode: options.mode,
     observedSha,
     verdict: "passed",
@@ -87,30 +96,24 @@ try {
       sourceBinding: createReleaseSourceBinding(workspace),
     },
   });
-  receiptWritten = true;
-  if (result.archiveHandoff !== undefined) {
-    handoffManualQaArchiveRoot(result.archiveHandoff);
-  }
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   const invariant =
     error instanceof Error && typeof error.code === "string"
       ? error.code
       : undefined;
-  if (!receiptWritten) {
-    writeReceipt({
-      output,
-      mode: options.mode,
-      observedSha,
-      verdict: "failed",
-      commands: [],
-      details: {
-        error: message,
-        ...(invariant === undefined ? {} : { invariant }),
-        sourceBinding: createReleaseSourceBinding(workspace),
-      },
-    });
-  }
+  writeReceipt({
+    output,
+    mode: options.mode,
+    observedSha,
+    verdict: "failed",
+    commands: [],
+    details: {
+      error: message,
+      ...(invariant === undefined ? {} : { invariant }),
+      sourceBinding: createReleaseSourceBinding(workspace),
+    },
+  });
   process.stderr.write(`${message}\n`);
   process.exitCode = 1;
 }

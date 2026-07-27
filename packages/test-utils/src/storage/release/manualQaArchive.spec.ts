@@ -167,3 +167,43 @@ it("keeps manual-QA tarballs available for independent hashing after cleanup", (
     rmSync(owner, { force: true, recursive: true });
   }
 }, 180_000);
+
+it("records a failed receipt when the atomic manual-QA handoff fails", () => {
+  // Given
+  const owner = mkdtempSync(path.join(tmpdir(), "storage-v2-handoff-failure-"));
+  const source = path.join(owner, "source");
+  const output = path.join(source, "manual-qa.json");
+  const destination = path.join(source, "nested-destination");
+  mkdirSync(source);
+
+  try {
+    // When
+    const result = spawnSync(
+      process.execPath,
+      [
+        driver,
+        "--mode",
+        "manual-qa",
+        "--output",
+        output,
+        "--archive-destination",
+        destination,
+      ],
+      {
+        cwd: workspace,
+        encoding: "utf8",
+      },
+    );
+
+    // Then
+    expect(result.status).not.toBe(0);
+    expect(existsSync(destination)).toBe(false);
+    expect(JSON.parse(readFileSync(output, "utf8"))).toMatchObject({
+      mode: "manual-qa",
+      verdict: "failed",
+    });
+  } finally {
+    makeSealedFixtureWritable(source);
+    rmSync(owner, { force: true, recursive: true });
+  }
+}, 180_000);
