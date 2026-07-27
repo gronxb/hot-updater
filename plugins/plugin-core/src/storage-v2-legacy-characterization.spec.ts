@@ -24,9 +24,10 @@ const nodeStorage: NodeStoragePlugin = createLegacyNodeStorage({})();
 const rootStorage: StoragePlugin = nodeStorage;
 
 type Assert<T extends true> = T;
-type RuntimeStorageFitsGenericRoot = Assert<
-  RuntimeStoragePlugin<{ readonly requestId: string }> extends
-    StoragePlugin<{ readonly requestId: string }>
+type _RuntimeStorageFitsGenericRoot = Assert<
+  RuntimeStoragePlugin<{ readonly requestId: string }> extends StoragePlugin<{
+    readonly requestId: string;
+  }>
     ? true
     : false
 >;
