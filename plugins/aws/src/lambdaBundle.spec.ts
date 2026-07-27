@@ -15,11 +15,17 @@ describe("AWS Lambda managed handler bundle", () => {
     const source = await readFile(managedHandlerPath, "utf8");
 
     // When
-    const unresolvedInternalImport =
-      /require\(["'](?:@better-auth\/[^"']+|better-auth|@hot-updater\/(?:better-auth|plugin-core|server)(?:\/.*)?)["']\)/;
+    const unresolvedInternalImports = [
+      ...source.matchAll(
+        /(?:require|import)\(\s*["'](@hot-updater\/[^"']+)["']\s*\)/gu,
+      ),
+    ].flatMap((match) => {
+      const packageSpecifier = match[1];
+      return packageSpecifier === undefined ? [] : [packageSpecifier];
+    });
 
     // Then
-    expect(source).not.toMatch(unresolvedInternalImport);
+    expect(unresolvedInternalImports).toEqual([]);
   });
 
   it("ships every relative CommonJS chunk referenced by the handler", async () => {

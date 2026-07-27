@@ -27,7 +27,7 @@ export default defineConfig([
     deps: {
       alwaysBundle: [
         /^@better-auth\/.*$/,
-        /^@hot-updater\/(?:better-auth|plugin-core|server)(?:\/.*)?$/,
+        /^@hot-updater\/(?:better-auth|core|plugin-core|server)(?:\/.*)?$/,
         /^better-auth(?:\/.*)?$/,
         "hono/lambda-edge",
         "hono",
