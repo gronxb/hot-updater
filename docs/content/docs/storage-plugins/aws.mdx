@@ -1,6 +1,6 @@
 ---
 title: "AWS S3 Storage"
-description: Store your Hot Updater bundles in AWS S3 or any S3-compatible storage service (including Cloudflare R2).
+description: Store Hot Updater artifacts in S3 with target-specific Storage v2 entries.
 icon: aws
 ---
 
@@ -10,113 +10,124 @@ icon: aws
 npm install @hot-updater/aws --save-dev
 ```
 
-## Setup
+## Storage v2
 
-The easiest way to set up your backend is using the init command:
+Import the concrete target entry. `s3Storage(config)` returns the plugin object
+directly.
 
-```package-install
-npx hot-updater init
+### Node and CLI
+
+```ts
+import { env, secret } from "@hot-updater/core/config";
+import { s3Storage } from "@hot-updater/aws/storage/node";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  storage: s3Storage({
+    region: env("AWS_REGION"),
+    bucketName: env("AWS_S3_BUNDLES_BUCKET"),
+    credentials: {
+      accessKeyId: secret("AWS_ACCESS_KEY_ID"),
+      secretAccessKey: secret("AWS_SECRET_ACCESS_KEY"),
+    },
+    delivery: { type: "presigned", expiresInSeconds: 3600 },
+  }),
+});
 ```
 
-This interactive command will guide you through the setup process. For details on what the init command does, see the [AWS](/docs/managed/aws) documentation.
+If `credentials` is omitted, the AWS SDK default credential chain is used.
+S3-compatible services can set `endpoint` and `forcePathStyle`.
 
-For manual configuration, use the settings below.
+### AWS Lambda
+
+```ts
+import { env, secret } from "@hot-updater/core/config";
+import {
+  createLambdaStorageContext,
+  s3Storage,
+} from "@hot-updater/aws/storage/lambda";
+import { createHotUpdater } from "@hot-updater/server";
+
+type LambdaContext = Readonly<{
+  environment: Readonly<Record<string, string | undefined>>;
+  bindings: Readonly<Record<string, unknown>>;
+}>;
+
+export const hotUpdater = createHotUpdater<LambdaContext>({
+  database,
+  storages: [
+    s3Storage({
+      region: env("AWS_REGION"),
+      bucketName: env("AWS_S3_BUNDLES_BUCKET"),
+      credentials: {
+        accessKeyId: secret("AWS_ACCESS_KEY_ID"),
+        secretAccessKey: secret("AWS_SECRET_ACCESS_KEY"),
+      },
+      delivery: { type: "presigned" },
+    }),
+  ],
+  storageContext: ({ context }) =>
+    createLambdaStorageContext({
+      environment: context?.environment ?? {},
+      bindings: context?.bindings ?? {},
+    }),
+});
+```
+
+The Node entry accepts only `target: "node"`; the Lambda entry accepts only
+`target: "functions"`.
 
 ## Configuration
 
-```typescript
-interface S3StorageConfig {
-  region: string;           // AWS region or 'auto' for R2
-  bucketName: string;       // S3 bucket name
-  basePath?: string;        // Optional base path within bucket
-  endpoint?: string;        // Custom endpoint for S3-compatible services
-  credentials?: {
-    accessKeyId: string;
-    secretAccessKey: string;
-  };
-}
-```
+`S3StorageConfig` accepts `bucketName`, `basePath`, `region`, `endpoint`,
+`credentials`, `forcePathStyle`, checksum options, retry attempts, and an
+optional delivery policy. String and credential fields can use immutable
+`env()` or `secret()` references.
 
-If `credentials` is omitted, the AWS SDK default credential chain is used. This
-lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
-other standard AWS credential sources.
+The delivery policy is either presigned S3 URLs or CloudFront:
 
-## Usage
+```ts
+import { env, secret } from "@hot-updater/core/config";
+import { s3Storage } from "@hot-updater/aws/storage/node";
 
-### AWS S3
-
-```typescript
-import { s3Storage } from '@hot-updater/aws';
-import { defineConfig } from 'hot-updater';
-
-export default defineConfig({
-  storage: s3Storage({
-    region: 'us-east-1',
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-    },
-    bucketName: 'my-hot-updater-bucket'
-  }),
-  // ... other config
+const storage = s3Storage({
+  bucketName: env("AWS_S3_BUNDLES_BUCKET"),
+  delivery: {
+    type: "cloudfront",
+    publicBaseUrl: env("CLOUDFRONT_URL"),
+    keyPairId: secret("CLOUDFRONT_KEY_PAIR_ID"),
+    privateKey: secret("CLOUDFRONT_PRIVATE_KEY"),
+  },
 });
 ```
 
-### Cloudflare R2
+## Capabilities and lifecycle
 
-```typescript
-export default defineConfig({
-  storage: s3Storage({
-    region: 'auto',
-    endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: process.env.R2_ACCESS_KEY_ID,
-      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY
-    },
-    bucketName: 'my-r2-bucket'
-  }),
-  // ... other config
-});
-```
+Both v2 entries support exact `put`, `head`, `get`, and `delete`, create-only
+writes, and inclusive ranges. `issueDownload` is exposed when `delivery` is
+configured; `list` is not exposed. The plugin owns its S3 clients and releases
+them on `onUnmount`; a returned body stream retains its client lease until
+close, cancellation, or error.
 
-## Protocol
+The persisted URI protocol remains `s3://`.
 
-`s3://`
+## Storage v1 during migration
 
-This prefix is stored in the `storageUri` field in the database.
+The root import remains available during the current deprecation window:
 
-## Profiles
-
-`s3Storage` implements both storage profiles:
-
-- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
-- `runtime`: creates presigned HTTP(S) download URLs and reads small metadata
-  files directly through the S3 API.
-
-This means the same `s3Storage` configuration can be used in both
-`hot-updater.config.ts` and `createHotUpdater`.
-
-## Custom Server Usage
-
-Use `s3Storage` with `createHotUpdater` for self-hosted servers:
-
-```typescript
+```ts
 import { s3Storage } from "@hot-updater/aws";
-import { createHotUpdater } from "@hot-updater/server";
+import { defineConfig } from "hot-updater";
 
-const hotUpdater = createHotUpdater({
-  storages: [
-    s3Storage({
-      region: process.env.AWS_REGION!,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      },
-      bucketName: process.env.AWS_S3_BUNDLES_BUCKET!,
-    }),
-  ],
-  // ... other options
+export default defineConfig({
+  storage: s3Storage({
+    region: "us-east-1",
+    bucketName: "my-hot-updater-bucket",
+  }),
 });
 ```
 
-For complete server setup guides, see [S3 Database Adapter](/docs/custom/database/s3).
+This is the v1 universal-profile provider. New integrations should use the
+explicit Storage v2 target entry. Migrate core, CLI/server consumers, and the
+provider package together; stored `s3://` URIs do not need rewriting. To roll
+back, pin the complete pre-v2 package set.

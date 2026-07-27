@@ -1,6 +1,6 @@
 ---
 title: "Supabase Storage"
-description: Store your Hot Updater bundles in Supabase Storage buckets.
+description: Store Hot Updater artifacts in Supabase Storage from Node or Edge runtimes.
 icon: supabase
 ---
 
@@ -10,58 +10,97 @@ icon: supabase
 npm install @hot-updater/supabase --save-dev
 ```
 
-## Setup
+## Storage v2
 
-The easiest way to set up your backend is using the init command:
+### Node and CLI
 
-```package-install
-npx hot-updater init
-```
-
-This interactive command will guide you through the setup process. For details on what the init command does, see the [Supabase](/docs/managed/supabase) documentation.
-
-For manual configuration, use the settings below.
-
-## Configuration
-
-```typescript
-interface SupabaseStorageConfig {
-  supabaseUrl: string;             // Your Supabase project URL
-  supabaseServiceRoleKey: string;  // Your Supabase service role or secret key
-  bucketName: string;              // Storage bucket name
-  basePath?: string;               // Optional base path within bucket
-}
-```
-
-## Usage
-
-```typescript
-import { supabaseStorage } from '@hot-updater/supabase';
-import { defineConfig } from 'hot-updater';
+```ts
+import { env, secret } from "@hot-updater/core/config";
+import { supabaseStorage } from "@hot-updater/supabase/storage/node";
+import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   storage: supabaseStorage({
-    supabaseUrl: process.env.SUPABASE_URL,
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    bucketName: 'hot-updater-bundles',
-    basePath: 'bundles'  // Optional
+    supabaseUrl: env("SUPABASE_URL"),
+    supabaseServiceRoleKey: secret("SUPABASE_SERVICE_ROLE_KEY"),
+    bucketName: env("SUPABASE_BUCKET"),
+    basePath: "bundles",
+    delivery: "signed",
   }),
-  // ... other config
 });
 ```
 
-## Protocol
+`supabaseStorage(config)` returns the direct plugin object. The Node entry
+accepts only `target: "node"`.
 
-`supabase-storage://`
+### Edge and worker runtimes
 
-This prefix is stored in the `storageUri` field in the database.
+```ts
+import { env, secret } from "@hot-updater/core/config";
+import {
+  createEdgeStorageContext,
+  supabaseStorage,
+} from "@hot-updater/supabase/storage/edge";
+import { createHotUpdater } from "@hot-updater/server";
 
-## Profiles
+type EdgeContext = Readonly<{
+  environment: Readonly<Record<string, string | undefined>>;
+}>;
 
-`supabaseStorage` implements both storage profiles:
+export const hotUpdater = createHotUpdater<EdgeContext>({
+  database,
+  storages: [
+    supabaseStorage({
+      supabaseUrl: env("SUPABASE_URL"),
+      supabaseServiceRoleKey: secret("SUPABASE_SERVICE_ROLE_KEY"),
+      bucketName: env("SUPABASE_BUCKET"),
+      delivery: "signed",
+      signedUrlExpiresIn: 3600,
+    }),
+  ],
+  storageContext: ({ context }) =>
+    createEdgeStorageContext({
+      target: "edge",
+      environment: context?.environment ?? {},
+    }),
+});
+```
 
-- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
-- `runtime`: creates signed download URLs and reads small metadata files
-  directly through Supabase Storage.
+The Edge entry accepts `target: "worker"` and `target: "edge"`.
 
-For Supabase Edge Function runtimes, use the runtime-specific storage export so update checks can resolve downloads without relying on local filesystem APIs.
+## Configuration
+
+Use either `supabaseServiceRoleKey` or `supabaseAnonKey`. Server-side artifact
+writes normally require the service-role key. `delivery` is `"signed"` by
+default; `"public"` returns the bucket's public URL.
+
+Literal configuration may reuse its client. Tagged configuration is resolved
+against each operation context and creates a request-specific client.
+
+## Capabilities
+
+Both target entries support exact `put`, `head`, `get`, and `delete`,
+create-only writes, inclusive ranges, and `issueDownload`. `list` is not
+exposed. The persisted URI protocol remains `supabase-storage://`.
+
+## Storage v1 during migration
+
+The root import remains available during the current deprecation window:
+
+```ts
+import { supabaseStorage } from "@hot-updater/supabase";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  storage: supabaseStorage({
+    supabaseUrl: "https://project.supabase.co",
+    supabaseServiceRoleKey: "your-service-role-key",
+    bucketName: "hot-updater-bundles",
+  }),
+});
+```
+
+This root import is the v1 universal-profile provider. New integrations should
+use the explicit Storage v2 target entry. Upgrade consumers and provider
+packages together; existing `supabase-storage://` URIs remain valid. To roll
+back, pin the complete pre-v2 package set.

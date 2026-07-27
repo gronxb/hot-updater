@@ -1,6 +1,6 @@
 ---
 title: "Firebase Storage"
-description: Store your Hot Updater bundles in Firebase Cloud Storage.
+description: Store Hot Updater artifacts in Firebase Cloud Storage from Node or Functions.
 icon: firebase
 ---
 
@@ -10,78 +10,104 @@ icon: firebase
 npm install @hot-updater/firebase firebase-admin --save-dev
 ```
 
-## Setup
+## Storage v2
 
-The easiest way to set up your backend is using the init command:
+### Node and CLI
 
-```package-install
-npx hot-updater init
+```ts
+import { env } from "@hot-updater/core/config";
+import { firebaseStorage } from "@hot-updater/firebase/storage/node";
+import { defineConfig } from "hot-updater";
+import { applicationDefault } from "firebase-admin/app";
+
+export default defineConfig({
+  storage: firebaseStorage({
+    projectId: env("FIREBASE_PROJECT_ID"),
+    storageBucket: env("FIREBASE_STORAGE_BUCKET"),
+    credential: applicationDefault(),
+    basePath: "bundles",
+  }),
+});
 ```
 
-This interactive command will guide you through the setup process. For details on what the init command does, see the [Firebase](/docs/managed/firebase) documentation.
+`firebaseStorage(config)` returns the direct plugin object. The Node entry
+accepts only `target: "node"`.
 
-For manual configuration, use the settings below.
+### Firebase Functions
 
-## Configuration
+```ts
+import { env } from "@hot-updater/core/config";
+import {
+  createFunctionsStorageContext,
+  firebaseStorage,
+} from "@hot-updater/firebase/storage/functions";
+import { createHotUpdater } from "@hot-updater/server";
+import { applicationDefault } from "firebase-admin/app";
 
-```typescript
-interface FirebaseStorageConfig {
-  projectId: string;               // Firebase project ID
-  storageBucket: string;           // Storage bucket name
-  credential: admin.credential.Credential;  // Firebase credential
-  basePath?: string;               // Optional base path within bucket
-}
+type FunctionsContext = Readonly<{
+  environment: Readonly<Record<string, string | undefined>>;
+  bindings: Readonly<Record<string, unknown>>;
+}>;
+
+export const hotUpdater = createHotUpdater<FunctionsContext>({
+  database,
+  storages: [
+    firebaseStorage({
+      projectId: env("FIREBASE_PROJECT_ID"),
+      storageBucket: env("FIREBASE_STORAGE_BUCKET"),
+      credential: applicationDefault(),
+    }),
+  ],
+  storageContext: ({ context }) =>
+    createFunctionsStorageContext({
+      environment: context?.environment ?? {},
+      bindings: context?.bindings ?? {},
+    }),
+});
 ```
 
+The Functions entry accepts only `target: "functions"`.
 
-## Environment Variables
-
-Set up your Firebase credentials:
+Set local Admin credentials through the standard environment:
 
 ```bash title=".env.hotupdater"
-# Project Settings > Service Accounts > New Private Key > Download JSON
-GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_STORAGE_BUCKET=your-bucket-name
 ```
 
+## Capabilities and lifecycle
 
-## Usage
+Both target entries support exact `put`, `head`, `get`, and `delete`,
+create-only writes, inclusive ranges, and `issueDownload`. `list` is not
+exposed.
 
-```typescript
-import { firebaseStorage } from '@hot-updater/firebase';
-import * as admin from 'firebase-admin';
-import { defineConfig } from 'hot-updater';
+Literal configuration owns one provider client until `onUnmount`.
+Configuration containing tagged references resolves and closes an
+operation-owned client for each request. Returned streams retain their client
+until close, cancellation, or error.
 
-// https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
-// Check your .env file and add the credentials
-// Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
-// Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = admin.credential.applicationDefault();
+The persisted URI protocol remains `gs://`.
+
+## Storage v1 during migration
+
+The root import remains available during the current deprecation window:
+
+```ts
+import { firebaseStorage } from "@hot-updater/firebase";
+import { defineConfig } from "hot-updater";
+import { applicationDefault } from "firebase-admin/app";
 
 export default defineConfig({
   storage: firebaseStorage({
-    projectId: process.env.FIREBASE_PROJECT_ID,
-    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-    credential
+    projectId: "your-project-id",
+    storageBucket: "your-bucket-name",
+    credential: applicationDefault(),
   }),
-  // ... other config
 });
 ```
 
-
-## Protocol
-
-`gs://`
-
-This prefix is stored in the `storageUri` field in the database.
-
-## Profiles
-
-`firebaseStorage` implements both storage profiles:
-
-- `node`: uploads, deletes, and downloads local files during CLI/console workflows.
-- `runtime`: creates Firebase download URLs and reads small metadata files
-  directly through Cloud Storage APIs.
-
-For Firebase Functions runtimes, use the runtime-specific storage export so the server can resolve downloads and read manifests from the configured bucket.
+This root import is the v1 universal-profile provider. New integrations should
+use the explicit Storage v2 target entry. Upgrade consumers and provider
+packages together; existing `gs://` URIs remain valid. To roll back, pin the
+complete pre-v2 package set.
