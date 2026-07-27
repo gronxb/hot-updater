@@ -29,6 +29,7 @@ vi.mock("@hot-updater/cli-tools", async () => {
       ...actual.p,
       log: {
         error: vi.fn(),
+        info: vi.fn(),
         step: vi.fn(),
         success: vi.fn(),
         warn: vi.fn(),
@@ -155,6 +156,75 @@ describe("initFirebaseUser", () => {
     );
     expect(mocks.select).not.toHaveBeenCalled();
     expect(vi.mocked(makeEnv)).not.toHaveBeenCalled();
+  });
+
+  it("does not log in again when project discovery is already authenticated", async () => {
+    // Given
+    mocks.select.mockResolvedValue("demo-project");
+
+    // When
+    await initFirebaseUser("/tmp/firebase-init", undefined, false, undefined);
+
+    // Then
+    expect(mocks.execa).not.toHaveBeenCalledWith(
+      "npx",
+      ["firebase", "login"],
+      expect.anything(),
+    );
+  });
+
+  it("logs in and retries when project discovery is unauthenticated", async () => {
+    // Given
+    let projectListAttempts = 0;
+    mocks.execa.mockImplementation(async (command, args) => {
+      const invocation = [command, ...args].join(" ");
+      if (invocation === "gcloud auth list --format=json") {
+        return { stdout: JSON.stringify([{ account: "user@example.com" }]) };
+      }
+      if (invocation === "npx firebase projects:list --json") {
+        projectListAttempts++;
+        if (projectListAttempts === 1) {
+          throw new Error("Authentication required");
+        }
+        return {
+          stdout: JSON.stringify({
+            result: [{ displayName: "Demo", projectId: "demo-project" }],
+          }),
+        };
+      }
+      if (
+        invocation ===
+        "gcloud firestore databases list --project=demo-project --format=json"
+      ) {
+        return { stdout: JSON.stringify([{ name: "(default)" }]) };
+      }
+      if (
+        invocation ===
+        "gcloud storage buckets list --project=demo-project --format=json"
+      ) {
+        return {
+          stdout: JSON.stringify([
+            { name: "demo-project.firebasestorage.app" },
+          ]),
+        };
+      }
+      if (
+        invocation === "gcloud projects describe demo-project --format=json"
+      ) {
+        return { stdout: JSON.stringify({ projectNumber: "123" }) };
+      }
+      return { stdout: "" };
+    });
+
+    // When
+    await initFirebaseUser("/tmp/firebase-init");
+
+    // Then
+    expect(mocks.execa).toHaveBeenCalledWith("npx", ["firebase", "login"], {
+      env: undefined,
+      stdio: "inherit",
+    });
+    expect(projectListAttempts).toBe(2);
   });
 
   it("prompts instead of replacing a missing saved project with a singleton", async () => {

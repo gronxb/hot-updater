@@ -32,6 +32,7 @@ import {
   SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
 } from "./init/index";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
+import { ensureSupabaseBucketPrivate } from "./supabaseBucketPrivacy";
 import {
   confirmSupabaseDatabaseMigrations,
   linkSupabase,
@@ -508,6 +509,7 @@ export type SupabaseBucketSelection =
   | {
       readonly create: false;
       readonly id: string;
+      readonly isPublic: boolean;
       readonly name: string;
     }
   | {
@@ -556,6 +558,7 @@ export const selectBucket = async (
     return {
       create: false,
       id: preferredBucket.id,
+      isPublic: preferredBucket.isPublic,
       name: preferredBucket.name,
     };
   }
@@ -576,6 +579,7 @@ export const selectBucket = async (
     return {
       create: false,
       id: buckets[0].id,
+      isPublic: buckets[0].isPublic,
       name: buckets[0].name,
     };
   }
@@ -623,6 +627,7 @@ export const selectBucket = async (
   return {
     create: false,
     id: selectedBucket.id,
+    isPublic: selectedBucket.isPublic,
     name: selectedBucket.name,
   };
 };
@@ -897,6 +902,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     };
   } else {
     throw new Error("Failed to plan the Supabase storage bucket.");
+  }
+  if (projectAccess) {
+    await ensureSupabaseBucketPrivate({
+      api: projectAccess.api,
+      nonInteractive,
+      selection: bucketSelection,
+    });
   }
   const inputsBeforeProvisioning = {
     ...savedInputs,

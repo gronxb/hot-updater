@@ -25,6 +25,39 @@ export const shouldUpdateR2ManagedDomain = ({
   readonly managedDomainEnabled: boolean;
 }) => managedDomainEnabled !== !isPrivate;
 
+export type R2PrivacyResolution =
+  | {
+      readonly isPrivate: boolean;
+      readonly kind: "resolved";
+    }
+  | {
+      readonly kind: "prompt";
+    };
+
+export const resolveR2Privacy = ({
+  createBucket,
+  managedDomainEnabled,
+  savedPrivateSetting,
+}: {
+  readonly createBucket: boolean;
+  readonly managedDomainEnabled?: boolean;
+  readonly savedPrivateSetting?: string;
+}): R2PrivacyResolution => {
+  if (savedPrivateSetting === "true" || savedPrivateSetting === "false") {
+    return {
+      isPrivate: savedPrivateSetting === "true",
+      kind: "resolved",
+    };
+  }
+  if (!createBucket && managedDomainEnabled !== undefined) {
+    return {
+      isPrivate: !managedDomainEnabled,
+      kind: "resolved",
+    };
+  }
+  return { kind: "prompt" };
+};
+
 export const resolveCloudflareInitInputs = (
   existingEnv: Readonly<Record<string, string>>,
 ): CloudflareInitInputs => {

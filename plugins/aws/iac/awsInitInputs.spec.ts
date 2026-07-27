@@ -28,7 +28,6 @@ describe("AWS non-interactive init inputs", () => {
           "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
           "HOT_UPDATER_S3_REGION",
           "HOT_UPDATER_AWS_LAMBDA_NAME",
-          "HOT_UPDATER_AWS_MIGRATION_APPROVED",
         ],
       }),
     );

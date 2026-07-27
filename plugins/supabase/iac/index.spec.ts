@@ -226,6 +226,33 @@ describe("selectProject", () => {
 });
 
 describe("selectBucket", () => {
+  it("preserves the visibility of an existing bucket", async () => {
+    // Given
+    const api: SupabaseApi = {
+      createBucket: vi.fn(),
+      listBuckets: vi.fn().mockResolvedValue([
+        {
+          createdAt: "2026-07-26",
+          id: "public-bucket-id",
+          isPublic: true,
+          name: "public-bucket",
+        },
+      ]),
+      updateBucket: vi.fn(),
+    };
+
+    // When
+    const selection = await selectBucket(api, "public-bucket");
+
+    // Then
+    expect(selection).toEqual({
+      create: false,
+      id: "public-bucket-id",
+      isPublic: true,
+      name: "public-bucket",
+    });
+  });
+
   it("plans a missing saved bucket before creating it", async () => {
     const api: SupabaseApi = {
       createBucket: vi.fn().mockResolvedValue({ name: "saved-bucket" }),
@@ -240,6 +267,7 @@ describe("selectBucket", () => {
             name: "saved-bucket",
           },
         ]),
+      updateBucket: vi.fn(),
     };
 
     const selection = await selectBucket(api, "saved-bucket", true);

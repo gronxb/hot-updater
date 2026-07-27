@@ -146,6 +146,7 @@ export const initProvider = {
     migrationApproved: {
       envKey: "HOT_UPDATER_AWS_MIGRATION_APPROVED",
       help: "Allow pending Hot Updater S3 migrations (true)",
+      optional: true,
       prompt: {
         message:
           "Apply pending Hot Updater S3 migrations during init and future infrastructure updates?",

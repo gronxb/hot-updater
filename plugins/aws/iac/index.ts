@@ -128,7 +128,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     bucketName: string | symbol | undefined;
     bucketRegion: string | symbol | undefined;
     lambdaName: string | symbol;
-    migrationApproved: boolean | symbol;
   }>(
     {
       bucketSelection: () => {
@@ -202,26 +201,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
               validate: (value) =>
                 value ? undefined : "Lambda function name is required",
             }),
-      migrationApproved: () =>
-        savedInputs.migrationApproved === "true"
-          ? Promise.resolve(true)
-          : p.confirm({
-              message:
-                AWS_INIT_PROVIDER.inputs.migrationApproved.prompt.message,
-              initialValue: true,
-            }),
     },
     {
       onCancel: () => process.exit(1),
     },
   );
-  const { bucketName, bucketRegion, lambdaName, migrationApproved } =
-    resourceInputs;
-
-  if (migrationApproved !== true) {
-    p.log.info("Init cancelled.");
-    process.exit(1);
-  }
+  const { bucketName, bucketRegion, lambdaName } = resourceInputs;
   if (!bucketName || !lambdaName) {
     p.log.error("AWS resource names are required.");
     process.exit(1);
@@ -243,7 +228,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     bucketRegion,
     distributionId: selectedDistribution?.Id,
     lambdaName,
-    migrationApproved: String(migrationApproved),
+    migrationApproved: savedInputs.migrationApproved,
   };
   const persistCredentialInputs = await confirmInitInputPersistence({
     existingEnv: managedEnv,
@@ -287,15 +272,21 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   p.log.info(`Selected S3 Bucket: ${bucketName} (${bucketRegion})`);
 
   // Run S3 migrations
-  await s3Manager.runMigrations({
-    approved: true,
+  const migrationsApplied = await s3Manager.runMigrations({
+    approved: savedInputs.migrationApproved === "true",
     bucketName,
+    nonInteractive,
     region: bucketRegion,
     migrations: [
       new Migration0001HotUpdater0_13_0(),
       new Migration0001HotUpdater0_18_0(),
     ],
   });
+  if (migrationsApplied && savedInputs.migrationApproved !== "true") {
+    await makeEnv({
+      [AWS_INIT_PROVIDER.inputs.migrationApproved.envKey]: "true",
+    });
+  }
 
   // Create IAM role: Using IAMManager
   const iamManager = new IAMManager(bucketRegion, credentials);

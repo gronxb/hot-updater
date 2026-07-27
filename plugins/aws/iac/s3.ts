@@ -1,5 +1,5 @@
 import { type BucketLocationConstraint, S3 } from "@aws-sdk/client-s3";
-import { p } from "@hot-updater/cli-tools";
+import { MissingInitInputsError, p } from "@hot-updater/cli-tools";
 
 import { type S3Migration, S3Migrator } from "./migrations/migrator";
 import type { AwsRegion } from "./regionLocationMap";
@@ -34,13 +34,16 @@ export class S3Manager {
     const buckets = bucketsResult.Buckets ?? [];
     const bucketInfos = await Promise.all(
       buckets
-        .filter((bucket) => bucket.Name)
+        .filter(
+          (bucket): bucket is typeof bucket & { Name: string } =>
+            typeof bucket.Name === "string",
+        )
         .map(async (bucket) => {
           const { LocationConstraint } = await s3Client.getBucketLocation({
-            Bucket: bucket.Name!,
+            Bucket: bucket.Name,
           });
           return {
-            name: bucket.Name!,
+            name: bucket.Name,
             region: normalizeBucketRegion(LocationConstraint),
           };
         }),
@@ -69,14 +72,16 @@ export class S3Manager {
   async runMigrations({
     approved,
     bucketName,
+    nonInteractive,
     region,
     migrations,
   }: {
     approved?: boolean;
     bucketName: string;
+    nonInteractive?: boolean;
     region: AwsRegion;
     migrations: S3Migration[];
-  }): Promise<void> {
+  }): Promise<boolean> {
     const migrator = new S3Migrator({
       s3: new S3({ region: region, credentials: this.credentials }),
       bucketName,
@@ -86,7 +91,7 @@ export class S3Manager {
     const { pending } = await migrator.list();
     await migrator.migrate({ dryRun: true });
     if (pending.length === 0) {
-      return;
+      return false;
     }
 
     p.log.step("Pending migrations:");
@@ -94,6 +99,11 @@ export class S3Manager {
       p.log.step(`- ${migration.name}`);
     }
     if (!approved) {
+      if (nonInteractive) {
+        throw new MissingInitInputsError([
+          "HOT_UPDATER_AWS_MIGRATION_APPROVED",
+        ]);
+      }
       const confirm = await p.confirm({ message: "Do you want to continue?" });
       if (p.isCancel(confirm) || !confirm) {
         p.log.info("Migration cancelled.");
@@ -101,6 +111,7 @@ export class S3Manager {
       }
     }
     await migrator.migrate({ dryRun: false });
+    return true;
   }
 
   async updateBucketPolicy({

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   assertCloudflareNonInteractiveInputs,
+  resolveR2Privacy,
   resolveCloudflareInitInputs,
   shouldUpdateR2ManagedDomain,
 } from "./cloudflareInitInputs";
@@ -55,6 +56,23 @@ describe("shouldUpdateR2ManagedDomain", () => {
       ).toBe(expected);
     },
   );
+});
+
+describe("resolveR2Privacy", () => {
+  it("preserves the discovered state of an existing private bucket", () => {
+    expect(
+      resolveR2Privacy({
+        createBucket: false,
+        managedDomainEnabled: false,
+      }),
+    ).toEqual({ isPrivate: true, kind: "resolved" });
+  });
+
+  it("asks for the policy of a new bucket", () => {
+    expect(resolveR2Privacy({ createBucket: true })).toEqual({
+      kind: "prompt",
+    });
+  });
 });
 
 describe("assertCloudflareNonInteractiveInputs", () => {

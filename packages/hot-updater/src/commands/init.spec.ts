@@ -1,3 +1,4 @@
+import { InitError } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -153,7 +154,6 @@ describe("init choices", () => {
         "- HOT_UPDATER_S3_BUCKET_NAME",
         "- HOT_UPDATER_S3_REGION",
         "- HOT_UPDATER_AWS_LAMBDA_NAME",
-        "- HOT_UPDATER_AWS_MIGRATION_APPROVED",
       ].join("\n"),
     );
   });
@@ -205,5 +205,24 @@ describe("init choices", () => {
       build: "expo",
       envFile: ".env.hotupdater",
     });
+  });
+
+  it("prints actionable provider init errors without rethrowing", async () => {
+    // Given
+    const providerError = new InitError("actionable provider error");
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {},
+      managedEnv: {},
+    });
+    mocks.runAwsInit.mockRejectedValue(providerError);
+
+    // When
+    await expect(
+      init({ build: "bare", provider: "aws" }),
+    ).resolves.toBeUndefined();
+
+    // Then
+    expect(mocks.logError).toHaveBeenCalledWith(providerError.message);
+    expect(process.exitCode).toBe(1);
   });
 });

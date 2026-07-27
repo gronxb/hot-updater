@@ -213,13 +213,13 @@ const listProjects = async (
     );
     const projectsJson = JSON.parse(projects.stdout);
     return projectsJson?.result ?? [];
-  } catch {
+  } catch (error) {
     if (nonInteractive) {
       throw new MissingInitInputsError([
         "Firebase CLI authentication (`firebase login`)",
       ]);
     }
-    return [];
+    throw error;
   }
 };
 
@@ -229,17 +229,6 @@ export const initFirebaseUser = async (
   nonInteractive = false,
   cliEnv?: FirebaseCliEnv,
 ): Promise<FirebaseUserInitialization> => {
-  if (!nonInteractive && !cliEnv) {
-    try {
-      await execa("npx", ["firebase", "login"], {
-        env: cliEnv,
-        stdio: "inherit",
-      });
-    } catch (err) {
-      handleError(err instanceof Error ? err : new Error(String(err)));
-    }
-  }
-
   if (!cliEnv) {
     try {
       const authList = await execa(
@@ -269,7 +258,27 @@ export const initFirebaseUser = async (
     }
   }
 
-  const projects = await listProjects(nonInteractive, cliEnv);
+  let projects: Awaited<ReturnType<typeof listProjects>>;
+  try {
+    projects = await listProjects(nonInteractive, cliEnv);
+  } catch (error) {
+    if (nonInteractive || cliEnv) {
+      throw error;
+    }
+    try {
+      await execa("npx", ["firebase", "login"], {
+        env: cliEnv,
+        stdio: "inherit",
+      });
+      projects = await listProjects(false, cliEnv);
+    } catch (loginError) {
+      handleError(
+        loginError instanceof Error
+          ? loginError
+          : new Error(String(loginError)),
+      );
+    }
+  }
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
   const preferredProject = projects.find(
