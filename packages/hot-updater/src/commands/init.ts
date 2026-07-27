@@ -78,7 +78,7 @@ export interface InitOptions {
 const isBuildPluginKey = (
   value: string | undefined,
 ): value is BuildPluginKey => {
-  return value === "bare" || value === "rock" || value === "expo";
+  return value !== undefined && Object.keys(BUILD_PLUGINS).includes(value);
 };
 
 const collectInitChoices = async (
