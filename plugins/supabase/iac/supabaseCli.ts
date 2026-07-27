@@ -58,6 +58,25 @@ const handleSupabaseDatabaseCommandError = (
   process.exit(1);
 };
 
+export const confirmSupabaseDatabaseMigrations = async ({
+  creatingProject,
+  nonInteractive,
+}: {
+  readonly creatingProject: boolean;
+  readonly nonInteractive: boolean;
+}) => {
+  if (creatingProject || nonInteractive) {
+    return true;
+  }
+
+  const confirmed = await p.confirm({
+    message:
+      "Apply Hot Updater database migrations to the selected Supabase project?",
+    initialValue: true,
+  });
+  return confirmed === true;
+};
+
 export const linkSupabase = async (
   workdir: string,
   {
@@ -112,7 +131,7 @@ export const pushDB = async (
   try {
     const dbPush = await execa(
       "npx",
-      ["supabase", "db", "push", "--include-all"],
+      ["supabase", "db", "push", "--include-all", "--yes"],
       {
         cwd: workdir,
         env: {

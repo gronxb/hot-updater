@@ -32,7 +32,11 @@ import {
   SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
 } from "./init/index";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
-import { linkSupabase, pushDB } from "./supabaseCli";
+import {
+  confirmSupabaseDatabaseMigrations,
+  linkSupabase,
+  pushDB,
+} from "./supabaseCli";
 import {
   assertSupabaseNonInteractiveInputs,
   inputSupabaseDatabasePassword,
@@ -922,6 +926,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     nonInteractive,
     provider: SUPABASE_INIT_PROVIDER,
   });
+  const migrationsApproved = await confirmSupabaseDatabaseMigrations({
+    creatingProject: projectSelection.create,
+    nonInteractive,
+  });
+  if (!migrationsApproved) {
+    p.log.info("Init cancelled.");
+    process.exit(1);
+  }
 
   if (projectSelection.create) {
     if (!projectCreationInputs) {

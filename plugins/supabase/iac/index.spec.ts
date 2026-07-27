@@ -14,6 +14,7 @@ const { mockCli, mockExeca } = vi.hoisted(() => ({
         success: vi.fn(),
         warn: vi.fn(),
       },
+      confirm: vi.fn(),
       isCancel: vi.fn(() => false),
       select: vi.fn(),
       spinner: vi.fn(() => ({
@@ -63,7 +64,11 @@ import {
   waitForSupabaseProjectReady,
 } from "./index";
 import type { SupabaseApi } from "./supabaseApi";
-import { linkSupabase, pushDB } from "./supabaseCli";
+import {
+  confirmSupabaseDatabaseMigrations,
+  linkSupabase,
+  pushDB,
+} from "./supabaseCli";
 import type { SupabaseManagementApi } from "./supabaseManagementApi";
 
 const createExecaError = async (
@@ -373,6 +378,45 @@ describe("Supabase project readiness", () => {
   });
 });
 
+describe("Supabase database migration confirmation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("asks before migrating an existing project interactively", async () => {
+    // Given
+    mockCli.p.confirm.mockResolvedValue(false);
+
+    // When
+    const confirmed = await confirmSupabaseDatabaseMigrations({
+      creatingProject: false,
+      nonInteractive: false,
+    });
+
+    // Then
+    expect(confirmed).toBe(false);
+    expect(mockCli.p.confirm).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["a new project", { creatingProject: true, nonInteractive: false }],
+    [
+      "a non-interactive init",
+      { creatingProject: false, nonInteractive: true },
+    ],
+  ])("continues without prompting for %s", async (_name, options) => {
+    // Given
+    mockCli.p.confirm.mockResolvedValue(false);
+
+    // When
+    const confirmed = await confirmSupabaseDatabaseMigrations(options);
+
+    // Then
+    expect(confirmed).toBe(true);
+    expect(mockCli.p.confirm).not.toHaveBeenCalled();
+  });
+});
+
 describe("Supabase database password failures", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -381,6 +425,23 @@ describe("Supabase database password failures", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("passes confirmation through the Hot Updater prompt instead of the Supabase CLI", async () => {
+    // Given
+    mockExeca.mockResolvedValue({ stdout: "" });
+
+    // When
+    await pushDB("/tmp/hot-updater-supabase-push", {
+      accessToken: "test-access-token",
+    });
+
+    // Then
+    expect(mockExeca).toHaveBeenCalledWith(
+      "npx",
+      ["supabase", "db", "push", "--include-all", "--yes"],
+      expect.anything(),
+    );
   });
 
   it("prints a sanitized auth message when Supabase link fails with a database password", async () => {
@@ -499,7 +560,7 @@ describe("Supabase database password failures", () => {
     expect(output).not.toContain("--password");
     expect(mockExeca).toHaveBeenCalledWith(
       "npx",
-      ["supabase", "db", "push", "--include-all"],
+      ["supabase", "db", "push", "--include-all", "--yes"],
       expect.objectContaining({
         env: {
           SUPABASE_ACCESS_TOKEN: "test-access-token",
