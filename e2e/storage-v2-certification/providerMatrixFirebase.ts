@@ -1,10 +1,9 @@
-import { env, secret } from "@hot-updater/core/config";
-import type { StorageOperationContext } from "@hot-updater/plugin-core/storage";
-import { createNodeStorageContext } from "@hot-updater/plugin-core/storage/node";
-
-import { createFirebaseStorage } from "../../../../plugins/firebase/src/storage/firebaseStorage";
-import { createFirebaseStorageFake } from "../../../../plugins/firebase/src/storage/firebaseStorageTestFake";
-import { createFunctionsStorageContext } from "../../../../plugins/firebase/src/storage/functionsContext";
+import { env, secret } from "../../packages/core/src/config";
+import { createFirebaseStorage } from "../../plugins/firebase/src/storage/firebaseStorage";
+import { createFirebaseStorageFake } from "../../plugins/firebase/src/storage/firebaseStorageTestFake";
+import { createFunctionsStorageContext } from "../../plugins/firebase/src/storage/functionsContext";
+import type { StorageOperationContext } from "../../plugins/plugin-core/src/storage";
+import { createNodeStorageContext } from "../../plugins/plugin-core/src/storage/node";
 import type { ProviderMatrixObservation } from "./providerMatrixTypes";
 import {
   REQUIRED_CONTEXTS,

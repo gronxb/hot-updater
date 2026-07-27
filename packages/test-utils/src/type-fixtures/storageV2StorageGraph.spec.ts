@@ -62,7 +62,7 @@ describe("Storage v2 import graph policy", () => {
     // Given
     const importer = path.join(
       import.meta.dirname,
-      "fixtures/storageGraphWorkerForbidden.fixture.mjs",
+      "fixtures/storageGraphWorkerForbidden.fixture.txt",
     );
     const manifest = await createSourceGraphManifest(importer, workspaceRoot);
 
@@ -86,7 +86,7 @@ describe("Storage v2 import graph policy", () => {
 
     // Then
     expect(deliberateFailure).toMatch(
-      /(?=.*storageGraphWorkerForbidden\.fixture\.mjs)(?=.*@hot-updater\/cli-tools)(?=.*node:fs)(?=.*worker)/su,
+      /(?=.*storageGraphWorkerForbidden\.fixture\.txt)(?=.*@hot-updater\/cli-tools)(?=.*node:fs)(?=.*worker)/su,
     );
   });
 

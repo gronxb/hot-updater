@@ -1,4 +1,4 @@
-import { createStoragePlugin } from "@hot-updater/plugin-core/storage";
+import { createStoragePlugin } from "../../plugins/plugin-core/src/storage";
 
 export const createProviderMatrixHttpRemote = (origin: "A" | "B") => {
   const objects = new Map<string, Uint8Array>();

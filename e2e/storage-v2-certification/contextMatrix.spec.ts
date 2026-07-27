@@ -1,16 +1,16 @@
-import { binding, env, secret } from "@hot-updater/core/config";
+import { describe, expect, it } from "vitest";
+
+import { binding, env, secret } from "../../packages/core/src/config";
+import { STORAGE_V2_PROVIDER_MATRIX } from "../../packages/test-utils/src/storage/capabilityMatrix";
+import { createLambdaStorageContext } from "../../plugins/aws/src/storage/lambdaContext";
+import { createWorkerStorageContext } from "../../plugins/cloudflare/src/storage/workerContext";
+import { createFunctionsStorageContext } from "../../plugins/firebase/src/storage/functionsContext";
 import {
   StoragePluginError,
   type StorageOperationContext,
-} from "@hot-updater/plugin-core/storage";
-import { createNodeStorageContext } from "@hot-updater/plugin-core/storage/node";
-import { describe, expect, it } from "vitest";
-
-import { createLambdaStorageContext } from "../../../../plugins/aws/src/storage/lambdaContext";
-import { createWorkerStorageContext } from "../../../../plugins/cloudflare/src/storage/workerContext";
-import { createFunctionsStorageContext } from "../../../../plugins/firebase/src/storage/functionsContext";
-import { createEdgeStorageContext } from "../../../../plugins/supabase/src/storage/edgeContext";
-import { STORAGE_V2_PROVIDER_MATRIX } from "./capabilityMatrix";
+} from "../../plugins/plugin-core/src/storage";
+import { createNodeStorageContext } from "../../plugins/plugin-core/src/storage/node";
+import { createEdgeStorageContext } from "../../plugins/supabase/src/storage/edgeContext";
 
 class StatefulBinding {
   readonly calls: string[] = [];

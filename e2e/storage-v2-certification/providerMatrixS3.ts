@@ -12,15 +12,15 @@ export const observeS3Matrix = async (): Promise<
   readonly ProviderMatrixObservation[]
 > => {
   const awsNodeUrl = new URL(
-    "../../../../plugins/aws/src/storage/node.ts",
+    "../../plugins/aws/src/storage/node.ts",
     import.meta.url,
   ).href;
   const awsLambdaUrl = new URL(
-    "../../../../plugins/aws/src/storage/lambda.ts",
+    "../../plugins/aws/src/storage/lambda.ts",
     import.meta.url,
   ).href;
   const cloudflareNodeUrl = new URL(
-    "../../../../plugins/cloudflare/src/storage/node.ts",
+    "../../plugins/cloudflare/src/storage/node.ts",
     import.meta.url,
   ).href;
   const [awsNodeModule, awsLambdaModule, cloudflareNodeModule]: unknown[] =

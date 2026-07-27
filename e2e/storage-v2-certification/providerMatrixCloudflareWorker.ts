@@ -1,9 +1,8 @@
-import { binding } from "@hot-updater/core/config";
+import { binding } from "../../packages/core/src/config";
 import type {
   StorageOperationContext,
   StoragePlugin,
-} from "@hot-updater/plugin-core/storage";
-
+} from "../../plugins/plugin-core/src/storage";
 import type { ProviderMatrixObservation } from "./providerMatrixTypes";
 import {
   REQUIRED_CONTEXTS,
@@ -91,7 +90,7 @@ const createBucket = (origin: "A" | "B") => {
 export const observeCloudflareWorker =
   async (): Promise<ProviderMatrixObservation> => {
     const moduleUrl = new URL(
-      "../../../../plugins/cloudflare/src/storage/worker.ts",
+      "../../plugins/cloudflare/src/storage/worker.ts",
       import.meta.url,
     ).href;
     const loaded: unknown = await import(moduleUrl);

@@ -1,13 +1,13 @@
-import { env, secret } from "@hot-updater/core/config";
+import { vi } from "vitest";
+
+import { env, secret } from "../../packages/core/src/config";
 import type {
   StorageOperationContext,
   StoragePlugin,
-} from "@hot-updater/plugin-core/storage";
-import { createNodeStorageContext } from "@hot-updater/plugin-core/storage/node";
-import { vi } from "vitest";
-
-import { createEdgeStorageContext } from "../../../../plugins/supabase/src/storage/edgeContext";
-import { SupabaseStorageHttpFake } from "../../../../plugins/supabase/src/storage/supabaseStorageV2.test-support";
+} from "../../plugins/plugin-core/src/storage";
+import { createNodeStorageContext } from "../../plugins/plugin-core/src/storage/node";
+import { createEdgeStorageContext } from "../../plugins/supabase/src/storage/edgeContext";
+import { SupabaseStorageHttpFake } from "../../plugins/supabase/src/storage/supabaseStorageV2.test-support";
 import type { ProviderMatrixObservation } from "./providerMatrixTypes";
 import {
   REQUIRED_CONTEXTS,
@@ -135,11 +135,11 @@ export const observeSupabaseMatrix = async (): Promise<
   readonly ProviderMatrixObservation[]
 > => {
   const nodeUrl = new URL(
-    "../../../../plugins/supabase/src/storage/node.ts",
+    "../../plugins/supabase/src/storage/node.ts",
     import.meta.url,
   ).href;
   const edgeUrl = new URL(
-    "../../../../plugins/supabase/src/storage/edge.ts",
+    "../../plugins/supabase/src/storage/edge.ts",
     import.meta.url,
   ).href;
   const [nodeModule, edgeModule]: unknown[] = await Promise.all([

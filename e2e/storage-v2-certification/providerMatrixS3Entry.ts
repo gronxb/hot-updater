@@ -1,15 +1,14 @@
-import { env, secret } from "@hot-updater/core/config";
-import type {
-  StorageOperationContext,
-  StoragePlugin,
-} from "@hot-updater/plugin-core/storage";
-import { createNodeStorageContext } from "@hot-updater/plugin-core/storage/node";
-
-import { createLambdaStorageContext } from "../../../../plugins/aws/src/storage/lambdaContext";
+import { env, secret } from "../../packages/core/src/config";
+import { createLambdaStorageContext } from "../../plugins/aws/src/storage/lambdaContext";
 import {
   startS3TestServer,
   type S3TestServer,
-} from "../../../../plugins/aws/src/storage/s3TestServer";
+} from "../../plugins/aws/src/storage/s3TestServer";
+import type {
+  StorageOperationContext,
+  StoragePlugin,
+} from "../../plugins/plugin-core/src/storage";
+import { createNodeStorageContext } from "../../plugins/plugin-core/src/storage/node";
 import type { ProviderMatrixObservation } from "./providerMatrixTypes";
 import {
   REQUIRED_CONTEXTS,

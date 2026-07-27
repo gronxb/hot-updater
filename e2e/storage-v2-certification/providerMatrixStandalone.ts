@@ -1,12 +1,12 @@
+import { vi } from "vitest";
+
 import {
   createStorageOperationContext,
   env,
   secret,
-} from "@hot-updater/core/config";
-import type { StoragePlugin } from "@hot-updater/plugin-core/storage";
-import { vi } from "vitest";
-
-import { createStandaloneStorageHandler } from "../../../../plugins/standalone/src/standaloneStorageHandler";
+} from "../../packages/core/src/config";
+import type { StoragePlugin } from "../../plugins/plugin-core/src/storage";
+import { createStandaloneStorageHandler } from "../../plugins/standalone/src/standaloneStorageHandler";
 import { createProviderMatrixHttpRemote } from "./providerMatrixHttpRemote";
 import type { ProviderMatrixObservation } from "./providerMatrixTypes";
 import {
@@ -182,11 +182,11 @@ export const observeStandaloneMatrix = async (): Promise<
   readonly ProviderMatrixObservation[]
 > => {
   const neutralUrl = new URL(
-    "../../../../plugins/standalone/src/storage.ts",
+    "../../plugins/standalone/src/storage.ts",
     import.meta.url,
   ).href;
   const nodeUrl = new URL(
-    "../../../../plugins/standalone/src/storage/node.ts",
+    "../../plugins/standalone/src/storage/node.ts",
     import.meta.url,
   ).href;
   const [neutralModule, nodeModule]: unknown[] = await Promise.all([

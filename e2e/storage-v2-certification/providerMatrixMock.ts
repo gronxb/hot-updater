@@ -1,11 +1,10 @@
-import { createStorageOperationContext } from "@hot-updater/core/config";
+import { createStorageOperationContext } from "../../packages/core/src/config";
+import { mockStorage as mockNeutralStorage } from "../../plugins/mock/src/storage";
+import { mockStorage as mockNodeStorage } from "../../plugins/mock/src/storage/node";
 import type {
   StorageOperationContext,
   StoragePlugin,
-} from "@hot-updater/plugin-core/storage";
-
-import { mockStorage as mockNeutralStorage } from "../../../../plugins/mock/src/storage";
-import { mockStorage as mockNodeStorage } from "../../../../plugins/mock/src/storage/node";
+} from "../../plugins/plugin-core/src/storage";
 import type { ProviderMatrixObservation } from "./providerMatrixTypes";
 import {
   REQUIRED_CONTEXTS,

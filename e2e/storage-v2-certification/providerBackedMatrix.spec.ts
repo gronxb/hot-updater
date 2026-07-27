@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { STORAGE_V2_PROVIDER_MATRIX } from "./capabilityMatrix";
+import { STORAGE_V2_PROVIDER_MATRIX } from "../../packages/test-utils/src/storage/capabilityMatrix";
 import { observeCloudflareWorker } from "./providerMatrixCloudflareWorker";
 import { observeFirebaseMatrix } from "./providerMatrixFirebase";
 import { observeMockMatrix } from "./providerMatrixMock";
