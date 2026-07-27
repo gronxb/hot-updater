@@ -17,10 +17,10 @@ describe("AWS Lambda managed handler bundle", () => {
     // When
     const unresolvedInternalImports = [
       ...source.matchAll(
-        /(?:require|import)\(\s*["'](@hot-updater\/[^"']+)["']\s*\)/gu,
+        /(?:require\(\s*["'](@better-auth\/[^"']+|better-auth)["']\s*\)|(?:require|import)\(\s*["'](@hot-updater\/[^"']+)["']\s*\))/gu,
       ),
     ].flatMap((match) => {
-      const packageSpecifier = match[1];
+      const packageSpecifier = match[1] ?? match[2];
       return packageSpecifier === undefined ? [] : [packageSpecifier];
     });
 
