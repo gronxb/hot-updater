@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { expect, it } from "vitest";
@@ -11,6 +10,7 @@ import {
   type FixtureReceipt,
   writeFixtureReceipt,
 } from "./evidenceFixture";
+import { createReleaseTestRoot } from "./releaseTestRoot";
 
 type CompletionOptions = Readonly<{
   driver: string;
@@ -70,8 +70,8 @@ export const registerIntentionalCompletionCases = (
 ): void => {
   for (const task of ["F1", "F2", "F3", "F4"] as const) {
     it(`rejects completion with missing ${task}`, () => {
-      const root = mkdtempSync(
-        path.join(tmpdir(), `storage-v2-completion-${task.toLowerCase()}-`),
+      const root = createReleaseTestRoot(
+        `storage-v2-completion-${task.toLowerCase()}-`,
       );
       const fixture = createEvidenceFixture(
         root,
@@ -92,9 +92,7 @@ export const registerIntentionalCompletionCases = (
   }
 
   it("rejects completion with a self-referential input", () => {
-    const root = mkdtempSync(
-      path.join(tmpdir(), "storage-v2-completion-self-"),
-    );
+    const root = createReleaseTestRoot("storage-v2-completion-self-");
     const fixture = createEvidenceFixture(
       root,
       options.workspace,

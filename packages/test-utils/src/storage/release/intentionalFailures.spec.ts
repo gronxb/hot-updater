@@ -1,9 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { storageConformanceAssertions } from "../conformanceAssertions";
 import {
@@ -12,6 +10,10 @@ import {
 } from "../memoryStorage";
 import { registerIntentionalCompletionCases } from "./intentionalCompletionCases";
 import { registerIntentionalEvidenceCases } from "./intentionalEvidenceCases";
+import {
+  cleanupReleaseTestRoots,
+  createReleaseTestRoot,
+} from "./releaseTestRoot";
 
 const workspace = path.resolve(import.meta.dirname, "../../../../..");
 const driver = path.join(workspace, "scripts/verify-storage-v2.mjs");
@@ -36,6 +38,8 @@ const expectFailure = (
 };
 
 describe("Storage v2 release intentional failures", () => {
+  afterEach(cleanupReleaseTestRoots);
+
   it("detects a first-request context cache", async () => {
     const observed: string[] = [];
     const contexts = ["A1", "B", "A2"].map((requestId) =>
@@ -87,7 +91,7 @@ describe("Storage v2 release intentional failures", () => {
     ["flip-create-only", "matrix-flipped.json"],
     ["wrong-target", "matrix-wrong-target.json"],
   ])("rejects the %s matrix mutation", (label, fixtureName) => {
-    const root = mkdtempSync(path.join(tmpdir(), "storage-v2-matrix-fail-"));
+    const root = createReleaseTestRoot("storage-v2-matrix-fail-");
     expectFailure(
       root,
       [
@@ -105,7 +109,7 @@ describe("Storage v2 release intentional failures", () => {
   });
 
   it("rejects a forbidden simulated path", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "storage-v2-scope-fail-"));
+    const root = createReleaseTestRoot("storage-v2-scope-fail-");
     expectFailure(
       root,
       [

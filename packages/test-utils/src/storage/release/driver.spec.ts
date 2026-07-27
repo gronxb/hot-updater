@@ -1,9 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createEvidenceFixture, writeFixtureReceipt } from "./evidenceFixture";
 import {
@@ -11,6 +10,10 @@ import {
   assertVerifierReceipt,
   sha256,
 } from "./evidenceOutputAssertions";
+import {
+  cleanupReleaseTestRoots,
+  createReleaseTestRoot,
+} from "./releaseTestRoot";
 
 const workspace = path.resolve(import.meta.dirname, "../../../../..");
 const driver = path.join(workspace, "scripts/verify-storage-v2.mjs");
@@ -22,8 +25,10 @@ const runDriver = (arguments_: readonly string[]) =>
   });
 
 describe("Storage v2 release driver", () => {
+  afterEach(cleanupReleaseTestRoots);
+
   it("writes a SHA-bound matrix receipt", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "storage-v2-matrix-"));
+    const directory = createReleaseTestRoot("storage-v2-matrix-");
     const output = path.join(directory, "matrix.json");
     execFileSync(process.execPath, [
       driver,
@@ -54,7 +59,7 @@ describe("Storage v2 release driver", () => {
   });
 
   it("exits nonzero for a flipped matrix fixture", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "storage-v2-matrix-"));
+    const directory = createReleaseTestRoot("storage-v2-matrix-");
     const result = runDriver([
       "--mode",
       "matrix",
@@ -71,7 +76,7 @@ describe("Storage v2 release driver", () => {
   });
 
   it("rejects a forbidden simulated scope path", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "storage-v2-scope-"));
+    const directory = createReleaseTestRoot("storage-v2-scope-");
     const result = runDriver([
       "--mode",
       "scope",
@@ -89,7 +94,7 @@ describe("Storage v2 release driver", () => {
   });
 
   it("accepts an empty in-scope diff", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "storage-v2-scope-"));
+    const directory = createReleaseTestRoot("storage-v2-scope-");
     const result = runDriver([
       "--mode",
       "scope",
@@ -105,7 +110,7 @@ describe("Storage v2 release driver", () => {
   });
 
   it("accepts complete ancestor and exact-final evidence epochs", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "storage-v2-evidence-"));
+    const directory = createReleaseTestRoot("storage-v2-evidence-");
     const sha = execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: workspace,
       encoding: "utf8",
@@ -188,9 +193,7 @@ describe("Storage v2 release driver", () => {
   });
 
   it("accepts non-self-referential complete F1-F4 evidence", () => {
-    const directory = mkdtempSync(
-      path.join(tmpdir(), "storage-v2-completion-"),
-    );
+    const directory = createReleaseTestRoot("storage-v2-completion-");
     const sha = execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: workspace,
       encoding: "utf8",

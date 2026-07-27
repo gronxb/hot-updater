@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { expect } from "vitest";
@@ -10,6 +9,7 @@ import {
   type EvidenceFixture,
   type FixtureReceipt,
 } from "./evidenceFixture";
+import { createReleaseTestRoot } from "./releaseTestRoot";
 
 export type IntentionalEvidenceOptions = Readonly<{
   driver: string;
@@ -42,7 +42,7 @@ export const receiptPathFor = (
 export const prepareFixture = (
   options: IntentionalEvidenceOptions,
 ): Readonly<{ fixture: EvidenceFixture; root: string }> => {
-  const root = mkdtempSync(path.join(tmpdir(), "storage-v2-evidence-fail-"));
+  const root = createReleaseTestRoot("storage-v2-evidence-fail-");
   const fixture = createEvidenceFixture(
     root,
     options.workspace,
