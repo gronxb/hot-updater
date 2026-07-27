@@ -1,0 +1,14 @@
+{
+  "schema": "hot-updater.storage-v2-scope-fixture/v1",
+  "pr": {
+    "state": "OPEN",
+    "isDraft": false,
+    "baseRefName": "codex/server-plugin-kernel",
+    "headRefOid": "$HEAD",
+    "statusCheckRollup": [
+      {
+        "conclusion": "FAILURE"
+      }
+    ]
+  }
+}

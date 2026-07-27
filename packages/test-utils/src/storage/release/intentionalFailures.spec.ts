@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -35,6 +36,38 @@ const expectFailure = (
   label: string,
 ): void => {
   expect(run(root, arguments_, label).status).not.toBe(0);
+};
+
+const expectScopeFixtureFailure = (
+  fixtureName: string,
+  label: string,
+  expectedError: string,
+): void => {
+  const root = createReleaseTestRoot("storage-v2-scope-fail-");
+  const result = run(
+    root,
+    [
+      "--mode",
+      "scope",
+      "--base",
+      "HEAD",
+      "--head",
+      "HEAD",
+      "--fixture",
+      path.join(
+        workspace,
+        "packages/test-utils/src/storage/release/fixtures",
+        fixtureName,
+      ),
+    ],
+    label,
+  );
+  const receipt = JSON.parse(
+    readFileSync(path.join(root, `${label}.json`), "utf8"),
+  );
+  expect(result.status).not.toBe(0);
+  expect(receipt.verdict).toBe("failed");
+  expect(receipt.details.error).toBe(expectedError);
 };
 
 describe("Storage v2 release intentional failures", () => {
@@ -123,6 +156,46 @@ describe("Storage v2 release intentional failures", () => {
         "packages/console/src/index.ts",
       ],
       "forbidden-path",
+    );
+  });
+
+  it("rejects non-ancestor remote branch", () => {
+    expectScopeFixtureFailure(
+      "scope-non-ancestor-remote.json",
+      "non-ancestor-remote",
+      "Remote storage branch is not an ancestor of local HEAD.",
+    );
+  });
+
+  it("rejects mismatched PR base", () => {
+    expectScopeFixtureFailure(
+      "scope-mismatched-pr-base.json",
+      "mismatched-pr-base",
+      "PR base branch does not match.",
+    );
+  });
+
+  it("rejects duplicate open PRs", () => {
+    expectScopeFixtureFailure(
+      "scope-duplicate-open-prs.json",
+      "duplicate-open-prs",
+      "More than one open PR exists for the storage branch.",
+    );
+  });
+
+  it("rejects local and remote head divergence", () => {
+    expectScopeFixtureFailure(
+      "scope-diverged-head.json",
+      "diverged-head",
+      "PR head SHA does not match.",
+    );
+  });
+
+  it("rejects failed required checks", () => {
+    expectScopeFixtureFailure(
+      "scope-failed-required-checks.json",
+      "failed-required-checks",
+      "PR checks are incomplete or failed.",
     );
   });
 

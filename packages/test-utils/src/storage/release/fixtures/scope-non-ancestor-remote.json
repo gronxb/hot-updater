@@ -1,0 +1,6 @@
+{
+  "schema": "hot-updater.storage-v2-scope-fixture/v1",
+  "remoteBranch": {
+    "isAncestor": false
+  }
+}

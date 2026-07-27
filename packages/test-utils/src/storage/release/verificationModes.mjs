@@ -15,6 +15,51 @@ const FORBIDDEN_PATHS = [
   /(?:^|\/)(?:nitro|template|auth)(?:\/|$)/,
 ];
 
+const readScopeFixture = (workspace, fixture) => {
+  const fixtureInput = readJson(path.resolve(workspace, fixture));
+  invariant(
+    fixtureInput.schema === "hot-updater.storage-v2-scope-fixture/v1",
+    "Scope fixture schema is invalid.",
+  );
+  invariant(
+    fixtureInput.paths === undefined ||
+      (Array.isArray(fixtureInput.paths) &&
+        fixtureInput.paths.every((value) => typeof value === "string")),
+    "Scope fixture paths are invalid.",
+  );
+  invariant(
+    fixtureInput.openPrCount === undefined ||
+      (Number.isInteger(fixtureInput.openPrCount) &&
+        fixtureInput.openPrCount >= 0),
+    "Scope fixture open PR count is invalid.",
+  );
+  invariant(
+    fixtureInput.remoteBranch === undefined ||
+      (typeof fixtureInput.remoteBranch === "object" &&
+        fixtureInput.remoteBranch !== null &&
+        typeof fixtureInput.remoteBranch.isAncestor === "boolean"),
+    "Scope fixture remote branch is invalid.",
+  );
+  invariant(
+    fixtureInput.pr === undefined ||
+      (typeof fixtureInput.pr === "object" &&
+        fixtureInput.pr !== null &&
+        typeof fixtureInput.pr.state === "string" &&
+        typeof fixtureInput.pr.isDraft === "boolean" &&
+        typeof fixtureInput.pr.baseRefName === "string" &&
+        typeof fixtureInput.pr.headRefOid === "string" &&
+        Array.isArray(fixtureInput.pr.statusCheckRollup) &&
+        fixtureInput.pr.statusCheckRollup.every(
+          (check) =>
+            typeof check === "object" &&
+            check !== null &&
+            typeof check.conclusion === "string",
+        )),
+    "Scope fixture PR is invalid.",
+  );
+  return fixtureInput;
+};
+
 export const runScopeMode = ({
   workspace,
   base,
@@ -33,9 +78,7 @@ export const runScopeMode = ({
   );
   invariant(diff.exitCode === 0, "Scope diff command failed.");
   const fixtureInput =
-    fixture === undefined
-      ? undefined
-      : readJson(path.resolve(workspace, fixture));
+    fixture === undefined ? undefined : readScopeFixture(workspace, fixture);
   const paths = [
     ...diff.stdout.split("\n").filter(Boolean),
     ...simulatePaths,
@@ -46,6 +89,14 @@ export const runScopeMode = ({
       FORBIDDEN_PATHS.every((pattern) => !pattern.test(changedPath)),
     ),
     "Scope contains a forbidden simulated path.",
+  );
+  invariant(
+    fixtureInput?.remoteBranch?.isAncestor !== false,
+    "Remote storage branch is not an ancestor of local HEAD.",
+  );
+  invariant(
+    fixtureInput?.openPrCount === undefined || fixtureInput.openPrCount <= 1,
+    "More than one open PR exists for the storage branch.",
   );
 
   if (prJson !== undefined || fixtureInput?.pr !== undefined) {
@@ -58,7 +109,15 @@ export const runScopeMode = ({
       pr.state === "OPEN" && pr.isDraft === false,
       "PR is not open and non-draft.",
     );
-    invariant(pr.headRefOid === headSha, "PR head SHA does not match.");
+    invariant(
+      pr.baseRefName === "codex/server-plugin-kernel",
+      "PR base branch does not match.",
+    );
+    const prHeadSha =
+      fixtureInput?.pr !== undefined && pr.headRefOid === "$HEAD"
+        ? headSha
+        : pr.headRefOid;
+    invariant(prHeadSha === headSha, "PR head SHA does not match.");
     invariant(
       (pr.statusCheckRollup ?? []).every((check) =>
         ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(check.conclusion),
