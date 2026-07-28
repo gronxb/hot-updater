@@ -34,6 +34,35 @@
     "plugins/supabase/runtime-acceptance-*"
   ],
   "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "typescript",
+            "message": "Use OXC for source analysis; TypeScript is compiler-only."
+          },
+          {
+            "name": "@typescript/native",
+            "message": "Use OXC for source analysis; TypeScript is compiler-only."
+          },
+          {
+            "name": "@typescript/typescript6",
+            "message": "Use OXC for source analysis; TypeScript is compiler-only."
+          }
+        ],
+        "patterns": [
+          {
+            "group": [
+              "typescript/*",
+              "@typescript/native/*",
+              "@typescript/typescript6/*"
+            ],
+            "message": "Use OXC for source analysis; TypeScript is compiler-only."
+          }
+        ]
+      }
+    ],
     "no-unused-vars": "error",
     "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-invalid-void-type": "off",
