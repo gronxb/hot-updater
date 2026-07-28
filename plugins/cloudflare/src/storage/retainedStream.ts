@@ -1,10 +1,19 @@
+import { StoragePluginError } from "@hot-updater/plugin-core/storage";
+
 export const retainR2ClientThroughStream = (
   source: ReadableStream<Uint8Array>,
   release: () => void,
   signal?: AbortSignal,
 ): ReadableStream<Uint8Array> => {
   const reader = source.getReader();
+  let abortError: StoragePluginError | undefined;
+  let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+  let sourceCancellation: Promise<void> | undefined;
   let settled = false;
+  const cancelSource = (reason?: unknown): Promise<void> => {
+    sourceCancellation ??= reader.cancel(reason);
+    return sourceCancellation;
+  };
   const settle = (): void => {
     if (settled) {
       return;
@@ -15,14 +24,30 @@ export const retainR2ClientThroughStream = (
     release();
   };
   const abort = (): void => {
-    void reader.cancel().finally(settle);
+    if (settled || abortError !== undefined) {
+      return;
+    }
+    abortError = new StoragePluginError(
+      "aborted",
+      "Cloudflare R2 response stream was aborted.",
+      { cause: signal?.reason },
+    );
+    controller?.error(abortError);
+    void cancelSource(abortError)
+      .catch(() => undefined)
+      .finally(settle);
   };
-  signal?.addEventListener("abort", abort, { once: true });
 
-  return new ReadableStream<Uint8Array>({
+  const stream = new ReadableStream<Uint8Array>({
+    start(streamController) {
+      controller = streamController;
+    },
     async pull(controller) {
       try {
         const next = await reader.read();
+        if (abortError !== undefined) {
+          return;
+        }
         if (next.done) {
           controller.close();
           settle();
@@ -30,6 +55,9 @@ export const retainR2ClientThroughStream = (
         }
         controller.enqueue(next.value);
       } catch (error) {
+        if (abortError !== undefined) {
+          return;
+        }
         controller.error(
           error instanceof Error
             ? error
@@ -40,10 +68,15 @@ export const retainR2ClientThroughStream = (
     },
     async cancel(reason) {
       try {
-        await reader.cancel(reason);
+        await cancelSource(reason);
       } finally {
         settle();
       }
     },
   });
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted === true) {
+    abort();
+  }
+  return stream;
 };

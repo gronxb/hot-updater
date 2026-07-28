@@ -1,3 +1,4 @@
+import { StoragePluginError } from "@hot-updater/plugin-core/storage";
 import { describe, expect, it } from "vitest";
 
 import { retainR2ClientThroughStream } from "./retainedStream";
@@ -131,5 +132,105 @@ describe("retainR2ClientThroughStream", () => {
     // Then
     expect(source.locked).toBe(false);
     expect(cancels).toBe(1);
+  });
+
+  it("fails a pre-aborted response stream and releases its lease", async () => {
+    // Given
+    const abortController = new AbortController();
+    const abortReason = new Error("pre-aborted response");
+    abortController.abort(abortReason);
+    let cancels = 0;
+    let cancellationReason: unknown;
+    let releases = 0;
+    let resolveReleased: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      resolveReleased = resolve;
+    });
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel(reason) {
+        cancels += 1;
+        cancellationReason = reason;
+      },
+    });
+    const retained = retainR2ClientThroughStream(
+      source,
+      () => {
+        releases += 1;
+        resolveReleased();
+      },
+      abortController.signal,
+    );
+    const reader = retained.getReader();
+
+    // When
+    const result = reader.read();
+
+    // Then
+    await expect(result).rejects.toBeInstanceOf(StoragePluginError);
+    await expect(result).rejects.toMatchObject({
+      code: "aborted",
+      cause: abortReason,
+    } satisfies Partial<StoragePluginError>);
+    await released;
+    expect(source.locked).toBe(false);
+    expect(cancels).toBe(1);
+    expect(releases).toBe(1);
+    expect(cancellationReason).toMatchObject({
+      code: "aborted",
+      cause: abortReason,
+    } satisfies Partial<StoragePluginError>);
+  });
+
+  it("settles an abort raised while its listener is registering", async () => {
+    // Given
+    const abortController = new AbortController();
+    const abortReason = new Error("listener registration race");
+    const signal = abortController.signal;
+    const originalAddEventListener = signal.addEventListener.bind(signal);
+    signal.addEventListener = (type, listener, options) => {
+      originalAddEventListener(type, listener, options);
+      if (type === "abort") {
+        abortController.abort(abortReason);
+      }
+    };
+    let cancels = 0;
+    let releases = 0;
+    let resolveReleased: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      resolveReleased = resolve;
+    });
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel() {
+        cancels += 1;
+      },
+    });
+    const retained = retainR2ClientThroughStream(
+      source,
+      () => {
+        releases += 1;
+        resolveReleased();
+      },
+      signal,
+    );
+    const reader = retained.getReader();
+
+    // When
+    const result = reader.read();
+
+    // Then
+    await expect(result).rejects.toMatchObject({
+      code: "aborted",
+      cause: abortReason,
+    } satisfies Partial<StoragePluginError>);
+    await released;
+    expect(source.locked).toBe(false);
+    expect(cancels).toBe(1);
+    expect(releases).toBe(1);
   });
 });
