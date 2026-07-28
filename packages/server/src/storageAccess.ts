@@ -93,7 +93,6 @@ const readTextStream = async (
       if (result.done) break;
       size += result.value.byteLength;
       if (size > MAX_STORAGE_TEXT_BYTES) {
-        await reader.cancel();
         throw new Error("Storage text exceeds the maximum size.");
       }
       text += decoder.decode(result.value, { stream: true });

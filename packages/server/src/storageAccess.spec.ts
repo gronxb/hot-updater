@@ -5,10 +5,15 @@ import type {
 } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createStorageAccess, createStorageCallContext } from "./storageAccess";
+import {
+  createStorageAccess,
+  createStorageCallContext,
+  MAX_STORAGE_TEXT_BYTES,
+} from "./storageAccess";
 
 describe("createStorageAccess", () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -191,6 +196,60 @@ describe("createStorageAccess", () => {
       "Storage text exceeds the maximum size.",
     );
     expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.locked).toBe(false);
+  });
+
+  it("rejects an actual oversized v2 stream without cancelling it twice", async () => {
+    // Given
+    let underlyingCancelCalls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(MAX_STORAGE_TEXT_BYTES + 1));
+      },
+      cancel() {
+        underlyingCancelCalls += 1;
+      },
+    });
+    const nativeCancel = ReadableStreamDefaultReader.prototype.cancel;
+    const cancel = vi
+      .spyOn(ReadableStreamDefaultReader.prototype, "cancel")
+      .mockImplementation(function (
+        this: ReadableStreamDefaultReader<Uint8Array>,
+        reason?: unknown,
+      ) {
+        if (cancel.mock.calls.length > 1) {
+          return Promise.reject(new Error("second cancellation rejected"));
+        }
+        return nativeCancel.call(this, reason);
+      });
+    const access = createStorageAccess([
+      createV2Storage(async ({ storageUri }) => ({
+        kind: "found",
+        storageUri,
+        body: stream,
+        metadata: { contentLength: 1 },
+      })),
+    ]);
+
+    // When
+    const text = access.readStorageText(
+      "storage://manifest",
+      createStorageCallContext(
+        undefined,
+        Object.freeze({
+          target: "node",
+          environment: Object.freeze({}),
+          bindings: Object.freeze({}),
+        }),
+      ),
+    );
+
+    // Then
+    await expect(text).rejects.toThrow(
+      "Storage text exceeds the maximum size.",
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(underlyingCancelCalls).toBe(1);
     expect(stream.locked).toBe(false);
   });
 
