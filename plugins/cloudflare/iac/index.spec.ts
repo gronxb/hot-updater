@@ -20,10 +20,18 @@ const mocks = vi.hoisted(() => {
         list: vi.fn(),
       },
     },
+    workers: {
+      subdomains: {
+        get: vi.fn(),
+      },
+    },
   };
   const credentialApi = {
     accounts: {
       list: vi.fn(),
+      tokens: {
+        verify: vi.fn(),
+      },
     },
     d1: {
       database: {
@@ -51,6 +59,8 @@ const mocks = vi.hoisted(() => {
     api,
     credentialApi,
     confirm: vi.fn(),
+    confirmInitInputPersistence: vi.fn(),
+    createWrangler: vi.fn(),
     inputSecrets: vi.fn(),
     log: {
       error: vi.fn(),
@@ -64,7 +74,9 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("cloudflare", () => ({
   Cloudflare: vi.fn(function Cloudflare(options) {
-    return options.apiToken === "api-token" ? mocks.credentialApi : mocks.api;
+    return options.apiToken === "wrangler-oauth-token"
+      ? mocks.api
+      : mocks.credentialApi;
   }),
 }));
 
@@ -74,6 +86,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
   return {
     ...actual,
+    confirmInitInputPersistence: mocks.confirmInitInputPersistence,
     makeEnv: mocks.makeEnv,
     p: {
       ...actual.p,
@@ -100,7 +113,14 @@ vi.mock("./getWranglerLoginAuthToken", () => ({
   })),
 }));
 
-import { CloudflareAuthenticationError } from "./cloudflareInitErrors";
+vi.mock("../src/utils/createWrangler", () => ({
+  createWrangler: mocks.createWrangler,
+}));
+
+import {
+  CloudflareAuthenticationError,
+  CloudflareDeploymentError,
+} from "./cloudflareInitErrors";
 import { runInit } from "./index";
 
 describe("Cloudflare init discovery", () => {
@@ -110,6 +130,7 @@ describe("Cloudflare init discovery", () => {
       env: {},
       managedEnv: {},
     });
+    mocks.confirmInitInputPersistence.mockResolvedValue(false);
     mocks.api.accounts.list.mockResolvedValue({
       result: [{ id: "account-id", name: "Account" }],
     });
@@ -119,6 +140,7 @@ describe("Cloudflare init discovery", () => {
     mocks.api.r2.buckets.domains.managed.list.mockResolvedValue({
       enabled: false,
     });
+    mocks.api.workers.subdomains.get.mockResolvedValue({});
     mocks.inputSecrets.mockResolvedValue({
       accessKeyId: "access-key-id",
       apiToken: "api-token",
@@ -128,6 +150,13 @@ describe("Cloudflare init discovery", () => {
     mocks.credentialApi.user.tokens.verify.mockResolvedValue({
       status: "active",
     });
+    mocks.credentialApi.accounts.tokens.verify.mockResolvedValue({
+      status: "active",
+    });
+    mocks.credentialApi.d1.database.list.mockResolvedValue({ result: [] });
+    mocks.credentialApi.r2.buckets.list.mockResolvedValue({ buckets: [] });
+    mocks.credentialApi.workers.subdomains.get.mockResolvedValue({});
+    mocks.createWrangler.mockResolvedValue(vi.fn());
   });
 
   it("reuses an existing bucket's privacy after discovering it", async () => {
@@ -160,6 +189,9 @@ describe("Cloudflare init discovery", () => {
     mocks.credentialApi.user.tokens.verify.mockRejectedValue(
       new Error("Invalid access token [code: 9109]"),
     );
+    mocks.credentialApi.accounts.tokens.verify.mockRejectedValue(
+      new Error("Authentication error [code: 10000]"),
+    );
 
     // When
     const initialization = runInit({ build: "bare" });
@@ -169,6 +201,88 @@ describe("Cloudflare init discovery", () => {
       CloudflareAuthenticationError,
     );
     expect(mocks.makeEnv).not.toHaveBeenCalled();
+  });
+
+  it("keeps using Wrangler OAuth for infrastructure after validating the database token", async () => {
+    // Given
+    const stopAtOAuthInfrastructureCall = new Error(
+      "stop at OAuth infrastructure call",
+    );
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.api.workers.subdomains.get.mockRejectedValue(
+      stopAtOAuthInfrastructureCall,
+    );
+    mocks.credentialApi.workers.subdomains.get.mockRejectedValue(
+      new Error("database token used for infrastructure"),
+    );
+
+    // When
+    const initialization = runInit({ build: "bare" });
+
+    // Then
+    await expect(initialization).rejects.toBe(stopAtOAuthInfrastructureCall);
+    expect(mocks.api.workers.subdomains.get).toHaveBeenCalledWith({
+      account_id: "account-id",
+    });
+    expect(mocks.credentialApi.d1.database.list).toHaveBeenCalledWith({
+      account_id: "account-id",
+    });
+    expect(mocks.credentialApi.r2.buckets.list).not.toHaveBeenCalled();
+    expect(mocks.credentialApi.workers.subdomains.get).not.toHaveBeenCalled();
+  });
+
+  it("validates an account-owned token for the selected account without listing accounts", async () => {
+    // Given
+    const stopAfterTokenValidation = new Error("stop after token validation");
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.inputSecrets.mockResolvedValue({
+      accessKeyId: "access-key-id",
+      apiToken: "cfat_api-token",
+      secretAccessKey: "secret-access-key",
+      workerName: "hot-updater",
+    });
+    mocks.api.workers.subdomains.get.mockRejectedValue(
+      stopAfterTokenValidation,
+    );
+
+    // When
+    const initialization = runInit({ build: "bare" });
+
+    // Then
+    await expect(initialization).rejects.toBe(stopAfterTokenValidation);
+    expect(mocks.credentialApi.accounts.tokens.verify).toHaveBeenCalledWith({
+      account_id: "account-id",
+    });
+    expect(mocks.credentialApi.user.tokens.verify).not.toHaveBeenCalled();
+    expect(mocks.credentialApi.accounts.list).not.toHaveBeenCalled();
+  });
+
+  it("passes Wrangler OAuth to Worker deployment", async () => {
+    // Given
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.createWrangler.mockRejectedValue(
+      new Error("stop before running Wrangler"),
+    );
+
+    // When
+    const initialization = runInit({ build: "bare" });
+
+    // Then
+    await expect(initialization).rejects.toBeInstanceOf(
+      CloudflareDeploymentError,
+    );
+    expect(mocks.createWrangler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "account-id",
+        cloudflareApiToken: "wrangler-oauth-token",
+      }),
+    );
   });
 
   it("identifies an invalid token loaded from an explicit env file", async () => {
@@ -190,6 +304,9 @@ describe("Cloudflare init discovery", () => {
     mocks.credentialApi.user.tokens.verify.mockRejectedValue(
       new Error("Authentication error [code: 10000]"),
     );
+    mocks.credentialApi.accounts.tokens.verify.mockRejectedValue(
+      new Error("Authentication error [code: 10000]"),
+    );
 
     // When
     const initialization = runInit({
@@ -204,6 +321,9 @@ describe("Cloudflare init discovery", () => {
         kind: "env-file",
       },
     });
-    expect(mocks.api.r2.buckets.list).not.toHaveBeenCalled();
+    expect(mocks.api.r2.buckets.list).toHaveBeenCalledWith({
+      account_id: "account-id",
+    });
+    expect(mocks.credentialApi.r2.buckets.list).not.toHaveBeenCalled();
   });
 });

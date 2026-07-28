@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { validateCloudflareApiToken } from "./cloudflareApiToken";
 import {
   CloudflareAuthenticationError,
   isCloudflareAuthenticationError,
-  validateCloudflareApiToken,
 } from "./cloudflareInitErrors";
 
 describe("Cloudflare init authentication", () => {
@@ -21,7 +21,14 @@ describe("Cloudflare init authentication", () => {
 
     // When
     const validation = validateCloudflareApiToken({
-      probes: [probe],
+      accountId: "account-id",
+      probes: [
+        {
+          check: "D1 database access",
+          request: probe,
+          requiredPermission: "D1: Edit",
+        },
+      ],
       source: { kind: "prompt" },
       verify: vi.fn().mockResolvedValue({ status: "expired" }),
     });
@@ -39,12 +46,48 @@ describe("Cloudflare init authentication", () => {
 
     // When
     await validateCloudflareApiToken({
-      probes: [probe],
+      accountId: "account-id",
+      probes: [
+        {
+          check: "D1 database access",
+          request: probe,
+          requiredPermission: "D1: Edit",
+        },
+      ],
       source: { kind: "prompt" },
       verify: vi.fn().mockResolvedValue({ status: "active" }),
     });
 
     // Then
     expect(probe).toHaveBeenCalledOnce();
+  });
+
+  it("identifies the failed account resource permission after token verification", async () => {
+    // Given
+    const probe = vi
+      .fn()
+      .mockRejectedValue(new Error("Authentication error [code: 10000]"));
+
+    // When
+    const validation = validateCloudflareApiToken({
+      accountId: "account-id",
+      probes: [
+        {
+          check: "R2 bucket access",
+          request: probe,
+          requiredPermission: "Workers R2 Storage: Edit",
+        },
+      ],
+      source: { kind: "prompt" },
+      verify: vi.fn().mockResolvedValue({ status: "active" }),
+    });
+
+    // Then
+    await expect(validation).rejects.toMatchObject({
+      accountId: "account-id",
+      check: "R2 bucket access",
+      name: "CloudflarePermissionError",
+      requiredPermission: "Workers R2 Storage: Edit",
+    });
   });
 });

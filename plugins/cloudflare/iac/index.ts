@@ -26,11 +26,15 @@ import { execa } from "execa";
 
 import { createWrangler } from "../src/utils/createWrangler";
 import {
+  validateCloudflareApiToken,
+  verifyCloudflareApiTokenIdentity,
+} from "./cloudflareApiToken";
+import {
+  CLOUDFLARE_INIT_PERMISSION,
   type CloudflareCredentialSource,
   runCloudflareApiRequest,
   toCloudflareApiError,
   toCloudflareDeploymentError,
-  validateCloudflareApiToken,
 } from "./cloudflareInitErrors";
 import {
   assertCloudflareNonInteractiveInputs,
@@ -204,48 +208,35 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     workerName: existingWorkerName,
   } = existingInputs;
 
-  const infrastructureCredentialSource: CloudflareCredentialSource =
-    existingApiToken
-      ? envFile
-        ? { envFile, kind: "env-file" }
-        : { kind: "environment" }
-      : { kind: "wrangler-oauth" };
-  let infrastructureApiToken = existingApiToken;
-  if (!infrastructureApiToken) {
-    let auth = getWranglerLoginAuthToken();
-    if (!auth || dayjs(auth.expiration_time).isBefore(dayjs())) {
-      await execa(
-        "npx",
-        [
-          "wrangler",
-          "login",
-          "--scopes",
-          "account:read",
-          "user:read",
-          "d1:write",
-          "workers:write",
-          "workers_scripts:write",
-        ],
-        { cwd },
-      );
-      auth = getWranglerLoginAuthToken();
-    }
-    if (!auth) {
-      throw new Error("'npx wrangler login' is required to use this command");
-    }
-    infrastructureApiToken = auth.oauth_token;
+  const infrastructureCredentialSource: CloudflareCredentialSource = {
+    kind: "wrangler-oauth",
+  };
+  let auth = getWranglerLoginAuthToken();
+  if (!auth || dayjs(auth.expiration_time).isBefore(dayjs())) {
+    await execa(
+      "npx",
+      [
+        "wrangler",
+        "login",
+        "--scopes",
+        "account:read",
+        "user:read",
+        "d1:write",
+        "workers:write",
+        "workers_scripts:write",
+      ],
+      { cwd },
+    );
+    auth = getWranglerLoginAuthToken();
   }
+  if (!auth) {
+    throw new Error("'npx wrangler login' is required to use this command");
+  }
+  const infrastructureApiToken = auth.oauth_token;
 
-  let cf = new Cloudflare({
+  const cf = new Cloudflare({
     apiToken: infrastructureApiToken,
   });
-  if (existingApiToken) {
-    await validateCloudflareApiToken({
-      probes: [],
-      source: infrastructureCredentialSource,
-      verify: () => cf.user.tokens.verify(),
-    });
-  }
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
@@ -295,6 +286,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       accountId = selectedAccountId;
     }
   }
+
   const availableBuckets: { name: string }[] = [];
   try {
     await p.tasks([
@@ -527,30 +519,36 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     process.exit(1);
   }
 
-  const apiTokenCredentialSource: CloudflareCredentialSource = existingApiToken
-    ? infrastructureCredentialSource
+  const databaseCredentialSource: CloudflareCredentialSource = existingApiToken
+    ? envFile
+      ? { envFile, kind: "env-file" }
+      : { kind: "environment" }
     : { kind: "prompt" };
   const credentialClient = new Cloudflare({ apiToken });
   await validateCloudflareApiToken({
+    accountId,
     probes: [
-      () => credentialClient.accounts.list(),
-      () =>
-        credentialClient.r2.buckets.list({
-          account_id: accountId,
-        }),
-      () =>
-        credentialClient.d1.database.list({
-          account_id: accountId,
-        }),
-      () =>
-        credentialClient.workers.subdomains.get({
-          account_id: accountId,
-        }),
+      {
+        check: "D1 database access",
+        request: () =>
+          credentialClient.d1.database.list({
+            account_id: accountId,
+          }),
+        requiredPermission: CLOUDFLARE_INIT_PERMISSION.d1,
+      },
     ],
-    source: apiTokenCredentialSource,
-    verify: () => credentialClient.user.tokens.verify(),
+    source: databaseCredentialSource,
+    verify: () =>
+      verifyCloudflareApiTokenIdentity({
+        accountId,
+        apiToken,
+        verifyAccountToken: (selectedAccountId) =>
+          credentialClient.accounts.tokens.verify({
+            account_id: selectedAccountId,
+          }),
+        verifyUserToken: () => credentialClient.user.tokens.verify(),
+      }),
   });
-  cf = credentialClient;
 
   const resolvedInputs = {
     ...existingInputs,
@@ -577,7 +575,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       provider: CLOUDFLARE_INIT_PROVIDER,
     }),
   });
-  infrastructureApiToken = apiToken;
 
   if (createBucket) {
     const newR2 = await runCloudflareApiRequest({
@@ -586,7 +583,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           account_id: accountId,
           name: selectedBucketName,
         }),
-      source: apiTokenCredentialSource,
+      source: infrastructureCredentialSource,
     });
     if (!newR2.name) {
       throw new Error("Failed to create new R2 Bucket");
@@ -597,7 +594,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         cf.r2.buckets.domains.managed.list(selectedBucketName, {
           account_id: accountId,
         }),
-      source: apiTokenCredentialSource,
+      source: infrastructureCredentialSource,
     });
     managedDomainEnabled = domains.enabled;
   } else {
@@ -623,7 +620,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
                 account_id: accountId,
                 enabled: !isPrivate,
               }),
-            source: apiTokenCredentialSource,
+            source: infrastructureCredentialSource,
           });
         },
       },
@@ -637,7 +634,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           account_id: accountId,
           name: d1DatabaseName,
         }),
-      source: apiTokenCredentialSource,
+      source: infrastructureCredentialSource,
     });
     if (!newD1.uuid || !newD1.name) {
       throw new Error("Failed to create the requested D1 Database");
@@ -659,11 +656,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       cf.workers.subdomains.get({
         account_id: accountId,
       }),
-    source: apiTokenCredentialSource,
+    source: infrastructureCredentialSource,
   });
 
   await deployWorker(infrastructureApiToken, accountId, {
-    credentialSource: apiTokenCredentialSource,
+    credentialSource: infrastructureCredentialSource,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
     nonInteractive,

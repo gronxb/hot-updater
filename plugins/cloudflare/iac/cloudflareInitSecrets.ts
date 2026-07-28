@@ -1,5 +1,6 @@
 import { assertInitInputs, link, p } from "@hot-updater/cli-tools";
 
+import { CLOUDFLARE_INIT_PERMISSIONS } from "./cloudflareInitErrors";
 import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
 
 type CloudflareInitSecrets = {
@@ -59,11 +60,9 @@ export const inputCloudflareInitSecrets = async ({
       )}`,
     );
     p.log.step(
-      "Required permissions: Account Read, D1 Edit, R2 Edit, Workers Scripts Edit",
+      `Required permissions: ${CLOUDFLARE_INIT_PERMISSIONS.join(", ")}`,
     );
-    p.log.step(
-      "Used for bundle metadata writes and future infrastructure updates.",
-    );
+    p.log.step("Used by d1Database for bundle metadata writes.");
   }
   if (!accessKeyId || !secretAccessKey) {
     p.log.step(

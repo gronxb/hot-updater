@@ -13,10 +13,10 @@ export const initProvider = {
     },
     apiToken: {
       envKey: "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
-      help: "API token with Account, D1, R2, and Workers edit permissions",
+      help: "API token with D1 edit permission",
       persistence: "with-consent",
       prompt: {
-        message: "Enter the Cloudflare API Token",
+        message: "Enter the Cloudflare D1 API Token",
         type: "password",
       },
     },

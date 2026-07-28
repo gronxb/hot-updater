@@ -1,11 +1,12 @@
 import { InitError } from "@hot-updater/cli-tools";
 import { APIError } from "cloudflare/error";
 
+export const CLOUDFLARE_INIT_PERMISSION = {
+  d1: "D1: Edit",
+} as const;
+
 export const CLOUDFLARE_INIT_PERMISSIONS = [
-  "Account Read",
-  "D1 Edit",
-  "R2 Edit",
-  "Workers Scripts Edit",
+  CLOUDFLARE_INIT_PERMISSION.d1,
 ] as const;
 
 export type CloudflareCredentialSource =
@@ -96,6 +97,7 @@ export class CloudflareAuthenticationError extends InitError {
 
   constructor(
     readonly source: CloudflareCredentialSource,
+    readonly accountId?: string,
     options?: ErrorOptions,
   ) {
     super(
@@ -103,13 +105,60 @@ export class CloudflareAuthenticationError extends InitError {
         source.kind === "wrangler-oauth"
           ? "Cloudflare Wrangler authentication failed."
           : "Cloudflare API token is invalid, expired, or missing required permissions.",
+        ...(accountId
+          ? [
+              `Selected account: ${accountId}`,
+              "Confirm the token is active and its resource scope includes this account.",
+            ]
+          : []),
         ...getCredentialRemediation(source),
-        `Required permissions: ${CLOUDFLARE_INIT_PERMISSIONS.join(", ")}`,
+        ...(source.kind === "wrangler-oauth"
+          ? []
+          : [
+              `Required permissions: ${CLOUDFLARE_INIT_PERMISSIONS.join(", ")}`,
+            ]),
         "Verify token status: https://developers.cloudflare.com/fundamentals/api/get-started/create-token/#test-the-token",
       ].join("\n"),
       options,
     );
   }
+}
+
+export class CloudflarePermissionError extends InitError {
+  readonly name = "CloudflarePermissionError";
+
+  constructor(
+    readonly source: CloudflareCredentialSource,
+    {
+      accountId,
+      check,
+      requiredPermission,
+    }: {
+      readonly accountId: string;
+      readonly check: string;
+      readonly requiredPermission: string;
+    },
+    options?: ErrorOptions,
+  ) {
+    super(
+      [
+        "Cloudflare API token cannot access a required account resource.",
+        `Selected account: ${accountId}`,
+        `Failed check: ${check}`,
+        `Required permission: ${requiredPermission}`,
+        "Confirm the token permission and account resource scope, then rerun init.",
+        ...getCredentialRemediation(source),
+      ].join("\n"),
+      options,
+    );
+    this.accountId = accountId;
+    this.check = check;
+    this.requiredPermission = requiredPermission;
+  }
+
+  readonly accountId: string;
+  readonly check: string;
+  readonly requiredPermission: string;
 }
 
 export class CloudflareDeploymentError extends InitError {
@@ -150,7 +199,9 @@ export const toCloudflareApiError = (
     return error;
   }
   if (isCloudflareAuthenticationError(error)) {
-    return new CloudflareAuthenticationError(source, { cause: error });
+    return new CloudflareAuthenticationError(source, undefined, {
+      cause: error,
+    });
   }
   if (error instanceof APIError) {
     return new CloudflareApiRequestError(error);
@@ -183,27 +234,4 @@ export const toCloudflareDeploymentError = (
   return apiError instanceof InitError
     ? apiError
     : new CloudflareDeploymentError(apiError);
-};
-
-export const validateCloudflareApiToken = async ({
-  probes,
-  source,
-  verify,
-}: {
-  readonly probes: readonly (() => Promise<unknown>)[];
-  readonly source: CloudflareCredentialSource;
-  readonly verify: () => Promise<{ readonly status?: string }>;
-}): Promise<void> => {
-  try {
-    const verification = await verify();
-    if (verification.status !== "active") {
-      throw new CloudflareAuthenticationError(source);
-    }
-    await Promise.all(probes.map((probe) => probe()));
-  } catch (error) {
-    if (error instanceof Error) {
-      throw toCloudflareApiError(error, source);
-    }
-    throw new Error(String(error));
-  }
 };
