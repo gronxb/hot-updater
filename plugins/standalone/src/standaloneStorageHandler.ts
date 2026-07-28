@@ -24,7 +24,7 @@ type ContextSource =
 export type StandaloneStorageHandlerOptions = Readonly<{
   storage: StoragePlugin;
   context: ContextSource;
-  authorize?: (request: Request) => boolean | Promise<boolean>;
+  authorize: (request: Request) => boolean | Promise<boolean>;
 }>;
 
 const resolveContext = (
@@ -43,7 +43,7 @@ export const createStandaloneStorageHandler =
     const isDelivery = url.pathname === STANDALONE_STORAGE_V2.routes.delivery;
     if (!isObject && !isDelivery) return undefined;
     if (
-      options.authorize !== undefined &&
+      typeof options.authorize !== "function" ||
       !(await options.authorize(request))
     ) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });

@@ -201,6 +201,7 @@ setupStoragePluginTestRunner(
       const remote = createRemoteMemoryStorage();
       const baseUrl = await listen(
         createStandaloneStorageHandler({
+          authorize: () => true,
           context,
           storage: remote,
         }),

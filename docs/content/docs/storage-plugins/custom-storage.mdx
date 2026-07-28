@@ -259,6 +259,25 @@ The resolver runs at the server boundary for handler and API invocations. It
 must return a fresh context with the target accepted by the imported provider
 entry. Hot Updater snapshots that context before invoking storage.
 
+### Standalone HTTP handler authorization
+
+The Standalone Storage v2 HTTP handler requires an authorization callback:
+
+```ts
+import { createStandaloneStorageHandler } from "@hot-updater/standalone/storage";
+
+const storageHandler = createStandaloneStorageHandler({
+  storage,
+  context,
+  authorize: (request) =>
+    request.headers.get("authorization") === `Bearer ${storageToken}`,
+});
+```
+
+The callback runs before context resolution or any storage operation. A
+missing or malformed callback fails closed with `401`; a thrown authorization
+error is propagated without accessing storage.
+
 ## Ownership and disposal
 
 The provider owns resources created by its implementation. Release them from

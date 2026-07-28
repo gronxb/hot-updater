@@ -3,6 +3,7 @@ import { createServer, type RequestListener, type Server } from "node:http";
 
 import { env, secret } from "@hot-updater/core/config";
 import type { StorageOperationContext } from "@hot-updater/plugin-core/storage";
+import { createHandler } from "@hot-updater/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStandaloneAnalyticsProvider } from "./standaloneAnalyticsProvider";
@@ -298,6 +299,69 @@ const storageContext = (
     bindings: Object.freeze({}),
   });
 
+const createGuardedStorage = (calls: string[]) => ({
+  name: "guarded",
+  protocol: "http",
+  async put() {
+    calls.push("put");
+    return {
+      kind: "stored" as const,
+      storageUri: "https://objects.example/item",
+    };
+  },
+  async head() {
+    calls.push("head");
+    return { kind: "not-found" as const };
+  },
+  async get() {
+    calls.push("get");
+    return { kind: "not-found" as const };
+  },
+  async delete() {
+    calls.push("delete");
+    return { kind: "not-found" as const };
+  },
+  async issueDownload() {
+    calls.push("delivery");
+    return {
+      kind: "issued" as const,
+      downloadUrl: "https://cdn.example/item",
+    };
+  },
+});
+
+const createValidControlRequests = (): readonly Request[] => {
+  const objectUrl = `https://server.example${STANDALONE_STORAGE_V2.routes.object}`;
+  const deliveryUrl = `https://server.example${STANDALONE_STORAGE_V2.routes.delivery}`;
+  const storageUri = encodeURIComponent("https://objects.example/item");
+  return [
+    new Request(objectUrl, {
+      body: new Uint8Array([1]),
+      headers: {
+        "content-length": "1",
+        [STANDALONE_STORAGE_V2.headers.key]: "item",
+        [STANDALONE_STORAGE_V2.headers.metadata]: encodeURIComponent("{}"),
+      },
+      method: "PUT",
+    }),
+    ...["HEAD", "GET", "DELETE"].map(
+      (method) =>
+        new Request(objectUrl, {
+          headers: {
+            [STANDALONE_STORAGE_V2.headers.storageUri]: storageUri,
+          },
+          method,
+        }),
+    ),
+    new Request(deliveryUrl, {
+      headers: {
+        [STANDALONE_STORAGE_V2.headers.storageUri]: storageUri,
+      },
+      method: "POST",
+    }),
+  ];
+};
+
 describe("standalone storage v2 security boundary", () => {
   it("resolves tagged endpoint and headers per operation in A-B-A order", async () => {
     // Given
@@ -475,38 +539,8 @@ describe("standalone storage v2 security boundary", () => {
   it("authorizes every v2 control method before storage access", async () => {
     // Given
     const calls: string[] = [];
-    const storage = {
-      name: "guarded",
-      protocol: "http",
-      async put() {
-        calls.push("put");
-        return {
-          kind: "stored" as const,
-          storageUri: "https://objects.example/item",
-        };
-      },
-      async head() {
-        calls.push("head");
-        return { kind: "not-found" as const };
-      },
-      async get() {
-        calls.push("get");
-        return { kind: "not-found" as const };
-      },
-      async delete() {
-        calls.push("delete");
-        return { kind: "not-found" as const };
-      },
-      async issueDownload() {
-        calls.push("delivery");
-        return {
-          kind: "issued" as const,
-          downloadUrl: "https://cdn.example/item",
-        };
-      },
-    };
     const handler = createStandaloneStorageHandler({
-      storage,
+      storage: createGuardedStorage(calls),
       context: storageContext({}),
       authorize: () => false,
     });
@@ -530,6 +564,136 @@ describe("standalone storage v2 security boundary", () => {
       401, 401, 401, 401, 401,
     ]);
     expect(calls).toEqual([]);
+  });
+
+  it("fails closed before context or storage access when authorize is omitted at runtime", async () => {
+    // Given
+    const calls: string[] = [];
+    let resolveContextCalls = 0;
+    const options = {
+      authorize: () => true,
+      storage: createGuardedStorage(calls),
+      context: () => {
+        resolveContextCalls += 1;
+        return storageContext({});
+      },
+    };
+    Reflect.deleteProperty(options, "authorize");
+    const handler = createStandaloneStorageHandler(options);
+
+    // When
+    const responses = await Promise.all(
+      createValidControlRequests().map(handler),
+    );
+
+    // Then
+    expect(responses.map((response) => response?.status)).toEqual([
+      401, 401, 401, 401, 401,
+    ]);
+    expect(resolveContextCalls).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it("fails closed before context or storage access when authorize is malformed at runtime", async () => {
+    // Given
+    const calls: string[] = [];
+    let resolveContextCalls = 0;
+    const options = {
+      authorize: () => true,
+      storage: createGuardedStorage(calls),
+      context: () => {
+        resolveContextCalls += 1;
+        return storageContext({});
+      },
+    };
+    Reflect.set(options, "authorize", "allow");
+    const handler = createStandaloneStorageHandler(options);
+
+    // When
+    const response = await handler(
+      new Request(
+        `https://server.example${STANDALONE_STORAGE_V2.routes.object}`,
+        {
+          headers: {
+            [STANDALONE_STORAGE_V2.headers.storageUri]: encodeURIComponent(
+              "https://objects.example/item",
+            ),
+          },
+          method: "DELETE",
+        },
+      ),
+    );
+
+    // Then
+    expect(response?.status).toBe(401);
+    expect(resolveContextCalls).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it("fails closed in a composed handler extension before an omitted-authorize delete mutates storage", async () => {
+    // Given
+    let deleteCalls = 0;
+    const storage = {
+      name: "guarded",
+      protocol: "http",
+      async put() {
+        return {
+          kind: "stored" as const,
+          storageUri: "https://objects.example/item",
+        };
+      },
+      async head() {
+        return { kind: "not-found" as const };
+      },
+      async get() {
+        return { kind: "not-found" as const };
+      },
+      async delete() {
+        deleteCalls += 1;
+        return { kind: "deleted" as const };
+      },
+    };
+    const options = {
+      authorize: () => true,
+      context: storageContext({}),
+      storage,
+    };
+    Reflect.deleteProperty(options, "authorize");
+    const extension = createStandaloneStorageHandler(options);
+    const unreachable = async () => {
+      throw new Error("Core API must not be reached.");
+    };
+    const handler = createHandler(
+      {
+        deleteBundleById: unreachable,
+        getAppUpdateInfo: unreachable,
+        getBundleById: unreachable,
+        getBundles: unreachable,
+        getChannels: unreachable,
+        insertBundle: unreachable,
+        updateBundleById: unreachable,
+      },
+      { handlerExtensions: [extension] },
+    );
+
+    // When
+    const response = await handler(
+      new Request(
+        `https://server.example${STANDALONE_STORAGE_V2.routes.object}`,
+        {
+          headers: {
+            [STANDALONE_STORAGE_V2.headers.storageUri]: encodeURIComponent(
+              "https://objects.example/item",
+            ),
+          },
+          method: "DELETE",
+        },
+      ),
+    );
+
+    // Then
+    expect(response.status).toBe(401);
+    expect(deleteCalls).toBe(0);
   });
 
   it("keeps the root custom-server storage export legacy-only", () => {

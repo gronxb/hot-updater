@@ -85,7 +85,7 @@ const remote = createStoragePlugin({ name: "manualRemote", protocol: "http", plu
   async delete(input) { return objects.delete(input.storageUri) ? { kind: "deleted" } : { kind: "not-found" }; },
 }) });
 const context = createNodeStorageContext({ environment: {} });
-const handler = createStandaloneStorageHandler({ storage: remote, context });
+const handler = createStandaloneStorageHandler({ storage: remote, context, authorize: () => true });
 const server = createServer(async (incoming, outgoing) => {
   if (incoming.url === "/readText") { incoming.resume(); outgoing.end("legacy-route"); return; }
   const method = incoming.method ?? "GET";

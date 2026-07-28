@@ -41,14 +41,17 @@ const observeStandaloneEntry = async (
   });
   const handlers = {
     "a.example": createStandaloneStorageHandler({
+      authorize: () => true,
       storage: remoteA,
       context: remoteContext,
     }),
     "b.example": createStandaloneStorageHandler({
+      authorize: () => true,
       storage: remoteB,
       context: remoteContext,
     }),
     "literal.example": createStandaloneStorageHandler({
+      authorize: () => true,
       storage: remoteA,
       context: remoteContext,
     }),
