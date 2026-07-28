@@ -77,7 +77,11 @@ const readTextStream = async (
 ): Promise<string> => {
   const reader = stream.getReader();
   if (contentLength !== undefined && contentLength > MAX_STORAGE_TEXT_BYTES) {
-    await reader.cancel();
+    try {
+      await reader.cancel();
+    } finally {
+      reader.releaseLock();
+    }
     throw new Error("Storage text exceeds the maximum size.");
   }
   const decoder = new TextDecoder("utf-8", { fatal: true });

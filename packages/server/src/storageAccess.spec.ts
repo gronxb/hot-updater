@@ -160,7 +160,7 @@ describe("createStorageAccess", () => {
     });
   });
 
-  it("cancels a v2 stream when declared text size exceeds the limit", async () => {
+  it("releases a declared oversized v2 stream after cancelling it", async () => {
     // Given
     const cancel = vi.fn();
     const stream = new ReadableStream<Uint8Array>({ cancel });
@@ -191,6 +191,7 @@ describe("createStorageAccess", () => {
       "Storage text exceeds the maximum size.",
     );
     expect(cancel).toHaveBeenCalledOnce();
+    expect(stream.locked).toBe(false);
   });
 
   it("cancels a v2 stream when UTF-8 decoding fails", async () => {
