@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Platform } from "react-native";
 
 import { checkForUpdate } from "./checkForUpdate";
 import type { HotUpdaterError } from "./error";
@@ -163,6 +164,7 @@ export type AutoUpdateOptions = CommonHotUpdaterOptions &
      * When a force update exists, the app will automatically reload.
      * If `false`, When a force update exists, the app will not reload. `shouldForceUpdate` will be returned as `true` in `onUpdateProcessCompleted`.
      * If `true`, When a force update exists, the app will automatically reload.
+     * On iOS, rollbacks take effect on the next app launch without an in-process reload.
      * @default true
      */
     reloadOnForceUpdate?: boolean;
@@ -388,7 +390,10 @@ export function wrap(
             );
           }
 
-          if (reloadOnForceUpdate) {
+          const shouldReload =
+            reloadOnForceUpdate &&
+            (Platform.OS !== "ios" || updateInfo.status !== "ROLLBACK");
+          if (shouldReload) {
             await reload();
           }
 

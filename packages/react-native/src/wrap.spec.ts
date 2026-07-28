@@ -1,5 +1,8 @@
-import type React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+
+import { cleanup, render, waitFor } from "@testing-library/react";
+import React from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HotUpdaterOptions } from "./wrap";
 
@@ -9,6 +12,15 @@ const mocks = vi.hoisted(() => ({
   getBundleId: vi.fn(() => "bundle-id"),
   notifyAppReady: vi.fn(() => ({ status: "STABLE" })),
   reload: vi.fn(),
+}));
+
+const platformMock = vi.hoisted(() => {
+  const platform: { OS: "android" | "ios" } = { OS: "ios" };
+  return platform;
+});
+
+vi.mock("react-native", () => ({
+  Platform: platformMock,
 }));
 
 vi.mock("./checkForUpdate", () => ({
@@ -23,6 +35,10 @@ vi.mock("./native", () => ({
 }));
 
 describe("HotUpdater wrap initialization", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
@@ -36,6 +52,7 @@ describe("HotUpdater wrap initialization", () => {
     mocks.addListener.mockReturnValue(() => {});
     mocks.getBundleId.mockReturnValue("bundle-id");
     mocks.notifyAppReady.mockReturnValue({ status: "STABLE" });
+    platformMock.OS = "ios";
   });
 
   it("returns void from init and defers notifyAppReady to the next frame", async () => {
@@ -149,6 +166,77 @@ describe("HotUpdater wrap initialization", () => {
       WrappedComponent;
     expect(acceptsTitleProps).toBe(WrappedComponent);
   });
+
+  it("does not reload during an iOS rollback", async () => {
+    // Given: the running iOS bundle has been disabled.
+    const updateBundle = vi.fn().mockResolvedValue(true);
+    mocks.checkForUpdate.mockResolvedValue({
+      id: "00000000-0000-0000-0000-000000000000",
+      message: null,
+      shouldForceUpdate: true,
+      status: "ROLLBACK",
+      updateBundle,
+    });
+    const onUpdateProcessCompleted = vi.fn();
+    const { wrap } = await import("./wrap");
+    const WrappedComponent = wrap({
+      resolver: {
+        checkUpdate: vi.fn(),
+      },
+      updateMode: "auto",
+      updateStrategy: "appVersion",
+      onUpdateProcessCompleted,
+    })(() => null);
+
+    // When: the automatic startup update check applies the rollback.
+    render(React.createElement(WrappedComponent));
+    await waitFor(() => expect(updateBundle).toHaveBeenCalledOnce());
+
+    // Then: storage is reset without an unsafe in-process iOS reload.
+    expect(mocks.reload).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(onUpdateProcessCompleted).toHaveBeenCalledWith({
+        id: "00000000-0000-0000-0000-000000000000",
+        message: null,
+        shouldForceUpdate: true,
+        status: "ROLLBACK",
+      }),
+    );
+  });
+
+  it.each([
+    ["ios", "UPDATE"],
+    ["android", "ROLLBACK"],
+  ] as const)(
+    "reloads on %s when the forced update status is %s",
+    async (os, status) => {
+      // Given: the forced update can safely reload on this platform and status.
+      platformMock.OS = os;
+      const updateBundle = vi.fn().mockResolvedValue(true);
+      mocks.checkForUpdate.mockResolvedValue({
+        id: "bundle-id",
+        message: null,
+        shouldForceUpdate: true,
+        status,
+        updateBundle,
+      });
+      const { wrap } = await import("./wrap");
+      const WrappedComponent = wrap({
+        resolver: {
+          checkUpdate: vi.fn(),
+        },
+        updateMode: "auto",
+        updateStrategy: "appVersion",
+      })(() => null);
+
+      // When: the automatic startup update check applies the update.
+      render(React.createElement(WrappedComponent));
+      await waitFor(() => expect(updateBundle).toHaveBeenCalledOnce());
+
+      // Then: the running app reloads into the selected bundle.
+      await waitFor(() => expect(mocks.reload).toHaveBeenCalledOnce());
+    },
+  );
 
   it("types public wrap options as automatic mode by default", () => {
     const autoOptions = {
