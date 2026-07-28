@@ -1,5 +1,16 @@
 # @hot-updater/react-native
 
+## 0.35.8
+
+### Patch Changes
+
+- 5eccd71: Serialize iOS old-architecture bridge teardown before reloading.
+- Updated dependencies [4f9fab2]
+  - @hot-updater/cli-tools@0.35.8
+  - @hot-updater/core@0.35.8
+  - @hot-updater/js@0.35.8
+  - @hot-updater/plugin-core@0.35.8
+
 ## 0.35.7
 
 ### Patch Changes
