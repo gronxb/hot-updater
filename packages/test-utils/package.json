@@ -43,7 +43,8 @@
     "@hot-updater/core": "workspace:*",
     "@types/node": "catalog:",
     "execa": "catalog:tools",
-    "typescript": "6.0.2",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "catalog:",
     "workspace-tools": "^0.41.7"
   },

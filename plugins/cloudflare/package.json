@@ -77,7 +77,8 @@
     "pg-minify": "^1.6.5",
     "semver": "^7.6.3",
     "toml": "^3.0.0",
-    "typescript": "^6.0.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "catalog:",
     "wrangler": "^4.5.0",
     "xdg-app-paths": "^8.3.0"

@@ -26,7 +26,7 @@ import { createHotUpdater } from "./index";
 
 // Create in-memory database for testing
 const db = new PGlite();
-const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 
 // Create handler API with in-memory DB
 const api = createHotUpdater({
