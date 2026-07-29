@@ -43,7 +43,6 @@ describe("defineFirstPartyFeatureManifest", () => {
       namespace: "test-feature",
       setup: () => ({
         api: {
-          invocation: { useContext: { contextIndex: 0, publicArity: 1 } },
           legacyAliases: aliases,
           namespace: "test-feature",
           value: {

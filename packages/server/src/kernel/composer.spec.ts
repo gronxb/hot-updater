@@ -63,7 +63,6 @@ describe("composeServerKernel", () => {
         const value = capabilities.require(token);
         return {
           api: {
-            invocation: { ping: { contextIndex: 0, publicArity: 1 } },
             legacyAliases: { ping: "ping" },
             namespace: "feature",
             value: {

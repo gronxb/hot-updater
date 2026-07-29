@@ -17,7 +17,6 @@ vi.mock("@hot-updater/bsdiff", () => ({
 }));
 
 import { createBundleDiff } from "./createBundleDiff";
-import "./createBundleDiff.storage-v2-cases";
 
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
   channel: "production",

@@ -33,7 +33,6 @@ const alpha = defineFirstPartyFeatureManifest<
   namespace: "alpha",
   setup: () => ({
     api: {
-      invocation: { operation: { contextIndex: 0, publicArity: 1 } },
       legacyAliases: { alphaOperation: "operation" },
       namespace: "alpha",
       value: {

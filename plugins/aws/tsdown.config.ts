@@ -9,17 +9,6 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
-    entry: [
-      "src/storage/index.ts",
-      "src/storage/node.ts",
-      "src/storage/lambda.ts",
-    ],
-    format: ["esm", "cjs"],
-    outDir: "dist/storage",
-    dts: true,
-    failOnWarn: true,
-  },
-  {
     entry: ["lambda/index.ts"],
     format: ["cjs"],
     outDir: "dist/lambda",
@@ -27,7 +16,7 @@ export default defineConfig([
     deps: {
       alwaysBundle: [
         /^@better-auth\/.*$/,
-        /^@hot-updater\/(?:better-auth|core|plugin-core|server)(?:\/.*)?$/,
+        /^@hot-updater\/(?:better-auth|plugin-core|server)(?:\/.*)?$/,
         /^better-auth(?:\/.*)?$/,
         "hono/lambda-edge",
         "hono",

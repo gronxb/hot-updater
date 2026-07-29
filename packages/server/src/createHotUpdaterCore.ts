@@ -1,7 +1,8 @@
-import {
-  StorageConfigurationError,
-  type HotUpdaterContext,
+import type {
+  HotUpdaterContext,
+  RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
+import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 
 import { createCoreServerRoutes } from "./coreRoutes";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
@@ -9,10 +10,14 @@ import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
   type DatabaseAdapterCapabilities,
   type DatabaseAPI,
+  type DatabasePlugin,
   isDatabasePlugin,
 } from "./db/types";
-import { executeHandlerExtensions } from "./handlerExtensions";
-import type { ProjectPlugins } from "./kernel/apiProjection";
+import type { HandlerOptions } from "./handlerTypes";
+import type {
+  ProjectedFeatureApis,
+  ProjectPlugins,
+} from "./kernel/apiProjection";
 import { composeServerKernel } from "./kernel/composer";
 import { createCoreRouteDescriptors } from "./kernel/coreRoutes";
 import { executeKernelRequest } from "./kernel/execute";
@@ -21,31 +26,35 @@ import type { FirstPartyFeatureManifest } from "./kernel/manifest";
 import type { CompiledVersionMetadata } from "./kernel/metadata";
 import { normalizeBasePath } from "./route";
 import {
-  createRuntimeApi,
-  type CreateHotUpdaterOptions,
-  type RuntimeFields,
-  type RuntimeHotUpdaterAPI,
-} from "./runtimeApi";
-import {
-  createDatabaseBoundaryApi,
-  featureOperation,
-  resolveHandlerOperation,
-  runStorageBoundary,
-} from "./runtimeBoundary";
-import { createRuntimeStorageOwner } from "./runtimeStorageOwner";
-import { createStorageAccess, createStorageCallContext } from "./storageAccess";
-import {
-  StorageInvocationAuthority,
-  requireHotUpdaterFeatureInvocation,
-  type StorageExecutionContext,
-} from "./storageInvocation";
+  createRuntimeStorageRecords,
+  createStorageAccess,
+} from "./storageAccess";
 
-export type {
-  CreateHotUpdaterOptions,
-  HotUpdaterAPI,
-  RuntimeHotUpdaterAPI,
-  RuntimeStorageInput,
-} from "./runtimeApi";
+export type RuntimeHotUpdaterAPI<TContext = undefined> =
+  DatabaseAPI<TContext> & {
+    readonly adapterName: string;
+    readonly basePath: string;
+    readonly handler: (
+      request: Request,
+      context?: HotUpdaterContext<TContext>,
+    ) => Promise<Response>;
+  };
+
+export type HotUpdaterAPI<TContext = undefined> =
+  RuntimeHotUpdaterAPI<TContext>;
+
+export type RuntimeStorageInput<TContext = undefined> =
+  | RuntimeStoragePlugin<TContext>
+  | (() => RuntimeStoragePlugin<TContext>);
+
+export interface CreateHotUpdaterOptions<
+  TContext = undefined,
+  TPlugins extends readonly FirstPartyFeatureManifest[] = readonly [],
+> extends HandlerOptions {
+  readonly database: DatabasePlugin;
+  readonly plugins?: TPlugins;
+  readonly storages?: readonly RuntimeStorageInput<TContext>[];
+}
 
 type DatabasePluginCore<TContext> = {
   readonly api: DatabaseAPI<TContext>;
@@ -70,7 +79,6 @@ export type HotUpdaterCore<
     Readonly<ProjectPlugins<TPlugins, TContext>>;
   readonly adapterCapabilities: DatabaseAdapterCapabilities;
   readonly core: DatabasePluginCore<TContext>;
-  readonly onUnmount: () => Promise<void>;
 };
 
 const coreMetadata = new WeakMap<object, HotUpdaterCoreMetadata>();
@@ -79,6 +87,40 @@ export function getHotUpdaterCoreMetadata(
   hotUpdater: object,
 ): HotUpdaterCoreMetadata | undefined {
   return coreMetadata.get(hotUpdater);
+}
+
+type RuntimeFields<TContext> = {
+  readonly adapterName: string;
+  readonly basePath: string;
+  readonly handler: (
+    request: Request,
+    context?: HotUpdaterContext<TContext>,
+  ) => Promise<Response>;
+};
+
+function createRuntimeApi<
+  TContext,
+  TPlugins extends readonly FirstPartyFeatureManifest[],
+>(
+  coreApi: DatabaseAPI<TContext>,
+  fields: RuntimeFields<TContext>,
+  projected: ProjectedFeatureApis,
+): RuntimeHotUpdaterAPI<TContext> &
+  Readonly<ProjectPlugins<TPlugins, TContext>>;
+function createRuntimeApi<TContext>(
+  coreApi: DatabaseAPI<TContext>,
+  fields: RuntimeFields<TContext>,
+  projected: ProjectedFeatureApis,
+): object {
+  return Object.freeze(
+    Object.assign(
+      {},
+      coreApi,
+      fields,
+      { features: projected.features },
+      projected.aliases,
+    ),
+  );
 }
 
 export function createHotUpdaterCore<
@@ -90,179 +132,85 @@ export function createHotUpdaterCore<
   if (!isDatabasePlugin(options.database)) {
     throw new Error("@hot-updater/server only supports database plugins.");
   }
-  const storageOwner = createRuntimeStorageOwner(options.storages ?? []);
-  if (storageOwner.hasV2 && options.storageContext === undefined) {
-    storageOwner.rollback();
-    throw new StorageConfigurationError(
-      "missing-storage-context",
-      "Direct Storage v2 plugins require a storageContext resolver.",
-    );
-  }
-  const authority = new StorageInvocationAuthority<TContext>();
-  let teardown: Promise<void> | undefined;
-  const onUnmount = (): Promise<void> => {
-    teardown ??= authority.sealAndDrain().then(() => storageOwner.close());
-    return teardown;
-  };
+  const database = options.database;
+  const storages = (options.storages ?? []).map((storage) =>
+    typeof storage === "function" ? storage() : storage,
+  );
+  storages.forEach(assertRuntimeStoragePlugin);
+  const runtimeStorages = createRuntimeStorageRecords(storages);
+  const basePath = normalizeBasePath(options.basePath ?? "/api");
+  const adapterCapabilities: DatabaseAdapterCapabilities = database;
+  const adapterName = adapterCapabilities.adapterName ?? database.name;
+  const assertSchemaReady = createSchemaReadinessChecker(
+    adapterName,
+    adapterCapabilities.createMigrator,
+  );
+  const { readStorageText, resolveFileUrl } =
+    createStorageAccess(runtimeStorages);
+  const core = createDatabasePluginCore<TContext>(database, resolveFileUrl, {
+    beforeOperation: assertSchemaReady,
+    readStorageText,
+  });
+  const runtime = createGuardedInfrastructureRuntime({
+    beforeDatabaseOperation: assertSchemaReady,
+    database,
+    storages: runtimeStorages,
+  });
+  const manifests = options.plugins ?? [];
+  let metadata: CompiledVersionMetadata | undefined;
+  const coreRoutes = createCoreServerRoutes({
+    api: core.api,
+    descriptors: createCoreRouteDescriptors(options.routes),
+    resolveMetadata: () => metadata,
+  });
+  const composed = composeServerKernel({
+    carriers: [database, ...storages],
+    coreApiKeys: [
+      ...Object.keys(core.api),
+      "adapterName",
+      "basePath",
+      "features",
+      "handler",
+    ],
+    coreRoutes,
+    manifests,
+    runtime,
+  });
+  metadata = composed.metadata;
 
-  try {
-    const database = options.database;
-    const storages = storageOwner.entries;
-    const basePath = normalizeBasePath(options.basePath ?? "/api");
-    const adapterCapabilities: DatabaseAdapterCapabilities = database;
-    const adapterName = adapterCapabilities.adapterName ?? database.name;
-    const assertSchemaReady = createSchemaReadinessChecker(
-      adapterName,
-      adapterCapabilities.createMigrator,
-    );
-    const { readStorageText, resolveFileUrl } = createStorageAccess(storages);
-    const rawCore = createDatabasePluginCore<StorageExecutionContext<TContext>>(
-      database,
-      resolveFileUrl,
-      {
-        beforeOperation: assertSchemaReady,
-        readStorageText,
-      },
-    );
-    const publicCoreApi = createDatabaseBoundaryApi({
-      authority,
-      raw: rawCore.api,
-      resolver: options.storageContext,
-    });
-    const core: DatabasePluginCore<TContext> = {
-      ...rawCore,
-      api: publicCoreApi,
-    };
-    const runtime = createGuardedInfrastructureRuntime({
-      beforeDatabaseOperation: assertSchemaReady,
-      database,
-      resolveStorageInvocation: (token) => authority.resolve(token),
-      storages,
-    });
-    const manifests = options.plugins ?? [];
-    let metadata: CompiledVersionMetadata | undefined;
-    const coreRoutes = createCoreServerRoutes<
-      TContext,
-      StorageExecutionContext<TContext>
-    >({
-      api: rawCore.api,
-      descriptors: createCoreRouteDescriptors(options.routes),
-      resolveMetadata: () => metadata,
-      toDatabaseContext: (context) => {
-        const invocation = requireHotUpdaterFeatureInvocation<TContext>(
-          Reflect.get(context, "invocation"),
-        );
-        const resolved = authority.resolve(invocation.storageToken);
-        return Object.freeze({
-          ...createStorageCallContext(
-            resolved.platformContext,
-            resolved.storageContext,
-          ),
-          invocation,
-        });
-      },
-    });
-    const composed = composeServerKernel<TContext>({
-      carriers: [database, ...storages.map(({ plugin }) => plugin)],
-      coreApiKeys: [
-        ...Object.keys(publicCoreApi),
-        "adapterName",
-        "basePath",
-        "features",
-        "handler",
-        "onUnmount",
-      ],
-      coreRoutes,
-      invokeFeature: (request) =>
-        runStorageBoundary(
-          authority,
-          options.storageContext,
-          {
-            kind: "api",
-            operation: featureOperation(
-              request.namespace,
-              request.member,
-              request.invokedAlias,
-            ),
-            context: request.context,
-          },
-          ({ invocation }) => {
-            const args = [...request.args];
-            args[request.metadata.publicArity] = invocation;
-            return Reflect.apply(request.raw, undefined, args);
-          },
-        ),
-      manifests,
-      runtime,
-    });
-    metadata = composed.metadata;
-
-    const kernelHandler = (
-      request: Request,
-      context?: HotUpdaterContext<TContext>,
-    ) =>
-      executeKernelRequest({
-        authentication: composed.authentication,
-        basePath,
-        invokeRoute: (input, callback) => {
-          const operation = resolveHandlerOperation<TContext>(
-            input.route.id,
-            composed.featureRouteOperations,
-          );
-          if (operation === undefined) return callback(undefined);
-          return runStorageBoundary(
-            authority,
-            options.storageContext,
-            {
-              kind: "handler",
-              request: input.request,
-              operation,
-              context: input.context,
-            },
-            ({ invocation }) => callback(invocation),
-          );
-        },
-        middleware: composed.middleware,
-        platformContext: context,
-        request,
-        router: composed.router,
-      });
-    const internalHandler = async (
-      request: Request,
-      context?: HotUpdaterContext<TContext>,
-    ): Promise<Response> => {
-      const extensionResponse = await executeHandlerExtensions(
-        options.handlerExtensions ?? [],
-        request,
-        context,
-      );
-      return extensionResponse ?? kernelHandler(request, context);
-    };
-    const handler: RuntimeFields<TContext>["handler"] = (
+  const internalHandler = (
+    request: Request,
+    context?: HotUpdaterContext<TContext>,
+  ) =>
+    executeKernelRequest({
+      authentication: composed.authentication,
+      basePath,
+      middleware: composed.middleware,
+      platformContext: context,
       request,
-      context,
-      ...extraArgs: unknown[]
-    ) =>
-      extraArgs.length > 0
-        ? internalHandler(request)
-        : internalHandler(request, context);
-    const api = createRuntimeApi<TContext, TPlugins>(
-      publicCoreApi,
-      { adapterName, basePath, handler, onUnmount },
-      composed.api,
-    );
-    coreMetadata.set(api, {
-      adapterCapabilities,
-      core: {
-        createMigrator: core.createMigrator,
-        generateSchema: core.generateSchema,
-      },
+      router: composed.router,
     });
-    return Object.freeze({ adapterCapabilities, api, core, onUnmount });
-  } catch (error) {
-    storageOwner.rollback();
-    throw error;
-  }
+  const handler: RuntimeFields<TContext>["handler"] = (
+    request,
+    context,
+    ...extraArgs: unknown[]
+  ) =>
+    extraArgs.length > 0
+      ? internalHandler(request)
+      : internalHandler(request, context);
+  const api = createRuntimeApi<TContext, TPlugins>(
+    core.api,
+    { adapterName, basePath, handler },
+    composed.api,
+  );
+  coreMetadata.set(api, {
+    adapterCapabilities,
+    core: {
+      createMigrator: core.createMigrator,
+      generateSchema: core.generateSchema,
+    },
+  });
+  return Object.freeze({ adapterCapabilities, api, core });
 }
 
 export function createHotUpdater<

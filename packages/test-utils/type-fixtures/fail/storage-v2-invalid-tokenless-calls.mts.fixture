@@ -1,6 +1,0 @@
-import type { RuntimeStorageAccess } from "@hot-updater/plugin-core";
-
-declare const storageAccess: RuntimeStorageAccess;
-
-await storageAccess.readText("memory://bundle");
-await storageAccess.getDownloadUrl("memory://bundle");

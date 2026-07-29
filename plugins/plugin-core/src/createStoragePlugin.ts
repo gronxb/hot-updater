@@ -9,7 +9,45 @@ import type {
   UniversalStoragePlugin,
 } from "./types";
 
-export { createStoragePlugin } from "./storage";
+const runtimeStorageRegistryKey = Symbol.for(
+  "@hot-updater/internal/storage-runtime-registry",
+);
+
+type RuntimeStorageDescriptor = Readonly<{
+  getImplementation(): RuntimeStorageProfile<unknown>;
+}>;
+
+type RuntimeStorageRegistry = WeakMap<object, RuntimeStorageDescriptor>;
+
+const getRuntimeStorageRegistry = (): RuntimeStorageRegistry => {
+  const scope = globalThis as typeof globalThis & {
+    [runtimeStorageRegistryKey]?: RuntimeStorageRegistry;
+  };
+  const registered = scope[runtimeStorageRegistryKey];
+  if (registered !== undefined) return registered;
+
+  const registry: RuntimeStorageRegistry = new WeakMap();
+  Object.defineProperty(scope, runtimeStorageRegistryKey, {
+    configurable: false,
+    enumerable: false,
+    value: registry,
+    writable: false,
+  });
+  return registry;
+};
+
+const registerRuntimeStorageImplementation = <TContext>(
+  plugin: object,
+  getImplementation: () => RuntimeStorageProfile<TContext>,
+): void => {
+  getRuntimeStorageRegistry().set(
+    plugin,
+    Object.freeze({
+      getImplementation:
+        getImplementation as () => RuntimeStorageProfile<unknown>,
+    }),
+  );
+};
 
 type StorageProfileFactory<TConfig, TProfiles> = (config: TConfig) => TProfiles;
 
@@ -194,11 +232,15 @@ const createProfiledStoragePlugin = <TContext>(
     });
   }
 
-  return {
+  const plugin = {
     name,
     supportedProtocol,
     profiles,
   };
+  if (profileShape?.runtime === true) {
+    registerRuntimeStorageImplementation(plugin, requireRuntimeProfile);
+  }
+  return plugin;
 };
 
 /**

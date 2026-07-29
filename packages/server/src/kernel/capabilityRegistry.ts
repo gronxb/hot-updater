@@ -104,10 +104,15 @@ export const createCapabilityRegistry = (
 
   const parsedValues = new Map<CapabilityToken<unknown>, Readonly<object>>();
   for (const contribution of contributions) {
-    const advertised = contribution.create(options.runtime);
-    rejectThenable(advertised, contribution.token.id);
-    const parsed = parseCapability(contribution.token, advertised);
-    parsedValues.set(contribution.token, Object.freeze({ value: parsed }));
+    try {
+      const advertised = contribution.create(options.runtime);
+      rejectThenable(advertised, contribution.token.id);
+      const parsed = parseCapability(contribution.token, advertised);
+      parsedValues.set(contribution.token, Object.freeze({ value: parsed }));
+    } catch (error) {
+      if (error instanceof HotUpdaterConstructionError) throw error;
+      invalidCapability(contribution.token.id);
+    }
   }
 
   const forPlugin = (pluginId: string): PluginCapabilityRegistry => {

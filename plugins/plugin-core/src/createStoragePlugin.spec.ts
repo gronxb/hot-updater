@@ -5,8 +5,6 @@ import {
   createNodeStoragePlugin,
   createRuntimeStoragePlugin,
 } from "./createStoragePlugin";
-import { registerStorageV2FactoryTests } from "./createStoragePlugin.v2-cases";
-import { registerStorageV2LifecycleTests } from "./createStoragePlugin.v2-lifecycle-cases";
 import {
   assertNodeStoragePlugin,
   assertRuntimeStoragePlugin,
@@ -15,9 +13,6 @@ import {
 } from "./storageProfile";
 
 describe("createStoragePlugin", () => {
-  registerStorageV2FactoryTests();
-  registerStorageV2LifecycleTests();
-
   it("creates a node storage profile and calls upload hooks", async () => {
     const upload = vi.fn(async (key: string, filePath: string) => ({
       storageUri: `s3://bucket/${key}/${filePath}`,
@@ -69,7 +64,7 @@ describe("createStoragePlugin", () => {
     expect(factory).toHaveBeenCalledOnce();
   });
 
-  it("creates a runtime storage profile with required direct text reads", async () => {
+  it("creates a runtime storage profile with required text reads", async () => {
     const getDownloadUrl = vi.fn(
       async (
         _storageUri: string,

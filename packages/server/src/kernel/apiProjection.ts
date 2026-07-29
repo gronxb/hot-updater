@@ -1,8 +1,3 @@
-import type {
-  FeatureInvocationMap,
-  FeatureMemberInvocationMetadata,
-} from "@hot-updater/plugin-core";
-
 import { HotUpdaterConstructionError } from "./errors";
 import type {
   ApplyAvailableApi,
@@ -84,31 +79,19 @@ export type ProjectPlugins<
     }>;
 
 export type RuntimeFeatureApiContribution = {
-  readonly invocation: FeatureInvocationMap;
   readonly legacyAliases: Readonly<Record<string, string>>;
   readonly namespace: string;
   readonly value: Readonly<object>;
 };
-
-export type FeatureInvocationRequest<TContext> = Readonly<{
-  args: readonly unknown[];
-  context: TContext | undefined;
-  invokedAlias?: string;
-  member: string;
-  metadata: FeatureMemberInvocationMetadata;
-  namespace: string;
-  raw: (...args: readonly unknown[]) => unknown;
-}>;
 
 export type ProjectedFeatureApis = {
   readonly aliases: Readonly<Record<string, unknown>>;
   readonly features: Readonly<Record<string, Readonly<object>>>;
 };
 
-export const projectFeatureApis = <TContext>(input: {
+export const projectFeatureApis = (input: {
   readonly contributions: readonly RuntimeFeatureApiContribution[];
   readonly coreApiKeys: readonly string[];
-  readonly invoke?: (request: FeatureInvocationRequest<TContext>) => unknown;
 }): ProjectedFeatureApis => {
   /** Mutable accumulator used only while validating ownership. */
   const features: Record<string, Readonly<object>> = {};
@@ -124,36 +107,7 @@ export const projectFeatureApis = <TContext>(input: {
         namespace: contribution.namespace,
       });
     }
-    const value: Record<string, unknown> = {};
-    for (const [member, raw] of Object.entries(contribution.value)) {
-      const metadata = contribution.invocation[member];
-      const projected =
-        typeof raw !== "function" ||
-        metadata === undefined ||
-        input.invoke === undefined
-          ? raw
-          : (...args: readonly unknown[]) => {
-              const normalized = args.slice(0, metadata.publicArity);
-              while (normalized.length < metadata.publicArity) {
-                normalized.push(undefined);
-              }
-              return input.invoke?.({
-                args: normalized,
-                context: normalized[metadata.contextIndex] as
-                  | TContext
-                  | undefined,
-                member,
-                metadata,
-                namespace: contribution.namespace,
-                raw,
-              });
-            };
-      Object.defineProperty(value, member, {
-        enumerable: true,
-        value: projected,
-      });
-    }
-    Object.freeze(value);
+    const value = Object.freeze({ ...contribution.value });
     Object.defineProperty(features, contribution.namespace, {
       enumerable: true,
       value,
@@ -174,31 +128,7 @@ export const projectFeatureApis = <TContext>(input: {
       }
       Object.defineProperty(aliases, alias, {
         enumerable: true,
-        value:
-          input.invoke === undefined
-            ? Reflect.get(value, member)
-            : (...args: readonly unknown[]) => {
-                const metadata = contribution.invocation[member];
-                const raw = Reflect.get(contribution.value, member);
-                if (metadata === undefined || typeof raw !== "function") {
-                  return undefined;
-                }
-                const normalized = args.slice(0, metadata.publicArity);
-                while (normalized.length < metadata.publicArity) {
-                  normalized.push(undefined);
-                }
-                return input.invoke?.({
-                  args: normalized,
-                  context: normalized[metadata.contextIndex] as
-                    | TContext
-                    | undefined,
-                  invokedAlias: alias,
-                  member,
-                  metadata,
-                  namespace: contribution.namespace,
-                  raw,
-                });
-              },
+        value: Reflect.get(value, member),
       });
     }
   }

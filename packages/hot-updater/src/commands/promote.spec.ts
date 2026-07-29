@@ -1,50 +1,43 @@
 import type { Bundle } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  mockCli,
-  mockDisposeStorage,
-  mockStoragePlugin,
-  mockPrintBanner,
-  mockPromoteBundle,
-} = vi.hoisted(() => {
-  const mockStoragePlugin = {
-    name: "mock-storage",
-    supportedProtocol: "s3",
-    profiles: {
-      node: {
-        delete: vi.fn(),
-        downloadFile: vi.fn(),
-        exists: vi.fn(async () => false),
-        upload: vi.fn(),
+const { mockCli, mockStoragePlugin, mockPrintBanner, mockPromoteBundle } =
+  vi.hoisted(() => {
+    const mockStoragePlugin = {
+      name: "mock-storage",
+      supportedProtocol: "s3",
+      profiles: {
+        node: {
+          delete: vi.fn(),
+          downloadFile: vi.fn(),
+          exists: vi.fn(async () => false),
+          upload: vi.fn(),
+        },
       },
-    },
-  };
-  const mockDisposeStorage = vi.fn();
-  const mockCli = {
-    loadConfig: vi.fn(),
-    p: {
-      confirm: vi.fn(),
-      isCancel: vi.fn(() => false),
-      log: {
-        error: vi.fn(),
-        info: vi.fn(),
-        message: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
+    };
+    const mockCli = {
+      loadConfig: vi.fn(),
+      p: {
+        confirm: vi.fn(),
+        isCancel: vi.fn(() => false),
+        log: {
+          error: vi.fn(),
+          info: vi.fn(),
+          message: vi.fn(),
+          success: vi.fn(),
+          warn: vi.fn(),
+        },
       },
-    },
-  };
-  const mockPrintBanner = vi.fn();
-  const mockPromoteBundle = vi.fn();
-  return {
-    mockCli,
-    mockDisposeStorage,
-    mockStoragePlugin,
-    mockPrintBanner,
-    mockPromoteBundle,
-  };
-});
+    };
+    const mockPrintBanner = vi.fn();
+    const mockPromoteBundle = vi.fn();
+    return {
+      mockCli,
+      mockStoragePlugin,
+      mockPrintBanner,
+      mockPromoteBundle,
+    };
+  });
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -85,7 +78,6 @@ const buildBundle = (overrides: Partial<Bundle> = {}): Bundle => ({
 const stubLoadedConfig = () => {
   mockCli.loadConfig.mockResolvedValue({
     database: databaseHarness.plugin,
-    disposeStorage: mockDisposeStorage,
     storage: vi.fn().mockResolvedValue(mockStoragePlugin),
   });
 };
@@ -102,18 +94,13 @@ const setupConsoleSpies = () => {
 };
 
 describe("handlePromote", () => {
-  const originalExitCode = process.exitCode;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    process.exitCode = undefined;
     databaseHarness.reset();
-    mockDisposeStorage.mockResolvedValue(undefined);
     stubLoadedConfig();
     setupConsoleSpies();
   });
   afterEach(() => {
-    process.exitCode = originalExitCode;
     vi.restoreAllMocks();
   });
 
@@ -143,7 +130,6 @@ describe("handlePromote", () => {
         storagePlugin: mockStoragePlugin,
       }),
     );
-    expect(mockDisposeStorage).toHaveBeenCalledTimes(1);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       expect.stringContaining("Copied bundle to beta"),
     );
@@ -190,24 +176,26 @@ describe("handlePromote", () => {
 
   it("rejects when the bundle's channel equals --target", async () => {
     databaseHarness.setBundles([buildBundle({ id: "src-1", channel: "beta" })]);
+    const { exitSpy } = expectExit(1);
     const { handlePromote } = await import("./promote");
-    await handlePromote("src-1", { target: "beta", yes: true });
-
-    expect(process.exitCode).toBe(1);
+    await expect(
+      handlePromote("src-1", { target: "beta", yes: true }),
+    ).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
     expect(mockPromoteBundle).not.toHaveBeenCalled();
-    expect(mockDisposeStorage).toHaveBeenCalledTimes(1);
     expect(mockCli.p.log.error).toHaveBeenCalledWith(
       expect.stringContaining('already on channel "beta"'),
     );
   });
 
   it("exits 1 when the bundle id does not exist", async () => {
+    const { exitSpy } = expectExit(1);
     const { handlePromote } = await import("./promote");
-    await handlePromote("missing", { target: "beta", yes: true });
-
-    expect(process.exitCode).toBe(1);
+    await expect(
+      handlePromote("missing", { target: "beta", yes: true }),
+    ).rejects.toThrow("process.exit(1)");
+    expect(exitSpy).toHaveBeenCalledWith(1);
     expect(mockPromoteBundle).not.toHaveBeenCalled();
-    expect(mockDisposeStorage).toHaveBeenCalledTimes(1);
   });
 
   it("exits 1 when --target is empty/whitespace", async () => {
@@ -221,7 +209,7 @@ describe("handlePromote", () => {
     expect(mockPromoteBundle).not.toHaveBeenCalled();
   });
 
-  it("closes materialized storage before recording cancellation exit code", async () => {
+  it("aborts with exit code 2 when interactive confirmation declines", async () => {
     const isTtyDescriptor = Object.getOwnPropertyDescriptor(
       process.stdin,
       "isTTY",
@@ -233,16 +221,13 @@ describe("handlePromote", () => {
     databaseHarness.setBundles([buildBundle({ id: "src-1" })]);
     mockCli.p.confirm.mockResolvedValueOnce(false);
 
+    const { exitSpy } = expectExit(2);
     const { handlePromote } = await import("./promote");
-    await handlePromote("src-1", { target: "beta" });
-
-    expect(process.exitCode).toBe(2);
-    expect(mockPromoteBundle).not.toHaveBeenCalled();
-    expect(mockDisposeStorage).toHaveBeenCalledTimes(1);
-    expect(databaseHarness.onUnmount).toHaveBeenCalledTimes(1);
-    expect(mockDisposeStorage.mock.invocationCallOrder[0]).toBeLessThan(
-      databaseHarness.onUnmount.mock.invocationCallOrder[0] ?? 0,
+    await expect(handlePromote("src-1", { target: "beta" })).rejects.toThrow(
+      "process.exit(2)",
     );
+    expect(exitSpy).toHaveBeenCalledWith(2);
+    expect(mockPromoteBundle).not.toHaveBeenCalled();
 
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
@@ -260,18 +245,19 @@ describe("handlePromote", () => {
     });
     databaseHarness.setBundles([buildBundle({ id: "src-1" })]);
 
+    const { exitSpy } = expectExit(1);
     const { handlePromote } = await import("./promote");
-    await handlePromote("src-1", { target: "beta" });
-
-    expect(process.exitCode).toBe(1);
-    expect(mockDisposeStorage).toHaveBeenCalledTimes(1);
+    await expect(handlePromote("src-1", { target: "beta" })).rejects.toThrow(
+      "process.exit(1)",
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
 
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
     }
   });
 
-  it("propagates promoteBundle errors and closes both owners", async () => {
+  it("propagates promoteBundle errors and calls onUnmount", async () => {
     databaseHarness.setBundles([buildBundle({ id: "src-1" })]);
     mockPromoteBundle.mockRejectedValue(new Error("storage plugin failed"));
 
@@ -279,7 +265,6 @@ describe("handlePromote", () => {
     await expect(
       handlePromote("src-1", { target: "beta", yes: true }),
     ).rejects.toThrow("storage plugin failed");
-    expect(mockDisposeStorage).toHaveBeenCalledTimes(1);
-    expect(databaseHarness.onUnmount).toHaveBeenCalledTimes(1);
+    expect(databaseHarness.onUnmount).toHaveBeenCalled();
   });
 });

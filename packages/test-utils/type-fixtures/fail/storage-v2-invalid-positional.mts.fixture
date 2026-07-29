@@ -1,9 +1,0 @@
-import type {
-  StorageOperationContext,
-  StoragePlugin,
-} from "@hot-updater/plugin-core/storage";
-
-declare const plugin: StoragePlugin;
-declare const context: StorageOperationContext;
-
-plugin.put("bundle", new Uint8Array(), context);

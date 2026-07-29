@@ -2,25 +2,15 @@ import type {
   DatabaseCapabilityRuntime,
   DatabasePlugin,
   HotUpdaterInfrastructureRuntime,
-  RuntimeStorageAccess,
-  StorageInvocationToken,
   TransactionDatabasePlugin,
 } from "@hot-updater/plugin-core";
 
-import {
-  createStorageCallContext,
-  createStorageAccess,
-  type RuntimeStorageEntry,
-} from "../storageAccess";
-import type { ResolvedStorageInvocation } from "../storageInvocation";
+import type { RuntimeStorageRecord } from "../storageAccess";
 
 export type CreateGuardedInfrastructureRuntimeOptions<TContext> = {
   readonly beforeDatabaseOperation?: () => Promise<void>;
   readonly database: DatabasePlugin;
-  readonly resolveStorageInvocation?: (
-    token: StorageInvocationToken,
-  ) => ResolvedStorageInvocation<TContext>;
-  readonly storages: readonly RuntimeStorageEntry<TContext>[];
+  readonly storages: readonly RuntimeStorageRecord<TContext>[];
 };
 
 const createGuardedOperations = (
@@ -85,47 +75,8 @@ export const createGuardedInfrastructureRuntime = <TContext = unknown>(
 ): HotUpdaterInfrastructureRuntime<TContext> => {
   const beforeOperation =
     options.beforeDatabaseOperation ?? (async () => undefined);
-  const storage = createStorageAccess(options.storages);
-  const resolve = options.resolveStorageInvocation;
-  const storages = [...storage.records.values()].map((record) => {
-    const access: RuntimeStorageAccess = {
-      async getDownloadUrl(storageUri, token) {
-        if (resolve === undefined) {
-          throw new TypeError("Storage invocation authority is unavailable.");
-        }
-        const invocation = resolve(token);
-        const fileUrl = await storage.resolveFileUrl(
-          storageUri,
-          createStorageCallContext(
-            invocation.platformContext,
-            invocation.storageContext,
-          ),
-        );
-        if (fileUrl === null) {
-          throw new Error("Storage plugin returned empty fileUrl");
-        }
-        return { fileUrl };
-      },
-      name: record.plugin.name,
-      async readText(storageUri, token) {
-        if (resolve === undefined) {
-          throw new TypeError("Storage invocation authority is unavailable.");
-        }
-        const invocation = resolve(token);
-        return storage.readStorageText(
-          storageUri,
-          createStorageCallContext(
-            invocation.platformContext,
-            invocation.storageContext,
-          ),
-        );
-      },
-      supportedProtocol: record.protocol,
-    };
-    return Object.freeze(access);
-  });
   return Object.freeze({
     database: createGuardedDatabase(options.database, beforeOperation),
-    storages: Object.freeze(storages),
+    storages: options.storages,
   });
 };

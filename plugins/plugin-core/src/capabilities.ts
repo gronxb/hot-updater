@@ -1,4 +1,4 @@
-import type { DatabasePlugin } from "./types";
+import type { DatabasePlugin, StorageResolveContext } from "./types";
 
 declare const capabilityTokenBrand: unique symbol;
 
@@ -27,52 +27,16 @@ export type DatabaseCapabilityRuntime = Readonly<
   >
 >;
 
-declare const storageInvocationTokenBrand: unique symbol;
-
-export type StorageInvocationToken = Readonly<{
-  readonly [storageInvocationTokenBrand]: never;
-}>;
-
-export type HotUpdaterFeatureInvocation<TContext = undefined> = Readonly<{
-  readonly platformContext: TContext | undefined;
-  readonly storageToken: StorageInvocationToken;
-}>;
-
-export type FeatureMemberInvocationMetadata = Readonly<{
-  readonly publicArity: number;
-  readonly contextIndex: number;
-}>;
-
-export type FeatureInvocationMap = Readonly<
-  Record<string, FeatureMemberInvocationMetadata>
->;
-
-export type InvocationAwareFeatureValue<
-  TPublicApi extends object,
-  TContext,
-> = Readonly<{
-  [TKey in keyof TPublicApi]: TPublicApi[TKey] extends (
-    ...args: infer TArguments
-  ) => infer TResult
-    ? (
-        ...args: [
-          ...TArguments,
-          invocation?: HotUpdaterFeatureInvocation<TContext>,
-        ]
-      ) => TResult
-    : TPublicApi[TKey];
-}>;
-
-export interface RuntimeStorageAccess {
+export interface RuntimeStorageAccess<TContext = unknown> {
   readonly name: string;
   readonly supportedProtocol: string;
   getDownloadUrl(
     storageUri: string,
-    token: StorageInvocationToken,
+    context?: StorageResolveContext<TContext>,
   ): Promise<{ readonly fileUrl: string }>;
   readText(
     storageUri: string,
-    token: StorageInvocationToken,
+    context?: StorageResolveContext<TContext>,
   ): Promise<string | null>;
 }
 
@@ -82,9 +46,9 @@ export interface RuntimeStorageAccess {
  * Runtime storage methods preserve the caller's platform context while hiding
  * provider profiles, configuration, and credentials.
  */
-export interface HotUpdaterInfrastructureRuntime<_TContext = unknown> {
+export interface HotUpdaterInfrastructureRuntime<TContext = unknown> {
   readonly database: DatabaseCapabilityRuntime;
-  readonly storages: readonly RuntimeStorageAccess[];
+  readonly storages: readonly RuntimeStorageAccess<TContext>[];
 }
 
 export interface CapabilityContribution<TValue> {

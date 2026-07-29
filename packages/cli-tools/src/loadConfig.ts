@@ -6,10 +6,6 @@ import { merge } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
-import {
-  createConfigResponse,
-  type ConfigResponse,
-} from "./configStorageResponse.js";
 import { getCwd } from "./cwd.js";
 import {
   parseConfig,
@@ -17,7 +13,6 @@ import {
 } from "./loadConfigParser.js";
 
 export type { HotUpdaterConfigOptions } from "./loadConfigParser.js";
-export type { ConfigResponse } from "./configStorageResponse.js";
 
 class RemovedConsoleAnalyticsOptionError extends TypeError {
   readonly name = "RemovedConsoleAnalyticsOptionError";
@@ -158,6 +153,8 @@ const getDefaultConfig = (): ConfigInput => {
   };
 };
 
+export type ConfigResponse = RequiredDeep<ConfigInput>;
+
 const mergeConfigSources = (
   ...sources: Array<ConfigInput | null | undefined>
 ) => {
@@ -219,7 +216,5 @@ export const loadConfig = async (
     }
   }
 
-  return createConfigResponse(
-    mergeConfigSources(config, getDefaultConfig()) as RequiredDeep<ConfigInput>,
-  );
+  return mergeConfigSources(config, getDefaultConfig()) as ConfigResponse;
 };

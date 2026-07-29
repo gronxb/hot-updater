@@ -9,26 +9,6 @@
   "types": "./dist/index.d.cts",
   "exports": {
     ".": {
-      "worker": {
-        "import": {
-          "types": "./dist/runtime.d.mts",
-          "default": "./dist/runtime.mjs"
-        },
-        "require": {
-          "types": "./dist/runtime.d.cts",
-          "default": "./dist/runtime.cjs"
-        }
-      },
-      "edge": {
-        "import": {
-          "types": "./dist/runtime.d.mts",
-          "default": "./dist/runtime.mjs"
-        },
-        "require": {
-          "types": "./dist/runtime.d.cts",
-          "default": "./dist/runtime.cjs"
-        }
-      },
       "import": {
         "types": "./dist/index.d.mts",
         "default": "./dist/index.mjs"
@@ -56,26 +36,6 @@
       "require": {
         "types": "./dist/internal/config-feature-manifest.d.cts",
         "default": "./dist/internal/config-feature-manifest.cjs"
-      }
-    },
-    "./storage": {
-      "import": {
-        "types": "./dist/storage.d.mts",
-        "default": "./dist/storage.mjs"
-      },
-      "require": {
-        "types": "./dist/storage.d.cts",
-        "default": "./dist/storage.cjs"
-      }
-    },
-    "./storage/node": {
-      "import": {
-        "types": "./dist/storage/node.d.mts",
-        "default": "./dist/storage/node.mjs"
-      },
-      "require": {
-        "types": "./dist/storage/node.d.cts",
-        "default": "./dist/storage/node.cjs"
       }
     },
     "./package.json": "./package.json"

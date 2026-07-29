@@ -2,8 +2,6 @@ import type {
   CapabilityToken,
   ConfigFeatureManifest,
   DatabaseCapabilityRuntime,
-  FeatureInvocationMap,
-  InvocationAwareFeatureValue,
 } from "@hot-updater/plugin-core";
 import {
   isConfigFeatureManifest,
@@ -72,14 +70,9 @@ export type HotUpdaterFeatureApiContribution<
   TKind extends FeatureApiKind,
   TAliases extends Readonly<Record<string, string>>,
 > = {
-  readonly invocation: FeatureInvocationMap;
   readonly legacyAliases: TAliases;
   readonly namespace: TNamespace;
-  readonly value: InvocationAwareFeatureValue<
-    ApplyAvailableApi<TKind, unknown>,
-    unknown
-  > &
-    ApplyFeature<TKind, unknown>;
+  readonly value: ApplyFeature<TKind, unknown>;
 };
 
 export type FeatureApiMode<TKind extends FeatureApiKind> = [

@@ -1,3 +1,4 @@
+// allow: SIZE_OK — packed ESM/CJS consumers share one artifact lifecycle.
 import { execFile } from "node:child_process";
 import {
   mkdtemp,
@@ -109,7 +110,7 @@ const traverseRuntimeGraph = async (
 const resolveEntries = async (
   packed: PackedPackage,
   specifier: string,
-  conditions: readonly ("edge" | "types" | "worker")[] = [],
+  conditions: readonly "types"[] = [],
 ): Promise<ResolvedEntries> => {
   const resolver = path.join(packed.consumerRoot, "resolve.mjs");
   const conditionArguments = conditions.map(
@@ -204,49 +205,48 @@ describe("packed plugin-core artifact", () => {
     await rm(packed.temporaryRoot, { force: true, recursive: true });
   });
 
-  it("keeps storage and runtime-conditioned roots free of Node compression", async () => {
-    // Given a real extracted package and every target-neutral root.
-    const entries = [
-      await resolveEntries(packed, "@hot-updater/plugin-core/storage"),
-      await resolveEntries(packed, "@hot-updater/plugin-core", ["worker"]),
-      await resolveEntries(packed, "@hot-updater/plugin-core", ["edge"]),
-    ];
-    const typeEntries = [
-      await resolveEntries(packed, "@hot-updater/plugin-core", [
-        "worker",
-        "types",
-      ]),
-      await resolveEntries(packed, "@hot-updater/plugin-core", [
-        "edge",
-        "types",
-      ]),
-    ];
+  it("keeps the unchanged root entry free of Node dependencies", async () => {
+    // Given a real extracted package and its established root export.
+    const entry = await resolveEntries(packed, "@hot-updater/plugin-core");
+    const typeEntry = await resolveEntries(packed, "@hot-updater/plugin-core", [
+      "types",
+    ]);
 
-    // When each ESM and CJS entry is traversed through its relative imports.
+    // When the ESM and CJS entries are traversed through relative imports.
     const graphs = await Promise.all(
-      entries.flatMap((entry) =>
-        [entry.import, entry.require].map((file) =>
-          traverseRuntimeGraph(packed.root, file),
-        ),
+      [entry.import, entry.require].map((file) =>
+        traverseRuntimeGraph(packed.root, file),
       ),
     );
 
-    // Then no target-neutral graph reaches the Node compression module.
-    expect(graphs.flatMap((graph) => graph.files)).not.toContain(
-      "dist/compressionFormat.mjs",
-    );
-    expect(graphs.flatMap((graph) => graph.files)).not.toContain(
-      "dist/compressionFormat.cjs",
-    );
+    // Then the published root works without Node built-ins in any runtime.
     expect(graphs.flatMap((graph) => graph.specifiers)).not.toContain(
       "node:path",
     );
+    expect(path.relative(packed.root, typeEntry.import)).toBe(
+      "dist/index.d.mts",
+    );
+    expect(path.relative(packed.root, typeEntry.require)).toBe(
+      "dist/index.d.cts",
+    );
+  });
+
+  it("does not resolve storage implementation entries", async () => {
+    const packedFiles = await readdir(path.join(packed.root, "dist"), {
+      recursive: true,
+    });
     expect(
-      typeEntries.map((entry) => path.relative(packed.root, entry.import)),
-    ).toEqual(["dist/runtime.d.mts", "dist/runtime.d.mts"]);
-    expect(
-      typeEntries.map((entry) => path.relative(packed.root, entry.require)),
-    ).toEqual(["dist/runtime.d.cts", "dist/runtime.d.cts"]);
+      packedFiles.some((file) => file.includes("storageRuntimeRegistry")),
+    ).toBe(false);
+    await expect(
+      resolveEntries(packed, "@hot-updater/plugin-core/storage"),
+    ).rejects.toThrow();
+    await expect(
+      resolveEntries(packed, "@hot-updater/plugin-core/storage/node"),
+    ).rejects.toThrow();
+    await expect(
+      resolveEntries(packed, "@hot-updater/plugin-core/runtime"),
+    ).rejects.toThrow();
   });
 
   it("preserves root compression behavior in ESM and CJS", async () => {
@@ -257,7 +257,7 @@ describe("packed plugin-core artifact", () => {
     const esm = await import(pathToFileURL(entries.import).href);
     const cjs = createRequire(import.meta.url)(entries.require);
 
-    // Then both retain the legacy format and content-type results.
+    // Then both retain the established format and content-type results.
     expect(esm.detectCompressionFormat("bundle.tar.br")).toEqual({
       fileExtension: ".tar.br",
       format: "tar.br",

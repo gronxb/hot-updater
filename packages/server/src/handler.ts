@@ -1,10 +1,6 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
 import { createCoreServerRoutes } from "./coreRoutes";
-import {
-  executeHandlerExtensions,
-  type HandlerExtension,
-} from "./handlerExtensions";
 import type { HandlerAPI, HandlerOptions } from "./handlerTypes";
 import { selectAuthenticationProvider } from "./kernel/authentication";
 import type { HotUpdaterMatchedRoute } from "./kernel/contracts";
@@ -14,15 +10,7 @@ import { compileVersionMetadata } from "./kernel/metadata";
 import { compileRoutes } from "./kernel/routeCompiler";
 import { normalizeBasePath } from "./route";
 
-export type { HandlerExtension } from "./handlerExtensions";
 export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
-
-type HandlerRuntimeOptions<TContext> = Omit<
-  HandlerOptions,
-  "handlerExtensions"
-> & {
-  readonly handlerExtensions?: readonly HandlerExtension<TContext>[];
-};
 
 const matchedRoute = (
   route: ReturnType<typeof createCoreServerRoutes>[number],
@@ -37,18 +25,17 @@ const matchedRoute = (
 
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
-  options: HandlerRuntimeOptions<TContext> = {},
+  options: HandlerOptions = {},
 ): (
   request: Request,
   context?: HotUpdaterContext<TContext>,
 ) => Promise<Response> {
   const basePath = normalizeBasePath(options.basePath ?? "/api");
   const metadata = compileVersionMetadata({ contributions: [] });
-  const routes = createCoreServerRoutes<TContext, TContext>({
+  const routes = createCoreServerRoutes({
     api,
     descriptors: createCoreRouteDescriptors(options.routes),
     resolveMetadata: () => metadata,
-    toDatabaseContext: (context) => context.platformContext,
   });
   const router = compileRoutes(routes);
   const authentication = selectAuthenticationProvider({
@@ -56,14 +43,8 @@ export function createHandler<TContext = unknown>(
     routes: routes.map(matchedRoute),
   });
 
-  return async (request, context) => {
-    const extensionResponse = await executeHandlerExtensions(
-      options.handlerExtensions ?? [],
-      request,
-      context,
-    );
-    if (extensionResponse !== undefined) return extensionResponse;
-    return executeKernelRequest({
+  return (request, context) =>
+    executeKernelRequest({
       authentication,
       basePath,
       middleware: [],
@@ -71,5 +52,4 @@ export function createHandler<TContext = unknown>(
       request,
       router,
     });
-  };
 }

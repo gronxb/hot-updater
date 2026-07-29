@@ -11,7 +11,6 @@ import type {
   DatabasePlugin,
   RuntimeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import type { StoragePlugin as StoragePluginV2 } from "@hot-updater/plugin-core/storage";
 import {
   createHotUpdater,
   type HandlerOptions,
@@ -55,7 +54,9 @@ assertType<
   >
 >();
 assertType<Equal<HotUpdaterMatchedRoute["access"], HotUpdaterRouteAccess>>();
-assertType<Equal<HotUpdaterRequestPolicy["maximumBodyBytes"], number>>();
+assertType<
+  Equal<HotUpdaterRequestPolicy["maximumBodyBytes"], number>
+>();
 
 declare const auth: BetterAuthConfiguredInstance;
 declare const database: DatabasePlugin;
@@ -136,7 +137,6 @@ assertType<
     LegacyCreateHotUpdaterOptions<TestContext>["storages"],
     | readonly (
         | RuntimeStoragePlugin<TestContext>
-        | StoragePluginV2
         | (() => RuntimeStoragePlugin<TestContext>)
       )[]
     | undefined

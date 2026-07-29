@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { createHotUpdater } from "./index";
 import type {
@@ -39,9 +39,6 @@ const examplePlugin = () =>
     namespace: "example",
     setup: () => ({
       api: {
-        invocation: {
-          examplePing: { contextIndex: 0, publicArity: 1 },
-        },
         legacyAliases: { legacyPing: "examplePing" },
         namespace: "example",
         value: {
@@ -98,74 +95,29 @@ describe("createHotUpdater generic kernel root", () => {
     expect(Object.isFrozen(hotUpdater)).toBe(true);
     expect(Object.isFrozen(hotUpdater.features)).toBe(true);
     expectTypeOf<keyof typeof hotUpdater.features>().toEqualTypeOf<never>();
-    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<
-      "basePath" | "handlerExtensions" | "routes"
-    >();
+    expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
     expectTypeOf<HandlerOptions["routes"]>().toEqualTypeOf<
       HandlerRoutes | undefined
     >();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
-      | "basePath"
-      | "database"
-      | "handlerExtensions"
-      | "plugins"
-      | "routes"
-      | "storageContext"
-      | "storages"
+      "basePath" | "database" | "plugins" | "routes" | "storages"
     >();
   });
 
   it("projects namespaced features and available-only aliases", () => {
     // Given
     const plugin = examplePlugin();
-    const storageContext = vi.fn(() =>
-      Object.freeze({
-        target: "edge" as const,
-        environment: Object.freeze({}),
-        bindings: Object.freeze({}),
-      }),
-    );
-    const context = { requestId: "feature-context" };
 
     // When
-    const hotUpdater = createHotUpdater<
-      typeof context,
-      readonly [typeof plugin]
-    >({
+    const hotUpdater = createHotUpdater({
       database: createRuntimeDatabase(),
       plugins: [plugin],
-      storageContext,
     });
 
     // Then
     expect(hotUpdater.features.example.status).toBe("available");
     expect(hotUpdater.features.example.examplePing()).toBe("pong");
-    expect(hotUpdater.legacyPing(context)).toBe("pong");
-    expect(storageContext.mock.calls).toEqual([
-      [
-        {
-          kind: "api",
-          operation: {
-            member: "examplePing",
-            namespace: "example",
-            surface: "feature",
-          },
-          context: undefined,
-        },
-      ],
-      [
-        {
-          kind: "api",
-          operation: {
-            invokedAlias: "legacyPing",
-            member: "examplePing",
-            namespace: "example",
-            surface: "feature",
-          },
-          context,
-        },
-      ],
-    ]);
+    expect(hotUpdater.legacyPing()).toBe("pong");
     expect(Object.isFrozen(hotUpdater.features.example)).toBe(true);
     expectTypeOf(hotUpdater).toMatchTypeOf<RuntimeHotUpdaterAPI>();
   });

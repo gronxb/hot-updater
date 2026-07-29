@@ -12,13 +12,15 @@ import {
   getBundlePatches,
   getManifestStorageUri,
 } from "@hot-updater/core";
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  Bundle,
+  DatabasePlugin,
+  NodeStoragePlugin,
+} from "@hot-updater/plugin-core";
 import {
   createDatabaseClient,
   resolveManifestAssetStorageUri,
 } from "@hot-updater/plugin-core";
-import { StoragePluginError } from "@hot-updater/plugin-core/storage";
-import type { BorrowedNodeStoragePlugin } from "@hot-updater/plugin-core/storage/node";
 
 type BundleManifest = {
   bundleId: string;
@@ -32,7 +34,7 @@ export interface CreateBundleDiffInput {
 
 export interface CreateBundleDiffDependencies {
   databasePlugin: DatabasePlugin;
-  storagePlugin: BorrowedNodeStoragePlugin;
+  storagePlugin: NodeStoragePlugin | null;
 }
 
 export interface CreateBundleDiffOptions {
@@ -88,10 +90,33 @@ const getRelativeStorageDir = (relativePath: string) => {
   return dirname === "." ? "" : dirname;
 };
 
+async function downloadFromUrl(url: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download storage object: ${response.status}`);
+  }
+
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 async function downloadStorageBytes(
   storageUri: string,
-  storagePlugin: BorrowedNodeStoragePlugin,
+  storagePlugin: NodeStoragePlugin | null,
 ) {
+  const protocol = new URL(storageUri).protocol.replace(":", "");
+
+  if (protocol === "http" || protocol === "https") {
+    return downloadFromUrl(storageUri);
+  }
+
+  if (!storagePlugin) {
+    throw new Error("Storage plugin is not configured");
+  }
+
+  if (storagePlugin.supportedProtocol !== protocol) {
+    throw new Error(`No storage plugin for protocol: ${protocol}`);
+  }
+
   const downloadRoot = path.join(process.cwd(), ".hot-updater");
   await fs.mkdir(downloadRoot, { recursive: true });
   const workDir = await fs.mkdtemp(
@@ -110,7 +135,7 @@ async function downloadStorageBytes(
 
 async function fetchManifest(
   bundle: Bundle,
-  storagePlugin: BorrowedNodeStoragePlugin,
+  storagePlugin: NodeStoragePlugin | null,
 ): Promise<BundleManifest> {
   const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
@@ -151,7 +176,7 @@ async function fetchAssetBytes(
   bundle: Bundle,
   assetPath: string,
   manifest: BundleManifest,
-  storagePlugin: BorrowedNodeStoragePlugin,
+  storagePlugin: NodeStoragePlugin | null,
 ) {
   const assetBaseStorageUri = getAssetBaseStorageUri(bundle);
   if (!assetBaseStorageUri) {
@@ -176,16 +201,8 @@ async function fetchAssetBytes(
         storagePlugin,
       );
     } catch (error) {
-      if (
-        !(
-          error instanceof StoragePluginError &&
-          error.code === "provider" &&
-          error.message ===
-            `Storage object was not found: ${compressedAssetStorageUri}.`
-        )
-      ) {
-        throw error;
-      }
+      if (!(error instanceof Error)) throw error;
+      compressedBytes = null;
     }
 
     if (compressedBytes) {
@@ -235,6 +252,10 @@ export async function createBundleDiff(
   options: CreateBundleDiffOptions = {},
 ) {
   const database = createDatabaseClient(deps.databasePlugin);
+
+  if (!deps.storagePlugin) {
+    throw new Error("Storage plugin is not configured");
+  }
 
   if (baseBundleId === bundleId) {
     throw new Error("Base bundle must be different from the target bundle");

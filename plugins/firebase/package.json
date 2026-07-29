@@ -25,48 +25,6 @@
     "./functions/handler": {
       "require": "./dist/firebase/functions/index.cjs"
     },
-    "./storage": {
-      "node": {
-        "import": {
-          "types": "./dist/storage/node.d.mts",
-          "default": "./dist/storage/node.mjs"
-        },
-        "require": {
-          "types": "./dist/storage/node.d.cts",
-          "default": "./dist/storage/node.cjs"
-        }
-      },
-      "default": {
-        "import": {
-          "types": "./dist/storage/unsupported.d.mts",
-          "default": "./dist/storage/unsupported.mjs"
-        },
-        "require": {
-          "types": "./dist/storage/unsupported.d.cts",
-          "default": "./dist/storage/unsupported.cjs"
-        }
-      }
-    },
-    "./storage/node": {
-      "import": {
-        "types": "./dist/storage/node.d.mts",
-        "default": "./dist/storage/node.mjs"
-      },
-      "require": {
-        "types": "./dist/storage/node.d.cts",
-        "default": "./dist/storage/node.cjs"
-      }
-    },
-    "./storage/functions": {
-      "import": {
-        "types": "./dist/storage/functions.d.mts",
-        "default": "./dist/storage/functions.mjs"
-      },
-      "require": {
-        "types": "./dist/storage/functions.d.cts",
-        "default": "./dist/storage/functions.cjs"
-      }
-    },
     "./package.json": "./package.json"
   },
   "license": "MIT",

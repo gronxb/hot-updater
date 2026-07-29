@@ -17,14 +17,4 @@ export default defineConfig([
     dts: true,
     failOnWarn: true,
   },
-  {
-    entry: {
-      storage: "src/storage/index.ts",
-    },
-    format: ["esm"],
-    outDir: "dist",
-    clean: false,
-    dts: true,
-    failOnWarn: true,
-  },
 ]);

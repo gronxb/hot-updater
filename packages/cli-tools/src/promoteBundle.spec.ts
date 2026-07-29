@@ -20,7 +20,6 @@ import {
   LEGACY_BUNDLE_ERROR,
   promoteBundle,
 } from "./promoteBundle";
-import "./promoteBundle.storage-v2-cases";
 
 const baseBundle: Bundle = {
   id: "0195a408-8f13-7d9b-8df4-123456789abc",
@@ -272,16 +271,15 @@ describe("createCopiedBundleArchive", () => {
         }),
       });
       const uploadedFiles = new Map<string, string>();
-      const downloadFile = vi.fn(async (_storageUri, filePath) => {
-        await fs.copyFile(archivePath, filePath);
-      });
       const storagePlugin: NodeStoragePlugin = {
         name: "mockStorage",
-        supportedProtocol: "https",
+        supportedProtocol: "s3",
         profiles: {
           node: {
             delete: vi.fn(),
-            downloadFile,
+            downloadFile: vi.fn(async (_storageUri, filePath) => {
+              await fs.copyFile(archivePath, filePath);
+            }),
             exists: vi.fn(async () => false),
             upload: vi.fn(async (key, filePath) => {
               const uploadPath = path.join(
@@ -313,7 +311,7 @@ describe("createCopiedBundleArchive", () => {
       vi.stubGlobal(
         "fetch",
         vi.fn(async () => {
-          throw new Error("unexpected direct fetch fallback");
+          return new Response(await fs.readFile(archivePath));
         }),
       );
 
@@ -331,10 +329,6 @@ describe("createCopiedBundleArchive", () => {
           });
 
         expect(copiedBundle.id).toBe("bundle-copy-id");
-        expect(downloadFile).toHaveBeenCalledWith(
-          `https://example.com/bundle.${format}`,
-          expect.any(String),
-        );
         expect(copiedBundle.channel).toBe("beta");
         expect(copiedBundle.storageUri).toBe(
           `s3://bucket/bundle-copy-id/bundle.${format}`,

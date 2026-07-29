@@ -21,12 +21,6 @@ const unitInclude = [
   "examples-server/**/*.test.ts",
 ];
 const e2eUnitInclude = ["e2e/**/*.spec.ts", "e2e/**/*.test.ts"];
-const storageV2CertificationInclude = [
-  "tests/storage-v2-certification/**/*.spec.ts",
-  "tests/storage-v2-certification/**/*.test.ts",
-];
-const manualQaArchive =
-  "packages/test-utils/src/storage/release/manualQaArchive.spec.ts";
 const pluginCorePackedArtifact =
   "plugins/plugin-core/src/packedArtifact.spec.ts";
 const integrationInclude = [
@@ -50,7 +44,6 @@ export default defineConfig({
             "**/*.integration.spec.ts",
             "packages/console/**",
             "packages/bsdiff/tests/runtime/*.manual.*",
-            manualQaArchive,
             pluginCorePackedArtifact,
           ],
           environment: "node",
@@ -63,16 +56,6 @@ export default defineConfig({
           name: "unit:e2e",
           include: e2eUnitInclude,
           exclude: [...rootExclude, "e2e/results/**"],
-          environment: "node",
-          hookTimeout: 60000,
-          testTimeout: 60000,
-        },
-      }),
-      defineProject({
-        test: {
-          name: "unit:storage-v2-certification",
-          include: storageV2CertificationInclude,
-          exclude: rootExclude,
           environment: "node",
           hookTimeout: 60000,
           testTimeout: 60000,
@@ -108,20 +91,6 @@ export default defineConfig({
           maxWorkers: 1,
           pool: "forks",
           testTimeout: 60000,
-        },
-      }),
-      defineProject({
-        test: {
-          name: "manual-qa:storage-v2-archive",
-          include: [manualQaArchive],
-          exclude: rootExclude,
-          environment: "node",
-          fileParallelism: false,
-          hookTimeout: 180000,
-          maxConcurrency: 1,
-          maxWorkers: 1,
-          pool: "forks",
-          testTimeout: 180000,
         },
       }),
       defineProject({

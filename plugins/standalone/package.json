@@ -18,26 +18,6 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./storage": {
-      "import": {
-        "types": "./dist/storage.d.mts",
-        "default": "./dist/storage.mjs"
-      },
-      "require": {
-        "types": "./dist/storage.d.cts",
-        "default": "./dist/storage.cjs"
-      }
-    },
-    "./storage/node": {
-      "import": {
-        "types": "./dist/storage/node.d.mts",
-        "default": "./dist/storage/node.mjs"
-      },
-      "require": {
-        "types": "./dist/storage/node.d.cts",
-        "default": "./dist/storage/node.cjs"
-      }
-    },
     "./package.json": "./package.json"
   },
   "files": [

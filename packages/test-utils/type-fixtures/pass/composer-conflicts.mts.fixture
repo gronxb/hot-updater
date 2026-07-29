@@ -31,9 +31,6 @@ const createManifest = <
     namespace,
     setup: () => ({
       api: {
-        invocation: {
-          operation: { contextIndex: 0, publicArity: 1 },
-        },
         legacyAliases: aliases,
         namespace,
         value: {

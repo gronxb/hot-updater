@@ -18,20 +18,6 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
-    entry: ["src/storage/node.ts", "src/storage/unsupported.ts"],
-    format: ["esm", "cjs"],
-    dts: true,
-    outDir: "dist/storage",
-    failOnWarn: true,
-  },
-  {
-    entry: ["src/storage/worker.ts"],
-    format: ["esm"],
-    dts: true,
-    outDir: "dist/storage",
-    failOnWarn: true,
-  },
-  {
     entry: ["iac/index.ts"],
     format: ["esm", "cjs"],
     dts: true,

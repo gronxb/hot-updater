@@ -1,5 +1,5 @@
 import type { CreateHotUpdaterOptions } from "@hot-updater/server";
-import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../../test-utils/test/inMemoryDatabasePlugin";
 import * as legacyServer from "./index";
@@ -81,15 +81,9 @@ describe("legacy server bridge", () => {
 
   it("installs the public Analytics compatibility manifest", async () => {
     // Given
-    const storageContext = vi.fn(() => ({
-      target: "node" as const,
-      environment: {},
-      bindings: {},
-    }));
     const runtime = createLegacyHotUpdater({
       basePath: "/hot-updater",
       database: createInMemoryDatabasePlugin(),
-      storageContext,
       routes: {
         analytics: true,
         bundles: false,
@@ -97,7 +91,12 @@ describe("legacy server bridge", () => {
       },
     });
 
-    // When / Then
+    // When
+    const response = await runtime.handler(
+      new Request("https://example.com/hot-updater/api/installations"),
+    );
+
+    // Then
     expect(runtime.features.analytics.status).toBe("available");
     if (runtime.features.analytics.status !== "available") {
       throw new Error("Expected available legacy Analytics.");
@@ -105,38 +104,8 @@ describe("legacy server bridge", () => {
     if (!("searchInstallations" in runtime)) {
       throw new Error("Expected legacy Analytics aliases.");
     }
-    expect(typeof runtime.searchInstallations).toBe("function");
-    expect(typeof runtime.features.analytics.searchInstallations).toBe(
-      "function",
-    );
-    const nested = await runtime.features.analytics.searchInstallations(
-      "",
-      20,
-      0,
-    );
-    const alias = await runtime.searchInstallations("", 20, 0);
-    expect(alias).toEqual(nested);
-    expect(storageContext).toHaveBeenNthCalledWith(1, {
-      kind: "api",
-      operation: {
-        member: "searchInstallations",
-        namespace: "analytics",
-        surface: "feature",
-      },
-      context: undefined,
-    });
-    expect(storageContext).toHaveBeenNthCalledWith(2, {
-      kind: "api",
-      operation: {
-        invokedAlias: "searchInstallations",
-        member: "searchInstallations",
-        namespace: "analytics",
-        surface: "feature",
-      },
-      context: undefined,
-    });
-    const response = await runtime.handler(
-      new Request("https://example.com/hot-updater/api/installations"),
+    expect(runtime.searchInstallations).toBe(
+      runtime.features.analytics.searchInstallations,
     );
     expect(response.status).toBe(200);
   });

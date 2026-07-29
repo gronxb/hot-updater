@@ -1,12 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createStorageUriWithRelativePath,
-  getAssetStorageLayout,
-} from "./assetStorageLayout";
+import { createStorageUriWithRelativePath } from "./assetStorageLayout";
 import { createStorageKeyBuilder } from "./createStorageKeyBuilder";
 import { parseStorageUri } from "./parseStorageUri";
-import { createStoragePlugin } from "./storage";
 import {
   historicalStorageLayout,
   storageUriProtocols,
@@ -15,7 +11,7 @@ import {
 describe.each(storageUriProtocols)(
   "$protocol historical storage URI compatibility",
   ({ origin, protocol }) => {
-    it("reads legacy bundle, manifest, asset-base, asset, and patch locations", () => {
+    it("reads historical bundle, manifest, asset-base, asset, and patch locations", () => {
       const locations = Object.values(historicalStorageLayout);
 
       for (const key of locations) {
@@ -27,20 +23,9 @@ describe.each(storageUriProtocols)(
       }
     });
 
-    it("keeps legacy /files and v2 /assets layouts distinct", () => {
-      expect(
-        getAssetStorageLayout(`${origin}/${historicalStorageLayout.assetBase}`),
-      ).toBe("legacy-files");
-      expect(
-        getAssetStorageLayout(
-          `${origin}/${historicalStorageLayout.contentAddressedAssetBase}`,
-        ),
-      ).toBe("content-addressed");
-    });
-
-    it("keeps old writes readable by v2 and v2 keys readable by legacy code", () => {
-      const createLegacyKey = createStorageKeyBuilder("updates");
-      const oldWriteKey = createLegacyKey("bundle-id", "bundle.zip");
+    it("keeps historical writes and content-addressed keys interoperable", () => {
+      const createHistoricalKey = createStorageKeyBuilder("updates");
+      const oldWriteKey = createHistoricalKey("bundle-id", "bundle.zip");
 
       expect(oldWriteKey).toBe(historicalStorageLayout.bundle);
       expect(
@@ -49,51 +34,6 @@ describe.each(storageUriProtocols)(
           relativePath: "assets/logo.png",
         }),
       ).toBe(`${origin}/${historicalStorageLayout.asset}`);
-    });
-
-    it("keeps put.key provider-relative and storageUri fully qualified", async () => {
-      let observedKey: string | undefined;
-      const storage = createStoragePlugin({
-        name: `${protocol}Storage`,
-        protocol,
-        plugin: () => ({
-          async delete() {
-            return { kind: "not-found" };
-          },
-          async get() {
-            return { kind: "not-found" };
-          },
-          async head() {
-            return { kind: "not-found" };
-          },
-          async put(input) {
-            observedKey = input.key;
-            return {
-              kind: "stored",
-              storageUri: `${origin}/${input.key}`,
-            };
-          },
-        }),
-      });
-
-      const result = await storage.put({
-        body: new Uint8Array(),
-        contentLength: 0,
-        context: {
-          bindings: {},
-          environment: {},
-          target: "node",
-        },
-        key: historicalStorageLayout.bundle,
-      });
-
-      expect(observedKey).toBe(historicalStorageLayout.bundle);
-      expect(result.storageUri).toBe(
-        `${origin}/${historicalStorageLayout.bundle}`,
-      );
-      expect(parseStorageUri(result.storageUri, protocol).key).toBe(
-        historicalStorageLayout.bundle,
-      );
     });
   },
 );

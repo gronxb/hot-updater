@@ -1,3 +1,0 @@
-import { StoragePluginError } from "@hot-updater/plugin-core";
-
-void StoragePluginError;

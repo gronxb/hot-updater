@@ -2,7 +2,6 @@ import type { HotUpdaterInfrastructureRuntime } from "@hot-updater/plugin-core";
 
 import {
   projectFeatureApis,
-  type FeatureInvocationRequest,
   type ProjectedFeatureApis,
   type ProjectPlugins,
   type RuntimeFeatureApiContribution,
@@ -42,14 +41,11 @@ export type FeatureApiFromPlugins<
   TContext,
 > = ProjectPlugins<TPlugins, TContext>;
 
-export type ComposeServerKernelOptions<TContext = unknown> = {
+export type ComposeServerKernelOptions = {
   readonly carriers: readonly object[];
   readonly coreApiKeys?: readonly string[];
   readonly coreRoutes?: readonly HotUpdaterServerRoute[];
   readonly manifests: readonly FirstPartyFeatureManifest[];
-  readonly invokeFeature?: (
-    request: FeatureInvocationRequest<TContext>,
-  ) => unknown;
   readonly reservedMetadataKeys?: readonly string[];
   readonly runtime: HotUpdaterInfrastructureRuntime;
 };
@@ -59,9 +55,6 @@ export type ComposedServerKernel = {
   readonly authentication?: HotUpdaterAuthenticationProvider;
   readonly capabilities: CapabilityRegistry;
   readonly diagnostics: readonly HotUpdaterConstructionDiagnostic[];
-  readonly featureRouteOperations: Readonly<
-    Record<string, Readonly<{ namespace: string; member: string }>>
-  >;
   readonly metadata: CompiledVersionMetadata;
   readonly middleware: readonly HotUpdaterPostAuthMiddleware[];
   readonly router: CompiledRouter;
@@ -107,8 +100,8 @@ const applyRoutePolicies = (
   );
 };
 
-export const composeServerKernel = <TContext = unknown>(
-  options: ComposeServerKernelOptions<TContext>,
+export const composeServerKernel = (
+  options: ComposeServerKernelOptions,
 ): ComposedServerKernel => {
   const readableManifests = options.manifests.map(validateReadableManifest);
   const capabilities = createCapabilityRegistry({
@@ -155,30 +148,26 @@ export const composeServerKernel = <TContext = unknown>(
   const api: RuntimeFeatureApiContribution[] = [];
   const authentication: HotUpdaterAuthenticationProvider[] = [];
   const routePolicies: HotUpdaterRoutePolicy[] = [];
-  const featureRouteOperations: Record<
-    string,
-    Readonly<{ namespace: string; member: string }>
-  > = {};
 
   for (const manifest of manifests) {
-    const setupResult = manifest.setup({
-      capabilities: capabilities.forPlugin(manifest.id),
-      database: options.runtime.database,
-      diagnostics: Object.freeze({
-        warn(diagnostic: HotUpdaterConstructionDiagnostic) {
-          if (
-            typeof diagnostic.code !== "string" ||
-            typeof diagnostic.message !== "string"
-          ) {
-            invalidContribution(manifest.id);
-          }
-          if (warnedPluginIds.has(manifest.id)) return;
-          warnedPluginIds.add(manifest.id);
-          diagnostics.push(Object.freeze({ ...diagnostic }));
-        },
-      }),
-    });
     try {
+      const setupResult = manifest.setup({
+        capabilities: capabilities.forPlugin(manifest.id),
+        database: options.runtime.database,
+        diagnostics: Object.freeze({
+          warn(diagnostic: HotUpdaterConstructionDiagnostic) {
+            if (
+              typeof diagnostic.code !== "string" ||
+              typeof diagnostic.message !== "string"
+            ) {
+              invalidContribution(manifest.id);
+            }
+            if (warnedPluginIds.has(manifest.id)) return;
+            warnedPluginIds.add(manifest.id);
+            diagnostics.push(Object.freeze({ ...diagnostic }));
+          },
+        }),
+      });
       if (isThenable(setupResult)) {
         if (setupResult instanceof Promise) {
           void setupResult.catch(() => undefined);
@@ -187,15 +176,6 @@ export const composeServerKernel = <TContext = unknown>(
       }
       const contribution = validatePluginContribution(setupResult, manifest);
       routes.push(...contribution.routes);
-      for (const route of contribution.routes) {
-        Object.defineProperty(featureRouteOperations, route.id, {
-          enumerable: true,
-          value: Object.freeze({
-            member: route.id,
-            namespace: manifest.namespace,
-          }),
-        });
-      }
       middleware.push(...contribution.middleware);
       metadata.push(...contribution.metadata);
       if (contribution.api !== undefined) api.push(contribution.api);
@@ -220,12 +200,10 @@ export const composeServerKernel = <TContext = unknown>(
     api: projectFeatureApis({
       contributions: api,
       coreApiKeys: options.coreApiKeys ?? [],
-      invoke: options.invokeFeature,
     }),
     authentication: selectedAuthentication,
     capabilities,
     diagnostics: Object.freeze(diagnostics),
-    featureRouteOperations: Object.freeze(featureRouteOperations),
     metadata: compileVersionMetadata({
       contributions: metadata,
       reservedCoreKeys: options.reservedMetadataKeys,

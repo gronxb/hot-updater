@@ -5,7 +5,7 @@ import {
   createRuntimeStorage,
   type TestContext,
 } from "../runtime.testFixtures";
-import { StorageInvocationAuthority } from "../storageInvocation";
+import { createRuntimeStorageRecords } from "../storageAccess";
 import { createGuardedInfrastructureRuntime } from "./guardedRuntime";
 
 describe("createGuardedInfrastructureRuntime", () => {
@@ -67,7 +67,7 @@ describe("createGuardedInfrastructureRuntime", () => {
     // When
     const runtime = createGuardedInfrastructureRuntime({
       database,
-      storages: [storage],
+      storages: createRuntimeStorageRecords([storage]),
     });
 
     // Then
@@ -92,11 +92,11 @@ describe("createGuardedInfrastructureRuntime", () => {
       async (_storageUri: string, context?: TestContext) =>
         context?.env?.assetHost ?? null,
     );
-    const authority = new StorageInvocationAuthority<TestContext>();
     const runtime = createGuardedInfrastructureRuntime({
       database: createRuntimeDatabase(),
-      resolveStorageInvocation: (token) => authority.resolve(token),
-      storages: [createRuntimeStorage(getDownloadUrl, readText)],
+      storages: createRuntimeStorageRecords([
+        createRuntimeStorage(getDownloadUrl, readText),
+      ]),
     });
     const context: TestContext = {
       env: { assetHost: "https://assets.example.com" },
@@ -105,76 +105,18 @@ describe("createGuardedInfrastructureRuntime", () => {
     if (storage === undefined) {
       throw new Error("Expected guarded runtime storage.");
     }
-    const token = authority.begin({
-      operation: { member: "getBundleById", surface: "database" },
-      platformContext: context,
-    });
-    authority.bind(token, undefined);
 
     // When
-    const download = await storage.getDownloadUrl("s3://bucket/bundle", token);
-    const text = await storage.readText("s3://bucket/manifest", token);
-    authority.close(token);
+    const download = await storage.getDownloadUrl(
+      "s3://bucket/bundle",
+      context,
+    );
+    const text = await storage.readText("s3://bucket/manifest", context);
 
     // Then
     expect(download).toEqual({ fileUrl: "https://assets.example.com" });
     expect(text).toBe("https://assets.example.com");
     expect(getDownloadUrl).toHaveBeenCalledWith("s3://bucket/bundle", context);
     expect(readText).toHaveBeenCalledWith("s3://bucket/manifest", context);
-  });
-
-  it("rejects foreign, unbound, and revoked tokens before storage I/O", async () => {
-    // Given
-    const getDownloadUrl = vi.fn(async () => ({
-      fileUrl: "https://example.com",
-    }));
-    const owner = new StorageInvocationAuthority<TestContext>();
-    const foreign = new StorageInvocationAuthority<TestContext>();
-    const runtime = createGuardedInfrastructureRuntime({
-      database: createRuntimeDatabase(),
-      resolveStorageInvocation: (token) => owner.resolve(token),
-      storages: [createRuntimeStorage(getDownloadUrl)],
-    });
-    const storage = runtime.storages[0];
-    if (storage === undefined) {
-      throw new Error("Expected guarded runtime storage.");
-    }
-    const operation = {
-      member: "getBundleById" as const,
-      surface: "database" as const,
-    };
-    const unbound = owner.begin({
-      operation,
-      platformContext: undefined,
-    });
-    const revoked = owner.begin({
-      operation,
-      platformContext: undefined,
-    });
-    owner.bind(revoked, undefined);
-    owner.close(revoked);
-    const foreignToken = foreign.begin({
-      operation,
-      platformContext: undefined,
-    });
-    foreign.bind(foreignToken, undefined);
-
-    // When
-    const attempts = [unbound, revoked, foreignToken].map((token) =>
-      storage.getDownloadUrl("s3://bucket/bundle", token),
-    );
-    attempts.push(
-      Reflect.apply(storage.getDownloadUrl, storage, ["s3://bucket/bundle"]),
-    );
-
-    // Then
-    for (const attempt of attempts) {
-      await expect(attempt).rejects.toMatchObject({
-        code: "invalid-storage-invocation",
-      });
-    }
-    expect(getDownloadUrl).not.toHaveBeenCalled();
-    owner.close(unbound);
-    foreign.close(foreignToken);
   });
 });

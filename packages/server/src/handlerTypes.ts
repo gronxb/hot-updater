@@ -9,7 +9,6 @@ import type {
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
 
-import type { HandlerExtension } from "./handlerExtensions";
 import type { HotUpdaterRouteAccess } from "./kernel/contracts";
 import type { PaginatedResult } from "./types";
 
@@ -54,7 +53,6 @@ export interface HandlerAPI<TContext = unknown> {
 export interface HandlerOptions {
   /** Base path for all routes. @default "/api" */
   readonly basePath?: string;
-  readonly handlerExtensions?: readonly HandlerExtension[];
   /** Routes exposed by the handler. */
   readonly routes?: HandlerRoutes;
 }

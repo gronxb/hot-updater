@@ -1,3 +1,0 @@
-import type { StorageInvocationAuthority } from "@hot-updater/plugin-core";
-
-void (undefined satisfies StorageInvocationAuthority | undefined);

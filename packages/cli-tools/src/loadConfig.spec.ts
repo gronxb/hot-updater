@@ -4,9 +4,6 @@ import path from "path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { registerLoadConfigStorageContextCases } from "./loadConfig.storage-context-cases";
-import { registerLoadConfigStorageLifecycleCases } from "./loadConfig.storage-lifecycle-cases";
-
 let projectRoot = "";
 
 vi.mock("./cwd.js", () => ({
@@ -23,11 +20,6 @@ const writeProjectFile = async (
   await fs.writeFile(filePath, contents);
 };
 
-const storageHarness = {
-  writeConfig: (contents: string) =>
-    writeProjectFile(projectRoot, "hot-updater.config.ts", contents),
-};
-
 describe("loadConfig", () => {
   beforeEach(async () => {
     vi.resetModules();
@@ -40,9 +32,6 @@ describe("loadConfig", () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
-
-  registerLoadConfigStorageContextCases(storageHarness);
-  registerLoadConfigStorageLifecycleCases(storageHarness);
 
   it("returns defaults when the config file is missing", async () => {
     const { loadConfig } = await import("./loadConfig");
