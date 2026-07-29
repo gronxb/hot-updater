@@ -1437,7 +1437,7 @@ importers:
         specifier: ^7.5.16
         version: 7.5.16
       verkit:
-        specifier: ^0.3.1
+        specifier: 0.3.1
         version: 0.3.1
       workspace-tools:
         specifier: ^0.41.7
@@ -1585,7 +1585,7 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
       verkit:
-        specifier: ^0.3.1
+        specifier: 0.3.1
         version: 0.3.1
       vite:
         specifier: 8.0.8
@@ -1706,7 +1706,7 @@ importers:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
       verkit:
-        specifier: ^0.3.1
+        specifier: 0.3.1
         version: 0.3.1
 
   packages/react-native:
@@ -1803,7 +1803,7 @@ importers:
         specifier: 0.7.9
         version: 0.7.9
       verkit:
-        specifier: ^0.3.1
+        specifier: 0.3.1
         version: 0.3.1
     devDependencies:
       '@electric-sql/pglite':
@@ -2032,7 +2032,7 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
       verkit:
-        specifier: ^0.3.1
+        specifier: 0.3.1
         version: 0.3.1
       vitest:
         specifier: 'catalog:'
@@ -2165,7 +2165,7 @@ importers:
         specifier: ^6.0.10
         version: 6.2.3
       verkit:
-        specifier: ^0.3.1
+        specifier: 0.3.1
         version: 0.3.1
 
   plugins/mock:
@@ -2199,7 +2199,7 @@ importers:
         specifier: ^4.0.4
         version: 4.1.0
       verkit:
-        specifier: ^0.3.1
+        specifier: 0.3.1
         version: 0.3.1
     devDependencies:
       '@hot-updater/test-utils':
@@ -2312,7 +2312,7 @@ importers:
         specifier: ^2.7.0
         version: 2.14.6(@types/node@20.19.43)(typescript@7.0.2)
       verkit:
-        specifier: ^0.3.1
+        specifier: 0.3.1
         version: 0.3.1
       vitest:
         specifier: 'catalog:'

@@ -59,7 +59,7 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "rou3": "0.7.9",
-    "verkit": "^0.3.1"
+    "verkit": "0.3.1"
   },
   "peerDependencies": {
     "@prisma/client": "*",

@@ -64,7 +64,7 @@
     "jszip": "^3.10.1",
     "picocolors": "1.1.1",
     "tar": "^7.5.16",
-    "verkit": "^0.3.1",
+    "verkit": "0.3.1",
     "workspace-tools": "^0.41.7"
   },
   "inlinedDependencies": {
