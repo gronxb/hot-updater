@@ -1415,9 +1415,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.7.1
-        version: 7.7.1
       boxen:
         specifier: ^8.0.1
         version: 8.0.1
@@ -1436,12 +1433,12 @@ importers:
       picocolors:
         specifier: 1.1.1
         version: 1.1.1
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
       tar:
         specifier: ^7.5.16
         version: 7.5.16
+      verkit:
+        specifier: ^0.3.1
+        version: 0.3.1
       workspace-tools:
         specifier: ^0.41.7
         version: 0.41.7
@@ -1521,9 +1518,6 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.0
         version: 19.2.3(@types/react@19.2.15)
-      '@types/semver':
-        specifier: ^7.7.1
-        version: 7.7.1
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
@@ -1566,9 +1560,6 @@ importers:
       react-grab:
         specifier: ^0.1.28
         version: 0.1.44(react@19.2.6)
-      semver:
-        specifier: ^7.7.4
-        version: 7.8.4
       shadcn:
         specifier: ^4.0.8
         version: 4.11.0(@typescript/typescript6@6.0.2)(babel-plugin-macros@3.1.0)
@@ -1593,6 +1584,9 @@ importers:
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
+      verkit:
+        specifier: ^0.3.1
+        version: 0.3.1
       vite:
         specifier: 8.0.8
         version: 8.0.8(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
@@ -1672,9 +1666,6 @@ importers:
       '@types/plist':
         specifier: ^3.0.5
         version: 3.0.5
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
@@ -1705,9 +1696,6 @@ importers:
       plist:
         specifier: ^3.1.0
         version: 3.1.1
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
       sql-formatter:
         specifier: 15.6.10
         version: 15.6.10
@@ -1717,6 +1705,9 @@ importers:
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
+      verkit:
+        specifier: ^0.3.1
+        version: 0.3.1
 
   packages/react-native:
     dependencies:
@@ -1811,9 +1802,9 @@ importers:
       rou3:
         specifier: 0.7.9
         version: 0.7.9
-      semver:
-        specifier: ^7.7.2
-        version: 7.8.4
+      verkit:
+        specifier: ^0.3.1
+        version: 0.3.1
     devDependencies:
       '@electric-sql/pglite':
         specifier: catalog:db
@@ -1827,9 +1818,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       drizzle-orm:
         specifier: catalog:db
         version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(typescript@7.0.2))
@@ -2022,9 +2010,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
@@ -2040,15 +2025,15 @@ importers:
       pg-minify:
         specifier: ^1.6.5
         version: 1.8.0
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
       toml:
         specifier: ^3.0.0
         version: 3.0.0
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
+      verkit:
+        specifier: ^0.3.1
+        version: 0.3.1
       vitest:
         specifier: 'catalog:'
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@1.8.0))(msw@2.14.6(@types/node@20.19.43)(@typescript/typescript6@6.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -2176,15 +2161,12 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       jose:
         specifier: ^6.0.10
         version: 6.2.3
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
+      verkit:
+        specifier: ^0.3.1
+        version: 0.3.1
 
   plugins/mock:
     dependencies:
@@ -2216,9 +2198,9 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.1.0
-      semver:
-        specifier: ^7.7.2
-        version: 7.8.4
+      verkit:
+        specifier: ^0.3.1
+        version: 0.3.1
     devDependencies:
       '@hot-updater/test-utils':
         specifier: workspace:*
@@ -2226,9 +2208,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
@@ -2326,18 +2305,15 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       mime:
         specifier: 2.6.0
         version: 2.6.0
       msw:
         specifier: ^2.7.0
         version: 2.14.6(@types/node@20.19.43)(typescript@7.0.2)
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
+      verkit:
+        specifier: ^0.3.1
+        version: 0.3.1
       vitest:
         specifier: 'catalog:'
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@1.8.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -19385,6 +19361,10 @@ packages:
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
+
+  verkit@0.3.1:
+    resolution: {integrity: sha512-w2Eo8LSIIoW7qxNBzT7/17k+bh8plXo7G3dHjEIDqPlnluhzaxr9JX8F28VSYEtDvc1/a3WBDih6xNUZseebXg==}
+    engines: {node: '>=18.12.0'}
 
   vfile-location@5.0.3:
     resolution: {integrity: sha512-5yXvWDEgqeiYiBe1lbxYF7UMAIm/IcopxMHrMQDq3nvKcjPKIhZklUKL+AE7J7uApI4kwe2snsK+eI6UTj9EHg==}
@@ -43120,6 +43100,8 @@ snapshots:
       react: 19.2.3
 
   vary@1.1.2: {}
+
+  verkit@0.3.1: {}
 
   vfile-location@5.0.3:
     dependencies:

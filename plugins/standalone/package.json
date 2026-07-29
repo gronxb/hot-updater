@@ -50,9 +50,8 @@
     "mime": "2.6.0",
     "@types/mime": "^2.0.3",
     "@types/node": "catalog:",
-    "@types/semver": "^7.5.8",
     "msw": "^2.7.0",
-    "semver": "^7.6.3",
+    "verkit": "^0.3.1",
     "vitest": "catalog:"
   },
   "inlinedDependencies": {

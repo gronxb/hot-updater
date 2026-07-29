@@ -4,7 +4,7 @@ import path from "path";
 import { XcodeProject } from "@bacons/xcode";
 import { getCwd } from "@hot-updater/cli-tools";
 import fg from "fast-glob";
-import semverValid from "semver/ranges/valid";
+import { normalizeRange } from "verkit";
 
 import { parsePlist } from "../configParser/plistUtils";
 import { getIosAppTargetDirectoryName } from "../getIosAppTargetDirectoryName";
@@ -103,7 +103,7 @@ export const getIOSVersion = async ({
     const parsedVersion = await IOSVersionParsers[parserKey]();
 
     if (!parsedVersion) continue;
-    if (validateWithSemver && !semverValid(parsedVersion)) continue;
+    if (validateWithSemver && !normalizeRange(parsedVersion)) continue;
 
     return parsedVersion;
   }

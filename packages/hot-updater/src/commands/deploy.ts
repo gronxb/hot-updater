@@ -23,8 +23,7 @@ import { getContentAddressedAssetStoragePath } from "@hot-updater/plugin-core";
 import { createBundleDiff } from "@hot-updater/server/db";
 import isPortReachable from "is-port-reachable";
 import open from "open";
-import semverIntersects from "semver/ranges/intersects";
-import semverValid from "semver/ranges/valid";
+import { normalizeRange, rangesIntersect } from "verkit";
 
 import { getPlatform } from "@/prompts/getPlatform";
 import { createSignedFileHash } from "@/signedHashUtils";
@@ -134,14 +133,14 @@ const formatUploadProgress = (
 };
 
 const areTargetAppVersionsPatchCompatible = (a: string, b: string): boolean => {
-  const aRange = semverValid(a);
-  const bRange = semverValid(b);
+  const aRange = normalizeRange(a);
+  const bRange = normalizeRange(b);
 
   if (!aRange || !bRange) {
     return false;
   }
 
-  return semverIntersects(aRange, bRange);
+  return rangesIntersect(aRange, bRange);
 };
 
 const getPatchBaseBundles = async ({
@@ -512,7 +511,9 @@ const getMultiPlatformDeploymentContext = async ({
   if (config.updateStrategy === "fingerprint") {
     lines.push("Fingerprint: per-platform");
   } else if (options.targetAppVersion) {
-    lines.push(`Target app version: ${semverValid(options.targetAppVersion)}`);
+    lines.push(
+      `Target app version: ${normalizeRange(options.targetAppVersion)}`,
+    );
   }
 
   return lines.join("\n");
@@ -641,7 +642,7 @@ const deployPlatform = async ({
             placeholder: defaultTargetAppVersion ?? "1.0.0",
             initialValue: defaultTargetAppVersion ?? "1.0.0",
             validate: (value) => {
-              if (!semverValid(value)) {
+              if (!normalizeRange(value)) {
                 return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
               }
               return;
@@ -711,7 +712,7 @@ const deployPlatform = async ({
     `Rollout: ${rolloutPercentage}%`,
     config.updateStrategy === "fingerprint"
       ? `Fingerprint: ${target.fingerprintHash}`
-      : `Target app version: ${semverValid(target.appVersion)}`,
+      : `Target app version: ${normalizeRange(target.appVersion)}`,
   ].join("\n");
 
   const deploymentTitle = multiPlatform
