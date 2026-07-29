@@ -642,7 +642,7 @@ const deployPlatform = async ({
             placeholder: defaultTargetAppVersion ?? "1.0.0",
             initialValue: defaultTargetAppVersion ?? "1.0.0",
             validate: (value) => {
-              if (!normalizeRange(value)) {
+              if (!value || !normalizeRange(value)) {
                 return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
               }
               return;
@@ -712,7 +712,9 @@ const deployPlatform = async ({
     `Rollout: ${rolloutPercentage}%`,
     config.updateStrategy === "fingerprint"
       ? `Fingerprint: ${target.fingerprintHash}`
-      : `Target app version: ${normalizeRange(target.appVersion)}`,
+      : `Target app version: ${
+          target.appVersion && normalizeRange(target.appVersion)
+        }`,
   ].join("\n");
 
   const deploymentTitle = multiPlatform
