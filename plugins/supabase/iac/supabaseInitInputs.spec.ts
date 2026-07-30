@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  execa: vi.fn(),
   group: vi.fn(),
+  link: vi.fn((url: string) => `link:${url}`),
+  logStep: vi.fn(),
   password: vi.fn(),
+  select: vi.fn(),
   text: vi.fn(),
 }));
 
@@ -11,14 +15,24 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     ...actual,
+    link: mocks.link,
     p: {
       ...actual.p,
       group: mocks.group,
+      log: {
+        ...actual.p.log,
+        step: mocks.logStep,
+      },
       password: mocks.password,
+      select: mocks.select,
       text: mocks.text,
     },
   };
 });
+
+vi.mock("execa", () => ({
+  execa: mocks.execa,
+}));
 
 import {
   assertSupabaseNonInteractiveInputs,
@@ -154,6 +168,54 @@ describe("Supabase non-interactive inputs", () => {
     expect(mocks.text).not.toHaveBeenCalled();
   });
 
+  it("uses Supabase CLI login instead of requesting an access token when selected", async () => {
+    // Given
+    mocks.select.mockResolvedValue("cli-login");
+    mocks.execa.mockResolvedValue({ stdout: "" });
+
+    // When
+    const deploymentInputs = await inputSupabaseDeploymentInputs({
+      functionName: "update-server",
+      nonInteractive: false,
+    });
+
+    // Then
+    expect(deploymentInputs).toEqual({
+      accessToken: undefined,
+      functionName: "update-server",
+    });
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      ["-y", "supabase", "login", "--agent", "no"],
+      {
+        stdio: "inherit",
+      },
+    );
+    expect(mocks.password).not.toHaveBeenCalled();
+  });
+
+  it("shows the token dashboard link when personal access token authentication is selected", async () => {
+    // Given
+    mocks.select.mockResolvedValue("access-token");
+    mocks.password.mockResolvedValue("access-token");
+
+    // When
+    await inputSupabaseDeploymentInputs({
+      functionName: "update-server",
+      nonInteractive: false,
+    });
+
+    // Then
+    expect(mocks.link).toHaveBeenCalledWith(
+      "https://supabase.com/dashboard/account/tokens",
+    );
+    expect(mocks.logStep).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "link:https://supabase.com/dashboard/account/tokens",
+      ),
+    );
+  });
+
   it("rejects an unsafe saved Edge Function name in non-interactive mode", () => {
     const inputs = resolveSupabaseInitInputs({
       HOT_UPDATER_SUPABASE_BUCKET_NAME: "updates",
@@ -204,5 +266,16 @@ describe("Supabase non-interactive inputs", () => {
     expect(validate("")).toBe(
       "A database password is required to create a Supabase project",
     );
+  });
+
+  it("delegates the project creation password prompt to the authenticated Supabase CLI", async () => {
+    await expect(
+      inputSupabaseDatabasePassword({
+        cliHandlesPrompt: true,
+        nonInteractive: false,
+        required: true,
+      }),
+    ).resolves.toBe("");
+    expect(mocks.password).not.toHaveBeenCalled();
   });
 });

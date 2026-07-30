@@ -16,6 +16,7 @@ import {
   SUPABASE_REGION_VALUES,
   type SupabaseRegion,
 } from "./init/index";
+import { inputSupabaseAccessToken } from "./supabaseAuthentication";
 
 export type SupabaseInitInputs = {
   readonly accessToken?: string;
@@ -92,7 +93,7 @@ export const inputSupabaseDeploymentInputs = async ({
 }: SupabaseInitInputs & {
   readonly nonInteractive: boolean;
 }): Promise<{
-  readonly accessToken: string;
+  readonly accessToken?: string;
   readonly functionName: string;
 }> => {
   const { inputs } = SUPABASE_INIT_PROVIDER;
@@ -118,13 +119,7 @@ export const inputSupabaseDeploymentInputs = async ({
   return p.group(
     {
       accessToken: () =>
-        accessToken
-          ? Promise.resolve(accessToken)
-          : p.password({
-              message: inputs.accessToken.prompt.message,
-              validate: (value) =>
-                value ? undefined : "Supabase access token is required",
-            }),
+        accessToken ? Promise.resolve(accessToken) : inputSupabaseAccessToken(),
       functionName: () =>
         savedFunctionName
           ? Promise.resolve(savedFunctionName)
@@ -145,16 +140,21 @@ export const inputSupabaseDeploymentInputs = async ({
 };
 
 export const inputSupabaseDatabasePassword = async ({
+  cliHandlesPrompt = false,
   databasePassword,
   forcePrompt = false,
   nonInteractive,
   required = false,
 }: {
+  readonly cliHandlesPrompt?: boolean;
   readonly databasePassword?: string;
   readonly forcePrompt?: boolean;
   readonly nonInteractive: boolean;
   readonly required?: boolean;
 }): Promise<string> => {
+  if (cliHandlesPrompt) {
+    return "";
+  }
   if (nonInteractive) {
     if (required && !databasePassword) {
       throw new MissingInitInputsError([

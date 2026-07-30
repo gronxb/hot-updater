@@ -4,7 +4,7 @@ import path from "path";
 import { p, transformTemplate } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
-import { initProvider as SUPABASE_INIT_PROVIDER } from "./init/index";
+import { getSupabaseCliEnv } from "./supabaseAuthentication";
 
 const SUPABASE_CONFIG_TEMPLATE = `
 project_id = "%%projectId%%"
@@ -22,6 +22,17 @@ const SUPABASE_DATABASE_AUTH_ERROR_PATTERNS = [
   /SQLSTATE 28P01/i,
   /invalid SCRAM server-final-message/i,
 ] as const;
+
+const getSupabaseCommandEnv = (
+  accessToken?: string,
+  dbPassword?: string,
+): Readonly<Record<string, string>> | undefined =>
+  accessToken || dbPassword
+    ? {
+        ...getSupabaseCliEnv(accessToken),
+        ...(dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : {}),
+      }
+    : undefined;
 
 const isSupabaseDatabaseAuthError = (err: ExecaError) => {
   const stderr = err.stderr;
@@ -84,7 +95,7 @@ export const linkSupabase = async (
     projectId,
     dbPassword,
   }: {
-    accessToken: string;
+    accessToken?: string;
     projectId: string;
     dbPassword?: string;
   },
@@ -106,10 +117,7 @@ export const linkSupabase = async (
       ["supabase", "link", "--project-ref", projectId, "--workdir", workdir],
       {
         cwd: workdir,
-        env: {
-          [SUPABASE_INIT_PROVIDER.inputs.accessToken.envKey]: accessToken,
-          ...(dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : {}),
-        },
+        env: getSupabaseCommandEnv(accessToken, dbPassword),
         input: "",
         stdio: ["pipe", "pipe", "pipe"],
       },
@@ -126,7 +134,7 @@ export const linkSupabase = async (
 
 export const pushDB = async (
   workdir: string,
-  { accessToken, dbPassword }: { accessToken: string; dbPassword?: string },
+  { accessToken, dbPassword }: { accessToken?: string; dbPassword?: string },
 ) => {
   try {
     const dbPush = await execa(
@@ -134,10 +142,7 @@ export const pushDB = async (
       ["supabase", "db", "push", "--include-all", "--yes"],
       {
         cwd: workdir,
-        env: {
-          [SUPABASE_INIT_PROVIDER.inputs.accessToken.envKey]: accessToken,
-          ...(dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : {}),
-        },
+        env: getSupabaseCommandEnv(accessToken, dbPassword),
         stderr: ["pipe", "inherit"],
         stdin: "inherit",
         stdout: "inherit",

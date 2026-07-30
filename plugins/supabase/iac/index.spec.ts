@@ -369,6 +369,41 @@ describe("Supabase project readiness", () => {
     await assertion;
   });
 
+  it("uses stored Supabase CLI credentials to get project access when no token is provided", async () => {
+    const managementApi = createManagementApi();
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        { api_key: "service-role-key", name: "service_role" },
+      ]),
+    });
+
+    await expect(
+      getSupabaseProjectAccess({
+        accessToken: undefined,
+        managementApi,
+        project,
+        waitForProject: false,
+      }),
+    ).resolves.toEqual({
+      api: expect.any(Object),
+      serviceRoleApiKey: "service-role-key",
+    });
+    expect(mockExeca).toHaveBeenCalledWith(
+      "npx",
+      [
+        "-y",
+        "supabase",
+        "projects",
+        "api-keys",
+        "--project-ref",
+        "project-ref",
+        "--output",
+        "json",
+      ],
+      { env: undefined },
+    );
+  });
+
   it("surfaces CLI failures immediately after the project is ready", async () => {
     const managementApi = createManagementApi();
     vi.mocked(managementApi.getProjectStatus).mockResolvedValue(
@@ -442,6 +477,57 @@ describe("Supabase database migration confirmation", () => {
     // Then
     expect(confirmed).toBe(true);
     expect(mockCli.p.confirm).not.toHaveBeenCalled();
+  });
+});
+
+describe("Supabase CLI authentication", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("uses stored CLI credentials when linking without an access token", async () => {
+    const workdir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-supabase-link-"),
+    );
+    await fs.mkdir(path.join(workdir, "supabase"), { recursive: true });
+    mockExeca.mockResolvedValue({ stdout: "" });
+
+    try {
+      await linkSupabase(workdir, {
+        projectId: "project-ref",
+      });
+
+      expect(mockExeca).toHaveBeenCalledWith(
+        "npx",
+        [
+          "supabase",
+          "link",
+          "--project-ref",
+          "project-ref",
+          "--workdir",
+          workdir,
+        ],
+        expect.objectContaining({
+          env: undefined,
+        }),
+      );
+    } finally {
+      await fs.rm(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses stored CLI credentials when pushing migrations without an access token", async () => {
+    mockExeca.mockResolvedValue({ stdout: "" });
+
+    await pushDB("/tmp/hot-updater-supabase-push", {});
+
+    expect(mockExeca).toHaveBeenCalledWith(
+      "npx",
+      ["supabase", "db", "push", "--include-all", "--yes"],
+      expect.objectContaining({
+        env: undefined,
+      }),
+    );
   });
 });
 

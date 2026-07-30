@@ -5,6 +5,14 @@ import {
   SUPABASE_MANAGEMENT_API_TIMEOUT_MS,
 } from "./supabaseManagementApi";
 
+const mocks = vi.hoisted(() => ({
+  execa: vi.fn(),
+}));
+
+vi.mock("execa", () => ({
+  execa: mocks.execa,
+}));
+
 const mockFetch = vi.fn();
 
 beforeEach(() => {
@@ -39,6 +47,97 @@ const respondWithStalledBody = (_url: string, init?: RequestInit) =>
   } as Response);
 
 describe("supabaseManagementApi", () => {
+  it("lists organizations through the authenticated Supabase CLI when no token is provided", async () => {
+    mocks.execa.mockResolvedValue({
+      stdout: JSON.stringify([
+        { id: "org-id", name: "Team", slug: "team-slug" },
+      ]),
+    });
+
+    await expect(supabaseManagementApi().listOrganizations()).resolves.toEqual([
+      { id: "org-id", name: "Team", slug: "team-slug" },
+    ]);
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      ["-y", "supabase", "orgs", "list", "--output", "json"],
+      { env: undefined },
+    );
+  });
+
+  it("creates a project through the authenticated Supabase CLI without exposing the database password in arguments", async () => {
+    mocks.execa.mockResolvedValueOnce({ stdout: "" }).mockResolvedValueOnce({
+      stdout: JSON.stringify([
+        {
+          created_at: "2026-07-31T00:00:00Z",
+          id: "project-ref",
+          name: "Hot Updater",
+          organization_slug: "team-slug",
+          region: "us-east-1",
+        },
+      ]),
+    });
+
+    await expect(
+      supabaseManagementApi().createProject({
+        databasePassword: "database-password",
+        name: "Hot Updater",
+        organizationSlug: "team-slug",
+        region: "us-east-1",
+      }),
+    ).resolves.toEqual({
+      id: "project-ref",
+      name: "Hot Updater",
+      region: "us-east-1",
+    });
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      [
+        "-y",
+        "supabase",
+        "projects",
+        "create",
+        "Hot Updater",
+        "--org-id",
+        "team-slug",
+        "--region",
+        "us-east-1",
+        "--agent",
+        "no",
+      ],
+      {
+        stdio: "inherit",
+      },
+    );
+    expect(mocks.execa).toHaveBeenNthCalledWith(
+      2,
+      "npx",
+      ["-y", "supabase", "projects", "list", "--output", "json"],
+      { env: undefined },
+    );
+  });
+
+  it("gets project status through the authenticated Supabase CLI when no token is provided", async () => {
+    mocks.execa.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          id: "project-ref",
+          name: "Hot Updater",
+          region: "us-east-1",
+          status: "COMING_UP",
+        },
+      ]),
+    });
+
+    await expect(
+      supabaseManagementApi().getProjectStatus("project-ref"),
+    ).resolves.toBe("COMING_UP");
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      ["-y", "supabase", "projects", "list", "--output", "json"],
+      { env: undefined },
+    );
+  });
+
   it("lists organizations with the access token in a header", async () => {
     mockFetch.mockResolvedValue(
       new Response(

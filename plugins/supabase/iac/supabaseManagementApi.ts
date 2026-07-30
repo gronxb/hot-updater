@@ -1,4 +1,5 @@
 import type { SupabaseRegion } from "./init/index";
+import { supabaseCliManagementApi } from "./supabaseCliManagementApi";
 
 const SUPABASE_MANAGEMENT_API_URL = "https://api.supabase.com/v1";
 export const SUPABASE_MANAGEMENT_API_TIMEOUT_MS = 30_000;
@@ -97,70 +98,73 @@ const request = async (
 };
 
 export const supabaseManagementApi = (
-  accessToken: string,
-): SupabaseManagementApi => ({
-  listOrganizations: async () => {
-    const body = await request(accessToken, "/organizations");
-    if (!Array.isArray(body)) {
-      throw new Error("Supabase organizations response was invalid.");
-    }
+  accessToken?: string,
+): SupabaseManagementApi =>
+  accessToken === undefined
+    ? supabaseCliManagementApi()
+    : {
+        listOrganizations: async () => {
+          const body = await request(accessToken, "/organizations");
+          if (!Array.isArray(body)) {
+            throw new Error("Supabase organizations response was invalid.");
+          }
 
-    return body.flatMap((organization) =>
-      isRecord(organization) &&
-      typeof organization.id === "string" &&
-      typeof organization.name === "string" &&
-      typeof organization.slug === "string"
-        ? [
-            {
-              id: organization.id,
-              name: organization.name,
-              slug: organization.slug,
+          return body.flatMap((organization) =>
+            isRecord(organization) &&
+            typeof organization.id === "string" &&
+            typeof organization.name === "string" &&
+            typeof organization.slug === "string"
+              ? [
+                  {
+                    id: organization.id,
+                    name: organization.name,
+                    slug: organization.slug,
+                  },
+                ]
+              : [],
+          );
+        },
+        createProject: async ({
+          databasePassword,
+          name,
+          organizationSlug,
+          region,
+        }) => {
+          const body = await request(accessToken, "/projects", {
+            body: {
+              db_pass: databasePassword,
+              name,
+              organization_slug: organizationSlug,
+              region,
             },
-          ]
-        : [],
-    );
-  },
-  createProject: async ({
-    databasePassword,
-    name,
-    organizationSlug,
-    region,
-  }) => {
-    const body = await request(accessToken, "/projects", {
-      body: {
-        db_pass: databasePassword,
-        name,
-        organization_slug: organizationSlug,
-        region,
-      },
-      method: "POST",
-    });
-    if (
-      !isRecord(body) ||
-      typeof body.ref !== "string" ||
-      typeof body.name !== "string" ||
-      typeof body.region !== "string"
-    ) {
-      throw projectCreationMayHaveSucceededError(
-        "Supabase project creation response was invalid.",
-      );
-    }
+            method: "POST",
+          });
+          if (
+            !isRecord(body) ||
+            typeof body.ref !== "string" ||
+            typeof body.name !== "string" ||
+            typeof body.region !== "string"
+          ) {
+            throw projectCreationMayHaveSucceededError(
+              "Supabase project creation response was invalid.",
+            );
+          }
 
-    return {
-      id: body.ref,
-      name: body.name,
-      region: body.region,
-    };
-  },
-  getProjectStatus: async (projectId) => {
-    const body = await request(
-      accessToken,
-      `/projects/${encodeURIComponent(projectId)}`,
-    );
-    if (!isRecord(body) || typeof body.status !== "string") {
-      throw new Error("Supabase project response was invalid.");
-    }
+          return {
+            id: body.ref,
+            name: body.name,
+            region: body.region,
+          };
+        },
+        getProjectStatus: async (projectId) => {
+          const body = await request(
+            accessToken,
+            `/projects/${encodeURIComponent(projectId)}`,
+          );
+          if (!isRecord(body) || typeof body.status !== "string") {
+            throw new Error("Supabase project response was invalid.");
+          }
 
-    return body.status;
-  },
-});
+          return body.status;
+        },
+      };

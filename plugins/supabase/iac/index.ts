@@ -32,6 +32,7 @@ import {
   SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
 } from "./init/index";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
+import { getSupabaseCliEnv } from "./supabaseAuthentication";
 import { ensureSupabaseBucketPrivate } from "./supabaseBucketPrivacy";
 import {
   confirmSupabaseDatabaseMigrations,
@@ -651,7 +652,7 @@ export const createSelectedBucket = async (
 };
 
 const deployEdgeFunction = async (
-  accessToken: string,
+  accessToken: string | undefined,
   workdir: string,
   projectId: string,
   functionName: string,
@@ -702,9 +703,7 @@ const deployEdgeFunction = async (
             ],
             {
               cwd: workdir,
-              env: {
-                SUPABASE_ACCESS_TOKEN: accessToken,
-              },
+              env: getSupabaseCliEnv(accessToken),
             },
           );
           return dbPush.stdout;
@@ -761,7 +760,7 @@ export const getSupabaseProjectAccess = async ({
   project,
   waitForProject,
 }: {
-  readonly accessToken: string;
+  readonly accessToken?: string;
   readonly managementApi: SupabaseManagementApi;
   readonly project: SupabaseProject;
   readonly waitForProject: boolean;
@@ -783,9 +782,7 @@ export const getSupabaseProjectAccess = async ({
         "json",
       ],
       {
-        env: {
-          SUPABASE_ACCESS_TOKEN: accessToken,
-        },
+        env: getSupabaseCliEnv(accessToken),
       },
     );
     const apiKeys: { api_key: string; name: string }[] = JSON.parse(
@@ -863,6 +860,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     savedInputs.projectId !== undefined &&
     (project === undefined || savedInputs.projectId !== project.id);
   const dbPassword = await inputSupabaseDatabasePassword({
+    cliHandlesPrompt:
+      projectSelection.create && initInputs.accessToken === undefined,
     databasePassword: savedInputs.databasePassword,
     forcePrompt: projectChanged || projectSelection.create,
     nonInteractive,
