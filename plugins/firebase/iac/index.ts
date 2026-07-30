@@ -324,7 +324,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const savedInputs = resolveFirebaseInitInputs(existingEnv);
   assertFirebaseNonInteractiveInputs(savedInputs, nonInteractive);
   let applicationCredentials = savedInputs.applicationCredentials;
-  const initialCliEnv = getFirebaseCliEnv(applicationCredentials);
+  const cliEnv = nonInteractive
+    ? getFirebaseCliEnv(applicationCredentials)
+    : undefined;
 
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
@@ -347,17 +349,16 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     tmpDir,
     savedInputs.projectId,
     nonInteractive,
-    initialCliEnv,
+    cliEnv,
     async (projectId) => {
       applicationCredentials = await inputFirebaseApplicationCredentials({
         applicationCredentials,
         nonInteractive,
         projectId,
       });
-      return getFirebaseCliEnv(applicationCredentials);
+      return cliEnv;
     },
   );
-  const cliEnv = getFirebaseCliEnv(applicationCredentials);
 
   const currentRegion = await resolveFirebaseRegion({
     cwd: tmpDir,

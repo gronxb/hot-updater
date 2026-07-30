@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  existingEnv: {} as Record<string, string>,
   events: [] as string[],
   functionsDir: "",
   tmpDir: "",
@@ -45,7 +46,7 @@ vi.mock("@hot-updater/cli-tools", async () => {
       }),
     },
     readHotUpdaterInitEnv: vi.fn(async () => ({
-      env: {},
+      env: mocks.existingEnv,
       managedEnv: {},
     })),
     resolveHotUpdaterServerVersion: vi.fn(() => "1.0.0"),
@@ -85,9 +86,11 @@ vi.mock("./select", () => ({
 }));
 
 import { runInit } from "./index";
+import { initFirebaseUser } from "./select";
 
 describe("Firebase project creation", () => {
   beforeEach(async () => {
+    mocks.existingEnv = {};
     mocks.events.length = 0;
     mocks.tmpDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-firebase-init-"),
@@ -116,5 +119,21 @@ describe("Firebase project creation", () => {
       "persist",
       "cleanup",
     ]);
+  });
+
+  it("keeps application credentials out of interactive CLI authentication", async () => {
+    mocks.existingEnv = {
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+    };
+
+    await runInit({ build: "bare" });
+
+    const initCall = vi.mocked(initFirebaseUser).mock.calls[0];
+    expect(initCall?.[3]).toBeUndefined();
+
+    const resolveCliEnv = initCall?.[4];
+    expect(resolveCliEnv).toEqual(expect.any(Function));
+    const selectedProjectCliEnv = await resolveCliEnv?.("new-project");
+    expect(selectedProjectCliEnv).toBeUndefined();
   });
 });
