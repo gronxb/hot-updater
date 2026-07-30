@@ -1,8 +1,6 @@
 import type { ConfigResponse } from "@hot-updater/cli-tools";
-import type {
-  ConsoleApiClient,
-  ConsoleBundle,
-} from "./embedded";
+
+import type { ConsoleApiClient, ConsoleBundle } from "./embedded";
 
 export type Bundle = ConsoleBundle;
 
