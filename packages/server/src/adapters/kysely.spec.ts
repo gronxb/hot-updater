@@ -43,7 +43,7 @@ describe("kyselyAdapter sqlite provider", () => {
   it("stores bundle JSON columns as text and round-trips them", async () => {
     const db = new PGlite();
     databases.push(db);
-    const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+    const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
     kyselyInstances.push(kysely);
     await db.exec(`
       create table bundles (

@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/bsdiff",
-  "version": "0.35.7",
+  "version": "0.35.8",
   "description": "Hot Updater BSdiff library that produces BSDIFF40 patches for RN bspatch flows",
   "license": "MIT AND BSD-2-Clause AND bzip2-1.0.6",
   "type": "module",
@@ -67,7 +67,8 @@
   "devDependencies": {
     "@types/node": "^25.3.2",
     "tsdown": "catalog:tools",
-    "typescript": "^6.0.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "catalog:",
     "wrangler": "^4.69.0"
   },

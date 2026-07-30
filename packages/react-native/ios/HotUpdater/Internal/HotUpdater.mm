@@ -30,6 +30,39 @@ volatile sig_atomic_t gHotUpdaterShouldRollback = 0;
 struct sigaction gHotUpdaterPreviousActions[NSIG];
 __weak RCTBridge *gHotUpdaterBridge = nil;
 
+void HotUpdaterTriggerReloadCommand(RCTBridge *bridge, NSString *reason)
+{
+#ifdef RCT_NEW_ARCH_ENABLED
+  RCTTriggerReloadCommandListeners(reason);
+#else
+  // RCTBridge starts the next old-architecture bridge before its asynchronous
+  // module invalidation finishes. Wait for this exact child bridge first.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (!bridge || !bridge.valid) {
+      RCTTriggerReloadCommandListeners(reason);
+      return;
+    }
+
+    __block id observer = nil;
+    observer = [[NSNotificationCenter defaultCenter]
+        addObserverForName:RCTBridgeDidInvalidateModulesNotification
+                    object:nil
+                     queue:[NSOperationQueue mainQueue]
+                usingBlock:^(NSNotification *notification) {
+                  RCTBridge *invalidatedBridge = notification.userInfo[@"bridge"];
+                  if (notification.object != bridge && invalidatedBridge != bridge) {
+                    return;
+                  }
+                  [[NSNotificationCenter defaultCenter] removeObserver:observer];
+                  observer = nil;
+                  RCTTriggerReloadCommandListeners(reason);
+                }];
+
+    [bridge invalidate];
+  });
+#endif
+}
+
 size_t HotUpdaterSafeStringLength(const char *value, size_t maxLength)
 {
   size_t length = 0;
@@ -159,7 +192,7 @@ extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
     if (bridge) {
       [bridge setValue:bundleURL forKey:@"bundleURL"];
     }
-    RCTTriggerReloadCommandListeners(@"HotUpdater recovery reload");
+    HotUpdaterTriggerReloadCommand(bridge, @"HotUpdater recovery reload");
     didTriggerReload = YES;
   };
 
@@ -534,7 +567,7 @@ RCT_EXPORT_MODULE();
             } else if (!super.bridge) {
                 RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
             }
-            RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
+            HotUpdaterTriggerReloadCommand(super.bridge, @"HotUpdater requested a reload");
             resolve(nil);
         } @catch (NSError *error) {
             RCTLogError(@"[HotUpdater.mm] Failed to reload: %@", error);
@@ -670,7 +703,7 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
             } else if (!super.bridge) {
                 RCTLogWarn(@"[HotUpdater.mm] Bridge is nil, cannot set bundleURL for reload.");
             }
-            RCTTriggerReloadCommandListeners(@"HotUpdater requested a reload");
+            HotUpdaterTriggerReloadCommand(super.bridge, @"HotUpdater requested a reload");
             resolve(nil);
         } @catch (NSError *error) {
             RCTLogError(@"[HotUpdater.mm] Failed to reload: %@", error);

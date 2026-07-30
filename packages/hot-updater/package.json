@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.35.7",
+  "version": "0.35.8",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -84,7 +84,8 @@
     "semver": "^7.6.3",
     "tsdown": "catalog:tools",
     "sql-formatter": "15.6.10",
-    "typescript": "6.0.2"
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "peerDependencies": {
     "@expo/fingerprint": "*",

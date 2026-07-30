@@ -131,7 +131,7 @@ export async function generateStandaloneSQL(options: {
     const s = p.spinner();
     s.start("Generating SQL from database schema");
 
-    const db = new Kysely({ dialect: createDialect(dbType) });
+    const db = new Kysely<object>({ dialect: createDialect(dbType) });
     const [{ createHotUpdater }, { createMigrator }, { kyselyAdapter }] =
       await Promise.all([
         import("@hot-updater/server"),
