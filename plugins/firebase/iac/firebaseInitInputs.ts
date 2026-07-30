@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+
 import {
   assertInitProviderInputs,
   resolveInitProviderInput,
@@ -13,16 +16,50 @@ export type FirebaseInitInputs = {
 
 export type FirebaseCliEnv = Readonly<Record<string, string>>;
 
+type FirebaseCredentialsPathContext = {
+  readonly cwd?: string;
+  readonly homeDir?: string;
+  readonly pathApi?: Pick<typeof path, "resolve">;
+};
+
+const resolveFirebaseCredentialsPath = (
+  credentialsPath: string,
+  {
+    cwd = process.cwd(),
+    homeDir = os.homedir(),
+    pathApi = path,
+  }: FirebaseCredentialsPathContext,
+) => {
+  const homeRelativePath =
+    credentialsPath === "~"
+      ? ""
+      : credentialsPath.startsWith("~/") || credentialsPath.startsWith("~\\")
+        ? credentialsPath.slice(2)
+        : undefined;
+
+  return homeRelativePath === undefined
+    ? pathApi.resolve(cwd, credentialsPath)
+    : pathApi.resolve(homeDir, homeRelativePath);
+};
+
 export const getFirebaseCliEnv = (
   applicationCredentials?: string,
-): FirebaseCliEnv | undefined =>
-  applicationCredentials
-    ? {
-        CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: applicationCredentials,
-        [FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey]:
-          applicationCredentials,
-      }
-    : undefined;
+  pathContext: FirebaseCredentialsPathContext = {},
+): FirebaseCliEnv | undefined => {
+  if (!applicationCredentials) {
+    return undefined;
+  }
+
+  const resolvedCredentialsPath = resolveFirebaseCredentialsPath(
+    applicationCredentials,
+    pathContext,
+  );
+  return {
+    CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: resolvedCredentialsPath,
+    [FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey]:
+      resolvedCredentialsPath,
+  };
+};
 
 export const resolveFirebaseInitInputs = (
   existingEnv: Record<string, string>,

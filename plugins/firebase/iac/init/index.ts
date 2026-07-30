@@ -59,6 +59,7 @@ export const initProvider = {
       prompt: {
         message:
           "Enter the service account JSON path (press Enter to configure later)",
+        placeholder: "~/Downloads/firebase-service-account.json",
         type: "text",
       },
     },

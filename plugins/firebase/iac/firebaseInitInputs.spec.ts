@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -61,6 +63,49 @@ describe("Firebase non-interactive init inputs", () => {
     expect(getFirebaseCliEnv("/tmp/firebase-credentials.json")).toEqual({
       CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: "/tmp/firebase-credentials.json",
       GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+    });
+  });
+
+  it("expands a home-relative credential path for Firebase and gcloud commands", () => {
+    expect(
+      getFirebaseCliEnv("~/firebase-credentials.json", {
+        cwd: "/workspace/project",
+        homeDir: "/Users/developer",
+      }),
+    ).toEqual({
+      CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:
+        "/Users/developer/firebase-credentials.json",
+      GOOGLE_APPLICATION_CREDENTIALS:
+        "/Users/developer/firebase-credentials.json",
+    });
+  });
+
+  it("expands a Windows home-relative credential path for Firebase and gcloud commands", () => {
+    expect(
+      getFirebaseCliEnv("~\\firebase-credentials.json", {
+        cwd: "C:\\workspace\\project",
+        homeDir: "C:\\Users\\developer",
+        pathApi: path.win32,
+      }),
+    ).toEqual({
+      CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:
+        "C:\\Users\\developer\\firebase-credentials.json",
+      GOOGLE_APPLICATION_CREDENTIALS:
+        "C:\\Users\\developer\\firebase-credentials.json",
+    });
+  });
+
+  it("preserves a Windows absolute credential path for Firebase and gcloud commands", () => {
+    expect(
+      getFirebaseCliEnv("D:\\secrets\\firebase-credentials.json", {
+        cwd: "C:\\workspace\\project",
+        homeDir: "C:\\Users\\developer",
+        pathApi: path.win32,
+      }),
+    ).toEqual({
+      CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:
+        "D:\\secrets\\firebase-credentials.json",
+      GOOGLE_APPLICATION_CREDENTIALS: "D:\\secrets\\firebase-credentials.json",
     });
   });
 });

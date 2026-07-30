@@ -18,6 +18,7 @@ import {
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
   type FirebaseCliEnv,
   getFirebaseCliEnv,
@@ -322,22 +323,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
   const savedInputs = resolveFirebaseInitInputs(existingEnv);
   assertFirebaseNonInteractiveInputs(savedInputs, nonInteractive);
-  const applicationCredentials =
-    savedInputs.applicationCredentials ??
-    (nonInteractive
-      ? undefined
-      : await p.text({
-          message:
-            FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.prompt.message,
-        }));
-  if (p.isCancel(applicationCredentials)) {
-    process.exit(1);
-  }
-  const cliEnv = getFirebaseCliEnv(
-    applicationCredentials
-      ? path.resolve(process.cwd(), applicationCredentials)
-      : undefined,
-  );
+  const applicationCredentials = await inputFirebaseApplicationCredentials({
+    applicationCredentials: savedInputs.applicationCredentials,
+    nonInteractive,
+  });
+  const cliEnv = getFirebaseCliEnv(applicationCredentials);
 
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
