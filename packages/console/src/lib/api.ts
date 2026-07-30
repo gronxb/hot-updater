@@ -8,12 +8,30 @@ import {
 } from "@tanstack/react-query";
 
 import {
-  type BundleFilters,
-  type ConsoleApiClient,
-  useConsoleApiClient,
-} from "./api-client";
+  createBundle as createBundleApi,
+  deleteBundle as deleteBundleApi,
+  getBundle,
+  getBundleChildCounts,
+  getBundleChildren,
+  getBundleDownloadUrl,
+  getBundles,
+  getChannels,
+  getConfig,
+  getConfigLoaded,
+  promoteBundle as promoteBundleApi,
+  updateBundle as updateBundleApi,
+} from "./api-rpc";
 
-type BundlesQueryData = Awaited<ReturnType<ConsoleApiClient["getBundles"]>>;
+type BundleFilters = {
+  channel?: string;
+  platform?: "ios" | "android";
+  page?: number;
+  limit?: string;
+  after?: string;
+  before?: string;
+};
+
+type BundlesQueryData = Awaited<ReturnType<typeof getBundles>>;
 
 const bundleListQueryKey = ["bundles"] as const;
 
@@ -77,77 +95,65 @@ const invalidateInBackground = (
 
 // Query Hooks
 export function useConfigQuery() {
-  const api = useConsoleApiClient();
-
   return useQuery({
     queryKey: queryKeys.config,
-    queryFn: () => api.getConfig(),
+    queryFn: () => getConfig(),
     staleTime: Infinity,
   });
 }
 
 export function useChannelsQuery() {
-  const api = useConsoleApiClient();
-
   return useQuery({
     queryKey: queryKeys.channels,
-    queryFn: () => api.getChannels(),
+    queryFn: () => getChannels(),
     staleTime: Infinity,
   });
 }
 
 export function useConfigLoadedQuery() {
-  const api = useConsoleApiClient();
-
   return useQuery({
     queryKey: queryKeys.configLoaded,
-    queryFn: () => api.getConfigLoaded(),
+    queryFn: () => getConfigLoaded(),
     staleTime: Infinity,
   });
 }
 
 export function useBundlesQuery(filters?: BundleFilters) {
-  const api = useConsoleApiClient();
-
   return useQuery({
     queryKey: queryKeys.bundles.list(filters),
-    queryFn: () => api.getBundles(filters),
+    queryFn: () => getBundles({ data: filters }),
     staleTime: Infinity,
     placeholderData: (previousData) => previousData,
   });
 }
 
 export function useBundleQuery(bundleId: string) {
-  const api = useConsoleApiClient();
-
   return useQuery({
     queryKey: queryKeys.bundle(bundleId),
-    queryFn: () => api.getBundle({ bundleId }),
+    queryFn: () => getBundle({ data: { bundleId } }),
     staleTime: Infinity,
     enabled: !!bundleId,
   });
 }
 
 export function useBundleChildrenQuery(baseBundleId: string) {
-  const api = useConsoleApiClient();
-
   return useQuery({
     queryKey: queryKeys.bundleChildren.list(baseBundleId),
-    queryFn: () => api.getBundleChildren({ baseBundleId }),
+    queryFn: () => getBundleChildren({ data: { baseBundleId } }),
     staleTime: Infinity,
     enabled: !!baseBundleId,
   });
 }
 
 export function useBundleChildCountsQuery(bundleIds: string[]) {
-  const api = useConsoleApiClient();
   const normalizedBundleIds = [...bundleIds].sort((left, right) =>
     left.localeCompare(right),
   );
 
   return useQuery({
     queryKey: queryKeys.bundleChildren.counts(normalizedBundleIds),
-    queryFn: () => api.getBundleChildCounts({ bundleIds: normalizedBundleIds }),
+    queryFn: () =>
+      getBundleChildCounts({ data: { bundleIds: normalizedBundleIds } }),
     staleTime: Infinity,
     enabled: normalizedBundleIds.length > 0,
   });
@@ -155,21 +161,18 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
 
 // Mutation Hooks
 export function useBundleDownloadUrlMutation() {
-  const api = useConsoleApiClient();
-
   return useMutation({
     mutationFn: (params: { bundleId: string }) =>
-      api.getBundleDownloadUrl(params),
+      getBundleDownloadUrl({ data: params }),
   });
 }
 
 export function useUpdateBundleMutation() {
-  const api = useConsoleApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (params: { bundleId: string; bundle: Partial<Bundle> }) =>
-      api.updateBundle(params),
+      updateBundleApi({ data: params }),
     onSuccess: ({ bundle: updatedBundle }, vars) => {
       queryClient.setQueryData(queryKeys.bundle(vars.bundleId), updatedBundle);
       queryClient.setQueriesData(
@@ -196,11 +199,10 @@ export function useUpdateBundleMutation() {
 }
 
 export function useCreateBundleMutation() {
-  const api = useConsoleApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (bundle: Bundle) => api.createBundle(bundle),
+    mutationFn: (bundle: Bundle) => createBundleApi({ data: bundle }),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
@@ -214,7 +216,6 @@ export function useCreateBundleMutation() {
 }
 
 export function usePromoteBundleMutation() {
-  const api = useConsoleApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -223,7 +224,7 @@ export function usePromoteBundleMutation() {
       bundleId: string;
       nextBundleId?: string;
       targetChannel: string;
-    }) => api.promoteBundle(params),
+    }) => promoteBundleApi({ data: params }),
     onSuccess: async ({ bundle }) => {
       queryClient.setQueryData(queryKeys.bundle(bundle.id), bundle);
 
@@ -242,11 +243,11 @@ export function usePromoteBundleMutation() {
 }
 
 export function useDeleteBundleMutation() {
-  const api = useConsoleApiClient();
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: { bundleId: string }) => api.deleteBundle(params),
+    mutationFn: (params: { bundleId: string }) =>
+      deleteBundleApi({ data: params }),
     onSuccess: (_, vars) => {
       queryClient.removeQueries({ queryKey: queryKeys.bundle(vars.bundleId) });
       queryClient.setQueriesData(

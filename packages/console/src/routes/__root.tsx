@@ -15,8 +15,6 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { ConsoleApiClientProvider } from "@/lib/api-client";
-import { defaultConsoleApiClient } from "@/lib/default-api-client";
 
 import appCss from "../styles.css?url";
 
@@ -87,25 +85,23 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <body>
         <ThemeProvider defaultTheme="dark">
           <QueryClientProvider client={queryClient}>
-            <ConsoleApiClientProvider api={defaultConsoleApiClient}>
-              <TooltipProvider>
-                {children}
-                <Toaster />
-                {import.meta.env.DEV && isLocalDebugHost ? (
-                  <TanStackDevtools
-                    config={{
-                      position: "bottom-right",
-                    }}
-                    plugins={[
-                      {
-                        name: "Tanstack Router",
-                        render: <TanStackRouterDevtoolsPanel />,
-                      },
-                    ]}
-                  />
-                ) : null}
-              </TooltipProvider>
-            </ConsoleApiClientProvider>
+            <TooltipProvider>
+              {children}
+              <Toaster />
+              {import.meta.env.DEV && isLocalDebugHost ? (
+                <TanStackDevtools
+                  config={{
+                    position: "bottom-right",
+                  }}
+                  plugins={[
+                    {
+                      name: "Tanstack Router",
+                      render: <TanStackRouterDevtoolsPanel />,
+                    },
+                  ]}
+                />
+              ) : null}
+            </TooltipProvider>
           </QueryClientProvider>
         </ThemeProvider>
         <Scripts />
