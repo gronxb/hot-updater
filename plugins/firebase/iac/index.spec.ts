@@ -109,7 +109,6 @@ describe("Firebase project creation", () => {
     await runInit({ build: "bare" });
 
     expect(mocks.events).toEqual([
-      "credentials",
       "project",
       "region",
       "consent",

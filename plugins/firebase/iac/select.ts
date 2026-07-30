@@ -142,6 +142,10 @@ export type FirebaseUserInitialization =
       readonly storageBucket: string;
     };
 
+type ResolveFirebaseCliEnv = (
+  projectId: string,
+) => Promise<FirebaseCliEnv | undefined>;
+
 export const createFirebaseProject = async ({
   cliEnv,
   projectId,
@@ -228,6 +232,7 @@ export const initFirebaseUser = async (
   preferredProjectId?: string,
   nonInteractive = false,
   cliEnv?: FirebaseCliEnv,
+  resolveCliEnv?: ResolveFirebaseCliEnv,
 ): Promise<FirebaseUserInitialization> => {
   if (!cliEnv) {
     try {
@@ -335,6 +340,10 @@ export const initFirebaseUser = async (
     };
   }
 
+  const selectedProjectCliEnv = resolveCliEnv
+    ? await resolveCliEnv(projectId)
+    : cliEnv;
+
   await p.tasks([
     {
       title: `Select Firebase project (${projectId})...`,
@@ -351,7 +360,7 @@ export const initFirebaseUser = async (
             ],
             {
               cwd,
-              env: cliEnv,
+              env: selectedProjectCliEnv,
             },
           );
         } catch (error) {
@@ -377,7 +386,7 @@ export const initFirebaseUser = async (
         "--format=json",
       ],
       {
-        env: cliEnv,
+        env: selectedProjectCliEnv,
         /**
          * API [firestore.googleapis.com] not enabled on project [xxx]. Would you
          like to enable and retry (this will take a few minutes)? (y/N)?
@@ -419,7 +428,7 @@ export const initFirebaseUser = async (
             "--format=json",
           ],
           {
-            env: cliEnv,
+            env: selectedProjectCliEnv,
           },
         );
         const bucketsJson = JSON.parse(buckets.stdout);
@@ -454,7 +463,7 @@ export const initFirebaseUser = async (
     "gcloud",
     ["projects", "describe", projectId, "--format=json"],
     {
-      env: cliEnv,
+      env: selectedProjectCliEnv,
     },
   );
   const projectJson = JSON.parse(project.stdout);

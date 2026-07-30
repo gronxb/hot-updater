@@ -5,9 +5,11 @@ import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
 export const inputFirebaseApplicationCredentials = async ({
   applicationCredentials,
   nonInteractive,
+  projectId,
 }: {
   readonly applicationCredentials?: string;
   readonly nonInteractive: boolean;
+  readonly projectId: string;
 }): Promise<string | undefined> => {
   if (applicationCredentials || nonInteractive) {
     return applicationCredentials;
@@ -15,7 +17,7 @@ export const inputFirebaseApplicationCredentials = async ({
 
   p.log.step(
     `Service account JSON: ${link(
-      "https://console.firebase.google.com/project/_/settings/serviceaccounts/adminsdk",
+      `https://console.firebase.google.com/project/${projectId}/settings/serviceaccounts/adminsdk`,
     )}`,
   );
   p.log.step("Project settings > Service accounts > Generate new private key");

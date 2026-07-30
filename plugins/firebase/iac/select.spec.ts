@@ -173,6 +173,34 @@ describe("initFirebaseUser", () => {
     );
   });
 
+  it("resolves credentials after project selection and uses them for project commands", async () => {
+    // Given
+    const cliEnv = {
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+    };
+    const resolveCliEnv = vi.fn().mockResolvedValue(cliEnv);
+
+    // When
+    await initFirebaseUser(
+      "/tmp/firebase-init",
+      undefined,
+      false,
+      undefined,
+      resolveCliEnv,
+    );
+
+    // Then
+    expect(resolveCliEnv).toHaveBeenCalledWith("demo-project");
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      ["firebase", "use", "--add", "demo-project"],
+      {
+        cwd: "/tmp/firebase-init",
+        env: cliEnv,
+      },
+    );
+  });
+
   it("logs in and retries when project discovery is unauthenticated", async () => {
     // Given
     let projectListAttempts = 0;
