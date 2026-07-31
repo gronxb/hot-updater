@@ -1,5 +1,16 @@
 # @hot-updater/cli-tools
 
+## 0.35.9
+
+### Patch Changes
+
+- 8688b1a: chore: migrate to TypeScript 7 and OXC
+- f9bb26d: Declare init inputs in each provider package through a shared contract, ask
+  once before saving credential inputs, and support prompt-free infrastructure
+  reconciliation with `init --env-file .env.hotupdater`.
+  - @hot-updater/core@0.35.9
+  - @hot-updater/plugin-core@0.35.9
+
 ## 0.35.8
 
 ### Patch Changes
