@@ -28,10 +28,33 @@ describe("resolveFirebaseRegion", () => {
     vi.clearAllMocks();
   });
 
-  it("reuses a saved region without running discovery or prompting", async () => {
+  it("prompts with a saved region selected by default in interactive mode", async () => {
+    // Given
+    mocks.select.mockResolvedValue("asia-northeast3");
+    const options = {
+      cwd: "/tmp/firebase-init",
+      discoverExistingProject: false,
+      savedRegion: "asia-northeast3",
+    };
+
+    // When
+    const region = await resolveFirebaseRegion(options);
+
+    // Then
+    expect(region).toBe("asia-northeast3");
+    expect(mocks.execa).not.toHaveBeenCalled();
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "asia-northeast3",
+      }),
+    );
+  });
+
+  it("reuses a saved region without prompting in non-interactive mode", async () => {
     // Given
     const options = {
       cwd: "/tmp/firebase-init",
+      nonInteractive: true,
       savedRegion: "asia-northeast3",
     };
 

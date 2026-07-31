@@ -105,7 +105,7 @@ describe("S3Manager", () => {
     expect(mockPrompt.confirm).not.toHaveBeenCalled();
   });
 
-  it("runs approved migrations without prompting", async () => {
+  it("runs approved non-interactive migrations without prompting", async () => {
     // Given
     mockMigrator.list.mockResolvedValue({
       pending: [{ name: "Migration0001" }],
@@ -120,6 +120,7 @@ describe("S3Manager", () => {
     await manager.runMigrations({
       approved: true,
       bucketName: "existing-bucket",
+      nonInteractive: true,
       region: "ap-northeast-2",
       migrations: [],
     });
@@ -127,6 +128,35 @@ describe("S3Manager", () => {
     // Then
     expect(mockPrompt.confirm).not.toHaveBeenCalled();
     expect(mockMigrator.migrate).toHaveBeenLastCalledWith({ dryRun: false });
+  });
+
+  it("asks again with saved migration approval as the interactive default", async () => {
+    // Given
+    mockMigrator.list.mockResolvedValue({
+      pending: [{ name: "Migration0001" }],
+    });
+    mockMigrator.migrate.mockResolvedValue(undefined);
+    mockPrompt.confirm.mockResolvedValue(true);
+    const manager = new S3Manager({
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.runMigrations({
+      approved: true,
+      bucketName: "existing-bucket",
+      nonInteractive: false,
+      region: "ap-northeast-2",
+      migrations: [],
+    });
+
+    // Then
+    expect(mockPrompt.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: true,
+      }),
+    );
   });
 
   it("requires approval only after finding pending non-interactive migrations", async () => {

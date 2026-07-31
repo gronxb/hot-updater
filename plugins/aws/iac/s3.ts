@@ -98,13 +98,16 @@ export class S3Manager {
     for (const migration of pending) {
       p.log.step(`- ${migration.name}`);
     }
-    if (!approved) {
+    if (!nonInteractive || !approved) {
       if (nonInteractive) {
         throw new MissingInitInputsError([
           "HOT_UPDATER_AWS_MIGRATION_APPROVED",
         ]);
       }
-      const confirm = await p.confirm({ message: "Do you want to continue?" });
+      const confirm = await p.confirm({
+        initialValue: approved,
+        message: "Do you want to continue?",
+      });
       if (p.isCancel(confirm) || !confirm) {
         p.log.info("Migration cancelled.");
         process.exit(1);

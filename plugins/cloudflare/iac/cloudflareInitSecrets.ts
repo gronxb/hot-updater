@@ -58,7 +58,7 @@ export const inputCloudflareInitSecrets = async ({
     };
   }
 
-  if (!apiToken && !nonInteractive) {
+  if (!nonInteractive) {
     p.log.step(
       `D1 API Token dashboard: ${link(
         `https://dash.cloudflare.com/${accountId}/api-tokens`,
@@ -69,7 +69,7 @@ export const inputCloudflareInitSecrets = async ({
     );
     p.log.step("Used by d1Database for bundle metadata writes.");
   }
-  if (!accessKeyId || !secretAccessKey) {
+  if (!nonInteractive) {
     p.log.step(
       `R2 API Tokens dashboard: ${link(
         `https://dash.cloudflare.com/${accountId}/r2/api-tokens`,
@@ -82,7 +82,7 @@ export const inputCloudflareInitSecrets = async ({
   const inputs = await p.group(
     {
       apiToken: () =>
-        apiToken
+        nonInteractive && apiToken
           ? Promise.resolve(apiToken)
           : p.password({
               message: inputDefinitions.apiToken.prompt.message,
@@ -90,7 +90,7 @@ export const inputCloudflareInitSecrets = async ({
                 value ? undefined : "Cloudflare API Token is required",
             }),
       accessKeyId: () =>
-        accessKeyId
+        nonInteractive && accessKeyId
           ? Promise.resolve(accessKeyId)
           : p.password({
               message: inputDefinitions.accessKeyId.prompt.message,
@@ -98,7 +98,7 @@ export const inputCloudflareInitSecrets = async ({
                 value ? undefined : "R2 Access Key ID is required",
             }),
       secretAccessKey: () =>
-        secretAccessKey
+        nonInteractive && secretAccessKey
           ? Promise.resolve(secretAccessKey)
           : p.password({
               message: inputDefinitions.secretAccessKey.prompt.message,

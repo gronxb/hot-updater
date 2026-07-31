@@ -18,7 +18,6 @@ import {
   p,
   readHotUpdaterInitEnv,
   type RunInitOptions,
-  shouldAutoSelectOnlyInitResource,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
@@ -242,8 +241,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
-  let accountId = existingAccountId;
-  if (accountId) {
+  let accountId: string;
+  if (nonInteractive && existingAccountId) {
+    accountId = existingAccountId;
     p.log.info("Using existing Cloudflare account ID.");
   } else {
     const accounts: { id: string; name: string }[] = [];
@@ -269,24 +269,28 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       throw new Error(String(error));
     }
 
-    if (accounts.length === 1 && accounts[0]) {
-      accountId = accounts[0].id;
-      p.log.info("Using the only Cloudflare account.");
-    } else {
-      const selectedAccountId = await p.select({
-        message: CLOUDFLARE_INIT_PROVIDER.inputs.accountId.prompt.message,
-        options: accounts.map((account) => ({
-          value: account.id,
-          label: `${account.name} (${account.id})`,
-        })),
-      });
-
-      if (p.isCancel(selectedAccountId)) {
-        process.exit(1);
-      }
-
-      accountId = selectedAccountId;
+    const savedAccount = accounts.find(
+      (account) => account.id === existingAccountId,
+    );
+    if (existingAccountId && !savedAccount) {
+      p.log.warn(
+        "Saved Cloudflare account was not found. Select an account again.",
+      );
     }
+    const selectedAccountId = await p.select({
+      initialValue: savedAccount?.id ?? accounts[0]?.id,
+      message: CLOUDFLARE_INIT_PROVIDER.inputs.accountId.prompt.message,
+      options: accounts.map((account) => ({
+        value: account.id,
+        label: `${account.name} (${account.id})`,
+      })),
+    });
+
+    if (p.isCancel(selectedAccountId)) {
+      process.exit(1);
+    }
+
+    accountId = selectedAccountId;
   }
 
   const availableBuckets: { name: string }[] = [];
@@ -322,28 +326,22 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
   let createBucket = false;
   let selectedBucketName: string;
-  if (existingBucketName && hasExistingBucket) {
+  if (nonInteractive && existingBucketName && hasExistingBucket) {
     selectedBucketName = existingBucketName;
     p.log.info("Using existing Cloudflare R2 bucket.");
   } else if (nonInteractive && existingBucketName) {
     selectedBucketName = existingBucketName;
     createBucket = true;
-  } else if (
-    shouldAutoSelectOnlyInitResource({
-      availableResourceCount: availableBuckets.length,
-      savedIdentifier: existingBucketName,
-    }) &&
-    availableBuckets[0]
-  ) {
-    selectedBucketName = availableBuckets[0].name;
-    p.log.info("Using the only Cloudflare R2 bucket.");
   } else {
-    if (existingBucketName) {
+    if (existingBucketName && !hasExistingBucket) {
       p.log.warn(
         "Saved Cloudflare R2 bucket was not found. Select a bucket again.",
       );
     }
     const selectedR2BucketName = await p.select({
+      initialValue: hasExistingBucket
+        ? existingBucketName
+        : availableBuckets[0]?.name,
       message: "R2 List",
       options: [
         ...availableBuckets.map((bucket) => ({
@@ -420,37 +418,30 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   const existingD1Database = availableD1List.find(
     (d1) =>
-      d1.uuid === existingD1DatabaseId ||
-      (nonInteractive && d1.name === existingD1DatabaseName),
+      d1.uuid === existingD1DatabaseId || d1.name === existingD1DatabaseName,
   );
   let createD1Database = false;
   let selectedD1DatabaseId: string | undefined;
   let d1DatabaseName: string;
-  if (existingD1Database) {
+  if (nonInteractive && existingD1Database) {
     selectedD1DatabaseId = existingD1Database.uuid;
     d1DatabaseName = existingD1Database.name;
     p.log.info("Using existing Cloudflare D1 database.");
   } else if (nonInteractive && existingD1DatabaseId && existingD1DatabaseName) {
     createD1Database = true;
     d1DatabaseName = existingD1DatabaseName;
-  } else if (
-    shouldAutoSelectOnlyInitResource({
-      availableResourceCount: availableD1List.length,
-      savedIdentifier: existingD1DatabaseId ?? existingD1DatabaseName,
-    }) &&
-    availableD1List[0]
-  ) {
-    selectedD1DatabaseId = availableD1List[0].uuid;
-    d1DatabaseName = availableD1List[0].name;
-    p.log.info("Using the only Cloudflare D1 database.");
   } else {
-    if (existingD1DatabaseId) {
+    if (
+      (existingD1DatabaseId || existingD1DatabaseName) &&
+      !existingD1Database
+    ) {
       p.log.warn(
         "Existing Cloudflare D1 database ID was not found. Select a database again.",
       );
     }
 
     const selectedD1 = await p.select({
+      initialValue: existingD1Database?.uuid ?? availableD1List[0]?.uuid,
       message: "D1 List",
       options: [
         ...availableD1List.map((d1) => ({
@@ -494,9 +485,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     }
   }
 
-  if (existingR2AccessKeyId && existingR2SecretAccessKey) {
+  if (nonInteractive && existingR2AccessKeyId && existingR2SecretAccessKey) {
     p.log.info("Using existing Cloudflare R2 API credentials.");
-  } else if (existingR2AccessKeyId || existingR2SecretAccessKey) {
+  } else if (
+    nonInteractive &&
+    (existingR2AccessKeyId || existingR2SecretAccessKey)
+  ) {
     p.log.warn("Existing Cloudflare R2 API credentials are incomplete.");
   }
   const initSecrets = await inputCloudflareInitSecrets({
@@ -515,11 +509,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     savedPrivateSetting,
   });
   const isPrivate =
-    privacyResolution.kind === "resolved"
+    nonInteractive && privacyResolution.kind === "resolved"
       ? privacyResolution.isPrivate
       : await p.confirm({
           message: CLOUDFLARE_INIT_PROVIDER.inputs.r2Private.prompt.message,
-          initialValue: true,
+          initialValue:
+            privacyResolution.kind === "resolved"
+              ? privacyResolution.isPrivate
+              : true,
         });
   if (p.isCancel(isPrivate)) {
     process.exit(1);

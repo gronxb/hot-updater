@@ -358,10 +358,10 @@ export class CloudFrontManager {
     const savedDistribution = matchingDistributions.find(
       (distribution) => distribution.Id === distributionId,
     );
-    if (savedDistribution) {
+    if (nonInteractive && savedDistribution) {
       return savedDistribution;
     }
-    if (distributionId) {
+    if (distributionId && !savedDistribution) {
       if (matchingDistributions.length === 0) {
         p.log.warn(
           "Saved CloudFront distribution was not found. A new distribution will be created.",
@@ -380,18 +380,18 @@ export class CloudFrontManager {
     if (matchingDistributions.length === 0) {
       return null;
     }
-    if (!distributionId && matchingDistributions.length === 1) {
-      return matchingDistributions[0] ?? null;
-    }
     if (nonInteractive) {
+      if (!distributionId && matchingDistributions.length === 1) {
+        return matchingDistributions[0] ?? null;
+      }
       throw new MissingInitInputsError([
         "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
       ]);
     }
 
     const selectedDistributionId = await p.select({
-      message:
-        "Multiple CloudFront distributions found. Please select one to use:",
+      initialValue: savedDistribution?.Id ?? matchingDistributions[0]?.Id,
+      message: "Select a CloudFront distribution:",
       options: matchingDistributions.map((distribution) => ({
         value: distribution.Id,
         label: `${distribution.Id} (${distribution.DomainName})`,

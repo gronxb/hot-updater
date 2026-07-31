@@ -1,3 +1,5 @@
+import { PassThrough } from "node:stream";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -38,6 +40,7 @@ import {
   assertSupabaseNonInteractiveInputs,
   inputSupabaseDatabasePassword,
   inputSupabaseDeploymentInputs,
+  inputSupabaseProjectCreationInputs,
   resolveSupabaseInitInputs,
 } from "./supabaseInitInputs";
 
@@ -47,6 +50,7 @@ describe("resolveSupabaseInitInputs", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     delete process.env.HOT_UPDATER_SUPABASE_DB_PASSWORD;
     delete process.env.SUPABASE_ACCESS_TOKEN;
   });
@@ -187,12 +191,75 @@ describe("Supabase non-interactive inputs", () => {
     });
     expect(mocks.execa).toHaveBeenCalledWith(
       "npx",
-      ["-y", "supabase", "login", "--agent", "no"],
+      ["-y", "supabase", "login", "--no-browser", "--agent", "no"],
       {
-        stdio: "inherit",
+        stdin: "inherit",
+        stderr: "inherit",
+        stdout: "pipe",
       },
     );
     expect(mocks.password).not.toHaveBeenCalled();
+  });
+
+  it("opens the Supabase CLI login URL on Windows without another Enter", async () => {
+    // Given
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    vi.spyOn(process.stdout, "write").mockImplementation(
+      (() => true) as typeof process.stdout.write,
+    );
+    mocks.select.mockResolvedValue("cli-login");
+    const stdout = new PassThrough();
+    let completeLogin = () => {};
+    const loginProcess = Object.assign(
+      new Promise<{ stdout: string }>((resolve) => {
+        completeLogin = () => resolve({ stdout: "" });
+      }),
+      { stdout },
+    );
+    mocks.execa
+      .mockReturnValueOnce(loginProcess)
+      .mockResolvedValueOnce({ stdout: "" });
+    const loginUrl =
+      "https://supabase.com/dashboard/cli/login?session_id=test-session";
+
+    // When
+    const deploymentInputsPromise = inputSupabaseDeploymentInputs({
+      functionName: "update-server",
+      nonInteractive: false,
+    });
+    await vi.waitFor(() => expect(mocks.execa).toHaveBeenCalledOnce());
+    stdout.write(
+      `Here is your login link, open it in the browser ${loginUrl}\n`,
+    );
+    completeLogin();
+    await deploymentInputsPromise;
+
+    // Then
+    expect(mocks.execa).toHaveBeenNthCalledWith(2, "rundll32.exe", [
+      "url.dll,FileProtocolHandler",
+      loginUrl,
+    ]);
+  });
+
+  it("prompts for authentication when an access token was only saved as a default", async () => {
+    // Given
+    mocks.select.mockResolvedValue("cli-login");
+    mocks.execa.mockResolvedValue({ stdout: "" });
+
+    // When
+    await inputSupabaseDeploymentInputs({
+      accessToken: "saved-access-token",
+      functionName: "update-server",
+      nonInteractive: false,
+    });
+
+    // Then
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "How do you want to authenticate with Supabase?",
+      }),
+    );
+    expect(mocks.execa).toHaveBeenCalledOnce();
   });
 
   it("prefills the saved function name while retaining its placeholder", async () => {
@@ -257,7 +324,6 @@ describe("Supabase non-interactive inputs", () => {
     await expect(
       inputSupabaseDatabasePassword({
         databasePassword: "old-password",
-        forcePrompt: true,
         nonInteractive: false,
       }),
     ).resolves.toBe("new-password");
@@ -267,6 +333,21 @@ describe("Supabase non-interactive inputs", () => {
           "Enter your Supabase database password (press Enter to skip if none)",
       }),
     );
+  });
+
+  it("asks for a saved database password again in interactive mode", async () => {
+    // Given
+    mocks.password.mockResolvedValue("new-password");
+
+    // When
+    const password = await inputSupabaseDatabasePassword({
+      databasePassword: "saved-password",
+      nonInteractive: false,
+    });
+
+    // Then
+    expect(password).toBe("new-password");
+    expect(mocks.password).toHaveBeenCalledOnce();
   });
 
   it("requires a database password before planning project creation", async () => {
@@ -297,5 +378,40 @@ describe("Supabase non-interactive inputs", () => {
       }),
     ).resolves.toBe("");
     expect(mocks.password).not.toHaveBeenCalled();
+  });
+
+  it("prompts for saved project creation choices with those choices selected by default", async () => {
+    // Given
+    mocks.text
+      .mockResolvedValueOnce("edited-project")
+      .mockResolvedValueOnce("edited-bucket");
+    mocks.select
+      .mockResolvedValueOnce("saved-organization")
+      .mockResolvedValueOnce("ap-northeast-2");
+
+    // When
+    await inputSupabaseProjectCreationInputs({
+      bucketName: "saved-bucket",
+      organizationSlug: "saved-organization",
+      organizations: [
+        { name: "Saved organization", slug: "saved-organization" },
+      ],
+      projectName: "saved-project",
+      region: "ap-northeast-2",
+    });
+
+    // Then
+    expect(mocks.select).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        initialValue: "saved-organization",
+      }),
+    );
+    expect(mocks.select).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        initialValue: "ap-northeast-2",
+      }),
+    );
   });
 });

@@ -10,7 +10,6 @@ import {
   p,
   readHotUpdaterInitEnv,
   type RunInitOptions,
-  shouldAutoSelectOnlyInitResource,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
@@ -132,22 +131,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }>(
     {
       bucketSelection: () => {
-        if (existingBucket) {
+        if (nonInteractive && existingBucket) {
           return Promise.resolve(existingBucket.name);
         }
         if (createSavedBucket) {
           return Promise.resolve(createKey);
         }
-        if (
-          shouldAutoSelectOnlyInitResource({
-            availableResourceCount: availableBuckets.length,
-            savedIdentifier: savedBucketName,
-          }) &&
-          availableBuckets[0]
-        ) {
-          return Promise.resolve(availableBuckets[0].name);
-        }
         return p.select<string>({
+          initialValue: existingBucket?.name ?? availableBuckets[0]?.name,
           message: "S3 Bucket List",
           options: [
             ...availableBuckets.map((bucket) => ({
@@ -177,6 +168,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           ? createSavedBucket
             ? Promise.resolve(savedBucketRegion)
             : p.select({
+                initialValue: isAwsRegion(savedBucketRegion)
+                  ? savedBucketRegion
+                  : undefined,
                 message: AWS_INIT_PROVIDER.inputs.bucketRegion.prompt.message,
                 options: Object.entries(regionLocationMap).map(
                   ([region, location]) => ({

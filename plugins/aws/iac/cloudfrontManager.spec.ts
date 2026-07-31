@@ -56,6 +56,7 @@ describe("CloudFrontManager", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPrompt.select.mockResolvedValue("dist-id");
 
     mockCloudFront.listOriginAccessControls.mockResolvedValue({
       OriginAccessControlList: {
@@ -363,5 +364,46 @@ describe("CloudFrontManager", () => {
       Marker: "next-page",
     });
     expect(mockPrompt.select).not.toHaveBeenCalled();
+  });
+
+  it("prompts with a saved distribution selected by default in interactive mode", async () => {
+    // Given
+    mockCloudFront.listDistributions.mockResolvedValue({
+      DistributionList: {
+        Items: [
+          {
+            Id: "saved-dist-id",
+            DomainName: "saved.cloudfront.net",
+            Origins: {
+              Items: [
+                {
+                  DomainName:
+                    "hot-updater-storage.s3.ap-northeast-2.amazonaws.com",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    mockPrompt.select.mockResolvedValue("saved-dist-id");
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.selectDistribution({
+      bucketName: "hot-updater-storage",
+      distributionId: "saved-dist-id",
+      nonInteractive: false,
+    });
+
+    // Then
+    expect(mockPrompt.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "saved-dist-id",
+      }),
+    );
   });
 });

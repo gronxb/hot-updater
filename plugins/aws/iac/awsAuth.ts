@@ -85,9 +85,10 @@ export const resolveAwsAuth = async (
   }>(
     {
       mode: () =>
-        mode
+        nonInteractive && mode
           ? Promise.resolve(mode)
           : p.select<AwsAuthMode>({
+              initialValue: mode,
               message: inputDefinitions.authMode.prompt.message,
               options: [
                 {
@@ -139,7 +140,7 @@ export const resolveAwsAuth = async (
         if (results.mode !== "account") {
           return Promise.resolve(undefined);
         }
-        if (savedSecretAccessKey) {
+        if (nonInteractive && savedSecretAccessKey) {
           return Promise.resolve(savedSecretAccessKey);
         }
         return p.password({

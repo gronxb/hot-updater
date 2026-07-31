@@ -76,9 +76,11 @@ describe("resolveAwsAuth", () => {
     expect(mocks.group).not.toHaveBeenCalled();
   });
 
-  it("prefills the saved access key without exposing the secret key", async () => {
+  it("prompts with saved non-secret values as defaults without exposing the secret key", async () => {
     const results: Record<string, string | symbol | undefined> = {};
+    mocks.select.mockResolvedValue("account");
     mocks.text.mockResolvedValue("edited-access-key");
+    mocks.password.mockResolvedValue("edited-secret-key");
     mocks.group.mockImplementation(
       async (
         prompts: Record<
@@ -112,10 +114,15 @@ describe("resolveAwsAuth", () => {
         placeholder: "AKIA...",
       }),
     );
-    expect(mocks.password).not.toHaveBeenCalled();
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "account",
+      }),
+    );
+    expect(mocks.password).toHaveBeenCalledOnce();
     expect(auth.credentials).toEqual({
       accessKeyId: "edited-access-key",
-      secretAccessKey: "saved-secret-key",
+      secretAccessKey: "edited-secret-key",
     });
   });
 

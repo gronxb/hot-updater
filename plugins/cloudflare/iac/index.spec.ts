@@ -69,6 +69,7 @@ const mocks = vi.hoisted(() => {
     },
     makeEnv: vi.fn(),
     readHotUpdaterInitEnv: vi.fn(),
+    select: vi.fn(),
   };
 });
 
@@ -92,6 +93,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       ...actual.p,
       confirm: mocks.confirm,
       log: mocks.log,
+      select: mocks.select,
       tasks: vi.fn(async (tasks) => {
         for (const task of tasks) {
           await task.task();
@@ -131,6 +133,11 @@ describe("Cloudflare init discovery", () => {
       managedEnv: {},
     });
     mocks.confirmInitInputPersistence.mockResolvedValue(false);
+    mocks.confirm.mockResolvedValue(true);
+    mocks.select.mockImplementation(
+      async ({ options }: { options: readonly { readonly value: string }[] }) =>
+        options[0]?.value,
+    );
     mocks.api.accounts.list.mockResolvedValue({
       result: [{ id: "account-id", name: "Account" }],
     });
@@ -159,25 +166,91 @@ describe("Cloudflare init discovery", () => {
     mocks.createWrangler.mockResolvedValue(vi.fn());
   });
 
-  it("reuses an existing bucket's privacy after discovering it", async () => {
+  it("uses an existing bucket's privacy as the interactive default", async () => {
     // Given
-    const stopAfterDiscovery = new Error("stop after discovery");
-    mocks.api.d1.database.list.mockRejectedValue(stopAfterDiscovery);
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.createWrangler.mockRejectedValue(
+      new Error("stop after privacy selection"),
+    );
 
     // When
     const initialization = runInit({ build: "bare" });
 
     // Then
-    await expect(initialization).rejects.toBe(stopAfterDiscovery);
+    await expect(initialization).rejects.toBeInstanceOf(
+      CloudflareDeploymentError,
+    );
     expect(mocks.api.r2.buckets.domains.managed.list).toHaveBeenCalledWith(
       "bundles",
       { account_id: "account-id" },
     );
-    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: true,
+      }),
+    );
     expect(
       mocks.api.r2.buckets.domains.managed.list.mock.invocationCallOrder[0],
     ).toBeLessThan(
       mocks.api.d1.database.list.mock.invocationCallOrder[0] ?? Infinity,
+    );
+  });
+
+  it("prompts for saved interactive choices with those choices selected by default", async () => {
+    // Given
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {},
+      managedEnv: {
+        HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: "account-id",
+        HOT_UPDATER_CLOUDFLARE_API_TOKEN: "saved-api-token",
+        HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: "database-id",
+        HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME: "ota",
+        HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "saved-access-key",
+        HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: "bundles",
+        HOT_UPDATER_CLOUDFLARE_R2_PRIVATE: "true",
+        HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY: "saved-secret-key",
+        HOT_UPDATER_CLOUDFLARE_WORKER_NAME: "saved-worker",
+      },
+    });
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.createWrangler.mockRejectedValue(
+      new Error("stop after interactive choices"),
+    );
+
+    // When
+    const initialization = runInit({ build: "bare" });
+
+    // Then
+    await expect(initialization).rejects.toBeInstanceOf(
+      CloudflareDeploymentError,
+    );
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "account-id",
+        message: "Account List",
+      }),
+    );
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "bundles",
+        message: "R2 List",
+      }),
+    );
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "database-id",
+        message: "D1 List",
+      }),
+    );
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: true,
+        message: "Make R2 bucket private?",
+      }),
     );
   });
 
@@ -325,5 +398,7 @@ describe("Cloudflare init discovery", () => {
       account_id: "account-id",
     });
     expect(mocks.credentialApi.r2.buckets.list).not.toHaveBeenCalled();
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.confirm).not.toHaveBeenCalled();
   });
 });

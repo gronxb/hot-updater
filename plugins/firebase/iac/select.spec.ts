@@ -158,6 +158,115 @@ describe("initFirebaseUser", () => {
     expect(vi.mocked(makeEnv)).not.toHaveBeenCalled();
   });
 
+  it("prompts with a saved project selected by default in interactive mode", async () => {
+    // Given
+    mocks.execa.mockImplementation(async (command, args) => {
+      const invocation = [command, ...args].join(" ");
+      if (invocation === "npx firebase projects:list --json") {
+        return {
+          stdout: JSON.stringify({
+            result: [
+              {
+                displayName: "Demo",
+                projectId: "demo-project",
+              },
+            ],
+          }),
+        };
+      }
+      if (invocation === "npx firebase use --add demo-project") {
+        return { stdout: "" };
+      }
+      if (
+        invocation ===
+        "gcloud firestore databases list --project=demo-project --format=json"
+      ) {
+        return { stdout: JSON.stringify([{ name: "(default)" }]) };
+      }
+      if (
+        invocation ===
+        "gcloud storage buckets list --project=demo-project --format=json"
+      ) {
+        return {
+          stdout: JSON.stringify([
+            { name: "demo-project.firebasestorage.app" },
+          ]),
+        };
+      }
+      if (
+        invocation === "gcloud projects describe demo-project --format=json"
+      ) {
+        return { stdout: JSON.stringify({ projectNumber: "123" }) };
+      }
+      return { stdout: JSON.stringify([{ account: "user@example.com" }]) };
+    });
+    mocks.select.mockResolvedValue("demo-project");
+
+    // When
+    await initFirebaseUser("/tmp/firebase-init", "demo-project", false, {});
+
+    // Then
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "demo-project",
+        message: "Select a Firebase project",
+      }),
+    );
+  });
+
+  it("prompts with the only project selected by default in interactive mode", async () => {
+    // Given
+    mocks.execa.mockImplementation(async (command, args) => {
+      const invocation = [command, ...args].join(" ");
+      if (invocation === "npx firebase projects:list --json") {
+        return {
+          stdout: JSON.stringify({
+            result: [
+              {
+                displayName: "Demo",
+                projectId: "demo-project",
+              },
+            ],
+          }),
+        };
+      }
+      if (
+        invocation ===
+        "gcloud firestore databases list --project=demo-project --format=json"
+      ) {
+        return { stdout: JSON.stringify([{ name: "(default)" }]) };
+      }
+      if (
+        invocation ===
+        "gcloud storage buckets list --project=demo-project --format=json"
+      ) {
+        return {
+          stdout: JSON.stringify([
+            { name: "demo-project.firebasestorage.app" },
+          ]),
+        };
+      }
+      if (
+        invocation === "gcloud projects describe demo-project --format=json"
+      ) {
+        return { stdout: JSON.stringify({ projectNumber: "123" }) };
+      }
+      return { stdout: "" };
+    });
+    mocks.select.mockResolvedValue("demo-project");
+
+    // When
+    await initFirebaseUser("/tmp/firebase-init", undefined, false, {});
+
+    // Then
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "demo-project",
+        message: "Select a Firebase project",
+      }),
+    );
+  });
+
   it("does not log in again when project discovery is already authenticated", async () => {
     // Given
     mocks.select.mockResolvedValue("demo-project");

@@ -6,7 +6,6 @@ import {
   MissingInitInputsError,
   p,
   resolveInitProviderInput,
-  shouldAutoSelectOnlyInitResource,
 } from "@hot-updater/cli-tools";
 
 import {
@@ -120,7 +119,9 @@ export const inputSupabaseDeploymentInputs = async ({
   return p.group(
     {
       accessToken: () =>
-        accessToken ? Promise.resolve(accessToken) : inputSupabaseAccessToken(),
+        nonInteractive && accessToken
+          ? Promise.resolve(accessToken)
+          : inputSupabaseAccessToken(),
       functionName: () =>
         nonInteractive && savedFunctionName
           ? Promise.resolve(savedFunctionName)
@@ -145,13 +146,11 @@ export const inputSupabaseDeploymentInputs = async ({
 export const inputSupabaseDatabasePassword = async ({
   cliHandlesPrompt = false,
   databasePassword,
-  forcePrompt = false,
   nonInteractive,
   required = false,
 }: {
   readonly cliHandlesPrompt?: boolean;
   readonly databasePassword?: string;
-  readonly forcePrompt?: boolean;
   readonly nonInteractive: boolean;
   readonly required?: boolean;
 }): Promise<string> => {
@@ -166,10 +165,6 @@ export const inputSupabaseDatabasePassword = async ({
     }
     return databasePassword ?? "";
   }
-  if (!forcePrompt && databasePassword !== undefined) {
-    return databasePassword;
-  }
-
   const password = await p.password({
     message: SUPABASE_INIT_PROVIDER.inputs.databasePassword.prompt.message,
     validate: (value) =>
@@ -218,12 +213,6 @@ export const inputSupabaseProjectCreationInputs = async ({
       "Saved Supabase organization was not found. Select an organization again.",
     );
   }
-  const onlyOrganization = shouldAutoSelectOnlyInitResource({
-    availableResourceCount: organizations.length,
-    savedIdentifier: organizationSlug,
-  })
-    ? organizations[0]
-    : undefined;
   const defaultRegion =
     SUPABASE_INIT_PROVIDER.inputs.region.prompt.defaultValue;
 
@@ -240,30 +229,27 @@ export const inputSupabaseProjectCreationInputs = async ({
     process.exit(0);
   }
 
-  const selectedOrganizationSlug =
-    savedOrganization?.slug ??
-    onlyOrganization?.slug ??
-    (await p.select<string>({
-      message: SUPABASE_INIT_PROVIDER.inputs.organizationSlug.prompt.message,
-      options: organizations.map((organization) => ({
-        label: organization.name,
-        value: organization.slug,
-      })),
-    }));
+  const selectedOrganizationSlug = await p.select<string>({
+    initialValue: savedOrganization?.slug ?? organizations[0]?.slug,
+    message: SUPABASE_INIT_PROVIDER.inputs.organizationSlug.prompt.message,
+    options: organizations.map((organization) => ({
+      label: organization.name,
+      value: organization.slug,
+    })),
+  });
   if (p.isCancel(selectedOrganizationSlug)) {
     process.exit(0);
   }
 
-  const selectedRegion =
-    region ??
-    (await p.select<SupabaseRegion>({
-      message: SUPABASE_INIT_PROVIDER.inputs.region.prompt.message,
-      initialValue: isSupabaseRegion(defaultRegion) ? defaultRegion : undefined,
-      options: SUPABASE_REGION_VALUES.map((value) => ({
-        label: value,
-        value,
-      })),
-    }));
+  const selectedRegion = await p.select<SupabaseRegion>({
+    message: SUPABASE_INIT_PROVIDER.inputs.region.prompt.message,
+    initialValue:
+      region ?? (isSupabaseRegion(defaultRegion) ? defaultRegion : undefined),
+    options: SUPABASE_REGION_VALUES.map((value) => ({
+      label: value,
+      value,
+    })),
+  });
   if (p.isCancel(selectedRegion)) {
     process.exit(0);
   }

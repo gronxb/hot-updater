@@ -133,7 +133,7 @@ describe("selectProject", () => {
     vi.clearAllMocks();
   });
 
-  it("reuses a saved project without prompting", async () => {
+  it("prompts with a saved project selected by default in interactive mode", async () => {
     // Given
     mockExeca.mockResolvedValue({
       stdout: JSON.stringify([
@@ -144,6 +144,7 @@ describe("selectProject", () => {
         },
       ]),
     });
+    mockCli.p.select.mockResolvedValue("saved-project");
 
     // When
     const project = await selectProject("saved-project");
@@ -157,9 +158,41 @@ describe("selectProject", () => {
         region: "ap-northeast-2",
       },
     });
+    expect(mockCli.p.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "saved-project",
+      }),
+    );
   });
 
-  it("uses the only available project without prompting", async () => {
+  it("reuses a saved project without prompting in non-interactive mode", async () => {
+    // Given
+    mockExeca.mockResolvedValue({
+      stdout: JSON.stringify([
+        {
+          id: "saved-project",
+          name: "Saved project",
+          region: "ap-northeast-2",
+        },
+      ]),
+    });
+
+    // When
+    const project = await selectProject("saved-project", true);
+
+    // Then
+    expect(project).toEqual({
+      create: false,
+      project: {
+        id: "saved-project",
+        name: "Saved project",
+        region: "ap-northeast-2",
+      },
+    });
+    expect(mockCli.p.select).not.toHaveBeenCalled();
+  });
+
+  it("prompts with the only available project selected by default", async () => {
     // Given
     mockExeca.mockResolvedValue({
       stdout: JSON.stringify([
@@ -170,6 +203,7 @@ describe("selectProject", () => {
         },
       ]),
     });
+    mockCli.p.select.mockResolvedValue("only-project");
 
     // When
     const project = await selectProject();
@@ -183,7 +217,11 @@ describe("selectProject", () => {
         region: "ap-northeast-2",
       },
     });
-    expect(mockCli.p.select).not.toHaveBeenCalled();
+    expect(mockCli.p.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "only-project",
+      }),
+    );
   });
 
   it("prompts instead of replacing a missing saved project with a singleton", async () => {
@@ -226,7 +264,11 @@ describe("selectProject", () => {
 });
 
 describe("selectBucket", () => {
-  it("preserves the visibility of an existing bucket", async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("prompts with a saved bucket selected by default in interactive mode", async () => {
     // Given
     const api: SupabaseApi = {
       createBucket: vi.fn(),
@@ -240,6 +282,7 @@ describe("selectBucket", () => {
       ]),
       updateBucket: vi.fn(),
     };
+    mockCli.p.select.mockResolvedValue("public-bucket-id");
 
     // When
     const selection = await selectBucket(api, "public-bucket");
@@ -251,6 +294,39 @@ describe("selectBucket", () => {
       isPublic: true,
       name: "public-bucket",
     });
+    expect(mockCli.p.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "public-bucket-id",
+      }),
+    );
+  });
+
+  it("reuses a saved bucket without prompting in non-interactive mode", async () => {
+    // Given
+    const api: SupabaseApi = {
+      createBucket: vi.fn(),
+      listBuckets: vi.fn().mockResolvedValue([
+        {
+          createdAt: "2026-07-26",
+          id: "private-bucket-id",
+          isPublic: false,
+          name: "private-bucket",
+        },
+      ]),
+      updateBucket: vi.fn(),
+    };
+
+    // When
+    const selection = await selectBucket(api, "private-bucket", true);
+
+    // Then
+    expect(selection).toEqual({
+      create: false,
+      id: "private-bucket-id",
+      isPublic: false,
+      name: "private-bucket",
+    });
+    expect(mockCli.p.select).not.toHaveBeenCalled();
   });
 
   it("plans a missing saved bucket before creating it", async () => {
@@ -452,7 +528,6 @@ describe("Supabase database migration confirmation", () => {
 
     // When
     const confirmed = await confirmSupabaseDatabaseMigrations({
-      creatingProject: false,
       nonInteractive: false,
     });
 
@@ -461,18 +536,28 @@ describe("Supabase database migration confirmation", () => {
     expect(mockCli.p.confirm).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    ["a new project", { creatingProject: true, nonInteractive: false }],
-    [
-      "a non-interactive init",
-      { creatingProject: false, nonInteractive: true },
-    ],
-  ])("continues without prompting for %s", async (_name, options) => {
+  it("asks before migrating a new project interactively", async () => {
     // Given
     mockCli.p.confirm.mockResolvedValue(false);
 
     // When
-    const confirmed = await confirmSupabaseDatabaseMigrations(options);
+    const confirmed = await confirmSupabaseDatabaseMigrations({
+      nonInteractive: false,
+    });
+
+    // Then
+    expect(confirmed).toBe(false);
+    expect(mockCli.p.confirm).toHaveBeenCalledOnce();
+  });
+
+  it("continues without prompting for a non-interactive init", async () => {
+    // Given
+    mockCli.p.confirm.mockResolvedValue(false);
+
+    // When
+    const confirmed = await confirmSupabaseDatabaseMigrations({
+      nonInteractive: true,
+    });
 
     // Then
     expect(confirmed).toBe(true);

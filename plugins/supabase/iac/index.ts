@@ -20,7 +20,6 @@ import {
   readHotUpdaterInitEnv,
   type RunInitOptions,
   resolvePackageVersion,
-  shouldAutoSelectOnlyInitResource,
   transformEnv,
   transformTemplate,
   writeHotUpdaterConfig,
@@ -451,25 +450,15 @@ export const selectProject = async (
   const preferredProject = projectsProcess.find(
     (project) => project.id === preferredProjectId,
   );
-  if (preferredProject) {
+  if (nonInteractive && preferredProject) {
     p.log.info(`Using saved Supabase project: ${preferredProject.name}`);
     return { create: false, project: preferredProject };
   }
-  if (preferredProjectId) {
-    if (nonInteractive) {
-      throw new MissingInitInputsError(["HOT_UPDATER_SUPABASE_PROJECT_ID"]);
-    }
+  if (preferredProjectId && !preferredProject) {
     p.log.warn("Saved Supabase project was not found. Select a project again.");
   }
-  if (
-    shouldAutoSelectOnlyInitResource({
-      availableResourceCount: projectsProcess.length,
-      savedIdentifier: preferredProjectId,
-    }) &&
-    projectsProcess[0]
-  ) {
-    p.log.info(`Using the only Supabase project: ${projectsProcess[0].name}`);
-    return { create: false, project: projectsProcess[0] };
+  if (nonInteractive) {
+    throw new MissingInitInputsError(["HOT_UPDATER_SUPABASE_PROJECT_ID"]);
   }
 
   const createProjectOption = `create/${Math.random()
@@ -477,6 +466,7 @@ export const selectProject = async (
     .substring(2, 15)}`;
 
   const selectedProjectId = await p.select({
+    initialValue: preferredProject?.id ?? projectsProcess[0]?.id,
     message: "Select a Supabase project",
     options: [
       ...projectsProcess.map((project) => ({
@@ -556,7 +546,7 @@ export const selectBucket = async (
   const preferredBucket = buckets.find(
     (bucket) => bucket.name === preferredBucketName,
   );
-  if (preferredBucket) {
+  if (nonInteractive && preferredBucket) {
     p.log.info(`Using saved Supabase bucket: ${preferredBucket.name}`);
     return {
       create: false,
@@ -565,26 +555,14 @@ export const selectBucket = async (
       name: preferredBucket.name,
     };
   }
-  if (preferredBucketName) {
+  if (preferredBucketName && !preferredBucket) {
     if (nonInteractive) {
       return { create: true, name: preferredBucketName };
     }
     p.log.warn("Saved Supabase bucket was not found. Select a bucket again.");
   }
-  if (
-    shouldAutoSelectOnlyInitResource({
-      availableResourceCount: buckets.length,
-      savedIdentifier: preferredBucketName,
-    }) &&
-    buckets[0]
-  ) {
-    p.log.info(`Using the only Supabase bucket: ${buckets[0].name}`);
-    return {
-      create: false,
-      id: buckets[0].id,
-      isPublic: buckets[0].isPublic,
-      name: buckets[0].name,
-    };
+  if (nonInteractive) {
+    throw new MissingInitInputsError(["HOT_UPDATER_SUPABASE_BUCKET_NAME"]);
   }
 
   const createBucketOption = `create/${Math.random()
@@ -592,6 +570,7 @@ export const selectBucket = async (
     .substring(2, 15)}`;
 
   const selectedBucketId = await p.select({
+    initialValue: preferredBucket?.id ?? buckets[0]?.id,
     message: "Select a storage bucket",
     options: [
       ...buckets.map((bucket) => ({
@@ -860,14 +839,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     accessToken,
   );
   let project = projectSelection.create ? undefined : projectSelection.project;
-  const projectChanged =
-    savedInputs.projectId !== undefined &&
-    (project === undefined || savedInputs.projectId !== project.id);
   const dbPassword = await inputSupabaseDatabasePassword({
     cliHandlesPrompt:
       projectSelection.create && initInputs.accessToken === undefined,
     databasePassword: savedInputs.databasePassword,
-    forcePrompt: projectChanged || projectSelection.create,
     nonInteractive,
     required: projectSelection.create,
   });
@@ -942,7 +917,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     provider: SUPABASE_INIT_PROVIDER,
   });
   const migrationsApproved = await confirmSupabaseDatabaseMigrations({
-    creatingProject: projectSelection.create,
     nonInteractive,
   });
   if (!migrationsApproved) {

@@ -45,17 +45,24 @@ describe("inputCloudflareInitSecrets", () => {
       secretAccessKey: "secret-access-key",
       workerName: "worker-name",
     };
-    mocks.password.mockResolvedValueOnce("new-api-token");
+    mocks.password
+      .mockResolvedValueOnce("new-api-token")
+      .mockResolvedValueOnce("new-access-key")
+      .mockResolvedValueOnce("new-secret-key");
 
     // When
     const inputs = await inputCloudflareInitSecrets(options);
 
     // Then
     expect(inputs.apiToken).toBe("new-api-token");
-    expect(mocks.password).toHaveBeenCalledOnce();
+    expect(mocks.password).toHaveBeenCalledTimes(3);
   });
 
-  it("prefills the saved worker name without prefilling secrets", async () => {
+  it("prefills the saved worker name while prompting for every saved secret", async () => {
+    mocks.password
+      .mockResolvedValueOnce("edited-api-token")
+      .mockResolvedValueOnce("edited-access-key")
+      .mockResolvedValueOnce("edited-secret-key");
     mocks.text.mockResolvedValue("edited-worker");
 
     const inputs = await inputCloudflareInitSecrets({
@@ -73,7 +80,13 @@ describe("inputCloudflareInitSecrets", () => {
         placeholder: "hot-updater",
       }),
     );
-    expect(mocks.password).not.toHaveBeenCalled();
+    expect(mocks.password).toHaveBeenCalledTimes(3);
+    expect(inputs).toEqual({
+      accessKeyId: "edited-access-key",
+      apiToken: "edited-api-token",
+      secretAccessKey: "edited-secret-key",
+      workerName: "edited-worker",
+    });
     expect(inputs.workerName).toBe("edited-worker");
   });
 

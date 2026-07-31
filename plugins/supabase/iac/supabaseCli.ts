@@ -70,13 +70,11 @@ const handleSupabaseDatabaseCommandError = (
 };
 
 export const confirmSupabaseDatabaseMigrations = async ({
-  creatingProject,
   nonInteractive,
 }: {
-  readonly creatingProject: boolean;
   readonly nonInteractive: boolean;
 }) => {
-  if (creatingProject || nonInteractive) {
+  if (nonInteractive) {
     return true;
   }
 

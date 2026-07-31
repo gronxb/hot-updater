@@ -10,7 +10,6 @@ import {
   MissingInitInputsError,
   type ProviderConfig,
   p,
-  shouldAutoSelectOnlyInitResource,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
@@ -291,33 +290,25 @@ export const initFirebaseUser = async (
     (project) => project.projectId === preferredProjectId,
   );
   if (preferredProjectId && !preferredProject) {
-    if (nonInteractive) {
-      throw new MissingInitInputsError(["HOT_UPDATER_FIREBASE_PROJECT_ID"]);
-    }
     p.log.warn("Saved Firebase project was not found. Select a project again.");
   }
-  const onlyProject = shouldAutoSelectOnlyInitResource({
-    availableResourceCount: projects.length,
-    savedIdentifier: preferredProjectId,
-  })
-    ? projects[0]
-    : undefined;
-  if (!preferredProject && onlyProject) {
-    p.log.info("Using the only Firebase project.");
+  if (nonInteractive && !preferredProject) {
+    throw new MissingInitInputsError(["HOT_UPDATER_FIREBASE_PROJECT_ID"]);
   }
   const projectId =
-    preferredProject?.projectId ??
-    onlyProject?.projectId ??
-    (await p.select({
-      message: "Select a Firebase project",
-      options: [
-        ...projects.map((project) => ({
-          label: project.displayName,
-          value: project.projectId,
-        })),
-        { value: createKey, label: "Create new Firebase project" },
-      ],
-    }));
+    nonInteractive && preferredProject
+      ? preferredProject.projectId
+      : await p.select({
+          initialValue: preferredProject?.projectId ?? projects[0]?.projectId,
+          message: "Select a Firebase project",
+          options: [
+            ...projects.map((project) => ({
+              label: project.displayName,
+              value: project.projectId,
+            })),
+            { value: createKey, label: "Create new Firebase project" },
+          ],
+        });
 
   if (p.isCancel(projectId)) {
     p.log.error("Project ID is required");

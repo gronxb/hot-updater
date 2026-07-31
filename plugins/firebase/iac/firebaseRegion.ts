@@ -46,11 +46,10 @@ export const resolveFirebaseRegion = async ({
   readonly nonInteractive?: boolean;
   readonly savedRegion?: string;
 }): Promise<string> => {
-  if (isFirebaseRegion(savedRegion)) {
-    return savedRegion;
-  }
-
   if (nonInteractive) {
+    if (isFirebaseRegion(savedRegion)) {
+      return savedRegion;
+    }
     throw new MissingInitInputsError(["HOT_UPDATER_FIREBASE_REGION"]);
   }
 
@@ -86,14 +85,14 @@ export const resolveFirebaseRegion = async ({
     }
   }
 
-  if (isFirebaseRegion(discoveredRegion)) {
-    return discoveredRegion;
-  }
-
   const selectedRegion = await p.select<string>({
+    initialValue: isFirebaseRegion(savedRegion)
+      ? savedRegion
+      : isFirebaseRegion(discoveredRegion)
+        ? discoveredRegion
+        : REGIONS[0].value,
     message: FIREBASE_INIT_PROVIDER.inputs.region.prompt.message,
     options: REGIONS,
-    initialValue: REGIONS[0].value,
   });
   if (p.isCancel(selectedRegion)) {
     p.cancel("Operation cancelled.");
