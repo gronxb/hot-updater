@@ -1,5 +1,11 @@
 # @hot-updater/js
 
+## 0.35.9
+
+### Patch Changes
+
+- @hot-updater/core@0.35.9
+
 ## 0.35.8
 
 ### Patch Changes
