@@ -4,6 +4,8 @@ import path from "path";
 import { p, transformTemplate } from "@hot-updater/cli-tools";
 import { ExecaError, execa } from "execa";
 
+import { getSupabaseCliEnv } from "./supabaseAuthentication";
+
 const SUPABASE_CONFIG_TEMPLATE = `
 project_id = "%%projectId%%"
 
@@ -20,6 +22,17 @@ const SUPABASE_DATABASE_AUTH_ERROR_PATTERNS = [
   /SQLSTATE 28P01/i,
   /invalid SCRAM server-final-message/i,
 ] as const;
+
+const getSupabaseCommandEnv = (
+  accessToken?: string,
+  dbPassword?: string,
+): Readonly<Record<string, string>> | undefined =>
+  accessToken || dbPassword
+    ? {
+        ...getSupabaseCliEnv(accessToken),
+        ...(dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : {}),
+      }
+    : undefined;
 
 const isSupabaseDatabaseAuthError = (err: ExecaError) => {
   const stderr = err.stderr;
@@ -47,7 +60,7 @@ const handleSupabaseDatabaseCommandError = (
     } else if (!stderrInherited && err.stderr) {
       p.log.error(err.stderr);
     } else {
-      console.error(err);
+      p.log.error(err.message);
     }
   } else {
     console.error(err);
@@ -56,9 +69,34 @@ const handleSupabaseDatabaseCommandError = (
   process.exit(1);
 };
 
+export const confirmSupabaseDatabaseMigrations = async ({
+  nonInteractive,
+}: {
+  readonly nonInteractive: boolean;
+}) => {
+  if (nonInteractive) {
+    return true;
+  }
+
+  const confirmed = await p.confirm({
+    message:
+      "Apply Hot Updater database migrations to the selected Supabase project?",
+    initialValue: true,
+  });
+  return confirmed === true;
+};
+
 export const linkSupabase = async (
   workdir: string,
-  { projectId, dbPassword }: { projectId: string; dbPassword?: string },
+  {
+    accessToken,
+    projectId,
+    dbPassword,
+  }: {
+    accessToken?: string;
+    projectId: string;
+    dbPassword?: string;
+  },
 ) => {
   const spinner = p.spinner();
 
@@ -77,7 +115,7 @@ export const linkSupabase = async (
       ["supabase", "link", "--project-ref", projectId, "--workdir", workdir],
       {
         cwd: workdir,
-        env: dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : undefined,
+        env: getSupabaseCommandEnv(accessToken, dbPassword),
         input: "",
         stdio: ["pipe", "pipe", "pipe"],
       },
@@ -85,21 +123,24 @@ export const linkSupabase = async (
     spinner.stop("Supabase linked ✔");
   } catch (err) {
     spinner.stop();
-    handleSupabaseDatabaseCommandError(err, { dbPassword });
+    handleSupabaseDatabaseCommandError(
+      err instanceof Error ? err : new Error(String(err)),
+      { dbPassword },
+    );
   }
 };
 
 export const pushDB = async (
   workdir: string,
-  { dbPassword }: { dbPassword?: string },
+  { accessToken, dbPassword }: { accessToken?: string; dbPassword?: string },
 ) => {
   try {
     const dbPush = await execa(
       "npx",
-      ["supabase", "db", "push", "--include-all"],
+      ["supabase", "db", "push", "--include-all", "--yes"],
       {
         cwd: workdir,
-        env: dbPassword ? { SUPABASE_DB_PASSWORD: dbPassword } : undefined,
+        env: getSupabaseCommandEnv(accessToken, dbPassword),
         stderr: ["pipe", "inherit"],
         stdin: "inherit",
         stdout: "inherit",
@@ -108,9 +149,12 @@ export const pushDB = async (
     p.log.success("DB pushed ✔");
     return dbPush.stdout;
   } catch (err) {
-    handleSupabaseDatabaseCommandError(err, {
-      dbPassword,
-      stderrInherited: true,
-    });
+    handleSupabaseDatabaseCommandError(
+      err instanceof Error ? err : new Error(String(err)),
+      {
+        dbPassword,
+        stderrInherited: true,
+      },
+    );
   }
 };

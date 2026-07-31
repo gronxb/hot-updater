@@ -1,33 +1,36 @@
 import {
-  fromIni,
-  fromNodeProviderChain,
-  fromSSO,
-} from "@aws-sdk/credential-providers";
-import {
-  type BuildType,
   colors,
+  confirmInitInputPersistence,
   ensureInstallPackages,
+  getHotUpdaterInitInputEnv,
+  getInitProviderEnvVars,
+  getInitProviderTextPromptValues,
   link,
   makeEnv,
+  MissingInitInputsError,
   p,
+  readHotUpdaterInitEnv,
+  type RunInitOptions,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { ExecaError, execa } from "execa";
+import { execa } from "execa";
 
+import { resolveAwsAuth } from "./awsAuth";
+import {
+  assertAwsNonInteractiveInputs,
+  resolveAwsInitInputs,
+} from "./awsInitInputs";
 import { CloudFrontManager } from "./cloudfront";
 import { IAMManager } from "./iam";
+import { initProvider as AWS_INIT_PROVIDER } from "./init/index";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
 import { Migration0001HotUpdater0_13_0 } from "./migrations/Migration0001HotUpdater0_13_0";
 import { Migration0001HotUpdater0_18_0 } from "./migrations/Migration0001HotUpdater0_18_0";
 import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
-import {
-  type AwsConfigScaffoldAuthMode,
-  getConfigScaffold,
-  SOURCE_TEMPLATE,
-} from "./templates";
+import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
 
 const checkIfAwsCliInstalled = async () => {
   try {
@@ -38,7 +41,18 @@ const checkIfAwsCliInstalled = async () => {
   }
 };
 
-export const runInit = async ({ build }: { build: BuildType }) => {
+const isAwsRegion = (value: string | undefined): value is AwsRegion => {
+  return value !== undefined && Object.hasOwn(regionLocationMap, value);
+};
+
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
+  const nonInteractive = envFile !== undefined;
+  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const { managedEnv } = initEnvSources;
+  const providerEnv = getHotUpdaterInitInputEnv(initEnvSources, nonInteractive);
+  const savedInputs = resolveAwsInitInputs(providerEnv);
+  assertAwsNonInteractiveInputs(savedInputs, nonInteractive);
+
   const isAwsCliInstalled = await checkIfAwsCliInstalled();
   if (!isAwsCliInstalled) {
     p.log.error(
@@ -46,33 +60,6 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     );
     process.exit(1);
   }
-
-  let credentials:
-    | { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
-    | undefined;
-  let configAuthMode: AwsConfigScaffoldAuthMode = { mode: "account" };
-  let awsProfile: string | null = null;
-
-  // Select: AWS login mode
-  const mode = await p.select({
-    message: "Select the mode to login to AWS",
-    options: [
-      {
-        label: "Current AWS CLI Session / Default Credential Chain",
-        value: "local-session",
-      },
-      {
-        label: "Shared AWS Profile",
-        value: "shared-profile",
-      },
-      { label: "AWS SSO Login", value: "sso" },
-      {
-        label: "AWS Access Key ID & Secret Access Key",
-        value: "account",
-      },
-    ],
-  });
-  if (p.isCancel(mode)) process.exit(1);
 
   p.log.message(colors.blue("The following permissions are required:"));
   p.log.message(
@@ -91,90 +78,19 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     `${colors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
   );
 
-  if (mode === "sso") {
-    try {
-      const profile = await p.text({
-        message: "Enter the SSO profile name",
-        defaultValue: "default",
-        placeholder: "default",
-      });
-      if (p.isCancel(profile)) {
-        process.exit(1);
-      }
-      awsProfile = profile;
-      configAuthMode = { mode: "sso", profile };
-      await execa("aws", ["sso", "login", "--profile", profile], {
-        stdio: "inherit",
-        shell: true,
-      });
-      credentials = await fromSSO({ profile })();
-    } catch (error) {
-      if (error instanceof ExecaError) {
-        p.log.error(error.stdout || error.stderr || error.message);
-      }
-      process.exit(1);
-    }
-  } else if (mode === "local-session") {
-    try {
-      configAuthMode = { mode: "local", profile: null };
-      credentials = await fromNodeProviderChain()();
-    } catch (error) {
-      if (error instanceof Error) {
-        p.log.error(error.message);
-      }
-      process.exit(1);
-    }
-  } else if (mode === "shared-profile") {
-    try {
-      const profile = await p.text({
-        message: "Enter the AWS profile name",
-        defaultValue: process.env.AWS_PROFILE ?? "default",
-        placeholder: process.env.AWS_PROFILE ?? "default",
-        validate: (value) =>
-          (value ?? "").trim() ? undefined : "AWS profile name is required",
-      });
-      if (p.isCancel(profile)) {
-        process.exit(1);
-      }
-
-      awsProfile = profile.trim();
-      configAuthMode = { mode: "local", profile: awsProfile };
-      credentials = await fromIni({ profile: awsProfile })();
-    } catch (error) {
-      if (error instanceof Error) {
-        p.log.error(error.message);
-      }
-      process.exit(1);
-    }
-  } else {
-    const creds = await p.group({
-      accessKeyId: () =>
-        p.text({
-          message: "Enter your AWS Access Key ID",
-          validate: (value) =>
-            value ? undefined : "Access Key ID is required",
-        }),
-      secretAccessKey: () =>
-        p.password({
-          message: "Enter your AWS Secret Access Key",
-          validate: (value) =>
-            value ? undefined : "Secret Access Key is required",
-        }),
-    });
-    if (p.isCancel(creds)) {
-      process.exit(1);
-    }
-    credentials = {
-      accessKeyId: creds.accessKeyId,
-      secretAccessKey: creds.secretAccessKey,
-    };
-    configAuthMode = { mode: "account" };
-  }
-
-  if (!credentials) {
-    p.log.error("Couldn't fetch the credentials.");
-    process.exit(1);
-  }
+  const { awsProfile, configAuthMode, credentials, mode } =
+    await resolveAwsAuth(providerEnv, nonInteractive);
+  const resolvedAuthInputs = {
+    ...savedInputs,
+    accessKeyId:
+      mode === "account" ? credentials.accessKeyId : savedInputs.accessKeyId,
+    authMode: mode,
+    profile: awsProfile ?? undefined,
+    secretAccessKey:
+      mode === "account"
+        ? credentials.secretAccessKey
+        : savedInputs.secretAccessKey,
+  };
 
   // S3 related tasks: Create S3Manager instance
   const s3Manager = new S3Manager(credentials);
@@ -194,62 +110,182 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   }
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
-  let bucketName = await p.select({
-    message: "S3 Bucket List",
-    options: [
-      ...availableBuckets.map((bucket) => ({
-        value: bucket.name,
-        label: `${bucket.name} (${bucket.region})`,
-      })),
-      { value: createKey, label: "Create New S3 Bucket" },
-    ],
-  });
-  if (p.isCancel(bucketName)) process.exit(1);
-
-  let bucketRegion: AwsRegion | undefined = availableBuckets.find(
-    (bucket) => bucket.name === bucketName,
-  )?.region;
-
-  if (bucketName === createKey) {
-    const name = await p.text({
-      message: "Enter the name of the new S3 Bucket",
-      defaultValue: "hot-updater-storage",
-      placeholder: "hot-updater-storage",
-    });
-    if (p.isCancel(name)) {
-      process.exit(1);
-    }
-    bucketName = name;
-    const selectedRegion = await p.select({
-      message: "Enter AWS region for the S3 bucket",
-      options: Object.entries(regionLocationMap).map(([region, location]) => ({
-        label: `${region} (${location})`,
-        value: region,
-      })),
-    });
-    if (p.isCancel(selectedRegion)) {
-      process.exit(1);
-    }
-    bucketRegion = selectedRegion as AwsRegion;
-    await s3Manager.createBucket(bucketName, bucketRegion);
+  const savedBucketName = savedInputs.bucketName;
+  const savedBucketRegion = savedInputs.bucketRegion;
+  const existingBucket = availableBuckets.find(
+    (bucket) => bucket.name === savedBucketName,
+  );
+  const createSavedBucket =
+    nonInteractive &&
+    savedBucketName !== undefined &&
+    isAwsRegion(savedBucketRegion) &&
+    !existingBucket;
+  if (createSavedBucket && savedInputs.migrationApproved !== "true") {
+    throw new MissingInitInputsError(["HOT_UPDATER_AWS_MIGRATION_APPROVED"]);
+  }
+  if (savedBucketName && !existingBucket && !createSavedBucket) {
+    p.log.warn("Saved S3 bucket was not found. Select a bucket again.");
+  }
+  const savedLambdaName = savedInputs.lambdaName;
+  const resourceInputs = await p.group<{
+    bucketSelection: string | symbol;
+    bucketName: string | symbol | undefined;
+    bucketRegion: string | symbol | undefined;
+    lambdaName: string | symbol;
+  }>(
+    {
+      bucketSelection: () => {
+        if (nonInteractive && existingBucket) {
+          return Promise.resolve(existingBucket.name);
+        }
+        if (createSavedBucket) {
+          return Promise.resolve(createKey);
+        }
+        return p.select<string>({
+          initialValue: existingBucket?.name ?? availableBuckets[0]?.name,
+          message: "S3 Bucket List",
+          options: [
+            ...availableBuckets.map((bucket) => ({
+              value: bucket.name,
+              label: `${bucket.name} (${bucket.region})`,
+            })),
+            { value: createKey, label: "Create New S3 Bucket" },
+          ],
+        });
+      },
+      bucketName: ({ results }) =>
+        results.bucketSelection === createKey
+          ? createSavedBucket
+            ? Promise.resolve(savedBucketName)
+            : p.text({
+                ...getInitProviderTextPromptValues(
+                  AWS_INIT_PROVIDER.inputs.bucketName.prompt,
+                  savedBucketName,
+                ),
+                message: AWS_INIT_PROVIDER.inputs.bucketName.prompt.message,
+                validate: (value) =>
+                  value ? undefined : "S3 bucket name is required",
+              })
+          : Promise.resolve(results.bucketSelection),
+      bucketRegion: ({ results }) =>
+        results.bucketSelection === createKey
+          ? createSavedBucket
+            ? Promise.resolve(savedBucketRegion)
+            : p.select({
+                initialValue: isAwsRegion(savedBucketRegion)
+                  ? savedBucketRegion
+                  : undefined,
+                message: AWS_INIT_PROVIDER.inputs.bucketRegion.prompt.message,
+                options: Object.entries(regionLocationMap).map(
+                  ([region, location]) => ({
+                    label: `${region} (${location})`,
+                    value: region,
+                  }),
+                ),
+              })
+          : Promise.resolve(
+              availableBuckets.find(
+                (bucket) => bucket.name === results.bucketSelection,
+              )?.region,
+            ),
+      lambdaName: () =>
+        nonInteractive && savedLambdaName
+          ? Promise.resolve(savedLambdaName)
+          : p.text({
+              ...getInitProviderTextPromptValues(
+                AWS_INIT_PROVIDER.inputs.lambdaName.prompt,
+                savedLambdaName,
+              ),
+              message: AWS_INIT_PROVIDER.inputs.lambdaName.prompt.message,
+              validate: (value) =>
+                value ? undefined : "Lambda function name is required",
+            }),
+    },
+    {
+      onCancel: () => process.exit(1),
+    },
+  );
+  const { bucketName, bucketRegion, lambdaName } = resourceInputs;
+  if (!bucketName || !lambdaName) {
+    p.log.error("AWS resource names are required.");
+    process.exit(1);
   }
 
-  if (!bucketRegion) {
-    p.log.error("Failed to get S3 bucket region");
+  if (!isAwsRegion(bucketRegion)) {
+    p.log.error("AWS bucket region is required.");
     process.exit(1);
+  }
+  const cloudFrontManager = new CloudFrontManager(bucketRegion, credentials);
+  const selectedDistribution = await cloudFrontManager.selectDistribution({
+    bucketName,
+    distributionId: savedInputs.distributionId,
+    nonInteractive,
+  });
+  const resolvedInputs = {
+    ...resolvedAuthInputs,
+    bucketName,
+    bucketRegion,
+    distributionId: selectedDistribution?.Id,
+    lambdaName,
+    migrationApproved: savedInputs.migrationApproved,
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv: managedEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: AWS_INIT_PROVIDER,
+  });
+  const initEnv = getInitProviderEnvVars({
+    includeConsentInputs: persistCredentialInputs,
+    inputs: resolvedInputs,
+    provider: AWS_INIT_PROVIDER,
+  });
+  const accessKeyEnvKey = AWS_INIT_PROVIDER.inputs.accessKeyId.envKey;
+  const secretAccessKeyEnvKey = AWS_INIT_PROVIDER.inputs.secretAccessKey.envKey;
+  await makeEnv({
+    ...initEnv,
+    ...(initEnv[accessKeyEnvKey]
+      ? {
+          [accessKeyEnvKey]: {
+            comment:
+              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
+            value: initEnv[accessKeyEnvKey],
+          },
+        }
+      : {}),
+    ...(initEnv[secretAccessKeyEnvKey]
+      ? {
+          [secretAccessKeyEnvKey]: {
+            comment:
+              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
+            value: initEnv[secretAccessKeyEnvKey],
+          },
+        }
+      : {}),
+  });
+
+  if (resourceInputs.bucketSelection === createKey) {
+    await s3Manager.createBucket(bucketName, bucketRegion);
   }
 
   p.log.info(`Selected S3 Bucket: ${bucketName} (${bucketRegion})`);
 
   // Run S3 migrations
-  await s3Manager.runMigrations({
+  const migrationsApplied = await s3Manager.runMigrations({
+    approved: savedInputs.migrationApproved === "true",
     bucketName,
+    nonInteractive,
     region: bucketRegion,
     migrations: [
       new Migration0001HotUpdater0_13_0(),
       new Migration0001HotUpdater0_18_0(),
     ],
   });
+  if (migrationsApplied && savedInputs.migrationApproved !== "true") {
+    await makeEnv({
+      [AWS_INIT_PROVIDER.inputs.migrationApproved.envKey]: "true",
+    });
+  }
 
   // Create IAM role: Using IAMManager
   const iamManager = new IAMManager(bucketRegion, credentials);
@@ -261,9 +297,6 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     `/hot-updater/${bucketName}/keypair`,
   );
 
-  // CloudFront related tasks: Create CloudFrontManager instance
-  const cloudFrontManager = new CloudFrontManager(bucketRegion, credentials);
-
   // Create CloudFront key group
   const { publicKeyId, keyGroupId } =
     await cloudFrontManager.getOrCreateKeyGroup(keyPair.publicKey);
@@ -271,18 +304,23 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   // Deploy Lambda@Edge: Using LambdaEdgeDeployer
   const lambdaEdgeDeployer = new LambdaEdgeDeployer(credentials);
   const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
-  const { functionArn } = await lambdaEdgeDeployer.deploy(lambdaRoleArn, {
-    bucketName,
-    publicKeyId: publicKeyId,
-    ssmParameterName: ssmParameterName,
-    ssmRegion: bucketRegion,
-  });
+  const { functionArn } = await lambdaEdgeDeployer.deploy(
+    lambdaRoleArn,
+    lambdaName,
+    {
+      bucketName,
+      publicKeyId: publicKeyId,
+      ssmParameterName: ssmParameterName,
+      ssmRegion: bucketRegion,
+    },
+  );
 
   // Create or update CloudFront distribution
   const { distributionDomain, distributionId } =
     await cloudFrontManager.createOrUpdateDistribution({
       keyGroupId,
       bucketName,
+      distribution: selectedDistribution,
       functionArn,
     });
 
@@ -301,28 +339,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   );
 
   await makeEnv({
-    HOT_UPDATER_S3_BUCKET_NAME: bucketName,
-    HOT_UPDATER_S3_REGION: bucketRegion,
-    ...(mode === "account"
-      ? {
-          HOT_UPDATER_S3_ACCESS_KEY_ID: {
-            comment:
-              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
-            value: credentials.accessKeyId,
-          },
-          HOT_UPDATER_S3_SECRET_ACCESS_KEY: {
-            comment:
-              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
-            value: credentials.secretAccessKey,
-          },
-        }
-      : {}),
-    ...(awsProfile !== null
-      ? {
-          HOT_UPDATER_AWS_PROFILE: awsProfile,
-        }
-      : {}),
-    HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
+    [AWS_INIT_PROVIDER.inputs.distributionId.envKey]: distributionId,
   });
 
   // Install @aws-sdk/credential-provider-sso if SSO mode is selected

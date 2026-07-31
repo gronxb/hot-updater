@@ -22,14 +22,18 @@ export const ensureInstallPackages = async (
   const { versionResolver = (pkg: string) => pkg } = options ?? {};
 
   const pkgJson = await readPackageUp<PackageJson>(getCwd());
+  const installedPackages = new Set([
+    ...Object.keys(pkgJson?.packageJson?.dependencies ?? {}),
+    ...Object.keys(pkgJson?.packageJson?.devDependencies ?? {}),
+  ]);
 
   const dependenciesToInstall = (packages.dependencies ?? []).filter((pkg) => {
-    return !pkgJson?.packageJson?.dependencies?.[pkg];
+    return !installedPackages.has(pkg);
   });
 
   const devDependenciesToInstall = (packages.devDependencies ?? []).filter(
     (pkg) => {
-      return !pkgJson?.packageJson?.devDependencies?.[pkg];
+      return !installedPackages.has(pkg);
     },
   );
 
