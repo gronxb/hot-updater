@@ -16,7 +16,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
-import ts from "typescript";
+import { parseSync, Visitor } from "oxc-parser";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -39,39 +39,46 @@ type RuntimeGraph = Readonly<{
 }>;
 
 const runtimeSpecifiers = (file: string, source: string): readonly string[] => {
-  const sourceFile = ts.createSourceFile(
-    file,
-    source,
-    ts.ScriptTarget.ES2022,
-    true,
-    ts.ScriptKind.JS,
-  );
+  const result = parseSync(file, source, {
+    astType: "js",
+    lang: "js",
+    preserveParens: false,
+    sourceType: "unambiguous",
+  });
   const specifiers: string[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isImportDeclaration(node) &&
-      ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      specifiers.push(node.moduleSpecifier.text);
-    } else if (
-      ts.isExportDeclaration(node) &&
-      node.moduleSpecifier !== undefined &&
-      ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      specifiers.push(node.moduleSpecifier.text);
-    } else if (
-      ts.isCallExpression(node) &&
-      node.arguments.length === 1 &&
-      ts.isStringLiteral(node.arguments[0]) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) &&
-          node.expression.text === "require"))
-    ) {
-      specifiers.push(node.arguments[0].text);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
+  new Visitor({
+    CallExpression(node) {
+      const argument = node.arguments[0];
+      if (
+        node.arguments.length === 1 &&
+        node.callee.type === "Identifier" &&
+        node.callee.name === "require" &&
+        argument?.type === "Literal" &&
+        typeof argument.value === "string"
+      ) {
+        specifiers.push(argument.value);
+      }
+    },
+    ExportAllDeclaration(node) {
+      specifiers.push(node.source.value);
+    },
+    ExportNamedDeclaration(node) {
+      if (node.source !== null) {
+        specifiers.push(node.source.value);
+      }
+    },
+    ImportDeclaration(node) {
+      specifiers.push(node.source.value);
+    },
+    ImportExpression(node) {
+      if (
+        node.source.type === "Literal" &&
+        typeof node.source.value === "string"
+      ) {
+        specifiers.push(node.source.value);
+      }
+    },
+  }).visit(result.program);
   return specifiers;
 };
 

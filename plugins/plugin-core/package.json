@@ -79,6 +79,7 @@
     "@types/node": "catalog:",
     "@types/semver": "^7.5.8",
     "@typescript/native": "npm:typescript@7.0.2",
+    "oxc-parser": "0.141.0",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }
