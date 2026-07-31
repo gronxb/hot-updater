@@ -318,6 +318,44 @@ describe("CloudFrontManager", () => {
     expect(mockPrompt.select).not.toHaveBeenCalled();
   });
 
+  it("rejects a saved distribution attached to another bucket during env-file replay", async () => {
+    // Given
+    mockCloudFront.listDistributions.mockResolvedValue({
+      DistributionList: {
+        Items: [
+          {
+            Id: "saved-dist-id",
+            DomainName: "saved.cloudfront.net",
+            Origins: {
+              Items: [
+                {
+                  DomainName: "old-storage.s3.ap-northeast-2.amazonaws.com",
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const manager = new CloudFrontManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    const selection = manager.selectDistribution({
+      bucketName: "new-storage",
+      distributionId: "saved-dist-id",
+      nonInteractive: true,
+    });
+
+    // Then
+    await expect(selection).rejects.toMatchObject({
+      missingInputs: ["HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID"],
+    });
+    expect(mockPrompt.select).not.toHaveBeenCalled();
+  });
+
   it("finds a saved distribution on a later page", async () => {
     mockCloudFront.listDistributions
       .mockResolvedValueOnce({

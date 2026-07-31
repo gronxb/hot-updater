@@ -358,11 +358,14 @@ export class CloudFrontManager {
     const savedDistribution = matchingDistributions.find(
       (distribution) => distribution.Id === distributionId,
     );
+    const savedDistributionExists = distributions.some(
+      (distribution) => distribution.Id === distributionId,
+    );
     if (nonInteractive && savedDistribution) {
       return savedDistribution;
     }
     if (distributionId && !savedDistribution) {
-      if (matchingDistributions.length === 0) {
+      if (matchingDistributions.length === 0 && !savedDistributionExists) {
         p.log.warn(
           "Saved CloudFront distribution was not found. A new distribution will be created.",
         );

@@ -7,6 +7,7 @@ import {
   getInitProviderTextPromptValues,
   link,
   makeEnv,
+  MissingInitInputsError,
   p,
   readHotUpdaterInitEnv,
   type RunInitOptions,
@@ -119,6 +120,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     savedBucketName !== undefined &&
     isAwsRegion(savedBucketRegion) &&
     !existingBucket;
+  if (createSavedBucket && savedInputs.migrationApproved !== "true") {
+    throw new MissingInitInputsError(["HOT_UPDATER_AWS_MIGRATION_APPROVED"]);
+  }
   if (savedBucketName && !existingBucket && !createSavedBucket) {
     p.log.warn("Saved S3 bucket was not found. Select a bucket again.");
   }
