@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertFirebaseNonInteractiveInputs,
   getFirebaseCliEnv,
+  getFirebaseIamEnv,
   resolveFirebaseInitInputs,
 } from "./firebaseInitInputs";
 
@@ -62,6 +63,14 @@ describe("Firebase non-interactive init inputs", () => {
   it("uses the credential file for Firebase and gcloud commands", () => {
     expect(getFirebaseCliEnv("/tmp/firebase-credentials.json")).toEqual({
       CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: "/tmp/firebase-credentials.json",
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+    });
+  });
+
+  it("does not override gcloud authentication for IAM commands", () => {
+    expect(
+      getFirebaseIamEnv(getFirebaseCliEnv("/tmp/firebase-credentials.json")),
+    ).toEqual({
       GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
     });
   });

@@ -61,6 +61,20 @@ export const getFirebaseCliEnv = (
   };
 };
 
+export const getFirebaseIamEnv = (
+  cliEnv?: FirebaseCliEnv,
+): FirebaseCliEnv | undefined => {
+  if (!cliEnv) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    Object.entries(cliEnv).filter(
+      ([key]) => key !== "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE",
+    ),
+  );
+};
+
 export const resolveFirebaseInitInputs = (
   existingEnv: Record<string, string>,
 ): FirebaseInitInputs => {
