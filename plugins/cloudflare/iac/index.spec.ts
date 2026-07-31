@@ -222,7 +222,7 @@ describe("Cloudflare init discovery", () => {
       "npx",
       expect.arrayContaining(["wrangler", "login"]),
       expect.objectContaining({
-        cwd: "/Users/gronxb/workspace/hot-updater",
+        cwd: process.cwd(),
       }),
     );
   });
