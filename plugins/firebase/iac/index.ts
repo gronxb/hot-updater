@@ -24,7 +24,6 @@ import {
   assertFirebaseNonInteractiveInputs,
   type FirebaseCliEnv,
   getFirebaseCliEnv,
-  getFirebaseIamEnv,
   resolveFirebaseInitInputs,
 } from "./firebaseInitInputs";
 import { resolveFirebaseRegion } from "./firebaseRegion";
@@ -329,7 +328,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cliEnv = nonInteractive
     ? getFirebaseCliEnv(applicationCredentials)
     : undefined;
-  const iamEnv = getFirebaseIamEnv(cliEnv);
 
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
@@ -483,7 +481,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
             "--format=json",
           ],
           {
-            env: iamEnv,
+            env: cliEnv,
           },
         );
         const iamJson = JSON.parse(checkIam.stdout);
@@ -507,7 +505,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
                 "--role=roles/iam.serviceAccountTokenCreator",
               ],
               {
-                env: iamEnv,
+                env: cliEnv,
                 stdio: "inherit",
               },
             );

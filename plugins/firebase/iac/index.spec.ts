@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   existingEnv: {} as Record<string, string>,
   events: [] as string[],
+  existingProject: false,
   functionsDir: "",
   tmpDir: "",
 }));
@@ -15,7 +16,42 @@ vi.mock("execa", async () => {
   const actual = await vi.importActual<typeof import("execa")>("execa");
   return {
     ...actual,
-    execa: vi.fn().mockResolvedValue({ stdout: "" }),
+    execa: vi.fn(async (command: string, args: readonly string[] = []) => {
+      if (command === "npx" && args.includes("functions:list")) {
+        return {
+          stdout: JSON.stringify({
+            result: [
+              {
+                id: "hot-updater",
+                serviceAccount: "hot-updater@example.iam.gserviceaccount.com",
+              },
+            ],
+          }),
+        };
+      }
+      if (command === "gcloud" && args.includes("get-iam-policy")) {
+        return {
+          stdout: JSON.stringify({
+            bindings: [
+              {
+                members: [
+                  "serviceAccount:hot-updater@example.iam.gserviceaccount.com",
+                ],
+                role: "roles/iam.serviceAccountTokenCreator",
+              },
+            ],
+          }),
+        };
+      }
+      if (command === "gcloud" && args.includes("describe")) {
+        return {
+          stdout: JSON.stringify({
+            serviceConfig: { uri: "https://hot-updater.example.com" },
+          }),
+        };
+      }
+      return { stdout: "" };
+    }),
   };
 });
 
@@ -77,13 +113,22 @@ vi.mock("./select", () => ({
   }),
   initFirebaseUser: vi.fn(async () => {
     mocks.events.push("project");
+    if (mocks.existingProject) {
+      return {
+        projectId: "existing-project",
+        status: "ready" as const,
+        storageBucket: "existing-project.firebasestorage.app",
+      };
+    }
     return {
-      status: "create",
       projectId: "new-project",
+      status: "create" as const,
     };
   }),
   setEnv: vi.fn(),
 }));
+
+import { execa } from "execa";
 
 import { runInit } from "./index";
 import { initFirebaseUser } from "./select";
@@ -92,6 +137,7 @@ describe("Firebase project creation", () => {
   beforeEach(async () => {
     mocks.existingEnv = {};
     mocks.events.length = 0;
+    mocks.existingProject = false;
     mocks.tmpDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-firebase-init-"),
     );
@@ -100,6 +146,11 @@ describe("Firebase project creation", () => {
     await fs.writeFile(
       path.join(mocks.functionsDir, "package.json"),
       JSON.stringify({ dependencies: {} }),
+    );
+    await fs.writeFile(path.join(mocks.functionsDir, "index.cjs"), "");
+    await fs.writeFile(
+      path.join(mocks.tmpDir, "firestore.indexes.json"),
+      JSON.stringify({ fieldOverrides: [], indexes: [] }),
     );
   });
 
@@ -135,5 +186,41 @@ describe("Firebase project creation", () => {
     expect(resolveCliEnv).toEqual(expect.any(Function));
     const selectedProjectCliEnv = await resolveCliEnv?.("new-project");
     expect(selectedProjectCliEnv).toBeUndefined();
+  });
+
+  it("uses active gcloud authentication when describing the deployed function", async () => {
+    // Given
+    mocks.existingProject = true;
+    mocks.existingEnv = {
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+      HOT_UPDATER_FIREBASE_PROJECT_ID: "existing-project",
+      HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
+    };
+
+    // When
+    await runInit({
+      build: "bare",
+      envFile: ".env.hotupdater",
+    });
+
+    // Then
+    expect(execa).toHaveBeenCalledWith(
+      "gcloud",
+      [
+        "functions",
+        "describe",
+        "hot-updater",
+        "--project",
+        "existing-project",
+        "--region",
+        "asia-northeast3",
+        "--format=json",
+      ],
+      {
+        env: {
+          GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+        },
+      },
+    );
   });
 });

@@ -55,24 +55,9 @@ export const getFirebaseCliEnv = (
     pathContext,
   );
   return {
-    CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: resolvedCredentialsPath,
     [FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey]:
       resolvedCredentialsPath,
   };
-};
-
-export const getFirebaseIamEnv = (
-  cliEnv?: FirebaseCliEnv,
-): FirebaseCliEnv | undefined => {
-  if (!cliEnv) {
-    return undefined;
-  }
-
-  return Object.fromEntries(
-    Object.entries(cliEnv).filter(
-      ([key]) => key !== "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE",
-    ),
-  );
 };
 
 export const resolveFirebaseInitInputs = (
