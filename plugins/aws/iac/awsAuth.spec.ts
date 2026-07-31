@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => ({
   fromNodeProviderChain: vi.fn(),
   fromSSO: vi.fn(),
   group: vi.fn(),
+  password: vi.fn(),
   select: vi.fn(),
+  text: vi.fn(),
   execa: vi.fn(),
 }));
 
@@ -35,7 +37,9 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     p: {
       ...actual.p,
       group: mocks.group,
+      password: mocks.password,
       select: mocks.select,
+      text: mocks.text,
     },
   };
 });
@@ -47,7 +51,7 @@ describe("resolveAwsAuth", () => {
     vi.clearAllMocks();
   });
 
-  it("reuses saved account credentials without prompting", async () => {
+  it("reuses saved account credentials without prompting in non-interactive mode", async () => {
     // Given
     const existingEnv = {
       HOT_UPDATER_AWS_AUTH_MODE: "account",
@@ -56,7 +60,7 @@ describe("resolveAwsAuth", () => {
     };
 
     // When
-    const auth = await resolveAwsAuth(existingEnv);
+    const auth = await resolveAwsAuth(existingEnv, true);
 
     // Then
     expect(auth).toEqual({
@@ -70,6 +74,49 @@ describe("resolveAwsAuth", () => {
     });
     expect(mocks.select).not.toHaveBeenCalled();
     expect(mocks.group).not.toHaveBeenCalled();
+  });
+
+  it("prefills the saved access key without exposing the secret key", async () => {
+    const results: Record<string, string | symbol | undefined> = {};
+    mocks.text.mockResolvedValue("edited-access-key");
+    mocks.group.mockImplementation(
+      async (
+        prompts: Record<
+          string,
+          (context: {
+            results: Record<string, string | symbol | undefined>;
+          }) => Promise<string | symbol | undefined>
+        >,
+      ) => {
+        for (const name of [
+          "mode",
+          "profile",
+          "accessKeyId",
+          "secretAccessKey",
+        ]) {
+          results[name] = await prompts[name]?.({ results });
+        }
+        return results;
+      },
+    );
+
+    const auth = await resolveAwsAuth({
+      HOT_UPDATER_AWS_AUTH_MODE: "account",
+      HOT_UPDATER_S3_ACCESS_KEY_ID: "saved-access-key",
+      HOT_UPDATER_S3_SECRET_ACCESS_KEY: "saved-secret-key",
+    });
+
+    expect(mocks.text).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "saved-access-key",
+        placeholder: "AKIA...",
+      }),
+    );
+    expect(mocks.password).not.toHaveBeenCalled();
+    expect(auth.credentials).toEqual({
+      accessKeyId: "edited-access-key",
+      secretAccessKey: "saved-secret-key",
+    });
   });
 
   it("does not launch SSO login in non-interactive mode", async () => {

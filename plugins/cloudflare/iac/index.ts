@@ -7,7 +7,9 @@ import {
   confirmInitInputPersistence,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
+  getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
+  getInitProviderTextPromptValues,
   getCwd,
   type HotUpdaterConfigScaffold,
   link,
@@ -190,11 +192,11 @@ const deployWorker = async (
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
-  const { env: existingEnv, managedEnv } = await readHotUpdaterInitEnv(
-    cwd,
-    envFile,
+  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
+  const { managedEnv } = initEnvSources;
+  const existingInputs = resolveCloudflareInitInputs(
+    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
   );
-  const existingInputs = resolveCloudflareInitInputs(existingEnv);
   assertCloudflareNonInteractiveInputs(existingInputs, nonInteractive);
   const {
     accessKeyId: existingR2AccessKeyId,
@@ -359,8 +361,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       process.exit(1);
     }
     if (selectedR2BucketName === createKey) {
+      const prompt = CLOUDFLARE_INIT_PROVIDER.inputs.bucketName.prompt;
       const name = await p.text({
-        message: CLOUDFLARE_INIT_PROVIDER.inputs.bucketName.prompt.message,
+        ...getInitProviderTextPromptValues(prompt, existingBucketName),
+        message: prompt.message,
         validate: (value) => (value ? undefined : "R2 bucket name is required"),
       });
       if (p.isCancel(name)) {
@@ -465,8 +469,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     }
 
     if (selectedD1 === createKey) {
+      const prompt = CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.prompt;
       const name = await p.text({
-        message: CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.prompt.message,
+        ...getInitProviderTextPromptValues(prompt, existingD1DatabaseName),
+        message: prompt.message,
         validate: (value) =>
           value ? undefined : "D1 database name is required",
       });

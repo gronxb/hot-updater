@@ -8,7 +8,9 @@ import {
   confirmInitInputPersistence,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
+  getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
+  getInitProviderTextPromptValues,
   link,
   makeEnv,
   type HotUpdaterConfigScaffold,
@@ -608,8 +610,10 @@ export const selectBucket = async (
   }
 
   if (selectedBucketId === createBucketOption) {
+    const prompt = SUPABASE_INIT_PROVIDER.inputs.bucketName.prompt;
     const bucketName = await p.text({
-      message: "Enter a name for the new bucket",
+      ...getInitProviderTextPromptValues(prompt, preferredBucketName),
+      message: prompt.message,
     });
 
     if (p.isCancel(bucketName)) {
@@ -835,15 +839,15 @@ export const getSupabaseProjectAccess = async ({
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const {
-    env: existingEnv,
-    inputEnv,
-    managedEnv,
-  } = await readHotUpdaterInitEnv(process.cwd(), envFile);
-  const savedInputs = resolveSupabaseInitInputs(existingEnv, {
-    inputEnv,
-    managedEnv,
-  });
+  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const { inputEnv, managedEnv } = initEnvSources;
+  const savedInputs = resolveSupabaseInitInputs(
+    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
+    {
+      inputEnv,
+      managedEnv,
+    },
+  );
   assertSupabaseNonInteractiveInputs(savedInputs, nonInteractive);
   const initInputs = await inputSupabaseDeploymentInputs({
     ...savedInputs,

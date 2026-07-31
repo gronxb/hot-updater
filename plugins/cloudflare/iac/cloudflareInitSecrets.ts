@@ -1,4 +1,9 @@
-import { assertInitInputs, link, p } from "@hot-updater/cli-tools";
+import {
+  assertInitInputs,
+  getInitProviderTextPromptValues,
+  link,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { CLOUDFLARE_INIT_PERMISSIONS } from "./cloudflareInitErrors";
 import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
@@ -101,12 +106,14 @@ export const inputCloudflareInitSecrets = async ({
                 value ? undefined : "R2 Secret Access Key is required",
             }),
       workerName: () =>
-        workerName
+        nonInteractive && workerName
           ? Promise.resolve(workerName)
           : p.text({
+              ...getInitProviderTextPromptValues(
+                inputDefinitions.workerName.prompt,
+                workerName,
+              ),
               message: inputDefinitions.workerName.prompt.message,
-              defaultValue: inputDefinitions.workerName.prompt.defaultValue,
-              placeholder: inputDefinitions.workerName.prompt.placeholder,
               validate: (value) =>
                 value ? undefined : "Worker name is required",
             }),

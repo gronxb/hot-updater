@@ -67,6 +67,11 @@ export type HotUpdaterInitEnv = {
   readonly managedEnv: Readonly<Record<string, string>>;
 };
 
+export const getHotUpdaterInitInputEnv = (
+  { env, managedEnv }: HotUpdaterInitEnv,
+  nonInteractive: boolean,
+) => (nonInteractive ? env : managedEnv);
+
 export const readHotUpdaterInitEnv = async (
   cwd: string,
   envFile?: string,

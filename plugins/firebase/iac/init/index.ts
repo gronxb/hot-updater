@@ -40,6 +40,11 @@ export const initProvider = {
     projectId: {
       envKey: "HOT_UPDATER_FIREBASE_PROJECT_ID",
       help: "Firebase project ID",
+      prompt: {
+        message: "Enter the Firebase project ID:",
+        placeholder: "hot-updater-app",
+        type: "text",
+      },
       validate: isFirebaseProjectId,
     },
     region: {

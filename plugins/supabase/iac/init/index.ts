@@ -88,7 +88,9 @@ export const initProvider = {
       envKey: "HOT_UPDATER_SUPABASE_BUCKET_NAME",
       help: "Storage bucket name",
       prompt: {
+        defaultValue: "hot-updater-storage",
         message: "Enter a name for the new storage bucket",
+        placeholder: "hot-updater-storage",
         type: "text",
       },
     },

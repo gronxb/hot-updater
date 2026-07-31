@@ -3,6 +3,7 @@ import path from "path";
 
 import {
   confirmInitInputPersistence,
+  getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
@@ -317,11 +318,11 @@ const checkIfGcloudCliInstalled = async () => {
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const { env: existingEnv, managedEnv } = await readHotUpdaterInitEnv(
-    process.cwd(),
-    envFile,
+  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const { managedEnv } = initEnvSources;
+  const savedInputs = resolveFirebaseInitInputs(
+    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
   );
-  const savedInputs = resolveFirebaseInitInputs(existingEnv);
   assertFirebaseNonInteractiveInputs(savedInputs, nonInteractive);
   let applicationCredentials = savedInputs.applicationCredentials;
   const cliEnv = nonInteractive

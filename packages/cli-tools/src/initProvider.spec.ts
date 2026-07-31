@@ -5,6 +5,7 @@ import {
   assertInitProviderInputs,
   confirmInitInputPersistence,
   defineInitProvider,
+  getInitProviderTextPromptValues,
   getMissingInitProviderInputs,
   getInitProviderEnvVars,
   resolveInitProviderInputs,
@@ -17,6 +18,23 @@ afterEach(() => {
 });
 
 describe("init provider utilities", () => {
+  it("keeps the placeholder while prefilling a saved text value", () => {
+    expect(
+      getInitProviderTextPromptValues(
+        {
+          defaultValue: "default-name",
+          message: "Enter a resource name",
+          placeholder: "example-name",
+          type: "text",
+        },
+        "saved-name",
+      ),
+    ).toEqual({
+      initialValue: "saved-name",
+      placeholder: "example-name",
+    });
+  });
+
   it("does not expose provider-specific definitions", async () => {
     // Given
     const providerExports = [

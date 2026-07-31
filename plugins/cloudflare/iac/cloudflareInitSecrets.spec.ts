@@ -55,6 +55,28 @@ describe("inputCloudflareInitSecrets", () => {
     expect(mocks.password).toHaveBeenCalledOnce();
   });
 
+  it("prefills the saved worker name without prefilling secrets", async () => {
+    mocks.text.mockResolvedValue("edited-worker");
+
+    const inputs = await inputCloudflareInitSecrets({
+      accountId: "account-id",
+      apiToken: "api-token",
+      bucketName: "bucket-name",
+      accessKeyId: "access-key-id",
+      secretAccessKey: "secret-access-key",
+      workerName: "saved-worker",
+    });
+
+    expect(mocks.text).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "saved-worker",
+        placeholder: "hot-updater",
+      }),
+    );
+    expect(mocks.password).not.toHaveBeenCalled();
+    expect(inputs.workerName).toBe("edited-worker");
+  });
+
   it("reports all required Cloudflare inputs before prompting in non-interactive mode", async () => {
     // Given
     const options = {

@@ -42,4 +42,21 @@ describe("inputFirebaseApplicationCredentials", () => {
       "https://console.firebase.google.com/project/hot-updater-25989/settings/serviceaccounts/adminsdk",
     );
   });
+
+  it("prefills saved credentials while retaining the path placeholder", async () => {
+    mocks.text.mockResolvedValue("~/firebase-credentials.json");
+
+    await inputFirebaseApplicationCredentials({
+      applicationCredentials: "/saved/firebase-credentials.json",
+      nonInteractive: false,
+      projectId: "hot-updater-25989",
+    });
+
+    expect(mocks.text).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "/saved/firebase-credentials.json",
+        placeholder: "~/Downloads/firebase-service-account.json",
+      }),
+    );
+  });
 });

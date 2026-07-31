@@ -24,7 +24,9 @@ export const initProvider = {
       envKey: "HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME",
       help: "R2 bucket name",
       prompt: {
+        defaultValue: "hot-updater-storage",
         message: "Enter the name of the new R2 Bucket",
+        placeholder: "hot-updater-storage",
         type: "text",
       },
     },
@@ -64,7 +66,9 @@ export const initProvider = {
       envKey: "HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME",
       help: "D1 database name",
       prompt: {
+        defaultValue: "hot-updater",
         message: "Enter the name of the new D1 Database",
+        placeholder: "hot-updater",
         type: "text",
       },
     },

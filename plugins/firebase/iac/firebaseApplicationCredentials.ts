@@ -1,4 +1,8 @@
-import { link, p } from "@hot-updater/cli-tools";
+import {
+  getInitProviderTextPromptValues,
+  link,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
 
@@ -11,10 +15,11 @@ export const inputFirebaseApplicationCredentials = async ({
   readonly nonInteractive: boolean;
   readonly projectId: string;
 }): Promise<string | undefined> => {
-  if (applicationCredentials || nonInteractive) {
+  if (nonInteractive) {
     return applicationCredentials;
   }
 
+  const prompt = FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.prompt;
   p.log.step(
     `Service account JSON: ${link(
       `https://console.firebase.google.com/project/${projectId}/settings/serviceaccounts/adminsdk`,
@@ -23,10 +28,8 @@ export const inputFirebaseApplicationCredentials = async ({
   p.log.step("Project settings > Service accounts > Generate new private key");
 
   const credentialsPath = await p.text({
-    message:
-      FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.prompt.message,
-    placeholder:
-      FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.prompt.placeholder,
+    ...getInitProviderTextPromptValues(prompt, applicationCredentials),
+    message: prompt.message,
   });
   if (p.isCancel(credentialsPath)) {
     process.exit(1);

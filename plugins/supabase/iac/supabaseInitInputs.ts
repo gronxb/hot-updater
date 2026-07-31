@@ -1,6 +1,7 @@
 import {
   assertInitInputs,
   assertInitProviderInputs,
+  getInitProviderTextPromptValues,
   getHotUpdaterEnvValue,
   MissingInitInputsError,
   p,
@@ -121,12 +122,14 @@ export const inputSupabaseDeploymentInputs = async ({
       accessToken: () =>
         accessToken ? Promise.resolve(accessToken) : inputSupabaseAccessToken(),
       functionName: () =>
-        savedFunctionName
+        nonInteractive && savedFunctionName
           ? Promise.resolve(savedFunctionName)
           : p.text({
+              ...getInitProviderTextPromptValues(
+                inputs.functionName.prompt,
+                savedFunctionName,
+              ),
               message: inputs.functionName.prompt.message,
-              initialValue: inputs.functionName.prompt.defaultValue,
-              placeholder: inputs.functionName.prompt.placeholder,
               validate: (value) =>
                 isSupabaseFunctionName(value)
                   ? undefined
@@ -224,16 +227,15 @@ export const inputSupabaseProjectCreationInputs = async ({
   const defaultRegion =
     SUPABASE_INIT_PROVIDER.inputs.region.prompt.defaultValue;
 
-  const selectedProjectName =
-    projectName ??
-    (await p.text({
-      message: SUPABASE_INIT_PROVIDER.inputs.projectName.prompt.message,
-      defaultValue:
-        SUPABASE_INIT_PROVIDER.inputs.projectName.prompt.defaultValue,
-      placeholder: SUPABASE_INIT_PROVIDER.inputs.projectName.prompt.placeholder,
-      validate: (value) =>
-        value ? undefined : "Supabase project name is required",
-    }));
+  const selectedProjectName = await p.text({
+    ...getInitProviderTextPromptValues(
+      SUPABASE_INIT_PROVIDER.inputs.projectName.prompt,
+      projectName,
+    ),
+    message: SUPABASE_INIT_PROVIDER.inputs.projectName.prompt.message,
+    validate: (value) =>
+      value ? undefined : "Supabase project name is required",
+  });
   if (p.isCancel(selectedProjectName)) {
     process.exit(0);
   }
@@ -266,13 +268,15 @@ export const inputSupabaseProjectCreationInputs = async ({
     process.exit(0);
   }
 
-  const selectedBucketName =
-    bucketName ??
-    (await p.text({
-      message: SUPABASE_INIT_PROVIDER.inputs.bucketName.prompt.message,
-      validate: (value) =>
-        value ? undefined : "Storage bucket name is required",
-    }));
+  const selectedBucketName = await p.text({
+    ...getInitProviderTextPromptValues(
+      SUPABASE_INIT_PROVIDER.inputs.bucketName.prompt,
+      bucketName,
+    ),
+    message: SUPABASE_INIT_PROVIDER.inputs.bucketName.prompt.message,
+    validate: (value) =>
+      value ? undefined : "Storage bucket name is required",
+  });
   if (p.isCancel(selectedBucketName)) {
     process.exit(0);
   }

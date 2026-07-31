@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getHotUpdaterEnvValue,
+  getHotUpdaterInitInputEnv,
   readHotUpdaterEnv,
   readHotUpdaterInitEnv,
 } from "./hotUpdaterEnv";
@@ -173,6 +174,25 @@ describe("readHotUpdaterEnv", () => {
         HOT_UPDATER_INIT_BUILD: "bare",
         HOT_UPDATER_INIT_PROVIDER: "aws",
       },
+    });
+  });
+});
+
+describe("getHotUpdaterInitInputEnv", () => {
+  const initEnv = {
+    env: { VALUE: "explicit" },
+    managedEnv: { VALUE: "saved" },
+  };
+
+  it("uses saved values as interactive defaults", () => {
+    expect(getHotUpdaterInitInputEnv(initEnv, false)).toEqual({
+      VALUE: "saved",
+    });
+  });
+
+  it("uses explicit inputs for non-interactive replay", () => {
+    expect(getHotUpdaterInitInputEnv(initEnv, true)).toEqual({
+      VALUE: "explicit",
     });
   });
 });

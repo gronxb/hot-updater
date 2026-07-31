@@ -123,6 +123,7 @@ describe("resolveSupabaseInitInputs", () => {
 describe("Supabase non-interactive inputs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.text.mockResolvedValue("update-server");
     mocks.group.mockImplementation(
       async (prompts: Record<string, () => Promise<string>>) => ({
         accessToken: await prompts.accessToken?.(),
@@ -192,6 +193,25 @@ describe("Supabase non-interactive inputs", () => {
       },
     );
     expect(mocks.password).not.toHaveBeenCalled();
+  });
+
+  it("prefills the saved function name while retaining its placeholder", async () => {
+    mocks.select.mockResolvedValue("cli-login");
+    mocks.execa.mockResolvedValue({ stdout: "" });
+    mocks.text.mockResolvedValue("edited-function");
+
+    const deploymentInputs = await inputSupabaseDeploymentInputs({
+      functionName: "saved-function",
+      nonInteractive: false,
+    });
+
+    expect(mocks.text).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "saved-function",
+        placeholder: "update-server",
+      }),
+    );
+    expect(deploymentInputs.functionName).toBe("edited-function");
   });
 
   it("shows the token dashboard link when personal access token authentication is selected", async () => {

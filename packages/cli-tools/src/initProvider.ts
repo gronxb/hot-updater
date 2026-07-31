@@ -22,6 +22,13 @@ export type InitProviderInputDefinition = {
   readonly validate?: (value: string | undefined) => boolean;
 };
 
+type InitProviderTextPromptDefinition = {
+  readonly defaultValue?: string;
+  readonly message: string;
+  readonly placeholder?: string;
+  readonly type: "text";
+};
+
 type InitProviderInputsDefinition = Readonly<
   Record<string, InitProviderInputDefinition>
 >;
@@ -46,6 +53,14 @@ export const shouldAutoSelectOnlyInitResource = ({
   readonly availableResourceCount: number;
   readonly savedIdentifier?: string;
 }) => savedIdentifier === undefined && availableResourceCount === 1;
+
+export const getInitProviderTextPromptValues = (
+  prompt: InitProviderTextPromptDefinition,
+  savedValue?: string,
+) => ({
+  initialValue: savedValue ?? prompt.defaultValue,
+  placeholder: prompt.placeholder ?? prompt.defaultValue,
+});
 
 export const resolveInitProviderInput = (
   env: Readonly<Record<string, string>>,

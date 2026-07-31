@@ -2,7 +2,9 @@ import {
   colors,
   confirmInitInputPersistence,
   ensureInstallPackages,
+  getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
+  getInitProviderTextPromptValues,
   link,
   makeEnv,
   p,
@@ -45,11 +47,10 @@ const isAwsRegion = (value: string | undefined): value is AwsRegion => {
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
-  const { env: existingEnv, managedEnv } = await readHotUpdaterInitEnv(
-    process.cwd(),
-    envFile,
-  );
-  const savedInputs = resolveAwsInitInputs(existingEnv);
+  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const { managedEnv } = initEnvSources;
+  const providerEnv = getHotUpdaterInitInputEnv(initEnvSources, nonInteractive);
+  const savedInputs = resolveAwsInitInputs(providerEnv);
   assertAwsNonInteractiveInputs(savedInputs, nonInteractive);
 
   const isAwsCliInstalled = await checkIfAwsCliInstalled();
@@ -78,7 +79,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
 
   const { awsProfile, configAuthMode, credentials, mode } =
-    await resolveAwsAuth(existingEnv, nonInteractive);
+    await resolveAwsAuth(providerEnv, nonInteractive);
   const resolvedAuthInputs = {
     ...savedInputs,
     accessKeyId:
@@ -162,11 +163,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
           ? createSavedBucket
             ? Promise.resolve(savedBucketName)
             : p.text({
+                ...getInitProviderTextPromptValues(
+                  AWS_INIT_PROVIDER.inputs.bucketName.prompt,
+                  savedBucketName,
+                ),
                 message: AWS_INIT_PROVIDER.inputs.bucketName.prompt.message,
-                defaultValue:
-                  AWS_INIT_PROVIDER.inputs.bucketName.prompt.defaultValue,
-                placeholder:
-                  AWS_INIT_PROVIDER.inputs.bucketName.prompt.placeholder,
                 validate: (value) =>
                   value ? undefined : "S3 bucket name is required",
               })
@@ -190,14 +191,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
               )?.region,
             ),
       lambdaName: () =>
-        savedLambdaName
+        nonInteractive && savedLambdaName
           ? Promise.resolve(savedLambdaName)
           : p.text({
+              ...getInitProviderTextPromptValues(
+                AWS_INIT_PROVIDER.inputs.lambdaName.prompt,
+                savedLambdaName,
+              ),
               message: AWS_INIT_PROVIDER.inputs.lambdaName.prompt.message,
-              defaultValue:
-                AWS_INIT_PROVIDER.inputs.lambdaName.prompt.defaultValue,
-              placeholder:
-                AWS_INIT_PROVIDER.inputs.lambdaName.prompt.placeholder,
               validate: (value) =>
                 value ? undefined : "Lambda function name is required",
             }),

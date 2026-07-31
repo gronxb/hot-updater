@@ -95,6 +95,7 @@ export const initProvider = {
       requirementHint: "required for account auth",
       prompt: {
         message: "Enter your AWS Access Key ID",
+        placeholder: "AKIA...",
         type: "text",
       },
     },

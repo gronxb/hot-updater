@@ -4,6 +4,7 @@ import {
   fromSSO,
 } from "@aws-sdk/credential-providers";
 import {
+  getInitProviderTextPromptValues,
   MissingInitInputsError,
   p,
   resolveInitProviderInput,
@@ -59,7 +60,12 @@ export const resolveAwsAuth = async (
     inputDefinitions.secretAccessKey,
   );
 
-  if (mode === "account" && savedAccessKeyId && savedSecretAccessKey) {
+  if (
+    nonInteractive &&
+    mode === "account" &&
+    savedAccessKeyId &&
+    savedSecretAccessKey
+  ) {
     return {
       awsProfile: null,
       configAuthMode: { mode: "account" },
@@ -100,17 +106,16 @@ export const resolveAwsAuth = async (
         if (results.mode !== "shared-profile" && results.mode !== "sso") {
           return Promise.resolve(undefined);
         }
-        if (savedProfile) {
+        if (nonInteractive && savedProfile) {
           return Promise.resolve(savedProfile);
         }
+        const prompt = inputDefinitions.profile.prompt;
         return p.text({
-          message: inputDefinitions.profile.prompt.message,
-          defaultValue:
-            process.env.AWS_PROFILE ??
-            inputDefinitions.profile.prompt.defaultValue,
-          placeholder:
-            process.env.AWS_PROFILE ??
-            inputDefinitions.profile.prompt.placeholder,
+          ...getInitProviderTextPromptValues(
+            prompt,
+            savedProfile ?? process.env.AWS_PROFILE,
+          ),
+          message: prompt.message,
           validate: (value) =>
             (value ?? "").trim() ? undefined : "AWS profile name is required",
         });
@@ -119,11 +124,13 @@ export const resolveAwsAuth = async (
         if (results.mode !== "account") {
           return Promise.resolve(undefined);
         }
-        if (savedAccessKeyId) {
+        if (nonInteractive && savedAccessKeyId) {
           return Promise.resolve(savedAccessKeyId);
         }
+        const prompt = inputDefinitions.accessKeyId.prompt;
         return p.text({
-          message: inputDefinitions.accessKeyId.prompt.message,
+          ...getInitProviderTextPromptValues(prompt, savedAccessKeyId),
+          message: prompt.message,
           validate: (value) =>
             value ? undefined : "Access Key ID is required",
         });

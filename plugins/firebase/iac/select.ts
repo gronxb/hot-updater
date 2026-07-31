@@ -2,6 +2,7 @@ import {
   type BuildType,
   ConfigBuilder,
   createHotUpdaterConfigScaffoldFromBuilder,
+  getInitProviderTextPromptValues,
   type HotUpdaterConfigScaffold,
   link,
   makeEnv,
@@ -323,8 +324,10 @@ export const initFirebaseUser = async (
     process.exit(1);
   }
   if (projectId === createKey) {
+    const prompt = FIREBASE_INIT_PROVIDER.inputs.projectId.prompt;
     const newProjectId = await p.text({
-      message: "Enter the Firebase project ID:",
+      ...getInitProviderTextPromptValues(prompt, preferredProjectId),
+      message: prompt.message,
       validate: (value) =>
         isFirebaseProjectId(value)
           ? undefined
