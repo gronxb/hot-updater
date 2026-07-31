@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --
 import {
   Command,
   InvalidArgumentError,
@@ -28,6 +28,8 @@ import {
   normalizeRolloutPercentage,
 } from "@/commands/deploy";
 import { init } from "@/commands/init";
+import { initHelp } from "@/commands/initHelp";
+import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
@@ -86,7 +88,7 @@ program
     new Option(
       "--provider <provider>",
       "provider to use; skips the prompt",
-    ).choices(["cloudflare", "aws", "supabase", "firebase"]),
+    ).choices(INIT_PROVIDER_NAMES),
   )
   .addOption(
     new Option(
@@ -94,6 +96,11 @@ program
       "build plugin to use; skips the prompt",
     ).choices(["bare", "rock", "expo"]),
   )
+  .option(
+    "--env-file <path>",
+    "load saved init inputs and fail if any are missing",
+  )
+  .addHelpText("after", initHelp)
   .action((options) => init(options));
 
 program
@@ -310,8 +317,11 @@ program
         try {
           return normalizeRolloutPercentage(value);
         } catch (error) {
-          p.log.error((error as Error).message);
-          process.exit(1);
+          if (error instanceof Error) {
+            p.log.error(error.message);
+            process.exit(1);
+          }
+          throw error;
         }
       })
       .default(100),

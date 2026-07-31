@@ -28,7 +28,7 @@ import { supportsAnalytics } from "./db/types";
 import { createHotUpdater } from "./index";
 
 const db = new PGlite();
-const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 const api = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
   basePath: "/hot-updater",

@@ -6,6 +6,38 @@
 
 - Add opt-in OTA analytics with the exact `UNCHANGED | UPDATE_APPLIED | RECOVERED` app-ready contract, persisted install/user identity helpers, and `/events` reporting from `HotUpdater.init({ analytics: true })`.
 
+## 0.35.9
+
+### Patch Changes
+
+- Updated dependencies [8688b1a]
+- Updated dependencies [f9bb26d]
+  - @hot-updater/cli-tools@0.35.9
+  - @hot-updater/core@0.35.9
+  - @hot-updater/js@0.35.9
+  - @hot-updater/plugin-core@0.35.9
+
+## 0.35.8
+
+### Patch Changes
+
+- 5eccd71: Serialize iOS old-architecture bridge teardown before reloading.
+- Updated dependencies [4f9fab2]
+  - @hot-updater/cli-tools@0.35.8
+  - @hot-updater/core@0.35.8
+  - @hot-updater/js@0.35.8
+  - @hot-updater/plugin-core@0.35.8
+
+## 0.35.7
+
+### Patch Changes
+
+- f166881: Preserve brotli decoder when Android minification is actived
+  - @hot-updater/cli-tools@0.35.7
+  - @hot-updater/core@0.35.7
+  - @hot-updater/js@0.35.7
+  - @hot-updater/plugin-core@0.35.7
+
 ## 0.35.6
 
 ### Patch Changes

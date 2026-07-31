@@ -1,6 +1,7 @@
 {
   "name": "@hot-updater/test-utils",
-  "version": "0.35.6",
+  "private": true,
+  "version": "0.35.9",
   "type": "module",
   "description": "Test utilities for Hot Updater packages",
   "sideEffects": false,
@@ -50,7 +51,8 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@types/node": "catalog:",
     "execa": "catalog:tools",
-    "typescript": "6.0.2",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "vitest": "catalog:",
     "workspace-tools": "^0.41.7"
   },

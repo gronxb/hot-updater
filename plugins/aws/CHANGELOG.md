@@ -11,6 +11,36 @@
   `AwsLambdaEdgeStorageConfig` exports. Use `s3Storage` and `S3StorageConfig`
   from `@hot-updater/aws/lambda`.
 
+## 0.35.9
+
+### Patch Changes
+
+- f9bb26d: Declare init inputs in each provider package through a shared contract, ask
+  once before saving credential inputs, and support prompt-free infrastructure
+  reconciliation with `init --env-file .env.hotupdater`.
+- Updated dependencies [8688b1a]
+- Updated dependencies [f9bb26d]
+  - @hot-updater/cli-tools@0.35.9
+  - @hot-updater/server@0.35.9
+  - @hot-updater/plugin-core@0.35.9
+
+## 0.35.8
+
+### Patch Changes
+
+- Updated dependencies [4f9fab2]
+  - @hot-updater/cli-tools@0.35.8
+  - @hot-updater/server@0.35.8
+  - @hot-updater/plugin-core@0.35.8
+
+## 0.35.7
+
+### Patch Changes
+
+- @hot-updater/cli-tools@0.35.7
+- @hot-updater/server@0.35.7
+- @hot-updater/plugin-core@0.35.7
+
 ## 0.35.6
 
 ### Patch Changes

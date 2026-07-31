@@ -24,7 +24,7 @@ const db = new PGlite(dbPath);
 await db.waitReady;
 
 // Initialize Kysely with PGlite dialect
-const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 
 // Create Hot Updater API
 export const hotUpdater = createHotUpdater({

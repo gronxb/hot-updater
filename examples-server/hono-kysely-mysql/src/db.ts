@@ -34,7 +34,7 @@ const dialectPool = pool as unknown as ConstructorParameters<
 >[0]["pool"];
 
 // Initialize Kysely with MySQL dialect
-export const kysely = new Kysely({
+export const kysely = new Kysely<object>({
   dialect: new MysqlDialect({
     pool: dialectPool,
   }),

@@ -6,6 +6,7 @@ export default defineConfig({
     index: "./src/index.ts",
   },
   deps: {
+    alwaysBundle: [/^@hot-updater\/(aws|cloudflare|firebase|supabase)\/init$/],
     neverBundle: ["@expo/fingerprint"],
     onlyBundle: false,
   },

@@ -13,6 +13,27 @@
 - Add the forward-only `sql/migrations/0.38.0-bundle-events.sql` migration for
   PostgreSQL installations created before 0.38.0.
 
+## 0.35.9
+
+### Patch Changes
+
+- @hot-updater/core@0.35.9
+- @hot-updater/plugin-core@0.35.9
+
+## 0.35.8
+
+### Patch Changes
+
+- @hot-updater/core@0.35.8
+- @hot-updater/plugin-core@0.35.8
+
+## 0.35.7
+
+### Patch Changes
+
+- @hot-updater/core@0.35.7
+- @hot-updater/plugin-core@0.35.7
+
 ## 0.35.6
 
 ### Patch Changes

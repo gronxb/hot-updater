@@ -86,7 +86,7 @@ it("preserves MySQL v0.37 rows and constraints while upgrading to v0.38", async 
   await admin.end();
 
   const pool = createPool({ ...connection, database: "hot_updater_v038_test" });
-  const db = new Kysely({
+  const db = new Kysely<object>({
     dialect: new MysqlDialect({
       pool,
     }),

@@ -16,7 +16,7 @@ import { createHotUpdater } from "./index";
 const BASE_URL = "http://localhost:3105";
 const AS_OF_MS = Date.UTC(2026, 6, 18, 12);
 const database = new PGlite();
-const kysely = new Kysely({ dialect: new PGliteDialect(database) });
+const kysely = new Kysely<object>({ dialect: new PGliteDialect(database) });
 const sourceApi = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
   basePath: "/hot-updater",

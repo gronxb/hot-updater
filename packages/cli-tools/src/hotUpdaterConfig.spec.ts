@@ -130,7 +130,7 @@ describe("writeHotUpdaterConfig", () => {
     );
   });
 
-  it("merges managed provider fields while preserving existing supabase values", async () => {
+  it("merges managed provider fields through a satisfies wrapper while preserving existing values", async () => {
     const tempDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-config-supabase-"),
     );
@@ -157,7 +157,7 @@ export default defineConfig({
   database: supabaseDatabase({
     supabaseUrl: process.env.CUSTOM_SUPABASE_URL!,
   }),
-});
+} satisfies Parameters<typeof defineConfig>[0]);
 `,
       "utf-8",
     );
@@ -169,6 +169,9 @@ export default defineConfig({
     const updatedConfig = await fs.readFile(configPath, "utf-8");
 
     expect(result.status).toBe("merged");
+    expect(updatedConfig).toContain(
+      "satisfies Parameters<typeof defineConfig>[0]",
+    );
     expect(updatedConfig).toContain(
       "supabaseUrl: process.env.CUSTOM_SUPABASE_URL!",
     );
