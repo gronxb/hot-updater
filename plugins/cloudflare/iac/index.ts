@@ -3,32 +3,57 @@ import fs from "fs/promises";
 import path from "path";
 
 import {
-  type BuildType,
   ConfigBuilder,
+  confirmInitInputPersistence,
   copyDirToTmp,
   createHotUpdaterConfigScaffoldFromBuilder,
+  getHotUpdaterInitInputEnv,
+  getInitProviderEnvVars,
+  getInitProviderTextPromptValues,
   getCwd,
   type HotUpdaterConfigScaffold,
   link,
   makeEnv,
   type ProviderConfig,
   p,
+  readHotUpdaterInitEnv,
+  type RunInitOptions,
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { Cloudflare } from "cloudflare";
-import dayjs from "dayjs";
-import { execa } from "execa";
 
 import { createWrangler } from "../src/utils/createWrangler";
-import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
+import {
+  validateCloudflareApiToken,
+  verifyCloudflareApiTokenIdentity,
+} from "./cloudflareApiToken";
+import { resolveCloudflareReplayD1Database } from "./cloudflareD1Selection";
+import { resolveCloudflareInfrastructureApiToken } from "./cloudflareInfrastructureAuth";
+import {
+  CLOUDFLARE_INIT_PERMISSION,
+  type CloudflareCredentialSource,
+  runCloudflareApiRequest,
+  toCloudflareApiError,
+  toCloudflareDeploymentError,
+} from "./cloudflareInitErrors";
+import {
+  assertCloudflareNonInteractiveInputs,
+  resolveR2Privacy,
+  resolveCloudflareInitInputs,
+  shouldUpdateR2ManagedDomain,
+} from "./cloudflareInitInputs";
+import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
+import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
 import {
   createManagedAppSnippet,
   createManagedWorkerVariables,
   provisionManagedApiKey,
 } from "./managedApiKey";
 
-const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
+const getConfigScaffold = (
+  build: RunInitOptions["build"],
+): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
     configString: `r2Storage({
@@ -57,118 +82,25 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   );
 };
 
-const HOT_UPDATER_ENV_PATH = ".env.hotupdater";
-
-type R2ApiCredentials = {
-  accessKeyId: string;
-  secretAccessKey: string;
-};
-
-const unquoteEnvValue = (value: string) => {
-  const trimmed = value.trim();
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-
-  return trimmed;
-};
-
-const readHotUpdaterEnv = async (cwd: string) => {
-  const envPath = path.join(cwd, HOT_UPDATER_ENV_PATH);
-  const content = await fs.readFile(envPath, "utf-8").catch(() => "");
-  const env: Record<string, string> = {};
-
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
-      continue;
-    }
-
-    const [key, ...valueParts] = trimmed.split("=");
-    if (!key) {
-      continue;
-    }
-
-    env[key.trim()] = unquoteEnvValue(valueParts.join("="));
-  }
-
-  return env;
-};
-
-const getEnvValue = (env: Record<string, string>, key: string) => {
-  const value = process.env[key]?.trim() || env[key]?.trim();
-  return value || undefined;
-};
-
-const inputR2ApiCredentials = async ({
-  accountId,
-  bucketName,
-  accessKeyId,
-  secretAccessKey,
-}: {
-  accountId: string;
-  bucketName: string;
-  accessKeyId?: string;
-  secretAccessKey?: string;
-}): Promise<R2ApiCredentials> => {
-  p.log.step(
-    `R2 API Tokens dashboard: ${link(
-      `https://dash.cloudflare.com/${accountId}/r2/api-tokens`,
-    )}`,
-  );
-  p.log.step("Required permission: Object Read & Write");
-  p.log.step(`Target bucket: ${bucketName}`);
-
-  let resolvedAccessKeyId = accessKeyId;
-  if (!resolvedAccessKeyId) {
-    const inputR2AccessKeyId = await p.password({
-      message: "Enter the R2 Access Key ID",
-    });
-
-    if (p.isCancel(inputR2AccessKeyId)) {
-      process.exit(1);
-    }
-
-    resolvedAccessKeyId = inputR2AccessKeyId;
-  }
-
-  let resolvedSecretAccessKey = secretAccessKey;
-  if (!resolvedSecretAccessKey) {
-    const inputR2SecretAccessKey = await p.password({
-      message: "Enter the R2 Secret Access Key",
-    });
-
-    if (p.isCancel(inputR2SecretAccessKey)) {
-      process.exit(1);
-    }
-
-    resolvedSecretAccessKey = inputR2SecretAccessKey;
-  }
-
-  return {
-    accessKeyId: resolvedAccessKeyId,
-    secretAccessKey: resolvedSecretAccessKey,
-  };
-};
-
 const deployWorker = async (
-  oauth_token: string,
+  apiToken: string,
   accountId: string,
   {
+    credentialSource,
     d1DatabaseId,
     d1DatabaseName,
     apiKeySha256,
+    nonInteractive,
     r2BucketName,
     workerName,
   }: {
+    credentialSource: CloudflareCredentialSource;
     d1DatabaseId: string;
     d1DatabaseName: string;
     apiKeySha256: string;
+    nonInteractive: boolean;
     r2BucketName: string;
-    workerName?: string;
+    workerName: string;
   },
 ) => {
   const cwd = getCwd();
@@ -216,9 +148,10 @@ const deployWorker = async (
 
     const wrangler = await createWrangler({
       stdio: "inherit",
-      cloudflareApiToken: oauth_token,
+      cloudflareApiToken: apiToken,
       cwd: workerRoot,
       accountId: accountId,
+      nonInteractive,
     });
 
     const migrationPath = await path.join(workerRoot, "migrations");
@@ -238,71 +171,57 @@ const deployWorker = async (
 
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    let resolvedWorkerName = workerName;
-    if (resolvedWorkerName) {
-      p.log.info("Using existing Cloudflare Worker name.");
-    } else {
-      const inputWorkerName = await p.text({
-        message: "Enter the name of the worker",
-        defaultValue: "hot-updater",
-        placeholder: "hot-updater",
-      });
-      if (p.isCancel(inputWorkerName)) {
-        process.exit(1);
-      }
-      resolvedWorkerName = inputWorkerName;
-    }
-
-    await wrangler("deploy", "--name", resolvedWorkerName);
-    return resolvedWorkerName;
+    await wrangler("deploy", "--name", workerName);
+    return workerName;
   } catch (error) {
-    throw new Error("Failed to deploy worker", { cause: error });
+    if (error instanceof Error) {
+      throw toCloudflareDeploymentError(error, credentialSource);
+    }
+    throw new Error(String(error));
   } finally {
     await removeTmpDir();
   }
 };
 
-export const runInit = async ({ build }: { build: BuildType }) => {
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cwd = getCwd();
   const managedApiKey = await provisionManagedApiKey(cwd);
-  const existingEnv = await readHotUpdaterEnv(cwd);
+  const nonInteractive = envFile !== undefined;
+  const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
+  const { managedEnv } = initEnvSources;
+  const existingInputs = resolveCloudflareInitInputs(
+    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
+  );
+  assertCloudflareNonInteractiveInputs(existingInputs, nonInteractive);
+  const {
+    accessKeyId: existingR2AccessKeyId,
+    accountId: existingAccountId,
+    apiToken: existingApiToken,
+    bucketName: existingBucketName,
+    d1DatabaseId: existingD1DatabaseId,
+    d1DatabaseName: existingD1DatabaseName,
+    r2Private: savedPrivateSetting,
+    secretAccessKey: existingR2SecretAccessKey,
+    workerName: existingWorkerName,
+  } = existingInputs;
 
-  let auth = getWranglerLoginAuthToken();
-
-  if (!auth || dayjs(auth?.expiration_time).isBefore(dayjs())) {
-    await execa(
-      "npx",
-      [
-        "wrangler",
-        "login",
-        "--scopes",
-        "account:read",
-        "user:read",
-        "d1:write",
-        "workers:write",
-        "workers_scripts:write",
-      ],
-      { cwd },
-    );
-    auth = getWranglerLoginAuthToken();
-  }
-  if (!auth) {
-    throw new Error("'npx wrangler login' is required to use this command");
-  }
+  const infrastructureCredentialSource: CloudflareCredentialSource = {
+    kind: "wrangler-oauth",
+  };
+  const infrastructureApiToken = await resolveCloudflareInfrastructureApiToken({
+    cwd,
+    nonInteractive,
+  });
 
   const cf = new Cloudflare({
-    apiToken: auth.oauth_token,
+    apiToken: infrastructureApiToken,
   });
 
   const createKey = `create/${Math.random().toString(36).substring(2, 15)}`;
 
-  const existingAccountId = getEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID",
-  );
-
-  let accountId = existingAccountId;
-  if (accountId) {
+  let accountId: string;
+  if (nonInteractive && existingAccountId) {
+    accountId = existingAccountId;
     p.log.info("Using existing Cloudflare account ID.");
   } else {
     const accounts: { id: string; name: string }[] = [];
@@ -321,15 +240,24 @@ export const runInit = async ({ build }: { build: BuildType }) => {
           },
         },
       ]);
-    } catch (e) {
-      if (e instanceof Error) {
-        p.log.error(e.message);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw toCloudflareApiError(error, infrastructureCredentialSource);
       }
-      throw e;
+      throw new Error(String(error));
     }
 
+    const savedAccount = accounts.find(
+      (account) => account.id === existingAccountId,
+    );
+    if (existingAccountId && !savedAccount) {
+      p.log.warn(
+        "Saved Cloudflare account was not found. Select an account again.",
+      );
+    }
     const selectedAccountId = await p.select({
-      message: "Account List",
+      initialValue: savedAccount?.id ?? accounts[0]?.id,
+      message: CLOUDFLARE_INIT_PROVIDER.inputs.accountId.prompt.message,
       options: accounts.map((account) => ({
         value: account.id,
         label: `${account.name} (${account.id})`,
@@ -343,189 +271,103 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     accountId = selectedAccountId;
   }
 
-  const existingApiToken = getEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_API_TOKEN",
-  );
-  let apiToken = existingApiToken;
-  if (apiToken) {
-    p.log.info("Using existing Cloudflare API token.");
-  } else {
-    p.log.step(
-      `D1 API Token dashboard: ${link(
-        `https://dash.cloudflare.com/${accountId}/api-tokens`,
-      )}`,
-    );
-    p.log.step("Required permission: D1 Edit");
-    p.log.step("Used for bundle metadata writes after init.");
+  const availableBuckets: { name: string }[] = [];
+  try {
+    await p.tasks([
+      {
+        title: "Checking R2 Buckets...",
+        task: async () => {
+          const buckets =
+            (
+              await cf.r2.buckets.list({
+                account_id: accountId,
+              })
+            ).buckets ?? [];
 
-    const inputApiToken = await p.password({
-      message: "Enter the D1 API Token",
-    });
-
-    if (p.isCancel(inputApiToken)) {
-      process.exit(1);
+          availableBuckets.push(
+            ...buckets.flatMap((bucket) =>
+              bucket.name ? [{ name: bucket.name }] : [],
+            ),
+          );
+        },
+      },
+    ]);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw toCloudflareApiError(error, infrastructureCredentialSource);
     }
-
-    apiToken = inputApiToken;
-
-    if (!apiToken) {
-      p.log.warn(
-        "Skipping API Token. You can set it later in .env HOT_UPDATER_CLOUDFLARE_API_TOKEN file.",
-      );
-    }
+    throw new Error(String(error));
   }
 
-  const existingBucketName = getEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME",
+  const hasExistingBucket = availableBuckets.some(
+    (bucket) => bucket.name === existingBucketName,
   );
-
+  let createBucket = false;
   let selectedBucketName: string;
-  if (existingBucketName) {
+  if (nonInteractive && existingBucketName && hasExistingBucket) {
     selectedBucketName = existingBucketName;
-    p.log.info("Using existing Cloudflare R2 bucket name.");
+    p.log.info("Using existing Cloudflare R2 bucket.");
+  } else if (nonInteractive && existingBucketName) {
+    selectedBucketName = existingBucketName;
+    createBucket = true;
   } else {
-    const availableBuckets: { name: string }[] = [];
-    try {
-      await p.tasks([
+    if (existingBucketName && !hasExistingBucket) {
+      p.log.warn(
+        "Saved Cloudflare R2 bucket was not found. Select a bucket again.",
+      );
+    }
+    const selectedR2BucketName = await p.select({
+      initialValue: hasExistingBucket
+        ? existingBucketName
+        : availableBuckets[0]?.name,
+      message: "R2 List",
+      options: [
+        ...availableBuckets.map((bucket) => ({
+          value: bucket.name,
+          label: bucket.name,
+        })),
         {
-          title: "Checking R2 Buckets...",
-          task: async () => {
-            const buckets =
-              (
-                await cf.r2.buckets.list({
-                  account_id: accountId,
-                })
-              ).buckets ?? [];
-
-            availableBuckets.push(
-              ...buckets
-                .filter((bucket) => bucket.name)
-                .map((bucket) => ({
-                  name: bucket.name!,
-                })),
-            );
-          },
+          value: createKey,
+          label: "Create New R2 Bucket",
         },
-      ]);
-    } catch (e) {
-      if (e instanceof Error) {
-        p.log.error(e.message);
-      }
-      throw e;
+      ],
+    });
+
+    if (p.isCancel(selectedR2BucketName)) {
+      process.exit(1);
     }
-
-    if (availableBuckets.length === 1) {
-      selectedBucketName = availableBuckets[0].name;
-      p.log.info("Using the only Cloudflare R2 bucket.");
-    } else {
-      const selectedR2BucketName = await p.select({
-        message: "R2 List",
-        options: [
-          ...availableBuckets.map((bucket) => ({
-            value: bucket.name,
-            label: bucket.name,
-          })),
-          {
-            value: createKey,
-            label: "Create New R2 Bucket",
-          },
-        ],
-      });
-
-      if (p.isCancel(selectedR2BucketName)) {
-        process.exit(1);
-      }
-
-      selectedBucketName = selectedR2BucketName;
-    }
-
-    if (selectedBucketName === createKey) {
+    if (selectedR2BucketName === createKey) {
+      const prompt = CLOUDFLARE_INIT_PROVIDER.inputs.bucketName.prompt;
       const name = await p.text({
-        message: "Enter the name of the new R2 Bucket",
+        ...getInitProviderTextPromptValues(prompt, existingBucketName),
+        message: prompt.message,
+        validate: (value) => (value ? undefined : "R2 bucket name is required"),
       });
       if (p.isCancel(name)) {
         process.exit(1);
       }
-      const newR2 = await cf.r2.buckets.create({
-        account_id: accountId,
-        name,
-      });
-      if (!newR2.name) {
-        throw new Error("Failed to create new R2 Bucket");
-      }
-
-      selectedBucketName = newR2.name;
+      selectedBucketName = name;
+      createBucket = true;
+    } else {
+      selectedBucketName = selectedR2BucketName;
     }
   }
-  p.log.info(`Selected R2: ${selectedBucketName}`);
 
-  const existingR2AccessKeyId = getEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID",
-  );
-  const existingR2SecretAccessKey = getEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY",
-  );
-
-  let r2AccessKeyId = existingR2AccessKeyId;
-  let r2SecretAccessKey = existingR2SecretAccessKey;
-
-  if (r2AccessKeyId && r2SecretAccessKey) {
-    p.log.info("Using existing Cloudflare R2 API credentials.");
-  } else if (r2AccessKeyId || r2SecretAccessKey) {
-    p.log.warn("Existing Cloudflare R2 API credentials are incomplete.");
-    const credentials = await inputR2ApiCredentials({
-      accountId,
-      bucketName: selectedBucketName,
-      accessKeyId: r2AccessKeyId,
-      secretAccessKey: r2SecretAccessKey,
-    });
-    r2AccessKeyId = credentials.accessKeyId;
-    r2SecretAccessKey = credentials.secretAccessKey;
-  } else {
-    const credentials = await inputR2ApiCredentials({
-      accountId,
-      bucketName: selectedBucketName,
-    });
-    r2AccessKeyId = credentials.accessKeyId;
-    r2SecretAccessKey = credentials.secretAccessKey;
-  }
-
-  //
-
-  const domains = existingBucketName
-    ? { enabled: false }
-    : await cf.r2.buckets.domains.managed.list(selectedBucketName, {
-        account_id: accountId,
-      });
-
-  if (domains.enabled) {
-    const isPrivate = await p.confirm({
-      message: "Make R2 bucket private?",
-    });
-
-    if (isPrivate) {
-      try {
-        await p.tasks([
-          {
-            title: "Making R2 bucket private...",
-            task: async () => {
-              await cf.r2.buckets.domains.managed.update(selectedBucketName, {
-                account_id: accountId,
-                enabled: false,
-              });
-            },
-          },
-        ]);
-      } catch (e) {
-        if (e instanceof Error) {
-          p.log.error(e.message);
-        }
-        throw e;
+  let managedDomainEnabled: boolean | undefined;
+  if (!createBucket) {
+    try {
+      const domains = await cf.r2.buckets.domains.managed.list(
+        selectedBucketName,
+        {
+          account_id: accountId,
+        },
+      );
+      managedDomainEnabled = domains.enabled;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw toCloudflareApiError(error, infrastructureCredentialSource);
       }
+      throw new Error(String(error));
     }
   }
 
@@ -538,43 +380,53 @@ export const runInit = async ({ build }: { build: BuildType }) => {
           const d1List =
             (await cf.d1.database.list({ account_id: accountId })).result ?? [];
           availableD1List.push(
-            ...d1List
-              .filter((d1) => d1.name || d1.uuid)
-              .map((d1) => ({
-                name: d1.name!,
-                uuid: d1.uuid!,
-              })),
+            ...d1List.flatMap((d1) =>
+              d1.name && d1.uuid ? [{ name: d1.name, uuid: d1.uuid }] : [],
+            ),
           );
         },
       },
     ]);
-  } catch (e) {
-    if (e instanceof Error) {
-      p.log.error(e.message);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw toCloudflareApiError(error, infrastructureCredentialSource);
     }
-    throw e;
+    throw new Error(String(error));
   }
 
-  const existingD1DatabaseId = getEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID",
+  const existingD1Database = availableD1List.find(
+    (d1) =>
+      d1.uuid === existingD1DatabaseId || d1.name === existingD1DatabaseName,
   );
-  const hasExistingD1Database = availableD1List.some(
-    (d1) => d1.uuid === existingD1DatabaseId,
-  );
-
-  let selectedD1DatabaseId: string;
-  if (existingD1DatabaseId && hasExistingD1Database) {
-    selectedD1DatabaseId = existingD1DatabaseId;
-    p.log.info("Using existing Cloudflare D1 database ID.");
+  let createD1Database = false;
+  let selectedD1DatabaseId: string | undefined;
+  let d1DatabaseName: string;
+  if (nonInteractive && existingD1DatabaseId && existingD1DatabaseName) {
+    const replayResolution = resolveCloudflareReplayD1Database({
+      availableDatabases: availableD1List,
+      databaseId: existingD1DatabaseId,
+      databaseName: existingD1DatabaseName,
+    });
+    if (replayResolution.kind === "existing") {
+      selectedD1DatabaseId = replayResolution.database.uuid;
+      d1DatabaseName = replayResolution.database.name;
+      p.log.info("Using existing Cloudflare D1 database.");
+    } else {
+      createD1Database = true;
+      d1DatabaseName = replayResolution.name;
+    }
   } else {
-    if (existingD1DatabaseId) {
+    if (
+      (existingD1DatabaseId || existingD1DatabaseName) &&
+      !existingD1Database
+    ) {
       p.log.warn(
         "Existing Cloudflare D1 database ID was not found. Select a database again.",
       );
     }
 
     const selectedD1 = await p.select({
+      initialValue: existingD1Database?.uuid ?? availableD1List[0]?.uuid,
       message: "D1 List",
       options: [
         ...availableD1List.map((d1) => ({
@@ -592,72 +444,223 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       process.exit(1);
     }
 
-    selectedD1DatabaseId = selectedD1;
-  }
-
-  if (selectedD1DatabaseId === createKey) {
-    const name = await p.text({
-      message: "Enter the name of the new D1 Database",
-    });
-    if (p.isCancel(name)) {
-      process.exit(1);
+    if (selectedD1 === createKey) {
+      const prompt = CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.prompt;
+      const name = await p.text({
+        ...getInitProviderTextPromptValues(prompt, existingD1DatabaseName),
+        message: prompt.message,
+        validate: (value) =>
+          value ? undefined : "D1 database name is required",
+      });
+      if (p.isCancel(name)) {
+        process.exit(1);
+      }
+      createD1Database = true;
+      d1DatabaseName = name;
+    } else {
+      const selectedDatabase = availableD1List.find(
+        (d1) => d1.uuid === selectedD1,
+      );
+      if (!selectedDatabase) {
+        throw new Error("Failed to get D1 Database");
+      }
+      selectedD1DatabaseId = selectedDatabase.uuid;
+      d1DatabaseName = selectedDatabase.name;
+      p.log.info(`Selected D1: ${selectedD1DatabaseId}`);
     }
-    const newD1 = await cf.d1.database.create({
-      account_id: accountId,
-      name,
-    });
-    if (!newD1.uuid || !newD1.name) {
-      throw new Error("Failed to create new D1 Database");
-    }
-
-    selectedD1DatabaseId = newD1.uuid;
-    availableD1List.push({
-      name: newD1.name,
-      uuid: newD1.uuid,
-    });
-    p.log.info(`Created new D1 Database: ${newD1.name} (${newD1.uuid})`);
-  } else {
-    p.log.info(`Selected D1: ${selectedD1DatabaseId}`);
   }
 
-  const d1DatabaseName = availableD1List.find(
-    (d1) => d1.uuid === selectedD1DatabaseId,
-  )?.name;
-
-  if (!d1DatabaseName) {
-    throw new Error("Failed to get D1 Database name");
+  if (nonInteractive && existingR2AccessKeyId && existingR2SecretAccessKey) {
+    p.log.info("Using existing Cloudflare R2 API credentials.");
+  } else if (
+    nonInteractive &&
+    (existingR2AccessKeyId || existingR2SecretAccessKey)
+  ) {
+    p.log.warn("Existing Cloudflare R2 API credentials are incomplete.");
+  }
+  const initSecrets = await inputCloudflareInitSecrets({
+    accountId,
+    bucketName: selectedBucketName,
+    apiToken: existingApiToken,
+    accessKeyId: existingR2AccessKeyId,
+    secretAccessKey: existingR2SecretAccessKey,
+    workerName: existingWorkerName,
+    nonInteractive,
+  });
+  const { apiToken, accessKeyId, secretAccessKey, workerName } = initSecrets;
+  const privacyResolution = resolveR2Privacy({
+    createBucket,
+    managedDomainEnabled,
+    savedPrivateSetting,
+  });
+  const isPrivate =
+    nonInteractive && privacyResolution.kind === "resolved"
+      ? privacyResolution.isPrivate
+      : await p.confirm({
+          message: CLOUDFLARE_INIT_PROVIDER.inputs.r2Private.prompt.message,
+          initialValue:
+            privacyResolution.kind === "resolved"
+              ? privacyResolution.isPrivate
+              : true,
+        });
+  if (p.isCancel(isPrivate)) {
+    process.exit(1);
   }
 
-  const subdomains = await cf.workers.subdomains.get({
-    account_id: accountId,
+  const databaseCredentialSource: CloudflareCredentialSource = existingApiToken
+    ? envFile
+      ? { envFile, kind: "env-file" }
+      : { kind: "environment" }
+    : { kind: "prompt" };
+  const credentialClient = new Cloudflare({ apiToken });
+  await validateCloudflareApiToken({
+    accountId,
+    probes: [
+      {
+        check: "D1 database access",
+        request: () =>
+          credentialClient.d1.database.list({
+            account_id: accountId,
+          }),
+        requiredPermission: CLOUDFLARE_INIT_PERMISSION.d1,
+      },
+    ],
+    source: databaseCredentialSource,
+    verify: () =>
+      verifyCloudflareApiTokenIdentity({
+        accountId,
+        apiToken,
+        verifyAccountToken: (selectedAccountId) =>
+          credentialClient.accounts.tokens.verify({
+            account_id: selectedAccountId,
+          }),
+        verifyUserToken: () => credentialClient.user.tokens.verify(),
+      }),
   });
 
-  const existingWorkerName = getEnvValue(
-    existingEnv,
-    "HOT_UPDATER_CLOUDFLARE_WORKER_NAME",
-  );
-
-  const workerName = await deployWorker(auth.oauth_token, accountId, {
-    apiKeySha256: managedApiKey.sha256,
+  const resolvedInputs = {
+    ...existingInputs,
+    accessKeyId,
+    accountId,
+    apiToken,
+    bucketName: selectedBucketName,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
+    r2Private: String(isPrivate),
+    secretAccessKey,
+    workerName,
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv: managedEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: CLOUDFLARE_INIT_PROVIDER,
+  });
+  await makeEnv({
+    ...getInitProviderEnvVars({
+      includeConsentInputs: persistCredentialInputs,
+      inputs: resolvedInputs,
+      provider: CLOUDFLARE_INIT_PROVIDER,
+    }),
+  });
+
+  if (createBucket) {
+    const newR2 = await runCloudflareApiRequest({
+      request: () =>
+        cf.r2.buckets.create({
+          account_id: accountId,
+          name: selectedBucketName,
+        }),
+      source: infrastructureCredentialSource,
+    });
+    if (!newR2.name) {
+      throw new Error("Failed to create new R2 Bucket");
+    }
+    p.log.info(`Created R2: ${newR2.name}`);
+    const domains = await runCloudflareApiRequest({
+      request: () =>
+        cf.r2.buckets.domains.managed.list(selectedBucketName, {
+          account_id: accountId,
+        }),
+      source: infrastructureCredentialSource,
+    });
+    managedDomainEnabled = domains.enabled;
+  } else {
+    p.log.info(`Selected R2: ${selectedBucketName}`);
+  }
+
+  if (managedDomainEnabled === undefined) {
+    throw new Error("Failed to resolve the R2 managed domain state.");
+  }
+  if (
+    shouldUpdateR2ManagedDomain({
+      isPrivate,
+      managedDomainEnabled,
+    })
+  ) {
+    await p.tasks([
+      {
+        title: `Making R2 bucket ${isPrivate ? "private" : "public"}...`,
+        task: async () => {
+          await runCloudflareApiRequest({
+            request: () =>
+              cf.r2.buckets.domains.managed.update(selectedBucketName, {
+                account_id: accountId,
+                enabled: !isPrivate,
+              }),
+            source: infrastructureCredentialSource,
+          });
+        },
+      },
+    ]);
+  }
+
+  if (createD1Database) {
+    const newD1 = await runCloudflareApiRequest({
+      request: () =>
+        cf.d1.database.create({
+          account_id: accountId,
+          name: d1DatabaseName,
+        }),
+      source: infrastructureCredentialSource,
+    });
+    if (!newD1.uuid || !newD1.name) {
+      throw new Error("Failed to create the requested D1 Database");
+    }
+    selectedD1DatabaseId = newD1.uuid;
+    d1DatabaseName = newD1.name;
+    p.log.info(`Created D1 Database: ${newD1.name} (${newD1.uuid})`);
+  }
+  if (!selectedD1DatabaseId) {
+    throw new Error("Failed to resolve the D1 Database");
+  }
+  await makeEnv({
+    [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseId.envKey]: selectedD1DatabaseId,
+    [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
+  });
+
+  const subdomains = await runCloudflareApiRequest({
+    request: () =>
+      cf.workers.subdomains.get({
+        account_id: accountId,
+      }),
+    source: infrastructureCredentialSource,
+  });
+
+  await deployWorker(infrastructureApiToken, accountId, {
+    apiKeySha256: managedApiKey.sha256,
+    credentialSource: infrastructureCredentialSource,
+    d1DatabaseId: selectedD1DatabaseId,
+    d1DatabaseName,
+    nonInteractive,
     r2BucketName: selectedBucketName,
-    workerName: existingWorkerName,
+    workerName,
   });
 
   const configWriteResult = await writeHotUpdaterConfig(
     getConfigScaffold(build),
   );
 
-  await makeEnv({
-    HOT_UPDATER_CLOUDFLARE_API_TOKEN: apiToken,
-    HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: accountId,
-    HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: selectedBucketName,
-    HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: r2AccessKeyId,
-    HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY: r2SecretAccessKey,
-    HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: selectedD1DatabaseId,
-    HOT_UPDATER_CLOUDFLARE_WORKER_NAME: workerName,
-  });
   p.log.success("Generated '.env.hotupdater' file with Cloudflare settings.");
   if (configWriteResult.status === "created") {
     p.log.success(

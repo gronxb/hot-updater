@@ -1,15 +1,43 @@
-import type { BuildType } from "@hot-updater/cli-tools";
-import { HotUpdateDirUtil, p } from "@hot-updater/cli-tools";
+import type { BuildType, RunInitOptions } from "@hot-updater/cli-tools";
+import {
+  getHotUpdaterEnvValue,
+  getMissingInitInputs,
+  getMissingInitProviderInputs,
+  HotUpdateDirUtil,
+  InitError,
+  makeEnv,
+  MissingInitInputsError,
+  p,
+  readHotUpdaterInitEnv,
+  resolveInitProviderInputs,
+} from "@hot-updater/cli-tools";
 import { ExecaError } from "execa";
 
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
-import { appendToProjectRootGitignore } from "@/utils/git";
+import {
+  appendToProjectRootGitignore,
+  isProjectFileTracked,
+} from "@/utils/git";
 import { printBanner } from "@/utils/printBanner";
 
-import { PACKAGE_MAP, REQUIRED_PACKAGES } from "./initPackages";
+import {
+  type InitProvider,
+  INIT_PROVIDER_NAMES,
+  INIT_PROVIDER_PACKAGES,
+  isInitProvider,
+} from "./initProviders";
+
+const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
+const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
+const BUILD_PLUGIN_KEYS = ["bare", "rock", "expo"] as const;
+
+const REQUIRED_PACKAGES = {
+  dependencies: ["@hot-updater/react-native"],
+  devDependencies: ["dotenv"],
+};
 
 interface BuildPluginChoice {
-  name: string;
+  name: BuildType;
   label: string;
   hint?: string;
   dependencies: string[];
@@ -39,115 +67,129 @@ const BUILD_PLUGINS: Record<"bare" | "rock" | "expo", BuildPluginChoice> = {
   },
 };
 
-const PROVIDER_LABELS = {
-  cloudflare: "Cloudflare D1 + R2 + Worker",
-  aws: "AWS S3 + Lambda@Edge",
-  supabase: "Supabase",
-  firebase: "Firebase",
-} as const;
-
 type BuildPluginKey = keyof typeof BUILD_PLUGINS;
-type Provider = keyof typeof PACKAGE_MAP;
 
 export interface InitOptions {
-  build?: BuildPluginKey;
-  provider?: Provider;
+  readonly build?: BuildPluginKey;
+  readonly envFile?: string;
+  readonly provider?: InitProvider;
 }
 
-const resolveBuildPlugin = async (flag?: BuildPluginKey) => {
-  if (flag) {
-    return BUILD_PLUGINS[flag];
-  }
-
-  const selected = await p.select<BuildPluginChoice>({
-    message: "Select a build plugin",
-    options: Object.values(BUILD_PLUGINS).map((plugin) => ({
-      value: plugin,
-      label: plugin.label,
-      hint: plugin.hint,
-    })),
-  });
-
-  if (p.isCancel(selected)) {
-    process.exit(0);
-  }
-
-  return selected;
+const isBuildPluginKey = (
+  value: string | undefined,
+): value is BuildPluginKey => {
+  return value !== undefined && Object.keys(BUILD_PLUGINS).includes(value);
 };
 
-const resolveProvider = async (flag?: Provider): Promise<Provider> => {
-  if (flag) {
-    return flag;
+const collectInitChoices = async (
+  options: InitOptions,
+): Promise<{ build: BuildPluginKey; provider: InitProvider }> => {
+  const { env: existingEnv } = await readHotUpdaterInitEnv(
+    process.cwd(),
+    options.envFile,
+  );
+  const savedBuild = getHotUpdaterEnvValue(existingEnv, INIT_BUILD_ENV_KEY);
+  const savedProvider = getHotUpdaterEnvValue(
+    existingEnv,
+    INIT_PROVIDER_ENV_KEY,
+  );
+  const build =
+    options.build ?? (isBuildPluginKey(savedBuild) ? savedBuild : null);
+  const provider =
+    options.provider ?? (isInitProvider(savedProvider) ? savedProvider : null);
+
+  if (options.envFile !== undefined) {
+    const missingInputs = [
+      ...getMissingInitInputs({
+        [INIT_BUILD_ENV_KEY]: build ?? undefined,
+        [INIT_PROVIDER_ENV_KEY]: provider ?? undefined,
+      }),
+      ...(provider
+        ? getMissingInitProviderInputs({
+            inputs: resolveInitProviderInputs(
+              existingEnv,
+              INIT_PROVIDER_PACKAGES[provider].definition,
+            ),
+            preflightOnly: true,
+            provider: INIT_PROVIDER_PACKAGES[provider].definition,
+          })
+        : []),
+    ];
+    if (missingInputs.length > 0) {
+      throw new MissingInitInputsError([...new Set(missingInputs)]);
+    }
   }
 
-  const selected = await p.select<Provider>({
-    message: "Select a provider",
-    options: (Object.keys(PROVIDER_LABELS) as Provider[]).map((value) => ({
-      value,
-      label: PROVIDER_LABELS[value],
-    })),
-  });
-
-  if (p.isCancel(selected)) {
-    process.exit(0);
+  if (build && provider) {
+    return { build, provider };
   }
 
-  return selected;
+  const choices = await p.group(
+    {
+      build: () =>
+        build
+          ? Promise.resolve(build)
+          : p.select<BuildPluginKey>({
+              message: "Select a build plugin",
+              options: BUILD_PLUGIN_KEYS.map((value) => ({
+                value,
+                label: BUILD_PLUGINS[value].label,
+                hint: BUILD_PLUGINS[value].hint,
+              })),
+            }),
+      provider: () =>
+        provider
+          ? Promise.resolve(provider)
+          : p.select<InitProvider>({
+              message: "Select a provider",
+              options: INIT_PROVIDER_NAMES.map((value) => ({
+                value,
+                label: INIT_PROVIDER_PACKAGES[value].definition.label,
+              })),
+            }),
+    },
+    {
+      onCancel: () => process.exit(0),
+    },
+  );
+
+  return choices;
+};
+
+const handleInitError = (error: unknown): boolean => {
+  if (!(error instanceof InitError)) {
+    return false;
+  }
+
+  p.log.error(error.message);
+  process.exitCode = 1;
+  return true;
 };
 
 export const init = async (options: InitOptions = {}) => {
   printBanner();
 
-  const buildPluginPackage = await resolveBuildPlugin(options.build);
-  const provider = await resolveProvider(options.provider);
-
+  let choices: Awaited<ReturnType<typeof collectInitChoices>>;
   try {
-    await ensureInstallPackages({
-      dependencies: [
-        ...buildPluginPackage.dependencies,
-        ...REQUIRED_PACKAGES.dependencies,
-        ...PACKAGE_MAP[provider].dependencies,
-      ],
-      devDependencies: [
-        ...buildPluginPackage.devDependencies,
-        ...REQUIRED_PACKAGES.devDependencies,
-        ...PACKAGE_MAP[provider].devDependencies,
-      ],
-    });
-  } catch (e) {
-    if (e instanceof ExecaError) {
-      p.log.error(e.stderr ?? e.message);
-    } else if (e instanceof Error) {
-      p.log.error(e.message);
+    choices = await collectInitChoices(options);
+  } catch (error) {
+    if (handleInitError(error)) {
+      return;
     }
-
-    process.exit(1);
+    throw error;
   }
 
-  const build = buildPluginPackage.name as BuildType;
-  switch (provider) {
-    case "supabase": {
-      const supabase = await import("@hot-updater/supabase/iac");
-      await supabase.runInit({ build });
-      break;
-    }
-    case "cloudflare": {
-      const cloudflare = await import("@hot-updater/cloudflare/iac");
-      await cloudflare.runInit({ build });
-      break;
-    }
-    case "aws": {
-      const aws = await import("@hot-updater/aws/iac");
-      await aws.runInit({ build });
-      break;
-    }
-    case "firebase": {
-      const firebase = await import("@hot-updater/firebase/iac");
-      await firebase.runInit({ build });
-      break;
-    }
-    default:
-      throw new Error("Invalid provider");
+  if (
+    isProjectFileTracked({
+      cwd: process.cwd(),
+      filePath: ".env.hotupdater",
+    })
+  ) {
+    p.log.error(
+      "Refusing to save init credentials because .env.hotupdater is tracked by Git. Untrack it before running init.",
+    );
+    process.exitCode = 1;
+    return;
   }
 
   if (
@@ -160,5 +202,52 @@ export const init = async (options: InitOptions = {}) => {
     })
   ) {
     p.log.info(".gitignore has been modified to include hot-updater entries");
+  }
+
+  const buildPluginPackage = BUILD_PLUGINS[choices.build];
+  const provider = choices.provider;
+  const providerPackage = INIT_PROVIDER_PACKAGES[provider];
+
+  await makeEnv({
+    [INIT_BUILD_ENV_KEY]: choices.build,
+    [INIT_PROVIDER_ENV_KEY]: provider,
+  });
+
+  try {
+    await ensureInstallPackages({
+      dependencies: [
+        ...buildPluginPackage.dependencies,
+        ...REQUIRED_PACKAGES.dependencies,
+      ],
+      devDependencies: [
+        ...buildPluginPackage.devDependencies,
+        ...REQUIRED_PACKAGES.devDependencies,
+        ...providerPackage.devDependencies,
+        providerPackage.packageName,
+      ],
+    });
+  } catch (e) {
+    if (e instanceof ExecaError) {
+      p.log.error(e.stderr ?? e.message);
+    } else if (e instanceof Error) {
+      p.log.error(e.message);
+    }
+
+    process.exit(1);
+  }
+
+  const build = buildPluginPackage.name;
+  const runInitOptions = {
+    build,
+    envFile: options.envFile,
+  } satisfies RunInitOptions;
+  try {
+    const providerModule = await providerPackage.load();
+    await providerModule.runInit(runInitOptions);
+  } catch (error) {
+    if (handleInitError(error)) {
+      return;
+    }
+    throw error;
   }
 };

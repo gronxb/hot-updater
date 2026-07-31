@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/aws",
   "type": "module",
-  "version": "0.35.6",
+  "version": "0.35.9",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -20,6 +20,11 @@
     ".": {
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
+    },
+    "./init": {
+      "types": "./dist/init/index.d.cts",
+      "import": "./dist/init/index.mjs",
+      "require": "./dist/init/index.cjs"
     },
     "./iac": {
       "types": "./dist/iac/index.d.cts",

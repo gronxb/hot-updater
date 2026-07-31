@@ -15,7 +15,7 @@ const typescriptCli = path.join(
   "node_modules",
   "typescript",
   "bin",
-  "tsc",
+  "tsc6",
 );
 
 let consumer: PackedConsumer;

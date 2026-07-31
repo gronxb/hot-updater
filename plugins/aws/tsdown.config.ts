@@ -24,6 +24,13 @@ export default defineConfig([
     },
   },
   {
+    entry: ["iac/init/index.ts"],
+    format: ["esm", "cjs"],
+    dts: true,
+    outDir: "dist/init",
+    failOnWarn: true,
+  },
+  {
     entry: ["iac/index.ts"],
     format: ["esm", "cjs"],
     dts: true,

@@ -51,7 +51,7 @@ describe("packed standalone Analytics composition consumers", () => {
         "node_modules",
         "typescript",
         "bin",
-        "tsc",
+        "tsc6",
       );
       await access(typescriptCli);
       await runNode(

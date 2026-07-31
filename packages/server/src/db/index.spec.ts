@@ -279,7 +279,7 @@ const createMongoCursor = <TRow>(rows: readonly TRow[]) => {
 describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
   const db = new PGlite();
 
-  const kysely = new Kysely({ dialect: new PGliteDialect(db) });
+  const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
   const storageTexts = new Map<string, string | Error>();
   const readStoredText = async (storageUri: string) => {
     const text = storageTexts.get(storageUri);
@@ -594,7 +594,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("adds custom indexes and constraints to generated SQL", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<object>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -638,7 +638,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("migrates existing 0.21.0 Kysely schemas incrementally", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<object>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -707,7 +707,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("honors soft relation mode by omitting SQL foreign keys", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<object>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -740,7 +740,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("omits unsupported SQLite alter constraint statements", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<object>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -819,7 +819,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("rejects from-database migrations explicitly", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<object>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -845,7 +845,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("rejects runtime access when a Kysely schema is not initialized", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<object>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({
@@ -869,7 +869,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("rejects runtime access when a Kysely schema is stale", async () => {
       const migrationDb = new PGlite();
-      const migrationKysely = new Kysely({
+      const migrationKysely = new Kysely<object>({
         dialect: new PGliteDialect(migrationDb),
       });
       const migrationHotUpdater = createHotUpdater({

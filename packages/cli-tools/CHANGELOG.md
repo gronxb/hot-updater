@@ -1,5 +1,32 @@
 # @hot-updater/cli-tools
 
+## 0.35.9
+
+### Patch Changes
+
+- 8688b1a: chore: migrate to TypeScript 7 and OXC
+- f9bb26d: Declare init inputs in each provider package through a shared contract, ask
+  once before saving credential inputs, and support prompt-free infrastructure
+  reconciliation with `init --env-file .env.hotupdater`.
+  - @hot-updater/core@0.35.9
+  - @hot-updater/plugin-core@0.35.9
+
+## 0.35.8
+
+### Patch Changes
+
+- 4f9fab2: Render spinner, progress, and task output statically in CI and non-interactive
+  terminals, and update the embedded Clack runtime to 1.7.0.
+  - @hot-updater/core@0.35.8
+  - @hot-updater/plugin-core@0.35.8
+
+## 0.35.7
+
+### Patch Changes
+
+- @hot-updater/core@0.35.7
+- @hot-updater/plugin-core@0.35.7
+
 ## 0.35.6
 
 ### Patch Changes
