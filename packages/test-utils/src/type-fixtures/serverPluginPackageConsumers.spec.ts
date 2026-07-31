@@ -342,7 +342,7 @@ void import(${JSON.stringify(packageName)}).then((runtime) => {
         "node_modules",
         "typescript",
         "bin",
-        "tsc",
+        "tsc6",
       );
       await access(typescriptCli);
       await runNode(

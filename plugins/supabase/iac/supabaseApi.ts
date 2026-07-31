@@ -15,6 +15,10 @@ export interface SupabaseApi {
   ) => Promise<{
     name: string;
   }>;
+  updateBucket: (
+    bucketId: string,
+    options: { public: boolean },
+  ) => Promise<void>;
 }
 
 export const supabaseApi = (
@@ -45,6 +49,12 @@ export const supabaseApi = (
         throw error;
       }
       return data;
+    },
+    updateBucket: async (bucketId, options) => {
+      const { error } = await supabase.storage.updateBucket(bucketId, options);
+      if (error) {
+        throw error;
+      }
     },
   };
 };

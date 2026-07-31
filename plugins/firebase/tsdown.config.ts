@@ -28,6 +28,13 @@ export default defineConfig([
     failOnWarn: true,
   },
   {
+    entry: ["iac/init/index.ts"],
+    format: ["esm", "cjs"],
+    dts: true,
+    outDir: "dist/init",
+    failOnWarn: true,
+  },
+  {
     entry: ["iac/index.ts"],
     format: ["cjs", "esm"],
     dts: true,

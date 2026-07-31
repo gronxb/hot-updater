@@ -19,6 +19,7 @@ export class LambdaEdgeDeployer {
 
   async deploy(
     lambdaRoleArn: string,
+    lambdaName: string,
     config: {
       apiKeySha256: string;
       bucketName: string;
@@ -28,12 +29,6 @@ export class LambdaEdgeDeployer {
     },
   ): Promise<{ lambdaName: string; functionArn: string }> {
     const cwd = getCwd();
-    const lambdaName = await p.text({
-      message: "Enter the name of the Lambda@Edge function",
-      defaultValue: "hot-updater-edge",
-      placeholder: "hot-updater-edge",
-    });
-    if (p.isCancel(lambdaName)) process.exit(1);
 
     const lambdaPath = require.resolve("@hot-updater/aws/lambda/handler");
     const lambdaDir = path.dirname(lambdaPath);

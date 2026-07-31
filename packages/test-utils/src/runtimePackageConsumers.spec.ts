@@ -95,7 +95,7 @@ describe("packed runtime provider entrypoints", () => {
       "node_modules",
       "typescript",
       "bin",
-      "tsc",
+      "tsc6",
     );
     await access(typescriptCli);
     const compilerArguments = [

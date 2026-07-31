@@ -35,7 +35,7 @@ const runTypeScript = (consumer: string) => {
     "node_modules",
     "typescript",
     "bin",
-    "tsc",
+    "tsc6",
   );
 
   return execFileAsync(
@@ -91,7 +91,7 @@ beforeAll(async () => {
   );
 
   await access(
-    path.join(workspaceRoot, "node_modules", "typescript", "bin", "tsc"),
+    path.join(workspaceRoot, "node_modules", "typescript", "bin", "tsc6"),
   );
 });
 

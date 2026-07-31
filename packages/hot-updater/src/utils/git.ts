@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { exec, spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import { promisify } from "util";
@@ -102,3 +102,15 @@ export const appendToProjectRootGitignore = ({
   }
   return true;
 };
+
+export const isProjectFileTracked = ({
+  cwd,
+  filePath,
+}: {
+  readonly cwd?: string;
+  readonly filePath: string;
+}): boolean =>
+  spawnSync("git", ["ls-files", "--error-unmatch", "--", filePath], {
+    cwd: cwd ?? getCwd(),
+    stdio: "ignore",
+  }).status === 0;

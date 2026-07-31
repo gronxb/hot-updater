@@ -1,13 +1,25 @@
 import fs from "fs/promises";
 
-import ts from "typescript";
+import {
+  parseSync,
+  type CallExpression,
+  type ExportDefaultDeclaration,
+  type Expression,
+  type ObjectExpression,
+  type ObjectProperty,
+  type ObjectPropertyKind,
+  type Program,
+  type Span,
+  type VariableDeclaration,
+  type VariableDeclarator,
+} from "oxc-parser";
 
 import {
   type BuildType,
   ConfigBuilder,
-  renderImportStatements,
   type ImportInfo,
   type ProviderConfig,
+  renderImportStatements,
 } from "./ConfigBuilder";
 
 export type ManagedHelperStrategy =
@@ -61,8 +73,7 @@ export type WriteHotUpdaterConfigResult = {
 };
 
 const HOT_UPDATER_CONFIG_PATH = "hot-updater.config.ts";
-const WRAP_PREFIX = "const __hotUpdaterValue = ";
-const WRAP_SUFFIX = ";";
+const CONFIG_FILE_NAME = "hot-updater.config.ts";
 const MANAGED_IMPORT_PACKAGES = new Set([
   "dotenv",
   "firebase-admin",
@@ -79,123 +90,194 @@ const MANAGED_IMPORT_PACKAGES = new Set([
 const MANAGED_HELPER_NAMES = new Set(["commonOptions", "credential"]);
 const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
 
-const createSnippetSourceFile = (code: string) =>
-  ts.createSourceFile(
-    "hot-updater-config-snippet.ts",
-    code,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-
-const extractCallIdentifier = (initializer: string) => {
-  const match = /^\s*([A-Za-z_$][\w$]*)\s*\(/.exec(initializer);
-  if (!match) {
-    throw new Error(`Failed to extract call identifier from "${initializer}"`);
-  }
-
-  return match[1];
+type ConfigSource = {
+  readonly program: Program;
+  readonly text: string;
 };
 
-const wrapExpression = (expression: string) =>
-  `${WRAP_PREFIX}${expression}${WRAP_SUFFIX}`;
+type TopLevelStatement = Program["body"][number];
 
-const getWrappedObjectLiteral = (text: string) => {
-  const sourceFile = createSnippetSourceFile(wrapExpression(text));
-  const statement = sourceFile.statements[0];
-  if (!statement || !ts.isVariableStatement(statement)) {
-    return null;
-  }
+type ConfigObject = {
+  readonly exportDeclaration: ExportDefaultDeclaration;
+  readonly objectExpression: ObjectExpression;
+};
 
-  const declaration = statement.declarationList.declarations[0];
-  if (!declaration || !declaration.initializer) {
-    return null;
-  }
+type ParsedVariableStatement = {
+  readonly source: ConfigSource;
+  readonly statement: VariableDeclaration;
+  readonly declaration: VariableDeclarator;
+};
 
-  if (!ts.isObjectLiteralExpression(declaration.initializer)) {
+type CallSource = {
+  readonly callExpression: CallExpression;
+  readonly source: ConfigSource;
+};
+
+type ObjectSource = {
+  readonly objectExpression: ObjectExpression;
+  readonly source: ConfigSource;
+};
+
+type ManagedConfigObject = {
+  readonly objectExpression: ObjectExpression;
+  readonly source: ConfigSource;
+};
+
+type TextEdit = {
+  readonly start: number;
+  readonly end: number;
+  readonly text: string;
+};
+
+type ConfigTextMergeResult =
+  | { readonly text: string }
+  | { readonly reason: string };
+
+const parseConfigSource = (text: string): ConfigSource | null => {
+  const result = parseSync(CONFIG_FILE_NAME, text, {
+    astType: "js",
+    lang: "ts",
+    preserveParens: false,
+    sourceType: "module",
+    showSemanticErrors: false,
+  });
+
+  if (result.errors.length > 0) {
     return null;
   }
 
   return {
-    sourceFile,
-    objectLiteral: declaration.initializer,
-    offset: WRAP_PREFIX.length,
+    program: result.program,
+    text,
   };
 };
 
-const parseVariableStatement = (code: string) => {
-  const sourceFile = createSnippetSourceFile(code);
-  const statement = sourceFile.statements.find((node) =>
-    ts.isVariableStatement(node),
-  );
+const getNodeText = (source: ConfigSource, node: Span) =>
+  source.text.slice(node.start, node.end);
 
-  if (!statement || !ts.isVariableStatement(statement)) {
+const getTopLevelFullStart = (
+  source: ConfigSource,
+  statement: TopLevelStatement,
+) => {
+  const statementIndex = source.program.body.findIndex(
+    (candidate) => candidate === statement,
+  );
+  if (statementIndex <= 0) {
+    return statementIndex === 0 ? 0 : statement.start;
+  }
+
+  return source.program.body[statementIndex - 1]?.end ?? statement.start;
+};
+
+const getStatementText = (source: ConfigSource, statement: TopLevelStatement) =>
+  source.text
+    .slice(getTopLevelFullStart(source, statement), statement.end)
+    .trim();
+
+const parseVariableStatement = (
+  text: string,
+): ParsedVariableStatement | null => {
+  const source = parseConfigSource(text);
+  if (!source) {
     return null;
   }
 
-  const declaration = statement.declarationList.declarations[0];
-  if (
-    !declaration ||
-    !ts.isIdentifier(declaration.name) ||
-    !declaration.initializer
-  ) {
+  const statement = source.program.body.find(
+    (candidate) => candidate.type === "VariableDeclaration",
+  );
+  if (statement?.type !== "VariableDeclaration") {
+    return null;
+  }
+
+  const declaration = statement.declarations[0];
+  if (declaration?.id.type !== "Identifier" || !declaration.init) {
     return null;
   }
 
   return {
-    sourceFile,
+    source,
     statement,
     declaration,
   };
 };
 
-const getPropertyName = (
-  property:
-    | ts.ObjectLiteralElementLike
-    | ts.PropertyName
-    | ts.ObjectLiteralElement,
-): string | null => {
-  if (
-    ts.isIdentifier(property) ||
-    ts.isStringLiteral(property) ||
-    ts.isNumericLiteral(property)
-  ) {
-    return property.text;
-  }
+const getConfigObjectExpression = (
+  argument: CallExpression["arguments"][number] | undefined,
+) => {
+  const expression =
+    argument?.type === "TSSatisfiesExpression" ? argument.expression : argument;
+  return expression?.type === "ObjectExpression" ? expression : null;
+};
 
-  if (ts.isSpreadAssignment(property)) {
+const findDefineConfigObject = (source: ConfigSource): ConfigObject | null => {
+  const exportDeclaration = source.program.body.find((statement) => {
+    if (statement.type !== "ExportDefaultDeclaration") {
+      return false;
+    }
+
+    const declaration = statement.declaration;
+    if (
+      declaration.type !== "CallExpression" ||
+      declaration.callee.type !== "Identifier"
+    ) {
+      return false;
+    }
+
+    return (
+      declaration.callee.name === "defineConfig" &&
+      getConfigObjectExpression(declaration.arguments[0]) !== null
+    );
+  });
+
+  if (exportDeclaration?.type !== "ExportDefaultDeclaration") {
     return null;
   }
 
-  if (ts.isShorthandPropertyAssignment(property)) {
-    return property.name.text;
+  const declaration = exportDeclaration.declaration;
+  if (declaration.type !== "CallExpression") {
+    return null;
+  }
+
+  const objectExpression = getConfigObjectExpression(declaration.arguments[0]);
+  if (!objectExpression) {
+    return null;
+  }
+
+  return {
+    exportDeclaration,
+    objectExpression,
+  };
+};
+
+const getObjectPropertyName = (property: ObjectPropertyKind): string | null => {
+  if (property.type === "SpreadElement" || property.computed) {
+    return null;
+  }
+
+  const { key } = property;
+  if (key.type === "Identifier") {
+    return key.name;
   }
 
   if (
-    ts.isPropertyAssignment(property) ||
-    ts.isMethodDeclaration(property) ||
-    ts.isGetAccessorDeclaration(property) ||
-    ts.isSetAccessorDeclaration(property)
+    key.type === "Literal" &&
+    (typeof key.value === "string" || typeof key.value === "number")
   ) {
-    const { name } = property;
-    if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
-      return name.text;
-    }
-
-    if (ts.isNumericLiteral(name)) {
-      return name.text;
-    }
+    return String(key.value);
   }
 
   return null;
 };
 
-const trimStatementText = (text: string) => text.trim();
+const isDataProperty = (
+  property: ObjectPropertyKind,
+): property is ObjectProperty =>
+  property.type === "Property" &&
+  property.kind === "init" &&
+  !property.method &&
+  !property.shorthand;
 
-const getStatementText = (sourceText: string, statement: ts.Statement) =>
-  trimStatementText(sourceText.slice(statement.getFullStart(), statement.end));
-
-const getObjectTrailingComma = (text: string) => {
+const hasTrailingComma = (text: string) => {
   const closeBraceIndex = text.lastIndexOf("}");
   if (closeBraceIndex === -1) {
     return false;
@@ -213,7 +295,7 @@ const dedentBlock = (text: string) => {
   const lines = text.replace(/\s+$/, "").split("\n");
   const indents = lines
     .filter((line) => line.trim() !== "")
-    .map((line) => line.match(/^\s*/)![0].length);
+    .map((line) => line.match(/^\s*/)?.[0].length ?? 0);
   const minIndent = indents.length > 0 ? Math.min(...indents) : 0;
 
   return lines.map((line) => line.slice(minIndent)).join("\n");
@@ -227,7 +309,7 @@ const indentBlock = (text: string, indent: string) =>
 
 const appendMissingProperties = (
   objectText: string,
-  propertyTexts: string[],
+  propertyTexts: readonly string[],
   hasExistingProperties: boolean,
 ) => {
   if (propertyTexts.length === 0) {
@@ -247,7 +329,7 @@ const appendMissingProperties = (
   }
 
   const prefix = hasExistingProperties
-    ? getObjectTrailingComma(objectText)
+    ? hasTrailingComma(objectText)
       ? "\n"
       : ",\n"
     : "\n";
@@ -257,211 +339,152 @@ const appendMissingProperties = (
 };
 
 const mergeObjectLiteralText = (
-  existingText: string,
-  newText: string,
+  existingObject: ObjectSource,
+  newObject: ObjectSource,
 ): string | null => {
-  const existingWrapped = getWrappedObjectLiteral(existingText);
-  const newWrapped = getWrappedObjectLiteral(newText);
-
-  if (!existingWrapped || !newWrapped) {
-    return null;
-  }
-
+  const existingText = getNodeText(
+    existingObject.source,
+    existingObject.objectExpression,
+  );
   const existingPropertyNames = new Set<string>();
   const existingSpreadTexts = new Set<string>();
   const edits: Array<{ start: number; end: number; text: string }> = [];
 
-  for (const property of existingWrapped.objectLiteral.properties) {
-    if (ts.isSpreadAssignment(property)) {
+  for (const property of existingObject.objectExpression.properties) {
+    if (property.type === "SpreadElement") {
       existingSpreadTexts.add(
-        property.expression.getText(existingWrapped.sourceFile).trim(),
+        getNodeText(existingObject.source, property.argument).trim(),
       );
       continue;
     }
 
-    const propertyName = getPropertyName(property);
+    const propertyName = getObjectPropertyName(property);
     if (!propertyName) {
       continue;
     }
 
     existingPropertyNames.add(propertyName);
-    const nextProperty = newWrapped.objectLiteral.properties.find(
-      (candidate) => {
-        if (ts.isSpreadAssignment(candidate)) {
-          return false;
-        }
-
-        return getPropertyName(candidate) === propertyName;
-      },
+    const nextProperty = newObject.objectExpression.properties.find(
+      (candidate) => getObjectPropertyName(candidate) === propertyName,
     );
-
     if (
       !nextProperty ||
-      !ts.isPropertyAssignment(property) ||
-      !ts.isPropertyAssignment(nextProperty)
+      !isDataProperty(property) ||
+      !isDataProperty(nextProperty)
     ) {
       continue;
     }
 
     if (
-      ts.isObjectLiteralExpression(property.initializer) &&
-      ts.isObjectLiteralExpression(nextProperty.initializer)
+      property.value.type === "ObjectExpression" &&
+      nextProperty.value.type === "ObjectExpression"
     ) {
-      const mergedInitializer = mergeObjectLiteralText(
-        property.initializer.getText(existingWrapped.sourceFile),
-        nextProperty.initializer.getText(newWrapped.sourceFile),
+      const mergedValue = mergeObjectLiteralText(
+        {
+          objectExpression: property.value,
+          source: existingObject.source,
+        },
+        {
+          objectExpression: nextProperty.value,
+          source: newObject.source,
+        },
       );
-      if (!mergedInitializer) {
+      if (!mergedValue) {
         return null;
       }
 
       edits.push({
-        start:
-          property.initializer.getStart(existingWrapped.sourceFile) -
-          existingWrapped.offset,
-        end: property.initializer.end - existingWrapped.offset,
-        text: mergedInitializer,
+        start: property.value.start - existingObject.objectExpression.start,
+        end: property.value.end - existingObject.objectExpression.start,
+        text: mergedValue,
       });
     }
   }
 
   let mergedText = existingText;
-  for (const edit of edits.sort((a, b) => b.start - a.start)) {
+  for (const edit of edits.sort((left, right) => right.start - left.start)) {
     mergedText =
       mergedText.slice(0, edit.start) + edit.text + mergedText.slice(edit.end);
   }
 
-  const missingPropertyTexts = newWrapped.objectLiteral.properties
+  const missingPropertyTexts = newObject.objectExpression.properties
     .filter((property) => {
-      if (ts.isSpreadAssignment(property)) {
+      if (property.type === "SpreadElement") {
         return !existingSpreadTexts.has(
-          property.expression.getText(newWrapped.sourceFile).trim(),
+          getNodeText(newObject.source, property.argument).trim(),
         );
       }
 
-      const propertyName = getPropertyName(property);
+      const propertyName = getObjectPropertyName(property);
       return propertyName ? !existingPropertyNames.has(propertyName) : false;
     })
-    .map((property) => property.getText(newWrapped.sourceFile));
+    .map((property) => getNodeText(newObject.source, property));
 
   return appendMissingProperties(
     mergedText,
     missingPropertyTexts,
-    existingWrapped.objectLiteral.properties.length > 0,
+    existingObject.objectExpression.properties.length > 0,
   );
 };
 
-const buildMergedCallInitializer = (
-  existingCall: ts.CallExpression,
-  existingSourceFile: ts.SourceFile,
-  newCall: ts.CallExpression,
-  newSourceFile: ts.SourceFile,
-) => {
-  const existingCallee = existingCall.expression.getText(existingSourceFile);
-  const [existingArg] = existingCall.arguments;
-  const [newArg] = newCall.arguments;
+const buildMergedCallInitializer = (existing: CallSource, next: CallSource) => {
+  const [existingArgument] = existing.callExpression.arguments;
+  const [nextArgument] = next.callExpression.arguments;
 
   if (
-    existingCall.arguments.length === 1 &&
-    newCall.arguments.length === 1 &&
-    existingArg &&
-    newArg &&
-    ts.isObjectLiteralExpression(existingArg) &&
-    ts.isObjectLiteralExpression(newArg)
+    existing.callExpression.arguments.length === 1 &&
+    next.callExpression.arguments.length === 1 &&
+    existingArgument?.type === "ObjectExpression" &&
+    nextArgument?.type === "ObjectExpression"
   ) {
     const mergedObjectLiteral = mergeObjectLiteralText(
-      existingArg.getText(existingSourceFile),
-      newArg.getText(newSourceFile),
+      {
+        objectExpression: existingArgument,
+        source: existing.source,
+      },
+      {
+        objectExpression: nextArgument,
+        source: next.source,
+      },
     );
     if (!mergedObjectLiteral) {
       return null;
     }
 
-    return `${existingCallee}(${mergedObjectLiteral})`;
+    return `${getNodeText(
+      existing.source,
+      existing.callExpression.callee,
+    )}(${mergedObjectLiteral})`;
   }
 
-  return existingCall.getText(existingSourceFile);
-};
-
-const findDefineConfigObject = (sourceFile: ts.SourceFile) => {
-  const exportAssignment = sourceFile.statements.find((statement) => {
-    if (!ts.isExportAssignment(statement)) {
-      return false;
-    }
-
-    const expression = statement.expression;
-    if (!ts.isCallExpression(expression)) {
-      return false;
-    }
-
-    return (
-      ts.isIdentifier(expression.expression) &&
-      expression.expression.text === "defineConfig" &&
-      expression.arguments.length > 0 &&
-      ts.isObjectLiteralExpression(expression.arguments[0]!)
-    );
-  });
-
-  if (!exportAssignment || !ts.isExportAssignment(exportAssignment)) {
-    return null;
-  }
-
-  const expression = exportAssignment.expression;
-  if (!ts.isCallExpression(expression)) {
-    return null;
-  }
-
-  const [argument] = expression.arguments;
-  if (!argument || !ts.isObjectLiteralExpression(argument)) {
-    return null;
-  }
-
-  return {
-    exportAssignment,
-    objectLiteral: argument,
-  };
+  return getNodeText(existing.source, existing.callExpression);
 };
 
 const findManagedProperty = (
-  objectLiteral: ts.ObjectLiteralExpression,
+  objectExpression: ObjectExpression,
   propertyName: string,
-) =>
-  objectLiteral.properties.find(
-    (property): property is ts.PropertyAssignment =>
-      ts.isPropertyAssignment(property) &&
-      getPropertyName(property.name) === propertyName,
+): ObjectProperty | null => {
+  const property = objectExpression.properties.find(
+    (candidate) =>
+      candidate.type === "Property" &&
+      candidate.kind === "init" &&
+      !candidate.method &&
+      !candidate.shorthand &&
+      getObjectPropertyName(candidate) === propertyName,
   );
 
-const getCallCallee = (expression: ts.Expression) => {
+  return property?.type === "Property" ? property : null;
+};
+
+const getCallCallee = (expression: Expression) => {
   if (
-    !ts.isCallExpression(expression) ||
-    !ts.isIdentifier(expression.expression)
+    expression.type !== "CallExpression" ||
+    expression.callee.type !== "Identifier"
   ) {
     return null;
   }
 
-  return expression.expression.text;
-};
-
-const isConfigCallStatement = (statement: ts.Statement) =>
-  ts.isExpressionStatement(statement) &&
-  ts.isCallExpression(statement.expression) &&
-  ts.isIdentifier(statement.expression.expression) &&
-  statement.expression.expression.text === "config";
-
-const isManagedHelperStatement = (statement: ts.Statement) => {
-  if (!ts.isVariableStatement(statement)) {
-    return null;
-  }
-
-  const declaration = statement.declarationList.declarations[0];
-  if (!declaration || !ts.isIdentifier(declaration.name)) {
-    return null;
-  }
-
-  return MANAGED_HELPER_NAMES.has(declaration.name.text)
-    ? declaration.name.text
-    : null;
+  return expression.callee.name;
 };
 
 const mergeHelperStatement = (
@@ -482,79 +505,72 @@ const mergeHelperStatement = (
     return null;
   }
 
-  const existingInitializer = existingStatement.declaration.initializer;
-  const newInitializer = nextStatement.declaration.initializer;
-
+  const existingInitializer = existingStatement.declaration.init;
+  const nextInitializer = nextStatement.declaration.init;
   if (
-    !existingInitializer ||
-    !newInitializer ||
-    !ts.isObjectLiteralExpression(existingInitializer) ||
-    !ts.isObjectLiteralExpression(newInitializer)
+    existingInitializer?.type !== "ObjectExpression" ||
+    nextInitializer?.type !== "ObjectExpression"
   ) {
     return null;
   }
 
   const mergedInitializer = mergeObjectLiteralText(
-    existingInitializer.getText(existingStatement.sourceFile),
-    newInitializer.getText(nextStatement.sourceFile),
+    {
+      objectExpression: existingInitializer,
+      source: existingStatement.source,
+    },
+    {
+      objectExpression: nextInitializer,
+      source: nextStatement.source,
+    },
   );
   if (!mergedInitializer) {
     return null;
   }
 
-  const keyword = ts.tokenToString(
-    existingStatement.statement.declarationList.flags & ts.NodeFlags.Const
-      ? ts.SyntaxKind.ConstKeyword
-      : existingStatement.statement.declarationList.flags & ts.NodeFlags.Let
-        ? ts.SyntaxKind.LetKeyword
-        : ts.SyntaxKind.VarKeyword,
-  );
+  const declarationKind =
+    existingStatement.statement.kind === "let" ||
+    existingStatement.statement.kind === "var"
+      ? existingStatement.statement.kind
+      : "const";
 
-  return `${keyword ?? "const"} ${helper.name} = ${mergedInitializer};`;
+  return `${declarationKind} ${helper.name} = ${mergedInitializer};`;
 };
 
 const updateManagedObject = (
-  existingText: string,
-  existingObject: ts.ObjectLiteralExpression,
-  newObject: ts.ObjectLiteralExpression,
-  existingSourceFile: ts.SourceFile,
-  newSourceFile: ts.SourceFile,
+  existing: ManagedConfigObject,
+  next: ManagedConfigObject,
 ) => {
-  const objectStart = existingObject.getStart(existingSourceFile);
-  const objectText = existingText.slice(objectStart, existingObject.end);
+  const objectStart = existing.objectExpression.start;
+  const objectText = getNodeText(existing.source, existing.objectExpression);
   const propertyEdits: Array<{ start: number; end: number; text: string }> = [];
   const missingPropertyTexts: string[] = [];
 
-  const managedPropertyNames = ["build", "storage", "database"];
-  for (const propertyName of managedPropertyNames) {
-    const existingProperty = findManagedProperty(existingObject, propertyName);
-    const nextProperty = findManagedProperty(newObject, propertyName);
-
+  for (const propertyName of ["build", "storage", "database"]) {
+    const existingProperty = findManagedProperty(
+      existing.objectExpression,
+      propertyName,
+    );
+    const nextProperty = findManagedProperty(
+      next.objectExpression,
+      propertyName,
+    );
     if (!nextProperty) {
       continue;
     }
 
     if (!existingProperty) {
-      missingPropertyTexts.push(nextProperty.getText(newSourceFile));
+      missingPropertyTexts.push(getNodeText(next.source, nextProperty));
       continue;
     }
 
-    if (!ts.isCallExpression(existingProperty.initializer)) {
-      return null;
-    }
-
-    if (!ts.isCallExpression(nextProperty.initializer)) {
-      return null;
-    }
-
-    const existingCallee = getCallCallee(existingProperty.initializer);
-    const nextCallee = getCallCallee(nextProperty.initializer);
+    const existingCallee = getCallCallee(existingProperty.value);
+    const nextCallee = getCallCallee(nextProperty.value);
     if (!existingCallee || !nextCallee) {
       return null;
     }
 
-    let nextInitializerText = nextProperty.initializer.getText(newSourceFile);
-
+    let nextInitializerText = getNodeText(next.source, nextProperty.value);
     if (propertyName === "build") {
       if (existingCallee === nextCallee) {
         continue;
@@ -564,13 +580,24 @@ const updateManagedObject = (
         return null;
       }
     } else if (existingCallee === nextCallee) {
+      if (
+        existingProperty.value.type !== "CallExpression" ||
+        nextProperty.value.type !== "CallExpression"
+      ) {
+        return null;
+      }
+
       const mergedInitializer = buildMergedCallInitializer(
-        existingProperty.initializer,
-        existingSourceFile,
-        nextProperty.initializer,
-        newSourceFile,
+        {
+          callExpression: existingProperty.value,
+          source: existing.source,
+        },
+        {
+          callExpression: nextProperty.value,
+          source: next.source,
+        },
       );
-      if (mergedInitializer === null) {
+      if (!mergedInitializer) {
         return null;
       }
 
@@ -578,15 +605,16 @@ const updateManagedObject = (
     }
 
     propertyEdits.push({
-      start:
-        existingProperty.initializer.getStart(existingSourceFile) - objectStart,
-      end: existingProperty.initializer.end - objectStart,
+      start: existingProperty.value.start - objectStart,
+      end: existingProperty.value.end - objectStart,
       text: nextInitializerText,
     });
   }
 
   let mergedText = objectText;
-  for (const edit of propertyEdits.sort((a, b) => b.start - a.start)) {
+  for (const edit of propertyEdits.sort(
+    (left, right) => right.start - left.start,
+  )) {
     mergedText =
       mergedText.slice(0, edit.start) + edit.text + mergedText.slice(edit.end);
   }
@@ -594,19 +622,41 @@ const updateManagedObject = (
   return appendMissingProperties(
     mergedText,
     missingPropertyTexts,
-    existingObject.properties.length > 0,
+    existing.objectExpression.properties.length > 0,
   );
 };
 
+const isConfigCallStatement = (statement: TopLevelStatement) =>
+  statement.type === "ExpressionStatement" &&
+  statement.expression.type === "CallExpression" &&
+  statement.expression.callee.type === "Identifier" &&
+  statement.expression.callee.name === "config";
+
+const getManagedHelperName = (statement: TopLevelStatement) => {
+  if (statement.type !== "VariableDeclaration") {
+    return null;
+  }
+
+  const declaration = statement.declarations[0];
+  if (declaration?.id.type !== "Identifier") {
+    return null;
+  }
+
+  return MANAGED_HELPER_NAMES.has(declaration.id.name)
+    ? declaration.id.name
+    : null;
+};
+
 const rebuildImportBlock = (
-  sourceText: string,
-  sourceFile: ts.SourceFile,
+  source: ConfigSource,
   scaffold: HotUpdaterConfigScaffold,
-) => {
-  const importDeclarations = sourceFile.statements.filter(
-    ts.isImportDeclaration,
+): TextEdit => {
+  const importDeclarations = source.program.body.filter(
+    (statement) => statement.type === "ImportDeclaration",
   );
-  if (importDeclarations.length === 0) {
+  const firstImport = importDeclarations[0];
+  const lastImport = importDeclarations.at(-1);
+  if (!firstImport || !lastImport) {
     return {
       start: 0,
       end: 0,
@@ -615,41 +665,34 @@ const rebuildImportBlock = (
   }
 
   const preservedImportTexts = importDeclarations
-    .filter((declaration) => {
-      const moduleSpecifier = declaration.moduleSpecifier;
-      return (
-        ts.isStringLiteral(moduleSpecifier) &&
-        !MANAGED_IMPORT_PACKAGES.has(moduleSpecifier.text)
-      );
-    })
+    .filter(
+      (declaration) => !MANAGED_IMPORT_PACKAGES.has(declaration.source.value),
+    )
     .map((declaration) =>
-      trimStatementText(
-        sourceText.slice(declaration.getFullStart(), declaration.end),
-      ),
+      source.text
+        .slice(getTopLevelFullStart(source, declaration), declaration.end)
+        .trim(),
     );
-
   const managedImportText = renderImportStatements(scaffold.imports);
   const nextImportBlock = [...preservedImportTexts, managedImportText]
     .filter(Boolean)
     .join("\n");
 
   return {
-    start: importDeclarations[0]!.getFullStart(),
-    end: importDeclarations.at(-1)!.end,
+    start: getTopLevelFullStart(source, firstImport),
+    end: lastImport.end,
     text: `${nextImportBlock}\n\n`,
   };
 };
 
 const rebuildManagedBody = (
-  sourceText: string,
-  sourceFile: ts.SourceFile,
-  exportAssignment: ts.ExportAssignment,
+  source: ConfigSource,
+  exportStart: number,
   scaffold: HotUpdaterConfigScaffold,
-) => {
-  const statementsBeforeExport = sourceFile.statements.filter(
+): TextEdit | null => {
+  const statementsBeforeExport = source.program.body.filter(
     (statement) =>
-      !ts.isImportDeclaration(statement) &&
-      statement.pos < exportAssignment.pos,
+      statement.type !== "ImportDeclaration" && statement.start < exportStart,
   );
   const managedHelpers = new Map(
     scaffold.helperStatements.map((statement) => [statement.name, statement]),
@@ -662,9 +705,9 @@ const rebuildManagedBody = (
       continue;
     }
 
-    const helperName = isManagedHelperStatement(statement);
+    const helperName = getManagedHelperName(statement);
     if (!helperName) {
-      bodyStatements.push(getStatementText(sourceText, statement));
+      bodyStatements.push(getStatementText(source, statement));
       continue;
     }
 
@@ -673,16 +716,16 @@ const rebuildManagedBody = (
       continue;
     }
 
-    const mergedHelperStatement = mergeHelperStatement(
-      getStatementText(sourceText, statement),
+    const mergedHelper = mergeHelperStatement(
+      getStatementText(source, statement),
       helper,
     );
-    if (!mergedHelperStatement) {
+    if (!mergedHelper) {
       return null;
     }
 
     emittedHelpers.add(helperName);
-    bodyStatements.push(mergedHelperStatement);
+    bodyStatements.push(mergedHelper);
   }
 
   for (const helper of scaffold.helperStatements) {
@@ -696,15 +739,98 @@ const rebuildManagedBody = (
   const managedBody = bodyText
     ? `\n\n${configStatement}\n\n${bodyText}\n\n`
     : `\n\n${configStatement}\n\n`;
-
-  const bodyStart =
-    sourceFile.statements.filter(ts.isImportDeclaration).at(-1)?.end ?? 0;
+  const lastImport = source.program.body
+    .filter((statement) => statement.type === "ImportDeclaration")
+    .at(-1);
 
   return {
-    start: bodyStart,
-    end: exportAssignment.getFullStart(),
+    start: lastImport?.end ?? 0,
+    end: exportStart,
     text: managedBody,
   };
+};
+
+const applyTextEdits = (sourceText: string, edits: readonly TextEdit[]) => {
+  let mergedText = sourceText;
+  for (const edit of [...edits].sort(
+    (left, right) => right.start - left.start,
+  )) {
+    mergedText =
+      mergedText.slice(0, edit.start) + edit.text + mergedText.slice(edit.end);
+  }
+  return mergedText;
+};
+
+const mergeHotUpdaterConfigText = (
+  existingText: string,
+  scaffold: HotUpdaterConfigScaffold,
+): ConfigTextMergeResult => {
+  const existingSource = parseConfigSource(existingText);
+  const nextSource = parseConfigSource(scaffold.text);
+  if (!existingSource || !nextSource) {
+    return {
+      reason:
+        "Existing config is not a supported `export default defineConfig({ ... })` shape.",
+    };
+  }
+
+  const existingConfig = findDefineConfigObject(existingSource);
+  const nextConfig = findDefineConfigObject(nextSource);
+  if (!existingConfig || !nextConfig) {
+    return {
+      reason:
+        "Existing config is not a supported `export default defineConfig({ ... })` shape.",
+    };
+  }
+
+  const nextObjectText = updateManagedObject(
+    {
+      objectExpression: existingConfig.objectExpression,
+      source: existingSource,
+    },
+    {
+      objectExpression: nextConfig.objectExpression,
+      source: nextSource,
+    },
+  );
+  if (!nextObjectText) {
+    return {
+      reason:
+        "Existing config uses dynamic build/storage/database expressions that cannot be merged safely.",
+    };
+  }
+
+  const bodyEdit = rebuildManagedBody(
+    existingSource,
+    getTopLevelFullStart(existingSource, existingConfig.exportDeclaration),
+    scaffold,
+  );
+  if (!bodyEdit) {
+    return {
+      reason: "Existing helper declarations could not be merged safely.",
+    };
+  }
+
+  return {
+    text: applyTextEdits(existingText, [
+      {
+        start: existingConfig.objectExpression.start,
+        end: existingConfig.objectExpression.end,
+        text: nextObjectText,
+      },
+      bodyEdit,
+      rebuildImportBlock(existingSource, scaffold),
+    ]),
+  };
+};
+
+const extractCallIdentifier = (initializer: string) => {
+  const match = /^\s*([A-Za-z_$][\w$]*)\s*\(/.exec(initializer);
+  if (!match) {
+    throw new Error(`Failed to extract call identifier from "${initializer}"`);
+  }
+
+  return match[1];
 };
 
 export const createHotUpdaterConfigScaffold = ({
@@ -778,7 +904,7 @@ export const writeHotUpdaterConfig = async (
   filePath = HOT_UPDATER_CONFIG_PATH,
 ): Promise<WriteHotUpdaterConfigResult> => {
   const existingText = await fs.readFile(filePath, "utf-8").catch((error) => {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       return null;
     }
 
@@ -793,70 +919,16 @@ export const writeHotUpdaterConfig = async (
     };
   }
 
-  const existingSourceFile = createSnippetSourceFile(existingText);
-  const existingConfig = findDefineConfigObject(existingSourceFile);
-  const nextSourceFile = createSnippetSourceFile(scaffold.text);
-  const nextConfig = findDefineConfigObject(nextSourceFile);
-
-  if (!existingConfig || !nextConfig) {
+  const mergeResult = mergeHotUpdaterConfigText(existingText, scaffold);
+  if ("reason" in mergeResult) {
     return {
       status: "skipped",
       path: filePath,
-      reason:
-        "Existing config is not a supported `export default defineConfig({ ... })` shape.",
+      reason: mergeResult.reason,
     };
   }
 
-  const nextObjectText = updateManagedObject(
-    existingText,
-    existingConfig.objectLiteral,
-    nextConfig.objectLiteral,
-    existingSourceFile,
-    nextSourceFile,
-  );
-  if (!nextObjectText) {
-    return {
-      status: "skipped",
-      path: filePath,
-      reason:
-        "Existing config uses dynamic build/storage/database expressions that cannot be merged safely.",
-    };
-  }
-
-  const objectEdit = {
-    start: existingConfig.objectLiteral.getStart(existingSourceFile),
-    end: existingConfig.objectLiteral.end,
-    text: nextObjectText,
-  };
-  const importEdit = rebuildImportBlock(
-    existingText,
-    existingSourceFile,
-    scaffold,
-  );
-  const bodyEdit = rebuildManagedBody(
-    existingText,
-    existingSourceFile,
-    existingConfig.exportAssignment,
-    scaffold,
-  );
-
-  if (!bodyEdit) {
-    return {
-      status: "skipped",
-      path: filePath,
-      reason: "Existing helper declarations could not be merged safely.",
-    };
-  }
-
-  let mergedText = existingText;
-  for (const edit of [objectEdit, bodyEdit, importEdit].sort(
-    (a, b) => b.start - a.start,
-  )) {
-    mergedText =
-      mergedText.slice(0, edit.start) + edit.text + mergedText.slice(edit.end);
-  }
-
-  await fs.writeFile(filePath, mergedText, "utf-8");
+  await fs.writeFile(filePath, mergeResult.text, "utf-8");
   return {
     status: "merged",
     path: filePath,

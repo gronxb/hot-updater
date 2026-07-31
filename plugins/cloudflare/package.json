@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/cloudflare",
   "type": "module",
-  "version": "0.35.6",
+  "version": "0.35.9",
   "description": "React Native OTA solution for self-hosted",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
@@ -10,6 +10,11 @@
     ".": {
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
+    },
+    "./init": {
+      "types": "./dist/init/index.d.cts",
+      "import": "./dist/init/index.mjs",
+      "require": "./dist/init/index.cjs"
     },
     "./worker": {
       "import": {
@@ -78,7 +83,8 @@
     "mime": "^4.0.4",
     "semver": "^7.6.3",
     "toml": "^3.0.0",
-    "typescript": "^6.0.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "catalog:",
     "wrangler": "^4.5.0",
     "xdg-app-paths": "^8.3.0"

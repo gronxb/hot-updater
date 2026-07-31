@@ -51,7 +51,8 @@
     "oxlint-tsgolint": "^0.19.0",
     "rimraf": "^5.0.7",
     "tsdown": "catalog:tools",
-    "typescript": "^6.0.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "catalog:"
   },
   "packageManager": "pnpm@11.6.0"

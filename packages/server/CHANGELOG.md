@@ -6,6 +6,33 @@
 
 - Add append-only `bundle_events`, `/events` ingestion, runtime analytics/search/history APIs, and provider-neutral bundle analytics/search primitives for OTA update and recovery evidence.
 
+## 0.35.9
+
+### Patch Changes
+
+- @hot-updater/bsdiff@0.35.9
+- @hot-updater/core@0.35.9
+- @hot-updater/js@0.35.9
+- @hot-updater/plugin-core@0.35.9
+
+## 0.35.8
+
+### Patch Changes
+
+- @hot-updater/bsdiff@0.35.8
+- @hot-updater/core@0.35.8
+- @hot-updater/js@0.35.8
+- @hot-updater/plugin-core@0.35.8
+
+## 0.35.7
+
+### Patch Changes
+
+- @hot-updater/bsdiff@0.35.7
+- @hot-updater/core@0.35.7
+- @hot-updater/js@0.35.7
+- @hot-updater/plugin-core@0.35.7
+
 ## 0.35.6
 
 ### Patch Changes

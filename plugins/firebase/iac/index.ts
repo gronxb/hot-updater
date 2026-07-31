@@ -2,47 +2,35 @@ import fs from "fs";
 import path from "path";
 
 import {
-  type BuildType,
+  confirmInitInputPersistence,
+  getHotUpdaterInitInputEnv,
+  getInitProviderEnvVars,
   HOT_UPDATER_SERVER_PACKAGE_VERSION_ENV,
   link,
+  makeEnv,
   p,
+  readHotUpdaterInitEnv,
   resolveHotUpdaterServerVersion,
   resolvePackageVersion,
+  type RunInitOptions,
   transformEnv,
 } from "@hot-updater/cli-tools";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
+import {
+  assertFirebaseNonInteractiveInputs,
+  type FirebaseCliEnv,
+  getFirebaseCliEnv,
+  resolveFirebaseInitInputs,
+} from "./firebaseInitInputs";
+import { resolveFirebaseRegion } from "./firebaseRegion";
+import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
 import { prepareFirebaseTemplate } from "./prepareTemplate";
 import { prepareFirebaseRuntimeAuth } from "./runtimeAuth";
-import { initFirebaseUser, setEnv } from "./select";
+import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 import { renderFirebaseSourceTemplate } from "./sourceTemplate";
-
-const REGIONS = [
-  { value: "us-central1", label: "US Central (Iowa)" },
-  { value: "us-east1", label: "US East (South Carolina)" },
-  { value: "us-east4", label: "US East (Northern Virginia)" },
-  { value: "us-west1", label: "US West (Oregon)" },
-  { value: "us-west2", label: "US West (Los Angeles)" },
-  { value: "us-west3", label: "US West (Salt Lake City)" },
-  { value: "us-west4", label: "US West (Las Vegas)" },
-  { value: "europe-west1", label: "Europe West (Belgium)" },
-  { value: "europe-west2", label: "Europe West (London)" },
-  { value: "europe-west3", label: "Europe West (Frankfurt)" },
-  { value: "europe-west6", label: "Europe West (Zurich)" },
-  { value: "asia-east1", label: "Asia East (Taiwan)" },
-  { value: "asia-east2", label: "Asia East (Hong Kong)" },
-  { value: "asia-northeast1", label: "Asia Northeast (Tokyo)" },
-  { value: "asia-northeast2", label: "Asia Northeast (Osaka)" },
-  { value: "asia-northeast3", label: "Asia Northeast (Seoul)" },
-  { value: "asia-south1", label: "Asia South (Mumbai)" },
-  { value: "asia-southeast1", label: "Asia Southeast (Singapore)" },
-  { value: "asia-southeast2", label: "Asia Southeast (Jakarta)" },
-  {
-    value: "australia-southeast1",
-    label: "Australia Southeast (Sydney)",
-  },
-];
 
 const getFirebaseRuntimePackageInfo = () => {
   const firebasePackageRoot = path.dirname(
@@ -163,11 +151,23 @@ const mergeIndexes = (
   };
 };
 
-const deployFirestore = async (cwd: string) => {
-  const original = await execa("npx", ["firebase", "firestore:indexes"], {
-    cwd,
-    shell: true,
-  });
+const deployFirestore = async (
+  cwd: string,
+  nonInteractive = false,
+  cliEnv?: FirebaseCliEnv,
+) => {
+  const original = await execa(
+    "npx",
+    [
+      "firebase",
+      "firestore:indexes",
+      ...(nonInteractive ? ["--non-interactive"] : []),
+    ],
+    {
+      cwd,
+      env: cliEnv,
+    },
+  );
 
   let originalIndexes: {
     indexes: FirebaseIndex[];
@@ -179,7 +179,9 @@ const deployFirestore = async (cwd: string) => {
   try {
     const originalStdout = JSON.parse(original.stdout);
     originalIndexes = originalStdout ?? { indexes: [], fieldOverrides: [] };
-  } catch {}
+  } catch {
+    originalIndexes = { indexes: [], fieldOverrides: [] };
+  }
 
   const newIndexes = JSON.parse(
     await fs.promises.readFile(
@@ -196,11 +198,21 @@ const deployFirestore = async (cwd: string) => {
   );
 
   try {
-    await execa("npx", ["firebase", "deploy", "--only", "firestore"], {
-      cwd,
-      stdio: "inherit",
-      shell: true,
-    });
+    await execa(
+      "npx",
+      [
+        "firebase",
+        "deploy",
+        "--only",
+        "firestore",
+        ...(nonInteractive ? ["--non-interactive"] : []),
+      ],
+      {
+        cwd,
+        env: cliEnv,
+        stdio: "inherit",
+      },
+    );
   } catch (e) {
     if (e instanceof ExecaError) {
       p.log.error(e.stderr || e.stdout || e.message);
@@ -211,13 +223,27 @@ const deployFirestore = async (cwd: string) => {
   }
 };
 
-const deployFunctions = async (cwd: string) => {
+const deployFunctions = async (
+  cwd: string,
+  nonInteractive = false,
+  cliEnv?: FirebaseCliEnv,
+) => {
   try {
-    await execa("npx", ["firebase", "deploy", "--only", "functions"], {
-      cwd,
-      stdio: "inherit",
-      shell: true,
-    });
+    await execa(
+      "npx",
+      [
+        "firebase",
+        "deploy",
+        "--only",
+        "functions",
+        ...(nonInteractive ? ["--non-interactive"] : []),
+      ],
+      {
+        cwd,
+        env: cliEnv,
+        stdio: "inherit",
+      },
+    );
   } catch (e) {
     if (e instanceof ExecaError) {
       p.log.error(e.stderr || e.stdout || e.message);
@@ -228,7 +254,11 @@ const deployFunctions = async (cwd: string) => {
   }
 };
 
-const printTemplate = async (projectId: string, region: string) => {
+const printTemplate = async (
+  projectId: string,
+  region: string,
+  cliEnv?: FirebaseCliEnv,
+) => {
   try {
     const { stdout } = await execa(
       "gcloud",
@@ -243,7 +273,7 @@ const printTemplate = async (projectId: string, region: string) => {
         "--format=json",
       ],
       {
-        shell: true,
+        env: cliEnv,
       },
     );
     const parsedData = JSON.parse(stdout);
@@ -264,16 +294,26 @@ const printTemplate = async (projectId: string, region: string) => {
 
 const checkIfGcloudCliInstalled = async () => {
   try {
-    await execa("gcloud", ["--version"], {
-      shell: true,
-    });
+    await execa("gcloud", ["--version"]);
     return true;
   } catch {
     return false;
   }
 };
 
-export const runInit = async ({ build }: { build: BuildType }) => {
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
+  const nonInteractive = envFile !== undefined;
+  const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
+  const { managedEnv } = initEnvSources;
+  const savedInputs = resolveFirebaseInitInputs(
+    getHotUpdaterInitInputEnv(initEnvSources, nonInteractive),
+  );
+  assertFirebaseNonInteractiveInputs(savedInputs, nonInteractive);
+  let applicationCredentials = savedInputs.applicationCredentials;
+  const cliEnv = nonInteractive
+    ? getFirebaseCliEnv(applicationCredentials)
+    : undefined;
+
   const isGcloudCliInstalled = await checkIfGcloudCliInstalled();
   if (!isGcloudCliInstalled) {
     p.log.error("gcloud CLI is not installed");
@@ -291,17 +331,70 @@ export const runInit = async ({ build }: { build: BuildType }) => {
   const functionsIndexPath = path.join(functionsDir, "index.cjs");
   const runtimePackageInfo = await syncFunctionsPackageJson(functionsDir);
 
-  const initializeVariable = await initFirebaseUser(tmpDir);
+  const initializeVariable = await initFirebaseUser(
+    tmpDir,
+    savedInputs.projectId,
+    nonInteractive,
+    cliEnv,
+    async (projectId) => {
+      applicationCredentials = await inputFirebaseApplicationCredentials({
+        applicationCredentials,
+        nonInteractive,
+        projectId,
+      });
+      return cliEnv;
+    },
+  );
 
-  let currentRegion: string | undefined;
-
+  const currentRegion = await resolveFirebaseRegion({
+    cwd: tmpDir,
+    discoverExistingProject: initializeVariable.status === "ready",
+    nonInteractive,
+    savedRegion: savedInputs.region,
+    cliEnv,
+  });
+  const resolvedInputs = {
+    ...savedInputs,
+    applicationCredentials: applicationCredentials || undefined,
+    projectId: initializeVariable.projectId,
+    region: currentRegion,
+  };
+  const persistCredentialInputs = await confirmInitInputPersistence({
+    existingEnv: managedEnv,
+    inputs: resolvedInputs,
+    nonInteractive,
+    provider: FIREBASE_INIT_PROVIDER,
+  });
+  const persistedInputs = getInitProviderEnvVars({
+    includeConsentInputs: persistCredentialInputs,
+    inputs: resolvedInputs,
+    provider: FIREBASE_INIT_PROVIDER,
+  });
+  if (initializeVariable.status === "create") {
+    await createFirebaseProject({
+      cliEnv,
+      projectId: initializeVariable.projectId,
+    });
+    await makeEnv(persistedInputs);
+    await removeTmpDir();
+    return;
+  }
+  const runtimeAuth = await prepareFirebaseRuntimeAuth(".env.hotupdater");
+  const functionsCode = transformEnv(functionsIndexPath, {
+    ...runtimeAuth,
+    REGION: currentRegion,
+  });
+  await fs.promises.writeFile(functionsIndexPath, functionsCode);
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
     build,
+    region: currentRegion,
+    applicationCredentials:
+      persistedInputs[
+        FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey
+      ],
   });
-  const runtimeAuth = await prepareFirebaseRuntimeAuth(".env.hotupdater");
-
   if (
     runtimePackageInfo.serverPackageVersion !==
     runtimePackageInfo.currentPackageVersion
@@ -318,7 +411,6 @@ export const runInit = async ({ build }: { build: BuildType }) => {
         try {
           await execa("npm", ["install"], {
             cwd: functionsDir,
-            shell: true,
           });
           return "Installed dependencies";
         } catch (error) {
@@ -331,65 +423,10 @@ export const runInit = async ({ build }: { build: BuildType }) => {
         }
       },
     },
-    {
-      title: "Checking existing functions and setting region",
-      task: async () => {
-        let isFunctionsExist = false;
-
-        try {
-          const { stdout } = await execa(
-            "npx",
-            ["firebase", "functions:list", "--json"],
-            {
-              cwd: tmpDir,
-              shell: true,
-            },
-          );
-          const parsedData = JSON.parse(stdout);
-          const functionsData = parsedData.result || [];
-          const hotUpdater = functionsData.find(
-            (fn: FirebaseFunction) => fn.id === "hot-updater",
-          );
-
-          if (hotUpdater?.region) {
-            currentRegion = hotUpdater.region;
-            isFunctionsExist = true;
-          }
-        } catch {
-          // no-op
-        }
-
-        if (!isFunctionsExist) {
-          const selectedRegion = await p.select({
-            message: "Select Region",
-            options: REGIONS,
-            initialValue: REGIONS[0].value,
-          });
-          if (p.isCancel(selectedRegion)) {
-            p.cancel("Operation cancelled.");
-            process.exit(1);
-          }
-          currentRegion = selectedRegion;
-        }
-
-        if (!currentRegion) {
-          p.log.error("Region is not set");
-          await removeTmpDir();
-          process.exit(1);
-        }
-
-        const code = transformEnv(functionsIndexPath, {
-          ...runtimeAuth,
-          REGION: currentRegion,
-        });
-        await fs.promises.writeFile(functionsIndexPath, code);
-        return `Using ${isFunctionsExist ? "existing" : "new"} functions in region: ${currentRegion}`;
-      },
-    },
   ]);
 
-  await deployFirestore(tmpDir);
-  await deployFunctions(tmpDir);
+  await deployFirestore(tmpDir, nonInteractive, cliEnv);
+  await deployFunctions(tmpDir, nonInteractive, cliEnv);
 
   await p.tasks([
     {
@@ -397,10 +434,15 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       async task(message) {
         const functionsList = await execa(
           "npx",
-          ["firebase", "functions:list", "--json"],
+          [
+            "firebase",
+            "functions:list",
+            "--json",
+            ...(nonInteractive ? ["--non-interactive"] : []),
+          ],
           {
             cwd: tmpDir,
-            shell: true,
+            env: cliEnv,
           },
         );
         const functionsListJson = JSON.parse(functionsList.stdout);
@@ -425,7 +467,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
             "--format=json",
           ],
           {
-            shell: true,
+            env: cliEnv,
           },
         );
         const iamJson = JSON.parse(checkIam.stdout);
@@ -449,8 +491,8 @@ export const runInit = async ({ build }: { build: BuildType }) => {
                 "--role=roles/iam.serviceAccountTokenCreator",
               ],
               {
+                env: cliEnv,
                 stdio: "inherit",
-                shell: true,
               },
             );
             p.log.success(
@@ -479,7 +521,7 @@ export const runInit = async ({ build }: { build: BuildType }) => {
     await removeTmpDir();
     process.exit(1);
   }
-  await printTemplate(initializeVariable.projectId, currentRegion);
+  await printTemplate(initializeVariable.projectId, currentRegion, cliEnv);
   await removeTmpDir();
 
   p.log.message(
@@ -487,8 +529,10 @@ export const runInit = async ({ build }: { build: BuildType }) => {
       "https://hot-updater.dev/docs/managed/firebase#step-3-generated-configurations",
     )}`,
   );
-  p.log.message(
-    "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env file",
-  );
+  if (!applicationCredentials) {
+    p.log.message(
+      "Next step: Change GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json in .env file",
+    );
+  }
   p.log.success("Done! 🎉");
 };

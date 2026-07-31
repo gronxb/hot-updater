@@ -36,7 +36,7 @@ setupDatabasePluginTestSuite({
   name: "kyselyAdapter PostgreSQL",
   migrate: async () => {
     client = new PGlite();
-    database = new Kysely({ dialect: new PGliteDialect(client) });
+    database = new Kysely<object>({ dialect: new PGliteDialect(client) });
     await client.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
   },
   createPlugin: (): DatabaseAdapterWithCapabilities =>
@@ -78,7 +78,7 @@ describe("kyselyAdapter SQLite JSON storage", () => {
   it("round-trips JSON values through text columns", async () => {
     // Given
     const sqliteClient = new PGlite();
-    const sqliteDatabase = new Kysely({
+    const sqliteDatabase = new Kysely<object>({
       dialect: new PGliteDialect(sqliteClient),
     });
     await sqliteClient.exec(
@@ -125,7 +125,7 @@ describe("kyselyAdapter soft relations", () => {
   it("rejects orphan patches when the SQL schema omits foreign keys", async () => {
     const softClient = new PGlite();
     const queries: string[] = [];
-    const softDatabase = new Kysely({
+    const softDatabase = new Kysely<object>({
       dialect: new PGliteDialect(softClient),
       log: (event) => {
         if (event.level === "query") queries.push(event.query.sql);
@@ -196,7 +196,7 @@ describe("kyselyAdapter soft relations", () => {
 describe("kyselyAdapter bundle_events distinct semantics", () => {
   it("counts distinct installs and keeps the latest row per install", async () => {
     const localClient = new PGlite();
-    const localDatabase = new Kysely({
+    const localDatabase = new Kysely<object>({
       dialect: new PGliteDialect(localClient),
     });
     await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
@@ -247,7 +247,7 @@ describe("kyselyAdapter bundle_events distinct semantics", () => {
   });
   it("honors explicit null ordering for bundle event queries", async () => {
     const localClient = new PGlite();
-    const localDatabase = new Kysely({
+    const localDatabase = new Kysely<object>({
       dialect: new PGliteDialect(localClient),
     });
     await localClient.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
