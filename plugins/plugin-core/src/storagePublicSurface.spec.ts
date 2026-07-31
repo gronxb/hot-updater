@@ -16,6 +16,7 @@ const expectedPackageExports = {
   "plugins/aws": [
     ".",
     "./iac",
+    "./init",
     "./lambda",
     "./lambda/handler",
     "./package.json",
@@ -23,6 +24,7 @@ const expectedPackageExports = {
   "plugins/cloudflare": [
     ".",
     "./iac",
+    "./init",
     "./package.json",
     "./worker",
     "./worker/config",
@@ -33,9 +35,17 @@ const expectedPackageExports = {
     "./functions",
     "./functions/handler",
     "./iac",
+    "./init",
     "./package.json",
   ],
-  "plugins/supabase": [".", "./edge", "./iac", "./package.json", "./scaffold"],
+  "plugins/supabase": [
+    ".",
+    "./edge",
+    "./iac",
+    "./init",
+    "./package.json",
+    "./scaffold",
+  ],
   "plugins/mock": [".", "./package.json"],
   "plugins/standalone": [".", "./package.json"],
 } as const;
