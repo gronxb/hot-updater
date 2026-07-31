@@ -22,14 +22,14 @@ import {
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
 import { Cloudflare } from "cloudflare";
-import dayjs from "dayjs";
-import { execa } from "execa";
 
 import { createWrangler } from "../src/utils/createWrangler";
 import {
   validateCloudflareApiToken,
   verifyCloudflareApiTokenIdentity,
 } from "./cloudflareApiToken";
+import { resolveCloudflareReplayD1Database } from "./cloudflareD1Selection";
+import { resolveCloudflareInfrastructureApiToken } from "./cloudflareInfrastructureAuth";
 import {
   CLOUDFLARE_INIT_PERMISSION,
   type CloudflareCredentialSource,
@@ -44,7 +44,6 @@ import {
   shouldUpdateR2ManagedDomain,
 } from "./cloudflareInitInputs";
 import { inputCloudflareInitSecrets } from "./cloudflareInitSecrets";
-import { getWranglerLoginAuthToken } from "./getWranglerLoginAuthToken";
 import { initProvider as CLOUDFLARE_INIT_PROVIDER } from "./init/index";
 
 const getConfigScaffold = (
@@ -212,28 +211,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const infrastructureCredentialSource: CloudflareCredentialSource = {
     kind: "wrangler-oauth",
   };
-  let auth = getWranglerLoginAuthToken();
-  if (!auth || dayjs(auth.expiration_time).isBefore(dayjs())) {
-    await execa(
-      "npx",
-      [
-        "wrangler",
-        "login",
-        "--scopes",
-        "account:read",
-        "user:read",
-        "d1:write",
-        "workers:write",
-        "workers_scripts:write",
-      ],
-      { cwd },
-    );
-    auth = getWranglerLoginAuthToken();
-  }
-  if (!auth) {
-    throw new Error("'npx wrangler login' is required to use this command");
-  }
-  const infrastructureApiToken = auth.oauth_token;
+  const infrastructureApiToken = await resolveCloudflareInfrastructureApiToken({
+    cwd,
+    nonInteractive,
+  });
 
   const cf = new Cloudflare({
     apiToken: infrastructureApiToken,
@@ -423,13 +404,20 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   let createD1Database = false;
   let selectedD1DatabaseId: string | undefined;
   let d1DatabaseName: string;
-  if (nonInteractive && existingD1Database) {
-    selectedD1DatabaseId = existingD1Database.uuid;
-    d1DatabaseName = existingD1Database.name;
-    p.log.info("Using existing Cloudflare D1 database.");
-  } else if (nonInteractive && existingD1DatabaseId && existingD1DatabaseName) {
-    createD1Database = true;
-    d1DatabaseName = existingD1DatabaseName;
+  if (nonInteractive && existingD1DatabaseId && existingD1DatabaseName) {
+    const replayResolution = resolveCloudflareReplayD1Database({
+      availableDatabases: availableD1List,
+      databaseId: existingD1DatabaseId,
+      databaseName: existingD1DatabaseName,
+    });
+    if (replayResolution.kind === "existing") {
+      selectedD1DatabaseId = replayResolution.database.uuid;
+      d1DatabaseName = replayResolution.database.name;
+      p.log.info("Using existing Cloudflare D1 database.");
+    } else {
+      createD1Database = true;
+      d1DatabaseName = replayResolution.name;
+    }
   } else {
     if (
       (existingD1DatabaseId || existingD1DatabaseName) &&

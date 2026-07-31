@@ -85,14 +85,21 @@ export const resolveFirebaseRegion = async ({
     }
   }
 
+  const initialRegion = isFirebaseRegion(savedRegion)
+    ? savedRegion
+    : isFirebaseRegion(discoveredRegion)
+      ? discoveredRegion
+      : REGIONS[0].value;
+  const options = REGIONS.some((region) => region.value === initialRegion)
+    ? REGIONS
+    : [
+        { value: initialRegion, label: `Existing (${initialRegion})` },
+        ...REGIONS,
+      ];
   const selectedRegion = await p.select<string>({
-    initialValue: isFirebaseRegion(savedRegion)
-      ? savedRegion
-      : isFirebaseRegion(discoveredRegion)
-        ? discoveredRegion
-        : REGIONS[0].value,
+    initialValue: initialRegion,
     message: FIREBASE_INIT_PROVIDER.inputs.region.prompt.message,
-    options: REGIONS,
+    options,
   });
   if (p.isCancel(selectedRegion)) {
     p.cancel("Operation cancelled.");

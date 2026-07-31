@@ -61,6 +61,8 @@ const mocks = vi.hoisted(() => {
     confirm: vi.fn(),
     confirmInitInputPersistence: vi.fn(),
     createWrangler: vi.fn(),
+    execa: vi.fn(),
+    getWranglerLoginAuthToken: vi.fn(),
     inputSecrets: vi.fn(),
     log: {
       error: vi.fn(),
@@ -72,6 +74,10 @@ const mocks = vi.hoisted(() => {
     select: vi.fn(),
   };
 });
+
+vi.mock("execa", () => ({
+  execa: mocks.execa,
+}));
 
 vi.mock("cloudflare", () => ({
   Cloudflare: vi.fn(function Cloudflare(options) {
@@ -109,10 +115,7 @@ vi.mock("./cloudflareInitSecrets", () => ({
 }));
 
 vi.mock("./getWranglerLoginAuthToken", () => ({
-  getWranglerLoginAuthToken: vi.fn(() => ({
-    expiration_time: "2999-01-01T00:00:00.000Z",
-    oauth_token: "wrangler-oauth-token",
-  })),
+  getWranglerLoginAuthToken: mocks.getWranglerLoginAuthToken,
 }));
 
 vi.mock("../src/utils/createWrangler", () => ({
@@ -128,6 +131,10 @@ import { runInit } from "./index";
 describe("Cloudflare init discovery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getWranglerLoginAuthToken.mockReturnValue({
+      expiration_time: "2999-01-01T00:00:00.000Z",
+      oauth_token: "wrangler-oauth-token",
+    });
     mocks.readHotUpdaterInitEnv.mockResolvedValue({
       env: {},
       managedEnv: {},
@@ -164,6 +171,97 @@ describe("Cloudflare init discovery", () => {
     mocks.credentialApi.r2.buckets.list.mockResolvedValue({ buckets: [] });
     mocks.credentialApi.workers.subdomains.get.mockResolvedValue({});
     mocks.createWrangler.mockResolvedValue(vi.fn());
+  });
+
+  it("does not start Wrangler login during env-file replay", async () => {
+    // Given
+    mocks.getWranglerLoginAuthToken.mockReturnValue(null);
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {
+        HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: "account-id",
+        HOT_UPDATER_CLOUDFLARE_API_TOKEN: "api-token",
+        HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: "database-id",
+        HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME: "ota",
+        HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "access-key-id",
+        HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: "bundles",
+        HOT_UPDATER_CLOUDFLARE_R2_PRIVATE: "true",
+        HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY: "secret-access-key",
+        HOT_UPDATER_CLOUDFLARE_WORKER_NAME: "hot-updater",
+      },
+      managedEnv: {},
+    });
+
+    // When
+    const initialization = runInit({
+      build: "bare",
+      envFile: ".env.hotupdater",
+    });
+
+    // Then
+    await expect(initialization).rejects.toThrow("npx wrangler login");
+    expect(mocks.execa).not.toHaveBeenCalled();
+  });
+
+  it("starts Wrangler login when interactive init has no saved session", async () => {
+    // Given
+    mocks.getWranglerLoginAuthToken.mockReturnValueOnce(null).mockReturnValue({
+      expiration_time: "2999-01-01T00:00:00.000Z",
+      oauth_token: "wrangler-oauth-token",
+    });
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.inputSecrets.mockRejectedValue(new Error("stop after login"));
+
+    // When
+    const initialization = runInit({ build: "bare" });
+
+    // Then
+    await expect(initialization).rejects.toThrow("stop after login");
+    expect(mocks.execa).toHaveBeenCalledWith(
+      "npx",
+      expect.arrayContaining(["wrangler", "login"]),
+      expect.objectContaining({
+        cwd: "/Users/gronxb/workspace/hot-updater",
+      }),
+    );
+  });
+
+  it("rejects conflicting D1 identifiers before collecting secrets", async () => {
+    // Given
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {
+        HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID: "account-id",
+        HOT_UPDATER_CLOUDFLARE_API_TOKEN: "api-token",
+        HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID: "old-database-id",
+        HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME: "overridden-name",
+        HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID: "access-key-id",
+        HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME: "bundles",
+        HOT_UPDATER_CLOUDFLARE_R2_PRIVATE: "true",
+        HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY: "secret-access-key",
+        HOT_UPDATER_CLOUDFLARE_WORKER_NAME: "hot-updater",
+      },
+      managedEnv: {},
+    });
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [
+        { name: "old-name", uuid: "old-database-id" },
+        { name: "overridden-name", uuid: "different-database-id" },
+      ],
+    });
+    mocks.inputSecrets.mockRejectedValue(new Error("reached secret input"));
+
+    // When
+    const initialization = runInit({
+      build: "bare",
+      envFile: ".env.hotupdater",
+    });
+
+    // Then
+    await expect(initialization).rejects.toThrow(
+      "Cloudflare D1 identifiers conflict",
+    );
+    expect(mocks.inputSecrets).not.toHaveBeenCalled();
   });
 
   it("uses an existing bucket's privacy as the interactive default", async () => {

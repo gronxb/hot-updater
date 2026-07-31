@@ -67,6 +67,23 @@ describe("resolveFirebaseRegion", () => {
     expect(mocks.select).not.toHaveBeenCalled();
   });
 
+  it("reuses a saved region outside the picker defaults", async () => {
+    // Given
+    const options = {
+      cwd: "/tmp/firebase-init",
+      nonInteractive: true,
+      savedRegion: "northamerica-northeast1",
+    };
+
+    // When
+    const region = await resolveFirebaseRegion(options);
+
+    // Then
+    expect(region).toBe("northamerica-northeast1");
+    expect(mocks.execa).not.toHaveBeenCalled();
+    expect(mocks.select).not.toHaveBeenCalled();
+  });
+
   it("does not run discovery or prompt when a non-interactive region is missing", async () => {
     // Given
     const options = {
@@ -110,5 +127,37 @@ describe("resolveFirebaseRegion", () => {
     ).resolves.toBe("asia-northeast3");
     expect(mocks.execa).not.toHaveBeenCalled();
     expect(mocks.select).toHaveBeenCalledOnce();
+  });
+
+  it("preserves a discovered region that is outside the picker defaults", async () => {
+    // Given
+    mocks.execa.mockResolvedValue({
+      exitCode: 0,
+      stdout: JSON.stringify({
+        result: [
+          {
+            id: "hot-updater",
+            region: "northamerica-northeast1",
+          },
+        ],
+      }),
+    });
+    mocks.select.mockResolvedValue("northamerica-northeast1");
+
+    // When
+    const region = await resolveFirebaseRegion({
+      cwd: "/tmp/firebase-init",
+    });
+
+    // Then
+    expect(region).toBe("northamerica-northeast1");
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialValue: "northamerica-northeast1",
+        options: expect.arrayContaining([
+          expect.objectContaining({ value: "northamerica-northeast1" }),
+        ]),
+      }),
+    );
   });
 });
