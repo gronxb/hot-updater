@@ -79,6 +79,7 @@ export const initProvider = {
       envKey: "SUPABASE_ACCESS_TOKEN",
       help: "Supabase personal access token",
       persistence: "with-consent",
+      preflight: false,
       prompt: {
         message: "Enter your Supabase personal access token",
         type: "password",

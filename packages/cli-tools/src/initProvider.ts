@@ -9,6 +9,7 @@ export type InitProviderInputDefinition = {
   readonly help: string;
   readonly optional?: boolean;
   readonly persistence?: InitProviderInputPersistence;
+  readonly preflight?: boolean;
   readonly prompt?: {
     readonly defaultValue?: string;
     readonly message: string;
@@ -80,13 +81,18 @@ export const resolveInitProviderInputs = (
 
 export const getMissingInitProviderInputs = ({
   inputs,
+  preflightOnly = false,
   provider,
 }: {
   readonly inputs: Readonly<Record<string, string | undefined>>;
+  readonly preflightOnly?: boolean;
   readonly provider: InitProviderDefinition;
 }): readonly string[] =>
   Object.entries(provider.inputs)
     .filter(([name, input]) => {
+      if (preflightOnly && input.preflight === false) {
+        return false;
+      }
       const required = input.requiredWhen
         ? input.requiredWhen(inputs)
         : !input.optional;

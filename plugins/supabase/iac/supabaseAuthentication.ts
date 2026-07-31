@@ -26,7 +26,7 @@ const openBrowser = async (url: string): Promise<void> => {
   await execa("xdg-open", [url]);
 };
 
-const hasValidSupabaseCliLogin = async (): Promise<boolean> => {
+export const hasValidSupabaseCliLogin = async (): Promise<boolean> => {
   const result = await execa(
     "npx",
     ["-y", "supabase", "projects", "list", "--output", "json", "--agent", "no"],

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   makeEnv: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
   runAwsInit: vi.fn(),
+  runSupabaseInit: vi.fn(),
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
@@ -52,6 +53,10 @@ vi.mock("@hot-updater/aws/iac", () => ({
   runInit: mocks.runAwsInit,
 }));
 
+vi.mock("@hot-updater/supabase/iac", () => ({
+  runInit: mocks.runSupabaseInit,
+}));
+
 import { init } from "./init";
 
 describe("init choices", () => {
@@ -62,6 +67,7 @@ describe("init choices", () => {
     mocks.isProjectFileTracked.mockReturnValue(false);
     mocks.makeEnv.mockResolvedValue("");
     mocks.runAwsInit.mockResolvedValue(undefined);
+    mocks.runSupabaseInit.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -156,6 +162,25 @@ describe("init choices", () => {
         "- HOT_UPDATER_AWS_LAMBDA_NAME",
       ].join("\n"),
     );
+  });
+
+  it("lets Supabase validate CLI authentication when env-file omits the access token", async () => {
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {
+        HOT_UPDATER_INIT_BUILD: "bare",
+        HOT_UPDATER_SUPABASE_BUCKET_NAME: "updates",
+        HOT_UPDATER_SUPABASE_FUNCTION_NAME: "update-server",
+        HOT_UPDATER_SUPABASE_PROJECT_ID: "project-ref",
+      },
+    });
+
+    await init({ envFile: "init.env", provider: "supabase" });
+
+    expect(process.exitCode).toBeUndefined();
+    expect(mocks.runSupabaseInit).toHaveBeenCalledWith({
+      build: "bare",
+      envFile: "init.env",
+    });
   });
 
   it("refuses to write credentials to a tracked managed env file", async () => {

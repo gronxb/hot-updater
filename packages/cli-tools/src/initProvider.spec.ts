@@ -151,6 +151,7 @@ describe("assertInitProviderInputs", () => {
       accessKey: {
         envKey: "TEST_ACCESS_KEY",
         help: "Access key",
+        preflight: false,
         requiredWhen: (inputs) => inputs.authMode === "account",
         requirementHint: "required for account auth",
       },
@@ -216,6 +217,20 @@ describe("assertInitProviderInputs", () => {
     expect(getMissingInitProviderInputs({ inputs, provider })).toEqual([
       "TEST_ACCESS_KEY",
     ]);
+  });
+
+  it("defers provider-specific inputs during preflight", () => {
+    expect(
+      getMissingInitProviderInputs({
+        inputs: {
+          accessKey: undefined,
+          authMode: "account",
+          token: undefined,
+        },
+        preflightOnly: true,
+        provider,
+      }),
+    ).toEqual([]);
   });
 
   it("only includes consent-protected inputs after approval", () => {

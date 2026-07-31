@@ -827,7 +827,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       managedEnv,
     },
   );
-  assertSupabaseNonInteractiveInputs(savedInputs, nonInteractive);
+  await assertSupabaseNonInteractiveInputs(savedInputs, nonInteractive);
   const initInputs = await inputSupabaseDeploymentInputs({
     ...savedInputs,
     nonInteractive,

@@ -1,6 +1,4 @@
 import {
-  assertInitInputs,
-  assertInitProviderInputs,
   getInitProviderTextPromptValues,
   getHotUpdaterEnvValue,
   MissingInitInputsError,
@@ -10,13 +8,16 @@ import {
 
 import {
   initProvider as SUPABASE_INIT_PROVIDER,
-  isSupabaseFunctionName,
   isSupabaseRegion,
   SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
   SUPABASE_REGION_VALUES,
   type SupabaseRegion,
 } from "./init/index";
-import { inputSupabaseAccessToken } from "./supabaseAuthentication";
+
+export {
+  assertSupabaseNonInteractiveInputs,
+  inputSupabaseDeploymentInputs,
+} from "./supabaseDeploymentInputs";
 
 export type SupabaseInitInputs = {
   readonly accessToken?: string;
@@ -73,74 +74,6 @@ export const resolveSupabaseInitInputs = (
     projectName: resolveInitProviderInput(existingEnv, inputs.projectName),
     region: isSupabaseRegion(region) ? region : undefined,
   };
-};
-
-export const assertSupabaseNonInteractiveInputs = (
-  inputs: SupabaseInitInputs,
-  nonInteractive: boolean,
-): void => {
-  assertInitProviderInputs({
-    inputs,
-    provider: SUPABASE_INIT_PROVIDER,
-    strict: nonInteractive,
-  });
-};
-
-export const inputSupabaseDeploymentInputs = async ({
-  accessToken,
-  functionName,
-  nonInteractive,
-}: SupabaseInitInputs & {
-  readonly nonInteractive: boolean;
-}): Promise<{
-  readonly accessToken?: string;
-  readonly functionName: string;
-}> => {
-  const { inputs } = SUPABASE_INIT_PROVIDER;
-  assertInitInputs({
-    inputs: {
-      [inputs.accessToken.envKey]: accessToken,
-      [inputs.functionName.envKey]: functionName,
-    },
-    strict: nonInteractive,
-  });
-
-  if (nonInteractive && accessToken && functionName) {
-    return {
-      accessToken,
-      functionName,
-    };
-  }
-
-  const savedFunctionName = isSupabaseFunctionName(functionName)
-    ? functionName
-    : undefined;
-
-  return p.group(
-    {
-      accessToken: () =>
-        nonInteractive && accessToken
-          ? Promise.resolve(accessToken)
-          : inputSupabaseAccessToken(),
-      functionName: () =>
-        nonInteractive && savedFunctionName
-          ? Promise.resolve(savedFunctionName)
-          : p.text({
-              ...getInitProviderTextPromptValues(
-                inputs.functionName.prompt,
-                savedFunctionName,
-              ),
-              message: inputs.functionName.prompt.message,
-              validate: (value) =>
-                isSupabaseFunctionName(value)
-                  ? undefined
-                  : "Start with a letter and use only letters, numbers, underscores, or hyphens",
-            }),
-    },
-    {
-      onCancel: () => process.exit(0),
-    },
-  );
 };
 
 export const inputSupabaseDatabasePassword = async ({

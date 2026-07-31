@@ -110,6 +110,7 @@ const collectInitChoices = async (
               existingEnv,
               INIT_PROVIDER_PACKAGES[provider].definition,
             ),
+            preflightOnly: true,
             provider: INIT_PROVIDER_PACKAGES[provider].definition,
           })
         : []),

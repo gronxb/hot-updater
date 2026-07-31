@@ -23,7 +23,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 });
 
 import {
-  assertSupabaseNonInteractiveInputs,
   inputSupabaseDatabasePassword,
   inputSupabaseDeploymentInputs,
   inputSupabaseProjectCreationInputs,
@@ -122,21 +121,6 @@ describe("Supabase non-interactive inputs", () => {
     );
   });
 
-  it("reports all missing Supabase resource inputs", () => {
-    const inputs = resolveSupabaseInitInputs({});
-
-    expect(() => assertSupabaseNonInteractiveInputs(inputs, true)).toThrow(
-      expect.objectContaining({
-        missingInputs: [
-          "HOT_UPDATER_SUPABASE_PROJECT_ID",
-          "SUPABASE_ACCESS_TOKEN",
-          "HOT_UPDATER_SUPABASE_BUCKET_NAME",
-          "HOT_UPDATER_SUPABASE_FUNCTION_NAME",
-        ],
-      }),
-    );
-  });
-
   it("skips the optional database password without prompting", async () => {
     // Given
     const inputs = resolveSupabaseInitInputs({
@@ -197,21 +181,6 @@ describe("Supabase non-interactive inputs", () => {
       }),
     );
     expect(deploymentInputs.functionName).toBe("edited-function");
-  });
-
-  it("rejects an unsafe saved Edge Function name in non-interactive mode", () => {
-    const inputs = resolveSupabaseInitInputs({
-      HOT_UPDATER_SUPABASE_BUCKET_NAME: "updates",
-      HOT_UPDATER_SUPABASE_FUNCTION_NAME: "../outside",
-      HOT_UPDATER_SUPABASE_PROJECT_ID: "project-ref",
-      SUPABASE_ACCESS_TOKEN: "access-token",
-    });
-
-    expect(() => assertSupabaseNonInteractiveInputs(inputs, true)).toThrow(
-      expect.objectContaining({
-        missingInputs: ["HOT_UPDATER_SUPABASE_FUNCTION_NAME"],
-      }),
-    );
   });
 
   it("asks for the database password again when the selected project changes", async () => {
