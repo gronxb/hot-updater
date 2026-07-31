@@ -26,6 +26,15 @@ const openBrowser = async (url: string): Promise<void> => {
   await execa("xdg-open", [url]);
 };
 
+const hasValidSupabaseCliLogin = async (): Promise<boolean> => {
+  const result = await execa(
+    "npx",
+    ["-y", "supabase", "projects", "list", "--output", "json", "--agent", "no"],
+    { reject: false },
+  );
+  return result.exitCode === 0;
+};
+
 export const getSupabaseCliEnv = (
   accessToken?: string,
 ): Readonly<Record<string, string>> | undefined =>
@@ -60,6 +69,9 @@ export const inputSupabaseAccessToken = async (
   }
 
   if (authMethod === SUPABASE_AUTH_METHOD.cliLogin) {
+    if (await hasValidSupabaseCliLogin()) {
+      return undefined;
+    }
     const loginProcess = execa(
       "npx",
       ["-y", "supabase", "login", "--no-browser", "--agent", "no"],

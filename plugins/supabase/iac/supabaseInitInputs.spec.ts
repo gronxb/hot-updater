@@ -1,12 +1,7 @@
-import { PassThrough } from "node:stream";
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  execa: vi.fn(),
   group: vi.fn(),
-  link: vi.fn((url: string) => `link:${url}`),
-  logStep: vi.fn(),
   password: vi.fn(),
   select: vi.fn(),
   text: vi.fn(),
@@ -17,24 +12,15 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     ...actual,
-    link: mocks.link,
     p: {
       ...actual.p,
       group: mocks.group,
-      log: {
-        ...actual.p.log,
-        step: mocks.logStep,
-      },
       password: mocks.password,
       select: mocks.select,
       text: mocks.text,
     },
   };
 });
-
-vi.mock("execa", () => ({
-  execa: mocks.execa,
-}));
 
 import {
   assertSupabaseNonInteractiveInputs,
@@ -173,78 +159,10 @@ describe("Supabase non-interactive inputs", () => {
     expect(mocks.text).not.toHaveBeenCalled();
   });
 
-  it("uses Supabase CLI login instead of requesting an access token when selected", async () => {
-    // Given
-    mocks.select.mockResolvedValue("cli-login");
-    mocks.execa.mockResolvedValue({ stdout: "" });
-
-    // When
-    const deploymentInputs = await inputSupabaseDeploymentInputs({
-      functionName: "update-server",
-      nonInteractive: false,
-    });
-
-    // Then
-    expect(deploymentInputs).toEqual({
-      accessToken: undefined,
-      functionName: "update-server",
-    });
-    expect(mocks.execa).toHaveBeenCalledWith(
-      "npx",
-      ["-y", "supabase", "login", "--no-browser", "--agent", "no"],
-      {
-        stdin: "inherit",
-        stderr: "inherit",
-        stdout: "pipe",
-      },
-    );
-    expect(mocks.password).not.toHaveBeenCalled();
-  });
-
-  it("opens the Supabase CLI login URL on Windows without another Enter", async () => {
-    // Given
-    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
-    vi.spyOn(process.stdout, "write").mockImplementation(
-      (() => true) as typeof process.stdout.write,
-    );
-    mocks.select.mockResolvedValue("cli-login");
-    const stdout = new PassThrough();
-    let completeLogin = () => {};
-    const loginProcess = Object.assign(
-      new Promise<{ stdout: string }>((resolve) => {
-        completeLogin = () => resolve({ stdout: "" });
-      }),
-      { stdout },
-    );
-    mocks.execa
-      .mockReturnValueOnce(loginProcess)
-      .mockResolvedValueOnce({ stdout: "" });
-    const loginUrl =
-      "https://supabase.com/dashboard/cli/login?session_id=test-session";
-
-    // When
-    const deploymentInputsPromise = inputSupabaseDeploymentInputs({
-      functionName: "update-server",
-      nonInteractive: false,
-    });
-    await vi.waitFor(() => expect(mocks.execa).toHaveBeenCalledOnce());
-    stdout.write(
-      `Here is your login link, open it in the browser ${loginUrl}\n`,
-    );
-    completeLogin();
-    await deploymentInputsPromise;
-
-    // Then
-    expect(mocks.execa).toHaveBeenNthCalledWith(2, "rundll32.exe", [
-      "url.dll,FileProtocolHandler",
-      loginUrl,
-    ]);
-  });
-
   it("prompts for authentication when an access token was only saved as a default", async () => {
     // Given
-    mocks.select.mockResolvedValue("cli-login");
-    mocks.execa.mockResolvedValue({ stdout: "" });
+    mocks.select.mockResolvedValue("access-token");
+    mocks.password.mockResolvedValue("new-access-token");
 
     // When
     await inputSupabaseDeploymentInputs({
@@ -259,12 +177,12 @@ describe("Supabase non-interactive inputs", () => {
         message: "How do you want to authenticate with Supabase?",
       }),
     );
-    expect(mocks.execa).toHaveBeenCalledOnce();
+    expect(mocks.password).toHaveBeenCalledOnce();
   });
 
   it("prefills the saved function name while retaining its placeholder", async () => {
-    mocks.select.mockResolvedValue("cli-login");
-    mocks.execa.mockResolvedValue({ stdout: "" });
+    mocks.select.mockResolvedValue("access-token");
+    mocks.password.mockResolvedValue("access-token");
     mocks.text.mockResolvedValue("edited-function");
 
     const deploymentInputs = await inputSupabaseDeploymentInputs({
@@ -279,28 +197,6 @@ describe("Supabase non-interactive inputs", () => {
       }),
     );
     expect(deploymentInputs.functionName).toBe("edited-function");
-  });
-
-  it("shows the token dashboard link when personal access token authentication is selected", async () => {
-    // Given
-    mocks.select.mockResolvedValue("access-token");
-    mocks.password.mockResolvedValue("access-token");
-
-    // When
-    await inputSupabaseDeploymentInputs({
-      functionName: "update-server",
-      nonInteractive: false,
-    });
-
-    // Then
-    expect(mocks.link).toHaveBeenCalledWith(
-      "https://supabase.com/dashboard/account/tokens",
-    );
-    expect(mocks.logStep).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "link:https://supabase.com/dashboard/account/tokens",
-      ),
-    );
   });
 
   it("rejects an unsafe saved Edge Function name in non-interactive mode", () => {
