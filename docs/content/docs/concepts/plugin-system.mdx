@@ -49,3 +49,18 @@ Database plugins store bundle metadata that your app uses to check for updates. 
 - **`@hot-updater/aws`**: Provides `s3Database` functionality, utilizing AWS for database storage.
 - **`@hot-updater/cloudflare`**: Provides `d1Database` functionality, leveraging Cloudflare D1 for database storage.
 - **`@hot-updater/firebase`**: Provides `firebaseDatabase` functionality, using Firebase Firestore for storing update metadata.
+
+## Server Features
+
+`createHotUpdater` can compose official server features through its `plugins`
+option. Infrastructure providers may advertise versioned capabilities that a
+feature consumes without exposing provider configuration or credentials.
+
+Every contributed route declares whether it is public or protected. Installing
+an authentication feature does not implicitly protect the existing version,
+update-check, or bundle routes. Managed protection remains an explicit rollout
+decision.
+
+Server feature authoring is currently reserved for first-party packages. The
+supported server entry accepts feature objects but does not expose a public
+feature-authoring factory.
