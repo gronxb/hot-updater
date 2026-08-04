@@ -31,23 +31,19 @@ const constructionCode = (callback: () => unknown): string | undefined => {
 
 describe("compileRoutes", () => {
   it("rejects duplicate route IDs", () => {
-    // Given
     const routes = [route("same", "/first"), route("same", "/second")];
 
-    // When / Then
     expect(constructionCode(() => compileRoutes(routes))).toBe(
       "DUPLICATE_ROUTE_ID",
     );
   });
 
   it("rejects canonical method/path collisions with different parameter names", () => {
-    // Given
     const routes = [
       route("first", "/items/:id"),
       route("second", "/items/:name"),
     ];
 
-    // When / Then
     expect(constructionCode(() => compileRoutes(routes))).toBe(
       "DUPLICATE_ROUTE",
     );
@@ -59,10 +55,8 @@ describe("compileRoutes", () => {
   ])(
     "gives static segments precedence independent of input order",
     (...routes) => {
-      // Given
       const router = compileRoutes(routes);
 
-      // When
       const match = matchCompiledRoute({
         basePath: "/api",
         method: "GET",
@@ -70,7 +64,6 @@ describe("compileRoutes", () => {
         router,
       });
 
-      // Then
       expect(match?.descriptor.id).toBe("static");
       expect(router.routes.map(({ id }) => id)).toEqual([
         "static",
@@ -80,10 +73,8 @@ describe("compileRoutes", () => {
   );
 
   it("matches full configured and framework-stripped paths", () => {
-    // Given
     const router = compileRoutes([route("version", "/version")]);
 
-    // When
     const full = matchCompiledRoute({
       basePath: "/api/",
       method: "GET",
@@ -97,16 +88,13 @@ describe("compileRoutes", () => {
       router,
     });
 
-    // Then
     expect(full?.descriptor.id).toBe("version");
     expect(stripped?.descriptor.id).toBe("version");
   });
 
   it("matches a stripped route whose own path begins with the base path", () => {
-    // Given
     const router = compileRoutes([route("bundles", "/api/bundles", "POST")]);
 
-    // When
     const full = matchCompiledRoute({
       basePath: "/api",
       method: "POST",
@@ -120,16 +108,13 @@ describe("compileRoutes", () => {
       router,
     });
 
-    // Then
     expect(full?.descriptor.id).toBe("bundles");
     expect(stripped?.descriptor.id).toBe("bundles");
   });
 
   it("returns frozen parameters using the declared parameter names", () => {
-    // Given
     const router = compileRoutes([route("item", "/items/:itemId")]);
 
-    // When
     const match = matchCompiledRoute({
       basePath: "/api",
       method: "GET",
@@ -137,7 +122,6 @@ describe("compileRoutes", () => {
       router,
     });
 
-    // Then
     expect(match?.descriptor.params).toEqual({ itemId: "abc" });
     expect(Object.isFrozen(match?.descriptor.params)).toBe(true);
   });

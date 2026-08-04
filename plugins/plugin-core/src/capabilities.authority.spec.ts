@@ -2,15 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 describe("capability process authority", () => {
   it("publishes only a frozen versioned authority surface", async () => {
-    // Given
     await import("./capabilities");
     const key = Symbol.for("@hot-updater/plugin-core/capability-authority/v1");
 
-    // When
     const descriptor = Reflect.getOwnPropertyDescriptor(globalThis, key);
     const authority = descriptor?.value;
 
-    // Then
     expect(descriptor).toMatchObject({
       configurable: false,
       enumerable: false,
@@ -26,7 +23,6 @@ describe("capability process authority", () => {
   });
 
   it("shares tokens and carrier snapshots across duplicate module instances", async () => {
-    // Given
     vi.resetModules();
     const first = await import("./capabilities");
     const token = first.defineSharedCapability({
@@ -34,7 +30,6 @@ describe("capability process authority", () => {
       parse: String,
     });
 
-    // When
     vi.resetModules();
     const second = await import("./capabilities");
     const sharedToken = second.defineSharedCapability({
@@ -46,7 +41,6 @@ describe("capability process authority", () => {
       { create: () => "ready", token: sharedToken },
     );
 
-    // Then
     expect(sharedToken).toBe(token);
     expect(sharedToken.parse("7")).toBe("7");
     expect(first.getCapabilityContributions(carrier)).toEqual([
@@ -55,7 +49,6 @@ describe("capability process authority", () => {
   });
 
   it("accepts authentic ordinary tokens across duplicate module instances", async () => {
-    // Given
     vi.resetModules();
     const first = await import("./capabilities");
     const token = first.defineCapability({
@@ -63,7 +56,6 @@ describe("capability process authority", () => {
       parse: String,
     });
 
-    // When
     vi.resetModules();
     const second = await import("./capabilities");
     const carrier = second.attachCapabilityContribution(
@@ -71,7 +63,6 @@ describe("capability process authority", () => {
       { create: () => "ready", token },
     );
 
-    // Then
     expect(second.getCapabilityContributions(carrier)).toEqual([
       expect.objectContaining({ token }),
     ]);

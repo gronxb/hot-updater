@@ -1,13 +1,12 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
+import {
+  type CoreRouteHandlerKey,
+  getCoreRouteDescriptors,
+} from "./coreRouteDescriptors";
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
-import type {
-  HandlerAPI,
-  HandlerOptions,
-  HandlerRoutes,
-  RouteHandler,
-} from "./handlerTypes";
+import type { HandlerAPI, HandlerOptions, RouteHandler } from "./handlerTypes";
 import { createUpdateRouteHandlers } from "./handlerUpdateRoutes";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
@@ -48,51 +47,14 @@ function createHandlerWithErrorPolicy<TContext>(
   errorPolicy: "legacy" | "opaque",
 ): Handler<TContext> {
   const basePath = options.basePath ?? "/api";
-  const routeOptions = {
-    updateCheck: options.routes?.updateCheck ?? true,
-    bundles: options.routes?.bundles ?? false,
-  } satisfies HandlerRoutes;
-  const router = createRouter<string>();
-  const routeHandlers: Record<string, RouteHandler<TContext>> = {
+  const router = createRouter<CoreRouteHandlerKey>();
+  const routeHandlers: Record<CoreRouteHandlerKey, RouteHandler<TContext>> = {
     ...createUpdateRouteHandlers<TContext>(),
     ...createBundleRouteHandlers<TContext>(),
   };
 
-  addRoute(router, "GET", "/version", "version");
-  if (routeOptions.updateCheck) {
-    addRoute(
-      router,
-      "GET",
-      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-      "fingerprintUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
-      "fingerprintUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
-      "appVersionUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
-      "appVersionUpdateWithCohort",
-    );
-  }
-
-  if (routeOptions.bundles) {
-    addRoute(router, "GET", "/api/bundles/channels", "getChannels");
-    addRoute(router, "GET", "/api/bundles/:id", "getBundle");
-    addRoute(router, "GET", "/api/bundles", "getBundles");
-    addRoute(router, "POST", "/api/bundles", "createBundles");
-    addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
-    addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
+  for (const route of getCoreRouteDescriptors(options.routes)) {
+    addRoute(router, route.method, route.path, route.handlerKey);
   }
 
   return async (request, context): Promise<Response> => {

@@ -19,7 +19,6 @@ const createRuntime = () =>
 
 describe("composeServerKernel", () => {
   it("materializes capabilities before synchronous setup in plugin id order", () => {
-    // Given
     const calls: string[] = [];
     const token = defineCapability({ id: "example@1", parse: String });
     const carrier = attachCapabilityContribution(
@@ -48,7 +47,6 @@ describe("composeServerKernel", () => {
       },
     });
 
-    // When
     const composed = composeServerKernel({
       carriers: [carrier],
       coreRoutes: [],
@@ -56,7 +54,6 @@ describe("composeServerKernel", () => {
       runtime: createRuntime(),
     });
 
-    // Then
     expect(calls).toEqual([
       "capability",
       "alpha:ready:testDatabase",
@@ -66,7 +63,6 @@ describe("composeServerKernel", () => {
   });
 
   it("rejects duplicate plugin ids before setup", () => {
-    // Given
     const setup = vi.fn(() => ({}));
     const first = defineFirstPartyServerPlugin({
       id: "duplicate",
@@ -77,7 +73,6 @@ describe("composeServerKernel", () => {
       setup,
     });
 
-    // When / Then
     expect(() =>
       composeServerKernel({
         carriers: [],
@@ -90,7 +85,6 @@ describe("composeServerKernel", () => {
   });
 
   it("combines core and plugin routes with one authentication provider", () => {
-    // Given
     const coreRoute = {
       access: { kind: "public" },
       id: "core.version",
@@ -124,7 +118,6 @@ describe("composeServerKernel", () => {
       }),
     });
 
-    // When
     const composed = composeServerKernel({
       carriers: [],
       coreRoutes: [coreRoute],
@@ -132,7 +125,6 @@ describe("composeServerKernel", () => {
       runtime: createRuntime(),
     });
 
-    // Then
     expect(composed.router.routes.map(({ id }) => id)).toEqual([
       "core.version",
       "feature.route",
@@ -141,7 +133,6 @@ describe("composeServerKernel", () => {
   });
 
   it("rejects a strict missing capability before setup", () => {
-    // Given
     const token = defineCapability({ id: "required@1", parse: String });
     const setup = vi.fn(() => ({}));
     const plugin = defineFirstPartyServerPlugin({
@@ -150,7 +141,6 @@ describe("composeServerKernel", () => {
       setup,
     });
 
-    // When / Then
     expect(() =>
       composeServerKernel({
         carriers: [],
@@ -171,12 +161,10 @@ describe("composeServerKernel", () => {
     ["unknown field", () => ({ middleware: [] })],
     ["thenable", async () => ({})],
   ])("rejects an invalid %s contribution", (_name, setup) => {
-    // Given
     const plugin = Reflect.apply(defineFirstPartyServerPlugin, undefined, [
       { id: "invalid", setup },
     ]);
 
-    // When / Then
     expect(() =>
       composeServerKernel({
         carriers: [],
@@ -193,14 +181,12 @@ describe("composeServerKernel", () => {
   });
 
   it("rejects a custom setup thenable without executing it", () => {
-    // Given
     const then = vi.fn();
     const plugin = defineFirstPartyServerPlugin({
       id: "thenable",
       setup: () => Reflect.construct(Object, [{ then }]),
     });
 
-    // When / Then
     expect(() =>
       composeServerKernel({
         carriers: [],
@@ -215,14 +201,12 @@ describe("composeServerKernel", () => {
   });
 
   it("handles a rejected setup promise from another realm", async () => {
-    // Given
     const plugin = defineFirstPartyServerPlugin({
       id: "cross-realm",
       setup: () =>
         runInNewContext('Promise.reject(new Error("setup rejected"))'),
     });
 
-    // When / Then
     expect(() =>
       composeServerKernel({
         carriers: [],

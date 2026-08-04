@@ -5,6 +5,35 @@ import { defineFirstPartyServerPlugin } from "./internal/first-party-plugin";
 import { toNodeHandler } from "./node";
 import { createRuntimeDatabase } from "./runtime.testFixtures";
 
+type NodeResponseFixture = {
+  body: string;
+  statusCode: number;
+  readonly headers: Map<string, string | string[]>;
+  status(code: number): NodeResponseFixture;
+  setHeader(name: string, value: string | string[]): void;
+  send(body: string): void;
+  end(): void;
+};
+
+function createNodeResponseFixture(): NodeResponseFixture {
+  return {
+    body: "",
+    statusCode: 0,
+    headers: new Map(),
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    setHeader(name, value) {
+      this.headers.set(name, value);
+    },
+    send(body) {
+      this.body = body;
+    },
+    end() {},
+  };
+}
+
 describe("server node entry", () => {
   it("converts a Web Request handler to Node middleware", async () => {
     const hotUpdater = {
@@ -15,22 +44,7 @@ describe("server node entry", () => {
         }),
     };
     const middleware = toNodeHandler(hotUpdater);
-    const headers = new Map<string, string | string[]>();
-    const response = {
-      body: "",
-      statusCode: 0,
-      status(code: number) {
-        this.statusCode = code;
-        return this;
-      },
-      setHeader(name: string, value: string | string[]) {
-        headers.set(name, value);
-      },
-      send(body: string) {
-        this.body = body;
-      },
-      end() {},
-    };
+    const response = createNodeResponseFixture();
 
     await middleware(
       {
@@ -44,7 +58,7 @@ describe("server node entry", () => {
     );
 
     expect(response.statusCode).toBe(200);
-    expect(headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("content-type")).toContain("application/json");
     expect(JSON.parse(response.body)).toEqual({
       method: "GET",
       pathname: "/api/check",
@@ -70,19 +84,7 @@ describe("server node entry", () => {
       handler: async () =>
         Response.json({ error: "Unauthorized" }, { status: 401 }),
     });
-    const response = {
-      body: "",
-      statusCode: 0,
-      status(code: number) {
-        this.statusCode = code;
-        return this;
-      },
-      setHeader() {},
-      send(body: string) {
-        this.body = body;
-      },
-      end() {},
-    };
+    const response = createNodeResponseFixture();
 
     await middleware(request, response);
 
@@ -99,19 +101,7 @@ describe("server node entry", () => {
         return Response.json(body);
       },
     });
-    const response = {
-      body: "",
-      statusCode: 0,
-      status(code: number) {
-        this.statusCode = code;
-        return this;
-      },
-      setHeader() {},
-      send(body: string) {
-        this.body = body;
-      },
-      end() {},
-    };
+    const response = createNodeResponseFixture();
 
     await middleware(
       {
@@ -147,22 +137,7 @@ describe("server node entry", () => {
         return new Response(null, { status: 204 });
       },
     });
-    const headers = new Map<string, string | string[]>();
-    const response = {
-      body: "",
-      statusCode: 0,
-      status(code: number) {
-        this.statusCode = code;
-        return this;
-      },
-      setHeader(name: string, value: string | string[]) {
-        headers.set(name, value);
-      },
-      send(body: string) {
-        this.body = body;
-      },
-      end() {},
-    };
+    const response = createNodeResponseFixture();
 
     await middleware(
       {
@@ -177,7 +152,7 @@ describe("server node entry", () => {
     );
 
     expect(response.statusCode).toBe(500);
-    expect(headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(JSON.parse(response.body)).toEqual({
       error: "Internal server error",
     });
@@ -202,22 +177,7 @@ describe("server node entry", () => {
       routes: { bundles: true, updateCheck: false },
     });
     const middleware = toNodeHandler(hotUpdater);
-    const headers = new Map<string, string | string[]>();
-    const response = {
-      body: "",
-      statusCode: 0,
-      status(code: number) {
-        this.statusCode = code;
-        return this;
-      },
-      setHeader(name: string, value: string | string[]) {
-        headers.set(name, value);
-      },
-      send(body: string) {
-        this.body = body;
-      },
-      end() {},
-    };
+    const response = createNodeResponseFixture();
 
     await middleware(
       {
@@ -237,7 +197,7 @@ describe("server node entry", () => {
     );
 
     expect(response.statusCode).toBe(500);
-    expect(headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(JSON.parse(response.body)).toEqual({
       error: "Internal server error",
     });

@@ -37,17 +37,14 @@ const createRuntime = (): HotUpdaterInfrastructureRuntime =>
 
 describe("capability tokens", () => {
   it("creates distinct frozen nominal tokens for the same observable id", () => {
-    // Given
     const options = {
       id: "example@1",
       parse: (value: unknown) => String(value),
     } as const;
 
-    // When
     const first = defineCapability(options);
     const second = defineCapability(options);
 
-    // Then
     expect(first).not.toBe(second);
     expect(first.id).toBe(second.id);
     expect(Reflect.ownKeys(first)).toEqual(["id", "parse"]);
@@ -56,26 +53,22 @@ describe("capability tokens", () => {
   });
 
   it("rejects a token forged with the former process-wide brand", () => {
-    // Given
     const forgedToken = {
       [Symbol.for("@hot-updater/plugin-core/capability-token")]: undefined,
       id: "forged@1",
       parse: (value: unknown) => String(value),
     };
 
-    // When
     const attach = () =>
       Reflect.apply(attachCapabilityContribution, undefined, [
         { name: "database" },
         { token: forgedToken, create: () => "forged" },
       ]);
 
-    // Then
     expect(attach).toThrow(InvalidCapabilityCarrierError);
   });
 
   it("rejects a token forged by inheriting from a genuine token", () => {
-    // Given
     const genuineToken = defineCapability({
       id: "genuine@1",
       parse: (value: unknown) => String(value),
@@ -85,46 +78,28 @@ describe("capability tokens", () => {
       parse: { value: (value: unknown) => String(value) },
     });
 
-    // When
     const attach = () =>
       Reflect.apply(attachCapabilityContribution, undefined, [
         { name: "database" },
         { token: forgedToken, create: () => "forged" },
       ]);
 
-    // Then
     expect(attach).toThrow(InvalidCapabilityCarrierError);
   });
 });
 
 describe("capability package boundary", () => {
-  it("publishes only the internal capability enumeration subpath", () => {
-    // Given
-    const internalExport: unknown = Reflect.get(
-      packageJson.exports,
+  it("publishes only the allowed package export keys", () => {
+    expect(Object.keys(packageJson.exports).sort()).toEqual([
+      ".",
       "./internal/capabilities",
-    );
-
-    // When
-    const published = internalExport;
-
-    // Then
-    expect(published).toEqual({
-      import: {
-        types: "./dist/internal/capabilities.d.mts",
-        default: "./dist/internal/capabilities.mjs",
-      },
-      require: {
-        types: "./dist/internal/capabilities.d.cts",
-        default: "./dist/internal/capabilities.cjs",
-      },
-    });
+      "./package.json",
+    ]);
   });
 });
 
 describe("capability contribution carriers", () => {
   it("attaches frozen copy-on-write snapshots without mutating the carrier", () => {
-    // Given
     const carrier = Object.freeze({ name: "database" });
     const first = {
       token: defineCapability({ id: "first@1", parse: String }),
@@ -135,13 +110,11 @@ describe("capability contribution carriers", () => {
       create: () => 2,
     } satisfies CapabilityContribution<number>;
 
-    // When
     const firstCarrier = attachCapabilityContribution(carrier, first);
     const firstSnapshot = getCapabilityContributions(firstCarrier);
     const secondCarrier = attachCapabilityContribution(firstCarrier, second);
     const secondSnapshot = getCapabilityContributions(secondCarrier);
 
-    // Then
     expect(firstCarrier).not.toBe(carrier);
     expect(secondCarrier).not.toBe(firstCarrier);
     expect(Object.isFrozen(firstCarrier)).toBe(true);
@@ -155,7 +128,6 @@ describe("capability contribution carriers", () => {
   });
 
   it("preserves prototype behavior while keeping private state immutable", () => {
-    // Given
     class PrototypeCarrier {
       readonly #secret = "private-state";
 
@@ -165,20 +137,17 @@ describe("capability contribution carriers", () => {
     }
     const carrier = new PrototypeCarrier();
 
-    // When
     const attached = attachCapabilityContribution(carrier, {
       token: defineCapability({ id: "prototype@1", parse: String }),
       create: () => "prototype",
     });
 
-    // Then
     expect(attached).toBeInstanceOf(PrototypeCarrier);
     expect(attached.readSecret()).toBe("private-state");
     expect(Object.isFrozen(attached)).toBe(true);
   });
 
   it("keeps synchronous factories lazy", () => {
-    // Given
     let invocationCount = 0;
     const attached = attachCapabilityContribution(
       { name: "database" },
@@ -193,17 +162,14 @@ describe("capability contribution carriers", () => {
     const contribution = getCapabilityContributions(attached)[0];
     if (!contribution) throw new InvalidCapabilityCarrierError();
 
-    // When
     const value = contribution.create(createRuntime());
 
-    // Then
     expect(value).toBe("guarded-database");
     expect(invocationCount).toBe(1);
     expect(value).not.toBeInstanceOf(Promise);
   });
 
   it("ignores contributions forged with the former process-wide key", () => {
-    // Given
     const forgedCarrier = {};
     Object.defineProperty(
       forgedCarrier,
@@ -211,10 +177,8 @@ describe("capability contribution carriers", () => {
       { value: [{ create: () => "forged" }] },
     );
 
-    // When
     const contributions = getCapabilityContributions(forgedCarrier);
 
-    // Then
     expect(contributions).toEqual([]);
   });
 });

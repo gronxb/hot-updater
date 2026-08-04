@@ -18,7 +18,6 @@ const runtime = () =>
 
 describe("createCapabilityRegistry", () => {
   it("materializes and parses capabilities exactly once", () => {
-    // Given
     const parse = vi.fn((value: unknown) => {
       if (typeof value !== "string") throw new Error("invalid");
       return Object.freeze({ value });
@@ -27,13 +26,11 @@ describe("createCapabilityRegistry", () => {
     const create = vi.fn(() => "ready");
     const carrier = attachCapabilityContribution({}, { create, token });
 
-    // When
     const registry = createCapabilityRegistry({
       carriers: [carrier],
       runtime: runtime(),
     });
 
-    // Then
     expect(registry.get(token)).toEqual({ value: "ready" });
     expect(registry.require(token)).toEqual({ value: "ready" });
     expect(create).toHaveBeenCalledOnce();
@@ -41,7 +38,6 @@ describe("createCapabilityRegistry", () => {
   });
 
   it("rejects distinct token identities with the same id before factories run", () => {
-    // Given
     const create = vi.fn(() => "value");
     const first = defineCapability({ id: "duplicate@1", parse: String });
     const second = defineCapability({ id: "duplicate@1", parse: String });
@@ -50,7 +46,6 @@ describe("createCapabilityRegistry", () => {
       { create, token: second },
     );
 
-    // When / Then
     expect(() =>
       createCapabilityRegistry({ carriers: [carrier], runtime: runtime() }),
     ).toThrowError(
@@ -60,7 +55,6 @@ describe("createCapabilityRegistry", () => {
   });
 
   it("rejects duplicate providers for one token", () => {
-    // Given
     const token = defineCapability({
       id: "duplicate-provider@1",
       parse: String,
@@ -70,7 +64,6 @@ describe("createCapabilityRegistry", () => {
       { create: () => "second", token },
     );
 
-    // When / Then
     expect(() =>
       createCapabilityRegistry({ carriers: [carrier], runtime: runtime() }),
     ).toThrowError(
@@ -90,11 +83,9 @@ describe("createCapabilityRegistry", () => {
   it.each(asyncCases)(
     "rejects an async %s synchronously",
     (_name, create, parse) => {
-      // Given
       const token = defineCapability({ id: "async@1", parse });
       const carrier = attachCapabilityContribution({}, { create, token });
 
-      // When / Then
       expect(() =>
         createCapabilityRegistry({ carriers: [carrier], runtime: runtime() }),
       ).toThrowError(
@@ -107,7 +98,6 @@ describe("createCapabilityRegistry", () => {
   );
 
   it("rejects a custom thenable without executing it", () => {
-    // Given
     const then = vi.fn();
     const token = defineCapability({ id: "thenable@1", parse: String });
     const carrier = attachCapabilityContribution(
@@ -115,7 +105,6 @@ describe("createCapabilityRegistry", () => {
       { create: () => ({ then }), token },
     );
 
-    // When / Then
     expect(() =>
       createCapabilityRegistry({ carriers: [carrier], runtime: runtime() }),
     ).toThrowError(expect.objectContaining({ code: "INVALID_CAPABILITY" }));
@@ -125,7 +114,6 @@ describe("createCapabilityRegistry", () => {
   it.each(["factory", "parser"] as const)(
     "handles a rejected %s promise from another realm",
     async (source) => {
-      // Given
       const rejected = () =>
         runInNewContext('Promise.reject(new Error("capability rejected"))');
       const token = defineCapability({
@@ -137,7 +125,6 @@ describe("createCapabilityRegistry", () => {
         { create: source === "factory" ? rejected : () => "value", token },
       );
 
-      // When / Then
       expect(() =>
         createCapabilityRegistry({ carriers: [carrier], runtime: runtime() }),
       ).toThrowError(
@@ -151,14 +138,12 @@ describe("createCapabilityRegistry", () => {
   );
 
   it("scopes missing capability errors to the requiring plugin", () => {
-    // Given
     const token = defineCapability({ id: "missing@1", parse: String });
     const registry = createCapabilityRegistry({
       carriers: [],
       runtime: runtime(),
     });
 
-    // When / Then
     expect(() => registry.forPlugin("feature").require(token)).toThrowError(
       expect.objectContaining({
         code: "MISSING_CAPABILITY",

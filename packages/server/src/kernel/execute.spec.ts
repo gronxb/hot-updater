@@ -32,7 +32,6 @@ const authenticatedProvider = (): HotUpdaterAuthenticationProvider => ({
 
 describe("executeKernelRequest", () => {
   it("denies a protected request before reading its body or calling its handler", async () => {
-    // Given
     const pull = vi.fn();
     const body = new ReadableStream<Uint8Array>(
       {
@@ -59,7 +58,6 @@ describe("executeKernelRequest", () => {
       },
     };
 
-    // When
     const response = await executeKernelRequest({
       authentication,
       basePath: "/api",
@@ -67,7 +65,6 @@ describe("executeKernelRequest", () => {
       router,
     });
 
-    // Then
     expect(response.status).toBe(401);
     expect(request.bodyUsed).toBe(false);
     expect(pull).not.toHaveBeenCalled();
@@ -75,7 +72,6 @@ describe("executeKernelRequest", () => {
   });
 
   it("overwrites caching on every protected response", async () => {
-    // Given
     const router = compileRoutes([
       route({
         access: { kind: "protected" },
@@ -88,7 +84,6 @@ describe("executeKernelRequest", () => {
       }),
     ]);
 
-    // When
     const response = await executeKernelRequest({
       authentication: authenticatedProvider(),
       basePath: "/api",
@@ -96,13 +91,11 @@ describe("executeKernelRequest", () => {
       router,
     });
 
-    // Then
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("authenticates before parsing a protected request", async () => {
-    // Given
     const order: string[] = [];
     const router = compileRoutes([
       route({
@@ -130,7 +123,6 @@ describe("executeKernelRequest", () => {
       },
     };
 
-    // When
     const response = await executeKernelRequest({
       authentication,
       basePath: "/api",
@@ -141,13 +133,11 @@ describe("executeKernelRequest", () => {
       router,
     });
 
-    // Then
     expect(response.status).toBe(200);
     expect(order).toEqual(["authenticate", "parse:body", "handle:parsed"]);
   });
 
   it("preserves successful public response headers", async () => {
-    // Given
     const router = compileRoutes([
       route({
         method: "GET",
@@ -159,7 +149,6 @@ describe("executeKernelRequest", () => {
       }),
     ]);
 
-    // When
     const response = await executeKernelRequest({
       authentication: {
         id: "must-not-run",
@@ -172,13 +161,11 @@ describe("executeKernelRequest", () => {
       router,
     });
 
-    // Then
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("public, max-age=60");
   });
 
   it("returns non-cacheable opaque kernel 404 and 500 responses", async () => {
-    // Given
     const secret = "handler secret";
     const router = compileRoutes([
       route({
@@ -188,7 +175,6 @@ describe("executeKernelRequest", () => {
       }),
     ]);
 
-    // When
     const missing = await executeKernelRequest({
       basePath: "/api",
       request: new Request("https://example.com/api/missing"),
@@ -202,7 +188,6 @@ describe("executeKernelRequest", () => {
       router,
     });
 
-    // Then
     expect(missing.status).toBe(404);
     expect(failed.status).toBe(500);
     expect(missing.headers.get("cache-control")).toBe("private, no-store");

@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 
+import type { BundleRouteHandlerKey } from "./coreRouteDescriptors";
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
   isPlatform,
@@ -32,7 +33,7 @@ const requireBundlePatchPayload = (
 };
 
 export const createBundleRouteHandlers = <TContext>(): Record<
-  string,
+  BundleRouteHandlerKey,
   RouteHandler<TContext>
 > => ({
   getBundle: async (params, _request, api, context) => {

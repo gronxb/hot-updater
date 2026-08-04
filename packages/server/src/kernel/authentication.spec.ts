@@ -36,10 +36,8 @@ const provider = (result: unknown): HotUpdaterAuthenticationProvider => {
 
 describe("selectAuthenticationProvider", () => {
   it("requires exactly one provider when protected routes exist", () => {
-    // Given
     const protectedRoute = matchedRoute("protected");
 
-    // When / Then
     expect(() =>
       selectAuthenticationProvider({ providers: [], routes: [protectedRoute] }),
     ).toThrowError(
@@ -63,10 +61,8 @@ describe("selectAuthenticationProvider", () => {
 
 describe("authenticateMatchedRoute", () => {
   it("bypasses the provider for public routes", async () => {
-    // Given
     const authentication = provider({ kind: "authenticated" });
 
-    // When
     const decision = await authenticateMatchedRoute({
       headers: new Headers(),
       provider: authentication,
@@ -75,13 +71,11 @@ describe("authenticateMatchedRoute", () => {
       url: new URL("https://example.com/resource"),
     });
 
-    // Then
     expect(decision.kind).toBe("authenticated");
     expect(authentication.authenticate).not.toHaveBeenCalled();
   });
 
   it("passes only defensive request metadata to the provider", async () => {
-    // Given
     const headers = new Headers({ authorization: "secret" });
     const url = new URL("https://example.com/resource");
     const authentication: HotUpdaterAuthenticationProvider = {
@@ -105,7 +99,6 @@ describe("authenticateMatchedRoute", () => {
       },
     };
 
-    // When
     const decision = await authenticateMatchedRoute({
       headers,
       provider: authentication,
@@ -114,7 +107,6 @@ describe("authenticateMatchedRoute", () => {
       url,
     });
 
-    // Then
     expect(decision.kind).toBe("authenticated");
     expect(headers.get("authorization")).toBe("secret");
     expect(url.pathname).toBe("/resource");
@@ -134,7 +126,6 @@ describe("authenticateMatchedRoute", () => {
   ])(
     "maps provider result %# to an opaque non-cacheable response",
     async (result, status) => {
-      // Given / When
       const decision = await authenticateMatchedRoute({
         headers: new Headers({ authorization: "secret" }),
         provider: provider(result),
@@ -143,7 +134,6 @@ describe("authenticateMatchedRoute", () => {
         url: new URL("https://example.com/resource"),
       });
 
-      // Then
       expect(decision.kind).toBe("response");
       if (decision.kind === "response") {
         expect(decision.response.status).toBe(status);
@@ -156,7 +146,6 @@ describe("authenticateMatchedRoute", () => {
   );
 
   it("maps thrown providers and malformed principals to opaque 500 responses", async () => {
-    // Given
     const throwing: HotUpdaterAuthenticationProvider = {
       id: "authentication",
       async authenticate() {
@@ -168,7 +157,6 @@ describe("authenticateMatchedRoute", () => {
       principal: { issuer: "issuer", subject: " padded " },
     });
 
-    // When
     const decisions = await Promise.all(
       [throwing, malformed].map((authentication) =>
         authenticateMatchedRoute({
@@ -181,7 +169,6 @@ describe("authenticateMatchedRoute", () => {
       ),
     );
 
-    // Then
     expect(
       decisions.every(
         (decision) =>

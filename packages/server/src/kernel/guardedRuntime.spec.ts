@@ -8,7 +8,6 @@ import { createGuardedInfrastructureRuntime } from "./guardedRuntime";
 
 describe("createGuardedInfrastructureRuntime", () => {
   it("runs readiness before database operations and transaction operations", async () => {
-    // Given
     const database = createRuntimeDatabase();
     database.transaction = async (callback) => callback(database);
     const beforeDatabaseOperation = vi.fn(async () => undefined);
@@ -18,18 +17,15 @@ describe("createGuardedInfrastructureRuntime", () => {
       storages: [],
     });
 
-    // When
     await runtime.database.count({ model: "bundles" });
     await runtime.database.transaction?.((transaction) =>
       transaction.count({ model: "bundles" }),
     );
 
-    // Then
     expect(beforeDatabaseOperation).toHaveBeenCalledTimes(3);
   });
 
   it("exposes only frozen generic database and storage access", () => {
-    // Given
     const database = Object.assign(createRuntimeDatabase(), {
       createMigrator: () => "secret",
     });
@@ -38,13 +34,11 @@ describe("createGuardedInfrastructureRuntime", () => {
       { credentials: "secret" },
     );
 
-    // When
     const runtime = createGuardedInfrastructureRuntime({
       database,
       storages: [storage],
     });
 
-    // Then
     expect(Object.isFrozen(runtime)).toBe(true);
     expect(Object.isFrozen(runtime.database)).toBe(true);
     expect(Object.isFrozen(runtime.storages)).toBe(true);
