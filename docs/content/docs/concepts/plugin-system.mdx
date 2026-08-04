@@ -63,4 +63,6 @@ decision.
 
 Server feature authoring is currently reserved for first-party packages. The
 supported server entry accepts feature objects but does not expose a public
-feature-authoring factory.
+feature-authoring factory. This is an API support boundary, not access control:
+plugins are trusted server-side code that executes in the application process
+and must not be created from untrusted input.

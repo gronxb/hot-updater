@@ -173,8 +173,8 @@ export function toNodeHandler(
       } else {
         res.end();
       }
-    } catch (error) {
-      console.error("Hot Updater handler error:", error);
+    } catch {
+      console.error("Hot Updater handler error");
       res.status(500);
       res.setHeader("cache-control", "private, no-store");
       res.setHeader("content-type", "application/json");

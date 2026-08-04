@@ -1,3 +1,5 @@
+import { runInNewContext } from "node:vm";
+
 import {
   attachCapabilityContribution,
   defineCapability,
@@ -210,5 +212,27 @@ describe("composeServerKernel", () => {
       expect.objectContaining({ code: "INVALID_PLUGIN_CONTRIBUTION" }),
     );
     expect(then).not.toHaveBeenCalled();
+  });
+
+  it("handles a rejected setup promise from another realm", async () => {
+    // Given
+    const plugin = defineFirstPartyServerPlugin({
+      id: "cross-realm",
+      setup: () =>
+        runInNewContext('Promise.reject(new Error("setup rejected"))'),
+    });
+
+    // When / Then
+    expect(() =>
+      composeServerKernel({
+        carriers: [],
+        coreRoutes: [],
+        plugins: [plugin],
+        runtime: createRuntime(),
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "INVALID_PLUGIN_CONTRIBUTION" }),
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
   });
 });

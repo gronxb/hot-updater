@@ -13,7 +13,11 @@ import {
   isDatabasePlugin,
   type StoragePluginFactory,
 } from "./db/types";
-import { createHandler, type HandlerRoutes } from "./handler";
+import {
+  createHandler,
+  createRuntimeHandler,
+  type HandlerRoutes,
+} from "./handler";
 import { composeServerKernel } from "./kernel/composer";
 import type { HotUpdaterServerPlugin } from "./kernel/contracts";
 import { createCoreServerRoutes } from "./kernel/coreRoutes";
@@ -51,6 +55,7 @@ export interface CreateHotUpdaterOptions<TContext = undefined> {
   readonly basePath?: string;
   readonly cwd?: string;
   readonly routes?: HandlerRoutes;
+  /** Trusted in-process server code. Plugins are not sandboxed. */
   readonly plugins?: readonly HotUpdaterServerPlugin[];
 }
 
@@ -117,12 +122,17 @@ export function createHotUpdaterCore<TContext = undefined>(
     readStorageText,
   });
 
-  const internalHandler = createHandler(core.api, {
-    basePath,
-    routes: options.routes,
-  });
+  const plugins = options.plugins ?? [];
+  const usesKernel = plugins.length > 0;
+  const internalHandler = (usesKernel ? createRuntimeHandler : createHandler)(
+    core.api,
+    {
+      basePath,
+      routes: options.routes,
+    },
+  );
   const requestHandler = (() => {
-    if (options.plugins === undefined || options.plugins.length === 0) {
+    if (!usesKernel) {
       return internalHandler;
     }
     const runtime = createGuardedInfrastructureRuntime({
@@ -136,7 +146,7 @@ export function createHotUpdaterCore<TContext = undefined>(
         handler: internalHandler,
         routes: options.routes,
       }),
-      plugins: options.plugins,
+      plugins,
       runtime,
     });
     return (

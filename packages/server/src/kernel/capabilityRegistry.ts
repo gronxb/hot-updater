@@ -6,6 +6,7 @@ import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/ca
 
 import { HotUpdaterConstructionError } from "./errors";
 import type { HotUpdaterPluginCapabilities } from "./manifest";
+import { suppressNativePromiseRejection } from "./promise";
 
 export interface CapabilityRegistry extends HotUpdaterPluginCapabilities {
   forPlugin(pluginId: string): HotUpdaterPluginCapabilities;
@@ -28,9 +29,7 @@ function rejectThenable(value: unknown, tokenId: string): void {
       typeof value === "function") &&
     typeof Reflect.get(value, "then") === "function"
   ) {
-    if (value instanceof Promise) {
-      void value.catch(() => undefined);
-    }
+    suppressNativePromiseRejection(value);
     invalidCapability(tokenId);
   }
 }

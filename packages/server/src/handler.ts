@@ -13,13 +13,40 @@ import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
 
+type Handler<TContext> = (
+  request: Request,
+  context?: HotUpdaterContext<TContext>,
+) => Promise<Response>;
+
+function opaqueHandlerErrorResponse(): Response {
+  return Response.json(
+    { error: "Internal server error" },
+    {
+      headers: { "Cache-Control": "private, no-store" },
+      status: 500,
+    },
+  );
+}
+
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
   options: HandlerOptions = {},
-): (
-  request: Request,
-  context?: HotUpdaterContext<TContext>,
-) => Promise<Response> {
+): Handler<TContext> {
+  return createHandlerWithErrorPolicy(api, options, "legacy");
+}
+
+export function createRuntimeHandler<TContext = unknown>(
+  api: HandlerAPI<TContext>,
+  options: HandlerOptions = {},
+): Handler<TContext> {
+  return createHandlerWithErrorPolicy(api, options, "opaque");
+}
+
+function createHandlerWithErrorPolicy<TContext>(
+  api: HandlerAPI<TContext>,
+  options: HandlerOptions,
+  errorPolicy: "legacy" | "opaque",
+): Handler<TContext> {
   const basePath = options.basePath ?? "/api";
   const routeOptions = {
     updateCheck: options.routes?.updateCheck ?? true,
@@ -83,6 +110,7 @@ export function createHandler<TContext = unknown>(
       }
       const handler = routeHandlers[match.data];
       if (!handler) {
+        if (errorPolicy === "opaque") return opaqueHandlerErrorResponse();
         return new Response(JSON.stringify({ error: "Handler not found" }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
@@ -95,6 +123,10 @@ export function createHandler<TContext = unknown>(
           status: 400,
           headers: { "Content-Type": "application/json" },
         });
+      }
+      if (errorPolicy === "opaque") {
+        console.error("Hot Updater handler error");
+        return opaqueHandlerErrorResponse();
       }
       console.error("Hot Updater handler error:", error);
       return new Response(

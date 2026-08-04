@@ -1,3 +1,5 @@
+import { runInNewContext } from "node:vm";
+
 import {
   attachCapabilityContribution,
   defineCapability,
@@ -119,6 +121,34 @@ describe("createCapabilityRegistry", () => {
     ).toThrowError(expect.objectContaining({ code: "INVALID_CAPABILITY" }));
     expect(then).not.toHaveBeenCalled();
   });
+
+  it.each(["factory", "parser"] as const)(
+    "handles a rejected %s promise from another realm",
+    async (source) => {
+      // Given
+      const rejected = () =>
+        runInNewContext('Promise.reject(new Error("capability rejected"))');
+      const token = defineCapability({
+        id: `cross-realm-${source}@1`,
+        parse: source === "parser" ? rejected : String,
+      });
+      const carrier = attachCapabilityContribution(
+        {},
+        { create: source === "factory" ? rejected : () => "value", token },
+      );
+
+      // When / Then
+      expect(() =>
+        createCapabilityRegistry({ carriers: [carrier], runtime: runtime() }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "INVALID_CAPABILITY",
+          details: { tokenId: `cross-realm-${source}@1` },
+        }),
+      );
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    },
+  );
 
   it("scopes missing capability errors to the requiring plugin", () => {
     // Given

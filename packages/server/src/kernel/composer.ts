@@ -17,6 +17,7 @@ import {
   isFirstPartyServerPlugin,
   type FirstPartyServerPlugin,
 } from "./manifest";
+import { suppressNativePromiseRejection } from "./promise";
 import { compileRoutes, type CompiledRouter } from "./routeCompiler";
 
 export type ComposeServerKernelOptions = {
@@ -82,9 +83,7 @@ const rejectThenable = (value: unknown, id: string): void => {
       typeof value === "function") &&
     typeof Reflect.get(value, "then") === "function"
   ) {
-    if (value instanceof Promise) {
-      void value.catch(() => undefined);
-    }
+    suppressNativePromiseRejection(value);
     invalidContribution(id);
   }
 };

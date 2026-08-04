@@ -24,6 +24,13 @@ option. Server plugin authoring is limited to the unsupported
 features validate the contract. The supported root does not export a general
 server plugin factory.
 
+All application, provider, plugin, preload, and internal-entrypoint code in the
+same JavaScript process is trusted. The process authorities coordinate nominal
+identity across ESM, CommonJS, and bundled module instances and prevent
+accidental structural counterfeits after initialization. They are not an
+authentication boundary, authorization mechanism, or sandbox for hostile
+same-process code.
+
 ## Construction
 
 Construction is synchronous and deterministic:

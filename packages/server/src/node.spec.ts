@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createHotUpdater } from "./index";
+import { defineFirstPartyServerPlugin } from "./internal/first-party-plugin";
 import { toNodeHandler } from "./node";
+import { createRuntimeDatabase } from "./runtime.testFixtures";
 
 describe("server node entry", () => {
   it("converts a Web Request handler to Node middleware", async () => {
@@ -179,6 +182,67 @@ describe("server node entry", () => {
       error: "Internal server error",
     });
     expect(response.body).not.toContain("circular");
+    consoleError.mockRestore();
+  });
+
+  it("does not expose a malformed streamed body through the real handler", async () => {
+    const secret = "CREDENTIAL_SHOULD_NOT_LEAK";
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const hotUpdater = createHotUpdater({
+      basePath: "/hot-updater",
+      database: createRuntimeDatabase(),
+      plugins: [
+        defineFirstPartyServerPlugin({
+          id: "node-error-boundary",
+          setup: () => ({}),
+        }),
+      ],
+      routes: { bundles: true, updateCheck: false },
+    });
+    const middleware = toNodeHandler(hotUpdater);
+    const headers = new Map<string, string | string[]>();
+    const response = {
+      body: "",
+      statusCode: 0,
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader(name: string, value: string | string[]) {
+        headers.set(name, value);
+      },
+      send(body: string) {
+        this.body = body;
+      },
+      end() {},
+    };
+
+    await middleware(
+      {
+        async *[Symbol.asyncIterator]() {
+          yield secret;
+        },
+        method: "POST",
+        url: "/hot-updater/api/bundles",
+        headers: {
+          "content-type": "application/json",
+          host: "example.com",
+        },
+        protocol: "https",
+        get: (name: string) => (name === "host" ? "example.com" : undefined),
+      },
+      response,
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(headers.get("cache-control")).toBe("private, no-store");
+    expect(JSON.parse(response.body)).toEqual({
+      error: "Internal server error",
+    });
+    expect(response.body).not.toContain(secret);
+    expect(consoleError.mock.calls.flat().join(" ")).not.toContain(secret);
     consoleError.mockRestore();
   });
 });
