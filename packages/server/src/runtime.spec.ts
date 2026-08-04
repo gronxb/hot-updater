@@ -268,7 +268,6 @@ describe("runtime createHotUpdater", () => {
     });
     const authentication = defineFirstPartyServerPlugin({
       id: "authentication",
-      version: "1",
       setup: () => ({
         authentication: { id: "authentication", authenticate },
       }),
@@ -295,7 +294,6 @@ describe("runtime createHotUpdater", () => {
     const handle = vi.fn(async () => Response.json({ accepted: true }));
     const plugin = defineFirstPartyServerPlugin({
       id: "protected-route",
-      version: "1",
       setup: () => ({
         authentication: {
           id: "authentication",
@@ -363,7 +361,6 @@ describe("runtime createHotUpdater", () => {
     });
     const plugin = defineFirstPartyServerPlugin({
       id: "capability-route",
-      version: "1",
       requires: [{ missing: "error", token: capability }],
       setup: ({ capabilities }) => {
         const service = capabilities.require(capability);

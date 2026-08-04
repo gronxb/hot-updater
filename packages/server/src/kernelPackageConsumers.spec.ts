@@ -124,7 +124,7 @@ void getCapabilityContributions(carrier);`,
         `server-consumer.${extension}`,
         `import { createHotUpdater, type CreateHotUpdaterOptions } from "@hot-updater/server";
 import { defineFirstPartyServerPlugin, type FirstPartyServerPlugin } from "@hot-updater/server/internal/first-party-plugin";
-const plugin: FirstPartyServerPlugin = defineFirstPartyServerPlugin({ id: "consumer", setup: () => ({}), version: "1" });
+const plugin: FirstPartyServerPlugin = defineFirstPartyServerPlugin({ id: "consumer", setup: () => ({}) });
 const acceptOptions = (_options: CreateHotUpdaterOptions): void => undefined;
 void acceptOptions;
 void createHotUpdater;
@@ -141,7 +141,7 @@ describe("packed Generic Kernel cross-condition authorities", () => {
       `import { createRequire } from "node:module";
 const { defineFirstPartyServerPlugin } = await import("@hot-updater/server/internal/first-party-plugin");
 const { createHotUpdater } = createRequire(import.meta.url)("@hot-updater/server");
-const plugin = defineFirstPartyServerPlugin({ id: "consumer", setup: () => ({}), version: "1" });
+const plugin = defineFirstPartyServerPlugin({ id: "consumer", setup: () => ({}) });
 ${databaseFixture}
 const api = createHotUpdater({ database, plugins: [plugin] });
 if (api.adapterName !== database.name) process.exit(1);`,
@@ -156,7 +156,7 @@ if (api.adapterName !== database.name) process.exit(1);`,
 const require = createRequire(import.meta.url);
 const { defineFirstPartyServerPlugin } = require("@hot-updater/server/internal/first-party-plugin");
 const { createHotUpdater } = await import("@hot-updater/server");
-const plugin = defineFirstPartyServerPlugin({ id: "consumer", setup: () => ({}), version: "1" });
+const plugin = defineFirstPartyServerPlugin({ id: "consumer", setup: () => ({}) });
 ${databaseFixture}
 const api = createHotUpdater({ database, plugins: [plugin] });
 if (api.adapterName !== database.name) process.exit(1);`,

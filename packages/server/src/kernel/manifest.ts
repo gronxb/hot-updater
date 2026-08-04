@@ -34,7 +34,6 @@ export interface FirstPartyServerPlugin extends HotUpdaterServerPlugin {
   readonly id: string;
   readonly requires: readonly HotUpdaterCapabilityRequirement[];
   readonly setup: (context: HotUpdaterPluginSetupContext) => unknown;
-  readonly version: string;
 }
 
 export type FirstPartyServerPluginDefinition = {
@@ -43,7 +42,6 @@ export type FirstPartyServerPluginDefinition = {
   readonly setup: (
     context: HotUpdaterPluginSetupContext,
   ) => HotUpdaterPluginContribution;
-  readonly version: string;
 };
 
 const pluginAuthorityKey = Symbol.for(
@@ -75,7 +73,6 @@ const createPluginAuthority = () => {
         id: definition.id,
         requires,
         setup: definition.setup,
-        version: definition.version,
       });
       plugins.add(plugin);
       return plugin;

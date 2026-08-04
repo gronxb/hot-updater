@@ -36,7 +36,6 @@ describe("composeServerKernel", () => {
         calls.push(`beta:${capabilities.require(token)}`);
         return {};
       },
-      version: "1.0.0",
     });
     const alpha = defineFirstPartyServerPlugin({
       id: "alpha",
@@ -45,7 +44,6 @@ describe("composeServerKernel", () => {
         calls.push(`alpha:${capabilities.get(token)}:${database.name}`);
         return {};
       },
-      version: "1.0.0",
     });
 
     // When
@@ -71,12 +69,10 @@ describe("composeServerKernel", () => {
     const first = defineFirstPartyServerPlugin({
       id: "duplicate",
       setup,
-      version: "1.0.0",
     });
     const second = defineFirstPartyServerPlugin({
       id: "duplicate",
       setup,
-      version: "2.0.0",
     });
 
     // When / Then
@@ -124,7 +120,6 @@ describe("composeServerKernel", () => {
           },
         ],
       }),
-      version: "1.0.0",
     });
 
     // When
@@ -151,7 +146,6 @@ describe("composeServerKernel", () => {
       id: "feature",
       requires: [{ missing: "error", token }],
       setup,
-      version: "1.0.0",
     });
 
     // When / Then
@@ -177,7 +171,7 @@ describe("composeServerKernel", () => {
   ])("rejects an invalid %s contribution", (_name, setup) => {
     // Given
     const plugin = Reflect.apply(defineFirstPartyServerPlugin, undefined, [
-      { id: "invalid", setup, version: "1.0.0" },
+      { id: "invalid", setup },
     ]);
 
     // When / Then
@@ -202,7 +196,6 @@ describe("composeServerKernel", () => {
     const plugin = defineFirstPartyServerPlugin({
       id: "thenable",
       setup: () => Reflect.construct(Object, [{ then }]),
-      version: "1.0.0",
     });
 
     // When / Then

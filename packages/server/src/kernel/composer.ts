@@ -55,8 +55,6 @@ const validatePlugin = (value: unknown): FirstPartyServerPlugin => {
       !isFirstPartyServerPlugin(value) ||
       typeof value.id !== "string" ||
       value.id.length === 0 ||
-      typeof value.version !== "string" ||
-      value.version.length === 0 ||
       typeof value.setup !== "function" ||
       !Array.isArray(value.requires) ||
       !value.requires.every(

@@ -12,7 +12,6 @@ describe("defineFirstPartyServerPlugin", () => {
     const plugin = first.defineFirstPartyServerPlugin({
       id: "example",
       setup: () => ({}),
-      version: "1.0.0",
     });
 
     // When
@@ -53,7 +52,6 @@ describe("defineFirstPartyServerPlugin", () => {
       id: "counterfeit",
       requires: Object.freeze([]),
       setup: () => ({}),
-      version: "1.0.0",
     });
 
     // When / Then
@@ -68,7 +66,6 @@ describe("defineFirstPartyServerPlugin", () => {
       id: "example",
       requires,
       setup: () => ({}),
-      version: "1.0.0",
     };
 
     // When
