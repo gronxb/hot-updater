@@ -148,31 +148,41 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
 
+type PackageExportTarget =
+  | string
+  | {
+      readonly default?: PackageExportTarget;
+      readonly import?: PackageExportTarget;
+      readonly require?: PackageExportTarget;
+      readonly types?: string;
+    };
+
+type PackageExportName = "." | `./${string}`;
+
+function resolveImportExportTarget(
+  target: PackageExportTarget | undefined,
+): string | undefined {
+  if (typeof target === "string") return target;
+  if (target === undefined) return undefined;
+  return (
+    resolveImportExportTarget(target.import) ??
+    resolveImportExportTarget(target.default) ??
+    resolveImportExportTarget(target.require)
+  );
+}
+
 const resolvePackageExportPath = async (
   packageName: string,
-  exportName: "." | "./runtime" | "./edge",
+  exportName: PackageExportName,
 ) => {
   const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageJson = JSON.parse(
     await fs.readFile(packageJsonPath, "utf-8"),
   ) as {
-    exports?: Record<
-      string,
-      | string
-      | {
-          import?: string;
-          require?: string;
-          default?: string;
-        }
-    >;
+    exports?: Record<string, PackageExportTarget>;
   };
   const exportTarget = packageJson.exports?.[exportName];
-  const relativePath =
-    typeof exportTarget === "string"
-      ? exportTarget
-      : (exportTarget?.import ??
-        exportTarget?.default ??
-        exportTarget?.require);
+  const relativePath = resolveImportExportTarget(exportTarget);
 
   if (!relativePath) {
     throw new Error(
@@ -279,7 +289,7 @@ const prepareVendoredPackageImport = async ({
 }: {
   targetDir: string;
   packageName: string;
-  exportName: "." | "./runtime" | "./edge";
+  exportName: PackageExportName;
 }) => {
   const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageRoot = path.dirname(packageJsonPath);
@@ -342,7 +352,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
   }: {
     importSpecifier: string;
     packageName: string;
-    exportName: "." | "./runtime" | "./edge";
+    exportName: PackageExportName;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
     if (visitedWorkspacePackages.has(visitKey)) {
@@ -368,10 +378,13 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       }
 
       if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
+        const [packageScope, packageName, ...subpathSegments] =
+          nestedSpecifier.split("/");
+        const subpath = subpathSegments.join("/");
         await addWorkspacePackage({
           importSpecifier: nestedSpecifier,
-          packageName: nestedSpecifier,
-          exportName: ".",
+          packageName: `${packageScope}/${packageName}`,
+          exportName: subpath.length === 0 ? "." : `./${subpath}`,
         });
         continue;
       }

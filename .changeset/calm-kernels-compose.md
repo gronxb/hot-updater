@@ -1,6 +1,7 @@
 ---
 "@hot-updater/plugin-core": minor
 "@hot-updater/server": minor
+"@hot-updater/supabase": patch
 ---
 
 Add versioned infrastructure capability carriers and a first-party generic
