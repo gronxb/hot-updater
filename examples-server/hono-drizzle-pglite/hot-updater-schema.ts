@@ -27,6 +27,15 @@ export const bundles = pgTable("bundles", {
   index("bundles_rollout_idx").on(table.rollout_cohort_count)
 ])
 
+export const bundlesRelations = relations(bundles, ({ many }) => ({
+  patches: many(bundle_patches, {
+    relationName: "bundle_patches_bundles_patches"
+  }),
+  baseForPatches: many(bundle_patches, {
+    relationName: "bundle_patches_bundles_baseForPatches"
+  })
+}))
+
 export const bundle_patches = pgTable("bundle_patches", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
   bundle_id: uuid("bundle_id").notNull(),
@@ -65,5 +74,5 @@ export const bundle_patchesRelations = relations(bundle_patches, ({ one }) => ({
 
 export const private_hot_updater_settings = pgTable("private_hot_updater_settings", {
   id: varchar("id", { length: 255 }).primaryKey().notNull(),
-  version: varchar("version", { length: 255 }).notNull().default("0.31.0")
+  version: varchar("version", { length: 255 }).notNull().default("0.36.0")
 })

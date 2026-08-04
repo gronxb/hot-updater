@@ -38,19 +38,30 @@ export const getSqlType = (
 ): string => {
   if (provider === "sqlite") {
     if (type === "bool" || type === "integer") return "integer";
+    if (type === "float") return "real";
     return "text";
   }
   if (provider === "mysql") {
     if (type === "uuid") return "char(36)";
     if (type === "bool") return "boolean";
     if (type === "integer") return "integer";
+    if (type === "float") return "double";
     if (type === "json") return "json";
     if (type.startsWith("varchar")) return type;
     return "text";
   }
+  if (provider === "mssql") {
+    if (type === "uuid") return "uniqueidentifier";
+    if (type === "bool") return "bit";
+    if (type === "integer") return "int";
+    if (type === "float") return "float";
+    if (type.startsWith("varchar")) return type;
+    return "nvarchar(max)";
+  }
   if (type === "uuid") return "uuid";
   if (type === "bool") return "boolean";
   if (type === "integer") return "integer";
+  if (type === "float") return "double precision";
   if (type === "json") return "json";
   if (type.startsWith("varchar")) return type;
   return "text";
@@ -125,10 +136,14 @@ const sqlIndexColumn = (
 
 export const createIndexSql = (
   table: HotUpdaterTableSchema,
-  index: { readonly name: string; readonly columns: readonly string[] },
+  index: {
+    readonly name: string;
+    readonly columns: readonly string[];
+    readonly unique?: true;
+  },
   provider: ORMSQLProvider,
 ): string =>
-  `create index ${index.name} on ${table.ormName}(${index.columns
+  `create ${index.unique ? "unique " : ""}index ${index.name} on ${table.ormName}(${index.columns
     .map((column) => sqlIndexColumn(table, column, provider))
     .join(", ")})`;
 
@@ -157,12 +172,19 @@ const inlineSqlChecks = (
 export const createTableStatement = (
   table: HotUpdaterTableSchema,
   provider: ORMSQLProvider,
+  relationMode: RelationMode = "foreign-keys",
 ): string => {
   const lines = [
     ...table.columns.map((column) =>
       sqlColumnDefinition(table, column, provider),
     ),
     ...inlineSqlChecks(table, provider),
+    ...(provider === "sqlite" && relationMode === "foreign-keys"
+      ? (table.foreignKeys ?? []).map(
+          (foreignKey) =>
+            `constraint ${foreignKey.name} foreign key (${foreignKey.columns.join(", ")}) references ${foreignKey.referencedTable}(${foreignKey.referencedColumns.join(", ")}) on update ${foreignKey.onUpdate} on delete ${foreignKey.onDelete}`,
+        )
+      : []),
   ];
   return `create table if not exists ${table.ormName} (\n${lines.join(",\n")}\n)`;
 };
@@ -184,7 +206,7 @@ export const createTableSql = (
   relationMode: RelationMode = "foreign-keys",
 ): readonly string[] => [
   ...hotUpdaterSchema.tables.map((table) =>
-    createTableStatement(table, provider),
+    createTableStatement(table, provider, relationMode),
   ),
   ...hotUpdaterSchema.tables.flatMap((table) =>
     (table.indexes ?? [])

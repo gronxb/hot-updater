@@ -1,8 +1,10 @@
 import {
+  type AppUpdateInfo,
   getBundlePatches,
   type Bundle,
   type GetBundlesArgs,
   NIL_UUID,
+  type UpdateInfo,
 } from "@hot-updater/core";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -174,7 +176,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       env,
     );
 
-    return (await response.json()) as any;
+    return response.json() as Promise<UpdateInfo | AppUpdateInfo | null>;
   };
 
   const getUpdateInfo = async (bundles: Bundle[], args: GetBundlesArgs) => {

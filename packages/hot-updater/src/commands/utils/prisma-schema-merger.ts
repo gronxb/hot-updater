@@ -60,7 +60,11 @@ function findHotUpdaterModels(lines: string[]): {
   startIndex: number;
   endIndex: number;
 } | null {
-  const hotUpdaterModelNames = ["bundles", "private_hot_updater_settings"];
+  const hotUpdaterModelNames = [
+    "bundles",
+    "bundle_patches",
+    "private_hot_updater_settings",
+  ];
   let firstModelIndex = -1;
   let lastModelIndex = -1;
 

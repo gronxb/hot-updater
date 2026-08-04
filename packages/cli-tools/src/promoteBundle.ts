@@ -12,7 +12,7 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabasePlugin,
+  DatabaseClient,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import {
@@ -45,7 +45,7 @@ export interface PromoteBundleInput {
 
 export interface PromoteBundleDependencies {
   config: ConfigResponse;
-  databasePlugin: DatabasePlugin;
+  databaseClient: DatabaseClient;
   storagePlugin: NodeStoragePlugin | null;
 }
 
@@ -471,7 +471,7 @@ export async function promoteBundle(
     throw new Error("Target channel is required");
   }
 
-  const bundle = await deps.databasePlugin.getBundleById(bundleId);
+  const bundle = await deps.databaseClient.getBundleById(bundleId);
   if (!bundle) {
     throw new Error("Bundle not found");
   }
@@ -483,12 +483,11 @@ export async function promoteBundle(
   }
 
   if (action === "move") {
-    await deps.databasePlugin.updateBundle(bundleId, {
+    await deps.databaseClient.updateBundleById(bundleId, {
       channel: normalizedTargetChannel,
     });
-    await deps.databasePlugin.commitBundle();
 
-    const updatedBundle = await deps.databasePlugin.getBundleById(bundleId);
+    const updatedBundle = await deps.databaseClient.getBundleById(bundleId);
     if (!updatedBundle) {
       throw new Error("Promoted bundle not found");
     }
@@ -512,8 +511,7 @@ export async function promoteBundle(
   let shouldCleanupUploadedCopy = true;
 
   try {
-    await deps.databasePlugin.appendBundle(copiedBundle);
-    await deps.databasePlugin.commitBundle();
+    await deps.databaseClient.insertBundle(copiedBundle);
     shouldCleanupUploadedCopy = false;
     return copiedBundle;
   } catch (error) {

@@ -1,5 +1,3 @@
--- HotUpdater.bundles
-
 CREATE TABLE bundles (
     id TEXT PRIMARY KEY,
     platform TEXT NOT NULL CHECK (platform IN ('ios', 'android')),

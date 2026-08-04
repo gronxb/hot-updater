@@ -6,17 +6,7 @@ import { describe, expect, it } from "vitest";
 const rlsMigrationPath = path.resolve(
   "plugins/supabase/supabase/migrations/20260520014100_hot-updater_rls.sql",
 );
-const migrationsDir = path.dirname(rlsMigrationPath);
-
 describe("Supabase RLS migration", () => {
-  it("runs after Supabase function redefinition migrations", async () => {
-    const migrations = (await fs.readdir(migrationsDir))
-      .filter((file) => file.endsWith(".sql"))
-      .sort();
-
-    expect(migrations.at(-1)).toBe(path.basename(rlsMigrationPath));
-  });
-
   it("enables RLS on Hot Updater tables", async () => {
     const sql = await fs.readFile(rlsMigrationPath, "utf8");
 

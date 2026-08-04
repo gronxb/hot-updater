@@ -4,7 +4,10 @@ import type {
   DatabasePlugin,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
-import { assertNodeStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  assertNodeStoragePlugin,
+  createDatabaseClient,
+} from "@hot-updater/plugin-core";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -64,7 +67,8 @@ export const handlePromote = async (
   }
 
   const config = await loadConfig(null);
-  const databasePlugin: DatabasePlugin = await config.database();
+  const databasePlugin = config.database;
+  const databaseClient = createDatabaseClient(databasePlugin);
   let storagePlugin: NodeStoragePlugin | null = null;
   try {
     storagePlugin = await config.storage();
@@ -74,7 +78,7 @@ export const handlePromote = async (
   }
 
   try {
-    const bundle = await databasePlugin.getBundleById(bundleId);
+    const bundle = await databaseClient.getBundleById(bundleId);
     if (!bundle) {
       p.log.error(`No bundle with id ${bundleId}.`);
       process.exit(1);
@@ -111,7 +115,7 @@ export const handlePromote = async (
       },
       {
         config,
-        databasePlugin,
+        databaseClient,
         storagePlugin,
       },
     );

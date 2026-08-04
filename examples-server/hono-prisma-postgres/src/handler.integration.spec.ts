@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
+import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
 import {
   setupBundleMethodsTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -16,7 +17,7 @@ import {
 import { execa } from "execa";
 import path from "path";
 import { fileURLToPath } from "url";
-import { afterAll, beforeAll, describe } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 // Get the directory of this test file
 const __filename = fileURLToPath(import.meta.url);
@@ -89,6 +90,7 @@ describe(
     let testDbName: string;
     const port = 13583;
     let hotUpdater: HotUpdaterAPI;
+    let prisma: typeof import("./prisma.js").prisma;
 
     beforeAll(async () => {
       // Kill any process using the port before starting
@@ -170,6 +172,7 @@ describe(
 
       const db = await import("./db.js");
       hotUpdater = db.hotUpdater;
+      prisma = (await import("./prisma.js")).prisma;
     }, 120000);
 
     afterAll(async () => {
@@ -226,6 +229,146 @@ describe(
         hotUpdater.updateBundleById(bundleId, newBundle),
       deleteBundleById: (bundleId: string) =>
         hotUpdater.deleteBundleById(bundleId),
+    });
+
+    it("rejects exactly one concurrent opposing target clear", async () => {
+      const database = prismaAdapter({ prisma, provider: "postgresql" });
+      const id = "141ee03e-7599-4e29-a827-0c4732bc4f10";
+      await database.create({
+        model: "bundles",
+        data: {
+          id,
+          platform: "ios",
+          should_force_update: false,
+          enabled: true,
+          file_hash: "concurrent-target-hash",
+          git_commit_hash: null,
+          message: null,
+          channel: "prisma-concurrency",
+          storage_uri: "storage://concurrent-target",
+          target_app_version: "1.0.0",
+          fingerprint_hash: "concurrent-fingerprint",
+          metadata: {},
+          rollout_cohort_count: 1000,
+          target_cohorts: null,
+          manifest_storage_uri: null,
+          manifest_file_hash: null,
+          asset_base_storage_uri: null,
+        },
+      });
+
+      const results = await Promise.allSettled([
+        database.update({
+          model: "bundles",
+          where: [{ field: "id", value: id }],
+          update: { target_app_version: null },
+        }),
+        database.update({
+          model: "bundles",
+          where: [{ field: "id", value: id }],
+          update: { fingerprint_hash: null },
+        }),
+      ]);
+
+      expect(results.map(({ status }) => status).sort()).toEqual([
+        "fulfilled",
+        "rejected",
+      ]);
+      const stored = await database.findOne({
+        model: "bundles",
+        where: [{ field: "id", value: id }],
+      });
+      expect(
+        [stored?.target_app_version, stored?.fingerprint_hash].filter(
+          (target) => target !== null,
+        ),
+      ).toHaveLength(1);
+    });
+
+    it("rolls back emulated patch cleanup when bundle deletion fails", async () => {
+      const database = prismaAdapter({
+        prisma,
+        provider: "postgresql",
+        relationMode: "prisma",
+      });
+      const baseId = "5d8b5ebf-8008-4ab8-9fb5-79af0ec766c3";
+      const targetId = "5e08db65-e31d-4de3-a795-8492327c30d8";
+      const patchId = "prisma-rollback-patch";
+      const bundle = {
+        platform: "ios" as const,
+        should_force_update: false,
+        enabled: true,
+        file_hash: "rollback-hash",
+        git_commit_hash: null,
+        message: null,
+        channel: "prisma-rollback",
+        storage_uri: "storage://rollback",
+        target_app_version: "1.0.0",
+        fingerprint_hash: null,
+        metadata: {},
+        rollout_cohort_count: 1000,
+        target_cohorts: null,
+        manifest_storage_uri: null,
+        manifest_file_hash: null,
+        asset_base_storage_uri: null,
+      };
+      for (const id of [baseId, targetId]) {
+        await database.create({ model: "bundles", data: { ...bundle, id } });
+      }
+      await database.create({
+        model: "bundle_patches",
+        data: {
+          id: patchId,
+          bundle_id: targetId,
+          base_bundle_id: baseId,
+          base_file_hash: "rollback-base-hash",
+          patch_file_hash: "rollback-patch-hash",
+          patch_storage_uri: "storage://rollback-patch",
+          order_index: 0,
+        },
+      });
+
+      await prisma.$executeRawUnsafe(`
+            CREATE FUNCTION fail_prisma_bundle_delete() RETURNS trigger AS $$
+            BEGIN
+              RAISE EXCEPTION 'injected Prisma bundle delete failure';
+            END;
+            $$ LANGUAGE plpgsql;
+          `);
+      await prisma.$executeRawUnsafe(`
+            CREATE TRIGGER fail_prisma_bundle_delete
+            BEFORE DELETE ON bundles
+            FOR EACH ROW EXECUTE FUNCTION fail_prisma_bundle_delete();
+          `);
+
+      try {
+        await expect(
+          database.delete({
+            model: "bundles",
+            where: [{ field: "id", value: targetId }],
+          }),
+        ).rejects.toThrow("injected Prisma bundle delete failure");
+
+        await expect(
+          database.findOne({
+            model: "bundles",
+            where: [{ field: "id", value: targetId }],
+          }),
+        ).resolves.toMatchObject({ id: targetId });
+        await expect(
+          database.findOne({
+            model: "bundle_patches",
+            where: [{ field: "id", value: patchId }],
+          }),
+        ).resolves.toMatchObject({ id: patchId });
+      } finally {
+        await prisma.$executeRawUnsafe(
+          "DROP TRIGGER IF EXISTS fail_prisma_bundle_delete ON bundles;",
+        );
+        await prisma.$executeRawUnsafe(
+          "DROP FUNCTION IF EXISTS fail_prisma_bundle_delete();",
+        );
+      }
     });
   },
 );

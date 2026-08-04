@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1066.0",
+    "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "^20.11.17",
     "execa": "catalog:tools",
