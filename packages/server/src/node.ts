@@ -133,8 +133,10 @@ export { HOT_UPDATER_SERVER_VERSION } from "./version";
  */
 export function toNodeHandler(
   hotUpdater: HandlerHotUpdaterAPI,
-): (req: NodeRequest, res: NodeResponse, next?: unknown) => Promise<void> {
-  return async (req: NodeRequest, res: NodeResponse) => {
+): (req: unknown, res: unknown, next?: unknown) => Promise<void> {
+  return async (request: unknown, response: unknown) => {
+    const req = request as NodeRequest;
+    const res = response as NodeResponse;
     try {
       const protocol = req.protocol || "http";
       const host = req.get?.("host") || "localhost";
