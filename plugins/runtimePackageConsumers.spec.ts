@@ -99,6 +99,11 @@ describe("packed provider entrypoints", () => {
       handler: "@hot-updater/firebase/functions",
     },
     {
+      directory: "postgres",
+      packageName: "@hot-updater/postgres",
+      exports: ["postgres"],
+    },
+    {
       directory: "supabase",
       packageName: "@hot-updater/supabase",
       exports: ["supabaseEdgeFunctionDatabase", "supabaseEdgeFunctionStorage"],

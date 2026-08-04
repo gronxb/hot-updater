@@ -15,11 +15,13 @@ import {
   type Dialect,
   type RawBuilder,
 } from "kysely";
-import { Pool, type PoolConfig } from "pg";
+import pg, { type PoolConfig } from "pg";
 
 import { getUpdateInfo } from "./getUpdateInfo";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
 import type { Database } from "./types";
+
+const { Pool } = pg;
 
 type PostgresWhere = {
   readonly [TModel in DatabaseModel]: DatabaseWhere<TModel>;
