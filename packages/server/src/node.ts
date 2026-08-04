@@ -6,8 +6,10 @@ interface NodeRequest {
   url?: string;
   headers: Record<string, string | string[] | undefined>;
   body?: unknown;
+  rawBody?: unknown;
   protocol?: string;
   get?(name: string): string | undefined;
+  [Symbol.asyncIterator]?(): AsyncIterator<unknown>;
   [key: string]: unknown;
 }
 
@@ -23,6 +25,94 @@ type HandlerHotUpdaterAPI = {
   readonly handler: (request: Request) => Promise<Response>;
 };
 
+const textEncoder = new TextEncoder();
+
+function encodeRawBody(value: unknown): Uint8Array {
+  if (typeof value === "string") return textEncoder.encode(value);
+  if (value instanceof ArrayBuffer) return new Uint8Array(value.slice(0));
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(
+      value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength),
+    );
+  }
+  throw new TypeError("Unsupported raw request body.");
+}
+
+function encodeParsedBody(value: unknown): Uint8Array {
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) {
+    return encodeRawBody(value);
+  }
+  const serialized = JSON.stringify(value);
+  return serialized === undefined
+    ? new Uint8Array()
+    : textEncoder.encode(serialized);
+}
+
+function createLazyNodeBody(request: NodeRequest): ReadableStream<Uint8Array> {
+  let initialized = false;
+  let iterator: AsyncIterator<unknown> | undefined;
+
+  return new ReadableStream<Uint8Array>(
+    {
+      async cancel(reason) {
+        await iterator?.return?.(reason);
+      },
+      async pull(controller) {
+        try {
+          if (!initialized) {
+            initialized = true;
+            const rawBody = request.rawBody;
+            if (rawBody !== undefined) {
+              controller.enqueue(encodeRawBody(rawBody));
+              controller.close();
+              return;
+            }
+
+            const parsedBody = request.body;
+            if (parsedBody !== undefined) {
+              controller.enqueue(encodeParsedBody(parsedBody));
+              controller.close();
+              return;
+            }
+
+            const iteratorFactory = request[Symbol.asyncIterator];
+            if (typeof iteratorFactory !== "function") {
+              controller.close();
+              return;
+            }
+            iterator = Reflect.apply(iteratorFactory, request, []);
+          }
+
+          const result = await iterator?.next();
+          if (result === undefined || result.done) {
+            controller.close();
+            return;
+          }
+          controller.enqueue(encodeRawBody(result.value));
+        } catch (error) {
+          controller.error(error);
+        }
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
+
+function requestBody(
+  request: NodeRequest,
+  method: string,
+): ReadableStream<Uint8Array> | undefined {
+  if (method === "GET" || method === "HEAD") return undefined;
+  if (
+    !("rawBody" in request) &&
+    !("body" in request) &&
+    !(Symbol.asyncIterator in request)
+  ) {
+    return undefined;
+  }
+  return createLazyNodeBody(request);
+}
+
 export { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 /**
@@ -36,24 +126,20 @@ export { HOT_UPDATER_SERVER_VERSION } from "./version";
  *
  * const app = express();
  *
- * // Mount middleware
- * app.use(express.json());
- *
- * // Mount hot-updater handler
+ * // Mount before general body parsers so protected routes authenticate first.
  * app.all("/hot-updater/*", toNodeHandler(hotUpdater));
+ * app.use(express.json());
  * ```
  */
 export function toNodeHandler(
   hotUpdater: HandlerHotUpdaterAPI,
-): (req: any, res: any, next?: any) => Promise<void> {
+): (req: NodeRequest, res: NodeResponse, next?: unknown) => Promise<void> {
   return async (req: NodeRequest, res: NodeResponse) => {
     try {
-      // Build full URL
       const protocol = req.protocol || "http";
       const host = req.get?.("host") || "localhost";
       const url = `${protocol}://${host}${req.url || "/"}`;
 
-      // Convert headers to Web Headers
       const headers = new Headers();
       for (const [key, value] of Object.entries(req.headers)) {
         if (value) {
@@ -61,37 +147,24 @@ export function toNodeHandler(
         }
       }
 
-      // Handle request body
-      let body: string | undefined;
-      if (
-        req.method &&
-        req.method !== "GET" &&
-        req.method !== "HEAD" &&
-        req.body
-      ) {
-        // If body is already parsed (by express.json()), stringify it
-        body = JSON.stringify(req.body);
-      }
-
-      // Create Web Request
-      const webRequest = new globalThis.Request(url, {
-        method: req.method || "GET",
+      const method = req.method || "GET";
+      const body = requestBody(req, method);
+      const init: RequestInit & { readonly duplex?: "half" } = {
+        method,
         headers,
         body,
-      });
+        ...(body === undefined ? {} : { duplex: "half" }),
+      };
+      const webRequest = new globalThis.Request(url, init);
 
-      // Call hot-updater handler
       const response = await hotUpdater.handler(webRequest);
 
-      // Set status code
       res.status(response.status);
 
-      // Set headers
       response.headers.forEach((value, key) => {
         res.setHeader(key, value);
       });
 
-      // Send response body
       const text = await response.text();
       if (text) {
         res.send(text);
@@ -99,10 +172,11 @@ export function toNodeHandler(
         res.end();
       }
     } catch (error) {
-      // Handle errors gracefully
       console.error("Hot Updater handler error:", error);
       res.status(500);
-      res.send("Internal Server Error");
+      res.setHeader("cache-control", "private, no-store");
+      res.setHeader("content-type", "application/json");
+      res.send(JSON.stringify({ error: "Internal server error" }));
     }
   };
 }
