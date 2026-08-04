@@ -1,6 +1,8 @@
 ---
 "@hot-updater/plugin-core": minor
 "@hot-updater/server": minor
+"@hot-updater/aws": patch
+"@hot-updater/firebase": patch
 "@hot-updater/supabase": patch
 ---
 
