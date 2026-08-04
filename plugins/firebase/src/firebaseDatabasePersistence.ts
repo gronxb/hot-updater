@@ -42,6 +42,39 @@ export const createFirebaseDatabaseCollections = (
 
 type FixedRow = BundlePatchRow | BundleRow;
 
+type ParsedDocumentRow<TRow extends FixedRow> = {
+  readonly document: { readonly id: string };
+  readonly row: TRow;
+};
+
+export const requireFirebaseDocumentKey = <TRow extends FixedRow>(
+  model: "bundle_patches" | "bundles",
+  documentId: string,
+  row: TRow,
+): TRow => {
+  if (documentId !== row.id) {
+    throw new FirebaseDatabaseConstraintError(`${model}.id.document-key`);
+  }
+  return row;
+};
+
+const documentMap = <TRow extends FixedRow>(
+  model: "bundle_patches" | "bundles",
+  documents: readonly ParsedDocumentRow<TRow>[],
+): Map<string, TRow> => {
+  const rows = new Map<string, TRow>();
+  for (const { row } of documents) {
+    if (rows.has(row.id)) {
+      throw new FirebaseDatabaseConstraintError(`${model}.id.unique`);
+    }
+    rows.set(row.id, row);
+  }
+  for (const { document, row } of documents) {
+    requireFirebaseDocumentKey(model, document.id, row);
+  }
+  return rows;
+};
+
 type FirebaseMigrationWrite =
   | {
       readonly kind: "create";
@@ -68,27 +101,26 @@ const requireUpdateTime = (
 const bundleMap = (
   snapshot: QuerySnapshot<DocumentData>,
 ): Map<string, BundleRow> =>
-  new Map(
-    snapshot.docs.map((document) => {
-      const row = parseFirebaseBundleRow(
-        document.data(),
-        `bundles/${document.id}`,
-      );
-      return [row.id, row];
-    }),
+  documentMap(
+    "bundles",
+    snapshot.docs.map((document) => ({
+      document,
+      row: parseFirebaseBundleRow(document.data(), `bundles/${document.id}`),
+    })),
   );
 
 const patchMap = (
   snapshot: QuerySnapshot<DocumentData>,
 ): Map<string, BundlePatchRow> =>
-  new Map(
-    snapshot.docs.map((document) => {
-      const row = parseFirebasePatchRow(
+  documentMap(
+    "bundle_patches",
+    snapshot.docs.map((document) => ({
+      document,
+      row: parseFirebasePatchRow(
         document.data(),
         `bundle_patches/${document.id}`,
-      );
-      return [row.id, row];
-    }),
+      ),
+    })),
   );
 
 type CoreSnapshotDocuments = readonly [
@@ -190,16 +222,23 @@ const migrateFirebaseDatabaseAttempt = async (
     collections.bundles.get(),
     collections.bundlePatches.get(),
   ]);
-  const bundleIds = new Set(bundles.docs.map(({ id }) => id));
-  const patchIds = new Set(patches.docs.map(({ id }) => id));
+  const parsedBundles = bundles.docs.map((document) => ({
+    document,
+    row: parseFirebaseBundleRow(document.data(), `bundles/${document.id}`),
+  }));
+  const parsedPatches = patches.docs.map((document) => ({
+    document,
+    row: parseFirebasePatchRow(
+      document.data(),
+      `bundle_patches/${document.id}`,
+    ),
+  }));
+  const bundleIds = new Set(documentMap("bundles", parsedBundles).keys());
+  const existingPatches = documentMap("bundle_patches", parsedPatches);
   const patchWrites: FirebaseMigrationWrite[] = [];
   const bundleWrites: FirebaseMigrationWrite[] = [];
 
-  for (const document of patches.docs) {
-    const patch = parseFirebasePatchRow(
-      document.data(),
-      `bundle_patches/${document.id}`,
-    );
+  for (const { row: patch } of parsedPatches) {
     if (!bundleIds.has(patch.bundle_id)) {
       throw new FirebaseDatabaseConstraintError(
         "bundle_patches.bundle_id.foreign-key",
@@ -212,9 +251,8 @@ const migrateFirebaseDatabaseAttempt = async (
     }
   }
 
-  for (const document of bundles.docs) {
+  for (const { document, row: bundle } of parsedBundles) {
     const value: unknown = document.data();
-    const bundle = parseFirebaseBundleRow(value, `bundles/${document.id}`);
     const legacyPatches = parseFirebaseLegacyPatchRows(
       value,
       bundle.id,
@@ -226,13 +264,26 @@ const migrateFirebaseDatabaseAttempt = async (
           "bundle_patches.base_bundle_id.foreign-key",
         );
       }
-      if (!patchIds.has(patch.id)) {
+      const existingPatch = existingPatches.get(patch.id);
+      if (
+        existingPatch !== undefined &&
+        (existingPatch.id !== patch.id ||
+          existingPatch.bundle_id !== patch.bundle_id ||
+          existingPatch.base_bundle_id !== patch.base_bundle_id ||
+          existingPatch.base_file_hash !== patch.base_file_hash ||
+          existingPatch.patch_file_hash !== patch.patch_file_hash ||
+          existingPatch.patch_storage_uri !== patch.patch_storage_uri ||
+          existingPatch.order_index !== patch.order_index)
+      ) {
+        throw new FirebaseDatabaseConstraintError("bundle_patches.id.conflict");
+      }
+      if (existingPatch === undefined) {
         patchWrites.push({
           kind: "create",
           reference: collections.bundlePatches.doc(patch.id),
           value: { ...patch },
         });
-        patchIds.add(patch.id);
+        existingPatches.set(patch.id, patch);
       }
     }
     bundleWrites.push({
@@ -297,11 +348,12 @@ export const migrateFirebaseDatabase = async (
       return;
     } catch (error) {
       if (error instanceof FirebaseDatabaseAdapterVersionError) throw error;
+      if (!isFirebaseMigrationConflict(error)) throw error;
       const version = await collections.settings
         .doc("database_adapter_version")
         .get();
       if (version.data()?.version === 2) return;
-      if (!isFirebaseMigrationConflict(error) || attempt === 2) throw error;
+      if (attempt === 2) throw error;
     }
   }
 };

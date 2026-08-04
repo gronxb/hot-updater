@@ -11,7 +11,7 @@ import {
 import { createSchemaReadinessChecker } from "./schemaReadiness";
 
 function createSettingsMongoClient(
-  values: Readonly<Record<string, string>>,
+  values: Readonly<Record<string, unknown>>,
 ): MongoClient {
   const client = new MongoClient("mongodb://127.0.0.1");
   const database = client.db("hot_updater_migration_test");
@@ -127,6 +127,31 @@ describe("MongoDB migration", () => {
       expect(findMany).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    [
+      "Core marker alone",
+      { "schema.core": { version: "0.36.0" } },
+      "schema.core",
+    ],
+    ["legacy marker alone", { version: { version: "0.38.0" } }, "version"],
+    [
+      "Core marker beside a valid legacy marker",
+      { "schema.core": { version: "0.36.0" }, version: "0.38.0" },
+      "schema.core",
+    ],
+    [
+      "legacy marker beside a current Core marker",
+      { "schema.core": "0.36.0", version: { version: "0.38.0" } },
+      "version",
+    ],
+  ] as const)("rejects a corrupt %s", async (_case, values, key) => {
+    const migrator = createMongoMigrator(createSettingsMongoClient(values));
+
+    await expect(migrator.getVersion()).rejects.toThrow(
+      `Invalid Hot Updater schema setting: ${key}`,
+    );
+  });
 
   it("ensures collections and indexes before updating the version", async () => {
     const calls: string[] = [];

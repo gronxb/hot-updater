@@ -16,6 +16,7 @@ import {
   loadFirebaseTransactionSnapshot,
   migrateFirebaseDatabase,
   persistFirebaseDatabaseSnapshot,
+  requireFirebaseDocumentKey,
 } from "./firebaseDatabasePersistence";
 import {
   cloneFirebaseDatabaseSnapshot,
@@ -104,18 +105,26 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
             case "bundles": {
               const document = await collections.bundles.doc(id).get();
               return document.exists
-                ? parseFirebaseBundleRow(
-                    document.data(),
-                    `bundles/${document.id}`,
+                ? requireFirebaseDocumentKey(
+                    "bundles",
+                    document.id,
+                    parseFirebaseBundleRow(
+                      document.data(),
+                      `bundles/${document.id}`,
+                    ),
                   )
                 : null;
             }
             case "bundle_patches": {
               const document = await collections.bundlePatches.doc(id).get();
               return document.exists
-                ? parseFirebasePatchRow(
-                    document.data(),
-                    `bundle_patches/${document.id}`,
+                ? requireFirebaseDocumentKey(
+                    "bundle_patches",
+                    document.id,
+                    parseFirebasePatchRow(
+                      document.data(),
+                      `bundle_patches/${document.id}`,
+                    ),
                   )
                 : null;
             }

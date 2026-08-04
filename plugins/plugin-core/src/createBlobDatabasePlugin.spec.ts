@@ -130,6 +130,24 @@ describe("blob snapshot persistence", () => {
     });
   });
 
+  it("rejects a singleton legacy manifest before publishing V2 data", async () => {
+    const key = "production/ios/1.0.0/update.json";
+    store.set(key, legacyBundle("1"));
+    const previousEntries = [...store.entries()];
+    const plugin = createMemoryPlugin(config());
+
+    await expect(
+      createDatabaseClient(plugin).insertBundle(legacyBundle("2")),
+    ).rejects.toMatchObject({
+      name: "BlobDatabaseSnapshotError",
+      source: key,
+    });
+
+    expect([...store.entries()]).toEqual(previousEntries);
+    expect(store.has(BLOB_DATABASE_SNAPSHOT_KEY)).toBe(false);
+    expect(invalidations).toEqual([]);
+  });
+
   it("writes deterministic fixed-model snapshots", async () => {
     const plugin = createMemoryPlugin(config());
     await plugin.create({ model: "bundles", data: bundleRow("2") });
@@ -401,6 +419,68 @@ describe("blob snapshot persistence", () => {
         appVersion: "1.0.0",
         bundleId: fixtureId("0"),
         channel: "production",
+        platform: "ios",
+      }),
+    ).rejects.toMatchObject({
+      name: "BlobDatabaseSnapshotError",
+      source: key,
+    });
+  });
+
+  it("returns no update when the active revision has no app-version manifest for the route", async () => {
+    const plugin = createMemoryPlugin(config());
+    await createDatabaseClient(plugin).insertBundle({
+      ...legacyBundle("1"),
+      channel: "beta",
+    });
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        appVersion: "1.0.0",
+        bundleId: fixtureId("0"),
+        channel: "production",
+        platform: "ios",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("returns no update when the active revision has no fingerprint manifest for the route", async () => {
+    const plugin = createMemoryPlugin(config());
+    await createDatabaseClient(plugin).insertBundle({
+      ...legacyBundle("2"),
+      targetAppVersion: null,
+      fingerprintHash: "different-fingerprint",
+    });
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        bundleId: fixtureId("0"),
+        channel: "production",
+        fingerprintHash: "requested-fingerprint",
+        platform: "ios",
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("fails closed when an active revision fingerprint manifest is missing", async () => {
+    const plugin = createMemoryPlugin(config());
+    await createDatabaseClient(plugin).insertBundle({
+      ...legacyBundle("2"),
+      targetAppVersion: null,
+      fingerprintHash: "fingerprint-2",
+    });
+    const prefix = blobDatabaseRevisionManifestPrefix(activeRevision());
+    const key = `${prefix}/fingerprint/production/ios/fingerprint-2/update.json`;
+    store.delete(key);
+
+    await expect(
+      plugin.getUpdateInfo?.({
+        _updateStrategy: "fingerprint",
+        bundleId: fixtureId("0"),
+        channel: "production",
+        fingerprintHash: "fingerprint-2",
         platform: "ios",
       }),
     ).rejects.toMatchObject({

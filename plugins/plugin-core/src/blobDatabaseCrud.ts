@@ -7,6 +7,7 @@ import {
   assertBlobDatabaseSnapshotCompatible,
   normalizeBlobDatabaseSnapshot,
 } from "./blobDatabaseSnapshot";
+import { parseBundleRow } from "./blobDatabaseSnapshotRows";
 import type {
   BundleRow,
   DatabaseImplementationResult,
@@ -64,11 +65,12 @@ export const createBlobSnapshotCrud = (
             "bundles.version-or-fingerprint.check",
           );
         }
+        const row = parseBundleRow(input.data, `bundles/${input.data.id}`);
         state.snapshot = normalizeBlobDatabaseSnapshot({
           ...snapshot,
-          bundles: [...snapshot.bundles, input.data],
+          bundles: [...snapshot.bundles, row],
         });
-        return input.data;
+        return row;
       }
       case "bundle_patches": {
         requireUniqueId(snapshot.bundle_patches, input.data.id, input.model);
@@ -106,13 +108,14 @@ export const createBlobSnapshotCrud = (
         "bundles.version-or-fingerprint.check",
       );
     }
+    const updatedRow = parseBundleRow(updated, `bundles/${updated.id}`);
     state.snapshot = normalizeBlobDatabaseSnapshot({
       ...state.snapshot,
       bundles: state.snapshot.bundles.map((row) =>
-        row.id === match.id ? updated : row,
+        row.id === match.id ? updatedRow : row,
       ),
     });
-    return updated;
+    return updatedRow;
   },
   async delete(input): Promise<void> {
     assertBlobDatabaseSnapshotCompatible(state.snapshot);

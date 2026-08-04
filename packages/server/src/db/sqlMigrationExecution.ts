@@ -15,6 +15,22 @@ type MysqlSchemaObject = {
   readonly name: string;
 };
 
+type MysqlMigrationObjectType = "column" | "constraint" | "index";
+
+class MysqlMigrationObjectConflictError extends Error {
+  readonly name = "MysqlMigrationObjectConflictError";
+
+  constructor(
+    readonly objectType: MysqlMigrationObjectType,
+    readonly table: string,
+    readonly objectName: string,
+  ) {
+    super(
+      `Cannot safely resume MySQL migration: ${objectType} ${table}.${objectName} already exists.`,
+    );
+  }
+}
+
 const parseMysqlSchemaObject = (
   statement: string,
   pattern: RegExp,
@@ -100,16 +116,34 @@ const shouldSkipMysqlStatement = async (
   statement: string,
 ): Promise<boolean> => {
   const index = mysqlIndex(statement);
-  if (index) return mysqlIndexExists(db, index);
+  if (index && (await mysqlIndexExists(db, index))) {
+    throw new MysqlMigrationObjectConflictError(
+      "index",
+      index.table,
+      index.name,
+    );
+  }
 
   const addedColumn = mysqlColumn(statement, "add");
-  if (addedColumn) return mysqlColumnExists(db, addedColumn);
+  if (addedColumn && (await mysqlColumnExists(db, addedColumn))) {
+    throw new MysqlMigrationObjectConflictError(
+      "column",
+      addedColumn.table,
+      addedColumn.name,
+    );
+  }
 
   const droppedColumn = mysqlColumn(statement, "drop");
   if (droppedColumn) return !(await mysqlColumnExists(db, droppedColumn));
 
   const constraint = mysqlConstraint(statement);
-  if (constraint) return mysqlConstraintExists(db, constraint);
+  if (constraint && (await mysqlConstraintExists(db, constraint))) {
+    throw new MysqlMigrationObjectConflictError(
+      "constraint",
+      constraint.table,
+      constraint.name,
+    );
+  }
 
   return false;
 };

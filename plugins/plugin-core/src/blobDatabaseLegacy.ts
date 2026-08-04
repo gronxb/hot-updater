@@ -65,6 +65,7 @@ export const parseLegacyBundle = (
   const input = blobRecord(value, source);
   const id = blobString(blobProperty(input, "id"), source);
   const channelName = blobString(blobProperty(input, "channel"), source);
+  const metadata = blobProperty(input, "metadata");
   const bundle: BundleRow = {
     id,
     platform: blobPlatform(blobProperty(input, "platform"), source),
@@ -89,7 +90,10 @@ export const parseLegacyBundle = (
       blobProperty(input, "fingerprintHash"),
       source,
     ),
-    metadata: blobMetadataObject(blobProperty(input, "metadata") ?? {}, source),
+    metadata: blobMetadataObject(
+      metadata === undefined ? {} : metadata,
+      source,
+    ),
     rollout_cohort_count:
       blobProperty(input, "rolloutCohortCount") === undefined
         ? 1000

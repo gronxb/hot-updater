@@ -205,6 +205,227 @@ describe("firebase v1 data migration", () => {
     expect(version.data()).toEqual({ version: 2 });
   });
 
+  it.each(["inline", "scalar"] as const)(
+    "rejects a conflicting existing patch before removing %s legacy data",
+    async (shape) => {
+      await settingsCollection.doc("database_adapter_version").set({
+        version: 1,
+      });
+      const base = legacyRow(`legacy-conflict-${shape}-base`);
+      const target = legacyRow(`legacy-conflict-${shape}-target`);
+      const legacyFields =
+        shape === "inline"
+          ? {
+              patches: [
+                {
+                  baseBundleId: base.id,
+                  baseFileHash: base.file_hash,
+                  patchFileHash: "legacy-patch-hash",
+                  patchStorageUri: "gs://bucket/legacy-patch.bin",
+                },
+              ],
+            }
+          : {
+              patch_base_bundle_id: base.id,
+              patch_base_file_hash: base.file_hash,
+              patch_file_hash: "legacy-patch-hash",
+              patch_storage_uri: "gs://bucket/legacy-patch.bin",
+            };
+      const patchId = `${target.id}:${base.id}`;
+      const conflictingPatch = {
+        id: patchId,
+        bundle_id: target.id,
+        base_bundle_id: base.id,
+        base_file_hash: base.file_hash,
+        patch_file_hash: "conflicting-patch-hash",
+        patch_storage_uri: "gs://bucket/conflicting-patch.bin",
+        order_index: 0,
+      };
+      await bundlesCollection.doc(base.id).set(base);
+      await bundlesCollection.doc(target.id).set({
+        ...target,
+        ...legacyFields,
+      });
+      await bundlePatchesCollection.doc(patchId).set(conflictingPatch);
+
+      await expect(
+        createPlugin().findMany({ model: "bundles" }),
+      ).rejects.toThrow("bundle_patches.id.conflict");
+
+      const [storedTarget, storedPatch, storedVersion] = await Promise.all([
+        bundlesCollection.doc(target.id).get(),
+        bundlePatchesCollection.doc(patchId).get(),
+        settingsCollection.doc("database_adapter_version").get(),
+      ]);
+      expect(storedTarget.data()).toMatchObject(legacyFields);
+      expect(storedPatch.data()).toEqual(conflictingPatch);
+      expect(storedVersion.data()).toEqual({ version: 1 });
+    },
+  );
+
+  it("adopts an identical existing patch before removing legacy data", async () => {
+    await settingsCollection.doc("database_adapter_version").set({
+      version: 1,
+    });
+    const base = legacyRow("legacy-identical-base");
+    const target = legacyRow("legacy-identical-target");
+    const patch = {
+      id: `${target.id}:${base.id}`,
+      bundle_id: target.id,
+      base_bundle_id: base.id,
+      base_file_hash: base.file_hash,
+      patch_file_hash: "identical-patch-hash",
+      patch_storage_uri: "gs://bucket/identical-patch.bin",
+      order_index: 0,
+    };
+    await bundlesCollection.doc(base.id).set(base);
+    await bundlesCollection.doc(target.id).set({
+      ...target,
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: patch.base_file_hash,
+          patchFileHash: patch.patch_file_hash,
+          patchStorageUri: patch.patch_storage_uri,
+        },
+      ],
+    });
+    await bundlePatchesCollection.doc(patch.id).set(patch);
+
+    await expect(
+      createPlugin().findMany({ model: "bundle_patches" }),
+    ).resolves.toContainEqual(patch);
+
+    const [storedTarget, storedVersion] = await Promise.all([
+      bundlesCollection.doc(target.id).get(),
+      settingsCollection.doc("database_adapter_version").get(),
+    ]);
+    expect(storedTarget.data()).not.toHaveProperty("patches");
+    expect(storedVersion.data()).toEqual({ version: 2 });
+  });
+
+  it("rejects a patch whose document key differs from its row id", async () => {
+    await settingsCollection.doc("database_adapter_version").set({
+      version: 1,
+    });
+    const base = legacyRow("legacy-miskeyed-base");
+    const target = legacyRow("legacy-miskeyed-target");
+    const patches = [
+      {
+        baseBundleId: base.id,
+        baseFileHash: base.file_hash,
+        patchFileHash: "miskeyed-patch-hash",
+        patchStorageUri: "gs://bucket/miskeyed-patch.bin",
+      },
+    ];
+    await bundlesCollection.doc(base.id).set(base);
+    await bundlesCollection.doc(target.id).set({ ...target, patches });
+    await bundlePatchesCollection.doc("wrong-document-key").set({
+      id: `${target.id}:${base.id}`,
+      bundle_id: target.id,
+      base_bundle_id: base.id,
+      base_file_hash: base.file_hash,
+      patch_file_hash: "miskeyed-patch-hash",
+      patch_storage_uri: "gs://bucket/miskeyed-patch.bin",
+      order_index: 0,
+    });
+
+    await expect(createPlugin().findMany({ model: "bundles" })).rejects.toThrow(
+      "bundle_patches.id.document-key",
+    );
+
+    const [storedTarget, storedVersion] = await Promise.all([
+      bundlesCollection.doc(target.id).get(),
+      settingsCollection.doc("database_adapter_version").get(),
+    ]);
+    expect(storedTarget.data()).toMatchObject({ patches });
+    expect(storedVersion.data()).toEqual({ version: 1 });
+  });
+
+  it("rejects a bundle whose document key differs from its row id before migration writes", async () => {
+    await settingsCollection.doc("database_adapter_version").set({
+      version: 1,
+    });
+    const bundle = legacyRow("legacy-miskeyed-bundle");
+    await bundlesCollection.doc("wrong-document-key").set(bundle);
+
+    await expect(createPlugin().findMany({ model: "bundles" })).rejects.toThrow(
+      "bundles.id.document-key",
+    );
+
+    const [storedBundle, canonicalBundle, storedVersion] = await Promise.all([
+      bundlesCollection.doc("wrong-document-key").get(),
+      bundlesCollection.doc(bundle.id).get(),
+      settingsCollection.doc("database_adapter_version").get(),
+    ]);
+    expect(storedBundle.data()).toEqual(bundle);
+    expect(canonicalBundle.exists).toBe(false);
+    expect(storedVersion.data()).toEqual({ version: 1 });
+  });
+
+  it("rejects duplicate embedded bundle ids before deleting version 2 data", async () => {
+    await settingsCollection.doc("database_adapter_version").set({
+      version: 2,
+    });
+    const bundle = legacyRow("duplicate-embedded-bundle");
+    await bundlesCollection.doc(bundle.id).set(bundle);
+    await bundlesCollection.doc("duplicate-document-key").set(bundle);
+
+    await expect(
+      createPlugin().delete({
+        model: "bundles",
+        where: [{ field: "id", value: bundle.id }],
+      }),
+    ).rejects.toThrow("bundles.id.unique");
+
+    const [canonicalBundle, duplicateBundle, storedVersion] = await Promise.all(
+      [
+        bundlesCollection.doc(bundle.id).get(),
+        bundlesCollection.doc("duplicate-document-key").get(),
+        settingsCollection.doc("database_adapter_version").get(),
+      ],
+    );
+    expect(canonicalBundle.data()).toEqual(bundle);
+    expect(duplicateBundle.data()).toEqual(bundle);
+    expect(storedVersion.data()).toEqual({ version: 2 });
+  });
+
+  it("rejects a miskeyed version 2 patch before deleting any data", async () => {
+    await settingsCollection.doc("database_adapter_version").set({
+      version: 2,
+    });
+    const base = legacyRow("version-2-miskeyed-base");
+    const target = legacyRow("version-2-miskeyed-target");
+    const patch = {
+      id: `${target.id}:${base.id}`,
+      bundle_id: target.id,
+      base_bundle_id: base.id,
+      base_file_hash: base.file_hash,
+      patch_file_hash: "version-2-patch-hash",
+      patch_storage_uri: "gs://bucket/version-2-patch.bin",
+      order_index: 0,
+    };
+    await bundlesCollection.doc(base.id).set(base);
+    await bundlesCollection.doc(target.id).set(target);
+    await bundlePatchesCollection.doc("wrong-document-key").set(patch);
+
+    await expect(
+      createPlugin().delete({
+        model: "bundle_patches",
+        where: [{ field: "id", value: patch.id }],
+      }),
+    ).rejects.toThrow("bundle_patches.id.document-key");
+
+    const [storedPatch, canonicalPatch, storedVersion] = await Promise.all([
+      bundlePatchesCollection.doc("wrong-document-key").get(),
+      bundlePatchesCollection.doc(patch.id).get(),
+      settingsCollection.doc("database_adapter_version").get(),
+    ]);
+    expect(storedPatch.data()).toEqual(patch);
+    expect(canonicalPatch.exists).toBe(false);
+    expect(storedVersion.data()).toEqual({ version: 2 });
+  });
+
   it("migrates legacy rows with bounded batches instead of a transaction", async () => {
     const bundle = legacyRow("legacy-batched");
     await bundlesCollection.doc(bundle.id).set(bundle);
@@ -298,6 +519,42 @@ describe("firebase bounded reads", () => {
         where: [{ field: "id", value: value.id }],
       }),
     ).resolves.toMatchObject({ id: value.id, channel: "production" });
+  });
+
+  it("rejects a requested document whose key differs from its row id", async () => {
+    await settingsCollection.doc("database_adapter_version").set({
+      version: 2,
+    });
+    const documentKey = "requested-document-key";
+    await bundlesCollection
+      .doc(documentKey)
+      .set(legacyRow("different-embedded-id"));
+
+    await expect(
+      createPlugin().findOne({
+        model: "bundles",
+        where: [{ field: "id", value: documentKey }],
+      }),
+    ).rejects.toThrow("bundles.id.document-key");
+  });
+
+  it("rejects a matching update-check row whose key differs from its id", async () => {
+    await settingsCollection.doc("database_adapter_version").set({
+      version: 2,
+    });
+    await bundlesCollection
+      .doc("wrong-update-document-key")
+      .set(legacyRow("00000000-0000-0000-0000-000000000994"));
+
+    await expect(
+      createPlugin().getUpdateInfo?.({
+        _updateStrategy: "appVersion",
+        platform: "ios",
+        bundleId: "00000000-0000-0000-0000-000000000000",
+        channel: "production",
+        appVersion: "1.0.0",
+      }),
+    ).rejects.toThrow("bundles.id.document-key");
   });
 
   it("loads update-check relations from one read-only snapshot", async () => {

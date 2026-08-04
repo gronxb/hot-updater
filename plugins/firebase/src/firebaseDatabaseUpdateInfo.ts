@@ -8,7 +8,10 @@ import {
   parseFirebaseBundleRow,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
-import type { FirebaseDatabaseCollections } from "./firebaseDatabasePersistence";
+import {
+  type FirebaseDatabaseCollections,
+  requireFirebaseDocumentKey,
+} from "./firebaseDatabasePersistence";
 
 const FIRESTORE_IN_LIMIT = 30;
 
@@ -22,14 +25,22 @@ const chunks = <T>(values: readonly T[]): T[][] => {
 
 const parseBundles = (snapshot: QuerySnapshot<DocumentData>): BundleRow[] =>
   snapshot.docs.map((document) =>
-    parseFirebaseBundleRow(document.data(), `bundles/${document.id}`),
+    requireFirebaseDocumentKey(
+      "bundles",
+      document.id,
+      parseFirebaseBundleRow(document.data(), `bundles/${document.id}`),
+    ),
   );
 
 const parsePatches = (
   snapshot: QuerySnapshot<DocumentData>,
 ): BundlePatchRow[] =>
   snapshot.docs.map((document) =>
-    parseFirebasePatchRow(document.data(), `bundle_patches/${document.id}`),
+    requireFirebaseDocumentKey(
+      "bundle_patches",
+      document.id,
+      parseFirebasePatchRow(document.data(), `bundle_patches/${document.id}`),
+    ),
   );
 
 export const loadFirebaseUpdateBundles = async (

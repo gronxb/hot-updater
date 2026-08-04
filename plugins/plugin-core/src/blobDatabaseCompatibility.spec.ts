@@ -2,6 +2,7 @@ import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { BlobDatabaseUnknownFieldsError } from "./blobDatabaseErrors";
+import { parseLegacyBundle } from "./blobDatabaseLegacy";
 import {
   blobDatabaseRevisionSnapshotKey,
   parseBlobDatabasePointer,
@@ -36,6 +37,19 @@ const commonStoredBundleRow = {
   ...commonBundleRow,
   channel: "production",
 };
+const commonLegacyBundle = {
+  id: bundleId,
+  platform: "ios",
+  shouldForceUpdate: false,
+  enabled: true,
+  fileHash: "hash-1",
+  gitCommitHash: null,
+  message: "bundle-1",
+  channel: "production",
+  storageUri: "storage://bundles/1.zip",
+  targetAppVersion: "1.0.0",
+  fingerprintHash: null,
+};
 
 const createMemoryBlobDatabase = (entries: readonly [string, unknown][]) => {
   const store = new Map(entries);
@@ -67,6 +81,15 @@ const createMemoryBlobDatabase = (entries: readonly [string, unknown][]) => {
 };
 
 describe("blob snapshot compatibility", () => {
+  it("defaults missing legacy metadata but rejects explicit null", () => {
+    expect(
+      parseLegacyBundle(commonLegacyBundle, "legacy").bundle.metadata,
+    ).toEqual({});
+    expect(() =>
+      parseLegacyBundle({ ...commonLegacyBundle, metadata: null }, "legacy"),
+    ).toThrow("Invalid blob database data");
+  });
+
   const sparseArray: unknown[] = [];
   sparseArray.length = 1;
   it.each([

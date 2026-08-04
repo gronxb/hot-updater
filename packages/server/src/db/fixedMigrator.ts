@@ -64,13 +64,17 @@ export const createKyselyMigrator = ({
 }): Migrator => {
   const getSetting = async (key: string): Promise<string | undefined> => {
     try {
-      const result = await sql<{ readonly value: string }>`select ${sql.ref(
+      const result = await sql<{ readonly value: unknown }>`select ${sql.ref(
         "value",
       )} from ${sql.table(HOT_UPDATER_SETTINGS_TABLE)} where ${sql.ref(
         "key",
       )} = ${key} limit 1`.execute(db);
       const row = result.rows[0];
-      return typeof row?.value === "string" ? row.value : undefined;
+      if (!row) return undefined;
+      if (typeof row.value !== "string") {
+        throw new Error(`Invalid Hot Updater schema setting: ${key}`);
+      }
+      return row.value;
     } catch (error) {
       if (!isMissingSettingsTableError(error)) throw error;
       return undefined;

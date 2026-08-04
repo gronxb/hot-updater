@@ -112,9 +112,19 @@ export const loadBlobUpdateBundles = async (
   operations: Pick<BlobManifestOperations, "loadObject">,
   args: GetBundlesArgs,
   prefix?: string,
+  snapshot?: BlobDatabaseSnapshot,
 ): Promise<Bundle[]> => {
   const channel = args.channel ?? "production";
   const hasPrefix = prefix !== undefined;
+  const hasMatchingSnapshotRows =
+    snapshot?.bundles.some(
+      (bundle) =>
+        bundle.channel === channel &&
+        bundle.platform === args.platform &&
+        (args._updateStrategy === "fingerprint"
+          ? bundle.fingerprint_hash === args.fingerprintHash
+          : bundle.target_app_version !== null),
+    ) ?? false;
   assertBlobUpdateRouteArgs(args);
   if (args._updateStrategy === "fingerprint") {
     const key = fingerprintManifestKey(
@@ -130,7 +140,7 @@ export const loadBlobUpdateBundles = async (
             key,
             `${channel}/${args.platform}/${args.fingerprintHash}/update.json`,
           ],
-      hasPrefix,
+      hasPrefix && hasMatchingSnapshotRows,
     );
   }
 
@@ -141,7 +151,7 @@ export const loadBlobUpdateBundles = async (
       ? [prefixedKey(prefix, indexKey)]
       : [indexKey, `${channel}/${args.platform}/target-app-versions.json`],
   );
-  if (storedVersions === null && hasPrefix) {
+  if (storedVersions === null && hasPrefix && hasMatchingSnapshotRows) {
     throw new BlobDatabaseSnapshotError(prefixedKey(prefix, indexKey));
   }
   const versions =

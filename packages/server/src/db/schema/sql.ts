@@ -186,7 +186,7 @@ export const createTableStatement = (
         )
       : []),
   ];
-  return `create table if not exists ${table.ormName} (\n${lines.join(",\n")}\n)`;
+  return `create table ${table.ormName} (\n${lines.join(",\n")}\n)`;
 };
 
 export const createForeignKeySqlStatements = (

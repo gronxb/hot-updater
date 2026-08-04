@@ -509,7 +509,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(v031Sql).toContain(
         "alter table bundles add column manifest_storage_uri",
       );
-      expect(v031Sql).toContain("create table if not exists bundle_patches");
+      expect(v031Sql).toContain("create table bundle_patches");
       expect(v031Sql).toContain(
         "add constraint bundle_patches_bundle_id_fk foreign key",
       );
@@ -623,8 +623,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         expect(sql).toContain(
           "alter table bundles add column manifest_storage_uri",
         );
-        expect(sql).toContain("create table if not exists bundle_patches");
-        expect(sql).not.toContain("create table if not exists bundles");
+        expect(sql).toContain("create table bundle_patches");
+        expect(sql).not.toContain("create table bundles");
 
         await result.execute();
 

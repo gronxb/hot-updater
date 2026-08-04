@@ -177,6 +177,56 @@ describe("createKyselyMigrator", () => {
     },
   );
 
+  it.each([
+    {
+      name: "Core marker",
+      coreValue: new Uint8Array([0xff]),
+      legacyValue: undefined,
+      invalidKey: "schema.core",
+    },
+    {
+      name: "legacy marker",
+      coreValue: undefined,
+      legacyValue: new Uint8Array([0xff]),
+      invalidKey: "version",
+    },
+    {
+      name: "Core marker beside a valid legacy marker",
+      coreValue: new Uint8Array([0xff]),
+      legacyValue: "0.38.0",
+      invalidKey: "schema.core",
+    },
+    {
+      name: "legacy marker beside a current Core marker",
+      coreValue: "0.36.0",
+      legacyValue: new Uint8Array([0xff]),
+      invalidKey: "version",
+    },
+  ])(
+    "rejects a corrupt $name",
+    async ({ coreValue, legacyValue, invalidKey }) => {
+      const database = new DatabaseSync(":memory:");
+      database.exec(`
+        create table private_hot_updater_settings (
+          key text primary key,
+          value text not null
+        );
+      `);
+      const insertSetting = database.prepare(
+        "insert into private_hot_updater_settings (key, value) values (?, ?)",
+      );
+      if (coreValue !== undefined) insertSetting.run("schema.core", coreValue);
+      if (legacyValue !== undefined) insertSetting.run("version", legacyValue);
+      const kysely = createNodeSqliteKysely(database);
+      kyselyInstances.push(kysely);
+      const migrator = createKyselyMigrator({ db: kysely, provider: "sqlite" });
+
+      await expect(migrator.getVersion()).rejects.toThrow(
+        `Invalid Hot Updater schema setting: ${invalidKey}`,
+      );
+    },
+  );
+
   it.each(["0.21.0", "0.29.0", "0.31.0", "0.36.0", "0.37.0", "0.38.0"])(
     "accepts known legacy version %s alongside a current Core marker",
     async (legacyVersion) => {
@@ -235,27 +285,42 @@ describe("createKyselyMigrator", () => {
     ).rejects.toThrow("Unsupported Hot Updater schema version: 0.39.0");
   });
 
-  it.each(["0.39.0", "unknown"])(
-    "rejects legacy SQL %s alongside a current Core marker before reading bundle data",
-    async (legacyVersion) => {
-      const database = new PGlite();
-      databases.push(database);
-      const kysely = new Kysely<SettingsDatabase>({
-        dialect: new PGliteDialect(database),
-      });
-      kyselyInstances.push(kysely);
-      await database.exec(`
+  it.each([
+    {
+      name: "future version",
+      legacyValue: "0.39.0",
+      error: "Unsupported Hot Updater schema version: 0.39.0",
+    },
+    {
+      name: "unknown version",
+      legacyValue: "unknown",
+      error: "Unsupported Hot Updater schema version: unknown",
+    },
+    {
+      name: "corrupt version",
+      legacyValue: new Uint8Array([0xff]),
+      error: "Invalid Hot Updater schema setting: version",
+    },
+  ])(
+    "rejects a $name beside a current Core marker before reading bundle data",
+    async ({ legacyValue, error }) => {
+      const database = new DatabaseSync(":memory:");
+      database.exec(`
         create table private_hot_updater_settings (
           key text primary key,
           value text not null
         );
-        insert into private_hot_updater_settings (key, value) values
-          ('schema.core', '0.36.0'),
-          ('version', '${legacyVersion}');
       `);
+      const insertSetting = database.prepare(
+        "insert into private_hot_updater_settings (key, value) values (?, ?)",
+      );
+      insertSetting.run("schema.core", "0.36.0");
+      insertSetting.run("version", legacyValue);
+      const kysely = createNodeSqliteKysely(database);
+      kyselyInstances.push(kysely);
       const migrator = createKyselyMigrator({
         db: kysely,
-        provider: "postgresql",
+        provider: "sqlite",
       });
       const plugin = createInMemoryDatabasePlugin();
       const count = vi.spyOn(plugin, "count");
@@ -269,9 +334,7 @@ describe("createKyselyMigrator", () => {
 
       const result = core.api.getBundles({ limit: 1 });
 
-      await expect(result).rejects.toThrow(
-        `Unsupported Hot Updater schema version: ${legacyVersion}`,
-      );
+      await expect(result).rejects.toThrow(error);
       expect(count).not.toHaveBeenCalled();
       expect(findMany).not.toHaveBeenCalled();
     },

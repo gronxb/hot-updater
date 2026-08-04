@@ -29,6 +29,7 @@ import {
   parseBlobDatabaseSnapshot,
   type BlobDatabaseSnapshot,
 } from "./blobDatabaseSnapshot";
+import { blobArray } from "./blobDatabaseValue";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
@@ -190,11 +191,7 @@ const loadLegacySnapshot = async (
   for (const key of keys) {
     const value = await loadOptionalObject(operations, key);
     if (value === null) continue;
-    if (!Array.isArray(value)) {
-      parseLegacyBundle(value, key);
-      continue;
-    }
-    for (const item of value) {
+    for (const item of blobArray(value, key)) {
       const parsed = parseLegacyBundle(item, key);
       bundles.set(parsed.bundle.id, parsed.bundle);
       for (const [patchId, patch] of patches) {
@@ -395,6 +392,7 @@ export const createBlobDatabasePlugin = ({
         BLOB_DATABASE_SNAPSHOT_KEY,
       );
       let manifestPrefix: string | undefined;
+      let activeSnapshot: BlobDatabaseSnapshot | undefined;
       if (stored !== null) {
         if (isBlobDatabasePointer(stored)) {
           const root = readBlobDatabaseRoot(stored);
@@ -417,6 +415,7 @@ export const createBlobDatabasePlugin = ({
             snapshotKey,
           );
           assertBlobDatabaseSnapshotCompatible(snapshot);
+          activeSnapshot = snapshot;
           manifestPrefix = blobDatabaseRevisionManifestPrefix(
             root.pointer.active_revision,
           );
@@ -433,6 +432,7 @@ export const createBlobDatabasePlugin = ({
           },
           args,
           manifestPrefix,
+          activeSnapshot,
         ),
       });
     },

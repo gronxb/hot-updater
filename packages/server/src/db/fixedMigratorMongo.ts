@@ -44,7 +44,11 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     .collection<{ key: string; value: unknown }>(HOT_UPDATER_SETTINGS_TABLE);
   const getSetting = async (key: string): Promise<string | undefined> => {
     const row = await settings.findOne({ key });
-    return typeof row?.value === "string" ? row.value : undefined;
+    if (!row) return undefined;
+    if (typeof row.value !== "string") {
+      throw new Error(`Invalid Hot Updater schema setting: ${key}`);
+    }
+    return row.value;
   };
   const getCoreVersion = (): Promise<string | undefined> =>
     getSetting(HOT_UPDATER_CORE_SCHEMA_KEY);
