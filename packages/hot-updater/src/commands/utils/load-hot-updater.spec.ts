@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { existsSync } from "fs";
+import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
 
@@ -42,9 +43,9 @@ describe("loadHotUpdater", () => {
     await writeFile(
       path.join(srcDir, "db.ts"),
       [
-        'import "./drizzle";',
+        'import { schemaKeys } from "./drizzle";',
         "export const hotUpdater = {",
-        '  adapterName: "drizzle",',
+        '  adapterName: schemaKeys.length === 0 ? "drizzle" : "polluted",',
         "  generateSchema: () => ({ code: '', path: 'hot-updater-schema.ts' }),",
         "};",
       ].join("\n"),
@@ -54,24 +55,20 @@ describe("loadHotUpdater", () => {
     try {
       const loaded = await loadHotUpdater("src/db.ts", {
         cwd: projectDir,
-        allowGeneratedSchemaPlaceholder: true,
+        allowGeneratedSchemaVirtualModule: true,
       });
       expect(loaded.adapterName).toBe("drizzle");
 
-      const placeholderPath = path.join(projectDir, "hot-updater-schema.ts");
-      expect(await readFile(placeholderPath, "utf-8")).toContain(
-        "Temporary placeholder",
+      expect(existsSync(path.join(projectDir, "hot-updater-schema.ts"))).toBe(
+        false,
       );
-
       await loaded.dispose();
-
-      await expect(readFile(placeholderPath, "utf-8")).rejects.toThrow();
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }
   });
 
-  it("removes the generated schema placeholder before exiting on invalid config", async () => {
+  it("reports an invalid config after bootstrapping its generated schema", async () => {
     const projectDir = await mkdtemp(
       path.join(tmpdir(), "hot-updater-invalid-config-"),
     );
@@ -95,13 +92,10 @@ describe("loadHotUpdater", () => {
       await expect(
         loadHotUpdater("src/db.ts", {
           cwd: projectDir,
-          allowGeneratedSchemaPlaceholder: true,
+          allowGeneratedSchemaVirtualModule: true,
         }),
       ).rejects.toThrow("process.exit(1)");
 
-      await expect(
-        readFile(path.join(projectDir, "hot-updater-schema.ts"), "utf-8"),
-      ).rejects.toThrow();
       expect(exitSpy).toHaveBeenCalledWith(1);
     } finally {
       await rm(projectDir, { recursive: true, force: true });
@@ -134,21 +128,11 @@ describe("loadHotUpdater", () => {
     try {
       const loaded = await loadHotUpdater("src/db.ts", {
         cwd: projectDir,
-        allowGeneratedSchemaPlaceholder: true,
+        allowGeneratedSchemaVirtualModule: true,
       });
       expect(loaded.adapterName).toBe("drizzle");
 
-      const placeholderPath = path.join(
-        projectDir,
-        "custom-hot-updater-schema.ts",
-      );
-      expect(await readFile(placeholderPath, "utf-8")).toContain(
-        "Temporary placeholder",
-      );
-
       await loaded.dispose();
-
-      await expect(readFile(placeholderPath, "utf-8")).rejects.toThrow();
     } finally {
       await rm(projectDir, { recursive: true, force: true });
     }
