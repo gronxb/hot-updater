@@ -42,6 +42,7 @@ export type MigrationOperation =
         columns: Record<string, { ormName: string; type: string }>;
       };
     }
+  | { type: "custom"; description: string }
   | { type: "custom"; sql: string }
   | { type: "custom"; key: string; value: unknown };
 
