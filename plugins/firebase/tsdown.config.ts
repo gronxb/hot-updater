@@ -23,7 +23,6 @@ export default defineConfig([
         "@hot-updater/analytics",
         "@hot-updater/analytics/internal/provider-capability",
         "@hot-updater/analytics/provider",
-        "@hot-updater/better-auth",
         "@hot-updater/better-auth/managed",
         "@hot-updater/core",
         "@hot-updater/js",
