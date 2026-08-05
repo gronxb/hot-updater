@@ -41,10 +41,12 @@ transactions when configured with `transactions: true`.
 Core's generic server schema registry ends at `0.36.0`. Kysely and MongoDB
 migrators record that revision under `schema.core`; known legacy post-Core
 `version` values are retained and interpreted as Core `0.36.0` compatibility,
-not rewritten. Unknown future legacy revisions remain blocked. Managed
-Cloudflare and Supabase deployments continue to use provider-native migration
-history, while Firebase uses `database_adapter_version`. This release adds no
-other schema namespace or database model.
+not rewritten. Unknown future legacy revisions remain blocked. Cloudflare's D1
+migration history now creates the component settings registry and records
+`schema.core=0.36.0`, failing closed if another Core marker already exists.
+Managed Supabase deployments continue to use provider-native migration history,
+while Firebase uses `database_adapter_version`. This release adds no other
+schema namespace or database model.
 
 Blob database snapshots contain only bundles and patches. Core refuses to read
 or replace a snapshot containing unknown snapshot, row, or revision-pointer
