@@ -288,6 +288,64 @@ describe("runtime createHotUpdater", () => {
     expect(authenticate).not.toHaveBeenCalled();
   });
 
+  it("applies a core-exception policy before reading a protected bundle body", async () => {
+    let bodyPulls = 0;
+    const authenticate = vi.fn(async () => ({ kind: "anonymous" }) as const);
+    const authentication = defineFirstPartyServerPlugin({
+      id: "authentication",
+      setup: () => ({
+        authentication: { id: "authentication", authenticate },
+      }),
+    });
+    const policy = defineFirstPartyServerPlugin({
+      id: "route-policy",
+      setup: () => ({
+        routePolicy: {
+          kind: "protect-except-core",
+          routeIds: [
+            "core.version",
+            "core.update.fingerprint",
+            "core.update.fingerprint-cohort",
+            "core.update.app-version",
+            "core.update.app-version-cohort",
+          ],
+        },
+      }),
+    });
+    const hotUpdater = createHotUpdater({
+      database: createRuntimeDatabase(),
+      plugins: [authentication, policy],
+      routes: { bundles: true, updateCheck: true },
+    });
+
+    const version = await hotUpdater.handler(
+      new Request("https://updates.example.com/api/version"),
+    );
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          bodyPulls += 1;
+          controller.enqueue(new TextEncoder().encode('{"bundles":[]}'));
+          controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const bundle = await hotUpdater.handler(
+      new Request("https://updates.example.com/api/bundles", {
+        body,
+        duplex: "half",
+        method: "POST",
+      }),
+    );
+
+    expect(version.status).toBe(200);
+    expect(bundle.status).toBe(401);
+    expect(bundle.headers.get("cache-control")).toBe("private, no-store");
+    expect(bodyPulls).toBe(0);
+    expect(authenticate).toHaveBeenCalledOnce();
+  });
+
   it("authenticates a protected plugin route before parsing its body", async () => {
     let bodyPulls = 0;
     const parse = vi.fn(async (request: Request) => request.json());

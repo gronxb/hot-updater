@@ -8,6 +8,7 @@ import {
 import type {
   HotUpdaterAuthenticationProvider,
   HotUpdaterMatchedRoute,
+  HotUpdaterRoutePolicy,
   HotUpdaterServerPlugin,
   HotUpdaterServerRoute,
 } from "./contracts";
@@ -31,6 +32,11 @@ export type ComposedServerKernel = {
   readonly authentication?: HotUpdaterAuthenticationProvider;
   readonly capabilities: CapabilityRegistry;
   readonly router: CompiledRouter;
+};
+
+type CollectedRoute = {
+  readonly origin: "core" | "plugin";
+  readonly route: HotUpdaterServerRoute;
 };
 
 const invalidContribution = (pluginId: string): never => {
@@ -97,6 +103,38 @@ const matchedRoute = (route: HotUpdaterServerRoute): HotUpdaterMatchedRoute =>
     pattern: route.path,
   });
 
+const policyProtectsRoute = (
+  policy: HotUpdaterRoutePolicy,
+  route: CollectedRoute,
+): boolean => {
+  switch (policy.kind) {
+    case "protect-all":
+      return true;
+    case "protect-except-core":
+      return (
+        route.origin === "plugin" || !policy.routeIds.includes(route.route.id)
+      );
+  }
+};
+
+const applyRoutePolicies = (
+  routes: readonly CollectedRoute[],
+  policies: readonly HotUpdaterRoutePolicy[],
+): readonly HotUpdaterServerRoute[] =>
+  routes.map((collectedRoute) => {
+    const { route } = collectedRoute;
+    if (
+      route.access.kind === "protected" ||
+      !policies.some((policy) => policyProtectsRoute(policy, collectedRoute))
+    ) {
+      return route;
+    }
+    return Object.freeze({
+      ...route,
+      access: Object.freeze({ kind: "protected" }),
+    });
+  });
+
 export const composeServerKernel = (
   options: ComposeServerKernelOptions,
 ): ComposedServerKernel => {
@@ -133,8 +171,12 @@ export const composeServerKernel = (
     }
   }
 
-  const routes: HotUpdaterServerRoute[] = [...options.coreRoutes];
+  const routes: CollectedRoute[] = options.coreRoutes.map((route) => ({
+    origin: "core",
+    route,
+  }));
   const authentication: HotUpdaterAuthenticationProvider[] = [];
+  const routePolicies: HotUpdaterRoutePolicy[] = [];
   for (const plugin of plugins) {
     try {
       const setupResult = plugin.setup(
@@ -145,9 +187,16 @@ export const composeServerKernel = (
       );
       rejectThenable(setupResult, plugin.id);
       const contribution = validatePluginContribution(setupResult);
-      routes.push(...contribution.routes);
+      routes.push(
+        ...contribution.routes.map(
+          (route): CollectedRoute => ({ origin: "plugin", route }),
+        ),
+      );
       if (contribution.authentication !== undefined) {
         authentication.push(contribution.authentication);
+      }
+      if (contribution.routePolicy !== undefined) {
+        routePolicies.push(contribution.routePolicy);
       }
     } catch (error) {
       if (error instanceof HotUpdaterConstructionError) throw error;
@@ -155,7 +204,7 @@ export const composeServerKernel = (
     }
   }
 
-  const router = compileRoutes(routes);
+  const router = compileRoutes(applyRoutePolicies(routes, routePolicies));
   const selectedAuthentication = selectAuthenticationProvider({
     providers: authentication,
     routes: router.routes.map(matchedRoute),

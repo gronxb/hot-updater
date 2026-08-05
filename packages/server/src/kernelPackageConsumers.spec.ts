@@ -123,12 +123,14 @@ void getCapabilityContributions(carrier);`,
         "server",
         `server-consumer.${extension}`,
         `import { createHotUpdater, type CreateHotUpdaterOptions } from "@hot-updater/server";
-import { defineFirstPartyServerPlugin, type FirstPartyServerPlugin } from "@hot-updater/server/internal/first-party-plugin";
+import { defineFirstPartyServerPlugin, type FirstPartyServerPlugin, type HotUpdaterRoutePolicy } from "@hot-updater/server/internal/first-party-plugin";
 const plugin: FirstPartyServerPlugin = defineFirstPartyServerPlugin({ id: "consumer", setup: () => ({}) });
+const routePolicy: HotUpdaterRoutePolicy = { kind: "protect-all" };
 const acceptOptions = (_options: CreateHotUpdaterOptions): void => undefined;
 void acceptOptions;
 void createHotUpdater;
-void plugin;`,
+void plugin;
+void routePolicy;`,
       );
     },
   );

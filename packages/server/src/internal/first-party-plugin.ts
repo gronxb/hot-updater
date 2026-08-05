@@ -9,6 +9,7 @@ export type {
   HotUpdaterRequestParser,
   HotUpdaterRouteAccess,
   HotUpdaterRouteContext,
+  HotUpdaterRoutePolicy,
   HotUpdaterServerRoute,
 } from "../kernel/contracts";
 export {

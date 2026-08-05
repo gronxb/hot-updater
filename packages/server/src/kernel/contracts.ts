@@ -14,6 +14,13 @@ export type HotUpdaterRouteAccess =
   | { readonly kind: "public" }
   | { readonly kind: "protected" };
 
+export type HotUpdaterRoutePolicy =
+  | { readonly kind: "protect-all" }
+  | {
+      readonly kind: "protect-except-core";
+      readonly routeIds: readonly string[];
+    };
+
 export type HotUpdaterMatchedRoute = {
   readonly access: HotUpdaterRouteAccess;
   readonly id: string;

@@ -2,11 +2,12 @@
 
 ## Scope
 
-The server kernel composes three generic extension points:
+The server kernel composes four generic extension points:
 
 1. versioned infrastructure capabilities;
 2. explicitly declared HTTP routes; and
-3. one mechanism-neutral authentication provider.
+3. one mechanism-neutral authentication provider; and
+4. an optional monotonic route-access policy.
 
 It does not define Analytics, authentication products, managed deployment
 policy, provider presets, or storage contracts.
@@ -38,9 +39,10 @@ Construction is synchronous and deterministic:
 1. validate and sort plugins by ID;
 2. collect and validate capability providers;
 3. materialize and parse capabilities against a frozen infrastructure view;
-4. run each plugin setup once;
-5. compile the core and contributed routes; and
-6. select the authentication provider.
+4. run each plugin setup once and collect every route and route policy;
+5. apply route policies to the collected routes;
+6. compile the core and contributed routes; and
+7. select the authentication provider.
 
 Capability factories, parsers, and plugin setup must not return promises or
 thenables. Duplicate plugin IDs, capability IDs or providers, route IDs or
@@ -81,12 +83,14 @@ The kernel preserves the existing server contract:
   `routes` keep their existing types and precedence.
 
 Installing an authentication provider does not change any core route access.
-Managed route policy, including any coordinated protect-all mode, belongs to a
-separate explicit policy change.
+An internal first-party contribution may opt into the generic `protect-all` or
+`protect-except-core` policy. Policies only upgrade route access, and a core
+exception applies only to an actual core-origin route with that ID. The kernel
+does not select a managed policy or install a policy by default.
 
 ## Non-goals
 
 This kernel does not include feature API projection, version metadata,
 middleware composition, Analytics persistence or routes, Better Auth, API
-keys, managed provisioning, provider adoption, or automatic feature-policy
-pairing.
+keys, managed provisioning, provider adoption, automatic feature-policy
+pairing, or policy-default selection.
