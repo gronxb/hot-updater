@@ -176,4 +176,31 @@ describe("loadConfig", () => {
       "ios/HotUpdaterExample/Info.plist",
     ]);
   });
+
+  it("keeps platform-scoped fingerprint extraSources intact", async () => {
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default {",
+        "  updateStrategy: 'fingerprint',",
+        "  fingerprint: {",
+        "    extraSources: {",
+        "      ios: ['ios/.env'],",
+        "      android: ['android/local.properties'],",
+        "    },",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(config.fingerprint.extraSources).toEqual({
+      ios: ["ios/.env"],
+      android: ["android/local.properties"],
+    });
+  });
 });
