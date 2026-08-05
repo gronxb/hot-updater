@@ -11,9 +11,10 @@ export default async function setup(project: TestProject) {
     .filter((file) => file.endsWith(".sql"))
     .sort();
   const migrations = await Promise.all(
-    migrationFiles.map((file) =>
-      fs.readFile(new URL(file, migrationDirectory), "utf8"),
-    ),
+    migrationFiles.map(async (name) => ({
+      name,
+      sql: await fs.readFile(new URL(name, migrationDirectory), "utf8"),
+    })),
   );
   project.provide("prepareSql", sql);
   project.provide("d1Migrations", migrations);
@@ -22,6 +23,9 @@ export default async function setup(project: TestProject) {
 declare module "vitest" {
   export interface ProvidedContext {
     prepareSql: string;
-    d1Migrations: readonly string[];
+    d1Migrations: readonly {
+      readonly name: string;
+      readonly sql: string;
+    }[];
   }
 }
