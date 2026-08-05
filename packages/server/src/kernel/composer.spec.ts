@@ -448,6 +448,11 @@ describe("composeServerKernel", () => {
     { kind: "protect-all", routeIds: [] },
     { kind: "protect-except-core", routeIds: [""] },
     { kind: "protect-except-core", routeIds: [1] },
+    { kind: "protect-except-core", routeIds: Object.assign([], { length: 1 }) },
+    {
+      kind: "protect-except-core",
+      routeIds: Object.assign([1], { every: () => true }),
+    },
     { then: () => undefined },
   ])("rejects an invalid route policy contribution", (routePolicy) => {
     const plugin = Reflect.apply(defineFirstPartyServerPlugin, undefined, [

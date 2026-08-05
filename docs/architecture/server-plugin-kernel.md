@@ -5,7 +5,7 @@
 The server kernel composes four generic extension points:
 
 1. versioned infrastructure capabilities;
-2. explicitly declared HTTP routes; and
+2. explicitly declared HTTP routes;
 3. one mechanism-neutral authentication provider; and
 4. an optional monotonic route-access policy.
 
@@ -71,7 +71,8 @@ consumed, mount `toNodeHandler` before general framework body parsers.
 
 ## Core compatibility
 
-The kernel preserves the existing server contract:
+Without a contributed route policy, the kernel preserves the existing server
+contract:
 
 - `/version` and OTA update-check routes are public;
 - update-check routes remain enabled by default;

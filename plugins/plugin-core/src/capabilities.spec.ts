@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import packageJson from "../package.json" with { type: "json" };
 import {
@@ -99,6 +99,14 @@ describe("capability package boundary", () => {
 });
 
 describe("capability contribution carriers", () => {
+  it("excludes callable carriers from the static contract", () => {
+    type CallableCarrierParameter = Parameters<
+      typeof attachCapabilityContribution<() => void, string>
+    >[0];
+
+    expectTypeOf<CallableCarrierParameter>().toBeNever();
+  });
+
   it("attaches frozen copy-on-write snapshots without mutating the carrier", () => {
     const carrier = Object.freeze({ name: "database" });
     const first = {

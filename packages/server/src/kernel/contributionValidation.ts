@@ -95,17 +95,25 @@ function readRoutePolicy(value: unknown): HotUpdaterRoutePolicy | undefined {
         !Object.hasOwn(value, "kind") ||
         !Object.hasOwn(value, "routeIds") ||
         !hasOnlyKeys(value, ["kind", "routeIds"]) ||
-        !Array.isArray(routeIds) ||
-        !routeIds.every(
-          (routeId: unknown) =>
-            typeof routeId === "string" && routeId.length > 0,
-        )
+        !Array.isArray(routeIds)
       ) {
         throw new TypeError("Invalid server plugin contribution.");
       }
+      const copiedRouteIds: string[] = [];
+      for (let index = 0; index < routeIds.length; index += 1) {
+        const routeId = Reflect.get(routeIds, index);
+        if (
+          !Object.hasOwn(routeIds, index) ||
+          typeof routeId !== "string" ||
+          routeId.length === 0
+        ) {
+          throw new TypeError("Invalid server plugin contribution.");
+        }
+        copiedRouteIds.push(routeId);
+      }
       return Object.freeze({
         kind,
-        routeIds: Object.freeze([...routeIds]),
+        routeIds: Object.freeze(copiedRouteIds),
       });
     }
     default:
