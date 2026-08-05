@@ -65,7 +65,9 @@ describe("v0.36.0 schema", () => {
       value: "0.36.0",
     });
     expect(operations).not.toContainEqual(
-      expect.objectContaining({ sql: expect.stringContaining("backfill") }),
+      expect.objectContaining({
+        description: expect.stringContaining("backfill"),
+      }),
     );
   });
 });

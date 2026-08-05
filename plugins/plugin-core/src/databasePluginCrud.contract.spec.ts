@@ -133,6 +133,50 @@ describe("database plugin CRUD runtime contract", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("rejects duplicate order fields before provider execution", async () => {
+    const findMany = vi.fn(async () => []);
+    const plugin = createDatabasePlugin({
+      name: "order-by-contract",
+      plugin: () => ({ ...createMethods(), findMany }),
+    });
+
+    const result = invoke(plugin, "findMany", {
+      model: "bundles",
+      orderBy: [
+        { field: "id", direction: "asc" },
+        { field: "id", direction: "desc" },
+      ],
+    });
+
+    await expect(result).rejects.toMatchObject({ code: "invalid-operation" });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it("forwards nonduplicate multi-field order clauses", async () => {
+    const findMany = vi.fn(async () => []);
+    const plugin = createDatabasePlugin({
+      name: "order-by-contract",
+      plugin: () => ({ ...createMethods(), findMany }),
+    });
+    const orderBy = [
+      { field: "channel", direction: "asc" as const },
+      { field: "id", direction: "desc" as const },
+    ];
+
+    const result = await invoke(plugin, "findMany", {
+      model: "bundles",
+      orderBy,
+    });
+
+    expect(result).toEqual([]);
+    expect(findMany).toHaveBeenCalledWith({
+      model: "bundles",
+      orderBy,
+      limit: 100,
+      offset: 0,
+    });
+  });
+
   it.each([
     null,
     [],

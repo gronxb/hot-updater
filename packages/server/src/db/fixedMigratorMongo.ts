@@ -31,6 +31,12 @@ const isMongoNamespaceExistsError = (error: unknown): boolean => {
   return mongoError.code === 48 || mongoError.codeName === "NamespaceExists";
 };
 
+const isMongoNamespaceNotFoundError = (error: unknown): boolean => {
+  if (!(error instanceof Error)) return false;
+  const mongoError = error as { code?: unknown; codeName?: unknown };
+  return mongoError.code === 26 || mongoError.codeName === "NamespaceNotFound";
+};
+
 const ignoreExistingCollection = (error: unknown): undefined => {
   if (isMongoNamespaceExistsError(error)) {
     return undefined;
@@ -38,13 +44,22 @@ const ignoreExistingCollection = (error: unknown): undefined => {
   throw error;
 };
 
+const createSettingsKeyIndexOperation = (): MigrationOperation => ({
+  description: `Ensure unique MongoDB index: ${HOT_UPDATER_SETTINGS_TABLE}(key)`,
+  type: "custom",
+});
+
 export const createMongoMigrator = (client: MongoClient): Migrator => {
   const settings = client
     .db()
     .collection<{ key: string; value: unknown }>(HOT_UPDATER_SETTINGS_TABLE);
   const getSetting = async (key: string): Promise<string | undefined> => {
-    const row = await settings.findOne({ key });
+    const rows = await settings.find({ key }).limit(2).toArray();
+    const [row, duplicate] = rows;
     if (!row) return undefined;
+    if (duplicate) {
+      throw new Error(`Duplicate Hot Updater schema setting: ${key}`);
+    }
     if (typeof row.value !== "string") {
       throw new Error(`Invalid Hot Updater schema setting: ${key}`);
     }
@@ -70,14 +85,59 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     const { coreVersion, legacyCoreVersion } = await getSchemaVersions();
     return coreVersion ?? legacyCoreVersion;
   };
+  const getSettingsKeyIndexState = async (): Promise<
+    "missing" | "non-unique" | "unique"
+  > => {
+    const indexes = await settings
+      .listIndexes()
+      .toArray()
+      .catch((error: unknown) => {
+        if (isMongoNamespaceNotFoundError(error)) return [];
+        throw error;
+      });
+    const index = indexes.find(({ key }) => {
+      const fields = Object.entries(key);
+      return (
+        fields.length === 1 && fields[0]?.[0] === "key" && fields[0][1] === 1
+      );
+    });
+    if (!index) return "missing";
+    return index.unique === true &&
+      index.sparse !== true &&
+      index.partialFilterExpression === undefined
+      ? "unique"
+      : "non-unique";
+  };
+  const rejectNonUniqueSettingsKeyIndex = (): never => {
+    throw new Error(
+      "Hot Updater settings key index must enforce uniqueness for every key.",
+    );
+  };
+  const ensureSettingsKeyIndex = async (): Promise<void> => {
+    const state = await getSettingsKeyIndexState();
+    if (state === "unique") return;
+    if (state === "non-unique") rejectNonUniqueSettingsKeyIndex();
+    await settings.createIndex({ key: 1 }, { unique: true });
+  };
   const makeResult = async (
     options: MigrateOptions = {},
   ): Promise<MigrationResult> => {
     assertSupportedMigrationMode(options);
 
     const { coreVersion, legacyCoreVersion } = await getSchemaVersions();
+    const settingsKeyIndexState = await getSettingsKeyIndexState();
+    if (settingsKeyIndexState === "non-unique") {
+      rejectNonUniqueSettingsKeyIndex();
+    }
     if (isCurrentSchemaVersion(coreVersion)) {
-      return getEmptyMigrationResult();
+      if (settingsKeyIndexState === "unique") {
+        return getEmptyMigrationResult();
+      }
+      return {
+        ...getEmptyMigrationResult(),
+        execute: ensureSettingsKeyIndex,
+        operations: [createSettingsKeyIndexOperation()],
+      };
     }
     assertSupportedSchemaVersion(coreVersion ?? legacyCoreVersion);
     const settingsOperation =
@@ -89,7 +149,10 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
             value: HOT_UPDATER_SCHEMA_VERSION,
           } satisfies MigrationOperation);
     return {
-      operations: createMongoMigrationOperations(settingsOperation),
+      operations: [
+        createSettingsKeyIndexOperation(),
+        ...createMongoMigrationOperations(settingsOperation),
+      ],
       execute: async () => {
         const db = client.db();
         await executeMongoMigration({
@@ -104,6 +167,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
               }
             },
             ensureIndexes: async () => {
+              await ensureSettingsKeyIndex();
               for (const table of hotUpdaterSchema.tables) {
                 if (table.internal) continue;
                 const collection = db.collection(table.ormName);

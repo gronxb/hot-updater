@@ -5,6 +5,7 @@ import type {
 
 import type {
   HotUpdaterAuthenticationProvider,
+  HotUpdaterRoutePolicy,
   HotUpdaterServerPlugin,
   HotUpdaterServerRoute,
 } from "./contracts";
@@ -27,6 +28,7 @@ export type HotUpdaterPluginSetupContext = {
 
 export type HotUpdaterPluginContribution = {
   readonly authentication?: HotUpdaterAuthenticationProvider;
+  readonly routePolicy?: HotUpdaterRoutePolicy;
   readonly routes?: readonly HotUpdaterServerRoute[];
 };
 

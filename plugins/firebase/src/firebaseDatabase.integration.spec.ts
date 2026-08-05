@@ -92,6 +92,29 @@ const bundleFixture = (suffix: string) => ({
   metadata: { app_version: suffix },
 });
 
+describe("firebase fixed-model document updates", () => {
+  beforeEach(clearCollections);
+
+  it("preserves an extension field when updating a bundle message", async () => {
+    const bundle = bundleFixture("extension-field");
+    const client = createDatabaseClient(createPlugin());
+    await client.insertBundle(bundle);
+    await bundlesCollection.doc(bundle.id).update({
+      extension_field: { version: "future" },
+    });
+
+    await client.updateBundleById(bundle.id, {
+      message: "updated-message",
+    });
+
+    const stored = await bundlesCollection.doc(bundle.id).get();
+    expect(stored.data()).toMatchObject({
+      extension_field: { version: "future" },
+      message: "updated-message",
+    });
+  });
+});
+
 describe("firebase v1 data migration", () => {
   beforeEach(clearCollections);
 

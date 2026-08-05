@@ -468,6 +468,20 @@ export type SigningConfig =
       privateKeyPath: string;
     };
 
+/**
+ * Extra fingerprint sources.
+ *
+ * - `string[]`: shared, applied to both the iOS and Android fingerprint.
+ * - object: scoped per platform, so a change to one platform's native inputs
+ *   leaves the other platform's fingerprint untouched.
+ */
+export type FingerprintExtraSources =
+  | string[]
+  | {
+      ios?: string[];
+      android?: string[];
+    };
+
 export type ConfigInput = {
   /**
    * @hidden
@@ -512,9 +526,15 @@ export type ConfigInput = {
   fingerprint?: {
     /**
      * The extra sources to be included in the fingerprint.
+     *
+     * An array applies the sources to both platforms. Use the object form when
+     * the native inputs differ per platform, so that an iOS-only change does
+     * not move the Android fingerprint (and vice versa).
+     *
      * @example ["resources/**", ".gitignore"]
+     * @example { ios: ["ios/.env"], android: ["android/local.properties"] }
      */
-    extraSources?: string[];
+    extraSources?: FingerprintExtraSources;
     /**
      * The paths to be ignored in the fingerprint.
      */

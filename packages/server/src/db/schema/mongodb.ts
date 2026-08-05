@@ -10,8 +10,8 @@ export const createMongoMigrationOperations = (
     .filter((table) => !table.internal)
     .map(
       (table): MigrationOperation => ({
+        description: `Create unique MongoDB index: ${table.ormName}_id_idx on ${table.ormName}(id)`,
         type: "custom",
-        sql: `create unique index ${table.ormName}_id_idx on ${table.ormName}(id)`,
       }),
     ),
   ...hotUpdaterSchema.tables.flatMap((table) =>
@@ -19,10 +19,10 @@ export const createMongoMigrationOperations = (
       .filter((index) => schemaIndexAppliesToProvider(index, "mongodb"))
       .map(
         (index): MigrationOperation => ({
-          type: "custom",
-          sql: `create ${index.unique ? "unique " : ""}index ${index.name} on ${table.ormName}(${index.columns.join(
+          description: `Create ${index.unique ? "unique " : ""}MongoDB index: ${index.name} on ${table.ormName}(${index.columns.join(
             ", ",
           )})`,
+          type: "custom",
         }),
       ),
   ),

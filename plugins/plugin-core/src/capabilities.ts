@@ -70,6 +70,12 @@ const capabilityIdPattern = /^[^@]+@[0-9]+$/;
 const emptyCapabilityContributions: readonly CapabilityContribution<unknown>[] =
   Object.freeze([]);
 
+type NonCallableCarrier<TCarrier extends object> = TCarrier extends (
+  ...args: never[]
+) => unknown
+  ? never
+  : TCarrier;
+
 const isObject = (value: unknown): value is object =>
   typeof value === "object" && value !== null;
 
@@ -250,6 +256,11 @@ export const defineCapability = <TValue>(
   options: DefineCapabilityOptions<TValue>,
 ): CapabilityToken<TValue> => capabilityAuthority.define(options);
 
+/**
+ * Defines a process-shared nominal token. Each versioned ID must keep the same
+ * value type and parser semantics across every module instance. Change the ID
+ * version when either contract changes.
+ */
 export const defineSharedCapability = <TValue>(
   options: DefineCapabilityOptions<TValue>,
 ): CapabilityToken<TValue> => capabilityAuthority.defineShared(options);
@@ -260,7 +271,7 @@ export const getCapabilityContributions = (
   capabilityAuthority.get(carrier);
 
 export const attachCapabilityContribution = <TCarrier extends object, TValue>(
-  carrier: TCarrier,
+  carrier: NonCallableCarrier<TCarrier>,
   contribution: CapabilityContribution<TValue>,
 ): TCarrier => {
   const attached = capabilityAuthority.attach(carrier, contribution);

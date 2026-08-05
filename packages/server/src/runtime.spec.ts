@@ -288,6 +288,88 @@ describe("runtime createHotUpdater", () => {
     expect(authenticate).not.toHaveBeenCalled();
   });
 
+  it("enforces a core-exception policy across denied and authorized bundle requests", async () => {
+    let bodyPulls = 0;
+    let authenticated = false;
+    const authenticate = vi.fn(async () =>
+      authenticated
+        ? ({
+            kind: "authenticated",
+            principal: { issuer: "test", subject: "operator" },
+          } as const)
+        : ({ kind: "anonymous" } as const),
+    );
+    const authentication = defineFirstPartyServerPlugin({
+      id: "authentication",
+      setup: () => ({
+        authentication: { id: "authentication", authenticate },
+      }),
+    });
+    const policy = defineFirstPartyServerPlugin({
+      id: "route-policy",
+      setup: () => ({
+        routePolicy: {
+          kind: "protect-except-core",
+          routeIds: [
+            "core.version",
+            "core.update.fingerprint",
+            "core.update.fingerprint-cohort",
+            "core.update.app-version",
+            "core.update.app-version-cohort",
+          ],
+        },
+      }),
+    });
+    const database = createRuntimeDatabase();
+    const hotUpdater = createHotUpdater({
+      database,
+      plugins: [authentication, policy],
+      routes: { bundles: true, updateCheck: true },
+    });
+
+    const version = await hotUpdater.handler(
+      new Request("https://updates.example.com/api/version"),
+    );
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          bodyPulls += 1;
+          controller.enqueue(new TextEncoder().encode('{"bundles":[]}'));
+          controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const bundle = await hotUpdater.handler(
+      new Request("https://updates.example.com/api/bundles", {
+        body,
+        duplex: "half",
+        method: "POST",
+      }),
+    );
+    authenticated = true;
+    const authorizedRequest = new Request(
+      "https://updates.example.com/api/bundles",
+      {
+        body: JSON.stringify(runtimeBundle),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+    );
+    const authorizedBundle = await hotUpdater.handler(authorizedRequest);
+
+    expect(version.status).toBe(200);
+    expect(bundle.status).toBe(401);
+    expect(bundle.headers.get("cache-control")).toBe("private, no-store");
+    expect(bodyPulls).toBe(0);
+    expect(authorizedBundle.status).toBe(201);
+    expect(authorizedRequest.bodyUsed).toBe(true);
+    await expect(
+      createDatabaseClient(database).getBundleById(runtimeBundle.id),
+    ).resolves.toMatchObject(runtimeBundle);
+    expect(authenticate).toHaveBeenCalledTimes(2);
+  });
+
   it("authenticates a protected plugin route before parsing its body", async () => {
     let bodyPulls = 0;
     const parse = vi.fn(async (request: Request) => request.json());

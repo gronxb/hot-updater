@@ -1,10 +1,13 @@
 import type {
   HotUpdaterAuthenticationProvider,
+  HotUpdaterRoutePolicy,
   HotUpdaterServerRoute,
 } from "./contracts";
+import { suppressNativePromiseRejection } from "./promise";
 
 export type ValidatedPluginContribution = {
   readonly authentication?: HotUpdaterAuthenticationProvider;
+  readonly routePolicy?: HotUpdaterRoutePolicy;
   readonly routes: readonly HotUpdaterServerRoute[];
 };
 
@@ -72,13 +75,63 @@ function isAuthentication(
   );
 }
 
+function readRoutePolicy(value: unknown): HotUpdaterRoutePolicy | undefined {
+  if (value === undefined) return undefined;
+  if (!isObject(value) || typeof Reflect.get(value, "then") === "function") {
+    if (isObject(value)) suppressNativePromiseRejection(value);
+    throw new TypeError("Invalid server plugin contribution.");
+  }
+
+  const kind = Reflect.get(value, "kind");
+  switch (kind) {
+    case "protect-all":
+      if (!Object.hasOwn(value, "kind") || !hasOnlyKeys(value, ["kind"])) {
+        throw new TypeError("Invalid server plugin contribution.");
+      }
+      return Object.freeze({ kind });
+    case "protect-except-core": {
+      const routeIds = Reflect.get(value, "routeIds");
+      if (
+        !Object.hasOwn(value, "kind") ||
+        !Object.hasOwn(value, "routeIds") ||
+        !hasOnlyKeys(value, ["kind", "routeIds"]) ||
+        !Array.isArray(routeIds)
+      ) {
+        throw new TypeError("Invalid server plugin contribution.");
+      }
+      const copiedRouteIds: string[] = [];
+      for (let index = 0; index < routeIds.length; index += 1) {
+        const routeId = Reflect.get(routeIds, index);
+        if (
+          !Object.hasOwn(routeIds, index) ||
+          typeof routeId !== "string" ||
+          routeId.length === 0
+        ) {
+          throw new TypeError("Invalid server plugin contribution.");
+        }
+        copiedRouteIds.push(routeId);
+      }
+      return Object.freeze({
+        kind,
+        routeIds: Object.freeze(copiedRouteIds),
+      });
+    }
+    default:
+      throw new TypeError("Invalid server plugin contribution.");
+  }
+}
+
 export const validatePluginContribution = (
   value: unknown,
 ): ValidatedPluginContribution => {
-  if (!isObject(value) || !hasOnlyKeys(value, ["authentication", "routes"])) {
+  if (
+    !isObject(value) ||
+    !hasOnlyKeys(value, ["authentication", "routePolicy", "routes"])
+  ) {
     throw new TypeError("Invalid server plugin contribution.");
   }
   const authentication = Reflect.get(value, "authentication");
+  const routePolicy = readRoutePolicy(Reflect.get(value, "routePolicy"));
   const routes = Reflect.get(value, "routes") ?? [];
   if (authentication !== undefined && !isAuthentication(authentication)) {
     throw new TypeError("Invalid server plugin contribution.");
@@ -91,6 +144,7 @@ export const validatePluginContribution = (
   }
   return Object.freeze({
     ...(authentication === undefined ? {} : { authentication }),
+    ...(routePolicy === undefined ? {} : { routePolicy }),
     routes: Object.freeze([...routes]),
   });
 };

@@ -714,7 +714,10 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("creates MongoDB indexes for runtime query fields", async () => {
       const collection = {
-        findOne: vi.fn(async () => null),
+        find: vi.fn(() => ({
+          limit: () => ({ toArray: async () => [] }),
+        })),
+        listIndexes: () => ({ toArray: async () => [] }),
       };
       const client = {
         db: () => ({
@@ -731,22 +734,28 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(result.operations).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            sql: "create unique index bundles_id_idx on bundles(id)",
+            description:
+              "Create unique MongoDB index: bundles_id_idx on bundles(id)",
           }),
           expect.objectContaining({
-            sql: "create unique index bundle_patches_id_idx on bundle_patches(id)",
+            description:
+              "Create unique MongoDB index: bundle_patches_id_idx on bundle_patches(id)",
           }),
           expect.objectContaining({
-            sql: "create index bundles_target_app_version_idx on bundles(target_app_version)",
+            description:
+              "Create MongoDB index: bundles_target_app_version_idx on bundles(target_app_version)",
           }),
           expect.objectContaining({
-            sql: "create index bundles_fingerprint_hash_idx on bundles(fingerprint_hash)",
+            description:
+              "Create MongoDB index: bundles_fingerprint_hash_idx on bundles(fingerprint_hash)",
           }),
           expect.objectContaining({
-            sql: "create index bundles_platform_idx on bundles(platform)",
+            description:
+              "Create MongoDB index: bundles_platform_idx on bundles(platform)",
           }),
           expect.objectContaining({
-            sql: "create index bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
+            description:
+              "Create MongoDB index: bundle_patches_base_bundle_id_idx on bundle_patches(base_bundle_id)",
           }),
         ]),
       );
@@ -835,7 +844,12 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("rejects runtime access when a MongoDB schema is stale", async () => {
       const settings = {
-        findOne: vi.fn(async () => ({ key: "version", value: "0.21.0" })),
+        find: vi.fn(({ key }: { readonly key: string }) => ({
+          limit: () => ({
+            toArray: async () =>
+              key === "version" ? [{ key, value: "0.21.0" }] : [],
+          }),
+        })),
       };
       const bundles = {
         countDocuments: vi.fn(async () => 0),

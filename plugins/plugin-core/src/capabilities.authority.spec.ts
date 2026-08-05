@@ -34,7 +34,7 @@ describe("capability process authority", () => {
     const second = await import("./capabilities");
     const sharedToken = second.defineSharedCapability({
       id: "shared-module-authority@1",
-      parse: Number,
+      parse: (value: unknown) => String(value),
     });
     const carrier = second.attachCapabilityContribution(
       { name: "database" },
