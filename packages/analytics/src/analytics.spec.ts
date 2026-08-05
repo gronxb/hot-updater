@@ -103,12 +103,13 @@ function isServerRoute(value: unknown): value is HotUpdaterServerRoute {
 
 function routesFor(
   queryAccess?: "protected" | "public",
+  routeProvider: AnalyticsProvider = provider,
 ): readonly HotUpdaterServerRoute[] {
   const plugin = analytics({
-    provider,
+    provider: routeProvider,
     ...(queryAccess === undefined ? {} : { queryAccess }),
   });
-  const result = plugin.setup(setupContext(provider));
+  const result = plugin.setup(setupContext(routeProvider));
   if (typeof result !== "object" || result === null) {
     throw new TypeError("invalid Analytics contribution");
   }
@@ -155,6 +156,51 @@ describe("analytics", () => {
     expect(
       routes.slice(1).every(({ access }) => access.kind === "public"),
     ).toBe(true);
+  });
+
+  it("prevents a public capability 404 from being cached after recovery", async () => {
+    let available = false;
+    const dynamicProvider = Object.freeze({
+      ...provider,
+      async resolveAvailability() {
+        return available
+          ? {
+              analytics: true,
+              analyticsQueries: true,
+              eventIngestion: true,
+              mode: "dedicated",
+            }
+          : {
+              analytics: false,
+              analyticsQueries: false,
+              eventIngestion: false,
+            };
+      },
+    } satisfies AnalyticsProvider);
+    const route = routesFor("public", dynamicProvider).find(
+      ({ id }) => id === "analytics.getBundleEventOverview",
+    );
+    if (route?.input === undefined)
+      throw new TypeError("missing overview route");
+    const request = new Request(
+      "https://example.com/api/installations/overview",
+    );
+
+    const unavailable = await route.input.parse(request);
+    if (typeof unavailable !== "object" || unavailable === null) {
+      throw new TypeError("invalid unavailable response");
+    }
+    const response = Reflect.get(unavailable, "response");
+    if (!(response instanceof Response))
+      throw new TypeError("missing unavailable response");
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+
+    available = true;
+    await expect(route.input.parse(request)).resolves.toMatchObject({
+      kind: "input",
+    });
   });
 
   it("returns 413 without invoking the provider when the event body exceeds 16 KiB", async () => {

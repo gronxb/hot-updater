@@ -101,7 +101,10 @@ export function createAnalyticsInputParser<TValue>(
       if (!capability.analytics || !capability[routeCapability]) {
         return {
           kind: "response",
-          response: new Response(null, { status: 404 }),
+          response: new Response(null, {
+            headers: { "cache-control": "private, no-store" },
+            status: 404,
+          }),
         };
       }
       try {

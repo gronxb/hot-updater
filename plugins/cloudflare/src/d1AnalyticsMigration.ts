@@ -5,6 +5,7 @@ import {
   ANALYTICS_SCHEMA_VERSION,
   AnalyticsSchemaCompatibilityError,
   AnalyticsSchemaNotReadyError,
+  InvalidBundleEventPersistenceRowError,
   migrateAnalyticsSchema,
   parseBundleEventPersistenceRow,
   type AnalyticsMigrationResult,
@@ -206,8 +207,11 @@ const validateD1AnalyticsReadiness = async (
   }
   try {
     await validateRows(executor);
-  } catch {
-    throw new AnalyticsSchemaNotReadyError(inspection);
+  } catch (error) {
+    if (error instanceof InvalidBundleEventPersistenceRowError) {
+      throw new AnalyticsSchemaNotReadyError(inspection);
+    }
+    throw error;
   }
   return inspection;
 };
