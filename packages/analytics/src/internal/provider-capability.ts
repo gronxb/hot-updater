@@ -9,6 +9,12 @@ import type { AnalyticsProvider } from "../provider/types";
 
 export * from "../provider";
 
+type AnalyticsProviderCarrier<TCarrier extends object> = TCarrier extends (
+  ...args: never[]
+) => unknown
+  ? never
+  : TCarrier;
+
 export const analyticsProviderCapability: CapabilityToken<AnalyticsProvider> =
   defineSharedCapability({
     id: "hot-updater.analytics.provider@1",
@@ -16,7 +22,7 @@ export const analyticsProviderCapability: CapabilityToken<AnalyticsProvider> =
   });
 
 export function attachAnalyticsProviderCapability<TCarrier extends object>(
-  carrier: TCarrier,
+  carrier: AnalyticsProviderCarrier<TCarrier>,
   createProvider: () => AnalyticsProvider,
 ): TCarrier {
   return attachCapabilityContribution(carrier, {
