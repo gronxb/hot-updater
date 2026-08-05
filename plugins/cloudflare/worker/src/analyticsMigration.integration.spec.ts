@@ -3,7 +3,7 @@ import {
   InvalidBundleEventPersistenceRowError,
 } from "@hot-updater/analytics/provider";
 import { env } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, inject, it } from "vitest";
 
 import { migrateD1WorkerAnalytics } from "../../src/cloudflareWorkerDatabase";
 import {
@@ -18,8 +18,18 @@ import {
 beforeEach(resetAnalyticsDatabase);
 
 describe("D1 Analytics schema migration", () => {
-  it("creates schema 2 on a core 0.36 database and is ready on rerun", async () => {
-    await createCoreSettings("0.36.0");
+  it("hands off from the Core migration without replacing its settings", async () => {
+    const coreMigration = inject("d1Migrations").find(
+      ({ name }) => name === "0006_hot-updater_0.36.0.sql",
+    );
+    if (coreMigration === undefined) {
+      throw new Error("Cloudflare Core schema migration is missing.");
+    }
+    await env.DB.prepare(coreMigration.sql).run();
+    await env.DB.prepare(`
+      INSERT INTO private_hot_updater_settings (key, value)
+      VALUES ('version', '0.31.0'), ('extension', 'kept')
+    `).run();
 
     await expect(migrateD1WorkerAnalytics(env.DB)).resolves.toEqual({
       kind: "created-v2",
@@ -28,6 +38,20 @@ describe("D1 Analytics schema migration", () => {
       kind: "ready",
     });
     await expect(readAnalyticsMarker()).resolves.toBe("2");
+    await expect(
+      env.DB.prepare(`
+        SELECT key, value
+        FROM private_hot_updater_settings
+        ORDER BY key
+      `).all(),
+    ).resolves.toMatchObject({
+      results: [
+        { key: "extension", value: "kept" },
+        { key: "schema.analytics", value: "2" },
+        { key: "schema.core", value: "0.36.0" },
+        { key: "version", value: "0.31.0" },
+      ],
+    });
   });
 
   it("migrates exact legacy 0.37 rows without data loss", async () => {
