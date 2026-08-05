@@ -3,13 +3,29 @@ import { beforeAll, expect, inject, it } from "vitest";
 
 declare module "vitest" {
   export interface ProvidedContext {
-    d1Migrations: readonly string[];
+    d1Migrations: readonly {
+      readonly name: string;
+      readonly sql: string;
+    }[];
   }
 }
 
 class MissingD1MigrationError extends Error {
   readonly name = "MissingD1MigrationError";
 }
+
+const getMigration = (name: string): string => {
+  const migration = inject("d1Migrations").find(
+    (candidate) => candidate.name === name,
+  );
+  if (migration === undefined) {
+    throw new MissingD1MigrationError(name);
+  }
+  return migration.sql;
+};
+
+const applyMigration = (name: string) =>
+  env.DB.prepare(getMigration(name)).run();
 
 const insertLegacyBundle = (id: string, channel: string): D1PreparedStatement =>
   env.DB.prepare(`
@@ -23,8 +39,10 @@ const insertLegacyBundle = (id: string, channel: string): D1PreparedStatement =>
 
 beforeAll(async () => {
   const migrations = inject("d1Migrations");
-  for (const migration of migrations.slice(0, -1)) {
-    await env.DB.prepare(migration).run();
+  for (const migration of migrations.filter(
+    ({ name }) => name < "0005_hot-updater_0.31.0.sql",
+  )) {
+    await env.DB.prepare(migration.sql).run();
   }
   await insertLegacyBundle("base", "production").run();
   await insertLegacyBundle("target", "production").run();
@@ -46,11 +64,7 @@ beforeAll(async () => {
       VALUES (NEW.id, 'triggered');
     END
   `).run();
-  const migration = migrations.at(-1);
-  if (migration === undefined) {
-    throw new MissingD1MigrationError();
-  }
-  await env.DB.prepare(migration).run();
+  await applyMigration("0005_hot-updater_0.31.0.sql");
   await env.DB.prepare(`
     INSERT INTO bundle_patches (
       id, bundle_id, base_bundle_id, base_file_hash, patch_file_hash,
@@ -58,6 +72,12 @@ beforeAll(async () => {
     ) VALUES ('patch', 'target', 'base', 'base-hash', 'patch-hash',
       'storage://patch', 0)
   `).run();
+  await applyMigration("0006_hot-updater_0.36.0.sql");
+  await env.DB.prepare(`
+    INSERT INTO private_hot_updater_settings (key, value)
+    VALUES ('version', '0.31.0'), ('schema.analytics', '2'), ('extension', 'kept')
+  `).run();
+  await applyMigration("0006_hot-updater_0.36.0.sql");
 });
 
 it("preserves bundle channels and patches", async () => {
@@ -91,4 +111,46 @@ it("accepts channels directly on new bundles after migration", async () => {
   await expect(
     insertLegacyBundle("preview", "preview").run(),
   ).resolves.toBeDefined();
+});
+
+it("records the Core schema without replacing other settings", async () => {
+  const settings = await env.DB.prepare(`
+    SELECT key, value
+    FROM private_hot_updater_settings
+    ORDER BY key
+  `).all();
+
+  expect(settings.results).toEqual([
+    { key: "extension", value: "kept" },
+    { key: "schema.analytics", value: "2" },
+    { key: "schema.core", value: "0.36.0" },
+    { key: "version", value: "0.31.0" },
+  ]);
+});
+
+it("fails closed when a different Core schema marker already exists", async () => {
+  await env.DB.prepare(`
+    UPDATE private_hot_updater_settings
+    SET value = '0.38.0'
+    WHERE key = 'schema.core'
+  `).run();
+
+  try {
+    await expect(
+      applyMigration("0006_hot-updater_0.36.0.sql"),
+    ).rejects.toThrow();
+    await expect(
+      env.DB.prepare(`
+        SELECT value
+        FROM private_hot_updater_settings
+        WHERE key = 'schema.core'
+      `).first("value"),
+    ).resolves.toBe("0.38.0");
+  } finally {
+    await env.DB.prepare(`
+      UPDATE private_hot_updater_settings
+      SET value = '0.36.0'
+      WHERE key = 'schema.core'
+    `).run();
+  }
 });
