@@ -1,8 +1,12 @@
 import { loadConfig, p } from "@hot-updater/cli-tools";
+import type { FingerprintExtraSources } from "@hot-updater/plugin-core";
 
 import { isExpo } from "../expoDetection";
 import { loadExpoFingerprint } from "./dependency";
-import { processExtraSources } from "./processExtraSources";
+import {
+  processExtraSources,
+  resolveExtraSources,
+} from "./processExtraSources";
 
 export const ensureFingerprintConfig = async () => {
   const config = await loadConfig(null);
@@ -100,7 +104,10 @@ export async function getOtaFingerprintOptions(
       SourceSkips.ExpoConfigExtraSection |
       SourceSkips.ExpoConfigEASProject |
       SourceSkips.ExpoConfigSchemes,
-    extraSources: processExtraSources(options.extraSources ?? [], path),
+    extraSources: processExtraSources(
+      resolveExtraSources(options.extraSources, platform),
+      path,
+    ),
     debug: options.debug,
   };
 }
@@ -129,7 +136,7 @@ export type FingerprintSource =
 
 export type FingerprintOptions = {
   platform: "ios" | "android";
-  extraSources?: string[];
+  extraSources?: FingerprintExtraSources;
   ignorePaths?: string[];
   debug?: boolean;
 };
