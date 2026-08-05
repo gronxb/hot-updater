@@ -1,3 +1,4 @@
+import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -150,4 +151,23 @@ it("selects one ordered row per distinct key in SQL", async () => {
     "ROW_NUMBER() OVER (PARTITION BY channel ORDER BY channel ASC, id ASC)",
   );
   expect(state.queries[0]?.sql).toContain("WHERE __hot_updater_rank = 1");
+});
+
+it("attaches a bounded Analytics provider capability", () => {
+  const plugin = d1Database({
+    accountId: "account",
+    cloudflareApiToken: "token",
+    databaseId: "database",
+  });
+  const [contribution] = getCapabilityContributions(plugin);
+  if (contribution === undefined) {
+    throw new TypeError("Expected the D1 Analytics capability contribution.");
+  }
+
+  const provider = contribution.token.parse(
+    contribution.create({ database: plugin, storages: [] }),
+  );
+
+  expect(contribution.token.id).toBe("hot-updater.analytics.provider@1");
+  expect(provider).toMatchObject({ mode: "bounded" });
 });

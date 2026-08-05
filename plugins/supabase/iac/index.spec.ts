@@ -858,6 +858,10 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
+        "@hot-updater/analytics/internal/provider-capability":
+          "./_hot-updater/hot-updater-analytics/dist/internal/provider-capability.mjs",
+        "@hot-updater/analytics/provider":
+          "./_hot-updater/hot-updater-analytics/dist/provider/index.mjs",
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
         "@hot-updater/supabase":

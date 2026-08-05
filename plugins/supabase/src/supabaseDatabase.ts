@@ -1,3 +1,5 @@
+import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
+import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
 import type {
   BundlePatchRow,
   BundleRow,
@@ -17,6 +19,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+import { createSupabaseAnalyticsPersistence } from "./supabaseAnalyticsPersistence";
 import {
   resolveSupabaseServiceRoleKey,
   type SupabaseServiceRoleConfig,
@@ -207,11 +210,11 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
     config.supabaseUrl,
     resolveSupabaseServiceRoleKey(config),
   );
-  const plugin = createDatabasePlugin({
+  const database = createDatabasePlugin({
     name: "supabaseDatabase",
     plugin: () => createSupabaseImplementation(supabase),
   });
-  return attachSupabaseAggregateMutations(plugin, {
+  attachSupabaseAggregateMutations(database, {
     async insertBundleWithPatches(input) {
       const { error } = await supabase.rpc(
         "hot_updater_create_bundle_with_patches",
@@ -238,4 +241,9 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
       return data;
     },
   });
+  return attachAnalyticsProviderCapability(database, () =>
+    createBoundedAnalyticsProvider(
+      createSupabaseAnalyticsPersistence(supabase),
+    ),
+  );
 };

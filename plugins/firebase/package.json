@@ -45,6 +45,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
+    "@hot-updater/analytics": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
