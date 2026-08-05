@@ -1385,6 +1385,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
 
   packages/bsdiff:
     devDependencies:

@@ -170,7 +170,12 @@ process.stdout.write(JSON.stringify({ ...result, mode }));`;
       packedPackageDirectory,
       "browser-provisioning.mjs",
     );
-    const esbuild = path.join(workspaceRoot, "node_modules", ".bin", "esbuild");
+    const esbuild = path.join(
+      packageDirectory,
+      "node_modules",
+      ".bin",
+      "esbuild",
+    );
     await writeFile(
       browserConsumer,
       `import { betterAuthPlugin } from ${JSON.stringify(moduleSpecifier)};
