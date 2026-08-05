@@ -32,6 +32,7 @@ interface ColumnOperation {
 }
 
 interface CustomOperation extends MigrationOperation {
+  description?: string;
   type: "custom";
   key?: string;
   sql?: string;
@@ -164,7 +165,9 @@ export function formatOperations(operations: MigrationOperation[]): string[] {
 
       case "custom": {
         const customOp = op as CustomOperation;
-        if (customOp.sql) {
+        if (customOp.description) {
+          changes.push(customOp.description);
+        } else if (customOp.sql) {
           changes.push(`Run SQL: ${customOp.sql}`);
         } else if (customOp.key) {
           changes.push(

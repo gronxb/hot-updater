@@ -24,6 +24,9 @@ function createSettingsMongoClient(
             },
           }),
         }),
+        listIndexes: () => ({
+          toArray: async () => [{ key: { key: 1 }, unique: true }],
+        }),
       }),
     }),
   } as unknown as MongoClient;
@@ -63,6 +66,7 @@ describe("MongoDB migration", () => {
         }),
       }),
       createIndex: vi.fn(async (): Promise<string> => "key_1"),
+      listIndexes: () => ({ toArray: async () => [] }),
       updateOne: async (
         { key }: { readonly key: string },
         update: { readonly $set: { readonly value: unknown } },
@@ -100,6 +104,44 @@ describe("MongoDB migration", () => {
     );
   });
 
+  it("repairs the settings key index when Core is already current", async () => {
+    const createIndex = vi.fn(async (): Promise<string> => "key_1");
+    const client = {
+      db: () => ({
+        collection: () => ({
+          createIndex,
+          find: ({ key }: { readonly key: string }) => ({
+            limit: () => ({
+              toArray: async () =>
+                key === "schema.core"
+                  ? [{ key, value: "0.36.0" }]
+                  : [{ key, value: "0.38.0" }],
+            }),
+          }),
+          listIndexes: () => ({ toArray: async () => [] }),
+        }),
+      }),
+    } as unknown as MongoClient;
+
+    const migration = await createMongoMigrator(client).migrateToLatest({
+      mode: "from-schema",
+    });
+
+    expect(migration.operations).toEqual([
+      {
+        description:
+          "Ensure unique MongoDB index: private_hot_updater_settings(key)",
+        type: "custom",
+      },
+    ]);
+    expect(createIndex).not.toHaveBeenCalled();
+
+    await migration.execute();
+
+    expect(createIndex).toHaveBeenCalledOnce();
+    expect(createIndex).toHaveBeenCalledWith({ key: 1 }, { unique: true });
+  });
+
   it("rejects duplicate Core markers before selecting a version", async () => {
     const find = vi.fn(({ key }: { readonly key: string }) => ({
       limit: () => ({
@@ -126,6 +168,40 @@ describe("MongoDB migration", () => {
     expect(find).toHaveBeenCalledWith({ key: "schema.core" });
   });
 
+  it("rejects a non-unique settings key index before changing it", async () => {
+    const createIndex = vi.fn();
+    const dropIndex = vi.fn();
+    const client = {
+      db: () => ({
+        collection: () => ({
+          createIndex,
+          dropIndex,
+          find: ({ key }: { readonly key: string }) => ({
+            limit: () => ({
+              toArray: async () =>
+                key === "schema.core"
+                  ? [{ key, value: "0.36.0" }]
+                  : [{ key, value: "0.38.0" }],
+            }),
+          }),
+          listIndexes: () => ({
+            toArray: async () => [
+              { key: { key: 1 }, name: "key_1", unique: false },
+            ],
+          }),
+        }),
+      }),
+    } as unknown as MongoClient;
+
+    await expect(
+      createMongoMigrator(client).migrateToLatest({ mode: "from-schema" }),
+    ).rejects.toThrow(
+      "Hot Updater settings key index must enforce uniqueness for every key.",
+    );
+    expect(createIndex).not.toHaveBeenCalled();
+    expect(dropIndex).not.toHaveBeenCalled();
+  });
+
   it("keeps one Core marker when cold migrations execute concurrently", async () => {
     const settings: { key: string; value: unknown }[] = [];
     const calls: string[] = [];
@@ -141,6 +217,10 @@ describe("MongoDB migration", () => {
         hasUniqueSettingsKeys = true;
         return "key_1";
       },
+      listIndexes: () => ({
+        toArray: async () =>
+          hasUniqueSettingsKeys ? [{ key: { key: 1 }, unique: true }] : [],
+      }),
       updateOne: async (
         { key }: { readonly key: string },
         update: { readonly $set: { readonly value: unknown } },
