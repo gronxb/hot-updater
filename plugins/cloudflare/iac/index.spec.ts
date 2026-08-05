@@ -500,21 +500,28 @@ describe("Cloudflare init discovery", () => {
     expect(() => managedBetterAuthPlugin({ apiKeySha256 })).not.toThrow();
   });
 
-  it("migrates Analytics before deploying the Worker", async () => {
+  it("configures and migrates before deploying the Worker", async () => {
     const events: string[] = [];
     const deploymentError = new Error("stop at worker deploy");
+    let workerConfig: unknown;
     mocks.api.d1.database.list.mockResolvedValue({
       result: [{ name: "ota", uuid: "database-id" }],
     });
-    mocks.createWrangler.mockResolvedValue(
-      vi.fn(async (...args: string[]) => {
-        if (args[0] === "d1") {
-          events.push("core-migrations");
-          return;
-        }
-        events.push("worker-deploy");
-        throw deploymentError;
-      }),
+    const wrangler = vi.fn(async (...args: string[]) => {
+      if (args[0] === "d1") {
+        events.push("core-migrations");
+        return;
+      }
+      events.push("worker-deploy");
+      throw deploymentError;
+    });
+    mocks.createWrangler.mockImplementation(
+      async ({ cwd }: { readonly cwd: string }) => {
+        workerConfig = JSON.parse(
+          await fs.readFile(path.join(cwd, "wrangler.json"), "utf8"),
+        );
+        return wrangler;
+      },
     );
     mocks.migrateD1Analytics.mockImplementation(async () => {
       events.push("analytics-migration");
@@ -538,7 +545,16 @@ describe("Cloudflare init discovery", () => {
       "analytics-migration",
       "worker-deploy",
     ]);
-    expect(mocks.provisionManagedBetterAuthApiKey).toHaveBeenCalledOnce();
+    expect(workerConfig).toMatchObject({
+      vars: {
+        API_KEY_SHA256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
+      },
+    });
+    expect(mocks.migrateD1Analytics).toHaveBeenCalledWith({
+      accountId: "account-id",
+      cloudflareApiToken: "api-token",
+      databaseId: "database-id",
+    });
   });
 
   it("identifies an invalid token loaded from an explicit env file", async () => {

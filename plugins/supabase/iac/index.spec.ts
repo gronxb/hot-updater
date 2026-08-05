@@ -866,11 +866,13 @@ describe("Supabase database password failures", () => {
   });
 });
 
-describe("Supabase managed deployment order", () => {
+describe("Supabase managed deployment", () => {
+  const provisionedApiKeySha256 = "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo";
+
   const configureRunInit = async (
-    events: string[],
     options: { readonly failDatabasePush?: boolean } = {},
   ) => {
+    const events: string[] = [];
     const tmpDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-supabase-init-"),
     );
@@ -913,7 +915,7 @@ describe("Supabase managed deployment order", () => {
       events.push("provision-api-key");
       return {
         apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
+        sha256: provisionedApiKeySha256,
       };
     });
     mockSupabaseApiResult.listBuckets.mockResolvedValue([
@@ -963,7 +965,7 @@ describe("Supabase managed deployment order", () => {
       },
     );
 
-    return { removeTmpDir, tmpDir };
+    return { events, removeTmpDir, tmpDir };
   };
 
   beforeEach(() => {
@@ -975,8 +977,7 @@ describe("Supabase managed deployment order", () => {
   });
 
   it("provisions auth before database migration and runtime deployment", async () => {
-    const events: string[] = [];
-    const { removeTmpDir, tmpDir } = await configureRunInit(events);
+    const { events, removeTmpDir, tmpDir } = await configureRunInit();
 
     try {
       await runInit({ build: "bare", envFile: ".env.hotupdater" });
@@ -993,9 +994,31 @@ describe("Supabase managed deployment order", () => {
     }
   });
 
+  it("injects the provisioned auth digest into the edge function", async () => {
+    const { tmpDir } = await configureRunInit();
+
+    try {
+      await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+      await expect(
+        fs.readFile(
+          path.join(
+            tmpDir,
+            "supabase",
+            "functions",
+            "update-server",
+            "index.ts",
+          ),
+          "utf8",
+        ),
+      ).resolves.toContain(provisionedApiKeySha256);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not deploy the runtime when database migration fails", async () => {
-    const events: string[] = [];
-    const { tmpDir } = await configureRunInit(events, {
+    const { events, tmpDir } = await configureRunInit({
       failDatabasePush: true,
     });
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -1011,7 +1034,6 @@ describe("Supabase managed deployment order", () => {
         "link-project",
         "push-database",
       ]);
-      expect(events).not.toContain("deploy-edge-function");
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }

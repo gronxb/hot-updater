@@ -39,9 +39,6 @@ vi.mock("execa", async () => {
   return {
     ...actual,
     execa: vi.fn(async (command: string, args: readonly string[] = []) => {
-      if (command === "npm" && args[0] === "install") {
-        mocks.events.push("install");
-      }
       if (command === "npx" && args[0] === "firebase") {
         if (args.includes("firestore")) mocks.events.push("firestore");
         if (args.includes("functions")) mocks.events.push("functions");
@@ -169,12 +166,10 @@ describe("Firebase project creation", () => {
     mocks.existingProject = false;
     mocks.migrateFirebaseAnalytics.mockImplementation(async () => {
       mocks.events.push("analytics");
-      return { kind: "created-v2" };
     });
     mocks.provisionManagedBetterAuthApiKey.mockImplementation(async () => {
       mocks.events.push("provision");
       return {
-        apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
         sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
       };
     });
@@ -265,6 +260,7 @@ describe("Firebase project creation", () => {
   });
 
   it("provisions and migrates before deploying functions", async () => {
+    // Given
     mocks.existingProject = true;
     mocks.existingEnv = {
       GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
@@ -272,25 +268,66 @@ describe("Firebase project creation", () => {
       HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
     };
 
+    // When
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
-    expect(mocks.events).toEqual(
-      expect.arrayContaining([
-        "provision",
-        "install",
-        "firestore",
-        "analytics",
-        "functions",
-      ]),
+    // Then
+    expect(
+      mocks.events.filter((event) =>
+        ["provision", "firestore", "analytics", "functions"].includes(event),
+      ),
+    ).toEqual(["provision", "firestore", "analytics", "functions"]);
+  });
+
+  it("injects the provisioned API key digest into functions", async () => {
+    // Given
+    const provisionedSha256 = "provisioned-api-key-sha256";
+    mocks.existingProject = true;
+    mocks.existingEnv = {
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+      HOT_UPDATER_FIREBASE_PROJECT_ID: "existing-project",
+      HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
+    };
+    mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
+      sha256: provisionedSha256,
+    });
+    await fs.writeFile(
+      path.join(mocks.functionsDir, "index.cjs"),
+      "module.exports = HotUpdater.API_KEY_SHA256;",
     );
-    expect(mocks.events.indexOf("provision")).toBeLessThan(
-      mocks.events.indexOf("firestore"),
-    );
-    expect(mocks.events.indexOf("firestore")).toBeLessThan(
-      mocks.events.indexOf("analytics"),
-    );
-    expect(mocks.events.indexOf("analytics")).toBeLessThan(
-      mocks.events.indexOf("functions"),
-    );
+
+    // When
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    // Then
+    expect(
+      await fs.readFile(path.join(mocks.functionsDir, "index.cjs"), "utf8"),
+    ).toContain(provisionedSha256);
+  });
+
+  it("cleans up and skips functions deployment when migration fails", async () => {
+    // Given
+    const migrationError = new Error("analytics migration failed");
+    mocks.existingProject = true;
+    mocks.existingEnv = {
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/firebase-credentials.json",
+      HOT_UPDATER_FIREBASE_PROJECT_ID: "existing-project",
+      HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
+    };
+    mocks.migrateFirebaseAnalytics.mockImplementation(async () => {
+      mocks.events.push("analytics");
+      throw migrationError;
+    });
+
+    // When
+    const initialization = runInit({
+      build: "bare",
+      envFile: ".env.hotupdater",
+    });
+
+    // Then
+    await expect(initialization).rejects.toBe(migrationError);
+    expect(mocks.appDelete).toHaveBeenCalledOnce();
+    expect(mocks.events).not.toContain("functions");
   });
 });
