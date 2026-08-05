@@ -1,3 +1,7 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -64,6 +68,7 @@ const mocks = vi.hoisted(() => {
     execa: vi.fn(),
     getWranglerLoginAuthToken: vi.fn(),
     inputSecrets: vi.fn(),
+    migrateD1Analytics: vi.fn(),
     log: {
       error: vi.fn(),
       info: vi.fn(),
@@ -71,6 +76,7 @@ const mocks = vi.hoisted(() => {
     },
     makeEnv: vi.fn(),
     readHotUpdaterInitEnv: vi.fn(),
+    provisionManagedBetterAuthApiKey: vi.fn(),
     select: vi.fn(),
   };
 });
@@ -85,6 +91,14 @@ vi.mock("cloudflare", () => ({
       ? mocks.api
       : mocks.credentialApi;
   }),
+}));
+
+vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
+  provisionManagedBetterAuthApiKey: mocks.provisionManagedBetterAuthApiKey,
+}));
+
+vi.mock("@hot-updater/cloudflare", () => ({
+  migrateD1Analytics: mocks.migrateD1Analytics,
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
@@ -140,6 +154,11 @@ describe("Cloudflare init discovery", () => {
       managedEnv: {},
     });
     mocks.confirmInitInputPersistence.mockResolvedValue(false);
+    mocks.migrateD1Analytics.mockResolvedValue({ kind: "created-v2" });
+    mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
+      apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
+    });
     mocks.confirm.mockResolvedValue(true);
     mocks.select.mockImplementation(
       async ({ options }: { options: readonly { readonly value: string }[] }) =>
@@ -454,6 +473,72 @@ describe("Cloudflare init discovery", () => {
         cloudflareApiToken: "wrangler-oauth-token",
       }),
     );
+  });
+
+  it("ships a Worker digest accepted by managed authentication", async () => {
+    const config: unknown = JSON.parse(
+      await fs.readFile(
+        path.resolve(import.meta.dirname, "../worker/wrangler.json"),
+        "utf8",
+      ),
+    );
+    if (typeof config !== "object" || config === null) {
+      throw new Error("Wrangler config must be an object.");
+    }
+    const vars = Reflect.get(config, "vars");
+    if (typeof vars !== "object" || vars === null) {
+      throw new Error("Wrangler vars must be an object.");
+    }
+    const apiKeySha256 = Reflect.get(vars, "API_KEY_SHA256");
+    if (typeof apiKeySha256 !== "string") {
+      throw new Error("Wrangler API_KEY_SHA256 must be a string.");
+    }
+
+    expect(apiKeySha256).not.toBe(
+      "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
+    );
+    expect(() => managedBetterAuthPlugin({ apiKeySha256 })).not.toThrow();
+  });
+
+  it("migrates Analytics before deploying the Worker", async () => {
+    const events: string[] = [];
+    const deploymentError = new Error("stop at worker deploy");
+    mocks.api.d1.database.list.mockResolvedValue({
+      result: [{ name: "ota", uuid: "database-id" }],
+    });
+    mocks.createWrangler.mockResolvedValue(
+      vi.fn(async (...args: string[]) => {
+        if (args[0] === "d1") {
+          events.push("core-migrations");
+          return;
+        }
+        events.push("worker-deploy");
+        throw deploymentError;
+      }),
+    );
+    mocks.migrateD1Analytics.mockImplementation(async () => {
+      events.push("analytics-migration");
+      return { kind: "created-v2" };
+    });
+    mocks.provisionManagedBetterAuthApiKey.mockImplementation(async () => {
+      events.push("provision-api-key");
+      return {
+        apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
+      };
+    });
+
+    await expect(runInit({ build: "bare" })).rejects.toBeInstanceOf(
+      CloudflareDeploymentError,
+    );
+
+    expect(events).toEqual([
+      "provision-api-key",
+      "core-migrations",
+      "analytics-migration",
+      "worker-deploy",
+    ]);
+    expect(mocks.provisionManagedBetterAuthApiKey).toHaveBeenCalledOnce();
   });
 
   it("identifies an invalid token loaded from an explicit env file", async () => {

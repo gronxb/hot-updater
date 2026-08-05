@@ -20,6 +20,7 @@
     }
   ],
   "vars": {
+    "API_KEY_SHA256": "XzHptEiKPnXV96l4KhMKZkQgMbOA1IkzFPfzM5Fi9XA",
     "JWT_SECRET": "USER_JWT_SECRET"
   }
 }

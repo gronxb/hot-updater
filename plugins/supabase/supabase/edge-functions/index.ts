@@ -1,4 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { analytics } from "@hot-updater/analytics";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   supabaseEdgeFunctionDatabase,
@@ -8,6 +10,7 @@ import { Hono } from "npm:hono";
 
 declare global {
   var HotUpdater: {
+    API_KEY_SHA256: string;
     FUNCTION_NAME: string;
   };
 }
@@ -23,6 +26,10 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
+  plugins: [
+    managedBetterAuthPlugin({ apiKeySha256: HotUpdater.API_KEY_SHA256 }),
+    analytics(),
+  ],
   storages: [
     supabaseEdgeFunctionStorage({
       supabaseUrl,

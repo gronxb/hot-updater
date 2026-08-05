@@ -21,6 +21,7 @@ import {
   vi,
 } from "vitest";
 
+import { migrateAnalytics } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
@@ -33,11 +34,14 @@ declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
     BUCKET: R2Bucket;
+    API_KEY_SHA256: string;
     JWT_SECRET: string;
   }
 }
 
 const PUBLIC_BASE_URL = "https://updates.example.com";
+const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const WRONG_API_KEY = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 
 const sqlString = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
@@ -163,9 +167,18 @@ const createCanonicalPath = (args: GetBundlesArgs) => {
 describe.sequential("cloudflare worker runtime acceptance", () => {
   beforeAll(async () => {
     await env.DB.prepare(inject("prepareSql")).run();
+    const coreMigration = inject("d1Migrations").find(
+      ({ name }) => name === "0006_hot-updater_0.36.0.sql",
+    );
+    if (coreMigration === undefined) {
+      throw new Error("Cloudflare Core schema migration is missing.");
+    }
+    await env.DB.prepare(coreMigration.sql).run();
+    await migrateAnalytics();
   });
 
   beforeEach(async () => {
+    await env.DB.prepare("DELETE FROM bundle_events").run();
     await env.DB.prepare("DELETE FROM bundle_patches").run();
     await env.DB.prepare("DELETE FROM bundles").run();
   });
@@ -361,5 +374,86 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Not found",
     });
+  });
+
+  it("keeps OTA and event ingestion public", async () => {
+    const version = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/version`, {
+        headers: { "x-api-key": WRONG_API_KEY },
+      }),
+      env,
+    );
+    const event = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": WRONG_API_KEY,
+        },
+        body: JSON.stringify({
+          type: "UNCHANGED",
+          installId: "cloudflare-managed-install",
+          toBundleId: "bundle-1",
+          platform: "ios",
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          updateStrategy: null,
+        }),
+      }),
+      env,
+    );
+    const persisted = await env.DB.prepare(
+      "SELECT install_id FROM bundle_events WHERE install_id = ?",
+    )
+      .bind("cloudflare-managed-install")
+      .first<{ install_id: string }>();
+
+    expect(version.status).toBe(200);
+    expect(event.status).toBe(204);
+    expect(persisted).toEqual({
+      install_id: "cloudflare-managed-install",
+    });
+  });
+
+  it("protects only Analytics query routes", async () => {
+    const queryPaths = [
+      "/api/bundles/bundle-1/events/summary",
+      "/api/bundles/bundle-1/events/analytics",
+      "/api/installations/overview",
+      "/api/installations/active",
+      "/api/installations?query=install",
+      "/api/installations/install-1/events",
+    ];
+
+    for (const path of queryPaths) {
+      for (const apiKey of [undefined, WRONG_API_KEY]) {
+        const response = await worker.fetch(
+          new Request(
+            `${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}${path}`,
+            apiKey === undefined
+              ? undefined
+              : { headers: { "x-api-key": apiKey } },
+          ),
+          env,
+        );
+
+        expect(response.status).toBe(401);
+        expect(response.headers.get("cache-control")).toBe("private, no-store");
+        await expect(response.json()).resolves.toEqual({
+          error: "Unauthorized",
+        });
+      }
+
+      const authorized = await worker.fetch(
+        new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}${path}`, {
+          headers: { "x-api-key": RAW_API_KEY },
+        }),
+        env,
+      );
+      expect(authorized.status).toBe(200);
+    }
   });
 });

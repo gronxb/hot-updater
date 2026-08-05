@@ -122,12 +122,18 @@ Generic PostgreSQL does not enable or own row level security.
    protected queries when needed.
 6. Enable client ingestion only after the provider is ready.
 
+The Cloudflare, Firebase, and Supabase managed deployment workflows perform
+the provider migration before deploying a runtime that directly composes
+`managedBetterAuthPlugin()` and `analytics()`. They provision the raw API key
+only in the local `.env.hotupdater` file and place only its SHA-256 projection
+in the runtime. OTA selectors and `POST /events` remain public; the six query
+routes require the managed key.
+
 Removing the plugin stops exposing Analytics routes. It does not drop event
 data or remove the Analytics marker.
 
 ## Excluded concerns
 
 This boundary does not add Analytics models to Database V2, modify the generic
-kernel, install managed authentication, enable a managed preset, change the
-Console or React Native SDK, or add retention and deletion behavior. Managed
-Analytics and authentication composition belongs to the later integration PR.
+kernel, change the Console or React Native SDK, enable AWS Analytics, or add
+retention and deletion behavior.
