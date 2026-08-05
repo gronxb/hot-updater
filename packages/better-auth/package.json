@@ -48,6 +48,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsdown",
+    "prepack": "pnpm run build",
     "test:type": "tsc --noEmit"
   },
   "repository": "https://github.com/gronxb/hot-updater",
