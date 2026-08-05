@@ -135,6 +135,7 @@ export const validateOrderBy = (
   if (!Array.isArray(orderBy) || orderBy.length === 0) {
     throw new DatabasePluginInputError("invalid-query");
   }
+  const fields = new Set<string>();
   return orderBy.map((clause) => {
     if (!isRecord(clause) || typeof clause.field !== "string") {
       throw new DatabasePluginInputError("invalid-query");
@@ -153,6 +154,10 @@ export const validateOrderBy = (
     ) {
       throw new DatabasePluginInputError("invalid-query");
     }
+    if (fields.has(clause.field)) {
+      throw new DatabasePluginInputError("invalid-operation");
+    }
+    fields.add(clause.field);
     return clause as OrderByClause;
   });
 };

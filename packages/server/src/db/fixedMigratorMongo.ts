@@ -43,8 +43,12 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
     .db()
     .collection<{ key: string; value: unknown }>(HOT_UPDATER_SETTINGS_TABLE);
   const getSetting = async (key: string): Promise<string | undefined> => {
-    const row = await settings.findOne({ key });
+    const rows = await settings.find({ key }).limit(2).toArray();
+    const [row, duplicate] = rows;
     if (!row) return undefined;
+    if (duplicate) {
+      throw new Error(`Duplicate Hot Updater schema setting: ${key}`);
+    }
     if (typeof row.value !== "string") {
       throw new Error(`Invalid Hot Updater schema setting: ${key}`);
     }
@@ -104,6 +108,7 @@ export const createMongoMigrator = (client: MongoClient): Migrator => {
               }
             },
             ensureIndexes: async () => {
+              await settings.createIndex({ key: 1 }, { unique: true });
               for (const table of hotUpdaterSchema.tables) {
                 if (table.internal) continue;
                 const collection = db.collection(table.ormName);

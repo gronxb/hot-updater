@@ -174,7 +174,7 @@ const persistCollection = <TRow extends FixedRow>({
   }
   for (const [id, row] of after) {
     if (JSON.stringify(before.get(id)) !== JSON.stringify(row)) {
-      transaction.set(collection.doc(id), row);
+      transaction.set(collection.doc(id), row, { merge: true });
     }
   }
 };
