@@ -1,5 +1,23 @@
 # @hot-updater/plugin-core
 
+## 0.35.10
+
+### Patch Changes
+
+- ce8d254: feat: support platform-scoped `fingerprint.extraSources`
+
+  `fingerprint.extraSources` now accepts `{ ios?: string[], android?: string[] }`
+  in addition to `string[]`. An array keeps the existing behavior (shared by both
+  platforms); the object form only feeds the fingerprint of the platform it is
+  scoped to, so an iOS-only native input no longer moves the Android fingerprint
+  (and vice versa).
+
+  The default config no longer sets `extraSources: []`, which the config deep
+  merge would otherwise use to clobber a user-supplied object.
+
+  - @hot-updater/core@0.35.10
+  - @hot-updater/js@0.35.10
+
 ## 0.35.9
 
 ### Patch Changes
