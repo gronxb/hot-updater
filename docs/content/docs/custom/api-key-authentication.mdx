@@ -1,0 +1,86 @@
+---
+title: "API key authentication"
+description: Protect self-hosted Hot Updater routes with Better Auth.
+---
+
+Install `@hot-updater/better-auth` when a self-hosted server should authenticate
+protected Hot Updater routes through Better Auth.
+
+```package-install
+npm install @hot-updater/better-auth better-auth @better-auth/api-key
+```
+
+## Use an existing Better Auth instance
+
+`betterAuthPlugin` contributes authentication only. Adding it does not change
+which routes are public or protected.
+
+```ts
+import { apiKey } from "@better-auth/api-key";
+import { betterAuth } from "better-auth";
+import { betterAuthPlugin } from "@hot-updater/better-auth";
+import { createHotUpdater } from "@hot-updater/server";
+
+const auth = betterAuth({
+  database: yourBetterAuthDatabase,
+  plugins: [apiKey({ enableSessionForAPIKeys: true })],
+});
+
+export const hotUpdater = createHotUpdater({
+  database: yourHotUpdaterDatabase,
+  plugins: [betterAuthPlugin({ auth })],
+});
+```
+
+The plugin reads the request session through `auth.api.getSession`. It does not
+mount Better Auth handlers, own Better Auth migrations, or add authorization
+rules.
+
+## Use the managed API key
+
+Managed authentication and route protection are separate opt-ins:
+
+```ts
+import {
+  managedBetterAuthPlugin,
+  managedRoutePolicy,
+} from "@hot-updater/better-auth/managed";
+import { createHotUpdater } from "@hot-updater/server";
+
+export const hotUpdater = createHotUpdater({
+  database,
+  plugins: [
+    managedBetterAuthPlugin({ apiKeySha256: env.API_KEY_SHA256 }),
+    managedRoutePolicy({ scope: "management" }),
+  ],
+  routes: { bundles: true, updateCheck: true },
+});
+```
+
+The `management` scope protects bundle-management and contributed plugin routes
+while leaving `/api/version` and the four core OTA selectors public for existing
+mobile clients. `scope: "all"` protects those OTA routes too. Use it only with a
+client-appropriate authentication flow and after every deployed client sends
+credentials. Do not embed the managed static API key in a public mobile binary;
+it is extractable and is intended for trusted management tooling.
+
+Without `managedRoutePolicy`, authentication is available to other policy
+plugins but all existing Hot Updater route defaults stay unchanged.
+
+## Provision a managed key
+
+Provisioning is an explicit Node-only filesystem operation. It does not call a
+cloud provider or change a deployed service.
+
+```ts
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
+
+const { apiKey, sha256 } = await provisionManagedBetterAuthApiKey();
+```
+
+The function creates or reuses `HOT_UPDATER_API_KEY` in `.env.hotupdater` and
+returns its raw value and SHA-256 projection. Keep `apiKey` in trusted CLI or
+server-side management tooling and deploy only `sha256` to the Hot Updater
+server.
+Provisioning requires POSIX ownership and `0600` file guarantees and therefore
+fails on Windows or filesystems where those guarantees cannot be verified.
