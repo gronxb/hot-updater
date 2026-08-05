@@ -1,3 +1,4 @@
+export * from "./supabaseAnalyticsPersistence";
 export * from "./supabaseDatabase";
 export * from "./supabaseEdgeFunctionDatabase";
 export * from "./supabaseEdgeFunctionStorage";

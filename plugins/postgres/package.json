@@ -10,7 +10,8 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./sql/analytics.sql": "./sql/analytics.sql"
   },
   "types": "./dist/index.d.cts",
   "license": "MIT",
@@ -33,6 +34,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
+    "@hot-updater/analytics": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "kysely": "catalog:db",

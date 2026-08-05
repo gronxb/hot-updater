@@ -1,3 +1,4 @@
+import type { BundleEventPersistenceRow } from "@hot-updater/analytics/provider";
 import type {
   BundlePatchRow,
   BundleRow,
@@ -33,6 +34,11 @@ export type Database = {
     Tables: {
       bundles: Table<SupabaseBundleRow>;
       bundle_patches: Table<SupabaseBundlePatchRow>;
+      bundle_events: Table<BundleEventPersistenceRow>;
+      private_hot_updater_settings: Table<{
+        readonly key: string;
+        readonly value: string;
+      }>;
     };
     Views: { [_ in never]: never };
     Functions: {
