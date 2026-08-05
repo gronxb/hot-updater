@@ -714,7 +714,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("creates MongoDB indexes for runtime query fields", async () => {
       const collection = {
-        findOne: vi.fn(async () => null),
+        find: vi.fn(() => ({
+          limit: () => ({ toArray: async () => [] }),
+        })),
       };
       const client = {
         db: () => ({
@@ -835,7 +837,12 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("rejects runtime access when a MongoDB schema is stale", async () => {
       const settings = {
-        findOne: vi.fn(async () => ({ key: "version", value: "0.21.0" })),
+        find: vi.fn(({ key }: { readonly key: string }) => ({
+          limit: () => ({
+            toArray: async () =>
+              key === "version" ? [{ key, value: "0.21.0" }] : [],
+          }),
+        })),
       };
       const bundles = {
         countDocuments: vi.fn(async () => 0),

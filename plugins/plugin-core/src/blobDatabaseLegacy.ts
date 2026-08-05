@@ -1,4 +1,6 @@
+import { BlobDatabaseSnapshotError } from "./blobDatabaseErrors";
 import {
+  blobArray,
   blobBoolean,
   blobMetadataObject,
   blobNullableString,
@@ -11,12 +13,54 @@ import {
 } from "./blobDatabaseValue";
 import type { BundlePatchRow, BundleRow } from "./types";
 
+const legacyBundleFields = new Set([
+  "id",
+  "platform",
+  "shouldForceUpdate",
+  "enabled",
+  "fileHash",
+  "gitCommitHash",
+  "message",
+  "channel",
+  "storageUri",
+  "targetAppVersion",
+  "fingerprintHash",
+  "metadata",
+  "manifestStorageUri",
+  "manifestFileHash",
+  "assetBaseStorageUri",
+  "patches",
+  "patchBaseBundleId",
+  "patchBaseFileHash",
+  "patchFileHash",
+  "patchStorageUri",
+  "rolloutCohortCount",
+  "targetCohorts",
+]);
+const legacyPatchFields = new Set([
+  "baseBundleId",
+  "baseFileHash",
+  "patchFileHash",
+  "patchStorageUri",
+]);
+
+const assertLegacyFields = (
+  value: object,
+  allowedFields: ReadonlySet<string>,
+  source: string,
+): void => {
+  if (Object.keys(value).some((key) => !allowedFields.has(key))) {
+    throw new BlobDatabaseSnapshotError(source);
+  }
+};
+
 const parseLegacyPatch = (
   value: object,
   bundleId: string,
   orderIndex: number,
   source: string,
 ): BundlePatchRow => {
+  assertLegacyFields(value, legacyPatchFields, source);
   const baseBundleId = blobString(blobProperty(value, "baseBundleId"), source);
   return {
     id: `${bundleId}:${baseBundleId}`,
@@ -63,6 +107,7 @@ export const parseLegacyBundle = (
   readonly patches: readonly BundlePatchRow[];
 } => {
   const input = blobRecord(value, source);
+  assertLegacyFields(input, legacyBundleFields, source);
   const id = blobString(blobProperty(input, "id"), source);
   const channelName = blobString(blobProperty(input, "channel"), source);
   const metadata = blobProperty(input, "metadata");
@@ -116,10 +161,11 @@ export const parseLegacyBundle = (
     ),
   };
   const patchesValue = blobProperty(input, "patches");
-  const patches = Array.isArray(patchesValue)
-    ? patchesValue.map((patch, index) =>
-        parseLegacyPatch(blobRecord(patch, source), id, index, source),
-      )
-    : legacyScalarPatch(input, id, source);
+  const patches =
+    patchesValue === null || patchesValue === undefined
+      ? legacyScalarPatch(input, id, source)
+      : blobArray(patchesValue, source).map((patch, index) =>
+          parseLegacyPatch(blobRecord(patch, source), id, index, source),
+        );
   return { bundle, channelName, patches };
 };

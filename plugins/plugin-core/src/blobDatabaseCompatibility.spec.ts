@@ -90,6 +90,91 @@ describe("blob snapshot compatibility", () => {
     ).toThrow("Invalid blob database data");
   });
 
+  it("parses documented nested legacy patches", () => {
+    expect(
+      parseLegacyBundle(
+        {
+          ...commonLegacyBundle,
+          patches: [
+            {
+              baseBundleId: bundleId,
+              baseFileHash: "base-hash",
+              patchFileHash: "patch-hash",
+              patchStorageUri: "storage://patches/1.patch",
+            },
+          ],
+        },
+        "legacy",
+      ).patches,
+    ).toEqual([
+      {
+        id: `${bundleId}:${bundleId}`,
+        bundle_id: bundleId,
+        base_bundle_id: bundleId,
+        base_file_hash: "base-hash",
+        patch_file_hash: "patch-hash",
+        patch_storage_uri: "storage://patches/1.patch",
+        order_index: 0,
+      },
+    ]);
+  });
+
+  it.each([
+    ["unknown top-level field", { future_option: true }],
+    [
+      "unknown nested patch field",
+      {
+        patches: [
+          {
+            baseBundleId: bundleId,
+            baseFileHash: "base-hash",
+            patchFileHash: "patch-hash",
+            patchStorageUri: "storage://patches/1.patch",
+            future_option: true,
+          },
+        ],
+      },
+    ],
+    ["malformed nested patch", { patches: [{}] }],
+    ["malformed non-array patches", { patches: "invalid" }],
+  ] as const)(
+    "rejects a legacy manifest with a %s before publishing a v2 pointer",
+    async (_case, legacyExtension) => {
+      const original: readonly [string, unknown][] = [
+        [
+          "production/ios/1.0.0/update.json",
+          [{ ...commonLegacyBundle, ...legacyExtension }],
+        ],
+      ];
+
+      for (const operation of ["read", "mutation"] as const) {
+        const { compareAndSwapObject, plugin, store, uploadObject } =
+          createMemoryBlobDatabase(original);
+        const originalEntries = structuredClone([...store.entries()]);
+
+        const result =
+          operation === "read"
+            ? createDatabaseClient(plugin).getBundleById(bundleId)
+            : plugin.create({
+                model: "bundles",
+                data: {
+                  ...commonBundleRow,
+                  id: "00000000-0000-0000-0000-000000000002",
+                  channel: "production",
+                },
+              });
+
+        await expect(result).rejects.toMatchObject({
+          name: "BlobDatabaseSnapshotError",
+        });
+        expect([...store.entries()]).toEqual(originalEntries);
+        expect(store.has(BLOB_DATABASE_SNAPSHOT_KEY)).toBe(false);
+        expect(uploadObject).not.toHaveBeenCalled();
+        expect(compareAndSwapObject).not.toHaveBeenCalled();
+      }
+    },
+  );
+
   const sparseArray: unknown[] = [];
   sparseArray.length = 1;
   it.each([
