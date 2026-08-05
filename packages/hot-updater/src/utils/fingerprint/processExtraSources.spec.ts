@@ -4,7 +4,10 @@ import { createFingerprintAsync } from "@expo/fingerprint";
 import { getCwd } from "@hot-updater/cli-tools";
 import { describe, expect, it } from "vitest";
 
-import { processExtraSources } from "./processExtraSources";
+import {
+  processExtraSources,
+  resolveExtraSources,
+} from "./processExtraSources";
 
 describe("processExtraSources", () => {
   it("should return relative paths, not absolute paths", () => {
@@ -75,5 +78,36 @@ describe("processExtraSources", () => {
 
     expect(result).toBeDefined();
     expect(result.hash).toBeDefined();
+  });
+});
+
+describe("resolveExtraSources", () => {
+  it("should apply an array to both platforms", () => {
+    const extraSources = ["resources/**", ".gitignore"];
+
+    expect(resolveExtraSources(extraSources, "ios")).toEqual(extraSources);
+    expect(resolveExtraSources(extraSources, "android")).toEqual(extraSources);
+  });
+
+  it("should scope the object form to the requested platform", () => {
+    const extraSources = {
+      ios: ["ios/.env"],
+      android: ["android/local.properties"],
+    };
+
+    expect(resolveExtraSources(extraSources, "ios")).toEqual(["ios/.env"]);
+    expect(resolveExtraSources(extraSources, "android")).toEqual([
+      "android/local.properties",
+    ]);
+  });
+
+  it("should return an empty array for a platform without entries", () => {
+    expect(resolveExtraSources({ ios: ["ios/.env"] }, "android")).toEqual([]);
+    expect(resolveExtraSources({}, "ios")).toEqual([]);
+  });
+
+  it("should handle undefined", () => {
+    expect(resolveExtraSources(undefined, "ios")).toEqual([]);
+    expect(resolveExtraSources(undefined, "android")).toEqual([]);
   });
 });

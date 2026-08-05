@@ -3,6 +3,7 @@
 import fs from "fs";
 import path from "path";
 
+import type { FingerprintExtraSources } from "@hot-updater/plugin-core";
 import fg from "fast-glob";
 
 type HashSourceDir = {
@@ -17,6 +18,28 @@ type HashSourceContents = {
   contents: string | Buffer;
   reasons: string[];
 };
+
+/**
+ * Resolves the extra sources that apply to a single platform.
+ *
+ * An array is shared by both platforms; the object form only contributes the
+ * entries scoped to the requested platform.
+ * @param extraSources Shared array or platform-scoped object
+ * @param platform Platform the fingerprint is computed for
+ * @returns Array of file paths, directory paths, or glob patterns
+ */
+export function resolveExtraSources(
+  extraSources: FingerprintExtraSources | undefined,
+  platform: "ios" | "android",
+): string[] {
+  if (!extraSources) {
+    return [];
+  }
+  if (Array.isArray(extraSources)) {
+    return extraSources;
+  }
+  return extraSources[platform] ?? [];
+}
 
 /**
  * Processes extra source files and directories for fingerprinting.

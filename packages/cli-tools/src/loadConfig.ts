@@ -122,9 +122,9 @@ const getDefaultConfig = (): ConfigInput => {
     releaseChannel: "production",
     updateStrategy: "appVersion",
     compressStrategy: "zip",
-    fingerprint: {
-      extraSources: [],
-    },
+    // `extraSources` is intentionally absent: the deep merge would let this
+    // default array clobber a user-supplied platform-scoped object.
+    fingerprint: {},
     patch: {
       enabled: true,
       maxBaseBundles: 3,
