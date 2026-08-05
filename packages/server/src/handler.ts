@@ -63,7 +63,11 @@ function createHandlerWithErrorPolicy<TContext>(
       const routePath = path.startsWith(basePath)
         ? path.slice(basePath.length)
         : path;
-      const match = findRoute(router, request.method, routePath);
+      const match =
+        findRoute(router, request.method, routePath) ??
+        (routePath === path
+          ? undefined
+          : findRoute(router, request.method, path));
       if (!match) {
         return new Response(JSON.stringify({ error: "Not found" }), {
           status: 404,

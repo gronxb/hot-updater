@@ -288,9 +288,17 @@ describe("runtime createHotUpdater", () => {
     expect(authenticate).not.toHaveBeenCalled();
   });
 
-  it("applies a core-exception policy before reading a protected bundle body", async () => {
+  it("enforces a core-exception policy across denied and authorized bundle requests", async () => {
     let bodyPulls = 0;
-    const authenticate = vi.fn(async () => ({ kind: "anonymous" }) as const);
+    let authenticated = false;
+    const authenticate = vi.fn(async () =>
+      authenticated
+        ? ({
+            kind: "authenticated",
+            principal: { issuer: "test", subject: "operator" },
+          } as const)
+        : ({ kind: "anonymous" } as const),
+    );
     const authentication = defineFirstPartyServerPlugin({
       id: "authentication",
       setup: () => ({
@@ -312,8 +320,9 @@ describe("runtime createHotUpdater", () => {
         },
       }),
     });
+    const database = createRuntimeDatabase();
     const hotUpdater = createHotUpdater({
-      database: createRuntimeDatabase(),
+      database,
       plugins: [authentication, policy],
       routes: { bundles: true, updateCheck: true },
     });
@@ -338,12 +347,27 @@ describe("runtime createHotUpdater", () => {
         method: "POST",
       }),
     );
+    authenticated = true;
+    const authorizedRequest = new Request(
+      "https://updates.example.com/api/bundles",
+      {
+        body: JSON.stringify(runtimeBundle),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      },
+    );
+    const authorizedBundle = await hotUpdater.handler(authorizedRequest);
 
     expect(version.status).toBe(200);
     expect(bundle.status).toBe(401);
     expect(bundle.headers.get("cache-control")).toBe("private, no-store");
     expect(bodyPulls).toBe(0);
-    expect(authenticate).toHaveBeenCalledOnce();
+    expect(authorizedBundle.status).toBe(201);
+    expect(authorizedRequest.bodyUsed).toBe(true);
+    await expect(
+      createDatabaseClient(database).getBundleById(runtimeBundle.id),
+    ).resolves.toMatchObject(runtimeBundle);
+    expect(authenticate).toHaveBeenCalledTimes(2);
   });
 
   it("authenticates a protected plugin route before parsing its body", async () => {
