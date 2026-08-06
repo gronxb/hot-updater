@@ -1,5 +1,15 @@
 # @hot-updater/firebase
 
+## Unreleased
+
+### Minor Changes
+
+- Replace the aggregate database plugin with the fixed `bundles` and
+  `bundle_patches` row contract.
+- Migrate legacy inline and scalar patch fields into `bundle_patches`, remove
+  the legacy fields, and record database adapter version 2. This migration is
+  forward-only; back up Firestore before upgrading.
+
 ## 0.35.11
 
 ### Patch Changes

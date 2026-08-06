@@ -20,6 +20,7 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
+import { bundleToRow, createDatabaseClient } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -127,6 +128,22 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
   };
 };
 
+const runtimeBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle =>
+  toRuntimeBundle({
+    platform: "ios",
+    targetAppVersion: "1.0.0",
+    shouldForceUpdate: false,
+    enabled: true,
+    fileHash: `hash-${id}`,
+    gitCommitHash: null,
+    message: null,
+    channel: "production",
+    storageUri: "storage://unused",
+    fingerprintHash: null,
+    ...overrides,
+    id,
+  });
+
 describe.sequential("supabase edge runtime acceptance", () => {
   let runtimeRoot: string | undefined;
   let storageRepoPath = "";
@@ -137,7 +154,34 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let gatewayBaseUrl = "";
   let edgeRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
+  let databaseClient: ReturnType<typeof createDatabaseClient>;
   let supabaseAdmin: ReturnType<typeof createClient>;
+
+  const runDatabaseSql = (statement: string): void => {
+    runCheckedCommand({
+      command: "docker",
+      args: [
+        "compose",
+        "-p",
+        composeProjectName,
+        "-f",
+        composeFilePath,
+        "exec",
+        "-T",
+        "db",
+        "psql",
+        "-U",
+        "postgres",
+        "-d",
+        POSTGRES_DB,
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-c",
+        statement,
+      ],
+      cwd: WORKSPACE_ROOT,
+    });
+  };
 
   beforeAll(async () => {
     await ensureBuiltArtifacts(REQUIRED_BUILD_ARTIFACTS);
@@ -225,6 +269,13 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     supabaseAdmin = createClient(gatewayBaseUrl, SERVICE_ROLE_KEY);
     await ensureBucketExists(supabaseAdmin);
+
+    databaseClient = createDatabaseClient(
+      supabaseDatabase({
+        supabaseUrl: gatewayBaseUrl,
+        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
+      }),
+    );
 
     seedHotUpdater = createHotUpdater({
       database: supabaseDatabase({
@@ -338,7 +389,12 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   const seedRuntimeBundles = async (bundles: Bundle[]) => {
     for (const bundle of bundles.map(toRuntimeBundle)) {
-      await seedHotUpdater.insertBundle(bundle);
+      const existing = await seedHotUpdater.getBundleById(bundle.id);
+      if (existing) {
+        await seedHotUpdater.updateBundleById(bundle.id, bundle);
+      } else {
+        await seedHotUpdater.insertBundle(bundle);
+      }
     }
   };
 
@@ -484,6 +540,252 @@ describe.sequential("supabase edge runtime acceptance", () => {
         `/storage/v1/object/sign/${BUCKET_NAME}/${fixture.patchPath}`,
       );
     },
+  });
+
+  it("rolls back a patch-bearing insert when one base bundle is missing", async () => {
+    const base = runtimeBundle("00000000-0000-0000-0000-000000000101");
+    const owner = {
+      ...base,
+      id: "00000000-0000-0000-0000-000000000102",
+      fileHash: "hash-owner",
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "hash-valid-patch",
+          patchStorageUri: "storage://valid-patch",
+        },
+        {
+          baseBundleId: "00000000-0000-0000-0000-000000000199",
+          baseFileHash: "hash-missing-base",
+          patchFileHash: "hash-invalid-patch",
+          patchStorageUri: "storage://invalid-patch",
+        },
+      ],
+    } satisfies Bundle;
+    await databaseClient.insertBundle(base);
+
+    await expect(
+      databaseClient.mutate((database) => database.insertBundle(owner)),
+    ).rejects.toBeDefined();
+
+    const ownerResult = await supabaseAdmin
+      .from("bundles")
+      .select("id")
+      .eq("id", owner.id)
+      .maybeSingle();
+    if (ownerResult.error) throw ownerResult.error;
+    expect(ownerResult.data).toBeNull();
+    const patchResult = await supabaseAdmin
+      .from("bundle_patches")
+      .select("id")
+      .eq("bundle_id", owner.id);
+    if (patchResult.error) throw patchResult.error;
+    expect(patchResult.data).toEqual([]);
+  });
+
+  it("preserves extension defaults and generated values during atomic inserts", async () => {
+    runDatabaseSql(
+      [
+        "ALTER TABLE public.bundles",
+        "ADD COLUMN tenant_tag text NOT NULL DEFAULT 'default-tenant',",
+        "ADD COLUMN channel_upper text GENERATED ALWAYS AS (upper(channel)) STORED",
+      ].join(" "),
+    );
+
+    try {
+      const base = runtimeBundle("00000000-0000-0000-0000-000000000151");
+      const owner = {
+        ...base,
+        id: "00000000-0000-0000-0000-000000000152",
+        fileHash: "hash-owner",
+        patches: [
+          {
+            baseBundleId: base.id,
+            baseFileHash: base.fileHash,
+            patchFileHash: "hash-patch",
+            patchStorageUri: "storage://patch",
+          },
+        ],
+      } satisfies Bundle;
+      await databaseClient.insertBundle(base);
+
+      await databaseClient.insertBundle(owner);
+
+      const result = await supabaseAdmin
+        .from("bundles")
+        .select("tenant_tag, channel_upper")
+        .eq("id", owner.id)
+        .single();
+      if (result.error) throw result.error;
+      expect(result.data).toEqual({
+        tenant_tag: "default-tenant",
+        channel_upper: "PRODUCTION",
+      });
+    } finally {
+      runDatabaseSql(
+        "ALTER TABLE public.bundles DROP COLUMN tenant_tag, DROP COLUMN channel_upper",
+      );
+    }
+  });
+
+  it("does not resolve public-schema JSON function shadows in atomic RPCs", async () => {
+    runDatabaseSql(`
+      CREATE FUNCTION public.jsonb_populate_record(public.bundles, jsonb)
+      RETURNS public.bundles
+      LANGUAGE plpgsql
+      AS $$
+      BEGIN
+        RAISE EXCEPTION 'public jsonb_populate_record shadow executed';
+      END;
+      $$
+    `);
+
+    try {
+      const base = runtimeBundle("00000000-0000-0000-0000-000000000551");
+      const owner = {
+        ...base,
+        id: "00000000-0000-0000-0000-000000000552",
+        fileHash: "hash-owner",
+        patches: [
+          {
+            baseBundleId: base.id,
+            baseFileHash: base.fileHash,
+            patchFileHash: "hash-patch",
+            patchStorageUri: "storage://patch",
+          },
+        ],
+      } satisfies Bundle;
+      await databaseClient.insertBundle(base);
+
+      await databaseClient.insertBundle(owner);
+
+      await expect(
+        databaseClient.getBundleById(owner.id),
+      ).resolves.toMatchObject({ id: owner.id, patches: owner.patches });
+    } finally {
+      runDatabaseSql(
+        "DROP FUNCTION public.jsonb_populate_record(public.bundles, jsonb)",
+      );
+    }
+  });
+
+  it("rolls back scalar and patch replacement when a new base is missing", async () => {
+    const base = runtimeBundle("00000000-0000-0000-0000-000000000201");
+    const owner = {
+      ...base,
+      id: "00000000-0000-0000-0000-000000000202",
+      fileHash: "hash-owner",
+      message: "before",
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "hash-old-patch",
+          patchStorageUri: "storage://old-patch",
+        },
+      ],
+    } satisfies Bundle;
+    await databaseClient.insertBundle(base);
+    await databaseClient.insertBundle(owner);
+
+    await expect(
+      databaseClient.mutate((database) =>
+        database.updateBundleById(owner.id, {
+          enabled: false,
+          message: "after",
+          patches: [
+            {
+              baseBundleId: "00000000-0000-0000-0000-000000000299",
+              baseFileHash: "hash-missing-base",
+              patchFileHash: "hash-invalid-patch",
+              patchStorageUri: "storage://invalid-patch",
+            },
+          ],
+        }),
+      ),
+    ).rejects.toBeDefined();
+
+    await expect(databaseClient.getBundleById(owner.id)).resolves.toMatchObject(
+      {
+        enabled: true,
+        message: "before",
+        patches: owner.patches,
+      },
+    );
+  });
+
+  it("atomically applies explicit nulls, false, and an empty patch list", async () => {
+    const base = runtimeBundle("00000000-0000-0000-0000-000000000301");
+    const owner = {
+      ...base,
+      id: "00000000-0000-0000-0000-000000000302",
+      fileHash: "hash-owner",
+      message: "before",
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "hash-old-patch",
+          patchStorageUri: "storage://old-patch",
+        },
+      ],
+    } satisfies Bundle;
+    await databaseClient.insertBundle(base);
+    await databaseClient.insertBundle(owner);
+
+    await databaseClient.mutate((database) =>
+      database.updateBundleById(owner.id, {
+        enabled: false,
+        message: null,
+        patches: [],
+      }),
+    );
+
+    await expect(databaseClient.getBundleById(owner.id)).resolves.toMatchObject(
+      {
+        enabled: false,
+        message: null,
+        patches: [],
+      },
+    );
+  });
+
+  it("maps a missing aggregate update to the public not-found error", async () => {
+    const result = databaseClient.updateBundleById(
+      "00000000-0000-0000-0000-000000000401",
+      { patches: [] },
+    );
+
+    await expect(result).rejects.toMatchObject({
+      name: "DatabaseBundleNotFoundError",
+      bundleId: "00000000-0000-0000-0000-000000000401",
+    });
+  });
+
+  it("denies atomic mutation RPCs to the anonymous role", async () => {
+    const bundle = runtimeBundle("00000000-0000-0000-0000-000000000501");
+    const response = await fetch(
+      `${gatewayBaseUrl}/rest/v1/rpc/hot_updater_create_bundle_with_patches`,
+      {
+        method: "POST",
+        headers: {
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ p_bundle: bundleToRow(bundle), p_patches: [] }),
+      },
+    );
+
+    expect(response.ok).toBe(false);
+    const result = await supabaseAdmin
+      .from("bundles")
+      .select("id")
+      .eq("id", bundle.id)
+      .maybeSingle();
+    if (result.error) throw result.error;
+    expect(result.data).toBeNull();
   });
 
   it("serves canonical routes from the edge function entrypoint", async () => {
@@ -752,6 +1054,16 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
+
+REVOKE EXECUTE ON FUNCTION public.hot_updater_create_bundle_with_patches(
+  jsonb,
+  jsonb
+) FROM anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.hot_updater_update_bundle_with_patches(
+  uuid,
+  jsonb,
+  jsonb
+) FROM anon, authenticated;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT ON TABLES TO anon, authenticated;

@@ -1,6 +1,7 @@
 export { verifyJwtSignedUrl } from "@hot-updater/js";
 
 import type { RequestEnvContext as BaseRequestEnvContext } from "@hot-updater/plugin-core";
+import { env } from "cloudflare:workers";
 
 import {
   type CloudflareWorkerDatabaseEnv,
@@ -20,10 +21,7 @@ export interface CloudflareWorkerRuntimeEnv
 export type RequestEnvContext<TEnv = CloudflareWorkerRuntimeEnv> =
   BaseRequestEnvContext<TEnv>;
 
-export const d1Database = <
-  TContext extends RequestEnvContext<CloudflareWorkerRuntimeEnv> =
-    RequestEnvContext<CloudflareWorkerRuntimeEnv>,
->() => d1WorkerDatabase<TContext>();
+export const d1Database = () => d1WorkerDatabase(env.DB);
 
 export const r2Storage = <
   TContext extends RequestEnvContext<CloudflareWorkerRuntimeEnv> =

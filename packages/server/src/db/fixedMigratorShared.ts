@@ -1,0 +1,55 @@
+import { HOT_UPDATER_SCHEMA_VERSION } from "../schema/types";
+import type { MigrateOptions, MigrationResult } from "./types";
+
+export const getEmptyMigrationResult = (): MigrationResult => ({
+  operations: [],
+  execute: async () => {},
+  getSQL: () => "",
+});
+
+export const assertSupportedMigrationMode = (options: MigrateOptions): void => {
+  if (options.mode === "from-database") {
+    throw new Error("Hot Updater migrations support only mode: 'from-schema'.");
+  }
+};
+
+export const assertSupportedSchemaVersion = (
+  currentVersion: string | undefined,
+): void => {
+  if (
+    currentVersion !== undefined &&
+    currentVersion !== "0.21.0" &&
+    currentVersion !== "0.29.0" &&
+    currentVersion !== "0.31.0" &&
+    currentVersion !== "0.36.0"
+  ) {
+    throw new Error(
+      `Unsupported Hot Updater schema version: ${currentVersion}`,
+    );
+  }
+};
+
+export const inferLegacyCoreSchemaVersion = (
+  legacyVersion: string | undefined,
+): string | undefined => {
+  if (
+    legacyVersion === "0.36.0" ||
+    legacyVersion === "0.37.0" ||
+    legacyVersion === "0.38.0"
+  ) {
+    return HOT_UPDATER_SCHEMA_VERSION;
+  }
+  return legacyVersion;
+};
+
+export const resolveLegacyCoreSchemaVersion = (
+  legacyVersion: string | undefined,
+): string | undefined => {
+  const coreVersion = inferLegacyCoreSchemaVersion(legacyVersion);
+  assertSupportedSchemaVersion(coreVersion);
+  return coreVersion;
+};
+
+export const isCurrentSchemaVersion = (
+  currentVersion: string | undefined,
+): boolean => currentVersion === HOT_UPDATER_SCHEMA_VERSION;

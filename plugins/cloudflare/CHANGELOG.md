@@ -1,5 +1,14 @@
 # @hot-updater/cloudflare
 
+## Unreleased
+
+### Minor Changes
+
+- Replace the aggregate D1 database plugin with the fixed `bundles` and
+  `bundle_patches` row contract. D1 implements exact distinct counts, ordered
+  `distinctOn`, and every requested order clause, including an explicit `id`
+  tie-break.
+
 ## 0.35.11
 
 ### Patch Changes

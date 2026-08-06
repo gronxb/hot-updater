@@ -157,7 +157,7 @@ export async function generateStandaloneSQL(options: {
 
     if (!result.getSQL) {
       p.log.error(
-        "SQL generation is not supported by the database adapter.\n" +
+        "SQL generation is not supported by the database plugin.\n" +
           "This may indicate a configuration issue.",
       );
       process.exit(1);

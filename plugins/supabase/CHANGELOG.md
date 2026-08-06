@@ -1,5 +1,15 @@
 # @hot-updater/supabase
 
+## Unreleased
+
+### Minor Changes
+
+- Replace the aggregate Supabase database plugin with the fixed `bundles` and
+  `bundle_patches` row contract.
+- Reject unsupported distinct counts and `distinctOn` with a typed
+  `invalid-operation` error before opening a PostgREST query. Supported
+  bundle and patch queries honor every requested `orderBy` clause.
+
 ## 0.35.11
 
 ### Patch Changes

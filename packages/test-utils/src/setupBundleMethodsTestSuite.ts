@@ -30,10 +30,9 @@ interface DatabaseBundleQueryOptions {
     fingerprintHash?: string | null;
   };
   limit: number;
-  cursor?: {
-    after?: string;
-    before?: string;
-  };
+  cursor?:
+    | { after: string; before?: never }
+    | { after?: never; before: string };
   orderBy?: {
     field: "id";
     direction: "asc" | "desc";
@@ -368,12 +367,12 @@ export const setupBundleMethodsTestSuite = ({
       const page1 = await getBundles({
         limit: 1,
       });
+      const nextCursor = page1.pagination.nextCursor;
+      if (!nextCursor) throw new TypeError("Expected a next bundle cursor");
 
       const page2 = await getBundles({
         limit: 1,
-        cursor: {
-          after: page1.pagination.nextCursor ?? undefined,
-        },
+        cursor: { after: nextCursor },
       });
 
       expect(page1.data.length).toBe(1);
@@ -505,6 +504,8 @@ export const setupBundleMethodsTestSuite = ({
       ]);
       expect(firstPage.pagination.total).toBe(2);
       expect(firstPage.pagination.hasNextPage).toBe(true);
+      const nextCursor = firstPage.pagination.nextCursor;
+      if (!nextCursor) throw new TypeError("Expected a next bundle cursor");
 
       const secondPage = await getBundles({
         where: {
@@ -512,9 +513,7 @@ export const setupBundleMethodsTestSuite = ({
         },
         orderBy: { field: "id", direction: "desc" },
         limit: 1,
-        cursor: {
-          after: firstPage.pagination.nextCursor ?? undefined,
-        },
+        cursor: { after: nextCursor },
       });
 
       expect(secondPage.data.map((bundle) => bundle.id)).toEqual([

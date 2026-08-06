@@ -1,107 +1,235 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { Bundle } from "@hot-updater/core";
+import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createHotUpdater } from "../index";
 import {
-  HOT_UPDATER_SCHEMA_VERSION,
-  HOT_UPDATER_SETTINGS_TABLE,
-} from "../schema/types";
+  createBundlePatchRowFixture,
+  createBundleRowFixture,
+} from "../../../test-utils/src/databaseTestFixtures";
+import { setupDatabasePluginTestSuite } from "../../../test-utils/src/setupDatabasePluginTestSuite";
+import type { DatabaseAdapterWithCapabilities } from "../db/types";
+import {
+  DATABASE_PLUGIN_TEST_RESET_SQL,
+  DATABASE_PLUGIN_TEST_SCHEMA_SQL,
+} from "./databasePluginTestDatabase";
 import { kyselyAdapter } from "./kysely";
 
-const sqliteJsonBundle: Bundle = {
-  id: "00000000-0000-0000-0000-000000000901",
-  platform: "ios",
-  shouldForceUpdate: false,
-  enabled: true,
-  fileHash: "sqlite-json-hash",
-  gitCommitHash: null,
-  message: "sqlite json bundle",
-  channel: "production",
-  storageUri: "s3://bucket/sqlite-json.zip",
-  targetAppVersion: "1.0.0",
-  fingerprintHash: null,
-  metadata: { app_version: "1.0.0" },
-  targetCohorts: ["17", "qa-group"],
+class KyselyTestStateError extends Error {
+  readonly name = "KyselyTestStateError";
+}
+
+let client: PGlite | undefined;
+let database: Kysely<object> | undefined;
+
+const getClient = (): PGlite => {
+  if (client === undefined) throw new KyselyTestStateError();
+  return client;
 };
 
-describe("kyselyAdapter sqlite provider", () => {
-  const databases: PGlite[] = [];
-  const kyselyInstances: Kysely<object>[] = [];
+const getDatabase = (): Kysely<object> => {
+  if (database === undefined) throw new KyselyTestStateError();
+  return database;
+};
 
-  afterEach(async () => {
-    for (const kysely of kyselyInstances.splice(0)) {
-      await kysely.destroy();
-    }
-    for (const db of databases.splice(0)) {
-      await db.close();
-    }
-  });
+setupDatabasePluginTestSuite({
+  name: "kyselyAdapter PostgreSQL",
+  migrate: async () => {
+    client = new PGlite();
+    database = new Kysely<object>({ dialect: new PGliteDialect(client) });
+    await client.exec(DATABASE_PLUGIN_TEST_SCHEMA_SQL);
+  },
+  createPlugin: (): DatabaseAdapterWithCapabilities =>
+    kyselyAdapter({ db: getDatabase(), provider: "postgresql" }),
+  reset: async () => {
+    await getClient().exec(DATABASE_PLUGIN_TEST_RESET_SQL);
+  },
+  dispose: async () => {
+    await getDatabase().destroy();
+    await getClient().close();
+    database = undefined;
+    client = undefined;
+  },
+});
 
-  it("stores bundle JSON columns as text and round-trips them", async () => {
-    const db = new PGlite();
-    databases.push(db);
-    const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
-    kyselyInstances.push(kysely);
-    await db.exec(`
-      create table bundles (
-        id text primary key,
-        platform text not null,
-        should_force_update boolean not null,
-        enabled boolean not null,
-        file_hash text not null,
-        git_commit_hash text,
-        message text,
-        channel text not null,
-        storage_uri text not null,
-        target_app_version text,
-        fingerprint_hash text,
-        metadata text not null,
-        manifest_storage_uri text,
-        manifest_file_hash text,
-        asset_base_storage_uri text,
-        rollout_cohort_count integer not null,
-        target_cohorts text
-      );
-      create table bundle_patches (
-        id text primary key,
-        bundle_id text not null,
-        base_bundle_id text not null,
-        base_file_hash text not null,
-        patch_file_hash text not null,
-        patch_storage_uri text not null,
-        order_index integer not null
-      );
-      create table ${HOT_UPDATER_SETTINGS_TABLE} (
-        key text primary key,
-        value text not null
-      );
-      insert into ${HOT_UPDATER_SETTINGS_TABLE} (key, value)
-      values ('version', '${HOT_UPDATER_SCHEMA_VERSION}');
-    `);
-    const hotUpdater = createHotUpdater({
-      database: kyselyAdapter({
-        db: kysely,
-        provider: "sqlite",
-      }),
+describe("kyselyAdapter SQLite JSON storage", () => {
+  it("round-trips JSON values through text columns", async () => {
+    const sqliteClient = new PGlite();
+    const sqliteDatabase = new Kysely<object>({
+      dialect: new PGliteDialect(sqliteClient),
     });
+    await sqliteClient.exec(
+      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replace(
+        "metadata jsonb not null default '{}'::jsonb",
+        "metadata text not null",
+      ).replace("target_cohorts jsonb", "target_cohorts text"),
+    );
+    const plugin = kyselyAdapter({
+      db: sqliteDatabase,
+      provider: "sqlite",
+    });
+    const bundle = {
+      ...createBundleRowFixture("901"),
+      metadata: { app_version: "1.0.0" },
+      target_cohorts: ["17", "qa-group"],
+    };
 
-    await hotUpdater.insertBundle(sqliteJsonBundle);
-    const stored = await db.query<{
+    await plugin.create({ model: "bundles", data: bundle });
+    const stored = await sqliteClient.query<{
       metadata: string;
       target_cohorts: string;
     }>("select metadata, target_cohorts from bundles where id = $1", [
-      sqliteJsonBundle.id,
+      bundle.id,
     ]);
-    const restored = await hotUpdater.getBundleById(sqliteJsonBundle.id);
+    const restored = await plugin.findOne({
+      model: "bundles",
+      where: [{ field: "id", value: bundle.id }],
+    });
 
     expect(stored.rows[0]).toEqual({
-      metadata: JSON.stringify({ app_version: "1.0.0" }),
-      target_cohorts: JSON.stringify(["17", "qa-group"]),
+      metadata: JSON.stringify(bundle.metadata),
+      target_cohorts: JSON.stringify(bundle.target_cohorts),
     });
-    expect(restored?.metadata).toEqual({ app_version: "1.0.0" });
-    expect(restored?.targetCohorts).toEqual(["17", "qa-group"]);
+    expect(restored).toEqual(bundle);
+    await sqliteDatabase.destroy();
+    await sqliteClient.close();
+  });
+});
+
+describe("kyselyAdapter query capabilities", () => {
+  it("rejects count distinct before executing a provider query", async () => {
+    const distinctClient = new PGlite();
+    const queries: string[] = [];
+    const distinctDatabase = new Kysely<object>({
+      dialect: new PGliteDialect(distinctClient),
+      log: (event) => {
+        if (event.level === "query") queries.push(event.query.sql);
+      },
+    });
+    const plugin = kyselyAdapter({
+      db: distinctDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      const operation = plugin.count({
+        model: "bundles",
+        distinct: ["channel"],
+      });
+
+      await expect(operation).rejects.toBeInstanceOf(DatabasePluginInputError);
+      await expect(operation).rejects.toMatchObject({
+        code: "invalid-operation",
+      });
+      expect(queries).toEqual([]);
+    } finally {
+      await distinctDatabase.destroy();
+      await distinctClient.close();
+    }
+  });
+
+  it("rejects findMany distinctOn before executing a provider query", async () => {
+    const distinctClient = new PGlite();
+    const queries: string[] = [];
+    const distinctDatabase = new Kysely<object>({
+      dialect: new PGliteDialect(distinctClient),
+      log: (event) => {
+        if (event.level === "query") queries.push(event.query.sql);
+      },
+    });
+    const plugin = kyselyAdapter({
+      db: distinctDatabase,
+      provider: "postgresql",
+    });
+
+    try {
+      const operation = plugin.findMany({
+        model: "bundles",
+        orderBy: [{ field: "channel", direction: "asc" }],
+        distinctOn: { fields: ["channel"] },
+      });
+
+      await expect(operation).rejects.toBeInstanceOf(DatabasePluginInputError);
+      await expect(operation).rejects.toMatchObject({
+        code: "invalid-operation",
+      });
+      expect(queries).toEqual([]);
+    } finally {
+      await distinctDatabase.destroy();
+      await distinctClient.close();
+    }
+  });
+});
+
+describe("kyselyAdapter soft relations", () => {
+  it("rejects orphan patches when the SQL schema omits foreign keys", async () => {
+    const softClient = new PGlite();
+    const queries: string[] = [];
+    const softDatabase = new Kysely<object>({
+      dialect: new PGliteDialect(softClient),
+      log: (event) => {
+        if (event.level === "query") queries.push(event.query.sql);
+      },
+    });
+    await softClient.exec(
+      DATABASE_PLUGIN_TEST_SCHEMA_SQL.replaceAll(
+        " references bundles(id) on delete cascade",
+        "",
+      ),
+    );
+    const plugin = kyselyAdapter({
+      db: softDatabase,
+      provider: "postgresql",
+      relationMode: "fumadb",
+    });
+    const base = createBundleRowFixture("951");
+    const owner = createBundleRowFixture("952");
+
+    try {
+      await plugin.create({ model: "bundles", data: base });
+      await plugin.create({ model: "bundles", data: owner });
+      queries.length = 0;
+
+      await expect(
+        plugin.create({
+          model: "bundle_patches",
+          data: createBundlePatchRowFixture(
+            "missing-owner",
+            "missing-owner",
+            base.id,
+          ),
+        }),
+      ).rejects.toThrow("bundle_patches.bundle_id.foreign-key");
+      expect(queries.some((query) => query.endsWith("for update"))).toBe(true);
+      await expect(
+        plugin.create({
+          model: "bundle_patches",
+          data: createBundlePatchRowFixture(
+            "missing-base",
+            owner.id,
+            "missing-base",
+          ),
+        }),
+      ).rejects.toThrow("bundle_patches.base_bundle_id.foreign-key");
+      await expect(
+        plugin.findMany({ model: "bundle_patches" }),
+      ).resolves.toEqual([]);
+      queries.length = 0;
+      await plugin.delete({
+        model: "bundles",
+        where: [{ field: "id", value: owner.id }],
+      });
+      expect(
+        queries.some(
+          (query) =>
+            query.includes('select "id" from "bundles"') &&
+            query.endsWith("for update"),
+        ),
+      ).toBe(true);
+    } finally {
+      await softDatabase.destroy();
+      await softClient.close();
+    }
   });
 });

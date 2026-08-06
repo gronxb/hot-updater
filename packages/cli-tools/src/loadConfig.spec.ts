@@ -48,6 +48,7 @@ describe("loadConfig", () => {
     expect(config.platform.android.stringResourcePaths).toEqual([]);
     expect(config.platform.ios.infoPlistPaths).toEqual([]);
     expect(config.console.port).toBe(1422);
+    expect(typeof config.database).toBe("object");
   });
 
   it("allows disabling the local CLI cache", async () => {
