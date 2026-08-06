@@ -1,5 +1,3 @@
-import path from "node:path";
-
 import mime from "mime";
 
 /**
@@ -70,11 +68,14 @@ export function getCompressionMimeType(filename: string): string | undefined {
  * @returns Content-Type string (never undefined, falls back to application/octet-stream)
  */
 export function getContentType(bundlePath: string): string {
-  const filename = path.basename(bundlePath);
+  const filename = bundlePath
+    .replace(/[\\/]+$/, "")
+    .split(/[\\/]/)
+    .pop();
 
   return (
     mime.getType(bundlePath) ??
-    getCompressionMimeType(filename) ??
+    getCompressionMimeType(filename ?? "") ??
     "application/octet-stream"
   );
 }

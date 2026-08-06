@@ -1687,8 +1687,8 @@ importers:
         version: 2.6.1
     devDependencies:
       '@bacons/xcode':
-        specifier: 1.0.0-alpha.24
-        version: 1.0.0-alpha.24
+        specifier: 1.0.0-alpha.33
+        version: 1.0.0-alpha.33
       '@commander-js/extra-typings':
         specifier: ^14.0.0
         version: 14.0.0(commander@14.0.3)
@@ -3506,8 +3506,8 @@ packages:
     resolution: {integrity: sha512-mOm5ZrYmphGfqVWoH5YYMTITb3cDXsFgmvFlvkvWDMsR9X8RFnt7a0Wb6yNIdoFsiMO9WjYLq+U/FMtqIYAF8Q==}
     engines: {node: ^20.19.0 || >=22.12.0}
 
-  '@bacons/xcode@1.0.0-alpha.24':
-    resolution: {integrity: sha512-RaYUNsGBJVp0t2vgXaT4L668WIvbhtdl1JFJHedPkebIPR6h/+E2Kq32O49t+8f4LUPW9UF4CfXBrDc+XdXUUQ==}
+  '@bacons/xcode@1.0.0-alpha.33':
+    resolution: {integrity: sha512-+vwXK3mLnW8NOYSHNpCa7sAYR7qWmIHM3xBbBkLailN81F1CdSVsJBH1TAnTMHb+rDEh5ehsZ8AQRNVxvhWR/Q==}
 
   '@base-ui/react@1.5.0':
     resolution: {integrity: sha512-z1gSAlced1yY+iM+mHDEtIkD8UI3Ebs52MuBPxvV6f5hRutk+xvCH/wuB7hDqDzK9JG5FoMz5nhrqtSs1wjt1A==}
@@ -22378,7 +22378,7 @@ snapshots:
       '@babel/helper-string-parser': 8.0.0-rc.6
       '@babel/helper-validator-identifier': 8.0.0-rc.3
 
-  '@bacons/xcode@1.0.0-alpha.24':
+  '@bacons/xcode@1.0.0-alpha.33':
     dependencies:
       '@expo/plist': 0.0.18
       debug: 4.4.3
@@ -24908,7 +24908,7 @@ snapshots:
 
   '@kwsites/file-exists@1.1.1':
     dependencies:
-      debug: 4.4.1
+      debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
 
@@ -40783,7 +40783,7 @@ snapshots:
   proxy-agent@6.4.0:
     dependencies:
       agent-base: 7.1.4
-      debug: 4.4.1
+      debug: 4.4.3
       http-proxy-agent: 7.0.2
       https-proxy-agent: 7.0.6
       lru-cache: 7.18.3
@@ -42425,7 +42425,7 @@ snapshots:
     dependencies:
       '@kwsites/file-exists': 1.1.1
       '@kwsites/promise-deferred': 1.1.1
-      debug: 4.4.1
+      debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
 

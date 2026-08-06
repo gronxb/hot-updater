@@ -10,6 +10,14 @@
   `distinctOn`, and every requested order clause, including an explicit `id`
   tie-break.
 
+## 0.35.11
+
+### Patch Changes
+
+ - Updated dependencies [1a3a621]
+   - @hot-updater/plugin-core@0.35.11
+   - @hot-updater/core@0.35.11
+
 ## 0.35.10
 
 ### Patch Changes

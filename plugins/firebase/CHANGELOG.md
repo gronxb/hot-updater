@@ -10,6 +10,16 @@
   the legacy fields, and record database adapter version 2. This migration is
   forward-only; back up Firestore before upgrading.
 
+## 0.35.11
+
+### Patch Changes
+
+- Updated dependencies [1a3a621]
+  - @hot-updater/plugin-core@0.35.11
+  - @hot-updater/cli-tools@0.35.11
+  - @hot-updater/server@0.35.11
+  - @hot-updater/core@0.35.11
+
 ## 0.35.10
 
 ### Patch Changes
