@@ -64,7 +64,7 @@
     "jszip": "^3.10.1",
     "picocolors": "1.1.1",
     "tar": "^7.5.16",
-    "verkit": "0.3.1",
+    "verkit": "0.3.2",
     "workspace-tools": "^0.41.7"
   },
   "inlinedDependencies": {
@@ -183,7 +183,7 @@
     ],
     "util-deprecate": "1.0.2",
     "validate-npm-package-license": "3.0.4",
-    "verkit": "0.3.1",
+    "verkit": "0.3.2",
     "which": "2.0.2",
     "widest-line": "5.0.0",
     "workspace-tools": "0.36.4",
