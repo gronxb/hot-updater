@@ -1,11 +1,15 @@
+import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
+import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
 import {
   createDatabasePlugin,
+  type DatabasePlugin,
   type DatabasePluginImplementation,
   resolveUpdateInfoFromBundles,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import admin from "firebase-admin";
 
+import { createFirebaseAnalyticsPersistence } from "./firebaseAnalyticsPersistence";
 import {
   parseFirebaseBundleRow,
   parseFirebasePatchRow,
@@ -40,13 +44,16 @@ const exactId = (
     : undefined;
 };
 
-export const firebaseDatabase = (config: admin.AppOptions) =>
-  createDatabasePlugin({
+export function firebaseDatabase(config: admin.AppOptions): DatabasePlugin {
+  const getFirestore = (): admin.firestore.Firestore => {
+    const existingApp = admin.apps.find((app) => app !== null);
+    const app = existingApp ?? admin.initializeApp(config);
+    return admin.firestore(app);
+  };
+  const database = createDatabasePlugin({
     name: "firebaseDatabase",
     plugin: (): DatabasePluginImplementation => {
-      const existingApp = admin.apps.find((app) => app !== null);
-      const app = existingApp ?? admin.initializeApp(config);
-      const db = admin.firestore(app);
+      const db = getFirestore();
       const collections = createFirebaseDatabaseCollections(db);
       let migration: Promise<void> | undefined;
 
@@ -151,3 +158,11 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
       };
     },
   });
+  return attachAnalyticsProviderCapability(database, () =>
+    createBoundedAnalyticsProvider(
+      createFirebaseAnalyticsPersistence(
+        getFirestore().collection("bundle_events"),
+      ),
+    ),
+  );
+}
