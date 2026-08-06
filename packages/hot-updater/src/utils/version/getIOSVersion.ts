@@ -33,8 +33,13 @@ const getIOSVersionFromInfoPlist = async (): Promise<string | null> => {
 
     const fileBuffer = await fs.readFile(plistPath);
     const data = parsePlist(fileBuffer);
+    const appVersion = data["CFBundleShortVersionString"];
 
-    return data["CFBundleShortVersionString"] ?? null;
+    if (typeof appVersion !== "string" || appVersion.includes("$(")) {
+      return null;
+    }
+
+    return appVersion;
   } catch {
     return null;
   }

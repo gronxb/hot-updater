@@ -48,6 +48,28 @@ describe("prompts", () => {
     expect(captured.read()).not.toContain(CURSOR_SHOW);
   });
 
+  it("renders the task error instead of a generic process-exit message", async () => {
+    vi.stubEnv("CI", "true");
+    const captured = captureOutput();
+
+    await expect(
+      p.tasks(
+        [
+          {
+            title: "Check IAM policy",
+            task: () => {
+              throw new Error("The caller does not have permission");
+            },
+          },
+        ],
+        { output: captured.output },
+      ),
+    ).rejects.toThrow("The caller does not have permission");
+
+    expect(captured.read()).toContain("The caller does not have permission");
+    expect(captured.read()).not.toContain("Something went wrong");
+  });
+
   it("omits transient progress messages when output is not a TTY", () => {
     // Given
     vi.useFakeTimers();

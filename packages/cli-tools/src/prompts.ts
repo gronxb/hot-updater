@@ -74,8 +74,13 @@ const tasks: typeof clack.tasks = async (taskList, options) => {
     if (task.enabled === false) continue;
     const taskSpinner = spinner(options);
     taskSpinner.start(task.title);
-    const result = await task.task(taskSpinner.message);
-    taskSpinner.stop(result || task.title);
+    try {
+      const result = await task.task(taskSpinner.message);
+      taskSpinner.stop(result || task.title);
+    } catch (error) {
+      taskSpinner.error(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
   }
 };
 

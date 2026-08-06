@@ -1,5 +1,43 @@
 # @hot-updater/cli-tools
 
+## 0.35.11
+
+### Patch Changes
+
+- Updated dependencies [1a3a621]
+  - @hot-updater/plugin-core@0.35.11
+  - @hot-updater/core@0.35.11
+
+## 0.35.10
+
+### Patch Changes
+
+- ce8d254: feat: support platform-scoped `fingerprint.extraSources`
+
+  `fingerprint.extraSources` now accepts `{ ios?: string[], android?: string[] }`
+  in addition to `string[]`. An array keeps the existing behavior (shared by both
+  platforms); the object form only feeds the fingerprint of the platform it is
+  scoped to, so an iOS-only native input no longer moves the Android fingerprint
+  (and vice versa).
+
+  The default config no longer sets `extraSources: []`, which the config deep
+  merge would otherwise use to clobber a user-supplied object.
+
+- Updated dependencies [ce8d254]
+  - @hot-updater/plugin-core@0.35.10
+  - @hot-updater/core@0.35.10
+
+## 0.35.9
+
+### Patch Changes
+
+- 8688b1a: chore: migrate to TypeScript 7 and OXC
+- f9bb26d: Declare init inputs in each provider package through a shared contract, ask
+  once before saving credential inputs, and support prompt-free infrastructure
+  reconciliation with `init --env-file .env.hotupdater`.
+  - @hot-updater/core@0.35.9
+  - @hot-updater/plugin-core@0.35.9
+
 ## 0.35.8
 
 ### Patch Changes

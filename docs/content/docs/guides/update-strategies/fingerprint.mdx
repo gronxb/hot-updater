@@ -47,6 +47,24 @@ export default defineConfig({
 });
 ```
 
+An array is shared: every entry is hashed into both the iOS and the Android
+fingerprint. When the native inputs differ per platform, use the object form so
+that an iOS-only change does not move the Android fingerprint (and vice versa):
+
+```typescript title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  updateStrategy: "fingerprint",
+  fingerprint: {
+    extraSources: {
+      ios: ["ios/.env"],
+      android: ["android/local.properties"],
+    },
+  },
+});
+```
+
 ## Workflow
 
 ### Before App Store Submission

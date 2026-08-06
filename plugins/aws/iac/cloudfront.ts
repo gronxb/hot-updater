@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { CloudFront } from "@aws-sdk/client-cloudfront";
-import { p } from "@hot-updater/cli-tools";
+import { makeEnv, MissingInitInputsError, p } from "@hot-updater/cli-tools";
 import { delay } from "es-toolkit";
 
 import {
@@ -10,8 +10,16 @@ import {
   buildDistributionConfigOverrides,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
-import { findInPaginatedCloudFrontList } from "./cloudfrontPagination";
+import {
+  collectPaginatedCloudFrontList,
+  findInPaginatedCloudFrontList,
+} from "./cloudfrontPagination";
 import type { AwsRegion } from "./regionLocationMap";
+
+export type CloudFrontDistribution = {
+  readonly DomainName: string;
+  readonly Id: string;
+};
 
 export class CloudFrontManager {
   private region: AwsRegion;
@@ -83,7 +91,7 @@ export class CloudFrontManager {
       credentials: this.credentials,
     });
     const listKgResp = await cloudfrontClient.listKeyGroups({});
-    const existingKeyGroup = listKgResp.KeyGroupList?.Items?.find((kg: any) =>
+    const existingKeyGroup = listKgResp.KeyGroupList?.Items?.find((kg) =>
       kg.KeyGroup?.KeyGroupConfig?.Name?.startsWith(
         `HotUpdaterKeyGroup-${publicKeyHash}`,
       ),
@@ -133,11 +141,22 @@ export class CloudFrontManager {
     keyGroupId: string;
     bucketName: string;
     functionArn: string;
+    distribution?: CloudFrontDistribution | null;
+    distributionId?: string;
+    nonInteractive?: boolean;
   }): Promise<{ distributionId: string; distributionDomain: string }> {
     const cloudfrontClient = new CloudFront({
       region: this.region,
       credentials: this.credentials,
     });
+    const selectedDistribution =
+      options.distribution === undefined
+        ? await this.selectDistribution({
+            bucketName: options.bucketName,
+            distributionId: options.distributionId,
+            nonInteractive: options.nonInteractive,
+          })
+        : options.distribution;
     let oacId: string;
     const accountId = options.functionArn.split(":")[4];
     if (!accountId) {
@@ -184,37 +203,6 @@ export class CloudFrontManager {
       );
     }
 
-    const matchingDistributions: Array<{ Id: string; DomainName: string }> = [];
-    try {
-      const listResp = await cloudfrontClient.listDistributions({});
-      const items = listResp.DistributionList?.Items || [];
-      for (const dist of items) {
-        const origins = dist.Origins?.Items || [];
-        if (origins.some((origin) => origin.DomainName === bucketDomain)) {
-          matchingDistributions.push({
-            Id: dist.Id!,
-            DomainName: dist.DomainName!,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Error listing CloudFront distributions:", error);
-    }
-    let selectedDistribution: { Id: string; DomainName: string } | null = null;
-    if (matchingDistributions.length === 1) {
-      selectedDistribution = matchingDistributions[0];
-    } else if (matchingDistributions.length > 1) {
-      const selectedDistributionStr = await p.select({
-        message:
-          "Multiple CloudFront distributions found. Please select one to use:",
-        options: matchingDistributions.map((dist) => ({
-          value: JSON.stringify(dist),
-          label: `${dist.Id} (${dist.DomainName})`,
-        })),
-      });
-      if (p.isCancel(selectedDistributionStr)) process.exit(0);
-      selectedDistribution = JSON.parse(selectedDistributionStr);
-    }
     const newOverrides = buildDistributionConfigOverrides({
       bucketName: options.bucketName,
       bucketDomain,
@@ -225,6 +213,9 @@ export class CloudFrontManager {
     });
 
     if (selectedDistribution) {
+      await makeEnv({
+        HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: selectedDistribution.Id,
+      });
       p.log.success(
         `Existing CloudFront distribution selected. Distribution ID: ${selectedDistribution.Id}.`,
       );
@@ -289,6 +280,9 @@ export class CloudFrontManager {
       }
       const distributionId = distResp.Distribution.Id;
       const distributionDomain = distResp.Distribution.DomainName;
+      await makeEnv({
+        HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID: distributionId,
+      });
       p.log.success(
         `Created new CloudFront distribution. Distribution ID: ${distributionId}`,
       );
@@ -327,5 +321,92 @@ export class CloudFrontManager {
       );
       throw error;
     }
+  }
+
+  async selectDistribution({
+    bucketName,
+    distributionId,
+    nonInteractive,
+  }: {
+    readonly bucketName: string;
+    readonly distributionId?: string;
+    readonly nonInteractive?: boolean;
+  }): Promise<CloudFrontDistribution | null> {
+    const bucketDomain = `${bucketName}.s3.${this.region}.amazonaws.com`;
+    const cloudfrontClient = new CloudFront({
+      region: this.region,
+      credentials: this.credentials,
+    });
+    const distributions = await collectPaginatedCloudFrontList({
+      listPage: async (marker) => {
+        const options = marker ? { Marker: marker } : {};
+        const response = await cloudfrontClient.listDistributions(options);
+        return {
+          items: response.DistributionList?.Items ?? [],
+          nextMarker: response.DistributionList?.NextMarker,
+        };
+      },
+    });
+    const matchingDistributions = distributions.flatMap((distribution) => {
+      const matchesBucket = (distribution.Origins?.Items ?? []).some(
+        (origin) => origin.DomainName === bucketDomain,
+      );
+      return matchesBucket && distribution.Id && distribution.DomainName
+        ? [{ Id: distribution.Id, DomainName: distribution.DomainName }]
+        : [];
+    });
+    const savedDistribution = matchingDistributions.find(
+      (distribution) => distribution.Id === distributionId,
+    );
+    const savedDistributionExists = distributions.some(
+      (distribution) => distribution.Id === distributionId,
+    );
+    if (nonInteractive && savedDistribution) {
+      return savedDistribution;
+    }
+    if (distributionId && !savedDistribution) {
+      if (matchingDistributions.length === 0 && !savedDistributionExists) {
+        p.log.warn(
+          "Saved CloudFront distribution was not found. A new distribution will be created.",
+        );
+        return null;
+      }
+      if (nonInteractive) {
+        throw new MissingInitInputsError([
+          "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
+        ]);
+      }
+      p.log.warn(
+        "Saved CloudFront distribution was not found. Select a distribution again.",
+      );
+    }
+    if (matchingDistributions.length === 0) {
+      return null;
+    }
+    if (nonInteractive) {
+      if (!distributionId && matchingDistributions.length === 1) {
+        return matchingDistributions[0] ?? null;
+      }
+      throw new MissingInitInputsError([
+        "HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID",
+      ]);
+    }
+
+    const selectedDistributionId = await p.select({
+      initialValue: savedDistribution?.Id ?? matchingDistributions[0]?.Id,
+      message: "Select a CloudFront distribution:",
+      options: matchingDistributions.map((distribution) => ({
+        value: distribution.Id,
+        label: `${distribution.Id} (${distribution.DomainName})`,
+      })),
+    });
+    if (p.isCancel(selectedDistributionId)) {
+      process.exit(0);
+    }
+    return (
+      matchingDistributions.find(
+        (distribution) => distribution.Id === selectedDistributionId,
+      ) ?? null
+    );
   }
 }
