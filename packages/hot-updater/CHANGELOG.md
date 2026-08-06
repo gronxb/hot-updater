@@ -1,5 +1,43 @@
 # hot-updater
 
+## 0.35.11
+
+### Patch Changes
+
+- bfbb823: fix: read the iOS app version from Info.plist before project.pbxproj
+
+  `getNativeAppVersion("ios")` tried the `xcodeproj` parser first and only fell back
+  to `info-plist`. Parsing project.pbxproj is synchronous, so on a large project it
+  blocks the event loop for the whole parse, and `deploy` does this after the bundle
+  has already been uploaded, just to fill in `metadata.app_version`. On a 12.5MB
+  pbxproj that was ~5 minutes locally and ~16 minutes on CI.
+
+  Info.plist is read first now. `CFBundleShortVersionString` is also closer to what
+  the built app actually reports than `MARKETING_VERSION` (#84). The xcodeproj parser
+  is still there as a fallback when Info.plist has no version.
+
+- bfbb823: fix: bump the bundled `@bacons/xcode` to 1.0.0-alpha.33
+
+  alpha.24 was published in December 2024 and still uses the old Chevrotain-based
+  pbxproj parser. alpha.31 picked up the single-pass rewrite from
+  EvanBacon/xcode#37, which is 42x faster on their benchmarks and considerably more
+  than that on large files.
+
+  On a 12.5MB `project.pbxproj`, `XcodeProject.open()` goes from 286s and 1.8GB of
+  peak RSS down to 0.2s and 285MB, returning the same 48,670 objects. The only API
+  used here is `XcodeProject.open().toJSON()` in `getIOSVersion`, which is unchanged
+  between the two versions.
+
+- fceb580: fix: fallback to project.pbxproj when Info.plist contains an unresolved build setting
+- Updated dependencies [1a3a621]
+  - @hot-updater/plugin-core@0.35.11
+  - @hot-updater/android-helper@0.35.11
+  - @hot-updater/apple-helper@0.35.11
+  - @hot-updater/cli-tools@0.35.11
+  - @hot-updater/console@0.35.11
+  - @hot-updater/server@0.35.11
+  - @hot-updater/core@0.35.11
+
 ## 0.35.10
 
 ### Patch Changes
