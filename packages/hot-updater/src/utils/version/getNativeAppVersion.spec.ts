@@ -173,6 +173,40 @@ describe("getNativeAppVersion", () => {
       expect(mockXcodeProjectOpen).not.toHaveBeenCalled();
     });
 
+    it("should fallback to xcodeproj when Info.plist contains an unresolved build setting", async () => {
+      // Arrange
+      const mockXcodeprojPath = "HotUpdaterExample.xcodeproj/project.pbxproj";
+      const mockPlistPath =
+        "/mock/project/root/ios/HotUpdaterExample/Info.plist";
+
+      mockGlobbySync.mockReturnValue([mockXcodeprojPath]);
+      mockFileExist([mockPlistPath]);
+      mockFsReadFile.mockResolvedValue(Buffer.from("mock plist"));
+      mockPlistParse.mockReturnValue({
+        CFBundleShortVersionString: "$(MARKETING_VERSION)",
+      });
+      mockXcodeProjectOpen.mockReturnValue({
+        toJSON: () => ({
+          objects: {
+            "13B07F941A680F5B00A75B9A": {
+              isa: "XCBuildConfiguration",
+              buildSettings: {
+                MARKETING_VERSION: "1.0",
+              },
+              name: "Release",
+            },
+          },
+        }),
+      });
+
+      // Act
+      const result = await getNativeAppVersion("ios");
+
+      // Assert
+      expect(result).toBe("1.0");
+      expect(mockXcodeProjectOpen).toHaveBeenCalledWith(mockXcodeprojPath);
+    });
+
     it("should return null when xcodeproj file does not exist", async () => {
       // Arrange
       mockGlobbySync.mockReturnValue([]); // 파일이 없음
