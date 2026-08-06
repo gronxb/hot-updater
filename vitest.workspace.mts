@@ -16,6 +16,10 @@ const unitInclude = [
   "examples-server/**/*.test.ts",
 ];
 const e2eUnitInclude = ["e2e/**/*.spec.ts", "e2e/**/*.test.ts"];
+const packageConsumerInclude = [
+  "**/packageConsumers.spec.ts",
+  "plugins/runtimePackageConsumers.spec.ts",
+];
 const integrationInclude = [
   "packages/**/*.integration.spec.ts",
   "plugins/**/*.integration.spec.ts",
@@ -35,10 +39,23 @@ export default defineConfig({
           exclude: [
             ...rootExclude,
             "**/*.integration.spec.ts",
+            ...packageConsumerInclude,
             "packages/console/**",
             "packages/bsdiff/tests/runtime/*.manual.*",
           ],
           environment: "node",
+          hookTimeout: 60000,
+          testTimeout: 60000,
+        },
+      }),
+      defineProject({
+        test: {
+          name: "unit:package-consumers",
+          include: packageConsumerInclude,
+          exclude: rootExclude,
+          environment: "node",
+          fileParallelism: false,
+          sequence: { groupOrder: 1 },
           hookTimeout: 60000,
           testTimeout: 60000,
         },
