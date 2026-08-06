@@ -59,7 +59,7 @@
     "jiti": "2.6.1"
   },
   "devDependencies": {
-    "@bacons/xcode": "1.0.0-alpha.24",
+    "@bacons/xcode": "1.0.0-alpha.33",
     "@commander-js/extra-typings": "^14.0.0",
     "@expo/fingerprint": "^0.15.4",
     "@hot-updater/aws": "workspace:*",
@@ -115,7 +115,7 @@
     }
   },
   "inlinedDependencies": {
-    "@bacons/xcode": "1.0.0-alpha.24",
+    "@bacons/xcode": "1.0.0-alpha.33",
     "@commander-js/extra-typings": "14.0.0",
     "@expo/plist": "0.0.18",
     "@nodable/entities": "2.1.1",
