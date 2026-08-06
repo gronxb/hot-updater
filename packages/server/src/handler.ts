@@ -1,71 +1,60 @@
 import type { HotUpdaterContext } from "@hot-updater/plugin-core";
 
+import {
+  type CoreRouteHandlerKey,
+  getCoreRouteDescriptors,
+} from "./coreRouteDescriptors";
 import { createBundleRouteHandlers } from "./handlerBundleRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
-import type {
-  HandlerAPI,
-  HandlerOptions,
-  HandlerRoutes,
-  RouteHandler,
-} from "./handlerTypes";
+import type { HandlerAPI, HandlerOptions, RouteHandler } from "./handlerTypes";
 import { createUpdateRouteHandlers } from "./handlerUpdateRoutes";
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 
 export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handlerTypes";
 
+type Handler<TContext> = (
+  request: Request,
+  context?: HotUpdaterContext<TContext>,
+) => Promise<Response>;
+
+function opaqueHandlerErrorResponse(): Response {
+  return Response.json(
+    { error: "Internal server error" },
+    {
+      headers: { "Cache-Control": "private, no-store" },
+      status: 500,
+    },
+  );
+}
+
 export function createHandler<TContext = unknown>(
   api: HandlerAPI<TContext>,
   options: HandlerOptions = {},
-): (
-  request: Request,
-  context?: HotUpdaterContext<TContext>,
-) => Promise<Response> {
+): Handler<TContext> {
+  return createHandlerWithErrorPolicy(api, options, "legacy");
+}
+
+export function createRuntimeHandler<TContext = unknown>(
+  api: HandlerAPI<TContext>,
+  options: HandlerOptions = {},
+): Handler<TContext> {
+  return createHandlerWithErrorPolicy(api, options, "opaque");
+}
+
+function createHandlerWithErrorPolicy<TContext>(
+  api: HandlerAPI<TContext>,
+  options: HandlerOptions,
+  errorPolicy: "legacy" | "opaque",
+): Handler<TContext> {
   const basePath = options.basePath ?? "/api";
-  const routeOptions = {
-    updateCheck: options.routes?.updateCheck ?? true,
-    bundles: options.routes?.bundles ?? false,
-  } satisfies HandlerRoutes;
-  const router = createRouter<string>();
-  const routeHandlers: Record<string, RouteHandler<TContext>> = {
+  const router = createRouter<CoreRouteHandlerKey>();
+  const routeHandlers: Record<CoreRouteHandlerKey, RouteHandler<TContext>> = {
     ...createUpdateRouteHandlers<TContext>(),
     ...createBundleRouteHandlers<TContext>(),
   };
 
-  addRoute(router, "GET", "/version", "version");
-  if (routeOptions.updateCheck) {
-    addRoute(
-      router,
-      "GET",
-      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId",
-      "fingerprintUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId/:cohort",
-      "fingerprintUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId",
-      "appVersionUpdateWithCohort",
-    );
-    addRoute(
-      router,
-      "GET",
-      "/app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId/:cohort",
-      "appVersionUpdateWithCohort",
-    );
-  }
-
-  if (routeOptions.bundles) {
-    addRoute(router, "GET", "/api/bundles/channels", "getChannels");
-    addRoute(router, "GET", "/api/bundles/:id", "getBundle");
-    addRoute(router, "GET", "/api/bundles", "getBundles");
-    addRoute(router, "POST", "/api/bundles", "createBundles");
-    addRoute(router, "PATCH", "/api/bundles/:id", "updateBundle");
-    addRoute(router, "DELETE", "/api/bundles/:id", "deleteBundle");
+  for (const route of getCoreRouteDescriptors(options.routes)) {
+    addRoute(router, route.method, route.path, route.handlerKey);
   }
 
   return async (request, context): Promise<Response> => {
@@ -74,7 +63,11 @@ export function createHandler<TContext = unknown>(
       const routePath = path.startsWith(basePath)
         ? path.slice(basePath.length)
         : path;
-      const match = findRoute(router, request.method, routePath);
+      const match =
+        findRoute(router, request.method, routePath) ??
+        (routePath === path
+          ? undefined
+          : findRoute(router, request.method, path));
       if (!match) {
         return new Response(JSON.stringify({ error: "Not found" }), {
           status: 404,
@@ -83,6 +76,7 @@ export function createHandler<TContext = unknown>(
       }
       const handler = routeHandlers[match.data];
       if (!handler) {
+        if (errorPolicy === "opaque") return opaqueHandlerErrorResponse();
         return new Response(JSON.stringify({ error: "Handler not found" }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
@@ -95,6 +89,10 @@ export function createHandler<TContext = unknown>(
           status: 400,
           headers: { "Content-Type": "application/json" },
         });
+      }
+      if (errorPolicy === "opaque") {
+        console.error("Hot Updater handler error");
+        return opaqueHandlerErrorResponse();
       }
       console.error("Hot Updater handler error:", error);
       return new Response(

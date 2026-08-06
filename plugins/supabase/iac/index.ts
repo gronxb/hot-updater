@@ -32,6 +32,12 @@ import {
   isSupabaseFunctionName,
   SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
 } from "./init/index";
+import { collectBareImportSpecifiers } from "./packageImports";
+import {
+  assertPathInside,
+  resolveContainedPath,
+  resolveContainedRegularPath,
+} from "./pathBoundary";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 import { getSupabaseCliEnv } from "./supabaseAuthentication";
 import { ensureSupabaseBucketPrivate } from "./supabaseBucketPrivacy";
@@ -60,10 +66,6 @@ const SUPABASE_PROJECT_READY_STATUS = "ACTIVE_HEALTHY";
 const SUPABASE_PROJECT_PROVISIONING_STATUS = "COMING_UP";
 const SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS = 1000;
-const STATIC_IMPORT_SPECIFIER_PATTERN =
-  /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`]+?\s+from\s+)?["']([^"']+)["'];?/gm;
-const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
-  /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
 const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
@@ -148,125 +150,61 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
 
-const resolvePackageExportPath = async (
+type PackageExportTarget =
+  | string
+  | {
+      readonly default?: PackageExportTarget;
+      readonly import?: PackageExportTarget;
+      readonly require?: PackageExportTarget;
+      readonly types?: string;
+    };
+
+type PackageExportName = "." | `./${string}`;
+
+function resolveImportExportTarget(
+  target: PackageExportTarget | undefined,
+): string | undefined {
+  if (typeof target === "string") return target;
+  if (target === undefined) return undefined;
+  return (
+    resolveImportExportTarget(target.import) ??
+    resolveImportExportTarget(target.default) ??
+    resolveImportExportTarget(target.require)
+  );
+}
+
+const resolvePackageExport = async (
   packageName: string,
-  exportName: "." | "./runtime" | "./edge",
+  exportName: PackageExportName,
 ) => {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageJsonPath = await fs.realpath(
+    require.resolve(`${packageName}/package.json`),
+  );
+  const packageRoot = path.dirname(packageJsonPath);
   const packageJson = JSON.parse(
     await fs.readFile(packageJsonPath, "utf-8"),
   ) as {
-    exports?: Record<
-      string,
-      | string
-      | {
-          import?: string;
-          require?: string;
-          default?: string;
-        }
-    >;
+    exports?: Record<string, PackageExportTarget>;
   };
   const exportTarget = packageJson.exports?.[exportName];
-  const relativePath =
-    typeof exportTarget === "string"
-      ? exportTarget
-      : (exportTarget?.import ??
-        exportTarget?.default ??
-        exportTarget?.require);
+  const relativePath = resolveImportExportTarget(exportTarget);
 
-  if (!relativePath) {
+  if (!relativePath?.startsWith("./")) {
     throw new Error(
       `Could not resolve ${exportName} export for package ${packageName}`,
     );
   }
 
-  return path.resolve(path.dirname(packageJsonPath), relativePath);
+  const exportPath = await resolveContainedRegularPath(
+    packageRoot,
+    path.resolve(packageRoot, relativePath),
+  );
+  return { exportPath, packageRoot };
 };
 
 const toImportMapPath = (fromDir: string, toPath: string) => {
   const relativePath = path.relative(fromDir, toPath).split(path.sep).join("/");
   return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
-};
-
-const pathExists = async (targetPath: string) => {
-  try {
-    await fs.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const resolveLocalModulePath = async (fromFile: string, specifier: string) => {
-  const basePath = path.resolve(path.dirname(fromFile), specifier);
-  const candidates = [
-    basePath,
-    `${basePath}.mjs`,
-    `${basePath}.js`,
-    path.join(basePath, "index.mjs"),
-    path.join(basePath, "index.js"),
-  ];
-
-  for (const candidate of candidates) {
-    if (await pathExists(candidate)) {
-      return candidate;
-    }
-  }
-
-  return null;
-};
-
-const collectBareImportSpecifiers = async (entryPath: string) => {
-  const filesToVisit = [entryPath];
-  const visitedFiles = new Set<string>();
-  const specifiers = new Set<string>();
-
-  while (filesToVisit.length > 0) {
-    const currentFile = filesToVisit.pop();
-    if (!currentFile || visitedFiles.has(currentFile)) {
-      continue;
-    }
-
-    visitedFiles.add(currentFile);
-    const source = await fs.readFile(currentFile, "utf8");
-
-    const matches = [
-      ...source.matchAll(STATIC_IMPORT_SPECIFIER_PATTERN),
-      ...source.matchAll(DYNAMIC_IMPORT_SPECIFIER_PATTERN),
-    ];
-
-    for (const match of matches) {
-      const specifier = match[1];
-      if (!specifier) {
-        continue;
-      }
-
-      if (specifier.startsWith("./") || specifier.startsWith("../")) {
-        const resolvedPath = await resolveLocalModulePath(
-          currentFile,
-          specifier,
-        );
-        if (resolvedPath) {
-          filesToVisit.push(resolvedPath);
-        }
-        continue;
-      }
-
-      if (
-        specifier.startsWith("node:") ||
-        specifier.startsWith("npm:") ||
-        specifier.startsWith("jsr:") ||
-        specifier.startsWith("http://") ||
-        specifier.startsWith("https://")
-      ) {
-        continue;
-      }
-
-      specifiers.add(specifier);
-    }
-  }
-
-  return specifiers;
 };
 
 const toVendorDirName = (packageName: string) =>
@@ -279,11 +217,12 @@ const prepareVendoredPackageImport = async ({
 }: {
   targetDir: string;
   packageName: string;
-  exportName: "." | "./runtime" | "./edge";
+  exportName: PackageExportName;
 }) => {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
-  const packageRoot = path.dirname(packageJsonPath);
-  const exportPath = await resolvePackageExportPath(packageName, exportName);
+  const { exportPath, packageRoot } = await resolvePackageExport(
+    packageName,
+    exportName,
+  );
   const relativeExportPath = path
     .relative(packageRoot, exportPath)
     .split(path.sep);
@@ -296,20 +235,33 @@ const prepareVendoredPackageImport = async ({
   }
 
   const vendorDirName = toVendorDirName(packageName);
-  const sourceRootPath = path.join(packageRoot, sourceRootDir);
-  const vendoredRootPath = path.join(
-    targetDir,
-    EDGE_VENDOR_DIR,
-    vendorDirName,
-    sourceRootDir,
+  const sourceRootPath = await resolveContainedRegularPath(
+    packageRoot,
+    path.join(packageRoot, sourceRootDir),
   );
+  const targetRoot = await fs.realpath(targetDir);
+  const vendorBasePath = path.join(targetRoot, EDGE_VENDOR_DIR);
+  await fs.mkdir(vendorBasePath, { recursive: true });
+  const resolvedVendorBasePath = await resolveContainedPath(
+    targetRoot,
+    vendorBasePath,
+  );
+  const vendoredPackagePath = path.join(resolvedVendorBasePath, vendorDirName);
+  assertPathInside(resolvedVendorBasePath, vendoredPackagePath);
+  const vendoredRootPath = path.join(vendoredPackagePath, sourceRootDir);
+  assertPathInside(vendoredPackagePath, vendoredRootPath);
 
-  await fs.rm(path.join(targetDir, EDGE_VENDOR_DIR, vendorDirName), {
+  await fs.rm(vendoredPackagePath, {
     recursive: true,
     force: true,
   });
   await fs.mkdir(path.dirname(vendoredRootPath), { recursive: true });
   await fs.cp(sourceRootPath, vendoredRootPath, {
+    filter: async (source, destination) => {
+      await resolveContainedRegularPath(packageRoot, source);
+      assertPathInside(vendoredPackagePath, path.resolve(destination));
+      return true;
+    },
     recursive: true,
     force: true,
   });
@@ -317,7 +269,7 @@ const prepareVendoredPackageImport = async ({
   const vendoredEntryPath = path.join(vendoredRootPath, ...restPath);
 
   return {
-    importMapPath: toImportMapPath(targetDir, vendoredEntryPath),
+    importMapPath: toImportMapPath(targetRoot, vendoredEntryPath),
     packageRoot,
     sourceEntryPath: exportPath,
   };
@@ -342,7 +294,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
   }: {
     importSpecifier: string;
     packageName: string;
-    exportName: "." | "./runtime" | "./edge";
+    exportName: PackageExportName;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
     if (visitedWorkspacePackages.has(visitKey)) {
@@ -359,6 +311,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     imports[importSpecifier] = vendoredPackage.importMapPath;
 
     const nestedSpecifiers = await collectBareImportSpecifiers(
+      vendoredPackage.packageRoot,
       vendoredPackage.sourceEntryPath,
     );
 
@@ -368,10 +321,13 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       }
 
       if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
+        const [packageScope, packageName, ...subpathSegments] =
+          nestedSpecifier.split("/");
+        const subpath = subpathSegments.join("/");
         await addWorkspacePackage({
           importSpecifier: nestedSpecifier,
-          packageName: nestedSpecifier,
-          exportName: ".",
+          packageName: `${packageScope}/${packageName}`,
+          exportName: subpath.length === 0 ? "." : `./${subpath}`,
         });
         continue;
       }
@@ -651,11 +607,7 @@ const deployEdgeFunction = async (
   }
   const functionsDir = path.resolve(workdir, "supabase", "functions");
   const targetDir = path.resolve(functionsDir, functionName);
-  if (!targetDir.startsWith(`${functionsDir}${path.sep}`)) {
-    throw new Error(
-      "Supabase Edge Function path escaped its output directory.",
-    );
-  }
+  assertPathInside(functionsDir, targetDir);
   await fs.mkdir(targetDir, { recursive: true });
   const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
 

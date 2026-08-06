@@ -23,6 +23,7 @@ export default defineConfig([
         "@hot-updater/core",
         "@hot-updater/js",
         "@hot-updater/plugin-core",
+        "@hot-updater/plugin-core/internal/capabilities",
         "@hot-updater/server",
       ],
     },

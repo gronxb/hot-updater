@@ -830,6 +830,26 @@ describe("Supabase database password failures", () => {
 });
 
 describe("resolveEdgeFunctionDenoConfig", () => {
+  it("rejects a vendor directory symlink that escapes the target", async () => {
+    const targetDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-supabase-edge-"),
+    );
+    const outsideDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-supabase-outside-"),
+    );
+    try {
+      await fs.symlink(outsideDir, path.join(targetDir, "_hot-updater"));
+
+      await expect(resolveEdgeFunctionDenoConfig(targetDir)).rejects.toThrow(
+        "escapes its allowed root",
+      );
+      await expect(fs.readdir(outsideDir)).resolves.toEqual([]);
+    } finally {
+      await fs.rm(targetDir, { recursive: true, force: true });
+      await fs.rm(outsideDir, { recursive: true, force: true });
+    }
+  });
+
   it("vendors package dist files into the edge function directory", async () => {
     const targetDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-supabase-edge-"),
@@ -846,6 +866,8 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         "@hot-updater/js": "./_hot-updater/hot-updater-js/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
+        "@hot-updater/plugin-core/internal/capabilities":
+          "./_hot-updater/hot-updater-plugin-core/dist/internal/capabilities.mjs",
         "@supabase/supabase-js": `npm:@supabase/supabase-js@${resolvePackageVersion(
           "@supabase/supabase-js",
           {
