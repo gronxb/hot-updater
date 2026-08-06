@@ -1,4 +1,7 @@
+import { analytics } from "@hot-updater/analytics";
+import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
+import { env } from "cloudflare:workers";
 import { Hono } from "hono";
 
 import {
@@ -13,6 +16,7 @@ export type CloudflareWorkerEnv = {
     prepare: D1Database["prepare"];
   };
   BUCKET: R2Bucket;
+  API_KEY_SHA256: string;
   JWT_SECRET: string;
 };
 
@@ -34,6 +38,10 @@ const resolveRequestOrigin = (context?: WorkerContext) => {
 
 const hotUpdater = createHotUpdater<WorkerContext>({
   database: d1Database(),
+  plugins: [
+    managedBetterAuthPlugin({ apiKeySha256: env.API_KEY_SHA256 }),
+    analytics(),
+  ],
   storages: [
     r2Storage<WorkerContext>({
       publicBaseUrl: resolveRequestOrigin,

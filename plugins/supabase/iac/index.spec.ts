@@ -5,46 +5,78 @@ import path from "node:path";
 import { resolvePackageVersion } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCli, mockExeca } = vi.hoisted(() => ({
-  mockCli: {
-    p: {
-      log: {
-        error: vi.fn(),
-        info: vi.fn(),
-        success: vi.fn(),
-        warn: vi.fn(),
-      },
-      confirm: vi.fn(),
-      isCancel: vi.fn(() => false),
-      select: vi.fn(),
-      spinner: vi.fn(() => ({
-        start: vi.fn(),
-        stop: vi.fn(),
-      })),
-      tasks: vi.fn(
-        async (
-          tasks: {
-            task: (message: (value: string) => void) => Promise<unknown>;
-          }[],
-        ) => {
-          for (const task of tasks) {
-            await task.task(vi.fn());
-          }
+const {
+  mockCli,
+  mockCliTools,
+  mockExeca,
+  mockProvisionManagedBetterAuthApiKey,
+  mockSupabaseApi,
+  mockSupabaseApiResult,
+} = vi.hoisted(() => {
+  const supabaseApiResult = {
+    createBucket: vi.fn(),
+    listBuckets: vi.fn(),
+    updateBucket: vi.fn(),
+  };
+
+  return {
+    mockCli: {
+      p: {
+        log: {
+          error: vi.fn(),
+          info: vi.fn(),
+          message: vi.fn(),
+          success: vi.fn(),
+          warn: vi.fn(),
         },
-      ),
+        confirm: vi.fn(),
+        isCancel: vi.fn(() => false),
+        note: vi.fn(),
+        select: vi.fn(),
+        spinner: vi.fn(() => ({
+          start: vi.fn(),
+          stop: vi.fn(),
+        })),
+        tasks: vi.fn(
+          async (
+            tasks: {
+              task: (message: (value: string) => void) => Promise<unknown>;
+            }[],
+          ) => {
+            for (const task of tasks) {
+              await task.task(vi.fn());
+            }
+          },
+        ),
+      },
     },
-  },
-  mockExeca: vi.fn(),
-}));
+    mockCliTools: {
+      confirmInitInputPersistence: vi.fn(),
+      copyDirToTmp: vi.fn(),
+      makeEnv: vi.fn(),
+      readHotUpdaterInitEnv: vi.fn(),
+      writeHotUpdaterConfig: vi.fn(),
+    },
+    mockExeca: vi.fn(),
+    mockProvisionManagedBetterAuthApiKey: vi.fn(),
+    mockSupabaseApi: vi.fn(() => supabaseApiResult),
+    mockSupabaseApiResult: supabaseApiResult,
+  };
+});
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
   return {
     ...actual,
+    ...mockCliTools,
     p: mockCli.p,
   };
 });
+
+vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
+  provisionManagedBetterAuthApiKey: mockProvisionManagedBetterAuthApiKey,
+}));
 
 vi.mock("execa", async (importOriginal) => {
   const actual = await importOriginal<typeof import("execa")>();
@@ -54,11 +86,16 @@ vi.mock("execa", async (importOriginal) => {
   };
 });
 
+vi.mock("./supabaseApi", () => ({
+  supabaseApi: mockSupabaseApi,
+}));
+
 import {
   createSelectedBucket,
   getSupabaseProjectAccess,
   getLegacySupabaseConfigReference,
   resolveEdgeFunctionDenoConfig,
+  runInit,
   selectBucket,
   selectProject,
   waitForSupabaseProjectReady,
@@ -829,6 +866,180 @@ describe("Supabase database password failures", () => {
   });
 });
 
+describe("Supabase managed deployment", () => {
+  const provisionedApiKeySha256 = "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo";
+
+  const configureRunInit = async (
+    options: { readonly failDatabasePush?: boolean } = {},
+  ) => {
+    const events: string[] = [];
+    const tmpDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-supabase-init-"),
+    );
+    await fs.mkdir(path.join(tmpDir, "supabase", "migrations"), {
+      recursive: true,
+    });
+    await fs.mkdir(path.join(tmpDir, "supabase", "edge-functions"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(tmpDir, "supabase", "migrations", "0001_init.sql"),
+      "SELECT '%%BUCKET_NAME%%';\n",
+    );
+    await fs.writeFile(
+      path.join(tmpDir, "supabase", "edge-functions", "index.ts"),
+      "export default { digest: HotUpdater.API_KEY_SHA256, name: HotUpdater.FUNCTION_NAME };\n",
+    );
+
+    const inputEnv = {
+      HOT_UPDATER_SUPABASE_BUCKET_NAME: "bundles",
+      HOT_UPDATER_SUPABASE_DB_PASSWORD: "database-password",
+      HOT_UPDATER_SUPABASE_FUNCTION_NAME: "update-server",
+      HOT_UPDATER_SUPABASE_PROJECT_ID: "project-ref",
+      SUPABASE_ACCESS_TOKEN: "access-token",
+    };
+    mockCliTools.readHotUpdaterInitEnv.mockResolvedValue({
+      env: inputEnv,
+      inputEnv,
+      managedEnv: {},
+    });
+    mockCliTools.confirmInitInputPersistence.mockResolvedValue(false);
+    mockCliTools.makeEnv.mockResolvedValue(".env.hotupdater");
+    const removeTmpDir = vi.fn();
+    mockCliTools.copyDirToTmp.mockResolvedValue({ tmpDir, removeTmpDir });
+    mockCliTools.writeHotUpdaterConfig.mockResolvedValue({
+      path: "hot-updater.config.ts",
+      status: "created",
+    });
+    mockProvisionManagedBetterAuthApiKey.mockImplementation(async () => {
+      events.push("provision-api-key");
+      return {
+        apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        sha256: provisionedApiKeySha256,
+      };
+    });
+    mockSupabaseApiResult.listBuckets.mockResolvedValue([
+      {
+        createdAt: "2026-08-06T00:00:00.000Z",
+        id: "bundles-id",
+        isPublic: false,
+        name: "bundles",
+      },
+    ]);
+    mockExeca.mockImplementation(
+      async (_command: string, args: readonly string[]) => {
+        if (args.includes("projects") && args.includes("list")) {
+          return {
+            stdout: JSON.stringify([
+              {
+                id: "project-ref",
+                name: "Hot Updater",
+                region: "ap-northeast-2",
+              },
+            ]),
+          };
+        }
+        if (args.includes("api-keys")) {
+          return {
+            stdout: JSON.stringify([
+              { api_key: "service-role-key", name: "service_role" },
+            ]),
+          };
+        }
+        if (args.includes("link")) {
+          events.push("link-project");
+          return { stdout: "linked" };
+        }
+        if (args.includes("db") && args.includes("push")) {
+          events.push("push-database");
+          if (options.failDatabasePush) {
+            throw new Error("database push failed");
+          }
+          return { stdout: "pushed" };
+        }
+        if (args.includes("functions") && args.includes("deploy")) {
+          events.push("deploy-edge-function");
+          return { stdout: "deployed" };
+        }
+        throw new Error(`Unexpected Supabase command: ${args.join(" ")}`);
+      },
+    );
+
+    return { events, removeTmpDir, tmpDir };
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("provisions auth before database migration and runtime deployment", async () => {
+    const { events, removeTmpDir, tmpDir } = await configureRunInit();
+
+    try {
+      await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+      expect(events).toEqual([
+        "provision-api-key",
+        "link-project",
+        "push-database",
+        "deploy-edge-function",
+      ]);
+      expect(removeTmpDir).toHaveBeenCalledOnce();
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("injects the provisioned auth digest into the edge function", async () => {
+    const { tmpDir } = await configureRunInit();
+
+    try {
+      await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+      await expect(
+        fs.readFile(
+          path.join(
+            tmpDir,
+            "supabase",
+            "functions",
+            "update-server",
+            "index.ts",
+          ),
+          "utf8",
+        ),
+      ).resolves.toContain(provisionedApiKeySha256);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not deploy the runtime when database migration fails", async () => {
+    const { events, tmpDir } = await configureRunInit({
+      failDatabasePush: true,
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expectExit();
+
+    try {
+      await expect(
+        runInit({ build: "bare", envFile: ".env.hotupdater" }),
+      ).rejects.toThrow("process.exit(1)");
+
+      expect(events).toEqual([
+        "provision-api-key",
+        "link-project",
+        "push-database",
+      ]);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("resolveEdgeFunctionDenoConfig", () => {
   it("rejects a vendor directory symlink that escapes the target", async () => {
     const targetDir = await fs.mkdtemp(
@@ -858,12 +1069,22 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
+        "@better-auth/api-key": `npm:@better-auth/api-key@${resolvePackageVersion(
+          "@better-auth/api-key",
+          { searchFrom: path.resolve("packages/better-auth") },
+        )}`,
+        "@hot-updater/analytics":
+          "./_hot-updater/hot-updater-analytics/dist/index.mjs",
         "@hot-updater/analytics/internal/provider-capability":
           "./_hot-updater/hot-updater-analytics/dist/internal/provider-capability.mjs",
         "@hot-updater/analytics/provider":
           "./_hot-updater/hot-updater-analytics/dist/provider/index.mjs",
+        "@hot-updater/better-auth/managed":
+          "./_hot-updater/hot-updater-better-auth/dist/managed.mjs",
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
+        "@hot-updater/server/internal/first-party-plugin":
+          "./_hot-updater/hot-updater-server/dist/internal/first-party-plugin.mjs",
         "@hot-updater/supabase":
           "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
         "@hot-updater/core": "./_hot-updater/hot-updater-core/dist/index.mjs",
@@ -878,6 +1099,13 @@ describe("resolveEdgeFunctionDenoConfig", () => {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
+        "better-auth": `npm:better-auth@${resolvePackageVersion("better-auth", {
+          searchFrom: path.resolve("packages/better-auth"),
+        })}`,
+        "better-auth/adapters/memory": `npm:better-auth@${resolvePackageVersion(
+          "better-auth",
+          { searchFrom: path.resolve("packages/better-auth") },
+        )}/adapters/memory`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,

@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import { createRequire } from "node:module";
 import path from "path";
 
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   type BuildType,
   ConfigBuilder,
@@ -279,8 +280,12 @@ const resolveBareSpecifierImportTarget = async (
   specifier: string,
   searchFrom: string,
 ) => {
-  const version = resolvePackageVersion(specifier, { searchFrom });
-  return `npm:${specifier}@${version}`;
+  const segments = specifier.split("/");
+  const packageSegmentCount = specifier.startsWith("@") ? 2 : 1;
+  const packageName = segments.slice(0, packageSegmentCount).join("/");
+  const subpath = segments.slice(packageSegmentCount).join("/");
+  const version = resolvePackageVersion(packageName, { searchFrom });
+  return `npm:${packageName}@${version}${subpath ? `/${subpath}` : ""}`;
 };
 
 const buildEdgeFunctionImports = async (targetDir: string) => {
@@ -339,6 +344,16 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     }
   };
 
+  await addWorkspacePackage({
+    importSpecifier: "@hot-updater/analytics",
+    packageName: "@hot-updater/analytics",
+    exportName: ".",
+  });
+  await addWorkspacePackage({
+    importSpecifier: "@hot-updater/better-auth/managed",
+    packageName: "@hot-updater/better-auth",
+    exportName: "./managed",
+  });
   await addWorkspacePackage({
     importSpecifier: "@hot-updater/server",
     packageName: "@hot-updater/server",
@@ -595,10 +610,12 @@ const deployEdgeFunction = async (
   workdir: string,
   projectId: string,
   functionName: string,
+  apiKeySha256: string,
 ) => {
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
+    API_KEY_SHA256: apiKeySha256,
     FUNCTION_NAME: functionName,
   });
 
@@ -923,6 +940,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     [SUPABASE_INIT_PROVIDER.inputs.bucketName.envKey]: bucket.name,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
+  const { sha256: apiKeySha256 } = await provisionManagedBetterAuthApiKey();
   const scaffoldLibPath = path.dirname(
     path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
   );
@@ -954,7 +972,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   await pushDB(tmpDir, { accessToken, dbPassword });
-  await deployEdgeFunction(accessToken, tmpDir, project.id, functionName);
+  await deployEdgeFunction(
+    accessToken,
+    tmpDir,
+    project.id,
+    functionName,
+    apiKeySha256,
+  );
 
   await removeTmpDir();
 

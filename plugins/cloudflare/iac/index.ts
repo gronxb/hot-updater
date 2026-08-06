@@ -2,6 +2,7 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   ConfigBuilder,
   confirmInitInputPersistence,
@@ -21,6 +22,7 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import { migrateD1Analytics } from "@hot-updater/cloudflare";
 import { Cloudflare } from "cloudflare";
 
 import { createWrangler } from "../src/utils/createWrangler";
@@ -93,6 +95,8 @@ const deployWorker = async (
   apiToken: string,
   accountId: string,
   {
+    apiKeySha256,
+    analyticsApiToken,
     credentialSource,
     d1DatabaseId,
     d1DatabaseName,
@@ -100,6 +104,8 @@ const deployWorker = async (
     r2BucketName,
     workerName,
   }: {
+    apiKeySha256: string;
+    analyticsApiToken: string;
     credentialSource: CloudflareCredentialSource;
     d1DatabaseId: string;
     d1DatabaseName: string;
@@ -142,6 +148,7 @@ const deployWorker = async (
     const jwtSecret = crypto.randomBytes(32).toString("hex");
 
     wranglerConfig.vars = {
+      API_KEY_SHA256: apiKeySha256,
       JWT_SECRET: jwtSecret,
     };
 
@@ -174,6 +181,12 @@ const deployWorker = async (
     }
 
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
+
+    await migrateD1Analytics({
+      accountId,
+      cloudflareApiToken: analyticsApiToken,
+      databaseId: d1DatabaseId,
+    });
 
     await wrangler("deploy", "--name", workerName);
     return workerName;
@@ -641,6 +654,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseId.envKey]: selectedD1DatabaseId,
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
   });
+  const { sha256: apiKeySha256 } = await provisionManagedBetterAuthApiKey();
 
   const subdomains = await runCloudflareApiRequest({
     request: () =>
@@ -651,6 +665,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   await deployWorker(infrastructureApiToken, accountId, {
+    apiKeySha256,
+    analyticsApiToken: apiToken,
     credentialSource: infrastructureCredentialSource,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,

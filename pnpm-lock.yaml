@@ -2047,6 +2047,9 @@ importers:
       '@hot-updater/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
+      '@hot-updater/better-auth':
+        specifier: workspace:*
+        version: link:../../packages/better-auth
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2173,6 +2176,9 @@ importers:
       '@hot-updater/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
+      '@hot-updater/better-auth':
+        specifier: workspace:*
+        version: link:../../packages/better-auth
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2409,6 +2415,9 @@ importers:
       '@hot-updater/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
+      '@hot-updater/better-auth':
+        specifier: workspace:*
+        version: link:../../packages/better-auth
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
