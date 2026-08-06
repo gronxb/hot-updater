@@ -1,0 +1,68 @@
+{
+  "name": "@hot-updater/better-auth",
+  "version": "0.35.10",
+  "type": "module",
+  "description": "Better Auth integration for the Hot Updater server kernel",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./managed": {
+      "import": {
+        "types": "./dist/managed.d.mts",
+        "default": "./dist/managed.mjs"
+      },
+      "require": {
+        "types": "./dist/managed.d.cts",
+        "default": "./dist/managed.cjs"
+      }
+    },
+    "./managed/provisioning": {
+      "import": {
+        "types": "./dist/managed/provisioning.d.mts",
+        "default": "./dist/managed/provisioning.mjs"
+      },
+      "require": {
+        "types": "./dist/managed/provisioning.d.cts",
+        "default": "./dist/managed/provisioning.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "prepack": "pnpm run build",
+    "test:type": "tsc --noEmit"
+  },
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@better-auth/api-key": "1.6.24",
+    "@hot-updater/server": "workspace:*",
+    "better-auth": "1.6.24"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "esbuild": "0.28.1"
+  }
+}
