@@ -1,5 +1,13 @@
 # @hot-updater/plugin-core
 
+## 0.35.11
+
+### Patch Changes
+
+- 1a3a621: Keep bundle content type detection portable across runtimes.
+  - @hot-updater/core@0.35.11
+  - @hot-updater/js@0.35.11
+
 ## 0.35.10
 
 ### Patch Changes
