@@ -14,9 +14,9 @@
 
 ### Patch Changes
 
- - Updated dependencies [1a3a621]
-   - @hot-updater/plugin-core@0.35.11
-   - @hot-updater/core@0.35.11
+- Updated dependencies [1a3a621]
+  - @hot-updater/plugin-core@0.35.11
+  - @hot-updater/core@0.35.11
 
 ## 0.35.10
 
