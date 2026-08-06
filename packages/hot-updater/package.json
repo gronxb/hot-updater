@@ -56,7 +56,8 @@
     "@hot-updater/core": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
-    "jiti": "2.6.1"
+    "jiti": "2.7.0",
+    "oxc-parser": "0.141.0"
   },
   "devDependencies": {
     "@bacons/xcode": "1.0.0-alpha.33",

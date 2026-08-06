@@ -5,11 +5,7 @@ import { p } from "@hot-updater/cli-tools";
 import { createJiti } from "jiti";
 
 import { ui } from "../../utils/cli-ui";
-import {
-  createGeneratedSchemaPlaceholder,
-  removeGeneratedSchemaPlaceholder,
-  resolveGeneratedSchemaPlaceholderPath,
-} from "./generated-schema-placeholder";
+import { createGeneratedSchemaJiti } from "./generated-schema-jiti";
 
 export interface HotUpdaterInstance {
   adapterName: string;
@@ -39,7 +35,7 @@ const DEFAULT_CONFIG_BASENAMES = [
 
 interface LoadHotUpdaterOptions {
   cwd?: string;
-  allowGeneratedSchemaPlaceholder?: boolean;
+  allowGeneratedSchemaVirtualModule?: boolean;
 }
 
 const findDefaultConfigPath = (cwd: string) => {
@@ -104,59 +100,36 @@ export async function loadHotUpdater(
     process.exit(1);
   }
 
-  // Load config file using jiti
-  const jiti = createJiti(import.meta.url, { interopDefault: true });
+  const generatedSchemaJiti =
+    options.allowGeneratedSchemaVirtualModule === true
+      ? createGeneratedSchemaJiti(options.cwd ?? process.cwd())
+      : undefined;
 
   let moduleExports: Record<string, unknown> | undefined;
-  let generatedSchemaPlaceholderPath: string | undefined;
-  const exitAfterPlaceholderCleanup = async (): Promise<never> => {
-    await removeGeneratedSchemaPlaceholder(generatedSchemaPlaceholderPath);
-    process.exit(1);
-  };
 
   try {
-    moduleExports = (await jiti.import(absoluteConfigPath)) as Record<
-      string,
-      unknown
-    >;
-  } catch (importError) {
-    const placeholderPath =
-      options.allowGeneratedSchemaPlaceholder === true
-        ? resolveGeneratedSchemaPlaceholderPath(
-            importError,
-            options.cwd ?? process.cwd(),
-          )
-        : undefined;
-
-    if (placeholderPath) {
-      await createGeneratedSchemaPlaceholder(placeholderPath);
-      generatedSchemaPlaceholderPath = placeholderPath;
-
-      try {
-        moduleExports = (await jiti.import(absoluteConfigPath)) as Record<
-          string,
-          unknown
-        >;
-      } catch (retryError) {
-        await removeGeneratedSchemaPlaceholder(generatedSchemaPlaceholderPath);
-        reportConfigImportError(retryError);
-      }
-    } else {
-      reportConfigImportError(importError);
-    }
+    moduleExports = generatedSchemaJiti
+      ? await generatedSchemaJiti.importWithoutNativeFallback<
+          Record<string, unknown>
+        >(absoluteConfigPath)
+      : ((await createJiti(import.meta.url, { interopDefault: true }).import(
+          absoluteConfigPath,
+        )) as Record<string, unknown>);
+  } catch (importError: unknown) {
+    reportConfigImportError(importError);
+  } finally {
+    generatedSchemaJiti?.clearVirtualizedProjectModules();
   }
 
   if (!moduleExports) {
     p.log.error("Failed to load configuration file.");
-    await exitAfterPlaceholderCleanup();
+    process.exit(1);
     throw new Error("Failed to load configuration file.");
   }
 
-  const configExports = moduleExports;
-
   // Extract hotUpdater instance
-  const hotUpdater = (configExports["hotUpdater"] ||
-    configExports["default"]) as HotUpdaterInstance | undefined;
+  const hotUpdater = (moduleExports["hotUpdater"] ||
+    moduleExports["default"]) as HotUpdaterInstance | undefined;
 
   if (!hotUpdater) {
     p.log.error(
@@ -169,46 +142,36 @@ export async function loadHotUpdater(
         "    storages: [...],\n" +
         "  });",
     );
-    await exitAfterPlaceholderCleanup();
+    process.exit(1);
     throw new Error('Could not find "hotUpdater" export.');
   }
 
-  const validHotUpdater = hotUpdater;
-
   // Verify hotUpdater is a valid object
-  if (
-    typeof validHotUpdater !== "object" ||
-    !("adapterName" in validHotUpdater)
-  ) {
+  if (typeof hotUpdater !== "object" || !("adapterName" in hotUpdater)) {
     p.log.error(
       "The hotUpdater instance is not valid. " +
         "Please ensure you're using @hot-updater/server's createHotUpdater().",
     );
-    await exitAfterPlaceholderCleanup();
+    process.exit(1);
     throw new Error("The hotUpdater instance is not valid.");
   }
 
-  const adapterName = validHotUpdater.adapterName;
-  if (typeof adapterName !== "string") {
+  if (typeof hotUpdater.adapterName !== "string") {
     p.log.error(
       "The hotUpdater instance does not have a valid adapterName property.",
     );
-    await exitAfterPlaceholderCleanup();
+    process.exit(1);
     throw new Error("The hotUpdater instance adapterName is not valid.");
   }
 
   return {
-    hotUpdater: validHotUpdater,
-    adapterName,
+    hotUpdater,
+    adapterName: hotUpdater.adapterName,
     absoluteConfigPath,
     dispose: async () => {
-      try {
-        const closeDatabase = configExports["closeDatabase"];
-        if (typeof closeDatabase === "function") {
-          await closeDatabase();
-        }
-      } finally {
-        await removeGeneratedSchemaPlaceholder(generatedSchemaPlaceholderPath);
+      const closeDatabase = moduleExports["closeDatabase"];
+      if (typeof closeDatabase === "function") {
+        await closeDatabase();
       }
     },
   };

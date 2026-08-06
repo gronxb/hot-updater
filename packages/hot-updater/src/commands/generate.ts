@@ -59,7 +59,7 @@ export async function generate(options: GenerateOptions) {
 
     // Load hotUpdater instance from config file
     loadedConfig = await loadHotUpdater(configPath, {
-      allowGeneratedSchemaPlaceholder: true,
+      allowGeneratedSchemaVirtualModule: true,
     });
     const { hotUpdater, adapterName } = loadedConfig;
 

@@ -1636,8 +1636,11 @@ importers:
         specifier: workspace:*
         version: link:../server
       jiti:
-        specifier: 2.6.1
-        version: 2.6.1
+        specifier: 2.7.0
+        version: 2.7.0
+      oxc-parser:
+        specifier: 0.141.0
+        version: 0.141.0
     devDependencies:
       '@bacons/xcode':
         specifier: 1.0.0-alpha.33
