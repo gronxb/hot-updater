@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { setTimeout as sleep } from "timers/promises";
 
 import { describe, expect, it } from "vitest";
 
@@ -22,9 +23,69 @@ describe("Detox control-server deploy lock", () => {
     expect(controllerSource).toContain(
       "const deployProcessLock = await acquireFairFileLock({",
     );
+    expect(controllerSource).toContain("capacity: 2,");
     expect(controllerSource).not.toContain(
       "async function acquireDeployProcessLock",
     );
+  });
+
+  it("allows two deploys while keeping the next waiter queued", async () => {
+    const lockRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-bounded-lock-"),
+    );
+    const thirdWaiting = Promise.withResolvers<void>();
+    let first: Awaited<ReturnType<typeof acquireFairFileLock>> | null = null;
+    let second: Awaited<ReturnType<typeof acquireFairFileLock>> | null = null;
+    let third: Awaited<ReturnType<typeof acquireFairFileLock>> | null = null;
+    let secondPromise: ReturnType<typeof acquireFairFileLock> | null = null;
+
+    try {
+      first = await acquireFairFileLock({
+        capacity: 2,
+        lockRoot,
+        waitIntervalMs: 1,
+      });
+      secondPromise = acquireFairFileLock({
+        capacity: 2,
+        lockRoot,
+        waitIntervalMs: 1,
+      });
+      const acquisitionTimeout = new AbortController();
+      const secondAcquired = await Promise.race([
+        secondPromise.then(() => true),
+        sleep(1000, undefined, { signal: acquisitionTimeout.signal }).then(
+          () => false,
+        ),
+      ]);
+      acquisitionTimeout.abort();
+      expect(secondAcquired).toBe(true);
+      second = await secondPromise;
+
+      let thirdAcquired = false;
+      const thirdPromise = acquireFairFileLock({
+        capacity: 2,
+        lockRoot,
+        onWait: () => thirdWaiting.resolve(),
+        waitIntervalMs: 1,
+      }).then((lock) => {
+        thirdAcquired = true;
+        return lock;
+      });
+      await thirdWaiting.promise;
+      expect(thirdAcquired).toBe(false);
+
+      await first.release();
+      first = null;
+      third = await thirdPromise;
+    } finally {
+      await first?.release();
+      if (!second && secondPromise) {
+        second = await secondPromise;
+      }
+      await second?.release();
+      await third?.release();
+      await fs.rm(lockRoot, { force: true, recursive: true });
+    }
   });
 
   it("grants a contended file lock in FIFO order", async () => {

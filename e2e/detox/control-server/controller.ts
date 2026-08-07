@@ -4649,6 +4649,7 @@ async function deployFixtureBundle(
   });
   const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
   const deployProcessLock = await acquireFairFileLock({
+    capacity: 2,
     lockRoot: deployProcessLockRoot(),
     onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
       logDetoxFixture(

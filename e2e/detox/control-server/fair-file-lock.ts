@@ -22,6 +22,7 @@ type FileLockWait = {
 };
 
 type FairFileLockOptions = {
+  readonly capacity?: number;
   readonly lockRoot: string;
   readonly onAbandoned?: (lock: AbandonedFileLock) => void;
   readonly onWait?: (wait: FileLockWait) => void;
@@ -125,7 +126,16 @@ async function abandonedLock(
 async function waitForTurn(
   options: FairFileLockOptions,
 ): Promise<FairFileLock> {
-  const lockPath = path.join(options.lockRoot, "deploy.lock");
+  const capacity = options.capacity ?? 1;
+  if (!Number.isInteger(capacity) || capacity < 1) {
+    throw new Error("File lock capacity must be a positive integer");
+  }
+  const lockPaths = Array.from({ length: capacity }, (_, index) =>
+    path.join(
+      options.lockRoot,
+      capacity === 1 ? "deploy.lock" : `deploy.lock.${index}`,
+    ),
+  );
   const queuePath = path.join(options.lockRoot, "deploy.lock.queue");
   const ticketPath = path.join(queuePath, ticketName());
   const staleMs = options.staleMs ?? defaultStaleMs;
@@ -158,37 +168,42 @@ async function waitForTurn(
         tickets = (await fs.readdir(queuePath)).sort();
       }
       const position = tickets.indexOf(path.basename(ticketPath));
-      const owner = await readOwner(lockPath);
+      let owner: FileLockOwner | null = null;
+      for (const lockPath of lockPaths) {
+        const lockOwner = await readOwner(lockPath);
+        owner ??= lockOwner;
+        const abandoned = await abandonedLock(lockPath, staleMs);
+        if (abandoned) {
+          options.onAbandoned?.(abandoned);
+          await fs.rm(lockPath, { force: true, recursive: true });
+          waitingLogged = false;
+        }
+      }
 
-      if (position === 0) {
-        try {
-          await fs.mkdir(lockPath);
+      if (position >= 0 && position < capacity) {
+        for (const lockPath of lockPaths) {
           try {
-            await fs.writeFile(
-              path.join(lockPath, "owner.json"),
-              JSON.stringify({
-                pid: process.pid,
-                platform: options.ownerLabel,
-                startedAt: new Date().toISOString(),
-              }),
-            );
+            await fs.mkdir(lockPath);
+            try {
+              await fs.writeFile(
+                path.join(lockPath, "owner.json"),
+                JSON.stringify({
+                  pid: process.pid,
+                  platform: options.ownerLabel,
+                  startedAt: new Date().toISOString(),
+                }),
+              );
+            } catch (error) {
+              await fs.rm(lockPath, { force: true, recursive: true });
+              throw error;
+            }
+            await fs.rm(ticketPath, { force: true, recursive: true });
+            return {
+              lockPath,
+              release: () => fs.rm(lockPath, { force: true, recursive: true }),
+            };
           } catch (error) {
-            await fs.rm(lockPath, { force: true, recursive: true });
-            throw error;
-          }
-          await fs.rm(ticketPath, { force: true, recursive: true });
-          return {
-            lockPath,
-            release: () => fs.rm(lockPath, { force: true, recursive: true }),
-          };
-        } catch (error) {
-          if (!isAlreadyExists(error)) throw error;
-          const abandoned = await abandonedLock(lockPath, staleMs);
-          if (abandoned) {
-            options.onAbandoned?.(abandoned);
-            await fs.rm(lockPath, { force: true, recursive: true });
-            waitingLogged = false;
-            continue;
+            if (!isAlreadyExists(error)) throw error;
           }
         }
       }
