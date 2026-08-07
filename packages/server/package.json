@@ -59,7 +59,7 @@
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/js": "workspace:*",
     "rou3": "0.7.9",
-    "semver": "^7.7.2"
+    "verkit": "0.3.2"
   },
   "peerDependencies": {
     "@prisma/client": "*",
@@ -86,7 +86,6 @@
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
-    "@types/semver": "^7.5.8",
     "drizzle-orm": "catalog:db",
     "execa": "catalog:tools",
     "kysely": "catalog:db",

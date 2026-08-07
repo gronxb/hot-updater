@@ -10,7 +10,13 @@ import {
 } from "@hot-updater/cli-tools";
 import { merge } from "es-toolkit";
 import fg from "fast-glob";
-import * as semver from "semver";
+import {
+  findMinimumForRange,
+  normalize,
+  normalizeRange,
+  parse,
+  satisfies,
+} from "verkit";
 
 import { ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
@@ -146,20 +152,24 @@ export function areVersionsCompatible(
     return true;
   }
 
-  const comparableVersionA = semver.validRange(versionA)
-    ? semver.minVersion(versionA)
+  const normalizedRangeA = normalizeRange(versionA);
+  const normalizedRangeB = normalizeRange(versionB);
+  const comparableVersionA = normalizedRangeA
+    ? findMinimumForRange(normalizedRangeA)
     : null;
-  const comparableVersionB = semver.validRange(versionB)
-    ? semver.minVersion(versionB)
+  const comparableVersionB = normalizedRangeB
+    ? findMinimumForRange(normalizedRangeB)
     : null;
+  const parsedVersionA = comparableVersionA ? parse(comparableVersionA) : null;
+  const parsedVersionB = comparableVersionB ? parse(comparableVersionB) : null;
 
   if (
-    comparableVersionA &&
-    comparableVersionB &&
-    comparableVersionA.prerelease.length === 0 &&
-    comparableVersionB.prerelease.length === 0 &&
-    comparableVersionA.major === comparableVersionB.major &&
-    comparableVersionA.minor === comparableVersionB.minor
+    parsedVersionA &&
+    parsedVersionB &&
+    (parsedVersionA.prerelease?.length ?? 0) === 0 &&
+    (parsedVersionB.prerelease?.length ?? 0) === 0 &&
+    parsedVersionA.major === parsedVersionB.major &&
+    parsedVersionA.minor === parsedVersionB.minor
   ) {
     return true;
   }
@@ -168,18 +178,18 @@ export function areVersionsCompatible(
 
   // Check if versionA satisfies versionB (when versionB is a range)
   if (
-    semver.valid(versionA) &&
-    semver.validRange(versionB) &&
-    semver.satisfies(versionA, versionB, options)
+    normalize(versionA) &&
+    normalizedRangeB &&
+    satisfies(versionA, normalizedRangeB, options)
   ) {
     return true;
   }
 
   // Check if versionB satisfies versionA (when versionA is a range)
   if (
-    semver.valid(versionB) &&
-    semver.validRange(versionA) &&
-    semver.satisfies(versionB, versionA, options)
+    normalize(versionB) &&
+    normalizedRangeA &&
+    satisfies(versionB, normalizedRangeA, options)
   ) {
     return true;
   }

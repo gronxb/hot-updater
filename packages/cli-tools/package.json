@@ -57,15 +57,14 @@
     "@clack/prompts": "catalog:tools",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
-    "@types/semver": "^7.7.1",
     "boxen": "^8.0.1",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
     "fast-glob": "3.3.3",
     "jszip": "^3.10.1",
     "picocolors": "1.1.1",
-    "semver": "^7.6.3",
     "tar": "^7.5.16",
+    "verkit": "0.3.2",
     "workspace-tools": "^0.41.7"
   },
   "inlinedDependencies": {
@@ -157,10 +156,6 @@
     "reusify": "1.0.4",
     "run-parallel": "1.2.0",
     "safe-buffer": "5.1.2",
-    "semver": [
-      "7.7.3",
-      "7.7.4"
-    ],
     "setimmediate": "1.0.5",
     "shebang-command": "2.0.0",
     "shebang-regex": "3.0.0",
@@ -188,6 +183,7 @@
     ],
     "util-deprecate": "1.0.2",
     "validate-npm-package-license": "3.0.4",
+    "verkit": "0.3.2",
     "which": "2.0.2",
     "widest-line": "5.0.0",
     "workspace-tools": "0.36.4",
