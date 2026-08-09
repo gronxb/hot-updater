@@ -3,9 +3,10 @@
 "@hot-updater/plugin-core": minor
 ---
 
-Add the `dynamodbDatabase` Database V2 provider with optimized update checks
+Add the `dynamoDB` Database V2 provider with optimized update checks
 through DynamoDB secondary indexes. Deprecate `s3Database`; S3 remains the
-artifact storage provider.
+artifact storage provider. Deprecate the public blob-backed database APIs in
+preparation for their removal in a future major release.
 
 Use DynamoDB by default for new managed AWS `hot-updater init` installations,
 including table provisioning, Lambda@Edge reads, IAM access, generated config,

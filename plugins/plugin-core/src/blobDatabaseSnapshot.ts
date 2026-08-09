@@ -10,11 +10,23 @@ import {
 import { blobArray, blobProperty, blobRecord } from "./blobDatabaseValue";
 import type { BundlePatchRow, BundleRow } from "./types";
 
+/**
+ * @deprecated Blob-backed database plugins will be removed in a future major
+ * release. Use `createDatabasePlugin` with a row-oriented implementation.
+ */
 export const BLOB_DATABASE_SNAPSHOT_KEY =
   "_hot-updater/database/v2.json" as const;
+/**
+ * @deprecated Blob-backed database plugins will be removed in a future major
+ * release. Use `createDatabasePlugin` with a row-oriented implementation.
+ */
 export const BLOB_DATABASE_BACKUP_KEY =
   "_hot-updater/database/v2.backup.json" as const;
 
+/**
+ * @deprecated Blob-backed database plugins will be removed in a future major
+ * release. Use `createDatabasePlugin` with a row-oriented implementation.
+ */
 export type BlobDatabaseSnapshot = {
   readonly version: 2;
   readonly bundles: readonly BundleRow[];

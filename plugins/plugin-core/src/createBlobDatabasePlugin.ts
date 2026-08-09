@@ -47,6 +47,10 @@ export {
 export { BlobDatabaseSnapshotError } from "./blobDatabaseErrors";
 export type { BlobInvalidationFailure } from "./blobDatabaseInvalidationRetry";
 
+/**
+ * @deprecated Blob-backed database plugins will be removed in a future major
+ * release. Use `createDatabasePlugin` with a row-oriented implementation.
+ */
 export interface BlobDatabaseOperations {
   readonly apiBasePath: string;
   readonly listObjects: (prefix: string) => Promise<readonly string[]>;
@@ -64,6 +68,10 @@ export interface BlobDatabaseOperations {
   readonly shouldSkipLoadObjectError?: (error: unknown, key: string) => boolean;
 }
 
+/**
+ * @deprecated Blob-backed database plugins will be removed in a future major
+ * release. Use `createDatabasePlugin` with a row-oriented implementation.
+ */
 export class BlobDatabaseWriteConflictError extends Error {
   readonly name = "BlobDatabaseWriteConflictError";
 
@@ -210,6 +218,10 @@ const loadLegacySnapshot = async (
   );
 };
 
+/**
+ * @deprecated Blob-backed database plugins will be removed in a future major
+ * release. Use `createDatabasePlugin` with a row-oriented implementation.
+ */
 export const createBlobDatabasePlugin = ({
   name,
   plugin,
