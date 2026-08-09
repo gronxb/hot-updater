@@ -132,16 +132,6 @@ please refer to the article below for more details:
 
 </Callout>
 
-<Callout type="info">
-
-S3 metadata remains available as a separate database track. Older saved init
-environments without an explicit database choice continue using S3 metadata.
-Init does not automatically copy S3 metadata into DynamoDB; migrate existing
-metadata before switching and do not run both writers concurrently. Analytics
-routes are available on the DynamoDB track.
-
-</Callout>
-
 ## Cost and capacity
 
 Managed AWS init uses DynamoDB on-demand capacity, so an idle installation has
