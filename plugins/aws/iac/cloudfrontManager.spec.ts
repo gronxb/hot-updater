@@ -7,6 +7,8 @@ const mockCloudFront = vi.hoisted(() => ({
   createOriginAccessControl: vi.fn(),
   listCachePolicies: vi.fn(),
   createCachePolicy: vi.fn(),
+  listOriginRequestPolicies: vi.fn(),
+  createOriginRequestPolicy: vi.fn(),
   listDistributions: vi.fn(),
   getDistributionConfig: vi.fn(),
   updateDistribution: vi.fn(),
@@ -51,6 +53,7 @@ describe("CloudFrontManager", () => {
     functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
     keyGroupId: "existing-key-group-id",
     oacId: "existing-oac-id",
+    originRequestPolicyId: "existing-origin-request-policy-id",
     sharedCachePolicyId: "existing-shared-cache-policy-id",
   });
 
@@ -87,6 +90,20 @@ describe("CloudFrontManager", () => {
     });
     mockCloudFront.updateDistribution.mockResolvedValue({});
     mockCloudFront.createInvalidation.mockResolvedValue({});
+    mockCloudFront.listOriginRequestPolicies.mockResolvedValue({
+      OriginRequestPolicyList: {
+        Items: [
+          {
+            OriginRequestPolicy: {
+              Id: "origin-request-policy-id",
+              OriginRequestPolicyConfig: {
+                Name: "HotUpdaterAnalyticsOriginRequest",
+              },
+            },
+          },
+        ],
+      },
+    });
   });
 
   it("paginates cache policy lookups before attempting creation", async () => {
@@ -135,6 +152,7 @@ describe("CloudFrontManager", () => {
               expect.objectContaining({
                 PathPattern: "/api/check-update/*",
                 CachePolicyId: "shared-cache-policy-id",
+                OriginRequestPolicyId: "origin-request-policy-id",
                 LambdaFunctionAssociations: expect.objectContaining({
                   Items: expect.arrayContaining([
                     expect.objectContaining({

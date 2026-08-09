@@ -2,6 +2,7 @@ import {
   CloudFrontClient,
   CreateInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
+import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -37,5 +38,16 @@ describe("dynamodbDatabase CloudFront lifecycle", () => {
     });
 
     await plugin.onUnmount?.();
+  });
+
+  it("provides Analytics from the same DynamoDB table", () => {
+    const plugin = dynamodbDatabase({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    expect(
+      getCapabilityContributions(plugin).map(({ token }) => token.id),
+    ).toContain("hot-updater.analytics.provider@1");
   });
 });

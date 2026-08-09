@@ -3,6 +3,7 @@ import type {
   CachePolicyConfig,
   DistributionConfig,
   Origin,
+  OriginRequestPolicyConfig,
 } from "@aws-sdk/client-cloudfront";
 
 // We intentionally avoid the AWS-managed UseOriginCacheControlHeaders policy here.
@@ -30,6 +31,21 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
   },
 };
 
+export const HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG: OriginRequestPolicyConfig =
+  {
+    Name: "HotUpdaterAnalyticsOriginRequest",
+    Comment: "Forward Analytics bodies, query strings, and API-key headers",
+    HeadersConfig: {
+      HeaderBehavior: "whitelist",
+      Headers: {
+        Quantity: 2,
+        Items: ["content-type", "x-api-key"],
+      },
+    },
+    CookiesConfig: { CookieBehavior: "none" },
+    QueryStringsConfig: { QueryStringBehavior: "all" },
+  };
+
 export type DistributionConfigOverrides = {
   Origins: NonNullable<DistributionConfig["Origins"]>;
   DefaultCacheBehavior: NonNullable<DistributionConfig["DefaultCacheBehavior"]>;
@@ -48,6 +64,12 @@ const READ_ONLY_METHODS: AllowedMethods = {
     Quantity: 2,
     Items: ["HEAD", "GET"],
   },
+};
+
+const API_METHODS: AllowedMethods = {
+  Quantity: 7,
+  Items: ["HEAD", "DELETE", "POST", "GET", "OPTIONS", "PUT", "PATCH"],
+  CachedMethods: READ_ONLY_METHODS.CachedMethods,
 };
 
 const EMPTY_FUNCTION_ASSOCIATIONS = {
@@ -75,7 +97,6 @@ const omitLegacyCacheFields = <
     MinTTL?: unknown;
     DefaultTTL?: unknown;
     MaxTTL?: unknown;
-    OriginRequestPolicyId?: unknown;
   },
 >(
   value: T,
@@ -85,7 +106,6 @@ const omitLegacyCacheFields = <
     MinTTL: _minTTL,
     DefaultTTL: _defaultTTL,
     MaxTTL: _maxTTL,
-    OriginRequestPolicyId: _originRequestPolicyId,
     ...rest
   } = value;
   return rest;
@@ -131,6 +151,7 @@ const buildOriginRequestLambdaAssociations = (functionArn: string) => ({
   Items: [
     {
       EventType: "origin-request" as const,
+      IncludeBody: true,
       LambdaFunctionARN: functionArn,
     },
   ],
@@ -173,11 +194,14 @@ const buildDefaultCacheBehavior = (options: {
 const buildCacheBehavior = (options: {
   bucketName: string;
   functionArn: string;
+  originRequestPolicyId: string;
   sharedCachePolicyId: string;
 }): CacheBehavior => ({
   ...buildSharedBehavior(options.bucketName),
+  AllowedMethods: API_METHODS,
   PathPattern: HOT_UPDATER_CACHE_BEHAVIOR_PATH,
   CachePolicyId: options.sharedCachePolicyId,
+  OriginRequestPolicyId: options.originRequestPolicyId,
   LambdaFunctionAssociations: buildOriginRequestLambdaAssociations(
     options.functionArn,
   ),
@@ -216,6 +240,7 @@ export const buildDistributionConfigOverrides = (options: {
   functionArn: string;
   keyGroupId: string;
   oacId: string;
+  originRequestPolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfigOverrides => ({
   Origins: {
@@ -239,6 +264,7 @@ export const buildDistributionConfigOverrides = (options: {
       buildCacheBehavior({
         bucketName: options.bucketName,
         functionArn: options.functionArn,
+        originRequestPolicyId: options.originRequestPolicyId,
         sharedCachePolicyId: options.sharedCachePolicyId,
       }),
     ],
@@ -288,6 +314,7 @@ export const buildDistributionConfig = (options: {
   functionArn: string;
   keyGroupId: string;
   oacId: string;
+  originRequestPolicyId: string;
   sharedCachePolicyId: string;
 }): DistributionConfig =>
   sanitizeDistributionConfig({

@@ -1,3 +1,4 @@
+export * from "./dynamodbAnalyticsPersistence";
 export * from "./dynamodbDatabase";
 export * from "./s3Database";
 export * from "./s3LambdaEdgeStorage";

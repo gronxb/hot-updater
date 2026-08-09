@@ -1,3 +1,4 @@
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   colors,
   confirmInitInputPersistence,
@@ -379,10 +380,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   // Deploy Lambda@Edge: Using LambdaEdgeDeployer
   const lambdaEdgeDeployer = new LambdaEdgeDeployer(credentials);
   const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
+  const apiKeySha256 =
+    database === "dynamodb"
+      ? (await provisionManagedBetterAuthApiKey()).sha256
+      : "";
   const { functionArn } = await lambdaEdgeDeployer.deploy(
     lambdaRoleArn,
     lambdaName,
     {
+      apiKeySha256,
       bucketName,
       databaseType: database,
       dynamodbRegion: bucketRegion,

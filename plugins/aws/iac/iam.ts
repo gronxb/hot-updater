@@ -2,6 +2,11 @@ import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
 
+import {
+  DYNAMODB_ANALYTICS_PARTITION,
+  DYNAMODB_ANALYTICS_SCHEMA_KEY,
+} from "../src/dynamodbAnalyticsPersistence";
+
 export class IAMManager {
   private region: string;
   private credentials: { accessKeyId: string; secretAccessKey: string };
@@ -54,7 +59,27 @@ export class IAMManager {
           {
             Action: ["dynamodb:Query"],
             Effect: "Allow",
-            Resource: [tableArn, `${tableArn}/index/*`],
+            Resource: [`${tableArn}/index/*`],
+          },
+          {
+            Action: ["dynamodb:Query", "dynamodb:PutItem"],
+            Condition: {
+              "ForAllValues:StringEquals": {
+                "dynamodb:LeadingKeys": [DYNAMODB_ANALYTICS_PARTITION],
+              },
+            },
+            Effect: "Allow",
+            Resource: [tableArn],
+          },
+          {
+            Action: ["dynamodb:GetItem"],
+            Condition: {
+              "ForAllValues:StringEquals": {
+                "dynamodb:LeadingKeys": [DYNAMODB_ANALYTICS_SCHEMA_KEY.pk],
+              },
+            },
+            Effect: "Allow",
+            Resource: [tableArn],
           },
         ],
       }),

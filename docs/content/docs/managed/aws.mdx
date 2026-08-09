@@ -92,7 +92,9 @@ npx hot-updater init
 </Accordions>
 
 Once setup is complete, `.env.hotupdater` contains the selected database, table,
-bucket, region, CloudFront distribution ID, and authentication settings.
+bucket, region, CloudFront distribution ID, and authentication settings. The
+DynamoDB track also generates a local API key for protected Analytics queries;
+only its SHA-256 projection is deployed to Lambda@Edge.
 
 ```
 HOT_UPDATER_AWS_DATABASE=dynamodb
@@ -100,6 +102,7 @@ HOT_UPDATER_DYNAMODB_TABLE_NAME=hot-updater
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region
 HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
+HOT_UPDATER_API_KEY=your-generated-api-key
 ```
 
 If you choose a shared AWS profile, the generated env file will also include:
@@ -134,7 +137,8 @@ please refer to the article below for more details:
 `S3 metadata (Deprecated)` remains available for existing installations and
 older saved init environments continue using it. Init does not automatically
 copy S3 metadata into DynamoDB. Back up and migrate metadata before switching,
-and do not run both metadata writers concurrently.
+and do not run both metadata writers concurrently. The deprecated S3 track does
+not expose Analytics routes.
 
 </Callout>
 
@@ -249,7 +253,10 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed AWS runtime exposes the public update-check endpoints and `/version`. Internally, it is equivalent to `createHotUpdater({ routes: { updateCheck: true, bundles: false } })`, so bundle management endpoints are not mounted on the public function URL.
+The managed DynamoDB runtime exposes public update checks, `/version`, and
+Analytics ingestion at `/api/check-update/events`. Analytics query routes under
+`/api/check-update/api` require `x-api-key: $HOT_UPDATER_API_KEY`. Bundle
+management endpoints are not mounted on the public function URL.
 </Callout>
 
 ## Step 6: If You Use Expo, Add the Config Plugin

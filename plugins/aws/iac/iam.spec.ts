@@ -46,7 +46,7 @@ describe("IAMManager DynamoDB access", () => {
     mocks.putRolePolicy.mockResolvedValue({});
   });
 
-  it("grants Lambda query access to the selected table and its indexes", async () => {
+  it("grants only update queries and Analytics event access", async () => {
     // Given
     const manager = new IAMManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
@@ -65,16 +65,41 @@ describe("IAMManager DynamoDB access", () => {
     expect(policyCall).toBeDefined();
     const policyDocument = policyCall?.[0].PolicyDocument;
     expect(typeof policyDocument).toBe("string");
-    expect(JSON.parse(policyDocument)).toMatchObject({
-      Statement: [
-        {
-          Action: ["dynamodb:Query"],
-          Resource: [
-            "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
-            "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata/index/*",
-          ],
+    const policy = JSON.parse(policyDocument) as {
+      Statement: readonly Record<string, unknown>[];
+    };
+    expect(policy.Statement).toEqual([
+      {
+        Action: ["dynamodb:Query"],
+        Effect: "Allow",
+        Resource: [
+          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata/index/*",
+        ],
+      },
+      {
+        Action: ["dynamodb:Query", "dynamodb:PutItem"],
+        Condition: {
+          "ForAllValues:StringEquals": {
+            "dynamodb:LeadingKeys": ["analytics#bundle_events"],
+          },
         },
-      ],
-    });
+        Effect: "Allow",
+        Resource: [
+          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
+        ],
+      },
+      {
+        Action: ["dynamodb:GetItem"],
+        Condition: {
+          "ForAllValues:StringEquals": {
+            "dynamodb:LeadingKeys": ["_hot-updater"],
+          },
+        },
+        Effect: "Allow",
+        Resource: [
+          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
+        ],
+      },
+    ]);
   });
 });

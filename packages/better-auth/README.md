@@ -67,13 +67,13 @@ every deployed client sends credentials. Do not embed the managed static API key
 in a public mobile binary; it is extractable and is intended for trusted
 management tooling.
 
-The Cloudflare, Firebase, and Supabase deployment workflows provision this key
+The AWS DynamoDB, Cloudflare, Firebase, and Supabase deployment workflows provision this key
 and pass its digest to runtimes that compose `managedBetterAuthPlugin()` with
 `analytics()`. They do not install a route policy: Core OTA routes and
 Analytics ingestion stay public, while the six Analytics query routes use
 their protected default. Bundle management is not mounted by those runtimes.
-The AWS preset remains unchanged and does not install managed authentication
-or Analytics.
+The deprecated AWS S3 metadata track does not install managed authentication or
+Analytics.
 
 Node infrastructure code can explicitly provision the raw key into
 `.env.hotupdater` and deploy only its SHA-256 projection:

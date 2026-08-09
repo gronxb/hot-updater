@@ -1,8 +1,14 @@
-import { generateKeyPairSync } from "node:crypto";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash, generateKeyPairSync } from "node:crypto";
+import { access, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  CreateTableCommand,
+  DynamoDBClient,
+  PutItemCommand,
+  waitUntilTableExists,
+} from "@aws-sdk/client-dynamodb";
 import {
   CreateBucketCommand,
   DeleteObjectsCommand,
@@ -14,6 +20,11 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
+import {
+  BatchWriteCommand,
+  DynamoDBDocumentClient,
+  ScanCommand,
+} from "@aws-sdk/lib-dynamodb";
 import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
@@ -32,6 +43,14 @@ import {
   spawnRuntime,
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
+import {
+  DYNAMODB_ANALYTICS_SCHEMA_KEY,
+  DYNAMODB_ANALYTICS_SCHEMA_VERSION,
+} from "../src/dynamodbAnalyticsPersistence";
+import {
+  DYNAMODB_UPDATE_INDEX_NAME,
+  dynamodbDatabase,
+} from "../src/dynamodbDatabase";
 import { s3Database } from "../src/s3Database";
 import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
 
@@ -46,7 +65,12 @@ const S3_BUCKET_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`
   .toLowerCase()
   .slice(0, 63);
 const SSM_PARAMETER_NAME = `/hot-updater/aws/${process.pid}/${Date.now()}`;
+const DYNAMODB_TABLE_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`;
 const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
+const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+const API_KEY_SHA256 = createHash("sha256")
+  .update(RAW_API_KEY)
+  .digest("base64url");
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
@@ -106,9 +130,15 @@ const toCloudFrontHeaders = (headers: Headers) => {
 const createCloudFrontEvent = ({
   path: requestPath,
   headers,
+  method = "GET",
+  querystring = "",
+  body,
 }: {
   path: string;
   headers: Headers;
+  method?: string;
+  querystring?: string;
+  body?: string;
 }) => {
   const requestHeaders = new Headers(headers);
   if (!requestHeaders.has("host")) {
@@ -128,7 +158,16 @@ const createCloudFrontEvent = ({
           request: {
             clientIp: "127.0.0.1",
             headers: toCloudFrontHeaders(requestHeaders),
-            method: "GET",
+            body:
+              body === undefined
+                ? undefined
+                : {
+                    action: "read-only",
+                    data: Buffer.from(body).toString("base64"),
+                    encoding: "base64",
+                    inputTruncated: false,
+                  },
+            method,
             origin: {
               custom: {
                 customHeaders: {},
@@ -141,7 +180,7 @@ const createCloudFrontEvent = ({
                 sslProtocols: ["TLSv1.2"],
               },
             },
-            querystring: "",
+            querystring,
             uri: requestPath,
           },
         },
@@ -162,6 +201,42 @@ const invokeLambda = async (port: number, event: unknown) => {
     },
   );
 };
+
+const spawnLambdaRuntime = ({
+  dockerNetworkName,
+  lambdaPort,
+  runtimeDir,
+}: {
+  dockerNetworkName: string;
+  lambdaPort: number;
+  runtimeDir: string;
+}) =>
+  spawnRuntime({
+    command: "docker",
+    args: [
+      "run",
+      "--rm",
+      "--network",
+      dockerNetworkName,
+      "-p",
+      `127.0.0.1:${lambdaPort}:8080`,
+      "-v",
+      `${runtimeDir}:/var/task`,
+      "-v",
+      `${WORKSPACE_ROOT}:${WORKSPACE_ROOT}:ro`,
+      "-e",
+      `AWS_REGION=${REGION}`,
+      "-e",
+      `AWS_ACCESS_KEY_ID=${ACCESS_KEY_ID}`,
+      "-e",
+      `AWS_SECRET_ACCESS_KEY=${SECRET_ACCESS_KEY}`,
+      "-e",
+      "AWS_ENDPOINT_URL=http://localstack:4566",
+      LAMBDA_IMAGE,
+      "index.handler",
+    ],
+    cwd: WORKSPACE_ROOT,
+  });
 
 const readLambdaJson = async (payload: {
   body?: string;
@@ -190,6 +265,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
   let localstackEndpoint = "";
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   let s3Client: S3Client;
+  let dynamodbClient: DynamoDBDocumentClient;
   let previousAwsEndpointUrl: string | undefined;
   const dockerNetworkName = `hot-updater-aws-${process.pid}-${Date.now()}`;
 
@@ -220,7 +296,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
         "-p",
         `127.0.0.1:${localstackPort}:4566`,
         "-e",
-        "SERVICES=s3,ssm",
+        "SERVICES=dynamodb,s3,ssm",
         "-e",
         `DEFAULT_REGION=${REGION}`,
         "-e",
@@ -242,15 +318,18 @@ describe.sequential("aws lambda runtime acceptance", () => {
 
     await ensureBucketExists(s3Client, S3_BUCKET_NAME);
     await createPrivateKeyParameter(localstackEndpoint);
+    await createDynamoDBTable(localstackEndpoint);
+    dynamodbClient = DynamoDBDocumentClient.from(
+      createHostDynamoDBClient(localstackEndpoint),
+    );
 
     process.env.AWS_ENDPOINT_URL = localstackEndpoint;
 
     seedHotUpdater = createHotUpdater({
-      database: s3Database({
-        bucketName: S3_BUCKET_NAME,
+      database: dynamodbDatabase({
+        tableName: DYNAMODB_TABLE_NAME,
         region: REGION,
         endpoint: localstackEndpoint,
-        forcePathStyle: true,
         credentials: {
           accessKeyId: ACCESS_KEY_ID,
           secretAccessKey: SECRET_ACCESS_KEY,
@@ -282,47 +361,26 @@ describe.sequential("aws lambda runtime acceptance", () => {
     runtimeDir = await mkdtemp(
       path.join(WORKSPACE_ROOT, "plugins/aws/runtime-acceptance-"),
     );
+    const lambdaDistDir = path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda");
+    await cp(lambdaDistDir, runtimeDir, { recursive: true });
 
-    const transformedCode = transformEnv(
-      path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda/index.cjs"),
-      {
-        CLOUDFRONT_KEY_PAIR_ID,
-        DATABASE_TYPE: "s3",
-        DYNAMODB_REGION: REGION,
-        DYNAMODB_TABLE_NAME: "",
-        SSM_PARAMETER_NAME,
-        SSM_REGION: REGION,
-        S3_BUCKET_NAME,
-      },
-    );
+    const transformedCode = transformEnv(path.join(runtimeDir, "index.cjs"), {
+      API_KEY_SHA256,
+      CLOUDFRONT_KEY_PAIR_ID,
+      DATABASE_TYPE: "dynamodb",
+      DYNAMODB_REGION: REGION,
+      DYNAMODB_TABLE_NAME,
+      SSM_PARAMETER_NAME,
+      SSM_REGION: REGION,
+      S3_BUCKET_NAME,
+    });
     await writeFile(path.join(runtimeDir, "index.cjs"), transformedCode);
 
     lambdaPort = await findOpenPort();
-    lambdaRuntime = spawnRuntime({
-      command: "docker",
-      args: [
-        "run",
-        "--rm",
-        "--network",
-        dockerNetworkName,
-        "-p",
-        `127.0.0.1:${lambdaPort}:8080`,
-        "-v",
-        `${runtimeDir}:/var/task`,
-        "-v",
-        `${WORKSPACE_ROOT}:${WORKSPACE_ROOT}:ro`,
-        "-e",
-        `AWS_REGION=${REGION}`,
-        "-e",
-        `AWS_ACCESS_KEY_ID=${ACCESS_KEY_ID}`,
-        "-e",
-        `AWS_SECRET_ACCESS_KEY=${SECRET_ACCESS_KEY}`,
-        "-e",
-        "AWS_ENDPOINT_URL=http://localstack:4566",
-        LAMBDA_IMAGE,
-        "index.handler",
-      ],
-      cwd: WORKSPACE_ROOT,
+    lambdaRuntime = spawnLambdaRuntime({
+      dockerNetworkName,
+      lambdaPort,
+      runtimeDir,
     });
 
     await waitForLambdaReady({
@@ -333,10 +391,14 @@ describe.sequential("aws lambda runtime acceptance", () => {
   }, 180_000);
 
   beforeEach(async () => {
-    await clearBucket(s3Client, S3_BUCKET_NAME);
+    await Promise.all([
+      clearBucket(s3Client, S3_BUCKET_NAME),
+      clearDynamoDBTable(dynamodbClient),
+    ]);
   });
 
   afterAll(async () => {
+    dynamodbClient?.destroy();
     if (lambdaRuntime) {
       await stopRuntime(lambdaRuntime.child);
     }
@@ -604,6 +666,171 @@ describe.sequential("aws lambda runtime acceptance", () => {
       error: "Not found",
     });
   });
+
+  it("ingests public Analytics events and protects Analytics queries", async () => {
+    const event = {
+      type: "UNCHANGED",
+      installId: "aws-runtime-installation",
+      toBundleId: "00000000-0000-0000-0000-000000000001",
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      fingerprintHash: null,
+      fromBundleId: null,
+      updateStrategy: null,
+    };
+    const ingestionResponse = await invokeLambda(
+      lambdaPort,
+      createCloudFrontEvent({
+        path: `${HOT_UPDATER_BASE_PATH}/events`,
+        headers: new Headers({ "content-type": "application/json" }),
+        method: "POST",
+        body: JSON.stringify(event),
+      }),
+    );
+    const ingestionPayload = (await ingestionResponse.json()) as {
+      status?: string;
+    };
+
+    expect(ingestionPayload.status).toBe("204");
+
+    const protectedPath = `${HOT_UPDATER_BASE_PATH}/api/installations/overview`;
+    const unauthorizedResponse = await invokeLambda(
+      lambdaPort,
+      createCloudFrontEvent({
+        path: protectedPath,
+        headers: new Headers(),
+      }),
+    );
+    const unauthorizedPayload = (await unauthorizedResponse.json()) as {
+      status?: string;
+    };
+
+    expect(unauthorizedPayload.status).toBe("401");
+
+    const authorizedResponse = await invokeLambda(
+      lambdaPort,
+      createCloudFrontEvent({
+        path: protectedPath,
+        headers: new Headers({ "x-api-key": RAW_API_KEY }),
+      }),
+    );
+    const authorizedPayload = (await authorizedResponse.json()) as {
+      body?: string;
+      status?: string;
+    };
+
+    expect(authorizedPayload.status).toBe("200");
+    await expect(readLambdaJson(authorizedPayload)).resolves.toMatchObject({
+      trackedInstallations: 1,
+      bundles: [
+        {
+          bundleId: event.toBundleId,
+          installations: 1,
+        },
+      ],
+    });
+  });
+
+  it("keeps the deprecated S3 metadata runtime usable", async () => {
+    const s3SeedHotUpdater = createHotUpdater({
+      database: s3Database({
+        bucketName: S3_BUCKET_NAME,
+        region: REGION,
+        endpoint: localstackEndpoint,
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId: ACCESS_KEY_ID,
+          secretAccessKey: SECRET_ACCESS_KEY,
+        },
+      }),
+      storages: [
+        s3LambdaEdgeStorage({
+          bucketName: S3_BUCKET_NAME,
+          region: REGION,
+          endpoint: localstackEndpoint,
+          forcePathStyle: true,
+          credentials: {
+            accessKeyId: ACCESS_KEY_ID,
+            secretAccessKey: SECRET_ACCESS_KEY,
+          },
+          keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+          ssmRegion: REGION,
+          ssmParameterName: SSM_PARAMETER_NAME,
+          publicBaseUrl: PUBLIC_BASE_URL,
+        }),
+      ],
+      basePath: HOT_UPDATER_BASE_PATH,
+      routes: { updateCheck: true, bundles: false },
+    });
+    const bundle = toRuntimeBundle({
+      id: "00000000-0000-0000-0000-000000000401",
+      platform: "ios",
+      targetAppVersion: "1.0",
+      shouldForceUpdate: false,
+      enabled: true,
+      fileHash: "s3-runtime-hash",
+      gitCommitHash: null,
+      message: "deprecated S3 runtime",
+      channel: "production",
+      storageUri: "storage://unused",
+      fingerprintHash: null,
+    });
+    await s3SeedHotUpdater.insertBundle(bundle);
+
+    const s3RuntimeDir = await mkdtemp(
+      path.join(WORKSPACE_ROOT, "plugins/aws/runtime-acceptance-s3-"),
+    );
+    const lambdaDistDir = path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda");
+    await cp(lambdaDistDir, s3RuntimeDir, { recursive: true });
+    const transformedCode = transformEnv(path.join(s3RuntimeDir, "index.cjs"), {
+      API_KEY_SHA256: "",
+      CLOUDFRONT_KEY_PAIR_ID,
+      DATABASE_TYPE: "s3",
+      DYNAMODB_REGION: REGION,
+      DYNAMODB_TABLE_NAME: "",
+      SSM_PARAMETER_NAME,
+      SSM_REGION: REGION,
+      S3_BUCKET_NAME,
+    });
+    await writeFile(path.join(s3RuntimeDir, "index.cjs"), transformedCode);
+
+    const s3LambdaPort = await findOpenPort();
+    const s3LambdaRuntime = spawnLambdaRuntime({
+      dockerNetworkName,
+      lambdaPort: s3LambdaPort,
+      runtimeDir: s3RuntimeDir,
+    });
+    try {
+      await waitForLambdaReady({
+        port: s3LambdaPort,
+        child: s3LambdaRuntime.child,
+        logs: s3LambdaRuntime.logs,
+      });
+      const response = await invokeLambda(
+        s3LambdaPort,
+        createCloudFrontEvent({
+          path: createCanonicalPath({
+            appVersion: "1.0",
+            bundleId: NIL_UUID,
+            platform: "ios",
+            _updateStrategy: "appVersion",
+          }),
+          headers: new Headers(),
+        }),
+      );
+      const payload = (await response.json()) as { body?: string };
+
+      await expect(readLambdaJson(payload)).resolves.toMatchObject({
+        id: bundle.id,
+        status: "UPDATE",
+      });
+    } finally {
+      await stopRuntime(s3LambdaRuntime.child);
+      await rm(s3RuntimeDir, { recursive: true, force: true });
+    }
+  });
 });
 
 const createHostS3Client = (endpoint: string) => {
@@ -616,6 +843,87 @@ const createHostS3Client = (endpoint: string) => {
       secretAccessKey: SECRET_ACCESS_KEY,
     },
   });
+};
+
+const createHostDynamoDBClient = (endpoint: string) =>
+  new DynamoDBClient({
+    region: REGION,
+    endpoint,
+    credentials: {
+      accessKeyId: ACCESS_KEY_ID,
+      secretAccessKey: SECRET_ACCESS_KEY,
+    },
+  });
+
+const createDynamoDBTable = async (endpoint: string) => {
+  const client = createHostDynamoDBClient(endpoint);
+  await client.send(
+    new CreateTableCommand({
+      TableName: DYNAMODB_TABLE_NAME,
+      BillingMode: "PAY_PER_REQUEST",
+      AttributeDefinitions: [
+        { AttributeName: "pk", AttributeType: "S" },
+        { AttributeName: "sk", AttributeType: "S" },
+        { AttributeName: "gsi1pk", AttributeType: "S" },
+        { AttributeName: "gsi1sk", AttributeType: "S" },
+      ],
+      KeySchema: [
+        { AttributeName: "pk", KeyType: "HASH" },
+        { AttributeName: "sk", KeyType: "RANGE" },
+      ],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: DYNAMODB_UPDATE_INDEX_NAME,
+          KeySchema: [
+            { AttributeName: "gsi1pk", KeyType: "HASH" },
+            { AttributeName: "gsi1sk", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
+    }),
+  );
+  await waitUntilTableExists(
+    { client, maxWaitTime: 30 },
+    { TableName: DYNAMODB_TABLE_NAME },
+  );
+  await client.send(
+    new PutItemCommand({
+      TableName: DYNAMODB_TABLE_NAME,
+      Item: {
+        pk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.pk },
+        sk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.sk },
+        value: { S: DYNAMODB_ANALYTICS_SCHEMA_VERSION },
+      },
+    }),
+  );
+  client.destroy();
+};
+
+const clearDynamoDBTable = async (client: DynamoDBDocumentClient) => {
+  const { Items = [] } = await client.send(
+    new ScanCommand({
+      TableName: DYNAMODB_TABLE_NAME,
+      ProjectionExpression: "#pk, #sk",
+      ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+    }),
+  );
+  const keys = Items.filter(
+    ({ pk, sk }) =>
+      pk !== DYNAMODB_ANALYTICS_SCHEMA_KEY.pk ||
+      sk !== DYNAMODB_ANALYTICS_SCHEMA_KEY.sk,
+  ).map(({ pk, sk }) => ({ pk, sk }));
+  for (let offset = 0; offset < keys.length; offset += 25) {
+    await client.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [DYNAMODB_TABLE_NAME]: keys
+            .slice(offset, offset + 25)
+            .map((Key) => ({ DeleteRequest: { Key } })),
+        },
+      }),
+    );
+  }
 };
 
 const createRuntimeS3Client = () => {

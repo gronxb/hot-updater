@@ -21,6 +21,7 @@ export class LambdaEdgeDeployer {
     lambdaRoleArn: string,
     lambdaName: string,
     config: {
+      apiKeySha256: string;
       bucketName: string;
       databaseType: "dynamodb" | "s3";
       dynamodbRegion: string;
@@ -39,6 +40,7 @@ export class LambdaEdgeDeployer {
     // Transform Lambda code with CloudFront key pair details and SSM config
     const indexPath = path.join(tmpDir, "index.cjs");
     const code = transformEnv(indexPath, {
+      API_KEY_SHA256: config.apiKeySha256,
       CLOUDFRONT_KEY_PAIR_ID: config.publicKeyId,
       DATABASE_TYPE: config.databaseType,
       DYNAMODB_REGION: config.dynamodbRegion,

@@ -4,12 +4,15 @@ import {
   type DynamoDBClientConfig,
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
+import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
 import {
   attachDatabasePluginAggregateMutations,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
+import { createDynamoDBAnalyticsPersistence } from "./dynamodbAnalyticsPersistence";
 import { createDynamoDBAggregateMutations } from "./dynamodbDatabaseAggregate";
 import { createDynamoDBCrud } from "./dynamodbDatabaseCrud";
 import { createDynamoDBGetUpdateInfo } from "./dynamodbDatabaseUpdateInfo";
@@ -80,8 +83,11 @@ export const dynamodbDatabase = (config: DynamoDBDatabaseConfig) => {
           },
         }
       : plugin;
-  return attachDatabasePluginAggregateMutations(
+  const pluginWithAggregateMutations = attachDatabasePluginAggregateMutations(
     pluginWithInvalidation,
     createDynamoDBAggregateMutations(store),
+  );
+  return attachAnalyticsProviderCapability(pluginWithAggregateMutations, () =>
+    createBoundedAnalyticsProvider(createDynamoDBAnalyticsPersistence(store)),
   );
 };

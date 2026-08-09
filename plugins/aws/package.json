@@ -57,6 +57,8 @@
     "mime": "^4.0.4"
   },
   "dependencies": {
+    "@hot-updater/analytics": "workspace:*",
+    "@hot-updater/better-auth": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@aws-sdk/client-cloudfront": "3.1066.0",
     "@aws-sdk/client-dynamodb": "3.1066.0",

@@ -5,6 +5,10 @@ import {
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 
+import {
+  DYNAMODB_ANALYTICS_SCHEMA_KEY,
+  DYNAMODB_ANALYTICS_SCHEMA_VERSION,
+} from "../src/dynamodbAnalyticsPersistence";
 import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamodbDatabase";
 
 export class DynamoDBTableSchemaError extends Error {
@@ -13,6 +17,16 @@ export class DynamoDBTableSchemaError extends Error {
   constructor(readonly tableName: string) {
     super(
       `DynamoDB table "${tableName}" does not match the Hot Updater key and index schema`,
+    );
+  }
+}
+
+export class DynamoDBAnalyticsSchemaError extends Error {
+  readonly name = "DynamoDBAnalyticsSchemaError";
+
+  constructor(readonly componentVersion: string | null) {
+    super(
+      `DynamoDB Analytics schema is ${componentVersion ?? "missing"}; expected ${DYNAMODB_ANALYTICS_SCHEMA_VERSION}`,
     );
   }
 }
@@ -67,6 +81,33 @@ export class DynamoDBManager {
     this.client = new DynamoDB({ credentials, region });
   }
 
+  private async ensureAnalyticsSchema(tableName: string): Promise<void> {
+    const { Item } = await this.client.getItem({
+      TableName: tableName,
+      Key: {
+        pk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.pk },
+        sk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.sk },
+      },
+      ProjectionExpression: "#value",
+      ExpressionAttributeNames: { "#value": "value" },
+    });
+    const componentVersion = Item?.value?.S ?? null;
+    if (componentVersion === DYNAMODB_ANALYTICS_SCHEMA_VERSION) return;
+    if (componentVersion !== null) {
+      throw new DynamoDBAnalyticsSchemaError(componentVersion);
+    }
+    await this.client.putItem({
+      TableName: tableName,
+      Item: {
+        pk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.pk },
+        sk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.sk },
+        value: { S: DYNAMODB_ANALYTICS_SCHEMA_VERSION },
+      },
+      ConditionExpression: "attribute_not_exists(#pk)",
+      ExpressionAttributeNames: { "#pk": "pk" },
+    });
+  }
+
   async ensureTable(tableName: string): Promise<void> {
     try {
       const { Table } = await this.client.describeTable({
@@ -75,6 +116,7 @@ export class DynamoDBManager {
       if (!hasExpectedSchema(Table)) {
         throw new DynamoDBTableSchemaError(tableName);
       }
+      await this.ensureAnalyticsSchema(tableName);
       return;
     } catch (error) {
       if (!isResourceNotFound(error)) throw error;
@@ -102,5 +144,6 @@ export class DynamoDBManager {
       { client: this.client, maxWaitTime: 120 },
       { TableName: tableName },
     );
+    await this.ensureAnalyticsSchema(tableName);
   }
 }

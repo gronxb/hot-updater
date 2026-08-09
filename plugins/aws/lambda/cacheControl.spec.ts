@@ -5,6 +5,7 @@ let SHARED_EDGE_CACHE_CONTROL = "";
 
 beforeAll(async () => {
   globalThis.HotUpdater = {
+    API_KEY_SHA256: "",
     CLOUDFRONT_KEY_PAIR_ID: "KTEST",
     DATABASE_TYPE: "s3",
     DYNAMODB_REGION: "us-east-1",

@@ -14,6 +14,7 @@ const baseOptions = {
   functionArn: "arn:aws:lambda:us-east-1:123456789012:function:hot-updater:1",
   keyGroupId: "key-group-id",
   oacId: "origin-access-control-id",
+  originRequestPolicyId: "origin-request-policy-id",
   sharedCachePolicyId: "shared-cache-policy-id",
 };
 
@@ -60,12 +61,24 @@ describe("buildDistributionConfigOverrides", () => {
     expect(cachedEndpointBehavior.CachePolicyId).toBe(
       baseOptions.sharedCachePolicyId,
     );
+    expect(cachedEndpointBehavior.OriginRequestPolicyId).toBe(
+      baseOptions.originRequestPolicyId,
+    );
+    expect(cachedEndpointBehavior.AllowedMethods).toMatchObject({
+      Quantity: 7,
+      Items: ["HEAD", "DELETE", "POST", "GET", "OPTIONS", "PUT", "PATCH"],
+      CachedMethods: { Quantity: 2, Items: ["HEAD", "GET"] },
+    });
     expect(cachedEndpointBehavior.FunctionAssociations).toEqual({
       Quantity: 0,
     });
     expect(
       cachedEndpointBehavior.LambdaFunctionAssociations?.Items?.[0]?.EventType,
     ).toBe("origin-request");
+    expect(
+      cachedEndpointBehavior.LambdaFunctionAssociations?.Items?.[0]
+        ?.IncludeBody,
+    ).toBe(true);
     expect("ForwardedValues" in cachedEndpointBehavior).toBe(false);
     expect("MinTTL" in cachedEndpointBehavior).toBe(false);
     expect("DefaultTTL" in cachedEndpointBehavior).toBe(false);

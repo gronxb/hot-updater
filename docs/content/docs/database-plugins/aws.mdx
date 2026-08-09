@@ -43,6 +43,18 @@ aws dynamodb create-table \
   ]'
 ```
 
+Analytics uses the same table for append-only events. Before enabling the
+`analytics()` server plugin, write its schema marker:
+
+```bash
+aws dynamodb put-item \
+  --table-name hot-updater \
+  --item '{"pk":{"S":"_hot-updater"},"sk":{"S":"schema.analytics"},"value":{"S":"2"}}' \
+  --condition-expression 'attribute_not_exists(pk)'
+```
+
+Managed AWS init creates or validates this marker automatically.
+
 ## Configuration
 
 ```typescript
@@ -126,8 +138,10 @@ const hotUpdater = createHotUpdater({
 });
 ```
 
-The Lambda or server role needs read access for update checks. CLI and Console
-writers also need permission to put, update, and delete table items.
+The Lambda or server role needs read access for update checks. Analytics also
+needs `GetItem` for the schema marker and `Query`/`PutItem` for the
+`analytics#bundle_events` partition. CLI and Console writers need permission to
+put, update, and delete metadata items.
 
 ## Migrating from S3 metadata
 
