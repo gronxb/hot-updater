@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("firebase firestore index template", () => {
-  it("includes ascending indexes for update-check fast paths", async () => {
+  it("includes required ascending composite indexes", async () => {
     const indexFilePath = path.resolve(
       __dirname,
       "../firebase/public/firestore.indexes.json",
@@ -50,6 +50,15 @@ describe("firebase firestore index template", () => {
         { fieldPath: "enabled", order: "ASCENDING" },
         { fieldPath: "platform", order: "ASCENDING" },
         { fieldPath: "fingerprint_hash", order: "ASCENDING" },
+        { fieldPath: "id", order: "ASCENDING" },
+      ],
+      queryScope: "COLLECTION",
+    });
+
+    expect(indexFile.indexes).toContainEqual({
+      collectionGroup: "bundle_events",
+      fields: [
+        { fieldPath: "received_at_ms", order: "ASCENDING" },
         { fieldPath: "id", order: "ASCENDING" },
       ],
       queryScope: "COLLECTION",

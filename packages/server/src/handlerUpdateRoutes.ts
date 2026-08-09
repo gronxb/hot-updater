@@ -1,6 +1,7 @@
 import type { AppUpdateAvailableInfo, AppUpdateInfo } from "@hot-updater/core";
 import semver from "semver";
 
+import type { UpdateRouteHandlerKey } from "./coreRouteDescriptors";
 import {
   decodeMaybe,
   requirePlatformParam,
@@ -36,7 +37,7 @@ const serializeUpdateInfo = (
 };
 
 export const createUpdateRouteHandlers = <TContext>(): Record<
-  string,
+  UpdateRouteHandlerKey,
   RouteHandler<TContext>
 > => ({
   version: async () => {

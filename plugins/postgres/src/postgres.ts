@@ -1,3 +1,5 @@
+import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
+import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
 import type {
   CreateDatabaseImplementationInput,
   DatabasePluginImplementation,
@@ -18,6 +20,7 @@ import {
 import pg, { type PoolConfig } from "pg";
 
 import { getUpdateInfo } from "./getUpdateInfo";
+import { createPostgresAnalyticsPersistence } from "./postgresAnalyticsPersistence";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
 import type { Database } from "./types";
 
@@ -207,21 +210,32 @@ const createPostgresImplementation = (
   onUnmount: () => db.destroy(),
 });
 
-export const postgres = (config: PostgresConfig) =>
-  createDatabasePlugin({
+const createPostgresPlugin = (
+  db: Kysely<Database>,
+  getPostgresUpdateInfo?: DatabasePluginImplementation["getUpdateInfo"],
+) => {
+  const plugin = createDatabasePlugin({
     name: "postgres",
     plugin: () => {
-      const { dialect, ...poolConfig } = config;
-      if (dialect !== undefined) {
-        return createPostgresImplementation(new Kysely<Database>({ dialect }));
-      }
-      const pool = new Pool(poolConfig);
-      const implementation = createPostgresImplementation(
-        new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
-      );
-      return {
-        ...implementation,
-        getUpdateInfo: (args) => getUpdateInfo(pool, args),
-      };
+      const implementation = createPostgresImplementation(db);
+      return getPostgresUpdateInfo === undefined
+        ? implementation
+        : { ...implementation, getUpdateInfo: getPostgresUpdateInfo };
     },
   });
+  return attachAnalyticsProviderCapability(plugin, () =>
+    createBoundedAnalyticsProvider(createPostgresAnalyticsPersistence(db)),
+  );
+};
+
+export const postgres = (config: PostgresConfig) => {
+  const { dialect, ...poolConfig } = config;
+  if (dialect !== undefined) {
+    return createPostgresPlugin(new Kysely<Database>({ dialect }));
+  }
+  const pool = new Pool(poolConfig);
+  return createPostgresPlugin(
+    new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
+    (args) => getUpdateInfo(pool, args),
+  );
+};

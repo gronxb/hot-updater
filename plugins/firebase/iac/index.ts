@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 
+import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   confirmInitInputPersistence,
   getHotUpdaterInitInputEnv,
@@ -16,8 +17,10 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
+import { migrateFirebaseAnalytics } from "@hot-updater/firebase";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
+import admin from "firebase-admin";
 
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
@@ -265,6 +268,26 @@ const deployFunctions = async (
   }
 };
 
+const migrateAnalytics = async (
+  projectId: string,
+  applicationCredentials?: string,
+): Promise<void> => {
+  const app = admin.initializeApp(
+    {
+      credential: applicationCredentials
+        ? admin.credential.cert(path.resolve(applicationCredentials))
+        : admin.credential.applicationDefault(),
+      projectId,
+    },
+    "hot-updater-analytics-migration",
+  );
+  try {
+    await migrateFirebaseAnalytics(admin.firestore(app));
+  } finally {
+    await app.delete();
+  }
+};
+
 const printTemplate = async (
   projectId: string,
   region: string,
@@ -394,10 +417,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await removeTmpDir();
     return;
   }
-  const functionsCode = transformEnv(functionsIndexPath, {
-    REGION: currentRegion,
-  });
-  await fs.promises.writeFile(functionsIndexPath, functionsCode);
   await setEnv({
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
@@ -408,6 +427,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey
       ],
   });
+  const { sha256: apiKeySha256 } = await provisionManagedBetterAuthApiKey();
+  const functionsCode = transformEnv(functionsIndexPath, {
+    API_KEY_SHA256: apiKeySha256,
+    REGION: currentRegion,
+  });
+  await fs.promises.writeFile(functionsIndexPath, functionsCode);
 
   if (
     runtimePackageInfo.serverPackageVersion !==
@@ -440,6 +465,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   ]);
 
   await deployFirestore(tmpDir, nonInteractive, cliEnv);
+  await migrateAnalytics(initializeVariable.projectId, applicationCredentials);
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
 
   await p.tasks([

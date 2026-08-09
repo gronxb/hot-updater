@@ -13,7 +13,16 @@ import {
   isDatabasePlugin,
   type StoragePluginFactory,
 } from "./db/types";
-import { createHandler, type HandlerRoutes } from "./handler";
+import {
+  createHandler,
+  createRuntimeHandler,
+  type HandlerRoutes,
+} from "./handler";
+import { composeServerKernel } from "./kernel/composer";
+import type { HotUpdaterServerPlugin } from "./kernel/contracts";
+import { createCoreServerRoutes } from "./kernel/coreRoutes";
+import { executeKernelRequest } from "./kernel/execute";
+import { createGuardedInfrastructureRuntime } from "./kernel/guardedRuntime";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
@@ -46,6 +55,8 @@ export interface CreateHotUpdaterOptions<TContext = undefined> {
   readonly basePath?: string;
   readonly cwd?: string;
   readonly routes?: HandlerRoutes;
+  /** Trusted in-process server code. Plugins are not sandboxed. */
+  readonly plugins?: readonly HotUpdaterServerPlugin[];
 }
 
 type DatabasePluginCore<TContext> = {
@@ -111,10 +122,45 @@ export function createHotUpdaterCore<TContext = undefined>(
     readStorageText,
   });
 
-  const internalHandler = createHandler(core.api, {
-    basePath,
-    routes: options.routes,
-  });
+  const plugins = options.plugins ?? [];
+  const usesKernel = plugins.length > 0;
+  const internalHandler = (usesKernel ? createRuntimeHandler : createHandler)(
+    core.api,
+    {
+      basePath,
+      routes: options.routes,
+    },
+  );
+  const requestHandler = (() => {
+    if (!usesKernel) {
+      return internalHandler;
+    }
+    const runtime = createGuardedInfrastructureRuntime({
+      beforeDatabaseOperation: assertSchemaReady,
+      database: plugin,
+      storages: storagePlugins,
+    });
+    const kernel = composeServerKernel({
+      carriers: [plugin, ...storagePlugins],
+      coreRoutes: createCoreServerRoutes({
+        handler: internalHandler,
+        routes: options.routes,
+      }),
+      plugins,
+      runtime,
+    });
+    return (
+      request: Request,
+      context?: HotUpdaterContext<TContext>,
+    ): Promise<Response> =>
+      executeKernelRequest({
+        authentication: kernel.authentication,
+        basePath,
+        platformContext: context,
+        request,
+        router: kernel.router,
+      });
+  })();
 
   // Some framework adapters strip the mounted base path or pass extra
   // bindings/execution context arguments. Ignore those extras here so the
@@ -125,10 +171,10 @@ export function createHotUpdaterCore<TContext = undefined>(
     ...extraArgs: unknown[]
   ) => {
     if (extraArgs.length > 0) {
-      return internalHandler(request);
+      return requestHandler(request);
     }
 
-    return internalHandler(request, context);
+    return requestHandler(request, context);
   };
 
   const api: RuntimeHotUpdaterAPI<TContext> = Object.assign(
