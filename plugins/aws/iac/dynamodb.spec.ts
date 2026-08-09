@@ -1,3 +1,4 @@
+import { InitError } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -197,6 +198,38 @@ describe("DynamoDBManager", () => {
       tableName: "existing-table",
     });
     expect(mocks.createTable).not.toHaveBeenCalled();
+  });
+
+  it("reports the next action when table access is denied", async () => {
+    // Given
+    const accessDenied = new Error(
+      "User cannot perform dynamodb:DescribeTable on table/hot-updater",
+    );
+    accessDenied.name = "AccessDeniedException";
+    mocks.describeTable.mockRejectedValue(accessDenied);
+    const manager = new DynamoDBManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    const error = await manager
+      .ensureTable("hot-updater")
+      .catch((error) => Promise.resolve(error));
+
+    // Then
+    expect(error).toBeInstanceOf(InitError);
+    expect(error).toMatchObject({
+      cause: accessDenied,
+      name: "DynamoDBPermissionError",
+      region: "ap-northeast-2",
+      requiredAction: "dynamodb:DescribeTable",
+      tableName: "hot-updater",
+    });
+    expect(error).toHaveProperty(
+      "message",
+      expect.stringMatching(/AmazonDynamoDBFullAccess[\s\S]+hot-updater init/),
+    );
   });
 
   it("rejects an existing table with non-string key attributes", async () => {

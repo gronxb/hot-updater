@@ -5,6 +5,7 @@ import {
   type TableDescription,
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
+import { InitError } from "@hot-updater/cli-tools";
 
 import {
   DYNAMODB_ANALYTICS_SCHEMA_KEY,
@@ -12,12 +13,37 @@ import {
 } from "../src/dynamodbAnalyticsPersistence";
 import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamodbDatabase";
 
+const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
+
 export class DynamoDBTableSchemaError extends Error {
   readonly name = "DynamoDBTableSchemaError";
 
   constructor(readonly tableName: string) {
     super(
       `DynamoDB table "${tableName}" does not match the Hot Updater key and index schema`,
+    );
+  }
+}
+
+export class DynamoDBPermissionError extends InitError {
+  readonly name = "DynamoDBPermissionError";
+  readonly requiredAction = DYNAMODB_DESCRIBE_TABLE_ACTION;
+
+  constructor(
+    readonly tableName: string,
+    readonly region: string,
+    cause: Error,
+  ) {
+    super(
+      [
+        `AWS credentials cannot access DynamoDB table "${tableName}" in ${region}.`,
+        `Required permission: ${DYNAMODB_DESCRIBE_TABLE_ACTION}`,
+        `AWS error: ${cause.message}`,
+        "Ask your AWS administrator to grant this permission, or attach the AmazonDynamoDBFullAccess managed policy, to the identity used for init.",
+        "For AWS IAM Identity Center, update the assigned permission set and refresh the SSO session.",
+        "Then rerun `hot-updater init`.",
+      ].join("\n"),
+      { cause },
     );
   }
 }
@@ -108,7 +134,7 @@ export class DynamoDBManager {
   private readonly client: DynamoDB;
 
   constructor(
-    region: string,
+    private readonly region: string,
     credentials: {
       readonly accessKeyId: string;
       readonly secretAccessKey: string;
@@ -156,6 +182,13 @@ export class DynamoDBManager {
       await this.ensureAnalyticsSchema(tableName);
       return;
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.name === "AccessDeniedException" &&
+        error.message.includes(DYNAMODB_DESCRIBE_TABLE_ACTION)
+      ) {
+        throw new DynamoDBPermissionError(tableName, this.region, error);
+      }
       if (!isResourceNotFound(error)) throw error;
     }
 
