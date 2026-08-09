@@ -54,6 +54,9 @@ aws dynamodb put-item \
 ```
 
 Managed AWS init creates or validates this marker automatically.
+The successful readiness check is cached for the lifetime of the provider, so
+event writes and paginated Analytics reads do not add one schema `GetItem` per
+operation.
 
 ## Configuration
 

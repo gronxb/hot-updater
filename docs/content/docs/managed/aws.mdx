@@ -84,7 +84,7 @@ npx hot-updater init
 6. **Select Region**: Choose an AWS region for S3 and DynamoDB
 7. **Select S3 Bucket**: Choose an existing bucket or create a new one
 8. **Create DynamoDB Table**: Enter a table name; init creates it or validates its schema
-9. **Create IAM Role**: Create or select an IAM role for Lambda@Edge
+9. **Create IAM Role**: Create or reuse a resource-scoped role for this Lambda installation
 10. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
 11. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
 
@@ -141,6 +141,35 @@ and do not run both metadata writers concurrently. The deprecated S3 track does
 not expose Analytics routes.
 
 </Callout>
+
+## Cost and capacity
+
+Managed AWS init uses DynamoDB on-demand capacity, so an idle installation has
+no provisioned read/write capacity charge. Each update check cache miss reads
+the update index. Each Analytics event invokes Lambda@Edge and writes one
+DynamoDB item; Analytics queries read event pages from DynamoDB. See the
+[DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
+[Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
+
+Analytics ingestion is intentionally public because mobile clients cannot hold
+a server secret. Protect production distributions with AWS WAF rate-based rules
+or another ingress quota, and configure AWS Budgets before enabling ingestion at
+large scale. The bounded Analytics provider materializes at most 50,000 events
+per query and retains appended events; plan external retention or aggregation
+before reaching that boundary.
+
+New distributions use `PriceClass_All` to preserve worldwide OTA latency. If
+regional reach matters less than transfer price, change the distribution price
+class in AWS after init; later init runs preserve that setting. Init invalidates
+only `/api/check-update/*`, leaving immutable bundle caches warm. CloudFront
+provides the first 1,000 invalidation paths per account each month at no extra
+charge; see [invalidation pricing](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PayingForInvalidation.html).
+
+Rerunning init preserves unrelated CloudFront origins/cache behaviors and S3
+bucket-policy statements. Lambda roles are isolated by Lambda name and grant
+access only to the selected bucket, SSM parameter, DynamoDB table, and update
+index. Init provisions these resources through AWS APIs rather than a
+CloudFormation stack, so deletion and rollback remain operator-managed.
 
 ## Step 3: Generated Configurations
 
