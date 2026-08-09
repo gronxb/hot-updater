@@ -4,6 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const DISTRIBUTION_HOST = "d111111abcdef8.cloudfront.net";
 const ORIGIN_HOST = "hot-updater-test.s3.us-east-1.amazonaws.com";
 
+const databaseMocks = vi.hoisted(() => ({
+  dynamodbDatabase: vi.fn(() => ({ name: "dynamodbDatabase" })),
+  s3Database: vi.fn(() => ({ name: "s3Database" })),
+}));
+
 const fakeHotUpdaterHandler = vi.fn(
   async () =>
     new Response(JSON.stringify({ ok: true }), {
@@ -13,7 +18,11 @@ const fakeHotUpdaterHandler = vi.fn(
 );
 
 vi.mock("../src/s3Database", () => ({
-  s3Database: vi.fn(() => ({ name: "mockDatabase" })),
+  s3Database: databaseMocks.s3Database,
+}));
+
+vi.mock("../src/dynamodbDatabase", () => ({
+  dynamodbDatabase: databaseMocks.dynamodbDatabase,
 }));
 
 vi.mock("../src/s3Storage", () => ({
@@ -112,10 +121,28 @@ describe("aws lambda entrypoint", () => {
     vi.clearAllMocks();
     globalThis.HotUpdater = {
       CLOUDFRONT_KEY_PAIR_ID: "KTEST",
+      DATABASE_TYPE: "s3",
+      DYNAMODB_REGION: "us-east-1",
+      DYNAMODB_TABLE_NAME: "hot-updater-metadata",
       SSM_PARAMETER_NAME: "/hot-updater/test",
       SSM_REGION: "us-east-1",
       S3_BUCKET_NAME: "hot-updater-test",
     };
+  });
+
+  it("uses DynamoDB metadata when init configures the managed runtime", async () => {
+    // Given
+    globalThis.HotUpdater.DATABASE_TYPE = "dynamodb";
+
+    // When
+    await import("./index");
+
+    // Then
+    expect(databaseMocks.dynamodbDatabase).toHaveBeenCalledWith({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+    expect(databaseMocks.s3Database).not.toHaveBeenCalled();
   });
 
   it("serves canonical app-version routes without a cohort segment for origin-request events", async () => {

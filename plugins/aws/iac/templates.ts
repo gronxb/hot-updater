@@ -7,6 +7,8 @@ import {
   type ProviderConfig,
 } from "@hot-updater/cli-tools";
 
+import type { AwsDatabaseType } from "../src/awsDatabaseType";
+
 export type AwsConfigScaffoldAuthMode =
   | { mode: "account" }
   | { mode: "local"; profile: string | null }
@@ -15,18 +17,29 @@ export type AwsConfigScaffoldAuthMode =
 export const getConfigScaffold = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
+  databaseType: AwsDatabaseType = "dynamodb",
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
-    configString: "s3Storage(commonOptions)",
+    configString: "s3Storage(storageOptions)",
   };
-  const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/aws", named: ["s3Database"] }],
-    configString: `s3Database({
-    ...commonOptions,
+  const databaseConfig: ProviderConfig =
+    databaseType === "dynamodb"
+      ? {
+          imports: [{ pkg: "@hot-updater/aws", named: ["dynamodbDatabase"] }],
+          configString: `dynamodbDatabase({
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   })`,
-  };
+        }
+      : {
+          imports: [{ pkg: "@hot-updater/aws", named: ["s3Database"] }],
+          configString: `s3Database({
+    ...storageOptions,
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  })`,
+        };
 
   let helperStatements: ManagedHelperStatement[];
 
@@ -34,11 +47,10 @@ export const getConfigScaffold = (
     case "sso":
       helperStatements = [
         {
-          name: "commonOptions",
+          name: "awsOptions",
           strategy: "merge-object",
           code: `
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
 };`.trim(),
@@ -48,18 +60,16 @@ const commonOptions = {
     case "local":
       helperStatements = [
         {
-          name: "commonOptions",
+          name: "awsOptions",
           strategy: "merge-object",
           code: authMode.profile
             ? `
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromIni({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
 };`.trim()
             : `
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromNodeProviderChain(),
 };`.trim(),
@@ -69,11 +79,10 @@ const commonOptions = {
     case "account":
       helperStatements = [
         {
-          name: "commonOptions",
+          name: "awsOptions",
           strategy: "merge-object",
           code: `
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: {
     accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!,
@@ -84,6 +93,16 @@ const commonOptions = {
       ];
       break;
   }
+
+  helperStatements.push({
+    name: "storageOptions",
+    strategy: "merge-object",
+    code: `
+const storageOptions = {
+  ...awsOptions,
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+};`.trim(),
+  });
 
   const builder = new ConfigBuilder()
     .setBuildType(build)
@@ -118,7 +137,8 @@ const commonOptions = {
 export const getConfigTemplate = (
   build: BuildType,
   authMode: AwsConfigScaffoldAuthMode,
-) => getConfigScaffold(build, authMode).text;
+  databaseType: AwsDatabaseType = "dynamodb",
+) => getConfigScaffold(build, authMode, databaseType).text;
 
 export const SOURCE_TEMPLATE = `// Add this to your App.tsx
 import { HotUpdater } from "@hot-updater/react-native";

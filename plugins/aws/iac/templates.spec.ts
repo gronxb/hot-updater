@@ -3,6 +3,43 @@ import { describe, expect, it } from "vitest";
 import { getConfigScaffold } from "./templates";
 
 describe("AWS managed config scaffold", () => {
+  it("renders DynamoDB as the managed metadata database", () => {
+    // Given
+    const database = "dynamodb" as const;
+
+    // When
+    const scaffold = getConfigScaffold(
+      "bare",
+      { mode: "local", profile: null },
+      database,
+    );
+
+    // Then
+    expect(scaffold.text).toContain(
+      'import { dynamodbDatabase, s3Storage } from "@hot-updater/aws";',
+    );
+    expect(scaffold.text).toContain(
+      "tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!",
+    );
+    expect(scaffold.text).not.toContain("s3Database(");
+  });
+
+  it("keeps the deprecated S3 metadata database selectable", () => {
+    // Given
+    const database = "s3" as const;
+
+    // When
+    const scaffold = getConfigScaffold(
+      "bare",
+      { mode: "local", profile: null },
+      database,
+    );
+
+    // Then
+    expect(scaffold.text).toContain("s3Database({");
+    expect(scaffold.text).not.toContain("dynamodbDatabase(");
+  });
+
   it("renders access key credentials for account mode", () => {
     const scaffold = getConfigScaffold("bare", { mode: "account" });
 

@@ -22,6 +22,9 @@ export class LambdaEdgeDeployer {
     lambdaName: string,
     config: {
       bucketName: string;
+      databaseType: "dynamodb" | "s3";
+      dynamodbRegion: string;
+      dynamodbTableName: string;
       publicKeyId: string;
       ssmParameterName: string;
       ssmRegion: string;
@@ -37,6 +40,9 @@ export class LambdaEdgeDeployer {
     const indexPath = path.join(tmpDir, "index.cjs");
     const code = transformEnv(indexPath, {
       CLOUDFRONT_KEY_PAIR_ID: config.publicKeyId,
+      DATABASE_TYPE: config.databaseType,
+      DYNAMODB_REGION: config.dynamodbRegion,
+      DYNAMODB_TABLE_NAME: config.dynamodbTableName,
       SSM_PARAMETER_NAME: config.ssmParameterName,
       SSM_REGION: config.ssmRegion,
       S3_BUCKET_NAME: config.bucketName,

@@ -16,12 +16,17 @@ import {
 } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
+import {
+  AWS_DATABASE_TYPES,
+  type AwsDatabaseType,
+} from "../src/awsDatabaseType";
 import { resolveAwsAuth } from "./awsAuth";
 import {
   assertAwsNonInteractiveInputs,
   resolveAwsInitInputs,
 } from "./awsInitInputs";
 import { CloudFrontManager } from "./cloudfront";
+import { DynamoDBManager } from "./dynamodb";
 import { IAMManager } from "./iam";
 import { initProvider as AWS_INIT_PROVIDER } from "./init/index";
 import { LambdaEdgeDeployer } from "./lambdaEdge";
@@ -61,6 +66,34 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     process.exit(1);
   }
 
+  const database = await (async (): Promise<AwsDatabaseType> => {
+    if (nonInteractive) {
+      if (savedInputs.database) return savedInputs.database;
+      p.log.warn(
+        "This saved AWS init environment predates database selection. Continuing with deprecated s3Database to preserve existing metadata.",
+      );
+      return "s3";
+    }
+    const selected = await p.select<AwsDatabaseType>({
+      initialValue: savedInputs.database ?? "dynamodb",
+      message: AWS_INIT_PROVIDER.inputs.database.prompt.message,
+      options: AWS_DATABASE_TYPES.map((type) => ({
+        label:
+          type === "dynamodb"
+            ? "DynamoDB (Recommended)"
+            : "S3 metadata (Deprecated)",
+        value: type,
+      })),
+    });
+    if (p.isCancel(selected)) process.exit(1);
+    return selected;
+  })();
+  if (database === "s3") {
+    p.log.warn(
+      "s3Database is deprecated. Existing metadata remains supported, but new installations should use DynamoDB.",
+    );
+  }
+
   p.log.message(colors.blue("The following permissions are required:"));
   p.log.message(
     `${colors.blue("AmazonS3FullAccess")}: Create and read S3 buckets`,
@@ -77,6 +110,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   p.log.message(
     `${colors.blue("AmazonSSMFullAccess")}: Access to SSM Parameters for storing CloudFront key pairs`,
   );
+  if (database === "dynamodb") {
+    p.log.message(
+      `${colors.blue("AmazonDynamoDBFullAccess")}: Create and configure the metadata table`,
+    );
+  }
 
   const { awsProfile, configAuthMode, credentials, mode } =
     await resolveAwsAuth(providerEnv, nonInteractive);
@@ -127,10 +165,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     p.log.warn("Saved S3 bucket was not found. Select a bucket again.");
   }
   const savedLambdaName = savedInputs.lambdaName;
+  const savedDynamoDBTableName = savedInputs.dynamodbTableName;
   const resourceInputs = await p.group<{
     bucketSelection: string | symbol;
     bucketName: string | symbol | undefined;
     bucketRegion: string | symbol | undefined;
+    dynamodbTableName: string | symbol | undefined;
     lambdaName: string | symbol;
   }>(
     {
@@ -188,6 +228,21 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
                 (bucket) => bucket.name === results.bucketSelection,
               )?.region,
             ),
+      dynamodbTableName: () =>
+        database === "s3"
+          ? Promise.resolve(undefined)
+          : nonInteractive && savedDynamoDBTableName
+            ? Promise.resolve(savedDynamoDBTableName)
+            : p.text({
+                ...getInitProviderTextPromptValues(
+                  AWS_INIT_PROVIDER.inputs.dynamodbTableName.prompt,
+                  savedDynamoDBTableName,
+                ),
+                message:
+                  AWS_INIT_PROVIDER.inputs.dynamodbTableName.prompt.message,
+                validate: (value) =>
+                  value ? undefined : "DynamoDB table name is required",
+              }),
       lambdaName: () =>
         nonInteractive && savedLambdaName
           ? Promise.resolve(savedLambdaName)
@@ -205,7 +260,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       onCancel: () => process.exit(1),
     },
   );
-  const { bucketName, bucketRegion, lambdaName } = resourceInputs;
+  const { bucketName, bucketRegion, dynamodbTableName, lambdaName } =
+    resourceInputs;
   if (!bucketName || !lambdaName) {
     p.log.error("AWS resource names are required.");
     process.exit(1);
@@ -213,6 +269,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   if (!isAwsRegion(bucketRegion)) {
     p.log.error("AWS bucket region is required.");
+    process.exit(1);
+  }
+  const resolvedDynamoDBTableName =
+    typeof dynamodbTableName === "string" ? dynamodbTableName : undefined;
+  if (database === "dynamodb" && !resolvedDynamoDBTableName) {
+    p.log.error("AWS DynamoDB table name is required.");
     process.exit(1);
   }
   const cloudFrontManager = new CloudFrontManager(bucketRegion, credentials);
@@ -225,7 +287,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     ...resolvedAuthInputs,
     bucketName,
     bucketRegion,
+    database,
     distributionId: selectedDistribution?.Id,
+    dynamodbTableName: resolvedDynamoDBTableName,
     lambdaName,
     migrationApproved: savedInputs.migrationApproved,
   };
@@ -248,7 +312,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       ? {
           [accessKeyEnvKey]: {
             comment:
-              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
+              "The current key may have excessive permissions. Replace it with least-privilege S3, DynamoDB, and CloudFront permissions.",
             value: initEnv[accessKeyEnvKey],
           },
         }
@@ -257,7 +321,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       ? {
           [secretAccessKeyEnvKey]: {
             comment:
-              "The current key may have excessive permissions. Update it with an S3FullAccess and CloudFrontFullAccess key.",
+              "The current key may have excessive permissions. Replace it with least-privilege S3, DynamoDB, and CloudFront permissions.",
             value: initEnv[secretAccessKeyEnvKey],
           },
         }
@@ -287,9 +351,20 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     });
   }
 
+  if (database === "dynamodb" && resolvedDynamoDBTableName) {
+    const dynamodbManager = new DynamoDBManager(bucketRegion, credentials);
+    await dynamodbManager.ensureTable(resolvedDynamoDBTableName);
+    p.log.info(
+      `Using DynamoDB table: ${resolvedDynamoDBTableName} (${bucketRegion})`,
+    );
+  }
+
   // Create IAM role: Using IAMManager
   const iamManager = new IAMManager(bucketRegion, credentials);
-  const lambdaRoleArn = await iamManager.createOrSelectRole();
+  const lambdaRoleArn = await iamManager.createOrSelectRole({
+    dynamodbTableName:
+      database === "dynamodb" ? resolvedDynamoDBTableName : undefined,
+  });
 
   const ssmKeyPairManager = new SSMKeyPairManager(bucketRegion, credentials);
 
@@ -309,6 +384,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     lambdaName,
     {
       bucketName,
+      databaseType: database,
+      dynamodbRegion: bucketRegion,
+      dynamodbTableName: resolvedDynamoDBTableName ?? "",
       publicKeyId: publicKeyId,
       ssmParameterName: ssmParameterName,
       ssmRegion: bucketRegion,
@@ -335,7 +413,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // Create configuration file
   const configWriteResult = await writeHotUpdaterConfig(
-    getConfigScaffold(build, configAuthMode),
+    getConfigScaffold(build, configAuthMode, database),
   );
 
   await makeEnv({

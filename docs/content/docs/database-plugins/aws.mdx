@@ -13,8 +13,11 @@ npm install @hot-updater/aws --save-dev
 
 ## Create the table
 
-Create one on-demand table with the overloaded index used for update checks
-and patch relations:
+For managed AWS installations, `npx hot-updater init` selects DynamoDB by
+default and creates or validates this table automatically.
+
+For custom installations, create one on-demand table manually with the
+overloaded index used for update checks and patch relations:
 
 ```bash
 aws dynamodb create-table \
@@ -134,3 +137,7 @@ Continue using `s3Storage` for bundle archives and other large artifacts.
 The providers do not share state. Back up the metadata bucket and copy existing
 bundle and patch rows before changing the configured database. Do not run S3
 and DynamoDB metadata writers concurrently during a migration.
+
+`hot-updater init` keeps `S3 metadata (Deprecated)` selectable for existing
+installations. Replaying an older AWS init environment without an explicit
+database choice preserves S3 metadata instead of silently switching databases.

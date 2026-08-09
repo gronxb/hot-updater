@@ -1,6 +1,6 @@
 ---
-title: "AWS S3 Storage + Lambda@Edge Function"
-description: "This guide walks you through setting up `hot-updater` with AWS S3 Storage and Lambda@Edge Function in a React Native project. You'll configure the environment, install required packages, and initialize AWS for seamless updates."
+title: "AWS DynamoDB + S3 + Lambda@Edge"
+description: "Set up DynamoDB metadata, S3 bundle storage, CloudFront, and Lambda@Edge for Hot Updater."
 icon: aws
 ---
 
@@ -26,6 +26,7 @@ Hot Updater requires specific AWS IAM permissions for setup and ongoing usage:
 Used for `hot-updater init`:
 
 - `AmazonS3FullAccess`: Create and read S3 buckets.
+- `AmazonDynamoDBFullAccess`: Create and configure the metadata table.
 - `AWSLambda_FullAccess`: Create and update Lambda functions.
 - `CloudFrontFullAccess`: Manage CloudFront distributions.
 - `IAMFullAccess`: Create IAM roles for Lambda@Edge.
@@ -35,7 +36,8 @@ Used for `hot-updater init`:
 
 Used for `hot-updater deploy` and `hot-updater console`:
 
-- `AmazonS3FullAccess`: Manage bundles and metadata in the S3 bucket.
+- `AmazonS3FullAccess`: Manage bundle artifacts in the S3 bucket.
+- DynamoDB table access for metadata queries and writes.
 - `cloudfront:CreateInvalidation`: Invalidate CloudFront cache after deployments.
 
 For ongoing usage, create a separate access token with limited permissions. Here's a minimal policy example for CloudFront invalidation:
@@ -76,22 +78,25 @@ npx hot-updater init
 1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
    During the setup, you will be prompted to:
-3. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
-4. **Enter AWS Credentials**: Provide your profile name or AWS credentials when the selected mode requires it
-5. **Select Region**: Choose an AWS region for your S3 bucket
-6. **Select S3 Bucket**: Choose an existing bucket or create a new one
-7. **Create IAM Role**: Create or select an IAM role for Lambda@Edge
-8. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
-9. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
+3. **Select a Database**: Choose DynamoDB (recommended) or S3 metadata (deprecated).
+4. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
+5. **Enter AWS Credentials**: Provide your profile name or AWS credentials when the selected mode requires it
+6. **Select Region**: Choose an AWS region for S3 and DynamoDB
+7. **Select S3 Bucket**: Choose an existing bucket or create a new one
+8. **Create DynamoDB Table**: Enter a table name; init creates it or validates its schema
+9. **Create IAM Role**: Create or select an IAM role for Lambda@Edge
+10. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
+11. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
 
   </Accordion>
 </Accordions>
 
-Once the setup is complete, `.env.hotupdater` will be generated with your bucket,
-region, CloudFront distribution ID, and any profile or key settings needed for the
-mode you selected.
+Once setup is complete, `.env.hotupdater` contains the selected database, table,
+bucket, region, CloudFront distribution ID, and authentication settings.
 
 ```
+HOT_UPDATER_AWS_DATABASE=dynamodb
+HOT_UPDATER_DYNAMODB_TABLE_NAME=hot-updater
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region
 HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID=your-distribution-id
@@ -124,6 +129,15 @@ please refer to the article below for more details:
 
 </Callout>
 
+<Callout type="warn">
+
+`S3 metadata (Deprecated)` remains available for existing installations and
+older saved init environments continue using it. Init does not automatically
+copy S3 metadata into DynamoDB. Back up and migrate metadata before switching,
+and do not run both metadata writers concurrently.
+
+</Callout>
+
 ## Step 3: Generated Configurations
 
 During the initialization process, the following file is automatically generated:
@@ -136,23 +150,28 @@ AWS SDK default provider chain instead of embedding access keys:
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
-import { s3Storage, s3Database } from "@hot-updater/aws";
+import { dynamodbDatabase, s3Storage } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import { config } from "dotenv";
 
 config({ path: ".env.hotupdater" });
 
-const commonOptions = {
-  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+const awsOptions = {
   region: process.env.HOT_UPDATER_S3_REGION!,
   credentials: fromNodeProviderChain(),
 };
 
+const storageOptions = {
+  ...awsOptions,
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+};
+
 export default defineConfig({
   build: bare({ enableHermes: true }),
-  storage: s3Storage(commonOptions),
-  database: s3Database({
-    ...commonOptions,
+  storage: s3Storage(storageOptions),
+  database: dynamodbDatabase({
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
     // prettier-ignore
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
@@ -173,7 +192,9 @@ you can keep using the generated credential-provider setup and skip this section
 
 The token may have excessive permissions due to infrastructure setup or expire if SSO was used.
 
-To avoid issues, update it with a permanent token with `S3FullAccess` and `CloudFrontFullAccess`.
+To avoid issues, replace it with a permanent least-privilege identity that can
+write bundle artifacts to S3, read and write the selected DynamoDB table, and
+invalidate the CloudFront distribution.
 
 ```bash title=".env.hotupdater"
 HOT_UPDATER_S3_ACCESS_KEY_ID=your-access-key-id

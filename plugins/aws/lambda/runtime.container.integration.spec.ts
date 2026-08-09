@@ -287,6 +287,9 @@ describe.sequential("aws lambda runtime acceptance", () => {
       path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda/index.cjs"),
       {
         CLOUDFRONT_KEY_PAIR_ID,
+        DATABASE_TYPE: "s3",
+        DYNAMODB_REGION: REGION,
+        DYNAMODB_TABLE_NAME: "",
         SSM_PARAMETER_NAME,
         SSM_REGION: REGION,
         S3_BUCKET_NAME,
