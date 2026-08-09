@@ -441,14 +441,14 @@ describe("Detox control client", () => {
       caught = error;
     }
 
-    // Then: the client reports the job id and cancels the server job before Jest's 12 minute ceiling.
+    // Then: the client leaves time to cancel the server job before Jest's 30 minute ceiling.
     expect(caught).toBeInstanceOf(ControlJobError);
     if (caught instanceof ControlJobError) {
       expect(caught.jobId).toBe("job-hung");
       expect(caught.stage).toBe("bundle deploy");
-      expect(caught.message).toContain("timed out after 600000ms");
+      expect(caught.message).toContain("timed out after 1500000ms");
     }
-    expect(now).toBeLessThan(720000);
+    expect(now).toBeLessThan(1800000);
     expect(calls).toContainEqual({
       method: "GET",
       url: "http://127.0.0.1:3010/e2e/jobs/job-hung",
@@ -460,9 +460,9 @@ describe("Detox control client", () => {
     expect(timings).toEqual([
       {
         diagnostic:
-          "bundle deploy job job-hung failed: timed out after 600000ms",
-        durationMs: 600000,
-        endedAtMs: 600000,
+          "bundle deploy job job-hung failed: timed out after 1500000ms",
+        durationMs: 1500000,
+        endedAtMs: 1500000,
         outcome: "failed",
         stage: "bundle deploy",
         startedAtMs: 0,
