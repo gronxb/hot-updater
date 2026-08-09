@@ -1,24 +1,29 @@
 import {
   CloudFrontClient,
   CreateInvalidationCommand,
+  GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
 import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { mockClient } from "aws-sdk-client-mock";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { dynamodbDatabase } from "./dynamodbDatabase";
+import { dynamoDB } from "./dynamodbDatabase";
 
 const cloudFront = mockClient(CloudFrontClient);
 
-describe("dynamodbDatabase CloudFront lifecycle", () => {
+describe("dynamoDB CloudFront lifecycle", () => {
   beforeEach(() => {
     cloudFront.reset();
     cloudFront.on(CreateInvalidationCommand).resolves({});
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("invalidates cached update checks after metadata mutations", async () => {
     // Given
-    const plugin = dynamodbDatabase({
+    const plugin = dynamoDB({
       cloudfrontDistributionId: "distribution-id",
       region: "us-east-1",
       tableName: "hot-updater-metadata",
@@ -36,12 +41,53 @@ describe("dynamodbDatabase CloudFront lifecycle", () => {
         Paths: { Items: ["/api/check-update/*"] },
       },
     });
+    expect(cloudFront.commandCalls(GetInvalidationCommand)).toHaveLength(0);
+
+    await plugin.onUnmount?.();
+  });
+
+  it("waits for invalidation completion when configured", async () => {
+    // Given
+    vi.useFakeTimers();
+    cloudFront.on(CreateInvalidationCommand).resolves({
+      Invalidation: { Id: "invalidation-id", Status: "InProgress" },
+    });
+    cloudFront.on(GetInvalidationCommand).resolves({
+      Invalidation: { Id: "invalidation-id", Status: "Completed" },
+    });
+    const plugin = dynamoDB({
+      cloudfrontDistributionId: "distribution-id",
+      region: "us-east-1",
+      shouldWaitForInvalidation: true,
+      tableName: "hot-updater-metadata",
+    });
+
+    // When
+    const invalidation = plugin.onDatabaseUpdated?.();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await invalidation;
+
+    // Then
+    expect(cloudFront.commandCalls(GetInvalidationCommand)).toHaveLength(1);
+
+    await plugin.onUnmount?.();
+  });
+
+  it("uses the database factory naming convention", async () => {
+    // Given
+    const plugin = dynamoDB({
+      region: "us-east-1",
+      tableName: "hot-updater-metadata",
+    });
+
+    // Then
+    expect(plugin.name).toBe("dynamoDB");
 
     await plugin.onUnmount?.();
   });
 
   it("provides Analytics from the same DynamoDB table", () => {
-    const plugin = dynamodbDatabase({
+    const plugin = dynamoDB({
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });

@@ -47,10 +47,7 @@ import {
   DYNAMODB_ANALYTICS_SCHEMA_KEY,
   DYNAMODB_ANALYTICS_SCHEMA_VERSION,
 } from "../src/dynamodbAnalyticsPersistence";
-import {
-  DYNAMODB_UPDATE_INDEX_NAME,
-  dynamodbDatabase,
-} from "../src/dynamodbDatabase";
+import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamodbDatabase";
 import { s3Database } from "../src/s3Database";
 import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
 
@@ -326,7 +323,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     process.env.AWS_ENDPOINT_URL = localstackEndpoint;
 
     seedHotUpdater = createHotUpdater({
-      database: dynamodbDatabase({
+      database: dynamoDB({
         tableName: DYNAMODB_TABLE_NAME,
         region: REGION,
         endpoint: localstackEndpoint,

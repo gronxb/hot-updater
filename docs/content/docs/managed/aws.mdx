@@ -196,7 +196,7 @@ AWS SDK default provider chain instead of embedding access keys:
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
-import { dynamodbDatabase, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 import { config } from "dotenv";
 
@@ -215,7 +215,7 @@ const storageOptions = {
 export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: s3Storage(storageOptions),
-  database: dynamodbDatabase({
+  database: dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
     // prettier-ignore

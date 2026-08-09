@@ -20,10 +20,7 @@ import {
   type RuntimeChild,
   type RuntimeLogs,
 } from "../../../packages/test-utils/src/runtimeProcess";
-import {
-  DYNAMODB_UPDATE_INDEX_NAME,
-  dynamodbDatabase,
-} from "./dynamodbDatabase";
+import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "./dynamodbDatabase";
 
 const REGION = "us-east-1";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
@@ -56,7 +53,7 @@ export class DynamoDBIntegrationFixture {
   }
 
   createPlugin(): DatabasePlugin {
-    return dynamodbDatabase({
+    return dynamoDB({
       credentials,
       endpoint: this.endpoint,
       region: REGION,

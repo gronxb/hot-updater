@@ -16,7 +16,7 @@ describe("AWS managed config scaffold", () => {
 
     // Then
     expect(scaffold.text).toContain(
-      'import { dynamodbDatabase, s3Storage } from "@hot-updater/aws";',
+      'import { dynamoDB, s3Storage } from "@hot-updater/aws";',
     );
     expect(scaffold.text).toContain(
       "tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!",
@@ -37,7 +37,7 @@ describe("AWS managed config scaffold", () => {
 
     // Then
     expect(scaffold.text).toContain("s3Database({");
-    expect(scaffold.text).not.toContain("dynamodbDatabase(");
+    expect(scaffold.text).not.toContain("dynamoDB(");
   });
 
   it("renders access key credentials for account mode", () => {

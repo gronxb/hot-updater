@@ -26,8 +26,8 @@ export const getConfigScaffold = (
   const databaseConfig: ProviderConfig =
     databaseType === "dynamodb"
       ? {
-          imports: [{ pkg: "@hot-updater/aws", named: ["dynamodbDatabase"] }],
-          configString: `dynamodbDatabase({
+          imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
+          configString: `dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,

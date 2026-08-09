@@ -5,7 +5,7 @@ const DISTRIBUTION_HOST = "d111111abcdef8.cloudfront.net";
 const ORIGIN_HOST = "hot-updater-test.s3.us-east-1.amazonaws.com";
 
 const databaseMocks = vi.hoisted(() => ({
-  dynamodbDatabase: vi.fn(() => ({ name: "dynamodbDatabase" })),
+  dynamoDB: vi.fn(() => ({ name: "dynamoDB" })),
   s3Database: vi.fn(() => ({ name: "s3Database" })),
 }));
 const managedPluginMocks = vi.hoisted(() => ({
@@ -27,7 +27,7 @@ vi.mock("../src/s3Database", () => ({
 }));
 
 vi.mock("../src/dynamodbDatabase", () => ({
-  dynamodbDatabase: databaseMocks.dynamodbDatabase,
+  dynamoDB: databaseMocks.dynamoDB,
 }));
 
 vi.mock("@hot-updater/analytics", () => ({
@@ -152,7 +152,7 @@ describe("aws lambda entrypoint", () => {
     await import("./index");
 
     // Then
-    expect(databaseMocks.dynamodbDatabase).toHaveBeenCalledWith({
+    expect(databaseMocks.dynamoDB).toHaveBeenCalledWith({
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });

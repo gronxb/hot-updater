@@ -1,6 +1,6 @@
 import path from "path";
 
-import { dynamodbDatabase, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { config } from "dotenv";
@@ -15,7 +15,7 @@ const credentials = {
 const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
 
 export const hotUpdater = createHotUpdater({
-  database: dynamodbDatabase({
+  database: dynamoDB({
     region,
     endpoint: process.env.AWS_DYNAMODB_ENDPOINT ?? "http://localhost:8000",
     credentials,

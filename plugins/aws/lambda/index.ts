@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
 
-import { dynamodbDatabase } from "../src/dynamodbDatabase";
+import { dynamoDB } from "../src/dynamodbDatabase";
 import { s3Database } from "../src/s3Database";
 import { s3Storage } from "../src/s3Storage";
 import { withCloudFrontSignedUrl } from "../src/withCloudFrontSignedUrl";
@@ -57,7 +57,7 @@ class AwsLambdaDatabaseTypeError extends Error {
 const createManagedDatabase = () => {
   switch (DATABASE_TYPE) {
     case "dynamodb":
-      return dynamodbDatabase({
+      return dynamoDB({
         region: DYNAMODB_REGION,
         tableName: DYNAMODB_TABLE_NAME,
       });

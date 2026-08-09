@@ -24,14 +24,14 @@ import { createDynamoDBGetUpdateInfo } from "./dynamodbDatabaseUpdateInfo";
 
 export const DYNAMODB_UPDATE_INDEX_NAME = "hot-updater-update-index";
 
-export interface DynamoDBDatabaseConfig extends DynamoDBClientConfig {
+export interface DynamoDBConfig extends DynamoDBClientConfig {
   readonly apiBasePath?: string;
   readonly cloudfrontDistributionId?: string;
   readonly shouldWaitForInvalidation?: boolean;
   readonly tableName: string;
 }
 
-export const dynamodbDatabase = (config: DynamoDBDatabaseConfig) => {
+export const dynamoDB = (config: DynamoDBConfig) => {
   const {
     apiBasePath = "/api/check-update",
     cloudfrontDistributionId,
@@ -50,7 +50,7 @@ export const dynamodbDatabase = (config: DynamoDBDatabaseConfig) => {
     : null;
   const store = { client, tableName };
   const plugin = createDatabasePlugin({
-    name: "dynamodbDatabase",
+    name: "dynamoDB",
     plugin: () => ({
       ...createDynamoDBCrud(store, DYNAMODB_UPDATE_INDEX_NAME),
       getUpdateInfo: createDynamoDBGetUpdateInfo(

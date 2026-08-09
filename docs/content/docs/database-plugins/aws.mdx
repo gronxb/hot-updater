@@ -1,5 +1,5 @@
 ---
-title: "AWS DynamoDB Database"
+title: "AWS DynamoDB"
 description: Store Hot Updater bundle and patch metadata in DynamoDB.
 
 icon: aws
@@ -75,10 +75,13 @@ operation.
 ## Configuration
 
 ```typescript
-interface DynamoDBDatabaseConfig {
+interface DynamoDBConfig {
   tableName: string;
   region?: string;
   endpoint?: string;
+  apiBasePath?: string;
+  cloudfrontDistributionId?: string;
+  shouldWaitForInvalidation?: boolean;
   credentials?: {
     accessKeyId: string;
     secretAccessKey: string;
@@ -90,14 +93,19 @@ If `credentials` is omitted, the AWS SDK default credential chain is used. This
 lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
 other standard AWS credential sources.
 
+When `cloudfrontDistributionId` is set, metadata mutations submit an
+invalidation for the update-check route. Set `shouldWaitForInvalidation: true`
+when a deployment or E2E flow must wait for CloudFront propagation; it defaults
+to `false`.
+
 ## Usage
 
 ```typescript
-import { dynamodbDatabase } from "@hot-updater/aws";
+import { dynamoDB } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  database: dynamodbDatabase({
+  database: dynamoDB({
     tableName: "hot-updater",
     region: "us-east-1",
     credentials: {
@@ -113,7 +121,7 @@ export default defineConfig({
 Combined storage and database:
 
 ```typescript
-import { dynamodbDatabase, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConfig } from "hot-updater";
 
 const credentials = {
@@ -127,7 +135,7 @@ export default defineConfig({
     credentials,
     bucketName: "my-bundles-bucket",
   }),
-  database: dynamodbDatabase({
+  database: dynamoDB({
     tableName: "hot-updater",
     region: "us-east-1",
     credentials,
@@ -137,14 +145,14 @@ export default defineConfig({
 
 ## Custom Server Usage
 
-Use `dynamodbDatabase` with `createHotUpdater` for self-hosted servers:
+Use `dynamoDB` with `createHotUpdater` for self-hosted servers:
 
 ```typescript
-import { dynamodbDatabase } from "@hot-updater/aws";
+import { dynamoDB } from "@hot-updater/aws";
 import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
-  database: dynamodbDatabase({
+  database: dynamoDB({
     tableName: process.env.AWS_DYNAMODB_TABLE_NAME!,
     region: process.env.AWS_REGION!,
     credentials: {
