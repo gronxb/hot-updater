@@ -196,6 +196,29 @@ describe("Detox E2E harness contract", () => {
     );
   });
 
+  it("allows slow provider profiles to extend the scenario timeout", () => {
+    // Given: AWS waits for CloudFront invalidations while deploys share a lock.
+    const result = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        "process.stdout.write(String(require('./e2e/detox/jest.config.js').testTimeout))",
+      ],
+      {
+        cwd: repoDir,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOT_UPDATER_E2E_TEST_TIMEOUT_MS: "1800000",
+        },
+      },
+    );
+
+    // Then: the profile-specific timeout is passed through to Jest.
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("1800000");
+  });
+
   it("injects the fixed E2E min bundle id into Detox release builds", async () => {
     // Given: provider scenarios compare the built-in bundle id after rollbacks.
     const detoxConfig = await fs.readFile(detoxConfigPath, "utf8");
