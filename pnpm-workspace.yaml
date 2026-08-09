@@ -7,6 +7,7 @@ packages:
 
 overrides:
   '@smithy/types': 4.16.1
+  recharts@3.8.0>es-toolkit: 1.46.0
 
 allowBuilds:
   '@firebase/util': true
