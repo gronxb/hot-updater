@@ -217,6 +217,7 @@ const mergeOriginWithExisting = (
 ): Origin => ({
   ...existingOrigin,
   ...overrideOrigin,
+  Id: existingOrigin?.Id ?? overrideOrigin.Id,
   CustomHeaders: existingOrigin?.CustomHeaders ?? {
     Quantity: 0,
   },
@@ -280,7 +281,26 @@ const mergeCacheBehaviors = (
       ? mergeBehaviorWithExisting(existingBehavior, override)
       : existingBehavior;
   });
-  return [...additions, ...mergedExisting];
+  return additions.reduce<CacheBehavior[]>((behaviors, addition) => {
+    const additionPrefix =
+      (addition.PathPattern ?? "").split(/[?*]/, 1)[0] ?? "";
+    const broaderBehaviorIndex = behaviors.findIndex((behavior) => {
+      const behaviorPrefix =
+        (behavior.PathPattern ?? "").split(/[?*]/, 1)[0] ?? "";
+      return (
+        behaviorPrefix.length < additionPrefix.length &&
+        additionPrefix.startsWith(behaviorPrefix)
+      );
+    });
+    if (broaderBehaviorIndex === -1) {
+      return [...behaviors, addition];
+    }
+    return [
+      ...behaviors.slice(0, broaderBehaviorIndex),
+      addition,
+      ...behaviors.slice(broaderBehaviorIndex),
+    ];
+  }, mergedExisting);
 };
 
 export const buildDistributionConfigOverrides = (options: {
@@ -324,13 +344,31 @@ export const applyDistributionConfigOverrides = (
   distributionConfig: DistributionConfig,
   overrides: DistributionConfigOverrides,
 ): DistributionConfig => {
+  const managedOrigin = overrides.Origins.Items?.[0];
+  const existingManagedOrigin = managedOrigin
+    ? distributionConfig.Origins?.Items?.find(
+        (origin) =>
+          origin.Id === managedOrigin.Id ||
+          origin.DomainName === managedOrigin.DomainName,
+      )
+    : undefined;
+  const targetOriginId = existingManagedOrigin?.Id ?? managedOrigin?.Id;
+  const defaultCacheBehavior = targetOriginId
+    ? { ...overrides.DefaultCacheBehavior, TargetOriginId: targetOriginId }
+    : overrides.DefaultCacheBehavior;
+  const cacheBehaviorOverrides = (overrides.CacheBehaviors.Items ?? []).map(
+    (behavior) =>
+      targetOriginId
+        ? { ...behavior, TargetOriginId: targetOriginId }
+        : behavior,
+  );
   const origins = mergeOrigins(
     distributionConfig.Origins?.Items ?? [],
     overrides.Origins.Items ?? [],
   );
   const cacheBehaviors = mergeCacheBehaviors(
     distributionConfig.CacheBehaviors?.Items ?? [],
-    overrides.CacheBehaviors.Items ?? [],
+    cacheBehaviorOverrides,
   );
   return sanitizeDistributionConfig({
     ...distributionConfig,
@@ -340,7 +378,7 @@ export const applyDistributionConfigOverrides = (
     },
     DefaultCacheBehavior: mergeBehaviorWithExisting(
       distributionConfig.DefaultCacheBehavior,
-      overrides.DefaultCacheBehavior,
+      defaultCacheBehavior,
     ),
     CacheBehaviors: {
       Quantity: cacheBehaviors.length,

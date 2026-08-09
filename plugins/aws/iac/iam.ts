@@ -90,6 +90,22 @@ export class IAMManager {
     });
   }
 
+  private async removeDynamoDBPolicy(
+    iamClient: IAM,
+    roleName: string,
+  ): Promise<void> {
+    try {
+      await iamClient.deleteRolePolicy({
+        PolicyName: "HotUpdaterDynamoDBReadAccess",
+        RoleName: roleName,
+      });
+    } catch (error) {
+      if (!(error instanceof Error && error.name === "NoSuchEntityException")) {
+        throw error;
+      }
+    }
+  }
+
   private async ensureS3Policy(
     iamClient: IAM,
     roleName: string,
@@ -199,6 +215,8 @@ export class IAMManager {
             accountId,
             options.dynamodbTableName,
           );
+        } else {
+          await this.removeDynamoDBPolicy(iamClient, roleName);
         }
         p.log.info(
           `Using existing IAM role: ${roleName} (${existingRole.Arn})`,

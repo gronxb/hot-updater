@@ -1,4 +1,4 @@
-import type { DistributionConfig } from "@aws-sdk/client-cloudfront";
+import type { DistributionConfig, Origin } from "@aws-sdk/client-cloudfront";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -266,6 +266,62 @@ describe("buildDistributionConfigOverrides", () => {
     );
   });
 
+  it("preserves the existing managed origin id referenced by other behaviors", () => {
+    // Given
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const existingOriginId = "preexisting-bucket-origin";
+    const existingDistributionConfig: DistributionConfig = {
+      ...buildDistributionConfig(baseOptions),
+      Origins: {
+        Quantity: 1,
+        Items: [
+          {
+            ...(buildDistributionConfig(baseOptions).Origins
+              ?.Items?.[0] as Origin),
+            Id: existingOriginId,
+          },
+        ],
+      },
+      CacheBehaviors: {
+        Quantity: 1,
+        Items: [
+          {
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: { Quantity: 2, Items: ["HEAD", "GET"] },
+            },
+            CachePolicyId: "assets-cache-policy-id",
+            Compress: true,
+            PathPattern: "/assets/*",
+            SmoothStreaming: false,
+            TargetOriginId: existingOriginId,
+            ViewerProtocolPolicy: "redirect-to-https",
+          },
+        ],
+      },
+    };
+
+    // When
+    const updatedConfig = applyDistributionConfigOverrides(
+      existingDistributionConfig,
+      overrides,
+    );
+
+    // Then
+    expect(updatedConfig.Origins?.Items?.map(({ Id }) => Id)).toEqual([
+      existingOriginId,
+    ]);
+    expect(updatedConfig.DefaultCacheBehavior?.TargetOriginId).toBe(
+      existingOriginId,
+    );
+    expect(
+      updatedConfig.CacheBehaviors?.Items?.map(
+        ({ TargetOriginId }) => TargetOriginId,
+      ),
+    ).toEqual([existingOriginId, existingOriginId]);
+  });
+
   it("places a new update API behavior before broader existing behaviors", () => {
     // Given
     const overrides = buildDistributionConfigOverrides(baseOptions);
@@ -303,5 +359,57 @@ describe("buildDistributionConfigOverrides", () => {
         ({ PathPattern }) => PathPattern,
       ),
     ).toEqual(["/api/check-update/*", "/api/*"]);
+  });
+
+  it("keeps narrower existing behaviors before the update API behavior", () => {
+    // Given
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const existingDistributionConfig: DistributionConfig = {
+      ...buildDistributionConfig(baseOptions),
+      CacheBehaviors: {
+        Quantity: 2,
+        Items: [
+          {
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: { Quantity: 2, Items: ["HEAD", "GET"] },
+            },
+            CachePolicyId: "private-cache-policy-id",
+            Compress: true,
+            PathPattern: "/api/check-update/private/*",
+            SmoothStreaming: false,
+            TargetOriginId: baseOptions.bucketName,
+            ViewerProtocolPolicy: "redirect-to-https",
+          },
+          {
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: { Quantity: 2, Items: ["HEAD", "GET"] },
+            },
+            CachePolicyId: "api-cache-policy-id",
+            Compress: true,
+            PathPattern: "/api/*",
+            SmoothStreaming: false,
+            TargetOriginId: baseOptions.bucketName,
+            ViewerProtocolPolicy: "redirect-to-https",
+          },
+        ],
+      },
+    };
+
+    // When
+    const updatedConfig = applyDistributionConfigOverrides(
+      existingDistributionConfig,
+      overrides,
+    );
+
+    // Then
+    expect(
+      updatedConfig.CacheBehaviors?.Items?.map(
+        ({ PathPattern }) => PathPattern,
+      ),
+    ).toEqual(["/api/check-update/private/*", "/api/check-update/*", "/api/*"]);
   });
 });

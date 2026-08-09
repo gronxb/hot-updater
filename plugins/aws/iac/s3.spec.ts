@@ -222,7 +222,57 @@ describe("S3Manager", () => {
     expect(policy.Statement).toEqual(
       expect.arrayContaining([
         unrelatedStatement,
-        expect.objectContaining({ Sid: "AllowHotUpdaterCloudFrontRead" }),
+        expect.objectContaining({
+          Sid: "AllowHotUpdaterCloudFrontReaddistributionid",
+        }),
+      ]),
+    );
+  });
+
+  it("preserves grants for other Hot Updater distributions", async () => {
+    // Given
+    const otherDistributionStatement = {
+      Sid: "AllowHotUpdaterCloudFrontReadOTHERDIST",
+      Effect: "Allow",
+      Principal: { Service: "cloudfront.amazonaws.com" },
+      Action: "s3:GetObject",
+      Resource: "arn:aws:s3:::hot-updater-storage/*",
+      Condition: {
+        StringEquals: {
+          "AWS:SourceArn":
+            "arn:aws:cloudfront::123456789012:distribution/OTHERDIST",
+        },
+      },
+    };
+    mockS3.getBucketPolicy.mockResolvedValue({
+      Policy: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [otherDistributionStatement],
+      }),
+    });
+    const manager = new S3Manager({
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.updateBucketPolicy({
+      accountId: "123456789012",
+      bucketName: "hot-updater-storage",
+      distributionId: "CURRENTDIST",
+      region: "ap-northeast-2",
+    });
+
+    // Then
+    const policy = JSON.parse(
+      mockS3.putBucketPolicy.mock.calls[0]?.[0].Policy ?? "{}",
+    );
+    expect(policy.Statement).toEqual(
+      expect.arrayContaining([
+        otherDistributionStatement,
+        expect.objectContaining({
+          Sid: "AllowHotUpdaterCloudFrontReadCURRENTDIST",
+        }),
       ]),
     );
   });

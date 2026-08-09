@@ -159,13 +159,32 @@ export class S3Manager {
           existingPolicy.Statement !== null
         ? [existingPolicy.Statement]
         : [];
-    const existingStatements = policyStatements.filter(
-      (statement) =>
-        typeof statement !== "object" ||
-        statement === null ||
-        (Reflect.get(statement, "Sid") !== "AllowCloudFrontServicePrincipal" &&
-          Reflect.get(statement, "Sid") !== "AllowHotUpdaterCloudFrontRead"),
-    );
+    const sourceArn = `arn:aws:cloudfront::${accountId}:distribution/${distributionId}`;
+    const statementId = `AllowHotUpdaterCloudFrontRead${distributionId.replace(
+      /[^A-Za-z0-9]/g,
+      "",
+    )}`;
+    const existingStatements = policyStatements.filter((statement) => {
+      if (typeof statement !== "object" || statement === null) return true;
+      const sid = Reflect.get(statement, "Sid");
+      if (sid === statementId) return false;
+      if (
+        sid !== "AllowCloudFrontServicePrincipal" &&
+        sid !== "AllowHotUpdaterCloudFrontRead"
+      ) {
+        return true;
+      }
+      const condition = Reflect.get(statement, "Condition");
+      const stringEquals =
+        typeof condition === "object" && condition !== null
+          ? Reflect.get(condition, "StringEquals")
+          : undefined;
+      return !(
+        typeof stringEquals === "object" &&
+        stringEquals !== null &&
+        Reflect.get(stringEquals, "AWS:SourceArn") === sourceArn
+      );
+    });
     const bucketPolicy = {
       ...existingPolicy,
       Version:
@@ -175,14 +194,14 @@ export class S3Manager {
       Statement: [
         ...existingStatements,
         {
-          Sid: "AllowHotUpdaterCloudFrontRead",
+          Sid: statementId,
           Effect: "Allow",
           Principal: { Service: "cloudfront.amazonaws.com" },
           Action: "s3:GetObject",
           Resource: `arn:aws:s3:::${bucketName}/*`,
           Condition: {
             StringEquals: {
-              "AWS:SourceArn": `arn:aws:cloudfront::${accountId}:distribution/${distributionId}`,
+              "AWS:SourceArn": sourceArn,
             },
           },
         },
