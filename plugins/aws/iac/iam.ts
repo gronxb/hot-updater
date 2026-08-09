@@ -64,6 +64,16 @@ export class IAMManager {
             Resource: [`${tableArn}/index/${DYNAMODB_UPDATE_INDEX_NAME}`],
           },
           {
+            Action: ["dynamodb:BatchGetItem", "dynamodb:GetItem"],
+            Condition: {
+              "ForAllValues:StringEquals": {
+                "dynamodb:LeadingKeys": ["bundles", "bundle_patches"],
+              },
+            },
+            Effect: "Allow",
+            Resource: [tableArn],
+          },
+          {
             Action: ["dynamodb:Query", "dynamodb:PutItem"],
             Condition: {
               "ForAllValues:StringLike": {

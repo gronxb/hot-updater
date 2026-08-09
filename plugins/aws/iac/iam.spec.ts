@@ -49,7 +49,7 @@ describe("IAMManager DynamoDB access", () => {
     mocks.deleteRolePolicy.mockResolvedValue({});
   });
 
-  it("grants only update queries and Analytics event access", async () => {
+  it("grants only update reads and Analytics event access", async () => {
     // Given
     const manager = new IAMManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
@@ -80,6 +80,18 @@ describe("IAMManager DynamoDB access", () => {
         Effect: "Allow",
         Resource: [
           "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata/index/hot-updater-update-index",
+        ],
+      },
+      {
+        Action: ["dynamodb:BatchGetItem", "dynamodb:GetItem"],
+        Condition: {
+          "ForAllValues:StringEquals": {
+            "dynamodb:LeadingKeys": ["bundles", "bundle_patches"],
+          },
+        },
+        Effect: "Allow",
+        Resource: [
+          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
         ],
       },
       {
