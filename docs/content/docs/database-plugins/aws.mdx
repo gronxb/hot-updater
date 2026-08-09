@@ -178,13 +178,13 @@ an interruption. Delete obsolete bundle metadata before reaching a limit.
 
 ## Migrating from S3 metadata
 
-`s3Database` remains available for existing installations but is deprecated.
-Continue using `s3Storage` for bundle archives and other large artifacts.
+`s3Database` remains available as a separate metadata database. Continue using
+`s3Storage` for bundle archives and other large artifacts.
 
 The providers do not share state. Back up the metadata bucket and copy existing
 bundle and patch rows before changing the configured database. Do not run S3
 and DynamoDB metadata writers concurrently during a migration.
 
-`hot-updater init` keeps `S3 metadata (Deprecated)` selectable for existing
-installations. Replaying an older AWS init environment without an explicit
-database choice preserves S3 metadata instead of silently switching databases.
+`hot-updater init` keeps `S3 metadata` selectable. Replaying an older AWS init
+environment without an explicit database choice preserves S3 metadata instead
+of silently switching databases.

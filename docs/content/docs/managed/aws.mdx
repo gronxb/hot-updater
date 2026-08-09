@@ -78,7 +78,7 @@ npx hot-updater init
 1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
    During the setup, you will be prompted to:
-3. **Select a Database**: Choose DynamoDB (recommended) or S3 metadata (deprecated).
+3. **Select a Database**: Choose DynamoDB (default) or S3 metadata.
 4. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
 5. **Enter AWS Credentials**: Provide your profile name or AWS credentials when the selected mode requires it
 6. **Select Region**: Choose an AWS region for S3 and DynamoDB
@@ -132,13 +132,13 @@ please refer to the article below for more details:
 
 </Callout>
 
-<Callout type="warn">
+<Callout type="info">
 
-`S3 metadata (Deprecated)` remains available for existing installations and
-older saved init environments continue using it. Init does not automatically
-copy S3 metadata into DynamoDB. Back up and migrate metadata before switching,
-and do not run both metadata writers concurrently. The deprecated S3 track does
-not expose Analytics routes.
+S3 metadata remains available as a separate database track. Older saved init
+environments without an explicit database choice continue using S3 metadata.
+Init does not automatically copy S3 metadata into DynamoDB; migrate existing
+metadata before switching and do not run both writers concurrently. Analytics
+routes are available on the DynamoDB track.
 
 </Callout>
 
