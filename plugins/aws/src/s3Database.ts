@@ -40,6 +40,10 @@ const createKeyBuilder = (basePath: string | undefined) => {
   };
 };
 
+/**
+ * @deprecated Use `dynamodbDatabase` for bundle and patch metadata. S3 remains
+ * the recommended storage for bundle artifacts.
+ */
 export const s3Database = (
   config: S3DatabaseConfig,
   hooks?: DatabasePluginLifecycleHooks,
