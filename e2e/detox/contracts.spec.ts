@@ -196,25 +196,21 @@ describe("Detox E2E harness contract", () => {
     );
   });
 
-  it("allows slow provider profiles to extend the scenario timeout", () => {
-    // Given: AWS waits for CloudFront invalidations while deploys share a lock.
+  it("allows serialized provider deploys to run for up to 30 minutes", () => {
+    // Given: no profile-specific timeout override is exported to Jest.
     const result = spawnSync(
       process.execPath,
       [
         "-e",
-        "process.stdout.write(String(require('./e2e/detox/jest.config.js').testTimeout))",
+        "delete process.env.HOT_UPDATER_E2E_TEST_TIMEOUT_MS; process.stdout.write(String(require('./e2e/detox/jest.config.js').testTimeout))",
       ],
       {
         cwd: repoDir,
         encoding: "utf8",
-        env: {
-          ...process.env,
-          HOT_UPDATER_E2E_TEST_TIMEOUT_MS: "1800000",
-        },
       },
     );
 
-    // Then: the profile-specific timeout is passed through to Jest.
+    // Then: serialized invalidation waits do not hit the old 12-minute limit.
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("1800000");
   });

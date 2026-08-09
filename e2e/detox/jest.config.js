@@ -2,7 +2,7 @@ module.exports = {
   rootDir: "../..",
   testMatch: ["<rootDir>/e2e/detox/**/*.spec.js"],
   testTimeout: Number(
-    process.env.HOT_UPDATER_E2E_TEST_TIMEOUT_MS ?? 720000,
+    process.env.HOT_UPDATER_E2E_TEST_TIMEOUT_MS ?? 1800000,
   ),
   maxWorkers: 1,
   bail: 1,
