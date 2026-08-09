@@ -16,8 +16,9 @@ import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  DYNAMODB_ANALYTICS_PARTITION,
+  DYNAMODB_ANALYTICS_RETENTION_SECONDS,
   DYNAMODB_ANALYTICS_SCHEMA_VERSION,
+  analyticsEventPartition,
   createDynamoDBAnalyticsPersistence,
 } from "./dynamodbAnalyticsPersistence";
 
@@ -62,58 +63,79 @@ describe("DynamoDB Analytics persistence", () => {
     });
   });
 
-  it("appends an immutable event in the ordered Analytics partition", async () => {
+  it("appends immutable events across deterministic time-bucket shards", async () => {
     const persistence = createPersistence();
-    const row = unchangedRow("event-a", 1_000);
+    const receivedAtMs = Date.UTC(2026, 0, 15);
+    const rows = Array.from({ length: 32 }, (_, index) =>
+      unchangedRow(`event-${index}`, receivedAtMs),
+    );
     dynamodb.on(PutCommand).resolves({});
 
-    await persistence.append(row);
+    for (const row of rows) await persistence.append(row);
 
-    expect(dynamodb.commandCalls(PutCommand)[0]?.args[0].input).toMatchObject({
+    const calls = dynamodb.commandCalls(PutCommand);
+    const partitions = new Set(calls.map(({ args }) => args[0].input.Item?.pk));
+    expect(partitions.size).toBeGreaterThan(1);
+    expect(calls[0]?.args[0].input).toMatchObject({
       TableName: "hot-updater-metadata",
       ConditionExpression: "attribute_not_exists(#pk)",
       Item: {
-        ...row,
-        pk: DYNAMODB_ANALYTICS_PARTITION,
-        sk: "0000000001000#event-a",
+        ...rows[0],
+        pk: analyticsEventPartition(rows[0]?.id ?? "", receivedAtMs),
+        sk: `${String(receivedAtMs).padStart(13, "0")}#event-0`,
+        expires_at_s:
+          Math.floor(receivedAtMs / 1_000) +
+          DYNAMODB_ANALYTICS_RETENTION_SECONDS,
       },
     });
   });
 
-  it("scans with a strict cutoff and exclusive ordered cursor", async () => {
+  it("merges adjacent buckets and shards with an exclusive ordered cursor", async () => {
     const persistence = createPersistence();
     const rows = [
-      unchangedRow("event-b", 1_000),
-      unchangedRow("event-c", 2_000),
+      unchangedRow("event-a", Date.UTC(2026, 0, 31, 23, 59)),
+      unchangedRow("event-b", Date.UTC(2026, 1, 1)),
+      unchangedRow("event-c", Date.UTC(2026, 1, 1)),
+      unchangedRow("event-d", Date.UTC(2026, 1, 2)),
     ];
-    dynamodb.on(QueryCommand).resolves({
-      Items: rows.map((row) => ({
-        ...row,
-        pk: DYNAMODB_ANALYTICS_PARTITION,
-        sk: `${String(row.received_at_ms).padStart(13, "0")}#${row.id}`,
-      })),
+    dynamodb.on(QueryCommand).callsFake((input) => {
+      const partition = input.ExpressionAttributeValues?.[":pk"];
+      return {
+        Items: rows
+          .filter(
+            (row) =>
+              analyticsEventPartition(row.id, row.received_at_ms) === partition,
+          )
+          .map((row) => ({
+            ...row,
+            expires_at_s: 0,
+            pk: partition,
+            sk: `${String(row.received_at_ms).padStart(13, "0")}#${row.id}`,
+          })),
+      };
     });
 
     await expect(
       persistence.scan({
-        after: { id: "event-a", receivedAtMs: 1_000 },
-        beforeReceivedAtMs: 3_000,
-        limit: 2,
-      }),
-    ).resolves.toEqual(rows);
-
-    expect(dynamodb.commandCalls(QueryCommand)[0]?.args[0].input).toMatchObject(
-      {
-        ExpressionAttributeValues: {
-          ":after": "0000000001000#event-a\u0000",
-          ":before": "0000000003000#",
-          ":pk": DYNAMODB_ANALYTICS_PARTITION,
+        after: {
+          id: "event-a",
+          receivedAtMs: Date.UTC(2026, 0, 31, 23, 59),
         },
-        KeyConditionExpression: "#pk = :pk AND #sk BETWEEN :after AND :before",
-        Limit: 2,
-        ScanIndexForward: true,
-      },
-    );
+        beforeReceivedAtMs: Date.UTC(2026, 1, 3),
+        limit: 3,
+      }),
+    ).resolves.toEqual(rows.slice(1));
+
+    expect(dynamodb.commandCalls(QueryCommand).length).toBeGreaterThan(1);
+    expect(
+      dynamodb
+        .commandCalls(QueryCommand)
+        .every(
+          ({ args }) =>
+            args[0].input.KeyConditionExpression ===
+            "#pk = :pk AND #sk BETWEEN :after AND :before",
+        ),
+    ).toBe(true);
   });
 
   it("rejects reads and writes until init records the Analytics schema", async () => {

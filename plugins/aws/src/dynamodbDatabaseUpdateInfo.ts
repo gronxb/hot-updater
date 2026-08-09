@@ -1,6 +1,5 @@
 import { NIL_UUID } from "@hot-updater/core";
 import type {
-  BundlePatchRow,
   BundleRow,
   DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
@@ -11,24 +10,11 @@ import {
 } from "@hot-updater/plugin-core";
 
 import {
-  queryOwnerPatches,
   queryUpdateBundles,
   type DynamoDBStore,
 } from "./dynamodbDatabaseStore";
 
 type GetUpdateInfo = NonNullable<DatabasePluginImplementation["getUpdateInfo"]>;
-
-const patchesByBundleId = (
-  patches: readonly BundlePatchRow[],
-): ReadonlyMap<string, readonly BundlePatchRow[]> => {
-  const result = new Map<string, BundlePatchRow[]>();
-  for (const patch of patches) {
-    const current = result.get(patch.bundle_id) ?? [];
-    current.push(patch);
-    result.set(patch.bundle_id, current);
-  }
-  return result;
-};
 
 const compatibleRows = (
   rows: readonly BundleRow[],
@@ -64,16 +50,8 @@ export const createDynamoDBGetUpdateInfo =
             ({ fingerprint_hash: fingerprintHash }) =>
               fingerprintHash === args.fingerprintHash,
           );
-    const patches = (
-      await Promise.all(
-        rows.map(({ id }) => queryOwnerPatches(store, indexName, id)),
-      )
-    ).flat();
-    const groupedPatches = patchesByBundleId(patches);
     return resolveUpdateInfoFromBundles({
       args: { ...args, channel, minBundleId },
-      bundles: rows.map((row) =>
-        rowToBundle(row, groupedPatches.get(row.id) ?? []),
-      ),
+      bundles: rows.map((row) => rowToBundle(row)),
     });
   };

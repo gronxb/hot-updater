@@ -85,8 +85,8 @@ describe("IAMManager DynamoDB access", () => {
       {
         Action: ["dynamodb:Query", "dynamodb:PutItem"],
         Condition: {
-          "ForAllValues:StringEquals": {
-            "dynamodb:LeadingKeys": ["analytics#bundle_events"],
+          "ForAllValues:StringLike": {
+            "dynamodb:LeadingKeys": ["analytics#bundle_events#*"],
           },
         },
         Effect: "Allow",

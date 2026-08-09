@@ -1,4 +1,8 @@
 import { createDatabasePluginCrud } from "./databasePluginCrud";
+import {
+  attachDatabasePluginPatchHydration,
+  getDatabasePluginPatchHydration,
+} from "./internal/databasePatchHydration";
 import type {
   DatabasePluginImplementation,
   TransactionDatabasePlugin,
@@ -11,5 +15,9 @@ export const createTransactionDatabasePlugin = (
   const pluginImplementation: DatabasePluginImplementation = {
     ...implementation,
   };
-  return createDatabasePluginCrud(pluginImplementation);
+  const plugin = createDatabasePluginCrud(pluginImplementation);
+  const hydration = getDatabasePluginPatchHydration(implementation);
+  return hydration
+    ? attachDatabasePluginPatchHydration(plugin, hydration)
+    : plugin;
 };

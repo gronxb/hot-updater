@@ -5,6 +5,8 @@ export type DynamoDBBundleItem = {
   readonly pk: "bundles";
   readonly sk: string;
   readonly version: number;
+  readonly relation_count: number;
+  readonly owned_patch_count: number;
   readonly gsi1pk: string;
   readonly gsi1sk: string;
   readonly row: BundleRow;
@@ -80,6 +82,8 @@ export const parseDynamoDBItem = (
   const pk = value.pk;
   const sk = value.sk;
   const version = value.version;
+  const relationCount = value.relation_count;
+  const ownedPatchCount = value.owned_patch_count;
   const gsi1pk = value.gsi1pk;
   const gsi1sk = value.gsi1sk;
   const row = value.row;
@@ -92,7 +96,22 @@ export const parseDynamoDBItem = (
     throw new DynamoDBStoredItemError();
   }
   if (pk === "bundles" && isBundleRow(row)) {
-    return { pk, sk, version, gsi1pk, gsi1sk, row };
+    if (
+      typeof relationCount !== "number" ||
+      typeof ownedPatchCount !== "number"
+    ) {
+      throw new DynamoDBStoredItemError();
+    }
+    return {
+      pk,
+      sk,
+      version,
+      relation_count: relationCount,
+      owned_patch_count: ownedPatchCount,
+      gsi1pk,
+      gsi1sk,
+      row,
+    };
   }
   if (pk === "bundle_patches" && isPatchRow(row)) {
     return { pk, sk, version, gsi1pk, gsi1sk, row };
@@ -119,10 +138,14 @@ const patchOrderKey = (row: BundlePatchRow): string =>
 export const toDynamoDBBundleItem = (
   row: BundleRow,
   version = 1,
+  relationCount = 0,
+  ownedPatchCount = 0,
 ): DynamoDBBundleItem => ({
   pk: "bundles",
   sk: row.id,
   version,
+  relation_count: relationCount,
+  owned_patch_count: ownedPatchCount,
   gsi1pk: bundleUpdatePartition(row),
   gsi1sk: row.id,
   row,

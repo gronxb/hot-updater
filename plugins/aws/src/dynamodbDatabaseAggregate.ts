@@ -1,14 +1,10 @@
-import {
-  TransactWriteCommand,
-  type TransactWriteCommandInput,
-} from "@aws-sdk/lib-dynamodb";
 import type {
   BundlePatchRow,
   BundleRow,
   DatabasePluginAggregateMutations,
 } from "@hot-updater/plugin-core";
 
-import { DynamoDBTransactionLimitError } from "./dynamodbDatabaseCrud";
+import { boundedDynamoDBMetadataItem } from "./dynamodbDatabaseBounds";
 import {
   itemKey,
   toDynamoDBBundleItem,
@@ -19,14 +15,18 @@ import type {
   DynamoDBPatchItem,
 } from "./dynamodbDatabaseRows";
 import {
-  loadBundleItems,
+  loadBundleItem,
   loadPatchItems,
   type DynamoDBStore,
 } from "./dynamodbDatabaseStore";
-
-type TransactItem = NonNullable<
-  TransactWriteCommandInput["TransactItems"]
->[number];
+import {
+  commitDynamoDBTransaction,
+  DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE,
+  DynamoDBRelationshipLimitError,
+  metadataUpdate,
+  updateBundleRelation,
+  type DynamoDBTransactItem,
+} from "./dynamodbDatabaseTransactions";
 
 class DynamoDBDuplicatePatchError extends Error {
   readonly name = "DynamoDBDuplicatePatchError";
@@ -44,22 +44,16 @@ const assertUniquePatches = (patches: readonly BundlePatchRow[]): void => {
   }
 };
 
-const conditionBundleExists = (
+const putNewBundle = (
   store: DynamoDBStore,
-  bundleId: string,
-): TransactItem => ({
-  ConditionCheck: {
-    TableName: store.tableName,
-    Key: itemKey("bundles", bundleId),
-    ConditionExpression: "attribute_exists(#pk)",
-    ExpressionAttributeNames: { "#pk": "pk" },
-  },
-});
-
-const putNewBundle = (store: DynamoDBStore, row: BundleRow): TransactItem => ({
+  row: BundleRow,
+  relationCount: number,
+): DynamoDBTransactItem => ({
   Put: {
     TableName: store.tableName,
-    Item: toDynamoDBBundleItem(row),
+    Item: boundedDynamoDBMetadataItem(
+      toDynamoDBBundleItem(row, 1, relationCount, relationCount),
+    ),
     ConditionExpression: "attribute_not_exists(#pk)",
     ExpressionAttributeNames: { "#pk": "pk" },
   },
@@ -69,10 +63,19 @@ const putUpdatedBundle = (
   store: DynamoDBStore,
   current: DynamoDBBundleItem,
   row: BundleRow,
-): TransactItem => ({
+  relationCount: number,
+  ownedPatchCount: number,
+): DynamoDBTransactItem => ({
   Put: {
     TableName: store.tableName,
-    Item: toDynamoDBBundleItem(row, current.version + 1),
+    Item: boundedDynamoDBMetadataItem(
+      toDynamoDBBundleItem(
+        row,
+        current.version + 1,
+        relationCount,
+        ownedPatchCount,
+      ),
+    ),
     ConditionExpression: "#version = :currentVersion",
     ExpressionAttributeNames: { "#version": "version" },
     ExpressionAttributeValues: { ":currentVersion": current.version },
@@ -83,10 +86,12 @@ const putPatch = (
   store: DynamoDBStore,
   row: BundlePatchRow,
   current: DynamoDBPatchItem | undefined,
-): TransactItem => ({
+): DynamoDBTransactItem => ({
   Put: {
     TableName: store.tableName,
-    Item: toDynamoDBPatchItem(row, (current?.version ?? 0) + 1),
+    Item: boundedDynamoDBMetadataItem(
+      toDynamoDBPatchItem(row, (current?.version ?? 0) + 1),
+    ),
     ConditionExpression: current
       ? "#version = :currentVersion"
       : "attribute_not_exists(#pk)",
@@ -102,7 +107,7 @@ const putPatch = (
 const deletePatch = (
   store: DynamoDBStore,
   item: DynamoDBPatchItem,
-): TransactItem => ({
+): DynamoDBTransactItem => ({
   Delete: {
     TableName: store.tableName,
     Key: itemKey(item.pk, item.sk),
@@ -112,28 +117,40 @@ const deletePatch = (
   },
 });
 
-const referenceChecks = (
-  store: DynamoDBStore,
+const assertRelationshipLimit = (
   bundleId: string,
-  patches: readonly BundlePatchRow[],
-): TransactItem[] =>
-  [
-    ...new Set(
-      patches.flatMap((patch) =>
-        patch.base_bundle_id === bundleId ? [] : [patch.base_bundle_id],
-      ),
-    ),
-  ].map((baseBundleId) => conditionBundleExists(store, baseBundleId));
-
-const commit = async (
-  store: DynamoDBStore,
-  actions: readonly TransactItem[],
-): Promise<void> => {
-  if (actions.length > 100) {
-    throw new DynamoDBTransactionLimitError(actions.length);
+  relationCount: number,
+): void => {
+  if (relationCount > DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE) {
+    throw new DynamoDBRelationshipLimitError(bundleId);
   }
-  await store.client.send(
-    new TransactWriteCommand({ TransactItems: [...actions] }),
+};
+
+const baseReferenceChanges = (
+  store: DynamoDBStore,
+  ownerBundleId: string,
+  current: readonly BundlePatchRow[],
+  next: readonly BundlePatchRow[],
+): DynamoDBTransactItem[] => {
+  const changes = new Map<string, number>();
+  for (const patch of current) {
+    if (patch.base_bundle_id !== ownerBundleId) {
+      changes.set(
+        patch.base_bundle_id,
+        (changes.get(patch.base_bundle_id) ?? 0) - 1,
+      );
+    }
+  }
+  for (const patch of next) {
+    if (patch.base_bundle_id !== ownerBundleId) {
+      changes.set(
+        patch.base_bundle_id,
+        (changes.get(patch.base_bundle_id) ?? 0) + 1,
+      );
+    }
+  }
+  return [...changes].map(([baseBundleId, delta]) =>
+    updateBundleRelation(store, baseBundleId, delta),
   );
 };
 
@@ -142,9 +159,16 @@ export const createDynamoDBAggregateMutations = (
 ): DatabasePluginAggregateMutations => ({
   async insertBundleWithPatches({ bundle, patches }): Promise<void> {
     assertUniquePatches(patches);
-    await commit(store, [
-      ...referenceChecks(store, bundle.id, patches),
-      putNewBundle(store, bundle),
+    assertRelationshipLimit(bundle.id, patches.length);
+    const counter = metadataUpdate(store, {
+      bundles: 1,
+      bundle_patches: patches.length,
+    });
+    if (!counter) return;
+    await commitDynamoDBTransaction(store, [
+      counter,
+      ...baseReferenceChanges(store, bundle.id, [], patches),
+      putNewBundle(store, bundle, patches.length),
       ...patches.map((patch) => putPatch(store, patch, undefined)),
     ]);
   },
@@ -154,9 +178,7 @@ export const createDynamoDBAggregateMutations = (
     patches,
   }): Promise<boolean> {
     assertUniquePatches(patches);
-    const bundle = (await loadBundleItems(store)).find(
-      ({ sk }) => sk === bundleId,
-    );
+    const bundle = await loadBundleItem(store, bundleId);
     if (!bundle) return false;
     const currentPatches = (await loadPatchItems(store)).filter(
       ({ row }) => row.bundle_id === bundleId,
@@ -165,16 +187,38 @@ export const createDynamoDBAggregateMutations = (
       currentPatches.map((patch) => [patch.sk, patch]),
     );
     const nextIds = new Set(patches.map(({ id }) => id));
-    await commit(store, [
-      ...referenceChecks(store, bundleId, patches),
-      putUpdatedBundle(store, bundle, { ...bundle.row, ...update }),
-      ...currentPatches
-        .filter(({ sk }) => !nextIds.has(sk))
-        .map((patch) => deletePatch(store, patch)),
-      ...patches.map((patch) =>
-        putPatch(store, patch, currentById.get(patch.id)),
-      ),
-    ]);
+    const relationCount =
+      bundle.relation_count - currentPatches.length + patches.length;
+    assertRelationshipLimit(bundleId, relationCount);
+    const counter = metadataUpdate(store, {
+      bundle_patches: patches.length - currentPatches.length,
+    });
+    await commitDynamoDBTransaction(
+      store,
+      [
+        ...(counter ? [counter] : []),
+        ...baseReferenceChanges(
+          store,
+          bundleId,
+          currentPatches.map(({ row }) => row),
+          patches,
+        ),
+        putUpdatedBundle(
+          store,
+          bundle,
+          { ...bundle.row, ...update },
+          relationCount,
+          patches.length,
+        ),
+        ...currentPatches
+          .filter(({ sk }) => !nextIds.has(sk))
+          .map((patch) => deletePatch(store, patch)),
+        ...patches.map((patch) =>
+          putPatch(store, patch, currentById.get(patch.id)),
+        ),
+      ],
+      patches.length > currentPatches.length ? "bundle_patches" : undefined,
+    );
     return true;
   },
 });

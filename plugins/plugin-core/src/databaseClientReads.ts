@@ -4,6 +4,7 @@ import { calculatePagination } from "./calculatePagination";
 import { DatabasePluginInputError } from "./databasePluginCrud";
 import { validateBundlePagination } from "./databasePluginCrudValidationQueries";
 import { rowsToBundles } from "./databaseRows";
+import { getDatabasePluginPatchHydration } from "./internal/databasePatchHydration";
 import type {
   BundlePatchRow,
   BundleRow,
@@ -108,6 +109,8 @@ const loadPatchRows = async (
   ownerIds: readonly string[],
 ): Promise<BundlePatchRow[]> => {
   if (ownerIds.length === 0) return [];
+  const hydration = getDatabasePluginPatchHydration(database);
+  if (hydration) return [...(await hydration.loadPatches(ownerIds))];
   const rows: BundlePatchRow[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const page = await database.findMany({
@@ -141,9 +144,13 @@ export const hydrateRows = async (
   const referencedRows =
     referencedIds.length === 0
       ? []
-      : await loadBundleRows(database, [
-          { field: "id", operator: "in", value: referencedIds },
-        ]);
+      : await database.findMany({
+          model: "bundles",
+          where: [{ field: "id", operator: "in", value: referencedIds }],
+          limit: referencedIds.length,
+          offset: 0,
+          orderBy: [{ field: "id", direction: "asc" }],
+        });
   return rowsToBundles(ownerRows, patchRows, referencedRows);
 };
 

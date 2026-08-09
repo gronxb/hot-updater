@@ -18,6 +18,10 @@ import {
   attachDatabasePluginAggregateMutations,
   getDatabasePluginAggregateMutations,
 } from "./internal/databaseAggregateMutations";
+import {
+  attachDatabasePluginPatchHydration,
+  getDatabasePluginPatchHydration,
+} from "./internal/databasePatchHydration";
 import { bundleMatchesQueryWhere } from "./queryBundles";
 import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
@@ -81,22 +85,35 @@ export { DatabasePatchUpdateUnsupportedError };
 
 const transactionPlugin = (
   database: TransactionDatabasePlugin,
-): DatabasePlugin => ({
-  name: "transaction",
-  ...database,
-  transaction: (callback) => callback(database),
-});
+): DatabasePlugin => {
+  const plugin: DatabasePlugin = {
+    name: "transaction",
+    ...database,
+    transaction: (callback) => callback(database),
+  };
+  const hydration = getDatabasePluginPatchHydration(database);
+  return hydration
+    ? attachDatabasePluginPatchHydration(plugin, hydration)
+    : plugin;
+};
 
 const transactionlessBatchPlugin = (plugin: DatabasePlugin): DatabasePlugin => {
   const aggregateMutations = getDatabasePluginAggregateMutations(plugin);
-  const database = {
+  const hydration = getDatabasePluginPatchHydration(plugin);
+  const database: DatabasePlugin = {
     ...plugin,
     onDatabaseUpdated: undefined,
     transaction: undefined,
   };
-  return aggregateMutations
-    ? attachDatabasePluginAggregateMutations(database, aggregateMutations)
+  const databaseWithHydration = hydration
+    ? attachDatabasePluginPatchHydration(database, hydration)
     : database;
+  return aggregateMutations
+    ? attachDatabasePluginAggregateMutations(
+        databaseWithHydration,
+        aggregateMutations,
+      )
+    : databaseWithHydration;
 };
 
 export const createDatabaseClient = (

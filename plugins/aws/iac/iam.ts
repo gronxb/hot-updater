@@ -5,7 +5,7 @@ import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
 
 import {
-  DYNAMODB_ANALYTICS_PARTITION,
+  DYNAMODB_ANALYTICS_PARTITION_PREFIX,
   DYNAMODB_ANALYTICS_SCHEMA_KEY,
 } from "../src/dynamodbAnalyticsPersistence";
 import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamodbDatabase";
@@ -66,8 +66,10 @@ export class IAMManager {
           {
             Action: ["dynamodb:Query", "dynamodb:PutItem"],
             Condition: {
-              "ForAllValues:StringEquals": {
-                "dynamodb:LeadingKeys": [DYNAMODB_ANALYTICS_PARTITION],
+              "ForAllValues:StringLike": {
+                "dynamodb:LeadingKeys": [
+                  `${DYNAMODB_ANALYTICS_PARTITION_PREFIX}#*`,
+                ],
               },
             },
             Effect: "Allow",

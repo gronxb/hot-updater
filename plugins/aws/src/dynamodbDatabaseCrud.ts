@@ -1,37 +1,43 @@
-import { PutCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type {
-  BundlePatchRow,
-  BundleRow,
   DatabaseImplementationResult,
   DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 
+import {
+  createDynamoDBBundle,
+  createDynamoDBPatch,
+  deleteDynamoDBBundles,
+  deleteDynamoDBPatch,
+  replaceDynamoDBBundle,
+} from "./dynamodbDatabaseCrudMutations";
+import {
+  loadBundleItemsById,
+  loadMetadataCount,
+} from "./dynamodbDatabaseKeyReads";
+import {
+  queryCompleteOwnerPatches,
+  queryCompleteOwnersPatches,
+} from "./dynamodbDatabaseOwnerReads";
 import {
   countDistinctDynamoDBRows,
   matchesDynamoDBWhere,
   queryDynamoDBRows,
 } from "./dynamodbDatabaseQuery";
 import {
-  itemKey,
-  toDynamoDBBundleItem,
-  toDynamoDBPatchItem,
-} from "./dynamodbDatabaseRows";
-import type { DynamoDBItem } from "./dynamodbDatabaseRows";
+  dynamoDBBundlePageStart,
+  exactDynamoDBBundleIds,
+  exactDynamoDBId,
+  exactDynamoDBPatchOwner,
+  exactDynamoDBPatchOwners,
+} from "./dynamodbDatabaseReadPatterns";
 import {
   loadBundleItems,
+  loadBundleItem,
   loadPatchItems,
+  loadPatchItem,
+  queryBundleItemsPage,
   type DynamoDBStore,
 } from "./dynamodbDatabaseStore";
-
-export class DynamoDBTransactionLimitError extends Error {
-  readonly name = "DynamoDBTransactionLimitError";
-
-  constructor(readonly actionCount: number) {
-    super(
-      `DynamoDB transaction requires ${actionCount} actions; maximum is 100`,
-    );
-  }
-}
 
 class DynamoDBUnsupportedModelError extends Error {
   readonly name = "DynamoDBUnsupportedModelError";
@@ -41,113 +47,36 @@ class DynamoDBUnsupportedModelError extends Error {
   }
 }
 
-const assertTransactionSize = (actionCount: number): void => {
-  if (actionCount > 100) throw new DynamoDBTransactionLimitError(actionCount);
-};
-
-const putItem = async (
-  store: DynamoDBStore,
-  item: DynamoDBItem,
-): Promise<void> => {
-  await store.client.send(
-    new PutCommand({
-      TableName: store.tableName,
-      Item: item,
-      ConditionExpression: "attribute_not_exists(#pk)",
-      ExpressionAttributeNames: { "#pk": "pk" },
-    }),
-  );
-};
-
-const createPatch = async (
-  store: DynamoDBStore,
-  row: BundlePatchRow,
-): Promise<void> => {
-  const bundleIds = [...new Set([row.bundle_id, row.base_bundle_id])];
-  await store.client.send(
-    new TransactWriteCommand({
-      TransactItems: [
-        ...bundleIds.map((bundleId) => ({
-          ConditionCheck: {
-            TableName: store.tableName,
-            Key: itemKey("bundles", bundleId),
-            ConditionExpression: "attribute_exists(#pk)",
-            ExpressionAttributeNames: { "#pk": "pk" },
-          },
-        })),
-        {
-          Put: {
-            TableName: store.tableName,
-            Item: toDynamoDBPatchItem(row),
-            ConditionExpression: "attribute_not_exists(#pk)",
-            ExpressionAttributeNames: { "#pk": "pk" },
-          },
-        },
-      ],
-    }),
-  );
-};
-
-const replaceBundle = async (
-  store: DynamoDBStore,
-  currentVersion: number,
-  row: BundleRow,
-): Promise<void> => {
-  await store.client.send(
-    new PutCommand({
-      TableName: store.tableName,
-      Item: toDynamoDBBundleItem(row, currentVersion + 1),
-      ConditionExpression: "#version = :currentVersion",
-      ExpressionAttributeNames: { "#version": "version" },
-      ExpressionAttributeValues: { ":currentVersion": currentVersion },
-    }),
-  );
-};
-
-const deleteItems = async (
-  store: DynamoDBStore,
-  items: readonly DynamoDBItem[],
-): Promise<void> => {
-  assertTransactionSize(items.length);
-  if (items.length === 0) return;
-  await store.client.send(
-    new TransactWriteCommand({
-      TransactItems: items.map((item) => ({
-        Delete: {
-          TableName: store.tableName,
-          Key: itemKey(item.pk, item.sk),
-        },
-      })),
-    }),
-  );
-};
-
 const distinctFields = (
   fields: readonly string[] | undefined,
 ): readonly string[] | undefined => fields;
 
 export const createDynamoDBCrud = (
   store: DynamoDBStore,
+  updateIndexName: string,
 ): DatabasePluginImplementation => ({
   async create(input): Promise<DatabaseImplementationResult> {
     switch (input.model) {
       case "bundles":
-        await putItem(store, toDynamoDBBundleItem(input.data));
+        await createDynamoDBBundle(store, input.data);
         return input.data;
       case "bundle_patches":
-        await createPatch(store, input.data);
+        await createDynamoDBPatch(store, input.data);
         return input.data;
     }
     throw new DynamoDBUnsupportedModelError();
   },
   async update(input): Promise<DatabaseImplementationResult | null> {
-    const items = await loadBundleItems(store);
-    const current = items.find(({ row }) =>
-      matchesDynamoDBWhere(row, input.where),
-    );
+    const id = exactDynamoDBId(input.where);
+    const current =
+      id === undefined
+        ? (await loadBundleItems(store)).find(({ row }) =>
+            matchesDynamoDBWhere(row, input.where),
+          )
+        : await loadBundleItem(store, id);
     if (!current) return null;
     const updated = { ...current.row, ...input.update };
-    await replaceBundle(store, current.version, updated);
+    await replaceDynamoDBBundle(store, current, updated);
     return updated;
   },
   async delete(input): Promise<void> {
@@ -155,20 +84,27 @@ export const createDynamoDBCrud = (
       const items = (await loadPatchItems(store)).filter(({ row }) =>
         matchesDynamoDBWhere(row, input.where),
       );
-      await deleteItems(store, items);
+      for (const item of items) await deleteDynamoDBPatch(store, item);
       return;
     }
     const bundleItems = (await loadBundleItems(store)).filter(({ row }) =>
       matchesDynamoDBWhere(row, input.where),
     );
-    const removedIds = new Set(bundleItems.map(({ sk }) => sk));
-    const patchItems = (await loadPatchItems(store)).filter(
-      ({ row }) =>
-        removedIds.has(row.bundle_id) || removedIds.has(row.base_bundle_id),
+    if (bundleItems.length === 0) return;
+    await deleteDynamoDBBundles(
+      store,
+      bundleItems,
+      await loadPatchItems(store),
     );
-    await deleteItems(store, [...bundleItems, ...patchItems]);
   },
   async count(input): Promise<number> {
+    if (
+      (input.where === undefined || input.where.length === 0) &&
+      input.distinct === undefined
+    ) {
+      const count = await loadMetadataCount(store, input.model);
+      if (count !== undefined) return count;
+    }
     switch (input.model) {
       case "bundles": {
         const rows = (await loadBundleItems(store))
@@ -177,44 +113,111 @@ export const createDynamoDBCrud = (
         return countDistinctDynamoDBRows(rows, distinctFields(input.distinct));
       }
       case "bundle_patches": {
-        const rows = (await loadPatchItems(store))
-          .map(({ row }) => row)
-          .filter((row) => matchesDynamoDBWhere(row, input.where));
+        const ownerId = exactDynamoDBPatchOwner(input.where);
+        const rows = (
+          ownerId
+            ? await queryCompleteOwnerPatches(store, updateIndexName, ownerId)
+            : (await loadPatchItems(store)).map(({ row }) => row)
+        ).filter((row) => matchesDynamoDBWhere(row, input.where));
         return countDistinctDynamoDBRows(rows, distinctFields(input.distinct));
       }
     }
     throw new DynamoDBUnsupportedModelError();
   },
   async findOne(input): Promise<DatabaseImplementationResult | null> {
+    const id = exactDynamoDBId(input.where);
     switch (input.model) {
       case "bundles":
+        if (id !== undefined)
+          return (await loadBundleItem(store, id))?.row ?? null;
         return (
           (await loadBundleItems(store))
             .map(({ row }) => row)
             .find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
         );
       case "bundle_patches":
-        return (
-          (await loadPatchItems(store))
-            .map(({ row }) => row)
-            .find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
-        );
+        if (id !== undefined)
+          return (await loadPatchItem(store, id))?.row ?? null;
+        {
+          const ownerId = exactDynamoDBPatchOwner(input.where);
+          if (ownerId === undefined) break;
+          return (
+            (
+              await queryCompleteOwnerPatches(store, updateIndexName, ownerId)
+            ).find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
+          );
+        }
+        break;
+    }
+    if (input.model === "bundle_patches") {
+      return (
+        (await loadPatchItems(store))
+          .map(({ row }) => row)
+          .find((row) => matchesDynamoDBWhere(row, input.where)) ?? null
+      );
     }
     throw new DynamoDBUnsupportedModelError();
   },
   async findMany(input): Promise<readonly DatabaseImplementationResult[]> {
+    if (input.limit === 0) return [];
     switch (input.model) {
-      case "bundles":
+      case "bundles": {
+        const ids = exactDynamoDBBundleIds(input.where);
+        if (ids !== undefined) {
+          return queryDynamoDBRows(
+            (await loadBundleItemsById(store, ids)).map(({ row }) => row),
+            input,
+          );
+        }
+        const orderBy = input.orderBy;
+        const direction = orderBy?.[0]?.direction;
+        if (
+          (input.offset ?? 0) === 0 &&
+          input.distinctOn === undefined &&
+          orderBy?.length === 1 &&
+          orderBy[0]?.field === "id" &&
+          (direction === "asc" || direction === "desc")
+        ) {
+          return (
+            await queryBundleItemsPage(store, {
+              direction,
+              limit: input.limit ?? 100,
+              matches: (row) => matchesDynamoDBWhere(row, input.where),
+              start: dynamoDBBundlePageStart(input.where, direction),
+            })
+          ).map(({ row }) => row);
+        }
         return queryDynamoDBRows(
           (await loadBundleItems(store)).map(({ row }) => row),
           input,
         );
-      case "bundle_patches":
+      }
+      case "bundle_patches": {
+        const ownerIds = exactDynamoDBPatchOwners(input.where);
+        if (ownerIds !== undefined) {
+          const ownerId = ownerIds.length === 1 ? ownerIds[0] : undefined;
+          return queryDynamoDBRows(
+            ownerId !== undefined
+              ? await queryCompleteOwnerPatches(store, updateIndexName, ownerId)
+              : await queryCompleteOwnersPatches(
+                  store,
+                  updateIndexName,
+                  ownerIds,
+                ),
+            input,
+          );
+        }
         return queryDynamoDBRows(
           (await loadPatchItems(store)).map(({ row }) => row),
           input,
         );
+      }
     }
     throw new DynamoDBUnsupportedModelError();
+  },
+  async getChannels(): Promise<string[]> {
+    return [
+      ...new Set((await loadBundleItems(store)).map(({ row }) => row.channel)),
+    ].sort();
   },
 });

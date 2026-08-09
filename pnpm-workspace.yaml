@@ -5,6 +5,9 @@ packages:
   - examples/*
   - examples-server/*
 
+overrides:
+  '@smithy/types': 4.16.1
+
 allowBuilds:
   '@firebase/util': true
   '@prisma/client': true

@@ -152,11 +152,34 @@ DynamoDB item; Analytics queries read event pages from DynamoDB. See the
 [Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
 
 Analytics ingestion is intentionally public because mobile clients cannot hold
-a server secret. Protect production distributions with AWS WAF rate-based rules
-or another ingress quota, and configure AWS Budgets before enabling ingestion at
-large scale. The bounded Analytics provider materializes at most 50,000 events
-per query and retains appended events; plan external retention or aggregation
-before reaching that boundary.
+a server secret. Managed tables spread events over monthly write shards, expire
+them after 90 days, and cap on-demand throughput at 4,000 reads and 100 writes
+per second for both the table and update index. The cap is a cost guardrail and
+can throttle bursts; protect production distributions with AWS WAF rate-based
+rules and configure AWS Budgets for a monthly spending threshold. The bounded
+Analytics provider still rejects `all` reports above 50,000 events, while
+24-hour, 7-day, and 30-day queries start at their storage time boundary.
+
+Bundle metadata is bounded at 1,000 bundles and 1,000 patches, with at most 24
+patch relationships per bundle and 8 KiB per serialized metadata item. The
+plugin maintains counters in the same transactions as metadata writes, capping
+the two full collections at 16 MiB of encoded payload before JavaScript object
+overhead. Cursor pages and exact/single-owner hydration use targeted key/index
+reads; owner-index keys are hydrated from strongly consistent base-table rows
+and unprocessed batch keys use bounded exponential backoff. Unfiltered totals
+use the transactionally maintained metadata counter. The 4,000-read cap covers
+the documented worst-case filtered metadata scan at the 8-KiB item bound while
+remaining a cost guardrail. These bounds prevent unbounded control-plane reads
+and keep patch replacement and cascade deletion below DynamoDB's 100-action
+transaction limit.
+Remove obsolete bundle metadata before reaching a limit.
+
+New tables enable deletion protection. Init validates the billing mode,
+throughput caps, string key types, and index layout before reusing an existing
+table, then validates and reconciles the `expires_at_s` TTL before enabling
+point-in-time recovery on both new and compatible reused tables. Point-in-time
+recovery is a billed DynamoDB feature. Init does not change deletion protection
+on an operator-owned reused table.
 
 New distributions use `PriceClass_All` to preserve worldwide OTA latency. If
 regional reach matters less than transfer price, change the distribution price
@@ -282,10 +305,10 @@ export default HotUpdater.wrap({
 ```
 
 <Callout type="info">
-The managed DynamoDB runtime exposes public update checks, `/version`, and
-Analytics ingestion at `/api/check-update/events`. Analytics query routes under
-`/api/check-update/api` require `x-api-key: $HOT_UPDATER_API_KEY`. Bundle
-management endpoints are not mounted on the public function URL.
+  The managed DynamoDB runtime exposes public update checks, `/version`, and
+  Analytics ingestion at `/api/check-update/events`. Analytics query routes
+  under `/api/check-update/api` require `x-api-key: $HOT_UPDATER_API_KEY`.
+  Bundle management endpoints are not mounted on the public function URL.
 </Callout>
 
 ## Step 6: If You Use Expo, Add the Config Plugin
@@ -383,13 +406,13 @@ import com.hotupdater.HotUpdater // [!code ++]
 
 class MainApplication : Application(), ReactApplication {
 
-  override val reactNativeHost: ReactNativeHost =
-      object : DefaultReactNativeHost(this) {
-        override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
-            }
+override val reactNativeHost: ReactNativeHost =
+object : DefaultReactNativeHost(this) {
+override fun getPackages(): List<ReactPackage> =
+PackageList(this).packages.apply {
+// Packages that cannot be autolinked yet can be added manually here, for example:
+// add(MyReactNativePackage())
+}
 
         override fun getJSMainModuleName(): String = "index"
 
@@ -403,20 +426,20 @@ class MainApplication : Application(), ReactApplication {
         }  // [!code ++]
       }
 
-  override val reactHost: ReactHost
-    get() = getDefaultReactHost(applicationContext, reactNativeHost)
+override val reactHost: ReactHost
+get() = getDefaultReactHost(applicationContext, reactNativeHost)
 
-  override fun onCreate() {
-    super.onCreate()
-    SoLoader.init(this, OpenSourceMergedSoMapping)
-    if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-      // If you opted-in for the New Architecture, we load the native entry point for this app.
-      load()
-    }
-  }
+override fun onCreate() {
+super.onCreate()
+SoLoader.init(this, OpenSourceMergedSoMapping)
+if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
+// If you opted-in for the New Architecture, we load the native entry point for this app.
+load()
+}
+}
 }
 
-```
+````
   </Tab>
   <Tab value="Java">
   ```java title="android/app/src/main/java/com/<your-app-name>/MainApplication.java"
@@ -490,7 +513,7 @@ public class MainApplication extends Application implements ReactApplication {
   }
 }
 
-```
+````
 
   </Tab>
 </Tabs>
@@ -508,32 +531,33 @@ import HotUpdater // [!code ++]
 
 @main
 class AppDelegate: RCTAppDelegate {
-  override func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    self.moduleName = "HotUpdaterExample"
-    self.dependencyProvider = RCTAppDependencyProvider()
+override func application(\_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+self.moduleName = "HotUpdaterExample"
+self.dependencyProvider = RCTAppDependencyProvider()
 
     // You can add your custom initial props in the dictionary below.
     // They will be passed down to the ViewController used by React Native.
     self.initialProps = [:]
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
 
-  override func sourceURL(for bridge: RCTBridge) -> URL? {
-    self.bundleURL()
-  }
-
-  override func bundleURL() -> URL? {
-#if DEBUG
-    RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
-#else
-    Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
-    HotUpdater.bundleURL() // [!code ++]
-#endif
-  }
 }
 
-```
+override func sourceURL(for bridge: RCTBridge) -> URL? {
+self.bundleURL()
+}
+
+override func bundleURL() -> URL? {
+#if DEBUG
+RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: "index")
+#else
+Bundle.main.url(forResource: "main", withExtension: "jsbundle") // [!code --]
+HotUpdater.bundleURL() // [!code ++]
+#endif
+}
+}
+
+````
 </Tab>
 <Tab value="Objective-C">
 ```objc title="ios/<your-app-name>/AppDelegate.mm"
@@ -569,7 +593,7 @@ class AppDelegate: RCTAppDelegate {
 }
 
 @end
-```
+````
 
 </Tab>
 </Tabs>

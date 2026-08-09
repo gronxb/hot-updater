@@ -1,4 +1,5 @@
 import {
+  type AttributeDefinition,
   DynamoDB,
   type KeySchemaElement,
   type TableDescription,
@@ -31,6 +32,20 @@ export class DynamoDBAnalyticsSchemaError extends Error {
   }
 }
 
+export class DynamoDBTimeToLiveSchemaError extends Error {
+  readonly name = "DynamoDBTimeToLiveSchemaError";
+
+  constructor(
+    readonly tableName: string,
+    readonly attributeName: string | undefined,
+    readonly status: string | undefined,
+  ) {
+    super(
+      `DynamoDB table "${tableName}" has incompatible TTL configuration (${attributeName ?? "unknown attribute"}, ${status ?? "unknown status"})`,
+    );
+  }
+}
+
 const primaryKeySchema = [
   { AttributeName: "pk", KeyType: "HASH" },
   { AttributeName: "sk", KeyType: "RANGE" },
@@ -40,6 +55,12 @@ const updateIndexKeySchema = [
   { AttributeName: "gsi1pk", KeyType: "HASH" },
   { AttributeName: "gsi1sk", KeyType: "RANGE" },
 ] as const satisfies readonly KeySchemaElement[];
+
+const keyAttributes = ["pk", "sk", "gsi1pk", "gsi1sk"] as const;
+const onDemandThroughput = {
+  MaxReadRequestUnits: 4_000,
+  MaxWriteRequestUnits: 100,
+} as const;
 
 const hasKeySchema = (
   actual: readonly KeySchemaElement[] | undefined,
@@ -57,8 +78,23 @@ const hasExpectedSchema = (table: TableDescription | undefined): boolean => {
     ({ IndexName }) => IndexName === DYNAMODB_UPDATE_INDEX_NAME,
   );
   return (
+    keyAttributes.every((attributeName) =>
+      table?.AttributeDefinitions?.some(
+        ({ AttributeName, AttributeType }: AttributeDefinition) =>
+          AttributeName === attributeName && AttributeType === "S",
+      ),
+    ) &&
+    table?.BillingModeSummary?.BillingMode === "PAY_PER_REQUEST" &&
+    table.OnDemandThroughput?.MaxReadRequestUnits ===
+      onDemandThroughput.MaxReadRequestUnits &&
+    table.OnDemandThroughput?.MaxWriteRequestUnits ===
+      onDemandThroughput.MaxWriteRequestUnits &&
     hasKeySchema(table?.KeySchema, primaryKeySchema) &&
     hasKeySchema(updateIndex?.KeySchema, updateIndexKeySchema) &&
+    updateIndex?.OnDemandThroughput?.MaxReadRequestUnits ===
+      onDemandThroughput.MaxReadRequestUnits &&
+    updateIndex?.OnDemandThroughput?.MaxWriteRequestUnits ===
+      onDemandThroughput.MaxWriteRequestUnits &&
     updateIndex?.Projection?.ProjectionType === "ALL"
   );
 };
@@ -116,6 +152,7 @@ export class DynamoDBManager {
       if (!hasExpectedSchema(Table)) {
         throw new DynamoDBTableSchemaError(tableName);
       }
+      await this.ensureLifecycle(tableName);
       await this.ensureAnalyticsSchema(tableName);
       return;
     } catch (error) {
@@ -130,20 +167,73 @@ export class DynamoDBManager {
         { AttributeName: "gsi1sk", AttributeType: "S" },
       ],
       BillingMode: "PAY_PER_REQUEST",
+      DeletionProtectionEnabled: true,
       GlobalSecondaryIndexes: [
         {
           IndexName: DYNAMODB_UPDATE_INDEX_NAME,
           KeySchema: [...updateIndexKeySchema],
           Projection: { ProjectionType: "ALL" },
+          OnDemandThroughput: onDemandThroughput,
         },
       ],
       KeySchema: [...primaryKeySchema],
+      OnDemandThroughput: onDemandThroughput,
       TableName: tableName,
     });
     await waitUntilTableExists(
       { client: this.client, maxWaitTime: 120 },
       { TableName: tableName },
     );
+    await this.ensureLifecycle(tableName);
     await this.ensureAnalyticsSchema(tableName);
+  }
+
+  private async ensureLifecycle(tableName: string): Promise<void> {
+    await this.ensureTimeToLive(tableName);
+    await this.ensurePointInTimeRecovery(tableName);
+  }
+
+  private async ensurePointInTimeRecovery(tableName: string): Promise<void> {
+    const { ContinuousBackupsDescription } =
+      await this.client.describeContinuousBackups({ TableName: tableName });
+    if (
+      ContinuousBackupsDescription?.PointInTimeRecoveryDescription
+        ?.PointInTimeRecoveryStatus === "ENABLED"
+    ) {
+      return;
+    }
+    await this.client.updateContinuousBackups({
+      PointInTimeRecoverySpecification: {
+        PointInTimeRecoveryEnabled: true,
+      },
+      TableName: tableName,
+    });
+  }
+
+  private async ensureTimeToLive(tableName: string): Promise<void> {
+    const { TimeToLiveDescription } = await this.client.describeTimeToLive({
+      TableName: tableName,
+    });
+    const status = TimeToLiveDescription?.TimeToLiveStatus;
+    const attributeName = TimeToLiveDescription?.AttributeName;
+    if (
+      attributeName === "expires_at_s" &&
+      (status === "ENABLED" || status === "ENABLING")
+    ) {
+      return;
+    }
+    if (status === "ENABLING" || status === "DISABLING") {
+      throw new DynamoDBTimeToLiveSchemaError(tableName, attributeName, status);
+    }
+    if (status === "ENABLED") {
+      throw new DynamoDBTimeToLiveSchemaError(tableName, attributeName, status);
+    }
+    await this.client.updateTimeToLive({
+      TableName: tableName,
+      TimeToLiveSpecification: {
+        AttributeName: "expires_at_s",
+        Enabled: true,
+      },
+    });
   }
 }
