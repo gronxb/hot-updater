@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Moon, Package, Sun } from "lucide-react";
+import { ChartNoAxesCombined, Moon, Package, Sun } from "lucide-react";
 
+import { useAnalyticsCapability } from "@/components/features/analytics/AnalyticsCapabilityContext";
 import { HotUpdaterLogo } from "@/components/HotUpdaterLogo";
 import { useTheme } from "@/components/ThemeProvider";
 import {
@@ -15,13 +16,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-
 export function AppSidebar() {
+  const analyticsCapability = useAnalyticsCapability();
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
 
   const isBundlesActive = currentPath === "/";
+  const isAnalyticsActive =
+    currentPath === "/analytics" || currentPath === "/installations";
 
   return (
     <Sidebar collapsible="icon">
@@ -79,6 +82,20 @@ export function AppSidebar() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {analyticsCapability.status === "supported" ? (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={isAnalyticsActive}
+                    tooltip="Analytics"
+                  >
+                    <Link to="/analytics">
+                      <ChartNoAxesCombined />
+                      <span>Analytics</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ) : null}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
