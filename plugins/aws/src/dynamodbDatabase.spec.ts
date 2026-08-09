@@ -10,6 +10,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dynamoDB } from "./dynamodbDatabase";
 
 const cloudFront = mockClient(CloudFrontClient);
+const cloudFrontInvalidation = (status: string) => ({
+  Id: "invalidation-id",
+  Status: status,
+  CreateTime: new Date(0),
+  InvalidationBatch: {
+    CallerReference: "fixture",
+    Paths: { Quantity: 0, Items: [] },
+  },
+});
 
 describe("dynamoDB CloudFront lifecycle", () => {
   beforeEach(() => {
@@ -50,10 +59,10 @@ describe("dynamoDB CloudFront lifecycle", () => {
     // Given
     vi.useFakeTimers();
     cloudFront.on(CreateInvalidationCommand).resolves({
-      Invalidation: { Id: "invalidation-id", Status: "InProgress" },
+      Invalidation: cloudFrontInvalidation("InProgress"),
     });
     cloudFront.on(GetInvalidationCommand).resolves({
-      Invalidation: { Id: "invalidation-id", Status: "Completed" },
+      Invalidation: cloudFrontInvalidation("Completed"),
     });
     const plugin = dynamoDB({
       cloudfrontDistributionId: "distribution-id",
