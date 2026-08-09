@@ -285,8 +285,15 @@ const mergeCacheBehaviors = (
     const additionPrefix =
       (addition.PathPattern ?? "").split(/[?*]/, 1)[0] ?? "";
     const broaderBehaviorIndex = behaviors.findIndex((behavior) => {
-      const behaviorPrefix =
-        (behavior.PathPattern ?? "").split(/[?*]/, 1)[0] ?? "";
+      const behaviorPattern = behavior.PathPattern ?? "";
+      const wildcardIndex = behaviorPattern.indexOf("*");
+      if (
+        wildcardIndex !== behaviorPattern.length - 1 ||
+        behaviorPattern.includes("?")
+      ) {
+        return false;
+      }
+      const behaviorPrefix = behaviorPattern.slice(0, wildcardIndex);
       return (
         behaviorPrefix.length < additionPrefix.length &&
         additionPrefix.startsWith(behaviorPrefix)

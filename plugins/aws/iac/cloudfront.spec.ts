@@ -412,4 +412,56 @@ describe("buildDistributionConfigOverrides", () => {
       ),
     ).toEqual(["/api/check-update/private/*", "/api/check-update/*", "/api/*"]);
   });
+
+  it("preserves precedence for existing cross-cutting wildcard behaviors", () => {
+    // Given
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const existingDistributionConfig: DistributionConfig = {
+      ...buildDistributionConfig(baseOptions),
+      CacheBehaviors: {
+        Quantity: 2,
+        Items: [
+          {
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: { Quantity: 2, Items: ["HEAD", "GET"] },
+            },
+            CachePolicyId: "javascript-cache-policy-id",
+            Compress: true,
+            PathPattern: "/*.js",
+            SmoothStreaming: false,
+            TargetOriginId: baseOptions.bucketName,
+            ViewerProtocolPolicy: "redirect-to-https",
+          },
+          {
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: { Quantity: 2, Items: ["HEAD", "GET"] },
+            },
+            CachePolicyId: "api-cache-policy-id",
+            Compress: true,
+            PathPattern: "/api/*",
+            SmoothStreaming: false,
+            TargetOriginId: baseOptions.bucketName,
+            ViewerProtocolPolicy: "redirect-to-https",
+          },
+        ],
+      },
+    };
+
+    // When
+    const updatedConfig = applyDistributionConfigOverrides(
+      existingDistributionConfig,
+      overrides,
+    );
+
+    // Then
+    expect(
+      updatedConfig.CacheBehaviors?.Items?.map(
+        ({ PathPattern }) => PathPattern,
+      ),
+    ).toEqual(["/*.js", "/api/check-update/*", "/api/*"]);
+  });
 });
