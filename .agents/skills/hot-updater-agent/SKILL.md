@@ -15,6 +15,7 @@ The CLI infers the current PR with `gh pr view`; there is no `-pr` flag.
 Valid profiles:
 
 - `standalone-s3`
+- `standalone-dynamodb`
 - `standalone-drizzle`
 - `standalone-prisma`
 - `standalone-kysely`
