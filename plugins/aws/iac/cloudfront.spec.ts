@@ -1,4 +1,4 @@
-import type { DistributionConfig, Origin } from "@aws-sdk/client-cloudfront";
+import type { DistributionConfig } from "@aws-sdk/client-cloudfront";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -270,14 +270,18 @@ describe("buildDistributionConfigOverrides", () => {
     // Given
     const overrides = buildDistributionConfigOverrides(baseOptions);
     const existingOriginId = "preexisting-bucket-origin";
+    const existingManagedOrigin =
+      buildDistributionConfig(baseOptions).Origins?.Items?.[0];
+    if (!existingManagedOrigin) {
+      throw new Error("Expected the managed CloudFront origin fixture");
+    }
     const existingDistributionConfig: DistributionConfig = {
       ...buildDistributionConfig(baseOptions),
       Origins: {
         Quantity: 1,
         Items: [
           {
-            ...(buildDistributionConfig(baseOptions).Origins
-              ?.Items?.[0] as Origin),
+            ...existingManagedOrigin,
             Id: existingOriginId,
           },
         ],
@@ -419,8 +423,21 @@ describe("buildDistributionConfigOverrides", () => {
     const existingDistributionConfig: DistributionConfig = {
       ...buildDistributionConfig(baseOptions),
       CacheBehaviors: {
-        Quantity: 2,
+        Quantity: 3,
         Items: [
+          {
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: { Quantity: 2, Items: ["HEAD", "GET"] },
+            },
+            CachePolicyId: "single-character-cache-policy-id",
+            Compress: true,
+            PathPattern: "/api/check-update/?.json",
+            SmoothStreaming: false,
+            TargetOriginId: baseOptions.bucketName,
+            ViewerProtocolPolicy: "redirect-to-https",
+          },
           {
             AllowedMethods: {
               Quantity: 2,
@@ -462,6 +479,11 @@ describe("buildDistributionConfigOverrides", () => {
       updatedConfig.CacheBehaviors?.Items?.map(
         ({ PathPattern }) => PathPattern,
       ),
-    ).toEqual(["/*.js", "/api/check-update/*", "/api/*"]);
+    ).toEqual([
+      "/api/check-update/?.json",
+      "/*.js",
+      "/api/check-update/*",
+      "/api/*",
+    ]);
   });
 });
