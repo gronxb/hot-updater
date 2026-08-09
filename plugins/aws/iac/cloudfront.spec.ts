@@ -6,6 +6,7 @@ import {
   buildDistributionConfig,
   buildDistributionConfigOverrides,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+  HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
 
 const baseOptions = {
@@ -25,9 +26,27 @@ describe("buildDistributionConfigOverrides", () => {
       MaxTTL: 31_536_000,
       MinTTL: 0,
       ParametersInCacheKeyAndForwardedToOrigin: {
-        HeadersConfig: { HeaderBehavior: "none" },
+        HeadersConfig: {
+          HeaderBehavior: "whitelist",
+          Headers: {
+            Quantity: 1,
+            Items: ["hot-updater-sdk-version"],
+          },
+        },
         CookiesConfig: { CookieBehavior: "none" },
         QueryStringsConfig: { QueryStringBehavior: "none" },
+      },
+    });
+  });
+
+  it("forwards the SDK version and authentication headers to Lambda", () => {
+    expect(HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG).toMatchObject({
+      HeadersConfig: {
+        HeaderBehavior: "whitelist",
+        Headers: {
+          Quantity: 3,
+          Items: ["content-type", "hot-updater-sdk-version", "x-api-key"],
+        },
       },
     });
   });
@@ -183,5 +202,106 @@ describe("buildDistributionConfigOverrides", () => {
     expect("MinTTL" in (updatedBehaviorItems[0] as object)).toBe(false);
     expect("DefaultTTL" in (updatedBehaviorItems[0] as object)).toBe(false);
     expect("MaxTTL" in (updatedBehaviorItems[0] as object)).toBe(false);
+  });
+
+  it("preserves unrelated origins and cache behaviors on an existing distribution", () => {
+    // Given
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const existingDistributionConfig: DistributionConfig = {
+      ...buildDistributionConfig(baseOptions),
+      Origins: {
+        Quantity: 2,
+        Items: [
+          ...(buildDistributionConfig(baseOptions).Origins?.Items ?? []),
+          {
+            Id: "unrelated-origin",
+            DomainName: "example.com",
+            CustomOriginConfig: {
+              HTTPPort: 80,
+              HTTPSPort: 443,
+              OriginProtocolPolicy: "https-only",
+            },
+          },
+        ],
+      },
+      CacheBehaviors: {
+        Quantity: 2,
+        Items: [
+          ...(buildDistributionConfig(baseOptions).CacheBehaviors?.Items ?? []),
+          {
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: { Quantity: 2, Items: ["HEAD", "GET"] },
+            },
+            CachePolicyId: "unrelated-cache-policy-id",
+            Compress: true,
+            PathPattern: "/unrelated/*",
+            SmoothStreaming: false,
+            TargetOriginId: "unrelated-origin",
+            ViewerProtocolPolicy: "redirect-to-https",
+          },
+        ],
+      },
+    };
+
+    // When
+    const updatedConfig = applyDistributionConfigOverrides(
+      existingDistributionConfig,
+      overrides,
+    );
+
+    // Then
+    expect(updatedConfig.Origins?.Items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ Id: baseOptions.bucketName }),
+        expect.objectContaining({ Id: "unrelated-origin" }),
+      ]),
+    );
+    expect(updatedConfig.CacheBehaviors?.Items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ PathPattern: "/api/check-update/*" }),
+        expect.objectContaining({ PathPattern: "/unrelated/*" }),
+      ]),
+    );
+  });
+
+  it("places a new update API behavior before broader existing behaviors", () => {
+    // Given
+    const overrides = buildDistributionConfigOverrides(baseOptions);
+    const existingDistributionConfig: DistributionConfig = {
+      ...buildDistributionConfig(baseOptions),
+      CacheBehaviors: {
+        Quantity: 1,
+        Items: [
+          {
+            AllowedMethods: {
+              Quantity: 2,
+              Items: ["HEAD", "GET"],
+              CachedMethods: { Quantity: 2, Items: ["HEAD", "GET"] },
+            },
+            CachePolicyId: "existing-cache-policy-id",
+            Compress: true,
+            PathPattern: "/api/*",
+            SmoothStreaming: false,
+            TargetOriginId: baseOptions.bucketName,
+            ViewerProtocolPolicy: "redirect-to-https",
+          },
+        ],
+      },
+    };
+
+    // When
+    const updatedConfig = applyDistributionConfigOverrides(
+      existingDistributionConfig,
+      overrides,
+    );
+
+    // Then
+    expect(
+      updatedConfig.CacheBehaviors?.Items?.map(
+        ({ PathPattern }) => PathPattern,
+      ),
+    ).toEqual(["/api/check-update/*", "/api/*"]);
   });
 });

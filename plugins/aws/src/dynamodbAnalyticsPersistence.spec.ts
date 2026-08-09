@@ -125,4 +125,19 @@ describe("DynamoDB Analytics persistence", () => {
     ).rejects.toBeInstanceOf(AnalyticsSchemaNotReadyError);
     expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
   });
+
+  it("checks the Analytics schema once per persistence instance", async () => {
+    // Given
+    const persistence = createPersistence();
+    dynamodb.on(PutCommand).resolves({});
+    dynamodb.on(QueryCommand).resolves({ Items: [] });
+
+    // When
+    await persistence.append(unchangedRow("event-a", 1_000));
+    await persistence.scan({ beforeReceivedAtMs: 2_000, limit: 1 });
+    await persistence.scan({ beforeReceivedAtMs: 2_000, limit: 1 });
+
+    // Then
+    expect(dynamodb.commandCalls(GetCommand)).toHaveLength(1);
+  });
 });

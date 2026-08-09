@@ -59,46 +59,57 @@ const parseEventItem = (item: Record<string, unknown>) => {
 
 export const createDynamoDBAnalyticsPersistence = (
   store: DynamoDBStore,
-): AnalyticsPersistence => ({
-  async append(row: BundleEventPersistenceRow) {
-    await assertAnalyticsReady(store);
-    await store.client.send(
-      new PutCommand({
-        TableName: store.tableName,
-        Item: {
-          ...row,
-          pk: DYNAMODB_ANALYTICS_PARTITION,
-          sk: eventSortKey(row.received_at_ms, row.id),
-        },
-        ConditionExpression: "attribute_not_exists(#pk)",
-        ExpressionAttributeNames: { "#pk": "pk" },
-      }),
-    );
-  },
-  async scan(input) {
-    await assertAnalyticsReady(store);
-    const after = input.after;
-    const { Items = [] } = await store.client.send(
-      new QueryCommand({
-        TableName: store.tableName,
-        KeyConditionExpression:
-          after === undefined
-            ? "#pk = :pk AND #sk < :before"
-            : "#pk = :pk AND #sk BETWEEN :after AND :before",
-        ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
-        ExpressionAttributeValues: {
-          ":pk": DYNAMODB_ANALYTICS_PARTITION,
-          ":before": eventSortKey(input.beforeReceivedAtMs),
-          ...(after === undefined
-            ? {}
-            : {
-                ":after": `${eventSortKey(after.receivedAtMs, after.id)}\u0000`,
-              }),
-        },
-        Limit: input.limit,
-        ScanIndexForward: true,
-      }),
-    );
-    return Items.map(parseEventItem);
-  },
-});
+): AnalyticsPersistence => {
+  let schemaReadiness: Promise<void> | undefined;
+  const ensureAnalyticsReady = (): Promise<void> => {
+    schemaReadiness ??= assertAnalyticsReady(store).catch((error) => {
+      schemaReadiness = undefined;
+      throw error;
+    });
+    return schemaReadiness;
+  };
+
+  return {
+    async append(row: BundleEventPersistenceRow) {
+      await ensureAnalyticsReady();
+      await store.client.send(
+        new PutCommand({
+          TableName: store.tableName,
+          Item: {
+            ...row,
+            pk: DYNAMODB_ANALYTICS_PARTITION,
+            sk: eventSortKey(row.received_at_ms, row.id),
+          },
+          ConditionExpression: "attribute_not_exists(#pk)",
+          ExpressionAttributeNames: { "#pk": "pk" },
+        }),
+      );
+    },
+    async scan(input) {
+      await ensureAnalyticsReady();
+      const after = input.after;
+      const { Items = [] } = await store.client.send(
+        new QueryCommand({
+          TableName: store.tableName,
+          KeyConditionExpression:
+            after === undefined
+              ? "#pk = :pk AND #sk < :before"
+              : "#pk = :pk AND #sk BETWEEN :after AND :before",
+          ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+          ExpressionAttributeValues: {
+            ":pk": DYNAMODB_ANALYTICS_PARTITION,
+            ":before": eventSortKey(input.beforeReceivedAtMs),
+            ...(after === undefined
+              ? {}
+              : {
+                  ":after": `${eventSortKey(after.receivedAtMs, after.id)}\u0000`,
+                }),
+          },
+          Limit: input.limit,
+          ScanIndexForward: true,
+        }),
+      );
+      return Items.map(parseEventItem);
+    },
+  };
+};

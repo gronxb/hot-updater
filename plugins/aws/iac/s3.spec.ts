@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockS3 = vi.hoisted(() => ({
-  listBuckets: vi.fn(),
   getBucketLocation: vi.fn(),
+  getBucketPolicy: vi.fn(),
+  listBuckets: vi.fn(),
+  putBucketPolicy: vi.fn(),
 }));
 
 const mockPrompt = vi.hoisted(() => ({
@@ -46,6 +48,7 @@ import { S3Manager } from "./s3";
 describe("S3Manager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockS3.putBucketPolicy.mockResolvedValue({});
   });
 
   it("normalizes us-east-1 buckets when AWS omits the location constraint", async () => {
@@ -55,7 +58,6 @@ describe("S3Manager", () => {
     mockS3.getBucketLocation
       .mockResolvedValueOnce({ LocationConstraint: null })
       .mockResolvedValueOnce({ LocationConstraint: "ap-northeast-2" });
-
     const manager = new S3Manager({
       accessKeyId: "test-access-key",
       secretAccessKey: "test-secret-key",
@@ -74,7 +76,6 @@ describe("S3Manager", () => {
     mockS3.getBucketLocation.mockResolvedValue({
       LocationConstraint: "EU",
     });
-
     const manager = new S3Manager({
       accessKeyId: "test-access-key",
       secretAccessKey: "test-secret-key",
@@ -153,9 +154,7 @@ describe("S3Manager", () => {
 
     // Then
     expect(mockPrompt.confirm).toHaveBeenCalledWith(
-      expect.objectContaining({
-        initialValue: true,
-      }),
+      expect.objectContaining({ initialValue: true }),
     );
   });
 
@@ -186,5 +185,45 @@ describe("S3Manager", () => {
       missingInputs: ["HOT_UPDATER_AWS_MIGRATION_APPROVED"],
     });
     expect(mockPrompt.confirm).not.toHaveBeenCalled();
+  });
+
+  it("preserves unrelated statements when granting CloudFront access", async () => {
+    // Given
+    const unrelatedStatement = {
+      Sid: "AllowAudit",
+      Effect: "Allow",
+      Principal: { AWS: "arn:aws:iam::123456789012:role/audit" },
+      Action: "s3:GetBucketLocation",
+      Resource: "arn:aws:s3:::hot-updater-storage",
+    };
+    mockS3.getBucketPolicy.mockResolvedValue({
+      Policy: JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [unrelatedStatement],
+      }),
+    });
+    const manager = new S3Manager({
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.updateBucketPolicy({
+      accountId: "123456789012",
+      bucketName: "hot-updater-storage",
+      distributionId: "distribution-id",
+      region: "ap-northeast-2",
+    });
+
+    // Then
+    const policy = JSON.parse(
+      mockS3.putBucketPolicy.mock.calls[0]?.[0].Policy ?? "{}",
+    );
+    expect(policy.Statement).toEqual(
+      expect.arrayContaining([
+        unrelatedStatement,
+        expect.objectContaining({ Sid: "AllowHotUpdaterCloudFrontRead" }),
+      ]),
+    );
   });
 });

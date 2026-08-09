@@ -132,12 +132,50 @@ export class S3Manager {
       region: region,
       credentials: this.credentials,
     });
+    let existingPolicy: Record<string, unknown> = {};
+    try {
+      const { Policy } = await s3Client.getBucketPolicy({
+        Bucket: bucketName,
+      });
+      if (Policy) {
+        const parsed: unknown = JSON.parse(Policy);
+        if (typeof parsed !== "object" || parsed === null) {
+          throw new Error("Existing S3 bucket policy is not a JSON object");
+        }
+        existingPolicy = Object.fromEntries(Object.entries(parsed));
+      }
+    } catch (error) {
+      if (
+        typeof error !== "object" ||
+        error === null ||
+        Reflect.get(error, "name") !== "NoSuchBucketPolicy"
+      ) {
+        throw error;
+      }
+    }
+    const policyStatements = Array.isArray(existingPolicy.Statement)
+      ? existingPolicy.Statement
+      : typeof existingPolicy.Statement === "object" &&
+          existingPolicy.Statement !== null
+        ? [existingPolicy.Statement]
+        : [];
+    const existingStatements = policyStatements.filter(
+      (statement) =>
+        typeof statement !== "object" ||
+        statement === null ||
+        (Reflect.get(statement, "Sid") !== "AllowCloudFrontServicePrincipal" &&
+          Reflect.get(statement, "Sid") !== "AllowHotUpdaterCloudFrontRead"),
+    );
     const bucketPolicy = {
-      Version: "2008-10-17",
-      Id: "PolicyForCloudFrontPrivateContent",
+      ...existingPolicy,
+      Version:
+        typeof existingPolicy.Version === "string"
+          ? existingPolicy.Version
+          : "2012-10-17",
       Statement: [
+        ...existingStatements,
         {
-          Sid: "AllowCloudFrontServicePrincipal",
+          Sid: "AllowHotUpdaterCloudFrontRead",
           Effect: "Allow",
           Principal: { Service: "cloudfront.amazonaws.com" },
           Action: "s3:GetObject",

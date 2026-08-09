@@ -8,9 +8,9 @@ import type {
 
 // We intentionally avoid the AWS-managed UseOriginCacheControlHeaders policy here.
 // That managed policy forwards the viewer Host header and all cookies to the origin,
-// which breaks S3 origins for bundle downloads and bloats the cache key unnecessarily.
+// which breaks S3 origins and bloats the cache key beyond the SDK compatibility header.
 export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
-  Name: "HotUpdaterOriginCacheControl",
+  Name: "HotUpdaterOriginCacheControlV2",
   Comment:
     "Honor origin Cache-Control without forwarding viewer Host/cookies/query strings",
   DefaultTTL: 0,
@@ -20,7 +20,11 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
     EnableAcceptEncodingBrotli: true,
     EnableAcceptEncodingGzip: true,
     HeadersConfig: {
-      HeaderBehavior: "none",
+      HeaderBehavior: "whitelist",
+      Headers: {
+        Quantity: 1,
+        Items: ["hot-updater-sdk-version"],
+      },
     },
     CookiesConfig: {
       CookieBehavior: "none",
@@ -33,13 +37,13 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
 
 export const HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG: OriginRequestPolicyConfig =
   {
-    Name: "HotUpdaterAnalyticsOriginRequest",
+    Name: "HotUpdaterAnalyticsOriginRequestV2",
     Comment: "Forward Analytics bodies, query strings, and API-key headers",
     HeadersConfig: {
       HeaderBehavior: "whitelist",
       Headers: {
-        Quantity: 2,
-        Items: ["content-type", "x-api-key"],
+        Quantity: 3,
+        Items: ["content-type", "hot-updater-sdk-version", "x-api-key"],
       },
     },
     CookiesConfig: { CookieBehavior: "none" },
@@ -89,7 +93,7 @@ const HOT_UPDATER_BEHAVIOR_BASE = {
   AllowedMethods: READ_ONLY_METHODS,
 } as const;
 
-const HOT_UPDATER_CACHE_BEHAVIOR_PATH = "/api/check-update/*";
+export const HOT_UPDATER_CACHE_BEHAVIOR_PATH = "/api/check-update/*";
 
 const omitLegacyCacheFields = <
   T extends {
@@ -234,6 +238,51 @@ const mergeBehaviorWithExisting = <T extends DefaultBehavior | CacheBehavior>(
     EMPTY_FUNCTION_ASSOCIATIONS,
 });
 
+const mergeOrigins = (
+  existing: readonly Origin[],
+  overrides: readonly Origin[],
+): Origin[] => [
+  ...existing.map((existingOrigin) => {
+    const override = overrides.find(
+      (candidate) =>
+        candidate.Id === existingOrigin.Id ||
+        candidate.DomainName === existingOrigin.DomainName,
+    );
+    return override
+      ? mergeOriginWithExisting(existingOrigin, override)
+      : existingOrigin;
+  }),
+  ...overrides.filter(
+    (override) =>
+      !existing.some(
+        (candidate) =>
+          candidate.Id === override.Id ||
+          candidate.DomainName === override.DomainName,
+      ),
+  ),
+];
+
+const mergeCacheBehaviors = (
+  existing: readonly CacheBehavior[],
+  overrides: readonly CacheBehavior[],
+): CacheBehavior[] => {
+  const additions = overrides.filter(
+    (override) =>
+      !existing.some(
+        (candidate) => candidate.PathPattern === override.PathPattern,
+      ),
+  );
+  const mergedExisting = existing.map((existingBehavior) => {
+    const override = overrides.find(
+      (candidate) => candidate.PathPattern === existingBehavior.PathPattern,
+    );
+    return override
+      ? mergeBehaviorWithExisting(existingBehavior, override)
+      : existingBehavior;
+  });
+  return [...additions, ...mergedExisting];
+};
+
 export const buildDistributionConfigOverrides = (options: {
   bucketName: string;
   bucketDomain: string;
@@ -275,35 +324,27 @@ export const applyDistributionConfigOverrides = (
   distributionConfig: DistributionConfig,
   overrides: DistributionConfigOverrides,
 ): DistributionConfig => {
+  const origins = mergeOrigins(
+    distributionConfig.Origins?.Items ?? [],
+    overrides.Origins.Items ?? [],
+  );
+  const cacheBehaviors = mergeCacheBehaviors(
+    distributionConfig.CacheBehaviors?.Items ?? [],
+    overrides.CacheBehaviors.Items ?? [],
+  );
   return sanitizeDistributionConfig({
     ...distributionConfig,
     Origins: {
-      Quantity: overrides.Origins.Quantity,
-      Items: (overrides.Origins.Items ?? []).map((overrideOrigin) => {
-        const existingOrigin = (distributionConfig.Origins?.Items ?? []).find(
-          (origin) =>
-            origin.Id === overrideOrigin.Id ||
-            origin.DomainName === overrideOrigin.DomainName,
-        );
-
-        return mergeOriginWithExisting(existingOrigin, overrideOrigin);
-      }),
+      Quantity: origins.length,
+      Items: origins,
     },
     DefaultCacheBehavior: mergeBehaviorWithExisting(
       distributionConfig.DefaultCacheBehavior,
       overrides.DefaultCacheBehavior,
     ),
     CacheBehaviors: {
-      Quantity: overrides.CacheBehaviors.Quantity,
-      Items: (overrides.CacheBehaviors.Items ?? []).map((overrideBehavior) => {
-        const existingBehavior = (
-          distributionConfig.CacheBehaviors?.Items ?? []
-        ).find(
-          (behavior) => behavior.PathPattern === overrideBehavior.PathPattern,
-        );
-
-        return mergeBehaviorWithExisting(existingBehavior, overrideBehavior);
-      }),
+      Quantity: cacheBehaviors.length,
+      Items: cacheBehaviors,
     },
   });
 };

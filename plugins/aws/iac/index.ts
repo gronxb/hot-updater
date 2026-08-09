@@ -362,9 +362,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // Create IAM role: Using IAMManager
   const iamManager = new IAMManager(bucketRegion, credentials);
+  const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
   const lambdaRoleArn = await iamManager.createOrSelectRole({
+    bucketName,
     dynamodbTableName:
       database === "dynamodb" ? resolvedDynamoDBTableName : undefined,
+    lambdaName,
+    ssmParameterName,
   });
 
   const ssmKeyPairManager = new SSMKeyPairManager(bucketRegion, credentials);
@@ -379,7 +383,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // Deploy Lambda@Edge: Using LambdaEdgeDeployer
   const lambdaEdgeDeployer = new LambdaEdgeDeployer(credentials);
-  const ssmParameterName = `/hot-updater/${bucketName}/keypair`;
   const apiKeySha256 =
     database === "dynamodb"
       ? (await provisionManagedBetterAuthApiKey()).sha256

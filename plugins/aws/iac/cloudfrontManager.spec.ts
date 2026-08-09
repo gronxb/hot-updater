@@ -97,7 +97,7 @@ describe("CloudFrontManager", () => {
             OriginRequestPolicy: {
               Id: "origin-request-policy-id",
               OriginRequestPolicyConfig: {
-                Name: "HotUpdaterAnalyticsOriginRequest",
+                Name: "HotUpdaterAnalyticsOriginRequestV2",
               },
             },
           },
@@ -114,7 +114,7 @@ describe("CloudFrontManager", () => {
             CachePolicy: {
               Id: "shared-cache-policy-id",
               CachePolicyConfig: {
-                Name: "HotUpdaterOriginCacheControl",
+                Name: "HotUpdaterOriginCacheControlV2",
               },
             },
           },
@@ -166,6 +166,13 @@ describe("CloudFrontManager", () => {
         }),
       }),
     );
+    expect(mockCloudFront.createInvalidation).toHaveBeenCalledWith({
+      DistributionId: "dist-id",
+      InvalidationBatch: {
+        CallerReference: expect.any(String),
+        Paths: { Quantity: 1, Items: ["/api/check-update/*"] },
+      },
+    });
   });
 
   it("persists a selected distribution before updating it", async () => {
@@ -176,7 +183,7 @@ describe("CloudFrontManager", () => {
             CachePolicy: {
               Id: "shared-cache-policy-id",
               CachePolicyConfig: {
-                Name: "HotUpdaterOriginCacheControl",
+                Name: "HotUpdaterOriginCacheControlV2",
               },
             },
           },
@@ -249,7 +256,7 @@ describe("CloudFrontManager", () => {
             CachePolicy: {
               Id: "shared-cache-policy-id",
               CachePolicyConfig: {
-                Name: "HotUpdaterOriginCacheControl",
+                Name: "HotUpdaterOriginCacheControlV2",
               },
             },
           },

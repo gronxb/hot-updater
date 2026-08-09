@@ -10,11 +10,41 @@ import {
   transformEnv,
 } from "@hot-updater/cli-tools";
 
+const LAMBDA_MEMORY_SIZE = 256;
+const LAMBDA_TIMEOUT_SECONDS = 10;
+
 export class LambdaEdgeDeployer {
   private credentials: { accessKeyId: string; secretAccessKey: string };
 
   constructor(credentials: { accessKeyId: string; secretAccessKey: string }) {
     this.credentials = credentials;
+  }
+
+  private async waitForUpdate(
+    lambdaClient: Lambda,
+    lambdaName: string,
+  ): Promise<void> {
+    while (true) {
+      try {
+        const status = await lambdaClient.getFunctionConfiguration({
+          FunctionName: lambdaName,
+        });
+        if (status.LastUpdateStatus === "Successful") return;
+        if (status.LastUpdateStatus === "Failed") {
+          throw new Error(
+            `Lambda update failed: ${status.LastUpdateStatusReason}`,
+          );
+        }
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          error.name !== "ResourceConflictException"
+        ) {
+          throw error;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
   }
 
   async deploy(
@@ -86,8 +116,9 @@ export class LambdaEdgeDeployer {
               Handler: "index.handler",
               Code: { ZipFile: await fs.readFile(zipFilePath) },
               Description: "Hot Updater Lambda@Edge function",
+              MemorySize: LAMBDA_MEMORY_SIZE,
               Publish: true,
-              Timeout: 10,
+              Timeout: LAMBDA_TIMEOUT_SECONDS,
             });
             functionArn.arn = createResp.FunctionArn || null;
             functionArn.version = createResp.Version || "1";
@@ -100,51 +131,25 @@ export class LambdaEdgeDeployer {
               message(
                 `Function "${lambdaName}" already exists. Updating function code...`,
               );
-              const updateResp = await lambdaClient.updateFunctionCode({
+              await lambdaClient.updateFunctionCode({
                 FunctionName: lambdaName,
                 ZipFile: await fs.readFile(zipFilePath),
-                Publish: true,
+                Publish: false,
               });
               message("Waiting for Lambda function update to complete...");
-              let isUpdateComplete = false;
-              while (!isUpdateComplete) {
-                try {
-                  const status = await lambdaClient.getFunctionConfiguration({
-                    FunctionName: lambdaName,
-                  });
-                  if (status.LastUpdateStatus === "Successful") {
-                    isUpdateComplete = true;
-                  } else if (status.LastUpdateStatus === "Failed") {
-                    throw new Error(
-                      `Lambda update failed: ${status.LastUpdateStatusReason}`,
-                    );
-                  } else {
-                    await new Promise((resolve) => setTimeout(resolve, 2000));
-                  }
-                } catch (err) {
-                  if (
-                    err instanceof Error &&
-                    err.name === "ResourceConflictException"
-                  ) {
-                    await new Promise((resolve) => setTimeout(resolve, 2000));
-                  } else {
-                    throw err;
-                  }
-                }
-              }
-              try {
-                await lambdaClient.updateFunctionConfiguration({
-                  FunctionName: lambdaName,
-                  MemorySize: 256,
-                  Timeout: 10,
-                });
-              } catch (error) {
-                p.log.error(
-                  `Failed to update Lambda configuration: ${error instanceof Error ? error.message : String(error)}`,
-                );
-              }
-              functionArn.arn = updateResp.FunctionArn || null;
-              functionArn.version = updateResp.Version || "1";
+              await this.waitForUpdate(lambdaClient, lambdaName);
+              await lambdaClient.updateFunctionConfiguration({
+                FunctionName: lambdaName,
+                MemorySize: LAMBDA_MEMORY_SIZE,
+                Role: lambdaRoleArn,
+                Timeout: LAMBDA_TIMEOUT_SECONDS,
+              });
+              await this.waitForUpdate(lambdaClient, lambdaName);
+              const published = await lambdaClient.publishVersion({
+                FunctionName: lambdaName,
+              });
+              functionArn.arn = published.FunctionArn || null;
+              functionArn.version = published.Version || null;
             } else {
               if (error instanceof Error) {
                 p.log.error(

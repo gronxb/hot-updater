@@ -55,7 +55,10 @@ describe("IAMManager DynamoDB access", () => {
 
     // When
     await manager.createOrSelectRole({
+      bucketName: "hot-updater-storage",
       dynamodbTableName: "hot-updater-metadata",
+      lambdaName: "hot-updater-edge",
+      ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
     });
 
     // Then
@@ -73,7 +76,7 @@ describe("IAMManager DynamoDB access", () => {
         Action: ["dynamodb:Query"],
         Effect: "Allow",
         Resource: [
-          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata/index/*",
+          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata/index/hot-updater-update-index",
         ],
       },
       {
@@ -101,5 +104,53 @@ describe("IAMManager DynamoDB access", () => {
         ],
       },
     ]);
+    const s3PolicyCall = mocks.putRolePolicy.mock.calls.find(
+      ([input]) => input.PolicyName === "HotUpdaterS3ReadAccess",
+    );
+    expect(JSON.parse(s3PolicyCall?.[0].PolicyDocument ?? "{}")).toMatchObject({
+      Statement: [
+        { Resource: ["arn:aws:s3:::hot-updater-storage"] },
+        { Resource: ["arn:aws:s3:::hot-updater-storage/*"] },
+      ],
+    });
+    const ssmPolicyCall = mocks.putRolePolicy.mock.calls.find(
+      ([input]) => input.PolicyName === "HotUpdaterSSMAccess",
+    );
+    expect(JSON.parse(ssmPolicyCall?.[0].PolicyDocument ?? "{}")).toMatchObject(
+      {
+        Statement: [
+          {
+            Resource:
+              "arn:aws:ssm:ap-northeast-2:123456789012:parameter/hot-updater/hot-updater-storage/keypair",
+          },
+        ],
+      },
+    );
+  });
+
+  it("isolates execution roles by Lambda installation", async () => {
+    // Given
+    const manager = new IAMManager("ap-northeast-2", {
+      accessKeyId: "test-access-key",
+      secretAccessKey: "test-secret-key",
+    });
+
+    // When
+    await manager.createOrSelectRole({
+      bucketName: "first-bucket",
+      dynamodbTableName: "first-table",
+      lambdaName: "first-edge",
+      ssmParameterName: "/hot-updater/first-bucket/keypair",
+    });
+    await manager.createOrSelectRole({
+      bucketName: "second-bucket",
+      dynamodbTableName: "second-table",
+      lambdaName: "second-edge",
+      ssmParameterName: "/hot-updater/second-bucket/keypair",
+    });
+
+    // Then
+    const roleNames = mocks.getRole.mock.calls.map(([input]) => input.RoleName);
+    expect(new Set(roleNames).size).toBe(2);
   });
 });
