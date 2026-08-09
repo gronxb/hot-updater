@@ -113,7 +113,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   );
   if (database === "dynamodb") {
     p.log.message(
-      `${colors.blue("AmazonDynamoDBFullAccess")}: Create and configure the metadata table`,
+      `${colors.blue("AmazonDynamoDBFullAccess_v2")}: Create and configure the metadata table`,
     );
   }
 

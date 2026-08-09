@@ -228,7 +228,9 @@ describe("DynamoDBManager", () => {
     });
     expect(error).toHaveProperty(
       "message",
-      expect.stringMatching(/AmazonDynamoDBFullAccess[\s\S]+hot-updater init/),
+      expect.stringMatching(
+        /AmazonDynamoDBFullAccess_v2[\s\S]+hot-updater init/,
+      ),
     );
   });
 

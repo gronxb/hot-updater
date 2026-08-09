@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createBucket: vi.fn(),
   execa: vi.fn(),
   listBuckets: vi.fn(),
+  logMessage: vi.fn(),
   makeEnv: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
   resolveAwsAuth: vi.fn(),
@@ -26,6 +27,10 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     makeEnv: mocks.makeEnv,
     p: {
       ...actual.p,
+      log: {
+        ...actual.p.log,
+        message: mocks.logMessage,
+      },
       tasks: vi.fn(async (tasks) => {
         for (const task of tasks) {
           await task.task();
@@ -105,5 +110,35 @@ describe("AWS init preflight", () => {
       missingInputs: ["HOT_UPDATER_AWS_MIGRATION_APPROVED"],
     });
     expect(mocks.createBucket).not.toHaveBeenCalled();
+  });
+
+  it("recommends the current managed policy when DynamoDB is selected", async () => {
+    // Given
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({
+      env: {
+        HOT_UPDATER_AWS_AUTH_MODE: "local-session",
+        HOT_UPDATER_AWS_DATABASE: "dynamodb",
+        HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
+        HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater",
+        HOT_UPDATER_S3_BUCKET_NAME: "deleted-bucket",
+        HOT_UPDATER_S3_REGION: "ap-northeast-2",
+      },
+      managedEnv: {},
+    });
+    const options = {
+      build: "bare",
+      envFile: ".env.hotupdater",
+    } as const;
+
+    // When
+    const initialization = runInit(options);
+
+    // Then
+    await expect(initialization).rejects.toMatchObject({
+      missingInputs: ["HOT_UPDATER_AWS_MIGRATION_APPROVED"],
+    });
+    expect(mocks.logMessage).toHaveBeenCalledWith(
+      expect.stringContaining("AmazonDynamoDBFullAccess_v2"),
+    );
   });
 });

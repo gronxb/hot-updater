@@ -39,7 +39,7 @@ export class DynamoDBPermissionError extends InitError {
         `AWS credentials cannot access DynamoDB table "${tableName}" in ${region}.`,
         `Required permission: ${DYNAMODB_DESCRIBE_TABLE_ACTION}`,
         `AWS error: ${cause.message}`,
-        "Ask your AWS administrator to grant this permission, or attach the AmazonDynamoDBFullAccess managed policy, to the identity used for init.",
+        "Ask your AWS administrator to grant this permission, or attach the AmazonDynamoDBFullAccess_v2 managed policy, to the identity used for init.",
         "For AWS IAM Identity Center, update the assigned permission set and refresh the SSO session.",
         "Then rerun `hot-updater init`.",
       ].join("\n"),
