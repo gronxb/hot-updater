@@ -1,5 +1,12 @@
 # @hot-updater/console
 
+## Unreleased
+
+### Minor Changes
+
+- Add a bundle analytics summary, runtime-backed installation search/history,
+  and a dedicated Console installations route for last-known bundle evidence.
+
 ## 0.35.11
 
 ### Patch Changes

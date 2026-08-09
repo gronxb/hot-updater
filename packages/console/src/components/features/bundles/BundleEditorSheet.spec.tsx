@@ -24,6 +24,10 @@ vi.mock("./BundleEditorForm", () => ({
   },
 }));
 
+vi.mock("./BundleAnalyticsSummary", () => ({
+  BundleAnalyticsSummary: () => <div>Bundle analytics summary</div>,
+}));
+
 vi.mock("./BundleBasicInfo", () => ({
   BundleBasicInfo: () => <div>Bundle basic info</div>,
 }));
