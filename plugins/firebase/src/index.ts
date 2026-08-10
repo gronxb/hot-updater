@@ -4,3 +4,4 @@ export {
   migrateFirebaseAnalytics,
 } from "./firebaseAnalyticsMigration";
 export * from "./firebaseStorage";
+export { mergeFirebaseComponentIndexArtifacts } from "./firebaseUniversalComponentData";

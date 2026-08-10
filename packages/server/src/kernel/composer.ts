@@ -1,10 +1,19 @@
-import type { HotUpdaterInfrastructureRuntime } from "@hot-updater/plugin-core";
+import {
+  type HotUpdaterInfrastructureRuntime,
+  universalComponentDataAdapterCapability,
+} from "@hot-updater/plugin-core";
+import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 
 import { selectAuthenticationProvider } from "./authentication";
 import {
   createCapabilityRegistry,
   type CapabilityRegistry,
 } from "./capabilityRegistry";
+import {
+  bindUniversalComponentSchemas,
+  collectUniversalComponentSchemas,
+  type UniversalComponentRegistry,
+} from "./componentRegistry";
 import type {
   HotUpdaterAuthenticationProvider,
   HotUpdaterMatchedRoute,
@@ -24,6 +33,7 @@ import { compileRoutes, type CompiledRouter } from "./routeCompiler";
 export type ComposeServerKernelOptions = {
   readonly carriers: readonly object[];
   readonly coreRoutes: readonly HotUpdaterServerRoute[];
+  readonly databaseCarrier?: object;
   readonly plugins: readonly HotUpdaterServerPlugin[];
   readonly runtime: HotUpdaterInfrastructureRuntime;
 };
@@ -31,6 +41,7 @@ export type ComposeServerKernelOptions = {
 export type ComposedServerKernel = {
   readonly authentication?: HotUpdaterAuthenticationProvider;
   readonly capabilities: CapabilityRegistry;
+  readonly components: UniversalComponentRegistry;
   readonly router: CompiledRouter;
 };
 
@@ -150,11 +161,43 @@ export const composeServerKernel = (
   }
   plugins.sort((left, right) => left.id.localeCompare(right.id));
 
+  const componentPlan = collectUniversalComponentSchemas(plugins);
+  const pluginRequiredTokens = plugins.flatMap((plugin) =>
+    plugin.requires.map(({ token }) => token),
+  );
+  if (componentPlan.schemas.length > 0) {
+    let databaseProvidesAdapter = false;
+    try {
+      databaseProvidesAdapter =
+        options.databaseCarrier !== undefined &&
+        getCapabilityContributions(options.databaseCarrier).some(
+          ({ token }) => token === universalComponentDataAdapterCapability,
+        );
+    } catch {
+      throw new HotUpdaterConstructionError("INVALID_PLUGIN_CONTRIBUTION", {
+        pluginId: "<infrastructure>",
+      });
+    }
+    if (!databaseProvidesAdapter) {
+      throw new HotUpdaterConstructionError("MISSING_COMPONENT_DATA_ADAPTER", {
+        componentIds: componentPlan.schemas.map(({ id }) => id),
+      });
+    }
+  }
+
   const capabilities = createCapabilityRegistry({
     carriers: options.carriers,
-    requiredTokens: plugins.flatMap((plugin) =>
-      plugin.requires.map(({ token }) => token),
-    ),
+    excludedTokens:
+      componentPlan.schemas.length === 0 &&
+      !pluginRequiredTokens.includes(universalComponentDataAdapterCapability)
+        ? [universalComponentDataAdapterCapability]
+        : [],
+    requiredTokens: [
+      ...pluginRequiredTokens,
+      ...(componentPlan.schemas.length > 0
+        ? [universalComponentDataAdapterCapability]
+        : []),
+    ],
     runtime: options.runtime,
   });
   for (const plugin of plugins) {
@@ -170,6 +213,10 @@ export const composeServerKernel = (
       }
     }
   }
+  const components = bindUniversalComponentSchemas(
+    componentPlan,
+    capabilities.get(universalComponentDataAdapterCapability),
+  );
 
   const routes: CollectedRoute[] = options.coreRoutes.map((route) => ({
     origin: "core",
@@ -182,6 +229,7 @@ export const composeServerKernel = (
       const setupResult = plugin.setup(
         Object.freeze({
           capabilities: capabilities.forPlugin(plugin.id),
+          components: components.forPlugin(plugin.id),
           database: options.runtime.database,
         }),
       );
@@ -214,6 +262,7 @@ export const composeServerKernel = (
       ? {}
       : { authentication: selectedAuthentication }),
     capabilities,
+    components,
     router,
   });
 };

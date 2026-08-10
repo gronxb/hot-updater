@@ -1,5 +1,3 @@
-import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
-import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
 import type {
   BundlePatchRow,
   BundleRow,
@@ -14,12 +12,12 @@ import type {
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
 import {
+  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
   DatabasePluginInputError,
 } from "@hot-updater/plugin-core";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-import { createSupabaseAnalyticsPersistence } from "./supabaseAnalyticsPersistence";
 import {
   resolveSupabaseServiceRoleKey,
   type SupabaseServiceRoleConfig,
@@ -27,6 +25,7 @@ import {
 import { buildSupabaseFilter } from "./supabaseFilter";
 import { createSupabaseGetUpdateInfo } from "./supabaseGetUpdateInfo";
 import { SupabaseMissingDataError, throwSupabaseError } from "./supabaseResult";
+import { createSupabaseUniversalComponentDataAdapter } from "./supabaseUniversalComponentData";
 import type { Database } from "./types";
 
 export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
@@ -210,11 +209,11 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
     config.supabaseUrl,
     resolveSupabaseServiceRoleKey(config),
   );
-  const database = createDatabasePlugin({
+  const plugin = createDatabasePlugin({
     name: "supabaseDatabase",
     plugin: () => createSupabaseImplementation(supabase),
   });
-  attachSupabaseAggregateMutations(database, {
+  const database = attachSupabaseAggregateMutations(plugin, {
     async insertBundleWithPatches(input) {
       const { error } = await supabase.rpc(
         "hot_updater_create_bundle_with_patches",
@@ -241,9 +240,7 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
       return data;
     },
   });
-  return attachAnalyticsProviderCapability(database, () =>
-    createBoundedAnalyticsProvider(
-      createSupabaseAnalyticsPersistence(supabase),
-    ),
+  return attachUniversalComponentDataAdapter(database, () =>
+    createSupabaseUniversalComponentDataAdapter(supabase),
   );
 };

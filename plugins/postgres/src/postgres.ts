@@ -1,5 +1,3 @@
-import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
-import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
 import type {
   CreateDatabaseImplementationInput,
   DatabasePluginImplementation,
@@ -9,7 +7,10 @@ import type {
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  attachUniversalComponentDataAdapter,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import {
   Kysely,
   PostgresDialect,
@@ -20,8 +21,8 @@ import {
 import pg, { type PoolConfig } from "pg";
 
 import { getUpdateInfo } from "./getUpdateInfo";
-import { createPostgresAnalyticsPersistence } from "./postgresAnalyticsPersistence";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
+import { createPostgresUniversalComponentDataAdapter } from "./postgresUniversalComponentData";
 import type { Database } from "./types";
 
 const { Pool } = pg;
@@ -223,8 +224,8 @@ const createPostgresPlugin = (
         : { ...implementation, getUpdateInfo: getPostgresUpdateInfo };
     },
   });
-  return attachAnalyticsProviderCapability(plugin, () =>
-    createBoundedAnalyticsProvider(createPostgresAnalyticsPersistence(db)),
+  return attachUniversalComponentDataAdapter(plugin, () =>
+    createPostgresUniversalComponentDataAdapter(db),
   );
 };
 

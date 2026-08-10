@@ -31,6 +31,11 @@ const runtimeEntrypoints: readonly RuntimeEntrypoint[] = [
     specifier: "@hot-updater/server",
   },
   {
+    exportName: "migrateUniversalComponents",
+    name: "server",
+    specifier: "@hot-updater/server/db",
+  },
+  {
     exportName: "defineFirstPartyServerPlugin",
     name: "server",
     specifier: "@hot-updater/server/internal/first-party-plugin",
@@ -123,12 +128,18 @@ void getCapabilityContributions(carrier);`,
         "server",
         `server-consumer.${extension}`,
         `import { createHotUpdater, type CreateHotUpdaterOptions } from "@hot-updater/server";
+import { generateUniversalComponentArtifacts, migrateUniversalComponents, type UniversalComponentGeneratedArtifact } from "@hot-updater/server/db";
+import { defineUniversalComponentSchema } from "@hot-updater/plugin-core";
 import { defineFirstPartyServerPlugin, type FirstPartyServerPlugin, type HotUpdaterRoutePolicy } from "@hot-updater/server/internal/first-party-plugin";
-const plugin: FirstPartyServerPlugin = defineFirstPartyServerPlugin({ id: "consumer", setup: () => ({}) });
+const schema = defineUniversalComponentSchema({ id: "consumer", versions: [{ version: "1", tables: [{ name: "consumer_records", columns: [{ name: "id", type: "string", primaryKey: true }] }] }] });
+const plugin: FirstPartyServerPlugin = defineFirstPartyServerPlugin({ id: "consumer", schema, setup: ({ components }) => { void components.get(schema); return {}; } });
 const routePolicy: HotUpdaterRoutePolicy = { kind: "protect-all" };
 const acceptOptions = (_options: CreateHotUpdaterOptions): void => undefined;
 void acceptOptions;
 void createHotUpdater;
+void generateUniversalComponentArtifacts;
+void migrateUniversalComponents;
+void (undefined as unknown as UniversalComponentGeneratedArtifact);
 void plugin;
 void routePolicy;`,
       );

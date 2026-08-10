@@ -1,3 +1,4 @@
+import { defineUniversalComponentSchema } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -66,5 +67,30 @@ describe("defineFirstPartyServerPlugin", () => {
 
     expect(plugin.requires).toEqual([]);
     expect(Object.isFrozen(plugin.requires)).toBe(true);
+  });
+
+  it("publishes an immutable static component schema contribution", () => {
+    const schema = defineUniversalComponentSchema({
+      id: "audit-log",
+      versions: [
+        {
+          version: "1",
+          tables: [
+            {
+              name: "audit_records",
+              columns: [{ name: "id", primaryKey: true, type: "string" }],
+            },
+          ],
+        },
+      ],
+    });
+    const plugin = defineFirstPartyServerPlugin({
+      id: "audit-plugin",
+      schema,
+      setup: () => ({}),
+    });
+
+    expect(plugin.schema).toBe(schema);
+    expect(Object.isFrozen(plugin.schema)).toBe(true);
   });
 });

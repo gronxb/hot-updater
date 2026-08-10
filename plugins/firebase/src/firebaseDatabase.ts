@@ -1,6 +1,5 @@
-import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
-import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
 import {
+  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
   type DatabasePlugin,
   type DatabasePluginImplementation,
@@ -9,7 +8,6 @@ import {
 } from "@hot-updater/plugin-core";
 import admin from "firebase-admin";
 
-import { createFirebaseAnalyticsPersistence } from "./firebaseAnalyticsPersistence";
 import {
   parseFirebaseBundleRow,
   parseFirebasePatchRow,
@@ -27,6 +25,7 @@ import {
   createFirebaseDatabaseState,
 } from "./firebaseDatabaseState";
 import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
+import { createFirebaseUniversalComponentDataAdapter } from "./firebaseUniversalComponentData";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -158,11 +157,7 @@ export function firebaseDatabase(config: admin.AppOptions): DatabasePlugin {
       };
     },
   });
-  return attachAnalyticsProviderCapability(database, () =>
-    createBoundedAnalyticsProvider(
-      createFirebaseAnalyticsPersistence(
-        getFirestore().collection("bundle_events"),
-      ),
-    ),
+  return attachUniversalComponentDataAdapter(database, () =>
+    createFirebaseUniversalComponentDataAdapter(getFirestore()),
   );
 }
