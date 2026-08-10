@@ -68,7 +68,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.assertText(
         "assert previous bundle launch status",
         "launch-status-result",
-        "Current Launch Status: STABLE",
+        "Current Launch Status: UNCHANGED",
       );
       await app.control(
         "assert previous bundle active",
@@ -127,7 +127,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.assertText(
         "assert next bundle launch status",
         "launch-status-result",
-        "Current Launch Status: STABLE",
+        "Current Launch Status: UNCHANGED",
       );
       await app.control(
         "assert next bundle active",
@@ -175,7 +175,7 @@ export const disabledBundleRollbackToPreviousOtaScenario: DetoxScenarioDefinitio
       await app.assertText(
         "assert previous ota rollback launch status",
         "launch-status-result",
-        "Current Launch Status: STABLE",
+        "Current Launch Status: UNCHANGED",
       );
       await app.assertText(
         "assert previous ota rollback crashed bundle",
