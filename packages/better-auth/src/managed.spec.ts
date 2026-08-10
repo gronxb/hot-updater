@@ -85,14 +85,20 @@ const request = (path: string, apiKey?: string, method = "GET") =>
     method,
   });
 
+const managementRequest = (path: string, token: string) =>
+  new Request(`https://example.com${path}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+
 const createManagedServer = (
   scope: "all" | "client" | "management",
   store = createStore(),
+  managementBearerToken?: string,
 ) =>
   createHotUpdater({
     database: createRuntimeDatabase(),
     plugins: [
-      managedBetterAuthPlugin({ store }),
+      managedBetterAuthPlugin({ managementBearerToken, store }),
       managedRoutePolicy({ scope }),
       analyticsIngestion,
     ],
@@ -230,6 +236,28 @@ describe("managedBetterAuthPlugin", () => {
     expect(responses.map(({ status }) => status)).toEqual([401, 401]);
   });
 
+  it("authenticates a configured management bearer without granting client keys", async () => {
+    const store = createStore();
+    const findByHash = vi.fn(store.findByHash);
+    const server = createManagedServer(
+      "client",
+      { ...store, findByHash },
+      "management-secret",
+    );
+
+    const responses = await Promise.all([
+      server.handler(managementRequest("/api/bundles", "management-secret")),
+      server.handler(
+        managementRequest("/api/analytics-summary", "management-secret"),
+      ),
+      server.handler(managementRequest("/api/bundles", "wrong-secret")),
+      server.handler(request("/api/bundles", RAW_API_KEY)),
+    ]);
+
+    expect(responses.map(({ status }) => status)).toEqual([200, 200, 401, 401]);
+    expect(findByHash).not.toHaveBeenCalled();
+  });
+
   it("rejects a revoked key without mutating the request body", async () => {
     const store = createStore();
     await store.revoke({ id: activeRecord.id, revokedAt: 2 });
@@ -295,6 +323,19 @@ describe("managedBetterAuthPlugin", () => {
       expect(() =>
         Reflect.apply(managedBetterAuthPlugin, undefined, [options]),
       ).toThrow("Managed Better Auth options must be an object.");
+    },
+  );
+
+  it.each(["", null, 1])(
+    "rejects invalid management bearer tokens from JavaScript %#",
+    (managementBearerToken) => {
+      expect(() =>
+        Reflect.apply(managedBetterAuthPlugin, undefined, [
+          { managementBearerToken, store: createStore() },
+        ]),
+      ).toThrow(
+        "Managed Better Auth managementBearerToken must be a non-empty string.",
+      );
     },
   );
 
