@@ -1,4 +1,3 @@
-import { TanStackDevtools } from "@tanstack/react-devtools";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
@@ -6,7 +5,6 @@ import {
   Outlet,
   Scripts,
 } from "@tanstack/react-router";
-import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/AppSidebar";
@@ -24,6 +22,11 @@ import {
 import appCss from "../styles.css?url";
 
 const LOCAL_DEBUG_HOSTS = new Set(["127.0.0.1", "localhost"]);
+
+type LocalDevtools = {
+  readonly Devtools: typeof import("@tanstack/react-devtools").TanStackDevtools;
+  readonly RouterPanel: typeof import("@tanstack/react-router-devtools").TanStackRouterDevtoolsPanel;
+};
 
 export const Route = createRootRouteWithContext<{
   readonly queryClient: QueryClient;
@@ -63,24 +66,33 @@ export const Route = createRootRouteWithContext<{
   shellComponent: RootDocument,
 });
 
-function RootDocument({ children }: { children: React.ReactNode }) {
-  const [isLocalDebugHost, setIsLocalDebugHost] = useState(false);
+export function RootDocument({ children }: { children: React.ReactNode }) {
+  const [localDevtools, setLocalDevtools] = useState<LocalDevtools | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!import.meta.env.DEV || typeof window === "undefined") {
       return;
     }
 
-    const isDebugHost = LOCAL_DEBUG_HOSTS.has(window.location.hostname);
-    setIsLocalDebugHost(isDebugHost);
-
-    if (isDebugHost) {
-      void import("react-grab/core").then(({ init }) => {
-        init({
-          activationKey: (event) =>
-            event.key.toLowerCase() === "c" && event.metaKey,
-        });
-      });
+    if (LOCAL_DEBUG_HOSTS.has(window.location.hostname)) {
+      void Promise.all([
+        import("@tanstack/react-devtools"),
+        import("@tanstack/react-router-devtools"),
+        import("react-grab/core"),
+      ]).then(
+        ([{ TanStackDevtools }, { TanStackRouterDevtoolsPanel }, { init }]) => {
+          setLocalDevtools({
+            Devtools: TanStackDevtools,
+            RouterPanel: TanStackRouterDevtoolsPanel,
+          });
+          init({
+            activationKey: (event) =>
+              event.key.toLowerCase() === "c" && event.metaKey,
+          });
+        },
+      );
     }
   }, []);
   return (
@@ -93,15 +105,15 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           <TooltipProvider>
             {children}
             <Toaster />
-            {import.meta.env.DEV && isLocalDebugHost ? (
-              <TanStackDevtools
+            {localDevtools ? (
+              <localDevtools.Devtools
                 config={{
                   position: "bottom-right",
                 }}
                 plugins={[
                   {
                     name: "Tanstack Router",
-                    render: <TanStackRouterDevtoolsPanel />,
+                    render: <localDevtools.RouterPanel />,
                   },
                 ]}
               />
