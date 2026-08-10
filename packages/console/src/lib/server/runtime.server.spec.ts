@@ -1,5 +1,10 @@
 // @vitest-environment node
 
+import { analyticsComponentSchema } from "@hot-updater/analytics";
+import {
+  attachUniversalComponentDataAdapter,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -13,8 +18,23 @@ import {
   getBundleEventAnalytics,
   getBundleEventSummary,
   getInstallationHistory,
+  getAnalyticsCapability,
   searchInstallations,
+  createRuntimeHotUpdater,
 } from "./runtime.server";
+
+const createDatabase = () =>
+  createDatabasePlugin({
+    name: "console-component-test",
+    plugin: () => ({
+      count: vi.fn(async () => 0),
+      create: vi.fn(async ({ data }) => data),
+      delete: vi.fn(async () => undefined),
+      findMany: vi.fn(async () => []),
+      findOne: vi.fn(async () => null),
+      update: vi.fn(async () => null),
+    }),
+  });
 
 const createRuntime = () => ({
   mode: "dedicated" as const,
@@ -28,6 +48,46 @@ const createRuntime = () => ({
 });
 
 describe("analytics runtime input validation", () => {
+  it("composes Analytics from the database's neutral component adapter", async () => {
+    // Given
+    const bind = vi.fn((schema) => ({
+      schema,
+      append: vi.fn(async () => undefined),
+      assertReady: vi.fn(async () => undefined),
+      orderedScan: vi.fn(async () => []),
+    }));
+    const database = attachUniversalComponentDataAdapter(
+      createDatabase(),
+      () => ({ bind }),
+    );
+
+    // When
+    const runtime = createRuntimeHotUpdater({
+      database,
+    } as Parameters<typeof createRuntimeHotUpdater>[0]);
+
+    // Then
+    expect(bind).toHaveBeenCalledWith(analyticsComponentSchema);
+    expect(runtime).toMatchObject({ mode: "bounded" });
+    await expect(getAnalyticsCapability(runtime)).resolves.toMatchObject({
+      analytics: true,
+      analyticsQueries: true,
+      mode: "bounded",
+    });
+    await expect(runtime?.getBundleEventOverview()).resolves.toEqual({
+      bundles: [],
+      trackedInstallations: 0,
+    });
+  });
+
+  it("reports Analytics unsupported without a neutral component adapter", () => {
+    expect(
+      createRuntimeHotUpdater({
+        database: createDatabase(),
+      } as Parameters<typeof createRuntimeHotUpdater>[0]),
+    ).toBeNull();
+  });
+
   it("rejects a remote that internally reports Analytics unsupported", async () => {
     // Given
     const runtime = Object.assign(createRuntime(), {

@@ -1,20 +1,20 @@
 import { createHash } from "node:crypto";
 
-import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
-import {
-  createBoundedAnalyticsProvider,
-  type AnalyticsPersistence,
-  type BundleEventPersistenceRow,
-} from "@hot-updater/analytics/provider";
+import type { BundleEventPersistenceRow } from "@hot-updater/analytics/provider";
 import {
   createMockDatabaseData,
   mockDatabase,
   mockStorage,
 } from "@hot-updater/mock";
 import {
+  attachUniversalComponentDataAdapter,
   bundleToPatchRows,
   bundleToRow,
   type Bundle,
+  type UniversalComponentRow,
+  type UniversalComponentScalar,
+  validateUniversalComponentAppend,
+  validateUniversalComponentOrderedScan,
 } from "@hot-updater/plugin-core";
 
 type BundleSeed = Omit<Bundle, "storageUri"> &
@@ -896,39 +896,79 @@ const bundleEvents: readonly BundleEventPersistenceRow[] = [
   ),
 ];
 
-const analyticsRows = [...bundleEvents].sort(
-  (left, right) =>
-    left.received_at_ms - right.received_at_ms ||
-    left.id.localeCompare(right.id),
-);
-const analyticsPersistence: AnalyticsPersistence = {
-  async append(row) {
-    analyticsRows.push(row);
-    analyticsRows.sort(
-      (left, right) =>
-        left.received_at_ms - right.received_at_ms ||
-        left.id.localeCompare(right.id),
+const componentRows = new Map<string, UniversalComponentRow[]>([
+  ["bundle_events", bundleEvents.map((row) => ({ ...row }))],
+]);
+
+const compareScalar = (
+  left: UniversalComponentScalar,
+  right: UniversalComponentScalar,
+) => (left < right ? -1 : left > right ? 1 : 0);
+
+const compareRowToCursor = (
+  row: UniversalComponentRow,
+  columns: readonly string[],
+  cursor: readonly UniversalComponentScalar[],
+) => {
+  for (let index = 0; index < cursor.length; index += 1) {
+    const column = columns[index]!;
+    const comparison = compareScalar(
+      row[column] as UniversalComponentScalar,
+      cursor[index]!,
     );
-  },
-  async scan({ after, beforeReceivedAtMs, limit }) {
-    return analyticsRows
-      .filter((row) => {
-        if (row.received_at_ms >= beforeReceivedAtMs) return false;
-        if (!after) return true;
-        return (
-          row.received_at_ms > after.receivedAtMs ||
-          (row.received_at_ms === after.receivedAtMs && row.id > after.id)
-        );
-      })
-      .slice(0, limit);
-  },
+    if (comparison !== 0) return comparison;
+  }
+  return 0;
 };
-const database = attachAnalyticsProviderCapability(
+
+const rowCursor = (
+  row: UniversalComponentRow,
+  columns: readonly string[],
+): UniversalComponentScalar[] =>
+  columns.map((column) => row[column] as UniversalComponentScalar);
+
+const database = attachUniversalComponentDataAdapter(
   mockDatabase({
     latency: { min: 150, max: 320 },
     data: databaseData,
   }),
-  () => createBoundedAnalyticsProvider(analyticsPersistence),
+  () => ({
+    bind(schema) {
+      return {
+        schema,
+        async append(input) {
+          const table = validateUniversalComponentAppend(schema, input);
+          const rows = componentRows.get(table.name) ?? [];
+          rows.push(Object.freeze({ ...input.row }));
+          componentRows.set(table.name, rows);
+        },
+        async assertReady() {},
+        async orderedScan(input) {
+          const scan = validateUniversalComponentOrderedScan(schema, input);
+          return [...(componentRows.get(scan.table) ?? [])]
+            .sort((left, right) =>
+              compareRowToCursor(
+                left,
+                scan.columns,
+                rowCursor(right, scan.columns),
+              ),
+            )
+            .filter(
+              (row) =>
+                (input.afterExclusive === undefined ||
+                  compareRowToCursor(row, scan.columns, input.afterExclusive) >
+                    0) &&
+                compareRowToCursor(
+                  row,
+                  scan.columns,
+                  input.beforePrefixExclusive,
+                ) < 0,
+            )
+            .slice(0, input.limit);
+        },
+      };
+    },
+  }),
 );
 
 export default {
