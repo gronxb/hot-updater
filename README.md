@@ -156,7 +156,7 @@ export default defineConfig({
 ```tsx
 import { bare } from '@hot-updater/bare';
 import {firebaseStorage, firebaseDatabase} from '@hot-updater/firebase';
-import * as admin from 'firebase-admin';
+import { applicationDefault } from 'firebase-admin/app';
 import { config } from "dotenv";
 import { defineConfig } from "hot-updater";
 
@@ -166,7 +166,7 @@ config({ path: ".env.hotupdater" });
 // Check your .env file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = admin.credential.applicationDefault();
+const credential = applicationDefault();
 
 export default defineConfig({
   build: bare({

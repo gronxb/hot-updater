@@ -40,7 +40,7 @@ catalogs:
     pg: 8.13.1
     prisma: 6.19.3
   firebase:
-    firebase-admin: 13.6.0
+    firebase-admin: 14.2.0
   hono:
     "@hono/node-server": 1.19.11
     hono: 4.12.9
