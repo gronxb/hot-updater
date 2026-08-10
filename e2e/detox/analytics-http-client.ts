@@ -8,12 +8,13 @@ type ConsoleAnalyticsHttpClientOptions = {
 
 export class ConsoleAnalyticsHttpError extends Error {
   readonly name = "ConsoleAnalyticsHttpError";
+  readonly status: number;
+  readonly url: string;
 
-  constructor(
-    readonly status: number,
-    readonly url: string,
-  ) {
+  constructor(status: number, url: string) {
     super(`Expected Analytics route ${url} returned HTTP ${status}.`);
+    this.status = status;
+    this.url = url;
   }
 }
 
