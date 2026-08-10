@@ -20,9 +20,26 @@ export type MetadataState = {
 };
 
 export type LaunchReportState = {
-  readonly crashedBundleId: string | null;
+  readonly fromBundleId: string | null;
   readonly status: string | null;
+  readonly toBundleId: string | null;
 };
+
+export function getLaunchReportState(
+  report: Record<string, unknown> | null,
+): LaunchReportState {
+  return {
+    fromBundleId:
+      (report?.fromBundleId as string | undefined) ??
+      (report?.from_bundle_id as string | undefined) ??
+      null,
+    status: (report?.status as string | undefined) ?? null,
+    toBundleId:
+      (report?.toBundleId as string | undefined) ??
+      (report?.to_bundle_id as string | undefined) ??
+      null,
+  };
+}
 
 export type CrashRecoveryArtifactNames = {
   readonly crashHistory: string;
@@ -113,7 +130,8 @@ function isRecovered(args: {
     args.metadataState.stagingBundleId === args.stableBundleId &&
     args.metadataState.verificationPending === false &&
     args.launchReportState.status === "RECOVERED" &&
-    args.launchReportState.crashedBundleId === args.crashedBundleId
+    args.launchReportState.fromBundleId === args.crashedBundleId &&
+    args.launchReportState.toBundleId === args.stableBundleId
   );
 }
 

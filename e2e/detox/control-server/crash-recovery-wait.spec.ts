@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createCrashRecoveryArtifactNames,
+  getLaunchReportState,
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type {
@@ -30,6 +31,20 @@ function pendingDiagnostics(): CrashRecoveryDiagnostics {
 }
 
 describe("crash recovery wait", () => {
+  it("reads directional bundle ids from the native launch report", () => {
+    expect(
+      getLaunchReportState({
+        fromBundleId: "crashed-1",
+        status: "RECOVERED",
+        toBundleId: "stable-1",
+      }),
+    ).toEqual({
+      fromBundleId: "crashed-1",
+      status: "RECOVERED",
+      toBundleId: "stable-1",
+    });
+  });
+
   it("stops polling when the control client aborts the recovery wait", async () => {
     // Given: Android recovery has not reached the expected state yet.
     const abortController = new AbortController();
@@ -43,8 +58,9 @@ describe("crash recovery wait", () => {
       crashedBundleId: "crashed-1",
       createTimeoutError: () => new Error("timed out"),
       getLaunchReportState: (): LaunchReportState => ({
-        crashedBundleId: null,
+        fromBundleId: null,
         status: null,
+        toBundleId: null,
       }),
       getMetadataState: (): MetadataState => ({
         stagingBundleId: null,
@@ -107,13 +123,7 @@ describe("crash recovery wait", () => {
       attempts: 3,
       crashedBundleId: "crashed-1",
       createTimeoutError: () => new Error("timed out"),
-      getLaunchReportState: (report): LaunchReportState => ({
-        crashedBundleId:
-          typeof report?.crashedBundleId === "string"
-            ? report.crashedBundleId
-            : null,
-        status: typeof report?.status === "string" ? report.status : null,
-      }),
+      getLaunchReportState,
       getMetadataState: (metadata): MetadataState => ({
         stagingBundleId:
           typeof metadata?.stagingBundleId === "string"
@@ -148,7 +158,11 @@ describe("crash recovery wait", () => {
             exists: true,
             path: "report",
             readError: null,
-            value: { crashedBundleId: "crashed-1", status: "RECOVERED" },
+            value: {
+              fromBundleId: "crashed-1",
+              status: "RECOVERED",
+              toBundleId: "stable-1",
+            },
           },
           metadata: {
             exists: true,
