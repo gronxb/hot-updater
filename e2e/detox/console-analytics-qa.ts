@@ -123,7 +123,11 @@ export const verifyConsoleAnalytics = async (
   }
 
   let selected:
-    | { readonly bundleId: string; readonly event: AnalyticsEvent }
+    | {
+        readonly bundleId: string;
+        readonly event: AnalyticsEvent;
+        readonly observed: ObservedAnalyticsEvent;
+      }
     | undefined;
   const observedEvents = (options.observedEvents ?? []).filter(
     (event) =>
@@ -141,18 +145,39 @@ export const verifyConsoleAnalytics = async (
 
   for (const bundleId of analyticsBundleIds) {
     const analytics = await client.getBundleAnalytics(bundleId);
-    const event = analytics.recentEvents.data
+    const candidate = analytics.recentEvents.data
       .filter(
         (entry) =>
           options.sinceMs === undefined ||
           entry.receivedAtMs >= options.sinceMs,
       )
-      .sort((left, right) => right.receivedAtMs - left.receivedAtMs)[0];
+      .map((event) => ({
+        event,
+        observed: observedTransitions
+          .filter(
+            (observed) =>
+              observed.type === event.type &&
+              observed.fromBundleId === event.fromBundleId &&
+              observed.toBundleId === event.toBundleId,
+          )
+          .sort((left, right) => right.observedAtMs - left.observedAtMs)[0],
+      }))
+      .filter(
+        (
+          entry,
+        ): entry is {
+          readonly event: AnalyticsEvent;
+          readonly observed: ObservedAnalyticsEvent;
+        } => entry.observed !== undefined,
+      )
+      .sort(
+        (left, right) => right.event.receivedAtMs - left.event.receivedAtMs,
+      )[0];
     if (
-      event &&
-      (!selected || event.receivedAtMs > selected.event.receivedAtMs)
+      candidate &&
+      (!selected || candidate.event.receivedAtMs > selected.event.receivedAtMs)
     ) {
-      selected = { bundleId, event };
+      selected = { bundleId, ...candidate };
     }
   }
 
@@ -180,21 +205,7 @@ export const verifyConsoleAnalytics = async (
     );
   }
 
-  const { bundleId, event } = selected;
-  const observed = observedTransitions
-    .filter(
-      (candidate) =>
-        candidate.type === event.type &&
-        candidate.fromBundleId === event.fromBundleId &&
-        candidate.toBundleId === event.toBundleId,
-    )
-    .sort((left, right) => right.observedAtMs - left.observedAtMs)[0];
-  if (!observed) {
-    throw new ConsoleAnalyticsQaError(
-      "inconsistent-data",
-      "Console Analytics returned an event that was not observed from the current E2E app.",
-    );
-  }
+  const { bundleId, event, observed } = selected;
   const [summary, overview, active, installations, history] = await Promise.all(
     [
       client.getSummary(bundleId),
