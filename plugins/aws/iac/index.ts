@@ -495,7 +495,18 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // Provide API URL for client use (using CloudFront domain)
   const sourceUrl = `https://${distributionDomain}/api/check-update`;
-  p.note(transformTemplate(SOURCE_TEMPLATE, { source: sourceUrl }));
+  p.note(
+    transformTemplate(SOURCE_TEMPLATE, {
+      requestHeaders:
+        database === "dynamodb"
+          ? `  requestHeaders: {
+    // Embed the HOT_UPDATER_API_KEY value saved in .env.hotupdater.
+    "x-api-key": "<HOT_UPDATER_API_KEY>",
+  },`
+          : "",
+      source: sourceUrl,
+    }),
+  );
   p.log.message(
     `Next step: ${link("https://hot-updater.dev/docs/managed/aws#step-4-changeenv-file-optional")}`,
   );

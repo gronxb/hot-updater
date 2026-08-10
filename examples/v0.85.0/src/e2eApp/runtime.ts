@@ -1,3 +1,4 @@
+import { HOT_UPDATER_API_KEY } from "@env";
 import { HotUpdater } from "@hot-updater/react-native";
 import { proxy } from "valtio";
 
@@ -45,6 +46,9 @@ HotUpdater.setUser({
 HotUpdater.init({
   analytics: true,
   baseURL: resolveHotUpdaterBaseURL,
+  requestHeaders: HOT_UPDATER_API_KEY
+    ? { "x-api-key": HOT_UPDATER_API_KEY }
+    : undefined,
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
     notify.status = result.status;

@@ -6,7 +6,9 @@ const mockCloudFront = vi.hoisted(() => ({
   listOriginAccessControls: vi.fn(),
   createOriginAccessControl: vi.fn(),
   listCachePolicies: vi.fn(),
+  getCachePolicy: vi.fn(),
   createCachePolicy: vi.fn(),
+  updateCachePolicy: vi.fn(),
   listOriginRequestPolicies: vi.fn(),
   createOriginRequestPolicy: vi.fn(),
   listDistributions: vi.fn(),
@@ -90,6 +92,10 @@ describe("CloudFrontManager", () => {
     });
     mockCloudFront.updateDistribution.mockResolvedValue({});
     mockCloudFront.createInvalidation.mockResolvedValue({});
+    mockCloudFront.getCachePolicy.mockResolvedValue({
+      ETag: "cache-policy-etag",
+    });
+    mockCloudFront.updateCachePolicy.mockResolvedValue({});
     mockCloudFront.listOriginRequestPolicies.mockResolvedValue({
       OriginRequestPolicyList: {
         Items: [
@@ -106,7 +112,7 @@ describe("CloudFrontManager", () => {
     });
   });
 
-  it("paginates cache policy lookups before attempting creation", async () => {
+  it("paginates and updates an existing cache policy before reuse", async () => {
     mockCloudFront.listCachePolicies.mockResolvedValueOnce({
       CachePolicyList: {
         Items: [
@@ -138,6 +144,26 @@ describe("CloudFrontManager", () => {
       Type: "custom",
     });
     expect(mockCloudFront.createCachePolicy).not.toHaveBeenCalled();
+    expect(mockCloudFront.getCachePolicy).toHaveBeenCalledWith({
+      Id: "shared-cache-policy-id",
+    });
+    expect(mockCloudFront.updateCachePolicy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Id: "shared-cache-policy-id",
+        IfMatch: "cache-policy-etag",
+        CachePolicyConfig: expect.objectContaining({
+          ParametersInCacheKeyAndForwardedToOrigin: expect.objectContaining({
+            HeadersConfig: {
+              HeaderBehavior: "whitelist",
+              Headers: {
+                Quantity: 2,
+                Items: ["hot-updater-sdk-version", "x-api-key"],
+              },
+            },
+          }),
+        }),
+      }),
+    );
 
     expect(mockCloudFront.updateDistribution).toHaveBeenCalledWith(
       expect.objectContaining({

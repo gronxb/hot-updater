@@ -9,6 +9,7 @@ import {
   DYNAMODB_ANALYTICS_SCHEMA_KEY,
 } from "../src/dynamodbAnalyticsPersistence";
 import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamodbDatabase";
+import { DYNAMODB_MANAGED_ACCESS_KEY_PARTITION_PREFIX } from "../src/dynamodbManagedAccessKeyStore";
 
 export class IAMManager {
   private region: string;
@@ -90,6 +91,18 @@ export class IAMManager {
             Condition: {
               "ForAllValues:StringEquals": {
                 "dynamodb:LeadingKeys": [DYNAMODB_ANALYTICS_SCHEMA_KEY.pk],
+              },
+            },
+            Effect: "Allow",
+            Resource: [tableArn],
+          },
+          {
+            Action: ["dynamodb:GetItem"],
+            Condition: {
+              "ForAllValues:StringLike": {
+                "dynamodb:LeadingKeys": [
+                  `${DYNAMODB_MANAGED_ACCESS_KEY_PARTITION_PREFIX}#*`,
+                ],
               },
             },
             Effect: "Allow",

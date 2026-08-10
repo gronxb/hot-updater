@@ -118,6 +118,18 @@ describe("IAMManager DynamoDB access", () => {
           "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
         ],
       },
+      {
+        Action: ["dynamodb:GetItem"],
+        Condition: {
+          "ForAllValues:StringLike": {
+            "dynamodb:LeadingKeys": ["managed_access_key#*"],
+          },
+        },
+        Effect: "Allow",
+        Resource: [
+          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
+        ],
+      },
     ]);
     const s3PolicyCall = mocks.putRolePolicy.mock.calls.find(
       ([input]) => input.PolicyName === "HotUpdaterS3ReadAccess",

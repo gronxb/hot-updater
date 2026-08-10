@@ -21,7 +21,13 @@ export const getConfigScaffold = (
 ): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
-    configString: "s3Storage(storageOptions)",
+    configString:
+      databaseType === "dynamodb"
+        ? `s3Storage({
+    ...awsOptions,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  })`
+        : "s3Storage(storageOptions)",
   };
   const databaseConfig: ProviderConfig =
     databaseType === "dynamodb"
@@ -94,15 +100,17 @@ const awsOptions = {
       break;
   }
 
-  helperStatements.push({
-    name: "storageOptions",
-    strategy: "merge-object",
-    code: `
+  if (databaseType === "s3") {
+    helperStatements.push({
+      name: "storageOptions",
+      strategy: "merge-object",
+      code: `
 const storageOptions = {
   ...awsOptions,
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
 };`.trim(),
-  });
+    });
+  }
 
   const builder = new ConfigBuilder()
     .setBuildType(build)
@@ -149,5 +157,6 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
+%%requestHeaders%%
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;

@@ -65,6 +65,17 @@ export class CloudFrontManager {
     const existingPolicyId = existingPolicy?.CachePolicy?.Id;
 
     if (existingPolicyId) {
+      const currentPolicy = await cloudfrontClient.getCachePolicy({
+        Id: existingPolicyId,
+      });
+      if (!currentPolicy.ETag) {
+        throw new Error("Failed to read shared cache policy ETag");
+      }
+      await cloudfrontClient.updateCachePolicy({
+        CachePolicyConfig: HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
+        Id: existingPolicyId,
+        IfMatch: currentPolicy.ETag,
+      });
       return existingPolicyId;
     }
 

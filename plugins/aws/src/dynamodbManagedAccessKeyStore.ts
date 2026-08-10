@@ -13,9 +13,11 @@ import type { DynamoDBStore } from "./dynamodbDatabaseStore";
 
 const ACCESS_KEY_CATALOG_PARTITION = "_hot-updater#managed_access_keys";
 const ACCESS_KEY_RECORD_SORT_KEY = "record";
+export const DYNAMODB_MANAGED_ACCESS_KEY_PARTITION_PREFIX =
+  "managed_access_key";
 
 const accessKeyPartition = (hash: string): string =>
-  `managed_access_key#${hash}`;
+  `${DYNAMODB_MANAGED_ACCESS_KEY_PARTITION_PREFIX}#${hash}`;
 
 const authItem = (record: ManagedAccessKeyRecord) => ({
   ...record,

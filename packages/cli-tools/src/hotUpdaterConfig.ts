@@ -87,7 +87,12 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "@hot-updater/rock",
   "@hot-updater/supabase",
 ]);
-const MANAGED_HELPER_NAMES = new Set(["commonOptions", "credential"]);
+const MANAGED_HELPER_NAMES = new Set([
+  "awsOptions",
+  "commonOptions",
+  "credential",
+  "storageOptions",
+]);
 const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
 
 type ConfigSource = {
@@ -642,9 +647,7 @@ const getManagedHelperName = (statement: TopLevelStatement) => {
     return null;
   }
 
-  return MANAGED_HELPER_NAMES.has(declaration.id.name)
-    ? declaration.id.name
-    : null;
+  return declaration.id.name;
 };
 
 const rebuildImportBlock = (
@@ -699,20 +702,23 @@ const rebuildManagedBody = (
   );
   const emittedHelpers = new Set<string>();
   const bodyStatements: string[] = [];
+  const configStatements: string[] = [];
 
   for (const statement of statementsBeforeExport) {
     if (isConfigCallStatement(statement)) {
+      configStatements.push(getStatementText(source, statement));
       continue;
     }
 
     const helperName = getManagedHelperName(statement);
-    if (!helperName) {
+    if (!helperName || !MANAGED_HELPER_NAMES.has(helperName)) {
       bodyStatements.push(getStatementText(source, statement));
       continue;
     }
 
     const helper = managedHelpers.get(helperName);
     if (!helper) {
+      // Remove helper declarations managed by the previous provider.
       continue;
     }
 
@@ -735,7 +741,8 @@ const rebuildManagedBody = (
   }
 
   const bodyText = bodyStatements.filter(Boolean).join("\n\n");
-  const configStatement = `config({ path: ".env.hotupdater" });`;
+  const configStatement =
+    configStatements.join("\n\n") || `config({ path: ".env.hotupdater" });`;
   const managedBody = bodyText
     ? `\n\n${configStatement}\n\n${bodyText}\n\n`
     : `\n\n${configStatement}\n\n`;

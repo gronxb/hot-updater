@@ -1,5 +1,6 @@
 ---
 "@hot-updater/aws": minor
+"@hot-updater/cli-tools": patch
 "@hot-updater/plugin-core": minor
 ---
 

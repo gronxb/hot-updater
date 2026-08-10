@@ -1,6 +1,21 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { writeHotUpdaterConfig } from "@hot-updater/cli-tools";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { getConfigScaffold } from "./templates";
+
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    tempDirs
+      .splice(0)
+      .map((dir) => fs.rm(dir, { recursive: true, force: true })),
+  );
+});
 
 describe("AWS managed config scaffold", () => {
   it("renders DynamoDB as the managed metadata database", () => {
@@ -22,6 +37,61 @@ describe("AWS managed config scaffold", () => {
       "tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!",
     );
     expect(scaffold.text).not.toContain("s3Database(");
+    expect(scaffold.text).not.toContain("storageOptions");
+  });
+
+  it("re-initializes an existing DynamoDB config without duplicating helpers or replacing its env path", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-aws-config-reinit-"),
+    );
+    tempDirs.push(tempDir);
+    const configPath = path.join(tempDir, "hot-updater.config.ts");
+    await fs.writeFile(
+      configPath,
+      `import { fromSSO } from "@aws-sdk/credential-provider-sso";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { bare } from "@hot-updater/bare";
+import { config } from "dotenv";
+import { defineConfig } from "hot-updater";
+
+config({
+  path: process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater",
+});
+
+const providerNamespace = process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE;
+const awsOptions = {
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: fromSSO({ profile: process.env.HOT_UPDATER_AWS_PROFILE! }),
+};
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: s3Storage({
+    ...awsOptions,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+    basePath: providerNamespace,
+  }),
+  database: dynamoDB({
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
+  }),
+});
+`,
+      "utf8",
+    );
+    const scaffold = getConfigScaffold("bare", {
+      mode: "sso",
+      profile: "hot-updater",
+    });
+
+    await writeHotUpdaterConfig(scaffold, configPath);
+    await writeHotUpdaterConfig(scaffold, configPath);
+
+    const updated = await fs.readFile(configPath, "utf8");
+    expect(updated.match(/const awsOptions\s*=/gu)).toHaveLength(1);
+    expect(updated).not.toContain("const storageOptions");
+    expect(updated).toContain("HOT_UPDATER_E2E_ENV_TARGET_PATH");
+    expect(updated).toContain("basePath: providerNamespace");
   });
 
   it("keeps the deprecated S3 metadata database selectable", () => {
