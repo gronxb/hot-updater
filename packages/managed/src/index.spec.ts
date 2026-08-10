@@ -1,4 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const managedPluginMocks = vi.hoisted(() => ({
+  managedBetterAuthPlugin: vi.fn(() => ({
+    id: "better-auth-managed-access-key",
+  })),
+}));
+
+vi.mock("@hot-updater/better-auth/managed", async (importOriginal) => ({
+  ...(await importOriginal()),
+  managedBetterAuthPlugin: managedPluginMocks.managedBetterAuthPlugin,
+}));
 
 import { createManagedServerPlugins } from "./index";
 
@@ -22,5 +33,15 @@ describe("createManagedServerPlugins", () => {
       }),
     ).toEqual([null, null, "analytics"]);
     expect(Object.isFrozen(plugins)).toBe(true);
+  });
+
+  it("forwards an external management bearer only to authentication", () => {
+    createManagedServerPlugins({ managementBearerToken: "management-secret" });
+
+    expect(managedPluginMocks.managedBetterAuthPlugin).toHaveBeenLastCalledWith(
+      {
+        managementBearerToken: "management-secret",
+      },
+    );
   });
 });

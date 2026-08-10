@@ -14,3 +14,6 @@ components and the provider-owned access-key store, issue and persist the first
 client key during init, save it locally, and show its plaintext once. Managed
 runtimes require the key for OTA reads and event ingestion and do not grant
 client keys Analytics read or management access.
+Self-hosted composition roots can optionally authenticate their existing
+management bearer through the same preset while preserving those client-role
+limits.
