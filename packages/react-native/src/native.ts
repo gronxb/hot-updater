@@ -15,6 +15,8 @@ import HotUpdaterNative, {
 export { HotUpdaterErrorCode, isHotUpdaterError };
 
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+type PersistedUpdateStrategy = "fingerprint" | "appVersion";
+
 const normalizeAndValidateCohort = (cohort: string): string => {
   const normalized = normalizeCohortValue(cohort);
   if (!isValidCohort(normalized)) {
@@ -613,12 +615,220 @@ export const getFingerprintHash = (): string | null => {
   return constants.FINGERPRINT_HASH;
 };
 
+export const getInstallId = (): string => {
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    getInstallId?: () => string;
+  };
+
+  if (typeof nativeModule.getInstallId !== "function") {
+    throw new Error(
+      "[HotUpdater] Native module is missing 'getInstallId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
+    );
+  }
+
+  return nativeModule.getInstallId();
+};
+
+export type PersistedUserIdentity = {
+  userId?: string;
+  username?: string;
+};
+
+export const getPersistedUserIdentity = (): PersistedUserIdentity => {
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    getUserId?: () => string | null;
+    getUsername?: () => string | null;
+  };
+
+  if (
+    typeof nativeModule.getUserId !== "function" ||
+    typeof nativeModule.getUsername !== "function"
+  ) {
+    throw new Error(
+      "[HotUpdater] Native module is missing 'getUserId()' or 'getUsername()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
+    );
+  }
+
+  const userId = nativeModule.getUserId();
+  const username = nativeModule.getUsername();
+
+  return {
+    ...(userId != null ? { userId } : {}),
+    ...(username != null ? { username } : {}),
+  };
+};
+
+export type SetUserParams = {
+  userId?: string | number | null;
+  username?: string | null;
+};
+
+export function setUser(params: SetUserParams): void;
+export function setUser(params: null): void;
+export function setUser(params: SetUserParams | null): void {
+  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
+    setUser?: (userId: string | null, username: string | null) => void;
+  };
+
+  if (typeof nativeModule.setUser !== "function") {
+    throw new Error(
+      "[HotUpdater] Native module is missing 'setUser()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
+    );
+  }
+
+  if (params === null) {
+    nativeModule.setUser(null, null);
+    return;
+  }
+
+  const normalizedUserId =
+    params.userId === null || params.userId === undefined
+      ? null
+      : String(params.userId);
+  nativeModule.setUser(normalizedUserId, params.username ?? null);
+}
+
 /**
  * Result returned by notifyAppReady()
  */
-export type NotifyAppReadyResult = {
-  status: "RECOVERED" | "STABLE";
+export type NotifyAppReadyResult =
+  | { status: "UNCHANGED" }
+  | { status: "UPDATE_APPLIED"; fromBundleId: string; toBundleId: string }
+  | { status: "RECOVERED"; fromBundleId: string; toBundleId: string };
+
+export type NotifyAppReadyAnalyticsEvent = {
+  type: "UPDATE_APPLIED" | "RECOVERED";
+  fromBundleId: string;
+  toBundleId: string;
+  updateStrategy: PersistedUpdateStrategy;
+};
+
+type RawNotifyAppReadyResult = {
+  status?: string;
   crashedBundleId?: string;
+  fromBundleId?: string;
+  toBundleId?: string;
+  updateStrategy?: PersistedUpdateStrategy;
+};
+
+const isPersistedUpdateStrategy = (
+  value: unknown,
+): value is PersistedUpdateStrategy => {
+  return value === "appVersion" || value === "fingerprint";
+};
+
+const readRawNotifyAppReadyResult = (): RawNotifyAppReadyResult => {
+  const result = HotUpdaterNative.notifyAppReady();
+
+  if (typeof result === "string") {
+    try {
+      const parsed = JSON.parse(result) as unknown;
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
+        return {};
+      }
+      return parsed as RawNotifyAppReadyResult;
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    return {};
+  }
+
+  return result as RawNotifyAppReadyResult;
+};
+
+const readDirectionalBundleId = (bundleId: unknown): string | null => {
+  if (typeof bundleId !== "string") {
+    return null;
+  }
+  const normalizedBundleId = bundleId.trim();
+  if (normalizedBundleId.length === 0) {
+    return null;
+  }
+  return resolveBundleId(normalizedBundleId);
+};
+
+const getNotifyAppReadyTransition = (
+  result: RawNotifyAppReadyResult,
+): {
+  status: "UPDATE_APPLIED" | "RECOVERED";
+  fromBundleId: string;
+  toBundleId: string;
+} | null => {
+  if (result.status === "UPDATE_APPLIED" || result.status === "PROMOTED") {
+    const fromBundleId = readDirectionalBundleId(result.fromBundleId);
+    const toBundleId = readDirectionalBundleId(result.toBundleId);
+    if (fromBundleId && toBundleId) {
+      return {
+        status: "UPDATE_APPLIED",
+        fromBundleId,
+        toBundleId,
+      };
+    }
+  }
+
+  if (result.status === "RECOVERED") {
+    const fromBundleId = readDirectionalBundleId(result.fromBundleId);
+    const toBundleId = readDirectionalBundleId(result.toBundleId);
+    if (fromBundleId && toBundleId) {
+      return {
+        status: "RECOVERED",
+        fromBundleId,
+        toBundleId,
+      };
+    }
+  }
+
+  return null;
+};
+
+const getNotifyAppReadyAnalyticsEvent = (
+  result: RawNotifyAppReadyResult,
+): NotifyAppReadyAnalyticsEvent | null => {
+  const transition = getNotifyAppReadyTransition(result);
+
+  if (!transition || !isPersistedUpdateStrategy(result.updateStrategy)) {
+    return null;
+  }
+
+  return {
+    type: transition.status,
+    fromBundleId: transition.fromBundleId,
+    toBundleId: transition.toBundleId,
+    updateStrategy: result.updateStrategy,
+  };
+};
+
+const normalizeNotifyAppReadyResult = (
+  result: RawNotifyAppReadyResult,
+): NotifyAppReadyResult => {
+  const transition = getNotifyAppReadyTransition(result);
+
+  if (transition) {
+    return transition;
+  }
+
+  return { status: "UNCHANGED" };
+};
+
+export const readNotifyAppReady = (): {
+  result: NotifyAppReadyResult;
+  analyticsEvent: NotifyAppReadyAnalyticsEvent | null;
+  pending: boolean;
+} => {
+  const rawResult = readRawNotifyAppReadyResult();
+
+  return {
+    result: normalizeNotifyAppReadyResult(rawResult),
+    analyticsEvent: getNotifyAppReadyAnalyticsEvent(rawResult),
+    pending: rawResult.status === "PENDING",
+  };
 };
 
 /**
@@ -627,46 +837,21 @@ export type NotifyAppReadyResult = {
  * This function is called automatically after the app has rendered.
  *
  * @returns {NotifyAppReadyResult} Bundle state information
- * - `status: "RECOVERED"` - App recovered from crash, rollback occurred (ROLLBACK event)
- * - `status: "STABLE"` - No changes, already stable
- * - `crashedBundleId` - Present only when status is "RECOVERED"
+ * - `status: "UNCHANGED"` - No qualifying OTA transition to report
+ * - `status: "UPDATE_APPLIED"` - A pending update became active
+ * - `status: "RECOVERED"` - Crash recovery rolled back to another bundle
  *
  * @example
  * ```ts
  * const result = HotUpdater.notifyAppReady();
  *
  * if (result.status === "RECOVERED") {
- *   // Send ROLLBACK analytics event
- *   analytics.track("bundle_rollback", {
- *     crashedBundleId: result.crashedBundleId,
- *   });
+ *   console.log(result.fromBundleId, result.toBundleId);
  * }
  * ```
  */
 export const notifyAppReady = (): NotifyAppReadyResult => {
-  const result = HotUpdaterNative.notifyAppReady();
-  // Older Android old-arch implementations returned JSON strings.
-  if (typeof result === "string") {
-    try {
-      return normalizeNotifyAppReadyResult(JSON.parse(result));
-    } catch {
-      return { status: "STABLE" };
-    }
-  }
-  return normalizeNotifyAppReadyResult(result);
-};
-
-const normalizeNotifyAppReadyResult = (
-  result: NotifyAppReadyResult | { status?: string; crashedBundleId?: string },
-): NotifyAppReadyResult => {
-  if (result.status === "RECOVERED") {
-    return {
-      status: "RECOVERED",
-      crashedBundleId: result.crashedBundleId,
-    };
-  }
-
-  return { status: "STABLE" };
+  return readNotifyAppReady().result;
 };
 
 const createEmptyManifest = (): Manifest => ({

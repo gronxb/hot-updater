@@ -33,5 +33,16 @@ abstract class HotUpdaterSpec internal constructor(
 
     abstract fun getManifest(): String
 
+    abstract fun getInstallId(): String
+
+    abstract fun getUserId(): String?
+
+    abstract fun getUsername(): String?
+
+    abstract fun setUser(
+        userId: String?,
+        username: String?,
+    )
+
     abstract fun resetChannel(promise: Promise)
 }
