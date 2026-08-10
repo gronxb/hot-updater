@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "0.35.11",
+  "version": "0.35.12",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -71,7 +71,6 @@
     "@types/connect": "^3.4.38",
     "@types/node": "catalog:",
     "@types/plist": "^3.0.5",
-    "@types/semver": "^7.5.8",
     "commander": "^14.0.0",
     "es-toolkit": "^1.32.0",
     "execa": "catalog:tools",
@@ -81,11 +80,11 @@
     "kysely": "catalog:db",
     "open": "^10.1.0",
     "plist": "^3.1.0",
-    "semver": "^7.6.3",
     "tsdown": "catalog:tools",
     "sql-formatter": "15.6.10",
     "@typescript/native": "npm:typescript@7.0.2",
-    "typescript": "npm:@typescript/typescript6@6.0.2"
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "verkit": "0.3.2"
   },
   "peerDependencies": {
     "@expo/fingerprint": "*",
@@ -181,7 +180,6 @@
     "reusify": "1.1.0",
     "run-applescript": "7.1.0",
     "run-parallel": "1.2.0",
-    "semver": "7.8.4",
     "shebang-command": "2.0.0",
     "shebang-regex": "3.0.0",
     "signal-exit": "4.1.0",
@@ -191,6 +189,7 @@
     "supports-color": "7.2.0",
     "to-regex-range": "5.0.1",
     "unicorn-magic": "0.3.0",
+    "verkit": "0.3.2",
     "which": "2.0.2",
     "wsl-utils": "0.1.0",
     "xml-naming": "0.1.0",

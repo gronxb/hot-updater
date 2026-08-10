@@ -224,11 +224,11 @@ export class ConfigBuilder implements IConfigBuilder {
   setStorage(storageConfig: ProviderConfig): this {
     this.storageInfo = storageConfig;
     this.addImports(storageConfig.imports);
-    // Auto-add firebase-admin import if firebase is used
+    // Auto-add the modular firebase-admin credential import if firebase is used
     if (storageConfig.imports.some((imp) => imp.pkg.includes("firebase"))) {
       this.addImport({
-        pkg: "firebase-admin",
-        defaultOrNamespace: "admin",
+        pkg: "firebase-admin/app",
+        named: ["applicationDefault"],
       });
     }
     return this;
@@ -237,11 +237,11 @@ export class ConfigBuilder implements IConfigBuilder {
   setDatabase(databaseConfig: ProviderConfig): this {
     this.databaseInfo = databaseConfig;
     this.addImports(databaseConfig.imports);
-    // Auto-add firebase-admin import if firebase is used
+    // Auto-add the modular firebase-admin credential import if firebase is used
     if (databaseConfig.imports.some((imp) => imp.pkg.includes("firebase"))) {
       this.addImport({
-        pkg: "firebase-admin",
-        defaultOrNamespace: "admin",
+        pkg: "firebase-admin/app",
+        named: ["applicationDefault"],
       });
     }
     return this;
