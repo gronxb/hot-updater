@@ -25,6 +25,7 @@ import {
   handleRuntimeConfig,
   handleWaitForCrashRecovery,
   handleWaitForMetadata,
+  handleVerifyConsoleAnalytics,
   handleWriteSummary,
   startBootstrapJob,
   startDeployBundleJob,
@@ -69,6 +70,27 @@ app.get("/e2e/runtime-config", (c) => {
 
 app.post("/e2e/screen-state", async (c) => {
   return c.json(handlePatchE2eScreenState(await c.req.json()));
+});
+
+app.post("/e2e/verify-console-analytics", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleIds?: unknown;
+    sinceMs?: unknown;
+  };
+  if (
+    !Array.isArray(payload.bundleIds) ||
+    !payload.bundleIds.every((value) => typeof value === "string") ||
+    typeof payload.sinceMs !== "number" ||
+    !Number.isFinite(payload.sinceMs)
+  ) {
+    return c.json({ error: "bundleIds and sinceMs are required" }, 400);
+  }
+  return c.json(
+    await handleVerifyConsoleAnalytics({
+      bundleIds: payload.bundleIds,
+      sinceMs: payload.sinceMs,
+    }),
+  );
 });
 
 app.all("/hot-updater/*", async (c) => {
