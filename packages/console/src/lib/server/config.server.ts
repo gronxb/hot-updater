@@ -11,6 +11,10 @@ let databaseClient: DatabaseClient | null = null;
 let hotUpdater: ReturnType<
   typeof import("./runtime.server").createRuntimeHotUpdater
 > | null = null;
+let managedAccessKeyStore: ReturnType<
+  typeof import("./runtime.server").createManagedAccessKeyStore
+> | null = null;
+let managedAccessKeyStoreResolved = false;
 let storagePluginPromise: Promise<NodeStoragePlugin> | null = null;
 
 const loadCachedConfig = async () => {
@@ -57,9 +61,21 @@ export const prepareConfig = async () => {
       hotUpdater = createRuntimeHotUpdater(config);
     }
 
+    if (!managedAccessKeyStoreResolved) {
+      const { createManagedAccessKeyStore } = await import("./runtime.server");
+      managedAccessKeyStore = createManagedAccessKeyStore(config);
+      managedAccessKeyStoreResolved = true;
+    }
+
     const storagePlugin = await loadCachedStoragePlugin(config);
 
-    return { config, databaseClient, hotUpdater, storagePlugin };
+    return {
+      config,
+      databaseClient,
+      hotUpdater,
+      managedAccessKeyStore,
+      storagePlugin,
+    };
   } catch (error) {
     console.error("Error during configuration initialization:", error);
     throw error;

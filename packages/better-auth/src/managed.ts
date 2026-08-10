@@ -1,22 +1,23 @@
-import { apiKey } from "@better-auth/api-key";
 import { defineFirstPartyServerPlugin } from "@hot-updater/server/internal/first-party-plugin";
-import { betterAuth } from "better-auth";
-import { memoryAdapter, type MemoryDB } from "better-auth/adapters/memory";
+import type { HotUpdaterAuthenticationInput } from "@hot-updater/server/internal/first-party-plugin";
 
-import { isCanonicalBase64Url32 } from "./base64url";
-import { betterAuthPlugin } from "./index";
+import {
+  authorizeManagedAccessKeyRole,
+  hashManagedAccessKey,
+  MANAGED_ACCESS_KEY_HEADER_NAME,
+  managedAccessKeyStoreCapability,
+  parseManagedAccessKeyStore,
+  type ManagedAccessKeyStore,
+} from "./managed/accessKeys";
 
-const MANAGED_CONFIG_ID = "default";
-const MANAGED_USER_ID = "hot-updater-managed";
-const API_KEY_LENGTH = 43;
-const RECORD_TIME = new Date(0);
+export * from "./managed/accessKeys";
 
 export type ManagedBetterAuthPluginOptions = {
-  readonly apiKeySha256: string;
+  readonly store?: ManagedAccessKeyStore;
 };
 
 export type ManagedRoutePolicyOptions = {
-  readonly scope: "all" | "management";
+  readonly scope: "all" | "client" | "management";
 };
 
 const managementPublicRouteIds = Object.freeze([
@@ -27,99 +28,90 @@ const managementPublicRouteIds = Object.freeze([
   "core.update.app-version-cohort",
 ] as const);
 
-class ManagedBetterAuthConfigurationError extends Error {
-  constructor() {
-    super("Managed Better Auth API-key SHA-256 projection is invalid.");
-    this.name = "ManagedBetterAuthConfigurationError";
-  }
-}
-
 class ManagedRoutePolicyConfigurationError extends Error {
   constructor() {
-    super('Managed route policy scope must be "management" or "all".');
+    super(
+      'Managed route policy scope must be "management", "client", or "all".',
+    );
     this.name = "ManagedRoutePolicyConfigurationError";
   }
 }
 
-export const managedBetterAuthPlugin = (
-  options: ManagedBetterAuthPluginOptions,
-) => {
-  const apiKeySha256 =
-    typeof options === "object" && options !== null
-      ? Reflect.get(options, "apiKeySha256")
-      : undefined;
-  if (
-    typeof apiKeySha256 !== "string" ||
-    !isCanonicalBase64Url32(apiKeySha256)
-  ) {
-    throw new ManagedBetterAuthConfigurationError();
+const permissionForRoute = (
+  routeId: string,
+):
+  | { readonly analytics: readonly ["write"] }
+  | { readonly ota: readonly ["read"] }
+  | null => {
+  if (routeId.startsWith("core.update.")) return { ota: ["read"] };
+  if (routeId === "analytics.appendBundleEvent") {
+    return { analytics: ["write"] };
   }
+  return null;
+};
 
-  const database: MemoryDB = {
-    account: [],
-    apikey: [
-      {
-        configId: MANAGED_CONFIG_ID,
-        createdAt: RECORD_TIME,
-        enabled: true,
-        expiresAt: null,
-        id: "hot-updater-managed-api-key",
-        key: apiKeySha256,
-        lastRefillAt: null,
-        lastRequest: null,
-        metadata: null,
-        name: "Hot Updater managed API key",
-        permissions: null,
-        prefix: null,
-        rateLimitEnabled: false,
-        rateLimitMax: null,
-        rateLimitTimeWindow: null,
-        referenceId: MANAGED_USER_ID,
-        refillAmount: null,
-        refillInterval: null,
-        remaining: null,
-        requestCount: 0,
-        start: null,
-        updatedAt: RECORD_TIME,
-      },
-    ],
-    session: [],
-    user: [
-      {
-        createdAt: RECORD_TIME,
-        email: "managed@hot-updater.invalid",
-        emailVerified: true,
-        id: MANAGED_USER_ID,
-        image: null,
-        name: "Hot Updater managed provider",
-        updatedAt: RECORD_TIME,
-      },
-    ],
-    verification: [],
-  };
-  const auth = betterAuth({
-    baseURL: "https://hot-updater.invalid",
-    database: memoryAdapter(database, { debugLogs: false }),
-    logger: { disabled: true },
-    plugins: [
-      apiKey({
-        configId: MANAGED_CONFIG_ID,
-        customAPIKeyValidator: ({ key }) => isCanonicalBase64Url32(key),
-        defaultKeyLength: API_KEY_LENGTH,
-        deferUpdates: true,
-        enableSessionForAPIKeys: true,
-        keyExpiration: {
-          defaultExpiresIn: null,
-          disableCustomExpiresTime: true,
-        },
-        rateLimit: { enabled: false },
-      }),
-    ],
-    secret: apiKeySha256,
-    telemetry: { enabled: false },
+const createManagedAuthentication = (store: ManagedAccessKeyStore) =>
+  Object.freeze({
+    id: "better-auth-managed-access-key",
+    async authenticate(input: HotUpdaterAuthenticationInput) {
+      const permission = permissionForRoute(input.route.id);
+      if (permission === null)
+        return Object.freeze({ kind: "anonymous" as const });
+      const apiKey = input.headers.get(MANAGED_ACCESS_KEY_HEADER_NAME);
+      if (apiKey === null) return Object.freeze({ kind: "anonymous" as const });
+      let hash: string;
+      try {
+        hash = await hashManagedAccessKey(apiKey);
+      } catch {
+        return Object.freeze({ kind: "anonymous" as const });
+      }
+      const record = await store.findByHash(hash);
+      if (
+        record === null ||
+        !record.enabled ||
+        record.revokedAt !== null ||
+        !authorizeManagedAccessKeyRole(record.role, permission)
+      ) {
+        return Object.freeze({ kind: "anonymous" as const });
+      }
+      return Object.freeze({
+        kind: "authenticated" as const,
+        principal: Object.freeze({
+          issuer: "better-auth",
+          subject: record.id,
+        }),
+      });
+    },
   });
 
-  return betterAuthPlugin({ auth });
+export const managedBetterAuthPlugin = (
+  options: ManagedBetterAuthPluginOptions = {},
+) => {
+  if (
+    typeof options !== "object" ||
+    options === null ||
+    Array.isArray(options) ||
+    Reflect.ownKeys(options).some((key) => key !== "store")
+  ) {
+    throw new TypeError("Managed Better Auth options must be an object.");
+  }
+  const configuredStore =
+    options.store === undefined
+      ? undefined
+      : parseManagedAccessKeyStore(options.store);
+  return defineFirstPartyServerPlugin({
+    id: "better-auth-managed-access-key",
+    requires:
+      configuredStore === undefined
+        ? [{ missing: "error", token: managedAccessKeyStoreCapability }]
+        : [],
+    setup: ({ capabilities }) => ({
+      authentication: createManagedAuthentication(
+        configuredStore ??
+          capabilities.require(managedAccessKeyStoreCapability),
+      ),
+    }),
+  });
 };
 
 export const managedRoutePolicy = (options: ManagedRoutePolicyOptions) => {
@@ -127,7 +119,7 @@ export const managedRoutePolicy = (options: ManagedRoutePolicyOptions) => {
     typeof options === "object" && options !== null
       ? Reflect.get(options, "scope")
       : undefined;
-  if (scope !== "all" && scope !== "management") {
+  if (scope !== "all" && scope !== "client" && scope !== "management") {
     throw new ManagedRoutePolicyConfigurationError();
   }
 
@@ -136,7 +128,10 @@ export const managedRoutePolicy = (options: ManagedRoutePolicyOptions) => {
       ? Object.freeze({ kind: "protect-all" as const })
       : Object.freeze({
           kind: "protect-except-core" as const,
-          routeIds: managementPublicRouteIds,
+          routeIds:
+            scope === "management"
+              ? managementPublicRouteIds
+              : Object.freeze(["core.version"] as const),
         });
   return defineFirstPartyServerPlugin({
     id: "managed-auth-route-policy",

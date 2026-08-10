@@ -1,5 +1,11 @@
 // @vitest-environment node
 
+import {
+  attachManagedAccessKeyStore,
+  type ManagedAccessKeyStore,
+} from "@hot-updater/better-auth/managed";
+import type { ConfigResponse } from "@hot-updater/cli-tools";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,12 +15,51 @@ import {
   parseSearchInstallationsInput,
 } from "../analytics-input";
 import {
+  createManagedAccessKeyStore,
   getActiveInstallationOverview,
   getBundleEventAnalytics,
   getBundleEventSummary,
   getInstallationHistory,
   searchInstallations,
 } from "./runtime.server";
+
+const createDatabase = () =>
+  createDatabasePlugin({
+    name: "test",
+    plugin: () => ({
+      count: async () => 0,
+      create: async ({ data }) => data,
+      delete: async () => undefined,
+      findMany: async () => [],
+      findOne: async () => null,
+      update: async () => null,
+    }),
+  });
+
+const asConfig = (
+  database: ReturnType<typeof createDatabase>,
+): ConfigResponse => ({ database }) as ConfigResponse;
+
+describe("managed access-key runtime", () => {
+  it("exposes a provider store only when the database contributes one", async () => {
+    const store = {
+      create: vi.fn(),
+      findByHash: vi.fn(),
+      list: vi.fn(async () => []),
+      revoke: vi.fn(),
+    } as unknown as ManagedAccessKeyStore;
+    const supported = attachManagedAccessKeyStore(
+      createDatabase(),
+      () => store,
+    );
+
+    expect(createManagedAccessKeyStore(asConfig(createDatabase()))).toBeNull();
+    const resolved = createManagedAccessKeyStore(asConfig(supported));
+    expect(resolved).not.toBeNull();
+    await resolved?.list();
+    expect(store.list).toHaveBeenCalledOnce();
+  });
+});
 
 const createRuntime = () => ({
   mode: "dedicated" as const,

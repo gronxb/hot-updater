@@ -37,9 +37,11 @@ session to protected routes.
 The Better Auth handler is not mounted or exposed by this plugin. Mount it
 separately if your application needs Better Auth's own HTTP endpoints.
 
-## Managed API key
+## Managed client access keys
 
-Managed authentication and route protection are separate opt-ins:
+Managed providers attach a key store to their database plugin. The server then
+resolves that capability without coupling the authentication plugin to a
+specific provider:
 
 ```ts
 import {
@@ -51,37 +53,43 @@ import { createHotUpdater } from "@hot-updater/server";
 const hotUpdater = createHotUpdater({
   database,
   plugins: [
-    managedBetterAuthPlugin({ apiKeySha256: env.API_KEY_SHA256 }),
-    managedRoutePolicy({ scope: "management" }),
+    managedBetterAuthPlugin(),
+    managedRoutePolicy({ scope: "client" }),
   ],
-  routes: { bundles: true, updateCheck: true },
 });
 ```
 
-The `management` scope keeps the core version route and the four core OTA
-selectors (app version and fingerprint, with and without cohort) public for
-existing mobile clients. Similar route IDs contributed by plugins are still
-protected, along with bundle-management and other feature routes. Use
-`scope: "all"` only with a client-appropriate authentication flow and after
-every deployed client sends credentials. Do not embed the managed static API key
-in a public mobile binary; it is extractable and is intended for trusted
-management tooling.
+The `client` role grants only OTA reads and Analytics writes. It cannot read
+Analytics, manage bundles, or create and revoke keys. Validation is a read-only
+SHA-256 lookup so normal OTA and Analytics traffic does not write authentication
+metadata. Keys are a minimum abuse-control boundary rather than a strong secret:
+an API key embedded in a public mobile binary can be extracted.
 
-AWS, Cloudflare, Firebase, and Supabase presets do not install managed
-authentication, route policy, or API-key provisioning automatically.
+The `management` scope remains available for session-based management clients.
+It keeps the core version route and the four core OTA selectors public. Use
+`scope: "all"` only after every route has an appropriate authentication flow.
 
-Node infrastructure code can explicitly provision the raw key into
-`.env.hotupdater` and deploy only its SHA-256 projection:
+Node infrastructure code can provision the first client key into
+`.env.hotupdater` and register its hash and metadata with the provider store:
 
 ```ts
 import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 
-const { apiKey, sha256 } = await provisionManagedBetterAuthApiKey();
+const { apiKey, created } = await provisionManagedBetterAuthApiKey({
+  name: "Default",
+  store,
+});
 ```
 
-Keep `apiKey` in trusted management tooling and deploy only `sha256` to the
-Hot Updater server. Neither value is sent to a provider by the provisioning
-function.
+The raw key is returned so `hot-updater init` can print it once. The env file
+keeps the key for local client configuration; the provider receives only the
+SHA-256 digest, prefix, role, status, and timestamps. Re-running provisioning
+reuses the same active key instead of creating duplicates.
+
+Managed providers expose the same store capability to the Console. When it is
+available, the Console shows Access keys and supports multiple active keys with
+create, list, and revoke operations. Newly created plaintext keys are shown
+once.
 
 Provisioning serializes concurrent writes with an adjacent owner-only lock. It
 requires a user-owned parent directory and a user-owned regular target with one

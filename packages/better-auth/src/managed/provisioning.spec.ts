@@ -17,10 +17,37 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import type {
+  ManagedAccessKeyRecord,
+  ManagedAccessKeyStore,
+} from "./accessKeys";
 import {
+  createManagedBetterAuthApiKey,
   HOT_UPDATER_API_KEY_ENV_NAME,
   provisionManagedBetterAuthApiKey,
 } from "./provisioning";
+
+const createMemoryStore = (): ManagedAccessKeyStore => {
+  const records = new Map<string, ManagedAccessKeyRecord>();
+  return {
+    create: async (record) => {
+      if (records.has(record.hash)) return "existing";
+      records.set(record.hash, record);
+      return "created";
+    },
+    findByHash: async (hash) => records.get(hash) ?? null,
+    list: async () => [...records.values()],
+    revoke: async ({ id, revokedAt }) => {
+      const record = [...records.values()].find(
+        (candidate) => candidate.id === id,
+      );
+      if (record === undefined) return null;
+      const revoked = { ...record, enabled: false, revokedAt };
+      records.set(record.hash, revoked);
+      return revoked;
+    },
+  };
+};
 
 const withTemporaryDirectory = async (
   action: (directory: string) => Promise<void>,
@@ -41,6 +68,7 @@ describe("provisionManagedBetterAuthApiKey", () => {
       const result = await provisionManagedBetterAuthApiKey({ envFilePath });
 
       expect(result.apiKey).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+      expect(result.created).toBe(true);
       expect(result.sha256).toBe(
         createHash("sha256").update(result.apiKey).digest("base64url"),
       );
@@ -64,8 +92,42 @@ describe("provisionManagedBetterAuthApiKey", () => {
       expect(afterFirst).toBe(
         `${original}${HOT_UPDATER_API_KEY_ENV_NAME}=${first.apiKey}\n`,
       );
-      expect(second).toEqual(first);
+      expect(second).toMatchObject({
+        apiKey: first.apiKey,
+        created: false,
+        sha256: first.sha256,
+      });
       expect(await readFile(envFilePath, "utf8")).toBe(afterFirst);
+    });
+  });
+
+  it("registers the first key and reuses the same active record", async () => {
+    await withTemporaryDirectory(async (directory) => {
+      const envFilePath = join(directory, ".env.hotupdater");
+      const store = createMemoryStore();
+
+      const first = await provisionManagedBetterAuthApiKey({
+        envFilePath,
+        name: "Initial client",
+        store,
+      });
+      const second = await provisionManagedBetterAuthApiKey({
+        envFilePath,
+        name: "Ignored replacement name",
+        store,
+      });
+
+      expect(first.record).toMatchObject({
+        enabled: true,
+        name: "Initial client",
+        role: "client",
+      });
+      expect(second).toMatchObject({
+        apiKey: first.apiKey,
+        created: false,
+        record: first.record,
+      });
+      expect(await store.list()).toHaveLength(1);
     });
   });
 
@@ -86,6 +148,23 @@ describe("provisionManagedBetterAuthApiKey", () => {
           new RegExp(`^${HOT_UPDATER_API_KEY_ENV_NAME}=`, "gmu"),
         ),
       ).toHaveLength(1);
+    });
+  });
+
+  it("registers a shared concurrent key with every requested store", async () => {
+    await withTemporaryDirectory(async (directory) => {
+      const envFilePath = join(directory, ".env.hotupdater");
+      const firstStore = createMemoryStore();
+      const secondStore = createMemoryStore();
+
+      const [first, second] = await Promise.all([
+        provisionManagedBetterAuthApiKey({ envFilePath, store: firstStore }),
+        provisionManagedBetterAuthApiKey({ envFilePath, store: secondStore }),
+      ]);
+
+      expect(first.apiKey).toBe(second.apiKey);
+      expect(await firstStore.list()).toHaveLength(1);
+      expect(await secondStore.list()).toHaveLength(1);
     });
   });
 
@@ -242,5 +321,36 @@ describe("provisionManagedBetterAuthApiKey", () => {
       );
       expect((await stat(envFilePath)).mode & 0o777).toBe(0o600);
     });
+  });
+});
+
+describe("createManagedBetterAuthApiKey", () => {
+  it("returns a one-time plaintext key and persists only its metadata", async () => {
+    const store = createMemoryStore();
+
+    const result = await createManagedBetterAuthApiKey({
+      name: "  Production app  ",
+      store,
+    });
+
+    expect(result.apiKey).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(result.record).toMatchObject({
+      enabled: true,
+      name: "Production app",
+      prefix: result.apiKey.slice(0, 6),
+      revokedAt: null,
+      role: "client",
+    });
+    expect(result.record.hash).not.toBe(result.apiKey);
+    expect(await store.list()).toEqual([result.record]);
+  });
+
+  it("rejects an invalid name before persisting a key", async () => {
+    const store = createMemoryStore();
+
+    await expect(
+      createManagedBetterAuthApiKey({ name: "   ", store }),
+    ).rejects.toThrow("1-64 visible characters");
+    expect(await store.list()).toEqual([]);
   });
 });
