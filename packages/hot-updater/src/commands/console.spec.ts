@@ -1,10 +1,32 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  assertConsolePortAvailable,
   getConsoleServerEnv,
   isConsoleServerReady,
   waitForConsoleReady,
 } from "./console";
+
+describe("assertConsolePortAvailable", () => {
+  it("fails when another process is listening on the console port", async () => {
+    const isPortInUse = vi.fn().mockResolvedValue(true);
+
+    await expect(
+      assertConsolePortAvailable(3_000, isPortInUse),
+    ).rejects.toThrow(
+      "Console port 3000 is already in use. Stop the existing process or configure a different console.port.",
+    );
+    expect(isPortInUse).toHaveBeenCalledWith(3_000);
+  });
+
+  it("allows startup when the console port is available", async () => {
+    const isPortInUse = vi.fn().mockResolvedValue(false);
+
+    await expect(
+      assertConsolePortAvailable(3_000, isPortInUse),
+    ).resolves.toBeUndefined();
+  });
+});
 
 describe("getConsoleServerEnv", () => {
   it.each([

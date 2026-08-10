@@ -393,7 +393,12 @@ program
 
     const port = await getConsolePort();
 
-    await openConsole(port);
+    try {
+      await openConsole(port);
+    } catch (error) {
+      p.log.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
   });
 
 program
