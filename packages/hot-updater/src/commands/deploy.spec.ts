@@ -1216,6 +1216,38 @@ describe("deploy rollout wiring", () => {
     );
   });
 
+  it("does not create an automatic patch when a prerelease target is outside the base range", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildPlugin,
+      compressStrategy: "tar.br",
+      database: databasePlugin,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      signing: { enabled: false },
+      storage: async () => mockStoragePlugin,
+      updateStrategy: "appVersion",
+    });
+    mockGetBundlesWithFixtures([
+      {
+        id: "bundle-122",
+        targetAppVersion: "1.x",
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.2.3-a",
+    });
+
+    expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+  });
+
   it("scans past incompatible appVersion patch bases to find an older compatible base", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,

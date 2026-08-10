@@ -45,8 +45,8 @@ catalogs:
       version: 4.1.4
   firebase:
     firebase-admin:
-      specifier: 13.6.0
-      version: 13.6.0
+      specifier: 14.2.0
+      version: 14.2.0
   hono:
     '@hono/node-server':
       specifier: 1.19.11
@@ -626,7 +626,7 @@ importers:
         version: 9.5.2
       firebase-admin:
         specifier: catalog:firebase
-        version: 13.6.0
+        version: 14.2.0
       hono:
         specifier: catalog:hono
         version: 4.12.9
@@ -1350,7 +1350,7 @@ importers:
         version: 8.57.1
       firebase-admin:
         specifier: catalog:firebase
-        version: 13.6.0
+        version: 14.2.0
       firebase-tools:
         specifier: ^13.35.1
         version: 13.35.1(@types/node@25.9.3)
@@ -1536,9 +1536,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.7.1
-        version: 7.7.1
       boxen:
         specifier: ^8.0.1
         version: 8.0.1
@@ -1557,12 +1554,12 @@ importers:
       picocolors:
         specifier: 1.1.1
         version: 1.1.1
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
       tar:
         specifier: ^7.5.16
         version: 7.5.16
+      verkit:
+        specifier: 0.3.2
+        version: 0.3.2
       workspace-tools:
         specifier: ^0.41.7
         version: 0.41.7
@@ -1651,9 +1648,6 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.0
         version: 19.2.3(@types/react@19.2.15)
-      '@types/semver':
-        specifier: ^7.7.1
-        version: 7.7.1
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
@@ -1696,9 +1690,6 @@ importers:
       react-grab:
         specifier: ^0.1.28
         version: 0.1.44(react@19.2.6)
-      semver:
-        specifier: ^7.7.4
-        version: 7.8.4
       shadcn:
         specifier: ^4.0.8
         version: 4.11.0(@typescript/typescript6@6.0.2)(babel-plugin-macros@3.1.0)
@@ -1723,6 +1714,9 @@ importers:
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
+      verkit:
+        specifier: 0.3.2
+        version: 0.3.2
       vite:
         specifier: 8.0.8
         version: 8.0.8(@types/node@25.9.3)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
@@ -1808,9 +1802,6 @@ importers:
       '@types/plist':
         specifier: ^3.0.5
         version: 3.0.5
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
@@ -1841,9 +1832,6 @@ importers:
       plist:
         specifier: ^3.1.0
         version: 3.1.1
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
       sql-formatter:
         specifier: 15.6.10
         version: 15.6.10
@@ -1853,6 +1841,9 @@ importers:
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
+      verkit:
+        specifier: 0.3.2
+        version: 0.3.2
 
   packages/managed:
     dependencies:
@@ -1963,9 +1954,9 @@ importers:
       rou3:
         specifier: 0.7.9
         version: 0.7.9
-      semver:
-        specifier: ^7.7.2
-        version: 7.8.4
+      verkit:
+        specifier: 0.3.2
+        version: 0.3.2
     devDependencies:
       '@electric-sql/pglite':
         specifier: catalog:db
@@ -1982,9 +1973,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       drizzle-orm:
         specifier: catalog:db
         version: 0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(typescript@7.0.2))
@@ -2204,9 +2192,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
@@ -2219,15 +2204,15 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.1.0
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
       toml:
         specifier: ^3.0.0
         version: 3.0.0
       typescript:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
+      verkit:
+        specifier: 0.3.2
+        version: 0.3.2
       vitest:
         specifier: 'catalog:'
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(@typescript/typescript6@6.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -2329,13 +2314,13 @@ importers:
         version: 9.5.2
       firebase-admin:
         specifier: catalog:firebase
-        version: 13.6.0
+        version: 14.2.0
       firebase-functions:
         specifier: 6.3.2
-        version: 6.3.2(firebase-admin@13.6.0)
+        version: 6.3.2(firebase-admin@14.2.0)
       firebase-functions-test:
         specifier: ^3.5.0
-        version: 3.5.0(firebase-admin@13.6.0)(firebase-functions@6.3.2(firebase-admin@13.6.0))(jest@29.7.0(@types/node@20.19.43)(babel-plugin-macros@3.1.0))
+        version: 3.5.0(firebase-admin@14.2.0)(firebase-functions@6.3.2(firebase-admin@14.2.0))(jest@29.7.0(@types/node@20.19.43)(babel-plugin-macros@3.1.0))
       firebase-tools:
         specifier: ^13.32.0
         version: 13.35.1(@types/node@20.19.43)
@@ -2355,15 +2340,12 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       jose:
         specifier: ^6.0.10
         version: 6.2.3
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
+      verkit:
+        specifier: 0.3.2
+        version: 0.3.2
 
   plugins/mock:
     dependencies:
@@ -2395,16 +2377,13 @@ importers:
       mime:
         specifier: ^4.0.4
         version: 4.1.0
-      semver:
-        specifier: ^7.7.2
-        version: 7.8.4
+      verkit:
+        specifier: 0.3.2
+        version: 0.3.2
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
@@ -2505,18 +2484,15 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      '@types/semver':
-        specifier: ^7.5.8
-        version: 7.7.1
       mime:
         specifier: 2.6.0
         version: 2.6.0
       msw:
         specifier: ^2.7.0
         version: 2.14.6(@types/node@20.19.43)(typescript@7.0.2)
-      semver:
-        specifier: ^7.6.3
-        version: 7.8.4
+      verkit:
+        specifier: 0.3.2
+        version: 0.3.2
       vitest:
         specifier: 'catalog:'
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -5237,9 +5213,9 @@ packages:
     resolution: {integrity: sha512-pYFURu8H4Jr5O2KjrN0MdBLKkrChOPiQt+J/KT/DIRwa9cWhFVf2EB6MQxYYv3vQvkB5vEBpTi+TUp4DHZPi6Q==}
     engines: {node: '>=22'}
 
-  '@google-cloud/firestore@7.11.6':
-    resolution: {integrity: sha512-EW/O8ktzwLfyWBOsNuhRoMi8lrC3clHM5LVFhGvO1HCsLozCOOXRAlHrYBoE6HL42Sc8yYMuCb2XqcnJ4OOEpw==}
-    engines: {node: '>=14.0.0'}
+  '@google-cloud/firestore@8.7.1':
+    resolution: {integrity: sha512-Hp/WI8sH569ANitsko6RNvCUkzTCYudHoINOkQjiJq2FBG6kKnofBAW7PtS823cu6RMxHqK2RxRcspdjrRpUFA==}
+    engines: {node: '>=18'}
 
   '@google-cloud/paginator@5.0.2':
     resolution: {integrity: sha512-DJS3s0OVH4zFDB1PzjxAsHqJT6sKVbRwwML0ZBP9PbU7Yebtu/7SWMRzvO2J3nUi9pRNITCfu4LJeooM2w4pjg==}
@@ -13306,10 +13282,6 @@ packages:
   extendable-error@0.1.7:
     resolution: {integrity: sha512-UOiS2in6/Q0FK0R0q6UY9vYpQ21mr/Qn1KOnte7vsACuNJf514WvCCUHSRCPcgjPT2bAhNIJdlE6bVap1GKmeg==}
 
-  farmhash-modern@1.1.0:
-    resolution: {integrity: sha512-6ypT4XfgqJk/F3Yuv4SX26I3doUjt0GTG4a+JgWxXQpxXzTBq8fPUeGHfcYMMDPHJHm3yPOSjaeBwBGAHWXCdA==}
-    engines: {node: '>=18.0.0'}
-
   fast-check@3.23.2:
     resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
     engines: {node: '>=8.0.0'}
@@ -13510,9 +13482,9 @@ packages:
   find-yarn-workspace-root@2.0.0:
     resolution: {integrity: sha512-1IMnbjt4KzsQfnhnzNd8wUEgXZ44IzZaZmnLYx7D5FZlaHt2gW20Cri8Q+E/t5tIj4+epTBub+2Zxu/vNILzqQ==}
 
-  firebase-admin@13.6.0:
-    resolution: {integrity: sha512-GdPA/t0+Cq8p1JnjFRBmxRxAGvF/kl2yfdhALl38PrRp325YxyQ5aNaHui0XmaKcKiGRFIJ/EgBNWFoDP0onjw==}
-    engines: {node: '>=18'}
+  firebase-admin@14.2.0:
+    resolution: {integrity: sha512-zfs5PdccEgjX479bbMmz95Rqc7ttQ4LV3qkGFlPiqOaOu/suBZc3fG52Qzn2hQjiSHkBM4NP2AZV5r2NvAt0TQ==}
+    engines: {node: '>=22'}
 
   firebase-functions-test@3.5.0:
     resolution: {integrity: sha512-Jg+f9GeWkWpgYRY9s+Oxst/b9kEnOJ6pU/XNFthOFYs2Ax2fU2Zxc7ckfTozYKEH/mzptSDxV5JYiPTvR+RhKA==}
@@ -14037,6 +14009,10 @@ packages:
   google-gax@4.6.1:
     resolution: {integrity: sha512-V6eky/xz2mcKfAd1Ioxyd6nmA61gao3n01C+YeuIwu3vzM9EDR6wcVzMSIbLMDXWeoi9SHYctXuKYC5uJUT3eQ==}
     engines: {node: '>=14'}
+
+  google-gax@5.0.8:
+    resolution: {integrity: sha512-M4vpZcXQIC1gqIVGQ7eaU3jXQA6zecStyTXu514TYfThlgSurYJOxHZo9fzU6hAgwPWvuEynAVHWyaIk80VeEA==}
+    engines: {node: '>=18'}
 
   google-logging-utils@0.0.2:
     resolution: {integrity: sha512-NEgUnEcBiP5HrPzufUkBzJOD/Sxsco3rLNo1F1TNf7ieU8ryUzBhqba8r756CjLX7rn3fHl6iLEwPYuqpoKgQQ==}
@@ -15114,9 +15090,6 @@ packages:
   join-path@1.1.1:
     resolution: {integrity: sha512-jnt9OC34sLXMLJ6YfPQ2ZEKrR9mB5ZbSnQb4LPaOx1c5rTzxpR33L18jjp0r75mGGTJmsil3qwN1B5IBeTnSSA==}
 
-  jose@4.15.9:
-    resolution: {integrity: sha512-1vUQX+IdDMVPj4k8kOxgUqlcK518yluMuGZwqlr44FS1ppZB/5GWh4rZG89erpOBOJjU/OBsnCVFfapsRz6nEA==}
-
   jose@6.2.3:
     resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
 
@@ -15265,9 +15238,9 @@ packages:
   jwa@2.0.1:
     resolution: {integrity: sha512-hRF04fqJIP8Abbkq5NKGN0Bbr3JxlQ+qhZufXVr0DvujKy93ZCbXZMHDL4EOtodSbCWxOqR8MS1tXA5hwqCXDg==}
 
-  jwks-rsa@3.2.2:
-    resolution: {integrity: sha512-BqTyEDV+lS8F2trk3A+qJnxV5Q9EqKCBJOPti3W97r7qTympCZjb7h2X6f2kc+0K3rsSTY1/6YG2eaXKoj497w==}
-    engines: {node: '>=14'}
+  jwks-rsa@4.1.0:
+    resolution: {integrity: sha512-sbkByqyATKYJP5F4RXj03N5TUNC0QLTjCAZvwTzC4BwJZ8e0/cWxN8YROnyUth2g1/ONWi4eSFHeu6oYalrc3Q==}
+    engines: {node: ^20.19.0 || ^22.12.0 || >= 23.0.0}
 
   jws@4.0.1:
     resolution: {integrity: sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==}
@@ -15670,8 +15643,8 @@ packages:
     resolution: {integrity: sha512-jumlc0BIUrS3qJGgIkWZsyfAM7NCWiBcCDhnd+3NNM5KbBmLTgHVfWBcg6W+rLUsIpzpERPsvwUP7CckAQSOoA==}
     engines: {node: '>=12'}
 
-  lru-memoizer@2.3.0:
-    resolution: {integrity: sha512-GXn7gyHAMhO13WSKrIiNfztwxodVsP8IoZ3XfrJV4yH2x0/OeTO/FIaAHTY5YekdGgW94njfuKmyyt1E0mR6Ug==}
+  lru-memoizer@3.0.0:
+    resolution: {integrity: sha512-m83w/cYXLdUIboKSPxzPAGfYnk+vqeDYXuoSrQRw1q+yVEd8IXhvMufN8Q5TIPe7e2jyX4SRNrDJI2Skw1yznQ==}
 
   lru.min@1.1.4:
     resolution: {integrity: sha512-DqC6n3QQ77zdFpCMASA1a3Jlb64Hv2N2DciFGkO/4L9+q/IpIAuRlKOvCXabtRW6cQf8usbmM6BE/TOPysCdIA==}
@@ -17674,6 +17647,10 @@ packages:
     resolution: {integrity: sha512-SAzp/O4Yh02jGdRc+uIrGoe87dkN/XtwxfZ4ZyafJHymd79ozp5VG5nyZ7ygqPM5+cpLDjjGnYFUkngonyDPOQ==}
     engines: {node: '>=14.0.0'}
 
+  proto3-json-serializer@3.0.4:
+    resolution: {integrity: sha512-E1sbAYg3aEbXrq0n1ojJkRHQJGE1kaE/O6GLA94y8rnJBfgvOPTOd1b9hOceQK1FFZI9qMh1vBERCyO2ifubcw==}
+    engines: {node: '>=18'}
+
   protobufjs@7.6.3:
     resolution: {integrity: sha512-+k0vdJKNdW+Vu+dYe8tZA/VvQb6XKNWexC6URwBFXxNnjLJz9nQJCemGyNgRAWD+B7+nGNc9qMPGwcD7s4nzUw==}
     engines: {node: '>=12.0.0'}
@@ -18335,6 +18312,10 @@ packages:
   retry-request@7.0.2:
     resolution: {integrity: sha512-dUOvLMJ0/JJYEn8NrpOaGNE7X3vpI5XlZS/u0ANjqtcZVKnIxP7IgCFwrKTxENw29emmwug53awKtaMm4i9g5w==}
     engines: {node: '>=14'}
+
+  retry-request@8.0.4:
+    resolution: {integrity: sha512-pI6/7eabUYkZxamkOq0g0uMxKLLGnjzhefY+vL8bVXag5rto4OU2YBTPytWLuHH7aEKD6fn7kJycQfid0Mwnkw==}
+    engines: {node: '>=18'}
 
   retry@0.12.0:
     resolution: {integrity: sha512-9LkiTwjUh6rT555DtE9rTX+BKByPfrMzEAtnlEtdEwr3Nkffwiihqe2bWADg+OQRjt9gl6ICdmB/ZFDCGAtSow==}
@@ -19131,6 +19112,10 @@ packages:
   tcp-port-used@1.0.3:
     resolution: {integrity: sha512-4CEQ3qRJYo+mtEbJ+OoQu3dF4TDkwaO3RDVC4UzP5cpAOIUWwuwPjD7sdxDFFqsMUjsXVVYBMlg/boAaloThMA==}
 
+  teeny-request@10.1.4:
+    resolution: {integrity: sha512-R1Cg4Vu0UULeDfHL/kjABLaTW++9yD/B6n2g48y5dJ04hsEaxcfmAqbNDzNsbqAYJyIpZafjklLG9YxRu9uzOg==}
+    engines: {node: '>=18'}
+
   teeny-request@9.0.0:
     resolution: {integrity: sha512-resvxdc6Mgb7YEThw6G6bExlXKkv6+YbuzGg9xuXxSgxJF7Ozs+o8Y9+2R3sArdWdW8nOokoQb1yrpFB0pQK2g==}
     engines: {node: '>=14'}
@@ -19874,10 +19859,6 @@ packages:
     resolution: {integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==}
     hasBin: true
 
-  uuid@11.1.1:
-    resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
-    hasBin: true
-
   uuid@14.0.0:
     resolution: {integrity: sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg==}
     hasBin: true
@@ -19939,6 +19920,10 @@ packages:
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
+
+  verkit@0.3.2:
+    resolution: {integrity: sha512-zj/ob3UsvJGN0whEAKFp53REA5X66hvffVqoCtVQAakJKnKlH+/PcOfMoFwIG/o4rElqLv/ycAFlx8ZlXUorCg==}
+    engines: {node: '>=18.12.0'}
 
   vfile-location@5.0.3:
     resolution: {integrity: sha512-5yXvWDEgqeiYiBe1lbxYF7UMAIm/IcopxMHrMQDq3nvKcjPKIhZklUKL+AE7J7uApI4kwe2snsK+eI6UTj9EHg==}
@@ -24607,15 +24592,14 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@google-cloud/firestore@7.11.6':
+  '@google-cloud/firestore@8.7.1':
     dependencies:
       '@opentelemetry/api': 1.9.1
       fast-deep-equal: 3.1.3
       functional-red-black-tree: 1.0.1
-      google-gax: 4.6.1
+      google-gax: 5.0.8
       protobufjs: 7.6.3
     transitivePeerDependencies:
-      - encoding
       - supports-color
     optional: true
 
@@ -34831,8 +34815,6 @@ snapshots:
 
   extendable-error@0.1.7: {}
 
-  farmhash-modern@1.1.0: {}
-
   fast-check@3.23.2:
     dependencies:
       pure-rand: 6.1.0
@@ -35102,42 +35084,38 @@ snapshots:
     dependencies:
       micromatch: 4.0.8
 
-  firebase-admin@13.6.0:
+  firebase-admin@14.2.0:
     dependencies:
       '@fastify/busboy': 3.2.0
       '@firebase/database-compat': 2.1.4
       '@firebase/database-types': 1.0.20
-      '@types/node': 22.19.21
-      farmhash-modern: 1.1.0
       fast-deep-equal: 3.1.3
-      google-auth-library: 9.15.1
+      google-auth-library: 10.7.0
       jsonwebtoken: 9.0.3
-      jwks-rsa: 3.2.2
-      node-forge: 1.4.0
-      uuid: 11.1.1
+      jwks-rsa: 4.1.0
     optionalDependencies:
-      '@google-cloud/firestore': 7.11.6
+      '@google-cloud/firestore': 8.7.1
       '@google-cloud/storage': 7.21.0
     transitivePeerDependencies:
       - encoding
       - supports-color
 
-  firebase-functions-test@3.5.0(firebase-admin@13.6.0)(firebase-functions@6.3.2(firebase-admin@13.6.0))(jest@29.7.0(@types/node@20.19.43)(babel-plugin-macros@3.1.0)):
+  firebase-functions-test@3.5.0(firebase-admin@14.2.0)(firebase-functions@6.3.2(firebase-admin@14.2.0))(jest@29.7.0(@types/node@20.19.43)(babel-plugin-macros@3.1.0)):
     dependencies:
       '@types/lodash': 4.17.24
-      firebase-admin: 13.6.0
-      firebase-functions: 6.3.2(firebase-admin@13.6.0)
+      firebase-admin: 14.2.0
+      firebase-functions: 6.3.2(firebase-admin@14.2.0)
       jest: 29.7.0(@types/node@20.19.43)(babel-plugin-macros@3.1.0)
       lodash: 4.18.1
       ts-deepmerge: 2.0.7
 
-  firebase-functions@6.3.2(firebase-admin@13.6.0):
+  firebase-functions@6.3.2(firebase-admin@14.2.0):
     dependencies:
       '@types/cors': 2.8.19
       '@types/express': 4.17.25
       cors: 2.8.6
       express: 4.22.2
-      firebase-admin: 13.6.0
+      firebase-admin: 14.2.0
       protobufjs: 7.6.3
     transitivePeerDependencies:
       - supports-color
@@ -35913,6 +35891,23 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
+
+  google-gax@5.0.8:
+    dependencies:
+      '@grpc/grpc-js': 1.14.4
+      '@grpc/proto-loader': 0.8.1
+      duplexify: 4.1.3
+      google-auth-library: 10.5.0
+      google-logging-utils: 1.1.3
+      node-fetch: 3.3.2
+      object-hash: 3.0.0
+      proto3-json-serializer: 3.0.4
+      protobufjs: 7.6.3
+      retry-request: 8.0.4
+      rimraf: 5.0.10
+    transitivePeerDependencies:
+      - supports-color
+    optional: true
 
   google-logging-utils@0.0.2: {}
 
@@ -37284,8 +37279,6 @@ snapshots:
       url-join: 0.0.1
       valid-url: 1.0.9
 
-  jose@4.15.9: {}
-
   jose@6.2.3: {}
 
   js-base64@3.7.8: {}
@@ -37491,13 +37484,14 @@ snapshots:
       ecdsa-sig-formatter: 1.0.11
       safe-buffer: 5.2.1
 
-  jwks-rsa@3.2.2:
+  jwks-rsa@4.1.0:
     dependencies:
       '@types/jsonwebtoken': 9.0.10
       debug: 4.4.3
-      jose: 4.15.9
+      jose: 6.2.3
       limiter: 1.1.5
-      lru-memoizer: 2.3.0
+      lru-cache: 11.5.1
+      lru-memoizer: 3.0.0
     transitivePeerDependencies:
       - supports-color
 
@@ -37831,10 +37825,10 @@ snapshots:
 
   lru-cache@7.18.3: {}
 
-  lru-memoizer@2.3.0:
+  lru-memoizer@3.0.0:
     dependencies:
       lodash.clonedeep: 4.5.0
-      lru-cache: 6.0.0
+      lru-cache: 11.5.1
 
   lru.min@1.1.4: {}
 
@@ -41242,6 +41236,11 @@ snapshots:
     dependencies:
       protobufjs: 7.6.3
 
+  proto3-json-serializer@3.0.4:
+    dependencies:
+      protobufjs: 7.6.3
+    optional: true
+
   protobufjs@7.6.3:
     dependencies:
       '@protobufjs/aspromise': 1.1.2
@@ -42397,6 +42396,14 @@ snapshots:
       - encoding
       - supports-color
 
+  retry-request@8.0.4:
+    dependencies:
+      extend: 3.0.2
+      teeny-request: 10.1.4
+    transitivePeerDependencies:
+      - supports-color
+    optional: true
+
   retry@0.12.0: {}
 
   retry@0.13.1: {}
@@ -43433,6 +43440,16 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  teeny-request@10.1.4:
+    dependencies:
+      http-proxy-agent: 7.0.2
+      https-proxy-agent: 7.0.6
+      node-fetch: 3.3.2
+      stream-events: 1.0.5
+    transitivePeerDependencies:
+      - supports-color
+    optional: true
+
   teeny-request@9.0.0:
     dependencies:
       http-proxy-agent: 5.0.0
@@ -44092,8 +44109,6 @@ snapshots:
 
   uuid@11.1.0: {}
 
-  uuid@11.1.1: {}
-
   uuid@14.0.0: {}
 
   uuid@7.0.3: {}
@@ -44137,6 +44152,8 @@ snapshots:
       react: 19.2.3
 
   vary@1.1.2: {}
+
+  verkit@0.3.2: {}
 
   vfile-location@5.0.3:
     dependencies:

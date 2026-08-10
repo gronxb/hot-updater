@@ -8,7 +8,7 @@ import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, p } from "@hot-updater/cli-tools";
 import type { NativeBuildOptions } from "@hot-updater/plugin-core";
-import semverValid from "semver/ranges/valid";
+import { normalizeRange } from "verkit";
 
 import {
   appIdSuffixCommandOption,
@@ -291,7 +291,7 @@ program
       "-t, --target-app-version <targetAppVersion>",
       "specify the target app version (semver format e.g. 1.0.0, 1.x.x)",
     ).argParser((value) => {
-      if (!semverValid(value)) {
+      if (!normalizeRange(value)) {
         p.log.error("Invalid semver format (e.g. 1.0.0, 1.x.x)");
         process.exit(1);
       }

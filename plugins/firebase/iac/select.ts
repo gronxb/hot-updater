@@ -46,7 +46,7 @@ const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
 // Check your .env file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = admin.credential.applicationDefault();`.trim(),
+const credential = applicationDefault();`.trim(),
     },
   ];
 
@@ -54,7 +54,7 @@ const credential = admin.credential.applicationDefault();`.trim(),
     .setBuildType(build)
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
-    .addImport({ pkg: "firebase-admin", defaultOrNamespace: "admin" })
+    .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })
     .setIntermediateCode(
       helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
     );
