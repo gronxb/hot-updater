@@ -45,6 +45,41 @@ describe("Detox control-server deploy lock", () => {
     ).toBe(2);
   });
 
+  it("detects DynamoDB from the dashboard-injected env target", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-deploy-lock-env-"),
+    );
+    const envTargetPath = path.join(tempDir, ".env.hotupdater");
+
+    try {
+      await fs.writeFile(
+        envTargetPath,
+        [
+          "HOT_UPDATER_S3_BUCKET_NAME=hot-updater-storage",
+          "export HOT_UPDATER_DYNAMODB_TABLE_NAME='hot-updater'",
+        ].join("\n"),
+      );
+
+      expect(
+        resolveDeployLockCapacity({
+          HOT_UPDATER_E2E_ENV_TARGET_PATH: envTargetPath,
+        }),
+      ).toBe(2);
+
+      await fs.writeFile(
+        envTargetPath,
+        "HOT_UPDATER_S3_BUCKET_NAME=hot-updater-storage\n",
+      );
+      expect(
+        resolveDeployLockCapacity({
+          HOT_UPDATER_E2E_ENV_TARGET_PATH: envTargetPath,
+        }),
+      ).toBe(1);
+    } finally {
+      await fs.rm(tempDir, { force: true, recursive: true });
+    }
+  });
+
   it("allows two deploys while keeping the next waiter queued", async () => {
     const lockRoot = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-bounded-lock-"),
