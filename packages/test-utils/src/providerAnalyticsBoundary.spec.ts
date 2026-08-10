@@ -139,6 +139,30 @@ export const capability = universalComponentDataAdapterCapability;\n`,
     ]);
   });
 
+  it("ignores generated runtime acceptance bundles without hiding production violations", async () => {
+    const provider = await createProvider();
+    const generatedDirectory = path.join(
+      provider,
+      "runtime-acceptance-generated",
+    );
+    const productionFile = path.join(provider, "src", "database.ts");
+    await mkdir(generatedDirectory);
+    await writeFile(
+      path.join(generatedDirectory, "index.js"),
+      `const generatedTable = "bundle_events";\n`,
+    );
+    await writeFile(productionFile, `const table = "bundle_events";\n`);
+
+    await expect(
+      findProviderAnalyticsBoundaryViolations({ roots: [provider] }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        file: productionFile,
+        rule: "Analytics physical table",
+      }),
+    ]);
+  });
+
   it("throws a readable boundary report", async () => {
     const provider = await createProvider();
     const file = path.join(provider, "src", "database.ts");
