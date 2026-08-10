@@ -6,6 +6,7 @@ import {
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
 import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
+import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import {
   attachDatabasePluginAggregateMutations,
   attachDatabasePluginPatchHydration,
@@ -21,6 +22,7 @@ import {
   queryCompleteOwnersPatches,
 } from "./dynamodbDatabaseOwnerReads";
 import { createDynamoDBGetUpdateInfo } from "./dynamodbDatabaseUpdateInfo";
+import { createDynamoDBManagedAccessKeyStore } from "./dynamodbManagedAccessKeyStore";
 
 export const DYNAMODB_UPDATE_INDEX_NAME = "hot-updater-update-index";
 
@@ -49,6 +51,25 @@ export const dynamoDB = (config: DynamoDBConfig) => {
       })
     : null;
   const store = { client, tableName };
+  const invalidateUpdateRoutes = async () => {
+    if (!cloudFront || !cloudfrontDistributionId) return;
+    try {
+      await invalidateCloudFront(
+        cloudFront,
+        cloudfrontDistributionId,
+        [`${apiBasePath.replace(/\/+$/, "")}/*`],
+        { shouldWait: shouldWaitForInvalidation },
+      );
+    } catch (error) {
+      console.warn(
+        "[hot-updater/aws] CloudFront invalidation failed; continuing without cache invalidation.",
+        {
+          distributionId: cloudfrontDistributionId,
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+      );
+    }
+  };
   const plugin = createDatabasePlugin({
     name: "dynamoDB",
     plugin: () => ({
@@ -67,25 +88,7 @@ export const dynamoDB = (config: DynamoDBConfig) => {
     cloudFront && cloudfrontDistributionId
       ? {
           ...plugin,
-          onDatabaseUpdated: async () => {
-            try {
-              await invalidateCloudFront(
-                cloudFront,
-                cloudfrontDistributionId,
-                [`${apiBasePath.replace(/\/+$/, "")}/*`],
-                { shouldWait: shouldWaitForInvalidation },
-              );
-            } catch (error) {
-              console.warn(
-                "[hot-updater/aws] CloudFront invalidation failed; continuing without cache invalidation.",
-                {
-                  distributionId: cloudfrontDistributionId,
-                  error:
-                    error instanceof Error ? error.message : "Unknown error",
-                },
-              );
-            }
-          },
+          onDatabaseUpdated: invalidateUpdateRoutes,
         }
       : plugin;
   const pluginWithPatchHydration = attachDatabasePluginPatchHydration(
@@ -111,7 +114,16 @@ export const dynamoDB = (config: DynamoDBConfig) => {
     pluginWithPatchHydration,
     createDynamoDBAggregateMutations(store),
   );
-  return attachAnalyticsProviderCapability(pluginWithAggregateMutations, () =>
-    createBoundedAnalyticsProvider(createDynamoDBAnalyticsPersistence(store)),
+  return attachManagedAccessKeyStore(
+    attachAnalyticsProviderCapability(pluginWithAggregateMutations, () =>
+      createBoundedAnalyticsProvider(createDynamoDBAnalyticsPersistence(store)),
+    ),
+    () =>
+      createDynamoDBManagedAccessKeyStore(store, {
+        onRevoke:
+          cloudFront && cloudfrontDistributionId
+            ? invalidateUpdateRoutes
+            : undefined,
+      }),
   );
 };

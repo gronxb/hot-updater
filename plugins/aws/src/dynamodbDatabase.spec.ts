@@ -95,7 +95,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.onUnmount?.();
   });
 
-  it("provides Analytics from the same DynamoDB table", () => {
+  it("provides Analytics and managed access keys from the same table", () => {
     const plugin = dynamoDB({
       region: "us-east-1",
       tableName: "hot-updater-metadata",
@@ -103,6 +103,11 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
     expect(
       getCapabilityContributions(plugin).map(({ token }) => token.id),
-    ).toContain("hot-updater.analytics.provider@1");
+    ).toEqual(
+      expect.arrayContaining([
+        "hot-updater.analytics.provider@1",
+        "hot-updater.better-auth.managed-access-key-store@1",
+      ]),
+    );
   });
 });

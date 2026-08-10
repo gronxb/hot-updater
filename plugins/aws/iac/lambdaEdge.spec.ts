@@ -86,7 +86,6 @@ describe("LambdaEdgeDeployer", () => {
       "arn:aws:iam::123456789012:role/hot-updater-edge",
       "hot-updater-edge",
       {
-        apiKeySha256: "hash",
         bucketName: "hot-updater-storage",
         databaseType: "dynamodb",
         dynamodbRegion: "ap-northeast-2",
@@ -142,7 +141,6 @@ describe("LambdaEdgeDeployer", () => {
       "arn:aws:iam::123456789012:role/hot-updater-edge",
       "hot-updater-edge",
       {
-        apiKeySha256: "hash",
         bucketName: "hot-updater-storage",
         databaseType: "dynamodb",
         dynamodbRegion: "ap-northeast-2",

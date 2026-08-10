@@ -1,5 +1,6 @@
 export * from "./dynamodbAnalyticsPersistence";
 export * from "./dynamodbDatabase";
+export * from "./dynamodbManagedAccessKeyStore";
 export * from "./s3Database";
 export * from "./s3LambdaEdgeStorage";
 export * from "./s3Storage";

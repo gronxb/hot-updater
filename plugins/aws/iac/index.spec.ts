@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   listBuckets: vi.fn(),
   logMessage: vi.fn(),
   makeEnv: vi.fn(),
+  note: vi.fn(),
+  provisionManagedBetterAuthApiKey: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
   resolveAwsAuth: vi.fn(),
   runMigrations: vi.fn(),
@@ -15,6 +17,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("execa", () => ({
   execa: mocks.execa,
+}));
+
+vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
+  provisionManagedBetterAuthApiKey: mocks.provisionManagedBetterAuthApiKey,
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
@@ -31,6 +37,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
         ...actual.p.log,
         message: mocks.logMessage,
       },
+      note: mocks.note,
       tasks: vi.fn(async (tasks) => {
         for (const task of tasks) {
           await task.task();
@@ -63,7 +70,47 @@ vi.mock("./s3", () => ({
   }),
 }));
 
-import { runInit } from "./index";
+import { provisionDynamoDBClientAccessKey, runInit } from "./index";
+
+describe("AWS managed client access-key provisioning", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("registers the initial key in DynamoDB and prints it once", async () => {
+    mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
+      apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      created: true,
+      sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
+    });
+
+    await provisionDynamoDBClientAccessKey({
+      credentials: {
+        accessKeyId: "test-access-key",
+        secretAccessKey: "test-secret-key",
+      },
+      envFilePath: ".env.hotupdater",
+      region: "ap-northeast-2",
+      tableName: "hot-updater",
+    });
+
+    expect(mocks.provisionManagedBetterAuthApiKey).toHaveBeenCalledWith({
+      envFilePath: ".env.hotupdater",
+      name: "Default",
+      store: expect.objectContaining({
+        create: expect.any(Function),
+        findByHash: expect.any(Function),
+        list: expect.any(Function),
+        revoke: expect.any(Function),
+      }),
+    });
+    expect(mocks.note).toHaveBeenCalledOnce();
+    expect(mocks.note).toHaveBeenCalledWith(
+      "HOT_UPDATER_API_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "Client access key (shown once)",
+    );
+  });
+});
 
 describe("AWS init preflight", () => {
   beforeEach(() => {

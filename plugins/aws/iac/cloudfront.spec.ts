@@ -29,8 +29,8 @@ describe("buildDistributionConfigOverrides", () => {
         HeadersConfig: {
           HeaderBehavior: "whitelist",
           Headers: {
-            Quantity: 1,
-            Items: ["hot-updater-sdk-version"],
+            Quantity: 2,
+            Items: ["hot-updater-sdk-version", "x-api-key"],
           },
         },
         CookiesConfig: { CookieBehavior: "none" },

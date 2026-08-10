@@ -10,9 +10,12 @@ preparation for their removal in a future major release.
 
 Use DynamoDB by default for new managed AWS `hot-updater init` installations,
 including table provisioning, Lambda@Edge reads, IAM access, generated config,
-CloudFront invalidation, public Analytics ingestion, and API-key-protected
-Analytics queries. Keep S3 metadata selectable with a deprecation warning so
-existing installations can replay their saved setup safely.
+CloudFront invalidation, and managed client access keys. Init registers the
+first key in DynamoDB, saves it locally, and shows its plaintext once. Managed
+clients use that key for OTA reads and Analytics writes without receiving
+Analytics read or management access. Keep S3 metadata selectable with a
+deprecation warning so existing installations can replay their saved setup
+safely.
 
 Shard managed Analytics events by month and event identity, retain them for 90
 days with DynamoDB TTL, push recent-window lower bounds into storage reads, and
@@ -32,8 +35,9 @@ compatibility before enabling billed point-in-time recovery.
 Harden managed AWS provisioning by isolating Lambda execution roles per
 installation, scoping S3/SSM/DynamoDB permissions, preserving unrelated
 CloudFront and bucket-policy configuration, forwarding and caching by SDK
-version, reconciling Lambda configuration before publishing, narrowing cache
-invalidations to update APIs, and caching successful Analytics schema checks.
+version and client key, reconciling Lambda configuration before publishing,
+narrowing cache invalidations to update APIs, invalidating revoked-key cache
+entries, and caching successful Analytics schema checks.
 
 Expose the provider-native atomic bundle mutation hook so database providers
 without callback transactions can commit bundle and patch aggregates safely.

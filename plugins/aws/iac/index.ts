@@ -1,3 +1,5 @@
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   colors,
@@ -21,6 +23,7 @@ import {
   AWS_DATABASE_TYPES,
   type AwsDatabaseType,
 } from "../src/awsDatabaseType";
+import { createDynamoDBManagedAccessKeyStore } from "../src/dynamodbManagedAccessKeyStore";
 import { resolveAwsAuth } from "./awsAuth";
 import {
   assertAwsNonInteractiveInputs,
@@ -49,6 +52,44 @@ const checkIfAwsCliInstalled = async () => {
 
 const isAwsRegion = (value: string | undefined): value is AwsRegion => {
   return value !== undefined && Object.hasOwn(regionLocationMap, value);
+};
+
+export const provisionDynamoDBClientAccessKey = async (input: {
+  readonly credentials: {
+    readonly accessKeyId: string;
+    readonly secretAccessKey: string;
+    readonly sessionToken?: string;
+  };
+  readonly envFilePath: string;
+  readonly region: string;
+  readonly tableName: string;
+}) => {
+  const client = DynamoDBDocumentClient.from(
+    new DynamoDBClient({
+      credentials: input.credentials,
+      region: input.region,
+    }),
+    { marshallOptions: { removeUndefinedValues: true } },
+  );
+  try {
+    const accessKey = await provisionManagedBetterAuthApiKey({
+      envFilePath: input.envFilePath,
+      name: "Default",
+      store: createDynamoDBManagedAccessKeyStore({
+        client,
+        tableName: input.tableName,
+      }),
+    });
+    if (accessKey.created) {
+      p.note(
+        `HOT_UPDATER_API_KEY=${accessKey.apiKey}`,
+        "Client access key (shown once)",
+      );
+    }
+    return accessKey;
+  } finally {
+    client.destroy();
+  }
 };
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
@@ -355,6 +396,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   if (database === "dynamodb" && resolvedDynamoDBTableName) {
     const dynamodbManager = new DynamoDBManager(bucketRegion, credentials);
     await dynamodbManager.ensureTable(resolvedDynamoDBTableName);
+    await provisionDynamoDBClientAccessKey({
+      credentials,
+      envFilePath: envFile ?? ".env.hotupdater",
+      region: bucketRegion,
+      tableName: resolvedDynamoDBTableName,
+    });
     p.log.info(
       `Using DynamoDB table: ${resolvedDynamoDBTableName} (${bucketRegion})`,
     );
@@ -383,15 +430,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // Deploy Lambda@Edge: Using LambdaEdgeDeployer
   const lambdaEdgeDeployer = new LambdaEdgeDeployer(credentials);
-  const apiKeySha256 =
-    database === "dynamodb"
-      ? (await provisionManagedBetterAuthApiKey()).sha256
-      : "";
   const { functionArn } = await lambdaEdgeDeployer.deploy(
     lambdaRoleArn,
     lambdaName,
     {
-      apiKeySha256,
       bucketName,
       databaseType: database,
       dynamodbRegion: bucketRegion,

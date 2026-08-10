@@ -1,4 +1,4 @@
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync } from "node:crypto";
 import { access, cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,7 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
+import { registerManagedAccessKey } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
@@ -48,6 +49,7 @@ import {
   DYNAMODB_ANALYTICS_SCHEMA_VERSION,
 } from "../src/dynamodbAnalyticsPersistence";
 import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamodbDatabase";
+import { createDynamoDBManagedAccessKeyStore } from "../src/dynamodbManagedAccessKeyStore";
 import { s3Database } from "../src/s3Database";
 import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
 
@@ -65,9 +67,6 @@ const SSM_PARAMETER_NAME = `/hot-updater/aws/${process.pid}/${Date.now()}`;
 const DYNAMODB_TABLE_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`;
 const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
 const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const API_KEY_SHA256 = createHash("sha256")
-  .update(RAW_API_KEY)
-  .digest("base64url");
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
@@ -319,7 +318,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
     dynamodbClient = DynamoDBDocumentClient.from(
       createHostDynamoDBClient(localstackEndpoint),
     );
-
     process.env.AWS_ENDPOINT_URL = localstackEndpoint;
 
     seedHotUpdater = createHotUpdater({
@@ -362,7 +360,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
     await cp(lambdaDistDir, runtimeDir, { recursive: true });
 
     const transformedCode = transformEnv(path.join(runtimeDir, "index.cjs"), {
-      API_KEY_SHA256,
       CLOUDFRONT_KEY_PAIR_ID,
       DATABASE_TYPE: "dynamodb",
       DYNAMODB_REGION: REGION,
@@ -392,6 +389,14 @@ describe.sequential("aws lambda runtime acceptance", () => {
       clearBucket(s3Client, S3_BUCKET_NAME),
       clearDynamoDBTable(dynamodbClient),
     ]);
+    await registerManagedAccessKey({
+      apiKey: RAW_API_KEY,
+      name: "Runtime test",
+      store: createDynamoDBManagedAccessKeyStore({
+        client: dynamodbClient,
+        tableName: DYNAMODB_TABLE_NAME,
+      }),
+    });
   });
 
   afterAll(async () => {
@@ -441,7 +446,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       lambdaPort,
       createCloudFrontEvent({
         path: createCanonicalPath(args),
-        headers: new Headers(),
+        headers: new Headers({ "x-api-key": RAW_API_KEY }),
       }),
     );
     expect(response.ok).toBe(true);
@@ -603,7 +608,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
           platform: "ios",
           _updateStrategy: "appVersion",
         }),
-        headers: new Headers(),
+        headers: new Headers({ "x-api-key": RAW_API_KEY }),
       }),
     );
     const payload = (await response.json()) as {
@@ -664,7 +669,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
   });
 
-  it("ingests public Analytics events and protects Analytics queries", async () => {
+  it("requires a client key for events without granting Analytics reads", async () => {
     const event = {
       type: "UNCHANGED",
       installId: "aws-runtime-installation",
@@ -677,7 +682,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       fromBundleId: null,
       updateStrategy: null,
     };
-    const ingestionResponse = await invokeLambda(
+    const unauthorizedIngestionResponse = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
         path: `${HOT_UPDATER_BASE_PATH}/events`,
@@ -686,10 +691,25 @@ describe.sequential("aws lambda runtime acceptance", () => {
         body: JSON.stringify(event),
       }),
     );
+    const unauthorizedIngestionPayload =
+      (await unauthorizedIngestionResponse.json()) as { status?: string };
+    const ingestionResponse = await invokeLambda(
+      lambdaPort,
+      createCloudFrontEvent({
+        path: `${HOT_UPDATER_BASE_PATH}/events`,
+        headers: new Headers({
+          "content-type": "application/json",
+          "x-api-key": RAW_API_KEY,
+        }),
+        method: "POST",
+        body: JSON.stringify(event),
+      }),
+    );
     const ingestionPayload = (await ingestionResponse.json()) as {
       status?: string;
     };
 
+    expect(unauthorizedIngestionPayload.status).toBe("401");
     expect(ingestionPayload.status).toBe("204");
 
     const protectedPath = `${HOT_UPDATER_BASE_PATH}/api/installations/overview`;
@@ -718,15 +738,9 @@ describe.sequential("aws lambda runtime acceptance", () => {
       status?: string;
     };
 
-    expect(authorizedPayload.status).toBe("200");
-    await expect(readLambdaJson(authorizedPayload)).resolves.toMatchObject({
-      trackedInstallations: 1,
-      bundles: [
-        {
-          bundleId: event.toBundleId,
-          installations: 1,
-        },
-      ],
+    expect(authorizedPayload.status).toBe("401");
+    await expect(readLambdaJson(authorizedPayload)).resolves.toEqual({
+      error: "Unauthorized",
     });
   });
 
@@ -782,7 +796,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
     const lambdaDistDir = path.join(WORKSPACE_ROOT, "plugins/aws/dist/lambda");
     await cp(lambdaDistDir, s3RuntimeDir, { recursive: true });
     const transformedCode = transformEnv(path.join(s3RuntimeDir, "index.cjs"), {
-      API_KEY_SHA256: "",
       CLOUDFRONT_KEY_PAIR_ID,
       DATABASE_TYPE: "s3",
       DYNAMODB_REGION: REGION,

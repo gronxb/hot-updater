@@ -11,6 +11,7 @@ const databaseMocks = vi.hoisted(() => ({
 const managedPluginMocks = vi.hoisted(() => ({
   analytics: vi.fn(() => ({ id: "analytics" })),
   managedBetterAuthPlugin: vi.fn(() => ({ id: "managed-auth" })),
+  managedRoutePolicy: vi.fn(() => ({ id: "managed-policy" })),
 }));
 const serverMocks = vi.hoisted(() => ({ createHotUpdater: vi.fn() }));
 
@@ -36,6 +37,7 @@ vi.mock("@hot-updater/analytics", () => ({
 
 vi.mock("@hot-updater/better-auth/managed", () => ({
   managedBetterAuthPlugin: managedPluginMocks.managedBetterAuthPlugin,
+  managedRoutePolicy: managedPluginMocks.managedRoutePolicy,
 }));
 
 vi.mock("../src/s3Storage", () => ({
@@ -133,7 +135,6 @@ describe("aws lambda entrypoint", () => {
     vi.resetModules();
     vi.clearAllMocks();
     globalThis.HotUpdater = {
-      API_KEY_SHA256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
       CLOUDFRONT_KEY_PAIR_ID: "KTEST",
       DATABASE_TYPE: "s3",
       DYNAMODB_REGION: "us-east-1",
@@ -157,13 +158,18 @@ describe("aws lambda entrypoint", () => {
       tableName: "hot-updater-metadata",
     });
     expect(databaseMocks.s3Database).not.toHaveBeenCalled();
-    expect(managedPluginMocks.managedBetterAuthPlugin).toHaveBeenCalledWith({
-      apiKeySha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
+    expect(managedPluginMocks.managedBetterAuthPlugin).toHaveBeenCalledWith();
+    expect(managedPluginMocks.managedRoutePolicy).toHaveBeenCalledWith({
+      scope: "client",
     });
     expect(managedPluginMocks.analytics).toHaveBeenCalledTimes(1);
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
-        plugins: [{ id: "managed-auth" }, { id: "analytics" }],
+        plugins: [
+          { id: "managed-auth" },
+          { id: "managed-policy" },
+          { id: "analytics" },
+        ],
       }),
     );
   });
@@ -172,6 +178,7 @@ describe("aws lambda entrypoint", () => {
     await import("./index");
 
     expect(managedPluginMocks.managedBetterAuthPlugin).not.toHaveBeenCalled();
+    expect(managedPluginMocks.managedRoutePolicy).not.toHaveBeenCalled();
     expect(managedPluginMocks.analytics).not.toHaveBeenCalled();
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({ plugins: [] }),

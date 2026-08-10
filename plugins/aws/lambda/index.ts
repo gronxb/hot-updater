@@ -1,5 +1,8 @@
 import { analytics } from "@hot-updater/analytics";
-import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
+import {
+  managedBetterAuthPlugin,
+  managedRoutePolicy,
+} from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
@@ -13,7 +16,6 @@ import { withCloudFrontSignedUrl } from "../src/withCloudFrontSignedUrl";
 
 declare global {
   var HotUpdater: {
-    API_KEY_SHA256: string;
     CLOUDFRONT_KEY_PAIR_ID: string;
     DATABASE_TYPE: string;
     DYNAMODB_REGION: string;
@@ -38,7 +40,6 @@ const isCanonicalUpdateRoute = (path: string) => {
 };
 
 const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
-const API_KEY_SHA256 = HotUpdater.API_KEY_SHA256;
 const DATABASE_TYPE = HotUpdater.DATABASE_TYPE;
 const DYNAMODB_REGION = HotUpdater.DYNAMODB_REGION;
 const DYNAMODB_TABLE_NAME = HotUpdater.DYNAMODB_TABLE_NAME;
@@ -101,7 +102,11 @@ const resolveRequestOrigin = (context?: SignedUrlContext) => {
 const database = createManagedDatabase();
 const plugins =
   DATABASE_TYPE === "dynamodb"
-    ? [managedBetterAuthPlugin({ apiKeySha256: API_KEY_SHA256 }), analytics()]
+    ? [
+        managedBetterAuthPlugin(),
+        managedRoutePolicy({ scope: "client" }),
+        analytics(),
+      ]
     : [];
 
 const hotUpdater = createHotUpdater<SignedUrlContext>({
