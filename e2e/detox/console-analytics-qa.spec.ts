@@ -108,6 +108,34 @@ describe("console analytics E2E QA", () => {
     );
   });
 
+  it("ignores a newer event from another parallel shard", async () => {
+    // Given: another shard reports a newer transition for the same bundle.
+    const client = createClient();
+    vi.mocked(client.getBundleAnalytics).mockResolvedValue({
+      recentEvents: {
+        data: [
+          {
+            ...event,
+            fromBundleId: "other-shard-bundle",
+            id: "other-shard-event",
+            receivedAtMs: event.receivedAtMs + 1,
+          },
+          event,
+        ],
+        pagination: { limit: 50, offset: 0, total: 2 },
+      },
+      summary: { installed: 2, recovered: 0 },
+    });
+
+    // When: the current shard's observed transition is verified.
+    const evidence = await verifyConsoleAnalytics(client, [bundleId], {
+      observedEvents: [observedTransition],
+    });
+
+    // Then: the matching event wins even though it is not the latest row.
+    expect(evidence).toMatchObject({ eventId: event.id });
+  });
+
   it("fails when the configured profile does not expose Console analytics", async () => {
     // Given: an E2E profile marked for analytics returns no capability.
     const client = createClient();
