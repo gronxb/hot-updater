@@ -10,7 +10,7 @@ import type {
   DatabaseBundleQueryOptions,
   HotUpdaterContext,
 } from "@hot-updater/plugin-core";
-import semver from "semver";
+import { isGreaterOrEqual, normalize } from "verkit";
 
 import { addRoute, createRouter, findRoute } from "./internalRouter";
 import type { ChannelsResponse, PaginatedResult } from "./types";
@@ -100,10 +100,10 @@ const supportsExplicitNoUpdateResponse = (request: Request) => {
     return false;
   }
 
-  const normalizedSdkVersion = semver.valid(sdkVersion);
+  const normalizedSdkVersion = normalize(sdkVersion);
   return (
     normalizedSdkVersion !== null &&
-    semver.gte(normalizedSdkVersion, EXPLICIT_NO_UPDATE_MIN_SDK_VERSION)
+    isGreaterOrEqual(normalizedSdkVersion, EXPLICIT_NO_UPDATE_MIN_SDK_VERSION)
   );
 };
 

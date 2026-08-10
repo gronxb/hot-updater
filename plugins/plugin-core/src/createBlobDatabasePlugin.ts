@@ -1,5 +1,5 @@
 import { orderBy } from "es-toolkit";
-import semver from "semver";
+import { coerce, normalize, parse } from "verkit";
 
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import { filterCompatibleAppVersions } from "./filterCompatibleAppVersions";
@@ -77,7 +77,7 @@ function removeBundleInternalKeys(bundle: BundleWithUpdateJsonKey): Bundle {
 // while preserving spaces between different semver comparators.
 //
 // For semver ranges with multiple comparators (e.g., ">= 5.7.0 <= 5.7.4"),
-// spaces between the comparators are REQUIRED by npm/semver to parse correctly.
+// spaces between the comparators are required by SemVer range syntax.
 // Without the space, ">=5.7.0<=5.7.4" is invalid semver syntax.
 //
 // This function:
@@ -109,9 +109,7 @@ function isExactVersion(version: string | null | undefined): boolean {
   // Normalize the version first to handle cases with spaces
   const normalized = normalizeTargetAppVersion(version);
   if (!normalized) return false;
-  // semver.valid() returns the cleaned version string if it's a valid exact version
-  // or null if it's not a valid version (includes ranges like x, *, ~, ^)
-  return semver.valid(normalized) !== null;
+  return normalize(normalized) !== null;
 }
 
 /**
@@ -126,24 +124,25 @@ function isExactVersion(version: string | null | undefined): boolean {
 function getSemverNormalizedVersions(version: string): string[] {
   // Normalize the version first to handle cases with spaces
   const normalized = normalizeTargetAppVersion(version) || version;
-  const coerced = semver.coerce(normalized);
+  const coerced = coerce(normalized);
   if (!coerced) {
     return [normalized];
   }
 
+  const { major, minor, patch } = parse(coerced);
   const versions = new Set<string>();
 
   // Always add the full version (1.0.0)
-  versions.add(coerced.version);
+  versions.add(coerced);
 
   // Add "1.0" path if patch is 0
-  if (coerced.patch === 0) {
-    versions.add(`${coerced.major}.${coerced.minor}`);
+  if (patch === 0) {
+    versions.add(`${major}.${minor}`);
   }
 
   // Add "1" path if both minor and patch are 0
-  if (coerced.minor === 0 && coerced.patch === 0) {
-    versions.add(`${coerced.major}`);
+  if (minor === 0 && patch === 0) {
+    versions.add(`${major}`);
   }
 
   return Array.from(versions);

@@ -1,4 +1,4 @@
-import * as semver from "semver";
+import { coerce, isLess, isLessOrEqual, normalize } from "verkit";
 
 export interface UpdateTarget {
   readonly version: string;
@@ -73,7 +73,7 @@ const getRequiredTarget = ({
   hotUpdaterVersion: string;
   targets: readonly UpdateTarget[];
 }) => {
-  const current = semver.coerce(hotUpdaterVersion)?.version;
+  const current = coerce(hotUpdaterVersion);
 
   if (!current) {
     return null;
@@ -82,7 +82,7 @@ const getRequiredTarget = ({
   let requiredTarget: UpdateTarget | null = null;
 
   for (const target of targets) {
-    if (semver.lte(target.version, current)) {
+    if (isLessOrEqual(target.version, current)) {
       requiredTarget = target;
     }
   }
@@ -136,12 +136,12 @@ export function isInfrastructureUpdateRequired({
   serverVersion: string;
   requiredVersion?: string;
 }): boolean {
-  const normalizedServerVersion = semver.valid(serverVersion);
-  const normalizedRequiredVersion = semver.valid(requiredVersion);
+  const normalizedServerVersion = normalize(serverVersion);
+  const normalizedRequiredVersion = normalize(requiredVersion);
 
   if (!normalizedServerVersion || !normalizedRequiredVersion) {
     throw new Error("Invalid infrastructure version");
   }
 
-  return semver.lt(normalizedServerVersion, normalizedRequiredVersion);
+  return isLess(normalizedServerVersion, normalizedRequiredVersion);
 }

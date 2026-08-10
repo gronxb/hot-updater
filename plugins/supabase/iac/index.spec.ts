@@ -858,7 +858,7 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,
-        semver: `npm:semver@${resolvePackageVersion("semver", {
+        verkit: `npm:verkit@${resolvePackageVersion("verkit", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,
       });

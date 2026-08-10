@@ -48,12 +48,11 @@
   "devDependencies": {
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "catalog:",
-    "@types/semver": "^7.5.8",
     "jose": "^6.0.10",
-    "semver": "^7.6.3"
+    "verkit": "0.3.2"
   },
   "inlinedDependencies": {
     "jose": "6.2.3",
-    "semver": "7.8.4"
+    "verkit": "0.3.2"
   }
 }
