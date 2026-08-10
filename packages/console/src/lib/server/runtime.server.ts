@@ -7,6 +7,10 @@ import {
   parseAnalyticsProvider,
   resolveAnalyticsCapability,
 } from "@hot-updater/analytics/internal/provider-capability";
+import {
+  managedAccessKeyStoreCapability,
+  type ManagedAccessKeyStore,
+} from "@hot-updater/better-auth/managed";
 import type { ConfigResponse } from "@hot-updater/cli-tools";
 import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 
@@ -36,6 +40,19 @@ export function createRuntimeHotUpdater(
   return contribution.token.parse(
     Reflect.apply(contribution.create, undefined, []),
   ) as AnalyticsProvider;
+}
+
+export function createManagedAccessKeyStore(
+  config: ConfigResponse,
+): ManagedAccessKeyStore | null {
+  const contribution = getCapabilityContributions(config.database).find(
+    ({ token }) => token.id === managedAccessKeyStoreCapability.id,
+  );
+  if (!contribution) return null;
+
+  return managedAccessKeyStoreCapability.parse(
+    Reflect.apply(contribution.create, undefined, []),
+  );
 }
 
 export const getAnalyticsCapability = async (provider: unknown) => {

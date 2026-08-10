@@ -110,7 +110,8 @@ const provisioning = ${load(`${moduleSpecifier}/managed/provisioning`)};
 if (typeof root.betterAuthPlugin !== "function") throw new Error("missing root plugin");
 if (typeof managed.managedBetterAuthPlugin !== "function") throw new Error("missing managed plugin");
 if (typeof managed.managedRoutePolicy !== "function") throw new Error("missing policy plugin");
-if (typeof provisioning.provisionManagedBetterAuthApiKey !== "function") throw new Error("missing provisioning");`,
+if (typeof provisioning.provisionManagedBetterAuthApiKey !== "function") throw new Error("missing provisioning");
+if (typeof provisioning.createManagedBetterAuthApiKey !== "function") throw new Error("missing key creation");`,
         asModule,
       );
     },
@@ -134,8 +135,10 @@ process.stdout.write(JSON.stringify({ ...result, mode }));`;
       ),
     );
 
-    expect(outputs[0]).toEqual(outputs[1]);
-    expect(outputs[0]?.mode).toBe(0o600);
+    expect(outputs[0]?.apiKey).toBe(outputs[1]?.apiKey);
+    expect(outputs[0]?.sha256).toBe(outputs[1]?.sha256);
+    expect(outputs.map(({ created }) => created).sort()).toEqual([false, true]);
+    expect(outputs.map(({ mode }) => mode)).toEqual([0o600, 0o600]);
   });
 
   it.each([
@@ -153,9 +156,9 @@ process.stdout.write(JSON.stringify({ ...result, mode }));`;
     },
     {
       file: "provisioning-import.mts",
-      source: `import { provisionManagedBetterAuthApiKey, type ProvisionedManagedBetterAuthApiKey } from ${JSON.stringify(
+      source: `import { createManagedBetterAuthApiKey, provisionManagedBetterAuthApiKey, type CreatedManagedBetterAuthApiKey, type ProvisionedManagedBetterAuthApiKey } from ${JSON.stringify(
         `${moduleSpecifier}/managed/provisioning`,
-      )};\nvoid provisionManagedBetterAuthApiKey;\nvoid (undefined as ProvisionedManagedBetterAuthApiKey | undefined);`,
+      )};\nvoid createManagedBetterAuthApiKey;\nvoid provisionManagedBetterAuthApiKey;\nvoid (undefined as CreatedManagedBetterAuthApiKey | ProvisionedManagedBetterAuthApiKey | undefined);`,
     },
   ])("type-checks $file with NodeNext", async ({ file, source }) => {
     const consumer = path.join(packedPackageDirectory, file);
