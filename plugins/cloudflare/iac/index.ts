@@ -22,7 +22,10 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { migrateD1Analytics } from "@hot-updater/cloudflare";
+import {
+  createD1ManagedAccessKeyStore,
+  migrateD1Analytics,
+} from "@hot-updater/cloudflare";
 import { Cloudflare } from "cloudflare";
 
 import { createWrangler } from "../src/utils/createWrangler";
@@ -95,20 +98,20 @@ const deployWorker = async (
   apiToken: string,
   accountId: string,
   {
-    apiKeySha256,
     analyticsApiToken,
     credentialSource,
     d1DatabaseId,
     d1DatabaseName,
+    envFilePath,
     nonInteractive,
     r2BucketName,
     workerName,
   }: {
-    apiKeySha256: string;
     analyticsApiToken: string;
     credentialSource: CloudflareCredentialSource;
     d1DatabaseId: string;
     d1DatabaseName: string;
+    envFilePath: string;
     nonInteractive: boolean;
     r2BucketName: string;
     workerName: string;
@@ -148,7 +151,6 @@ const deployWorker = async (
     const jwtSecret = crypto.randomBytes(32).toString("hex");
 
     wranglerConfig.vars = {
-      API_KEY_SHA256: apiKeySha256,
       JWT_SECRET: jwtSecret,
     };
 
@@ -188,8 +190,24 @@ const deployWorker = async (
       databaseId: d1DatabaseId,
     });
 
+    const accessKey = await provisionManagedBetterAuthApiKey({
+      envFilePath,
+      name: "Default",
+      store: createD1ManagedAccessKeyStore({
+        accountId,
+        cloudflareApiToken: analyticsApiToken,
+        databaseId: d1DatabaseId,
+      }),
+    });
+    if (accessKey.created) {
+      p.note(
+        `HOT_UPDATER_API_KEY=${accessKey.apiKey}`,
+        "Client access key (shown once)",
+      );
+    }
+
     await wrangler("deploy", "--name", workerName);
-    return workerName;
+    return { workerName };
   } catch (error) {
     if (error instanceof Error) {
       throw toCloudflareDeploymentError(error, credentialSource);
@@ -654,8 +672,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseId.envKey]: selectedD1DatabaseId,
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
   });
-  const { sha256: apiKeySha256 } = await provisionManagedBetterAuthApiKey();
-
   const subdomains = await runCloudflareApiRequest({
     request: () =>
       cf.workers.subdomains.get({
@@ -665,11 +681,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   await deployWorker(infrastructureApiToken, accountId, {
-    apiKeySha256,
     analyticsApiToken: apiToken,
     credentialSource: infrastructureCredentialSource,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
+    envFilePath: envFile ?? ".env.hotupdater",
     nonInteractive,
     r2BucketName: selectedBucketName,
     workerName,

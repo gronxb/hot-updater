@@ -58,6 +58,7 @@
   },
   "dependencies": {
     "@better-auth/api-key": "1.6.24",
+    "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "better-auth": "1.6.24"
   },

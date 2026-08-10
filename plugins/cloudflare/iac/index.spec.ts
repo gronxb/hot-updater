@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -64,6 +63,7 @@ const mocks = vi.hoisted(() => {
     credentialApi,
     confirm: vi.fn(),
     confirmInitInputPersistence: vi.fn(),
+    createD1ManagedAccessKeyStore: vi.fn(() => ({ store: "d1" })),
     createWrangler: vi.fn(),
     execa: vi.fn(),
     getWranglerLoginAuthToken: vi.fn(),
@@ -75,6 +75,7 @@ const mocks = vi.hoisted(() => {
       warn: vi.fn(),
     },
     makeEnv: vi.fn(),
+    note: vi.fn(),
     readHotUpdaterInitEnv: vi.fn(),
     provisionManagedBetterAuthApiKey: vi.fn(),
     select: vi.fn(),
@@ -98,6 +99,7 @@ vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
 }));
 
 vi.mock("@hot-updater/cloudflare", () => ({
+  createD1ManagedAccessKeyStore: mocks.createD1ManagedAccessKeyStore,
   migrateD1Analytics: mocks.migrateD1Analytics,
 }));
 
@@ -113,6 +115,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       ...actual.p,
       confirm: mocks.confirm,
       log: mocks.log,
+      note: mocks.note,
       select: mocks.select,
       tasks: vi.fn(async (tasks) => {
         for (const task of tasks) {
@@ -157,6 +160,7 @@ describe("Cloudflare init discovery", () => {
     mocks.migrateD1Analytics.mockResolvedValue({ kind: "created-v2" });
     mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
       apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      created: true,
       sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
     });
     mocks.confirm.mockResolvedValue(true);
@@ -475,7 +479,7 @@ describe("Cloudflare init discovery", () => {
     );
   });
 
-  it("ships a Worker digest accepted by managed authentication", async () => {
+  it("does not ship a reusable API-key digest in Worker variables", async () => {
     const config: unknown = JSON.parse(
       await fs.readFile(
         path.resolve(import.meta.dirname, "../worker/wrangler.json"),
@@ -489,15 +493,8 @@ describe("Cloudflare init discovery", () => {
     if (typeof vars !== "object" || vars === null) {
       throw new Error("Wrangler vars must be an object.");
     }
-    const apiKeySha256 = Reflect.get(vars, "API_KEY_SHA256");
-    if (typeof apiKeySha256 !== "string") {
-      throw new Error("Wrangler API_KEY_SHA256 must be a string.");
-    }
-
-    expect(apiKeySha256).not.toBe(
-      "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
-    );
-    expect(() => managedBetterAuthPlugin({ apiKeySha256 })).not.toThrow();
+    expect(Reflect.has(vars, "API_KEY_SHA256")).toBe(false);
+    expect(Reflect.get(vars, "JWT_SECRET")).toBe("USER_JWT_SECRET");
   });
 
   it("configures and migrates before deploying the Worker", async () => {
@@ -531,6 +528,7 @@ describe("Cloudflare init discovery", () => {
       events.push("provision-api-key");
       return {
         apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        created: true,
         sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
       };
     });
@@ -540,16 +538,31 @@ describe("Cloudflare init discovery", () => {
     );
 
     expect(events).toEqual([
-      "provision-api-key",
       "core-migrations",
       "analytics-migration",
+      "provision-api-key",
       "worker-deploy",
     ]);
     expect(workerConfig).toMatchObject({
       vars: {
-        API_KEY_SHA256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
+        JWT_SECRET: expect.any(String),
       },
     });
+    expect(
+      Reflect.has(
+        Reflect.get(workerConfig as object, "vars") as object,
+        "API_KEY_SHA256",
+      ),
+    ).toBe(false);
+    expect(mocks.provisionManagedBetterAuthApiKey).toHaveBeenCalledWith({
+      envFilePath: ".env.hotupdater",
+      name: "Default",
+      store: { store: "d1" },
+    });
+    expect(mocks.note).toHaveBeenCalledWith(
+      "HOT_UPDATER_API_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "Client access key (shown once)",
+    );
     expect(mocks.migrateD1Analytics).toHaveBeenCalledWith({
       accountId: "account-id",
       cloudflareApiToken: "api-token",

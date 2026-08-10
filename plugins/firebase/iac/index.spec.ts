@@ -11,7 +11,9 @@ const mocks = vi.hoisted(() => ({
   existingProject: false,
   functionsDir: "",
   tmpDir: "",
+  createFirebaseManagedAccessKeyStore: vi.fn(() => ({ store: "firestore" })),
   migrateFirebaseAnalytics: vi.fn(),
+  note: vi.fn(),
   provisionManagedBetterAuthApiKey: vi.fn(),
 }));
 
@@ -20,6 +22,8 @@ vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
 }));
 
 vi.mock("@hot-updater/firebase", () => ({
+  createFirebaseManagedAccessKeyStore:
+    mocks.createFirebaseManagedAccessKeyStore,
   migrateFirebaseAnalytics: mocks.migrateFirebaseAnalytics,
 }));
 
@@ -102,6 +106,7 @@ vi.mock("@hot-updater/cli-tools", async () => {
     }),
     p: {
       ...actual.p,
+      note: mocks.note,
       text: vi.fn(async () => {
         mocks.events.push("credentials");
         return "credentials.json";
@@ -170,6 +175,8 @@ describe("Firebase project creation", () => {
     mocks.provisionManagedBetterAuthApiKey.mockImplementation(async () => {
       mocks.events.push("provision");
       return {
+        apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        created: true,
         sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
       };
     });
@@ -276,10 +283,15 @@ describe("Firebase project creation", () => {
       mocks.events.filter((event) =>
         ["provision", "firestore", "analytics", "functions"].includes(event),
       ),
-    ).toEqual(["provision", "firestore", "analytics", "functions"]);
+    ).toEqual(["firestore", "analytics", "provision", "functions"]);
+    expect(mocks.provisionManagedBetterAuthApiKey).toHaveBeenCalledWith({
+      envFilePath: ".env.hotupdater",
+      name: "Default",
+      store: { store: "firestore" },
+    });
   });
 
-  it("injects the provisioned API key digest into functions", async () => {
+  it("does not inject a reusable API-key digest into functions", async () => {
     // Given
     const provisionedSha256 = "provisioned-api-key-sha256";
     mocks.existingProject = true;
@@ -289,20 +301,25 @@ describe("Firebase project creation", () => {
       HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
     };
     mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
+      apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      created: true,
       sha256: provisionedSha256,
     });
     await fs.writeFile(
       path.join(mocks.functionsDir, "index.cjs"),
-      "module.exports = HotUpdater.API_KEY_SHA256;",
+      "module.exports = HotUpdater.REGION;",
     );
 
     // When
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
     // Then
-    expect(
-      await fs.readFile(path.join(mocks.functionsDir, "index.cjs"), "utf8"),
-    ).toContain(provisionedSha256);
+    const functionsCode = await fs.readFile(
+      path.join(mocks.functionsDir, "index.cjs"),
+      "utf8",
+    );
+    expect(functionsCode).not.toContain(provisionedSha256);
+    expect(functionsCode).toContain("asia-northeast3");
   });
 
   it("cleans up and skips functions deployment when migration fails", async () => {

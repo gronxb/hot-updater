@@ -21,7 +21,9 @@ validated and adopted without rewriting the Core marker or the legacy global
 version, and the Analytics marker is published last.
 
 The Console adds the Analytics overview, bundle activity, and installation
-history experiences, backed by the provider-owned Analytics capability.
+history experiences, backed by the provider-owned Analytics capability. It also
+shows managed client access-key lifecycle controls when a database contributes
+the Better Auth managed key-store capability.
 
 React Native clients can enable automatic OTA transition reporting with
 `HotUpdater.init({ analytics: true })`. App-ready transitions retain stable

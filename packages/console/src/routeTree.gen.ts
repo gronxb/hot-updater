@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as InstallationsRouteImport } from './routes/installations'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as AccessKeysRouteImport } from './routes/access-keys'
 import { Route as IndexRouteImport } from './routes/index'
 
 const InstallationsRoute = InstallationsRouteImport.update({
@@ -23,6 +24,11 @@ const AnalyticsRoute = AnalyticsRouteImport.update({
   path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AccessKeysRoute = AccessKeysRouteImport.update({
+  id: '/access-keys',
+  path: '/access-keys',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,30 +37,34 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/access-keys': typeof AccessKeysRoute
   '/analytics': typeof AnalyticsRoute
   '/installations': typeof InstallationsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/access-keys': typeof AccessKeysRoute
   '/analytics': typeof AnalyticsRoute
   '/installations': typeof InstallationsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/access-keys': typeof AccessKeysRoute
   '/analytics': typeof AnalyticsRoute
   '/installations': typeof InstallationsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/analytics' | '/installations'
+  fullPaths: '/' | '/access-keys' | '/analytics' | '/installations'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/analytics' | '/installations'
-  id: '__root__' | '/' | '/analytics' | '/installations'
+  to: '/' | '/access-keys' | '/analytics' | '/installations'
+  id: '__root__' | '/' | '/access-keys' | '/analytics' | '/installations'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AccessKeysRoute: typeof AccessKeysRoute
   AnalyticsRoute: typeof AnalyticsRoute
   InstallationsRoute: typeof InstallationsRoute
 }
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/access-keys': {
+      id: '/access-keys'
+      path: '/access-keys'
+      fullPath: '/access-keys'
+      preLoaderRoute: typeof AccessKeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AccessKeysRoute: AccessKeysRoute,
   AnalyticsRoute: AnalyticsRoute,
   InstallationsRoute: InstallationsRoute,
 }

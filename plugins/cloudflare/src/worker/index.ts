@@ -8,6 +8,8 @@ import {
   d1WorkerDatabase,
   migrateD1WorkerAnalytics,
 } from "../cloudflareWorkerDatabase";
+
+export { d1WorkerDatabase } from "../cloudflareWorkerDatabase";
 import {
   type CloudflareWorkerStorageConfig,
   type CloudflareWorkerStorageEnv,

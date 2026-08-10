@@ -8,6 +8,7 @@ import { AppSidebar } from "./AppSidebar";
 
 let pathname = "/";
 let analyticsCapability: AnalyticsCapabilityState = { status: "unresolved" };
+let accessKeysSupported = false;
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, to }: { children: ReactNode; to: string }) => (
@@ -22,6 +23,12 @@ vi.mock("@/components/ThemeProvider", () => ({
 
 vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
   useAnalyticsCapability: () => analyticsCapability,
+}));
+
+vi.mock("@/lib/access-keys-api", () => ({
+  useManagedAccessKeyCapabilityQuery: () => ({
+    data: { accessKeys: accessKeysSupported },
+  }),
 }));
 
 vi.mock("@/components/HotUpdaterLogo", () => ({
@@ -75,6 +82,7 @@ describe("AppSidebar analytics navigation", () => {
   afterEach(() => {
     cleanup();
     pathname = "/";
+    accessKeysSupported = false;
   });
 
   it.each(["unresolved", "unsupported", "error"] as const)(
@@ -87,6 +95,31 @@ describe("AppSidebar analytics navigation", () => {
       expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
     },
   );
+
+  it("shows Access keys only when the managed auth store is available", () => {
+    const rendered = renderSidebar(capability("supported"));
+    expect(screen.queryByRole("link", { name: /access keys/i })).toBeNull();
+
+    rendered.unmount();
+    accessKeysSupported = true;
+    renderSidebar(capability("supported"));
+
+    expect(
+      screen.getByRole("link", { name: /access keys/i }).getAttribute("href"),
+    ).toBe("/access-keys");
+  });
+
+  it("marks Access keys active on its route", () => {
+    pathname = "/access-keys";
+    accessKeysSupported = true;
+    renderSidebar(capability("unsupported"));
+
+    expect(
+      screen
+        .getByRole("link", { name: /access keys/i })
+        .parentElement?.getAttribute("data-active"),
+    ).toBe("true");
+  });
 
   it("shows one Analytics destination after support is confirmed", () => {
     renderSidebar(capability("supported"));

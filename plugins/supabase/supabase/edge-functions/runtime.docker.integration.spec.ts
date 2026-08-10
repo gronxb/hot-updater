@@ -13,6 +13,7 @@ import {
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { registerManagedAccessKey } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import {
   type Bundle,
@@ -39,6 +40,7 @@ import {
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
+import { createSupabaseManagedAccessKeyStore } from "../../src/supabaseManagedAccessKeyStore";
 import { supabaseStorage } from "../../src/supabaseStorage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -50,7 +52,6 @@ const HOT_UPDATER_BASE_PATH = "/";
 const LEGACY_HOT_UPDATER_BASE_PATH = "/api/check-update";
 const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const WRONG_API_KEY = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
-const API_KEY_SHA256 = "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
@@ -280,6 +281,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     supabaseAdmin = createClient(gatewayBaseUrl, SERVICE_ROLE_KEY);
     await ensureBucketExists(supabaseAdmin);
+    await registerManagedAccessKey({
+      apiKey: RAW_API_KEY,
+      name: "Runtime test",
+      store: createSupabaseManagedAccessKeyStore({
+        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
+        supabaseUrl: gatewayBaseUrl,
+      }),
+    });
 
     databaseClient = createDatabaseClient(
       supabaseDatabase({
@@ -419,6 +428,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
   ): Promise<UpdateInfo | null> => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
+      { headers: { "x-api-key": RAW_API_KEY } },
     );
 
     if (!response.ok) {
@@ -822,7 +832,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await uploadBundleObject(supabaseAdmin, bundle.id);
     await seedHotUpdater.insertBundle(bundle);
 
-    const response = await fetch(
+    const unauthorized = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath({
         appVersion: "1.0",
         bundleId: NIL_UUID,
@@ -830,7 +840,17 @@ describe.sequential("supabase edge runtime acceptance", () => {
         _updateStrategy: "appVersion",
       })}`,
     );
+    const response = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath({
+        appVersion: "1.0",
+        bundleId: NIL_UUID,
+        platform: "ios",
+        _updateStrategy: "appVersion",
+      })}`,
+      { headers: { "x-api-key": RAW_API_KEY } },
+    );
 
+    expect(unauthorized.status).toBe(401);
     expect(response.ok).toBe(true);
     await expect(response.json()).resolves.toMatchObject({
       id: "00000000-0000-0000-0000-000000000001",
@@ -857,10 +877,32 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
   });
 
-  it("keeps OTA and event ingestion public", async () => {
+  it("keeps version public and requires a client key for OTA and events", async () => {
     const version = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/version`,
       { headers: { "x-api-key": WRONG_API_KEY } },
+    );
+    const wrongEvent = await fetch(
+      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/events`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": WRONG_API_KEY,
+        },
+        body: JSON.stringify({
+          type: "UNCHANGED",
+          installId: "supabase-managed-install",
+          toBundleId: "00000000-0000-0000-0000-000000000001",
+          platform: "ios",
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          updateStrategy: null,
+        }),
+      },
     );
     const event = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/events`,
@@ -868,7 +910,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-api-key": WRONG_API_KEY,
+          "x-api-key": RAW_API_KEY,
         },
         body: JSON.stringify({
           type: "UNCHANGED",
@@ -891,13 +933,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
     if (persisted.error) throw persisted.error;
 
     expect(version.status).toBe(200);
+    expect(wrongEvent.status).toBe(401);
     expect(event.status).toBe(204);
     expect(persisted.data).toEqual([
       { install_id: "supabase-managed-install" },
     ]);
   });
 
-  it("protects only Analytics query routes", async () => {
+  it("does not grant Analytics read access to client keys", async () => {
     const queryPaths = [
       "/api/bundles/bundle-1/events/summary",
       "/api/bundles/bundle-1/events/analytics",
@@ -908,7 +951,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     ];
 
     for (const path of queryPaths) {
-      for (const apiKey of [undefined, WRONG_API_KEY]) {
+      for (const apiKey of [undefined, WRONG_API_KEY, RAW_API_KEY]) {
         const response = await fetch(
           `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${path}`,
           apiKey === undefined
@@ -921,12 +964,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
           error: "Unauthorized",
         });
       }
-
-      const authorized = await fetch(
-        `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${path}`,
-        { headers: { "x-api-key": RAW_API_KEY } },
-      );
-      expect(authorized.status).toBe(200);
     }
   });
 });
@@ -1325,13 +1362,11 @@ const writeSupabaseRuntimeFiles = async ({
       "plugins/supabase/supabase/edge-functions/index.ts",
     ),
     {
-      API_KEY_SHA256,
       FUNCTION_NAME,
     },
   );
   const importMap = {
     imports: {
-      "@better-auth/api-key": "npm:@better-auth/api-key@1.6.24",
       "@hot-updater/analytics": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/analytics/dist/index.mjs"),
       ).href,
@@ -1359,8 +1394,7 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/supabase": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
-      "better-auth": "npm:better-auth@1.6.24",
-      "better-auth/adapters/memory": "npm:better-auth@1.6.24/adapters/memory",
+      "better-auth/plugins/access": "npm:better-auth@1.6.24/plugins/access",
     },
   };
 

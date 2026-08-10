@@ -1,5 +1,8 @@
 import { analytics } from "@hot-updater/analytics";
-import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";
+import {
+  managedBetterAuthPlugin,
+  managedRoutePolicy,
+} from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
@@ -10,7 +13,6 @@ import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
 
 declare global {
   var HotUpdater: {
-    API_KEY_SHA256: string;
     REGION: string;
   };
 }
@@ -34,7 +36,8 @@ if (!storageBucket) {
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase(adminOptions),
   plugins: [
-    managedBetterAuthPlugin({ apiKeySha256: HotUpdater.API_KEY_SHA256 }),
+    managedBetterAuthPlugin(),
+    managedRoutePolicy({ scope: "client" }),
     analytics(),
   ],
   storages: [
