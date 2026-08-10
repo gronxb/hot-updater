@@ -17,7 +17,10 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
-import { migrateFirebaseAnalytics } from "@hot-updater/firebase";
+import {
+  createFirebaseManagedAccessKeyStore,
+  migrateFirebaseAnalytics,
+} from "@hot-updater/firebase";
 import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import admin from "firebase-admin";
@@ -268,10 +271,11 @@ const deployFunctions = async (
   }
 };
 
-const migrateAnalytics = async (
+const migrateAnalyticsAndProvisionAccessKey = async (
   projectId: string,
   applicationCredentials?: string,
-): Promise<void> => {
+  envFilePath = ".env.hotupdater",
+): ReturnType<typeof provisionManagedBetterAuthApiKey> => {
   const app = admin.initializeApp(
     {
       credential: applicationCredentials
@@ -282,7 +286,13 @@ const migrateAnalytics = async (
     "hot-updater-analytics-migration",
   );
   try {
-    await migrateFirebaseAnalytics(admin.firestore(app));
+    const firestore = admin.firestore(app);
+    await migrateFirebaseAnalytics(firestore);
+    return await provisionManagedBetterAuthApiKey({
+      envFilePath,
+      name: "Default",
+      store: createFirebaseManagedAccessKeyStore(firestore),
+    });
   } finally {
     await app.delete();
   }
@@ -427,9 +437,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey
       ],
   });
-  const { sha256: apiKeySha256 } = await provisionManagedBetterAuthApiKey();
   const functionsCode = transformEnv(functionsIndexPath, {
-    API_KEY_SHA256: apiKeySha256,
     REGION: currentRegion,
   });
   await fs.promises.writeFile(functionsIndexPath, functionsCode);
@@ -465,7 +473,17 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   ]);
 
   await deployFirestore(tmpDir, nonInteractive, cliEnv);
-  await migrateAnalytics(initializeVariable.projectId, applicationCredentials);
+  const accessKey = await migrateAnalyticsAndProvisionAccessKey(
+    initializeVariable.projectId,
+    applicationCredentials,
+    envFile ?? ".env.hotupdater",
+  );
+  if (accessKey.created) {
+    p.note(
+      `HOT_UPDATER_API_KEY=${accessKey.apiKey}`,
+      "Client access key (shown once)",
+    );
+  }
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
 
   await p.tasks([

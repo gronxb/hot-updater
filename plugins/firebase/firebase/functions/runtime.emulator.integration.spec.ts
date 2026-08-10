@@ -14,6 +14,7 @@ import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { registerManagedAccessKey } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
 import { createHotUpdater } from "@hot-updater/server";
@@ -34,6 +35,7 @@ import {
 import { migrateFirebaseAnalytics } from "../../src/firebaseAnalyticsMigration";
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
+import { createFirebaseManagedAccessKeyStore } from "../../src/firebaseManagedAccessKeyStore";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,7 +45,6 @@ const FUNCTION_NAME = "hot-updater";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
 const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const WRONG_API_KEY = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
-const API_KEY_SHA256 = "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo";
 const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
   "@hot-updater/firebase",
@@ -233,7 +234,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
           "plugins/firebase/dist/firebase/functions/index.cjs",
         ),
         {
-          API_KEY_SHA256,
           REGION,
         },
       ),
@@ -248,6 +248,14 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       storageBucket,
     };
     await migrateFirebaseAnalytics(admin.firestore(firebaseAdminApp));
+    await registerManagedAccessKey({
+      apiKey: RAW_API_KEY,
+      createdAt: 1,
+      name: "Runtime test",
+      store: createFirebaseManagedAccessKeyStore(
+        admin.firestore(firebaseAdminApp),
+      ),
+    });
 
     seedHotUpdater = createHotUpdater({
       database: firebaseDatabase(adminOptions),
@@ -329,15 +337,37 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
   };
 
-  it("keeps OTA and event ingestion public", async () => {
+  it("keeps version public and requires the client key for event ingestion", async () => {
     const version = await invokeHandler(`${HOT_UPDATER_BASE_PATH}/version`, {
       headers: { "x-api-key": WRONG_API_KEY },
     });
+    const rejectedEvent = await invokeHandler(
+      `${HOT_UPDATER_BASE_PATH}/events`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": WRONG_API_KEY,
+        },
+        body: JSON.stringify({
+          type: "UNCHANGED",
+          installId: "firebase-managed-install",
+          toBundleId: "bundle-1",
+          platform: "ios",
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          updateStrategy: null,
+        }),
+      },
+    );
     const event = await invokeHandler(`${HOT_UPDATER_BASE_PATH}/events`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": WRONG_API_KEY,
+        "x-api-key": RAW_API_KEY,
       },
       body: JSON.stringify({
         type: "UNCHANGED",
@@ -359,6 +389,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       .get();
 
     expect(version.status).toBe(200);
+    expect(rejectedEvent.status).toBe(401);
     expect(event.status).toBe(204);
     expect(persisted.size).toBe(1);
   });
@@ -388,11 +419,11 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         });
       }
 
-      const authorized = await invokeHandler(
+      const clientKeyResponse = await invokeHandler(
         `${HOT_UPDATER_BASE_PATH}${path}`,
         { headers: { "x-api-key": RAW_API_KEY } },
       );
-      expect(authorized.status).toBe(200);
+      expect(clientKeyResponse.status).toBe(401);
     }
   });
 
@@ -410,7 +441,9 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   };
 
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
-    const response = await invokeHandler(createCanonicalPath(args));
+    const response = await invokeHandler(createCanonicalPath(args), {
+      headers: { "x-api-key": RAW_API_KEY },
+    });
 
     return (await response.json()) as any;
   };
@@ -565,6 +598,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         platform: "ios",
         _updateStrategy: "appVersion",
       }),
+      { headers: { "x-api-key": RAW_API_KEY } },
     );
 
     await expect(response.json()).resolves.toMatchObject({

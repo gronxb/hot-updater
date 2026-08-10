@@ -3,6 +3,7 @@ import {
   createBoundedAnalyticsProvider,
   type AnalyticsMigrationResult,
 } from "@hot-updater/analytics/provider";
+import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import {
   createDatabasePlugin,
   type DatabasePlugin,
@@ -13,6 +14,7 @@ import { runD1AnalyticsMigration } from "./d1AnalyticsMigration";
 import { createD1AnalyticsPersistence } from "./d1AnalyticsPersistence";
 import { createD1Implementation } from "./d1Implementation";
 import type { D1Executor } from "./d1Implementation";
+import { createD1ManagedAccessKeyStoreFromExecutor } from "./d1ManagedAccessKeyStore";
 
 export interface D1DatabaseConfig {
   readonly databaseId: string;
@@ -44,15 +46,21 @@ function createD1Executor(config: D1DatabaseConfig): D1Executor {
 
 export const d1Database = (config: D1DatabaseConfig): DatabasePlugin => {
   const executor = createD1Executor(config);
-  return attachAnalyticsProviderCapability(
-    createDatabasePlugin({
-      name: "d1Database",
-      plugin: () => createD1Implementation(executor),
-    }),
-    () =>
-      createBoundedAnalyticsProvider(createD1AnalyticsPersistence(executor)),
+  return attachManagedAccessKeyStore(
+    attachAnalyticsProviderCapability(
+      createDatabasePlugin({
+        name: "d1Database",
+        plugin: () => createD1Implementation(executor),
+      }),
+      () =>
+        createBoundedAnalyticsProvider(createD1AnalyticsPersistence(executor)),
+    ),
+    () => createD1ManagedAccessKeyStoreFromExecutor(executor),
   );
 };
+
+export const createD1ManagedAccessKeyStore = (config: D1DatabaseConfig) =>
+  createD1ManagedAccessKeyStoreFromExecutor(createD1Executor(config));
 
 export const migrateD1Analytics = (
   config: D1DatabaseConfig,

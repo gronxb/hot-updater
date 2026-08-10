@@ -1,4 +1,8 @@
 import {
+  managedAccessKeyStoreCapability,
+  registerManagedAccessKey,
+} from "@hot-updater/better-auth/managed";
+import {
   type AppUpdateInfo,
   getBundlePatches,
   type Bundle,
@@ -6,6 +10,7 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
+import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -21,7 +26,7 @@ import {
   vi,
 } from "vitest";
 
-import { migrateAnalytics } from "../../src/worker";
+import { d1WorkerDatabase, migrateAnalytics } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
@@ -34,7 +39,6 @@ declare module "cloudflare:test" {
   interface ProvidedEnv {
     DB: D1Database;
     BUCKET: R2Bucket;
-    API_KEY_SHA256: string;
     JWT_SECRET: string;
   }
 }
@@ -174,7 +178,30 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       throw new Error("Cloudflare Core schema migration is missing.");
     }
     await env.DB.prepare(coreMigration.sql).run();
+    const accessKeyMigration = inject("d1Migrations").find(
+      ({ name }) => name === "0007_hot-updater_managed_access_keys.sql",
+    );
+    if (accessKeyMigration === undefined) {
+      throw new Error("Cloudflare managed access-key migration is missing.");
+    }
+    await env.DB.prepare(accessKeyMigration.sql).run();
     await migrateAnalytics();
+    const database = d1WorkerDatabase(env.DB);
+    const contribution = getCapabilityContributions(database).find(
+      ({ token }) => token.id === managedAccessKeyStoreCapability.id,
+    );
+    if (contribution === undefined) {
+      throw new Error("Cloudflare managed access-key store is missing.");
+    }
+    const store = managedAccessKeyStoreCapability.parse(
+      Reflect.apply(contribution.create, undefined, []),
+    );
+    await registerManagedAccessKey({
+      apiKey: RAW_API_KEY,
+      createdAt: 1,
+      name: "Runtime test",
+      store,
+    });
   });
 
   beforeEach(async () => {
@@ -185,7 +212,9 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
 
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${createCanonicalPath(args)}`),
+      new Request(`${PUBLIC_BASE_URL}${createCanonicalPath(args)}`, {
+        headers: { "x-api-key": RAW_API_KEY },
+      }),
       env,
     );
 
@@ -342,6 +371,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
           platform: "ios",
           _updateStrategy: "appVersion",
         })}`,
+        { headers: { "x-api-key": RAW_API_KEY } },
       ),
       env,
     );
@@ -376,10 +406,32 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     });
   });
 
-  it("keeps OTA and event ingestion public", async () => {
+  it("keeps version public and requires the client key for event ingestion", async () => {
     const version = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/version`, {
         headers: { "x-api-key": WRONG_API_KEY },
+      }),
+      env,
+    );
+    const rejectedEvent = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": WRONG_API_KEY,
+        },
+        body: JSON.stringify({
+          type: "UNCHANGED",
+          installId: "cloudflare-managed-install",
+          toBundleId: "bundle-1",
+          platform: "ios",
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          updateStrategy: null,
+        }),
       }),
       env,
     );
@@ -388,7 +440,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-api-key": WRONG_API_KEY,
+          "x-api-key": RAW_API_KEY,
         },
         body: JSON.stringify({
           type: "UNCHANGED",
@@ -412,6 +464,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       .first<{ install_id: string }>();
 
     expect(version.status).toBe(200);
+    expect(rejectedEvent.status).toBe(401);
     expect(event.status).toBe(204);
     expect(persisted).toEqual({
       install_id: "cloudflare-managed-install",
@@ -447,13 +500,13 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
         });
       }
 
-      const authorized = await worker.fetch(
+      const clientKeyResponse = await worker.fetch(
         new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}${path}`, {
           headers: { "x-api-key": RAW_API_KEY },
         }),
         env,
       );
-      expect(authorized.status).toBe(200);
+      expect(clientKeyResponse.status).toBe(401);
     }
   });
 });

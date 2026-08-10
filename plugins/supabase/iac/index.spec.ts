@@ -867,8 +867,6 @@ describe("Supabase database password failures", () => {
 });
 
 describe("Supabase managed deployment", () => {
-  const provisionedApiKeySha256 = "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo";
-
   const configureRunInit = async (
     options: { readonly failDatabasePush?: boolean } = {},
   ) => {
@@ -888,7 +886,7 @@ describe("Supabase managed deployment", () => {
     );
     await fs.writeFile(
       path.join(tmpDir, "supabase", "edge-functions", "index.ts"),
-      "export default { digest: HotUpdater.API_KEY_SHA256, name: HotUpdater.FUNCTION_NAME };\n",
+      "export default { name: HotUpdater.FUNCTION_NAME };\n",
     );
 
     const inputEnv = {
@@ -915,7 +913,8 @@ describe("Supabase managed deployment", () => {
       events.push("provision-api-key");
       return {
         apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        sha256: provisionedApiKeySha256,
+        created: true,
+        sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
       };
     });
     mockSupabaseApiResult.listBuckets.mockResolvedValue([
@@ -976,42 +975,49 @@ describe("Supabase managed deployment", () => {
     vi.restoreAllMocks();
   });
 
-  it("provisions auth before database migration and runtime deployment", async () => {
+  it("migrates before provisioning auth and deploying the runtime", async () => {
     const { events, removeTmpDir, tmpDir } = await configureRunInit();
 
     try {
       await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
       expect(events).toEqual([
-        "provision-api-key",
         "link-project",
         "push-database",
+        "provision-api-key",
         "deploy-edge-function",
       ]);
+      expect(mockProvisionManagedBetterAuthApiKey).toHaveBeenCalledWith({
+        envFilePath: ".env.hotupdater",
+        name: "Default",
+        store: expect.objectContaining({
+          create: expect.any(Function),
+          findByHash: expect.any(Function),
+          list: expect.any(Function),
+          revoke: expect.any(Function),
+        }),
+      });
+      expect(mockCli.p.note).toHaveBeenCalledWith(
+        "HOT_UPDATER_API_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "Client access key (shown once)",
+      );
       expect(removeTmpDir).toHaveBeenCalledOnce();
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it("injects the provisioned auth digest into the edge function", async () => {
+  it("does not inject an access-key digest into the edge function", async () => {
     const { tmpDir } = await configureRunInit();
 
     try {
       await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
-      await expect(
-        fs.readFile(
-          path.join(
-            tmpDir,
-            "supabase",
-            "functions",
-            "update-server",
-            "index.ts",
-          ),
-          "utf8",
-        ),
-      ).resolves.toContain(provisionedApiKeySha256);
+      const runtime = await fs.readFile(
+        path.join(tmpDir, "supabase", "functions", "update-server", "index.ts"),
+        "utf8",
+      );
+      expect(runtime).not.toContain("API_KEY_SHA256");
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
@@ -1029,11 +1035,8 @@ describe("Supabase managed deployment", () => {
         runInit({ build: "bare", envFile: ".env.hotupdater" }),
       ).rejects.toThrow("process.exit(1)");
 
-      expect(events).toEqual([
-        "provision-api-key",
-        "link-project",
-        "push-database",
-      ]);
+      expect(events).toEqual(["link-project", "push-database"]);
+      expect(mockProvisionManagedBetterAuthApiKey).not.toHaveBeenCalled();
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
@@ -1069,10 +1072,6 @@ describe("resolveEdgeFunctionDenoConfig", () => {
       const result = await resolveEdgeFunctionDenoConfig(targetDir);
 
       expect(result.imports).toEqual({
-        "@better-auth/api-key": `npm:@better-auth/api-key@${resolvePackageVersion(
-          "@better-auth/api-key",
-          { searchFrom: path.resolve("packages/better-auth") },
-        )}`,
         "@hot-updater/analytics":
           "./_hot-updater/hot-updater-analytics/dist/index.mjs",
         "@hot-updater/analytics/internal/provider-capability":
@@ -1099,13 +1098,10 @@ describe("resolveEdgeFunctionDenoConfig", () => {
             searchFrom: path.resolve("plugins/supabase"),
           },
         )}`,
-        "better-auth": `npm:better-auth@${resolvePackageVersion("better-auth", {
-          searchFrom: path.resolve("packages/better-auth"),
-        })}`,
-        "better-auth/adapters/memory": `npm:better-auth@${resolvePackageVersion(
+        "better-auth/plugins/access": `npm:better-auth@${resolvePackageVersion(
           "better-auth",
           { searchFrom: path.resolve("packages/better-auth") },
-        )}/adapters/memory`,
+        )}/plugins/access`,
         mime: `npm:mime@${resolvePackageVersion("mime", {
           searchFrom: path.resolve("plugins/plugin-core"),
         })}`,

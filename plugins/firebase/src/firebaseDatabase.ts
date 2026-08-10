@@ -1,5 +1,6 @@
 import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
 import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
+import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import {
   createDatabasePlugin,
   type DatabasePlugin,
@@ -27,6 +28,7 @@ import {
   createFirebaseDatabaseState,
 } from "./firebaseDatabaseState";
 import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
+import { createFirebaseManagedAccessKeyStore } from "./firebaseManagedAccessKeyStore";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -158,11 +160,14 @@ export function firebaseDatabase(config: admin.AppOptions): DatabasePlugin {
       };
     },
   });
-  return attachAnalyticsProviderCapability(database, () =>
-    createBoundedAnalyticsProvider(
-      createFirebaseAnalyticsPersistence(
-        getFirestore().collection("bundle_events"),
+  return attachManagedAccessKeyStore(
+    attachAnalyticsProviderCapability(database, () =>
+      createBoundedAnalyticsProvider(
+        createFirebaseAnalyticsPersistence(
+          getFirestore().collection("bundle_events"),
+        ),
       ),
     ),
+    () => createFirebaseManagedAccessKeyStore(getFirestore()),
   );
 }

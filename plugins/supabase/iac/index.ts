@@ -25,6 +25,7 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import { createSupabaseManagedAccessKeyStore } from "@hot-updater/supabase";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
@@ -610,12 +611,10 @@ const deployEdgeFunction = async (
   workdir: string,
   projectId: string,
   functionName: string,
-  apiKeySha256: string,
 ) => {
   const edgeFunctionsLibPath = path.join(workdir, "supabase", "edge-functions");
   const edgeFunctionsCodePath = path.join(edgeFunctionsLibPath, "index.ts");
   const edgeFunctionsCode = transformEnv(edgeFunctionsCodePath, {
-    API_KEY_SHA256: apiKeySha256,
     FUNCTION_NAME: functionName,
   });
 
@@ -940,7 +939,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     [SUPABASE_INIT_PROVIDER.inputs.bucketName.envKey]: bucket.name,
     HOT_UPDATER_SUPABASE_URL: `https://${project.id}.supabase.co`,
   });
-  const { sha256: apiKeySha256 } = await provisionManagedBetterAuthApiKey();
   const scaffoldLibPath = path.dirname(
     path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
   );
@@ -972,13 +970,21 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   await pushDB(tmpDir, { accessToken, dbPassword });
-  await deployEdgeFunction(
-    accessToken,
-    tmpDir,
-    project.id,
-    functionName,
-    apiKeySha256,
-  );
+  const accessKey = await provisionManagedBetterAuthApiKey({
+    envFilePath: envFile ?? ".env.hotupdater",
+    name: "Default",
+    store: createSupabaseManagedAccessKeyStore({
+      supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
+      supabaseUrl: `https://${project.id}.supabase.co`,
+    }),
+  });
+  if (accessKey.created) {
+    p.note(
+      `HOT_UPDATER_API_KEY=${accessKey.apiKey}`,
+      "Client access key (shown once)",
+    );
+  }
+  await deployEdgeFunction(accessToken, tmpDir, project.id, functionName);
 
   await removeTmpDir();
 
