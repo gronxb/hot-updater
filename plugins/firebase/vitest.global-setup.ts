@@ -4,7 +4,8 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import admin from "firebase-admin";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 import fkill from "fkill";
 
 const PROJECT_ID_PREFIX = "hot-updater-test";
@@ -284,14 +285,8 @@ export async function setup() {
   process.env.FIREBASE_STORAGE_EMULATOR_HOST = storageHost;
   process.env.GCLOUD_PROJECT = projectId;
 
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      projectId,
-      storageBucket,
-    });
-  }
-
-  const firestore = admin.firestore();
+  const app = getApps()[0] ?? initializeApp({ projectId, storageBucket });
+  const firestore = getFirestore(app);
   firestore.settings({
     host: emulatorHost,
     ssl: false,

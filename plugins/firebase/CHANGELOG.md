@@ -10,6 +10,18 @@
   the legacy fields, and record database adapter version 2. This migration is
   forward-only; back up Firestore before upgrading.
 
+## 0.35.12
+
+### Patch Changes
+
+- fd30452: Support firebase-admin v14 by using the modular Admin SDK APIs.
+- Updated dependencies [fd30452]
+- Updated dependencies [6e8b32e]
+  - @hot-updater/cli-tools@0.35.12
+  - @hot-updater/plugin-core@0.35.12
+  - @hot-updater/server@0.35.12
+  - @hot-updater/core@0.35.12
+
 ## 0.35.11
 
 ### Patch Changes

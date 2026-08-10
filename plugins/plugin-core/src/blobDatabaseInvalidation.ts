@@ -1,4 +1,4 @@
-import semver from "semver";
+import { coerce, normalize, parse } from "verkit";
 
 import {
   assertBlobUpdateRouteSegment,
@@ -14,12 +14,13 @@ const exactVersionPaths = (
   version: string,
 ): readonly string[] => {
   const normalized = normalizeBlobTargetAppVersion(version);
-  if (semver.valid(normalized) === null) {
+  if (normalize(normalized) === null) {
     return [`${apiBasePath}/app-version/${bundle.platform}/*`];
   }
-  const parsed = semver.coerce(normalized);
-  if (!parsed) return [`${apiBasePath}/app-version/${bundle.platform}/*`];
-  const versions = new Set([parsed.version]);
+  const coerced = coerce(normalized);
+  if (!coerced) return [`${apiBasePath}/app-version/${bundle.platform}/*`];
+  const parsed = parse(coerced);
+  const versions = new Set([coerced]);
   if (parsed.patch === 0) versions.add(`${parsed.major}.${parsed.minor}`);
   if (parsed.minor === 0 && parsed.patch === 0) {
     versions.add(`${parsed.major}`);

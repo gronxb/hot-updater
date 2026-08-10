@@ -1,5 +1,5 @@
 import type { Platform } from "@hot-updater/plugin-core";
-import semverValid from "semver/ranges/valid";
+import { normalizeRange } from "verkit";
 
 import { getAndroidVersion } from "@/utils/version/getAndroidVersion";
 import { getIOSVersion } from "@/utils/version/getIOSVersion";
@@ -20,7 +20,8 @@ export const getDefaultTargetAppVersion = async (
 
   if (!version) return null;
 
-  const isAcceptableFormat = /^\d+\.\d+$/.test(version) || semverValid(version);
+  const isAcceptableFormat =
+    /^\d+\.\d+$/.test(version) || normalizeRange(version);
   if (!isAcceptableFormat) return null;
 
   // If version only has one dot (e.g. 1.0), append .x

@@ -1,13 +1,13 @@
-import semver from "semver";
+import { coerce, satisfies } from "verkit";
 
 export const semverSatisfies = (
   targetAppVersion: string,
   currentVersion: string,
 ) => {
-  const currentCoerce = semver.coerce(currentVersion);
+  const currentCoerce = coerce(currentVersion);
   if (!currentCoerce) {
     return false;
   }
 
-  return semver.satisfies(currentCoerce.version, targetAppVersion);
+  return satisfies(currentCoerce, targetAppVersion);
 };
