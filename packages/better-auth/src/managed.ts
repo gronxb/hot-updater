@@ -13,6 +13,7 @@ import {
 export * from "./managed/accessKeys";
 
 export type ManagedBetterAuthPluginOptions = {
+  readonly managementBearerToken?: string;
   readonly store?: ManagedAccessKeyStore;
 };
 
@@ -50,10 +51,25 @@ const permissionForRoute = (
   return null;
 };
 
-const createManagedAuthentication = (store: ManagedAccessKeyStore) =>
+const createManagedAuthentication = (
+  store: ManagedAccessKeyStore,
+  managementBearerToken?: string,
+) =>
   Object.freeze({
     id: "better-auth-managed-access-key",
     async authenticate(input: HotUpdaterAuthenticationInput) {
+      if (
+        managementBearerToken !== undefined &&
+        input.headers.get("authorization") === `Bearer ${managementBearerToken}`
+      ) {
+        return Object.freeze({
+          kind: "authenticated" as const,
+          principal: Object.freeze({
+            issuer: "hot-updater-managed",
+            subject: "management-token",
+          }),
+        });
+      }
       const permission = permissionForRoute(input.route.id);
       if (permission === null)
         return Object.freeze({ kind: "anonymous" as const });
@@ -91,9 +107,21 @@ export const managedBetterAuthPlugin = (
     typeof options !== "object" ||
     options === null ||
     Array.isArray(options) ||
-    Reflect.ownKeys(options).some((key) => key !== "store")
+    Reflect.ownKeys(options).some(
+      (key) => key !== "managementBearerToken" && key !== "store",
+    )
   ) {
     throw new TypeError("Managed Better Auth options must be an object.");
+  }
+  const managementBearerToken = options.managementBearerToken;
+  if (
+    managementBearerToken !== undefined &&
+    (typeof managementBearerToken !== "string" ||
+      managementBearerToken.length === 0)
+  ) {
+    throw new TypeError(
+      "Managed Better Auth managementBearerToken must be a non-empty string.",
+    );
   }
   const configuredStore =
     options.store === undefined
@@ -109,6 +137,7 @@ export const managedBetterAuthPlugin = (
       authentication: createManagedAuthentication(
         configuredStore ??
           capabilities.require(managedAccessKeyStoreCapability),
+        managementBearerToken,
       ),
     }),
   });
