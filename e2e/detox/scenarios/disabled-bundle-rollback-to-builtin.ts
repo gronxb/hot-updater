@@ -68,7 +68,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert current bundle launch status",
         "launch-status-result",
-        "Current Launch Status: STABLE",
+        "Current Launch Status: UNCHANGED",
       );
       await app.control(
         "assert current bundle active",
@@ -109,7 +109,7 @@ export const disabledBundleRollbackToBuiltinScenario: DetoxScenarioDefinition =
       await app.assertText(
         "assert rollback launch status",
         "launch-status-result",
-        "Current Launch Status: STABLE",
+        "Current Launch Status: UNCHANGED",
       );
       await app.assertText(
         "assert no crashed bundle",

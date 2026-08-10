@@ -59,7 +59,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert archive base stable launch",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      "Current Launch Status: UNCHANGED",
     );
     await app.control(
       "deploy diff bundle",
@@ -128,7 +128,7 @@ export const bspatchArchiveToDiffOtaScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert archive diff stable launch",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      "Current Launch Status: UNCHANGED",
     );
   },
 };
