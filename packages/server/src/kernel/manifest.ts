@@ -1,8 +1,10 @@
 import type {
   CapabilityToken,
   DatabaseCapabilityRuntime,
+  UniversalComponentSchema,
 } from "@hot-updater/plugin-core";
 
+import type { HotUpdaterPluginComponents } from "./componentRegistry";
 import type {
   HotUpdaterAuthenticationProvider,
   HotUpdaterRoutePolicy,
@@ -23,6 +25,7 @@ export interface HotUpdaterPluginCapabilities {
 
 export type HotUpdaterPluginSetupContext = {
   readonly capabilities: HotUpdaterPluginCapabilities;
+  readonly components: HotUpdaterPluginComponents;
   readonly database: DatabaseCapabilityRuntime;
 };
 
@@ -35,12 +38,14 @@ export type HotUpdaterPluginContribution = {
 export interface FirstPartyServerPlugin extends HotUpdaterServerPlugin {
   readonly id: string;
   readonly requires: readonly HotUpdaterCapabilityRequirement[];
+  readonly schema?: UniversalComponentSchema;
   readonly setup: (context: HotUpdaterPluginSetupContext) => unknown;
 }
 
 export type FirstPartyServerPluginDefinition = {
   readonly id: string;
   readonly requires?: readonly HotUpdaterCapabilityRequirement[];
+  readonly schema?: UniversalComponentSchema;
   readonly setup: (
     context: HotUpdaterPluginSetupContext,
   ) => HotUpdaterPluginContribution;
@@ -74,6 +79,9 @@ const createPluginAuthority = () => {
         [serverPluginBrand]: undefined,
         id: definition.id,
         requires,
+        ...(definition.schema === undefined
+          ? {}
+          : { schema: definition.schema }),
         setup: definition.setup,
       });
       plugins.add(plugin);

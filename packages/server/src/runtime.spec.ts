@@ -1,8 +1,11 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   attachCapabilityContribution,
+  attachUniversalComponentDataAdapter,
   createDatabaseClient,
   defineCapability,
+  defineUniversalComponentSchema,
+  type UniversalComponentDataAdapter,
   type DatabasePlugin,
   type RuntimeStoragePlugin,
   type RuntimeStorageProfile,
@@ -11,6 +14,7 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import packageJson from "../package.json" with { type: "json" };
+import { getHotUpdaterCoreMetadata } from "./createHotUpdaterCore";
 import { createHotUpdater } from "./index";
 import type {
   CreateHotUpdaterOptions,
@@ -471,5 +475,86 @@ describe("runtime createHotUpdater", () => {
     await expect(response.json()).resolves.toEqual({
       label: "database-provider",
     });
+  });
+
+  it("exposes bound component data through maintenance metadata", () => {
+    const schema = defineUniversalComponentSchema({
+      id: "audit-log",
+      versions: [
+        {
+          version: "1",
+          tables: [
+            {
+              columns: [
+                { name: "id", primaryKey: true, type: "string" },
+                { name: "occurred_at_ms", type: "float" },
+              ],
+              name: "audit_records",
+            },
+          ],
+          orderedScans: [
+            {
+              columns: ["occurred_at_ms", "id"],
+              name: "chronological",
+              table: "audit_records",
+            },
+          ],
+        },
+      ],
+    });
+    const source = {
+      schema,
+      append: async () => undefined,
+      assertReady: async () => undefined,
+      orderedScan: async () => [],
+    };
+    const migrate = vi.fn(async () => ({ changed: true, version: "1" }));
+    const artifacts = vi.fn(() => []);
+    const adapter: UniversalComponentDataAdapter = {
+      artifacts,
+      bind: () => source,
+      migrate,
+    };
+    const database = attachUniversalComponentDataAdapter(
+      createRuntimeDatabase(),
+      () => adapter,
+    );
+    const plugin = defineFirstPartyServerPlugin({
+      id: "audit-log",
+      schema,
+      setup: () => ({}),
+    });
+
+    const hotUpdater = createHotUpdater({ database, plugins: [plugin] });
+    const metadata = getHotUpdaterCoreMetadata(hotUpdater);
+
+    expect(metadata?.components?.schemas).toEqual([schema]);
+    expect(metadata?.components?.sources).toEqual([source]);
+    expect(metadata?.universalComponentDataAdapter).toBe(adapter);
+    expect(migrate).not.toHaveBeenCalled();
+    expect(artifacts).not.toHaveBeenCalled();
+  });
+
+  it("does not materialize component data without a schema declaration", () => {
+    const createAdapter = vi.fn<() => UniversalComponentDataAdapter>(() => ({
+      bind() {
+        throw new Error("unused");
+      },
+    }));
+    const database = attachUniversalComponentDataAdapter(
+      createRuntimeDatabase(),
+      createAdapter,
+    );
+    const plugin = defineFirstPartyServerPlugin({
+      id: "schema-free",
+      setup: () => ({}),
+    });
+
+    const hotUpdater = createHotUpdater({ database, plugins: [plugin] });
+    const metadata = getHotUpdaterCoreMetadata(hotUpdater);
+
+    expect(metadata?.components).toBeUndefined();
+    expect(metadata?.universalComponentDataAdapter).toBeUndefined();
+    expect(createAdapter).not.toHaveBeenCalled();
   });
 });
