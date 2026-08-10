@@ -78,7 +78,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert runtime channel launch status",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      "Current Launch Status: UNCHANGED",
     );
     await app.assertText(
       "assert runtime channel switched current",
@@ -115,7 +115,7 @@ export const runtimeChannelSwitchResetScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert reset launch status",
       "launch-status-result",
-      "Current Launch Status: STABLE",
+      "Current Launch Status: UNCHANGED",
     );
     await app.assertText(
       "assert reset current channel",
