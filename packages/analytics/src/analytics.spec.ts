@@ -1,4 +1,8 @@
-import type { DatabaseCapabilityRuntime } from "@hot-updater/plugin-core";
+import type {
+  DatabaseCapabilityRuntime,
+  UniversalComponentDataSource,
+  UniversalComponentSchema,
+} from "@hot-updater/plugin-core";
 import type {
   HotUpdaterPluginSetupContext,
   HotUpdaterRouteContext,
@@ -6,8 +10,11 @@ import type {
 } from "@hot-updater/server/internal/first-party-plugin";
 import { describe, expect, it, vi } from "vitest";
 
-import { analytics, ANALYTICS_EVENT_BODY_MAX_BYTES } from "./index";
-import { analyticsProviderCapability } from "./internal/provider-capability";
+import {
+  analytics,
+  analyticsComponentSchema,
+  ANALYTICS_EVENT_BODY_MAX_BYTES,
+} from "./index";
 import {
   AnalyticsScanLimitExceededError,
   AnalyticsSchemaNotReadyError,
@@ -67,20 +74,26 @@ const database: DatabaseCapabilityRuntime = {
 };
 
 function setupContext(
-  capabilityProvider?: AnalyticsProvider,
+  componentSource?: UniversalComponentDataSource,
 ): HotUpdaterPluginSetupContext {
+  const getComponent = (schema: UniversalComponentSchema) =>
+    schema === analyticsComponentSchema ? componentSource : undefined;
   return {
     database,
     capabilities: {
-      get(token) {
-        return capabilityProvider === undefined
-          ? undefined
-          : token.parse(capabilityProvider);
+      get() {
+        return undefined;
       },
-      require(token) {
-        const value = this.get(token);
-        if (value === undefined) throw new TypeError("missing test capability");
-        return value;
+      require() {
+        throw new TypeError("missing test capability");
+      },
+    },
+    components: {
+      get: getComponent,
+      require(schema) {
+        const source = getComponent(schema);
+        if (source === undefined) throw new TypeError("missing test component");
+        return source;
       },
     },
   };
@@ -109,7 +122,7 @@ function routesFor(
     provider: routeProvider,
     ...(queryAccess === undefined ? {} : { queryAccess }),
   });
-  const result = plugin.setup(setupContext(routeProvider));
+  const result = plugin.setup(setupContext());
   if (typeof result !== "object" || result === null) {
     throw new TypeError("invalid Analytics contribution");
   }
@@ -121,16 +134,34 @@ function routesFor(
 }
 
 describe("analytics", () => {
-  it("requires the Analytics capability only when no provider is explicit", () => {
-    expect(analytics().requires).toEqual([
-      { missing: "error", token: analyticsProviderCapability },
-    ]);
+  it("declares component data only when no provider is explicit", () => {
+    expect(analytics().schema).toBe(analyticsComponentSchema);
+    expect(analytics().requires).toEqual([]);
+    expect(analytics({ provider }).schema).toBeUndefined();
     expect(analytics({ provider }).requires).toEqual([]);
   });
 
-  it("does not fall back to the Core database when Analytics capability is missing", () => {
+  it("requires its canonical component source for the default provider", () => {
     expect(() => analytics().setup(setupContext())).toThrow(
-      "missing test capability",
+      "missing test component",
+    );
+  });
+
+  it("constructs the default provider from its canonical component source", () => {
+    const source: UniversalComponentDataSource = {
+      schema: analyticsComponentSchema,
+      append: async () => undefined,
+      assertReady: async () => undefined,
+      orderedScan: async () => [],
+    };
+    const contribution = analytics().setup(setupContext(source));
+
+    expect(contribution).toEqual(
+      expect.objectContaining({
+        routes: expect.arrayContaining([
+          expect.objectContaining({ id: "analytics.appendBundleEvent" }),
+        ]),
+      }),
     );
   });
 

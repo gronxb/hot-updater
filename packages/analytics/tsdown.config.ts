@@ -6,7 +6,6 @@ export default defineConfig([
       "src/index.ts",
       "src/adapters/kysely.ts",
       "src/adapters/mongodb.ts",
-      "src/internal/provider-capability.ts",
       "src/provider/index.ts",
     ],
     format: ["esm", "cjs"],
@@ -45,16 +44,6 @@ export default defineConfig([
           require: {
             types: "./dist/adapters/mongodb.d.cts",
             default: "./dist/adapters/mongodb.cjs",
-          },
-        },
-        "./internal/provider-capability": {
-          import: {
-            types: "./dist/internal/provider-capability.d.mts",
-            default: "./dist/internal/provider-capability.mjs",
-          },
-          require: {
-            types: "./dist/internal/provider-capability.d.cts",
-            default: "./dist/internal/provider-capability.cjs",
           },
         },
         "./provider": {

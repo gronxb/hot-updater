@@ -63,6 +63,8 @@ export {
   InvalidBundleEventPersistenceRowError,
   parseBundleEventPersistenceRow,
 } from "./rowParser.js";
+export { createUniversalComponentAnalyticsPersistence } from "./universalComponentPersistence.js";
+export { createUniversalComponentAnalyticsProvider } from "./universalComponentProvider.js";
 export {
   ANALYTICS_PHYSICAL_SCHEMA_V1,
   ANALYTICS_PHYSICAL_SCHEMA_V2,

@@ -1,33 +1,92 @@
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  attachUniversalComponentDataAdapter,
+  createDatabasePlugin,
+  UniversalComponentDataStateNotReadyError,
+  UniversalComponentSchemaNotReadyError,
+} from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { analytics } from "./analytics";
+import { analyticsComponentSchema } from "./componentSchema";
 import type { AnalyticsProvider } from "./provider";
 
-const database = createDatabasePlugin({
-  name: "analytics-kernel-test",
-  plugin: () => ({
-    async create() {
-      throw new TypeError("core database is outside this scenario");
-    },
-    async update() {
-      throw new TypeError("core database is outside this scenario");
-    },
-    async delete() {
-      throw new TypeError("core database is outside this scenario");
-    },
-    async count() {
-      throw new TypeError("core database is outside this scenario");
-    },
-    async findOne() {
-      throw new TypeError("core database is outside this scenario");
-    },
-    async findMany() {
-      throw new TypeError("core database is outside this scenario");
+const createTestDatabase = () =>
+  createDatabasePlugin({
+    name: "analytics-kernel-test",
+    plugin: () => ({
+      async create() {
+        throw new TypeError("core database is outside this scenario");
+      },
+      async update() {
+        throw new TypeError("core database is outside this scenario");
+      },
+      async delete() {
+        throw new TypeError("core database is outside this scenario");
+      },
+      async count() {
+        throw new TypeError("core database is outside this scenario");
+      },
+      async findOne() {
+        throw new TypeError("core database is outside this scenario");
+      },
+      async findMany() {
+        throw new TypeError("core database is outside this scenario");
+      },
+    }),
+  });
+
+const database = createTestDatabase();
+const assertComponentReady = vi.fn(async () => undefined);
+const appendComponentRow = vi.fn(async () => {
+  await assertComponentReady();
+});
+const componentDatabase = attachUniversalComponentDataAdapter(
+  createTestDatabase(),
+  () => ({
+    bind(schema) {
+      if (schema !== analyticsComponentSchema) {
+        throw new TypeError("unexpected component schema");
+      }
+      return {
+        schema,
+        append: appendComponentRow,
+        assertReady: assertComponentReady,
+        orderedScan: async () => {
+          await assertComponentReady();
+          return [];
+        },
+      };
     },
   }),
-});
+);
+const notReadyComponentDatabase = attachUniversalComponentDataAdapter(
+  createTestDatabase(),
+  () => ({
+    bind(schema) {
+      const markerNotReady = (): never => {
+        throw new UniversalComponentSchemaNotReadyError(
+          analyticsComponentSchema.id,
+          "2",
+          "1",
+        );
+      };
+      const dataNotReady = (): never => {
+        throw new UniversalComponentDataStateNotReadyError(
+          analyticsComponentSchema.id,
+          "2",
+          "stored-data",
+        );
+      };
+      return {
+        schema,
+        append: async () => markerNotReady(),
+        assertReady: async () => dataNotReady(),
+        orderedScan: async () => dataNotReady(),
+      };
+    },
+  }),
+);
 
 const appendBundleEvent = vi.fn(async () => undefined);
 
@@ -73,6 +132,90 @@ const provider = Object.freeze({
 } satisfies AnalyticsProvider);
 
 describe("Analytics plugin through createHotUpdater", () => {
+  it("uses the database's neutral component source by default", async () => {
+    appendComponentRow.mockClear();
+    assertComponentReady.mockClear();
+    const hotUpdater = createHotUpdater({
+      database: componentDatabase,
+      plugins: [analytics({ queryAccess: "public" })],
+    });
+
+    const response = await hotUpdater.handler(
+      new Request("https://example.com/api/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          installId: "component-install",
+          platform: "ios",
+          toBundleId: "00000000-0000-4000-8000-000000000002",
+          type: "UNCHANGED",
+          updateStrategy: null,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(appendComponentRow).toHaveBeenCalledWith({
+      row: expect.objectContaining({
+        install_id: "component-install",
+        to_bundle_id: "00000000-0000-4000-8000-000000000002",
+        type: "UNCHANGED",
+      }),
+      table: "bundle_events",
+    });
+
+    const overview = await hotUpdater.handler(
+      new Request("https://example.com/api/installations/overview"),
+    );
+    expect(overview.status).toBe(200);
+    await expect(overview.json()).resolves.toEqual({
+      bundles: [],
+      trackedInstallations: 0,
+    });
+    expect(assertComponentReady).toHaveBeenCalled();
+  });
+
+  it("keeps default routes visible and returns the stable 503 for marker and data drift", async () => {
+    const hotUpdater = createHotUpdater({
+      database: notReadyComponentDatabase,
+      plugins: [analytics({ queryAccess: "public" })],
+    });
+    const ingestion = await hotUpdater.handler(
+      new Request("https://example.com/api/events", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          installId: "not-ready-install",
+          platform: "ios",
+          toBundleId: "00000000-0000-4000-8000-000000000002",
+          type: "UNCHANGED",
+          updateStrategy: null,
+        }),
+      }),
+    );
+    const overview = await hotUpdater.handler(
+      new Request("https://example.com/api/installations/overview"),
+    );
+
+    expect([ingestion.status, overview.status]).toEqual([503, 503]);
+    await expect(ingestion.json()).resolves.toEqual({
+      error: { code: "ANALYTICS_SCHEMA_NOT_READY" },
+    });
+    await expect(overview.json()).resolves.toEqual({
+      error: { code: "ANALYTICS_SCHEMA_NOT_READY" },
+    });
+  });
+
   it("ingests an event and serves a public query through the Kernel", async () => {
     appendBundleEvent.mockClear();
     const hotUpdater = createHotUpdater({
