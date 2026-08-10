@@ -331,6 +331,7 @@ describe("Detox scenario contract", () => {
     expect(detoxRuntimeSource).toContain("device.terminateApp");
     expect(detoxRuntimeSource).toContain("/e2e/jobs/reset-remote-bundles");
     expect(detoxRuntimeSource).toContain("/e2e/reset-local-app-state");
+    expect(detoxRuntimeSource).toContain("verifyConsoleAnalytics");
   });
 
   it("does not launch the app before provider bundles are deployed", async () => {
@@ -599,6 +600,9 @@ describe("Detox scenario contract", () => {
 
     expect(exampleAppSource).toContain("./src/e2eApp");
     expect(e2eRuntimeSource).toContain("../e2eRuntimeConfig");
+    expect(e2eRuntimeSource).toContain("analytics: true");
+    expect(e2eRuntimeSource).toContain('userId: "detox-e2e"');
+    expect(e2eRuntimeSource).toContain('username: "hot-updater-e2e"');
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");
     expect(exampleAppSource).not.toContain('from "@env"');
     expect(runtimeConfigSource).toContain("react-native-launch-arguments");

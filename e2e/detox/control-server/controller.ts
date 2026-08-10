@@ -23,6 +23,13 @@ import {
 } from "../../../plugins/plugin-core/dist/index.mjs";
 import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
 import {
+  ConsoleAnalyticsQaError,
+  readObservedAnalyticsEvent,
+  verifyConsoleAnalytics,
+  type ConsoleAnalyticsQaClient,
+  type ObservedAnalyticsEvent,
+} from "../console-analytics-qa.ts";
+import {
   createCrashRecoveryArtifactNames,
   getLaunchReportState,
   waitForCrashRecoveryState,
@@ -89,6 +96,7 @@ type SessionState = {
   largeArchiveAssetBackupPath: string | null;
   largeArchiveAssetPath: string;
   multiAssetBackupPaths: Record<string, string | null>;
+  observedAnalyticsEvents: ObservedAnalyticsEvent[];
   platform: Platform;
   resultsDir: string;
   storePath: string | null;
@@ -470,6 +478,7 @@ const fixtureSession: SessionState = {
     LARGE_ARCHIVE_ASSET_RELATIVE_PATH,
   ),
   multiAssetBackupPaths: {},
+  observedAnalyticsEvents: [],
   platform,
   resultsDir,
   storePath: null,
@@ -1341,6 +1350,146 @@ async function withDatabaseClient<T>(
   } finally {
     process.chdir(originalCwd);
   }
+}
+
+type AnalyticsRuntime = {
+  readonly getActiveInstallationOverview?: (input: {
+    readonly window: "24h";
+  }) => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["getActiveOverview"]>>
+  >;
+  readonly getBundleEventAnalytics?: (
+    bundleId: string,
+    window: "30d",
+    limit: number,
+    offset: number,
+  ) => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["getBundleAnalytics"]>>
+  >;
+  readonly getBundleEventOverview?: () => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["getOverview"]>>
+  >;
+  readonly getBundleEventSummary?: (
+    bundleId: string,
+  ) => Promise<Awaited<ReturnType<ConsoleAnalyticsQaClient["getSummary"]>>>;
+  readonly getInstallationHistory?: (
+    installId: string,
+    limit: number,
+    offset: number,
+  ) => Promise<Awaited<ReturnType<ConsoleAnalyticsQaClient["getHistory"]>>>;
+  readonly searchInstallations?: (
+    query: string,
+    limit: number,
+    offset: number,
+  ) => Promise<
+    Awaited<ReturnType<ConsoleAnalyticsQaClient["searchInstallations"]>>
+  >;
+  readonly resolveAvailability?: (signal: AbortSignal) => Promise<{
+    readonly analytics: boolean;
+    readonly analyticsQueries: boolean;
+  }>;
+};
+
+const hasAnalyticsRuntime = (runtime: AnalyticsRuntime) =>
+  typeof runtime.getActiveInstallationOverview === "function" &&
+  typeof runtime.getBundleEventAnalytics === "function" &&
+  typeof runtime.getBundleEventOverview === "function" &&
+  typeof runtime.getBundleEventSummary === "function" &&
+  typeof runtime.getInstallationHistory === "function" &&
+  typeof runtime.searchInstallations === "function";
+
+async function withAnalyticsRuntime<T>(
+  callback: (runtime: AnalyticsRuntime | null) => Promise<T>,
+): Promise<T> {
+  const { loadConfig } =
+    (await import("../../../packages/cli-tools/dist/index.mjs")) as {
+      loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
+    };
+  const { getCapabilityContributions } =
+    (await import("../../../plugins/plugin-core/dist/internal/capabilities.mjs")) as {
+      getCapabilityContributions: (carrier: object) => readonly {
+        readonly create: (...args: never[]) => unknown;
+        readonly token: {
+          readonly id: string;
+          readonly parse: (value: unknown) => unknown;
+        };
+      }[];
+    };
+  const originalCwd = process.cwd();
+
+  try {
+    process.chdir(fixtureSession.exampleDir);
+    return await withHotUpdaterControlEnv(async () => {
+      const config = await loadConfig(null);
+      try {
+        const contribution = getCapabilityContributions(config.database).find(
+          ({ token }) => token.id === "hot-updater.analytics.provider@1",
+        );
+        const runtime = contribution
+          ? (contribution.token.parse(
+              Reflect.apply(contribution.create, undefined, []),
+            ) as AnalyticsRuntime)
+          : null;
+        return await callback(runtime);
+      } finally {
+        await config.database.onUnmount?.();
+      }
+    });
+  } finally {
+    process.chdir(originalCwd);
+  }
+}
+
+async function verifyConfiguredConsoleAnalytics(args: {
+  bundleIds: readonly string[];
+  sinceMs: number;
+}) {
+  return withAnalyticsRuntime(async (runtime) => {
+    if (!runtime || !hasAnalyticsRuntime(runtime)) {
+      return { skipped: true, reason: "unsupported" };
+    }
+    if (runtime.resolveAvailability) {
+      const capability = await runtime.resolveAvailability(
+        new AbortController().signal,
+      );
+      if (!capability.analytics || !capability.analyticsQueries) {
+        return { skipped: true, reason: "unsupported" };
+      }
+    }
+
+    const client: ConsoleAnalyticsQaClient = {
+      getActiveOverview: () =>
+        runtime.getActiveInstallationOverview!({ window: "24h" }),
+      getBundleAnalytics: (bundleId) =>
+        runtime.getBundleEventAnalytics!(bundleId, "30d", 50, 0),
+      getCapabilities: async () => ({ analytics: true }),
+      getHistory: (installId) =>
+        runtime.getInstallationHistory!(installId, 50, 0),
+      getOverview: () => runtime.getBundleEventOverview!(),
+      getSummary: (bundleId) => runtime.getBundleEventSummary!(bundleId),
+      searchInstallations: (query) =>
+        runtime.searchInstallations!(query, 50, 0),
+    };
+    for (let attempt = 1; attempt <= 30; attempt += 1) {
+      try {
+        const evidence = await verifyConsoleAnalytics(client, args.bundleIds, {
+          observedEvents: fixtureSession.observedAnalyticsEvents,
+          sinceMs: args.sinceMs,
+        });
+        return { skipped: false, ...evidence };
+      } catch (error) {
+        if (
+          !(error instanceof ConsoleAnalyticsQaError) ||
+          error.code === "unsupported" ||
+          attempt === 30
+        ) {
+          throw error;
+        }
+        await sleep(1_000);
+      }
+    }
+    throw new Error("Console Analytics verification exhausted its retries.");
+  });
 }
 
 async function fetchProviderBundlesPage(args: {
@@ -3224,14 +3373,30 @@ export async function handleProxyUpdateRequest(request: Request) {
   const headers = new Headers(request.headers);
   headers.delete("host");
 
+  const requestBody =
+    request.method === "GET" || request.method === "HEAD"
+      ? undefined
+      : await request.arrayBuffer();
+
   const response = await fetch(targetUrl, {
-    body:
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer(),
+    body: requestBody,
     headers,
     method: request.method,
   });
+
+  if (requestUrl.pathname.endsWith("/events") && response.ok && requestBody) {
+    try {
+      const event = readObservedAnalyticsEvent(
+        JSON.parse(new TextDecoder().decode(requestBody)),
+        Date.now(),
+      );
+      if (event) fixtureSession.observedAnalyticsEvents.push(event);
+    } catch (error) {
+      logDetoxFixture("analytics event observation skipped", {
+        error: formatErrorMessage(error),
+      });
+    }
+  }
 
   logDetoxFixture("proxied update request", {
     method: request.method,
@@ -4360,6 +4525,7 @@ async function bootstrap() {
 
   fixtureSession.builtInBundleId = null;
   fixtureSession.deployedBundles = [];
+  fixtureSession.observedAnalyticsEvents = [];
   fixtureSession.storePath = null;
 
   await waitForLocalProviderReady();
@@ -5447,6 +5613,7 @@ async function resetRemoteBundles() {
 
 async function resetLocalAppState() {
   resetE2eScreenState();
+  fixtureSession.observedAnalyticsEvents = [];
   if (fixtureSession.platform === "ios") {
     await clearIosLocalBundleState();
   } else {
@@ -5918,4 +6085,11 @@ export async function handleWriteSummary(args: {
 
 export async function handleCleanup() {
   return cleanup();
+}
+
+export async function handleVerifyConsoleAnalytics(args: {
+  bundleIds: readonly string[];
+  sinceMs: number;
+}) {
+  return verifyConfiguredConsoleAnalytics(args);
 }

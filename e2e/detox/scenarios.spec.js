@@ -66,7 +66,9 @@ describe("HotUpdater Detox scenarios", () => {
     it(scenarioName, async () => {
       const scenario = getDetoxScenarioDefinition(scenarioName);
       const app = new DetoxAppDriver(controlClient, bootstrapResult);
+      const analyticsStartedAtMs = Date.now() - 5_000;
       await scenario.run(app);
+      await app.verifyConsoleAnalytics(analyticsStartedAtMs);
     });
   }
 });
