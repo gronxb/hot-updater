@@ -2986,6 +2986,15 @@ function readHotUpdaterApiKey() {
   return readHotUpdaterEnvValue("HOT_UPDATER_API_KEY");
 }
 
+export function getHotUpdaterClientRequestHeaders() {
+  const headers = new Headers({
+    "Hot-Updater-SDK-Version": "e2e",
+  });
+  const apiKey = readHotUpdaterApiKey();
+  if (apiKey) headers.set("x-api-key", apiKey);
+  return headers;
+}
+
 function readHotUpdaterEnvValue(
   key: "HOT_UPDATER_API_KEY" | "HOT_UPDATER_AUTH_TOKEN",
 ) {
@@ -3588,9 +3597,7 @@ async function waitForUpdateCheckVisibilityUrl(args: {
     throwIfAborted(args.signal);
     try {
       const response = await fetch(args.url, {
-        headers: {
-          "Hot-Updater-SDK-Version": "e2e",
-        },
+        headers: getHotUpdaterClientRequestHeaders(),
         signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal),
       });
       const body = await response.text();
@@ -3877,9 +3884,7 @@ async function waitForUpdateCheckExcludesBundle(args: {
     throwIfAborted(args.signal);
     try {
       const response = await fetch(url, {
-        headers: {
-          "Hot-Updater-SDK-Version": "e2e",
-        },
+        headers: getHotUpdaterClientRequestHeaders(),
         signal: fetchSignal(UPDATE_CHECK_HTTP_TIMEOUT_MS, args.signal),
       });
       const body = await response.text();

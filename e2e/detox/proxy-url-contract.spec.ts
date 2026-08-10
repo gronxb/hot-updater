@@ -127,7 +127,7 @@ describe("Detox remote asset proxy URLs", () => {
     }
   });
 
-  it("injects the managed client key only when the app request omits it", async () => {
+  it("uses the managed client key for direct and proxied update requests", async () => {
     const resultsDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-client-key-proxy-"),
     );
@@ -156,6 +156,10 @@ describe("Detox remote asset proxy URLs", () => {
       const controller = await import("./control-server/controller.ts");
       const url =
         "http://localhost:3107/hot-updater/app-version/ios/1.0/production/min/current";
+
+      expect(
+        controller.getHotUpdaterClientRequestHeaders().get("x-api-key"),
+      ).toBe("managed-client-key");
 
       await controller.handleProxyUpdateRequest(new Request(url));
       await controller.handleProxyUpdateRequest(
