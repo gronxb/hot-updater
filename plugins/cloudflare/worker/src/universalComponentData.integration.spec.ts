@@ -473,7 +473,9 @@ describe("cloudflare worker d1 component readiness validation", () => {
     );
     const source = countedAdapter.bind(syntheticAuditLogMigrationSchema);
 
-    await expect(source.assertReady()).rejects.toThrow(/Invalid row/);
+    await expect(source.assertReady()).rejects.toMatchObject({
+      reason: "stored-data",
+    });
     await env.DB.prepare(
       "DELETE FROM audit_history_records WHERE recorded_at_ms < 0",
     ).run();
@@ -500,7 +502,7 @@ describe("cloudflare worker d1 component readiness validation", () => {
         beforePrefixExclusive: [Number.MAX_SAFE_INTEGER],
         limit: 10,
       }),
-    ).rejects.toThrow(/Invalid row/);
+    ).rejects.toMatchObject({ reason: "stored-data" });
   });
 });
 
@@ -534,6 +536,48 @@ setupUniversalComponentDataAdapterTestSuite({
   createAdapter: resolveAdapter,
   reset: resetComponentData,
   dispose: () => undefined,
+  readinessFailures: [
+    {
+      name: "physical schema drift",
+      async prepare(adapter, schema) {
+        const artifact = adapter.artifacts?.(schema)[0];
+        if (artifact === undefined) throw new TypeError("Missing D1 artifact");
+        await env.DB.exec(artifact.contents);
+        await env.DB.prepare(
+          "ALTER TABLE audit_records ADD COLUMN undeclared TEXT",
+        ).run();
+      },
+    },
+    {
+      name: "declared index drift",
+      async prepare(adapter, schema) {
+        const artifact = adapter.artifacts?.(schema)[0];
+        if (artifact === undefined) throw new TypeError("Missing D1 artifact");
+        await env.DB.exec(artifact.contents);
+        await env.DB.prepare(
+          "DROP INDEX audit_records_chronological_idx",
+        ).run();
+      },
+    },
+    {
+      name: "stored data drift",
+      async prepare(adapter, schema) {
+        const artifact = adapter.artifacts?.(schema)[0];
+        if (artifact === undefined) throw new TypeError("Missing D1 artifact");
+        await env.DB.exec(artifact.contents);
+        await env.DB.prepare("PRAGMA ignore_check_constraints = ON").run();
+        try {
+          await env.DB.prepare(
+            `INSERT INTO audit_records (
+              id, recorded_at_ms, action, actor_id, accepted, risk_score, payload
+            ) VALUES ('corrupt', 1, 'read', NULL, 1, 0.5, '{')`,
+          ).run();
+        } finally {
+          await env.DB.prepare("PRAGMA ignore_check_constraints = OFF").run();
+        }
+      },
+    },
+  ],
   async setStoredVersion(_adapter, schema, version) {
     await env.DB.prepare(
       `INSERT INTO private_hot_updater_settings (key, value)
@@ -663,7 +707,10 @@ describe("cloudflare worker d1 component schema drift", () => {
 
     await expect(
       resolveAdapter().bind(syntheticAuditLogSchema).assertReady(),
-    ).rejects.toThrow(/incompatible D1 schema/);
+    ).rejects.toMatchObject({
+      name: "UniversalComponentDataStateNotReadyError",
+      reason: "index",
+    });
     await expect(storedAuditVersion()).resolves.toBe("1");
   });
 
@@ -687,6 +734,9 @@ describe("cloudflare worker d1 component schema drift", () => {
         beforePrefixExclusive: [2],
         limit: 10,
       }),
-    ).rejects.toThrow(/Invalid stored value/);
+    ).rejects.toMatchObject({
+      name: "UniversalComponentDataStateNotReadyError",
+      reason: "stored-data",
+    });
   });
 });

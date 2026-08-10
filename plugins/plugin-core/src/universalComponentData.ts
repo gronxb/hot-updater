@@ -189,10 +189,23 @@ export interface UniversalComponentOrderedScanInput {
 
 export interface UniversalComponentDataSource {
   readonly schema: UniversalComponentSchema;
-  /** Implementations must reject writes while the component is not ready. */
+  /**
+   * Implementations must reject writes with
+   * UniversalComponentDataNotReadyError while declared component state is not
+   * ready. Operational backend errors must remain distinguishable.
+   */
   append(input: UniversalComponentAppendInput): Promise<void>;
+  /**
+   * A latest-marker mismatch or a failed physical-schema, index, or stored-data
+   * readiness validation must reject with UniversalComponentDataNotReadyError.
+   * Operational backend errors must not be reclassified as readiness failures.
+   */
   assertReady(): Promise<void>;
-  /** Implementations must reject reads while the component is not ready. */
+  /**
+   * Implementations must reject reads with UniversalComponentDataNotReadyError
+   * while declared component state is not ready. Operational backend errors
+   * must remain distinguishable.
+   */
   orderedScan(
     input: UniversalComponentOrderedScanInput,
   ): Promise<readonly UniversalComponentRow[]>;
@@ -215,16 +228,54 @@ export interface UniversalComponentDataAdapter {
   ): Promise<UniversalComponentMigrationResult>;
 }
 
-export class UniversalComponentSchemaNotReadyError extends Error {
-  readonly name = "UniversalComponentSchemaNotReadyError";
+export class UniversalComponentDataNotReadyError extends Error {
+  readonly name: string = "UniversalComponentDataNotReadyError";
 
   constructor(
     readonly componentId: string,
     readonly expectedVersion: string,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+  }
+}
+
+export class UniversalComponentSchemaNotReadyError extends UniversalComponentDataNotReadyError {
+  readonly name = "UniversalComponentSchemaNotReadyError";
+
+  constructor(
+    componentId: string,
+    expectedVersion: string,
     readonly actualVersion: string | null,
   ) {
     super(
+      componentId,
+      expectedVersion,
       `Component ${componentId} requires schema version ${expectedVersion}; found ${actualVersion ?? "no marker"}.`,
+    );
+  }
+}
+
+export type UniversalComponentDataStateNotReadyReason =
+  | "index"
+  | "physical-schema"
+  | "stored-data";
+
+export class UniversalComponentDataStateNotReadyError extends UniversalComponentDataNotReadyError {
+  readonly name = "UniversalComponentDataStateNotReadyError";
+
+  constructor(
+    componentId: string,
+    expectedVersion: string,
+    readonly reason: UniversalComponentDataStateNotReadyReason,
+    options?: ErrorOptions,
+  ) {
+    super(
+      componentId,
+      expectedVersion,
+      `Component ${componentId} schema version ${expectedVersion} is not ready: ${reason}.`,
+      options,
     );
   }
 }

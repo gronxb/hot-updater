@@ -1,11 +1,13 @@
 import { PGlite } from "@electric-sql/pglite";
 import type {
+  UniversalComponentDataAdapter,
   UniversalComponentRow,
   UniversalComponentSchema,
 } from "@hot-updater/plugin-core";
 import {
   defineUniversalComponentSchema,
   universalComponentDataAdapterCapability,
+  UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
 } from "@hot-updater/plugin-core";
 import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
@@ -14,10 +16,11 @@ import {
   syntheticMigrationLegacyEvidence,
   syntheticMigrationV1Row,
 } from "@hot-updater/test-utils";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 
 import { supabaseDatabase } from "./supabaseDatabase";
+import { SupabaseDatabaseError } from "./supabaseResult";
 import { createSupabaseUniversalComponentDataAdapter } from "./supabaseUniversalComponentData";
 import type { Database } from "./types";
 
@@ -279,10 +282,17 @@ interface QueryTrace {
   filter?: string;
   limit?: number;
   orders: readonly string[];
+  range?: readonly [number, number];
   table: string;
 }
 
+interface ComponentQueryResult {
+  readonly data: unknown;
+  readonly error: PostgrestError | null;
+}
+
 const createComponentClient = (options?: {
+  readonly errors?: Readonly<Record<string, PostgrestError>>;
   readonly marker?: string | null;
   readonly scanRows?: readonly Record<string, unknown>[];
 }) => {
@@ -298,6 +308,7 @@ const createComponentClient = (options?: {
     private insertedRow: UniversalComponentRow | undefined;
     private limitValue: number | undefined;
     private readonly orders: string[] = [];
+    private rangeValue: readonly [number, number] | undefined;
 
     constructor(private readonly table: string) {}
 
@@ -328,12 +339,13 @@ const createComponentClient = (options?: {
     maybeSingle() {
       return this;
     }
-    then<TResult1 = { data: unknown; error: null }, TResult2 = never>(
+    range(from: number, to: number) {
+      this.rangeValue = [from, to];
+      return this;
+    }
+    then<TResult1 = ComponentQueryResult, TResult2 = never>(
       onfulfilled?:
-        | ((value: {
-            data: unknown;
-            error: null;
-          }) => TResult1 | PromiseLike<TResult1>)
+        | ((value: ComponentQueryResult) => TResult1 | PromiseLike<TResult1>)
         | null,
       onrejected?:
         | ((reason: unknown) => TResult2 | PromiseLike<TResult2>)
@@ -342,7 +354,7 @@ const createComponentClient = (options?: {
       return this.execute().then(onfulfilled, onrejected);
     }
 
-    private async execute(): Promise<{ data: unknown; error: null }> {
+    private async execute(): Promise<ComponentQueryResult> {
       traces.push({
         table: this.table,
         ...(this.columns === undefined ? {} : { columns: this.columns }),
@@ -350,7 +362,10 @@ const createComponentClient = (options?: {
         ...(this.filter === undefined ? {} : { filter: this.filter }),
         ...(this.limitValue === undefined ? {} : { limit: this.limitValue }),
         orders: [...this.orders],
+        ...(this.rangeValue === undefined ? {} : { range: this.rangeValue }),
       });
+      const error = options?.errors?.[this.table];
+      if (error !== undefined) return { data: null, error };
       if (this.insertedRow !== undefined) {
         inserted.push(this.insertedRow);
         return { data: null, error: null };
@@ -361,8 +376,12 @@ const createComponentClient = (options?: {
           error: null,
         };
       }
+      const rows =
+        this.rangeValue === undefined
+          ? scanRows.slice(0, this.limitValue)
+          : scanRows.slice(this.rangeValue[0], this.rangeValue[1] + 1);
       return {
-        data: scanRows.slice(0, this.limitValue),
+        data: rows,
         error: null,
       };
     }
@@ -922,7 +941,97 @@ describe("Supabase universal component data adapter", () => {
         beforePrefixExclusive: [2],
         limit: 10,
       }),
-    ).rejects.toThrow("Invalid row for component table");
+    ).rejects.toMatchObject({ reason: "stored-data" });
+  });
+
+  it("classifies latest-marker physical drift across every source operation", async () => {
+    const missingTable: PostgrestError = {
+      code: "42P01",
+      details: "relation audit_records does not exist",
+      hint: "",
+      message: 'relation "audit_records" does not exist',
+      name: "PostgrestError",
+    };
+    const operations = [
+      (source: ReturnType<UniversalComponentDataAdapter["bind"]>) =>
+        source.assertReady(),
+      (source: ReturnType<UniversalComponentDataAdapter["bind"]>) =>
+        source.append({
+          table: "audit_records",
+          row: {
+            actor: null,
+            id: "a",
+            occurred_at: "2026-08-11T10:00:00.000Z",
+            payload: {},
+            sequence: 1,
+          },
+        }),
+      (source: ReturnType<UniversalComponentDataAdapter["bind"]>) =>
+        source.orderedScan({
+          accessPattern: "timeline",
+          beforePrefixExclusive: ["2026-08-12T00:00:00.000Z"],
+          limit: 10,
+        }),
+    ];
+
+    for (const operation of operations) {
+      const { client } = createComponentClient({
+        errors: { audit_records: missingTable },
+      });
+      const source =
+        createSupabaseUniversalComponentDataAdapter(client).bind(
+          auditLogSchema,
+        );
+      await expect(operation(source)).rejects.toBeInstanceOf(
+        UniversalComponentDataStateNotReadyError,
+      );
+      await expect(operation(source)).rejects.toMatchObject({
+        componentId: "audit-log",
+        expectedVersion: "7",
+        reason: "physical-schema",
+      });
+    }
+  });
+
+  it("classifies stored corruption beyond the first readiness page", async () => {
+    const scanRows = Array.from({ length: 1_001 }, (_, index) => ({
+      actor: index === 1_000 ? 42 : null,
+      id: `record-${String(index).padStart(4, "0")}`,
+      occurred_at: "2026-08-11T10:00:00.000Z",
+      payload: {},
+      sequence: index,
+    }));
+    const { client, traces } = createComponentClient({ scanRows });
+    const source =
+      createSupabaseUniversalComponentDataAdapter(client).bind(auditLogSchema);
+
+    await expect(source.assertReady()).rejects.toMatchObject({
+      componentId: "audit-log",
+      expectedVersion: "7",
+      reason: "stored-data",
+    });
+    expect(
+      traces.filter(({ table }) => table === "audit_records").at(-1)?.range,
+    ).toEqual([1_000, 1_999]);
+  });
+
+  it("preserves operational Supabase failures", async () => {
+    const timeout: PostgrestError = {
+      code: "57014",
+      details: "statement timeout",
+      hint: "",
+      message: "canceling statement due to statement timeout",
+      name: "PostgrestError",
+    };
+    const { client } = createComponentClient({
+      errors: { audit_records: timeout },
+    });
+    const source =
+      createSupabaseUniversalComponentDataAdapter(client).bind(auditLogSchema);
+
+    await expect(source.assertReady()).rejects.toBeInstanceOf(
+      SupabaseDatabaseError,
+    );
   });
 
   it("rejects access while the declared schema marker is stale", async () => {

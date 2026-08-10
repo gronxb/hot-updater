@@ -16,6 +16,7 @@ import {
   getUniversalComponentTable,
   isUniversalComponentDataValue,
   resolveUniversalComponentMigrationState,
+  UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
   validateUniversalComponentAppend,
   validateUniversalComponentOrderedScan,
@@ -534,12 +535,39 @@ const physicalSchemaMismatch = async (
   return null;
 };
 
+class PostgresUniversalComponentSchemaDriftError extends TypeError {
+  readonly name = "PostgresUniversalComponentSchemaDriftError";
+
+  constructor(
+    componentId: string,
+    detail: string,
+    readonly reason: "index" | "physical-schema",
+  ) {
+    super(
+      `Postgres physical schema for component ${componentId} is incompatible: ${detail}`,
+    );
+  }
+}
+
+class PostgresUniversalComponentStoredDataError extends TypeError {
+  readonly name = "PostgresUniversalComponentStoredDataError";
+
+  constructor(componentId: string, cause: unknown) {
+    super(
+      `Postgres stored data for component ${componentId} is incompatible: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+}
+
 const schemaDrift = (
   schema: UniversalComponentSchema,
   message: string,
 ): never => {
-  throw new TypeError(
-    `Postgres physical schema for component ${schema.id} is incompatible: ${message}`,
+  throw new PostgresUniversalComponentSchemaDriftError(
+    schema.id,
+    message,
+    message.includes("index") ? "index" : "physical-schema",
   );
 };
 
@@ -679,13 +707,19 @@ const validateStoredRows = async (
         ORDER BY ${sql.ref(primaryKey.name)} ASC
         LIMIT ${validationPageSize}
       `.execute(db);
-      const rows = result.rows.map((row) => parseRow(table, row));
-      for (const row of rows) {
-        validateUniversalComponentRow(schema, {
-          row,
-          table: table.name,
-          version,
-        });
+      const rows: UniversalComponentRow[] = [];
+      for (const storedRow of result.rows) {
+        try {
+          const row = parseRow(table, storedRow);
+          validateUniversalComponentRow(schema, {
+            row,
+            table: table.name,
+            version,
+          });
+          rows.push(row);
+        } catch (error) {
+          throw new PostgresUniversalComponentStoredDataError(schema.id, error);
+        }
       }
       const last = rows.at(-1);
       if (last === undefined || rows.length < validationPageSize) break;
@@ -1403,8 +1437,28 @@ export const createPostgresUniversalComponentDataAdapter = (
           );
         }
         if (physicallyReady.get(schema) === true) return;
-        await assertPhysicalSchema(db, schema);
-        await validateStoredRows(db, schema, expectedVersion);
+        try {
+          await assertPhysicalSchema(db, schema);
+          await validateStoredRows(db, schema, expectedVersion);
+        } catch (error) {
+          if (error instanceof PostgresUniversalComponentSchemaDriftError) {
+            throw new UniversalComponentDataStateNotReadyError(
+              schema.id,
+              expectedVersion,
+              error.reason,
+              { cause: error },
+            );
+          }
+          if (error instanceof PostgresUniversalComponentStoredDataError) {
+            throw new UniversalComponentDataStateNotReadyError(
+              schema.id,
+              expectedVersion,
+              "stored-data",
+              { cause: error },
+            );
+          }
+          throw error;
+        }
         physicallyReady.set(schema, true);
       };
       return {
@@ -1455,13 +1509,22 @@ export const createPostgresUniversalComponentDataAdapter = (
           LIMIT ${input.limit}
           `.execute(db);
           return result.rows.slice(0, input.limit).map((row) => {
-            const parsed = parseRow(table, row);
-            validateUniversalComponentRow(schema, {
-              row: parsed,
-              table: table.name,
-              version: expectedVersion,
-            });
-            return parsed;
+            try {
+              const parsed = parseRow(table, row);
+              validateUniversalComponentRow(schema, {
+                row: parsed,
+                table: table.name,
+                version: expectedVersion,
+              });
+              return parsed;
+            } catch (error) {
+              throw new UniversalComponentDataStateNotReadyError(
+                schema.id,
+                expectedVersion,
+                "stored-data",
+                { cause: error },
+              );
+            }
           });
         },
       };

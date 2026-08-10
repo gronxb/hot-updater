@@ -2,7 +2,10 @@ import {
   defineUniversalComponentSchema,
   getUniversalComponentSchemaMarkerKey,
   type UniversalComponentDataAdapter,
+  type UniversalComponentDataSource,
   universalComponentDataAdapterCapability,
+  UniversalComponentDataNotReadyError,
+  UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
 } from "@hot-updater/plugin-core";
 import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
@@ -115,6 +118,16 @@ const auditRecord = (id: string, recordedAtMs: number) => ({
   recorded_at_ms: recordedAtMs,
 });
 
+const conformanceRecord = (id: string) => ({
+  accepted: true,
+  action: "configuration-read",
+  actor_id: null,
+  id,
+  payload: { source: "firebase-readiness" },
+  recorded_at_ms: 1,
+  risk_score: 0.25,
+});
+
 const createAdapter = (): UniversalComponentDataAdapter => {
   const database = firebaseDatabase({
     projectId: PROJECT_ID,
@@ -130,6 +143,53 @@ const createAdapter = (): UniversalComponentDataAdapter => {
     contribution.create({ database, storages: [] }),
   );
 };
+
+let conformanceIndexError: Error | null = null;
+
+const createConformanceAdapter = (): UniversalComponentDataAdapter =>
+  createFirebaseUniversalComponentDataAdapter(firestore, {
+    validateIndexes: async () => {
+      if (conformanceIndexError !== null) throw conformanceIndexError;
+    },
+  });
+
+const migrateForReadinessFailure = async (
+  adapter: UniversalComponentDataAdapter,
+  schema: Parameters<UniversalComponentDataAdapter["bind"]>[0],
+): Promise<void> => {
+  if (adapter.migrate === undefined) {
+    throw new TypeError("Missing Firebase component migration support");
+  }
+  await adapter.migrate(schema);
+};
+
+class FirebaseOperationalTestError extends Error {
+  readonly name = "FirebaseOperationalTestError";
+}
+
+const runtimeOperations: readonly {
+  readonly name: string;
+  readonly run: (source: UniversalComponentDataSource) => Promise<unknown>;
+}[] = [
+  { name: "assertReady", run: (source) => source.assertReady() },
+  {
+    name: "append",
+    run: (source) =>
+      source.append({
+        row: auditRecord("operational-error", 1),
+        table: "audit_records",
+      }),
+  },
+  {
+    name: "orderedScan",
+    run: (source) =>
+      source.orderedScan({
+        accessPattern: "chronological",
+        beforePrefixExclusive: [2],
+        limit: 1,
+      }),
+  },
+];
 
 describe("Firebase universal component data adapter", () => {
   beforeEach(clearCollections);
@@ -255,6 +315,42 @@ describe("Firebase universal component data adapter", () => {
     ).toEqual(malformedMarker);
   });
 
+  it("classifies a malformed marker document as physical schema drift at runtime", async () => {
+    const adapter = createAdapter();
+    await settingsCollection.doc("schema.audit-log").set({ version: "1" });
+
+    await expect(adapter.bind(auditLogSchema).assertReady()).rejects.toEqual(
+      expect.objectContaining({
+        componentId: "audit-log",
+        expectedVersion: "1",
+        reason: "physical-schema",
+      }),
+    );
+  });
+
+  it.each(runtimeOperations)(
+    "preserves operational Firestore marker reads through $name",
+    async ({ run }) => {
+      const adapter = createAdapter();
+      await adapter.migrate?.(auditLogSchema);
+      const source = adapter.bind(auditLogSchema);
+      const operationalError = new FirebaseOperationalTestError();
+      const markerReference = settingsCollection.doc("schema.audit-log");
+      const documentReferencePrototype = Object.getPrototypeOf(
+        markerReference,
+      ) as Pick<typeof markerReference, "get">;
+      const get = vi
+        .spyOn(documentReferencePrototype, "get")
+        .mockRejectedValueOnce(operationalError);
+
+      try {
+        await expect(run(source)).rejects.toBe(operationalError);
+      } finally {
+        get.mockRestore();
+      }
+    },
+  );
+
   it("retries failed physical readiness and polls the marker after success", async () => {
     let indexesReady = true;
     const validateIndexes = vi.fn(async () => {
@@ -267,7 +363,12 @@ describe("Firebase universal component data adapter", () => {
     const source = adapter.bind(auditLogSchema);
 
     indexesReady = false;
-    await expect(source.assertReady()).rejects.toThrow("index drift");
+    await expect(source.assertReady()).rejects.toEqual(
+      expect.objectContaining({
+        cause: expect.objectContaining({ message: "index drift" }),
+        reason: "index",
+      }),
+    );
     indexesReady = true;
     await expect(source.assertReady()).resolves.toBeUndefined();
 
@@ -277,6 +378,45 @@ describe("Firebase universal component data adapter", () => {
     );
     expect(validateIndexes).toHaveBeenCalledTimes(3);
   });
+
+  it.each([
+    {
+      name: "document-key drift",
+      reason: "physical-schema",
+      seed: () =>
+        auditRecordsCollection
+          .doc("stored-document-key")
+          .set(auditRecord("declared-primary-key", 1)),
+    },
+    {
+      name: "stored row drift",
+      reason: "stored-data",
+      seed: () =>
+        auditRecordsCollection.doc("stored-data-drift").set({
+          ...auditRecord("stored-data-drift", 1),
+          unexpected: true,
+        }),
+    },
+  ] as const)(
+    "classifies $name after the latest marker",
+    async ({ reason, seed }) => {
+      const adapter = createAdapter();
+      await adapter.migrate?.(auditLogSchema);
+      await seed();
+
+      const error = await adapter
+        .bind(auditLogSchema)
+        .assertReady()
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(UniversalComponentDataNotReadyError);
+      expect(error).toBeInstanceOf(UniversalComponentDataStateNotReadyError);
+      expect(error).toMatchObject({
+        componentId: "audit-log",
+        expectedVersion: "1",
+        reason,
+      });
+    },
+  );
 
   it("appends by its declared primary key and preserves the generic row", async () => {
     const adapter = createAdapter();
@@ -303,9 +443,40 @@ describe("Firebase universal component data adapter", () => {
 
 setupUniversalComponentDataAdapterTestSuite({
   name: "Firebase universal component data conformance",
-  createAdapter,
+  createAdapter: createConformanceAdapter,
   dispose: () => undefined,
-  reset: () => clearCollections(),
+  readinessFailures: [
+    {
+      name: "physical schema drift",
+      prepare: async (adapter, schema) => {
+        await migrateForReadinessFailure(adapter, schema);
+        await auditRecordsCollection
+          .doc("stored-document-key")
+          .set(conformanceRecord("declared-primary-key"));
+      },
+    },
+    {
+      name: "stored data drift",
+      prepare: async (adapter, schema) => {
+        await migrateForReadinessFailure(adapter, schema);
+        await auditRecordsCollection.doc("stored-data-drift").set({
+          ...conformanceRecord("stored-data-drift"),
+          unexpected: true,
+        });
+      },
+    },
+    {
+      name: "index drift",
+      prepare: async (adapter, schema) => {
+        await migrateForReadinessFailure(adapter, schema);
+        conformanceIndexError = new Error("missing declared Firebase index");
+      },
+    },
+  ],
+  reset: async () => {
+    conformanceIndexError = null;
+    await clearCollections();
+  },
   setStoredVersion: async (_adapter, schema, version) => {
     await settingsCollection
       .doc(getUniversalComponentSchemaMarkerKey(schema))

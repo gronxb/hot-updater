@@ -7,6 +7,9 @@ import {
   type UniversalComponentArtifact,
   type UniversalComponentDataAdapter,
   type UniversalComponentDataSource,
+  UniversalComponentDataContractError,
+  UniversalComponentDataStateNotReadyError,
+  type UniversalComponentDataStateNotReadyReason,
   type UniversalComponentRow,
   type UniversalComponentSchema,
   UniversalComponentSchemaNotReadyError,
@@ -122,12 +125,16 @@ const validateRow = (
   const primaryKey = table.columns.find((column) => column.primaryKey)!;
   const primaryKeyValue = row[primaryKey.name] as string;
   if (documentId !== undefined && documentId !== primaryKeyValue) {
-    throw new TypeError(
+    throw new FirebaseUniversalComponentDocumentKeyError(
       `Component document key does not match ${table.name}.${primaryKey.name}`,
     );
   }
   return primaryKeyValue;
 };
+
+class FirebaseUniversalComponentDocumentKeyError extends TypeError {
+  readonly name = "FirebaseUniversalComponentDocumentKeyError";
+}
 
 const assertIndexesSupported = (schema: UniversalComponentSchema): void => {
   for (const schemaVersion of schema.versions) {
@@ -388,6 +395,69 @@ const validateLatestPhysicalState = async (
   await validateIndexes(schema, latest.version);
 };
 
+const stateNotReadyError = (
+  schema: UniversalComponentSchema,
+  reason: UniversalComponentDataStateNotReadyReason,
+  cause: unknown,
+): UniversalComponentDataStateNotReadyError =>
+  new UniversalComponentDataStateNotReadyError(
+    schema.id,
+    getUniversalComponentLatestSchema(schema).version,
+    reason,
+    { cause },
+  );
+
+const isFirestoreIndexNotReadyError = (error: unknown): boolean => {
+  if (!isRecord(error)) return false;
+  const code = Reflect.get(error, "code");
+  const message = Reflect.get(error, "message");
+  return (
+    (code === 9 ||
+      code === "failed-precondition" ||
+      code === "FAILED_PRECONDITION") &&
+    typeof message === "string" &&
+    /\bindex\b/i.test(message)
+  );
+};
+
+const validateRuntimeReadyState = async (
+  db: Firestore,
+  schema: UniversalComponentSchema,
+  validateIndexes: ValidateIndexes,
+  classifyEveryIndexError: boolean,
+): Promise<void> => {
+  const latest = getUniversalComponentLatestSchema(schema);
+  try {
+    await visitStoredDocuments(db, schema, (tableName, document) => {
+      const table = latest.tables.find(({ name }) => name === tableName)!;
+      validateRow(
+        schema,
+        latest.version,
+        table,
+        document.row,
+        document.documentId,
+      );
+    });
+  } catch (error: unknown) {
+    if (error instanceof FirebaseUniversalComponentDocumentKeyError) {
+      throw stateNotReadyError(schema, "physical-schema", error);
+    }
+    if (error instanceof UniversalComponentDataContractError) {
+      throw stateNotReadyError(schema, "stored-data", error);
+    }
+    throw error;
+  }
+
+  try {
+    await validateIndexes(schema, latest.version);
+  } catch (error: unknown) {
+    if (classifyEveryIndexError || isFirestoreIndexNotReadyError(error)) {
+      throw stateNotReadyError(schema, "index", error);
+    }
+    throw error;
+  }
+};
+
 const writeMarker = async (
   db: Firestore,
   schema: UniversalComponentSchema,
@@ -424,9 +494,21 @@ export const createFirebaseUniversalComponentDataAdapter = (
       createIndexes(schema, latest.version);
       let physicallyReady = false;
       const assertReady = async (): Promise<void> => {
-        await assertMarker(db, schema);
+        try {
+          await assertMarker(db, schema);
+        } catch (error: unknown) {
+          if (error instanceof FirebaseUniversalComponentSchemaStateError) {
+            throw stateNotReadyError(schema, "physical-schema", error);
+          }
+          throw error;
+        }
         if (physicallyReady) return;
-        await validateLatestPhysicalState(db, schema, validateIndexes);
+        await validateRuntimeReadyState(
+          db,
+          schema,
+          validateIndexes,
+          options.validateIndexes !== undefined,
+        );
         physicallyReady = true;
       };
       return {
@@ -462,10 +544,28 @@ export const createFirebaseUniversalComponentDataAdapter = (
           if (input.afterExclusive !== undefined) {
             query = query.startAfter(...input.afterExclusive);
           }
-          const snapshot = await query.limit(input.limit).get();
+          let snapshot;
+          try {
+            snapshot = await query.limit(input.limit).get();
+          } catch (error: unknown) {
+            if (isFirestoreIndexNotReadyError(error)) {
+              throw stateNotReadyError(schema, "index", error);
+            }
+            throw error;
+          }
           return snapshot.docs.map((document) => {
             const row = document.data();
-            validateRow(schema, latest.version, table, row, document.id);
+            try {
+              validateRow(schema, latest.version, table, row, document.id);
+            } catch (error: unknown) {
+              if (error instanceof FirebaseUniversalComponentDocumentKeyError) {
+                throw stateNotReadyError(schema, "physical-schema", error);
+              }
+              if (error instanceof UniversalComponentDataContractError) {
+                throw stateNotReadyError(schema, "stored-data", error);
+              }
+              throw error;
+            }
             return row;
           });
         },
