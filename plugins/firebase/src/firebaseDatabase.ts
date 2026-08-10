@@ -23,9 +23,19 @@ import {
   filterCompatibleAppVersions,
   resolveUpdateInfoFromBundles,
 } from "@hot-updater/plugin-core";
-import admin from "firebase-admin";
+import {
+  getApp,
+  getApps,
+  initializeApp,
+  type AppOptions,
+} from "firebase-admin/app";
+import {
+  getFirestore,
+  type DocumentData,
+  type Query,
+} from "firebase-admin/firestore";
 
-type FirestoreData = admin.firestore.DocumentData;
+type FirestoreData = DocumentData;
 
 const bundleMatchesQueryWhere = (
   bundle: Bundle,
@@ -84,7 +94,7 @@ const sortBundles = (
 };
 
 const applyFirestoreQueryableFilters = (
-  query: admin.firestore.Query<FirestoreData>,
+  query: Query<FirestoreData>,
   where: DatabaseBundleQueryWhere | undefined,
 ) => {
   let nextQuery = query;
@@ -206,17 +216,11 @@ const convertToBundle = (firestoreData: SnakeCaseBundle): Bundle => {
   };
 };
 
-export const firebaseDatabase = createDatabasePlugin<admin.AppOptions>({
+export const firebaseDatabase = createDatabasePlugin<AppOptions>({
   name: "firebaseDatabase",
   factory: (config) => {
-    let app: admin.app.App;
-    try {
-      app = admin.app();
-    } catch {
-      app = admin.initializeApp(config);
-    }
-
-    const db = admin.firestore(app);
+    const app = getApps().length ? getApp() : initializeApp(config);
+    const db = getFirestore(app);
     const bundlesCollection = db.collection("bundles");
     const targetAppVersionsCollection = db.collection("target_app_versions");
 

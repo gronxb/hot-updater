@@ -134,13 +134,13 @@ const getFirebaseConfigTemplate = (build: BuildType) => {
 // Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = admin.credential.applicationDefault();`.trim();
+const credential = applicationDefault();`.trim();
 
   return new ConfigBuilder()
     .setBuildType(build)
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
-    .addImport({ pkg: "firebase-admin", defaultOrNamespace: "admin" })
+    .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })
     .setIntermediateCode(intermediate)
     .getResult();
 };
@@ -313,8 +313,8 @@ export default defineConfig({
 
     const expectedConfig = `import { bare } from "@hot-updater/bare";
 import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
-import admin from "firebase-admin";
 import { config } from "dotenv";
+import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
 
 config({ path: ".env.hotupdater" });
@@ -323,7 +323,7 @@ config({ path: ".env.hotupdater" });
 // Check your .env.hotupdater file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = admin.credential.applicationDefault();
+const credential = applicationDefault();
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
