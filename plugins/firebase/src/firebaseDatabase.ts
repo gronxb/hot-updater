@@ -6,7 +6,16 @@ import {
   resolveUpdateInfoFromBundles,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
-import admin from "firebase-admin";
+import {
+  getApp,
+  getApps,
+  initializeApp,
+  type AppOptions,
+} from "firebase-admin/app";
+import {
+  getFirestore as getAdminFirestore,
+  type Firestore,
+} from "firebase-admin/firestore";
 
 import {
   parseFirebaseBundleRow,
@@ -43,11 +52,10 @@ const exactId = (
     : undefined;
 };
 
-export function firebaseDatabase(config: admin.AppOptions): DatabasePlugin {
-  const getFirestore = (): admin.firestore.Firestore => {
-    const existingApp = admin.apps.find((app) => app !== null);
-    const app = existingApp ?? admin.initializeApp(config);
-    return admin.firestore(app);
+export function firebaseDatabase(config: AppOptions): DatabasePlugin {
+  const getFirestore = (): Firestore => {
+    const app = getApps().length ? getApp() : initializeApp(config);
+    return getAdminFirestore(app);
   };
   const database = createDatabasePlugin({
     name: "firebaseDatabase",

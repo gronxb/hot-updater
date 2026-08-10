@@ -1,13 +1,9 @@
-import admin from "firebase-admin";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 
 export function createFirestoreMock(projectId: string) {
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      projectId,
-    });
-  }
-
-  const firestore = admin.firestore();
+  const app = getApps()[0] ?? initializeApp({ projectId });
+  const firestore = getFirestore(app);
   const bundlesCollection = firestore.collection("bundles");
   const bundlePatchesCollection = firestore.collection("bundle_patches");
   const auditRecordsCollection = firestore.collection("audit_records");

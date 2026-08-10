@@ -8,8 +8,8 @@ import type { Bundle } from "@hot-updater/plugin-core";
 import { useForm, useStore } from "@tanstack/react-form";
 import { Download, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import semver from "semver";
 import { toast } from "sonner";
+import { normalizeRange } from "verkit";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,7 +62,7 @@ function getTargetAppVersionValidation(value: string) {
     };
   }
 
-  const normalizedRange = semver.validRange(normalizedValue);
+  const normalizedRange = normalizeRange(normalizedValue);
 
   if (!normalizedRange) {
     return {

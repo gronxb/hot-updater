@@ -7,9 +7,15 @@ import {
   getContentType,
   parseStorageUri,
 } from "@hot-updater/plugin-core";
-import admin from "firebase-admin";
+import {
+  getApp,
+  getApps,
+  initializeApp,
+  type AppOptions,
+} from "firebase-admin/app";
+import { getStorage } from "firebase-admin/storage";
 
-export interface FirebaseStorageConfig extends admin.AppOptions {
+export interface FirebaseStorageConfig extends AppOptions {
   storageBucket: string;
   /**
    * Base path where bundles will be stored in the bucket
@@ -22,13 +28,8 @@ export const firebaseStorage =
     name: "firebaseStorage",
     supportedProtocol: "gs",
     factory: (config) => {
-      let app: admin.app.App;
-      try {
-        app = admin.app();
-      } catch {
-        app = admin.initializeApp(config);
-      }
-      const bucket = app.storage().bucket(config.storageBucket);
+      const app = getApps().length ? getApp() : initializeApp(config);
+      const bucket = getStorage(app).bucket(config.storageBucket);
 
       const getStorageKey = createStorageKeyBuilder(config.basePath);
 
