@@ -12,7 +12,6 @@ export default defineConfig([
           import: "./dist/index.mjs",
           require: "./dist/index.cjs",
         },
-        "./sql/analytics.sql": "./sql/analytics.sql",
       },
     },
     failOnWarn: true,

@@ -141,7 +141,7 @@ export const collectAnalyticsOverview = async ({
 
   const bundles = await collectBundles(getBundles, pageSize);
   const overview = await (
-    runtime as import("@hot-updater/analytics/internal/provider-capability").AnalyticsProvider
+    runtime as import("@hot-updater/analytics/provider").AnalyticsProvider
   ).getBundleEventOverview();
   return createAnalyticsOverviewFromCounts(
     bundles,

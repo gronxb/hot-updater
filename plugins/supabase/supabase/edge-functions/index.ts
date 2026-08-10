@@ -1,9 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { analytics } from "@hot-updater/analytics";
-import {
-  managedBetterAuthPlugin,
-  managedRoutePolicy,
-} from "@hot-updater/better-auth/managed";
+import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   supabaseEdgeFunctionDatabase,
@@ -28,11 +24,7 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  plugins: [
-    managedBetterAuthPlugin(),
-    managedRoutePolicy({ scope: "client" }),
-    analytics(),
-  ],
+  plugins: createManagedServerPlugins(),
   storages: [
     supabaseEdgeFunctionStorage({
       supabaseUrl,

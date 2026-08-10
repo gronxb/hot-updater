@@ -22,3 +22,7 @@ export {
   type HotUpdaterPluginContribution,
   type HotUpdaterPluginSetupContext,
 } from "../kernel/manifest";
+export type {
+  HotUpdaterPluginComponents,
+  UniversalComponentRegistry,
+} from "../kernel/componentRegistry";

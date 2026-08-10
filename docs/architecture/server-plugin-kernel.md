@@ -2,12 +2,14 @@
 
 ## Scope
 
-The server kernel composes four generic extension points:
+The server kernel composes five generic extension points:
 
 1. versioned infrastructure capabilities;
 2. explicitly declared HTTP routes;
-3. one mechanism-neutral authentication provider; and
-4. an optional monotonic route-access policy.
+3. one mechanism-neutral authentication provider;
+4. an optional monotonic route-access policy; and
+5. versioned universal component schemas bound to a provider-neutral data
+   adapter.
 
 It does not define Analytics, authentication products, managed deployment
 policy, provider presets, or storage contracts.
@@ -25,6 +27,13 @@ option. Server plugin authoring is limited to the unsupported
 features validate the contract. The supported root does not export a general
 server plugin factory.
 
+A feature plugin owns its component ID, schema history, table and access
+pattern names, structured row constraints, and declarative legacy-adoption
+policy. A database provider only implements the generic component adapter
+contract. Provider source must not import feature packages or reproduce their
+schema constants. This keeps the fixed core database model map separate from
+append-oriented feature data.
+
 All application, provider, plugin, preload, and internal-entrypoint code in the
 same JavaScript process is trusted. The process authorities coordinate nominal
 identity across ESM, CommonJS, and bundled module instances and prevent
@@ -39,10 +48,12 @@ Construction is synchronous and deterministic:
 1. validate and sort plugins by ID;
 2. collect and validate capability providers;
 3. materialize and parse capabilities against a frozen infrastructure view;
-4. run each plugin setup once and collect every route and route policy;
-5. apply route policies to the collected routes;
-6. compile the core and contributed routes; and
-7. select the authentication provider.
+4. collect component schemas, reject component/table collisions, and bind them
+   to the component data adapter;
+5. run each plugin setup once and collect every route and route policy;
+6. apply route policies to the collected routes;
+7. compile the core and contributed routes; and
+8. select the authentication provider.
 
 Capability factories, parsers, and plugin setup must not return promises or
 thenables. Duplicate plugin IDs, capability IDs or providers, route IDs or
@@ -52,6 +63,30 @@ without an authentication provider also fails construction.
 Capability factories receive schema-readiness-guarded database operations and
 runtime-only storage access. They do not receive migration factories, provider
 configuration, profiles, or credentials.
+
+Component binding is synchronous and side-effect free. It cannot create tables,
+write schema markers, or deploy indexes. Migration and generated artifacts are
+administrative operations exposed through the DB tooling boundary. Runtime
+append and ordered-scan operations fail closed until the provider confirms the
+latest declared component version is ready.
+
+Migration classifies physical storage against every declared schema version,
+then applies the shared `ready`, `create`, `adopt`, `migrate`, or `reject`
+decision. Providers compile storage-enforced named checks and supported
+nullable/index changes to their native storage. Validation-only checks remain
+part of the same portable row contract without changing a legacy physical
+fingerprint. Providers validate the final physical shape and every stored row
+against both check kinds before recording the component marker. The marker
+write is last; future markers, unknown legacy evidence, physical drift, and
+invalid rows fail closed. Provider-specific concerns such as RLS, Firestore
+composite indexes, or DynamoDB layout markers remain generic provider envelopes
+around that logical contract.
+
+`migrateUniversalComponents(hotUpdater)` executes provider migration hooks in
+component-ID order. `generateUniversalComponentArtifacts(hotUpdater)` returns
+version-tagged provider artifacts with their owning component ID and rejects
+stale target versions or output-path collisions. Both functions live only under
+`@hot-updater/server/db`; neither is part of the request-time root API.
 
 ## Request lifecycle
 

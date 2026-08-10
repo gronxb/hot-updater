@@ -1,4 +1,5 @@
 export { analytics, type AnalyticsOptions } from "./analytics";
+export { analyticsComponentSchema } from "./componentSchema";
 export type {
   ActiveInstallationInput,
   ActiveInstallationOverview,

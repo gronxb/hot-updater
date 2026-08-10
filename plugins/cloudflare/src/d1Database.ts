@@ -1,20 +1,14 @@
-import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
-import {
-  createBoundedAnalyticsProvider,
-  type AnalyticsMigrationResult,
-} from "@hot-updater/analytics/provider";
 import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import {
+  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
-  type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import Cloudflare from "cloudflare";
 
-import { runD1AnalyticsMigration } from "./d1AnalyticsMigration";
-import { createD1AnalyticsPersistence } from "./d1AnalyticsPersistence";
 import { createD1Implementation } from "./d1Implementation";
 import type { D1Executor } from "./d1Implementation";
 import { createD1ManagedAccessKeyStoreFromExecutor } from "./d1ManagedAccessKeyStore";
+import { createD1UniversalComponentDataAdapter } from "./d1UniversalComponentData";
 
 export interface D1DatabaseConfig {
   readonly databaseId: string;
@@ -22,12 +16,30 @@ export interface D1DatabaseConfig {
   readonly cloudflareApiToken: string;
 }
 
-function createD1Executor(config: D1DatabaseConfig): D1Executor {
+const createD1Executor = (config: D1DatabaseConfig): D1Executor => {
   const cloudflare = new Cloudflare({
     apiToken: config.cloudflareApiToken,
   });
   return {
-    async query(sql, params) {
+    async batch(
+      statements: readonly {
+        readonly params: readonly string[];
+        readonly sql: string;
+      }[],
+    ) {
+      if (statements.length === 0) return;
+      if (statements.some(({ params }) => params.length !== 0)) {
+        throw new TypeError(
+          "Remote D1 batch only supports parameter-free migration statements",
+        );
+      }
+      await cloudflare.d1.database.query(config.databaseId, {
+        account_id: config.accountId,
+        params: [],
+        sql: statements.map(({ sql }) => sql).join(";\n"),
+      });
+    },
+    async query(sql: string, params: readonly string[]) {
       const page = await cloudflare.d1.database.query(config.databaseId, {
         account_id: config.accountId,
         sql,
@@ -42,34 +54,21 @@ function createD1Executor(config: D1DatabaseConfig): D1Executor {
       return rows;
     },
   };
-}
+};
 
-export const d1Database = (config: D1DatabaseConfig): DatabasePlugin => {
+export const d1Database = (config: D1DatabaseConfig) => {
   const executor = createD1Executor(config);
-  return attachManagedAccessKeyStore(
-    attachAnalyticsProviderCapability(
-      createDatabasePlugin({
-        name: "d1Database",
-        plugin: () => createD1Implementation(executor),
-      }),
-      () =>
-        createBoundedAnalyticsProvider(createD1AnalyticsPersistence(executor)),
-    ),
-    () => createD1ManagedAccessKeyStoreFromExecutor(executor),
+  const plugin = attachUniversalComponentDataAdapter(
+    createDatabasePlugin({
+      name: "d1Database",
+      plugin: () => createD1Implementation(executor),
+    }),
+    () => createD1UniversalComponentDataAdapter(executor),
+  );
+  return attachManagedAccessKeyStore(plugin, () =>
+    createD1ManagedAccessKeyStoreFromExecutor(executor),
   );
 };
 
 export const createD1ManagedAccessKeyStore = (config: D1DatabaseConfig) =>
   createD1ManagedAccessKeyStoreFromExecutor(createD1Executor(config));
-
-export const migrateD1Analytics = (
-  config: D1DatabaseConfig,
-): Promise<AnalyticsMigrationResult> => {
-  const executor = createD1Executor(config);
-  return runD1AnalyticsMigration({
-    ...executor,
-    async batch(statements) {
-      await executor.query(statements.join(";\n"), []);
-    },
-  });
-};

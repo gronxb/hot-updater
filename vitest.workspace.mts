@@ -88,6 +88,7 @@ export default defineConfig({
           include: integrationInclude,
           exclude: [
             ...rootExclude,
+            "packages/analytics/**/*.cloudflare.integration.spec.ts",
             "plugins/cloudflare/**/*.integration.spec.ts",
             "packages/bsdiff/tests/runtime/*.manual.*",
           ],
@@ -96,6 +97,7 @@ export default defineConfig({
           maxConcurrency: 1,
           maxWorkers: 1,
           pool: "forks",
+          sequence: { groupOrder: 0 },
           hookTimeout: 60000,
           testTimeout: 60000,
         },
@@ -110,8 +112,12 @@ export default defineConfig({
         ],
         test: {
           name: "integration:cloudflare",
-          include: ["plugins/cloudflare/worker/**/*.integration.spec.ts"],
+          include: [
+            "packages/analytics/**/*.cloudflare.integration.spec.ts",
+            "plugins/cloudflare/worker/**/*.integration.spec.ts",
+          ],
           globalSetup: "./plugins/cloudflare/vitest.global-setup.mts",
+          sequence: { groupOrder: 1 },
         },
       }),
     ],

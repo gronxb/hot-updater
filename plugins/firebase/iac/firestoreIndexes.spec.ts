@@ -54,14 +54,5 @@ describe("firebase firestore index template", () => {
       ],
       queryScope: "COLLECTION",
     });
-
-    expect(indexFile.indexes).toContainEqual({
-      collectionGroup: "bundle_events",
-      fields: [
-        { fieldPath: "received_at_ms", order: "ASCENDING" },
-        { fieldPath: "id", order: "ASCENDING" },
-      ],
-      queryScope: "COLLECTION",
-    });
   });
 });

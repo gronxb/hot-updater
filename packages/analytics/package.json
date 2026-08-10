@@ -38,16 +38,6 @@
         "default": "./dist/adapters/mongodb.cjs"
       }
     },
-    "./internal/provider-capability": {
-      "import": {
-        "types": "./dist/internal/provider-capability.d.mts",
-        "default": "./dist/internal/provider-capability.mjs"
-      },
-      "require": {
-        "types": "./dist/internal/provider-capability.d.cts",
-        "default": "./dist/internal/provider-capability.cjs"
-      }
-    },
     "./provider": {
       "import": {
         "types": "./dist/provider/index.d.mts",

@@ -1,5 +1,3 @@
-import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
-import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import type {
   BundlePatchRow,
@@ -15,12 +13,12 @@ import type {
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
 import {
+  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
   DatabasePluginInputError,
 } from "@hot-updater/plugin-core";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-import { createSupabaseAnalyticsPersistence } from "./supabaseAnalyticsPersistence";
 import {
   resolveSupabaseServiceRoleKey,
   type SupabaseServiceRoleConfig,
@@ -29,6 +27,7 @@ import { buildSupabaseFilter } from "./supabaseFilter";
 import { createSupabaseGetUpdateInfo } from "./supabaseGetUpdateInfo";
 import { createSupabaseManagedAccessKeyStoreFromClient } from "./supabaseManagedAccessKeyStore";
 import { SupabaseMissingDataError, throwSupabaseError } from "./supabaseResult";
+import { createSupabaseUniversalComponentDataAdapter } from "./supabaseUniversalComponentData";
 import type { Database } from "./types";
 
 export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
@@ -212,11 +211,11 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
     config.supabaseUrl,
     resolveSupabaseServiceRoleKey(config),
   );
-  const database = createDatabasePlugin({
+  const plugin = createDatabasePlugin({
     name: "supabaseDatabase",
     plugin: () => createSupabaseImplementation(supabase),
   });
-  attachSupabaseAggregateMutations(database, {
+  const database = attachSupabaseAggregateMutations(plugin, {
     async insertBundleWithPatches(input) {
       const { error } = await supabase.rpc(
         "hot_updater_create_bundle_with_patches",
@@ -244,10 +243,8 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
     },
   });
   return attachManagedAccessKeyStore(
-    attachAnalyticsProviderCapability(database, () =>
-      createBoundedAnalyticsProvider(
-        createSupabaseAnalyticsPersistence(supabase),
-      ),
+    attachUniversalComponentDataAdapter(database, () =>
+      createSupabaseUniversalComponentDataAdapter(supabase),
     ),
     () => createSupabaseManagedAccessKeyStoreFromClient(supabase),
   );

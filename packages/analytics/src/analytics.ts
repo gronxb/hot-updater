@@ -3,9 +3,13 @@ import {
   type FirstPartyServerPlugin,
 } from "@hot-updater/server/internal/first-party-plugin";
 
+import { analyticsComponentSchema } from "./componentSchema";
 import { InvalidAnalyticsProviderError } from "./errors";
-import { analyticsProviderCapability } from "./internal/provider-capability";
-import { parseAnalyticsProvider, type AnalyticsProvider } from "./provider";
+import {
+  createUniversalComponentAnalyticsProvider,
+  parseAnalyticsProvider,
+  type AnalyticsProvider,
+} from "./provider";
 import { createAnalyticsRoutes } from "./routes";
 
 export type AnalyticsOptions = {
@@ -71,19 +75,16 @@ function createPlugin(
 ): FirstPartyServerPlugin {
   return defineFirstPartyServerPlugin({
     id: "analytics",
-    requires:
-      options.provider === undefined
-        ? Object.freeze([
-            Object.freeze({
-              missing: "error" as const,
-              token: analyticsProviderCapability,
-            }),
-          ])
-        : Object.freeze([]),
+    requires: Object.freeze([]),
+    ...(options.provider === undefined
+      ? { schema: analyticsComponentSchema }
+      : {}),
     setup(context) {
       const provider =
         options.provider ??
-        context.capabilities.require(analyticsProviderCapability);
+        createUniversalComponentAnalyticsProvider(
+          context.components.require(analyticsComponentSchema),
+        );
       return Object.freeze({
         routes: createAnalyticsRoutes(provider, {
           queryAccess: options.queryAccess,

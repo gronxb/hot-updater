@@ -24,8 +24,9 @@ import {
 } from "@hot-updater/cli-tools";
 import {
   createD1ManagedAccessKeyStore,
-  migrateD1Analytics,
+  d1Database,
 } from "@hot-updater/cloudflare";
+import { migrateUniversalComponents } from "@hot-updater/server/db";
 import { Cloudflare } from "cloudflare";
 
 import { createWrangler } from "../src/utils/createWrangler";
@@ -98,8 +99,9 @@ const deployWorker = async (
   apiToken: string,
   accountId: string,
   {
-    analyticsApiToken,
+    createDeploymentTarget,
     credentialSource,
+    d1ApiToken,
     d1DatabaseId,
     d1DatabaseName,
     envFilePath,
@@ -107,8 +109,9 @@ const deployWorker = async (
     r2BucketName,
     workerName,
   }: {
-    analyticsApiToken: string;
+    createDeploymentTarget: RunInitOptions["createDeploymentTarget"];
     credentialSource: CloudflareCredentialSource;
+    d1ApiToken: string;
     d1DatabaseId: string;
     d1DatabaseName: string;
     envFilePath: string;
@@ -184,18 +187,24 @@ const deployWorker = async (
 
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    await migrateD1Analytics({
-      accountId,
-      cloudflareApiToken: analyticsApiToken,
-      databaseId: d1DatabaseId,
-    });
+    if (createDeploymentTarget !== undefined) {
+      await migrateUniversalComponents(
+        createDeploymentTarget(
+          d1Database({
+            accountId,
+            cloudflareApiToken: d1ApiToken,
+            databaseId: d1DatabaseId,
+          }),
+        ),
+      );
+    }
 
     const accessKey = await provisionManagedBetterAuthApiKey({
       envFilePath,
       name: "Default",
       store: createD1ManagedAccessKeyStore({
         accountId,
-        cloudflareApiToken: analyticsApiToken,
+        cloudflareApiToken: d1ApiToken,
         databaseId: d1DatabaseId,
       }),
     });
@@ -218,7 +227,11 @@ const deployWorker = async (
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  createDeploymentTarget,
+  envFile,
+}: RunInitOptions) => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
@@ -681,8 +694,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   });
 
   await deployWorker(infrastructureApiToken, accountId, {
-    analyticsApiToken: apiToken,
+    createDeploymentTarget,
     credentialSource: infrastructureCredentialSource,
+    d1ApiToken: apiToken,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
     envFilePath: envFile ?? ".env.hotupdater",
