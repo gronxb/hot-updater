@@ -1220,7 +1220,7 @@ describe("deploy rollout wiring", () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
-      database: async () => mockDatabasePlugin,
+      database: databasePlugin,
       fingerprint: {},
       patch: {
         enabled: true,
