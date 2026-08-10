@@ -7,10 +7,6 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { InitError } from "@hot-updater/cli-tools";
 
-import {
-  DYNAMODB_ANALYTICS_SCHEMA_KEY,
-  DYNAMODB_ANALYTICS_SCHEMA_VERSION,
-} from "../src/dynamodbAnalyticsPersistence";
 import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamodbDatabase";
 
 const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
@@ -44,30 +40,6 @@ export class DynamoDBPermissionError extends InitError {
         "Then rerun `hot-updater init`.",
       ].join("\n"),
       { cause },
-    );
-  }
-}
-
-export class DynamoDBAnalyticsSchemaError extends Error {
-  readonly name = "DynamoDBAnalyticsSchemaError";
-
-  constructor(readonly componentVersion: string | null) {
-    super(
-      `DynamoDB Analytics schema is ${componentVersion ?? "missing"}; expected ${DYNAMODB_ANALYTICS_SCHEMA_VERSION}`,
-    );
-  }
-}
-
-export class DynamoDBTimeToLiveSchemaError extends Error {
-  readonly name = "DynamoDBTimeToLiveSchemaError";
-
-  constructor(
-    readonly tableName: string,
-    readonly attributeName: string | undefined,
-    readonly status: string | undefined,
-  ) {
-    super(
-      `DynamoDB table "${tableName}" has incompatible TTL configuration (${attributeName ?? "unknown attribute"}, ${status ?? "unknown status"})`,
     );
   }
 }
@@ -143,33 +115,6 @@ export class DynamoDBManager {
     this.client = new DynamoDB({ credentials, region });
   }
 
-  private async ensureAnalyticsSchema(tableName: string): Promise<void> {
-    const { Item } = await this.client.getItem({
-      TableName: tableName,
-      Key: {
-        pk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.pk },
-        sk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.sk },
-      },
-      ProjectionExpression: "#value",
-      ExpressionAttributeNames: { "#value": "value" },
-    });
-    const componentVersion = Item?.value?.S ?? null;
-    if (componentVersion === DYNAMODB_ANALYTICS_SCHEMA_VERSION) return;
-    if (componentVersion !== null) {
-      throw new DynamoDBAnalyticsSchemaError(componentVersion);
-    }
-    await this.client.putItem({
-      TableName: tableName,
-      Item: {
-        pk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.pk },
-        sk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.sk },
-        value: { S: DYNAMODB_ANALYTICS_SCHEMA_VERSION },
-      },
-      ConditionExpression: "attribute_not_exists(#pk)",
-      ExpressionAttributeNames: { "#pk": "pk" },
-    });
-  }
-
   async ensureTable(tableName: string): Promise<void> {
     try {
       const { Table } = await this.client.describeTable({
@@ -179,7 +124,6 @@ export class DynamoDBManager {
         throw new DynamoDBTableSchemaError(tableName);
       }
       await this.ensureLifecycle(tableName);
-      await this.ensureAnalyticsSchema(tableName);
       return;
     } catch (error) {
       if (
@@ -218,11 +162,9 @@ export class DynamoDBManager {
       { TableName: tableName },
     );
     await this.ensureLifecycle(tableName);
-    await this.ensureAnalyticsSchema(tableName);
   }
 
   private async ensureLifecycle(tableName: string): Promise<void> {
-    await this.ensureTimeToLive(tableName);
     await this.ensurePointInTimeRecovery(tableName);
   }
 
@@ -240,33 +182,6 @@ export class DynamoDBManager {
         PointInTimeRecoveryEnabled: true,
       },
       TableName: tableName,
-    });
-  }
-
-  private async ensureTimeToLive(tableName: string): Promise<void> {
-    const { TimeToLiveDescription } = await this.client.describeTimeToLive({
-      TableName: tableName,
-    });
-    const status = TimeToLiveDescription?.TimeToLiveStatus;
-    const attributeName = TimeToLiveDescription?.AttributeName;
-    if (
-      attributeName === "expires_at_s" &&
-      (status === "ENABLED" || status === "ENABLING")
-    ) {
-      return;
-    }
-    if (status === "ENABLING" || status === "DISABLING") {
-      throw new DynamoDBTimeToLiveSchemaError(tableName, attributeName, status);
-    }
-    if (status === "ENABLED") {
-      throw new DynamoDBTimeToLiveSchemaError(tableName, attributeName, status);
-    }
-    await this.client.updateTimeToLive({
-      TableName: tableName,
-      TimeToLiveSpecification: {
-        AttributeName: "expires_at_s",
-        Enabled: true,
-      },
     });
   }
 }

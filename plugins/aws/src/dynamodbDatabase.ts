@@ -4,17 +4,15 @@ import {
   type DynamoDBClientConfig,
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { attachAnalyticsProviderCapability } from "@hot-updater/analytics/internal/provider-capability";
-import { createBoundedAnalyticsProvider } from "@hot-updater/analytics/provider";
 import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import {
   attachDatabasePluginAggregateMutations,
   attachDatabasePluginPatchHydration,
+  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
-import { createDynamoDBAnalyticsPersistence } from "./dynamodbAnalyticsPersistence";
 import { createDynamoDBAggregateMutations } from "./dynamodbDatabaseAggregate";
 import { createDynamoDBCrud } from "./dynamodbDatabaseCrud";
 import {
@@ -23,6 +21,7 @@ import {
 } from "./dynamodbDatabaseOwnerReads";
 import { createDynamoDBGetUpdateInfo } from "./dynamodbDatabaseUpdateInfo";
 import { createDynamoDBManagedAccessKeyStore } from "./dynamodbManagedAccessKeyStore";
+import { createDynamoDBUniversalComponentDataAdapter } from "./dynamodbUniversalComponentData";
 
 export const DYNAMODB_UPDATE_INDEX_NAME = "hot-updater-update-index";
 
@@ -115,8 +114,8 @@ export const dynamoDB = (config: DynamoDBConfig) => {
     createDynamoDBAggregateMutations(store),
   );
   return attachManagedAccessKeyStore(
-    attachAnalyticsProviderCapability(pluginWithAggregateMutations, () =>
-      createBoundedAnalyticsProvider(createDynamoDBAnalyticsPersistence(store)),
+    attachUniversalComponentDataAdapter(pluginWithAggregateMutations, () =>
+      createDynamoDBUniversalComponentDataAdapter(store),
     ),
     () =>
       createDynamoDBManagedAccessKeyStore(store, {

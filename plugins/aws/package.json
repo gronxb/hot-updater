@@ -57,7 +57,6 @@
     "mime": "^4.0.4"
   },
   "dependencies": {
-    "@hot-updater/analytics": "workspace:*",
     "@hot-updater/better-auth": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@aws-sdk/client-cloudfront": "3.1066.0",
@@ -73,6 +72,7 @@
     "@aws-sdk/lib-storage": "3.1066.0",
     "@aws-sdk/lib-dynamodb": "3.1066.0",
     "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/managed": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "hono": "catalog:hono",
     "aws-lambda": "1.0.7"

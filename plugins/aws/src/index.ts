@@ -1,4 +1,3 @@
-export * from "./dynamodbAnalyticsPersistence";
 export * from "./dynamodbDatabase";
 export * from "./dynamodbManagedAccessKeyStore";
 export * from "./s3Database";

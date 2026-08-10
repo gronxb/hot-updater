@@ -5,7 +5,6 @@ import {
   CreateTableCommand,
   DynamoDBClient,
   ListTablesCommand,
-  PutItemCommand,
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import {
@@ -13,14 +12,21 @@ import {
   HeadBucketCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { DYNAMODB_UPDATE_INDEX_NAME } from "@hot-updater/aws";
 import {
-  DYNAMODB_ANALYTICS_SCHEMA_KEY,
-  DYNAMODB_ANALYTICS_SCHEMA_VERSION,
-  DYNAMODB_UPDATE_INDEX_NAME,
-} from "@hot-updater/aws";
-import type { Bundle } from "@hot-updater/core";
+  managedAccessKeyStoreCapability,
+  registerManagedAccessKey,
+} from "@hot-updater/better-auth/managed";
+import {
+  type AppUpdateInfo,
+  type Bundle,
+  type GetBundlesArgs,
+  NIL_UUID,
+} from "@hot-updater/core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
+import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import type { HotUpdaterAPI } from "@hot-updater/server";
+import { migrateUniversalComponents } from "@hot-updater/server/db";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
   setupBundleMethodsTestSuite,
@@ -29,7 +35,6 @@ import {
 import {
   assertDockerComposeAvailable,
   cleanupServer,
-  createGetUpdateInfo,
   killPort,
   spawnServerProcess,
   TEST_MANAGEMENT_AUTH_TOKEN,
@@ -52,6 +57,7 @@ const tableName = "hot-updater-metadata";
 const bucketName = "hot-updater-bundles";
 const dynamodbEndpoint = `http://localhost:${dynamodbPort}`;
 const s3Endpoint = `http://localhost:${minioPort}`;
+const rawApiKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 assertDockerComposeAvailable(
   "Hono + DynamoDB integration tests require Docker Compose and a running Docker daemon.",
@@ -107,16 +113,6 @@ async function createTable() {
   await waitUntilTableExists(
     { client, maxWaitTime: 30 },
     { TableName: tableName },
-  );
-  await client.send(
-    new PutItemCommand({
-      TableName: tableName,
-      Item: {
-        pk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.pk },
-        sk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.sk },
-        value: { S: DYNAMODB_ANALYTICS_SCHEMA_VERSION },
-      },
-    }),
   );
   client.destroy();
 }
@@ -191,6 +187,20 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     await waitForServer(baseUrl, 180);
 
     const db = await import("./db.js");
+    const accessKeyStoreContribution = getCapabilityContributions(
+      db.database,
+    ).find(({ token }) => token.id === managedAccessKeyStoreCapability.id);
+    if (accessKeyStoreContribution === undefined) {
+      throw new Error("DynamoDB managed access-key store is missing.");
+    }
+    await registerManagedAccessKey({
+      apiKey: rawApiKey,
+      createdAt: 1,
+      name: "Standalone integration test",
+      store: managedAccessKeyStoreCapability.parse(
+        Reflect.apply(accessKeyStoreContribution.create, undefined, []),
+      ),
+    });
     hotUpdater = db.hotUpdater;
   }, 120000);
 
@@ -208,14 +218,35 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     });
   }, 60000);
 
-  const getUpdateInfo: ReturnType<typeof createGetUpdateInfo> = (
-    bundles,
-    options,
-  ) =>
-    createGetUpdateInfo({ baseUrl: `${baseUrl}/hot-updater` })(
-      bundles,
-      options,
-    );
+  const getUpdateInfo = async (
+    bundles: Bundle[],
+    options: GetBundlesArgs,
+  ): Promise<AppUpdateInfo | null> => {
+    for (const bundle of bundles) {
+      await hotUpdater.insertBundle(bundle);
+    }
+
+    const channel = options.channel ?? "production";
+    const minBundleId = options.minBundleId ?? NIL_UUID;
+    const cohort = encodeURIComponent(options.cohort ?? "1");
+    const path =
+      options._updateStrategy === "appVersion"
+        ? `/app-version/${options.platform}/${options.appVersion}/${channel}/${minBundleId}/${options.bundleId}/${cohort}`
+        : `/fingerprint/${options.platform}/${options.fingerprintHash}/${channel}/${minBundleId}/${options.bundleId}/${cohort}`;
+    try {
+      const response = await fetch(`${baseUrl}/hot-updater${path}`, {
+        headers: { "x-api-key": rawApiKey },
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to check for updates: ${response.statusText}`);
+      }
+      return (await response.json()) as AppUpdateInfo | null;
+    } finally {
+      for (const bundle of bundles) {
+        await hotUpdater.deleteBundleById(bundle.id);
+      }
+    }
+  };
 
   setupGetUpdateInfoTestSuite({ getUpdateInfo });
 
@@ -228,6 +259,72 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       hotUpdater.updateBundleById(bundleId, bundle),
     deleteBundleById: (bundleId: string) =>
       hotUpdater.deleteBundleById(bundleId),
+  });
+
+  it("initializes managed components through the neutral lifecycle", async () => {
+    await expect(migrateUniversalComponents(hotUpdater)).resolves.toEqual([
+      {
+        changed: false,
+        componentId: "analytics",
+        version: "2",
+      },
+    ]);
+  });
+
+  it("accepts authenticated events without granting component queries", async () => {
+    const event = {
+      type: "UNCHANGED",
+      installId: "standalone-dynamodb-installation",
+      toBundleId: "00000000-0000-0000-0000-000000000001",
+      platform: "ios",
+      appVersion: "1.0.0",
+      channel: "production",
+      cohort: "default",
+      fingerprintHash: null,
+      fromBundleId: null,
+      updateStrategy: null,
+    };
+    const unauthorized = await fetch(`${baseUrl}/hot-updater/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(event),
+    });
+    const accepted = await fetch(`${baseUrl}/hot-updater/events`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": rawApiKey,
+      },
+      body: JSON.stringify(event),
+    });
+    const clientQuery = await fetch(
+      `${baseUrl}/hot-updater/api/installations/overview`,
+      { headers: { "x-api-key": rawApiKey } },
+    );
+    const managementQuery = await fetch(
+      `${baseUrl}/hot-updater/api/installations/overview`,
+      {
+        headers: {
+          Authorization: `Bearer ${TEST_MANAGEMENT_AUTH_TOKEN}`,
+        },
+      },
+    );
+
+    expect(unauthorized.status).toBe(401);
+    expect(accepted.status).toBe(204);
+    expect(clientQuery.status).toBe(401);
+    expect(managementQuery.status).toBe(200);
+  });
+
+  it("requires a client key for update checks", async () => {
+    const path = `/hot-updater/app-version/ios/1.0.0/production/${NIL_UUID}/${NIL_UUID}/default`;
+    const unauthorized = await fetch(`${baseUrl}${path}`);
+    const authorized = await fetch(`${baseUrl}${path}`, {
+      headers: { "x-api-key": rawApiKey },
+    });
+
+    expect(unauthorized.status).toBe(401);
+    expect(authorized.status).toBe(200);
   });
 
   it("updates metadata through the authenticated standalone repository", async () => {

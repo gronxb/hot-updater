@@ -1,8 +1,4 @@
-import { analytics } from "@hot-updater/analytics";
-import {
-  managedBetterAuthPlugin,
-  managedRoutePolicy,
-} from "@hot-updater/better-auth/managed";
+import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
@@ -101,13 +97,7 @@ const resolveRequestOrigin = (context?: SignedUrlContext) => {
 
 const database = createManagedDatabase();
 const plugins =
-  DATABASE_TYPE === "dynamodb"
-    ? [
-        managedBetterAuthPlugin(),
-        managedRoutePolicy({ scope: "client" }),
-        analytics(),
-      ]
-    : [];
+  DATABASE_TYPE === "dynamodb" ? createManagedServerPlugins() : [];
 
 const hotUpdater = createHotUpdater<SignedUrlContext>({
   database,

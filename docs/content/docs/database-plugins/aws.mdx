@@ -49,28 +49,36 @@ aws dynamodb create-table \
   ]'
 ```
 
-Analytics uses the same table for append-only events. Before enabling the
-`analytics()` server plugin, write its schema marker:
+Universal component data uses the same table under component-derived
+partitions. Do not write component schema markers or configure provider-owned
+retention fields by hand. Compose the component plugin with the database and
+run its provider-neutral migration before serving traffic:
 
-```bash
-aws dynamodb put-item \
-  --table-name hot-updater \
-  --item '{"pk":{"S":"_hot-updater"},"sk":{"S":"schema.analytics"},"value":{"S":"3"}}' \
-  --condition-expression 'attribute_not_exists(pk)'
+```typescript
+import { dynamoDB } from "@hot-updater/aws";
+import { createManagedServerPlugins } from "@hot-updater/managed";
+import { createHotUpdater } from "@hot-updater/server";
+import { migrateUniversalComponents } from "@hot-updater/server/db";
 
-aws dynamodb update-time-to-live \
-  --table-name hot-updater \
-  --time-to-live-specification Enabled=true,AttributeName=expires_at_s
+const database = dynamoDB({
+  tableName: "hot-updater",
+  region: "us-east-1",
+});
+const hotUpdater = createHotUpdater({
+  database,
+  plugins: createManagedServerPlugins(),
+});
 
-aws dynamodb update-continuous-backups \
-  --table-name hot-updater \
-  --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true
+await migrateUniversalComponents(hotUpdater);
 ```
 
-Managed AWS init creates or validates this marker automatically.
-The successful readiness check is cached for the lifetime of the provider, so
-event writes and paginated Analytics reads do not add one schema `GetItem` per
-operation.
+The migration derives logical markers from each active component schema. For
+example, the current Analytics component owns logical schema version `2`; the
+AWS database plugin does not import or duplicate that contract. Managed AWS
+init runs this migration automatically and enables point-in-time recovery.
+The marker is rechecked on each operation so invalidation is detected, while a
+successful full physical-schema and stored-row inspection is cached for the
+lifetime of the provider.
 
 ## Configuration
 
@@ -163,11 +171,13 @@ const hotUpdater = createHotUpdater({
 });
 ```
 
-The Lambda or server role needs read access for update checks. Analytics also
-needs `GetItem` for the schema marker and `Query`/`PutItem` for the
-`analytics#bundle_events#*` time-bucket shards. Events expire after 90 days.
-CLI and Console writers need permission to put, update, and delete metadata
-items.
+The Lambda or server role needs read access for update checks. Active universal
+components also need marker/catalog `GetItem`, `Query`, and
+`TransactWriteItems` access to the provider-neutral component-data namespace.
+Deployment migration additionally needs `PutItem` and `DeleteItem` access plus
+permission to write component markers. The AWS adapter does not impose an
+Analytics retention period; retention belongs to the component contract. CLI
+and Console writers need permission to put, update, and delete metadata items.
 
 The provider does not impose a total bundle, patch, or patch-relationship count
 limit. Each serialized metadata item is limited to 8 KiB, and counters and

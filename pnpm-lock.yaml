@@ -417,6 +417,9 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
+      '@hot-updater/managed':
+        specifier: workspace:*
+        version: link:../../packages/managed
       '@hot-updater/mock':
         specifier: workspace:*
         version: link:../../plugins/mock
@@ -439,6 +442,9 @@ importers:
       '@aws-sdk/lib-dynamodb':
         specifier: 3.1066.0
         version: 3.1066.0(@aws-sdk/client-dynamodb@3.1066.0)
+      '@hot-updater/better-auth':
+        specifier: workspace:*
+        version: link:../../packages/better-auth
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -2072,15 +2078,15 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1066.0
         version: 3.1066.0
-      '@hot-updater/analytics':
-        specifier: workspace:*
-        version: link:../../packages/analytics
       '@hot-updater/better-auth':
         specifier: workspace:*
         version: link:../../packages/better-auth
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
+      '@hot-updater/managed':
+        specifier: workspace:*
+        version: link:../../packages/managed
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core

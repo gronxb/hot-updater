@@ -8,11 +8,17 @@ const databaseMocks = vi.hoisted(() => ({
   dynamoDB: vi.fn(() => ({ name: "dynamoDB" })),
   s3Database: vi.fn(() => ({ name: "s3Database" })),
 }));
-const managedPluginMocks = vi.hoisted(() => ({
-  analytics: vi.fn(() => ({ id: "analytics" })),
-  managedBetterAuthPlugin: vi.fn(() => ({ id: "managed-auth" })),
-  managedRoutePolicy: vi.fn(() => ({ id: "managed-policy" })),
-}));
+const managedPluginMocks = vi.hoisted(() => {
+  const plugins = [
+    { id: "managed-plugin-a" },
+    { id: "managed-plugin-b" },
+  ] as const;
+
+  return {
+    createManagedServerPlugins: vi.fn(() => plugins),
+    plugins,
+  };
+});
 const serverMocks = vi.hoisted(() => ({ createHotUpdater: vi.fn() }));
 
 const fakeHotUpdaterHandler = vi.fn(
@@ -31,13 +37,8 @@ vi.mock("../src/dynamodbDatabase", () => ({
   dynamoDB: databaseMocks.dynamoDB,
 }));
 
-vi.mock("@hot-updater/analytics", () => ({
-  analytics: managedPluginMocks.analytics,
-}));
-
-vi.mock("@hot-updater/better-auth/managed", () => ({
-  managedBetterAuthPlugin: managedPluginMocks.managedBetterAuthPlugin,
-  managedRoutePolicy: managedPluginMocks.managedRoutePolicy,
+vi.mock("@hot-updater/managed", () => ({
+  createManagedServerPlugins: managedPluginMocks.createManagedServerPlugins,
 }));
 
 vi.mock("../src/s3Storage", () => ({
@@ -158,28 +159,22 @@ describe("aws lambda entrypoint", () => {
       tableName: "hot-updater-metadata",
     });
     expect(databaseMocks.s3Database).not.toHaveBeenCalled();
-    expect(managedPluginMocks.managedBetterAuthPlugin).toHaveBeenCalledWith();
-    expect(managedPluginMocks.managedRoutePolicy).toHaveBeenCalledWith({
-      scope: "client",
-    });
-    expect(managedPluginMocks.analytics).toHaveBeenCalledTimes(1);
+    expect(
+      managedPluginMocks.createManagedServerPlugins,
+    ).toHaveBeenCalledOnce();
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
-        plugins: [
-          { id: "managed-auth" },
-          { id: "managed-policy" },
-          { id: "analytics" },
-        ],
+        plugins: managedPluginMocks.plugins,
       }),
     );
   });
 
-  it("keeps the deprecated S3 runtime free of Analytics routes", async () => {
+  it("keeps the deprecated S3 runtime free of managed routes", async () => {
     await import("./index");
 
-    expect(managedPluginMocks.managedBetterAuthPlugin).not.toHaveBeenCalled();
-    expect(managedPluginMocks.managedRoutePolicy).not.toHaveBeenCalled();
-    expect(managedPluginMocks.analytics).not.toHaveBeenCalled();
+    expect(
+      managedPluginMocks.createManagedServerPlugins,
+    ).not.toHaveBeenCalled();
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({ plugins: [] }),
     );

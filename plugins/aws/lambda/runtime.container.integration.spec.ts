@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import {
   CreateTableCommand,
   DynamoDBClient,
-  PutItemCommand,
   waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 import {
@@ -23,13 +22,19 @@ import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
+  GetCommand,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { registerManagedAccessKey } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
+import {
+  migrateUniversalComponents,
+  type UniversalComponentMigrationSummary,
+} from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -44,10 +49,6 @@ import {
   spawnRuntime,
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
-import {
-  DYNAMODB_ANALYTICS_SCHEMA_KEY,
-  DYNAMODB_ANALYTICS_SCHEMA_VERSION,
-} from "../src/dynamodbAnalyticsPersistence";
 import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamodbDatabase";
 import { createDynamoDBManagedAccessKeyStore } from "../src/dynamodbManagedAccessKeyStore";
 import { s3Database } from "../src/s3Database";
@@ -259,6 +260,9 @@ describe.sequential("aws lambda runtime acceptance", () => {
   let lambdaRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let runtimeDir: string | undefined;
   let localstackEndpoint = "";
+  let deploymentTarget: ReturnType<typeof createHotUpdater>;
+  let componentMigrations: readonly UniversalComponentMigrationSummary[] = [];
+  let componentMarker: unknown;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   let s3Client: S3Client;
   let dynamodbClient: DynamoDBDocumentClient;
@@ -320,16 +324,31 @@ describe.sequential("aws lambda runtime acceptance", () => {
     );
     process.env.AWS_ENDPOINT_URL = localstackEndpoint;
 
+    const database = dynamoDB({
+      tableName: DYNAMODB_TABLE_NAME,
+      region: REGION,
+      endpoint: localstackEndpoint,
+      credentials: {
+        accessKeyId: ACCESS_KEY_ID,
+        secretAccessKey: SECRET_ACCESS_KEY,
+      },
+    });
+    deploymentTarget = createHotUpdater({
+      database,
+      plugins: createManagedServerPlugins(),
+    });
+    componentMigrations = await migrateUniversalComponents(deploymentTarget);
+    componentMarker = (
+      await dynamodbClient.send(
+        new GetCommand({
+          TableName: DYNAMODB_TABLE_NAME,
+          Key: { pk: "_hot-updater", sk: "schema.analytics" },
+        }),
+      )
+    ).Item?.value;
+
     seedHotUpdater = createHotUpdater({
-      database: dynamoDB({
-        tableName: DYNAMODB_TABLE_NAME,
-        region: REGION,
-        endpoint: localstackEndpoint,
-        credentials: {
-          accessKeyId: ACCESS_KEY_ID,
-          secretAccessKey: SECRET_ACCESS_KEY,
-        },
-      }),
+      database,
       storages: [
         s3LambdaEdgeStorage({
           bucketName: S3_BUCKET_NAME,
@@ -389,6 +408,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       clearBucket(s3Client, S3_BUCKET_NAME),
       clearDynamoDBTable(dynamodbClient),
     ]);
+    await migrateUniversalComponents(deploymentTarget);
     await registerManagedAccessKey({
       apiKey: RAW_API_KEY,
       name: "Runtime test",
@@ -599,15 +619,26 @@ describe.sequential("aws lambda runtime acceptance", () => {
       }),
     );
 
+    const updatePath = createCanonicalPath({
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+      _updateStrategy: "appVersion",
+    });
+    const unauthorizedResponse = await invokeLambda(
+      lambdaPort,
+      createCloudFrontEvent({
+        path: updatePath,
+        headers: new Headers(),
+      }),
+    );
+    const unauthorizedPayload = (await unauthorizedResponse.json()) as {
+      status?: string;
+    };
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({
-        path: createCanonicalPath({
-          appVersion: "1.0",
-          bundleId: NIL_UUID,
-          platform: "ios",
-          _updateStrategy: "appVersion",
-        }),
+        path: updatePath,
         headers: new Headers({ "x-api-key": RAW_API_KEY }),
       }),
     );
@@ -616,6 +647,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       headers?: Record<string, { key: string; value: string }[]>;
     };
 
+    expect(unauthorizedPayload.status).toBe("401");
     expect(payload.headers?.["cache-control"]?.[0]?.value).toBe(
       SHARED_EDGE_CACHE_CONTROL,
     );
@@ -669,7 +701,16 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
   });
 
-  it("requires a client key for events without granting Analytics reads", async () => {
+  it("migrates managed components before accepting authenticated events", async () => {
+    expect(componentMigrations).toEqual([
+      {
+        changed: true,
+        componentId: "analytics",
+        version: "2",
+      },
+    ]);
+    expect(componentMarker).toBe("2");
+
     const event = {
       type: "UNCHANGED",
       installId: "aws-runtime-installation",
@@ -897,16 +938,6 @@ const createDynamoDBTable = async (endpoint: string) => {
     { client, maxWaitTime: 30 },
     { TableName: DYNAMODB_TABLE_NAME },
   );
-  await client.send(
-    new PutItemCommand({
-      TableName: DYNAMODB_TABLE_NAME,
-      Item: {
-        pk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.pk },
-        sk: { S: DYNAMODB_ANALYTICS_SCHEMA_KEY.sk },
-        value: { S: DYNAMODB_ANALYTICS_SCHEMA_VERSION },
-      },
-    }),
-  );
   client.destroy();
 };
 
@@ -918,11 +949,7 @@ const clearDynamoDBTable = async (client: DynamoDBDocumentClient) => {
       ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
     }),
   );
-  const keys = Items.filter(
-    ({ pk, sk }) =>
-      pk !== DYNAMODB_ANALYTICS_SCHEMA_KEY.pk ||
-      sk !== DYNAMODB_ANALYTICS_SCHEMA_KEY.sk,
-  ).map(({ pk, sk }) => ({ pk, sk }));
+  const keys = Items.map(({ pk, sk }) => ({ pk, sk }));
   for (let offset = 0; offset < keys.length; offset += 25) {
     await client.send(
       new BatchWriteCommand({

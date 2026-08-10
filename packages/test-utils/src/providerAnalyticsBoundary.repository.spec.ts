@@ -21,9 +21,11 @@ const managedRuntimeCompositionFiles = [
   "plugins/cloudflare/worker/src/index.ts",
   "plugins/firebase/firebase/functions/index.ts",
   "plugins/supabase/supabase/edge-functions/index.ts",
+  "plugins/aws/lambda/index.ts",
   "plugins/cloudflare/package.json",
   "plugins/firebase/package.json",
   "plugins/supabase/package.json",
+  "plugins/aws/package.json",
 ].map((file) => path.join(workspaceRoot, file));
 
 describe("ordinary database provider architecture", () => {

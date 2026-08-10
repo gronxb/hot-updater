@@ -106,6 +106,7 @@ The current provider compatibility layers are:
 | Database adapter | Runtime source | Runtime migration | Generated artifact |
 | ---------------- | -------------- | ----------------- | ------------------ |
 | Cloudflare D1    | yes            | yes               | D1 SQL             |
+| DynamoDB         | yes            | yes               | no                 |
 | Firebase         | yes            | yes               | Firestore indexes  |
 | PostgreSQL       | yes            | yes               | PostgreSQL SQL     |
 | Supabase         | yes            | no                | Supabase SQL       |
@@ -183,14 +184,15 @@ logic into database implementations.
 5. Configure ingress and storage quotas for the public event route.
 6. Deploy the composed runtime, then enable client ingestion.
 
-The Cloudflare, Firebase, and Supabase managed deployment workflows use the
-shared managed plugin preset for both their deployment target and runtime. The
-deployment target produces provider-neutral component artifacts or migrations
-before the runtime is deployed. The workflows provision the raw API key only
-in the local `.env.hotupdater` file and persist only its SHA-256 projection in
-the provider-owned access-key store. The runtime never receives the raw key.
-The managed client key authorizes OTA selectors and `POST /events`; Analytics
-query routes remain unavailable to that client role.
+The AWS, Cloudflare, Firebase, and Supabase managed deployment workflows use
+the shared managed plugin preset for both their deployment target and runtime.
+The deployment target produces provider-neutral component artifacts or
+migrations before the runtime is deployed. The workflows provision the raw API
+key only in the local `.env.hotupdater` file and persist only its SHA-256
+projection in the provider-owned access-key store. The runtime never receives
+the raw key. The managed client key authorizes OTA selectors and event
+ingestion at `POST /events`; Analytics query routes remain unavailable to that
+client role.
 
 Removing the plugin stops declaring its schema and exposing Analytics routes.
 It does not drop event data or remove the Analytics marker.
@@ -199,4 +201,4 @@ It does not drop event data or remove the Analytics marker.
 
 This boundary does not add Analytics models to Database V2, make database
 providers depend on the Analytics contract, make plugin setup migrate storage,
-enable AWS Analytics, or add retention, deletion, and data-drop behavior.
+or add retention, deletion, and data-drop behavior.

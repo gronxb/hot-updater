@@ -103,7 +103,7 @@ describe("CloudFrontManager", () => {
             OriginRequestPolicy: {
               Id: "origin-request-policy-id",
               OriginRequestPolicyConfig: {
-                Name: "HotUpdaterAnalyticsOriginRequestV2",
+                Name: "HotUpdaterManagedApiOriginRequestV2",
               },
             },
           },

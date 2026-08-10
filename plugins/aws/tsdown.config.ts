@@ -15,10 +15,8 @@ export default defineConfig([
     failOnWarn: true,
     deps: {
       alwaysBundle: [
-        "@hot-updater/analytics",
-        "@hot-updater/analytics/internal/provider-capability",
-        "@hot-updater/analytics/provider",
         "@hot-updater/better-auth/managed",
+        "@hot-updater/managed",
         "@hot-updater/server",
         "@hot-updater/server/internal/first-party-plugin",
         "@hot-updater/plugin-core",

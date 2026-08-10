@@ -17,12 +17,14 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import { migrateUniversalComponents } from "@hot-updater/server/db";
 import { execa } from "execa";
 
 import {
   AWS_DATABASE_TYPES,
   type AwsDatabaseType,
 } from "../src/awsDatabaseType";
+import { dynamoDB } from "../src/dynamodbDatabase";
 import { createDynamoDBManagedAccessKeyStore } from "../src/dynamodbManagedAccessKeyStore";
 import { resolveAwsAuth } from "./awsAuth";
 import {
@@ -92,7 +94,43 @@ export const provisionDynamoDBClientAccessKey = async (input: {
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const prepareDynamoDBDeployment = async (input: {
+  readonly createDeploymentTarget: RunInitOptions["createDeploymentTarget"];
+  readonly credentials: {
+    readonly accessKeyId: string;
+    readonly secretAccessKey: string;
+    readonly sessionToken?: string;
+  };
+  readonly envFilePath: string;
+  readonly region: string;
+  readonly tableName: string;
+}) => {
+  const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
+  await dynamodbManager.ensureTable(input.tableName);
+  if (input.createDeploymentTarget !== undefined) {
+    await migrateUniversalComponents(
+      input.createDeploymentTarget(
+        dynamoDB({
+          credentials: input.credentials,
+          region: input.region,
+          tableName: input.tableName,
+        }),
+      ),
+    );
+  }
+  return provisionDynamoDBClientAccessKey({
+    credentials: input.credentials,
+    envFilePath: input.envFilePath,
+    region: input.region,
+    tableName: input.tableName,
+  });
+};
+
+export const runInit = async ({
+  build,
+  createDeploymentTarget,
+  envFile,
+}: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
@@ -394,9 +432,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
 
   if (database === "dynamodb" && resolvedDynamoDBTableName) {
-    const dynamodbManager = new DynamoDBManager(bucketRegion, credentials);
-    await dynamodbManager.ensureTable(resolvedDynamoDBTableName);
-    await provisionDynamoDBClientAccessKey({
+    await prepareDynamoDBDeployment({
+      createDeploymentTarget,
       credentials,
       envFilePath: envFile ?? ".env.hotupdater",
       region: bucketRegion,

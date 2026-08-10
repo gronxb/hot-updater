@@ -4,12 +4,12 @@ import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
 
-import {
-  DYNAMODB_ANALYTICS_PARTITION_PREFIX,
-  DYNAMODB_ANALYTICS_SCHEMA_KEY,
-} from "../src/dynamodbAnalyticsPersistence";
 import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamodbDatabase";
 import { DYNAMODB_MANAGED_ACCESS_KEY_PARTITION_PREFIX } from "../src/dynamodbManagedAccessKeyStore";
+import {
+  DYNAMODB_COMPONENT_DATA_PARTITION_PREFIX,
+  DYNAMODB_COMPONENT_SCHEMA_PARTITION_KEY,
+} from "../src/dynamodbUniversalComponentData";
 
 export class IAMManager {
   private region: string;
@@ -75,11 +75,15 @@ export class IAMManager {
             Resource: [tableArn],
           },
           {
-            Action: ["dynamodb:Query", "dynamodb:PutItem"],
+            Action: [
+              "dynamodb:GetItem",
+              "dynamodb:Query",
+              "dynamodb:TransactWriteItems",
+            ],
             Condition: {
               "ForAllValues:StringLike": {
                 "dynamodb:LeadingKeys": [
-                  `${DYNAMODB_ANALYTICS_PARTITION_PREFIX}#*`,
+                  `${DYNAMODB_COMPONENT_DATA_PARTITION_PREFIX}#*`,
                 ],
               },
             },
@@ -90,7 +94,9 @@ export class IAMManager {
             Action: ["dynamodb:GetItem"],
             Condition: {
               "ForAllValues:StringEquals": {
-                "dynamodb:LeadingKeys": [DYNAMODB_ANALYTICS_SCHEMA_KEY.pk],
+                "dynamodb:LeadingKeys": [
+                  DYNAMODB_COMPONENT_SCHEMA_PARTITION_KEY,
+                ],
               },
             },
             Effect: "Allow",

@@ -25,8 +25,11 @@ describe("standalone-dynamodb local infrastructure contract", () => {
   it("configures DynamoDB metadata separately from S3 bundle storage", async () => {
     const dbSource = await readProjectFile("src/db.ts");
 
-    expect(dbSource).toContain("database: dynamoDB({");
+    expect(dbSource).toContain("export const database = dynamoDB({");
     expect(dbSource).toContain("s3Storage({");
+    expect(dbSource).toContain("plugins: createManagedServerPlugins({");
+    expect(dbSource).toContain("managementBearerToken:");
+    expect(dbSource).toContain("await migrateUniversalComponents(hotUpdater)");
     expect(dbSource).toContain(
       'endpoint: process.env.AWS_DYNAMODB_ENDPOINT ?? "http://localhost:8000"',
     );

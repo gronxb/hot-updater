@@ -37,8 +37,8 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
 
 export const HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG: OriginRequestPolicyConfig =
   {
-    Name: "HotUpdaterAnalyticsOriginRequestV2",
-    Comment: "Forward Analytics bodies, query strings, and API-key headers",
+    Name: "HotUpdaterManagedApiOriginRequestV2",
+    Comment: "Forward managed API bodies, query strings, and API-key headers",
     HeadersConfig: {
       HeaderBehavior: "whitelist",
       Headers: {
