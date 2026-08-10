@@ -1,3 +1,5 @@
+import { spawnSync } from "node:child_process";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { analytics } from "../../packages/analytics/src/index.ts";
@@ -12,6 +14,21 @@ import {
 } from "./analytics-http-client.ts";
 
 describe("Detox Analytics HTTP client", () => {
+  it("loads under the Node strip-types mode used by the Detox control server", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--experimental-strip-types",
+        "--eval",
+        `import(${JSON.stringify(new URL("./analytics-http-client.ts", import.meta.url).href)})`,
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(result.stderr).not.toContain("ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX");
+    expect(result.status).toBe(0);
+  });
+
   it("queries the deployed server when config only has a standalone management client", async () => {
     // Given: the CLI config database is an HTTP management carrier. It must not
     // be treated as the deployed server's component-data adapter.
