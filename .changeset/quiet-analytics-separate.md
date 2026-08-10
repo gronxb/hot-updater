@@ -1,6 +1,7 @@
 ---
 "@hot-updater/analytics": minor
 "@hot-updater/console": minor
+"@hot-updater/react-native": minor
 "@hot-updater/cloudflare": minor
 "@hot-updater/firebase": minor
 "@hot-updater/postgres": minor
@@ -21,3 +22,8 @@ version, and the Analytics marker is published last.
 
 The Console adds the Analytics overview, bundle activity, and installation
 history experiences, backed by the provider-owned Analytics capability.
+
+React Native clients can enable automatic OTA transition reporting with
+`HotUpdater.init({ analytics: true })`. App-ready transitions retain stable
+installation and optional user identity across launches, and analytics
+delivery failures remain warning-only so they never block application startup.

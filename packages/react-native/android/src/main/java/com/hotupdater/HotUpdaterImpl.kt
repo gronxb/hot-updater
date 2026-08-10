@@ -363,12 +363,20 @@ class HotUpdaterImpl {
         }
     }
 
-    /**
-     * Returns the launch report for the current process.
-     * Startup success and rollback are finalized before JS reads it.
-     * @return Map containing status and optional crashedBundleId
-     */
     fun notifyAppReady(): Map<String, Any?> = bundleStorage.notifyAppReady()
+
+    fun getInstallId(): String = bundleStorage.getInstallId()
+
+    fun getUserId(): String? = bundleStorage.getUserId()
+
+    fun getUsername(): String? = bundleStorage.getUsername()
+
+    fun setUser(
+        userId: String?,
+        username: String?,
+    ) {
+        bundleStorage.setUser(userId, username)
+    }
 
     /**
      * Gets the crashed bundle history.

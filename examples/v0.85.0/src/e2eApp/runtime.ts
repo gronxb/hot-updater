@@ -37,12 +37,19 @@ type UpdateProgressDetails = {
   }[];
 };
 
+HotUpdater.setUser({
+  userId: "detox-e2e",
+  username: "hot-updater-e2e",
+});
+
 HotUpdater.init({
+  analytics: true,
   baseURL: resolveHotUpdaterBaseURL,
   requestTimeout: 15000,
   onNotifyAppReady: (result) => {
     notify.status = result.status;
-    notify.crashedBundleId = result.crashedBundleId;
+    notify.crashedBundleId =
+      result.status === "RECOVERED" ? result.fromBundleId : undefined;
   },
   onError: (error) => {
     console.error(error);
