@@ -1,15 +1,18 @@
 import {
   getUniversalComponentLatestSchema,
   type UniversalComponentDataAdapter,
+  type UniversalComponentDataStateNotReadyReason,
   type UniversalComponentRow,
   type UniversalComponentScalar,
   type UniversalComponentSchema,
+  UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
 } from "@hot-updater/plugin-core";
 
 import { setupUniversalComponentDataAdapterTestSuite } from "./setupUniversalComponentDataAdapterTestSuite";
 
 type ComponentState = {
+  readinessFailure: UniversalComponentDataStateNotReadyReason | null;
   readonly rows: Map<string, UniversalComponentRow[]>;
   version: string | null;
 };
@@ -19,7 +22,11 @@ const components = new Map<string, ComponentState>();
 const stateFor = (schema: UniversalComponentSchema): ComponentState => {
   const existing = components.get(schema.id);
   if (existing !== undefined) return existing;
-  const state: ComponentState = { rows: new Map(), version: null };
+  const state: ComponentState = {
+    readinessFailure: null,
+    rows: new Map(),
+    version: null,
+  };
   components.set(schema.id, state);
   return state;
 };
@@ -55,6 +62,14 @@ const adapter: UniversalComponentDataAdapter = {
           schema.id,
           latest.version,
           state.version,
+        );
+      }
+      if (state.readinessFailure !== null) {
+        throw new UniversalComponentDataStateNotReadyError(
+          schema.id,
+          latest.version,
+          state.readinessFailure,
+          { cause: new TypeError(`synthetic ${state.readinessFailure} drift`) },
         );
       }
     };
@@ -119,6 +134,23 @@ setupUniversalComponentDataAdapterTestSuite({
   createAdapter: () => adapter,
   dispose: () => undefined,
   reset: () => components.clear(),
+  readinessFailures: (
+    [
+      { name: "physical schema", reason: "physical-schema" },
+      { name: "stored data", reason: "stored-data" },
+      { name: "index", reason: "index" },
+    ] satisfies readonly {
+      name: string;
+      reason: UniversalComponentDataStateNotReadyReason;
+    }[]
+  ).map(({ name, reason }) => ({
+    name,
+    prepare: (_adapter, schema) => {
+      const state = stateFor(schema);
+      state.version = getUniversalComponentLatestSchema(schema).version;
+      state.readinessFailure = reason;
+    },
+  })),
   setStoredVersion: (_adapter, schema, version) => {
     stateFor(schema).version = version;
   },

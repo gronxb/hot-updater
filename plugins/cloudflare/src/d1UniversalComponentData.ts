@@ -14,6 +14,7 @@ import {
   getUniversalComponentTable,
   isUniversalComponentDataValue,
   resolveUniversalComponentMigrationState,
+  UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
   validateUniversalComponentAppend,
   validateUniversalComponentOrderedScan,
@@ -158,8 +159,23 @@ const markerStatement = (
 class D1UniversalComponentSchemaDriftError extends Error {
   readonly name = "D1UniversalComponentSchemaDriftError";
 
-  constructor(componentId: string, detail: string) {
+  constructor(
+    componentId: string,
+    detail: string,
+    readonly reason: "index" | "physical-schema" = "physical-schema",
+  ) {
     super(`Component ${componentId} has incompatible D1 schema: ${detail}`);
+  }
+}
+
+class D1UniversalComponentStoredDataError extends Error {
+  readonly name = "D1UniversalComponentStoredDataError";
+
+  constructor(componentId: string, cause: unknown) {
+    super(
+      `Component ${componentId} has invalid D1 stored data: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
   }
 }
 
@@ -278,6 +294,7 @@ const validateD1Table = async (
     throw new D1UniversalComponentSchemaDriftError(
       schema.id,
       `table ${table.name} indexes`,
+      "index",
     );
   }
   for (const index of declaredIndexes) {
@@ -292,6 +309,7 @@ const validateD1Table = async (
       throw new D1UniversalComponentSchemaDriftError(
         schema.id,
         `index ${index.name}`,
+        "index",
       );
     }
     const indexedColumns = await executor.query(
@@ -308,6 +326,7 @@ const validateD1Table = async (
       throw new D1UniversalComponentSchemaDriftError(
         schema.id,
         `index ${index.name} columns`,
+        "index",
       );
     }
   }
@@ -431,15 +450,19 @@ const validateStoredRows = async (
         after === undefined ? [] : [after],
       );
       for (const storedRow of storedRows) {
-        const row = parseRow(sourceTable, storedRow);
-        for (const version of versions) {
-          validateUniversalComponentRow(schema, {
-            row,
-            table: sourceTable.name,
-            version: version.version,
-          });
+        try {
+          const row = parseRow(sourceTable, storedRow);
+          for (const version of versions) {
+            validateUniversalComponentRow(schema, {
+              row,
+              table: sourceTable.name,
+              version: version.version,
+            });
+          }
+          after = row[primaryKey.name] as string;
+        } catch (error) {
+          throw new D1UniversalComponentStoredDataError(schema.id, error);
         }
-        after = row[primaryKey.name] as string;
       }
       if (storedRows.length < validationPageSize) break;
     }
@@ -554,8 +577,28 @@ export const createD1UniversalComponentDataAdapter = (
           );
         }
         if (!readinessValidated.has(schema)) {
-          await validateD1Version(executor, schema, latest);
-          await validateStoredRows(executor, schema, latest, [latest]);
+          try {
+            await validateD1Version(executor, schema, latest);
+            await validateStoredRows(executor, schema, latest, [latest]);
+          } catch (error) {
+            if (error instanceof D1UniversalComponentSchemaDriftError) {
+              throw new UniversalComponentDataStateNotReadyError(
+                schema.id,
+                latest.version,
+                error.reason,
+                { cause: error },
+              );
+            }
+            if (error instanceof D1UniversalComponentStoredDataError) {
+              throw new UniversalComponentDataStateNotReadyError(
+                schema.id,
+                latest.version,
+                "stored-data",
+                { cause: error },
+              );
+            }
+            throw error;
+          }
           readinessValidated.add(schema);
         }
       };
@@ -599,13 +642,22 @@ export const createD1UniversalComponentDataAdapter = (
             params,
           );
           return rows.slice(0, input.limit).map((storedRow) => {
-            const row = parseRow(table, storedRow);
-            validateUniversalComponentRow(schema, {
-              row,
-              table: table.name,
-              version: latest.version,
-            });
-            return row;
+            try {
+              const row = parseRow(table, storedRow);
+              validateUniversalComponentRow(schema, {
+                row,
+                table: table.name,
+                version: latest.version,
+              });
+              return row;
+            } catch (error) {
+              throw new UniversalComponentDataStateNotReadyError(
+                schema.id,
+                latest.version,
+                "stored-data",
+                { cause: error },
+              );
+            }
           });
         },
       };

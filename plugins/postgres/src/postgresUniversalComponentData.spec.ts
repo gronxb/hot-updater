@@ -404,6 +404,37 @@ setupUniversalComponentDataAdapterTestSuite({
     plugin = undefined;
     client = undefined;
   },
+  readinessFailures: [
+    {
+      name: "physical schema drift",
+      async prepare(adapter, schema) {
+        await adapter.migrate?.(schema);
+        await getClient().exec(
+          "ALTER TABLE audit_records ADD COLUMN undeclared text",
+        );
+      },
+    },
+    {
+      name: "declared index drift",
+      async prepare(adapter, schema) {
+        await adapter.migrate?.(schema);
+        await getClient().exec("DROP INDEX audit_records_chronological_idx");
+      },
+    },
+    {
+      name: "stored data drift",
+      async prepare(adapter, schema) {
+        await adapter.migrate?.(schema);
+        await getClient().exec(`
+          INSERT INTO audit_records (
+            id, recorded_at_ms, action, actor_id, accepted, risk_score, payload
+          ) VALUES (
+            'corrupt', 1, 'read', NULL, true, 'NaN', '{}'::jsonb
+          );
+        `);
+      },
+    },
+  ],
   async setStoredVersion(_adapter, schema, version) {
     await getClient().query(
       `INSERT INTO private_hot_updater_settings (key, value)
@@ -495,9 +526,14 @@ describe("postgres universal component physical schema validation", () => {
 
     await expect(
       adapter?.bind(syntheticAuditLogSchema).assertReady(),
-    ).rejects.toThrow(
-      "table audit_records is missing index audit_records_chronological_idx",
-    );
+    ).rejects.toMatchObject({
+      reason: "index",
+      cause: {
+        message: expect.stringContaining(
+          "table audit_records is missing index audit_records_chronological_idx",
+        ),
+      },
+    });
     await expect(auditMarker()).resolves.toBe(expectedVersion);
   });
 
@@ -694,9 +730,9 @@ describe("postgres universal component schema preservation", () => {
       SET value = NULL
       WHERE id = 'readiness';
     `);
-    await expect(source.assertReady()).rejects.toThrow(
-      "Invalid row for component table: released_plain_check_records@1",
-    );
+    await expect(source.assertReady()).rejects.toMatchObject({
+      reason: "stored-data",
+    });
 
     await getClient().exec(`
       UPDATE released_plain_check_records
@@ -766,9 +802,7 @@ describe("postgres universal component schema preservation", () => {
         beforePrefixExclusive: ["z"],
         limit: 10,
       }),
-    ).rejects.toThrow(
-      "Invalid row for component table: validation_only_records@2",
-    );
+    ).rejects.toMatchObject({ reason: "stored-data" });
   });
 
   it("artifact migrates exact v1 to v2 and preserves UUID rows", async () => {
@@ -1112,9 +1146,14 @@ describe("postgres universal component schema preservation", () => {
 
     await expect(
       getAdapter().bind(preservationSchema).assertReady(),
-    ).rejects.toThrow(
-      "table preservation_records has unexpected constraint preservation_unexpected_fk",
-    );
+    ).rejects.toMatchObject({
+      reason: "physical-schema",
+      cause: {
+        message: expect.stringContaining(
+          "table preservation_records has unexpected constraint preservation_unexpected_fk",
+        ),
+      },
+    });
 
     await getClient().exec(`
       ALTER TABLE preservation_records
@@ -1126,9 +1165,7 @@ describe("postgres universal component schema preservation", () => {
 
     await expect(
       getAdapter().bind(preservationSchema).assertReady(),
-    ).rejects.toThrow(
-      "index preservation_kind_idx does not match its declaration",
-    );
+    ).rejects.toMatchObject({ reason: "index" });
 
     await getClient().exec(`
       DROP INDEX preservation_kind_idx;
@@ -1142,9 +1179,7 @@ describe("postgres universal component schema preservation", () => {
 
     await expect(
       getAdapter().bind(preservationSchema).assertReady(),
-    ).rejects.toThrow(
-      "check preservation_shape_v2_check does not match its declaration",
-    );
+    ).rejects.toMatchObject({ reason: "physical-schema" });
 
     await getClient().exec(`
       ALTER TABLE preservation_records
@@ -1161,9 +1196,7 @@ describe("postgres universal component schema preservation", () => {
 
     await expect(
       getAdapter().bind(preservationSchema).assertReady(),
-    ).rejects.toThrow(
-      "column preservation_records.prior_id has type text; expected uuid",
-    );
+    ).rejects.toMatchObject({ reason: "physical-schema" });
   });
 
   it("emits a versioned self-inspecting artifact with marker last", () => {

@@ -4,6 +4,7 @@ import {
   type UniversalComponentDataAdapter,
   type UniversalComponentRow,
   type UniversalComponentSchema,
+  UniversalComponentDataNotReadyError,
   UniversalComponentSchemaNotReadyError,
 } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -30,6 +31,19 @@ export type UniversalComponentDataAdapterTestSuiteOptions = {
     schema: UniversalComponentSchema,
     version: string,
   ) => Awaitable<void>;
+  /**
+   * Optional provider fixtures that prepare a latest-marker state with one
+   * declared physical, stored-data, or index readiness invariant broken.
+   * Preparation must not call bind().assertReady(), so adapter caches remain
+   * cold for the assertion.
+   */
+  readonly readinessFailures?: readonly {
+    readonly name: string;
+    readonly prepare: (
+      adapter: UniversalComponentDataAdapter,
+      schema: UniversalComponentSchema,
+    ) => Awaitable<void>;
+  }[];
 };
 
 const auditColumns = [
@@ -191,6 +205,42 @@ export const setupUniversalComponentDataAdapterTestSuite = (
         }),
       ).resolves.toEqual([]);
     });
+
+    it.each(options.readinessFailures ?? [])(
+      "classifies marker-latest $name readiness failures across every operation",
+      async ({ prepare }) => {
+        const current = getAdapter();
+        await prepare(current, syntheticAuditLogSchema);
+        const source = current.bind(syntheticAuditLogSchema);
+        const expectedVersion = getUniversalComponentLatestSchema(
+          syntheticAuditLogSchema,
+        ).version;
+        const expectNotReady = async (operation: Promise<unknown>) => {
+          await expect(operation).rejects.toBeInstanceOf(
+            UniversalComponentDataNotReadyError,
+          );
+          await expect(operation).rejects.toMatchObject({
+            componentId: syntheticAuditLogSchema.id,
+            expectedVersion,
+          });
+        };
+
+        await expectNotReady(source.assertReady());
+        await expectNotReady(
+          source.append({
+            row: auditRow("not-ready", 1),
+            table: "audit_records",
+          }),
+        );
+        await expectNotReady(
+          source.orderedScan({
+            accessPattern: "chronological",
+            beforePrefixExclusive: [2],
+            limit: 100,
+          }),
+        );
+      },
+    );
 
     it("round-trips arbitrary JSON-compatible component rows", async () => {
       const source = await readySource();

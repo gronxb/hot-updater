@@ -17,6 +17,7 @@ import {
   getUniversalComponentTable,
   isUniversalComponentDataValue,
   resolveUniversalComponentMigrationState,
+  UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
   validateUniversalComponentAppend,
   validateUniversalComponentOrderedScan,
@@ -24,7 +25,7 @@ import {
 } from "@hot-updater/plugin-core";
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 
-import { throwSupabaseError } from "./supabaseResult";
+import { SupabaseDatabaseError, throwSupabaseError } from "./supabaseResult";
 import type { Database } from "./types";
 
 const postgresIdentifierLimit = 63;
@@ -45,6 +46,7 @@ interface ComponentQuery extends PromiseLike<ComponentQueryResult> {
     column: string,
     options: { readonly ascending: boolean },
   ): ComponentQuery;
+  range(from: number, to: number): ComponentQuery;
   select(columns: string): ComponentQuery;
 }
 
@@ -715,6 +717,57 @@ const parseRow = (
   );
 };
 
+const readinessPageSize = 1_000;
+const physicalSchemaErrorCodes = new Set([
+  "42P01",
+  "42703",
+  "PGRST204",
+  "PGRST205",
+]);
+
+const throwComponentQueryError = (
+  operation: string,
+  error: PostgrestError | null,
+  schema: UniversalComponentSchema,
+  expectedVersion: string,
+): void => {
+  if (error === null) return;
+  const cause = new SupabaseDatabaseError(operation, error);
+  if (physicalSchemaErrorCodes.has(error.code)) {
+    throw new UniversalComponentDataStateNotReadyError(
+      schema.id,
+      expectedVersion,
+      "physical-schema",
+      { cause },
+    );
+  }
+  throw cause;
+};
+
+const validateStoredRow = (
+  schema: UniversalComponentSchema,
+  version: string,
+  table: UniversalComponentTableSchema,
+  storedRow: unknown,
+): UniversalComponentRow => {
+  try {
+    const row = parseRow(table, storedRow);
+    validateUniversalComponentRow(schema, {
+      row,
+      table: table.name,
+      version,
+    });
+    return row;
+  } catch (error) {
+    throw new UniversalComponentDataStateNotReadyError(
+      schema.id,
+      version,
+      "stored-data",
+      { cause: error },
+    );
+  }
+};
+
 const markerVersion = async (
   client: ComponentClient,
   schema: UniversalComponentSchema,
@@ -766,14 +819,31 @@ export const createSupabaseUniversalComponentDataAdapter = (
         }
         if (declaredTablesReady) return;
         for (const table of latest.tables) {
-          const { error } = await client
-            .from(table.name)
-            .select(table.columns.map(({ name }) => name).join(","))
-            .limit(0);
-          throwSupabaseError(
-            `inspect universal component table ${table.name}`,
-            error,
-          );
+          const primaryKey = table.columns.find((column) => column.primaryKey)!;
+          let from = 0;
+          while (true) {
+            const { data, error } = await client
+              .from(table.name)
+              .select(table.columns.map(({ name }) => name).join(","))
+              .order(primaryKey.name, { ascending: true })
+              .range(from, from + readinessPageSize - 1);
+            throwComponentQueryError(
+              `inspect universal component table ${table.name}`,
+              error,
+              schema,
+              expectedVersion,
+            );
+            if (!Array.isArray(data)) {
+              throw new TypeError(
+                `Invalid universal component table result: ${table.name}`,
+              );
+            }
+            for (const row of data) {
+              validateStoredRow(schema, expectedVersion, table, row);
+            }
+            if (data.length < readinessPageSize) break;
+            from += data.length;
+          }
         }
         declaredTablesReady = true;
       };
@@ -784,7 +854,12 @@ export const createSupabaseUniversalComponentDataAdapter = (
           await assertReady();
           validateUniversalComponentAppend(schema, input);
           const { error } = await client.from(input.table).insert(input.row);
-          throwSupabaseError("append universal component row", error);
+          throwComponentQueryError(
+            "append universal component row",
+            error,
+            schema,
+            expectedVersion,
+          );
         },
         async orderedScan(input) {
           await assertReady();
@@ -812,19 +887,20 @@ export const createSupabaseUniversalComponentDataAdapter = (
             query = query.order(column, { ascending: true });
           }
           const { data, error } = await query.limit(input.limit);
-          throwSupabaseError("scan universal component rows", error);
+          throwComponentQueryError(
+            "scan universal component rows",
+            error,
+            schema,
+            expectedVersion,
+          );
           if (!Array.isArray(data)) {
             throw new TypeError("Invalid universal component scan result");
           }
-          return data.slice(0, input.limit).map((row) => {
-            const parsed = parseRow(table, row);
-            validateUniversalComponentRow(schema, {
-              row: parsed,
-              table: table.name,
-              version: latest.version,
-            });
-            return parsed;
-          });
+          return data
+            .slice(0, input.limit)
+            .map((row) =>
+              validateStoredRow(schema, latest.version, table, row),
+            );
         },
       };
     },

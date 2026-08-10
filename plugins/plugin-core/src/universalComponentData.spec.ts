@@ -12,6 +12,9 @@ import {
   isUniversalComponentDataValue,
   resolveUniversalComponentMigrationState,
   resolveUniversalComponentUnmarkedState,
+  UniversalComponentDataNotReadyError,
+  UniversalComponentDataStateNotReadyError,
+  UniversalComponentSchemaNotReadyError,
   universalComponentDataAdapterCapability,
   validateUniversalComponentAppend,
   validateUniversalComponentOrderedScan,
@@ -206,6 +209,39 @@ const versionedSchema = () =>
   });
 
 describe("universal component data", () => {
+  it("classifies marker and declared-state readiness failures without inventing a marker", () => {
+    const marker = new UniversalComponentSchemaNotReadyError(
+      "audit-log",
+      "2",
+      "1",
+    );
+    const cause = new TypeError("missing chronological index");
+    const state = new UniversalComponentDataStateNotReadyError(
+      "audit-log",
+      "2",
+      "index",
+      { cause },
+    );
+
+    expect(marker).toBeInstanceOf(UniversalComponentDataNotReadyError);
+    expect(marker).toMatchObject({
+      actualVersion: "1",
+      componentId: "audit-log",
+      expectedVersion: "2",
+    });
+    expect(marker.message).toBe(
+      "Component audit-log requires schema version 2; found 1.",
+    );
+    expect(state).toBeInstanceOf(UniversalComponentDataNotReadyError);
+    expect(state).toMatchObject({
+      cause,
+      componentId: "audit-log",
+      expectedVersion: "2",
+      reason: "index",
+    });
+    expect(state).not.toHaveProperty("actualVersion");
+  });
+
   it("defines an immutable component schema with a derived marker", () => {
     const defined = schema();
 
