@@ -73,6 +73,9 @@ const ignoredDirectories = new Set([
   "node_modules",
 ]);
 
+const isIgnoredDirectory = (name: string): boolean =>
+  ignoredDirectories.has(name) || name.startsWith("runtime-acceptance-");
+
 const isTestFile = (file: string): boolean =>
   /(?:^|\/)(?:__tests__|test|tests)(?:\/|$)/.test(file) ||
   /\.(?:spec|test)\.[^.]+$/.test(file) ||
@@ -88,7 +91,7 @@ const sourceFiles = async (
   const visit = async (directory: string): Promise<void> => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       if (entry.isDirectory()) {
-        if (!ignoredDirectories.has(entry.name)) {
+        if (!isIgnoredDirectory(entry.name)) {
           await visit(path.join(directory, entry.name));
         }
         continue;
