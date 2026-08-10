@@ -15,6 +15,7 @@ export interface CapabilityRegistry extends HotUpdaterPluginCapabilities {
 
 export type CreateCapabilityRegistryOptions = {
   readonly carriers: readonly object[];
+  readonly excludedTokens?: readonly CapabilityToken<unknown>[];
   readonly requiredTokens?: readonly CapabilityToken<unknown>[];
   readonly runtime: HotUpdaterInfrastructureRuntime;
 };
@@ -37,9 +38,12 @@ function rejectThenable(value: unknown, tokenId: string): void {
 export const createCapabilityRegistry = (
   options: CreateCapabilityRegistryOptions,
 ): CapabilityRegistry => {
+  const excludedTokens = new Set(options.excludedTokens ?? []);
   const contributions = options.carriers.flatMap((carrier) => {
     try {
-      return [...getCapabilityContributions(carrier)];
+      return getCapabilityContributions(carrier).filter(
+        ({ token }) => !excludedTokens.has(token),
+      );
     } catch {
       throw new HotUpdaterConstructionError("INVALID_PLUGIN_CONTRIBUTION", {
         pluginId: "<infrastructure>",

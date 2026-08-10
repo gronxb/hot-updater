@@ -64,11 +64,12 @@ const mocks = vi.hoisted(() => {
     confirm: vi.fn(),
     confirmInitInputPersistence: vi.fn(),
     createD1ManagedAccessKeyStore: vi.fn(() => ({ store: "d1" })),
+    d1Database: vi.fn(() => ({ adapterName: "d1Database" })),
     createWrangler: vi.fn(),
     execa: vi.fn(),
     getWranglerLoginAuthToken: vi.fn(),
     inputSecrets: vi.fn(),
-    migrateD1Analytics: vi.fn(),
+    migrateUniversalComponents: vi.fn(),
     log: {
       error: vi.fn(),
       info: vi.fn(),
@@ -100,7 +101,11 @@ vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
 
 vi.mock("@hot-updater/cloudflare", () => ({
   createD1ManagedAccessKeyStore: mocks.createD1ManagedAccessKeyStore,
-  migrateD1Analytics: mocks.migrateD1Analytics,
+  d1Database: mocks.d1Database,
+}));
+
+vi.mock("@hot-updater/server/db", () => ({
+  migrateUniversalComponents: mocks.migrateUniversalComponents,
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
@@ -157,7 +162,7 @@ describe("Cloudflare init discovery", () => {
       managedEnv: {},
     });
     mocks.confirmInitInputPersistence.mockResolvedValue(false);
-    mocks.migrateD1Analytics.mockResolvedValue({ kind: "created-v2" });
+    mocks.migrateUniversalComponents.mockResolvedValue([]);
     mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
       apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       created: true,
@@ -500,6 +505,8 @@ describe("Cloudflare init discovery", () => {
   it("configures and migrates before deploying the Worker", async () => {
     const events: string[] = [];
     const deploymentError = new Error("stop at worker deploy");
+    const deploymentTarget = { adapterName: "deployment-target" };
+    const createDeploymentTarget = vi.fn(() => deploymentTarget);
     let workerConfig: unknown;
     mocks.api.d1.database.list.mockResolvedValue({
       result: [{ name: "ota", uuid: "database-id" }],
@@ -520,9 +527,9 @@ describe("Cloudflare init discovery", () => {
         return wrangler;
       },
     );
-    mocks.migrateD1Analytics.mockImplementation(async () => {
-      events.push("analytics-migration");
-      return { kind: "created-v2" };
+    mocks.migrateUniversalComponents.mockImplementation(async () => {
+      events.push("universal-migrations");
+      return [];
     });
     mocks.provisionManagedBetterAuthApiKey.mockImplementation(async () => {
       events.push("provision-api-key");
@@ -533,13 +540,13 @@ describe("Cloudflare init discovery", () => {
       };
     });
 
-    await expect(runInit({ build: "bare" })).rejects.toBeInstanceOf(
-      CloudflareDeploymentError,
-    );
+    await expect(
+      runInit({ build: "bare", createDeploymentTarget }),
+    ).rejects.toBeInstanceOf(CloudflareDeploymentError);
 
     expect(events).toEqual([
       "core-migrations",
-      "analytics-migration",
+      "universal-migrations",
       "provision-api-key",
       "worker-deploy",
     ]);
@@ -563,11 +570,17 @@ describe("Cloudflare init discovery", () => {
       "HOT_UPDATER_API_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
       "Client access key (shown once)",
     );
-    expect(mocks.migrateD1Analytics).toHaveBeenCalledWith({
+    expect(mocks.d1Database).toHaveBeenCalledWith({
       accountId: "account-id",
       cloudflareApiToken: "api-token",
       databaseId: "database-id",
     });
+    expect(createDeploymentTarget).toHaveBeenCalledWith({
+      adapterName: "d1Database",
+    });
+    expect(mocks.migrateUniversalComponents).toHaveBeenCalledWith(
+      deploymentTarget,
+    );
   });
 
   it("identifies an invalid token loaded from an explicit env file", async () => {

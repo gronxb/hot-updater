@@ -10,7 +10,9 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
+import { createManagedServerPlugins } from "@hot-updater/managed";
 import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
+import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -26,7 +28,8 @@ import {
   vi,
 } from "vitest";
 
-import { d1WorkerDatabase, migrateAnalytics } from "../../src/worker";
+import { getHotUpdaterCoreMetadata } from "../../../../packages/server/src/createHotUpdaterCore";
+import { d1WorkerDatabase } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
@@ -169,6 +172,12 @@ const createCanonicalPath = (args: GetBundlesArgs) => {
 };
 
 describe.sequential("cloudflare worker runtime acceptance", () => {
+  let componentMigrations: readonly {
+    readonly changed: boolean;
+    readonly componentId: string;
+    readonly version: string;
+  }[] = [];
+
   beforeAll(async () => {
     await env.DB.prepare(inject("prepareSql")).run();
     const coreMigration = inject("d1Migrations").find(
@@ -185,8 +194,25 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       throw new Error("Cloudflare managed access-key migration is missing.");
     }
     await env.DB.prepare(accessKeyMigration.sql).run();
-    await migrateAnalytics();
     const database = d1WorkerDatabase(env.DB);
+    const deploymentTarget = createHotUpdater({
+      database,
+      plugins: createManagedServerPlugins(),
+    });
+    const metadata = getHotUpdaterCoreMetadata(deploymentTarget);
+    if (metadata === undefined) {
+      throw new Error("Cloudflare deployment target metadata is missing.");
+    }
+    const migrate = metadata.universalComponentDataAdapter?.migrate;
+    if (migrate === undefined) {
+      throw new Error("Cloudflare universal component migration is missing.");
+    }
+    componentMigrations = await Promise.all(
+      (metadata.components?.schemas ?? []).map(async (schema) => ({
+        ...(await migrate(schema)),
+        componentId: schema.id,
+      })),
+    );
     const contribution = getCapabilityContributions(database).find(
       ({ token }) => token.id === managedAccessKeyStoreCapability.id,
     );
@@ -205,9 +231,52 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
   });
 
   beforeEach(async () => {
-    await env.DB.prepare("DELETE FROM bundle_events").run();
     await env.DB.prepare("DELETE FROM bundle_patches").run();
     await env.DB.prepare("DELETE FROM bundles").run();
+  });
+
+  it("prepares the component schema consumed by the managed Worker", async () => {
+    expect(componentMigrations).toEqual([
+      expect.objectContaining({
+        changed: true,
+        componentId: expect.any(String),
+        version: expect.any(String),
+      }),
+    ]);
+
+    const event = await worker.fetch(
+      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": RAW_API_KEY,
+        },
+        body: JSON.stringify({
+          appVersion: "1.0.0",
+          channel: "production",
+          cohort: "default",
+          fingerprintHash: null,
+          fromBundleId: null,
+          installId: "cloudflare-managed-install",
+          platform: "ios",
+          toBundleId: "bundle-1",
+          type: "UNCHANGED",
+          updateStrategy: null,
+        }),
+      }),
+      env,
+    );
+    const query = await worker.fetch(
+      new Request(
+        `${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/api/installations/overview`,
+        { headers: { "x-api-key": RAW_API_KEY } },
+      ),
+      env,
+    );
+
+    expect(event.status).toBe(204);
+    expect(query.status).toBe(401);
+    expect(query.headers.get("cache-control")).toBe("private, no-store");
   });
 
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
@@ -382,6 +451,27 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     });
   });
 
+  it("requires a managed client key for update checks", async () => {
+    const url = `${PUBLIC_BASE_URL}${createCanonicalPath({
+      appVersion: "1.0",
+      bundleId: NIL_UUID,
+      platform: "ios",
+      _updateStrategy: "appVersion",
+    })}`;
+
+    for (const headers of [
+      undefined,
+      { "x-api-key": WRONG_API_KEY },
+    ] as const) {
+      const response = await worker.fetch(new Request(url, { headers }), env);
+
+      expect(response.status).toBe(401);
+      await expect(response.json()).resolves.toEqual({
+        error: "Unauthorized",
+      });
+    }
+  });
+
   it("does not support the legacy exact path", async () => {
     const response = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}`),
@@ -404,109 +494,5 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Not found",
     });
-  });
-
-  it("keeps version public and requires the client key for event ingestion", async () => {
-    const version = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/version`, {
-        headers: { "x-api-key": WRONG_API_KEY },
-      }),
-      env,
-    );
-    const rejectedEvent = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": WRONG_API_KEY,
-        },
-        body: JSON.stringify({
-          type: "UNCHANGED",
-          installId: "cloudflare-managed-install",
-          toBundleId: "bundle-1",
-          platform: "ios",
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          fingerprintHash: null,
-          fromBundleId: null,
-          updateStrategy: null,
-        }),
-      }),
-      env,
-    );
-    const event = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": RAW_API_KEY,
-        },
-        body: JSON.stringify({
-          type: "UNCHANGED",
-          installId: "cloudflare-managed-install",
-          toBundleId: "bundle-1",
-          platform: "ios",
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          fingerprintHash: null,
-          fromBundleId: null,
-          updateStrategy: null,
-        }),
-      }),
-      env,
-    );
-    const persisted = await env.DB.prepare(
-      "SELECT install_id FROM bundle_events WHERE install_id = ?",
-    )
-      .bind("cloudflare-managed-install")
-      .first<{ install_id: string }>();
-
-    expect(version.status).toBe(200);
-    expect(rejectedEvent.status).toBe(401);
-    expect(event.status).toBe(204);
-    expect(persisted).toEqual({
-      install_id: "cloudflare-managed-install",
-    });
-  });
-
-  it("protects only Analytics query routes", async () => {
-    const queryPaths = [
-      "/api/bundles/bundle-1/events/summary",
-      "/api/bundles/bundle-1/events/analytics",
-      "/api/installations/overview",
-      "/api/installations/active",
-      "/api/installations?query=install",
-      "/api/installations/install-1/events",
-    ];
-
-    for (const path of queryPaths) {
-      for (const apiKey of [undefined, WRONG_API_KEY]) {
-        const response = await worker.fetch(
-          new Request(
-            `${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}${path}`,
-            apiKey === undefined
-              ? undefined
-              : { headers: { "x-api-key": apiKey } },
-          ),
-          env,
-        );
-
-        expect(response.status).toBe(401);
-        expect(response.headers.get("cache-control")).toBe("private, no-store");
-        await expect(response.json()).resolves.toEqual({
-          error: "Unauthorized",
-        });
-      }
-
-      const clientKeyResponse = await worker.fetch(
-        new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}${path}`, {
-          headers: { "x-api-key": RAW_API_KEY },
-        }),
-        env,
-      );
-      expect(clientKeyResponse.status).toBe(401);
-    }
   });
 });

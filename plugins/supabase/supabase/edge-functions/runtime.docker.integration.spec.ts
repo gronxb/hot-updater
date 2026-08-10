@@ -21,8 +21,13 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
+import { createManagedServerPlugins } from "@hot-updater/managed";
 import { bundleToRow, createDatabaseClient } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
+import {
+  generateUniversalComponentArtifacts,
+  type UniversalComponentGeneratedArtifact,
+} from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -82,6 +87,10 @@ const REQUIRED_BUILD_ARTIFACTS = [
   {
     command: "pnpm --filter @hot-updater/server build",
     path: path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
+  },
+  {
+    command: "pnpm --filter @hot-updater/managed build",
+    path: path.join(WORKSPACE_ROOT, "packages/managed/dist/index.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/plugin-core build",
@@ -168,6 +177,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   let databaseClient: ReturnType<typeof createDatabaseClient>;
   let supabaseAdmin: ReturnType<typeof createClient>;
+  let componentArtifacts: readonly UniversalComponentGeneratedArtifact[] = [];
 
   const runDatabaseSql = (statement: string): void => {
     runCheckedCommand({
@@ -207,6 +217,14 @@ describe.sequential("supabase edge runtime acceptance", () => {
     gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
     composeProjectName = `hot-updater-supabase-${process.pid}-${Date.now()}`;
     composeFilePath = path.join(runtimeRoot, "docker-compose.yml");
+    const deploymentTarget = createHotUpdater({
+      database: supabaseDatabase({
+        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
+        supabaseUrl: gatewayBaseUrl,
+      }),
+      plugins: createManagedServerPlugins(),
+    });
+    componentArtifacts = generateUniversalComponentArtifacts(deploymentTarget);
 
     runCheckedCommand({
       command: "git",
@@ -221,6 +239,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
 
     await writeSupabaseRuntimeFiles({
+      componentArtifacts,
       runtimeRoot,
       gatewayPort,
       storageRepoPath,
@@ -383,6 +402,31 @@ describe.sequential("supabase edge runtime acceptance", () => {
       .delete()
       .neq("id", NIL_UUID);
     if (events.error) throw events.error;
+  });
+
+  it("materializes components declared by the managed runtime", () => {
+    expect(componentArtifacts).toEqual([
+      expect.objectContaining({
+        componentId: "analytics",
+        path: "component-data/analytics/supabase-2.sql",
+        targetVersion: "2",
+      }),
+    ]);
+    runDatabaseSql(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM public.private_hot_updater_settings
+          WHERE key = 'schema.analytics' AND value = '2'
+        ) THEN
+          RAISE EXCEPTION 'Analytics component marker is not ready';
+        END IF;
+        IF to_regclass('public.bundle_events') IS NULL THEN
+          RAISE EXCEPTION 'Analytics component table is missing';
+        END IF;
+      END $$;
+    `);
   });
 
   afterAll(async () => {
@@ -1104,7 +1148,10 @@ const uploadStorageObject = async (
   }
 };
 
-const loadSupabaseInitSql = async (storageRepoPath: string) => {
+const loadSupabaseInitSql = async (
+  storageRepoPath: string,
+  componentArtifacts: readonly UniversalComponentGeneratedArtifact[],
+) => {
   const storageMigrationsDir = path.join(storageRepoPath, "migrations/tenant");
   const storageMigrationFiles = (await readdir(storageMigrationsDir))
     .filter((file) => file.endsWith(".sql"))
@@ -1199,6 +1246,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+
+${componentArtifacts.map(({ contents }) => contents).join("\n\n")}
 `.trim();
 };
 
@@ -1335,10 +1384,12 @@ http {
 };
 
 const writeSupabaseRuntimeFiles = async ({
+  componentArtifacts,
   runtimeRoot,
   gatewayPort,
   storageRepoPath,
 }: {
+  componentArtifacts: readonly UniversalComponentGeneratedArtifact[];
   runtimeRoot: string;
   gatewayPort: number;
   storageRepoPath: string;
@@ -1370,15 +1421,6 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/analytics": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/analytics/dist/index.mjs"),
       ).href,
-      "@hot-updater/analytics/internal/provider-capability": pathToFileURL(
-        path.join(
-          WORKSPACE_ROOT,
-          "packages/analytics/dist/internal/provider-capability.mjs",
-        ),
-      ).href,
-      "@hot-updater/analytics/provider": pathToFileURL(
-        path.join(WORKSPACE_ROOT, "packages/analytics/dist/provider/index.mjs"),
-      ).href,
       "@hot-updater/better-auth/managed": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/better-auth/dist/managed.mjs"),
       ).href,
@@ -1390,6 +1432,9 @@ const writeSupabaseRuntimeFiles = async ({
           WORKSPACE_ROOT,
           "packages/server/dist/internal/first-party-plugin.mjs",
         ),
+      ).href,
+      "@hot-updater/managed": pathToFileURL(
+        path.join(WORKSPACE_ROOT, "packages/managed/dist/index.mjs"),
       ).href,
       "@hot-updater/supabase": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
@@ -1415,7 +1460,7 @@ export { supabaseEdgeFunctionStorage } from ${JSON.stringify(pathToFileURL(path.
   );
   await writeFile(
     path.join(runtimeRoot, "db-init/00-init.sql"),
-    await loadSupabaseInitSql(storageRepoPath),
+    await loadSupabaseInitSql(storageRepoPath, componentArtifacts),
   );
   await writeFile(
     path.join(runtimeRoot, "docker-compose.yml"),

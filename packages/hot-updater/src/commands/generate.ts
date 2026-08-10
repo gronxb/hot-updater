@@ -13,6 +13,10 @@ import {
 } from "sql-formatter";
 
 import { ui } from "../utils/cli-ui";
+import {
+  generateComponentArtifacts,
+  getComponentArtifacts,
+} from "./generate-component-artifacts";
 import { generatePrismaSchema } from "./generate-prisma-schema";
 import { generateStandaloneSQL } from "./generate-standalone-sql";
 import {
@@ -71,12 +75,14 @@ export async function generate(options: GenerateOptions) {
 
     const finalOutputDir = outputDir || defaultOutputDir;
     const absoluteOutputDir = path.resolve(process.cwd(), finalOutputDir);
+    const componentArtifacts = getComponentArtifacts(hotUpdater);
+    let reservedOutputPaths: readonly string[] = [];
 
     // Execute generation based on adapter type
     switch (adapterName) {
       case "kysely":
         // Use createMigrator to generate SQL migration files
-        await generateWithMigrator(
+        reservedOutputPaths = await generateWithMigrator(
           hotUpdater,
           absoluteOutputDir,
           skipConfirm,
@@ -87,7 +93,7 @@ export async function generate(options: GenerateOptions) {
       case "drizzle":
       case "prisma":
         // Use generateSchema to generate TypeScript schema files
-        await generateWithSchemaGenerator(
+        reservedOutputPaths = await generateWithSchemaGenerator(
           hotUpdater,
           adapterName,
           absoluteOutputDir,
@@ -96,20 +102,33 @@ export async function generate(options: GenerateOptions) {
         );
         break;
       case "mongodb":
-        s.stop("Generation not supported");
-        p.log.error(
-          "MongoDB does not support migration file generation. " +
-            "Use `hot-updater db migrate` to create collections and indexes.",
-        );
-        requestGenerateExit(1);
+        if (componentArtifacts.length === 0) {
+          s.stop("Generation not supported");
+          p.log.error(
+            "MongoDB does not support migration file generation. " +
+              "Use `hot-updater db migrate` to create collections and indexes.",
+          );
+          requestGenerateExit(1);
+        }
+        s.stop("Analysis complete");
         break;
       default:
-        p.log.error(
-          `Unsupported adapter: ${adapterName}. Generation is not supported.`,
-        );
-        requestGenerateExit(1);
+        if (componentArtifacts.length === 0) {
+          p.log.error(
+            `Unsupported adapter: ${adapterName}. Generation is not supported.`,
+          );
+          requestGenerateExit(1);
+        }
+        s.stop("Analysis complete");
         break;
     }
+
+    await generateComponentArtifacts({
+      absoluteOutputDir,
+      artifacts: componentArtifacts,
+      reservedOutputPaths,
+      skipConfirm,
+    });
   } catch (error) {
     if (error instanceof GenerateExit) {
       exitCode = error.code;
@@ -142,7 +161,7 @@ async function generateWithMigrator(
   absoluteOutputDir: string,
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
-) {
+): Promise<readonly string[]> {
   // Create migrator
   const migrator = createHotUpdaterMigrator(hotUpdater);
 
@@ -156,21 +175,18 @@ async function generateWithMigrator(
 
   // Get SQL
   const getSQL = result.getSQL;
-  let sql: string;
-  if (typeof getSQL === "function") {
-    sql = getSQL();
-  } else {
+  if (typeof getSQL !== "function") {
     p.log.error(
       "Migration result does not support SQL generation. " +
         "This may happen if you're not using an SQL-based database plugin.",
     );
-    requestGenerateExit(1);
-    return;
+    return requestGenerateExit(1);
   }
+  const sql = getSQL();
 
   if (!sql || sql.trim() === "") {
     p.log.success("Schema is up to date.");
-    return;
+    return [];
   }
 
   let formattedSql = sql;
@@ -203,7 +219,7 @@ async function generateWithMigrator(
       if (existingContent === formattedSql) {
         p.log.warn(`Identical migration already exists: ${file}`);
         p.outro("Done");
-        return;
+        return [filePath];
       }
     }
   } catch {
@@ -232,6 +248,7 @@ async function generateWithMigrator(
   await writeFile(outputPath, formattedSql, "utf-8");
 
   p.log.success(ui.line(["Created", ui.path(outputPath)]));
+  return [outputPath];
 }
 
 /**
@@ -243,7 +260,7 @@ async function generateWithSchemaGenerator(
   absoluteOutputDir: string,
   skipConfirm: boolean,
   s: ReturnType<typeof p.spinner>,
-) {
+): Promise<readonly string[]> {
   // Generate schema
   const schemaResult = generateHotUpdaterSchema(hotUpdater, "latest");
 
@@ -252,13 +269,13 @@ async function generateWithSchemaGenerator(
   const schemaCode = schemaResult.code;
   if (!schemaCode || schemaCode.trim() === "") {
     p.log.info("No schema generated.");
-    return;
+    return [];
   }
 
   // Special handling for Prisma adapter - write directly to schema.prisma
   if (adapterName === "prisma") {
     await generatePrismaSchema(schemaCode, absoluteOutputDir, skipConfirm);
-    return;
+    return [path.join(absoluteOutputDir, "prisma", "schema.prisma")];
   }
 
   const outputPath = resolveGeneratedSchemaOutputPath(
@@ -287,4 +304,5 @@ async function generateWithSchemaGenerator(
   await writeFile(outputPath, schemaCode, "utf-8");
 
   p.log.success(ui.line(["Created", ui.path(outputPath)]));
+  return [outputPath];
 }

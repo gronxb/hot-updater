@@ -11,6 +11,12 @@ export const createPluginSetupContext = (): HotUpdaterPluginSetupContext => ({
       throw new Error("No capabilities are required.");
     },
   },
+  components: {
+    get: () => undefined,
+    require() {
+      throw new Error("No components are required.");
+    },
+  },
   database: Object.freeze({
     count: unexpectedDatabaseAccess,
     create: unexpectedDatabaseAccess,

@@ -11,6 +11,8 @@ import {
   readHotUpdaterInitEnv,
   resolveInitProviderInputs,
 } from "@hot-updater/cli-tools";
+import { createManagedServerPlugins } from "@hot-updater/managed";
+import { createHotUpdater } from "@hot-updater/server";
 import { ExecaError } from "execa";
 
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
@@ -239,6 +241,11 @@ export const init = async (options: InitOptions = {}) => {
   const build = buildPluginPackage.name;
   const runInitOptions = {
     build,
+    createDeploymentTarget: (database) =>
+      createHotUpdater({
+        database,
+        plugins: createManagedServerPlugins(),
+      }),
     envFile: options.envFile,
   } satisfies RunInitOptions;
   try {

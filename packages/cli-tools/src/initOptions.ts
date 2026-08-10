@@ -1,7 +1,12 @@
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
+
 import type { BuildType } from "./ConfigBuilder";
 
 export type RunInitOptions = {
   readonly build: BuildType;
+  readonly createDeploymentTarget?: (database: DatabasePlugin) => {
+    readonly adapterName: string;
+  };
   readonly envFile?: string;
 };
 

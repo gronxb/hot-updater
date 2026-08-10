@@ -1,8 +1,12 @@
 import type {
   HotUpdaterContext,
   RuntimeStoragePlugin,
+  UniversalComponentDataAdapter,
 } from "@hot-updater/plugin-core";
-import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
+import {
+  assertRuntimeStoragePlugin,
+  universalComponentDataAdapterCapability,
+} from "@hot-updater/plugin-core";
 
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
@@ -18,6 +22,7 @@ import {
   createRuntimeHandler,
   type HandlerRoutes,
 } from "./handler";
+import type { UniversalComponentRegistry } from "./kernel/componentRegistry";
 import { composeServerKernel } from "./kernel/composer";
 import type { HotUpdaterServerPlugin } from "./kernel/contracts";
 import { createCoreServerRoutes } from "./kernel/coreRoutes";
@@ -72,13 +77,17 @@ export const hotUpdaterCoreMetadata = Symbol.for(
 
 export type HotUpdaterCoreMetadata<TContext = undefined> = {
   readonly adapterCapabilities: DatabaseAdapterCapabilities;
+  readonly components?: UniversalComponentRegistry;
   readonly core: DatabasePluginCore<TContext>;
+  readonly universalComponentDataAdapter?: UniversalComponentDataAdapter;
 };
 
 export type HotUpdaterCore<TContext = undefined> = {
   readonly api: RuntimeHotUpdaterAPI<TContext>;
   readonly adapterCapabilities: DatabaseAdapterCapabilities;
+  readonly components?: UniversalComponentRegistry;
   readonly core: DatabasePluginCore<TContext>;
+  readonly universalComponentDataAdapter?: UniversalComponentDataAdapter;
 };
 
 export function getHotUpdaterCoreMetadata<TContext = undefined>(
@@ -131,24 +140,26 @@ export function createHotUpdaterCore<TContext = undefined>(
       routes: options.routes,
     },
   );
-  const requestHandler = (() => {
-    if (!usesKernel) {
-      return internalHandler;
-    }
+  const kernel = (() => {
+    if (!usesKernel) return undefined;
     const runtime = createGuardedInfrastructureRuntime({
       beforeDatabaseOperation: assertSchemaReady,
       database: plugin,
       storages: storagePlugins,
     });
-    const kernel = composeServerKernel({
+    return composeServerKernel({
       carriers: [plugin, ...storagePlugins],
       coreRoutes: createCoreServerRoutes({
         handler: internalHandler,
         routes: options.routes,
       }),
+      databaseCarrier: plugin,
       plugins,
       runtime,
     });
+  })();
+  const requestHandler = (() => {
+    if (kernel === undefined) return internalHandler;
     return (
       request: Request,
       context?: HotUpdaterContext<TContext>,
@@ -161,6 +172,15 @@ export function createHotUpdaterCore<TContext = undefined>(
         router: kernel.router,
       });
   })();
+  const componentMetadata =
+    kernel === undefined || kernel.components.schemas.length === 0
+      ? {}
+      : {
+          components: kernel.components,
+          universalComponentDataAdapter: kernel.capabilities.require(
+            universalComponentDataAdapterCapability,
+          ),
+        };
 
   // Some framework adapters strip the mounted base path or pass extra
   // bindings/execution context arguments. Ignore those extras here so the
@@ -189,6 +209,7 @@ export function createHotUpdaterCore<TContext = undefined>(
     enumerable: false,
     value: {
       adapterCapabilities,
+      ...componentMetadata,
       core,
     } satisfies HotUpdaterCoreMetadata<TContext>,
   });
@@ -196,6 +217,7 @@ export function createHotUpdaterCore<TContext = undefined>(
   return {
     api,
     adapterCapabilities,
+    ...componentMetadata,
     core,
   };
 }

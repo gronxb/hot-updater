@@ -1,24 +1,30 @@
 # Analytics plugin boundary
 
 Analytics is an optional first-party server plugin built on the generic server
-kernel. It owns its event model, persistence contract, routes, provider
-capability, and schema lifecycle. Core database models remain limited to
-`bundles` and `bundle_patches`.
+kernel and universal component data contract. Analytics owns its event domain,
+universal schema and adoption policy, persistence translation, reporting, and
+routes. Core database models remain limited to `bundles` and
+`bundle_patches`.
+
+Database providers do not implement an Analytics capability. They expose a
+feature-neutral universal component data adapter that can bind any declared
+component schema.
 
 ## Runtime contract
 
-`AnalyticsPersistence` is the provider boundary. It supports appending one
-complete event and scanning events in ascending `(received_at_ms, id)` order.
-The scan cursor is exclusive, the upper timestamp bound is strict, and the
-returned row count cannot exceed the requested limit.
+`analytics()` declares `analyticsComponentSchema` and, during server
+composition, receives the `UniversalComponentDataSource` bound to that exact
+schema. Analytics translates the generic source into its own
+`AnalyticsPersistence` contract:
 
-The shared bounded `AnalyticsProvider` implements reporting over this ordered
-scan and rejects reports that would materialize more than 50,000 matching rows.
-A dedicated provider may implement the same high-level contract directly.
+- append one complete event row to `bundle_events`; and
+- scan rows in ascending `(received_at_ms, id)` order, with an exclusive
+  cursor, a strict upper timestamp bound, and at most the requested limit.
 
-Providers make the high-level provider available through the Analytics-owned
-capability. `analytics()` may also receive an explicit provider. It never
-constructs a provider from the Core database runtime.
+The shared bounded `AnalyticsProvider` implements reporting over that ordered
+scan and rejects reports that would materialize more than 50,000 matching
+rows. Analytics also translates universal component readiness failures into
+Analytics readiness errors without hiding operational backend failures.
 
 The plugin contributes these routes:
 
@@ -41,99 +47,156 @@ plugin. The bounded provider deliberately rejects reports above 50,000 rows
 and does not implement replay deduplication or retention; move sustained
 high-volume workloads to a dedicated provider.
 
-## Schema ownership
+## Analytics-owned schema and policy
 
-Analytics readiness is recorded independently as `schema.analytics = "2"`.
-It never changes `schema.core` or the legacy global `version` setting.
+`analyticsComponentSchema` is the canonical source for the Analytics physical
+contract. It declares:
 
-- Analytics schema 1 is the transition-only `bundle_events` shape introduced
-  with legacy global schema `0.37.0`.
-- Analytics schema 2 is the `0.38.0` shape that adds `UNCHANGED` and permits
-  null transition fields only for that event type.
-- Legacy global versions are immutable evidence. They may help classify a
-  known physical shape, but Analytics never rewrites or downgrades them.
+- component id `analytics` and marker `schema.analytics`;
+- versioned `bundle_events` columns, checks, and indexes;
+- the `bundle_events_by_received_at` ordered access pattern used by
+  `AnalyticsPersistence`;
+- adjacent version transitions; and
+- the allowed interpretation of an unmarked legacy installation.
 
-Provider migration and adoption are explicit administrative operations, not
-plugin setup side effects. Each provider validates its physical table,
-collection, indexes, constraints, marker, and persisted rows before mutation.
-Unknown shapes, malformed markers, and future versions fail closed.
+Analytics schema 1 is the transition-only event shape introduced with legacy
+global schema `0.37.0`. Analytics schema 2 is the latest shape: it adds
+`UNCHANGED` and permits `from_bundle_id` and `update_strategy` to be null only
+for that event type.
 
-| Marker and physical state               | Result                                           |
-| --------------------------------------- | ------------------------------------------------ |
-| absent and storage absent               | create schema 2, validate, then write marker     |
-| absent or 1 with exact schema 1         | migrate to schema 2, validate, then write marker |
-| absent or 1 with exact schema 2         | recover or adopt, then write marker              |
-| 2 with exact schema 2                   | no-op                                            |
-| marker/shape contradiction              | reject without changing marker or data           |
-| drift, corrupt marker, or future marker | reject without mutation                          |
+The schema's unmarked policy uses the legacy global `version` value only as a
+discriminator. A provider-neutral adapter may create, adopt, or migrate a
+physical shape only when both the inspected shape and that declared policy
+permit it. Unknown legacy values, unknown physical versions, marker/shape
+contradictions, malformed rows, drift, and future component markers fail
+closed. Analytics never rewrites or downgrades `schema.core` or the legacy
+global `version` setting.
 
-The marker is the final operation. Transactional providers include physical
-changes, validation, and the marker in one transaction. Non-transactional
-providers use resumable, idempotent phases and expose the marker only after the
-data and required indexes are ready.
+Migration validates the declared physical shape and stored rows, applies only
+declared adjacent transitions, and writes `schema.analytics = "2"` last.
+Transactional adapters include those operations in one transaction where the
+backend permits it. Other adapters use provider-appropriate idempotent phases
+without publishing the marker early.
 
-Runtime adapters cache one successful provider-specific readiness inspection,
-then reread the component marker before every operation. A non-v2 marker
-invalidates the cached inspection. Migration and adoption remain responsible
-for complete persisted-row validation before publishing the marker; the
-Supabase runtime uses that SQL migration as its validation authority. Operators
-must change the marker before privileged schema mutation because continuously
-rescanning every row while an unchanged v2 marker remains present would make
-public ingestion grow linearly with stored events.
+At runtime, a source rejects append and ordered scan operations until the
+latest marker, physical schema, required indexes, and stored data are ready.
+An adapter may cache a successful full inspection, but it must continue to
+detect marker invalidation. Constructing `analytics()` and binding its source
+never create or migrate physical state.
 
-## Provider entry points
+## Provider-neutral adapter boundary
 
-Provider migration is always an administrator action. Constructing the server
-or handling a request never performs it.
+Each supported database attaches the same
+`UniversalComponentDataAdapter` capability. The adapter receives a component
+schema as data; its implementation must not import Analytics types, name
+`bundle_events` directly, or define an Analytics-specific migration entry
+point.
 
-| Provider             | Administrative entry point                                 | Runtime connection                                                                                 |
-| -------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Cloudflare D1 REST   | `migrateD1Analytics(config)`                               | `d1Database(config)` attaches the capability                                                       |
-| Cloudflare Worker D1 | `migrateAnalytics()` from `@hot-updater/cloudflare/worker` | `d1Database()` attaches the capability                                                             |
-| Firebase             | `migrateFirebaseAnalytics(firestore)`                      | `firebaseDatabase(config)` attaches the capability                                                 |
-| PostgreSQL           | execute `@hot-updater/postgres/sql/analytics.sql`          | `postgres(config)` attaches the capability                                                         |
-| Supabase             | apply `20260805000000_hot-updater_analytics_2.sql`         | `supabaseDatabase(config)` attaches the capability                                                 |
-| Kysely SQL           | `migrateKyselyAnalyticsSchema(config)`                     | pass `createBoundedAnalyticsProvider(createKyselyAnalyticsPersistence(config))` to `analytics()`   |
-| MongoDB              | `migrateMongoAnalyticsSchema(config)`                      | pass `createBoundedAnalyticsProvider(createMongoAnalyticsPersistence(config))` to `analytics()`    |
-| Blob storage         | `migrateLegacyAnalyticsBlob(operations)`                   | pass `createBoundedAnalyticsProvider(createBlobAnalyticsPersistence(operations))` to `analytics()` |
+The contract separates three operations:
 
-The Kysely and MongoDB adapters are public subpaths of
-`@hot-updater/analytics`. Blob primitives are exported from
-`@hot-updater/analytics/provider`. They require explicit provider composition;
-they are not inferred from a Core database or storage plugin.
+- `bind(schema)` synchronously returns a runtime source and has no physical
+  side effects;
+- `migrate(schema)`, when supported, performs explicit administrative
+  migration and readiness validation; and
+- `artifacts(schema)`, when supported, generates provider deployment
+  artifacts for the declared target version.
 
-The Kysely adapter supports PostgreSQL, MySQL, and SQLite. CockroachDB and
-MSSQL are not declared compatible without provider-specific catalog validation
-and runtime coverage.
+The current provider compatibility layers are:
 
-The PostgreSQL and Supabase migrations accept only the exact historical
-`double precision` event timestamp shape. Supabase additionally requires row
-level security on an adopted legacy table and preserves existing policies.
-Generic PostgreSQL does not enable or own row level security.
+| Database adapter | Runtime source | Runtime migration | Generated artifact |
+| ---------------- | -------------- | ----------------- | ------------------ |
+| Cloudflare D1    | yes            | yes               | D1 SQL             |
+| Firebase         | yes            | yes               | Firestore indexes  |
+| PostgreSQL       | yes            | yes               | PostgreSQL SQL     |
+| Supabase         | yes            | no                | Supabase SQL       |
+
+Generated SQL and index fragments may contain Analytics table and marker names
+because they are derived from `analyticsComponentSchema`. Their generators are
+generic provider code and work from any valid component schema. There are no
+checked-in provider-owned Analytics SQL migrations, Analytics persistence
+implementations, or Analytics capability attachments.
+
+The server collects component schemas deterministically before plugin setup,
+rejects duplicate component ids and physical table or index names, resolves
+one neutral adapter from the database carrier, and binds each plugin only to
+the schema it declared. Declaring Analytics without a compatible component
+adapter is a construction error. The Core database CRUD contract is not
+extended with `bundle_events`.
+
+## Explicit custom provider escape hatch
+
+`analytics({ provider })` is the deliberate escape hatch for a dedicated or
+custom Analytics backend. In this mode Analytics validates and uses the
+high-level `AnalyticsProvider` directly. It does not declare
+`analyticsComponentSchema`, require a universal component adapter, or produce
+component migration artifacts.
+
+The explicit provider therefore owns its storage readiness, migration, and
+operational policy. `createBoundedAnalyticsProvider()` can build that provider
+from an `AnalyticsPersistence`; the Analytics package also retains explicit
+Kysely, MongoDB, and blob persistence helpers for this use case. These helpers
+are not inferred from the Core database or a storage plugin.
+
+## Composition-root ownership
+
+Installing Analytics is a composition decision, not a database-provider
+default. A runtime composition root opts in with the equivalent of:
+
+```ts
+createHotUpdater({
+  database,
+  plugins: [analytics()],
+});
+```
+
+That same composed target exposes the schemas and neutral adapter needed by
+administrative tooling. The composition root must choose one of the supported
+deployment paths before enabling traffic:
+
+- call `migrateUniversalComponents(hotUpdater)` for an adapter with runtime
+  migration support; or
+- call `generateUniversalComponentArtifacts(hotUpdater)` and deploy the
+  generated artifacts through the provider's normal schema/index workflow.
+
+`hot-updater generate` materializes generated component artifacts alongside
+the Core database output. Provider init flows may use the same composed target
+to merge Firestore index fragments, add SQL migrations, or run a supported
+runtime migration before deploying the application runtime. The init or
+deployment composition root decides whether Analytics is present; the neutral
+database adapter does not.
+
+Managed authentication, route policy, and provider presets belong to later
+integration layers. Those layers may compose `analytics()` and arrange its
+administrative migration, but they do not move Analytics schema or persistence
+logic into database implementations.
 
 ## Rollout
 
-1. Configure ingress and storage quotas for the public event route.
-2. Deploy the provider-specific Analytics migration or adoption operation.
+1. Add `analytics()` to the intended deployment composition and configure
+   authentication for protected queries.
+2. Generate or run the universal component migration from that same composed
+   target.
 3. Verify `schema.analytics = "2"`, event row preservation, required indexes,
    and unchanged Core and legacy markers.
-4. Run the operation again and verify it is a no-op.
-5. Add `analytics()` to server composition and configure authentication for
-   protected queries when needed.
-6. Enable client ingestion only after the provider is ready.
+4. Run the administrative operation again and verify it is a no-op or produces
+   identical artifacts.
+5. Configure ingress and storage quotas for the public event route.
+6. Deploy the composed runtime, then enable client ingestion.
 
-The Cloudflare, Firebase, and Supabase managed deployment workflows perform
-the provider migration before deploying a runtime that directly composes
-`managedBetterAuthPlugin()` and `analytics()`. They provision the raw API key
-only in the local `.env.hotupdater` file and place only its SHA-256 projection
-in the runtime. OTA selectors and `POST /events` remain public; the six query
-routes require the managed key.
+The Cloudflare, Firebase, and Supabase managed deployment workflows use the
+shared managed plugin preset for both their deployment target and runtime. The
+deployment target produces provider-neutral component artifacts or migrations
+before the runtime is deployed. The workflows provision the raw API key only
+in the local `.env.hotupdater` file and persist only its SHA-256 projection in
+the provider-owned access-key store. The runtime never receives the raw key.
+The managed client key authorizes OTA selectors and `POST /events`; Analytics
+query routes remain unavailable to that client role.
 
-Removing the plugin stops exposing Analytics routes. It does not drop event
-data or remove the Analytics marker.
+Removing the plugin stops declaring its schema and exposing Analytics routes.
+It does not drop event data or remove the Analytics marker.
 
 ## Excluded concerns
 
-This boundary does not add Analytics models to Database V2, modify the generic
-kernel, change the Console or React Native SDK, enable AWS Analytics, or add
-retention and deletion behavior.
+This boundary does not add Analytics models to Database V2, make database
+providers depend on the Analytics contract, make plugin setup migrate storage,
+enable AWS Analytics, or add retention, deletion, and data-drop behavior.

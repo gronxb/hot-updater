@@ -17,7 +17,14 @@ import { fileURLToPath } from "node:url";
 import { registerManagedAccessKey } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
+import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
+import {
+  generateUniversalComponentArtifacts,
+  migrateUniversalComponents,
+  type UniversalComponentGeneratedArtifact,
+  type UniversalComponentMigrationSummary,
+} from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -32,7 +39,7 @@ import {
   stopRuntime,
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
-import { migrateFirebaseAnalytics } from "../../src/firebaseAnalyticsMigration";
+import { mergeFirebaseComponentIndexArtifacts } from "../../src/firebaseComponentIndexArtifacts";
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
 import { createFirebaseManagedAccessKeyStore } from "../../src/firebaseManagedAccessKeyStore";
@@ -132,6 +139,9 @@ describe.sequential("firebase functions runtime acceptance", () => {
   let functionsPort = 0;
   let functionsRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
+  let componentArtifacts: readonly UniversalComponentGeneratedArtifact[] = [];
+  let componentMigrations: readonly UniversalComponentMigrationSummary[] = [];
+  let stagedFirestoreIndexes = "";
   const projectId = process.env.GCLOUD_PROJECT ?? "";
   const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST ?? "";
   const storageEmulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST ?? "";
@@ -175,17 +185,6 @@ describe.sequential("firebase functions runtime acceptance", () => {
       path.join(tempRoot, "firebase.json"),
       JSON.stringify(firebaseConfig),
     );
-    await writeFile(
-      path.join(tempRoot, "firestore.indexes.json"),
-      await readFile(
-        path.join(
-          WORKSPACE_ROOT,
-          "plugins/firebase/dist/firebase/public/firestore.indexes.json",
-        ),
-        "utf8",
-      ),
-    );
-
     const functionsDir = path.join(tempRoot, "functions");
     await mkdir(functionsDir, { recursive: true });
     await cp(
@@ -247,7 +246,27 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       projectId,
       storageBucket,
     };
-    await migrateFirebaseAnalytics(admin.firestore(firebaseAdminApp));
+    const database = firebaseDatabase(adminOptions);
+    const deploymentTarget = createHotUpdater({
+      database,
+      plugins: createManagedServerPlugins(),
+    });
+    componentArtifacts = generateUniversalComponentArtifacts(deploymentTarget);
+    stagedFirestoreIndexes = mergeFirebaseComponentIndexArtifacts(
+      await readFile(
+        path.join(
+          WORKSPACE_ROOT,
+          "plugins/firebase/dist/firebase/public/firestore.indexes.json",
+        ),
+        "utf8",
+      ),
+      componentArtifacts,
+    );
+    await writeFile(
+      path.join(tempRoot, "firestore.indexes.json"),
+      stagedFirestoreIndexes,
+    );
+    componentMigrations = await migrateUniversalComponents(deploymentTarget);
     await registerManagedAccessKey({
       apiKey: RAW_API_KEY,
       createdAt: 1,
@@ -258,7 +277,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     });
 
     seedHotUpdater = createHotUpdater({
-      database: firebaseDatabase(adminOptions),
+      database,
       storages: [
         firebaseFunctionsStorage({
           ...adminOptions,
@@ -314,6 +333,45 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     await clearFirestoreCollection("bundle_patches");
     await clearFirestoreCollection("bundles");
     await clearFirestoreCollection("bundle_events");
+  });
+
+  it("generates and migrates components declared by the managed runtime", async () => {
+    expect(componentArtifacts).toEqual([
+      expect.objectContaining({
+        componentId: "analytics",
+        path: "firestore.indexes.analytics.2.json",
+        targetVersion: "2",
+      }),
+    ]);
+    expect(componentMigrations).toEqual([
+      {
+        changed: true,
+        componentId: "analytics",
+        version: "2",
+      },
+    ]);
+    expect(
+      (
+        JSON.parse(stagedFirestoreIndexes) as {
+          readonly indexes: readonly unknown[];
+        }
+      ).indexes,
+    ).toContainEqual({
+      collectionGroup: "bundle_events",
+      fields: [
+        { fieldPath: "received_at_ms", order: "ASCENDING" },
+        { fieldPath: "id", order: "ASCENDING" },
+      ],
+      queryScope: "COLLECTION",
+    });
+    await expect(
+      admin
+        .firestore()
+        .collection("private_hot_updater_settings")
+        .doc("schema.analytics")
+        .get()
+        .then((snapshot) => snapshot.data()),
+    ).resolves.toEqual({ value: "2" });
   });
 
   afterAll(async () => {

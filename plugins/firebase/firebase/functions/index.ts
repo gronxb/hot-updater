@@ -1,8 +1,4 @@
-import { analytics } from "@hot-updater/analytics";
-import {
-  managedBetterAuthPlugin,
-  managedRoutePolicy,
-} from "@hot-updater/better-auth/managed";
+import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import admin from "firebase-admin";
 import { onRequest } from "firebase-functions/v2/https";
@@ -35,11 +31,7 @@ if (!storageBucket) {
 
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase(adminOptions),
-  plugins: [
-    managedBetterAuthPlugin(),
-    managedRoutePolicy({ scope: "client" }),
-    analytics(),
-  ],
+  plugins: createManagedServerPlugins(),
   storages: [
     firebaseFunctionsStorage({
       ...adminOptions,

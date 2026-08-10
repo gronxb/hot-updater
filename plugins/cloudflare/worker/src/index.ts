@@ -1,8 +1,4 @@
-import { analytics } from "@hot-updater/analytics";
-import {
-  managedBetterAuthPlugin,
-  managedRoutePolicy,
-} from "@hot-updater/better-auth/managed";
+import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import { Hono } from "hono";
 
@@ -14,9 +10,7 @@ import {
 } from "../../src/worker";
 
 export type CloudflareWorkerEnv = {
-  DB: {
-    prepare: D1Database["prepare"];
-  };
+  DB: D1Database;
   BUCKET: R2Bucket;
   JWT_SECRET: string;
 };
@@ -39,11 +33,7 @@ const resolveRequestOrigin = (context?: WorkerContext) => {
 
 const hotUpdater = createHotUpdater<WorkerContext>({
   database: d1Database(),
-  plugins: [
-    managedBetterAuthPlugin(),
-    managedRoutePolicy({ scope: "client" }),
-    analytics(),
-  ],
+  plugins: createManagedServerPlugins(),
   storages: [
     r2Storage<WorkerContext>({
       publicBaseUrl: resolveRequestOrigin,

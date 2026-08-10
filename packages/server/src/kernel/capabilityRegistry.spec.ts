@@ -37,6 +37,21 @@ describe("createCapabilityRegistry", () => {
     expect(parse).toHaveBeenCalledOnce();
   });
 
+  it("does not materialize an explicitly excluded capability", () => {
+    const token = defineCapability({ id: "excluded@1", parse: String });
+    const create = vi.fn(() => "unused");
+    const carrier = attachCapabilityContribution({}, { create, token });
+
+    const registry = createCapabilityRegistry({
+      carriers: [carrier],
+      excludedTokens: [token],
+      runtime: runtime(),
+    });
+
+    expect(registry.get(token)).toBeUndefined();
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("rejects distinct token identities with the same id before factories run", () => {
     const create = vi.fn(() => "value");
     const first = defineCapability({ id: "duplicate@1", parse: String });

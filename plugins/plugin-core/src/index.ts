@@ -34,4 +34,5 @@ export * from "./resolveUpdateInfoFromBundles";
 export * from "./semverSatisfies";
 export * from "./storageProfile";
 export * from "./types";
+export * from "./universalComponentData";
 export * from "./uuidv7";
