@@ -25,10 +25,12 @@ For manual configuration, use the settings below.
 ## Configuration
 
 ```typescript
+import type { Credential } from 'firebase-admin/app';
+
 interface FirebaseStorageConfig {
   projectId: string;               // Firebase project ID
   storageBucket: string;           // Storage bucket name
-  credential: admin.credential.Credential;  // Firebase credential
+  credential: Credential;          // Firebase credential
   basePath?: string;               // Optional base path within bucket
 }
 ```
@@ -50,14 +52,14 @@ FIREBASE_STORAGE_BUCKET=your-bucket-name
 
 ```typescript
 import { firebaseStorage } from '@hot-updater/firebase';
-import * as admin from 'firebase-admin';
+import { applicationDefault } from 'firebase-admin/app';
 import { defineConfig } from 'hot-updater';
 
 // https://firebase.google.com/docs/admin/setup?hl=en#initialize_the_sdk_in_non-google_environments
 // Check your .env file and add the credentials
 // Set the GOOGLE_APPLICATION_CREDENTIALS environment variable to your credentials file path
 // Example: GOOGLE_APPLICATION_CREDENTIALS=./firebase-adminsdk-credentials.json
-const credential = admin.credential.applicationDefault();
+const credential = applicationDefault();
 
 export default defineConfig({
   storage: firebaseStorage({

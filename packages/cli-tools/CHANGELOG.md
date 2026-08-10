@@ -1,5 +1,15 @@
 # @hot-updater/cli-tools
 
+## 0.35.12
+
+### Patch Changes
+
+- fd30452: Support firebase-admin v14 by using the modular Admin SDK APIs.
+- 6e8b32e: Replace the semver dependency with verkit.
+- Updated dependencies [6e8b32e]
+  - @hot-updater/plugin-core@0.35.12
+  - @hot-updater/core@0.35.12
+
 ## 0.35.11
 
 ### Patch Changes

@@ -1,5 +1,5 @@
 import { createHotUpdater } from "@hot-updater/server";
-import admin from "firebase-admin";
+import { getApps, initializeApp } from "firebase-admin/app";
 import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
 
@@ -14,11 +14,8 @@ declare global {
 
 export const HOT_UPDATER_BASE_PATH = "/api/check-update";
 
-if (!admin.apps.length) {
-  admin.initializeApp();
-}
-
-const adminOptions = admin.app().options;
+const firebaseAdminApp = getApps()[0] ?? initializeApp();
+const adminOptions = firebaseAdminApp.options;
 const storageBucket = adminOptions.storageBucket;
 const cdnUrl = process.env.HOT_UPDATER_CDN_URL;
 

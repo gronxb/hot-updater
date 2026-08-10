@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 
 import { getCwd } from "@hot-updater/cli-tools";
-import semverValid from "semver/ranges/valid";
+import { normalizeRange } from "verkit";
 
 const getAndroidVersionFromAppBuildGradle = async (): Promise<
   string | null
@@ -38,7 +38,7 @@ export const getAndroidVersion = async ({
     const parsedVersion = await AndroidVersionParsers[parserKey]();
 
     if (!parsedVersion) continue;
-    if (validateWithSemver && !semverValid(parsedVersion)) continue;
+    if (validateWithSemver && !normalizeRange(parsedVersion)) continue;
 
     return parsedVersion;
   }
