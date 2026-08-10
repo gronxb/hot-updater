@@ -3,6 +3,7 @@ import { expect, it } from "vitest";
 import { d1WorkerDatabase, type D1Like } from "./cloudflareWorkerDatabase";
 
 const db: D1Like = {
+  batch: async () => [],
   prepare: () => ({
     bind: () => ({
       all: async () => ({

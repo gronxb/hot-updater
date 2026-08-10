@@ -12,6 +12,7 @@ import type {
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
 import {
+  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
   DatabasePluginInputError,
 } from "@hot-updater/plugin-core";
@@ -24,6 +25,7 @@ import {
 import { buildSupabaseFilter } from "./supabaseFilter";
 import { createSupabaseGetUpdateInfo } from "./supabaseGetUpdateInfo";
 import { SupabaseMissingDataError, throwSupabaseError } from "./supabaseResult";
+import { createSupabaseUniversalComponentDataAdapter } from "./supabaseUniversalComponentData";
 import type { Database } from "./types";
 
 export type SupabaseDatabaseConfig = SupabaseServiceRoleConfig;
@@ -211,7 +213,7 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
     name: "supabaseDatabase",
     plugin: () => createSupabaseImplementation(supabase),
   });
-  return attachSupabaseAggregateMutations(plugin, {
+  const database = attachSupabaseAggregateMutations(plugin, {
     async insertBundleWithPatches(input) {
       const { error } = await supabase.rpc(
         "hot_updater_create_bundle_with_patches",
@@ -238,4 +240,7 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
       return data;
     },
   });
+  return attachUniversalComponentDataAdapter(database, () =>
+    createSupabaseUniversalComponentDataAdapter(supabase),
+  );
 };

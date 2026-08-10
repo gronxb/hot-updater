@@ -1,5 +1,7 @@
 import {
+  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
+  type DatabasePlugin,
   type DatabasePluginImplementation,
   resolveUpdateInfoFromBundles,
   type TransactionDatabasePluginImplementation,
@@ -23,6 +25,7 @@ import {
   createFirebaseDatabaseState,
 } from "./firebaseDatabaseState";
 import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
+import { createFirebaseUniversalComponentDataAdapter } from "./firebaseUniversalComponentData";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
@@ -40,13 +43,16 @@ const exactId = (
     : undefined;
 };
 
-export const firebaseDatabase = (config: admin.AppOptions) =>
-  createDatabasePlugin({
+export function firebaseDatabase(config: admin.AppOptions): DatabasePlugin {
+  const getFirestore = (): admin.firestore.Firestore => {
+    const existingApp = admin.apps.find((app) => app !== null);
+    const app = existingApp ?? admin.initializeApp(config);
+    return admin.firestore(app);
+  };
+  const database = createDatabasePlugin({
     name: "firebaseDatabase",
     plugin: (): DatabasePluginImplementation => {
-      const existingApp = admin.apps.find((app) => app !== null);
-      const app = existingApp ?? admin.initializeApp(config);
-      const db = admin.firestore(app);
+      const db = getFirestore();
       const collections = createFirebaseDatabaseCollections(db);
       let migration: Promise<void> | undefined;
 
@@ -151,3 +157,7 @@ export const firebaseDatabase = (config: admin.AppOptions) =>
       };
     },
   });
+  return attachUniversalComponentDataAdapter(database, () =>
+    createFirebaseUniversalComponentDataAdapter(getFirestore()),
+  );
+}

@@ -13,6 +13,12 @@ import { parseD1Row } from "./d1Rows";
 import { buildD1Where, d1Placeholders, encodeD1Values } from "./d1Sql";
 
 export interface D1Executor {
+  batch(
+    statements: readonly {
+      readonly params: readonly string[];
+      readonly sql: string;
+    }[],
+  ): Promise<void>;
   query(sql: string, params: readonly string[]): Promise<readonly unknown[]>;
 }
 

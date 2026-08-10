@@ -7,7 +7,10 @@ import type {
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import {
+  attachUniversalComponentDataAdapter,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
 import {
   Kysely,
   PostgresDialect,
@@ -19,6 +22,7 @@ import pg, { type PoolConfig } from "pg";
 
 import { getUpdateInfo } from "./getUpdateInfo";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
+import { createPostgresUniversalComponentDataAdapter } from "./postgresUniversalComponentData";
 import type { Database } from "./types";
 
 const { Pool } = pg;
@@ -207,21 +211,24 @@ const createPostgresImplementation = (
   onUnmount: () => db.destroy(),
 });
 
-export const postgres = (config: PostgresConfig) =>
-  createDatabasePlugin({
-    name: "postgres",
-    plugin: () => {
-      const { dialect, ...poolConfig } = config;
-      if (dialect !== undefined) {
-        return createPostgresImplementation(new Kysely<Database>({ dialect }));
-      }
-      const pool = new Pool(poolConfig);
-      const implementation = createPostgresImplementation(
-        new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
-      );
-      return {
-        ...implementation,
-        getUpdateInfo: (args) => getUpdateInfo(pool, args),
-      };
-    },
+export const postgres = (config: PostgresConfig) => {
+  const { dialect, ...poolConfig } = config;
+  const pool = dialect === undefined ? new Pool(poolConfig) : undefined;
+  const db = new Kysely<Database>({
+    dialect: dialect ?? new PostgresDialect({ pool: pool! }),
   });
+  const implementation = createPostgresImplementation(db);
+  const plugin = createDatabasePlugin({
+    name: "postgres",
+    plugin: () =>
+      pool === undefined
+        ? implementation
+        : {
+            ...implementation,
+            getUpdateInfo: (args) => getUpdateInfo(pool, args),
+          },
+  });
+  return attachUniversalComponentDataAdapter(plugin, () =>
+    createPostgresUniversalComponentDataAdapter(db),
+  );
+};
