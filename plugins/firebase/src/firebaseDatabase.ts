@@ -4,7 +4,13 @@ import {
   resolveUpdateInfoFromBundles,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
-import admin from "firebase-admin";
+import {
+  getApp,
+  getApps,
+  initializeApp,
+  type AppOptions,
+} from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 
 import {
   parseFirebaseBundleRow,
@@ -40,13 +46,12 @@ const exactId = (
     : undefined;
 };
 
-export const firebaseDatabase = (config: admin.AppOptions) =>
+export const firebaseDatabase = (config: AppOptions) =>
   createDatabasePlugin({
     name: "firebaseDatabase",
     plugin: (): DatabasePluginImplementation => {
-      const existingApp = admin.apps.find((app) => app !== null);
-      const app = existingApp ?? admin.initializeApp(config);
-      const db = admin.firestore(app);
+      const app = getApps().length ? getApp() : initializeApp(config);
+      const db = getFirestore(app);
       const collections = createFirebaseDatabaseCollections(db);
       let migration: Promise<void> | undefined;
 

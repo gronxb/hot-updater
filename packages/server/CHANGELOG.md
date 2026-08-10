@@ -1,5 +1,16 @@
 # @hot-updater/server
 
+## 0.35.12
+
+### Patch Changes
+
+- 6e8b32e: Replace the semver dependency with verkit.
+- Updated dependencies [6e8b32e]
+  - @hot-updater/js@0.35.12
+  - @hot-updater/plugin-core@0.35.12
+  - @hot-updater/bsdiff@0.35.12
+  - @hot-updater/core@0.35.12
+
 ## 0.35.11
 
 ### Patch Changes

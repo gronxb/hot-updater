@@ -20,7 +20,9 @@ import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
-import admin from "firebase-admin";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -228,9 +230,8 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       ),
     );
 
-    const firebaseAdminApp = admin.apps.length
-      ? admin.app()
-      : admin.initializeApp({ projectId, storageBucket });
+    const firebaseAdminApp =
+      getApps()[0] ?? initializeApp({ projectId, storageBucket });
     const adminOptions = {
       ...firebaseAdminApp.options,
       projectId,
@@ -512,13 +513,14 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
 });
 
 const clearFirestoreCollection = async (collectionName: string) => {
-  const snapshot = await admin.firestore().collection(collectionName).get();
+  const firestore = getFirestore();
+  const snapshot = await firestore.collection(collectionName).get();
 
   if (snapshot.empty) {
     return;
   }
 
-  const batch = admin.firestore().batch();
+  const batch = firestore.batch();
   for (const doc of snapshot.docs) {
     batch.delete(doc.ref);
   }
@@ -526,7 +528,7 @@ const clearFirestoreCollection = async (collectionName: string) => {
 };
 
 const clearStorageBucket = async (storageBucket: string) => {
-  const [files] = await admin.storage().bucket(storageBucket).getFiles();
+  const [files] = await getStorage().bucket(storageBucket).getFiles();
 
   await Promise.all(
     files.map((file) =>
@@ -552,8 +554,7 @@ const seedStorageObject = async (
   body: string,
   contentType = "application/octet-stream",
 ) => {
-  await admin
-    .storage()
+  await getStorage()
     .bucket(storageBucket)
     .file(key.replace(/^\/+/, ""))
     .save(body, {

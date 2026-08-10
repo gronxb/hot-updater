@@ -2,9 +2,7 @@ import fs from "fs";
 import { createRequire } from "node:module";
 import path from "path";
 
-import semverMajor from "semver/functions/major.js";
-import semverMinor from "semver/functions/minor.js";
-import semverPatch from "semver/functions/patch.js";
+import { getMajor, getMinor, getPatch } from "verkit";
 
 import { getCwd } from "./cwd";
 import { p } from "./prompts";
@@ -30,9 +28,9 @@ export const getReactNativeMetadatas = (cwd?: string): ReactNativeMetadata => {
       fs.readFileSync(path.join(packagePath, "package.json"), "utf-8"),
     );
     const versionRaw: string = packageJson.version;
-    const major = semverMajor(versionRaw);
-    const minor = semverMinor(versionRaw);
-    const patch = semverPatch(versionRaw);
+    const major = getMajor(versionRaw);
+    const minor = getMinor(versionRaw);
+    const patch = getPatch(versionRaw);
 
     return {
       packagePath,

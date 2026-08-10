@@ -1,5 +1,5 @@
 import type { AppUpdateAvailableInfo, AppUpdateInfo } from "@hot-updater/core";
-import semver from "semver";
+import { isGreaterOrEqual, normalize } from "verkit";
 
 import {
   decodeMaybe,
@@ -15,10 +15,10 @@ const EXPLICIT_NO_UPDATE_MIN_SDK_VERSION = "0.31.0";
 const supportsExplicitNoUpdateResponse = (request: Request): boolean => {
   const sdkVersion = request.headers.get(SDK_VERSION_HEADER)?.trim();
   if (!sdkVersion) return false;
-  const normalizedSdkVersion = semver.valid(sdkVersion);
+  const normalizedSdkVersion = normalize(sdkVersion);
   return (
     normalizedSdkVersion !== null &&
-    semver.gte(normalizedSdkVersion, EXPLICIT_NO_UPDATE_MIN_SDK_VERSION)
+    isGreaterOrEqual(normalizedSdkVersion, EXPLICIT_NO_UPDATE_MIN_SDK_VERSION)
   );
 };
 
