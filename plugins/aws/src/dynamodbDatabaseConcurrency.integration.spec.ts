@@ -8,9 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { DynamoDBIntegrationFixture } from "./dynamodbDatabase.integration-fixture";
 import { createDynamoDBAggregateMutations } from "./dynamodbDatabaseAggregate";
-import { DYNAMODB_MAX_BUNDLES } from "./dynamodbDatabaseBounds";
 import { createDynamoDBCrud } from "./dynamodbDatabaseCrud";
-import { DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE } from "./dynamodbDatabaseTransactions";
 
 const fixture = new DynamoDBIntegrationFixture();
 
@@ -42,40 +40,48 @@ const patchRow = (owner: Bundle, base: Bundle) => ({
 beforeAll(() => fixture.start(), 120_000);
 afterAll(() => fixture.stop());
 
-describe("DynamoDB bounded metadata and delete serialization", () => {
+describe("DynamoDB metadata concurrency and delete serialization", () => {
   beforeEach(() => fixture.reset());
 
-  it("accepts the bundle ceiling and rejects ceiling plus one", async () => {
+  it("allows concurrent inserts beyond the former bundle ceiling", async () => {
     await fixture.client.send(
       new PutCommand({
         TableName: fixture.tableName,
         Item: {
           pk: "_hot-updater",
           sk: "limits.metadata",
-          bundles: DYNAMODB_MAX_BUNDLES - 1,
+          bundles: 999,
           patches: 0,
         },
       }),
     );
     const database = createDatabaseClient(fixture.createPlugin());
 
-    await database.insertBundle(bundle(1));
-    await expect(database.insertBundle(bundle(2))).rejects.toBeDefined();
+    await Promise.all([
+      database.insertBundle(bundle(1)),
+      database.insertBundle(bundle(2)),
+    ]);
 
     await expect(database.getBundleById(bundle(1).id)).resolves.not.toBeNull();
-    await expect(database.getBundleById(bundle(2).id)).resolves.toBeNull();
+    await expect(database.getBundleById(bundle(2).id)).resolves.not.toBeNull();
+    await expect(
+      fixture.client.send(
+        new GetCommand({
+          TableName: fixture.tableName,
+          Key: { pk: "_hot-updater", sk: "limits.metadata" },
+          ConsistentRead: true,
+        }),
+      ),
+    ).resolves.toMatchObject({ Item: { bundles: 1_001 } });
   });
 
-  it("accepts 24 relationships and rejects 25 and 101", async () => {
+  it("allows more than 24 relationships per bundle", async () => {
     const database = createDatabaseClient(fixture.createPlugin());
-    const bases = Array.from(
-      { length: DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE + 1 },
-      (_, index) => bundle(index + 1),
-    );
+    const bases = Array.from({ length: 25 }, (_, index) => bundle(index + 1));
     for (const base of bases) await database.insertBundle(base);
     const owner = {
       ...bundle(100),
-      patches: bases.slice(0, 24).map((base) => ({
+      patches: bases.map((base) => ({
         baseBundleId: base.id,
         baseFileHash: base.fileHash,
         patchFileHash: `patch-${base.id}`,
@@ -84,16 +90,20 @@ describe("DynamoDB bounded metadata and delete serialization", () => {
     };
 
     await database.insertBundle(owner);
-    await expect(
-      database.updateBundleById(owner.id, {
-        patches: bases.map((base) => ({
-          baseBundleId: base.id,
-          baseFileHash: base.fileHash,
-          patchFileHash: `patch-${base.id}`,
-          patchStorageUri: `storage://patch-${base.id}`,
-        })),
-      }),
-    ).rejects.toMatchObject({ name: "DynamoDBRelationshipLimitError" });
+    await database.updateBundleById(owner.id, {
+      patches: bases.map((base) => ({
+        baseBundleId: base.id,
+        baseFileHash: base.fileHash,
+        patchFileHash: `updated-patch-${base.id}`,
+        patchStorageUri: `storage://updated-patch-${base.id}`,
+      })),
+    });
+    await expect(database.getBundleById(owner.id)).resolves.toMatchObject({
+      patches: { length: 25 },
+    });
+  });
+
+  it("reports DynamoDB's physical transaction action limit", async () => {
     await expect(
       createDynamoDBAggregateMutations({
         client: fixture.client,
@@ -104,13 +114,10 @@ describe("DynamoDB bounded metadata and delete serialization", () => {
           patchRow(bundle(200), bundle(index + 300)),
         ),
       }),
-    ).rejects.toMatchObject({ name: "DynamoDBRelationshipLimitError" });
-    await expect(database.getBundleById(owner.id)).resolves.toMatchObject({
-      patches: { length: 24 },
-    });
+    ).rejects.toMatchObject({ name: "DynamoDBTransactionLimitError" });
   });
 
-  it("rolls back a new owner when its base reaches 24 relationships", async () => {
+  it("allows a base bundle to be referenced by more than 24 patches", async () => {
     const database = createDatabaseClient(fixture.createPlugin());
     const base = bundle(1);
     await database.insertBundle(base);
@@ -129,20 +136,26 @@ describe("DynamoDB bounded metadata and delete serialization", () => {
       });
     }
 
-    await expect(
-      database.insertBundle({
-        ...bundle(26),
-        patches: [
-          {
-            baseBundleId: base.id,
-            baseFileHash: base.fileHash,
-            patchFileHash: "patch-26",
-            patchStorageUri: "storage://patch-26",
-          },
-        ],
+    await database.insertBundle({
+      ...bundle(26),
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: base.fileHash,
+          patchFileHash: "patch-26",
+          patchStorageUri: "storage://patch-26",
+        },
+      ],
+    });
+    await expect(database.getBundleById(bundle(26).id)).resolves.not.toBeNull();
+    const storedBase = await fixture.client.send(
+      new GetCommand({
+        TableName: fixture.tableName,
+        Key: { pk: "bundles", sk: base.id },
+        ConsistentRead: true,
       }),
-    ).rejects.toBeDefined();
-    await expect(database.getBundleById(bundle(26).id)).resolves.toBeNull();
+    );
+    expect(storedBase.Item?.relation_count).toBe(25);
   });
 
   it.each(["owner", "base"] as const)(

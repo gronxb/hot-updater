@@ -19,11 +19,10 @@ days with DynamoDB TTL, push recent-window lower bounds into storage reads, and
 provision on-demand throughput caps, deletion protection, and point-in-time
 recovery for new tables.
 
-Bound bundle metadata to 1,000 bundles, 1,000 patches, 24 relationships per
-bundle, and 8 KiB per serialized item with transactional counters. Use targeted
-cursor/key/index reads, serialize patch creation and bundle updates against
-cascade deletion, and process broad deletions as retryable per-bundle atomic
-groups that remain below DynamoDB transaction limits.
+Store any number of bundle and patch metadata rows while retaining the 8 KiB
+per-item guard and transactional counters. Use targeted cursor/key/index reads,
+serialize patch creation and bundle updates against cascade deletion, and
+process broad deletions as retryable per-bundle atomic groups.
 
 Hydrate owner-index candidates and exact bundle references with strongly
 consistent base-table batch reads, use transactional counters for unfiltered

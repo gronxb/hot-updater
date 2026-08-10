@@ -21,8 +21,6 @@ import {
 } from "./dynamodbDatabaseStore";
 import {
   commitDynamoDBTransaction,
-  DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE,
-  DynamoDBRelationshipLimitError,
   metadataUpdate,
   updateBundleRelation,
   type DynamoDBTransactItem,
@@ -117,15 +115,6 @@ const deletePatch = (
   },
 });
 
-const assertRelationshipLimit = (
-  bundleId: string,
-  relationCount: number,
-): void => {
-  if (relationCount > DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE) {
-    throw new DynamoDBRelationshipLimitError(bundleId);
-  }
-};
-
 const baseReferenceChanges = (
   store: DynamoDBStore,
   ownerBundleId: string,
@@ -149,9 +138,11 @@ const baseReferenceChanges = (
       );
     }
   }
-  return [...changes].map(([baseBundleId, delta]) =>
-    updateBundleRelation(store, baseBundleId, delta),
-  );
+  return [...changes]
+    .filter(([, delta]) => delta !== 0)
+    .map(([baseBundleId, delta]) =>
+      updateBundleRelation(store, baseBundleId, delta),
+    );
 };
 
 export const createDynamoDBAggregateMutations = (
@@ -159,7 +150,6 @@ export const createDynamoDBAggregateMutations = (
 ): DatabasePluginAggregateMutations => ({
   async insertBundleWithPatches({ bundle, patches }): Promise<void> {
     assertUniquePatches(patches);
-    assertRelationshipLimit(bundle.id, patches.length);
     const counter = metadataUpdate(store, {
       bundles: 1,
       bundle_patches: patches.length,
@@ -189,36 +179,31 @@ export const createDynamoDBAggregateMutations = (
     const nextIds = new Set(patches.map(({ id }) => id));
     const relationCount =
       bundle.relation_count - currentPatches.length + patches.length;
-    assertRelationshipLimit(bundleId, relationCount);
     const counter = metadataUpdate(store, {
       bundle_patches: patches.length - currentPatches.length,
     });
-    await commitDynamoDBTransaction(
-      store,
-      [
-        ...(counter ? [counter] : []),
-        ...baseReferenceChanges(
-          store,
-          bundleId,
-          currentPatches.map(({ row }) => row),
-          patches,
-        ),
-        putUpdatedBundle(
-          store,
-          bundle,
-          { ...bundle.row, ...update },
-          relationCount,
-          patches.length,
-        ),
-        ...currentPatches
-          .filter(({ sk }) => !nextIds.has(sk))
-          .map((patch) => deletePatch(store, patch)),
-        ...patches.map((patch) =>
-          putPatch(store, patch, currentById.get(patch.id)),
-        ),
-      ],
-      patches.length > currentPatches.length ? "bundle_patches" : undefined,
-    );
+    await commitDynamoDBTransaction(store, [
+      ...(counter ? [counter] : []),
+      ...baseReferenceChanges(
+        store,
+        bundleId,
+        currentPatches.map(({ row }) => row),
+        patches,
+      ),
+      putUpdatedBundle(
+        store,
+        bundle,
+        { ...bundle.row, ...update },
+        relationCount,
+        patches.length,
+      ),
+      ...currentPatches
+        .filter(({ sk }) => !nextIds.has(sk))
+        .map((patch) => deletePatch(store, patch)),
+      ...patches.map((patch) =>
+        putPatch(store, patch, currentById.get(patch.id)),
+      ),
+    ]);
     return true;
   },
 });

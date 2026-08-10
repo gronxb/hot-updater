@@ -8,8 +8,6 @@ import {
 } from "./analytics-overview";
 
 const DEFAULT_ANALYTICS_PAGE_SIZE = 100;
-const MAX_ANALYTICS_BUNDLE_PAGES = 100;
-const MAX_ANALYTICS_BUNDLES = 10_000;
 
 export type AnalyticsCapabilities = {
   readonly capabilities:
@@ -111,12 +109,6 @@ const collectBundles = async (
         `totalPages must be nonnegative, received ${totalPages}`,
       );
     }
-    if (totalPages > MAX_ANALYTICS_BUNDLE_PAGES) {
-      throw new AnalyticsBundlePaginationError(
-        page,
-        `totalPages exceeds the ${MAX_ANALYTICS_BUNDLE_PAGES}-page limit`,
-      );
-    }
     if (!isEmptyFirstPage && totalPages < currentPage) {
       throw new AnalyticsBundlePaginationError(
         page,
@@ -129,13 +121,6 @@ const collectBundles = async (
         "hasNextPage contradicts currentPage and totalPages",
       );
     }
-    if (bundles.length + result.data.length > MAX_ANALYTICS_BUNDLES) {
-      throw new AnalyticsBundlePaginationError(
-        page,
-        `bundle count exceeds the ${MAX_ANALYTICS_BUNDLES}-bundle limit`,
-      );
-    }
-
     bundles.push(...result.data);
     if (!hasNextPage) {
       return bundles;

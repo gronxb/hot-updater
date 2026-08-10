@@ -10,9 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DynamoDBIntegrationFixture } from "./dynamodbDatabase.integration-fixture";
 import {
   boundedDynamoDBMetadataItem,
-  DYNAMODB_MAX_BUNDLES,
   DYNAMODB_MAX_METADATA_ITEM_BYTES,
-  DYNAMODB_MAX_PATCHES,
 } from "./dynamodbDatabaseBounds";
 import { createDynamoDBCrud } from "./dynamodbDatabaseCrud";
 import {
@@ -25,58 +23,52 @@ import {
 } from "./dynamodbDatabaseRows";
 
 const fixture = new DynamoDBIntegrationFixture();
+const bundleCount = 1_001;
+const patchCount = 1_001;
+const patchesPerOwner = 25;
 
 beforeAll(() => fixture.start(), 120_000);
 afterAll(() => fixture.stop());
 
-describe("DynamoDB bounded reads at the metadata ceiling", () => {
+describe("DynamoDB reads beyond the former metadata ceiling", () => {
   beforeEach(() => fixture.reset());
 
   it("keeps cursor pages constant and owner hydration targeted", async () => {
-    const bundleRows = Array.from(
-      { length: DYNAMODB_MAX_BUNDLES },
-      (_, index) =>
-        bundleToRow({
-          id: `10000000-0000-0000-0000-${index.toString().padStart(12, "0")}`,
-          platform: "ios",
-          shouldForceUpdate: false,
-          enabled: true,
-          fileHash: `hash-${index}`,
-          gitCommitHash: null,
-          message: null,
-          channel: "production",
-          storageUri: `storage://bundle-${index}.zip`,
-          targetAppVersion: "1.0.0",
-          fingerprintHash: null,
-          metadata: {},
-        }),
+    const bundleRows = Array.from({ length: bundleCount }, (_, index) =>
+      bundleToRow({
+        id: `10000000-0000-0000-0000-${index.toString().padStart(12, "0")}`,
+        platform: "ios",
+        shouldForceUpdate: false,
+        enabled: true,
+        fileHash: `hash-${index}`,
+        gitCommitHash: null,
+        message: null,
+        channel: "production",
+        storageUri: `storage://bundle-${index}.zip`,
+        targetAppVersion: "1.0.0",
+        fingerprintHash: null,
+        metadata: {},
+      }),
     );
     const relationCounts = new Map<string, number>();
     const ownedPatchCounts = new Map<string, number>();
-    const patchRows = Array.from(
-      { length: DYNAMODB_MAX_PATCHES },
-      (_, index) => {
-        const owner = bundleRows[Math.floor(index / 24)];
-        const base = bundleRows[500 + Math.floor(index / 24)];
-        if (!owner || !base)
-          throw new Error("Missing bounded-read fixture row");
-        relationCounts.set(owner.id, (relationCounts.get(owner.id) ?? 0) + 1);
-        relationCounts.set(base.id, (relationCounts.get(base.id) ?? 0) + 1);
-        ownedPatchCounts.set(
-          owner.id,
-          (ownedPatchCounts.get(owner.id) ?? 0) + 1,
-        );
-        return {
-          id: `patch-${index.toString().padStart(4, "0")}`,
-          bundle_id: owner.id,
-          base_bundle_id: base.id,
-          base_file_hash: base.file_hash,
-          patch_file_hash: `patch-hash-${index}`,
-          patch_storage_uri: "",
-          order_index: index % 24,
-        };
-      },
-    );
+    const patchRows = Array.from({ length: patchCount }, (_, index) => {
+      const owner = bundleRows[Math.floor(index / patchesPerOwner)];
+      const base = bundleRows[500 + Math.floor(index / patchesPerOwner)];
+      if (!owner || !base) throw new Error("Missing read fixture row");
+      relationCounts.set(owner.id, (relationCounts.get(owner.id) ?? 0) + 1);
+      relationCounts.set(base.id, (relationCounts.get(base.id) ?? 0) + 1);
+      ownedPatchCounts.set(owner.id, (ownedPatchCounts.get(owner.id) ?? 0) + 1);
+      return {
+        id: `patch-${index.toString().padStart(4, "0")}`,
+        bundle_id: owner.id,
+        base_bundle_id: base.id,
+        base_file_hash: base.file_hash,
+        patch_file_hash: `patch-hash-${index}`,
+        patch_storage_uri: "",
+        order_index: index % patchesPerOwner,
+      };
+    });
     const bundleItems = bundleRows.map((row) => {
       const empty = toDynamoDBBundleItem(
         { ...row, metadata: { padding: "" } },
@@ -117,8 +109,8 @@ describe("DynamoDB bounded reads at the metadata ceiling", () => {
       {
         pk: "_hot-updater",
         sk: "limits.metadata",
-        bundles: DYNAMODB_MAX_BUNDLES,
-        patches: DYNAMODB_MAX_PATCHES,
+        bundles: bundleCount,
+        patches: patchCount,
       },
     ];
     for (let offset = 0; offset < items.length; offset += 25) {
@@ -171,7 +163,7 @@ describe("DynamoDB bounded reads at the metadata ceiling", () => {
         offset: 0,
         orderBy: [{ field: "id", direction: "asc" }],
       }),
-    ).resolves.toHaveLength(24);
+    ).resolves.toHaveLength(patchesPerOwner);
     expect(queries.count()).toBe(1);
     queries.reset();
     batchGets.reset();
@@ -203,9 +195,9 @@ describe("DynamoDB bounded reads at the metadata ceiling", () => {
     });
 
     expect(page.data).toHaveLength(50);
-    expect(page.pagination.total).toBe(DYNAMODB_MAX_BUNDLES);
-    expect(queries.count()).toBe(43);
-    expect(batchGets.count()).toBe(12);
+    expect(page.pagination.total).toBe(bundleCount);
+    expect(queries.count()).toBe(42);
+    expect(batchGets.count()).toBe(13);
     expect(gets.count()).toBe(1);
     queries.remove();
     batchGets.remove();

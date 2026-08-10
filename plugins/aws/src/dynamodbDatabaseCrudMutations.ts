@@ -24,21 +24,17 @@ export const createDynamoDBBundle = async (
 ): Promise<void> => {
   const counter = metadataUpdate(store, { bundles: 1 });
   if (!counter) return;
-  await commitDynamoDBTransaction(
-    store,
-    [
-      counter,
-      {
-        Put: {
-          TableName: store.tableName,
-          Item: boundedDynamoDBMetadataItem(toDynamoDBBundleItem(row)),
-          ConditionExpression: "attribute_not_exists(#pk)",
-          ExpressionAttributeNames: { "#pk": "pk" },
-        },
+  await commitDynamoDBTransaction(store, [
+    counter,
+    {
+      Put: {
+        TableName: store.tableName,
+        Item: boundedDynamoDBMetadataItem(toDynamoDBBundleItem(row)),
+        ConditionExpression: "attribute_not_exists(#pk)",
+        ExpressionAttributeNames: { "#pk": "pk" },
       },
-    ],
-    "bundles",
-  );
+    },
+  ]);
 };
 
 export const createDynamoDBPatch = async (
@@ -48,29 +44,25 @@ export const createDynamoDBPatch = async (
   const bundleIds = [...new Set([row.bundle_id, row.base_bundle_id])];
   const counter = metadataUpdate(store, { bundle_patches: 1 });
   if (!counter) return;
-  await commitDynamoDBTransaction(
-    store,
-    [
-      counter,
-      ...bundleIds.map((bundleId) =>
-        updateBundleRelation(
-          store,
-          bundleId,
-          1,
-          bundleId === row.bundle_id ? 1 : 0,
-        ),
+  await commitDynamoDBTransaction(store, [
+    counter,
+    ...bundleIds.map((bundleId) =>
+      updateBundleRelation(
+        store,
+        bundleId,
+        1,
+        bundleId === row.bundle_id ? 1 : 0,
       ),
-      {
-        Put: {
-          TableName: store.tableName,
-          Item: boundedDynamoDBMetadataItem(toDynamoDBPatchItem(row)),
-          ConditionExpression: "attribute_not_exists(#pk)",
-          ExpressionAttributeNames: { "#pk": "pk" },
-        },
+    ),
+    {
+      Put: {
+        TableName: store.tableName,
+        Item: boundedDynamoDBMetadataItem(toDynamoDBPatchItem(row)),
+        ConditionExpression: "attribute_not_exists(#pk)",
+        ExpressionAttributeNames: { "#pk": "pk" },
       },
-    ],
-    "bundle_patches",
-  );
+    },
+  ]);
 };
 
 export const replaceDynamoDBBundle = async (

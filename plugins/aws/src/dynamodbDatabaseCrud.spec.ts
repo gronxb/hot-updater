@@ -148,7 +148,7 @@ describe("DynamoDB CRUD access patterns", () => {
     ).toBe("#pk = :pk");
   });
 
-  it("increments the bounded metadata counter in the create transaction", async () => {
+  it("increments the metadata counter without imposing a ceiling", async () => {
     // Given
     dynamodb.on(TransactWriteCommand).resolves({});
     const crud = createCrud();
@@ -161,11 +161,13 @@ describe("DynamoDB CRUD access patterns", () => {
       dynamodb.commandCalls(TransactWriteCommand)[0]?.args[0].input
         .TransactItems?.[0]?.Update,
     ).toMatchObject({
-      ConditionExpression:
-        "(attribute_not_exists(#bundles) OR #bundles <= :bundleCeiling)",
       Key: { pk: "_hot-updater", sk: "limits.metadata" },
       UpdateExpression: "ADD #bundles :bundleDelta",
     });
+    expect(
+      dynamodb.commandCalls(TransactWriteCommand)[0]?.args[0].input
+        .TransactItems?.[0]?.Update,
+    ).not.toHaveProperty("ConditionExpression");
   });
 
   it("locks both referenced bundles when creating a patch", async () => {

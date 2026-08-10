@@ -169,17 +169,16 @@ needs `GetItem` for the schema marker and `Query`/`PutItem` for the
 CLI and Console writers need permission to put, update, and delete metadata
 items.
 
-The provider enforces a bounded metadata contract: at most 1,000 bundles, 1,000
-patches, 24 patch relationships per bundle, and 8 KiB per serialized metadata
-item. Counters and relation counts are updated in the same DynamoDB transaction
-as each mutation. The two full metadata collections therefore have a maximum
-encoded payload of 16 MiB before JavaScript object overhead. Cursor-based bundle
-pages read only the requested page, exact bundle references use strongly
-consistent key reads, and single-owner patch hydration uses index keys only to
-discover candidates before strongly reading their base-table rows. Unfiltered
-totals use the transactionally maintained metadata counter. Batch reads retry
-unprocessed keys with bounded exponential backoff.
-The relationship bound also guarantees that aggregate patch replacement and
-cascade deletion fit DynamoDB's 100-action transaction limit. Multi-bundle
-deletes commit one cascade-safe bundle group at a time and can be retried after
-an interruption. Delete obsolete bundle metadata before reaching a limit.
+The provider does not impose a total bundle, patch, or patch-relationship count
+limit. Each serialized metadata item is limited to 8 KiB, and counters and
+relation counts are updated in the same DynamoDB transaction as each mutation.
+Cursor-based bundle pages read only the requested page, exact bundle references
+use strongly consistent key reads, and single-owner patch hydration uses index
+keys only to discover candidates before strongly reading their base-table rows.
+Unfiltered totals use the transactionally maintained metadata counter. Batch
+reads retry unprocessed keys with bounded exponential backoff.
+
+DynamoDB itself permits at most 100 actions in one transaction, so a single
+atomic aggregate mutation or cascade deletion must fit that service limit.
+Multi-bundle deletes commit one cascade-safe bundle group at a time and can be
+retried after an interruption.

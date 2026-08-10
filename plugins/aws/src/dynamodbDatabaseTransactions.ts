@@ -3,19 +3,8 @@ import {
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 
-import {
-  DYNAMODB_MAX_BUNDLES,
-  DYNAMODB_MAX_PATCHES,
-  DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE,
-} from "./dynamodbDatabaseBounds";
 import { itemKey } from "./dynamodbDatabaseRows";
 import type { DynamoDBStore } from "./dynamodbDatabaseStore";
-
-export {
-  DYNAMODB_MAX_BUNDLES,
-  DYNAMODB_MAX_PATCHES,
-  DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE,
-} from "./dynamodbDatabaseBounds";
 
 export type DynamoDBTransactItem = NonNullable<
   TransactWriteCommandInput["TransactItems"]
@@ -27,32 +16,6 @@ export class DynamoDBTransactionLimitError extends Error {
   constructor(readonly actionCount: number) {
     super(
       `DynamoDB transaction requires ${actionCount} actions; maximum is 100`,
-    );
-  }
-}
-
-export class DynamoDBMetadataLimitError extends Error {
-  readonly name = "DynamoDBMetadataLimitError";
-
-  constructor(
-    readonly model: "bundles" | "bundle_patches",
-    options?: ErrorOptions,
-  ) {
-    const limit =
-      model === "bundles" ? DYNAMODB_MAX_BUNDLES : DYNAMODB_MAX_PATCHES;
-    super(
-      `DynamoDB ${model} metadata limit of ${limit} has been reached`,
-      options,
-    );
-  }
-}
-
-export class DynamoDBRelationshipLimitError extends Error {
-  readonly name = "DynamoDBRelationshipLimitError";
-
-  constructor(readonly bundleId: string) {
-    super(
-      `DynamoDB bundle "${bundleId}" exceeds the ${DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE} patch relationship limit`,
     );
   }
 }
@@ -79,17 +42,10 @@ export const metadataUpdate = (
   for (const [model, change] of entries) {
     const name = model === "bundles" ? "bundles" : "patches";
     const valueName = model === "bundles" ? "bundle" : "patch";
-    const limit =
-      model === "bundles" ? DYNAMODB_MAX_BUNDLES : DYNAMODB_MAX_PATCHES;
     names[`#${name}`] = name;
     values[`:${valueName}Delta`] = change;
     updates.push(`#${name} :${valueName}Delta`);
-    if (change > 0) {
-      values[`:${valueName}Ceiling`] = limit - change;
-      conditions.push(
-        `(attribute_not_exists(#${name}) OR #${name} <= :${valueName}Ceiling)`,
-      );
-    } else {
+    if (change < 0) {
       values[`:${valueName}Removal`] = -change;
       conditions.push(`#${name} >= :${valueName}Removal`);
     }
@@ -100,7 +56,9 @@ export const metadataUpdate = (
       TableName: store.tableName,
       Key: { pk: "_hot-updater", sk: "limits.metadata" },
       UpdateExpression: `ADD ${updates.join(", ")}`,
-      ConditionExpression: conditions.join(" AND "),
+      ...(conditions.length > 0
+        ? { ConditionExpression: conditions.join(" AND ") }
+        : {}),
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,
     },
@@ -121,30 +79,20 @@ export const updateBundleRelation = (
   const additions: string[] = [];
   let condition = "attribute_exists(#pk)";
   let update = "SET #version = #version + :one";
-  if (delta > 0) {
+  if (delta !== 0) {
     names["#relationCount"] = "relation_count";
     values[":relationDelta"] = delta;
-    values[":relationCeiling"] = DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE - delta;
-    condition +=
-      " AND (attribute_not_exists(#relationCount) OR #relationCount <= :relationCeiling)";
     additions.push("#relationCount :relationDelta");
-  } else if (delta < 0) {
-    names["#relationCount"] = "relation_count";
-    values[":relationDelta"] = delta;
-    values[":relationRemoval"] = -delta;
-    condition += " AND #relationCount >= :relationRemoval";
-    additions.push("#relationCount :relationDelta");
+    if (delta < 0) {
+      values[":relationRemoval"] = -delta;
+      condition += " AND #relationCount >= :relationRemoval";
+    }
   }
   if (ownedPatchDelta !== 0) {
     names["#ownedPatchCount"] = "owned_patch_count";
     values[":ownedPatchDelta"] = ownedPatchDelta;
     additions.push("#ownedPatchCount :ownedPatchDelta");
-    if (ownedPatchDelta > 0) {
-      values[":ownedPatchCeiling"] =
-        DYNAMODB_MAX_RELATIONSHIPS_PER_BUNDLE - ownedPatchDelta;
-      condition +=
-        " AND (attribute_not_exists(#ownedPatchCount) OR #ownedPatchCount <= :ownedPatchCeiling)";
-    } else {
+    if (ownedPatchDelta < 0) {
       values[":ownedPatchRemoval"] = -ownedPatchDelta;
       condition += " AND #ownedPatchCount >= :ownedPatchRemoval";
     }
@@ -162,31 +110,14 @@ export const updateBundleRelation = (
   };
 };
 
-const isLimitCancellation = (error: unknown): boolean => {
-  if (typeof error !== "object" || error === null) return false;
-  const reasons = Reflect.get(error, "CancellationReasons");
-  return (
-    Array.isArray(reasons) &&
-    Reflect.get(reasons[0] ?? {}, "Code") === "ConditionalCheckFailed"
-  );
-};
-
 export const commitDynamoDBTransaction = async (
   store: DynamoDBStore,
   actions: readonly DynamoDBTransactItem[],
-  limitedModel?: "bundles" | "bundle_patches",
 ): Promise<void> => {
   if (actions.length > 100) {
     throw new DynamoDBTransactionLimitError(actions.length);
   }
-  try {
-    await store.client.send(
-      new TransactWriteCommand({ TransactItems: [...actions] }),
-    );
-  } catch (error) {
-    if (limitedModel && isLimitCancellation(error)) {
-      throw new DynamoDBMetadataLimitError(limitedModel, { cause: error });
-    }
-    throw error;
-  }
+  await store.client.send(
+    new TransactWriteCommand({ TransactItems: [...actions] }),
+  );
 };

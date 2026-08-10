@@ -324,33 +324,41 @@ describe("collectAnalyticsOverview", () => {
     expect(runtime.getBundleEventOverview).not.toHaveBeenCalled();
   });
 
-  it("rejects a declared page count above the collection cap", async () => {
+  it("collects more than 100 bundle pages", async () => {
     // Given
     const runtime = createRuntime();
-    const getBundles = vi.fn(async () => ({
-      data: [],
+    runtime.getBundleEventOverview.mockResolvedValue({
+      trackedInstallations: 0,
+      bundles: [],
+    });
+    const getBundles = vi.fn(async ({ page }: { page: number }) => ({
+      data: [createBundle(`bundle-${page}`)],
       pagination: {
-        currentPage: 1,
+        currentPage: page,
         totalPages: 101,
-        hasNextPage: true,
+        hasNextPage: page < 101,
       },
     }));
 
     // When
-    const result = collectAnalyticsOverview({ runtime, getBundles });
+    const result = await collectAnalyticsOverview({ runtime, getBundles });
 
     // Then
-    await expect(result).rejects.toBeInstanceOf(AnalyticsBundlePaginationError);
-    expect(getBundles).toHaveBeenCalledOnce();
-    expect(runtime.getBundleEventOverview).not.toHaveBeenCalled();
+    expect(result.configuredRollouts).toHaveLength(101);
+    expect(getBundles).toHaveBeenCalledTimes(101);
   });
 
-  it("rejects a page that would exceed the bundle collection cap", async () => {
+  it("collects more than 10,000 bundles", async () => {
     // Given
     const runtime = createRuntime();
-    const bundle = createBundle("bundle-a");
+    runtime.getBundleEventOverview.mockResolvedValue({
+      trackedInstallations: 0,
+      bundles: [],
+    });
     const getBundles = vi.fn(async () => ({
-      data: Array.from({ length: 10_001 }, () => bundle),
+      data: Array.from({ length: 10_001 }, (_, index) =>
+        createBundle(`bundle-${index}`),
+      ),
       pagination: {
         currentPage: 1,
         totalPages: 1,
@@ -359,11 +367,10 @@ describe("collectAnalyticsOverview", () => {
     }));
 
     // When
-    const result = collectAnalyticsOverview({ runtime, getBundles });
+    const result = await collectAnalyticsOverview({ runtime, getBundles });
 
     // Then
-    await expect(result).rejects.toBeInstanceOf(AnalyticsBundlePaginationError);
+    expect(result.configuredRollouts).toHaveLength(10_001);
     expect(getBundles).toHaveBeenCalledOnce();
-    expect(runtime.getBundleEventOverview).not.toHaveBeenCalled();
   });
 });

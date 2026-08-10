@@ -150,19 +150,16 @@ rules and configure AWS Budgets for a monthly spending threshold. The bounded
 Analytics provider still rejects `all` reports above 50,000 events, while
 24-hour, 7-day, and 30-day queries start at their storage time boundary.
 
-Bundle metadata is bounded at 1,000 bundles and 1,000 patches, with at most 24
-patch relationships per bundle and 8 KiB per serialized metadata item. The
-plugin maintains counters in the same transactions as metadata writes, capping
-the two full collections at 16 MiB of encoded payload before JavaScript object
-overhead. Cursor pages and exact/single-owner hydration use targeted key/index
-reads; owner-index keys are hydrated from strongly consistent base-table rows
-and unprocessed batch keys use bounded exponential backoff. Unfiltered totals
-use the transactionally maintained metadata counter. The 4,000-read cap covers
-the documented worst-case filtered metadata scan at the 8-KiB item bound while
-remaining a cost guardrail. These bounds prevent unbounded control-plane reads
-and keep patch replacement and cascade deletion below DynamoDB's 100-action
-transaction limit.
-Remove obsolete bundle metadata before reaching a limit.
+Bundle metadata has no fixed bundle, patch, or patch-relationship count limit.
+Each serialized metadata item is limited to 8 KiB. The plugin maintains counters
+and relation counts in the same transactions as metadata writes. Cursor pages
+and exact/single-owner hydration use targeted key/index reads; owner-index keys
+are hydrated from strongly consistent base-table rows and unprocessed batch keys
+use bounded exponential backoff. Unfiltered totals use the transactionally
+maintained metadata counter. Broad filtered scans paginate through all matching
+metadata and may be throttled by the managed table's throughput cost guardrail.
+DynamoDB's 100-action transaction service limit still applies to each atomic
+aggregate mutation or cascade deletion.
 
 New tables enable deletion protection. Init validates the billing mode,
 throughput caps, string key types, and index layout before reusing an existing
