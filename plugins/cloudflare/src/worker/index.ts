@@ -6,7 +6,6 @@ import { env } from "cloudflare:workers";
 import {
   type CloudflareWorkerDatabaseEnv,
   d1WorkerDatabase,
-  migrateD1WorkerAnalytics,
 } from "../cloudflareWorkerDatabase";
 import {
   type CloudflareWorkerStorageConfig,
@@ -23,8 +22,6 @@ export type RequestEnvContext<TEnv = CloudflareWorkerRuntimeEnv> =
   BaseRequestEnvContext<TEnv>;
 
 export const d1Database = () => d1WorkerDatabase(env.DB);
-
-export const migrateAnalytics = () => migrateD1WorkerAnalytics(env.DB);
 
 export const r2Storage = <
   TContext extends RequestEnvContext<CloudflareWorkerRuntimeEnv> =

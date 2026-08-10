@@ -6,24 +6,29 @@
 "@hot-updater/firebase": minor
 "@hot-updater/postgres": minor
 "@hot-updater/supabase": minor
+"@hot-updater/cli-tools": minor
+"hot-updater": minor
 ---
 
 Add Analytics as an optional server plugin with its own event row,
-append-and-ordered-scan persistence contract, provider capability, routes, and
-`schema.analytics` lifecycle. Analytics never falls back to the Core database
-and does not install authentication or managed policy.
+append-and-ordered-scan persistence contract, universal component schema,
+routes, and `schema.analytics` lifecycle. Analytics never falls back to the
+Core database and does not install authentication or managed policy.
 
-Cloudflare D1, Firebase, PostgreSQL, and Supabase expose explicit,
-provider-owned migration and runtime paths. Public Kysely, MongoDB, and blob
-adapters support explicit provider composition. Legacy Analytics 1 artifacts
-are validated and migrated to schema 2. Exact Analytics 2 artifacts are
-validated and adopted without rewriting the Core marker or the legacy global
-version, and the Analytics marker is published last.
+Cloudflare D1, Firebase, PostgreSQL, and Supabase expose provider-neutral
+component data adapters and version-tagged deployment artifacts without
+importing Analytics. The Analytics plugin owns its schema history, validation,
+and legacy-adoption policy. Legacy Analytics 1 artifacts are validated and
+migrated to schema 2. Exact Analytics 2 artifacts are validated and adopted
+without rewriting the Core marker or the legacy global version, and the
+Analytics marker is published last. Public Kysely, MongoDB, and blob adapters
+remain available through explicit provider composition.
 
 The Console adds the Analytics overview, bundle activity, and installation
-history experiences, backed by the provider-owned Analytics capability. It also
-shows managed client access-key lifecycle controls when a database contributes
-the Better Auth managed key-store capability.
+history experiences. Provider initialization and schema generation compose the
+active Analytics plugin into provider-neutral component artifacts and runtime
+migrations. The Console also shows managed client access-key lifecycle controls
+when a database contributes the Better Auth managed key-store capability.
 
 React Native clients can enable automatic OTA transition reporting with
 `HotUpdater.init({ analytics: true })`. App-ready transitions retain stable

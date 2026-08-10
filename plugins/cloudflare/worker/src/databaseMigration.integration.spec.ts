@@ -75,7 +75,7 @@ beforeAll(async () => {
   await applyMigration("0006_hot-updater_0.36.0.sql");
   await env.DB.prepare(`
     INSERT INTO private_hot_updater_settings (key, value)
-    VALUES ('version', '0.31.0'), ('schema.analytics', '2'), ('extension', 'kept')
+    VALUES ('version', '0.31.0'), ('schema.extension', '2'), ('extension', 'kept')
   `).run();
   await applyMigration("0006_hot-updater_0.36.0.sql");
 });
@@ -122,8 +122,8 @@ it("records the Core schema without replacing other settings", async () => {
 
   expect(settings.results).toEqual([
     { key: "extension", value: "kept" },
-    { key: "schema.analytics", value: "2" },
     { key: "schema.core", value: "0.36.0" },
+    { key: "schema.extension", value: "2" },
     { key: "version", value: "0.31.0" },
   ]);
 });

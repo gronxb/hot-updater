@@ -2,7 +2,12 @@ import { runInNewContext } from "node:vm";
 
 import {
   attachCapabilityContribution,
+  attachUniversalComponentDataAdapter,
   defineCapability,
+  defineUniversalComponentSchema,
+  type UniversalComponentDataAdapter,
+  type UniversalComponentDataSource,
+  type UniversalComponentSchema,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,11 +18,57 @@ import { validatePluginContribution } from "./contributionValidation";
 import { createGuardedInfrastructureRuntime } from "./guardedRuntime";
 import { defineFirstPartyServerPlugin } from "./manifest";
 
-const createRuntime = () =>
+const createRuntime = (
+  database: ReturnType<typeof createRuntimeDatabase> = createRuntimeDatabase(),
+) =>
   createGuardedInfrastructureRuntime({
-    database: createRuntimeDatabase(),
+    database,
     storages: [],
   });
+
+const createComponentSchema = (
+  id: string,
+  table = `${id.replaceAll("-", "_")}_records`,
+  index?: string,
+): UniversalComponentSchema =>
+  defineUniversalComponentSchema({
+    id,
+    versions: [
+      {
+        version: "1",
+        tables: [
+          {
+            name: table,
+            columns: [
+              { name: "id", primaryKey: true, type: "string" },
+              { name: "occurred_at_ms", type: "float" },
+            ],
+            ...(index === undefined
+              ? {}
+              : {
+                  indexes: [{ columns: ["occurred_at_ms"], name: index }],
+                }),
+          },
+        ],
+        orderedScans: [
+          {
+            columns: ["occurred_at_ms", "id"],
+            name: "chronological",
+            table,
+          },
+        ],
+      },
+    ],
+  });
+
+const createComponentDataSource = (
+  schema: UniversalComponentSchema,
+): UniversalComponentDataSource => ({
+  schema,
+  append: async () => undefined,
+  assertReady: async () => undefined,
+  orderedScan: async () => [],
+});
 
 const route = (
   id: string,
@@ -47,6 +98,299 @@ const authenticationPlugin = () =>
   });
 
 describe("composeServerKernel", () => {
+  it("binds declared component schemas before setup without administrative side effects", () => {
+    const calls: string[] = [];
+    const schema = createComponentSchema("audit-log");
+    const otherIdentity = createComponentSchema("audit-log");
+    const source = createComponentDataSource(schema);
+    const assertReady = vi.spyOn(source, "assertReady");
+    const migrate = vi.fn(async () => ({ changed: true, version: "1" }));
+    const artifacts = vi.fn(() => []);
+    const adapter: UniversalComponentDataAdapter = {
+      artifacts,
+      bind(boundSchema) {
+        calls.push(`bind:${boundSchema.id}`);
+        return source;
+      },
+      migrate,
+    };
+    const database = attachUniversalComponentDataAdapter(
+      createRuntimeDatabase(),
+      () => {
+        calls.push("adapter");
+        return adapter;
+      },
+    );
+    const plugin = defineFirstPartyServerPlugin({
+      id: "audit-plugin",
+      schema,
+      setup: ({ components }) => {
+        calls.push("setup");
+        expect(components.get(schema)).toBe(source);
+        expect(components.require(schema)).toBe(source);
+        expect(components.get(otherIdentity)).toBeUndefined();
+        return {};
+      },
+    });
+
+    const composed = composeServerKernel({
+      carriers: [database],
+      coreRoutes: [],
+      databaseCarrier: database,
+      plugins: [plugin],
+      runtime: createRuntime(database),
+    });
+
+    expect(calls).toEqual(["adapter", "bind:audit-log", "setup"]);
+    expect(composed.components.schemas).toEqual([schema]);
+    expect(composed.components.sources).toEqual([source]);
+    expect(composed.components.require(schema)).toBe(source);
+    expect(assertReady).not.toHaveBeenCalled();
+    expect(migrate).not.toHaveBeenCalled();
+    expect(artifacts).not.toHaveBeenCalled();
+  });
+
+  it("binds component schemas deterministically before ordered plugin setup", () => {
+    const calls: string[] = [];
+    const zetaSchema = createComponentSchema("zeta-component");
+    const alphaSchema = createComponentSchema("alpha-component");
+    const database = attachUniversalComponentDataAdapter(
+      createRuntimeDatabase(),
+      () => ({
+        bind(schema) {
+          calls.push(`bind:${schema.id}`);
+          return createComponentDataSource(schema);
+        },
+      }),
+    );
+    const plugins = [
+      defineFirstPartyServerPlugin({
+        id: "a-zeta-plugin",
+        schema: zetaSchema,
+        setup: () => {
+          calls.push("setup:a-zeta-plugin");
+          return {};
+        },
+      }),
+      defineFirstPartyServerPlugin({
+        id: "z-alpha-plugin",
+        schema: alphaSchema,
+        setup: () => {
+          calls.push("setup:z-alpha-plugin");
+          return {};
+        },
+      }),
+    ];
+
+    const composed = composeServerKernel({
+      carriers: [database],
+      coreRoutes: [],
+      databaseCarrier: database,
+      plugins,
+      runtime: createRuntime(database),
+    });
+
+    expect(composed.components.schemas).toEqual([alphaSchema, zetaSchema]);
+    expect(calls).toEqual([
+      "bind:alpha-component",
+      "bind:zeta-component",
+      "setup:a-zeta-plugin",
+      "setup:z-alpha-plugin",
+    ]);
+  });
+
+  it("requires the component adapter to be attached to the database carrier", () => {
+    const schema = createComponentSchema("audit-log");
+    const setup = vi.fn(() => ({}));
+    const plugin = defineFirstPartyServerPlugin({
+      id: "audit-plugin",
+      schema,
+      setup,
+    });
+    const nonDatabaseCarrier = attachUniversalComponentDataAdapter({}, () => ({
+      bind: createComponentDataSource,
+    }));
+
+    expect(() =>
+      composeServerKernel({
+        carriers: [nonDatabaseCarrier],
+        coreRoutes: [],
+        databaseCarrier: createRuntimeDatabase(),
+        plugins: [plugin],
+        runtime: createRuntime(),
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "MISSING_COMPONENT_DATA_ADAPTER",
+        details: { componentIds: ["audit-log"] },
+      }),
+    );
+    expect(setup).not.toHaveBeenCalled();
+  });
+
+  it("rejects an asynchronous component bind before plugin setup", async () => {
+    const schema = createComponentSchema("audit-log");
+    const setup = vi.fn(() => ({}));
+    const adapter = {
+      bind: () => Promise.resolve(createComponentDataSource(schema)),
+    } as unknown as UniversalComponentDataAdapter;
+    const database = attachUniversalComponentDataAdapter(
+      createRuntimeDatabase(),
+      () => adapter,
+    );
+    const plugin = defineFirstPartyServerPlugin({
+      id: "audit-plugin",
+      schema,
+      setup,
+    });
+
+    expect(() =>
+      composeServerKernel({
+        carriers: [database],
+        coreRoutes: [],
+        databaseCarrier: database,
+        plugins: [plugin],
+        runtime: createRuntime(database),
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "INVALID_COMPONENT_DATA_ADAPTER",
+        details: { componentId: "audit-log" },
+      }),
+    );
+    expect(setup).not.toHaveBeenCalled();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  });
+
+  it.each(["bundles", "bundle_patches", "private_hot_updater_settings"])(
+    "rejects a component table named like core table %s",
+    (table) => {
+      const createAdapter = vi.fn(() => ({
+        bind: createComponentDataSource,
+      }));
+      const database = attachUniversalComponentDataAdapter(
+        createRuntimeDatabase(),
+        createAdapter,
+      );
+      const plugin = defineFirstPartyServerPlugin({
+        id: "component-plugin",
+        schema: createComponentSchema("component", table),
+        setup: () => ({}),
+      });
+
+      expect(() =>
+        composeServerKernel({
+          carriers: [database],
+          coreRoutes: [],
+          databaseCarrier: database,
+          plugins: [plugin],
+          runtime: createRuntime(database),
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "DUPLICATE_COMPONENT_TABLE",
+          details: { tableName: table },
+        }),
+      );
+      expect(createAdapter).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    {
+      firstIndex: "shared_records_idx",
+      secondIndex: "shared_records_idx",
+    },
+    {
+      firstIndex: "bundles_channel_idx",
+      secondIndex: "other_records_idx",
+    },
+  ])(
+    "rejects globally conflicting SQL index name $firstIndex",
+    ({ firstIndex, secondIndex }) => {
+      const createAdapter = vi.fn(() => ({
+        bind: createComponentDataSource,
+      }));
+      const database = attachUniversalComponentDataAdapter(
+        createRuntimeDatabase(),
+        createAdapter,
+      );
+      const schemas = [
+        createComponentSchema("first-component", "first_records", firstIndex),
+        createComponentSchema(
+          "second-component",
+          "second_records",
+          secondIndex,
+        ),
+      ];
+      const plugins = schemas.map((schema, index) =>
+        defineFirstPartyServerPlugin({
+          id: `plugin-${index}`,
+          schema,
+          setup: () => ({}),
+        }),
+      );
+
+      expect(() =>
+        composeServerKernel({
+          carriers: [database],
+          coreRoutes: [],
+          databaseCarrier: database,
+          plugins,
+          runtime: createRuntime(database),
+        }),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "DUPLICATE_COMPONENT_INDEX",
+          details: { indexName: firstIndex },
+        }),
+      );
+      expect(createAdapter).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    {
+      code: "DUPLICATE_COMPONENT_ID",
+      first: createComponentSchema("first-component", "first_records"),
+      second: createComponentSchema("first-component", "second_records"),
+    },
+    {
+      code: "DUPLICATE_COMPONENT_TABLE",
+      first: createComponentSchema("first-component", "shared_records"),
+      second: createComponentSchema("second-component", "shared_records"),
+    },
+  ])(
+    "rejects $code before materializing the adapter",
+    ({ code, first, second }) => {
+      const createAdapter = vi.fn(() => ({
+        bind: createComponentDataSource,
+      }));
+      const database = attachUniversalComponentDataAdapter(
+        createRuntimeDatabase(),
+        createAdapter,
+      );
+      const plugins = [first, second].map((schema, index) =>
+        defineFirstPartyServerPlugin({
+          id: `plugin-${index}`,
+          schema,
+          setup: () => ({}),
+        }),
+      );
+
+      expect(() =>
+        composeServerKernel({
+          carriers: [database],
+          coreRoutes: [],
+          databaseCarrier: database,
+          plugins,
+          runtime: createRuntime(database),
+        }),
+      ).toThrowError(expect.objectContaining({ code }));
+      expect(createAdapter).not.toHaveBeenCalled();
+    },
+  );
+
   it("materializes capabilities before synchronous setup in plugin id order", () => {
     const calls: string[] = [];
     const token = defineCapability({ id: "example@1", parse: String });

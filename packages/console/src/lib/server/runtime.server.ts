@@ -1,17 +1,25 @@
 import {
+  analyticsComponentSchema,
   type ActiveInstallationInput,
-  type AnalyticsProvider,
   type InstallationHistoryRow,
   type InstallationSearchRow,
   type OffsetPaginationResult,
+} from "@hot-updater/analytics";
+import {
+  createUniversalComponentAnalyticsProvider,
+  type AnalyticsProvider,
   parseAnalyticsProvider,
   resolveAnalyticsCapability,
-} from "@hot-updater/analytics/internal/provider-capability";
+} from "@hot-updater/analytics/provider";
 import {
   managedAccessKeyStoreCapability,
   type ManagedAccessKeyStore,
 } from "@hot-updater/better-auth/managed";
 import type { ConfigResponse } from "@hot-updater/cli-tools";
+import {
+  type HotUpdaterInfrastructureRuntime,
+  universalComponentDataAdapterCapability,
+} from "@hot-updater/plugin-core";
 import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 
 import {
@@ -27,19 +35,24 @@ export type InstallationSearchResult =
 export type InstallationHistoryResult =
   OffsetPaginationResult<InstallationHistoryRow>;
 
-const ANALYTICS_PROVIDER_CAPABILITY_ID = "hot-updater.analytics.provider@1";
-
 export function createRuntimeHotUpdater(
   config: ConfigResponse,
 ): AnalyticsProvider | null {
   const contribution = getCapabilityContributions(config.database).find(
-    ({ token }) => token.id === ANALYTICS_PROVIDER_CAPABILITY_ID,
+    ({ token }) => token === universalComponentDataAdapterCapability,
   );
   if (!contribution) return null;
 
-  return contribution.token.parse(
-    Reflect.apply(contribution.create, undefined, []),
-  ) as AnalyticsProvider;
+  const runtime: HotUpdaterInfrastructureRuntime = Object.freeze({
+    database: config.database,
+    storages: Object.freeze([]),
+  });
+  const adapter = universalComponentDataAdapterCapability.parse(
+    Reflect.apply(contribution.create, undefined, [runtime]),
+  );
+  return createUniversalComponentAnalyticsProvider(
+    adapter.bind(analyticsComponentSchema),
+  );
 }
 
 export function createManagedAccessKeyStore(

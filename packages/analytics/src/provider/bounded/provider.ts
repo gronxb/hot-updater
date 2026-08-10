@@ -101,7 +101,7 @@ const getAnalyticsResult = async (
 
 export const createBoundedAnalyticsProvider = (
   persistence: AnalyticsPersistence,
-): AnalyticsProvider =>
+): Extract<AnalyticsProvider, { readonly mode: "bounded" }> =>
   Object.freeze({
     mode: "bounded",
     maxMatchingRows: ANALYTICS_SCAN_MAX_ROWS,

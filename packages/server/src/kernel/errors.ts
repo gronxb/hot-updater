@@ -1,5 +1,8 @@
 export const CONSTRUCTION_ERROR_CODES = [
   "DUPLICATE_PLUGIN_ID",
+  "DUPLICATE_COMPONENT_ID",
+  "DUPLICATE_COMPONENT_INDEX",
+  "DUPLICATE_COMPONENT_TABLE",
   "DUPLICATE_CAPABILITY_TOKEN_ID",
   "DUPLICATE_CAPABILITY_PROVIDER",
   "MISSING_CAPABILITY",
@@ -9,6 +12,9 @@ export const CONSTRUCTION_ERROR_CODES = [
   "MULTIPLE_AUTHENTICATION_PROVIDERS",
   "PROTECTED_ROUTE_WITHOUT_AUTHENTICATION",
   "INVALID_PLUGIN_CONTRIBUTION",
+  "INVALID_COMPONENT_SCHEMA",
+  "INVALID_COMPONENT_DATA_ADAPTER",
+  "MISSING_COMPONENT_DATA_ADAPTER",
 ] as const;
 
 export type HotUpdaterConstructionErrorCode =
@@ -16,6 +22,9 @@ export type HotUpdaterConstructionErrorCode =
 
 export type HotUpdaterConstructionErrorDetails = {
   readonly DUPLICATE_PLUGIN_ID: { readonly pluginId: string };
+  readonly DUPLICATE_COMPONENT_ID: { readonly componentId: string };
+  readonly DUPLICATE_COMPONENT_INDEX: { readonly indexName: string };
+  readonly DUPLICATE_COMPONENT_TABLE: { readonly tableName: string };
   readonly DUPLICATE_CAPABILITY_TOKEN_ID: { readonly tokenId: string };
   readonly DUPLICATE_CAPABILITY_PROVIDER: { readonly tokenId: string };
   readonly MISSING_CAPABILITY: {
@@ -35,6 +44,11 @@ export type HotUpdaterConstructionErrorDetails = {
     readonly routeId: string;
   };
   readonly INVALID_PLUGIN_CONTRIBUTION: { readonly pluginId: string };
+  readonly INVALID_COMPONENT_SCHEMA: { readonly pluginId: string };
+  readonly INVALID_COMPONENT_DATA_ADAPTER: { readonly componentId: string };
+  readonly MISSING_COMPONENT_DATA_ADAPTER: {
+    readonly componentIds: readonly string[];
+  };
 };
 
 export class HotUpdaterConstructionError<

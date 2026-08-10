@@ -74,6 +74,8 @@ describe("Detox E2E harness contract", () => {
 
   it("keeps the tracked E2E source surface Detox-first", async () => {
     const expectedE2eFiles = [
+      "e2e/detox/analytics-http-client.spec.ts",
+      "e2e/detox/analytics-http-client.ts",
       "e2e/detox/control-server/controller.ts",
       "e2e/detox/control-server/crash-recovery-wait.spec.ts",
       "e2e/detox/control-server/crash-recovery-wait.ts",

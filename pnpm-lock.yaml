@@ -1676,6 +1676,9 @@ importers:
 
   packages/hot-updater:
     dependencies:
+      '@hot-updater/analytics':
+        specifier: workspace:*
+        version: link:../analytics
       '@hot-updater/android-helper':
         specifier: workspace:*
         version: link:../android-helper
@@ -2059,9 +2062,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1008.0
         version: 3.1008.0
-      '@hot-updater/analytics':
-        specifier: workspace:*
-        version: link:../../packages/analytics
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2185,9 +2185,6 @@ importers:
 
   plugins/firebase:
     dependencies:
-      '@hot-updater/analytics':
-        specifier: workspace:*
-        version: link:../../packages/analytics
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2216,9 +2213,6 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
-      es-toolkit:
-        specifier: ^1.32.0
-        version: 1.47.0
       execa:
         specifier: catalog:tools
         version: 9.5.2
@@ -2309,9 +2303,6 @@ importers:
 
   plugins/postgres:
     dependencies:
-      '@hot-updater/analytics':
-        specifier: workspace:*
-        version: link:../../packages/analytics
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -2421,9 +2412,6 @@ importers:
 
   plugins/supabase:
     dependencies:
-      '@hot-updater/analytics':
-        specifier: workspace:*
-        version: link:../../packages/analytics
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools

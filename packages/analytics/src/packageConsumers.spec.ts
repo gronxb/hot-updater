@@ -75,6 +75,10 @@ describe("packed Analytics package", () => {
     ["@hot-updater/analytics/provider", "createBoundedAnalyticsProvider"],
     ["@hot-updater/analytics/provider", "createBlobAnalyticsPersistence"],
     [
+      "@hot-updater/analytics/provider",
+      "createUniversalComponentAnalyticsProvider",
+    ],
+    [
       "@hot-updater/analytics/adapters/kysely",
       "createKyselyAnalyticsPersistence",
     ],
@@ -100,6 +104,24 @@ if (typeof value !== "function") throw new TypeError("missing export");`;
     ).rejects.toMatchObject({
       stderr: expect.stringContaining("ERR_PACKAGE_PATH_NOT_EXPORTED"),
     });
+    await expect(
+      runPackedNode(
+        'require("@hot-updater/analytics/internal/provider-capability");',
+      ),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining("ERR_PACKAGE_PATH_NOT_EXPORTED"),
+    });
+  });
+
+  it("publishes the canonical component schema from the package root", async () => {
+    const check = `if (runtime.analyticsComponentSchema?.id !== "analytics") throw new TypeError("missing schema");`;
+    await runPackedNode(
+      `const runtime = await import("@hot-updater/analytics");\n${check}`,
+      true,
+    );
+    await runPackedNode(
+      `const runtime = require("@hot-updater/analytics");\n${check}`,
+    );
   });
 
   it.each(["mts", "cts"] as const)(
@@ -111,10 +133,13 @@ if (typeof value !== "function") throw new TypeError("missing export");`;
       );
       await writeFile(
         consumer,
-        `import { analytics } from "@hot-updater/analytics";
-import { createBoundedAnalyticsProvider, type AnalyticsPersistence } from "@hot-updater/analytics/provider";
+        `import { analytics, analyticsComponentSchema } from "@hot-updater/analytics";
+import { createBoundedAnalyticsProvider, createUniversalComponentAnalyticsPersistence, createUniversalComponentAnalyticsProvider, type AnalyticsPersistence } from "@hot-updater/analytics/provider";
 const persistence: AnalyticsPersistence = { append: async () => undefined, scan: async () => [] };
-void analytics({ provider: createBoundedAnalyticsProvider(persistence) });`,
+void analytics({ provider: createBoundedAnalyticsProvider(persistence) });
+void createUniversalComponentAnalyticsPersistence;
+void createUniversalComponentAnalyticsProvider;
+void analyticsComponentSchema;`,
       );
       await execFileAsync(
         process.execPath,
