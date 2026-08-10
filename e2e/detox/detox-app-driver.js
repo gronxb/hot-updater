@@ -37,12 +37,16 @@ class DetoxAppDriver {
 
   async assertText(stage, testID, contains, options = {}) {
     await this.runStage(stage, async () => {
-      const expectedText = String(this.resolvePlaceholders(contains));
+      const resolvedContains = this.resolvePlaceholders(contains);
+      const expectedTexts = (
+        Array.isArray(resolvedContains) ? resolvedContains : [resolvedContains]
+      ).map(String);
       await withSynchronizationDisabledForAssertion(async () => {
         const target = await findVisibleTestID(this.controlClient, testID, {
           ensureForeground: options.ensureForeground,
         });
         if (options.exactText === true) {
+          const [expectedText] = expectedTexts;
           await this.waitForExpectedActionResultText(
             stage,
             testID,
@@ -52,9 +56,9 @@ class DetoxAppDriver {
           return;
         }
         const text = textFromAttributes(await target.getAttributes());
-        if (!text.includes(expectedText)) {
+        if (!expectedTexts.some((expectedText) => text.includes(expectedText))) {
           throw new Error(
-            `${stage} expected ${testID} to contain "${expectedText}", received "${text}"`,
+            `${stage} expected ${testID} to contain one of ${JSON.stringify(expectedTexts)}, received "${text}"`,
           );
         }
       });

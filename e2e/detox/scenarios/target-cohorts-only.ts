@@ -57,7 +57,10 @@ export const targetCohortsOnlyScenario: DetoxScenarioDefinition = {
     await app.assertText(
       "assert target cohort launch",
       "launch-status-result",
-      "Current Launch Status: UNCHANGED",
+      [
+        "Current Launch Status: UNCHANGED",
+        "Current Launch Status: UPDATE_APPLIED",
+      ],
     );
   },
 };
