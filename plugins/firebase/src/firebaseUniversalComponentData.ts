@@ -36,79 +36,8 @@ type FirestoreIndex = {
   readonly queryScope: "COLLECTION";
 };
 
-type FirestoreIndexFile = Readonly<Record<string, unknown>> & {
-  readonly fieldOverrides: readonly unknown[];
-  readonly indexes: readonly unknown[];
-};
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-
-const canonicalizeJson = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(canonicalizeJson);
-  if (!isRecord(value)) return value;
-  return Object.fromEntries(
-    Object.keys(value)
-      .sort()
-      .map((key) => [key, canonicalizeJson(value[key])]),
-  );
-};
-
-const canonicalJson = (value: unknown): string =>
-  JSON.stringify(canonicalizeJson(value));
-
-const parseIndexFile = (
-  contents: string,
-  source: string,
-): FirestoreIndexFile => {
-  const parsed: unknown = JSON.parse(contents);
-  if (
-    !isRecord(parsed) ||
-    (parsed.indexes !== undefined && !Array.isArray(parsed.indexes)) ||
-    (parsed.fieldOverrides !== undefined &&
-      !Array.isArray(parsed.fieldOverrides))
-  ) {
-    throw new TypeError(`Invalid Firestore index JSON: ${source}`);
-  }
-  return {
-    ...parsed,
-    fieldOverrides: parsed.fieldOverrides ?? [],
-    indexes: parsed.indexes ?? [],
-  };
-};
-
-const mergeJsonEntries = (entries: readonly unknown[]): readonly unknown[] =>
-  [
-    ...new Map(entries.map((entry) => [canonicalJson(entry), entry])).values(),
-  ].toSorted((left, right) =>
-    canonicalJson(left).localeCompare(canonicalJson(right)),
-  );
-
-/**
- * Merges version-tagged component fragments into a Firebase CLI aggregate.
- * The caller owns reading and writing the aggregate file.
- */
-export const mergeFirebaseComponentIndexArtifacts = (
-  existingContents: string,
-  componentArtifacts: readonly UniversalComponentArtifact[],
-): string => {
-  const existing = parseIndexFile(existingContents, "existing aggregate");
-  const fragments = componentArtifacts.map((artifact) =>
-    parseIndexFile(artifact.contents, artifact.path),
-  );
-  const merged = canonicalizeJson({
-    ...existing,
-    fieldOverrides: mergeJsonEntries([
-      ...existing.fieldOverrides,
-      ...fragments.flatMap((fragment) => fragment.fieldOverrides),
-    ]),
-    indexes: mergeJsonEntries([
-      ...existing.indexes,
-      ...fragments.flatMap((fragment) => fragment.indexes),
-    ]),
-  });
-  return `${JSON.stringify(merged, null, 2)}\n`;
-};
 
 const validateRow = (
   schema: UniversalComponentSchema,

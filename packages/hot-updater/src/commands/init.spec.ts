@@ -1,5 +1,12 @@
-import { InitError } from "@hot-updater/cli-tools";
+import { InitError, type RunInitOptions } from "@hot-updater/cli-tools";
+import {
+  attachUniversalComponentDataAdapter,
+  getUniversalComponentLatestSchema,
+} from "@hot-updater/plugin-core";
+import { generateUniversalComponentArtifacts } from "@hot-updater/server/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 
 const mocks = vi.hoisted(() => ({
   appendToProjectRootGitignore: vi.fn(() => false),
@@ -106,6 +113,7 @@ describe("init choices", () => {
     );
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
+      createDeploymentTarget: expect.any(Function),
       envFile: undefined,
     });
   });
@@ -131,6 +139,7 @@ describe("init choices", () => {
     });
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
+      createDeploymentTarget: expect.any(Function),
       envFile: undefined,
     });
   });
@@ -179,6 +188,7 @@ describe("init choices", () => {
     expect(process.exitCode).toBeUndefined();
     expect(mocks.runSupabaseInit).toHaveBeenCalledWith({
       build: "bare",
+      createDeploymentTarget: expect.any(Function),
       envFile: "init.env",
     });
   });
@@ -228,8 +238,54 @@ describe("init choices", () => {
     expect(mocks.group).not.toHaveBeenCalled();
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "expo",
+      createDeploymentTarget: expect.any(Function),
       envFile: ".env.hotupdater",
     });
+  });
+
+  it("gives providers a target whose active Analytics plugin generates its component artifact", async () => {
+    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
+    const generatedArtifacts: unknown[] = [];
+    mocks.runAwsInit.mockImplementation(async (options: RunInitOptions) => {
+      const database = attachUniversalComponentDataAdapter(
+        createDatabasePluginHarness().plugin,
+        () => ({
+          artifacts(schema) {
+            const latest = getUniversalComponentLatestSchema(schema);
+            return [
+              {
+                contents: `-- component ${schema.id}@${latest.version}`,
+                path: `component-data/${schema.id}/synthetic-${latest.version}.sql`,
+                targetVersion: latest.version,
+              },
+            ];
+          },
+          bind: (schema) =>
+            Object.freeze({
+              append: async () => {},
+              assertReady: async () => {},
+              orderedScan: async () => [],
+              schema,
+            }),
+        }),
+      );
+      const target = options.createDeploymentTarget?.(database);
+      if (target === undefined) {
+        throw new Error("Expected init deployment target callback");
+      }
+      generatedArtifacts.push(...generateUniversalComponentArtifacts(target));
+    });
+
+    await init({ build: "bare", provider: "aws" });
+
+    expect(generatedArtifacts).toEqual([
+      {
+        componentId: "analytics",
+        contents: "-- component analytics@2",
+        path: "component-data/analytics/synthetic-2.sql",
+        targetVersion: "2",
+      },
+    ]);
   });
 
   it("prints actionable provider init errors without rethrowing", async () => {

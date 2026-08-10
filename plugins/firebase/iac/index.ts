@@ -16,9 +16,15 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
-import { isEqual, merge, sortBy, uniqWith } from "es-toolkit";
+import {
+  generateUniversalComponentArtifacts,
+  migrateUniversalComponents,
+} from "@hot-updater/server/db";
 import { ExecaError, execa } from "execa";
+import admin from "firebase-admin";
 
+import { mergeFirebaseComponentIndexArtifacts } from "../src/firebaseComponentIndexArtifacts";
+import { firebaseDatabase } from "../src/firebaseDatabase";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
   assertFirebaseNonInteractiveInputs,
@@ -28,7 +34,10 @@ import {
 } from "./firebaseInitInputs";
 import { resolveFirebaseRegion } from "./firebaseRegion";
 import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
-import { prepareFirebaseTemplate } from "./prepareTemplate";
+import {
+  materializeFirebaseComponentIndexArtifacts,
+  prepareFirebaseTemplate,
+} from "./prepareTemplate";
 import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 
 const SOURCE_TEMPLATE = `// add this to your App.tsx
@@ -109,59 +118,6 @@ interface FirebaseFunction {
   hash: string;
 }
 
-type FirebaseIndex = {
-  collectionGroup: string;
-  queryScope: "COLLECTION" | "COLLECTION_GROUP";
-  fields: {
-    fieldPath: string;
-    order?: "ASCENDING" | "DESCENDING";
-    arrayConfig?: "CONTAINS";
-    vectorConfig?: {
-      dimension: number;
-      flat: Record<string, never>;
-    };
-  }[];
-};
-
-type FieldOverride = {
-  collectionGroup: string;
-  fieldPath: string;
-  indexes: Array<{
-    queryScope: "COLLECTION" | "COLLECTION_GROUP";
-    order?: "ASCENDING" | "DESCENDING";
-    arrayConfig?: "CONTAINS";
-  }>;
-  ttl?: boolean;
-};
-
-function normalizeIndex(index: FirebaseIndex) {
-  return {
-    collectionGroup: index.collectionGroup,
-    queryScope: index.queryScope,
-    fields: sortBy(index.fields, ["fieldPath", "order"]),
-  };
-}
-
-const mergeIndexes = (
-  originalIndexes: {
-    indexes: FirebaseIndex[];
-    fieldOverrides: FieldOverride[];
-  },
-  newIndexes: { indexes: FirebaseIndex[]; fieldOverrides: FieldOverride[] },
-) => {
-  const mergedIndexes = originalIndexes.indexes.concat(newIndexes.indexes);
-  const uniqueIndexes = uniqWith(mergedIndexes, (a, b) =>
-    isEqual(normalizeIndex(a), normalizeIndex(b)),
-  );
-  return {
-    indexes: uniqueIndexes,
-    fieldOverrides: merge(
-      originalIndexes.fieldOverrides,
-      newIndexes.fieldOverrides,
-    ),
-  };
-};
-
 const deployFirestore = async (
   cwd: string,
   nonInteractive = false,
@@ -180,33 +136,30 @@ const deployFirestore = async (
     },
   );
 
-  let originalIndexes: {
-    indexes: FirebaseIndex[];
-    fieldOverrides: FieldOverride[];
-  } = {
-    indexes: [],
-    fieldOverrides: [],
-  };
+  let originalIndexes: unknown;
   try {
-    const originalStdout = JSON.parse(original.stdout);
-    originalIndexes = originalStdout ?? { indexes: [], fieldOverrides: [] };
-  } catch {
-    originalIndexes = { indexes: [], fieldOverrides: [] };
+    originalIndexes = JSON.parse(original.stdout);
+  } catch (error: unknown) {
+    throw new TypeError(
+      "Cannot preserve remote Firestore indexes: invalid Firebase CLI JSON",
+      { cause: error },
+    );
   }
 
-  const newIndexes = JSON.parse(
-    await fs.promises.readFile(
-      path.join(cwd, "firestore.indexes.json"),
-      "utf-8",
-    ),
+  const indexPath = path.join(cwd, "firestore.indexes.json");
+  const newIndexes = await fs.promises.readFile(indexPath, "utf-8");
+  const mergedIndexes = mergeFirebaseComponentIndexArtifacts(
+    JSON.stringify(originalIndexes),
+    [
+      {
+        contents: newIndexes,
+        path: "firestore.indexes.json",
+        targetVersion: "aggregate",
+      },
+    ],
   );
 
-  const mergedIndexes = mergeIndexes(originalIndexes, newIndexes);
-
-  await fs.promises.writeFile(
-    path.join(cwd, "firestore.indexes.json"),
-    JSON.stringify(mergedIndexes, null, 2),
-  );
+  await fs.promises.writeFile(indexPath, mergedIndexes);
 
   try {
     await execa(
@@ -316,7 +269,11 @@ const checkIfGcloudCliInstalled = async () => {
   }
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  createDeploymentTarget,
+  envFile,
+}: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
@@ -394,6 +351,24 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     await removeTmpDir();
     return;
   }
+  const applicationCredentialsPath = getFirebaseCliEnv(
+    applicationCredentials,
+  )?.[FIREBASE_INIT_PROVIDER.inputs.applicationCredentials.envKey];
+  const deploymentTarget = createDeploymentTarget?.(
+    firebaseDatabase({
+      ...(applicationCredentialsPath
+        ? { credential: admin.credential.cert(applicationCredentialsPath) }
+        : {}),
+      projectId: initializeVariable.projectId,
+      storageBucket: initializeVariable.storageBucket,
+    }),
+  );
+  if (deploymentTarget !== undefined) {
+    await materializeFirebaseComponentIndexArtifacts(
+      tmpDir,
+      generateUniversalComponentArtifacts(deploymentTarget),
+    );
+  }
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
   });
@@ -440,6 +415,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   ]);
 
   await deployFirestore(tmpDir, nonInteractive, cliEnv);
+  if (deploymentTarget !== undefined) {
+    await migrateUniversalComponents(deploymentTarget);
+  }
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
 
   await p.tasks([

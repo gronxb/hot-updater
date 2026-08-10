@@ -21,11 +21,9 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createFirestoreMock } from "../test-utils/createFirestoreMock";
+import { mergeFirebaseComponentIndexArtifacts } from "./firebaseComponentIndexArtifacts";
 import { firebaseDatabase } from "./firebaseDatabase";
-import {
-  createFirebaseUniversalComponentDataAdapter,
-  mergeFirebaseComponentIndexArtifacts,
-} from "./firebaseUniversalComponentData";
+import { createFirebaseUniversalComponentDataAdapter } from "./firebaseUniversalComponentData";
 
 const PROJECT_ID = "firebase-component-data-test";
 
@@ -271,6 +269,104 @@ describe("Firebase universal component data adapter", () => {
         collectionGroup: "external_records",
         fieldPath: "expires_at",
         indexes: [],
+      },
+    ]);
+  });
+
+  it("preserves Firestore composite field order while deduplicating", () => {
+    const existing = JSON.stringify({
+      fieldOverrides: [],
+      indexes: [
+        {
+          collectionGroup: "ordered_records",
+          fields: [
+            { fieldPath: "first", order: "ASCENDING" },
+            { fieldPath: "second", order: "ASCENDING" },
+          ],
+          queryScope: "COLLECTION",
+        },
+      ],
+    });
+    const artifact = {
+      contents: JSON.stringify({
+        fieldOverrides: [],
+        indexes: [
+          {
+            collectionGroup: "ordered_records",
+            fields: [
+              { fieldPath: "second", order: "ASCENDING" },
+              { fieldPath: "first", order: "ASCENDING" },
+            ],
+            queryScope: "COLLECTION",
+          },
+        ],
+      }),
+      path: "firestore.indexes.ordered-records.1.json",
+      targetVersion: "1",
+    } as const;
+
+    const merged = JSON.parse(
+      mergeFirebaseComponentIndexArtifacts(existing, [artifact]),
+    ) as { indexes: unknown[] };
+
+    expect(merged.indexes).toHaveLength(2);
+  });
+
+  it("replaces field overrides by Firestore field identity", () => {
+    const existing = JSON.stringify({
+      fieldOverrides: [
+        {
+          collectionGroup: "component_records",
+          fieldPath: "expires_at",
+          indexes: [{ order: "ASCENDING", queryScope: "COLLECTION" }],
+        },
+        {
+          collectionGroup: "external_records",
+          fieldPath: "expires_at",
+          indexes: [],
+          ttl: true,
+        },
+      ],
+      indexes: [],
+    });
+    const artifact = {
+      contents: JSON.stringify({
+        fieldOverrides: [
+          {
+            collectionGroup: "component_records",
+            fieldPath: "expires_at",
+            indexes: [],
+            ttl: true,
+          },
+        ],
+        indexes: [],
+      }),
+      path: "firestore.indexes.component-records.1.json",
+      targetVersion: "1",
+    } as const;
+
+    const merged = JSON.parse(
+      mergeFirebaseComponentIndexArtifacts(existing, [artifact]),
+    ) as {
+      fieldOverrides: Array<{
+        collectionGroup: string;
+        indexes: unknown[];
+        ttl?: boolean;
+      }>;
+    };
+
+    expect(merged.fieldOverrides).toEqual([
+      {
+        collectionGroup: "component_records",
+        fieldPath: "expires_at",
+        indexes: [],
+        ttl: true,
+      },
+      {
+        collectionGroup: "external_records",
+        fieldPath: "expires_at",
+        indexes: [],
+        ttl: true,
       },
     ]);
   });

@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "path";
 
@@ -17,16 +18,23 @@ import {
   MissingInitInputsError,
   type ProviderConfig,
   p,
+  planDeploymentArtifacts,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   resolvePackageVersion,
   transformEnv,
   transformTemplate,
+  writeDeploymentArtifacts,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import {
+  generateUniversalComponentArtifacts,
+  type UniversalComponentGeneratedArtifact,
+} from "@hot-updater/server/db";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
+import { supabaseDatabase } from "../src/supabaseDatabase";
 import {
   initProvider as SUPABASE_INIT_PROVIDER,
   isSupabaseFunctionName,
@@ -66,6 +74,136 @@ const SUPABASE_PROJECT_READY_STATUS = "ACTIVE_HEALTHY";
 const SUPABASE_PROJECT_PROVISIONING_STATUS = "COMING_UP";
 const SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS = 1000;
+const SUPABASE_MIGRATION_VERSION_PATTERN = /^\d{14}(?:_|$)/;
+
+const compareArtifactIdentity = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+const sanitizeMigrationName = (value: string): string => {
+  const sanitized = value
+    .normalize("NFKD")
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^[.-]+|[.-]+$/g, "");
+  return sanitized || "component";
+};
+
+export const createSupabaseComponentMigrationVersion = ({
+  contents,
+  path: artifactPath,
+  targetVersion,
+}: Pick<
+  UniversalComponentGeneratedArtifact,
+  "contents" | "path" | "targetVersion"
+>): string => {
+  const digest = createHash("sha256")
+    .update(artifactPath)
+    .update("\0")
+    .update(targetVersion)
+    .update("\0")
+    .update(contents)
+    .digest("hex");
+  const decimal = (BigInt(`0x${digest}`) % 10_000_000_000_000n)
+    .toString()
+    .padStart(13, "0");
+  return `9${decimal}`;
+};
+
+export const materializeSupabaseComponentArtifacts = async ({
+  artifacts,
+  migrationPath,
+}: {
+  readonly artifacts: readonly UniversalComponentGeneratedArtifact[];
+  readonly migrationPath: string;
+}): Promise<readonly string[]> => {
+  planDeploymentArtifacts(artifacts);
+  const planned = artifacts
+    .map((artifact) => {
+      const normalizedPath = planDeploymentArtifacts([artifact])[0]!.path;
+      if (path.posix.extname(normalizedPath).toLowerCase() !== ".sql") {
+        throw new Error(
+          `Supabase component artifact must be SQL: ${artifact.path}`,
+        );
+      }
+      const version = createSupabaseComponentMigrationVersion({
+        contents: artifact.contents,
+        path: normalizedPath,
+        targetVersion: artifact.targetVersion,
+      });
+      const artifactName = sanitizeMigrationName(
+        path.posix.basename(normalizedPath, path.posix.extname(normalizedPath)),
+      );
+      const componentName = sanitizeMigrationName(artifact.componentId);
+      return {
+        ...artifact,
+        path: `${version}_hot-updater-component-${componentName}-${artifactName}.sql`,
+        sourcePath: normalizedPath,
+        version,
+      };
+    })
+    .sort(
+      (left, right) =>
+        compareArtifactIdentity(left.componentId, right.componentId) ||
+        compareArtifactIdentity(left.sourcePath, right.sourcePath),
+    );
+
+  const versions = new Set<string>();
+  const outputPaths = new Set<string>();
+  for (const artifact of planned) {
+    if (versions.has(artifact.version)) {
+      throw new Error(
+        `Supabase component migration version collision: ${artifact.version}`,
+      );
+    }
+    versions.add(artifact.version);
+    const outputKey = artifact.path.toLowerCase();
+    if (outputPaths.has(outputKey)) {
+      throw new Error(
+        `Supabase component migration path collision: ${artifact.path}`,
+      );
+    }
+    outputPaths.add(outputKey);
+  }
+
+  const existingFiles = await fs.readdir(migrationPath);
+  for (const artifact of planned) {
+    const versionCollision = existingFiles.find(
+      (file) =>
+        file !== artifact.path &&
+        SUPABASE_MIGRATION_VERSION_PATTERN.test(file) &&
+        file.slice(0, 14) === artifact.version,
+    );
+    if (versionCollision !== undefined) {
+      throw new Error(
+        `Supabase component migration version collision: ${artifact.version}`,
+      );
+    }
+    const existingPath = existingFiles.find(
+      (file) => file.toLowerCase() === artifact.path.toLowerCase(),
+    );
+    if (existingPath !== undefined) {
+      if (existingPath !== artifact.path) {
+        throw new Error(
+          `Supabase component migration path collision: ${artifact.path}`,
+        );
+      }
+      const existingContents = await fs.readFile(
+        path.join(migrationPath, existingPath),
+        "utf-8",
+      );
+      if (existingContents !== artifact.contents) {
+        throw new Error(
+          `Supabase component migration path collision: ${artifact.path}`,
+        );
+      }
+    }
+  }
+
+  const results = await writeDeploymentArtifacts({
+    artifacts: planned,
+    outputDir: migrationPath,
+  });
+  return Object.freeze(results.map(({ path: outputPath }) => outputPath));
+};
 
 const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
@@ -768,7 +906,11 @@ export const getSupabaseProjectAccess = async ({
   };
 };
 
-export const runInit = async ({ build, envFile }: RunInitOptions) => {
+export const runInit = async ({
+  build,
+  createDeploymentTarget,
+  envFile,
+}: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { inputEnv, managedEnv } = initEnvSources;
@@ -945,6 +1087,19 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         }),
       );
     }
+  }
+
+  if (createDeploymentTarget !== undefined) {
+    const deploymentTarget = createDeploymentTarget(
+      supabaseDatabase({
+        supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
+        supabaseUrl: `https://${project.id}.supabase.co`,
+      }),
+    );
+    await materializeSupabaseComponentArtifacts({
+      artifacts: generateUniversalComponentArtifacts(deploymentTarget),
+      migrationPath,
+    });
   }
 
   await linkSupabase(tmpDir, {

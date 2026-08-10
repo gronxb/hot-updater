@@ -49,6 +49,7 @@
     "test:type": "tsc --noEmit"
   },
   "dependencies": {
+    "@hot-updater/analytics": "workspace:*",
     "@hot-updater/android-helper": "workspace:*",
     "@hot-updater/apple-helper": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
