@@ -17,6 +17,7 @@ import {
   UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
   validateUniversalComponentAppend,
+  validateUniversalComponentGet,
   validateUniversalComponentOrderedScan,
   validateUniversalComponentRow,
 } from "@hot-updater/plugin-core";
@@ -614,6 +615,44 @@ export const createD1UniversalComponentDataAdapter = (
             `INSERT INTO ${quoted(table.name)} (${columns.join(", ")}) VALUES (${columns.map(() => "json_extract(?, '$')").join(", ")})`,
             values,
           );
+        },
+        async create(input) {
+          await assertReady();
+          const table = validateUniversalComponentAppend(schema, input);
+          const primaryKey = table.columns.find((column) => column.primaryKey)!;
+          const values = encodeRow(table, input.row);
+          const columns = table.columns.map((column) => quoted(column.name));
+          const rows = await executor.query(
+            `INSERT INTO ${quoted(table.name)} (${columns.join(", ")}) VALUES (${columns.map(() => "json_extract(?, '$')").join(", ")}) ON CONFLICT (${quoted(primaryKey.name)}) DO NOTHING RETURNING ${quoted(primaryKey.name)}`,
+            values,
+          );
+          return rows.length === 0 ? "existing" : "created";
+        },
+        async get(input) {
+          await assertReady();
+          const table = validateUniversalComponentGet(schema, input);
+          const primaryKey = table.columns.find((column) => column.primaryKey)!;
+          const [storedRow] = await executor.query(
+            `SELECT ${table.columns.map((column) => quoted(column.name)).join(", ")} FROM ${quoted(table.name)} WHERE ${quoted(primaryKey.name)} = json_extract(?, '$') LIMIT 1`,
+            [JSON.stringify(input.primaryKey)],
+          );
+          if (storedRow === undefined) return null;
+          try {
+            const row = parseRow(table, storedRow);
+            validateUniversalComponentRow(schema, {
+              row,
+              table: table.name,
+              version: latest.version,
+            });
+            return row;
+          } catch (error) {
+            throw new UniversalComponentDataStateNotReadyError(
+              schema.id,
+              latest.version,
+              "stored-data",
+              { cause: error },
+            );
+          }
         },
         async orderedScan(input) {
           await assertReady();

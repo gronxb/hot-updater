@@ -27,7 +27,7 @@ const managedRuntimeCompositionFiles = [
 ].map((file) => path.join(workspaceRoot, file));
 
 describe("ordinary database provider architecture", () => {
-  it("does not depend on Analytics imports, storage names, or capabilities", async () => {
+  it("does not depend on Analytics or Better Auth access-key contracts", async () => {
     await assertProviderAnalyticsBoundary({
       allowedManagedPresetFiles: managedRuntimeCompositionFiles,
       roots: [...ordinaryDatabaseProviders, ...serverDatabaseLayers],

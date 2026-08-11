@@ -3,9 +3,10 @@ import type { HotUpdaterAuthenticationInput } from "@hot-updater/server/internal
 
 import {
   authorizeManagedAccessKeyRole,
+  createUniversalComponentManagedAccessKeyStore,
   hashManagedAccessKey,
   MANAGED_ACCESS_KEY_HEADER_NAME,
-  managedAccessKeyStoreCapability,
+  managedAccessKeyComponentSchema,
   parseManagedAccessKeyStore,
   type ManagedAccessKeyStore,
 } from "./managed/accessKeys";
@@ -129,17 +130,23 @@ export const managedBetterAuthPlugin = (
       : parseManagedAccessKeyStore(options.store);
   return defineFirstPartyServerPlugin({
     id: "better-auth-managed-access-key",
-    requires:
-      configuredStore === undefined
-        ? [{ missing: "error", token: managedAccessKeyStoreCapability }]
-        : [],
-    setup: ({ capabilities }) => ({
-      authentication: createManagedAuthentication(
+    ...(configuredStore === undefined
+      ? { schema: managedAccessKeyComponentSchema }
+      : {}),
+    setup: ({ components, database }) => {
+      const store =
         configuredStore ??
-          capabilities.require(managedAccessKeyStoreCapability),
-        managementBearerToken,
-      ),
-    }),
+        createUniversalComponentManagedAccessKeyStore(
+          components.require(managedAccessKeyComponentSchema),
+          { onRevoke: database.onDatabaseUpdated },
+        );
+      return {
+        authentication: createManagedAuthentication(
+          store,
+          managementBearerToken,
+        ),
+      };
+    },
   });
 };
 

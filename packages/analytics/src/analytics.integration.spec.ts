@@ -52,6 +52,8 @@ const componentDatabase = attachUniversalComponentDataAdapter(
         schema,
         append: appendComponentRow,
         assertReady: assertComponentReady,
+        create: async () => "created",
+        get: async () => null,
         orderedScan: async () => {
           await assertComponentReady();
           return [];
@@ -82,6 +84,8 @@ const notReadyComponentDatabase = attachUniversalComponentDataAdapter(
         schema,
         append: async () => markerNotReady(),
         assertReady: async () => dataNotReady(),
+        create: async () => markerNotReady(),
+        get: async () => dataNotReady(),
         orderedScan: async () => dataNotReady(),
       };
     },

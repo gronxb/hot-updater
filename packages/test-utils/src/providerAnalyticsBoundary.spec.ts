@@ -75,6 +75,26 @@ export const capability = universalComponentDataAdapterCapability;\n`,
       contents: `const event = "UPDATE_APPLIED";\n`,
       rule: "Analytics event literal",
     },
+    {
+      contents: `import { managedBetterAuthPlugin } from "@hot-updater/better-auth/managed";\n`,
+      rule: "Better Auth package import",
+    },
+    {
+      contents: `const token = "hot-updater.better-auth.managed-access-key-store@1";\n`,
+      rule: "Managed access-key capability",
+    },
+    {
+      contents: `type ManagedAccessKeyStore = { find(): void };\n`,
+      rule: "Managed access-key contract identifier",
+    },
+    {
+      contents: `const table = "managed_access_keys";\n`,
+      rule: "Managed access-key physical table",
+    },
+    {
+      contents: `const env = "HOT_UPDATER_API_KEY";\n`,
+      rule: "Managed access-key environment",
+    },
   ])("reports $rule with a source location", async ({ contents, rule }) => {
     const provider = await createProvider();
     const file = path.join(provider, "src", "database.ts");
@@ -101,6 +121,18 @@ export const capability = universalComponentDataAdapterCapability;\n`,
       findProviderAnalyticsBoundaryViolations({ roots: [provider] }),
     ).resolves.toEqual([
       { column: 1, file, line: 1, rule: "Analytics module path" },
+    ]);
+  });
+
+  it("reports a managed access-key-specific production module path", async () => {
+    const provider = await createProvider();
+    const file = path.join(provider, "src", "d1ManagedAccessKeyStore.ts");
+    await writeFile(file, `export const store = {};\n`);
+
+    await expect(
+      findProviderAnalyticsBoundaryViolations({ roots: [provider] }),
+    ).resolves.toEqual([
+      { column: 1, file, line: 1, rule: "Managed access-key module path" },
     ]);
   });
 

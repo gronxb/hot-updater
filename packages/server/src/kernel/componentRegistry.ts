@@ -159,6 +159,8 @@ const bindSource = (
       Reflect.get(source, "schema") !== schema ||
       typeof Reflect.get(source, "append") !== "function" ||
       typeof Reflect.get(source, "assertReady") !== "function" ||
+      typeof Reflect.get(source, "create") !== "function" ||
+      typeof Reflect.get(source, "get") !== "function" ||
       typeof Reflect.get(source, "orderedScan") !== "function"
     ) {
       return invalidAdapter(schema.id);

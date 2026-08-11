@@ -25,9 +25,11 @@ describe("createGuardedInfrastructureRuntime", () => {
     expect(beforeDatabaseOperation).toHaveBeenCalledTimes(3);
   });
 
-  it("exposes only frozen generic database and storage access", () => {
+  it("exposes only frozen generic database and storage access", async () => {
+    const onDatabaseUpdated = vi.fn(async () => undefined);
     const database = Object.assign(createRuntimeDatabase(), {
       createMigrator: () => "secret",
+      onDatabaseUpdated,
     });
     const storage = Object.assign(
       createRuntimeStorage(async () => ({ fileUrl: "https://example.com" })),
@@ -45,5 +47,8 @@ describe("createGuardedInfrastructureRuntime", () => {
     expect(Reflect.has(runtime.database, "createMigrator")).toBe(false);
     expect(Reflect.has(runtime.storages[0] ?? {}, "credentials")).toBe(false);
     expect(Reflect.has(runtime.storages[0] ?? {}, "profiles")).toBe(false);
+
+    await runtime.database.onDatabaseUpdated?.();
+    expect(onDatabaseUpdated).toHaveBeenCalledOnce();
   });
 });

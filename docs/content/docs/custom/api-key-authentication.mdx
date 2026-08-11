@@ -49,20 +49,19 @@ import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
   database,
-  plugins: [
-    managedBetterAuthPlugin({ apiKeySha256: env.API_KEY_SHA256 }),
-    managedRoutePolicy({ scope: "management" }),
-  ],
+  plugins: [managedBetterAuthPlugin(), managedRoutePolicy({ scope: "client" })],
   routes: { bundles: true, updateCheck: true },
 });
 ```
 
-The `management` scope protects bundle-management and contributed plugin routes
-while leaving `/api/version` and the four core OTA selectors public for existing
-mobile clients. `scope: "all"` protects those OTA routes too. Use it only with a
-client-appropriate authentication flow and after every deployed client sends
-credentials. Do not embed the managed static API key in a public mobile binary;
-it is extractable and is intended for trusted management tooling.
+The plugin owns its access-key component schema and persists it through the
+database's provider-neutral universal component adapter. The database plugin
+does not know the Better Auth contract. The `client` scope protects OTA
+selectors and Analytics ingestion with `x-api-key`; it does not grant Analytics
+query or bundle-management access. `/api/version` remains public.
+
+An API key embedded in a mobile binary can be extracted. Treat this client key
+as an abuse-control boundary, not as a strong application secret.
 
 Without `managedRoutePolicy`, authentication is available to other policy
 plugins but all existing Hot Updater route defaults stay unchanged.
@@ -75,12 +74,13 @@ cloud provider or change a deployed service.
 ```ts
 import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 
-const { apiKey, sha256 } = await provisionManagedBetterAuthApiKey();
+const { apiKey } = await provisionManagedBetterAuthApiKey({ store });
 ```
 
-The function creates or reuses `HOT_UPDATER_API_KEY` in `.env.hotupdater` and
-returns its raw value and SHA-256 projection. Keep `apiKey` in trusted CLI or
-server-side management tooling and deploy only `sha256` to the Hot Updater
-server.
+The function creates or reuses `HOT_UPDATER_API_KEY` in `.env.hotupdater` and,
+when passed the Better Auth-owned component store, records only its SHA-256
+projection and metadata through universal component storage. The raw key is
+returned once for client configuration; it is not injected into the server
+runtime.
 Provisioning requires POSIX ownership and `0600` file guarantees and therefore
 fails on Windows or filesystems where those guarantees cannot be verified.

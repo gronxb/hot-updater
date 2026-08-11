@@ -39,9 +39,9 @@ separately if your application needs Better Auth's own HTTP endpoints.
 
 ## Managed client access keys
 
-Managed providers attach a key store to their database plugin. The server then
-resolves that capability without coupling the authentication plugin to a
-specific provider:
+The managed Better Auth plugin owns its access-key component schema and binds it
+through the database plugin's provider-neutral universal component adapter. A
+database plugin does not import Better Auth or implement an access-key store:
 
 ```ts
 import {
@@ -52,10 +52,7 @@ import { createHotUpdater } from "@hot-updater/server";
 
 const hotUpdater = createHotUpdater({
   database,
-  plugins: [
-    managedBetterAuthPlugin(),
-    managedRoutePolicy({ scope: "client" }),
-  ],
+  plugins: [managedBetterAuthPlugin(), managedRoutePolicy({ scope: "client" })],
 });
 ```
 
@@ -69,12 +66,10 @@ The `management` scope remains available for session-based management clients.
 It keeps the core version route and the four core OTA selectors public. Use
 `scope: "all"` only after every route has an appropriate authentication flow.
 
-The Cloudflare, Firebase, and Supabase managed workflows compose the client
-authentication and route policy with Analytics. Their database plugins provide
-the provider-owned access-key store used by both the runtime and Console.
-
-Node infrastructure code can provision the first client key into
-`.env.hotupdater` and register its hash and metadata with the provider store:
+Managed `init` composition provisions the first client key into
+`.env.hotupdater` and registers its hash and metadata through the same Better
+Auth-owned component store. Custom Node composition can call the provisioning
+helper with that component store explicitly:
 
 ```ts
 import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
@@ -86,14 +81,14 @@ const { apiKey, created } = await provisionManagedBetterAuthApiKey({
 ```
 
 The raw key is returned so `hot-updater init` can print it once. The env file
-keeps the key for local client configuration; the provider receives only the
-SHA-256 digest, prefix, role, status, and timestamps. Re-running provisioning
-reuses the same active key instead of creating duplicates.
+keeps the key for local client configuration; universal component storage
+receives only the SHA-256 digest, prefix, role, status, and timestamps.
+Re-running provisioning reuses the same active key instead of creating
+duplicates.
 
-Managed providers expose the same store capability to the Console. When it is
-available, the Console shows Access keys and supports multiple active keys with
-create, list, and revoke operations. Newly created plaintext keys are shown
-once.
+The Console binds the same Better Auth-owned component schema through the
+provider-neutral adapter. It supports multiple active keys with create, list,
+and revoke operations, and shows newly created plaintext keys once.
 
 Provisioning serializes concurrent writes with an adjacent owner-only lock. It
 requires a user-owned parent directory and a user-owned regular target with one

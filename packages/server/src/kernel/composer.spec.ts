@@ -67,6 +67,8 @@ const createComponentDataSource = (
   schema,
   append: async () => undefined,
   assertReady: async () => undefined,
+  create: async () => "created",
+  get: async () => null,
   orderedScan: async () => [],
 });
 
