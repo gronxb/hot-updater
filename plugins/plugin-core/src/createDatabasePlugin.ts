@@ -2,6 +2,7 @@ import { createDatabasePluginCrud } from "./databasePluginCrud";
 import { createTransactionDatabasePlugin } from "./databasePluginTransaction";
 import type {
   BundlePatchRow,
+  BundlePatchTable,
   BundleRow,
   DatabaseBundleQueryWhere,
   DatabaseCommit,
@@ -32,6 +33,7 @@ export class DatabaseAtomicCommitUnsupportedError extends Error {
 export interface CreateDatabasePluginOptions {
   readonly name: string;
   readonly plugin: () => DatabasePluginImplementation;
+  readonly bundlePatches?: BundlePatchTable;
 }
 
 const toBundleWhere = (
@@ -136,6 +138,7 @@ const applyChanges = async (
 const createCore = (
   name: string,
   implementation: DatabasePluginImplementation,
+  bundlePatches?: BundlePatchTable,
 ): Omit<DatabasePlugin, "name" | "onDatabaseUpdated"> => {
   const crud = createDatabasePluginCrud(implementation);
   const transaction = implementation.transaction;
@@ -184,7 +187,7 @@ const createCore = (
       count: (where) =>
         crud.count({ model: "bundles", where: toBundleWhere(where) }),
     },
-    bundlePatches: {
+    bundlePatches: bundlePatches ?? {
       async findByBundleIds(bundleIds): Promise<readonly BundlePatchRow[]> {
         if (bundleIds.length === 0) return [];
         const rows: BundlePatchRow[] = [];
@@ -219,5 +222,5 @@ export const createDatabasePlugin = (
   options: CreateDatabasePluginOptions,
 ): DatabasePlugin => ({
   name: options.name,
-  ...createCore(options.name, options.plugin()),
+  ...createCore(options.name, options.plugin(), options.bundlePatches),
 });

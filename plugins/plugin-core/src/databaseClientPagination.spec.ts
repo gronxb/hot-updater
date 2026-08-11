@@ -5,8 +5,7 @@ import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
 import { createDatabasePlugin } from "./createDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 import { loadBundleRows } from "./databaseClientReads";
-import { attachDatabasePluginPatchHydration } from "./internal/databasePatchHydration";
-import type { BundleRow, DatabasePluginImplementation } from "./types";
+import type { BundleRow } from "./types";
 
 const createBundle = (id: string): Bundle => ({
   id,
@@ -23,6 +22,30 @@ const createBundle = (id: string): Bundle => ({
 });
 
 describe("database client pagination", () => {
+  it("loads a finite bundle id set with one domain query", async () => {
+    const row = bundlesRow(createBundle("001"));
+    const findMany = vi.fn(async () => [row]);
+    const plugin = createDatabasePlugin({
+      name: "finite-id-memory",
+      plugin: () => ({
+        create: async () => row,
+        update: async () => row,
+        delete: async () => {},
+        count: async () => 1,
+        findOne: async () => row,
+        findMany,
+      }),
+    });
+
+    await expect(
+      loadBundleRows(plugin, { id: { in: ["001", "002"] } }),
+    ).resolves.toEqual([row]);
+    expect(findMany).toHaveBeenCalledOnce();
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 2, offset: 0 }),
+    );
+  });
+
   it("hydrates only the selected bundle row", async () => {
     const store = new Map<string, unknown>();
     const plugin = createBlobDatabasePlugin({
@@ -175,52 +198,6 @@ describe("database client pagination", () => {
     expect(rows.map(({ id }) => id)).not.toContain("-01");
     expect(rows.at(-1)?.id).toBe("149");
   });
-
-  it.each(["transactionless", "transaction"] as const)(
-    "preserves optimized patch hydration in %s mutation reads",
-    async (mode) => {
-      const row = bundlesRow(createBundle("001"));
-      const implementation: DatabasePluginImplementation = {
-        create: async () => row,
-        update: async () => row,
-        delete: async () => {},
-        count: async () => 1,
-        findOne: async () => row,
-        findMany: async (input) => {
-          if (input.model === "bundle_patches") {
-            throw new Error("fallback patch pagination used");
-          }
-          return [row];
-        },
-      };
-      const loadPatches = vi.fn(async () => []);
-      const transactionImplementation = attachDatabasePluginPatchHydration(
-        { ...implementation },
-        { loadPatches },
-      );
-      const plugin = createDatabasePlugin({
-        name: `mutation-${mode}`,
-        plugin: () => ({
-          ...implementation,
-          ...(mode === "transaction"
-            ? {
-                transaction: (callback) => callback(transactionImplementation),
-              }
-            : {}),
-        }),
-      });
-      if (mode === "transactionless") {
-        attachDatabasePluginPatchHydration(plugin, { loadPatches });
-      }
-
-      const page = await createDatabaseClient(plugin).mutate((client) =>
-        client.getBundles({ limit: 1 }),
-      );
-
-      expect(page.data.map(({ id }) => id)).toEqual(["001"]);
-      expect(loadPatches).toHaveBeenCalledWith(["001"]);
-    },
-  );
 });
 
 const bundlesRow = (bundle: Bundle): BundleRow => ({

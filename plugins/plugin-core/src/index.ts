@@ -27,14 +27,6 @@ export { isDatabaseMetadataObject } from "./databaseJsonValue";
 export * from "./databaseRows";
 export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
-export {
-  attachDatabasePluginAggregateMutations,
-  type DatabasePluginAggregateMutations,
-} from "./internal/databaseAggregateMutations";
-export {
-  attachDatabasePluginPatchHydration,
-  type DatabasePluginPatchHydration,
-} from "./internal/databasePatchHydration";
 export * from "./parseStorageUri";
 export * from "./paginateBundles";
 export * from "./queryBundles";

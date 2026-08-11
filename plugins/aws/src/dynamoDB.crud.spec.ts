@@ -1,5 +1,6 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
+  BatchGetCommand,
   DynamoDBDocumentClient,
   GetCommand,
   QueryCommand,
@@ -115,6 +116,29 @@ describe("DynamoDB CRUD access patterns", () => {
     });
 
     expect(result).toEqual([]);
+    expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
+  });
+
+  it("batch-gets a finite bundle id set with additional cursor filters", async () => {
+    dynamodb.on(BatchGetCommand).resolves({
+      Responses: {
+        "hot-updater-metadata": [toDynamoDBBundleItem(bundleRow)],
+      },
+    });
+
+    const result = await createCrud().findMany({
+      model: "bundles",
+      where: [
+        { field: "id", operator: "in", value: [bundleId, baseBundleId] },
+        { field: "id", operator: "lte", value: bundleId },
+      ],
+      limit: 100,
+      offset: 0,
+      orderBy: [{ field: "id", direction: "asc" }],
+    });
+
+    expect(result).toEqual([bundleRow]);
+    expect(dynamodb.commandCalls(BatchGetCommand)).toHaveLength(1);
     expect(dynamodb.commandCalls(QueryCommand)).toHaveLength(0);
   });
 

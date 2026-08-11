@@ -3,7 +3,6 @@ import {
   CreateInvalidationCommand,
   GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -101,8 +100,9 @@ describe("dynamoDB CloudFront lifecycle", () => {
       tableName: "hot-updater-metadata",
     });
 
-    expect(
-      getCapabilityContributions(plugin).map(({ token }) => token.id),
-    ).toEqual(["hot-updater.component-data.adapter@1"]);
+    expect(plugin.componentData).toBeDefined();
+    expect(plugin).not.toHaveProperty("create");
+    expect(plugin).not.toHaveProperty("findMany");
+    expect(plugin).not.toHaveProperty("transaction");
   });
 });

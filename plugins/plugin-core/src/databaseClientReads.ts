@@ -28,6 +28,18 @@ export const loadBundleRows = async (
   database: DatabasePlugin,
   where?: DatabaseBundleQueryWhere,
 ): Promise<BundleRow[]> => {
+  const finiteIds = where?.id?.in;
+  if (finiteIds) {
+    if (finiteIds.length === 0) return [];
+    return [
+      ...(await database.bundles.findMany({
+        where,
+        limit: finiteIds.length,
+        offset: 0,
+        orderBy: { field: "id", direction: "asc" },
+      })),
+    ];
+  }
   const [cutoff] = await database.bundles.findMany({
     where,
     limit: 1,

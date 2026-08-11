@@ -129,6 +129,21 @@ describe("createDatabasePlugin", () => {
     });
   });
 
+  it("uses an explicit bundle patch table port when provided", async () => {
+    const findMany = vi.fn(async () => []);
+    const findByBundleIds = vi.fn(async () => []);
+    const plugin = createDatabasePlugin({
+      name: "memory",
+      plugin: () => ({ ...createMethods(), findMany }),
+      bundlePatches: { findByBundleIds },
+    });
+
+    await plugin.bundlePatches.findByBundleIds(["owner-1", "owner-2"]);
+
+    expect(findByBundleIds).toHaveBeenCalledWith(["owner-1", "owner-2"]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
   it("commits bundle and patch table changes in one adapter transaction", async () => {
     const create = vi.fn(async (input) => input.data);
     const transaction = vi.fn(async (callback) =>

@@ -16,17 +16,17 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { NIL_UUID } from "@hot-updater/core";
 import {
-  attachDatabasePluginAggregateMutations,
-  attachDatabasePluginPatchHydration,
-  attachUniversalComponentDataAdapter,
   type BundlePatchRow,
+  type BundlePatchTable,
   type BundleRow,
   createDatabasePlugin,
+  type DatabaseChange,
+  type DatabaseCommit,
+  type DatabaseCommitResult,
   type DatabaseDistinctOn,
   type DatabaseImplementationResult,
   type DatabaseModel,
   type DatabaseOrderBy,
-  type DatabasePluginAggregateMutations,
   type DatabasePluginImplementation,
   type DatabaseRow,
   type DatabaseWhere,
@@ -306,23 +306,29 @@ export const exactDynamoDBPatchOwners = (
 export const exactDynamoDBBundleIds = (
   where: readonly object[] | undefined,
 ): readonly string[] | undefined => {
-  if (where?.length !== 1) return undefined;
-  const condition = where[0];
   if (
-    Reflect.get(condition, "field") !== "id" ||
-    Reflect.get(condition, "mode") === "insensitive"
+    !where ||
+    where.some((condition) => Reflect.get(condition, "connector") === "OR")
   ) {
     return undefined;
   }
-  const operator = Reflect.get(condition, "operator") ?? "eq";
-  const value = Reflect.get(condition, "value");
-  if (operator === "eq" && typeof value === "string") return [value];
-  if (
-    operator === "in" &&
-    Array.isArray(value) &&
-    value.every((id) => typeof id === "string")
-  ) {
-    return value;
+  for (const condition of where) {
+    if (
+      Reflect.get(condition, "field") !== "id" ||
+      Reflect.get(condition, "mode") === "insensitive"
+    ) {
+      continue;
+    }
+    const operator = Reflect.get(condition, "operator") ?? "eq";
+    const value = Reflect.get(condition, "value");
+    if (operator === "eq" && typeof value === "string") return [value];
+    if (
+      operator === "in" &&
+      Array.isArray(value) &&
+      value.every((id) => typeof id === "string")
+    ) {
+      return value;
+    }
   }
   return undefined;
 };
@@ -861,6 +867,16 @@ export const queryCompleteOwnersPatches = async (
     failedOwner.owned_patch_count,
   );
 };
+
+const createDynamoDBBundlePatchTable = (
+  store: DynamoDBStore,
+  indexName: string,
+): BundlePatchTable => ({
+  findByBundleIds: (bundleIds) =>
+    bundleIds.length === 0
+      ? Promise.resolve([])
+      : queryCompleteOwnersPatches(store, indexName, bundleIds),
+});
 
 const compare = (left: unknown, right: unknown): number => {
   if (typeof left === "number" && typeof right === "number") {
@@ -1515,9 +1531,21 @@ const baseReferenceChanges = (
     );
 };
 
+interface DynamoDBAggregateMutations {
+  insertBundleWithPatches(input: {
+    readonly bundle: BundleRow;
+    readonly patches: readonly BundlePatchRow[];
+  }): Promise<void>;
+  updateBundleWithPatches(input: {
+    readonly bundleId: string;
+    readonly update: Partial<Omit<BundleRow, "id">>;
+    readonly patches: readonly BundlePatchRow[];
+  }): Promise<boolean>;
+}
+
 export const createDynamoDBAggregateMutations = (
   store: DynamoDBStore,
-): DatabasePluginAggregateMutations => ({
+): DynamoDBAggregateMutations => ({
   async insertBundleWithPatches({ bundle, patches }): Promise<void> {
     assertUniquePatches(patches);
     const counter = metadataUpdate(store, {
@@ -1577,6 +1605,113 @@ export const createDynamoDBAggregateMutations = (
     return true;
   },
 });
+
+class DynamoDBCommitShapeError extends TypeError {
+  readonly name = "DynamoDBCommitShapeError";
+
+  constructor(readonly input: DatabaseCommit) {
+    super("DynamoDB received an invalid domain commit");
+  }
+}
+
+const createDynamoDBCommit =
+  (store: DynamoDBStore) =>
+  async (input: DatabaseCommit): Promise<DatabaseCommitResult> => {
+    const aggregate = createDynamoDBAggregateMutations(store);
+    if (input.operation === "insert") {
+      let bundle: BundleRow | undefined;
+      const patches: BundlePatchRow[] = [];
+      for (const change of input.changes) {
+        if (change.table === "bundles" && change.operation === "insert") {
+          if (bundle !== undefined || change.row.id !== input.bundleId) {
+            throw new DynamoDBCommitShapeError(input);
+          }
+          bundle = change.row;
+        } else if (
+          change.table === "bundle_patches" &&
+          change.operation === "insert" &&
+          change.row.bundle_id === input.bundleId
+        ) {
+          patches.push(change.row);
+        } else {
+          throw new DynamoDBCommitShapeError(input);
+        }
+      }
+      if (bundle === undefined) throw new DynamoDBCommitShapeError(input);
+      await aggregate.insertBundleWithPatches({ bundle, patches });
+      return { applied: true };
+    }
+
+    if (input.operation === "update") {
+      let bundleUpdate: Extract<
+        DatabaseChange,
+        { readonly operation: "update"; readonly table: "bundles" }
+      >["update"] = {};
+      let hasBundleUpdate = false;
+      let replacesPatches = false;
+      const patches: BundlePatchRow[] = [];
+      for (const change of input.changes) {
+        if (change.table === "bundles" && change.operation === "update") {
+          if (hasBundleUpdate || change.id !== input.bundleId) {
+            throw new DynamoDBCommitShapeError(input);
+          }
+          bundleUpdate = change.update;
+          hasBundleUpdate = true;
+        } else if (
+          change.table === "bundle_patches" &&
+          change.operation === "delete"
+        ) {
+          if (replacesPatches || change.bundleId !== input.bundleId) {
+            throw new DynamoDBCommitShapeError(input);
+          }
+          replacesPatches = true;
+        } else if (
+          change.table === "bundle_patches" &&
+          change.operation === "insert" &&
+          change.row.bundle_id === input.bundleId
+        ) {
+          patches.push(change.row);
+        } else {
+          throw new DynamoDBCommitShapeError(input);
+        }
+      }
+      if (patches.length > 0 && !replacesPatches) {
+        throw new DynamoDBCommitShapeError(input);
+      }
+      if (replacesPatches) {
+        return {
+          applied: await aggregate.updateBundleWithPatches({
+            bundleId: input.bundleId,
+            patches,
+            update: bundleUpdate,
+          }),
+        };
+      }
+      const current = await loadBundleItem(store, input.bundleId);
+      if (current === undefined) return { applied: false };
+      if (hasBundleUpdate) {
+        await replaceDynamoDBBundle(store, current, {
+          ...current.row,
+          ...bundleUpdate,
+        });
+      }
+      return { applied: true };
+    }
+
+    if (
+      input.changes.length !== 1 ||
+      input.changes[0]?.table !== "bundles" ||
+      input.changes[0].operation !== "delete" ||
+      input.changes[0].id !== input.bundleId
+    ) {
+      throw new DynamoDBCommitShapeError(input);
+    }
+    const bundle = await loadBundleItem(store, input.bundleId);
+    if (bundle !== undefined) {
+      await deleteDynamoDBBundles(store, [bundle], await loadPatchItems(store));
+    }
+    return { applied: true };
+  };
 
 type GetUpdateInfo = NonNullable<DatabasePluginImplementation["getUpdateInfo"]>;
 
@@ -2028,7 +2163,6 @@ const replaceIndexes = async (
 
 export const createDynamoDBUniversalComponentDataAdapter = (
   store: DynamoDBStore,
-  onDatabaseUpdated?: () => Promise<void>,
 ): UniversalComponentDataAdapter => {
   const readinessValidated = new WeakSet<UniversalComponentSchema>();
   return {
@@ -2129,7 +2263,6 @@ export const createDynamoDBUniversalComponentDataAdapter = (
         await store.client.send(
           new TransactWriteCommand({ TransactItems: transactItems }),
         );
-        await onDatabaseUpdated?.();
       };
       return {
         schema,
@@ -2387,6 +2520,7 @@ export const dynamoDB = (config: DynamoDBConfig) => {
       })
     : null;
   const store = { client, tableName };
+  const crud = createDynamoDBCrud(store, DYNAMODB_UPDATE_INDEX_NAME);
   const invalidateUpdateRoutes = async () => {
     if (!cloudFront || !cloudfrontDistributionId) return;
     try {
@@ -2408,8 +2542,13 @@ export const dynamoDB = (config: DynamoDBConfig) => {
   };
   const plugin = createDatabasePlugin({
     name: "dynamoDB",
+    bundlePatches: createDynamoDBBundlePatchTable(
+      store,
+      DYNAMODB_UPDATE_INDEX_NAME,
+    ),
     plugin: () => ({
-      ...createDynamoDBCrud(store, DYNAMODB_UPDATE_INDEX_NAME),
+      ...crud,
+      commit: createDynamoDBCommit(store),
       getUpdateInfo: createDynamoDBGetUpdateInfo(
         store,
         DYNAMODB_UPDATE_INDEX_NAME,
@@ -2427,35 +2566,8 @@ export const dynamoDB = (config: DynamoDBConfig) => {
           onDatabaseUpdated: invalidateUpdateRoutes,
         }
       : plugin;
-  const pluginWithPatchHydration = attachDatabasePluginPatchHydration(
-    pluginWithInvalidation,
-    {
-      loadPatches: (ownerIds) => {
-        const ownerId = ownerIds.length === 1 ? ownerIds[0] : undefined;
-        return ownerId !== undefined
-          ? queryCompleteOwnerPatches(
-              store,
-              DYNAMODB_UPDATE_INDEX_NAME,
-              ownerId,
-            )
-          : queryCompleteOwnersPatches(
-              store,
-              DYNAMODB_UPDATE_INDEX_NAME,
-              ownerIds,
-            );
-      },
-    },
-  );
-  const pluginWithAggregateMutations = attachDatabasePluginAggregateMutations(
-    pluginWithPatchHydration,
-    createDynamoDBAggregateMutations(store),
-  );
-  return attachUniversalComponentDataAdapter(
-    pluginWithAggregateMutations,
-    (runtime) =>
-      createDynamoDBUniversalComponentDataAdapter(
-        store,
-        runtime.database.onDatabaseUpdated,
-      ),
-  );
+  return {
+    ...pluginWithInvalidation,
+    componentData: createDynamoDBUniversalComponentDataAdapter(store),
+  };
 };

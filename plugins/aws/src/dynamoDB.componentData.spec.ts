@@ -18,7 +18,7 @@ import {
   syntheticAuditLogSchema,
   type SyntheticUniversalComponentMigrationState,
 } from "@hot-updater/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { DynamoDBStore } from "./dynamoDB";
 import {
@@ -476,37 +476,5 @@ describe("DynamoDB universal component migration", () => {
         .bind(syntheticAuditLogSchema)
         .assertReady(),
     ).rejects.toBeInstanceOf(UniversalComponentDataStateNotReadyError);
-  });
-
-  it("notifies the database lifecycle only after component writes", async () => {
-    database = new InMemoryDynamoDB();
-    const onDatabaseUpdated = vi.fn(async () => undefined);
-    const adapter = createDynamoDBUniversalComponentDataAdapter(
-      createStore(),
-      onDatabaseUpdated,
-    );
-    await adapter.migrate?.(syntheticAuditLogSchema);
-    const source = adapter.bind(syntheticAuditLogSchema);
-    const row = {
-      accepted: true,
-      action: "component-write",
-      actor_id: null,
-      id: "component-write",
-      payload: { source: "dynamodb" },
-      recorded_at_ms: 1,
-      risk_score: 0.5,
-    } as const;
-
-    await expect(source.create({ row, table: "audit_records" })).resolves.toBe(
-      "created",
-    );
-    await expect(source.create({ row, table: "audit_records" })).resolves.toBe(
-      "existing",
-    );
-    await expect(
-      source.append({ row, table: "audit_records" }),
-    ).rejects.toMatchObject({ name: "TransactionCanceledException" });
-
-    expect(onDatabaseUpdated).toHaveBeenCalledOnce();
   });
 });

@@ -237,27 +237,33 @@ describe("DynamoDB metadata concurrency and delete serialization", () => {
   });
 
   it("deletes multiple related bundles in resumable atomic groups", async () => {
-    const plugin = fixture.createPlugin();
-    const database = createDatabaseClient(plugin);
+    const database = createDatabaseClient(fixture.createPlugin());
+    const crud = createDynamoDBCrud(
+      {
+        client: fixture.client,
+        tableName: fixture.tableName,
+      },
+      "hot-updater-update-index",
+    );
     const owner = bundle(1);
     const base = bundle(2);
     await database.insertBundle(owner);
     await database.insertBundle(base);
-    await plugin.create({
+    await crud.create({
       model: "bundle_patches",
       data: patchRow(owner, base),
     });
-    await plugin.create({
+    await crud.create({
       model: "bundle_patches",
       data: { ...patchRow(owner, base), id: `${owner.id}:${base.id}:second` },
     });
 
-    await plugin.delete({
+    await crud.delete({
       model: "bundles",
       where: [{ field: "platform", operator: "eq", value: "ios" }],
     });
 
-    await expect(plugin.count({ model: "bundles" })).resolves.toBe(0);
-    await expect(plugin.count({ model: "bundle_patches" })).resolves.toBe(0);
+    await expect(crud.count({ model: "bundles" })).resolves.toBe(0);
+    await expect(crud.count({ model: "bundle_patches" })).resolves.toBe(0);
   });
 });
