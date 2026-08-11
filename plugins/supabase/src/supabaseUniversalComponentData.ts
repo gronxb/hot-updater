@@ -20,6 +20,7 @@ import {
   UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
   validateUniversalComponentAppend,
+  validateUniversalComponentGet,
   validateUniversalComponentOrderedScan,
   validateUniversalComponentRow,
 } from "@hot-updater/plugin-core";
@@ -48,6 +49,10 @@ interface ComponentQuery extends PromiseLike<ComponentQueryResult> {
   ): ComponentQuery;
   range(from: number, to: number): ComponentQuery;
   select(columns: string): ComponentQuery;
+  upsert(
+    values: UniversalComponentRow,
+    options: { readonly ignoreDuplicates: true; readonly onConflict: string },
+  ): ComponentQuery;
 }
 
 interface ComponentClient {
@@ -860,6 +865,46 @@ export const createSupabaseUniversalComponentDataAdapter = (
             schema,
             expectedVersion,
           );
+        },
+        async create(input) {
+          await assertReady();
+          const table = validateUniversalComponentAppend(schema, input);
+          const primaryKey = table.columns.find((column) => column.primaryKey)!;
+          const { data, error } = await client
+            .from(table.name)
+            .upsert(input.row, {
+              ignoreDuplicates: true,
+              onConflict: primaryKey.name,
+            })
+            .select(primaryKey.name);
+          throwComponentQueryError(
+            "create universal component row",
+            error,
+            schema,
+            expectedVersion,
+          );
+          if (!Array.isArray(data)) {
+            throw new TypeError("Invalid universal component create result");
+          }
+          return data.length === 0 ? "existing" : "created";
+        },
+        async get(input) {
+          await assertReady();
+          const table = validateUniversalComponentGet(schema, input);
+          const primaryKey = table.columns.find((column) => column.primaryKey)!;
+          const { data, error } = await client
+            .from(table.name)
+            .select(table.columns.map(({ name }) => name).join(","))
+            .eq(primaryKey.name, input.primaryKey)
+            .maybeSingle();
+          throwComponentQueryError(
+            "get universal component row",
+            error,
+            schema,
+            expectedVersion,
+          );
+          if (data === null) return null;
+          return validateStoredRow(schema, expectedVersion, table, data);
         },
         async orderedScan(input) {
           await assertReady();

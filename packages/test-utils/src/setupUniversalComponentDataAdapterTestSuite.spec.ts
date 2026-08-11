@@ -7,6 +7,9 @@ import {
   type UniversalComponentSchema,
   UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
+  validateUniversalComponentAppend,
+  validateUniversalComponentGet,
+  validateUniversalComponentOrderedScan,
 } from "@hot-updater/plugin-core";
 
 import { setupUniversalComponentDataAdapterTestSuite } from "./setupUniversalComponentDataAdapterTestSuite";
@@ -78,18 +81,42 @@ const adapter: UniversalComponentDataAdapter = {
       assertReady,
       async append(input) {
         await assertReady();
+        const table = validateUniversalComponentAppend(schema, input);
         const rows = state.rows.get(input.table) ?? [];
         rows.push(structuredClone(input.row));
-        state.rows.set(input.table, rows);
+        state.rows.set(table.name, rows);
+      },
+      async create(input) {
+        await assertReady();
+        const table = validateUniversalComponentAppend(schema, input);
+        const primaryKey = table.columns.find((column) => column.primaryKey)!;
+        const rows = state.rows.get(table.name) ?? [];
+        if (
+          rows.some(
+            (row) => row[primaryKey.name] === input.row[primaryKey.name],
+          )
+        ) {
+          return "existing";
+        }
+        rows.push(structuredClone(input.row));
+        state.rows.set(table.name, rows);
+        return "created";
+      },
+      async get(input) {
+        await assertReady();
+        const table = validateUniversalComponentGet(schema, input);
+        const primaryKey = table.columns.find((column) => column.primaryKey)!;
+        const row = (state.rows.get(table.name) ?? []).find(
+          (candidate) => candidate[primaryKey.name] === input.primaryKey,
+        );
+        return row === undefined ? null : structuredClone(row);
       },
       async orderedScan(input) {
         await assertReady();
-        const accessPattern = latest.orderedScans?.find(
-          ({ name }) => name === input.accessPattern,
+        const accessPattern = validateUniversalComponentOrderedScan(
+          schema,
+          input,
         );
-        if (accessPattern === undefined) {
-          throw new TypeError(`Unknown access pattern ${input.accessPattern}`);
-        }
         const tuple = (row: UniversalComponentRow) =>
           accessPattern.columns.map(
             (column) => row[column] as UniversalComponentScalar,

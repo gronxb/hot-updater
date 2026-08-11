@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plugin Boundary Auditor"
+  short_description: "Audit feature ownership and provider neutrality"
+  default_prompt: "Use $plugin-boundary-auditor to audit this stacked PR for feature contracts leaking into provider plugins."
