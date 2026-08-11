@@ -9,6 +9,7 @@ beforeAll(async () => {
     DATABASE_TYPE: "s3",
     DYNAMODB_REGION: "us-east-1",
     DYNAMODB_TABLE_NAME: "hot-updater-metadata",
+    MANAGEMENT_BEARER_TOKEN: "management-secret",
     SSM_PARAMETER_NAME: "/hot-updater/test",
     SSM_REGION: "us-east-1",
     S3_BUCKET_NAME: "hot-updater-test",

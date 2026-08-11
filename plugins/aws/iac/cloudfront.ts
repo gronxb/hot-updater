@@ -8,7 +8,7 @@ import {
   applyDistributionConfigOverrides,
   buildDistributionConfig,
   buildDistributionConfigOverrides,
-  HOT_UPDATER_CACHE_BEHAVIOR_PATH,
+  HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
   HOT_UPDATER_ORIGIN_REQUEST_POLICY_CONFIG,
   HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG,
 } from "./cloudfrontDistributionConfig";
@@ -290,8 +290,8 @@ export class CloudFrontManager {
           InvalidationBatch: {
             CallerReference: new Date().toISOString(),
             Paths: {
-              Quantity: 1,
-              Items: [HOT_UPDATER_CACHE_BEHAVIOR_PATH],
+              Quantity: HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length,
+              Items: [...HOT_UPDATER_CACHE_BEHAVIOR_PATHS],
             },
           },
         });

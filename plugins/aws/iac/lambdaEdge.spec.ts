@@ -13,6 +13,7 @@ const fileMocks = vi.hoisted(() => ({
   rm: vi.fn(),
   writeFile: vi.fn(),
 }));
+const transformEnvMock = vi.hoisted(() => vi.fn(() => "transformed-code"));
 
 vi.mock("@aws-sdk/client-lambda", () => ({
   Lambda: vi.fn(function Lambda() {
@@ -45,7 +46,7 @@ vi.mock("@hot-updater/cli-tools", () => ({
       },
     ),
   },
-  transformEnv: vi.fn(() => "transformed-code"),
+  transformEnv: transformEnvMock,
 }));
 
 import { LambdaEdgeDeployer } from "./lambdaEdge";
@@ -90,6 +91,7 @@ describe("LambdaEdgeDeployer", () => {
         databaseType: "dynamodb",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
+        managementBearerToken: "management-secret",
         publicKeyId: "public-key-id",
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",
@@ -102,6 +104,12 @@ describe("LambdaEdgeDeployer", () => {
       Publish: false,
       ZipFile: expect.any(Buffer),
     });
+    expect(transformEnvMock).toHaveBeenCalledWith(
+      "/tmp/hot-updater-lambda/index.cjs",
+      expect.objectContaining({
+        MANAGEMENT_BEARER_TOKEN: "management-secret",
+      }),
+    );
     expect(lambdaMocks.updateFunctionConfiguration).toHaveBeenCalledWith({
       FunctionName: "hot-updater-edge",
       MemorySize: 256,
@@ -145,6 +153,7 @@ describe("LambdaEdgeDeployer", () => {
         databaseType: "dynamodb",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
+        managementBearerToken: "management-secret",
         publicKeyId: "public-key-id",
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",

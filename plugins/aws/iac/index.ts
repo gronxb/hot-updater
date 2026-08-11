@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import {
   colors,
   confirmInitInputPersistence,
@@ -38,6 +40,8 @@ import { type AwsRegion, regionLocationMap } from "./regionLocationMap";
 import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
 import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
+
+const MANAGEMENT_AUTH_TOKEN_ENV_KEY = "HOT_UPDATER_AUTH_TOKEN";
 
 const checkIfAwsCliInstalled = async () => {
   try {
@@ -346,8 +350,12 @@ export const runInit = async ({
   });
   const accessKeyEnvKey = AWS_INIT_PROVIDER.inputs.accessKeyId.envKey;
   const secretAccessKeyEnvKey = AWS_INIT_PROVIDER.inputs.secretAccessKey.envKey;
+  const managementBearerToken =
+    initEnvSources.env[MANAGEMENT_AUTH_TOKEN_ENV_KEY]?.trim() ||
+    randomBytes(32).toString("base64url");
   await makeEnv({
     ...initEnv,
+    [MANAGEMENT_AUTH_TOKEN_ENV_KEY]: managementBearerToken,
     ...(initEnv[accessKeyEnvKey]
       ? {
           [accessKeyEnvKey]: {
@@ -436,6 +444,7 @@ export const runInit = async ({
       databaseType: database,
       dynamodbRegion: bucketRegion,
       dynamodbTableName: resolvedDynamoDBTableName ?? "",
+      managementBearerToken,
       publicKeyId: publicKeyId,
       ssmParameterName: ssmParameterName,
       ssmRegion: bucketRegion,

@@ -22,8 +22,8 @@ export const HOT_UPDATER_SHARED_CACHE_POLICY_CONFIG: CachePolicyConfig = {
     HeadersConfig: {
       HeaderBehavior: "whitelist",
       Headers: {
-        Quantity: 2,
-        Items: ["hot-updater-sdk-version", "x-api-key"],
+        Quantity: 3,
+        Items: ["authorization", "hot-updater-sdk-version", "x-api-key"],
       },
     },
     CookiesConfig: {
@@ -93,7 +93,10 @@ const HOT_UPDATER_BEHAVIOR_BASE = {
   AllowedMethods: READ_ONLY_METHODS,
 } as const;
 
-export const HOT_UPDATER_CACHE_BEHAVIOR_PATH = "/api/check-update/*";
+export const HOT_UPDATER_CACHE_BEHAVIOR_PATHS = [
+  "/api/check-update",
+  "/api/check-update/*",
+] as const;
 
 const omitLegacyCacheFields = <
   T extends {
@@ -199,11 +202,12 @@ const buildCacheBehavior = (options: {
   bucketName: string;
   functionArn: string;
   originRequestPolicyId: string;
+  pathPattern: string;
   sharedCachePolicyId: string;
 }): CacheBehavior => ({
   ...buildSharedBehavior(options.bucketName),
   AllowedMethods: API_METHODS,
-  PathPattern: HOT_UPDATER_CACHE_BEHAVIOR_PATH,
+  PathPattern: options.pathPattern,
   CachePolicyId: options.sharedCachePolicyId,
   OriginRequestPolicyId: options.originRequestPolicyId,
   LambdaFunctionAssociations: buildOriginRequestLambdaAssociations(
@@ -335,15 +339,16 @@ export const buildDistributionConfigOverrides = (options: {
     sharedCachePolicyId: options.sharedCachePolicyId,
   }),
   CacheBehaviors: {
-    Quantity: 1,
-    Items: [
+    Quantity: HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length,
+    Items: HOT_UPDATER_CACHE_BEHAVIOR_PATHS.map((pathPattern) =>
       buildCacheBehavior({
         bucketName: options.bucketName,
         functionArn: options.functionArn,
         originRequestPolicyId: options.originRequestPolicyId,
+        pathPattern,
         sharedCachePolicyId: options.sharedCachePolicyId,
       }),
-    ],
+    ),
   },
 });
 

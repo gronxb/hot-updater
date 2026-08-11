@@ -29,8 +29,8 @@ describe("buildDistributionConfigOverrides", () => {
         HeadersConfig: {
           HeaderBehavior: "whitelist",
           Headers: {
-            Quantity: 2,
-            Items: ["hot-updater-sdk-version", "x-api-key"],
+            Quantity: 3,
+            Items: ["authorization", "hot-updater-sdk-version", "x-api-key"],
           },
         },
         CookiesConfig: { CookieBehavior: "none" },
@@ -76,7 +76,10 @@ describe("buildDistributionConfigOverrides", () => {
     expect("DefaultTTL" in defaultBehavior).toBe(false);
     expect("MaxTTL" in defaultBehavior).toBe(false);
 
-    expect(cachedEndpointBehavior.PathPattern).toBe("/api/check-update/*");
+    expect(behaviorItems.map(({ PathPattern }) => PathPattern)).toEqual([
+      "/api/check-update",
+      "/api/check-update/*",
+    ]);
     expect(cachedEndpointBehavior.CachePolicyId).toBe(
       baseOptions.sharedCachePolicyId,
     );
@@ -260,6 +263,7 @@ describe("buildDistributionConfigOverrides", () => {
     );
     expect(updatedConfig.CacheBehaviors?.Items).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ PathPattern: "/api/check-update" }),
         expect.objectContaining({ PathPattern: "/api/check-update/*" }),
         expect.objectContaining({ PathPattern: "/unrelated/*" }),
       ]),
@@ -323,7 +327,7 @@ describe("buildDistributionConfigOverrides", () => {
       updatedConfig.CacheBehaviors?.Items?.map(
         ({ TargetOriginId }) => TargetOriginId,
       ),
-    ).toEqual([existingOriginId, existingOriginId]);
+    ).toEqual([existingOriginId, existingOriginId, existingOriginId]);
   });
 
   it("places a new update API behavior before broader existing behaviors", () => {
@@ -362,7 +366,7 @@ describe("buildDistributionConfigOverrides", () => {
       updatedConfig.CacheBehaviors?.Items?.map(
         ({ PathPattern }) => PathPattern,
       ),
-    ).toEqual(["/api/check-update/*", "/api/*"]);
+    ).toEqual(["/api/check-update", "/api/check-update/*", "/api/*"]);
   });
 
   it("keeps narrower existing behaviors before the update API behavior", () => {
@@ -414,7 +418,12 @@ describe("buildDistributionConfigOverrides", () => {
       updatedConfig.CacheBehaviors?.Items?.map(
         ({ PathPattern }) => PathPattern,
       ),
-    ).toEqual(["/api/check-update/private/*", "/api/check-update/*", "/api/*"]);
+    ).toEqual([
+      "/api/check-update/private/*",
+      "/api/check-update",
+      "/api/check-update/*",
+      "/api/*",
+    ]);
   });
 
   it("preserves precedence for existing cross-cutting wildcard behaviors", () => {
@@ -482,6 +491,7 @@ describe("buildDistributionConfigOverrides", () => {
     ).toEqual([
       "/api/check-update/?.json",
       "/*.js",
+      "/api/check-update",
       "/api/check-update/*",
       "/api/*",
     ]);

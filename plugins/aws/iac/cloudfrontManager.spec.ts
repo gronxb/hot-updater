@@ -156,8 +156,12 @@ describe("CloudFrontManager", () => {
             HeadersConfig: {
               HeaderBehavior: "whitelist",
               Headers: {
-                Quantity: 2,
-                Items: ["hot-updater-sdk-version", "x-api-key"],
+                Quantity: 3,
+                Items: [
+                  "authorization",
+                  "hot-updater-sdk-version",
+                  "x-api-key",
+                ],
               },
             },
           }),
@@ -175,6 +179,11 @@ describe("CloudFrontManager", () => {
           }),
           CacheBehaviors: expect.objectContaining({
             Items: expect.arrayContaining([
+              expect.objectContaining({
+                PathPattern: "/api/check-update",
+                CachePolicyId: "shared-cache-policy-id",
+                OriginRequestPolicyId: "origin-request-policy-id",
+              }),
               expect.objectContaining({
                 PathPattern: "/api/check-update/*",
                 CachePolicyId: "shared-cache-policy-id",
@@ -196,7 +205,10 @@ describe("CloudFrontManager", () => {
       DistributionId: "dist-id",
       InvalidationBatch: {
         CallerReference: expect.any(String),
-        Paths: { Quantity: 1, Items: ["/api/check-update/*"] },
+        Paths: {
+          Quantity: 2,
+          Items: ["/api/check-update", "/api/check-update/*"],
+        },
       },
     });
   });

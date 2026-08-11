@@ -140,6 +140,7 @@ describe("aws lambda entrypoint", () => {
       DATABASE_TYPE: "s3",
       DYNAMODB_REGION: "us-east-1",
       DYNAMODB_TABLE_NAME: "hot-updater-metadata",
+      MANAGEMENT_BEARER_TOKEN: "management-secret",
       SSM_PARAMETER_NAME: "/hot-updater/test",
       SSM_REGION: "us-east-1",
       S3_BUCKET_NAME: "hot-updater-test",
@@ -159,9 +160,9 @@ describe("aws lambda entrypoint", () => {
       tableName: "hot-updater-metadata",
     });
     expect(databaseMocks.s3Database).not.toHaveBeenCalled();
-    expect(
-      managedPluginMocks.createManagedServerPlugins,
-    ).toHaveBeenCalledOnce();
+    expect(managedPluginMocks.createManagedServerPlugins).toHaveBeenCalledWith({
+      managementBearerToken: "management-secret",
+    });
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
         plugins: managedPluginMocks.plugins,
