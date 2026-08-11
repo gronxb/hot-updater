@@ -968,30 +968,6 @@ const database = attachUniversalComponentDataAdapter(
           );
         },
         async assertReady() {},
-        async create(input) {
-          const table = validateUniversalComponentAppend(schema, input);
-          const primaryKey = table.columns.find((column) => column.primaryKey)!;
-          const rows = componentRows.get(table.name) ?? [];
-          if (
-            rows.some(
-              (row) => row[primaryKey.name] === input.row[primaryKey.name],
-            )
-          ) {
-            return "existing";
-          }
-          rows.push(Object.freeze({ ...input.row }));
-          componentRows.set(table.name, rows);
-          return "created";
-        },
-        async get(input) {
-          const table = validateUniversalComponentGet(schema, input);
-          const primaryKey = table.columns.find((column) => column.primaryKey)!;
-          return (
-            componentRows
-              .get(table.name)
-              ?.find((row) => row[primaryKey.name] === input.primaryKey) ?? null
-          );
-        },
         async orderedScan(input) {
           const scan = validateUniversalComponentOrderedScan(schema, input);
           return [...(componentRows.get(scan.table) ?? [])]

@@ -86,8 +86,6 @@ describe("analytics runtime input validation", () => {
       create: vi.fn(async () => "created" as const),
       get: vi.fn(async () => null),
       assertReady: vi.fn(async () => undefined),
-      create: vi.fn(async () => "created" as const),
-      get: vi.fn(async () => null),
       orderedScan: vi.fn(async () => []),
     }));
     const database = attachUniversalComponentDataAdapter(
