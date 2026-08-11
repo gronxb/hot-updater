@@ -15,16 +15,14 @@
 "hot-updater": minor
 ---
 
-Replace the legacy database plugin API with a fixed-model API for `bundles`
-and `bundle_patches`. Providers now return a direct plugin object, while the
-shared database client supplies aggregate bundle operations. The public
-contract exposes separate `bundles` and `bundlePatches` read ports plus an
-explicit atomic `commit` change-set. Provider callback transactions remain an
-implementation detail; `commit({ mutations })` is the single required public
-write boundary and atomically applies any number of bundle change-sets. The v1
-factory,
-request-context, staged mutation, unit-of-work, and `commitBundle` contracts
-have been removed.
+Replace the legacy database plugin API with a fixed, one-depth official-domain
+contract. Providers return `bundles`, `bundlePatches`, `analytics`,
+`clientAccessKeys`, and the atomic `commit` boundary directly from
+`createDatabasePlugin`. Provider callback transactions and generic CRUD remain
+implementation details; `commit({ mutations })` atomically applies any number
+of bundle change-sets. The v1 factory, nested `plugin`, request-context, staged
+mutation, unit-of-work, `commitBatch`, lifecycle callback, generic capability,
+and universal component contracts have been removed.
 
 Keep channel names on `bundles.channel`; this release does not add a channel
 model, table, collection, or foreign key. The shared client can derive sorted,
@@ -42,17 +40,13 @@ does not promise snapshot isolation; providers needing that guarantee should
 implement the optimized update-check capability. MongoDB supports cross-table
 commits when configured with `transactions: true` and rejects them otherwise.
 
-Core's generic server schema registry ends at `0.36.0`. Kysely and MongoDB
-migrators record that revision under `schema.core`; known legacy post-Core
-`version` values are retained and interpreted as Core `0.36.0` compatibility,
-not rewritten. Unknown future legacy revisions remain blocked. Cloudflare's D1
-migration history now creates the component settings registry and records
-`schema.core=0.36.0`, failing closed if another Core marker already exists.
-Managed Supabase deployments continue to use provider-native migration history,
-while Firebase uses `database_adapter_version`. This release adds no other
-schema namespace or database model.
+Core schema `0.37.0` adds the official `bundle_events` and
+`client_access_keys` models. Kysely, MongoDB, D1, Supabase, Firebase, and the
+official provider adapters map those models through their native schema and
+migration mechanisms. Known legacy post-Core `version` values remain
+compatible with Core `0.36.0`; unknown future revisions remain blocked.
 
-Blob database snapshots contain only bundles and patches. Core refuses to read
+Blob database snapshots contain all four official models. Core refuses to read
 or replace a snapshot containing unknown snapshot, row, or revision-pointer
 fields, preventing silent data loss without claiming ownership of those fields.
 Derived manifests use separate app-version and fingerprint namespaces with
@@ -61,9 +55,9 @@ Mutation success follows the active-pointer commit, and exhausted post-commit
 invalidation reports through `onInvalidationError` without changing the
 committed result.
 
-The mock provider now accepts fixed bundle and patch rows through
-`MockDatabaseData`. `@hot-updater/test-utils` publishes reusable low-level
-plugin and aggregate-client conformance suites for custom provider authors.
+The mock provider now accepts every official row through `MockDatabaseData`.
+`@hot-updater/test-utils` publishes reusable official-domain plugin and
+aggregate-client conformance suites for custom provider authors.
 
 Multi-platform deploy performs build, archive, and content-addressed upload
 work before preparing database change-sets. Providers receive the prepared
