@@ -2,6 +2,8 @@ import type {
   HotUpdaterContext,
   RuntimeStoragePlugin,
   UniversalComponentDataAdapter,
+  UniversalComponentDataSource,
+  UniversalComponentSchema,
 } from "@hot-updater/plugin-core";
 import {
   assertRuntimeStoragePlugin,
@@ -98,6 +100,19 @@ export function getHotUpdaterCoreMetadata<TContext = undefined>(
       readonly [hotUpdaterCoreMetadata]?: HotUpdaterCoreMetadata<TContext>;
     }
   )[hotUpdaterCoreMetadata];
+}
+
+export function requireUniversalComponentDataSource(
+  hotUpdater: RuntimeHotUpdaterAPI,
+  schema: UniversalComponentSchema,
+): UniversalComponentDataSource {
+  const source = getHotUpdaterCoreMetadata(hotUpdater)?.components?.get(schema);
+  if (source === undefined) {
+    throw new Error(
+      `Universal component data source is not available for ${schema.id}.`,
+    );
+  }
+  return source;
 }
 
 export function createHotUpdaterCore<TContext = undefined>(
