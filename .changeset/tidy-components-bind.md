@@ -8,8 +8,9 @@
 "@hot-updater/supabase": minor
 ---
 
-Add versioned universal component schemas and a provider-neutral append and
-ordered-scan data adapter. Feature plugins declare and own their schema history,
+Add versioned universal component schemas and a provider-neutral append,
+create-if-absent, primary-key get, and ordered-scan data adapter. Feature plugins
+declare and own their schema history,
 structured checks, and legacy-adoption policy, while database providers bind
 generic data sources and execute or generate version-tagged migrations without
 importing feature contracts. Storage checks preserve exact physical drift

@@ -15,6 +15,7 @@ import {
   UniversalComponentSchemaNotReadyError,
   type UniversalComponentTableSchema,
   validateUniversalComponentOrderedScan,
+  validateUniversalComponentGet,
   validateUniversalComponentRow,
 } from "@hot-updater/plugin-core";
 import {
@@ -43,6 +44,9 @@ type FirestoreIndexFile = Readonly<Record<string, unknown>> & {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isFirestoreAlreadyExistsError = (error: unknown): boolean =>
+  isRecord(error) && (error.code === 6 || error.code === "already-exists");
 
 const canonicalizeJson = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(canonicalizeJson);
@@ -529,6 +533,59 @@ export const createFirebaseUniversalComponentDataAdapter = (
           await db.collection(table.name).doc(documentId).create(input.row);
         },
         assertReady,
+        async create(input) {
+          await assertReady();
+          const table = getUniversalComponentTable(
+            schema,
+            input.table,
+            latest.version,
+          );
+          const documentId = validateRow(
+            schema,
+            latest.version,
+            table,
+            input.row,
+          );
+          try {
+            await db.collection(table.name).doc(documentId).create(input.row);
+            return "created";
+          } catch (error: unknown) {
+            if (isFirestoreAlreadyExistsError(error)) return "existing";
+            throw error;
+          }
+        },
+        async get(input) {
+          await assertReady();
+          const table = validateUniversalComponentGet(schema, input);
+          const document = await db
+            .collection(table.name)
+            .doc(input.primaryKey)
+            .get();
+          if (!document.exists) return null;
+          const data = document.data();
+          if (!isRecord(data)) {
+            throw stateNotReadyError(
+              schema,
+              "stored-data",
+              new UniversalComponentDataContractError(
+                `Invalid component document: ${table.name}/${document.id}`,
+              ),
+            );
+          }
+          const row = data as UniversalComponentRow;
+          try {
+            validateRow(schema, latest.version, table, row, document.id);
+          } catch (error: unknown) {
+            if (error instanceof FirebaseUniversalComponentDocumentKeyError) {
+              throw stateNotReadyError(schema, "physical-schema", error);
+            }
+            if (error instanceof UniversalComponentDataContractError) {
+              throw stateNotReadyError(schema, "stored-data", error);
+            }
+            throw error;
+          }
+          return row;
+        },
         async orderedScan(input) {
           await assertReady();
           const accessPattern = validateUniversalComponentOrderedScan(
