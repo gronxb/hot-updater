@@ -12,6 +12,7 @@ export type {
 export * from "./utils";
 export * from "./database";
 export * from "./databaseFields";
+export * from "./databasePlugin";
 
 export interface BasePluginArgs {
   cwd: string;

@@ -28,13 +28,24 @@ vi.mock("cloudflare", () => ({
           _databaseId: string,
           input: { readonly sql: string; readonly params?: readonly string[] },
         ) => {
-          const result = await getDb()
-            .prepare(input.sql)
-            .bind(...(input.params ?? []))
-            .all();
+          const params = input.params ?? [];
+          let paramOffset = 0;
+          const statements = input.sql
+            .split(";")
+            .map((sql) => sql.trim())
+            .filter(Boolean)
+            .map((sql) => {
+              const paramCount = sql.match(/\?/g)?.length ?? 0;
+              const statement = getDb()
+                .prepare(sql)
+                .bind(...params.slice(paramOffset, paramOffset + paramCount));
+              paramOffset += paramCount;
+              return statement;
+            });
+          const results = await getDb().batch(statements);
           return {
             async *iterPages() {
-              yield { result: [{ results: result.results }] };
+              yield { result: results };
             },
           };
         },

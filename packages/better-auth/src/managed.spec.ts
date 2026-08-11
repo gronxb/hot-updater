@@ -1,4 +1,7 @@
-import { attachUniversalComponentDataAdapter } from "@hot-updater/plugin-core";
+import type {
+  UniversalComponentGetInput,
+  UniversalComponentSchema,
+} from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { defineFirstPartyServerPlugin } from "@hot-updater/server/internal/first-party-plugin";
 import { describe, expect, it, vi } from "vitest";
@@ -129,16 +132,16 @@ describe("managedBetterAuthPlugin", () => {
   });
 
   it("resolves the access-key store from its canonical component source", async () => {
-    const database = attachUniversalComponentDataAdapter(
-      createRuntimeDatabase(),
-      () => ({
-        bind(schema) {
+    const database = {
+      ...createRuntimeDatabase(),
+      componentData: {
+        bind(schema: UniversalComponentSchema) {
           return {
             schema,
             append: async () => undefined,
             assertReady: async () => undefined,
-            create: async () => "created",
-            get: async ({ primaryKey, table }) =>
+            create: async () => "created" as const,
+            get: async ({ primaryKey, table }: UniversalComponentGetInput) =>
               table === "better_auth_managed_access_keys" &&
               primaryKey === activeRecord.id
                 ? {
@@ -153,8 +156,8 @@ describe("managedBetterAuthPlugin", () => {
             orderedScan: async () => [],
           };
         },
-      }),
-    );
+      },
+    };
     const server = createHotUpdater({
       database,
       plugins: [

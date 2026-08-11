@@ -89,7 +89,7 @@ describe("createBundleDiff", () => {
       ...plugin,
       onDatabaseUpdated,
     };
-    const transaction = vi.spyOn(databasePlugin, "transaction");
+    const commit = vi.spyOn(databasePlugin, "commit");
     const upload = vi.fn<NodeStorageProfile["upload"]>(
       async (key, filePath) => ({
         storageUri: `s3://test-bucket/${key}/${filePath.split("/").pop()}`,
@@ -160,7 +160,7 @@ describe("createBundleDiff", () => {
       );
 
       expect(upload).toHaveBeenCalledOnce();
-      expect(transaction).toHaveBeenCalledOnce();
+      expect(commit).toHaveBeenCalledOnce();
       expect(onDatabaseUpdated).toHaveBeenCalledOnce();
       expect(updatedBundle).toMatchObject({
         patchBaseBundleId: baseBundle.id,

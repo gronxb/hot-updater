@@ -18,12 +18,15 @@ export const createPluginSetupContext = (): HotUpdaterPluginSetupContext => ({
     },
   },
   database: Object.freeze({
-    count: unexpectedDatabaseAccess,
-    create: unexpectedDatabaseAccess,
-    delete: unexpectedDatabaseAccess,
-    findMany: unexpectedDatabaseAccess,
-    findOne: unexpectedDatabaseAccess,
+    bundles: Object.freeze({
+      count: unexpectedDatabaseAccess,
+      findById: unexpectedDatabaseAccess,
+      findMany: unexpectedDatabaseAccess,
+    }),
+    bundlePatches: Object.freeze({
+      findByBundleIds: unexpectedDatabaseAccess,
+    }),
+    commit: unexpectedDatabaseAccess,
     name: "better-auth-test",
-    update: unexpectedDatabaseAccess,
   }),
 });

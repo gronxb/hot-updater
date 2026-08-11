@@ -1,5 +1,4 @@
 import {
-  attachUniversalComponentDataAdapter,
   defineUniversalComponentSchema,
   type UniversalComponentDataAdapter,
   type UniversalComponentSchema,
@@ -39,10 +38,10 @@ const createTarget = (
   schemas: readonly UniversalComponentSchema[],
   adapter: UniversalComponentDataAdapter,
 ) => {
-  const database = attachUniversalComponentDataAdapter(
-    createInMemoryDatabasePlugin(),
-    () => adapter,
-  );
+  const database = {
+    ...createInMemoryDatabasePlugin(),
+    componentData: adapter,
+  };
   return createHotUpdater({
     database,
     plugins: schemas.map((componentSchema) =>

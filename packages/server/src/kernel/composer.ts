@@ -1,8 +1,4 @@
-import {
-  type HotUpdaterInfrastructureRuntime,
-  universalComponentDataAdapterCapability,
-} from "@hot-updater/plugin-core";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
+import type { HotUpdaterInfrastructureRuntime } from "@hot-updater/plugin-core";
 
 import { selectAuthenticationProvider } from "./authentication";
 import {
@@ -33,7 +29,6 @@ import { compileRoutes, type CompiledRouter } from "./routeCompiler";
 export type ComposeServerKernelOptions = {
   readonly carriers: readonly object[];
   readonly coreRoutes: readonly HotUpdaterServerRoute[];
-  readonly databaseCarrier?: object;
   readonly plugins: readonly HotUpdaterServerPlugin[];
   readonly runtime: HotUpdaterInfrastructureRuntime;
 };
@@ -165,39 +160,10 @@ export const composeServerKernel = (
   const pluginRequiredTokens = plugins.flatMap((plugin) =>
     plugin.requires.map(({ token }) => token),
   );
-  if (componentPlan.schemas.length > 0) {
-    let databaseProvidesAdapter = false;
-    try {
-      databaseProvidesAdapter =
-        options.databaseCarrier !== undefined &&
-        getCapabilityContributions(options.databaseCarrier).some(
-          ({ token }) => token === universalComponentDataAdapterCapability,
-        );
-    } catch {
-      throw new HotUpdaterConstructionError("INVALID_PLUGIN_CONTRIBUTION", {
-        pluginId: "<infrastructure>",
-      });
-    }
-    if (!databaseProvidesAdapter) {
-      throw new HotUpdaterConstructionError("MISSING_COMPONENT_DATA_ADAPTER", {
-        componentIds: componentPlan.schemas.map(({ id }) => id),
-      });
-    }
-  }
 
   const capabilities = createCapabilityRegistry({
     carriers: options.carriers,
-    excludedTokens:
-      componentPlan.schemas.length === 0 &&
-      !pluginRequiredTokens.includes(universalComponentDataAdapterCapability)
-        ? [universalComponentDataAdapterCapability]
-        : [],
-    requiredTokens: [
-      ...pluginRequiredTokens,
-      ...(componentPlan.schemas.length > 0
-        ? [universalComponentDataAdapterCapability]
-        : []),
-    ],
+    requiredTokens: pluginRequiredTokens,
     runtime: options.runtime,
   });
   for (const plugin of plugins) {
@@ -215,7 +181,7 @@ export const composeServerKernel = (
   }
   const components = bindUniversalComponentSchemas(
     componentPlan,
-    capabilities.get(universalComponentDataAdapterCapability),
+    options.runtime.database.componentData,
   );
 
   const routes: CollectedRoute[] = options.coreRoutes.map((route) => ({

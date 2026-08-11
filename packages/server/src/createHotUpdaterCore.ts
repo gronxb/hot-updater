@@ -5,10 +5,7 @@ import type {
   UniversalComponentDataSource,
   UniversalComponentSchema,
 } from "@hot-updater/plugin-core";
-import {
-  assertRuntimeStoragePlugin,
-  universalComponentDataAdapterCapability,
-} from "@hot-updater/plugin-core";
+import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
@@ -168,7 +165,6 @@ export function createHotUpdaterCore<TContext = undefined>(
         handler: internalHandler,
         routes: options.routes,
       }),
-      databaseCarrier: plugin,
       plugins,
       runtime,
     });
@@ -192,9 +188,7 @@ export function createHotUpdaterCore<TContext = undefined>(
       ? {}
       : {
           components: kernel.components,
-          universalComponentDataAdapter: kernel.capabilities.require(
-            universalComponentDataAdapterCapability,
-          ),
+          universalComponentDataAdapter: plugin.componentData!,
         };
 
   // Some framework adapters strip the mounted base path or pass extra

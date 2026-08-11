@@ -2,10 +2,9 @@
 
 import { analyticsComponentSchema } from "@hot-updater/analytics";
 import { managedAccessKeyComponentSchema } from "@hot-updater/better-auth/managed";
-import type { ConfigResponse } from "@hot-updater/cli-tools";
 import {
-  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
+  type UniversalComponentSchema,
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -39,13 +38,9 @@ const createDatabase = () =>
     }),
   });
 
-const asConfig = (
-  database: ReturnType<typeof createDatabase>,
-): ConfigResponse => ({ database }) as ConfigResponse;
-
 describe("managed access-key runtime", () => {
   it("composes the store only from a neutral component adapter", async () => {
-    const bind = vi.fn((schema) => ({
+    const bind = vi.fn((schema: UniversalComponentSchema) => ({
       schema,
       append: async () => undefined,
       assertReady: async () => undefined,
@@ -53,13 +48,12 @@ describe("managed access-key runtime", () => {
       get: async () => null,
       orderedScan: async () => [],
     }));
-    const supported = attachUniversalComponentDataAdapter(
-      createDatabase(),
-      () => ({ bind }),
-    );
+    const supported = { ...createDatabase(), componentData: { bind } };
 
-    expect(createManagedAccessKeyStore(asConfig(createDatabase()))).toBeNull();
-    const resolved = createManagedAccessKeyStore(asConfig(supported));
+    expect(
+      createManagedAccessKeyStore({ database: createDatabase() }),
+    ).toBeNull();
+    const resolved = createManagedAccessKeyStore({ database: supported });
     expect(resolved).not.toBeNull();
     await resolved?.list();
     expect(bind).toHaveBeenCalledWith(managedAccessKeyComponentSchema);
@@ -88,15 +82,12 @@ describe("analytics runtime input validation", () => {
       assertReady: vi.fn(async () => undefined),
       orderedScan: vi.fn(async () => []),
     }));
-    const database = attachUniversalComponentDataAdapter(
-      createDatabase(),
-      () => ({ bind }),
-    );
+    const database = { ...createDatabase(), componentData: { bind } };
 
     // When
     const runtime = createRuntimeHotUpdater({
       database,
-    } as Parameters<typeof createRuntimeHotUpdater>[0]);
+    });
 
     // Then
     expect(bind).toHaveBeenCalledWith(analyticsComponentSchema);
@@ -116,7 +107,7 @@ describe("analytics runtime input validation", () => {
     expect(
       createRuntimeHotUpdater({
         database: createDatabase(),
-      } as Parameters<typeof createRuntimeHotUpdater>[0]),
+      }),
     ).toBeNull();
   });
 

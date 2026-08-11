@@ -1,7 +1,7 @@
 import { InitError, type RunInitOptions } from "@hot-updater/cli-tools";
 import {
-  attachUniversalComponentDataAdapter,
   getUniversalComponentLatestSchema,
+  type UniversalComponentSchema,
 } from "@hot-updater/plugin-core";
 import { generateUniversalComponentArtifacts } from "@hot-updater/server/db";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -268,10 +268,10 @@ describe("init choices", () => {
     mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
     const generatedArtifacts: unknown[] = [];
     mocks.runAwsInit.mockImplementation(async (options: RunInitOptions) => {
-      const database = attachUniversalComponentDataAdapter(
-        createDatabasePluginHarness().plugin,
-        () => ({
-          artifacts(schema) {
+      const database = {
+        ...createDatabasePluginHarness().plugin,
+        componentData: {
+          artifacts(schema: UniversalComponentSchema) {
             const latest = getUniversalComponentLatestSchema(schema);
             return [
               {
@@ -281,7 +281,7 @@ describe("init choices", () => {
               },
             ];
           },
-          bind: (schema) =>
+          bind: (schema: UniversalComponentSchema) =>
             Object.freeze({
               append: async () => {},
               create: async () => "created" as const,
@@ -290,8 +290,8 @@ describe("init choices", () => {
               orderedScan: async () => [],
               schema,
             }),
-        }),
-      );
+        },
+      };
       const target = options.createDeploymentTarget?.(database);
       if (target === undefined) {
         throw new Error("Expected init deployment target callback");

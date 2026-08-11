@@ -1,10 +1,13 @@
 import type {
+  BundlePatchTable,
+  BundleTable,
   DatabaseCapabilityRuntime,
   DatabasePlugin,
   HotUpdaterInfrastructureRuntime,
   RuntimeStorageAccess,
   RuntimeStoragePlugin,
-  TransactionDatabasePlugin,
+  UniversalComponentDataAdapter,
+  UniversalComponentDataSource,
 } from "@hot-updater/plugin-core";
 
 export type CreateGuardedInfrastructureRuntimeOptions<TContext> = {
@@ -13,63 +16,117 @@ export type CreateGuardedInfrastructureRuntimeOptions<TContext> = {
   readonly storages: readonly RuntimeStoragePlugin<TContext>[];
 };
 
-function createGuardedOperations(
-  database: TransactionDatabasePlugin,
+function createGuardedComponentData(
+  adapter: UniversalComponentDataAdapter,
   beforeOperation: () => Promise<void>,
-): TransactionDatabasePlugin {
-  const operations: TransactionDatabasePlugin = {
-    async count(input) {
-      await beforeOperation();
-      return database.count(input);
+): UniversalComponentDataAdapter {
+  const artifacts = adapter.artifacts;
+  const migrate = adapter.migrate;
+  const runtime: UniversalComponentDataAdapter = {
+    ...(artifacts === undefined
+      ? {}
+      : { artifacts: (schema) => artifacts(schema) }),
+    bind(schema) {
+      const source = adapter.bind(schema);
+      const guarded: UniversalComponentDataSource = {
+        async append(input) {
+          await beforeOperation();
+          return source.append(input);
+        },
+        async assertReady() {
+          await beforeOperation();
+          return source.assertReady();
+        },
+        async create(input) {
+          await beforeOperation();
+          return source.create(input);
+        },
+        async get(input) {
+          await beforeOperation();
+          return source.get(input);
+        },
+        async orderedScan(input) {
+          await beforeOperation();
+          return source.orderedScan(input);
+        },
+        schema: source.schema,
+      };
+      return Object.freeze(guarded);
     },
-    async create(input) {
-      await beforeOperation();
-      return database.create(input);
-    },
-    async delete(input) {
-      await beforeOperation();
-      return database.delete(input);
-    },
-    async findMany(input) {
-      await beforeOperation();
-      return database.findMany(input);
-    },
-    async findOne(input) {
-      await beforeOperation();
-      return database.findOne(input);
-    },
-    async update(input) {
-      await beforeOperation();
-      return database.update(input);
-    },
+    ...(migrate === undefined
+      ? {}
+      : {
+          async migrate(schema) {
+            await beforeOperation();
+            return migrate(schema);
+          },
+        }),
   };
-  return Object.freeze(operations);
+  return Object.freeze(runtime);
 }
 
 function createGuardedDatabase(
   database: DatabasePlugin,
   beforeOperation: () => Promise<void>,
 ): DatabaseCapabilityRuntime {
-  const transaction = database.transaction;
-  const onDatabaseUpdated = database.onDatabaseUpdated;
+  const bundlePatches: BundlePatchTable = {
+    async findByBundleIds(bundleIds) {
+      await beforeOperation();
+      return database.bundlePatches.findByBundleIds(bundleIds);
+    },
+  };
+  const bundles: BundleTable = {
+    async count(where) {
+      await beforeOperation();
+      return database.bundles.count(where);
+    },
+    async findById(id) {
+      await beforeOperation();
+      return database.bundles.findById(id);
+    },
+    async findMany(query) {
+      await beforeOperation();
+      return database.bundles.findMany(query);
+    },
+  };
   const runtime: DatabaseCapabilityRuntime = {
-    ...createGuardedOperations(database, beforeOperation),
-    name: database.name,
-    ...(onDatabaseUpdated === undefined
+    bundlePatches: Object.freeze(bundlePatches),
+    bundles: Object.freeze(bundles),
+    ...(database.componentData === undefined
       ? {}
       : {
-          onDatabaseUpdated: () => onDatabaseUpdated(),
+          componentData: createGuardedComponentData(
+            database.componentData,
+            beforeOperation,
+          ),
         }),
-    ...(transaction === undefined
+    async commit(input) {
+      await beforeOperation();
+      return database.commit(input);
+    },
+    name: database.name,
+    ...(database.commitBatch === undefined
       ? {}
       : {
-          async transaction(callback) {
+          async commitBatch(inputs) {
             await beforeOperation();
-            return transaction((databaseTransaction) =>
-              callback(
-                createGuardedOperations(databaseTransaction, beforeOperation),
-              ),
-            );
+            return database.commitBatch?.(inputs) ?? [];
+          },
+        }),
+    ...(database.getChannels === undefined
+      ? {}
+      : {
+          async getChannels() {
+            await beforeOperation();
+            return database.getChannels?.() ?? [];
+          },
+        }),
+    ...(database.getUpdateInfo === undefined
+      ? {}
+      : {
+          async getUpdateInfo(args) {
+            await beforeOperation();
+            return database.getUpdateInfo?.(args) ?? null;
           },
         }),
   };

@@ -291,8 +291,8 @@ describe("MongoDB migration", () => {
       });
       const migrator = createMongoMigrator(client);
       const plugin = createInMemoryDatabasePlugin();
-      const count = vi.spyOn(plugin, "count");
-      const findMany = vi.spyOn(plugin, "findMany");
+      const count = vi.spyOn(plugin.bundles, "count");
+      const findMany = vi.spyOn(plugin.bundles, "findMany");
       const core = createDatabasePluginCore(plugin, async () => null, {
         beforeOperation: createSchemaReadinessChecker(
           "future-mongodb",

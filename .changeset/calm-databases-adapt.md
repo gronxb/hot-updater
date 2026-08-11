@@ -17,10 +17,13 @@
 
 Replace the legacy database plugin API with a fixed-model API for `bundles`
 and `bundle_patches`. Providers now return a direct plugin object, while the
-shared database client supplies aggregate bundle operations. Callback
-transactions and optimized update checks are optional capabilities; the v1
-factory, request-context, staged mutation, unit-of-work, and `commitBundle`
-contracts have been removed.
+shared database client supplies aggregate bundle operations. The public
+contract exposes separate `bundles` and `bundlePatches` read ports plus an
+explicit atomic `commit` change-set. Provider callback transactions remain an
+implementation detail; `commitBatch` is the optional public capability for
+atomically committing multiple bundle change-sets. The v1 factory,
+request-context, staged mutation, unit-of-work, and `commitBundle` contracts
+have been removed.
 
 Keep channel names on `bundles.channel`; this release does not add a channel
 model, table, collection, or foreign key. The shared client can derive sorted,
@@ -30,13 +33,13 @@ aggregate.
 The shared client pages and orders bundle owners in the provider before
 hydrating selected patches and referenced base bundles. Bundle updates forward
 only caller-present scalar fields. Replacing patches and patch-bearing inserts
-require either a provider transaction or a provider-native atomic aggregate
-mutation; both fail before mutation when neither is available. Supabase uses
-service-role-only database functions for these per-bundle mutations and still
-does not expose a general callback transaction. The shared multi-read hydration
-fallback does not promise snapshot isolation; providers needing that guarantee
-should implement the optimized update-check capability. MongoDB exposes
-transactions when configured with `transactions: true`.
+are one change-set across the two tables and fail before mutation when the
+provider cannot commit that set atomically. Supabase uses service-role-only
+database functions for these commits. Cloudflare D1 uses transactional batches
+through both its HTTP and Worker APIs. The shared multi-read hydration fallback
+does not promise snapshot isolation; providers needing that guarantee should
+implement the optimized update-check capability. MongoDB supports cross-table
+commits when configured with `transactions: true` and rejects them otherwise.
 
 Core's generic server schema registry ends at `0.36.0`. Kysely and MongoDB
 migrators record that revision under `schema.core`; known legacy post-Core
@@ -62,13 +65,16 @@ The mock provider now accepts fixed bundle and patch rows through
 plugin and aggregate-client conformance suites for custom provider authors.
 
 Multi-platform deploy performs build, archive, and content-addressed upload
-work before entering a retryable database transaction. The transaction callback
-contains repeatable inserts only, and uploaded objects remain reusable when the
-database commit fails. Multi-platform bundle creation uses one atomic array
-request; servers reject the request before insertion when they cannot guarantee
+work before preparing database change-sets. Providers receive the prepared
+change-sets once through `commitBatch`, so provider retries cannot rerun build
+or upload side effects. Uploaded objects remain reusable when the database
+commit fails. Multi-platform bundle creation uses one atomic array request;
+servers reject the request before insertion when they cannot guarantee
 atomicity.
 
-Official providers honor every requested order clause and reject unsupported
-distinct or string-comparison operations before I/O. PostgreSQL honors
-requested null placement, and Cloudflare D1 rejects malformed count results
-instead of returning zero.
+Official providers implement the fixed bundle access patterns used by the
+shared client: exact domain filters, id ordering, bounded pagination, row
+counts, patch lookup by owner ids, and atomic bundle change-sets. Arbitrary
+distinct, projection, connector, and string-comparison query DSL operations are
+no longer part of the public database plugin contract. Cloudflare D1 rejects
+malformed count results instead of returning zero.

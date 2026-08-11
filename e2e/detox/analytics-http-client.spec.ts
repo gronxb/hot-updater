@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import { analytics } from "../../packages/analytics/src/index.ts";
 import { createHotUpdater } from "../../packages/server/src/index.ts";
 import {
-  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
+  type UniversalComponentSchema,
 } from "../../plugins/plugin-core/src/index.ts";
 import {
   ConsoleAnalyticsHttpError,
@@ -38,8 +38,8 @@ describe("Detox Analytics HTTP client", () => {
       }),
       name: "standaloneRepository",
     };
-    const serverDatabase = attachUniversalComponentDataAdapter(
-      createDatabasePlugin({
+    const serverDatabase = {
+      ...createDatabasePlugin({
         name: "deployed-server-database",
         plugin: () => ({
           count: vi.fn(async () => 0),
@@ -50,8 +50,8 @@ describe("Detox Analytics HTTP client", () => {
           update: vi.fn(async () => null),
         }),
       }),
-      () => ({
-        bind(schema) {
+      componentData: {
+        bind(schema: UniversalComponentSchema) {
           return {
             schema,
             append: vi.fn(async () => undefined),
@@ -61,8 +61,8 @@ describe("Detox Analytics HTTP client", () => {
             orderedScan: vi.fn(async () => []),
           };
         },
-      }),
-    );
+      },
+    };
     const deployedServer = createHotUpdater({
       basePath: "/hot-updater",
       database: serverDatabase,
