@@ -524,11 +524,9 @@ describe("deploy rollout wiring", () => {
   });
 
   it("rejects a transactionless two-platform deployment before any database mutation", async () => {
-    const transactionlessDatabasePlugin: DatabasePlugin = {
-      ...databasePlugin,
-      transaction: undefined,
-    };
-    const create = vi.spyOn(transactionlessDatabasePlugin, "create");
+    const { commitBatch: _commitBatch, ...transactionlessDatabasePlugin } =
+      databasePlugin;
+    const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
@@ -560,7 +558,7 @@ describe("deploy rollout wiring", () => {
     );
     expect(mockBuildPlugin.build).not.toHaveBeenCalled();
     expect(mockStoragePlugin.profiles.node.upload).not.toHaveBeenCalled();
-    expect(create).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
     expect(transactionlessDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
   });
 
@@ -604,11 +602,9 @@ describe("deploy rollout wiring", () => {
   });
 
   it("commits a transactionless single-platform deployment exactly once", async () => {
-    const transactionlessDatabasePlugin: DatabasePlugin = {
-      ...databasePlugin,
-      transaction: undefined,
-    };
-    const create = vi.spyOn(transactionlessDatabasePlugin, "create");
+    const { commitBatch: _commitBatch, ...transactionlessDatabasePlugin } =
+      databasePlugin;
+    const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
       compressStrategy: "tar.br",
@@ -631,24 +627,22 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(create).toHaveBeenCalledOnce();
+    expect(commit).toHaveBeenCalledOnce();
   });
 
   it("does not print deployment success when the database commit fails", async () => {
-    const originalTransaction = databasePlugin.transaction;
-    if (originalTransaction === undefined) {
+    const originalCommitBatch = databasePlugin.commitBatch;
+    if (originalCommitBatch === undefined) {
       throw new TypeError(
-        "Expected the database fixture to support transactions",
+        "Expected the database fixture to support atomic batches",
       );
     }
     const commitError = new Error("commit failed");
     const failingDatabasePlugin: DatabasePlugin = {
       ...databasePlugin,
-      transaction: async (operation) =>
-        originalTransaction(async (transaction) => {
-          await operation(transaction);
-          throw commitError;
-        }),
+      commitBatch: async () => {
+        throw commitError;
+      },
     };
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
@@ -681,34 +675,19 @@ describe("deploy rollout wiring", () => {
     expect(mockCli.p.outro).not.toHaveBeenCalled();
   });
 
-  it("runs deployment side effects once when the database transaction retries", async () => {
-    const originalTransaction = databasePlugin.transaction;
-    if (originalTransaction === undefined) {
+  it("runs deployment side effects once when a provider retries its commit internally", async () => {
+    const originalCommitBatch = databasePlugin.commitBatch;
+    if (originalCommitBatch === undefined) {
       throw new TypeError(
-        "Expected the database fixture to support transactions",
+        "Expected the database fixture to support atomic batches",
       );
     }
-    const retrySignal = new Error("retry transaction");
-    let transactionCallbackInvocationCount = 0;
+    let commitAttemptCount = 0;
     const retryingDatabasePlugin: DatabasePlugin = {
       ...databasePlugin,
-      transaction: async (operation) => {
-        try {
-          await originalTransaction(async (transaction) => {
-            transactionCallbackInvocationCount += 1;
-            await operation(transaction);
-            throw retrySignal;
-          });
-        } catch (error) {
-          if (error !== retrySignal) {
-            throw error;
-          }
-        }
-
-        return originalTransaction(async (transaction) => {
-          transactionCallbackInvocationCount += 1;
-          return operation(transaction);
-        });
+      commitBatch: async (inputs) => {
+        commitAttemptCount += 2;
+        return originalCommitBatch(inputs);
       },
     };
     mockCli.loadConfig.mockResolvedValue({
@@ -737,7 +716,7 @@ describe("deploy rollout wiring", () => {
       targetAppVersion: "1.0.x",
     });
 
-    expect(transactionCallbackInvocationCount).toBe(2);
+    expect(commitAttemptCount).toBe(2);
     expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
     expect(mockCli.createTarBrTargetFiles).toHaveBeenCalledTimes(2);
     expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalledTimes(6);

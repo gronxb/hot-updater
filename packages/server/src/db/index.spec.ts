@@ -918,13 +918,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       });
 
-      await adapter.findMany({
-        model: "bundles",
+      await adapter.bundles.findMany({
         limit: 10,
-        where: [
-          { field: "target_app_version", value: "1.0.x" },
-          { field: "target_app_version", operator: "ne", value: null },
-        ],
+        offset: 0,
+        orderBy: { field: "id", direction: "asc" },
+        where: {
+          targetAppVersion: "1.0.x",
+          targetAppVersionNotNull: true,
+        },
       });
 
       expect(bundles.findMany).toHaveBeenCalledWith(
@@ -960,13 +961,14 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       } as unknown as MongoClient;
       const adapter = mongoAdapter({ client });
 
-      await adapter.findMany({
-        model: "bundles",
+      await adapter.bundles.findMany({
         limit: 10,
-        where: [
-          { field: "target_app_version", value: "1.0.x" },
-          { field: "target_app_version", operator: "ne", value: null },
-        ],
+        offset: 0,
+        orderBy: { field: "id", direction: "asc" },
+        where: {
+          targetAppVersion: "1.0.x",
+          targetAppVersionNotNull: true,
+        },
       });
 
       expect(bundles.find).toHaveBeenCalledWith(
@@ -1301,13 +1303,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       });
 
-      if (!adapter.transaction) throw new Error("transaction is required");
-      await adapter.transaction((transaction) =>
-        transaction.create({
-          model: "bundles",
-          data: bundleToRow(transactionBundle),
-        }),
-      );
+      await adapter.commit({
+        operation: "insert",
+        bundleId: transactionBundle.id,
+        changes: [
+          {
+            table: "bundles",
+            operation: "insert",
+            row: bundleToRow(transactionBundle),
+          },
+        ],
+      });
 
       expect($transaction).toHaveBeenCalledTimes(1);
       expect(txBundles.create).toHaveBeenCalledTimes(1);
@@ -1369,13 +1375,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         provider: "postgresql",
       });
 
-      if (!adapter.transaction) throw new Error("transaction is required");
-      await adapter.transaction((transaction) =>
-        transaction.create({
-          model: "bundles",
-          data: bundleToRow(transactionBundle),
-        }),
-      );
+      await adapter.commit({
+        operation: "insert",
+        bundleId: transactionBundle.id,
+        changes: [
+          {
+            table: "bundles",
+            operation: "insert",
+            row: bundleToRow(transactionBundle),
+          },
+        ],
+      });
 
       expect(transaction).toHaveBeenCalledTimes(1);
       expect(txInsert).toHaveBeenCalledTimes(1);
@@ -1404,7 +1414,8 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       } as unknown as MongoClient;
       const adapter = mongoAdapter({ client });
 
-      expect(adapter.transaction).toBeUndefined();
+      expect(adapter.commitBatch).toBeUndefined();
+      expect(Reflect.has(adapter, "transaction")).toBe(false);
     });
 
     it("uses a MongoDB session when transactions are enabled", async () => {
@@ -1430,13 +1441,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       Object.defineProperty(client, "withSession", { value: withSession });
       const adapter = mongoAdapter({ client, transactions: true });
 
-      if (!adapter.transaction) throw new Error("transaction is required");
-      await adapter.transaction((transaction) =>
-        transaction.create({
-          model: "bundles",
-          data: bundleToRow(transactionBundle),
-        }),
-      );
+      await adapter.commit({
+        operation: "insert",
+        bundleId: transactionBundle.id,
+        changes: [
+          {
+            table: "bundles",
+            operation: "insert",
+            row: bundleToRow(transactionBundle),
+          },
+        ],
+      });
 
       expect(withSession).toHaveBeenCalledTimes(1);
       expect(withTransaction).toHaveBeenCalledTimes(1);

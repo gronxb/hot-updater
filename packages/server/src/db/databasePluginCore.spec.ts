@@ -26,7 +26,7 @@ describe("createDatabasePluginCore", () => {
 
   it("rejects invalid bundles before invoking low create", async () => {
     const plugin: DatabasePlugin = createInMemoryDatabasePlugin();
-    const create = vi.spyOn(plugin, "create");
+    const commit = vi.spyOn(plugin, "commit");
     const core = createDatabasePluginCore(plugin, resolveFileUrl);
     const result = core.api.insertBundle({
       ...currentBundle,
@@ -37,13 +37,13 @@ describe("createDatabasePluginCore", () => {
     await expect(result).rejects.toThrow(
       "Bundle must define either targetAppVersion or fingerprintHash.",
     );
-    expect(create).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
   });
 
   it("rejects invalid updates before invoking low update", async () => {
     const plugin: DatabasePlugin = createInMemoryDatabasePlugin();
     await createDatabaseClient(plugin).insertBundle(currentBundle);
-    const update = vi.spyOn(plugin, "update");
+    const commit = vi.spyOn(plugin, "commit");
     const core = createDatabasePluginCore(plugin, resolveFileUrl);
     const result = core.api.updateBundleById(currentBundle.id, {
       id: "00000000-0000-0000-0000-000000000099",
@@ -54,6 +54,6 @@ describe("createDatabasePluginCore", () => {
     await expect(result).rejects.toThrow(
       "Bundle must define either targetAppVersion or fingerprintHash.",
     );
-    expect(update).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
   });
 });

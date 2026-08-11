@@ -5,11 +5,7 @@ import {
 } from "@hot-updater/core";
 
 import { bundleMetadataToRow } from "./databaseMetadata";
-import type {
-  BundlePatchRow,
-  BundleRowUpdate,
-  TransactionDatabasePlugin,
-} from "./types";
+import type { BundlePatchRow, BundleRowUpdate } from "./types";
 
 export class DatabasePatchUpdateUnsupportedError extends Error {
   readonly name = "DatabasePatchUpdateUnsupportedError";
@@ -83,36 +79,3 @@ export const bundleUpdateToPatchRows = (
     patch_storage_uri: patch.patchStorageUri,
     order_index: orderIndex,
   }));
-
-export const updateBundle = async (
-  database: TransactionDatabasePlugin,
-  bundleId: string,
-  update: Partial<Bundle>,
-): Promise<boolean> => {
-  const rowUpdate = bundleUpdateToRow(update);
-  const patchesPresent = Object.hasOwn(update, "patches");
-  const updated =
-    Object.keys(rowUpdate).length > 0
-      ? await database.update({
-          model: "bundles",
-          where: [{ field: "id", value: bundleId }],
-          update: rowUpdate,
-          select: ["id"],
-        })
-      : await database.findOne({
-          model: "bundles",
-          where: [{ field: "id", value: bundleId }],
-          select: ["id"],
-        });
-  if (!updated) return false;
-  if (!patchesPresent) return true;
-
-  await database.delete({
-    model: "bundle_patches",
-    where: [{ field: "bundle_id", value: bundleId }],
-  });
-  for (const patch of bundleUpdateToPatchRows(bundleId, update)) {
-    await database.create({ model: "bundle_patches", data: patch });
-  }
-  return true;
-};

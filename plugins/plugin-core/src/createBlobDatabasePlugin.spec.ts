@@ -12,6 +12,7 @@ import {
   type BlobInvalidationFailure,
 } from "./createBlobDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
+import type { BundleRow, BundleRowUpdate, DatabasePlugin } from "./types";
 
 type MemoryConfig = {
   readonly store: Map<string, unknown>;
@@ -66,6 +67,24 @@ const createMemoryPlugin = (
     }),
   });
 
+const insertBundleRow = (plugin: DatabasePlugin, row: BundleRow) =>
+  plugin.commit({
+    operation: "insert",
+    bundleId: row.id,
+    changes: [{ table: "bundles", operation: "insert", row }],
+  });
+
+const updateBundleRow = (
+  plugin: DatabasePlugin,
+  id: string,
+  update: BundleRowUpdate,
+) =>
+  plugin.commit({
+    operation: "update",
+    bundleId: id,
+    changes: [{ table: "bundles", operation: "update", id, update }],
+  });
+
 const store = new Map<string, unknown>();
 const invalidations: string[][] = [];
 let uploadShouldFail = false;
@@ -109,7 +128,7 @@ describe("blob snapshot persistence", () => {
     store.set("production/ios/1.0.0/update.json", [base, target]);
 
     const plugin = createMemoryPlugin(config());
-    const patches = await plugin.findMany({ model: "bundle_patches" });
+    const patches = await plugin.bundlePatches.findByBundleIds([target.id]);
 
     expect(patches).toEqual([
       {
@@ -150,12 +169,24 @@ describe("blob snapshot persistence", () => {
 
   it("writes deterministic fixed-model snapshots", async () => {
     const plugin = createMemoryPlugin(config());
-    await plugin.create({ model: "bundles", data: bundleRow("2") });
-    await plugin.create({ model: "bundles", data: bundleRow("1") });
-    await plugin.delete({
-      model: "bundles",
-      where: [{ field: "channel", value: "production" }],
-    });
+    await insertBundleRow(plugin, bundleRow("2"));
+    await insertBundleRow(plugin, bundleRow("1"));
+    await plugin.commitBatch?.([
+      {
+        operation: "delete",
+        bundleId: fixtureId("1"),
+        changes: [
+          { table: "bundles", operation: "delete", id: fixtureId("1") },
+        ],
+      },
+      {
+        operation: "delete",
+        bundleId: fixtureId("2"),
+        changes: [
+          { table: "bundles", operation: "delete", id: fixtureId("2") },
+        ],
+      },
+    ]);
 
     expect(activeSnapshot()).toEqual({
       version: 2,
@@ -203,10 +234,7 @@ describe("blob snapshot persistence", () => {
 
     const reader = createMemoryPlugin(config());
     await expect(
-      reader.findOne({
-        model: "bundles",
-        where: [{ field: "id", value: fixtureId("1") }],
-      }),
+      reader.bundles.findById(fixtureId("1")),
     ).resolves.toMatchObject({ id: fixtureId("1") });
     expect(invalidatePaths).toHaveBeenCalledTimes(3);
     expect(onInvalidationError).toHaveBeenCalledTimes(1);
@@ -264,7 +292,7 @@ describe("blob snapshot persistence", () => {
     store.set(BLOB_DATABASE_SNAPSHOT_KEY, corrupt);
     const plugin = createMemoryPlugin(config());
 
-    await expect(plugin.count({ model: "bundles" })).rejects.toThrow(
+    await expect(plugin.bundles.count()).rejects.toThrow(
       "Invalid blob database data",
     );
 
@@ -273,21 +301,15 @@ describe("blob snapshot persistence", () => {
 
   it("invalidates exact, range, and fingerprint update routes", async () => {
     const plugin = createMemoryPlugin(config());
-    await plugin.create({ model: "bundles", data: bundleRow("1") });
-    await plugin.create({
-      model: "bundles",
-      data: {
-        ...bundleRow("2"),
-        target_app_version: ">=1.0.0 <2.0.0",
-      },
+    await insertBundleRow(plugin, bundleRow("1"));
+    await insertBundleRow(plugin, {
+      ...bundleRow("2"),
+      target_app_version: ">=1.0.0 <2.0.0",
     });
-    await plugin.create({
-      model: "bundles",
-      data: {
-        ...bundleRow("3"),
-        target_app_version: null,
-        fingerprint_hash: "fingerprint-3",
-      },
+    await insertBundleRow(plugin, {
+      ...bundleRow("3"),
+      target_app_version: null,
+      fingerprint_hash: "fingerprint-3",
     });
 
     expect(invalidations.flat()).toEqual(
@@ -520,20 +542,14 @@ describe("blob snapshot persistence", () => {
 
   it("separates app-version and fingerprint manifest namespaces", async () => {
     const plugin = createMemoryPlugin(config());
-    await plugin.create({
-      model: "bundles",
-      data: {
-        ...bundleRow("4"),
-        target_app_version: "fingerprint-4",
-      },
+    await insertBundleRow(plugin, {
+      ...bundleRow("4"),
+      target_app_version: "fingerprint-4",
     });
-    await plugin.create({
-      model: "bundles",
-      data: {
-        ...bundleRow("5"),
-        target_app_version: null,
-        fingerprint_hash: "fingerprint-4",
-      },
+    await insertBundleRow(plugin, {
+      ...bundleRow("5"),
+      target_app_version: null,
+      fingerprint_hash: "fingerprint-4",
     });
 
     expect(
@@ -548,10 +564,7 @@ describe("blob snapshot persistence", () => {
     const plugin = createMemoryPlugin(config());
 
     await expect(
-      plugin.create({
-        model: "bundles",
-        data: { ...bundleRow("6"), channel: "release/*" },
-      }),
+      insertBundleRow(plugin, { ...bundleRow("6"), channel: "release/*" }),
     ).rejects.toMatchObject({
       name: "BlobDatabaseUnsafeRouteSegmentError",
       field: "channel",
@@ -567,10 +580,7 @@ describe("blob snapshot persistence", () => {
       const plugin = createMemoryPlugin(config());
 
       await expect(
-        plugin.create({
-          model: "bundles",
-          data: { ...bundleRow("6"), channel },
-        }),
+        insertBundleRow(plugin, { ...bundleRow("6"), channel }),
       ).rejects.toMatchObject({
         name: "BlobDatabaseUnsafeRouteSegmentError",
         field: "channel",
@@ -640,11 +650,11 @@ describe("blob snapshot persistence", () => {
   it("reloads the latest snapshot written by another plugin instance", async () => {
     const first = createMemoryPlugin(config());
     const second = createMemoryPlugin(config());
-    await first.count({ model: "bundles" });
+    await first.bundles.count();
 
-    await second.create({ model: "bundles", data: bundleRow("1") });
+    await insertBundleRow(second, bundleRow("1"));
 
-    await expect(first.count({ model: "bundles" })).resolves.toBe(1);
+    await expect(first.bundles.count()).resolves.toBe(1);
   });
 
   it("preserves concurrent writes across plugin instances", async () => {
@@ -654,16 +664,13 @@ describe("blob snapshot persistence", () => {
 
     await Promise.all(
       plugins.map((plugin, index) =>
-        plugin.create({
-          model: "bundles",
-          data: bundleRow(String(index + 1)),
-        }),
+        insertBundleRow(plugin, bundleRow(String(index + 1))),
       ),
     );
 
     const reader = plugins[0];
     if (!reader) throw new Error("Expected a concurrent plugin fixture.");
-    await expect(reader.count({ model: "bundles" })).resolves.toBe(5);
+    await expect(reader.bundles.count()).resolves.toBe(5);
   });
 
   it("merges a disjoint concurrent write without rerunning the callback", async () => {
@@ -682,26 +689,17 @@ describe("blob snapshot persistence", () => {
         }
       },
     });
-    const mutation = vi.fn(async (database) => {
-      await database.create({
-        model: "bundles",
-        data: bundleRow("1"),
-      });
-      return "created";
-    });
-    if (!plugin.transaction) {
-      throw new Error("Expected a transactional blob plugin fixture.");
-    }
+    const mutation = vi.fn(() => insertBundleRow(plugin, bundleRow("1")));
 
-    await expect(plugin.transaction(mutation)).resolves.toBe("created");
+    await expect(mutation()).resolves.toEqual({ applied: true });
 
     expect(mutation).toHaveBeenCalledTimes(1);
-    await expect(plugin.count({ model: "bundles" })).resolves.toBe(2);
+    await expect(plugin.bundles.count()).resolves.toBe(2);
   });
 
   it("rejects conflicting writes to the same row without rerunning the callback", async () => {
     const seed = createMemoryPlugin(config());
-    await seed.create({ model: "bundles", data: bundleRow("1") });
+    await insertBundleRow(seed, bundleRow("1"));
     let snapshotReads = 0;
     const externalSnapshot = {
       version: 2 as const,
@@ -717,18 +715,11 @@ describe("blob snapshot persistence", () => {
         }
       },
     });
-    const mutation = vi.fn(async (database) => {
-      await database.update({
-        model: "bundles",
-        where: [{ field: "id", value: fixtureId("1") }],
-        update: { message: "local" },
-      });
-    });
-    if (!plugin.transaction) {
-      throw new Error("Expected a transactional blob plugin fixture.");
-    }
+    const mutation = vi.fn(() =>
+      updateBundleRow(plugin, fixtureId("1"), { message: "local" }),
+    );
 
-    await expect(plugin.transaction(mutation)).rejects.toThrow(
+    await expect(mutation()).rejects.toThrow(
       "changed while a mutation was in progress",
     );
 

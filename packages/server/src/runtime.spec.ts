@@ -172,9 +172,11 @@ describe("runtime createHotUpdater", () => {
 
   it("does not pass handler context to generic database queries", async () => {
     const request = new Request(updateUrl);
-    const database = createRuntimeDatabase();
+    const { getUpdateInfo: ignoredGetUpdateInfo, ...database } =
+      createRuntimeDatabase();
+    void ignoredGetUpdateInfo;
     await createDatabaseClient(database).insertBundle(runtimeBundle);
-    const findMany = vi.spyOn(database, "findMany");
+    const findMany = vi.spyOn(database.bundles, "findMany");
     const hotUpdater = createHotUpdater({
       database,
       storages: [

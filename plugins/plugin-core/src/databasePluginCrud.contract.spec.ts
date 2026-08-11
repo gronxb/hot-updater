@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDatabasePlugin } from "./createDatabasePlugin";
+import { createDatabasePluginCrud } from "./databasePluginCrud";
+import type { DatabasePluginImplementation } from "./types";
 
 class MissingPluginOperationError extends Error {}
 
@@ -16,6 +17,11 @@ const createMethods = () => ({
   findOne: unimplemented,
   findMany: unimplemented,
 });
+
+const createDatabasePlugin = (options: {
+  readonly name: string;
+  readonly plugin: () => DatabasePluginImplementation;
+}) => createDatabasePluginCrud(options.plugin());
 
 const bundleRow = {
   id: "bundle-1",

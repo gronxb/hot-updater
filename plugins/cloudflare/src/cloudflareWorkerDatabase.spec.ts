@@ -10,6 +10,8 @@ const db: D1Like = {
       }),
     }),
   }),
+  batch: async (statements) =>
+    Promise.all(statements.map((item) => item.all())),
 };
 
 it("uses the configured D1 binding without request context", async () => {

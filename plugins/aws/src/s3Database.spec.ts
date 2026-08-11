@@ -14,6 +14,8 @@ import {
 import {
   BLOB_DATABASE_SNAPSHOT_KEY,
   createDatabaseClient,
+  type BundleRow,
+  type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import {
   setupDatabasePluginTestSuite,
@@ -138,7 +140,7 @@ describe("s3Database storage behavior", () => {
   it("writes an immutable revision below the configured base path", async () => {
     const plugin = s3Database({ bucketName, basePath: "/metadata/" });
 
-    await plugin.create({ model: "bundles", data: bundleRow("1") });
+    await insertBundleRow(plugin, bundleRow("1"));
 
     const pointerKey = `metadata/${BLOB_DATABASE_SNAPSHOT_KEY}`;
     const revision = readActiveRevision(pointerKey);
@@ -178,11 +180,11 @@ describe("s3Database storage behavior", () => {
 
   it("uses the loaded snapshot ETag for conditional replacement", async () => {
     const plugin = s3Database({ bucketName });
-    await plugin.create({ model: "bundles", data: bundleRow("1") });
+    await insertBundleRow(plugin, bundleRow("1"));
     const previous = objects.get(BLOB_DATABASE_SNAPSHOT_KEY);
     if (previous === undefined) throw new Error("Snapshot was not written.");
 
-    await plugin.create({ model: "bundles", data: bundleRow("2") });
+    await insertBundleRow(plugin, bundleRow("2"));
 
     const snapshotWrites = s3Mock
       .commandCalls(PutObjectCommand)
@@ -194,7 +196,7 @@ describe("s3Database storage behavior", () => {
 
   it("merges a concurrent snapshot when the conditional write loses", async () => {
     const plugin = s3Database({ bucketName });
-    await plugin.create({ model: "bundles", data: bundleRow("1") });
+    await insertBundleRow(plugin, bundleRow("1"));
     const externalRevision = "00000000-0000-7000-8000-000000000099";
     const external = JSON.stringify({
       version: 2,
@@ -213,14 +215,11 @@ describe("s3Database storage behavior", () => {
       value: external,
     };
 
-    await plugin.create({ model: "bundles", data: bundleRow("2") });
+    await insertBundleRow(plugin, bundleRow("2"));
 
-    await expect(plugin.count({ model: "bundles" })).resolves.toBe(3);
+    await expect(plugin.bundles.count()).resolves.toBe(3);
     await expect(
-      plugin.findOne({
-        model: "bundles",
-        where: [{ field: "id", value: bundleRow("99").id }],
-      }),
+      plugin.bundles.findById(bundleRow("99").id),
     ).resolves.toMatchObject(bundleRow("99"));
   });
 
@@ -229,7 +228,7 @@ describe("s3Database storage behavior", () => {
       bucketName,
       cloudfrontDistributionId: "distribution-1",
     });
-    await plugin.create({ model: "bundles", data: bundleRow("1") });
+    await insertBundleRow(plugin, bundleRow("1"));
 
     expect(
       cloudFrontMock.commandCalls(CreateInvalidationCommand).at(-1)?.args[0]
@@ -261,9 +260,9 @@ describe("s3Database storage behavior", () => {
       cloudfrontDistributionId: "distribution-1",
     });
 
-    await expect(
-      plugin.create({ model: "bundles", data: bundleRow("1") }),
-    ).resolves.toEqual(bundleRow("1"));
+    await expect(insertBundleRow(plugin, bundleRow("1"))).resolves.toEqual({
+      applied: true,
+    });
 
     expect(cloudFrontMock.commandCalls(CreateInvalidationCommand)).toHaveLength(
       2,
@@ -280,15 +279,15 @@ describe("s3Database storage behavior", () => {
       cloudfrontDistributionId: "distribution-1",
     });
 
-    await expect(
-      plugin.create({ model: "bundles", data: bundleRow("1") }),
-    ).resolves.toEqual(bundleRow("1"));
+    await expect(insertBundleRow(plugin, bundleRow("1"))).resolves.toEqual({
+      applied: true,
+    });
 
     expect(cloudFrontMock.commandCalls(CreateInvalidationCommand)).toHaveLength(
       3,
     );
     expect(warn).toHaveBeenCalledOnce();
-    await expect(plugin.count({ model: "bundles" })).resolves.toBe(1);
+    await expect(plugin.bundles.count()).resolves.toBe(1);
     warn.mockRestore();
   });
 
@@ -297,12 +296,9 @@ describe("s3Database storage behavior", () => {
       bucketName,
       cloudfrontDistributionId: "distribution-1",
     });
-    await plugin.create({
-      model: "bundles",
-      data: {
-        ...bundleRow("1"),
-        channel: "release candidate",
-      },
+    await insertBundleRow(plugin, {
+      ...bundleRow("1"),
+      channel: "release candidate",
     });
 
     expect(
@@ -315,7 +311,7 @@ describe("s3Database storage behavior", () => {
 
   it("fails closed when an active revision manifest is archived", async () => {
     const plugin = s3Database({ bucketName });
-    await plugin.create({ model: "bundles", data: bundleRow("1") });
+    await insertBundleRow(plugin, bundleRow("1"));
     const revision = readActiveRevision(BLOB_DATABASE_SNAPSHOT_KEY);
     const manifestKey = [...objects.keys()].find(
       (key) =>
@@ -340,9 +336,9 @@ describe("s3Database storage behavior", () => {
   it("rejects an empty active database root", async () => {
     objects.set(BLOB_DATABASE_SNAPSHOT_KEY, "");
 
-    await expect(
-      s3Database({ bucketName }).count({ model: "bundles" }),
-    ).rejects.toThrow("is empty");
+    await expect(s3Database({ bucketName }).bundles.count()).rejects.toThrow(
+      "is empty",
+    );
   });
 
   it("does not create invalidations without a distribution", async () => {
@@ -352,7 +348,7 @@ describe("s3Database storage behavior", () => {
     const plugin = s3Database({
       bucketName,
     });
-    await plugin.create({ model: "bundles", data: bundleRow("1") });
+    await insertBundleRow(plugin, bundleRow("1"));
 
     expect(cloudFrontMock.commandCalls(CreateInvalidationCommand)).toHaveLength(
       previousInvalidationCount,
@@ -382,3 +378,10 @@ const bundleRow = (suffix: string) => ({
   manifest_file_hash: null,
   asset_base_storage_uri: null,
 });
+
+const insertBundleRow = (plugin: DatabasePlugin, row: BundleRow) =>
+  plugin.commit({
+    operation: "insert",
+    bundleId: row.id,
+    changes: [{ table: "bundles", operation: "insert", row }],
+  });

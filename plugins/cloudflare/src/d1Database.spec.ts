@@ -60,7 +60,7 @@ beforeEach(() => {
   state.results.length = 0;
 });
 
-it("projects selected fields after querying physical bundle columns", async () => {
+it("queries bundles through domain filters", async () => {
   state.results.push(bundleD1Row);
   const plugin = d1Database({
     accountId: "account",
@@ -68,31 +68,25 @@ it("projects selected fields after querying physical bundle columns", async () =
     databaseId: "database",
   });
 
-  const rows = await plugin.findMany({
-    model: "bundles",
-    where: [
-      {
-        field: "message",
-        operator: "contains",
-        value: "release",
-        mode: "insensitive",
-      },
-    ],
-    orderBy: [
-      { field: "channel", direction: "asc", nulls: "last" },
-      { field: "id", direction: "desc" },
-    ],
-    select: ["id", "enabled"],
+  const rows = await plugin.bundles.findMany({
+    where: { channel: "production", id: { gte: "bundle-1" } },
+    orderBy: { field: "id", direction: "desc" },
     limit: 10,
+    offset: 0,
   });
 
-  expect(rows).toEqual([{ id: "bundle-1", enabled: true }]);
-  expect(state.queries[0]?.sql).toContain(
-    "lower(message) LIKE lower(json_extract(?, '$'))",
-  );
-  expect(state.queries[0]?.sql).toContain(
-    "ORDER BY channel ASC NULLS LAST, id DESC",
-  );
+  expect(rows).toEqual([
+    {
+      ...bundleD1Row,
+      enabled: true,
+      metadata: { version: 1 },
+      should_force_update: false,
+      target_cohorts: ["stable"],
+    },
+  ]);
+  expect(state.queries[0]?.sql).toContain("channel = json_extract(?, '$')");
+  expect(state.queries[0]?.sql).toContain("id >= json_extract(?, '$')");
+  expect(state.queries[0]?.sql).toContain("ORDER BY id DESC");
 });
 
 it("uses a native distinct channel query", async () => {
@@ -111,7 +105,7 @@ it("uses a native distinct channel query", async () => {
   );
 });
 
-it("counts compound distinct tuples in SQL", async () => {
+it("counts domain-filtered bundle rows in SQL", async () => {
   state.results.push({ count: 3 });
   const plugin = d1Database({
     accountId: "account",
@@ -119,35 +113,11 @@ it("counts compound distinct tuples in SQL", async () => {
     databaseId: "database",
   });
 
-  await plugin.count({
-    model: "bundles",
-    distinct: ["platform", "channel"],
-  });
-
-  expect(state.queries[0]?.sql).toBe(
-    "SELECT COUNT(*) AS count FROM (SELECT DISTINCT platform, channel FROM bundles) AS distinct_rows",
-  );
-});
-
-it("selects one ordered row per distinct key in SQL", async () => {
-  state.results.push(bundleD1Row);
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-
-  await plugin.findMany({
-    model: "bundles",
-    distinctOn: { fields: ["channel"] },
-    orderBy: [
-      { field: "channel", direction: "asc" },
-      { field: "id", direction: "asc" },
-    ],
-  });
+  await plugin.bundles.count({ platform: "ios", channel: "production" });
 
   expect(state.queries[0]?.sql).toContain(
-    "ROW_NUMBER() OVER (PARTITION BY channel ORDER BY channel ASC, id ASC)",
+    "SELECT COUNT(*) AS count FROM bundles",
   );
-  expect(state.queries[0]?.sql).toContain("WHERE __hot_updater_rank = 1");
+  expect(state.queries[0]?.sql).toContain("platform = json_extract(?, '$')");
+  expect(state.queries[0]?.sql).toContain("channel = json_extract(?, '$')");
 });

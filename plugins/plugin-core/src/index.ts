@@ -5,6 +5,7 @@ export * from "./contentAddressedAssets";
 export * from "./createBlobDatabasePlugin";
 export {
   createDatabasePlugin,
+  DatabaseAtomicCommitUnsupportedError,
   DatabasePluginInputError,
   type CreateDatabasePluginOptions,
   type DatabasePluginInputErrorCode,
