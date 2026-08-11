@@ -1,6 +1,9 @@
 export { createHandler } from "./handler";
 export type { HandlerAPI, HandlerOptions, HandlerRoutes } from "./handler";
-export { createHotUpdater } from "./createHotUpdaterCore";
+export {
+  createHotUpdater,
+  requireUniversalComponentDataSource,
+} from "./createHotUpdaterCore";
 export type {
   CreateHotUpdaterOptions,
   HotUpdaterAPI,

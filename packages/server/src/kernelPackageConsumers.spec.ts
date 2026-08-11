@@ -127,7 +127,7 @@ void getCapabilityContributions(carrier);`,
       await typeCheckPackedConsumer(
         "server",
         `server-consumer.${extension}`,
-        `import { createHotUpdater, type CreateHotUpdaterOptions } from "@hot-updater/server";
+        `import { createHotUpdater, requireUniversalComponentDataSource as requireRuntimeComponentSource, type CreateHotUpdaterOptions } from "@hot-updater/server";
 import { generateUniversalComponentArtifacts, migrateUniversalComponents, requireUniversalComponentDataSource, type UniversalComponentGeneratedArtifact } from "@hot-updater/server/db";
 import { defineUniversalComponentSchema } from "@hot-updater/plugin-core";
 import { defineFirstPartyServerPlugin, type FirstPartyServerPlugin, type HotUpdaterRoutePolicy } from "@hot-updater/server/internal/first-party-plugin";
@@ -137,6 +137,7 @@ const routePolicy: HotUpdaterRoutePolicy = { kind: "protect-all" };
 const acceptOptions = (_options: CreateHotUpdaterOptions): void => undefined;
 void acceptOptions;
 void createHotUpdater;
+void requireRuntimeComponentSource;
 void generateUniversalComponentArtifacts;
 void migrateUniversalComponents;
 void requireUniversalComponentDataSource;
