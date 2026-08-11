@@ -1,10 +1,7 @@
 // @vitest-environment node
 
 import { analyticsComponentSchema } from "@hot-updater/analytics";
-import {
-  attachUniversalComponentDataAdapter,
-  createDatabasePlugin,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -58,15 +55,12 @@ describe("analytics runtime input validation", () => {
       assertReady: vi.fn(async () => undefined),
       orderedScan: vi.fn(async () => []),
     }));
-    const database = attachUniversalComponentDataAdapter(
-      createDatabase(),
-      () => ({ bind }),
-    );
+    const database = { ...createDatabase(), componentData: { bind } };
 
     // When
     const runtime = createRuntimeHotUpdater({
       database,
-    } as Parameters<typeof createRuntimeHotUpdater>[0]);
+    });
 
     // Then
     expect(bind).toHaveBeenCalledWith(analyticsComponentSchema);
@@ -86,7 +80,7 @@ describe("analytics runtime input validation", () => {
     expect(
       createRuntimeHotUpdater({
         database: createDatabase(),
-      } as Parameters<typeof createRuntimeHotUpdater>[0]),
+      }),
     ).toBeNull();
   });
 

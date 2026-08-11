@@ -11,12 +11,7 @@ import {
   parseAnalyticsProvider,
   resolveAnalyticsCapability,
 } from "@hot-updater/analytics/provider";
-import type { ConfigResponse } from "@hot-updater/cli-tools";
-import {
-  type HotUpdaterInfrastructureRuntime,
-  universalComponentDataAdapterCapability,
-} from "@hot-updater/plugin-core";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
 
 import {
   parseActiveInstallationInput,
@@ -31,21 +26,11 @@ export type InstallationSearchResult =
 export type InstallationHistoryResult =
   OffsetPaginationResult<InstallationHistoryRow>;
 
-export function createRuntimeHotUpdater(
-  config: ConfigResponse,
-): AnalyticsProvider | null {
-  const contribution = getCapabilityContributions(config.database).find(
-    ({ token }) => token === universalComponentDataAdapterCapability,
-  );
-  if (!contribution) return null;
-
-  const runtime: HotUpdaterInfrastructureRuntime = Object.freeze({
-    database: config.database,
-    storages: Object.freeze([]),
-  });
-  const adapter = universalComponentDataAdapterCapability.parse(
-    Reflect.apply(contribution.create, undefined, [runtime]),
-  );
+export function createRuntimeHotUpdater(config: {
+  readonly database: DatabasePlugin;
+}): AnalyticsProvider | null {
+  const adapter = config.database.componentData;
+  if (adapter === undefined) return null;
   return createUniversalComponentAnalyticsProvider(
     adapter.bind(analyticsComponentSchema),
   );
