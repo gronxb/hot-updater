@@ -287,9 +287,7 @@ describe("Firebase project creation", () => {
       envFile: ".env.hotupdater",
     });
 
-    expect(cert).toHaveBeenCalledWith(
-      "/tmp/firebase-credentials.json",
-    );
+    expect(cert).toHaveBeenCalledWith("/tmp/firebase-credentials.json");
     expect(firebaseDatabase).toHaveBeenCalledWith({
       credential: mocks.firebaseCredential,
       projectId: "existing-project",
