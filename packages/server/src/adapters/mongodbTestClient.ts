@@ -1,4 +1,5 @@
 import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
+import type { ClientSession } from "mongodb";
 import { MongoClient } from "mongodb";
 
 import {
@@ -178,9 +179,31 @@ export const createMongoTestHarness = () => {
     failNextBundleTombstone: false,
     operationCount: 0,
   };
+  let activeTables = tables;
   const client = new MongoClient("mongodb://127.0.0.1:27017/hot_updater_test");
   Object.defineProperty(client, "db", {
-    value: () => createDatabase(tables, hooks),
+    value: () => createDatabase(activeTables, hooks),
+  });
+  Object.defineProperty(client, "withSession", {
+    value: async (
+      callback: (session: ClientSession) => Promise<unknown>,
+    ): Promise<unknown> => {
+      const session = {
+        withTransaction: async (transaction: () => Promise<unknown>) => {
+          const staged = structuredClone(tables);
+          activeTables = staged;
+          try {
+            const result = await transaction();
+            tables.bundle_patches = staged.bundle_patches;
+            tables.bundles = staged.bundles;
+            return result;
+          } finally {
+            activeTables = tables;
+          }
+        },
+      } as unknown as ClientSession;
+      return callback(session);
+    },
   });
   return {
     client,

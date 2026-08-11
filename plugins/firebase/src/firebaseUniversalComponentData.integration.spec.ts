@@ -3,12 +3,10 @@ import {
   getUniversalComponentSchemaMarkerKey,
   type UniversalComponentDataAdapter,
   type UniversalComponentDataSource,
-  universalComponentDataAdapterCapability,
   UniversalComponentDataNotReadyError,
   UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
 } from "@hot-updater/plugin-core";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import {
   setupUniversalComponentDataAdapterTestSuite,
   setupUniversalComponentMigrationTestSuite,
@@ -133,15 +131,10 @@ const createAdapter = (): UniversalComponentDataAdapter => {
     projectId: PROJECT_ID,
     storageBucket: `${PROJECT_ID}.appspot.com`,
   });
-  const contribution = getCapabilityContributions(database).find(
-    ({ token }) => token.id === universalComponentDataAdapterCapability.id,
-  );
-  if (contribution === undefined) {
-    throw new Error("Missing universal component data adapter capability");
+  if (database.componentData === undefined) {
+    throw new Error("Missing universal component data adapter");
   }
-  return universalComponentDataAdapterCapability.parse(
-    contribution.create({ database, storages: [] }),
-  );
+  return database.componentData;
 };
 
 let conformanceIndexError: Error | null = null;

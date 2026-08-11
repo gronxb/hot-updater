@@ -1,13 +1,13 @@
 import { createDatabasePluginCrud } from "./databasePluginCrud";
 import type {
+  DatabasePluginCrud,
   DatabasePluginImplementation,
-  TransactionDatabasePlugin,
   TransactionDatabasePluginImplementation,
 } from "./types";
 
 export const createTransactionDatabasePlugin = (
   implementation: TransactionDatabasePluginImplementation,
-): TransactionDatabasePlugin => {
+): DatabasePluginCrud => {
   const pluginImplementation: DatabasePluginImplementation = {
     ...implementation,
   };

@@ -12,10 +12,13 @@ describe("isDatabasePlugin", () => {
     expect(result).toBe(true);
   });
 
-  it("rejects a v1 factory and non-callable CRUD fields", () => {
+  it("rejects a v1 factory and non-callable domain fields", () => {
     const plugin = createInMemoryDatabasePlugin();
     const factory = () => plugin;
-    const malformed = { ...plugin, findMany: null };
+    const malformed = {
+      ...plugin,
+      bundles: { ...plugin.bundles, findMany: null },
+    };
 
     const factoryResult = isDatabasePlugin(factory);
     const malformedResult = isDatabasePlugin(malformed);

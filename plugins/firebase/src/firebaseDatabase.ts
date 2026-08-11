@@ -1,6 +1,5 @@
 import { NIL_UUID, type Bundle, type GetBundlesArgs } from "@hot-updater/core";
 import {
-  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
   type DatabasePlugin,
   type DatabasePluginImplementation,
@@ -248,7 +247,8 @@ export function firebaseDatabase(config: AppOptions): DatabasePlugin {
       };
     },
   });
-  return attachUniversalComponentDataAdapter(database, () =>
-    createFirebaseUniversalComponentDataAdapter(getFirestore()),
-  );
+  return {
+    ...database,
+    componentData: createFirebaseUniversalComponentDataAdapter(getFirestore()),
+  };
 }

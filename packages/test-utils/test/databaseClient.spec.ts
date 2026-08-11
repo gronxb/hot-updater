@@ -2,6 +2,7 @@ import type { Bundle } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 import {
   createDatabaseClient,
+  DatabaseAtomicCommitUnsupportedError,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -184,11 +185,17 @@ describe("database client", () => {
         },
       ],
     });
-    const { transaction: ignoredTransaction, ...sequentialPlugin } = plugin;
-    void ignoredTransaction;
+    const { commitBatch: ignoredCommitBatch, ...sequentialPlugin } = plugin;
+    void ignoredCommitBatch;
     const client = createDatabaseClient({
       ...sequentialPlugin,
       name: plugin.name,
+      commit: (input) => {
+        if (input.changes.length > 1) {
+          throw new DatabaseAtomicCommitUnsupportedError(plugin.name);
+        }
+        return plugin.commit(input);
+      },
       onDatabaseUpdated: hook,
     });
 

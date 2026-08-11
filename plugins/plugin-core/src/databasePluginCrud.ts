@@ -18,7 +18,7 @@ import {
 import type {
   CountDatabaseImplementationInput,
   CreateDatabaseImplementationInput,
-  DatabasePlugin,
+  DatabasePluginCrud as DatabasePluginCrudContract,
   DatabasePluginImplementation,
   DeleteDatabaseImplementationInput,
   FindManyDatabasePluginInput,
@@ -32,10 +32,7 @@ export {
   type DatabasePluginInputErrorCode,
 } from "./databasePluginCrudValidation";
 
-export type DatabasePluginCrud = Pick<
-  DatabasePlugin,
-  "count" | "create" | "delete" | "findMany" | "findOne" | "update"
->;
+export type DatabasePluginCrud = DatabasePluginCrudContract;
 
 export const createDatabasePluginCrud = (
   implementation: DatabasePluginImplementation,

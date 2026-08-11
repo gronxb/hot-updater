@@ -1,11 +1,3 @@
-import {
-  attachCapabilityContribution,
-  defineSharedCapability,
-} from "./capabilities";
-import type {
-  CapabilityToken,
-  HotUpdaterInfrastructureRuntime,
-} from "./capabilities";
 import { isDatabaseJsonValue } from "./databaseJsonValue";
 import type { DatabaseJsonObject, DatabaseJsonValue } from "./types";
 
@@ -1096,23 +1088,6 @@ export const parseUniversalComponentDataAdapter = (
   }
   return value as UniversalComponentDataAdapter;
 };
-
-export const universalComponentDataAdapterCapability: CapabilityToken<UniversalComponentDataAdapter> =
-  defineSharedCapability({
-    id: "hot-updater.component-data.adapter@1",
-    parse: parseUniversalComponentDataAdapter,
-  });
-
-export const attachUniversalComponentDataAdapter = <TCarrier extends object>(
-  carrier: TCarrier extends (...args: never[]) => unknown ? never : TCarrier,
-  create: (
-    runtime: HotUpdaterInfrastructureRuntime,
-  ) => UniversalComponentDataAdapter,
-): TCarrier =>
-  attachCapabilityContribution(carrier, {
-    create,
-    token: universalComponentDataAdapterCapability,
-  });
 
 export const isUniversalComponentDataValue = (
   value: unknown,

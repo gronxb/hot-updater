@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDatabasePlugin } from "./createDatabasePlugin";
-import type { DatabasePluginImplementation } from "./types";
+import {
+  createDatabasePlugin,
+  DatabaseAtomicCommitUnsupportedError,
+} from "./createDatabasePlugin";
+import type { DatabaseCommit, DatabasePluginImplementation } from "./types";
 
 class UnimplementedPluginMethodError extends Error {}
 
@@ -9,7 +12,7 @@ const unimplemented = async (): Promise<never> => {
   throw new UnimplementedPluginMethodError();
 };
 
-const createMethods = () => ({
+const createMethods = (): DatabasePluginImplementation => ({
   create: unimplemented,
   update: unimplemented,
   delete: unimplemented,
@@ -38,264 +41,152 @@ const bundleRow = {
   asset_base_storage_uri: null,
 };
 
+const insertWithPatch = {
+  operation: "insert",
+  bundleId: bundleRow.id,
+  changes: [
+    { table: "bundles", operation: "insert", row: bundleRow },
+    {
+      table: "bundle_patches",
+      operation: "insert",
+      row: {
+        id: "patch-1",
+        bundle_id: bundleRow.id,
+        base_bundle_id: "base-1",
+        base_file_hash: "base-hash",
+        patch_file_hash: "patch-hash",
+        patch_storage_uri: "storage://patch-1",
+        order_index: 0,
+      },
+    },
+  ],
+} satisfies DatabaseCommit;
+
 describe("createDatabasePlugin", () => {
-  it("returns a plugin object from a directly configured plugin", () => {
+  it("exposes named bundle and patch table ports", () => {
     const plugin = createDatabasePlugin({
       name: "memory",
       plugin: createMethods,
     });
 
-    expect(typeof plugin).toBe("object");
     expect(plugin.name).toBe("memory");
+    expect(plugin.bundles.findById).toBeTypeOf("function");
+    expect(plugin.bundlePatches.findByBundleIds).toBeTypeOf("function");
+    expect(plugin.commit).toBeTypeOf("function");
+    expect(Reflect.has(plugin, "findMany")).toBe(false);
+    expect(Reflect.has(plugin, "transaction")).toBe(false);
   });
 
-  it("calls the provider-native channel aggregate without request context", async () => {
-    const getChannels = vi.fn(async () => ["preview", "production"]);
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: () => ({ ...createMethods(), getChannels }),
-    });
-
-    const channels = await plugin.getChannels?.();
-
-    expect(channels).toEqual(["preview", "production"]);
-    expect(getChannels).toHaveBeenCalledWith();
-  });
-
-  it("calls provider CRUD with only the record input", async () => {
-    const create = vi.fn(async () => bundleRow);
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: () => ({ ...createMethods(), create }),
-    });
-    const input = { model: "bundles", data: bundleRow } as const;
-
-    await plugin.create(input);
-
-    expect(create).toHaveBeenCalledWith(input);
-  });
-
-  it("composes onUnmount without invoking it", async () => {
-    const onUnmount = vi.fn(async () => undefined);
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: () => ({ ...createMethods(), onUnmount }),
-    });
-
-    expect(onUnmount).not.toHaveBeenCalled();
-    await expect(plugin.onUnmount?.()).resolves.toBeUndefined();
-    expect(onUnmount).toHaveBeenCalledOnce();
-  });
-
-  it("opens a callback-scoped transaction without request context", async () => {
-    const calls: unknown[] = [];
-    const transaction: NonNullable<
-      DatabasePluginImplementation["transaction"]
-    > = async (callback) => {
-      calls.push(callback);
-      return callback(createMethods());
-    };
-    const createImplementation = (): DatabasePluginImplementation => ({
-      ...createMethods(),
-      transaction,
-    });
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: createImplementation,
-    });
-
-    const callback = async () => "committed";
-    const result = await plugin.transaction?.(callback);
-
-    expect(result).toBe("committed");
-    expect(calls).toEqual([expect.any(Function)]);
-  });
-
-  it("passes default paging to findMany", async () => {
-    const inputs: { readonly limit?: number; readonly offset?: number }[] = [];
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: () => ({
-        ...createMethods(),
-        findMany: async (input) => {
-          inputs.push(input);
-          return [];
-        },
-      }),
-    });
-
-    await plugin.findMany({ model: "bundles" });
-
-    expect(inputs).toEqual([{ model: "bundles", limit: 100, offset: 0 }]);
-  });
-
-  it("rejects invalid common operation inputs before provider execution", async () => {
-    const findMany = vi.fn(unimplemented);
-    const deleteRows = vi.fn(unimplemented);
-    const update = vi.fn(unimplemented);
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: () => ({
-        ...createMethods(),
-        findMany,
-        delete: deleteRows,
-        update,
-      }),
-    });
-
-    await expect(
-      plugin.findMany({ model: "bundles", select: [] }),
-    ).rejects.toMatchObject({
-      code: "empty-select",
-    });
-    await expect(
-      plugin.findMany({ model: "bundles", limit: -1 }),
-    ).rejects.toMatchObject({
-      code: "invalid-pagination",
-    });
-    await expect(
-      plugin.findMany({ model: "bundles", offset: 0.5 }),
-    ).rejects.toMatchObject({
-      code: "invalid-pagination",
-    });
-    await expect(
-      plugin.findMany({
-        model: "bundles",
-        limit: Number.MAX_SAFE_INTEGER + 1,
-      }),
-    ).rejects.toMatchObject({
-      code: "invalid-pagination",
-    });
-    await expect(
-      plugin.findMany({
-        model: "bundles",
-        offset: Number.MAX_SAFE_INTEGER + 1,
-      }),
-    ).rejects.toMatchObject({
-      code: "invalid-pagination",
-    });
-    await expect(
-      plugin.findMany({
-        model: "bundles",
-        limit: 1,
-        offset: Number.MAX_SAFE_INTEGER,
-      }),
-    ).rejects.toMatchObject({
-      code: "invalid-pagination",
-    });
-    await expect(
-      plugin.delete({ model: "bundles", where: [] }),
-    ).rejects.toMatchObject({
-      code: "empty-mutation-where",
-    });
-    await expect(
-      plugin.update({
-        model: "bundles",
-        where: [{ field: "channel", value: "production" }],
-        update: { enabled: false },
-      }),
-    ).rejects.toMatchObject({ code: "invalid-update-selector" });
-    expect(findMany).not.toHaveBeenCalled();
-    expect(deleteRows).not.toHaveBeenCalled();
-    expect(update).not.toHaveBeenCalled();
-  });
-
-  it("rejects invalid orderBy and distinctOn combinations", async () => {
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: () => ({ ...createMethods(), findMany: async () => [] }),
-    });
-
-    await expect(
-      plugin.findMany({
-        model: "bundles",
-        orderBy: [{ field: "metadata" as "id", direction: "asc" }],
-      }),
-    ).rejects.toMatchObject({ code: "invalid-query" });
-  });
-
-  it("rejects runtime model and field injection before provider execution", async () => {
-    const findMany = vi.fn(unimplemented);
+  it("maps the domain bundle query to the low-level adapter", async () => {
+    const findMany = vi.fn(async () => [bundleRow]);
     const plugin = createDatabasePlugin({
       name: "memory",
       plugin: () => ({ ...createMethods(), findMany }),
     });
-    const findManyOperation: unknown = Reflect.get(plugin, "findMany");
-    if (typeof findManyOperation !== "function") {
-      throw new Error("Expected the plugin findMany operation.");
-    }
 
     await expect(
-      findManyOperation({ model: "bundles; DROP TABLE channels" }),
-    ).rejects.toMatchObject({ code: "invalid-model" });
-    await expect(
-      findManyOperation({
-        model: "bundles",
-        where: [{ field: "id) OR 1=1 --", value: "bundle-1" }],
+      plugin.bundles.findMany({
+        where: { channel: "production", enabled: true, id: { gte: "a" } },
+        limit: 20,
+        offset: 40,
+        orderBy: { field: "id", direction: "desc" },
       }),
-    ).rejects.toMatchObject({ code: "invalid-field" });
-    expect(findMany).not.toHaveBeenCalled();
-  });
-
-  it("rejects unsupported operation and model pairs at runtime", async () => {
-    const plugin = createDatabasePlugin({
-      name: "operation-matrix",
-      plugin: () => ({ ...createMethods() }),
+    ).resolves.toEqual([bundleRow]);
+    expect(findMany).toHaveBeenCalledWith({
+      model: "bundles",
+      where: [
+        { field: "channel", value: "production" },
+        { field: "enabled", value: true },
+        { field: "id", operator: "gte", value: "a" },
+      ],
+      limit: 20,
+      offset: 40,
+      orderBy: [{ field: "id", direction: "desc" }],
     });
-    const updateOperation = Reflect.get(plugin, "update") as Function;
-
-    await expect(
-      updateOperation({
-        model: "bundle_patches",
-        where: [{ field: "id", value: "patch-1" }],
-        update: { patch_storage_uri: "storage://patch-1" },
-      }),
-    ).rejects.toMatchObject({ code: "invalid-operation" });
   });
 
-  it("rejects invalid provider result values", async () => {
-    const plugin = createDatabasePlugin({
-      name: "invalid-result",
-      plugin: () => ({
-        ...createMethods(),
-        findOne: async () => JSON.parse('{"id":42,"platform":"windows"}'),
-      }),
-    });
-
-    await expect(
-      plugin.findOne({
-        model: "bundles",
-        where: [{ field: "id", value: "bundle-1" }],
-        select: ["id"],
-      }),
-    ).rejects.toMatchObject({ code: "invalid-result" });
-  });
-
-  it("rejects incomplete or invalid row values before provider execution", async () => {
-    const create = vi.fn(unimplemented);
-    const update = vi.fn(unimplemented);
+  it("loads patch rows only through their owner ids", async () => {
+    const findMany = vi.fn(async () => []);
     const plugin = createDatabasePlugin({
       name: "memory",
-      plugin: () => ({ ...createMethods(), create, update }),
+      plugin: () => ({ ...createMethods(), findMany }),
     });
-    const createOperation = Reflect.get(plugin, "create") as Function;
-    const updateOperation = Reflect.get(plugin, "update") as Function;
 
-    await expect(
-      createOperation({
-        model: "bundles",
-        data: { channel: "production" },
-        select: ["id"],
-      }),
-    ).rejects.toMatchObject({ code: "invalid-data" });
-    await expect(
-      updateOperation({
-        model: "bundles",
-        where: [{ field: "id", value: bundleRow.id }],
-        update: { channel: undefined },
-      }),
-    ).rejects.toMatchObject({ code: "invalid-data" });
+    await plugin.bundlePatches.findByBundleIds(["owner-1", "owner-2"]);
+
+    expect(findMany).toHaveBeenCalledWith({
+      model: "bundle_patches",
+      where: [
+        {
+          field: "bundle_id",
+          operator: "in",
+          value: ["owner-1", "owner-2"],
+        },
+      ],
+      limit: 100,
+      offset: 0,
+      orderBy: [{ field: "id", direction: "asc" }],
+    });
+  });
+
+  it("commits bundle and patch table changes in one adapter transaction", async () => {
+    const create = vi.fn(async (input) => input.data);
+    const transaction = vi.fn(async (callback) =>
+      callback({ ...createMethods(), create }),
+    );
+    const plugin = createDatabasePlugin({
+      name: "transactional",
+      plugin: () => ({ ...createMethods(), transaction }),
+    });
+
+    await expect(plugin.commit(insertWithPatch)).resolves.toEqual({
+      applied: true,
+    });
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(create.mock.calls.map(([input]) => input.model)).toEqual([
+      "bundles",
+      "bundle_patches",
+    ]);
+  });
+
+  it("rejects a cross-table commit before a non-atomic adapter mutates", async () => {
+    const create = vi.fn(async (input) => input.data);
+    const plugin = createDatabasePlugin({
+      name: "non-atomic",
+      plugin: () => ({ ...createMethods(), create }),
+    });
+
+    await expect(plugin.commit(insertWithPatch)).rejects.toEqual(
+      new DatabaseAtomicCommitUnsupportedError("non-atomic"),
+    );
     expect(create).not.toHaveBeenCalled();
-    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("uses an explicit provider-native commit without hidden capabilities", async () => {
+    const commit = vi.fn(async () => ({ applied: true }));
+    const plugin = createDatabasePlugin({
+      name: "native",
+      plugin: () => ({ ...createMethods(), commit }),
+    });
+
+    await plugin.commit(insertWithPatch);
+
+    expect(commit).toHaveBeenCalledWith(insertWithPatch);
+  });
+
+  it("composes optional lifecycle and fast-path methods", async () => {
+    const getChannels = vi.fn(async () => ["preview", "production"]);
+    const onUnmount = vi.fn(async () => undefined);
+    const plugin = createDatabasePlugin({
+      name: "memory",
+      plugin: () => ({ ...createMethods(), getChannels, onUnmount }),
+    });
+
+    await expect(plugin.getChannels?.()).resolves.toEqual([
+      "preview",
+      "production",
+    ]);
+    await expect(plugin.onUnmount?.()).resolves.toBeUndefined();
+    expect(onUnmount).toHaveBeenCalledOnce();
   });
 });

@@ -7,10 +7,7 @@ import type {
   FindOneDatabaseImplementationInput,
   UpdateBundleDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
-import {
-  attachUniversalComponentDataAdapter,
-  createDatabasePlugin,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import {
   Kysely,
   PostgresDialect,
@@ -228,7 +225,8 @@ export const postgres = (config: PostgresConfig) => {
             getUpdateInfo: (args) => getUpdateInfo(pool, args),
           },
   });
-  return attachUniversalComponentDataAdapter(plugin, () =>
-    createPostgresUniversalComponentDataAdapter(db),
-  );
+  return {
+    ...plugin,
+    componentData: createPostgresUniversalComponentDataAdapter(db),
+  };
 };

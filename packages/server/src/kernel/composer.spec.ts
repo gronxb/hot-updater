@@ -2,7 +2,6 @@ import { runInNewContext } from "node:vm";
 
 import {
   attachCapabilityContribution,
-  attachUniversalComponentDataAdapter,
   defineCapability,
   defineUniversalComponentSchema,
   type UniversalComponentDataAdapter,
@@ -116,20 +115,14 @@ describe("composeServerKernel", () => {
       },
       migrate,
     };
-    const database = attachUniversalComponentDataAdapter(
-      createRuntimeDatabase(),
-      () => {
-        calls.push("adapter");
-        return adapter;
-      },
-    );
+    const database = { ...createRuntimeDatabase(), componentData: adapter };
     const plugin = defineFirstPartyServerPlugin({
       id: "audit-plugin",
       schema,
       setup: ({ components }) => {
         calls.push("setup");
-        expect(components.get(schema)).toBe(source);
-        expect(components.require(schema)).toBe(source);
+        expect(components.get(schema)?.schema).toBe(schema);
+        expect(components.require(schema).schema).toBe(schema);
         expect(components.get(otherIdentity)).toBeUndefined();
         return {};
       },
@@ -138,15 +131,14 @@ describe("composeServerKernel", () => {
     const composed = composeServerKernel({
       carriers: [database],
       coreRoutes: [],
-      databaseCarrier: database,
       plugins: [plugin],
       runtime: createRuntime(database),
     });
 
-    expect(calls).toEqual(["adapter", "bind:audit-log", "setup"]);
+    expect(calls).toEqual(["bind:audit-log", "setup"]);
     expect(composed.components.schemas).toEqual([schema]);
-    expect(composed.components.sources).toEqual([source]);
-    expect(composed.components.require(schema)).toBe(source);
+    expect(composed.components.sources).toHaveLength(1);
+    expect(composed.components.require(schema).schema).toBe(schema);
     expect(assertReady).not.toHaveBeenCalled();
     expect(migrate).not.toHaveBeenCalled();
     expect(artifacts).not.toHaveBeenCalled();
@@ -156,15 +148,15 @@ describe("composeServerKernel", () => {
     const calls: string[] = [];
     const zetaSchema = createComponentSchema("zeta-component");
     const alphaSchema = createComponentSchema("alpha-component");
-    const database = attachUniversalComponentDataAdapter(
-      createRuntimeDatabase(),
-      () => ({
-        bind(schema) {
+    const database = {
+      ...createRuntimeDatabase(),
+      componentData: {
+        bind(schema: UniversalComponentSchema) {
           calls.push(`bind:${schema.id}`);
           return createComponentDataSource(schema);
         },
-      }),
-    );
+      },
+    };
     const plugins = [
       defineFirstPartyServerPlugin({
         id: "a-zeta-plugin",
@@ -187,7 +179,6 @@ describe("composeServerKernel", () => {
     const composed = composeServerKernel({
       carriers: [database],
       coreRoutes: [],
-      databaseCarrier: database,
       plugins,
       runtime: createRuntime(database),
     });
@@ -201,7 +192,7 @@ describe("composeServerKernel", () => {
     ]);
   });
 
-  it("requires the component adapter to be attached to the database carrier", () => {
+  it("requires component data on the database runtime", () => {
     const schema = createComponentSchema("audit-log");
     const setup = vi.fn(() => ({}));
     const plugin = defineFirstPartyServerPlugin({
@@ -209,15 +200,14 @@ describe("composeServerKernel", () => {
       schema,
       setup,
     });
-    const nonDatabaseCarrier = attachUniversalComponentDataAdapter({}, () => ({
-      bind: createComponentDataSource,
-    }));
+    const nonDatabaseCarrier = {
+      componentData: { bind: createComponentDataSource },
+    };
 
     expect(() =>
       composeServerKernel({
         carriers: [nonDatabaseCarrier],
         coreRoutes: [],
-        databaseCarrier: createRuntimeDatabase(),
         plugins: [plugin],
         runtime: createRuntime(),
       }),
@@ -236,10 +226,7 @@ describe("composeServerKernel", () => {
     const adapter = {
       bind: () => Promise.resolve(createComponentDataSource(schema)),
     } as unknown as UniversalComponentDataAdapter;
-    const database = attachUniversalComponentDataAdapter(
-      createRuntimeDatabase(),
-      () => adapter,
-    );
+    const database = { ...createRuntimeDatabase(), componentData: adapter };
     const plugin = defineFirstPartyServerPlugin({
       id: "audit-plugin",
       schema,
@@ -250,7 +237,6 @@ describe("composeServerKernel", () => {
       composeServerKernel({
         carriers: [database],
         coreRoutes: [],
-        databaseCarrier: database,
         plugins: [plugin],
         runtime: createRuntime(database),
       }),
@@ -267,13 +253,11 @@ describe("composeServerKernel", () => {
   it.each(["bundles", "bundle_patches", "private_hot_updater_settings"])(
     "rejects a component table named like core table %s",
     (table) => {
-      const createAdapter = vi.fn(() => ({
-        bind: createComponentDataSource,
-      }));
-      const database = attachUniversalComponentDataAdapter(
-        createRuntimeDatabase(),
-        createAdapter,
-      );
+      const bind = vi.fn(createComponentDataSource);
+      const database = {
+        ...createRuntimeDatabase(),
+        componentData: { bind },
+      };
       const plugin = defineFirstPartyServerPlugin({
         id: "component-plugin",
         schema: createComponentSchema("component", table),
@@ -284,7 +268,6 @@ describe("composeServerKernel", () => {
         composeServerKernel({
           carriers: [database],
           coreRoutes: [],
-          databaseCarrier: database,
           plugins: [plugin],
           runtime: createRuntime(database),
         }),
@@ -294,7 +277,7 @@ describe("composeServerKernel", () => {
           details: { tableName: table },
         }),
       );
-      expect(createAdapter).not.toHaveBeenCalled();
+      expect(bind).not.toHaveBeenCalled();
     },
   );
 
@@ -310,13 +293,11 @@ describe("composeServerKernel", () => {
   ])(
     "rejects globally conflicting SQL index name $firstIndex",
     ({ firstIndex, secondIndex }) => {
-      const createAdapter = vi.fn(() => ({
-        bind: createComponentDataSource,
-      }));
-      const database = attachUniversalComponentDataAdapter(
-        createRuntimeDatabase(),
-        createAdapter,
-      );
+      const bind = vi.fn(createComponentDataSource);
+      const database = {
+        ...createRuntimeDatabase(),
+        componentData: { bind },
+      };
       const schemas = [
         createComponentSchema("first-component", "first_records", firstIndex),
         createComponentSchema(
@@ -337,7 +318,6 @@ describe("composeServerKernel", () => {
         composeServerKernel({
           carriers: [database],
           coreRoutes: [],
-          databaseCarrier: database,
           plugins,
           runtime: createRuntime(database),
         }),
@@ -347,7 +327,7 @@ describe("composeServerKernel", () => {
           details: { indexName: firstIndex },
         }),
       );
-      expect(createAdapter).not.toHaveBeenCalled();
+      expect(bind).not.toHaveBeenCalled();
     },
   );
 
@@ -363,15 +343,13 @@ describe("composeServerKernel", () => {
       second: createComponentSchema("second-component", "shared_records"),
     },
   ])(
-    "rejects $code before materializing the adapter",
+    "rejects $code before binding component data",
     ({ code, first, second }) => {
-      const createAdapter = vi.fn(() => ({
-        bind: createComponentDataSource,
-      }));
-      const database = attachUniversalComponentDataAdapter(
-        createRuntimeDatabase(),
-        createAdapter,
-      );
+      const bind = vi.fn(createComponentDataSource);
+      const database = {
+        ...createRuntimeDatabase(),
+        componentData: { bind },
+      };
       const plugins = [first, second].map((schema, index) =>
         defineFirstPartyServerPlugin({
           id: `plugin-${index}`,
@@ -384,12 +362,11 @@ describe("composeServerKernel", () => {
         composeServerKernel({
           carriers: [database],
           coreRoutes: [],
-          databaseCarrier: database,
           plugins,
           runtime: createRuntime(database),
         }),
       ).toThrowError(expect.objectContaining({ code }));
-      expect(createAdapter).not.toHaveBeenCalled();
+      expect(bind).not.toHaveBeenCalled();
     },
   );
 

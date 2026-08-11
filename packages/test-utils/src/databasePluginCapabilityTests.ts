@@ -7,65 +7,58 @@ import {
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
-import { createBundleRowFixture } from "./databaseTestFixtures";
+import {
+  createBundlePatchRowFixture,
+  createBundleRowFixture,
+} from "./databaseTestFixtures";
 
 type CapabilityTestState = DatabasePluginTestState<DatabasePlugin>;
-
-class TransactionFixtureError extends Error {
-  constructor() {
-    super("rollback fixture");
-    this.name = "TransactionFixtureError";
-  }
-}
 
 export const registerDatabasePluginCapabilityTests = (
   state: CapabilityTestState,
 ): void => {
   describe("optional capabilities", () => {
-    it("commits transaction writes and returns the callback value", async (context) => {
-      const plugin = state.getPlugin();
-      if (plugin.transaction === undefined) {
-        context.skip();
-        return;
-      }
-      expect(plugin.transaction).toBeTypeOf("function");
-      const bundle = createBundleRowFixture("91");
-
-      const result = await plugin.transaction(async (transaction) => {
-        await transaction.create({ model: "bundles", data: bundle });
-        return "committed" as const;
-      });
-
-      expect(result).toBe("committed");
-      await expect(
-        plugin.findOne({
-          model: "bundles",
-          where: [{ field: "id", value: bundle.id }],
-        }),
-      ).resolves.toEqual(bundle);
+    it("does not expose callback-scoped transactions", () => {
+      expect(Reflect.has(state.getPlugin(), "transaction")).toBe(false);
     });
 
-    it("rolls back when the transaction callback rejects", async (context) => {
+    it("rolls back an atomic batch when a later commit violates a relation", async (context) => {
       const plugin = state.getPlugin();
-      if (plugin.transaction === undefined) {
+      if (plugin.commitBatch === undefined) {
         context.skip();
         return;
       }
-      expect(plugin.transaction).toBeTypeOf("function");
-      const bundle = createBundleRowFixture("92", "rollback");
+      const first = createBundleRowFixture("91");
+      const second = createBundleRowFixture("92");
+      const invalidPatch = createBundlePatchRowFixture(
+        "93",
+        second.id,
+        "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      );
 
       await expect(
-        plugin.transaction(async (transaction) => {
-          await transaction.create({ model: "bundles", data: bundle });
-          throw new TransactionFixtureError();
-        }),
-      ).rejects.toBeInstanceOf(TransactionFixtureError);
-      await expect(
-        plugin.findOne({
-          model: "bundles",
-          where: [{ field: "id", value: bundle.id }],
-        }),
-      ).resolves.toBeNull();
+        plugin.commitBatch([
+          {
+            operation: "insert",
+            bundleId: first.id,
+            changes: [{ table: "bundles", operation: "insert", row: first }],
+          },
+          {
+            operation: "insert",
+            bundleId: second.id,
+            changes: [
+              { table: "bundles", operation: "insert", row: second },
+              {
+                table: "bundle_patches",
+                operation: "insert",
+                row: invalidPatch,
+              },
+            ],
+          },
+        ]),
+      ).rejects.toThrow();
+      await expect(plugin.bundles.findById(first.id)).resolves.toBeNull();
+      await expect(plugin.bundles.findById(second.id)).resolves.toBeNull();
     });
 
     it("matches the generic update resolver through the fast path", async (context) => {
@@ -74,9 +67,12 @@ export const registerDatabasePluginCapabilityTests = (
         context.skip();
         return;
       }
-      expect(plugin.getUpdateInfo).toBeTypeOf("function");
       const bundle = createBundleRowFixture("99");
-      await plugin.create({ model: "bundles", data: bundle });
+      await plugin.commit({
+        operation: "insert",
+        bundleId: bundle.id,
+        changes: [{ table: "bundles", operation: "insert", row: bundle }],
+      });
 
       const args = {
         appVersion: "1.0.0",
