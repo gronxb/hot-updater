@@ -14,12 +14,18 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
+import type { ClientAccessKeyTable } from "@hot-updater/plugin-core";
+import {
+  createClientAccessKey,
+  registerClientAccessKey,
+} from "@hot-updater/server";
 import { execa } from "execa";
 
 import {
   AWS_DATABASE_TYPES,
   type AwsDatabaseType,
 } from "../src/awsDatabaseType";
+import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
 import {
   assertAwsNonInteractiveInputs,
@@ -61,6 +67,24 @@ export const prepareDynamoDBDeployment = async (input: {
 }): Promise<void> => {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
+};
+
+export const prepareDynamoDBClientAccessKey = async (input: {
+  readonly clientAccessKeys: ClientAccessKeyTable;
+  readonly existingApiKey?: string;
+}): Promise<string> => {
+  const existingApiKey = input.existingApiKey?.trim();
+  const created = existingApiKey
+    ? await registerClientAccessKey({
+        apiKey: existingApiKey,
+        clientAccessKeys: input.clientAccessKeys,
+        name: "AWS init",
+      })
+    : await createClientAccessKey({
+        clientAccessKeys: input.clientAccessKeys,
+        name: "AWS init",
+      });
+  return created.apiKey;
 };
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
@@ -370,6 +394,20 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       region: bucketRegion,
       tableName: resolvedDynamoDBTableName,
     });
+    const databasePlugin = dynamoDB({
+      credentials,
+      region: bucketRegion,
+      tableName: resolvedDynamoDBTableName,
+    });
+    try {
+      const apiKey = await prepareDynamoDBClientAccessKey({
+        clientAccessKeys: databasePlugin.clientAccessKeys,
+        existingApiKey: providerEnv.HOT_UPDATER_API_KEY,
+      });
+      await makeEnv({ HOT_UPDATER_API_KEY: apiKey });
+    } finally {
+      await databasePlugin.dispose?.();
+    }
     p.log.info(
       `Using DynamoDB table: ${resolvedDynamoDBTableName} (${bucketRegion})`,
     );
