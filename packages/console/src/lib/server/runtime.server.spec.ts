@@ -1,10 +1,7 @@
 // @vitest-environment node
 
 import { analyticsComponentSchema } from "@hot-updater/analytics";
-import {
-  attachManagedAccessKeyStore,
-  type ManagedAccessKeyStore,
-} from "@hot-updater/better-auth/managed";
+import { managedAccessKeyComponentSchema } from "@hot-updater/better-auth/managed";
 import type { ConfigResponse } from "@hot-updater/cli-tools";
 import {
   attachUniversalComponentDataAdapter,
@@ -47,23 +44,25 @@ const asConfig = (
 ): ConfigResponse => ({ database }) as ConfigResponse;
 
 describe("managed access-key runtime", () => {
-  it("exposes a provider store only when the database contributes one", async () => {
-    const store = {
-      create: vi.fn(),
-      findByHash: vi.fn(),
-      list: vi.fn(async () => []),
-      revoke: vi.fn(),
-    } as unknown as ManagedAccessKeyStore;
-    const supported = attachManagedAccessKeyStore(
+  it("composes the store only from a neutral component adapter", async () => {
+    const bind = vi.fn((schema) => ({
+      schema,
+      append: async () => undefined,
+      assertReady: async () => undefined,
+      create: async () => "created" as const,
+      get: async () => null,
+      orderedScan: async () => [],
+    }));
+    const supported = attachUniversalComponentDataAdapter(
       createDatabase(),
-      () => store,
+      () => ({ bind }),
     );
 
     expect(createManagedAccessKeyStore(asConfig(createDatabase()))).toBeNull();
     const resolved = createManagedAccessKeyStore(asConfig(supported));
     expect(resolved).not.toBeNull();
     await resolved?.list();
-    expect(store.list).toHaveBeenCalledOnce();
+    expect(bind).toHaveBeenCalledWith(managedAccessKeyComponentSchema);
   });
 });
 
@@ -85,6 +84,8 @@ describe("analytics runtime input validation", () => {
       schema,
       append: vi.fn(async () => undefined),
       assertReady: vi.fn(async () => undefined),
+      create: vi.fn(async () => "created" as const),
+      get: vi.fn(async () => null),
       orderedScan: vi.fn(async () => []),
     }));
     const database = attachUniversalComponentDataAdapter(

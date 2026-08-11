@@ -1,10 +1,11 @@
+import { attachUniversalComponentDataAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { defineFirstPartyServerPlugin } from "@hot-updater/server/internal/first-party-plugin";
 import { describe, expect, it, vi } from "vitest";
 
 import { createRuntimeDatabase } from "../../server/src/runtime.testFixtures";
 import {
-  attachManagedAccessKeyStore,
+  managedAccessKeyComponentSchema,
   managedBetterAuthPlugin,
   managedRoutePolicy,
   type ManagedAccessKeyRecord,
@@ -120,12 +121,39 @@ describe("managedBetterAuthPlugin", () => {
     ]);
 
     expect(Reflect.ownKeys(contribution as object)).toEqual(["authentication"]);
+    expect(plugin.schema).toBeUndefined();
+    expect(managedBetterAuthPlugin().schema).toBe(
+      managedAccessKeyComponentSchema,
+    );
     expect(responses.map(({ status }) => status)).toEqual([200, 200]);
   });
 
-  it("resolves the access-key store from the database capability", async () => {
-    const database = attachManagedAccessKeyStore(createRuntimeDatabase(), () =>
-      createStore(),
+  it("resolves the access-key store from its canonical component source", async () => {
+    const database = attachUniversalComponentDataAdapter(
+      createRuntimeDatabase(),
+      () => ({
+        bind(schema) {
+          return {
+            schema,
+            append: async () => undefined,
+            assertReady: async () => undefined,
+            create: async () => "created",
+            get: async ({ primaryKey, table }) =>
+              table === "better_auth_managed_access_keys" &&
+              primaryKey === activeRecord.id
+                ? {
+                    created_at_ms: activeRecord.createdAt,
+                    hash: activeRecord.hash,
+                    id: activeRecord.id,
+                    name: activeRecord.name,
+                    prefix: activeRecord.prefix,
+                    role: activeRecord.role,
+                  }
+                : null,
+            orderedScan: async () => [],
+          };
+        },
+      }),
     );
     const server = createHotUpdater({
       database,
@@ -145,7 +173,7 @@ describe("managedBetterAuthPlugin", () => {
     expect(response.status).toBe(200);
   });
 
-  it("requires a managed store capability when none is configured", () => {
+  it("requires a component adapter when no explicit store is configured", () => {
     expect(() =>
       createHotUpdater({
         database: createRuntimeDatabase(),
@@ -153,7 +181,7 @@ describe("managedBetterAuthPlugin", () => {
       }),
     ).toThrow(
       expect.objectContaining({
-        code: "MISSING_CAPABILITY",
+        code: "MISSING_COMPONENT_DATA_ADAPTER",
       }),
     );
   });
