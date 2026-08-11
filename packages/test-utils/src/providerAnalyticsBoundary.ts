@@ -50,6 +50,27 @@ const rules: readonly BoundaryRule[] = [
     name: "Analytics event literal",
     pattern: /["'`](?:UPDATE_APPLIED|RECOVERED|UNCHANGED)["'`]/g,
   },
+  {
+    name: "Better Auth package import",
+    pattern: /@hot-updater\/better-auth/g,
+  },
+  {
+    name: "Managed access-key capability",
+    pattern:
+      /(?:hot-updater\.better-auth\.managed-access-key-store|managedAccessKeyStoreCapability|attachManagedAccessKeyStore)/g,
+  },
+  {
+    name: "Managed access-key contract identifier",
+    pattern: /\b(?:ManagedAccessKey|managedAccessKey)[A-Za-z0-9_]*\b/g,
+  },
+  {
+    name: "Managed access-key physical table",
+    pattern: /\b(?:managed_access_keys|managed_access_key_revocations)\b/g,
+  },
+  {
+    name: "Managed access-key environment",
+    pattern: /HOT_UPDATER_API_KEY/g,
+  },
 ];
 
 const sourceExtensions = new Set([
@@ -145,6 +166,18 @@ export const findProviderAnalyticsBoundaryViolations = async ({
           rule: "Analytics module path",
         });
       }
+      if (
+        /(?:access[-_]?key|managedaccesskey)/i.test(
+          path.relative(resolvedRoot, file),
+        )
+      ) {
+        violations.push({
+          column: 1,
+          file,
+          line: 1,
+          rule: "Managed access-key module path",
+        });
+      }
       const contents = await readFile(file, "utf8");
       for (const rule of rules) {
         for (const match of contents.matchAll(rule.pattern)) {
@@ -166,7 +199,7 @@ export const assertProviderAnalyticsBoundary = async (
 
   throw new Error(
     [
-      "Ordinary database providers must not depend on the Analytics contract:",
+      "Ordinary database providers must not depend on optional feature contracts:",
       ...violations.map(
         ({ column, file, line, rule }) => `${file}:${line}:${column} ${rule}`,
       ),
