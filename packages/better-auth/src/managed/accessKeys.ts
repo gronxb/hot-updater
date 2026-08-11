@@ -3,6 +3,10 @@ import {
   type UniversalComponentDataSource,
   type UniversalComponentRow,
 } from "@hot-updater/plugin-core";
+import {
+  requireUniversalComponentDataSource,
+  type RuntimeHotUpdaterAPI,
+} from "@hot-updater/server";
 import { createAccessControl } from "better-auth/plugins/access";
 
 import { isCanonicalBase64Url32 } from "../base64url";
@@ -369,6 +373,23 @@ export const registerManagedAccessKey = async (input: {
     return existing;
   }
   return record;
+};
+
+export const registerManagedAccessKeyForTarget = (
+  input: {
+    readonly target: RuntimeHotUpdaterAPI;
+  } & Omit<Parameters<typeof registerManagedAccessKey>[0], "store">,
+): Promise<ManagedAccessKeyRecord> => {
+  const { target, ...registration } = input;
+  return registerManagedAccessKey({
+    ...registration,
+    store: createUniversalComponentManagedAccessKeyStore(
+      requireUniversalComponentDataSource(
+        target,
+        managedAccessKeyComponentSchema,
+      ),
+    ),
+  });
 };
 
 export const authorizeManagedAccessKeyRole = (

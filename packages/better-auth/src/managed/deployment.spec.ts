@@ -6,6 +6,7 @@ import type {
   UniversalComponentDataSource,
   UniversalComponentRow,
 } from "@hot-updater/plugin-core";
+import type { RuntimeHotUpdaterAPI } from "@hot-updater/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { managedAccessKeyComponentSchema } from "./accessKeys";
@@ -15,7 +16,8 @@ const mocks = vi.hoisted(() => ({
   requireUniversalComponentDataSource: vi.fn(),
 }));
 
-vi.mock("@hot-updater/server/db", () => ({
+vi.mock("@hot-updater/server", async (importOriginal) => ({
+  ...(await importOriginal()),
   requireUniversalComponentDataSource:
     mocks.requireUniversalComponentDataSource,
 }));
@@ -55,7 +57,7 @@ describe("prepareManagedBetterAuthDeployment", () => {
     const directory = await mkdtemp(join(tmpdir(), "better-auth-deploy-"));
     temporaryDirectories.push(directory);
     const envFilePath = join(directory, ".env.hotupdater");
-    const target = { adapterName: "test" };
+    const target = { adapterName: "test" } as RuntimeHotUpdaterAPI;
     const { rows, source } = createSource();
     mocks.requireUniversalComponentDataSource.mockReturnValue(source);
 
