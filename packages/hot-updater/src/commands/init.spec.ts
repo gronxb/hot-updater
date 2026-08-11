@@ -287,8 +287,6 @@ describe("init choices", () => {
               create: async () => "created" as const,
               get: async () => null,
               assertReady: async () => {},
-              create: async () => "created" as const,
-              get: async () => null,
               orderedScan: async () => [],
               schema,
             }),
