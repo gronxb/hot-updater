@@ -19,7 +19,7 @@ const serverDatabaseLayers = ["adapters", "db"].map((directory) =>
 );
 
 describe("ordinary database provider architecture", () => {
-  it("does not depend on Analytics imports, storage names, or capabilities", async () => {
+  it("does not depend on Analytics or Better Auth access-key contracts", async () => {
     await assertProviderAnalyticsBoundary({
       roots: [...ordinaryDatabaseProviders, ...serverDatabaseLayers],
     });
