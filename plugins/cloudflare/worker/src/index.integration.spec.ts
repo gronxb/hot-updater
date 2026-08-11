@@ -1,8 +1,4 @@
 import {
-  managedAccessKeyStoreCapability,
-  registerManagedAccessKey,
-} from "@hot-updater/better-auth/managed";
-import {
   type AppUpdateInfo,
   getBundlePatches,
   type Bundle,
@@ -10,8 +6,10 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
-import { createManagedServerPlugins } from "@hot-updater/managed";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
+import {
+  createManagedServerPlugins,
+  registerManagedServerClientKey,
+} from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
@@ -187,13 +185,6 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       throw new Error("Cloudflare Core schema migration is missing.");
     }
     await env.DB.prepare(coreMigration.sql).run();
-    const accessKeyMigration = inject("d1Migrations").find(
-      ({ name }) => name === "0007_hot-updater_managed_access_keys.sql",
-    );
-    if (accessKeyMigration === undefined) {
-      throw new Error("Cloudflare managed access-key migration is missing.");
-    }
-    await env.DB.prepare(accessKeyMigration.sql).run();
     const database = d1WorkerDatabase(env.DB);
     const deploymentTarget = createHotUpdater({
       database,
@@ -213,20 +204,11 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
         componentId: schema.id,
       })),
     );
-    const contribution = getCapabilityContributions(database).find(
-      ({ token }) => token.id === managedAccessKeyStoreCapability.id,
-    );
-    if (contribution === undefined) {
-      throw new Error("Cloudflare managed access-key store is missing.");
-    }
-    const store = managedAccessKeyStoreCapability.parse(
-      Reflect.apply(contribution.create, undefined, []),
-    );
-    await registerManagedAccessKey({
+    await registerManagedServerClientKey({
       apiKey: RAW_API_KEY,
       createdAt: 1,
       name: "Runtime test",
-      store,
+      target: deploymentTarget,
     });
   });
 
@@ -239,8 +221,13 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     expect(componentMigrations).toEqual([
       expect.objectContaining({
         changed: true,
-        componentId: expect.any(String),
-        version: expect.any(String),
+        componentId: "analytics",
+        version: "2",
+      }),
+      expect.objectContaining({
+        changed: true,
+        componentId: "better-auth-managed-access-keys",
+        version: "1",
       }),
     ]);
 

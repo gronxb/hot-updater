@@ -14,7 +14,6 @@ const {
   mockCli,
   mockCliTools,
   mockExeca,
-  mockProvisionManagedBetterAuthApiKey,
   mockSupabaseApi,
   mockSupabaseApiResult,
 } = vi.hoisted(() => {
@@ -63,7 +62,6 @@ const {
       writeHotUpdaterConfig: vi.fn(),
     },
     mockExeca: vi.fn(),
-    mockProvisionManagedBetterAuthApiKey: vi.fn(),
     mockSupabaseApi: vi.fn(() => supabaseApiResult),
     mockSupabaseApiResult: supabaseApiResult,
   };
@@ -78,10 +76,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     p: mockCli.p,
   };
 });
-
-vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
-  provisionManagedBetterAuthApiKey: mockProvisionManagedBetterAuthApiKey,
-}));
 
 vi.mock("execa", async (importOriginal) => {
   const actual = await importOriginal<typeof import("execa")>();
@@ -1106,14 +1100,6 @@ describe("Supabase managed deployment", () => {
       path: "hot-updater.config.ts",
       status: "created",
     });
-    mockProvisionManagedBetterAuthApiKey.mockImplementation(async () => {
-      events.push("provision-api-key");
-      return {
-        apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        created: true,
-        sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
-      };
-    });
     mockSupabaseApiResult.listBuckets.mockResolvedValue([
       {
         createdAt: "2026-08-06T00:00:00.000Z",
@@ -1182,29 +1168,35 @@ describe("Supabase managed deployment", () => {
 
   it("migrates before provisioning auth and deploying the runtime", async () => {
     const { events, removeTmpDir, tmpDir } = await configureRunInit();
+    const createDeploymentTarget = vi.fn((database: DatabasePlugin) =>
+      createHotUpdater({ database }),
+    );
+    const prepareDeployment = vi.fn(async () => {
+      events.push("prepare-deployment");
+      return [{ message: "secret notice", title: "Deployment notice" }];
+    });
 
     try {
-      await runInit({ build: "bare", envFile: ".env.hotupdater" });
+      await runInit({
+        build: "bare",
+        createDeploymentTarget,
+        envFile: ".env.hotupdater",
+        prepareDeployment,
+      });
 
       expect(events).toEqual([
         "link-project",
         "push-database",
-        "provision-api-key",
+        "prepare-deployment",
         "deploy-edge-function",
       ]);
-      expect(mockProvisionManagedBetterAuthApiKey).toHaveBeenCalledWith({
-        envFilePath: ".env.hotupdater",
-        name: "Default",
-        store: expect.objectContaining({
-          create: expect.any(Function),
-          findByHash: expect.any(Function),
-          list: expect.any(Function),
-          revoke: expect.any(Function),
-        }),
-      });
+      expect(prepareDeployment).toHaveBeenCalledWith(
+        expect.objectContaining({ adapterName: "supabaseDatabase" }),
+        { envFile: ".env.hotupdater" },
+      );
       expect(mockCli.p.note).toHaveBeenCalledWith(
-        "HOT_UPDATER_API_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        "Client access key (shown once)",
+        "secret notice",
+        "Deployment notice",
       );
       expect(removeTmpDir).toHaveBeenCalledOnce();
     } finally {
@@ -1221,12 +1213,17 @@ describe("Supabase managed deployment", () => {
         plugins: [syntheticComponentPlugin],
       });
     });
+    const prepareDeployment = vi.fn(async () => {
+      events.push("prepare-deployment");
+      return [];
+    });
 
     try {
       await runInit({
         build: "bare",
         createDeploymentTarget,
         envFile: ".env.hotupdater",
+        prepareDeployment,
       });
 
       expect(createDeploymentTarget).toHaveBeenCalledOnce();
@@ -1235,7 +1232,7 @@ describe("Supabase managed deployment", () => {
         "link-project",
         "component-sql-materialized",
         "push-database",
-        "provision-api-key",
+        "prepare-deployment",
         "deploy-edge-function",
       ]);
       const migrationFiles = await fs.readdir(
@@ -1253,7 +1250,7 @@ describe("Supabase managed deployment", () => {
           "utf8",
         ),
       ).resolves.toContain(`schema.${syntheticAuditLogMigrationSchema.id}`);
-      expect(mockProvisionManagedBetterAuthApiKey).toHaveBeenCalledOnce();
+      expect(prepareDeployment).toHaveBeenCalledOnce();
       expect(removeTmpDir).toHaveBeenCalledOnce();
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
@@ -1282,14 +1279,20 @@ describe("Supabase managed deployment", () => {
     });
     vi.spyOn(console, "error").mockImplementation(() => {});
     expectExit();
+    const prepareDeployment = vi.fn(async () => []);
 
     try {
       await expect(
-        runInit({ build: "bare", envFile: ".env.hotupdater" }),
+        runInit({
+          build: "bare",
+          createDeploymentTarget: (database) => createHotUpdater({ database }),
+          envFile: ".env.hotupdater",
+          prepareDeployment,
+        }),
       ).rejects.toThrow("process.exit(1)");
 
       expect(events).toEqual(["link-project", "push-database"]);
-      expect(mockProvisionManagedBetterAuthApiKey).not.toHaveBeenCalled();
+      expect(prepareDeployment).not.toHaveBeenCalled();
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }

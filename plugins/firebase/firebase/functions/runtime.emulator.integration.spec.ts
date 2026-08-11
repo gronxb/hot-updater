@@ -14,10 +14,12 @@ import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { registerManagedAccessKey } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import { createManagedServerPlugins } from "@hot-updater/managed";
+import {
+  createManagedServerPlugins,
+  registerManagedServerClientKey,
+} from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   generateUniversalComponentArtifacts,
@@ -44,7 +46,6 @@ import {
 import { mergeFirebaseComponentIndexArtifacts } from "../../src/firebaseComponentIndexArtifacts";
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
-import { createFirebaseManagedAccessKeyStore } from "../../src/firebaseManagedAccessKeyStore";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -268,13 +269,11 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       stagedFirestoreIndexes,
     );
     componentMigrations = await migrateUniversalComponents(deploymentTarget);
-    await registerManagedAccessKey({
+    await registerManagedServerClientKey({
       apiKey: RAW_API_KEY,
       createdAt: 1,
       name: "Runtime test",
-      store: createFirebaseManagedAccessKeyStore(
-        getFirestore(firebaseAdminApp),
-      ),
+      target: deploymentTarget,
     });
 
     seedHotUpdater = createHotUpdater({
@@ -343,12 +342,22 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         path: "firestore.indexes.analytics.2.json",
         targetVersion: "2",
       }),
+      expect.objectContaining({
+        componentId: "better-auth-managed-access-keys",
+        path: "firestore.indexes.better-auth-managed-access-keys.1.json",
+        targetVersion: "1",
+      }),
     ]);
     expect(componentMigrations).toEqual([
       {
         changed: true,
         componentId: "analytics",
         version: "2",
+      },
+      {
+        changed: true,
+        componentId: "better-auth-managed-access-keys",
+        version: "1",
       },
     ]);
     expect(

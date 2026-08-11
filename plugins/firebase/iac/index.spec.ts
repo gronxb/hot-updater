@@ -5,7 +5,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  appDelete: vi.fn(),
   existingEnv: {} as Record<string, string>,
   events: [] as string[],
   existingProject: false,
@@ -19,29 +18,11 @@ const mocks = vi.hoisted(() => ({
     targetVersion: string;
   }>,
   tmpDir: "",
-  createFirebaseManagedAccessKeyStore: vi.fn(() => ({ store: "firestore" })),
   note: vi.fn(),
-  provisionManagedBetterAuthApiKey: vi.fn(),
-}));
-
-vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
-  provisionManagedBetterAuthApiKey: mocks.provisionManagedBetterAuthApiKey,
-}));
-
-vi.mock("@hot-updater/firebase", () => ({
-  createFirebaseManagedAccessKeyStore:
-    mocks.createFirebaseManagedAccessKeyStore,
 }));
 
 vi.mock("firebase-admin/app", () => ({
-  applicationDefault: vi.fn(() => "application-default"),
   cert: vi.fn(() => mocks.firebaseCredential),
-  deleteApp: mocks.appDelete,
-  initializeApp: vi.fn(() => ({ name: "managed-access-key-app" })),
-}));
-
-vi.mock("firebase-admin/firestore", () => ({
-  getFirestore: vi.fn(() => "firestore"),
 }));
 
 vi.mock("../src/firebaseDatabase", () => ({
@@ -220,14 +201,6 @@ describe("Firebase project creation", () => {
       indexes: [],
     });
     mocks.generatedArtifacts = [];
-    mocks.provisionManagedBetterAuthApiKey.mockImplementation(async () => {
-      mocks.events.push("provision");
-      return {
-        apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        created: true,
-        sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
-      };
-    });
     mocks.tmpDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-firebase-init-"),
     );
@@ -309,11 +282,16 @@ describe("Firebase project creation", () => {
     });
     const target = { adapterName: "synthetic-deployment" };
     const createDeploymentTarget = vi.fn(() => target);
+    const prepareDeployment = vi.fn(async () => {
+      mocks.events.push("prepare-deployment");
+      return [{ message: "secret notice", title: "Deployment notice" }];
+    });
 
     await runInit({
       build: "bare",
       createDeploymentTarget,
       envFile: ".env.hotupdater",
+      prepareDeployment,
     });
 
     expect(cert).toHaveBeenCalledWith("/tmp/firebase-credentials.json");
@@ -340,10 +318,17 @@ describe("Firebase project creation", () => {
       mocks.events.indexOf("migrate-components"),
     );
     expect(mocks.events.indexOf("migrate-components")).toBeLessThan(
-      mocks.events.indexOf("provision"),
+      mocks.events.indexOf("prepare-deployment"),
     );
-    expect(mocks.events.indexOf("provision")).toBeLessThan(
+    expect(mocks.events.indexOf("prepare-deployment")).toBeLessThan(
       mocks.events.indexOf("deploy-functions"),
+    );
+    expect(prepareDeployment).toHaveBeenCalledWith(target, {
+      envFile: ".env.hotupdater",
+    });
+    expect(mocks.note).toHaveBeenCalledWith(
+      "secret notice",
+      "Deployment notice",
     );
   });
 
@@ -443,10 +428,15 @@ describe("Firebase project creation", () => {
     const createDeploymentTarget = vi.fn(() => ({
       adapterName: "synthetic-deployment",
     }));
+    const prepareDeployment = vi.fn(async () => {
+      mocks.events.push("prepare-deployment");
+      return [];
+    });
     await runInit({
       build: "bare",
       createDeploymentTarget,
       envFile: ".env.hotupdater",
+      prepareDeployment,
     });
 
     // Then
@@ -455,21 +445,17 @@ describe("Firebase project creation", () => {
         [
           "deploy-firestore",
           "migrate-components",
-          "provision",
+          "prepare-deployment",
           "deploy-functions",
         ].includes(event),
       ),
     ).toEqual([
       "deploy-firestore",
       "migrate-components",
-      "provision",
+      "prepare-deployment",
       "deploy-functions",
     ]);
-    expect(mocks.provisionManagedBetterAuthApiKey).toHaveBeenCalledWith({
-      envFilePath: ".env.hotupdater",
-      name: "Default",
-      store: { store: "firestore" },
-    });
+    expect(prepareDeployment).toHaveBeenCalledOnce();
   });
 
   it("does not inject a reusable API-key digest into functions", async () => {
@@ -481,18 +467,20 @@ describe("Firebase project creation", () => {
       HOT_UPDATER_FIREBASE_PROJECT_ID: "existing-project",
       HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
     };
-    mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
-      apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      created: true,
-      sha256: provisionedSha256,
-    });
     await fs.writeFile(
       path.join(mocks.functionsDir, "index.cjs"),
       "module.exports = HotUpdater.REGION;",
     );
 
     // When
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    await runInit({
+      build: "bare",
+      createDeploymentTarget: () => ({ adapterName: "synthetic-deployment" }),
+      envFile: ".env.hotupdater",
+      prepareDeployment: async () => [
+        { message: provisionedSha256, title: "Deployment notice" },
+      ],
+    });
 
     // Then
     const functionsCode = await fs.readFile(
@@ -512,20 +500,22 @@ describe("Firebase project creation", () => {
       HOT_UPDATER_FIREBASE_PROJECT_ID: "existing-project",
       HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
     };
-    mocks.provisionManagedBetterAuthApiKey.mockImplementation(async () => {
-      mocks.events.push("provision");
+    const prepareDeployment = vi.fn(async () => {
+      mocks.events.push("prepare-deployment");
       throw provisioningError;
     });
 
     // When
     const initialization = runInit({
       build: "bare",
+      createDeploymentTarget: () => ({ adapterName: "synthetic-deployment" }),
       envFile: ".env.hotupdater",
+      prepareDeployment,
     });
 
     // Then
     await expect(initialization).rejects.toBe(provisioningError);
-    expect(mocks.appDelete).toHaveBeenCalledOnce();
+    expect(prepareDeployment).toHaveBeenCalledOnce();
     expect(mocks.events).not.toContain("deploy-functions");
   });
 });

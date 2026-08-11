@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
 
-import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   confirmInitInputPersistence,
   getHotUpdaterInitInputEnv,
@@ -17,19 +16,12 @@ import {
   transformEnv,
   transformTemplate,
 } from "@hot-updater/cli-tools";
-import { createFirebaseManagedAccessKeyStore } from "@hot-updater/firebase";
 import {
   generateUniversalComponentArtifacts,
   migrateUniversalComponents,
 } from "@hot-updater/server/db";
 import { ExecaError, execa } from "execa";
-import {
-  applicationDefault,
-  cert,
-  deleteApp,
-  initializeApp,
-} from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { cert } from "firebase-admin/app";
 
 import { mergeFirebaseComponentIndexArtifacts } from "../src/firebaseComponentIndexArtifacts";
 import { firebaseDatabase } from "../src/firebaseDatabase";
@@ -226,32 +218,6 @@ const deployFunctions = async (
   }
 };
 
-const provisionManagedAccessKey = async (
-  projectId: string,
-  applicationCredentials?: string,
-  envFilePath = ".env.hotupdater",
-): ReturnType<typeof provisionManagedBetterAuthApiKey> => {
-  const app = initializeApp(
-    {
-      credential: applicationCredentials
-        ? cert(path.resolve(applicationCredentials))
-        : applicationDefault(),
-      projectId,
-    },
-    "hot-updater-managed-access-key-provisioning",
-  );
-  try {
-    const firestore = getFirestore(app);
-    return await provisionManagedBetterAuthApiKey({
-      envFilePath,
-      name: "Default",
-      store: createFirebaseManagedAccessKeyStore(firestore),
-    });
-  } finally {
-    await deleteApp(app);
-  }
-};
-
 const printTemplate = async (
   projectId: string,
   region: string,
@@ -307,6 +273,7 @@ export const runInit = async ({
   build,
   createDeploymentTarget,
   envFile,
+  prepareDeployment,
 }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
@@ -451,17 +418,11 @@ export const runInit = async ({
   await deployFirestore(tmpDir, nonInteractive, cliEnv);
   if (deploymentTarget !== undefined) {
     await migrateUniversalComponents(deploymentTarget);
-  }
-  const accessKey = await provisionManagedAccessKey(
-    initializeVariable.projectId,
-    applicationCredentials,
-    envFile ?? ".env.hotupdater",
-  );
-  if (accessKey.created) {
-    p.note(
-      `HOT_UPDATER_API_KEY=${accessKey.apiKey}`,
-      "Client access key (shown once)",
-    );
+    for (const notice of (await prepareDeployment?.(deploymentTarget, {
+      envFile,
+    })) ?? []) {
+      p.note(notice.message, notice.title);
+    }
   }
   await deployFunctions(tmpDir, nonInteractive, cliEnv);
 

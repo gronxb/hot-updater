@@ -1,4 +1,3 @@
-import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import {
   attachUniversalComponentDataAdapter,
   createDatabasePlugin,
@@ -35,7 +34,6 @@ import {
   createFirebaseDatabaseState,
 } from "./firebaseDatabaseState";
 import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
-import { createFirebaseManagedAccessKeyStore } from "./firebaseManagedAccessKeyStore";
 import { createFirebaseUniversalComponentDataAdapter } from "./firebaseUniversalComponentData";
 
 type FirebaseMutation<TResult> = (
@@ -167,10 +165,7 @@ export function firebaseDatabase(config: AppOptions): DatabasePlugin {
       };
     },
   });
-  return attachManagedAccessKeyStore(
-    attachUniversalComponentDataAdapter(database, () =>
-      createFirebaseUniversalComponentDataAdapter(getFirestore()),
-    ),
-    () => createFirebaseManagedAccessKeyStore(getFirestore()),
+  return attachUniversalComponentDataAdapter(database, () =>
+    createFirebaseUniversalComponentDataAdapter(getFirestore()),
   );
 }

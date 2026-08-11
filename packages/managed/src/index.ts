@@ -6,6 +6,8 @@ import {
 } from "@hot-updater/better-auth/managed";
 import type { HotUpdaterServerPlugin } from "@hot-updater/server";
 
+export { registerManagedAccessKeyForTarget as registerManagedServerClientKey } from "@hot-updater/better-auth/managed";
+
 export type ManagedServerPluginOptions = Pick<
   ManagedBetterAuthPluginOptions,
   "managementBearerToken"

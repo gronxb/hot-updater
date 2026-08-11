@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["./src/index.ts"],
+  entry: ["./src/index.ts", "./src/deployment.ts"],
   format: ["esm", "cjs"],
   outDir: "dist",
   dts: true,
@@ -16,6 +16,16 @@ export default defineConfig({
         require: {
           types: "./dist/index.d.cts",
           default: "./dist/index.cjs",
+        },
+      },
+      "./deployment": {
+        import: {
+          types: "./dist/deployment.d.mts",
+          default: "./dist/deployment.mjs",
+        },
+        require: {
+          types: "./dist/deployment.d.cts",
+          default: "./dist/deployment.cjs",
         },
       },
     },

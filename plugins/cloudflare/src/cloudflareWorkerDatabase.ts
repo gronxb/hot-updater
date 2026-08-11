@@ -1,4 +1,3 @@
-import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import {
   attachUniversalComponentDataAdapter,
   createDatabasePlugin,
@@ -6,7 +5,6 @@ import {
 
 import { createD1Implementation } from "./d1Implementation";
 import type { D1Executor } from "./d1Implementation";
-import { createD1ManagedAccessKeyStoreFromExecutor } from "./d1ManagedAccessKeyStore";
 import { createD1UniversalComponentDataAdapter } from "./d1UniversalComponentData";
 
 type D1Result = {
@@ -51,14 +49,11 @@ export const d1WorkerDatabase = <TStatement extends D1BoundStatement>(
   db: D1Like<TStatement>,
 ) => {
   const executor = createD1WorkerExecutor(db);
-  const plugin = attachUniversalComponentDataAdapter(
+  return attachUniversalComponentDataAdapter(
     createDatabasePlugin({
       name: "d1WorkerDatabase",
       plugin: () => createD1Implementation(executor),
     }),
     () => createD1UniversalComponentDataAdapter(executor),
-  );
-  return attachManagedAccessKeyStore(plugin, () =>
-    createD1ManagedAccessKeyStoreFromExecutor(executor),
   );
 };

@@ -1,4 +1,3 @@
-import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import {
   attachUniversalComponentDataAdapter,
   createDatabasePlugin,
@@ -7,7 +6,6 @@ import Cloudflare from "cloudflare";
 
 import { createD1Implementation } from "./d1Implementation";
 import type { D1Executor } from "./d1Implementation";
-import { createD1ManagedAccessKeyStoreFromExecutor } from "./d1ManagedAccessKeyStore";
 import { createD1UniversalComponentDataAdapter } from "./d1UniversalComponentData";
 
 export interface D1DatabaseConfig {
@@ -58,17 +56,11 @@ const createD1Executor = (config: D1DatabaseConfig): D1Executor => {
 
 export const d1Database = (config: D1DatabaseConfig) => {
   const executor = createD1Executor(config);
-  const plugin = attachUniversalComponentDataAdapter(
+  return attachUniversalComponentDataAdapter(
     createDatabasePlugin({
       name: "d1Database",
       plugin: () => createD1Implementation(executor),
     }),
     () => createD1UniversalComponentDataAdapter(executor),
   );
-  return attachManagedAccessKeyStore(plugin, () =>
-    createD1ManagedAccessKeyStoreFromExecutor(executor),
-  );
 };
-
-export const createD1ManagedAccessKeyStore = (config: D1DatabaseConfig) =>
-  createD1ManagedAccessKeyStoreFromExecutor(createD1Executor(config));

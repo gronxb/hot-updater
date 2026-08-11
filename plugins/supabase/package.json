@@ -54,7 +54,6 @@
     "make-migrations": "node --experimental-strip-types ./scripts/make-migrations.ts"
   },
   "dependencies": {
-    "@hot-updater/better-auth": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/managed": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",

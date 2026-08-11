@@ -12,6 +12,7 @@ import {
   resolveInitProviderInputs,
 } from "@hot-updater/cli-tools";
 import { createManagedServerPlugins } from "@hot-updater/managed";
+import { prepareManagedServerDeployment } from "@hot-updater/managed/deployment";
 import { createHotUpdater } from "@hot-updater/server";
 import { ExecaError } from "execa";
 
@@ -247,6 +248,8 @@ export const init = async (options: InitOptions = {}) => {
         plugins: createManagedServerPlugins(),
       }),
     envFile: options.envFile,
+    prepareDeployment: (target, { envFile }) =>
+      prepareManagedServerDeployment({ envFilePath: envFile, target }),
   } satisfies RunInitOptions;
   try {
     const providerModule = await providerPackage.load();

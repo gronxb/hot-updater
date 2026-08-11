@@ -1,4 +1,3 @@
-import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import type {
   BundlePatchRow,
   BundleRow,
@@ -25,7 +24,6 @@ import {
 } from "./supabaseConfig";
 import { buildSupabaseFilter } from "./supabaseFilter";
 import { createSupabaseGetUpdateInfo } from "./supabaseGetUpdateInfo";
-import { createSupabaseManagedAccessKeyStoreFromClient } from "./supabaseManagedAccessKeyStore";
 import { SupabaseMissingDataError, throwSupabaseError } from "./supabaseResult";
 import { createSupabaseUniversalComponentDataAdapter } from "./supabaseUniversalComponentData";
 import type { Database } from "./types";
@@ -242,10 +240,7 @@ export const supabaseDatabase = (config: SupabaseDatabaseConfig) => {
       return data;
     },
   });
-  return attachManagedAccessKeyStore(
-    attachUniversalComponentDataAdapter(database, () =>
-      createSupabaseUniversalComponentDataAdapter(supabase),
-    ),
-    () => createSupabaseManagedAccessKeyStoreFromClient(supabase),
+  return attachUniversalComponentDataAdapter(database, () =>
+    createSupabaseUniversalComponentDataAdapter(supabase),
   );
 };

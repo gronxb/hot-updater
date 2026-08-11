@@ -2,7 +2,6 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 
-import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   ConfigBuilder,
   confirmInitInputPersistence,
@@ -22,10 +21,7 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import {
-  createD1ManagedAccessKeyStore,
-  d1Database,
-} from "@hot-updater/cloudflare";
+import { d1Database } from "@hot-updater/cloudflare";
 import { migrateUniversalComponents } from "@hot-updater/server/db";
 import { Cloudflare } from "cloudflare";
 
@@ -106,6 +102,7 @@ const deployWorker = async (
     d1DatabaseName,
     envFilePath,
     nonInteractive,
+    prepareDeployment,
     r2BucketName,
     workerName,
   }: {
@@ -116,6 +113,7 @@ const deployWorker = async (
     d1DatabaseName: string;
     envFilePath: string;
     nonInteractive: boolean;
+    prepareDeployment: RunInitOptions["prepareDeployment"];
     r2BucketName: string;
     workerName: string;
   },
@@ -187,32 +185,20 @@ const deployWorker = async (
 
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    if (createDeploymentTarget !== undefined) {
-      await migrateUniversalComponents(
-        createDeploymentTarget(
-          d1Database({
-            accountId,
-            cloudflareApiToken: d1ApiToken,
-            databaseId: d1DatabaseId,
-          }),
-        ),
-      );
-    }
-
-    const accessKey = await provisionManagedBetterAuthApiKey({
-      envFilePath,
-      name: "Default",
-      store: createD1ManagedAccessKeyStore({
+    const deploymentTarget = createDeploymentTarget?.(
+      d1Database({
         accountId,
         cloudflareApiToken: d1ApiToken,
         databaseId: d1DatabaseId,
       }),
-    });
-    if (accessKey.created) {
-      p.note(
-        `HOT_UPDATER_API_KEY=${accessKey.apiKey}`,
-        "Client access key (shown once)",
-      );
+    );
+    if (deploymentTarget !== undefined) {
+      await migrateUniversalComponents(deploymentTarget);
+      for (const notice of (await prepareDeployment?.(deploymentTarget, {
+        envFile: envFilePath,
+      })) ?? []) {
+        p.note(notice.message, notice.title);
+      }
     }
 
     await wrangler("deploy", "--name", workerName);
@@ -231,6 +217,7 @@ export const runInit = async ({
   build,
   createDeploymentTarget,
   envFile,
+  prepareDeployment,
 }: RunInitOptions) => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
@@ -701,6 +688,7 @@ export const runInit = async ({
     d1DatabaseName,
     envFilePath: envFile ?? ".env.hotupdater",
     nonInteractive,
+    prepareDeployment,
     r2BucketName: selectedBucketName,
     workerName,
   });

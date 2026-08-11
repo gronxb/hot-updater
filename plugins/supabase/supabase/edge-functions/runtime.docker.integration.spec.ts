@@ -13,7 +13,6 @@ import {
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { registerManagedAccessKey } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import {
   type Bundle,
@@ -21,7 +20,10 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
-import { createManagedServerPlugins } from "@hot-updater/managed";
+import {
+  createManagedServerPlugins,
+  registerManagedServerClientKey,
+} from "@hot-updater/managed";
 import { bundleToRow, createDatabaseClient } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
@@ -45,7 +47,6 @@ import {
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
-import { createSupabaseManagedAccessKeyStore } from "../../src/supabaseManagedAccessKeyStore";
 import { supabaseStorage } from "../../src/supabaseStorage";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -175,6 +176,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let gatewayBaseUrl = "";
   let edgeRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
+  let deploymentTarget: ReturnType<typeof createHotUpdater>;
   let databaseClient: ReturnType<typeof createDatabaseClient>;
   let supabaseAdmin: ReturnType<typeof createClient>;
   let componentArtifacts: readonly UniversalComponentGeneratedArtifact[] = [];
@@ -217,7 +219,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
     composeProjectName = `hot-updater-supabase-${process.pid}-${Date.now()}`;
     composeFilePath = path.join(runtimeRoot, "docker-compose.yml");
-    const deploymentTarget = createHotUpdater({
+    deploymentTarget = createHotUpdater({
       database: supabaseDatabase({
         supabaseServiceRoleKey: SERVICE_ROLE_KEY,
         supabaseUrl: gatewayBaseUrl,
@@ -300,13 +302,10 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     supabaseAdmin = createClient(gatewayBaseUrl, SERVICE_ROLE_KEY);
     await ensureBucketExists(supabaseAdmin);
-    await registerManagedAccessKey({
+    await registerManagedServerClientKey({
       apiKey: RAW_API_KEY,
       name: "Runtime test",
-      store: createSupabaseManagedAccessKeyStore({
-        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
-        supabaseUrl: gatewayBaseUrl,
-      }),
+      target: deploymentTarget,
     });
 
     databaseClient = createDatabaseClient(
@@ -410,6 +409,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
         componentId: "analytics",
         path: "component-data/analytics/supabase-2.sql",
         targetVersion: "2",
+      }),
+      expect.objectContaining({
+        componentId: "better-auth-managed-access-keys",
+        path: "component-data/better-auth-managed-access-keys/supabase-1.sql",
+        targetVersion: "1",
       }),
     ]);
     runDatabaseSql(`

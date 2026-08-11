@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "path";
 
-import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   type BuildType,
   ConfigBuilder,
@@ -32,7 +31,6 @@ import {
   generateUniversalComponentArtifacts,
   type UniversalComponentGeneratedArtifact,
 } from "@hot-updater/server/db";
-import { createSupabaseManagedAccessKeyStore } from "@hot-updater/supabase";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
@@ -921,6 +919,7 @@ export const runInit = async ({
   build,
   createDeploymentTarget,
   envFile,
+  prepareDeployment,
 }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
@@ -1100,13 +1099,13 @@ export const runInit = async ({
     }
   }
 
-  if (createDeploymentTarget !== undefined) {
-    const deploymentTarget = createDeploymentTarget(
-      supabaseDatabase({
-        supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
-        supabaseUrl: `https://${project.id}.supabase.co`,
-      }),
-    );
+  const deploymentTarget = createDeploymentTarget?.(
+    supabaseDatabase({
+      supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
+      supabaseUrl: `https://${project.id}.supabase.co`,
+    }),
+  );
+  if (deploymentTarget !== undefined) {
     await materializeSupabaseComponentArtifacts({
       artifacts: generateUniversalComponentArtifacts(deploymentTarget),
       migrationPath,
@@ -1120,19 +1119,12 @@ export const runInit = async ({
   });
 
   await pushDB(tmpDir, { accessToken, dbPassword });
-  const accessKey = await provisionManagedBetterAuthApiKey({
-    envFilePath: envFile ?? ".env.hotupdater",
-    name: "Default",
-    store: createSupabaseManagedAccessKeyStore({
-      supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
-      supabaseUrl: `https://${project.id}.supabase.co`,
-    }),
-  });
-  if (accessKey.created) {
-    p.note(
-      `HOT_UPDATER_API_KEY=${accessKey.apiKey}`,
-      "Client access key (shown once)",
-    );
+  if (deploymentTarget !== undefined) {
+    for (const notice of (await prepareDeployment?.(deploymentTarget, {
+      envFile,
+    })) ?? []) {
+      p.note(notice.message, notice.title);
+    }
   }
   await deployEdgeFunction(accessToken, tmpDir, project.id, functionName);
 

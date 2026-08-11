@@ -4,10 +4,23 @@ import type { BuildType } from "./ConfigBuilder";
 
 export type RunInitOptions = {
   readonly build: BuildType;
-  readonly createDeploymentTarget?: (database: DatabasePlugin) => {
-    readonly adapterName: string;
-  };
+  readonly createDeploymentTarget?: (
+    database: DatabasePlugin,
+  ) => InitDeploymentTarget;
   readonly envFile?: string;
+  readonly prepareDeployment?: (
+    target: InitDeploymentTarget,
+    options: { readonly envFile?: string },
+  ) => Promise<readonly InitDeploymentNotice[]>;
+};
+
+export type InitDeploymentTarget = {
+  readonly adapterName: string;
+};
+
+export type InitDeploymentNotice = {
+  readonly message: string;
+  readonly title: string;
 };
 
 export class InitError extends Error {
