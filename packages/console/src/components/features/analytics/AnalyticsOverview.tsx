@@ -1,4 +1,4 @@
-import type { ActiveInstallationOverview } from "@hot-updater/analytics";
+import type { ActiveInstallationOverview } from "@hot-updater/server";
 import type { ReactNode } from "react";
 
 import {

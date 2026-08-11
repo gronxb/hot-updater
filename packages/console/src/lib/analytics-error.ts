@@ -14,6 +14,6 @@ export const getAnalyticsErrorCopy = (
   const limit = Number(match[1]);
   return {
     title: "Analytics report limit reached",
-    description: `This query matched more than ${limit.toLocaleString()} reports. Narrow the query or configure a dedicated Analytics service.`,
+    description: `This query matched more than ${limit.toLocaleString()} reports. Narrow the query and try again.`,
   };
 };

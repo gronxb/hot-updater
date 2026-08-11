@@ -1,4 +1,4 @@
-import type { ActiveInstallationOverview } from "@hot-updater/analytics";
+import type { ActiveInstallationOverview } from "@hot-updater/server";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";

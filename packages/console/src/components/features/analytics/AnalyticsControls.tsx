@@ -1,4 +1,4 @@
-import type { ActiveInstallationWindow } from "@hot-updater/analytics";
+import type { ActiveInstallationWindow } from "@hot-updater/server";
 import { Search, X } from "lucide-react";
 import { useState } from "react";
 

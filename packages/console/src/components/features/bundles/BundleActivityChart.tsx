@@ -1,4 +1,4 @@
-import type { ActiveInstallationWindow } from "@hot-updater/analytics";
+import type { ActiveInstallationWindow } from "@hot-updater/server";
 import { useId } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 

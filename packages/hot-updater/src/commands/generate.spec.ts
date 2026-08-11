@@ -30,33 +30,27 @@ const mockCli = vi.hoisted(() => ({
 const mockServer = vi.hoisted(() => ({
   createMigrator: vi.fn(),
   generateSchema: vi.fn(),
-  generateUniversalComponentArtifacts: vi.fn(),
 }));
 
-vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@hot-updater/cli-tools")>();
-  return {
-    ...actual,
-    colors: {
-      blue: (value: string) => value,
-      cyan: (value: string) => value,
-      dim: (value: string) => value,
-      green: (value: string) => value,
-      magenta: (value: string) => value,
-      red: (value: string) => value,
-      yellow: (value: string) => value,
-    },
-    p: {
-      cancel: mockCli.cancel,
-      confirm: mockCli.confirm,
-      isCancel: mockCli.isCancel,
-      log: mockCli.log,
-      outro: mockCli.outro,
-      spinner: vi.fn(() => mockCli.spinner),
-    },
-  };
-});
+vi.mock("@hot-updater/cli-tools", () => ({
+  colors: {
+    blue: (value: string) => value,
+    cyan: (value: string) => value,
+    dim: (value: string) => value,
+    green: (value: string) => value,
+    magenta: (value: string) => value,
+    red: (value: string) => value,
+    yellow: (value: string) => value,
+  },
+  p: {
+    cancel: mockCli.cancel,
+    confirm: mockCli.confirm,
+    isCancel: mockCli.isCancel,
+    log: mockCli.log,
+    outro: mockCli.outro,
+    spinner: vi.fn(() => mockCli.spinner),
+  },
+}));
 
 vi.mock("./utils/load-hot-updater", () => ({
   loadHotUpdater: vi.fn(),
@@ -65,8 +59,6 @@ vi.mock("./utils/load-hot-updater", () => ({
 vi.mock("@hot-updater/server/db", () => ({
   createMigrator: mockServer.createMigrator,
   generateSchema: mockServer.generateSchema,
-  generateUniversalComponentArtifacts:
-    mockServer.generateUniversalComponentArtifacts,
 }));
 
 describe("generate command", () => {
@@ -80,7 +72,6 @@ describe("generate command", () => {
           "insert into private_hot_updater_settings (`key`, value) values ('version', '0.34.0') on duplicate key update value = values(value);",
       })),
     });
-    mockServer.generateUniversalComponentArtifacts.mockReturnValue([]);
   });
 
   afterEach(() => {
@@ -192,160 +183,6 @@ describe("generate command", () => {
       await expect(
         stat(path.join(outputDir, "hot-updater-schema.ts")),
       ).rejects.toThrow();
-    } finally {
-      await rm(outputDir, { recursive: true, force: true });
-    }
-  });
-
-  it("writes active component artifacts in deterministic nested paths", async () => {
-    const outputDir = await mkdtemp(
-      path.join(tmpdir(), "hot-updater-component-artifacts-"),
-    );
-    const loadedConfig: LoadHotUpdaterResult = {
-      absoluteConfigPath: "/repo/src/db.ts",
-      adapterName: "drizzle",
-      dispose: vi.fn(),
-      hotUpdater: {
-        adapterName: "drizzle",
-      },
-    };
-    mockServer.generateSchema.mockReturnValue({
-      code: "export const bundles = {};",
-      path: "hot-updater-schema.ts",
-    });
-    mockServer.generateUniversalComponentArtifacts.mockReturnValue([
-      {
-        componentId: "security-log",
-        contents: "second",
-        path: "component-data/security-log/postgres-2.sql",
-        targetVersion: "2",
-      },
-      {
-        componentId: "audit-log",
-        contents: "first",
-        path: "component-data/audit-log/postgres-3.sql",
-        targetVersion: "3",
-      },
-    ]);
-    vi.mocked(loadHotUpdater).mockResolvedValue(loadedConfig);
-
-    try {
-      await generate({
-        configPath: "src/db.ts",
-        outputDir,
-        skipConfirm: true,
-      });
-      await expect(
-        readFile(
-          path.join(outputDir, "component-data/audit-log/postgres-3.sql"),
-          "utf-8",
-        ),
-      ).resolves.toBe("first");
-      await expect(
-        readFile(
-          path.join(outputDir, "component-data/security-log/postgres-2.sql"),
-          "utf-8",
-        ),
-      ).resolves.toBe("second");
-
-      await generate({
-        configPath: "src/db.ts",
-        outputDir,
-        skipConfirm: true,
-      });
-      expect(
-        mockCli.log.success.mock.calls.filter(([message]) =>
-          String(message).includes("component-data"),
-        ),
-      ).toHaveLength(2);
-    } finally {
-      await rm(outputDir, { recursive: true, force: true });
-    }
-  });
-
-  it("generates component-only artifacts for a provider adapter name", async () => {
-    const outputDir = await mkdtemp(
-      path.join(tmpdir(), "hot-updater-provider-artifacts-"),
-    );
-    const dispose = vi.fn();
-    vi.mocked(loadHotUpdater).mockResolvedValue({
-      absoluteConfigPath: "/repo/hot-updater.config.ts",
-      adapterName: "supabaseDatabase",
-      dispose,
-      hotUpdater: { adapterName: "supabaseDatabase" },
-    });
-    mockServer.generateUniversalComponentArtifacts.mockReturnValue([
-      {
-        componentId: "audit-log",
-        contents: "BEGIN; SELECT 1; COMMIT;",
-        path: "component-data/audit-log/supabase-2.sql",
-        targetVersion: "2",
-      },
-    ]);
-
-    try {
-      await generate({
-        configPath: "hot-updater.config.ts",
-        outputDir,
-        skipConfirm: true,
-      });
-
-      await expect(
-        readFile(
-          path.join(outputDir, "component-data/audit-log/supabase-2.sql"),
-          "utf-8",
-        ),
-      ).resolves.toBe("BEGIN; SELECT 1; COMMIT;");
-      expect(mockServer.createMigrator).not.toHaveBeenCalled();
-      expect(mockServer.generateSchema).not.toHaveBeenCalled();
-      expect(dispose).toHaveBeenCalledOnce();
-    } finally {
-      await rm(outputDir, { recursive: true, force: true });
-    }
-  });
-
-  it("does not overwrite a generated database artifact on path collision", async () => {
-    const outputDir = await mkdtemp(
-      path.join(tmpdir(), "hot-updater-artifact-collision-"),
-    );
-    const artifactPath = "component-data/audit-log/postgres-2.sql";
-    vi.mocked(loadHotUpdater).mockResolvedValue({
-      absoluteConfigPath: "/repo/src/db.ts",
-      adapterName: "drizzle",
-      dispose: vi.fn(),
-      hotUpdater: { adapterName: "drizzle" },
-    });
-    mockServer.generateSchema.mockReturnValue({
-      code: "export const coreSchema = {};",
-      path: artifactPath,
-    });
-    mockServer.generateUniversalComponentArtifacts.mockReturnValue([
-      {
-        componentId: "audit-log",
-        contents: "DROP TABLE core_schema;",
-        path: artifactPath,
-        targetVersion: "2",
-      },
-    ]);
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => {
-      throw new Error(`process.exit(${code})`);
-    });
-
-    try {
-      await expect(
-        generate({
-          configPath: "src/db.ts",
-          outputDir,
-          skipConfirm: true,
-        }),
-      ).rejects.toThrow("process.exit(1)");
-      await expect(
-        readFile(path.join(outputDir, artifactPath), "utf-8"),
-      ).resolves.toBe("export const coreSchema = {};");
-      expect(mockCli.log.error).toHaveBeenCalledWith(
-        expect.stringContaining("collides with generated database output"),
-      );
-      expect(exitSpy).toHaveBeenCalledWith(1);
     } finally {
       await rm(outputDir, { recursive: true, force: true });
     }

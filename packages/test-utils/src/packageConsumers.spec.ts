@@ -108,15 +108,6 @@ if (typeof runtime.setupBundleMethodsTestSuite !== "function") process.exit(1);`
     );
   });
 
-  it("exports the universal component adapter conformance suite", async () => {
-    await runNode(
-      `const runtime = await import(${JSON.stringify(moduleSpecifier)});
-if (typeof runtime.setupUniversalComponentDataAdapterTestSuite !== "function") process.exit(1);
-if (typeof runtime.setupUniversalComponentMigrationTestSuite !== "function") process.exit(1);`,
-      true,
-    );
-  });
-
   it("does not advertise an unsupported CommonJS root", async () => {
     await expect(
       runNode(`require.resolve(${JSON.stringify(moduleSpecifier)});`),
@@ -126,8 +117,7 @@ if (typeof runtime.setupUniversalComponentMigrationTestSuite !== "function") pro
   it("loads the Node entrypoint through its ESM import condition", async () => {
     await runNode(
       `const runtime = await import(${JSON.stringify(`${moduleSpecifier}/node`)});
-if (typeof runtime.hasCommand !== "function") process.exit(1);
-if (typeof runtime.assertProviderAnalyticsBoundary !== "function") process.exit(1);`,
+if (typeof runtime.hasCommand !== "function") process.exit(1);`,
       true,
     );
   });
@@ -135,29 +125,24 @@ if (typeof runtime.assertProviderAnalyticsBoundary !== "function") process.exit(
   it("loads the Node entrypoint through its CommonJS require condition", async () => {
     await runNode(
       `const runtime = require(${JSON.stringify(`${moduleSpecifier}/node`)});
-if (typeof runtime.hasCommand !== "function") process.exit(1);
-if (typeof runtime.assertProviderAnalyticsBoundary !== "function") process.exit(1);`,
+if (typeof runtime.hasCommand !== "function") process.exit(1);`,
     );
   });
 
   it.each([
     {
       file: "root-import.mts",
-      source: `import { setupBundleMethodsTestSuite, setupUniversalComponentDataAdapterTestSuite, setupUniversalComponentMigrationTestSuite } from ${JSON.stringify(moduleSpecifier)};
-void setupBundleMethodsTestSuite;
-void setupUniversalComponentDataAdapterTestSuite;
-void setupUniversalComponentMigrationTestSuite;`,
+      source: `import { setupBundleMethodsTestSuite } from ${JSON.stringify(moduleSpecifier)};
+void setupBundleMethodsTestSuite;`,
     },
     {
       file: "node-import.mts",
-      source: `import { assertProviderAnalyticsBoundary, hasCommand } from ${JSON.stringify(`${moduleSpecifier}/node`)};
-void assertProviderAnalyticsBoundary;
+      source: `import { hasCommand } from ${JSON.stringify(`${moduleSpecifier}/node`)};
 void hasCommand;`,
     },
     {
       file: "node-require.cts",
-      source: `import { assertProviderAnalyticsBoundary, hasCommand } from ${JSON.stringify(`${moduleSpecifier}/node`)};
-void assertProviderAnalyticsBoundary;
+      source: `import { hasCommand } from ${JSON.stringify(`${moduleSpecifier}/node`)};
 void hasCommand;`,
     },
   ])("type-checks $file with NodeNext", async ({ file, source }) => {

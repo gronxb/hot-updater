@@ -1,4 +1,3 @@
-import { analytics } from "@hot-updater/analytics";
 import type { BuildType, RunInitOptions } from "@hot-updater/cli-tools";
 import {
   getHotUpdaterEnvValue,
@@ -12,7 +11,6 @@ import {
   readHotUpdaterInitEnv,
   resolveInitProviderInputs,
 } from "@hot-updater/cli-tools";
-import { createHotUpdater } from "@hot-updater/server";
 import { ExecaError } from "execa";
 
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
@@ -241,11 +239,6 @@ export const init = async (options: InitOptions = {}) => {
   const build = buildPluginPackage.name;
   const runInitOptions = {
     build,
-    createDeploymentTarget: (database) =>
-      createHotUpdater({
-        database,
-        plugins: [analytics({ queryAccess: "public" })],
-      }),
     envFile: options.envFile,
   } satisfies RunInitOptions;
   try {

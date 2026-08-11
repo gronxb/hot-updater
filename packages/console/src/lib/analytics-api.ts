@@ -20,7 +20,6 @@ export type AnalyticsCapabilityState =
       readonly mode: "bounded";
       readonly maxMatchingRows: number;
     }
-  | { readonly status: "supported"; readonly mode: "dedicated" }
   | { readonly status: "error"; readonly error: Error };
 
 type AnalyticsCapabilityQueryResult =
@@ -60,13 +59,11 @@ export const getAnalyticsCapabilityState = (
       if (!query.data.capabilities.analytics) {
         return { status: "unsupported" };
       }
-      return query.data.capabilities.mode === "bounded"
-        ? {
-            status: "supported",
-            mode: "bounded",
-            maxMatchingRows: query.data.capabilities.maxMatchingRows,
-          }
-        : { status: "supported", mode: "dedicated" };
+      return {
+        status: "supported",
+        mode: "bounded",
+        maxMatchingRows: query.data.capabilities.maxMatchingRows,
+      };
   }
 };
 

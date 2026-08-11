@@ -6,65 +6,22 @@ import {
   type ClientAccessKeyRow,
 } from "@hot-updater/plugin-core";
 
-export class FirebaseDatabaseDataError extends Error {
-  readonly name = "FirebaseDatabaseDataError";
-
-  constructor(readonly source: string) {
-    super(`Invalid Firebase database data at "${source}".`);
-  }
-}
-
-const record = (value: unknown, source: string): object => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new FirebaseDatabaseDataError(source);
-  }
-  return value;
-};
-
-export const property = (value: object, key: string): unknown =>
-  Reflect.get(value, key);
-
-export const hasFirebaseProperty = (value: unknown, key: string): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  key in value;
-
-const string = (value: unknown, source: string): string => {
-  if (typeof value !== "string") throw new FirebaseDatabaseDataError(source);
-  return value;
-};
-
-const nullableString = (value: unknown, source: string): string | null => {
-  if (value === null || value === undefined) return null;
-  return string(value, source);
-};
-
-const boolean = (value: unknown, source: string): boolean => {
-  if (typeof value !== "boolean") throw new FirebaseDatabaseDataError(source);
-  return value;
-};
-
-const number = (value: unknown, source: string): number => {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new FirebaseDatabaseDataError(source);
-  }
-  return value;
-};
-
-const stringArray = (
-  value: unknown,
-  source: string,
-): readonly string[] | null => {
-  if (value === null || value === undefined) return null;
-  if (!Array.isArray(value)) throw new FirebaseDatabaseDataError(source);
-  return value.map((item) => string(item, source));
-};
-
-const platform = (value: unknown, source: string): "android" | "ios" => {
-  if (value === "android" || value === "ios") return value;
-  throw new FirebaseDatabaseDataError(source);
-};
+import {
+  boolean,
+  FirebaseDatabaseDataError,
+  nullableString,
+  number,
+  platform,
+  property,
+  record,
+  string,
+  stringArray,
+} from "./firebaseDatabaseParserShared";
+export {
+  FirebaseDatabaseDataError,
+  hasFirebaseProperty,
+  property,
+} from "./firebaseDatabaseParserShared";
 
 const metadata = (value: unknown, source: string) => {
   const normalized = value === undefined ? {} : value;

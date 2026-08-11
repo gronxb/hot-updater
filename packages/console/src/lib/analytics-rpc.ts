@@ -18,8 +18,7 @@ export type AnalyticsCapabilities = {
         readonly analytics: true;
         readonly mode: "bounded";
         readonly maxMatchingRows: number;
-      }
-    | { readonly analytics: true; readonly mode: "dedicated" };
+      };
 };
 
 type BundlePage = {
@@ -66,15 +65,13 @@ export const getAnalyticsCapabilities = async (
   if (!capability.analytics || !capability.analyticsQueries) {
     return { capabilities: { analytics: false } };
   }
-  return capability.mode === "bounded"
-    ? {
-        capabilities: {
-          analytics: true,
-          mode: capability.mode,
-          maxMatchingRows: capability.maxMatchingRows,
-        },
-      }
-    : { capabilities: { analytics: true, mode: capability.mode } };
+  return {
+    capabilities: {
+      analytics: true,
+      mode: "bounded",
+      maxMatchingRows: capability.maxMatchingRows,
+    },
+  };
 };
 
 const collectBundles = async (
@@ -156,7 +153,7 @@ export const collectAnalyticsOverview = async ({
 
   const bundles = await collectBundles(getBundles, pageSize);
   const overview = await (
-    runtime as import("@hot-updater/analytics/provider").AnalyticsProvider
+    runtime as import("@hot-updater/server").AnalyticsProvider
   ).getBundleEventOverview();
   return createAnalyticsOverviewFromCounts(
     bundles,

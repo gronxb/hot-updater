@@ -1,4 +1,4 @@
-import type { ActiveInstallationOverview } from "@hot-updater/analytics";
+import type { ActiveInstallationOverview } from "@hot-updater/server";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -183,7 +183,7 @@ describe("AnalyticsOverview", () => {
     );
   });
 
-  it("renders dedicated guidance when the bounded Analytics scan is exceeded", () => {
+  it("renders narrowing guidance when the bounded Analytics scan is exceeded", () => {
     render(
       <AnalyticsOverview
         error={new Error("Bundle event scan exceeded 50000 rows.")}

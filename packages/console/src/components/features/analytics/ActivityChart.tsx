@@ -1,7 +1,7 @@
 import type {
   ActiveInstallationOverview,
   ActiveInstallationWindow,
-} from "@hot-updater/analytics";
+} from "@hot-updater/server";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import {

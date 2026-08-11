@@ -1,6 +1,5 @@
 import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 
-import type { UniversalComponentDataAdapter } from "../universalComponentData";
 import type { BundleRowUpdate } from "./databaseOperations";
 import type {
   BundleEventRow,
@@ -104,7 +103,6 @@ export interface DatabaseCommitResult {
 export interface BundleRepositoryCore {
   readonly bundles: BundleTable;
   readonly bundlePatches: BundlePatchTable;
-  readonly componentData?: UniversalComponentDataAdapter;
   commit(input: DatabaseCommit): Promise<DatabaseCommitResult>;
   getChannels?: () => Promise<string[]>;
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;

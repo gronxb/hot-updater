@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import type { BundleEventPersistenceRow } from "@hot-updater/analytics/provider";
 import {
   createMockDatabaseData,
   mockDatabase,
@@ -10,15 +9,7 @@ import {
   bundleToPatchRows,
   bundleToRow,
   type Bundle,
-  type UniversalComponentAppendInput,
-  type UniversalComponentGetInput,
-  type UniversalComponentOrderedScanInput,
-  type UniversalComponentRow,
-  type UniversalComponentScalar,
-  type UniversalComponentSchema,
-  validateUniversalComponentAppend,
-  validateUniversalComponentGet,
-  validateUniversalComponentOrderedScan,
+  type BundleEventRow,
 } from "@hot-updater/plugin-core";
 
 type BundleSeed = Omit<Bundle, "storageUri"> &
@@ -666,7 +657,7 @@ for (const bundle of bundles) {
   }
 }
 
-const bundleEvents: readonly BundleEventPersistenceRow[] = [
+const bundleEvents: readonly BundleEventRow[] = [
   {
     id: "019f635e-0001-7000-8000-000000000001",
     type: "UPDATE_APPLIED",
@@ -868,7 +859,7 @@ const bundleEvents: readonly BundleEventPersistenceRow[] = [
     (
       [installSuffix, type, userId, fromBundleId, toBundleId, day, hour],
       index,
-    ): BundleEventPersistenceRow => {
+    ): BundleEventRow => {
       const baseEvent = {
         id: `019f635e-1${String(index).padStart(3, "0")}-7000-8000-000000000${installSuffix}`,
         install_id: `019f635d-${installSuffix}-7000-8000-00000000${installSuffix}`,
@@ -900,104 +891,14 @@ const bundleEvents: readonly BundleEventPersistenceRow[] = [
   ),
 ];
 
-const componentRows = new Map<string, UniversalComponentRow[]>([
-  ["bundle_events", bundleEvents.map((row) => ({ ...row }))],
-]);
+for (const row of bundleEvents) {
+  databaseData.bundleEvents.set(row.id, row);
+}
 
-const compareScalar = (
-  left: UniversalComponentScalar,
-  right: UniversalComponentScalar,
-) => (left < right ? -1 : left > right ? 1 : 0);
-
-const compareRowToCursor = (
-  row: UniversalComponentRow,
-  columns: readonly string[],
-  cursor: readonly UniversalComponentScalar[],
-) => {
-  for (let index = 0; index < cursor.length; index += 1) {
-    const column = columns[index]!;
-    const comparison = compareScalar(
-      row[column] as UniversalComponentScalar,
-      cursor[index]!,
-    );
-    if (comparison !== 0) return comparison;
-  }
-  return 0;
-};
-
-const rowCursor = (
-  row: UniversalComponentRow,
-  columns: readonly string[],
-): UniversalComponentScalar[] =>
-  columns.map((column) => row[column] as UniversalComponentScalar);
-
-const database = {
-  ...mockDatabase({
-    latency: { min: 150, max: 320 },
-    data: databaseData,
-  }),
-  componentData: {
-    bind(schema: UniversalComponentSchema) {
-      return {
-        schema,
-        async append(input: UniversalComponentAppendInput) {
-          const table = validateUniversalComponentAppend(schema, input);
-          const rows = componentRows.get(table.name) ?? [];
-          rows.push(Object.freeze({ ...input.row }));
-          componentRows.set(table.name, rows);
-        },
-        async create(input: UniversalComponentAppendInput) {
-          const table = validateUniversalComponentAppend(schema, input);
-          const primaryKey = table.columns.find((column) => column.primaryKey)!;
-          const rows = componentRows.get(table.name) ?? [];
-          if (
-            rows.some(
-              (row) => row[primaryKey.name] === input.row[primaryKey.name],
-            )
-          ) {
-            return "existing";
-          }
-          rows.push(Object.freeze({ ...input.row }));
-          componentRows.set(table.name, rows);
-          return "created";
-        },
-        async get(input: UniversalComponentGetInput) {
-          const table = validateUniversalComponentGet(schema, input);
-          const primaryKey = table.columns.find((column) => column.primaryKey)!;
-          return (
-            componentRows
-              .get(table.name)
-              ?.find((row) => row[primaryKey.name] === input.primaryKey) ?? null
-          );
-        },
-        async assertReady() {},
-        async orderedScan(input: UniversalComponentOrderedScanInput) {
-          const scan = validateUniversalComponentOrderedScan(schema, input);
-          return [...(componentRows.get(scan.table) ?? [])]
-            .sort((left, right) =>
-              compareRowToCursor(
-                left,
-                scan.columns,
-                rowCursor(right, scan.columns),
-              ),
-            )
-            .filter(
-              (row) =>
-                (input.afterExclusive === undefined ||
-                  compareRowToCursor(row, scan.columns, input.afterExclusive) >
-                    0) &&
-                compareRowToCursor(
-                  row,
-                  scan.columns,
-                  input.beforePrefixExclusive,
-                ) < 0,
-            )
-            .slice(0, input.limit);
-        },
-      };
-    },
-  },
-};
+const database = mockDatabase({
+  latency: { min: 150, max: 320 },
+  data: databaseData,
+});
 
 export default {
   projectPath: __dirname,

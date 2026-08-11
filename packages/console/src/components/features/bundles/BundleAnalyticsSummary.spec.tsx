@@ -72,7 +72,11 @@ const analytics = {
   },
 };
 
-const supported = { status: "supported", mode: "dedicated" } as const;
+const supported = {
+  status: "supported",
+  mode: "bounded",
+  maxMatchingRows: 50_000,
+} as const;
 
 const capability = (
   status: AnalyticsCapabilityState["status"],
@@ -81,7 +85,7 @@ const capability = (
     case "error":
       return { status, error: new Error("offline") };
     case "supported":
-      return { status, mode: "dedicated" };
+      return { status, mode: "bounded", maxMatchingRows: 50_000 };
     case "unsupported":
     case "unresolved":
       return { status };
@@ -204,7 +208,7 @@ describe("BundleAnalyticsSummary", () => {
     );
   });
 
-  it("renders dedicated guidance when the bounded Analytics scan is exceeded", () => {
+  it("renders narrowing guidance when the bounded Analytics scan is exceeded", () => {
     analyticsCapability = supported;
     useBundleEventAnalyticsQueryMock.mockReturnValue({
       data: undefined,

@@ -34,7 +34,11 @@ vi.mock("@/components/BundleIdDisplay", () => ({
   BundleIdDisplay: ({ bundleId }: { bundleId: string }) => bundleId,
 }));
 vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
-  useAnalyticsCapability: () => ({ status: "supported", mode: "dedicated" }),
+  useAnalyticsCapability: () => ({
+    status: "supported",
+    mode: "bounded",
+    maxMatchingRows: 50_000,
+  }),
 }));
 vi.mock("@/components/ui/sidebar", () => ({
   SidebarTrigger: () => null,

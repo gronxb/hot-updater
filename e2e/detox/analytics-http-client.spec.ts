@@ -2,12 +2,8 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { analytics } from "../../packages/analytics/src/index.ts";
 import { createHotUpdater } from "../../packages/server/src/index.ts";
-import {
-  createDatabasePlugin,
-  type UniversalComponentSchema,
-} from "../../plugins/plugin-core/src/index.ts";
+import { createInMemoryDatabasePlugin } from "../../packages/test-utils/test/inMemoryDatabasePlugin.ts";
 import {
   ConsoleAnalyticsHttpError,
   createConsoleAnalyticsHttpClient,
@@ -38,35 +34,11 @@ describe("Detox Analytics HTTP client", () => {
       }),
       name: "standaloneRepository",
     };
-    const serverDatabase = {
-      ...createDatabasePlugin({
-        name: "deployed-server-database",
-        plugin: () => ({
-          count: vi.fn(async () => 0),
-          create: vi.fn(async ({ data }) => data),
-          delete: vi.fn(async () => undefined),
-          findMany: vi.fn(async () => []),
-          findOne: vi.fn(async () => null),
-          update: vi.fn(async () => null),
-        }),
-      }),
-      componentData: {
-        bind(schema: UniversalComponentSchema) {
-          return {
-            schema,
-            append: vi.fn(async () => undefined),
-            assertReady: vi.fn(async () => undefined),
-            create: vi.fn(async () => "created" as const),
-            get: vi.fn(async () => null),
-            orderedScan: vi.fn(async () => []),
-          };
-        },
-      },
-    };
+    const serverDatabase = createInMemoryDatabasePlugin();
     const deployedServer = createHotUpdater({
+      analytics: { queryAccess: "public" },
       basePath: "/hot-updater",
       database: serverDatabase,
-      plugins: [analytics({ queryAccess: "public" })],
     });
     const fetch = vi.fn<typeof globalThis.fetch>((input, init) =>
       deployedServer.handler(new Request(input, init)),

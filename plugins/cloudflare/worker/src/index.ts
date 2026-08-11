@@ -9,7 +9,10 @@ import {
 } from "../../src/worker";
 
 export type CloudflareWorkerEnv = {
-  DB: D1Database;
+  DB: {
+    batch: D1Database["batch"];
+    prepare: D1Database["prepare"];
+  };
   BUCKET: R2Bucket;
   JWT_SECRET: string;
 };

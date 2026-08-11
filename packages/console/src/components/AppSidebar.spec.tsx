@@ -59,7 +59,7 @@ const capability = (
     case "error":
       return { status, error: new Error("offline") };
     case "supported":
-      return { status, mode: "dedicated" };
+      return { status, mode: "bounded", maxMatchingRows: 50_000 };
     case "unsupported":
     case "unresolved":
       return { status };
