@@ -20,7 +20,7 @@ import {
   type RuntimeChild,
   type RuntimeLogs,
 } from "../../../packages/test-utils/src/runtimeProcess";
-import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "./dynamodbDatabase";
+import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "./dynamoDB";
 
 const REGION = "us-east-1";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";

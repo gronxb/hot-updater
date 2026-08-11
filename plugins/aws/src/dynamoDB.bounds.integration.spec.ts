@@ -7,20 +7,17 @@ import {
 } from "@hot-updater/plugin-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { DynamoDBIntegrationFixture } from "./dynamodbDatabase.integration-fixture";
 import {
   boundedDynamoDBMetadataItem,
   DYNAMODB_MAX_METADATA_ITEM_BYTES,
-} from "./dynamodbDatabaseBounds";
-import { createDynamoDBCrud } from "./dynamodbDatabaseCrud";
+} from "./dynamoDB";
+import { createDynamoDBCrud } from "./dynamoDB";
 import {
   queryCompleteOwnerPatches,
   queryCompleteOwnersPatches,
-} from "./dynamodbDatabaseOwnerReads";
-import {
-  toDynamoDBBundleItem,
-  toDynamoDBPatchItem,
-} from "./dynamodbDatabaseRows";
+} from "./dynamoDB";
+import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
+import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
 const fixture = new DynamoDBIntegrationFixture();
 const bundleCount = 1_001;

@@ -7,7 +7,7 @@ import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/ca
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { dynamoDB } from "./dynamodbDatabase";
+import { dynamoDB } from "./dynamoDB";
 
 const cloudFront = mockClient(CloudFrontClient);
 const cloudFrontInvalidation = (status: string) => ({
@@ -95,7 +95,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     await plugin.onUnmount?.();
   });
 
-  it("provides component data and managed access keys from the same table", () => {
+  it("provides provider-neutral component data", () => {
     const plugin = dynamoDB({
       region: "us-east-1",
       tableName: "hot-updater-metadata",
@@ -103,11 +103,6 @@ describe("dynamoDB CloudFront lifecycle", () => {
 
     expect(
       getCapabilityContributions(plugin).map(({ token }) => token.id),
-    ).toEqual(
-      expect.arrayContaining([
-        "hot-updater.component-data.adapter@1",
-        "hot-updater.better-auth.managed-access-key-store@1",
-      ]),
-    );
+    ).toEqual(["hot-updater.component-data.adapter@1"]);
   });
 });

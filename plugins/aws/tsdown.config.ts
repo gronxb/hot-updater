@@ -15,7 +15,6 @@ export default defineConfig([
     failOnWarn: true,
     deps: {
       alwaysBundle: [
-        "@hot-updater/better-auth/managed",
         "@hot-updater/managed",
         "@hot-updater/server",
         "@hot-updater/server/internal/first-party-plugin",

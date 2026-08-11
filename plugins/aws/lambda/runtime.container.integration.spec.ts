@@ -26,10 +26,12 @@ import {
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
-import { registerManagedAccessKey } from "@hot-updater/better-auth/managed";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import { createManagedServerPlugins } from "@hot-updater/managed";
+import {
+  createManagedServerPlugins,
+  registerManagedServerClientKey,
+} from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   migrateUniversalComponents,
@@ -49,8 +51,7 @@ import {
   spawnRuntime,
   stopRuntime,
 } from "../../../packages/test-utils/src/runtimeProcess";
-import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamodbDatabase";
-import { createDynamoDBManagedAccessKeyStore } from "../src/dynamodbManagedAccessKeyStore";
+import { DYNAMODB_UPDATE_INDEX_NAME, dynamoDB } from "../src/dynamoDB";
 import { s3Database } from "../src/s3Database";
 import { s3LambdaEdgeStorage } from "../src/s3LambdaEdgeStorage";
 
@@ -409,13 +410,10 @@ describe.sequential("aws lambda runtime acceptance", () => {
       clearDynamoDBTable(dynamodbClient),
     ]);
     await migrateUniversalComponents(deploymentTarget);
-    await registerManagedAccessKey({
+    await registerManagedServerClientKey({
       apiKey: RAW_API_KEY,
       name: "Runtime test",
-      store: createDynamoDBManagedAccessKeyStore({
-        client: dynamodbClient,
-        tableName: DYNAMODB_TABLE_NAME,
-      }),
+      target: deploymentTarget,
     });
   });
 
@@ -707,6 +705,11 @@ describe.sequential("aws lambda runtime acceptance", () => {
         changed: true,
         componentId: "analytics",
         version: "2",
+      },
+      {
+        changed: true,
+        componentId: "better-auth-managed-access-keys",
+        version: "1",
       },
     ]);
     expect(componentMarker).toBe("2");

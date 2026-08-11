@@ -16,7 +16,7 @@ vi.mock("@aws-sdk/client-dynamodb", async (importOriginal) => {
   };
 });
 
-import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamodbDatabase";
+import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
 const requiredAttributes = ["pk", "sk", "gsi1pk", "gsi1sk"] as const;

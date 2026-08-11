@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   boundedDynamoDBMetadataItem,
   DYNAMODB_MAX_METADATA_ITEM_BYTES,
-} from "./dynamodbDatabaseBounds";
+} from "./dynamoDB";
 
 describe("DynamoDB metadata item bound", () => {
   it("accepts the exact byte limit and rejects limit plus one", () => {

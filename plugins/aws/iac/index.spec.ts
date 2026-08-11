@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   makeEnv: vi.fn(),
   migrateUniversalComponents: vi.fn(),
   note: vi.fn(),
-  provisionManagedBetterAuthApiKey: vi.fn(),
+  prepareDeployment: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
   resolveAwsAuth: vi.fn(),
   runMigrations: vi.fn(),
@@ -20,10 +20,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("execa", () => ({
   execa: mocks.execa,
-}));
-
-vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
-  provisionManagedBetterAuthApiKey: mocks.provisionManagedBetterAuthApiKey,
 }));
 
 vi.mock("@hot-updater/server/db", () => ({
@@ -59,7 +55,7 @@ vi.mock("./awsAuth", () => ({
   resolveAwsAuth: mocks.resolveAwsAuth,
 }));
 
-vi.mock("../src/dynamodbDatabase", () => ({
+vi.mock("../src/dynamoDB", () => ({
   dynamoDB: mocks.dynamoDB,
 }));
 
@@ -87,51 +83,7 @@ vi.mock("./dynamodb", () => ({
   }),
 }));
 
-import {
-  prepareDynamoDBDeployment,
-  provisionDynamoDBClientAccessKey,
-  runInit,
-} from "./index";
-
-describe("AWS managed client access-key provisioning", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("registers the initial key in DynamoDB and prints it once", async () => {
-    mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
-      apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      created: true,
-      sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
-    });
-
-    await provisionDynamoDBClientAccessKey({
-      credentials: {
-        accessKeyId: "test-access-key",
-        secretAccessKey: "test-secret-key",
-      },
-      envFilePath: ".env.hotupdater",
-      region: "ap-northeast-2",
-      tableName: "hot-updater",
-    });
-
-    expect(mocks.provisionManagedBetterAuthApiKey).toHaveBeenCalledWith({
-      envFilePath: ".env.hotupdater",
-      name: "Default",
-      store: expect.objectContaining({
-        create: expect.any(Function),
-        findByHash: expect.any(Function),
-        list: expect.any(Function),
-        revoke: expect.any(Function),
-      }),
-    });
-    expect(mocks.note).toHaveBeenCalledOnce();
-    expect(mocks.note).toHaveBeenCalledWith(
-      "HOT_UPDATER_API_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      "Client access key (shown once)",
-    );
-  });
-});
+import { prepareDynamoDBDeployment, runInit } from "./index";
 
 describe("AWS DynamoDB deployment preparation", () => {
   const credentials = {
@@ -144,14 +96,10 @@ describe("AWS DynamoDB deployment preparation", () => {
     mocks.ensureTable.mockResolvedValue(undefined);
     mocks.dynamoDB.mockReturnValue({ name: "dynamoDB" });
     mocks.migrateUniversalComponents.mockResolvedValue([]);
-    mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
-      apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      created: false,
-      sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
-    });
+    mocks.prepareDeployment.mockResolvedValue([]);
   });
 
-  it("migrates the composed component target after table readiness and before key provisioning", async () => {
+  it("migrates components before delegating feature preparation", async () => {
     const order: string[] = [];
     const deploymentTarget = { adapterName: "dynamoDB" };
     mocks.ensureTable.mockImplementation(async () => {
@@ -169,19 +117,16 @@ describe("AWS DynamoDB deployment preparation", () => {
       order.push("migration");
       return [];
     });
-    mocks.provisionManagedBetterAuthApiKey.mockImplementation(async () => {
-      order.push("access-key");
-      return {
-        apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        created: false,
-        sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
-      };
+    mocks.prepareDeployment.mockImplementation(async () => {
+      order.push("prepare");
+      return [{ message: "prepared", title: "Managed deployment" }];
     });
 
     await prepareDynamoDBDeployment({
       createDeploymentTarget,
       credentials,
       envFilePath: ".env.hotupdater",
+      prepareDeployment: mocks.prepareDeployment,
       region: "ap-northeast-2",
       tableName: "hot-updater-metadata",
     });
@@ -191,7 +136,7 @@ describe("AWS DynamoDB deployment preparation", () => {
       "provider",
       "target",
       "migration",
-      "access-key",
+      "prepare",
     ]);
     expect(mocks.dynamoDB).toHaveBeenCalledWith({
       credentials,
@@ -201,9 +146,13 @@ describe("AWS DynamoDB deployment preparation", () => {
     expect(mocks.migrateUniversalComponents).toHaveBeenCalledWith(
       deploymentTarget,
     );
+    expect(mocks.prepareDeployment).toHaveBeenCalledWith(deploymentTarget, {
+      envFile: ".env.hotupdater",
+    });
+    expect(mocks.note).toHaveBeenCalledWith("prepared", "Managed deployment");
   });
 
-  it("does not provision a key when component migration fails", async () => {
+  it("does not prepare features when component migration fails", async () => {
     const migrationError = new Error("component schema is incompatible");
     mocks.migrateUniversalComponents.mockRejectedValue(migrationError);
 
@@ -212,13 +161,14 @@ describe("AWS DynamoDB deployment preparation", () => {
         createDeploymentTarget: () => ({ adapterName: "dynamoDB" }),
         credentials,
         envFilePath: ".env.hotupdater",
+        prepareDeployment: mocks.prepareDeployment,
         region: "ap-northeast-2",
         tableName: "hot-updater-metadata",
       }),
     ).rejects.toBe(migrationError);
 
     expect(mocks.ensureTable).toHaveBeenCalledOnce();
-    expect(mocks.provisionManagedBetterAuthApiKey).not.toHaveBeenCalled();
+    expect(mocks.prepareDeployment).not.toHaveBeenCalled();
   });
 });
 

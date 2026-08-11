@@ -18,14 +18,14 @@ import {
   syntheticAuditLogSchema,
   type SyntheticUniversalComponentMigrationState,
 } from "@hot-updater/test-utils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type { DynamoDBStore } from "./dynamodbDatabaseStore";
+import type { DynamoDBStore } from "./dynamoDB";
 import {
   createDynamoDBUniversalComponentDataAdapter,
   DYNAMODB_COMPONENT_DATA_PARTITION_PREFIX,
   DYNAMODB_COMPONENT_SCHEMA_PARTITION_KEY,
-} from "./dynamodbUniversalComponentData";
+} from "./dynamoDB";
 
 type Item = Record<string, unknown>;
 
@@ -92,7 +92,9 @@ class InMemoryDynamoDB {
           put.ConditionExpression !== undefined &&
           this.items.has(itemKey(put.Item as Item))
         ) {
-          throw new Error("conditional write failed");
+          const error = new Error("conditional write failed");
+          error.name = "TransactionCanceledException";
+          throw error;
         }
       }
       for (const put of puts) this.put(put.Item as Item);
@@ -474,5 +476,37 @@ describe("DynamoDB universal component migration", () => {
         .bind(syntheticAuditLogSchema)
         .assertReady(),
     ).rejects.toBeInstanceOf(UniversalComponentDataStateNotReadyError);
+  });
+
+  it("notifies the database lifecycle only after component writes", async () => {
+    database = new InMemoryDynamoDB();
+    const onDatabaseUpdated = vi.fn(async () => undefined);
+    const adapter = createDynamoDBUniversalComponentDataAdapter(
+      createStore(),
+      onDatabaseUpdated,
+    );
+    await adapter.migrate?.(syntheticAuditLogSchema);
+    const source = adapter.bind(syntheticAuditLogSchema);
+    const row = {
+      accepted: true,
+      action: "component-write",
+      actor_id: null,
+      id: "component-write",
+      payload: { source: "dynamodb" },
+      recorded_at_ms: 1,
+      risk_score: 0.5,
+    } as const;
+
+    await expect(source.create({ row, table: "audit_records" })).resolves.toBe(
+      "created",
+    );
+    await expect(source.create({ row, table: "audit_records" })).resolves.toBe(
+      "existing",
+    );
+    await expect(
+      source.append({ row, table: "audit_records" }),
+    ).rejects.toMatchObject({ name: "TransactionCanceledException" });
+
+    expect(onDatabaseUpdated).toHaveBeenCalledOnce();
   });
 });

@@ -5,7 +5,7 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { DynamoDBIntegrationFixture } from "./dynamodbDatabase.integration-fixture";
+import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
 const fixture = new DynamoDBIntegrationFixture();
 const createPlugin = () => fixture.createPlugin();

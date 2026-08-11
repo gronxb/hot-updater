@@ -157,6 +157,5 @@ function App() {
 
 export default HotUpdater.wrap({
   baseURL: "%%source%%",
-%%requestHeaders%%
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;

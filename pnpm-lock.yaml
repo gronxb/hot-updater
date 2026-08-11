@@ -442,9 +442,6 @@ importers:
       '@aws-sdk/lib-dynamodb':
         specifier: 3.1066.0
         version: 3.1066.0(@aws-sdk/client-dynamodb@3.1066.0)
-      '@hot-updater/better-auth':
-        specifier: workspace:*
-        version: link:../../packages/better-auth
       '@hot-updater/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -2066,9 +2063,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1066.0
         version: 3.1066.0
-      '@hot-updater/better-auth':
-        specifier: workspace:*
-        version: link:../../packages/better-auth
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools

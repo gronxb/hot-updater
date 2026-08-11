@@ -12,11 +12,11 @@ preparation for their removal in a future major release.
 Use DynamoDB by default for new managed AWS `hot-updater init` installations,
 including table provisioning, Lambda@Edge reads, IAM access, generated config,
 CloudFront invalidation, and managed client access keys. Init registers the
-first key in DynamoDB, saves it locally, and shows its plaintext once. Managed
-clients use that key for OTA reads and Analytics writes without receiving
-Analytics read or management access. Keep S3 metadata selectable with a
-deprecation warning so existing installations can replay their saved setup
-safely.
+first key through Better Auth's universal component, saves it locally, and
+shows its plaintext once. Managed clients use that key for OTA reads and
+Analytics writes without receiving Analytics read or management access. Keep
+S3 metadata selectable with a deprecation warning so existing installations can
+replay their saved setup safely.
 
 Map universal component data onto generic DynamoDB partitions and ordered sort
 keys without importing feature schemas into the AWS provider. Keep logical
@@ -39,7 +39,8 @@ installation, scoping S3/SSM/DynamoDB permissions, preserving unrelated
 CloudFront and bucket-policy configuration, forwarding and caching by SDK
 version and client key, reconciling Lambda configuration before publishing,
 narrowing cache invalidations to update APIs, invalidating revoked-key cache
-entries, and caching successful full component-readiness inspections.
+entries through neutral component mutation hooks, and caching successful full
+component-readiness inspections.
 
 Expose the provider-native atomic bundle mutation hook so database providers
 without callback transactions can commit bundle and patch aggregates safely.

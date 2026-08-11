@@ -9,7 +9,7 @@ import {
   createDynamoDBUniversalComponentDataAdapter,
   DYNAMODB_COMPONENT_DATA_PARTITION_PREFIX,
   DYNAMODB_COMPONENT_SCHEMA_PARTITION_KEY,
-} from "../../../plugins/aws/src/dynamodbUniversalComponentData";
+} from "../../../plugins/aws/src/dynamoDB";
 import { analyticsComponentSchema } from "./componentSchema";
 import type { BundleEventPersistenceRow } from "./provider/persistence";
 import { createUniversalComponentAnalyticsPersistence } from "./provider/universalComponentPersistence";

@@ -21,7 +21,7 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
   waitUntilTableExists: mocks.waitUntilTableExists,
 }));
 
-import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamodbDatabase";
+import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import { DynamoDBManager } from "./dynamodb";
 
 const compatibleTable = {

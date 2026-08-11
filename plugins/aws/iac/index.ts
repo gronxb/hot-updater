@@ -1,6 +1,3 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
 import {
   colors,
   confirmInitInputPersistence,
@@ -24,8 +21,7 @@ import {
   AWS_DATABASE_TYPES,
   type AwsDatabaseType,
 } from "../src/awsDatabaseType";
-import { dynamoDB } from "../src/dynamodbDatabase";
-import { createDynamoDBManagedAccessKeyStore } from "../src/dynamodbManagedAccessKeyStore";
+import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
 import {
   assertAwsNonInteractiveInputs,
@@ -56,44 +52,6 @@ const isAwsRegion = (value: string | undefined): value is AwsRegion => {
   return value !== undefined && Object.hasOwn(regionLocationMap, value);
 };
 
-export const provisionDynamoDBClientAccessKey = async (input: {
-  readonly credentials: {
-    readonly accessKeyId: string;
-    readonly secretAccessKey: string;
-    readonly sessionToken?: string;
-  };
-  readonly envFilePath: string;
-  readonly region: string;
-  readonly tableName: string;
-}) => {
-  const client = DynamoDBDocumentClient.from(
-    new DynamoDBClient({
-      credentials: input.credentials,
-      region: input.region,
-    }),
-    { marshallOptions: { removeUndefinedValues: true } },
-  );
-  try {
-    const accessKey = await provisionManagedBetterAuthApiKey({
-      envFilePath: input.envFilePath,
-      name: "Default",
-      store: createDynamoDBManagedAccessKeyStore({
-        client,
-        tableName: input.tableName,
-      }),
-    });
-    if (accessKey.created) {
-      p.note(
-        `HOT_UPDATER_API_KEY=${accessKey.apiKey}`,
-        "Client access key (shown once)",
-      );
-    }
-    return accessKey;
-  } finally {
-    client.destroy();
-  }
-};
-
 export const prepareDynamoDBDeployment = async (input: {
   readonly createDeploymentTarget: RunInitOptions["createDeploymentTarget"];
   readonly credentials: {
@@ -102,34 +60,36 @@ export const prepareDynamoDBDeployment = async (input: {
     readonly sessionToken?: string;
   };
   readonly envFilePath: string;
+  readonly prepareDeployment: RunInitOptions["prepareDeployment"];
   readonly region: string;
   readonly tableName: string;
 }) => {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
-  if (input.createDeploymentTarget !== undefined) {
-    await migrateUniversalComponents(
-      input.createDeploymentTarget(
-        dynamoDB({
-          credentials: input.credentials,
-          region: input.region,
-          tableName: input.tableName,
-        }),
-      ),
-    );
+  if (input.createDeploymentTarget === undefined) return [];
+  const target = input.createDeploymentTarget(
+    dynamoDB({
+      credentials: input.credentials,
+      region: input.region,
+      tableName: input.tableName,
+    }),
+  );
+  await migrateUniversalComponents(target);
+  const notices =
+    (await input.prepareDeployment?.(target, {
+      envFile: input.envFilePath,
+    })) ?? [];
+  for (const notice of notices) {
+    p.note(notice.message, notice.title);
   }
-  return provisionDynamoDBClientAccessKey({
-    credentials: input.credentials,
-    envFilePath: input.envFilePath,
-    region: input.region,
-    tableName: input.tableName,
-  });
+  return notices;
 };
 
 export const runInit = async ({
   build,
   createDeploymentTarget,
   envFile,
+  prepareDeployment,
 }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
@@ -436,6 +396,7 @@ export const runInit = async ({
       createDeploymentTarget,
       credentials,
       envFilePath: envFile ?? ".env.hotupdater",
+      prepareDeployment,
       region: bucketRegion,
       tableName: resolvedDynamoDBTableName,
     });
@@ -534,13 +495,6 @@ export const runInit = async ({
   const sourceUrl = `https://${distributionDomain}/api/check-update`;
   p.note(
     transformTemplate(SOURCE_TEMPLATE, {
-      requestHeaders:
-        database === "dynamodb"
-          ? `  requestHeaders: {
-    // Embed the HOT_UPDATER_API_KEY value saved in .env.hotupdater.
-    "x-api-key": "<HOT_UPDATER_API_KEY>",
-  },`
-          : "",
       source: sourceUrl,
     }),
   );

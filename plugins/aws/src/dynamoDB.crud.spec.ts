@@ -9,11 +9,8 @@ import { bundleToRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createDynamoDBCrud } from "./dynamodbDatabaseCrud";
-import {
-  toDynamoDBBundleItem,
-  toDynamoDBPatchItem,
-} from "./dynamodbDatabaseRows";
+import { createDynamoDBCrud } from "./dynamoDB";
+import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
 
 const dynamodb = mockClient(DynamoDBDocumentClient);
 const bundleId = "00000000-0000-0000-0000-000000000001";

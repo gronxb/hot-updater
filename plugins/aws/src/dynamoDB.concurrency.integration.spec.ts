@@ -6,9 +6,9 @@ import {
 } from "@hot-updater/plugin-core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { DynamoDBIntegrationFixture } from "./dynamodbDatabase.integration-fixture";
-import { createDynamoDBAggregateMutations } from "./dynamodbDatabaseAggregate";
-import { createDynamoDBCrud } from "./dynamodbDatabaseCrud";
+import { createDynamoDBAggregateMutations } from "./dynamoDB";
+import { createDynamoDBCrud } from "./dynamoDB";
+import { DynamoDBIntegrationFixture } from "./dynamoDB.integration-fixture";
 
 const fixture = new DynamoDBIntegrationFixture();
 

@@ -7,7 +7,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { InitError } from "@hot-updater/cli-tools";
 
-import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamodbDatabase";
+import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 
 const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
 

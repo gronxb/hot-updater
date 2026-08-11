@@ -5,8 +5,8 @@ import { bundleToRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { toDynamoDBBundleItem } from "./dynamodbDatabaseRows";
-import { createDynamoDBGetUpdateInfo } from "./dynamodbDatabaseUpdateInfo";
+import { toDynamoDBBundleItem } from "./dynamoDB";
+import { createDynamoDBGetUpdateInfo } from "./dynamoDB";
 
 const dynamodb = mockClient(DynamoDBDocumentClient);
 

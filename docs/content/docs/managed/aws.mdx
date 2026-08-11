@@ -95,8 +95,8 @@ Once setup is complete, `.env.hotupdater` contains the selected database, table,
 bucket, region, CloudFront distribution ID, and authentication settings. The
 DynamoDB track also generates a local client API key for protected OTA selectors
 and Analytics event ingestion. The plaintext stays in the local env file; only
-its SHA-256 digest and metadata are stored in the provider-owned access-key
-store.
+its SHA-256 digest and metadata are stored by the Better Auth plugin through the
+provider-neutral universal component adapter.
 
 ```
 HOT_UPDATER_AWS_DATABASE=dynamodb

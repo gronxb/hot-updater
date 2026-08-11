@@ -33,7 +33,7 @@ vi.mock("../src/s3Database", () => ({
   s3Database: databaseMocks.s3Database,
 }));
 
-vi.mock("../src/dynamodbDatabase", () => ({
+vi.mock("../src/dynamoDB", () => ({
   dynamoDB: databaseMocks.dynamoDB,
 }));
 

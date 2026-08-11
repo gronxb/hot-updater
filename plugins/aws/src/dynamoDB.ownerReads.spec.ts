@@ -9,11 +9,8 @@ import { bundleToRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { queryCompleteOwnerPatches } from "./dynamodbDatabaseOwnerReads";
-import {
-  toDynamoDBBundleItem,
-  toDynamoDBPatchItem,
-} from "./dynamodbDatabaseRows";
+import { queryCompleteOwnerPatches } from "./dynamoDB";
+import { toDynamoDBBundleItem, toDynamoDBPatchItem } from "./dynamoDB";
 
 const dynamodb = mockClient(DynamoDBDocumentClient);
 const ownerId = "00000000-0000-0000-0000-000000000001";

@@ -14,17 +14,13 @@ import {
 } from "@aws-sdk/client-s3";
 import { DYNAMODB_UPDATE_INDEX_NAME } from "@hot-updater/aws";
 import {
-  managedAccessKeyStoreCapability,
-  registerManagedAccessKey,
-} from "@hot-updater/better-auth/managed";
-import {
   type AppUpdateInfo,
   type Bundle,
   type GetBundlesArgs,
   NIL_UUID,
 } from "@hot-updater/core";
+import { registerManagedServerClientKey } from "@hot-updater/managed";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 import { migrateUniversalComponents } from "@hot-updater/server/db";
 import { standaloneRepository } from "@hot-updater/standalone";
@@ -187,19 +183,11 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     await waitForServer(baseUrl, 180);
 
     const db = await import("./db.js");
-    const accessKeyStoreContribution = getCapabilityContributions(
-      db.database,
-    ).find(({ token }) => token.id === managedAccessKeyStoreCapability.id);
-    if (accessKeyStoreContribution === undefined) {
-      throw new Error("DynamoDB managed access-key store is missing.");
-    }
-    await registerManagedAccessKey({
+    await registerManagedServerClientKey({
       apiKey: rawApiKey,
       createdAt: 1,
       name: "Standalone integration test",
-      store: managedAccessKeyStoreCapability.parse(
-        Reflect.apply(accessKeyStoreContribution.create, undefined, []),
-      ),
+      target: db.hotUpdater,
     });
     hotUpdater = db.hotUpdater;
   }, 120000);
@@ -267,6 +255,11 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
         changed: false,
         componentId: "analytics",
         version: "2",
+      },
+      {
+        changed: false,
+        componentId: "better-auth-managed-access-keys",
+        version: "1",
       },
     ]);
   });

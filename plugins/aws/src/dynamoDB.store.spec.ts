@@ -4,8 +4,8 @@ import { bundleToRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { loadBundleItemsById } from "./dynamodbDatabaseKeyReads";
-import { toDynamoDBBundleItem } from "./dynamodbDatabaseRows";
+import { loadBundleItemsById } from "./dynamoDB";
+import { toDynamoDBBundleItem } from "./dynamoDB";
 
 const dynamodb = mockClient(DynamoDBDocumentClient);
 const tableName = "hot-updater-metadata";

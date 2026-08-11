@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
 import { handle } from "hono/lambda-edge";
 
-import { dynamoDB } from "../src/dynamodbDatabase";
+import { dynamoDB } from "../src/dynamoDB";
 import { s3Database } from "../src/s3Database";
 import { s3Storage } from "../src/s3Storage";
 import { withCloudFrontSignedUrl } from "../src/withCloudFrontSignedUrl";
