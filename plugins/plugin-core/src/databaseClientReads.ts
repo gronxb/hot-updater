@@ -4,99 +4,49 @@ import { calculatePagination } from "./calculatePagination";
 import { DatabasePluginInputError } from "./databasePluginCrud";
 import { validateBundlePagination } from "./databasePluginCrudValidationQueries";
 import { rowsToBundles } from "./databaseRows";
-import { getDatabasePluginPatchHydration } from "./internal/databasePatchHydration";
 import type {
-  BundlePatchRow,
   BundleRow,
   DatabaseBundleCursor,
+  DatabaseBundleIdFilter,
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
   DatabasePlugin,
-  DatabaseWhere,
   PaginatedResult,
-  TransactionDatabasePlugin,
 } from "./types";
 
 const PAGE_SIZE = 100;
 
-export const toBundleWhere = (
+const mergeIdFilter = (
   where: DatabaseBundleQueryWhere | undefined,
-): readonly DatabaseWhere<"bundles">[] => {
-  if (!where) return [];
-  const filters: DatabaseWhere<"bundles">[] = [];
-  if (where.channel !== undefined)
-    filters.push({ field: "channel", value: where.channel });
-  if (where.platform !== undefined)
-    filters.push({ field: "platform", value: where.platform });
-  if (where.enabled !== undefined)
-    filters.push({ field: "enabled", value: where.enabled });
-  if (where.id?.eq !== undefined)
-    filters.push({ field: "id", value: where.id.eq });
-  if (where.id?.gt !== undefined)
-    filters.push({ field: "id", operator: "gt", value: where.id.gt });
-  if (where.id?.gte !== undefined)
-    filters.push({ field: "id", operator: "gte", value: where.id.gte });
-  if (where.id?.lt !== undefined)
-    filters.push({ field: "id", operator: "lt", value: where.id.lt });
-  if (where.id?.lte !== undefined)
-    filters.push({ field: "id", operator: "lte", value: where.id.lte });
-  if (where.id?.in !== undefined)
-    filters.push({ field: "id", operator: "in", value: where.id.in });
-  if (where.targetAppVersionNotNull)
-    filters.push({
-      field: "target_app_version",
-      operator: "ne",
-      value: null,
-    });
-  if (where.targetAppVersion !== undefined)
-    filters.push({
-      field: "target_app_version",
-      value: where.targetAppVersion,
-    });
-  if (where.targetAppVersionIn !== undefined)
-    filters.push({
-      field: "target_app_version",
-      operator: "in",
-      value: where.targetAppVersionIn,
-    });
-  if (where.fingerprintHash !== undefined)
-    filters.push({
-      field: "fingerprint_hash",
-      value: where.fingerprintHash,
-    });
-  return filters;
-};
+  id: DatabaseBundleIdFilter,
+): DatabaseBundleQueryWhere => ({
+  ...where,
+  id: { ...where?.id, ...id },
+});
 
 export const loadBundleRows = async (
-  database: TransactionDatabasePlugin,
-  where: readonly DatabaseWhere<"bundles">[] = [],
+  database: DatabasePlugin,
+  where?: DatabaseBundleQueryWhere,
 ): Promise<BundleRow[]> => {
-  const [cutoff] = await database.findMany({
-    model: "bundles",
+  const [cutoff] = await database.bundles.findMany({
     where,
-    select: ["id"],
     limit: 1,
     offset: 0,
-    orderBy: [{ field: "id", direction: "desc" }],
+    orderBy: { field: "id", direction: "desc" },
   });
   if (!cutoff) return [];
 
   const rows: BundleRow[] = [];
   let after: string | undefined;
   for (;;) {
-    const afterWhere: readonly DatabaseWhere<"bundles">[] = after
-      ? [{ field: "id", operator: "gt", value: after }]
-      : [];
-    const page = await database.findMany({
-      model: "bundles",
-      where: [
-        ...where,
-        { field: "id", operator: "lte", value: cutoff.id },
-        ...afterWhere,
-      ],
+    const page = await database.bundles.findMany({
+      where: mergeIdFilter(where, {
+        lte: cutoff.id,
+        ...(after ? { gt: after } : {}),
+      }),
       limit: PAGE_SIZE,
       offset: 0,
-      orderBy: [{ field: "id", direction: "asc" }],
+      orderBy: { field: "id", direction: "asc" },
     });
     rows.push(...page);
     if (page.length < PAGE_SIZE) return rows;
@@ -104,33 +54,11 @@ export const loadBundleRows = async (
   }
 };
 
-const loadPatchRows = async (
-  database: TransactionDatabasePlugin,
-  ownerIds: readonly string[],
-): Promise<BundlePatchRow[]> => {
-  if (ownerIds.length === 0) return [];
-  const hydration = getDatabasePluginPatchHydration(database);
-  if (hydration) return [...(await hydration.loadPatches(ownerIds))];
-  const rows: BundlePatchRow[] = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const page = await database.findMany({
-      model: "bundle_patches",
-      where: [{ field: "bundle_id", operator: "in", value: ownerIds }],
-      limit: PAGE_SIZE,
-      offset,
-      orderBy: [{ field: "id", direction: "asc" }],
-    });
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) return rows;
-  }
-};
-
 export const hydrateRows = async (
-  database: TransactionDatabasePlugin,
+  database: DatabasePlugin,
   ownerRows: readonly BundleRow[],
 ): Promise<Bundle[]> => {
-  const patchRows = await loadPatchRows(
-    database,
+  const patchRows = await database.bundlePatches.findByBundleIds(
     ownerRows.map(({ id }) => id),
   );
   const ownerIds = new Set(ownerRows.map(({ id }) => id));
@@ -144,33 +72,19 @@ export const hydrateRows = async (
   const referencedRows =
     referencedIds.length === 0
       ? []
-      : await database.findMany({
-          model: "bundles",
-          where: [{ field: "id", operator: "in", value: referencedIds }],
-          limit: referencedIds.length,
-          offset: 0,
-          orderBy: [{ field: "id", direction: "asc" }],
-        });
+      : await loadBundleRows(database, { id: { in: referencedIds } });
   return rowsToBundles(ownerRows, patchRows, referencedRows);
 };
 
-const cursorWhere = (
+const cursorIdFilter = (
   cursor: DatabaseBundleCursor | undefined,
   direction: "asc" | "desc",
-): DatabaseWhere<"bundles"> | undefined => {
+): DatabaseBundleIdFilter | undefined => {
   if (cursor?.after) {
-    return {
-      field: "id",
-      operator: direction === "desc" ? "lt" : "gt",
-      value: cursor.after,
-    };
+    return { [direction === "desc" ? "lt" : "gt"]: cursor.after };
   }
   if (cursor?.before) {
-    return {
-      field: "id",
-      operator: direction === "desc" ? "gt" : "lt",
-      value: cursor.before,
-    };
+    return { [direction === "desc" ? "gt" : "lt"]: cursor.before };
   }
   return undefined;
 };
@@ -180,7 +94,6 @@ export const responsePage = async (
   options: DatabaseBundleQueryOptions,
 ): Promise<PaginatedResult> => {
   validateBundlePagination(options);
-  const where = toBundleWhere(options.where);
   const direction = options.orderBy?.direction ?? "desc";
   const offset = options.page
     ? Math.max(0, options.page - 1) * options.limit
@@ -194,21 +107,23 @@ export const responsePage = async (
   ) {
     throw new DatabasePluginInputError("invalid-pagination");
   }
-  const cursorFilter = cursorWhere(cursor, direction);
+  const cursorFilter = cursorIdFilter(cursor, direction);
+  const where = cursorFilter
+    ? mergeIdFilter(options.where, cursorFilter)
+    : options.where;
   const queryDirection = cursor?.before
     ? direction === "desc"
       ? "asc"
       : "desc"
     : direction;
   const [queriedRows, total] = await Promise.all([
-    database.findMany({
-      model: "bundles",
-      where: cursorFilter ? [...where, cursorFilter] : where,
+    database.bundles.findMany({
+      where,
       limit: queryLimit,
       offset,
-      orderBy: [{ field: "id", direction: queryDirection }],
+      orderBy: { field: "id", direction: queryDirection },
     }),
-    database.count({ model: "bundles", where }),
+    database.bundles.count(options.where),
   ]);
   const hasMore = cursor ? queriedRows.length > options.limit : false;
   const pageRows = cursor ? queriedRows.slice(0, options.limit) : queriedRows;

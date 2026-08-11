@@ -16,12 +16,7 @@ import {
   managedAccessKeyComponentSchema,
   type ManagedAccessKeyStore,
 } from "@hot-updater/better-auth/managed";
-import type { ConfigResponse } from "@hot-updater/cli-tools";
-import {
-  type HotUpdaterInfrastructureRuntime,
-  universalComponentDataAdapterCapability,
-} from "@hot-updater/plugin-core";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
 
 import {
   parseActiveInstallationInput,
@@ -36,36 +31,21 @@ export type InstallationSearchResult =
 export type InstallationHistoryResult =
   OffsetPaginationResult<InstallationHistoryRow>;
 
-const createUniversalComponentAdapter = (config: ConfigResponse) => {
-  const contribution = getCapabilityContributions(config.database).find(
-    ({ token }) => token === universalComponentDataAdapterCapability,
-  );
-  if (!contribution) return null;
-
-  const runtime: HotUpdaterInfrastructureRuntime = Object.freeze({
-    database: config.database,
-    storages: Object.freeze([]),
-  });
-  return universalComponentDataAdapterCapability.parse(
-    Reflect.apply(contribution.create, undefined, [runtime]),
-  );
-};
-
-export function createRuntimeHotUpdater(
-  config: ConfigResponse,
-): AnalyticsProvider | null {
-  const adapter = createUniversalComponentAdapter(config);
-  if (adapter === null) return null;
+export function createRuntimeHotUpdater(config: {
+  readonly database: DatabasePlugin;
+}): AnalyticsProvider | null {
+  const adapter = config.database.componentData;
+  if (adapter === undefined) return null;
   return createUniversalComponentAnalyticsProvider(
     adapter.bind(analyticsComponentSchema),
   );
 }
 
-export function createManagedAccessKeyStore(
-  config: ConfigResponse,
-): ManagedAccessKeyStore | null {
-  const adapter = createUniversalComponentAdapter(config);
-  if (adapter === null) return null;
+export function createManagedAccessKeyStore(config: {
+  readonly database: DatabasePlugin;
+}): ManagedAccessKeyStore | null {
+  const adapter = config.database.componentData;
+  if (adapter === undefined) return null;
   return createUniversalComponentManagedAccessKeyStore(
     adapter.bind(managedAccessKeyComponentSchema),
     { onRevoke: config.database.onDatabaseUpdated },

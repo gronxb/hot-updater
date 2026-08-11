@@ -314,8 +314,57 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       from: (table: TableName) => {
         return new QueryBuilder(table);
       },
-      rpc: async (name: string) => {
+      rpc: async (name: string, args?: Record<string, unknown>) => {
         const bundles = [...rows.bundles.values()];
+        if (name === "hot_updater_create_bundle_with_patches") {
+          const bundle = args?.p_bundle as Row;
+          const patches = (args?.p_patches ?? []) as readonly Row[];
+          const stagedBundleIds = new Set([
+            ...rows.bundles.keys(),
+            String(bundle.id),
+          ]);
+          const invalid =
+            rows.bundles.has(String(bundle.id)) ||
+            patches.some(
+              (patch) =>
+                !stagedBundleIds.has(String(patch.bundle_id)) ||
+                !stagedBundleIds.has(String(patch.base_bundle_id)) ||
+                rows.bundle_patches.has(String(patch.id)),
+            );
+          if (invalid) {
+            return { data: null, error: { message: "constraint" } };
+          }
+          rows.bundles.set(String(bundle.id), bundle);
+          for (const patch of patches) {
+            rows.bundle_patches.set(String(patch.id), patch);
+          }
+          return { data: null, error: null };
+        }
+        if (name === "hot_updater_update_bundle_with_patches") {
+          const bundleId = String(args?.p_bundle_id);
+          const bundle = rows.bundles.get(bundleId);
+          if (bundle === undefined) return { data: false, error: null };
+          const patches = (args?.p_patches ?? []) as readonly Row[];
+          const invalid = patches.some(
+            (patch) =>
+              !rows.bundles.has(String(patch.bundle_id)) ||
+              !rows.bundles.has(String(patch.base_bundle_id)) ||
+              (rows.bundle_patches.has(String(patch.id)) &&
+                rows.bundle_patches.get(String(patch.id))?.bundle_id !==
+                  bundleId),
+          );
+          if (invalid) {
+            return { data: null, error: { message: "constraint" } };
+          }
+          Object.assign(bundle, args?.p_update);
+          for (const [id, patch] of rows.bundle_patches) {
+            if (patch.bundle_id === bundleId) rows.bundle_patches.delete(id);
+          }
+          for (const patch of patches) {
+            rows.bundle_patches.set(String(patch.id), patch);
+          }
+          return { data: true, error: null };
+        }
         if (name === "get_target_app_version_list") {
           return {
             data: bundles.map((bundle) => ({

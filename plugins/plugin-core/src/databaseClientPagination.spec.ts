@@ -49,21 +49,16 @@ describe("database client pagination", () => {
     for (const id of ["001", "002", "003"]) {
       await client.insertBundle(createBundle(id));
     }
-    const findMany = vi.spyOn(plugin, "findMany");
+    const findPatches = vi.spyOn(plugin.bundlePatches, "findByBundleIds");
 
     const page = await client.getBundles({
       limit: 1,
       orderBy: { field: "id", direction: "desc" },
     });
 
-    const patchQueries = findMany.mock.calls.flatMap(([input]) =>
-      input.model === "bundle_patches" ? [input] : [],
-    );
     expect(page.data.map(({ id }) => id)).toEqual(["003"]);
-    expect(patchQueries).toHaveLength(1);
-    expect(patchQueries[0]?.where).toEqual([
-      { field: "bundle_id", operator: "in", value: ["003"] },
-    ]);
+    expect(findPatches).toHaveBeenCalledOnce();
+    expect(findPatches).toHaveBeenCalledWith(["003"]);
   });
 
   it("pushes a one-row owner page into the provider for 1,001 bundles", async () => {

@@ -133,12 +133,11 @@ export const managedBetterAuthPlugin = (
     ...(configuredStore === undefined
       ? { schema: managedAccessKeyComponentSchema }
       : {}),
-    setup: ({ components, database }) => {
+    setup: ({ components }) => {
       const store =
         configuredStore ??
         createUniversalComponentManagedAccessKeyStore(
           components.require(managedAccessKeyComponentSchema),
-          { onRevoke: database.onDatabaseUpdated },
         );
       return {
         authentication: createManagedAuthentication(

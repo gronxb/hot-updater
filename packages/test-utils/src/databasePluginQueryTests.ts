@@ -1,7 +1,4 @@
-import {
-  type DatabasePlugin,
-  DatabasePluginInputError,
-} from "@hot-updater/plugin-core";
+import type { DatabasePlugin } from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
@@ -9,48 +6,26 @@ import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type QueryTestState = DatabasePluginTestState<DatabasePlugin>;
 
-const runOptionalStringComparison = async <TResult>(
-  operation: () => Promise<TResult>,
-): Promise<TResult | null> => {
-  try {
-    return await operation();
-  } catch (error) {
-    if (!(error instanceof DatabasePluginInputError)) throw error;
-    expect(error.code).toBe("invalid-operation");
-    return null;
-  }
-};
-
-const seedQueryRows = async (state: QueryTestState) => {
+const seedRows = async (plugin: DatabasePlugin) => {
   const rows = [
     {
       ...createBundleRowFixture("501"),
-      message: "Alpha Release",
       target_app_version: null,
       fingerprint_hash: "fingerprint-501",
     },
-    { ...createBundleRowFixture("502"), message: "beta release" },
+    createBundleRowFixture("502", "preview"),
     {
       ...createBundleRowFixture("503"),
-      message: "Gamma Preview",
+      platform: "android" as const,
       target_app_version: "2.0.0",
     },
   ];
   for (const row of rows) {
-    await state.getPlugin().create({ model: "bundles", data: row });
-  }
-  return rows;
-};
-
-const seedDistinctRows = async (state: QueryTestState) => {
-  const rows = [
-    createBundleRowFixture("601"),
-    createBundleRowFixture("602"),
-    { ...createBundleRowFixture("603"), platform: "android" as const },
-    createBundleRowFixture("604", "preview"),
-  ];
-  for (const row of rows) {
-    await state.getPlugin().create({ model: "bundles", data: row });
+    await plugin.commit({
+      operation: "insert",
+      bundleId: row.id,
+      changes: [{ table: "bundles", operation: "insert", row }],
+    });
   }
   return rows;
 };
@@ -58,287 +33,71 @@ const seedDistinctRows = async (state: QueryTestState) => {
 export const registerDatabasePluginQueryTests = (
   state: QueryTestState,
 ): void => {
-  describe("query semantics", () => {
-    it("supports ordered comparison operators", async () => {
-      const rows = await seedQueryRows(state);
+  describe("bundle access patterns", () => {
+    it("supports the id range used by cursor and update queries", async () => {
+      const plugin = state.getPlugin();
+      const rows = await seedRows(plugin);
 
-      const result = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [
-          { field: "id", operator: "gte", value: rows[1].id },
-          { field: "id", operator: "lt", value: rows[2].id },
-        ],
+      const result = await plugin.bundles.findMany({
+        where: { id: { gte: rows[1]!.id, lt: rows[2]!.id } },
+        limit: 100,
+        offset: 0,
+        orderBy: { field: "id", direction: "asc" },
       });
 
-      expect(result.map(({ id }) => id)).toEqual([rows[1].id]);
+      expect(result.map(({ id }) => id)).toEqual([rows[1]!.id]);
     });
 
-    it("supports in and not_in including empty sets", async () => {
-      const rows = await seedQueryRows(state);
+    it("supports exact domain filters without arbitrary field predicates", async () => {
+      const plugin = state.getPlugin();
+      const rows = await seedRows(plugin);
 
-      const included = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [
-          { field: "id", operator: "in", value: [rows[0].id, rows[2].id] },
-        ],
-        sortBy: { field: "id", direction: "asc" },
-      });
-      const emptyExclusion = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [{ field: "id", operator: "not_in", value: [] }],
-      });
-
-      expect(included.map(({ id }) => id)).toEqual([rows[0].id, rows[2].id]);
-      expect(emptyExclusion).toHaveLength(3);
-    });
-
-    it("supports insensitive string pattern operators", async () => {
-      const rows = await seedQueryRows(state);
-
-      const contains = await runOptionalStringComparison(() =>
-        state.getPlugin().findMany({
-          model: "bundles",
-          where: [
-            {
-              field: "message",
-              operator: "contains",
-              value: "RELEASE",
-              mode: "insensitive",
-            },
-          ],
+      await expect(
+        plugin.bundles.findMany({
+          where: {
+            channel: "production",
+            platform: "ios",
+            enabled: true,
+            fingerprintHash: "fingerprint-501",
+          },
+          limit: 100,
+          offset: 0,
+          orderBy: { field: "id", direction: "asc" },
         }),
-      );
-      const startsWith = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [
-          {
-            field: "message",
-            operator: "starts_with",
-            value: "Gamma",
-          },
-        ],
-      });
-      const endsWith = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [
-          {
-            field: "message",
-            operator: "ends_with",
-            value: "Preview",
-          },
-        ],
-      });
-
-      if (contains !== null) {
-        expect(contains.map(({ id }) => id)).toEqual([rows[0].id, rows[1].id]);
-      }
-      expect(startsWith.map(({ id }) => id)).toEqual([rows[2].id]);
-      expect(endsWith.map(({ id }) => id)).toEqual([rows[2].id]);
-    });
-
-    it("supports insensitive equality operators", async () => {
-      const rows = await seedQueryRows(state);
-
-      const equal = await runOptionalStringComparison(() =>
-        state.getPlugin().findMany({
-          model: "bundles",
-          where: [
-            {
-              field: "message",
-              value: "ALPHA RELEASE",
-              mode: "insensitive",
-            },
-          ],
+      ).resolves.toEqual([rows[0]]);
+      await expect(
+        plugin.bundles.findMany({
+          where: { targetAppVersionNotNull: true },
+          limit: 100,
+          offset: 0,
+          orderBy: { field: "id", direction: "asc" },
         }),
-      );
-      const notEqual = await runOptionalStringComparison(() =>
-        state.getPlugin().findMany({
-          model: "bundles",
-          where: [
-            {
-              field: "message",
-              operator: "ne",
-              value: "ALPHA RELEASE",
-              mode: "insensitive",
-            },
-          ],
-          sortBy: { field: "id", direction: "asc" },
+      ).resolves.toEqual([rows[1], rows[2]]);
+    });
+
+    it("supports id sets for patch hydration", async () => {
+      const plugin = state.getPlugin();
+      const rows = await seedRows(plugin);
+
+      const result = await plugin.bundles.findMany({
+        where: { id: { in: [rows[0]!.id, rows[2]!.id] } },
+        limit: 100,
+        offset: 0,
+        orderBy: { field: "id", direction: "asc" },
+      });
+
+      expect(result.map(({ id }) => id)).toEqual([rows[0]!.id, rows[2]!.id]);
+    });
+
+    it("returns an empty page for an empty id set", async () => {
+      await expect(
+        state.getPlugin().bundles.findMany({
+          where: { id: { in: [] } },
+          limit: 100,
+          offset: 0,
+          orderBy: { field: "id", direction: "asc" },
         }),
-      );
-
-      expect(equal === null).toBe(notEqual === null);
-      if (equal !== null && notEqual !== null) {
-        expect(equal.map(({ id }) => id)).toEqual([rows[0].id]);
-        expect(notEqual.map(({ id }) => id)).toEqual([rows[1].id, rows[2].id]);
-      }
-    });
-
-    it("composes connectors left to right and defaults to AND", async () => {
-      const rows = await seedQueryRows(state);
-
-      const result = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [
-          { field: "id", value: rows[0].id },
-          {
-            field: "id",
-            value: rows[1].id,
-            connector: "OR",
-          },
-          { field: "enabled", value: true, connector: "AND" },
-        ],
-        sortBy: { field: "id", direction: "asc" },
-      });
-
-      expect(result.map(({ id }) => id)).toEqual([rows[0].id, rows[1].id]);
-    });
-
-    it("compares nullable fields with eq and ne", async () => {
-      const rows = await seedQueryRows(state);
-
-      const nullRows = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [{ field: "target_app_version", value: null }],
-      });
-      const nonNullRows = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [{ field: "target_app_version", operator: "ne", value: null }],
-      });
-      const otherVersionRows = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [
-          {
-            field: "target_app_version",
-            operator: "ne",
-            value: "1.0.0",
-          },
-        ],
-      });
-      const versionsOutsideSet = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [
-          {
-            field: "target_app_version",
-            operator: "not_in",
-            value: ["1.0.0"],
-          },
-        ],
-      });
-      const earlierVersions = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [
-          {
-            field: "target_app_version",
-            operator: "lt",
-            value: "2.0.0",
-          },
-        ],
-      });
-
-      expect(nullRows.map(({ id }) => id)).toEqual([rows[0].id]);
-      expect(nonNullRows).toHaveLength(2);
-      expect(otherVersionRows.map(({ id }) => id)).toEqual([rows[2].id]);
-      expect(versionsOutsideSet.map(({ id }) => id)).toEqual([rows[2].id]);
-      expect(earlierVersions.map(({ id }) => id)).toEqual([rows[1].id]);
-    });
-
-    it("places nulls first for ascending orderBy clauses", async () => {
-      const rows = await seedQueryRows(state);
-
-      const result = await state.getPlugin().findMany({
-        model: "bundles",
-        orderBy: [
-          {
-            field: "target_app_version",
-            direction: "asc",
-            nulls: "first",
-          },
-          { field: "id", direction: "asc" },
-        ],
-      });
-
-      expect(result.map(({ id }) => id)).toEqual([
-        rows[0].id,
-        rows[1].id,
-        rows[2].id,
-      ]);
-    });
-
-    it("places nulls last for descending legacy sortBy clauses", async () => {
-      const rows = await seedQueryRows(state);
-
-      const result = await state.getPlugin().findMany({
-        model: "bundles",
-        sortBy: {
-          field: "target_app_version",
-          direction: "desc",
-          nulls: "last",
-        },
-      });
-
-      expect(result.map(({ id }) => id)).toEqual([
-        rows[2].id,
-        rows[1].id,
-        rows[0].id,
-      ]);
-    });
-
-    it("counts compound distinct tuples or rejects the unsupported operation", async () => {
-      await seedDistinctRows(state);
-
-      try {
-        const result = await state.getPlugin().count({
-          model: "bundles",
-          distinct: ["channel", "platform"],
-        });
-
-        expect(result).toBe(3);
-      } catch (error) {
-        if (!(error instanceof DatabasePluginInputError)) throw error;
-        expect(error.code).toBe("invalid-operation");
-      }
-    });
-
-    it("selects ordered distinct rows or rejects the unsupported operation", async () => {
-      const rows = await seedDistinctRows(state);
-
-      try {
-        const result = await state.getPlugin().findMany({
-          model: "bundles",
-          distinctOn: { fields: ["channel"] },
-          orderBy: [
-            { field: "channel", direction: "asc" },
-            { field: "id", direction: "desc" },
-          ],
-        });
-
-        expect(result.map(({ id }) => id)).toEqual([rows[3].id, rows[2].id]);
-      } catch (error) {
-        if (!(error instanceof DatabasePluginInputError)) throw error;
-        expect(error.code).toBe("invalid-operation");
-      }
-    });
-
-    it("rejects invalid paging, selection, and mutation predicates", async () => {
-      await seedQueryRows(state);
-
-      await expect(
-        state.getPlugin().findMany({ model: "bundles", limit: -1 }),
-      ).rejects.toThrow();
-      await expect(
-        state.getPlugin().findMany({ model: "bundles", offset: -1 }),
-      ).rejects.toThrow();
-      await expect(
-        state.getPlugin().findMany({ model: "bundles", select: [] }),
-      ).rejects.toThrow();
-      await expect(
-        state
-          .getPlugin()
-          .update({ model: "bundles", where: [], update: { enabled: false } }),
-      ).rejects.toThrow();
-      await expect(
-        state.getPlugin().delete({ model: "bundles", where: [] }),
-      ).rejects.toThrow();
+      ).resolves.toEqual([]);
     });
   });
 };

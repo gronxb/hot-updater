@@ -6,11 +6,9 @@ import type {
 } from "@hot-updater/plugin-core";
 import {
   defineUniversalComponentSchema,
-  universalComponentDataAdapterCapability,
   UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
 } from "@hot-updater/plugin-core";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import {
   syntheticAuditLogMigrationSchema,
   syntheticMigrationLegacyEvidence,
@@ -397,17 +395,13 @@ const createComponentClient = (options?: {
 };
 
 describe("Supabase universal component data adapter", () => {
-  it("contributes a provider-neutral adapter from the database carrier", () => {
+  it("exposes a provider-neutral component data adapter", () => {
     const database = supabaseDatabase({
       supabaseUrl: "https://test.supabase.invalid",
       supabaseServiceRoleKey: "test-service-role-key",
     });
 
-    expect(
-      getCapabilityContributions(database).some(
-        ({ token }) => token === universalComponentDataAdapterCapability,
-      ),
-    ).toBe(true);
+    expect(database.componentData).toBeDefined();
   });
 
   it("generates a version-tagged transactional migration artifact", () => {

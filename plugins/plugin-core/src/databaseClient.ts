@@ -1,35 +1,27 @@
 import type { Bundle, GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 import { NIL_UUID } from "@hot-updater/core";
 
+import { DatabaseAtomicCommitUnsupportedError } from "./createDatabasePlugin";
 import {
   hydrateRows,
   loadBundleRows,
   responsePage,
-  toBundleWhere,
 } from "./databaseClientReads";
 import {
   DatabasePatchUpdateUnsupportedError,
   bundleUpdateToPatchRows,
   bundleUpdateToRow,
-  updateBundle,
 } from "./databaseClientUpdates";
 import { bundleToPatchRows, bundleToRow } from "./databaseRows";
-import {
-  attachDatabasePluginAggregateMutations,
-  getDatabasePluginAggregateMutations,
-} from "./internal/databaseAggregateMutations";
-import {
-  attachDatabasePluginPatchHydration,
-  getDatabasePluginPatchHydration,
-} from "./internal/databasePatchHydration";
 import { bundleMatchesQueryWhere } from "./queryBundles";
 import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
+  DatabaseCommit,
+  DatabaseCommitResult,
   DatabasePlugin,
   PaginatedResult,
-  TransactionDatabasePlugin,
 } from "./types";
 
 const PAGE_SIZE = 100;
@@ -42,11 +34,6 @@ export interface DatabaseClient {
   insertBundle(bundle: Bundle): Promise<void>;
   updateBundleById(bundleId: string, update: Partial<Bundle>): Promise<void>;
   deleteBundleById(bundleId: string): Promise<void>;
-  /**
-   * Runs multiple aggregate mutations in one plugin transaction when
-   * available. Without transaction support, operations run sequentially and
-   * may leave partial state when the callback rejects.
-   */
   mutate<TResult>(
     operation: (client: DatabaseMutationClient) => Promise<TResult>,
   ): Promise<TResult>;
@@ -83,118 +70,94 @@ export class DatabasePatchInsertUnsupportedError extends Error {
 
 export { DatabasePatchUpdateUnsupportedError };
 
-const transactionPlugin = (
-  database: TransactionDatabasePlugin,
-): DatabasePlugin => {
-  const plugin: DatabasePlugin = {
-    name: "transaction",
-    ...database,
-    transaction: (callback) => callback(database),
+type CommitOperation = (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
+
+const insertCommit = (bundle: Bundle): DatabaseCommit => ({
+  operation: "insert",
+  bundleId: bundle.id,
+  changes: [
+    { table: "bundles", operation: "insert", row: bundleToRow(bundle) },
+    ...bundleToPatchRows(bundle).map((row) => ({
+      table: "bundle_patches" as const,
+      operation: "insert" as const,
+      row,
+    })),
+  ],
+});
+
+const updateCommit = (
+  bundleId: string,
+  update: Partial<Bundle>,
+): DatabaseCommit => {
+  const rowUpdate = bundleUpdateToRow(update);
+  const patchesPresent = Object.hasOwn(update, "patches");
+  return {
+    operation: "update",
+    bundleId,
+    changes: [
+      ...(Object.keys(rowUpdate).length > 0
+        ? [
+            {
+              table: "bundles" as const,
+              operation: "update" as const,
+              id: bundleId,
+              update: rowUpdate,
+            },
+          ]
+        : []),
+      ...(patchesPresent
+        ? [
+            {
+              table: "bundle_patches" as const,
+              operation: "delete" as const,
+              bundleId,
+            },
+            ...bundleUpdateToPatchRows(bundleId, update).map((row) => ({
+              table: "bundle_patches" as const,
+              operation: "insert" as const,
+              row,
+            })),
+          ]
+        : []),
+    ],
   };
-  const hydration = getDatabasePluginPatchHydration(database);
-  return hydration
-    ? attachDatabasePluginPatchHydration(plugin, hydration)
-    : plugin;
 };
 
-const transactionlessBatchPlugin = (plugin: DatabasePlugin): DatabasePlugin => {
-  const aggregateMutations = getDatabasePluginAggregateMutations(plugin);
-  const hydration = getDatabasePluginPatchHydration(plugin);
-  const database: DatabasePlugin = {
-    ...plugin,
-    onDatabaseUpdated: undefined,
-    transaction: undefined,
-  };
-  const databaseWithHydration = hydration
-    ? attachDatabasePluginPatchHydration(database, hydration)
-    : database;
-  return aggregateMutations
-    ? attachDatabasePluginAggregateMutations(
-        databaseWithHydration,
-        aggregateMutations,
-      )
-    : databaseWithHydration;
-};
+const deleteCommit = (bundleId: string): DatabaseCommit => ({
+  operation: "delete",
+  bundleId,
+  changes: [{ table: "bundles", operation: "delete", id: bundleId }],
+});
 
 export const createDatabaseClient = (
   plugin: DatabasePlugin,
 ): DatabaseClient => {
-  const aggregateMutations = getDatabasePluginAggregateMutations(plugin);
-  const mutate = async (
-    operation: (database: TransactionDatabasePlugin) => Promise<void>,
-  ): Promise<void> => {
-    if (plugin.transaction) {
-      await plugin.transaction(operation);
-    } else {
-      await operation(plugin);
-    }
-    await plugin.onDatabaseUpdated?.();
-  };
-
   const getBundleById = async (id: string): Promise<Bundle | null> => {
-    const row = await plugin.findOne({
-      model: "bundles",
-      where: [{ field: "id", value: id }],
-    });
+    const row = await plugin.bundles.findById(id);
     if (!row) return null;
     return (await hydrateRows(plugin, [row]))[0] ?? null;
   };
 
-  const getBundles = (options: DatabaseBundleQueryOptions) =>
-    responsePage(plugin, options);
-
-  const mutateBatch = async <TResult>(
-    operation: (client: DatabaseMutationClient) => Promise<TResult>,
-  ): Promise<TResult> => {
-    const run = (database: TransactionDatabasePlugin) =>
-      operation(createDatabaseClient(transactionPlugin(database)));
-    const result = plugin.transaction
-      ? await plugin.transaction(run)
-      : await operation(
-          createDatabaseClient(transactionlessBatchPlugin(plugin)),
-        );
-    await plugin.onDatabaseUpdated?.();
-    return result;
-  };
-
-  const transaction = plugin.transaction;
-  const mutateAtomic = transaction
-    ? async <TResult>(
-        operation: (client: DatabaseMutationClient) => Promise<TResult>,
-      ): Promise<TResult> => {
-        const result = await transaction((database) =>
-          operation(createDatabaseClient(transactionPlugin(database))),
-        );
-        await plugin.onDatabaseUpdated?.();
-        return result;
-      }
-    : undefined;
-
-  return {
+  const createMutationClient = (
+    commit: CommitOperation,
+  ): DatabaseMutationClient => ({
     getBundleById,
-    getBundles,
+    getBundles: (options) => responsePage(plugin, options),
     async getChannels() {
       if (plugin.getChannels) return plugin.getChannels();
       const channels = new Set<string>();
       for (let offset = 0; ; offset += PAGE_SIZE) {
-        const rows = await plugin.findMany({
-          model: "bundles",
-          select: ["channel"],
+        const rows = await plugin.bundles.findMany({
           limit: PAGE_SIZE,
           offset,
-          orderBy: [
-            { field: "channel", direction: "asc" },
-            { field: "id", direction: "asc" },
-          ],
+          orderBy: { field: "id", direction: "asc" },
         });
         for (const { channel } of rows) channels.add(channel);
         if (rows.length < PAGE_SIZE) return [...channels].sort();
       }
     },
     async getUpdateInfo(args) {
-      if (plugin.getUpdateInfo) {
-        return plugin.getUpdateInfo(args);
-      }
+      if (plugin.getUpdateInfo) return plugin.getUpdateInfo(args);
       const channel = args.channel ?? "production";
       const minBundleId = args.minBundleId ?? NIL_UUID;
       const where: DatabaseBundleQueryWhere = {
@@ -206,63 +169,88 @@ export const createDatabaseClient = (
           ? { fingerprintHash: args.fingerprintHash }
           : { targetAppVersionNotNull: true }),
       };
-      const rows = await loadBundleRows(plugin, toBundleWhere(where));
+      const rows = await loadBundleRows(plugin, where);
       const bundles = (await hydrateRows(plugin, rows)).filter((bundle) =>
         bundleMatchesQueryWhere(bundle, where),
       );
       return resolveUpdateInfoFromBundles({ args, bundles });
     },
     async insertBundle(bundle) {
-      const patchRows = bundleToPatchRows(bundle);
-      if (patchRows.length > 0 && !plugin.transaction) {
-        if (!aggregateMutations) {
+      try {
+        await commit(insertCommit(bundle));
+      } catch (error) {
+        if (
+          error instanceof DatabaseAtomicCommitUnsupportedError &&
+          bundleToPatchRows(bundle).length > 0
+        ) {
           throw new DatabasePatchInsertUnsupportedError(bundle.id, plugin.name);
         }
-        await aggregateMutations.insertBundleWithPatches({
-          bundle: bundleToRow(bundle),
-          patches: patchRows,
-        });
-        await plugin.onDatabaseUpdated?.();
-        return;
+        throw error;
       }
-      await mutate(async (database) => {
-        await database.create({
-          model: "bundles",
-          data: bundleToRow(bundle),
-        });
-        for (const patch of patchRows) {
-          await database.create({ model: "bundle_patches", data: patch });
-        }
-      });
     },
     async updateBundleById(bundleId, update) {
-      if (Object.hasOwn(update, "patches") && !plugin.transaction) {
-        if (!aggregateMutations) {
+      try {
+        const result = await commit(updateCommit(bundleId, update));
+        if (!result.applied) throw new DatabaseBundleNotFoundError(bundleId);
+      } catch (error) {
+        if (
+          error instanceof DatabaseAtomicCommitUnsupportedError &&
+          Object.hasOwn(update, "patches")
+        ) {
           throw new DatabasePatchUpdateUnsupportedError(bundleId, plugin.name);
         }
-        const updated = await aggregateMutations.updateBundleWithPatches({
-          bundleId,
-          update: bundleUpdateToRow(update),
-          patches: bundleUpdateToPatchRows(bundleId, update),
-        });
-        if (!updated) throw new DatabaseBundleNotFoundError(bundleId);
-        await plugin.onDatabaseUpdated?.();
-        return;
+        throw error;
       }
-      await mutate(async (database) => {
-        const updated = await updateBundle(database, bundleId, update);
-        if (!updated) throw new DatabaseBundleNotFoundError(bundleId);
-      });
     },
     async deleteBundleById(bundleId) {
-      await mutate(async (database) => {
-        await database.delete({
-          model: "bundles",
-          where: [{ field: "id", value: bundleId }],
-        });
-      });
+      await commit(deleteCommit(bundleId));
     },
-    mutate: mutateBatch,
-    ...(mutateAtomic ? { mutateAtomic } : {}),
+  });
+
+  const runMutation = async <TResult>(
+    operation: (client: DatabaseMutationClient) => Promise<TResult>,
+    requireAtomic: boolean,
+  ): Promise<TResult> => {
+    const commits: DatabaseCommit[] = [];
+    const result = await operation(
+      createMutationClient(async (input) => {
+        commits.push(input);
+        return { applied: true };
+      }),
+    );
+    if (commits.length === 0) return result;
+    if (plugin.commitBatch) {
+      const results = await plugin.commitBatch(commits);
+      const missing = results.findIndex(({ applied }) => !applied);
+      if (missing >= 0) {
+        throw new DatabaseBundleNotFoundError(commits[missing]!.bundleId);
+      }
+    } else {
+      if (requireAtomic && commits.length > 1) {
+        throw new DatabaseAtomicCommitUnsupportedError(plugin.name);
+      }
+      for (const input of commits) {
+        const commitResult = await plugin.commit(input);
+        if (!commitResult.applied) {
+          throw new DatabaseBundleNotFoundError(input.bundleId);
+        }
+      }
+    }
+    await plugin.onDatabaseUpdated?.();
+    return result;
+  };
+
+  const direct = createMutationClient(async (input) => {
+    const result = await plugin.commit(input);
+    if (result.applied) await plugin.onDatabaseUpdated?.();
+    return result;
+  });
+
+  return {
+    ...direct,
+    mutate: (operation) => runMutation(operation, false),
+    ...(plugin.commitBatch
+      ? { mutateAtomic: (operation) => runMutation(operation, true) }
+      : {}),
   };
 };

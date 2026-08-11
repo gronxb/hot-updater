@@ -18,7 +18,7 @@ import {
 describe("createDatabasePluginCore update info", () => {
   it("uses the optional low-plugin update fast-path", async () => {
     const basePlugin = createInMemoryDatabasePlugin();
-    const findMany = vi.spyOn(basePlugin, "findMany");
+    const findMany = vi.spyOn(basePlugin.bundles, "findMany");
     const expected: UpdateInfo = {
       fileHash: targetBundle.fileHash,
       id: targetBundle.id,
@@ -48,7 +48,7 @@ describe("createDatabasePluginCore update info", () => {
 
   it("does not scan when the optional update fast-path returns null", async () => {
     const basePlugin = createInMemoryDatabasePlugin();
-    const findMany = vi.spyOn(basePlugin, "findMany");
+    const findMany = vi.spyOn(basePlugin.bundles, "findMany");
     const plugin: DatabasePlugin = {
       ...basePlugin,
       getUpdateInfo: vi.fn(async () => null),

@@ -23,13 +23,9 @@ it("stores channel names directly on bundles", async () => {
 
   await client.insertBundle(bundle);
 
-  await expect(
-    plugin.findOne({
-      model: "bundles",
-      where: [{ field: "id", value: bundle.id }],
-      select: ["channel"],
-    }),
-  ).resolves.toEqual({ channel: "beta" });
+  await expect(plugin.bundles.findById(bundle.id)).resolves.toMatchObject({
+    channel: "beta",
+  });
   await expect(client.getChannels()).resolves.toEqual(["beta"]);
   await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
     channel: "beta",
@@ -56,13 +52,9 @@ it("updates the bundle channel directly", async () => {
 
   await client.updateBundleById(bundle.id, { channel: "stable" });
 
-  await expect(
-    plugin.findOne({
-      model: "bundles",
-      where: [{ field: "id", value: bundle.id }],
-      select: ["channel"],
-    }),
-  ).resolves.toEqual({ channel: "stable" });
+  await expect(plugin.bundles.findById(bundle.id)).resolves.toMatchObject({
+    channel: "stable",
+  });
   await expect(client.getChannels()).resolves.toEqual(["stable"]);
 });
 

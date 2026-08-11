@@ -3,6 +3,7 @@ import type {
   UniversalComponentDataSource,
   UniversalComponentSchema,
 } from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 import type {
   HotUpdaterPluginSetupContext,
   HotUpdaterRouteContext,
@@ -53,25 +54,29 @@ const provider = Object.freeze({
   })),
 } satisfies AnalyticsProvider);
 
-const database: DatabaseCapabilityRuntime = {
+const database: DatabaseCapabilityRuntime = createDatabasePlugin({
   name: "unused",
-  async create() {
-    throw new TypeError("database must not be used by Analytics setup");
-  },
-  async update() {
-    return null;
-  },
-  async delete() {},
-  async count() {
-    return 0;
-  },
-  async findOne() {
-    return null;
-  },
-  async findMany() {
-    return [];
-  },
-};
+  plugin: () => ({
+    async create() {
+      throw new TypeError("database must not be used by Analytics setup");
+    },
+    async update() {
+      throw new TypeError("database must not be used by Analytics setup");
+    },
+    async delete() {
+      throw new TypeError("database must not be used by Analytics setup");
+    },
+    async count() {
+      throw new TypeError("database must not be used by Analytics setup");
+    },
+    async findOne() {
+      throw new TypeError("database must not be used by Analytics setup");
+    },
+    async findMany() {
+      throw new TypeError("database must not be used by Analytics setup");
+    },
+  }),
+});
 
 function setupContext(
   componentSource?: UniversalComponentDataSource,

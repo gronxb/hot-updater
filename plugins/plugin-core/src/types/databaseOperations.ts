@@ -1,5 +1,6 @@
 import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 
+import type { DatabaseCommit, DatabaseCommitResult } from "./databasePlugin";
 import type {
   DatabaseDistinctFields,
   DatabaseDistinctOn,
@@ -130,7 +131,7 @@ export type SelectedDatabaseInputRow<
     : undefined
 >;
 
-export interface TransactionDatabasePlugin {
+export interface DatabasePluginCrud {
   create<TInput extends CreateDatabaseImplementationInput>(
     input: TInput,
   ): Promise<SelectedDatabaseInputRow<TInput>>;
@@ -145,31 +146,6 @@ export interface TransactionDatabasePlugin {
   findMany<TInput extends FindManyDatabasePluginInput>(
     input: TInput,
   ): Promise<SelectedDatabaseInputRow<TInput>[]>;
-}
-
-export interface DatabasePlugin {
-  readonly name: string;
-  create<TInput extends CreateDatabaseImplementationInput>(
-    input: TInput,
-  ): Promise<SelectedDatabaseInputRow<TInput>>;
-  update<TInput extends UpdateDatabaseImplementationInput>(
-    input: TInput,
-  ): Promise<SelectedDatabaseInputRow<TInput> | null>;
-  delete(input: DeleteDatabaseImplementationInput): Promise<void>;
-  count(input: CountDatabaseImplementationInput): Promise<number>;
-  findOne<TInput extends FindOneDatabaseImplementationInput>(
-    input: TInput,
-  ): Promise<SelectedDatabaseInputRow<TInput> | null>;
-  findMany<TInput extends FindManyDatabasePluginInput>(
-    input: TInput,
-  ): Promise<SelectedDatabaseInputRow<TInput>[]>;
-  getChannels?: () => Promise<string[]>;
-  getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
-  transaction?: <TResult>(
-    callback: (transaction: TransactionDatabasePlugin) => Promise<TResult>,
-  ) => Promise<TResult>;
-  onDatabaseUpdated?: () => Promise<void>;
-  onUnmount?: () => Promise<void>;
 }
 
 export type DatabaseImplementationResult = {
@@ -267,6 +243,10 @@ export interface DatabasePluginImplementation {
       transaction: TransactionDatabasePluginImplementation,
     ) => Promise<TResult>,
   ) => Promise<TResult>;
+  commit?: (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
+  commitBatch?: (
+    inputs: readonly DatabaseCommit[],
+  ) => Promise<readonly DatabaseCommitResult[]>;
   onUnmount?: () => Promise<void>;
 }
 

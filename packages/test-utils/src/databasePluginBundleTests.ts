@@ -6,140 +6,123 @@ import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type BundleTestState = DatabasePluginTestState<DatabasePlugin>;
 
+const insertBundle = (plugin: DatabasePlugin, suffix: string) => {
+  const row = createBundleRowFixture(suffix);
+  return {
+    row,
+    result: plugin.commit({
+      operation: "insert",
+      bundleId: row.id,
+      changes: [{ table: "bundles", operation: "insert", row }],
+    }),
+  };
+};
+
 export const registerDatabasePluginBundleTests = (
   state: BundleTestState,
 ): void => {
-  describe("bundles", () => {
-    it("creates a row and returns only selected fields", async () => {
-      const bundle = createBundleRowFixture("1");
+  describe("bundles table", () => {
+    it("inserts and finds a bundle row by id", async () => {
+      const plugin = state.getPlugin();
+      const { row, result } = insertBundle(plugin, "1");
 
-      const created = await state
-        .getPlugin()
-        .create({ model: "bundles", data: bundle, select: ["id", "channel"] });
-
-      expect(created).toEqual({
-        id: bundle.id,
-        channel: bundle.channel,
-      });
-      await expect(
-        state.getPlugin().findOne({
-          model: "bundles",
-          where: [{ field: "id", value: bundle.id }],
-        }),
-      ).resolves.toEqual(bundle);
-    });
-
-    it("returns null when no bundle matches", async () => {
-      await expect(
-        state.getPlugin().findOne({
-          model: "bundles",
-          where: [
-            {
-              field: "id",
-              value: "ffffffff-ffff-ffff-ffff-ffffffffffff",
-            },
-          ],
-        }),
-      ).resolves.toBeNull();
+      await expect(result).resolves.toEqual({ applied: true });
+      await expect(plugin.bundles.findById(row.id)).resolves.toEqual(row);
     });
 
     it("updates explicit false, null, and empty-array values", async () => {
-      const bundle = createBundleRowFixture("2");
-      await state.getPlugin().create({ model: "bundles", data: bundle });
+      const plugin = state.getPlugin();
+      const { row, result } = insertBundle(plugin, "2");
+      await result;
 
-      const updated = await state.getPlugin().update({
-        model: "bundles",
-        where: [{ field: "id", value: bundle.id }],
-        update: { enabled: false, message: null, target_cohorts: [] },
-      });
-
-      expect(updated).toMatchObject({
-        id: bundle.id,
+      await expect(
+        plugin.commit({
+          operation: "update",
+          bundleId: row.id,
+          changes: [
+            {
+              table: "bundles",
+              operation: "update",
+              id: row.id,
+              update: { enabled: false, message: null, target_cohorts: [] },
+            },
+          ],
+        }),
+      ).resolves.toEqual({ applied: true });
+      await expect(plugin.bundles.findById(row.id)).resolves.toMatchObject({
+        id: row.id,
         enabled: false,
         message: null,
         target_cohorts: [],
+        file_hash: row.file_hash,
       });
-      expect(updated?.file_hash).toBe(bundle.file_hash);
     });
 
-    it("filters, orders, offsets, and limits before returning rows", async () => {
-      const first = { ...createBundleRowFixture("11"), enabled: false };
-      const second = createBundleRowFixture("12", "staging");
-      const third = createBundleRowFixture("13");
-      for (const bundle of [first, second, third]) {
-        await state.getPlugin().create({ model: "bundles", data: bundle });
-      }
-
-      const rows = await state.getPlugin().findMany({
-        model: "bundles",
-        where: [
-          { field: "enabled", value: true },
-          {
-            field: "channel",
-            value: "staging",
-            operator: "ne",
-            connector: "AND",
-          },
-        ],
-        sortBy: { field: "id", direction: "desc" },
-        offset: 0,
-        limit: 1,
-      });
-
-      expect(rows).toEqual([third]);
-    });
-
-    it("uses the same predicates for count", async () => {
-      const enabled = createBundleRowFixture("21");
-      const disabled = { ...createBundleRowFixture("22"), enabled: false };
-      for (const bundle of [enabled, disabled]) {
-        await state.getPlugin().create({ model: "bundles", data: bundle });
+    it("filters, orders, offsets, limits, and counts bundle rows", async () => {
+      const plugin = state.getPlugin();
+      const rows = [
+        { ...createBundleRowFixture("11"), enabled: false },
+        createBundleRowFixture("12", "staging"),
+        createBundleRowFixture("13"),
+      ];
+      for (const row of rows) {
+        await plugin.commit({
+          operation: "insert",
+          bundleId: row.id,
+          changes: [{ table: "bundles", operation: "insert", row }],
+        });
       }
 
       await expect(
-        state.getPlugin().count({
-          model: "bundles",
-          where: [{ field: "enabled", value: false }],
+        plugin.bundles.findMany({
+          where: { enabled: true },
+          limit: 1,
+          offset: 1,
+          orderBy: { field: "id", direction: "asc" },
         }),
-      ).resolves.toBe(1);
+      ).resolves.toEqual([rows[2]]);
+      await expect(plugin.bundles.count({ enabled: true })).resolves.toBe(2);
     });
 
-    it("treats an empty in predicate as matching no rows", async () => {
-      await state
-        .getPlugin()
-        .create({ model: "bundles", data: createBundleRowFixture("31") });
-
+    it("returns applied false when an update target is missing", async () => {
       await expect(
-        state.getPlugin().findMany({
-          model: "bundles",
-          where: [{ field: "id", value: [], operator: "in" }],
+        state.getPlugin().commit({
+          operation: "update",
+          bundleId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+          changes: [],
         }),
-      ).resolves.toEqual([]);
+      ).resolves.toEqual({ applied: false });
     });
 
-    it("deletes every matching bundle row", async () => {
-      for (const suffix of ["41", "42"]) {
-        await state
-          .getPlugin()
-          .create({ model: "bundles", data: createBundleRowFixture(suffix) });
-      }
+    it("deletes one bundle by id without a generic predicate", async () => {
+      const plugin = state.getPlugin();
+      const first = insertBundle(plugin, "41");
+      const second = insertBundle(plugin, "42");
+      await Promise.all([first.result, second.result]);
 
-      await state.getPlugin().delete({
-        model: "bundles",
-        where: [{ field: "channel", value: "production" }],
+      await plugin.commit({
+        operation: "delete",
+        bundleId: first.row.id,
+        changes: [{ table: "bundles", operation: "delete", id: first.row.id }],
       });
 
-      await expect(
-        state.getPlugin().findMany({ model: "bundles" }),
-      ).resolves.toEqual([]);
+      await expect(plugin.bundles.findById(first.row.id)).resolves.toBeNull();
+      await expect(plugin.bundles.findById(second.row.id)).resolves.toEqual(
+        second.row,
+      );
     });
 
     it("rejects duplicate bundle ids", async () => {
-      const bundle = createBundleRowFixture("51");
-      await state.getPlugin().create({ model: "bundles", data: bundle });
+      const plugin = state.getPlugin();
+      const first = insertBundle(plugin, "51");
+      await first.result;
 
       await expect(
-        state.getPlugin().create({ model: "bundles", data: bundle }),
+        plugin.commit({
+          operation: "insert",
+          bundleId: first.row.id,
+          changes: [{ table: "bundles", operation: "insert", row: first.row }],
+        }),
       ).rejects.toThrow();
     });
   });

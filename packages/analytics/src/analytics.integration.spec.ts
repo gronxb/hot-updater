@@ -1,6 +1,6 @@
 import {
-  attachUniversalComponentDataAdapter,
   createDatabasePlugin,
+  type UniversalComponentSchema,
   UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
 } from "@hot-updater/plugin-core";
@@ -41,10 +41,10 @@ const assertComponentReady = vi.fn(async () => undefined);
 const appendComponentRow = vi.fn(async () => {
   await assertComponentReady();
 });
-const componentDatabase = attachUniversalComponentDataAdapter(
-  createTestDatabase(),
-  () => ({
-    bind(schema) {
+const componentDatabase = {
+  ...createTestDatabase(),
+  componentData: {
+    bind(schema: UniversalComponentSchema) {
       if (schema !== analyticsComponentSchema) {
         throw new TypeError("unexpected component schema");
       }
@@ -52,7 +52,7 @@ const componentDatabase = attachUniversalComponentDataAdapter(
         schema,
         append: appendComponentRow,
         assertReady: assertComponentReady,
-        create: async () => "created",
+        create: async () => "created" as const,
         get: async () => null,
         orderedScan: async () => {
           await assertComponentReady();
@@ -60,12 +60,12 @@ const componentDatabase = attachUniversalComponentDataAdapter(
         },
       };
     },
-  }),
-);
-const notReadyComponentDatabase = attachUniversalComponentDataAdapter(
-  createTestDatabase(),
-  () => ({
-    bind(schema) {
+  },
+};
+const notReadyComponentDatabase = {
+  ...createTestDatabase(),
+  componentData: {
+    bind(schema: UniversalComponentSchema) {
       const markerNotReady = (): never => {
         throw new UniversalComponentSchemaNotReadyError(
           analyticsComponentSchema.id,
@@ -89,8 +89,8 @@ const notReadyComponentDatabase = attachUniversalComponentDataAdapter(
         orderedScan: async () => dataNotReady(),
       };
     },
-  }),
-);
+  },
+};
 
 const appendBundleEvent = vi.fn(async () => undefined);
 

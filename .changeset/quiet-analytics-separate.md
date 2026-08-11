@@ -28,7 +28,7 @@ The Console adds the Analytics overview, bundle activity, and installation
 history experiences. Provider initialization and schema generation compose the
 active Analytics plugin into provider-neutral component artifacts and runtime
 migrations. The Console also shows managed client access-key lifecycle controls
-when a database contributes the Better Auth managed key-store capability.
+when a database exposes the neutral component-data adapter used by Better Auth.
 
 React Native clients can enable automatic OTA transition reporting with
 `HotUpdater.init({ analytics: true })`. App-ready transitions retain stable
