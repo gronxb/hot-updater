@@ -21,7 +21,7 @@ import {
   migrateUniversalComponents,
 } from "@hot-updater/server/db";
 import { ExecaError, execa } from "execa";
-import admin from "firebase-admin";
+import { cert } from "firebase-admin/app";
 
 import { mergeFirebaseComponentIndexArtifacts } from "../src/firebaseComponentIndexArtifacts";
 import { firebaseDatabase } from "../src/firebaseDatabase";
@@ -357,7 +357,7 @@ export const runInit = async ({
   const deploymentTarget = createDeploymentTarget?.(
     firebaseDatabase({
       ...(applicationCredentialsPath
-        ? { credential: admin.credential.cert(applicationCredentialsPath) }
+        ? { credential: cert(applicationCredentialsPath) }
         : {}),
       projectId: initializeVariable.projectId,
       storageBucket: initializeVariable.storageBucket,
