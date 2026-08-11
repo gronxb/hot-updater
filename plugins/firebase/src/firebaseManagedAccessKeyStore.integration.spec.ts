@@ -1,5 +1,6 @@
 import { registerManagedAccessKey } from "@hot-updater/better-auth/managed";
-import admin from "firebase-admin";
+import { getApp, getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -11,10 +12,10 @@ const firstKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const secondKey = "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI";
 
 describe("Firebase managed access-key store", () => {
-  const app = admin.apps.length
-    ? admin.app()
-    : admin.initializeApp({ projectId: "managed-access-key-test" });
-  const firestore = admin.firestore(app);
+  const app = getApps().length
+    ? getApp()
+    : initializeApp({ projectId: "managed-access-key-test" });
+  const firestore = getFirestore(app);
   const collection = firestore.collection(
     FIREBASE_MANAGED_ACCESS_KEY_COLLECTION,
   );
