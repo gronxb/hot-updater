@@ -33,15 +33,15 @@ vi.mock("@hot-updater/firebase", () => ({
     mocks.createFirebaseManagedAccessKeyStore,
 }));
 
-vi.mock("firebase-admin", () => ({
-  default: {
-    credential: {
-      applicationDefault: vi.fn(() => "application-default"),
-      cert: vi.fn(() => mocks.firebaseCredential),
-    },
-    firestore: vi.fn(() => "firestore"),
-    initializeApp: vi.fn(() => ({ delete: mocks.appDelete })),
-  },
+vi.mock("firebase-admin/app", () => ({
+  applicationDefault: vi.fn(() => "application-default"),
+  cert: vi.fn(() => mocks.firebaseCredential),
+  deleteApp: mocks.appDelete,
+  initializeApp: vi.fn(() => ({ name: "managed-access-key-app" })),
+}));
+
+vi.mock("firebase-admin/firestore", () => ({
+  getFirestore: vi.fn(() => "firestore"),
 }));
 
 vi.mock("../src/firebaseDatabase", () => ({
@@ -204,7 +204,7 @@ import {
   migrateUniversalComponents,
 } from "@hot-updater/server/db";
 import { execa } from "execa";
-import admin from "firebase-admin";
+import { cert } from "firebase-admin/app";
 
 import { firebaseDatabase } from "../src/firebaseDatabase";
 import { runInit } from "./index";
@@ -316,9 +316,7 @@ describe("Firebase project creation", () => {
       envFile: ".env.hotupdater",
     });
 
-    expect(admin.credential.cert).toHaveBeenCalledWith(
-      "/tmp/firebase-credentials.json",
-    );
+    expect(cert).toHaveBeenCalledWith("/tmp/firebase-credentials.json");
     expect(firebaseDatabase).toHaveBeenCalledWith({
       credential: mocks.firebaseCredential,
       projectId: "existing-project",
@@ -358,7 +356,7 @@ describe("Firebase project creation", () => {
     await runInit({ build: "bare", createDeploymentTarget });
 
     const credentialsPath = path.resolve("credentials.json");
-    expect(admin.credential.cert).toHaveBeenCalledWith(credentialsPath);
+    expect(cert).toHaveBeenCalledWith(credentialsPath);
     expect(firebaseDatabase).toHaveBeenCalledWith({
       credential: mocks.firebaseCredential,
       projectId: "existing-project",
