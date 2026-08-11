@@ -1,21 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { getCapabilityContributions } from "./capabilities";
 import type { UniversalComponentArtifact } from "./universalComponentData";
 import {
-  attachUniversalComponentDataAdapter,
   defineUniversalComponentSchema,
   evaluateUniversalComponentCheck,
   getUniversalComponentLatestSchema,
   getUniversalComponentSchemaMarkerKey,
   getUniversalComponentSchemaVersion,
   isUniversalComponentDataValue,
+  parseUniversalComponentDataAdapter,
   resolveUniversalComponentMigrationState,
   resolveUniversalComponentUnmarkedState,
   UniversalComponentDataNotReadyError,
   UniversalComponentDataStateNotReadyError,
   UniversalComponentSchemaNotReadyError,
-  universalComponentDataAdapterCapability,
   validateUniversalComponentAppend,
   validateUniversalComponentGet,
   validateUniversalComponentOrderedScan,
@@ -347,18 +345,11 @@ describe("universal component data", () => {
     );
   });
 
-  it("attaches a neutral adapter capability to a database carrier", () => {
+  it("parses an explicit neutral component data adapter", () => {
     const bind = vi.fn();
-    const database = attachUniversalComponentDataAdapter(
-      { name: "synthetic" },
-      () => ({ bind }),
-    );
-    const [contribution] = getCapabilityContributions(database);
+    const adapter = { bind };
 
-    expect(contribution?.token).toBe(universalComponentDataAdapterCapability);
-    expect(
-      contribution?.create({ database: {} as never, storages: [] }),
-    ).toEqual({ bind });
+    expect(parseUniversalComponentDataAdapter(adapter)).toBe(adapter);
   });
 
   it("validates rows and portable ordered cursors against the latest schema", () => {

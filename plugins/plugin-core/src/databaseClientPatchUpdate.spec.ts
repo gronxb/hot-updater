@@ -10,7 +10,7 @@ import {
   DatabasePatchUpdateUnsupportedError,
 } from "./databaseClient";
 import { bundleToRow } from "./databaseRows";
-import { attachDatabasePluginAggregateMutations } from "./internal/databaseAggregateMutations";
+import type { DatabasePluginImplementation } from "./types";
 
 const createBundle = (id: string): Bundle => ({
   id,
@@ -24,6 +24,25 @@ const createBundle = (id: string): Bundle => ({
   storageUri: `storage://${id}`,
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
+});
+
+const createNativePlugin = (
+  commit: NonNullable<DatabasePluginImplementation["commit"]>,
+  onDatabaseUpdated?: () => Promise<void>,
+) => ({
+  ...createDatabasePlugin({
+    name: "native-aggregate",
+    plugin: () => ({
+      create: async (input) => input.data,
+      update: async () => null,
+      delete: async () => undefined,
+      count: async () => 0,
+      findOne: async () => null,
+      findMany: async () => [],
+      commit,
+    }),
+  }),
+  ...(onDatabaseUpdated ? { onDatabaseUpdated } : {}),
 });
 
 const createBlobFixture = async () => {
@@ -139,27 +158,9 @@ describe("database client patch updates", () => {
   });
 
   it("uses a provider-native atomic aggregate without exposing a transaction", async () => {
-    const create = vi.fn(async (input) => input.data);
-    const insertBundleWithPatches = vi.fn(async () => undefined);
-    const updateBundleWithPatches = vi.fn(async () => true);
+    const commit = vi.fn(async () => ({ applied: true }));
     const onDatabaseUpdated = vi.fn(async () => undefined);
-    const plugin = attachDatabasePluginAggregateMutations(
-      {
-        ...createDatabasePlugin({
-          name: "native-aggregate",
-          plugin: () => ({
-            create,
-            update: async () => null,
-            delete: async () => undefined,
-            count: async () => 0,
-            findOne: async () => null,
-            findMany: async () => [],
-          }),
-        }),
-        onDatabaseUpdated,
-      },
-      { insertBundleWithPatches, updateBundleWithPatches },
-    );
+    const plugin = createNativePlugin(commit, onDatabaseUpdated);
     const owner = {
       ...createBundle("owner"),
       patches: [
@@ -174,19 +175,24 @@ describe("database client patch updates", () => {
 
     await createDatabaseClient(plugin).insertBundle(owner);
 
-    expect(plugin.transaction).toBeUndefined();
-    expect(create).not.toHaveBeenCalled();
-    expect(insertBundleWithPatches).toHaveBeenCalledWith({
-      bundle: bundleToRow(owner),
-      patches: [
+    expect(plugin.commitBatch).toBeUndefined();
+    expect(commit).toHaveBeenCalledWith({
+      operation: "insert",
+      bundleId: "owner",
+      changes: [
+        { table: "bundles", operation: "insert", row: bundleToRow(owner) },
         {
-          base_bundle_id: "base",
-          base_file_hash: "base-hash",
-          bundle_id: "owner",
-          id: "owner:base",
-          order_index: 0,
-          patch_file_hash: "patch-hash",
-          patch_storage_uri: "storage://patch",
+          table: "bundle_patches",
+          operation: "insert",
+          row: {
+            base_bundle_id: "base",
+            base_file_hash: "base-hash",
+            bundle_id: "owner",
+            id: "owner:base",
+            order_index: 0,
+            patch_file_hash: "patch-hash",
+            patch_storage_uri: "storage://patch",
+          },
         },
       ],
     });
@@ -194,24 +200,8 @@ describe("database client patch updates", () => {
   });
 
   it("rejects explicit null metadata before a provider-native aggregate update", async () => {
-    const updateBundleWithPatches = vi.fn(async () => true);
-    const plugin = attachDatabasePluginAggregateMutations(
-      createDatabasePlugin({
-        name: "native-aggregate",
-        plugin: () => ({
-          create: async (input) => input.data,
-          update: async () => null,
-          delete: async () => undefined,
-          count: async () => 0,
-          findOne: async () => null,
-          findMany: async () => [],
-        }),
-      }),
-      {
-        insertBundleWithPatches: async () => undefined,
-        updateBundleWithPatches,
-      },
-    );
+    const commit = vi.fn(async () => ({ applied: true }));
+    const plugin = createNativePlugin(commit);
     const update: Partial<Bundle> = { patches: [] };
     Reflect.set(update, "metadata", null);
 
@@ -221,33 +211,13 @@ describe("database client patch updates", () => {
     );
 
     await expect(result).rejects.toMatchObject({ code: "invalid-data" });
-    expect(updateBundleWithPatches).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
   });
 
   it("preserves provider-native aggregates inside a transactionless batch", async () => {
-    const create = vi.fn(async (input) => input.data);
-    const update = vi.fn(async () => null);
-    const deleteRows = vi.fn(async () => undefined);
-    const insertBundleWithPatches = vi.fn(async () => undefined);
-    const updateBundleWithPatches = vi.fn(async () => true);
+    const commit = vi.fn(async () => ({ applied: true }));
     const onDatabaseUpdated = vi.fn(async () => undefined);
-    const plugin = attachDatabasePluginAggregateMutations(
-      {
-        ...createDatabasePlugin({
-          name: "native-aggregate",
-          plugin: () => ({
-            create,
-            update,
-            delete: deleteRows,
-            count: async () => 0,
-            findOne: async () => null,
-            findMany: async () => [],
-          }),
-        }),
-        onDatabaseUpdated,
-      },
-      { insertBundleWithPatches, updateBundleWithPatches },
-    );
+    const plugin = createNativePlugin(commit, onDatabaseUpdated);
     const owner = {
       ...createBundle("owner"),
       patches: [
@@ -268,39 +238,33 @@ describe("database client patch updates", () => {
       });
     });
 
-    expect(create).not.toHaveBeenCalled();
-    expect(update).not.toHaveBeenCalled();
-    expect(deleteRows).not.toHaveBeenCalled();
-    expect(insertBundleWithPatches).toHaveBeenCalledTimes(1);
-    expect(updateBundleWithPatches).toHaveBeenCalledWith({
-      bundleId: "owner",
-      patches: [],
-      update: { enabled: false },
-    });
+    expect(commit).toHaveBeenCalledTimes(2);
+    expect(commit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        operation: "update",
+        bundleId: "owner",
+        changes: expect.arrayContaining([
+          expect.objectContaining({
+            table: "bundles",
+            operation: "update",
+            update: { enabled: false },
+          }),
+          expect.objectContaining({
+            table: "bundle_patches",
+            operation: "delete",
+            bundleId: "owner",
+          }),
+        ]),
+      }),
+    );
     expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
   });
 
   it("does not report a native aggregate failure as a completed update", async () => {
     const onDatabaseUpdated = vi.fn(async () => undefined);
-    const plugin = attachDatabasePluginAggregateMutations(
-      {
-        ...createDatabasePlugin({
-          name: "native-aggregate",
-          plugin: () => ({
-            create: async (input) => input.data,
-            update: async () => null,
-            delete: async () => undefined,
-            count: async () => 0,
-            findOne: async () => null,
-            findMany: async () => [],
-          }),
-        }),
-        onDatabaseUpdated,
-      },
-      {
-        insertBundleWithPatches: async () => undefined,
-        updateBundleWithPatches: async () => false,
-      },
+    const plugin = createNativePlugin(
+      async () => ({ applied: false }),
+      onDatabaseUpdated,
     );
 
     const result = createDatabaseClient(plugin).updateBundleById("missing", {
@@ -318,29 +282,9 @@ describe("database client patch updates", () => {
   it("does not report a rejected native aggregate insert as completed", async () => {
     const onDatabaseUpdated = vi.fn(async () => undefined);
     const failure = new Error("atomic insert failed");
-    const create = vi.fn(async (input) => input.data);
-    const plugin = attachDatabasePluginAggregateMutations(
-      {
-        ...createDatabasePlugin({
-          name: "native-aggregate",
-          plugin: () => ({
-            create,
-            update: async () => null,
-            delete: async () => undefined,
-            count: async () => 0,
-            findOne: async () => null,
-            findMany: async () => [],
-          }),
-        }),
-        onDatabaseUpdated,
-      },
-      {
-        insertBundleWithPatches: async () => {
-          throw failure;
-        },
-        updateBundleWithPatches: async () => true,
-      },
-    );
+    const plugin = createNativePlugin(async () => {
+      throw failure;
+    }, onDatabaseUpdated);
     const owner = {
       ...createBundle("owner"),
       patches: [
@@ -358,7 +302,6 @@ describe("database client patch updates", () => {
         database.insertBundle(owner),
       ),
     ).rejects.toBe(failure);
-    expect(create).not.toHaveBeenCalled();
     expect(onDatabaseUpdated).not.toHaveBeenCalled();
   });
 

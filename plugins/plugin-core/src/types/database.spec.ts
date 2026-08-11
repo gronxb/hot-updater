@@ -3,83 +3,32 @@ import { describe, expectTypeOf, it } from "vitest";
 import type {
   BundlePatchRow,
   BundleRow,
-  CountDatabaseImplementationInput,
-  CreateDatabaseImplementationInput,
-  DatabasePlugin,
   DatabaseBundleMetadata,
-  DatabaseModel,
-  FindManyDatabaseInput,
-  FindManyDatabasePluginInput,
-  FindOneDatabaseInput,
-  TransactionDatabasePlugin,
+  DatabaseChange,
+  DatabasePlugin,
 } from "./database";
 
 describe("database plugin types", () => {
-  it("keeps unsupported model and operation pairs outside the contract", () => {
-    expectTypeOf<"channels">().not.toMatchTypeOf<DatabaseModel>();
+  it("exposes bundles and bundle patches as separate table ports", () => {
+    expectTypeOf<
+      DatabasePlugin["bundles"]["findById"]
+    >().returns.resolves.toEqualTypeOf<BundleRow | null>();
+    expectTypeOf<
+      DatabasePlugin["bundlePatches"]["findByBundleIds"]
+    >().returns.resolves.toEqualTypeOf<readonly BundlePatchRow[]>();
   });
 
-  it("correlates physical fields and projected results with the model", () => {
-    const exerciseProjection = async (plugin: DatabasePlugin) => {
-      const row = await plugin.findOne({
-        model: "bundles",
-        select: ["id", "file_hash"],
-      });
-
-      expectTypeOf(row).toEqualTypeOf<Pick<
-        BundleRow,
-        "file_hash" | "id"
-      > | null>();
-    };
-
-    expectTypeOf(exerciseProjection).toBeFunction();
-    expectTypeOf<FindManyDatabaseInput<"bundle_patches">>().not.toMatchTypeOf<{
-      readonly model: "bundle_patches";
-      readonly orderBy: readonly [
-        { readonly field: "metadata"; readonly direction: "asc" },
-      ];
-    }>();
-  });
-
-  it("rejects cross-model implementation rows and queries", () => {
+  it("keeps table-specific changes discriminated", () => {
     expectTypeOf<{
-      readonly model: "bundles";
-      readonly data: BundlePatchRow;
-    }>().not.toMatchTypeOf<CreateDatabaseImplementationInput>();
+      readonly table: "bundles";
+      readonly operation: "insert";
+      readonly row: BundlePatchRow;
+    }>().not.toMatchTypeOf<DatabaseChange>();
     expectTypeOf<{
-      readonly model: "bundle_patches";
-      readonly where: readonly [
-        { readonly field: "metadata"; readonly value: "release" },
-      ];
-    }>().not.toMatchTypeOf<FindManyDatabasePluginInput>();
-  });
-
-  it("keeps structured fields outside portable predicates and ordering", () => {
-    type MetadataWhere = {
-      readonly model: "bundles";
-      readonly where: readonly [
-        {
-          readonly field: "metadata";
-          readonly value: { readonly release: "stable" };
-        },
-      ];
-    };
-    type CohortWhere = {
-      readonly model: "bundles";
-      readonly where: readonly [
-        {
-          readonly field: "target_cohorts";
-          readonly value: readonly ["qa"];
-        },
-      ];
-    };
-
-    expectTypeOf<MetadataWhere>().not.toMatchTypeOf<
-      FindManyDatabaseInput<"bundles">
-    >();
-    expectTypeOf<CohortWhere>().not.toMatchTypeOf<
-      FindManyDatabaseInput<"bundles">
-    >();
+      readonly table: "bundle_patches";
+      readonly operation: "insert";
+      readonly row: BundleRow;
+    }>().not.toMatchTypeOf<DatabaseChange>();
   });
 
   it("restricts bundle metadata to JSON objects", () => {
@@ -105,14 +54,5 @@ describe("database plugin types", () => {
     expectTypeOf<{
       readonly app_version: 1;
     }>().not.toMatchTypeOf<DatabaseBundleMetadata>();
-  });
-
-  it("keeps transaction operations input-only", () => {
-    expectTypeOf<TransactionDatabasePlugin["count"]>().parameters.toEqualTypeOf<
-      [CountDatabaseImplementationInput]
-    >();
-    expectTypeOf<FindOneDatabaseInput<"bundle_patches">>().toMatchTypeOf<{
-      readonly model: "bundle_patches";
-    }>();
   });
 });
