@@ -18,7 +18,7 @@ const createMethods = () => ({
   findMany: unimplemented,
 });
 
-const createDatabasePlugin = (options: {
+const createValidatedCrud = (options: {
   readonly name: string;
   readonly plugin: () => DatabasePluginImplementation;
 }) => createDatabasePluginCrud(options.plugin());
@@ -63,7 +63,7 @@ describe("database plugin CRUD runtime contract", () => {
     { field: "id", value: "bundle-1", mode: "insensitive" },
   ])("rejects a non-exact bundle update selector: $operator", async (where) => {
     const update = vi.fn(async () => bundleRow);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "selector-contract",
       plugin: () => ({ ...createMethods(), update }),
     });
@@ -86,7 +86,7 @@ describe("database plugin CRUD runtime contract", () => {
     { field: "rollout_cohort_count", operator: "in", value: [1.5] },
   ])("validates every in member against its field: $field", async (where) => {
     const findMany = vi.fn(async () => []);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "where-value-contract",
       plugin: () => ({ ...createMethods(), findMany }),
     });
@@ -109,7 +109,7 @@ describe("database plugin CRUD runtime contract", () => {
     { field: "platform", operator: "contains", value: "windows" },
   ])("rejects invalid where metadata: $field", async (where) => {
     const findMany = vi.fn(async () => []);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "where-metadata-contract",
       plugin: () => ({ ...createMethods(), findMany }),
     });
@@ -125,7 +125,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it("rejects unknown create fields before provider execution", async () => {
     const create = vi.fn(async () => bundleRow);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "create-shape-contract",
       plugin: () => ({ ...createMethods(), create }),
     });
@@ -141,7 +141,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it("rejects duplicate order fields before provider execution", async () => {
     const findMany = vi.fn(async () => []);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "order-by-contract",
       plugin: () => ({ ...createMethods(), findMany }),
     });
@@ -160,7 +160,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it("forwards nonduplicate multi-field order clauses", async () => {
     const findMany = vi.fn(async () => []);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "order-by-contract",
       plugin: () => ({ ...createMethods(), findMany }),
     });
@@ -199,7 +199,7 @@ describe("database plugin CRUD runtime contract", () => {
     "rejects non-JSON-object metadata before provider execution",
     async (metadata) => {
       const create = vi.fn(async () => bundleRow);
-      const plugin = createDatabasePlugin({
+      const plugin = createValidatedCrud({
         name: "metadata-input-contract",
         plugin: () => ({ ...createMethods(), create }),
       });
@@ -218,7 +218,7 @@ describe("database plugin CRUD runtime contract", () => {
     const metadata: Record<string, unknown> = {};
     metadata["self"] = metadata;
     const create = vi.fn(async () => bundleRow);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "cyclic-metadata-input-contract",
       plugin: () => ({ ...createMethods(), create }),
     });
@@ -234,7 +234,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it("rejects invalid metadata updates before provider execution", async () => {
     const update = vi.fn(async () => bundleRow);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "metadata-update-contract",
       plugin: () => ({ ...createMethods(), update }),
     });
@@ -257,7 +257,7 @@ describe("database plugin CRUD runtime contract", () => {
       },
     };
     const create = vi.fn(async ({ data }) => data);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "metadata-json-contract",
       plugin: () => ({ ...createMethods(), create }),
     });
@@ -276,7 +276,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it("rejects inherited object property names as models", async () => {
     const findMany = vi.fn(async () => []);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "model-contract",
       plugin: () => ({ ...createMethods(), findMany }),
     });
@@ -288,7 +288,7 @@ describe("database plugin CRUD runtime contract", () => {
   });
 
   it("rejects unsafe integer provider counts", async () => {
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "count-contract",
       plugin: () => ({
         ...createMethods(),
@@ -310,7 +310,7 @@ describe("database plugin CRUD runtime contract", () => {
       ),
     },
   ])("requires every requested provider result field", async (fixture) => {
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "result-shape-contract",
       plugin: () => ({
         ...createMethods(),
@@ -332,7 +332,7 @@ describe("database plugin CRUD runtime contract", () => {
     async (metadata) => {
       const returnedRow = { ...bundleRow };
       Reflect.set(returnedRow, "metadata", metadata);
-      const plugin = createDatabasePlugin({
+      const plugin = createValidatedCrud({
         name: "metadata-result-contract",
         plugin: () => ({
           ...createMethods(),
@@ -352,7 +352,7 @@ describe("database plugin CRUD runtime contract", () => {
 
   it("validates the merged bundle target before update", async () => {
     const update = vi.fn(async () => bundleRow);
-    const plugin = createDatabasePlugin({
+    const plugin = createValidatedCrud({
       name: "target-contract",
       plugin: () => ({
         ...createMethods(),
