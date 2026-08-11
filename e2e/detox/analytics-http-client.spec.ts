@@ -56,6 +56,8 @@ describe("Detox Analytics HTTP client", () => {
             schema,
             append: vi.fn(async () => undefined),
             assertReady: vi.fn(async () => undefined),
+            create: vi.fn(async () => "created" as const),
+            get: vi.fn(async () => null),
             orderedScan: vi.fn(async () => []),
           };
         },
