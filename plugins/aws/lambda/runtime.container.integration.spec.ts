@@ -68,6 +68,7 @@ const S3_BUCKET_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`
 const SSM_PARAMETER_NAME = `/hot-updater/aws/${process.pid}/${Date.now()}`;
 const DYNAMODB_TABLE_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`;
 const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
+const MANAGEMENT_BEARER_TOKEN = "management-secret";
 const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
@@ -384,6 +385,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       DATABASE_TYPE: "dynamodb",
       DYNAMODB_REGION: REGION,
       DYNAMODB_TABLE_NAME,
+      MANAGEMENT_BEARER_TOKEN,
       SSM_PARAMETER_NAME,
       SSM_REGION: REGION,
       S3_BUCKET_NAME,
@@ -786,6 +788,21 @@ describe.sequential("aws lambda runtime acceptance", () => {
     await expect(readLambdaJson(authorizedPayload)).resolves.toEqual({
       error: "Unauthorized",
     });
+
+    const managementResponse = await invokeLambda(
+      lambdaPort,
+      createCloudFrontEvent({
+        path: protectedPath,
+        headers: new Headers({
+          authorization: `Bearer ${MANAGEMENT_BEARER_TOKEN}`,
+        }),
+      }),
+    );
+    const managementPayload = (await managementResponse.json()) as {
+      status?: string;
+    };
+
+    expect(managementPayload.status).toBe("200");
   });
 
   it("keeps the deprecated S3 metadata runtime usable", async () => {
@@ -844,6 +861,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       DATABASE_TYPE: "s3",
       DYNAMODB_REGION: REGION,
       DYNAMODB_TABLE_NAME: "",
+      MANAGEMENT_BEARER_TOKEN,
       SSM_PARAMETER_NAME,
       SSM_REGION: REGION,
       S3_BUCKET_NAME,
