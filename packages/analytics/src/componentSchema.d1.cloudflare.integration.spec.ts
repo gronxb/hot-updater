@@ -21,7 +21,9 @@ interface TestD1PreparedStatement {
 }
 
 interface TestD1Database {
-  batch(statements: readonly TestD1PreparedStatement[]): Promise<unknown>;
+  batch(
+    statements: readonly TestD1PreparedStatement[],
+  ): Promise<readonly TestD1Result<unknown>[]>;
   exec(sql: string): Promise<unknown>;
   prepare(sql: string): TestD1PreparedStatement;
 }
@@ -32,15 +34,18 @@ class WorkerD1Executor implements D1Executor {
   readonly batches: D1Statement[][] = [];
   readonly queries: D1Statement[] = [];
 
-  async batch(statements: readonly D1Statement[]): Promise<void> {
+  async batch(
+    statements: readonly D1Statement[],
+  ): Promise<readonly (readonly unknown[])[]> {
     this.batches.push(
       statements.map(({ params, sql }) => ({ params: [...params], sql })),
     );
-    await database.batch(
+    const results = await database.batch(
       statements.map(({ params, sql }) =>
         database.prepare(sql).bind(...params),
       ),
     );
+    return results.map(({ results: rows }) => rows);
   }
 
   async query(

@@ -1,7 +1,4 @@
-import {
-  attachUniversalComponentDataAdapter,
-  createDatabasePlugin,
-} from "@hot-updater/plugin-core";
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
 
 import { createD1Implementation } from "./d1Implementation";
 import { createD1UniversalComponentDataAdapter } from "./d1UniversalComponentData";
@@ -37,9 +34,10 @@ export const d1WorkerDatabase = <TStatement extends D1BoundStatement>(
         readonly sql: string;
       }[],
     ) {
-      await db.batch(
+      const results = await db.batch(
         statements.map(({ params, sql }) => db.prepare(sql).bind(...params)),
       );
+      return results.map(({ results }) => results ?? []);
     },
     async query(sql: string, params: readonly string[]) {
       const result = await db
@@ -53,7 +51,8 @@ export const d1WorkerDatabase = <TStatement extends D1BoundStatement>(
     name: "d1WorkerDatabase",
     plugin: () => createD1Implementation(executor),
   });
-  return attachUniversalComponentDataAdapter(plugin, () =>
-    createD1UniversalComponentDataAdapter(executor),
-  );
+  return {
+    ...plugin,
+    componentData: createD1UniversalComponentDataAdapter(executor),
+  };
 };

@@ -121,7 +121,7 @@ export function createDatabasePluginCore<TContext = unknown>(
       for (const bundle of bundles) {
         assertBundlePersistenceConstraints(bundle);
       }
-      if (bundles.length > 1 && database.transaction === undefined) {
+      if (bundles.length > 1 && database.commitBatch === undefined) {
         throw new Error(
           `Database plugin "${database.name}" does not support atomic bundle batches.`,
         );

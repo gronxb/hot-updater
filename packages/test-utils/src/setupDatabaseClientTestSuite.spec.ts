@@ -17,9 +17,9 @@ setupDatabaseClientTestSuite({
 setupDatabaseClientTestSuite({
   name: "in-memory sequential database aggregate client",
   createPlugin: () => {
-    const { transaction: ignoredTransaction, ...plugin } =
+    const { commitBatch: ignoredCommitBatch, ...plugin } =
       sequentialHarness.plugin;
-    void ignoredTransaction;
+    void ignoredCommitBatch;
     return plugin;
   },
   createClient: createInMemoryDatabaseClient,

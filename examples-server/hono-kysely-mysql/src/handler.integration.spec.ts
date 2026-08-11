@@ -440,9 +440,11 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       const ownerId = "fumadb-owner";
       const baseId = "fumadb-base";
       for (const id of [baseId, ownerId]) {
-        await adapter.create({
-          model: "bundles",
-          data: createAdapterBundleRow(id),
+        const row = createAdapterBundleRow(id);
+        await adapter.commit({
+          operation: "insert",
+          bundleId: id,
+          changes: [{ table: "bundles", operation: "insert", row }],
         });
       }
       await sql`select get_lock(${gate}, 5)`.execute(control);
@@ -450,9 +452,13 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         `create trigger \`${database}\`.pause_fumadb_patch before insert on \`${database}\`.bundle_patches for each row set @hot_updater_patch_gate = get_lock('${gate}', 10)`,
       );
 
-      const patchCreate = adapter.create({
-        model: "bundle_patches",
-        data: {
+      const patchCreate = adapter.commit({
+        operation: "update",
+        bundleId: ownerId,
+        changes: [{
+          table: "bundle_patches",
+          operation: "insert",
+          row: {
           id: "fumadb-patch",
           bundle_id: ownerId,
           base_bundle_id: baseId,
@@ -460,7 +466,8 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
           patch_file_hash: "patch-hash",
           patch_storage_uri: "storage://fumadb-patch",
           order_index: 0,
-        },
+          },
+        }],
       });
       await waitForMySQLUserLock(admin, database);
 
@@ -471,9 +478,12 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       });
       let deleteSettled = false;
       const bundleDelete = deleteAdapter
-        .delete({
-          model: "bundles",
-          where: [{ field: "id", value: ownerId }],
+        .commit({
+          operation: "delete",
+          bundleId: ownerId,
+          changes: [
+            { table: "bundles", operation: "delete", id: ownerId },
+          ],
         })
         .finally(() => {
           deleteSettled = true;
@@ -485,13 +495,10 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       await Promise.all([patchCreate, bundleDelete]);
 
       await expect(
-        deleteAdapter.findOne({
-          model: "bundles",
-          where: [{ field: "id", value: ownerId }],
-        }),
+        deleteAdapter.bundles.findById(ownerId),
       ).resolves.toBeNull();
       await expect(
-        deleteAdapter.findMany({ model: "bundle_patches" }),
+        deleteAdapter.bundlePatches.findByBundleIds([ownerId]),
       ).resolves.toEqual([]);
     } finally {
       await Promise.all([

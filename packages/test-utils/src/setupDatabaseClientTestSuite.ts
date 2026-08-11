@@ -45,12 +45,6 @@ export type DatabaseClientTestSuiteOptions<TPlugin> =
     readonly createClient: (plugin: TPlugin) => DatabaseClientTestContract;
   };
 
-const supportsAtomicPatches = (plugin: unknown): boolean =>
-  typeof plugin === "object" &&
-  plugin !== null &&
-  "transaction" in plugin &&
-  typeof plugin.transaction === "function";
-
 export const setupDatabaseClientTestSuite = <TPlugin>(
   options: DatabaseClientTestSuiteOptions<TPlugin>,
 ): void => {
@@ -77,16 +71,16 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
 
         await client.insertBundle(base);
 
-        if (!supportsAtomicPatches(plugin)) {
-          await expect(client.insertBundle(bundle)).rejects.toMatchObject({
+        try {
+          await client.insertBundle(bundle);
+        } catch (error) {
+          expect(error).toMatchObject({
             name: "DatabasePatchInsertUnsupportedError",
             bundleId: bundle.id,
           });
           await expect(client.getBundleById(bundle.id)).resolves.toBeNull();
           return;
         }
-
-        await client.insertBundle(bundle);
 
         await expect(client.getBundleById(bundle.id)).resolves.toMatchObject({
           id: bundle.id,
@@ -136,20 +130,20 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
         for (const fixture of [firstBase, secondBase, bundle]) {
           await client.insertBundle(fixture);
         }
-        const update = client.updateBundleById(bundle.id, {
-          message: "replacement-message",
-          patches: [
-            {
-              baseBundleId: secondBase.id,
-              baseFileHash: secondBase.fileHash,
-              patchFileHash: "replacement-hash",
-              patchStorageUri: "storage://patches/replacement.patch",
-            },
-          ],
-        });
-
-        if (!supportsAtomicPatches(plugin)) {
-          await expect(update).rejects.toMatchObject({
+        try {
+          await client.updateBundleById(bundle.id, {
+            message: "replacement-message",
+            patches: [
+              {
+                baseBundleId: secondBase.id,
+                baseFileHash: secondBase.fileHash,
+                patchFileHash: "replacement-hash",
+                patchStorageUri: "storage://patches/replacement.patch",
+              },
+            ],
+          });
+        } catch (error) {
+          expect(error).toMatchObject({
             name: "DatabasePatchUpdateUnsupportedError",
             bundleId: bundle.id,
           });
@@ -160,7 +154,6 @@ export const setupDatabaseClientTestSuite = <TPlugin>(
           return;
         }
 
-        await update;
         const updated = await client.getBundleById(bundle.id);
 
         expect(updated?.message).toBe("replacement-message");

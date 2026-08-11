@@ -13,6 +13,7 @@ import {
   createBlobDatabasePlugin,
 } from "./createBlobDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
+import type { BundleRow, DatabasePlugin } from "./types";
 
 const bundleId = "00000000-0000-0000-0000-000000000001";
 const commonBundleRow = {
@@ -50,6 +51,13 @@ const commonLegacyBundle = {
   targetAppVersion: "1.0.0",
   fingerprintHash: null,
 };
+
+const insertBundleRow = (plugin: DatabasePlugin, row: BundleRow) =>
+  plugin.commit({
+    operation: "insert",
+    bundleId: row.id,
+    changes: [{ table: "bundles", operation: "insert", row }],
+  });
 
 const createMemoryBlobDatabase = (entries: readonly [string, unknown][]) => {
   const store = new Map(entries);
@@ -155,13 +163,10 @@ describe("blob snapshot compatibility", () => {
         const result =
           operation === "read"
             ? createDatabaseClient(plugin).getBundleById(bundleId)
-            : plugin.create({
-                model: "bundles",
-                data: {
-                  ...commonBundleRow,
-                  id: "00000000-0000-0000-0000-000000000002",
-                  channel: "production",
-                },
+            : insertBundleRow(plugin, {
+                ...commonBundleRow,
+                id: "00000000-0000-0000-0000-000000000002",
+                channel: "production",
               });
 
         await expect(result).rejects.toMatchObject({
@@ -297,12 +302,9 @@ describe("blob snapshot compatibility", () => {
     };
     Reflect.set(data, "metadata", { toJSON });
 
-    await expect(
-      plugin.create({
-        model: "bundles",
-        data,
-      }),
-    ).rejects.toMatchObject({ code: "invalid-data" });
+    await expect(insertBundleRow(plugin, data)).rejects.toMatchObject({
+      code: "invalid-data",
+    });
     expect(toJSON).not.toHaveBeenCalled();
     expect(uploadObject).not.toHaveBeenCalled();
     expect(compareAndSwapObject).not.toHaveBeenCalled();
@@ -343,13 +345,10 @@ describe("blob snapshot compatibility", () => {
     ]);
 
     const bundle = await createDatabaseClient(plugin).getBundleById(bundleId);
-    await plugin.create({
-      model: "bundles",
-      data: {
-        ...commonBundleRow,
-        id: `${bundleId}-staging`,
-        channel: "staging",
-      },
+    await insertBundleRow(plugin, {
+      ...commonBundleRow,
+      id: `${bundleId}-staging`,
+      channel: "staging",
     });
 
     expect(bundle?.channel).toBe("production");
@@ -387,13 +386,10 @@ describe("blob snapshot compatibility", () => {
     const originalEntries = structuredClone([...store.entries()]);
 
     await expect(
-      plugin.create({
-        model: "bundles",
-        data: {
-          ...commonBundleRow,
-          id: `${bundleId}-staging`,
-          channel: "staging",
-        },
+      insertBundleRow(plugin, {
+        ...commonBundleRow,
+        id: `${bundleId}-staging`,
+        channel: "staging",
       }),
     ).rejects.toThrow(
       "Blob database snapshot has unknown top-level fields: legacy_extension",
@@ -521,10 +517,17 @@ describe("blob snapshot compatibility", () => {
     const originalEntries = structuredClone([...store.entries()]);
 
     await expect(
-      plugin.update({
-        model: "bundles",
-        where: [{ field: "id", value: bundleId }],
-        update: { message: "updated" },
+      plugin.commit({
+        operation: "update",
+        bundleId,
+        changes: [
+          {
+            table: "bundles",
+            operation: "update",
+            id: bundleId,
+            update: { message: "updated" },
+          },
+        ],
       }),
     ).rejects.toThrow("bundles[0].future_option");
     expect([...store.entries()]).toEqual(originalEntries);
@@ -562,9 +565,16 @@ describe("blob snapshot compatibility", () => {
     const originalEntries = structuredClone([...store.entries()]);
 
     await expect(
-      plugin.delete({
-        model: "bundle_patches",
-        where: [{ field: "id", value: "patch-1" }],
+      plugin.commit({
+        operation: "update",
+        bundleId: targetBundleId,
+        changes: [
+          {
+            table: "bundle_patches",
+            operation: "delete",
+            bundleId: targetBundleId,
+          },
+        ],
       }),
     ).rejects.toThrow("bundle_patches[0].future_option");
     expect([...store.entries()]).toEqual(originalEntries);
@@ -590,10 +600,7 @@ describe("blob snapshot compatibility", () => {
     const originalEntries = structuredClone([...store.entries()]);
 
     await expect(
-      plugin.create({
-        model: "bundles",
-        data: { ...commonBundleRow, channel: "production" },
-      }),
+      insertBundleRow(plugin, { ...commonBundleRow, channel: "production" }),
     ).rejects.toThrow(
       "Blob database revision pointer has unknown top-level fields: legacy_extension",
     );

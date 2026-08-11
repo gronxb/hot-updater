@@ -1,7 +1,6 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   attachCapabilityContribution,
-  attachUniversalComponentDataAdapter,
   createDatabaseClient,
   defineCapability,
   defineUniversalComponentSchema,
@@ -185,9 +184,11 @@ describe("runtime createHotUpdater", () => {
 
   it("does not pass handler context to generic database queries", async () => {
     const request = new Request(updateUrl);
-    const database = createRuntimeDatabase();
+    const { getUpdateInfo: ignoredGetUpdateInfo, ...database } =
+      createRuntimeDatabase();
+    void ignoredGetUpdateInfo;
     await createDatabaseClient(database).insertBundle(runtimeBundle);
-    const findMany = vi.spyOn(database, "findMany");
+    const findMany = vi.spyOn(database.bundles, "findMany");
     const hotUpdater = createHotUpdater({
       database,
       storages: [
@@ -517,10 +518,7 @@ describe("runtime createHotUpdater", () => {
       bind: () => source,
       migrate,
     };
-    const database = attachUniversalComponentDataAdapter(
-      createRuntimeDatabase(),
-      () => adapter,
-    );
+    const database = { ...createRuntimeDatabase(), componentData: adapter };
     const plugin = defineFirstPartyServerPlugin({
       id: "audit-log",
       schema,
@@ -531,22 +529,21 @@ describe("runtime createHotUpdater", () => {
     const metadata = getHotUpdaterCoreMetadata(hotUpdater);
 
     expect(metadata?.components?.schemas).toEqual([schema]);
-    expect(metadata?.components?.sources).toEqual([source]);
+    expect(metadata?.components?.sources).toHaveLength(1);
+    expect(metadata?.components?.sources[0]?.schema).toBe(schema);
     expect(metadata?.universalComponentDataAdapter).toBe(adapter);
     expect(migrate).not.toHaveBeenCalled();
     expect(artifacts).not.toHaveBeenCalled();
   });
 
-  it("does not materialize component data without a schema declaration", () => {
-    const createAdapter = vi.fn<() => UniversalComponentDataAdapter>(() => ({
-      bind() {
-        throw new Error("unused");
-      },
-    }));
-    const database = attachUniversalComponentDataAdapter(
-      createRuntimeDatabase(),
-      createAdapter,
-    );
+  it("does not bind component data without a schema declaration", () => {
+    const bind = vi.fn(() => {
+      throw new Error("unused");
+    });
+    const database = {
+      ...createRuntimeDatabase(),
+      componentData: { bind },
+    };
     const plugin = defineFirstPartyServerPlugin({
       id: "schema-free",
       setup: () => ({}),
@@ -557,6 +554,6 @@ describe("runtime createHotUpdater", () => {
 
     expect(metadata?.components).toBeUndefined();
     expect(metadata?.universalComponentDataAdapter).toBeUndefined();
-    expect(createAdapter).not.toHaveBeenCalled();
+    expect(bind).not.toHaveBeenCalled();
   });
 });

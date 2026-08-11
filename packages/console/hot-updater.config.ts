@@ -7,12 +7,15 @@ import {
   mockStorage,
 } from "@hot-updater/mock";
 import {
-  attachUniversalComponentDataAdapter,
   bundleToPatchRows,
   bundleToRow,
   type Bundle,
+  type UniversalComponentAppendInput,
+  type UniversalComponentGetInput,
+  type UniversalComponentOrderedScanInput,
   type UniversalComponentRow,
   type UniversalComponentScalar,
+  type UniversalComponentSchema,
   validateUniversalComponentAppend,
   validateUniversalComponentGet,
   validateUniversalComponentOrderedScan,
@@ -928,22 +931,22 @@ const rowCursor = (
 ): UniversalComponentScalar[] =>
   columns.map((column) => row[column] as UniversalComponentScalar);
 
-const database = attachUniversalComponentDataAdapter(
-  mockDatabase({
+const database = {
+  ...mockDatabase({
     latency: { min: 150, max: 320 },
     data: databaseData,
   }),
-  () => ({
-    bind(schema) {
+  componentData: {
+    bind(schema: UniversalComponentSchema) {
       return {
         schema,
-        async append(input) {
+        async append(input: UniversalComponentAppendInput) {
           const table = validateUniversalComponentAppend(schema, input);
           const rows = componentRows.get(table.name) ?? [];
           rows.push(Object.freeze({ ...input.row }));
           componentRows.set(table.name, rows);
         },
-        async create(input) {
+        async create(input: UniversalComponentAppendInput) {
           const table = validateUniversalComponentAppend(schema, input);
           const primaryKey = table.columns.find((column) => column.primaryKey)!;
           const rows = componentRows.get(table.name) ?? [];
@@ -958,7 +961,7 @@ const database = attachUniversalComponentDataAdapter(
           componentRows.set(table.name, rows);
           return "created";
         },
-        async get(input) {
+        async get(input: UniversalComponentGetInput) {
           const table = validateUniversalComponentGet(schema, input);
           const primaryKey = table.columns.find((column) => column.primaryKey)!;
           return (
@@ -968,7 +971,7 @@ const database = attachUniversalComponentDataAdapter(
           );
         },
         async assertReady() {},
-        async orderedScan(input) {
+        async orderedScan(input: UniversalComponentOrderedScanInput) {
           const scan = validateUniversalComponentOrderedScan(schema, input);
           return [...(componentRows.get(scan.table) ?? [])]
             .sort((left, right) =>
@@ -993,8 +996,8 @@ const database = attachUniversalComponentDataAdapter(
         },
       };
     },
-  }),
-);
+  },
+};
 
 export default {
   projectPath: __dirname,

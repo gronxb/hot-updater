@@ -33,8 +33,8 @@ describe("provider Analytics boundary", () => {
     const provider = await createProvider();
     await writeFile(
       path.join(provider, "src", "database.ts"),
-      `import { universalComponentDataAdapterCapability } from "@hot-updater/plugin-core";
-export const capability = universalComponentDataAdapterCapability;\n`,
+      `import type { UniversalComponentDataAdapter } from "@hot-updater/plugin-core";
+export const componentData = {} as UniversalComponentDataAdapter;\n`,
     );
 
     await expect(

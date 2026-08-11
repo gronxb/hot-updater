@@ -92,18 +92,22 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     plugin !== null &&
     "name" in plugin &&
     typeof plugin.name === "string" &&
-    "create" in plugin &&
-    typeof plugin.create === "function" &&
-    "update" in plugin &&
-    typeof plugin.update === "function" &&
-    "delete" in plugin &&
-    typeof plugin.delete === "function" &&
-    "count" in plugin &&
-    typeof plugin.count === "function" &&
-    "findOne" in plugin &&
-    typeof plugin.findOne === "function" &&
-    "findMany" in plugin &&
-    typeof plugin.findMany === "function"
+    "bundles" in plugin &&
+    typeof plugin.bundles === "object" &&
+    plugin.bundles !== null &&
+    "findById" in plugin.bundles &&
+    typeof plugin.bundles.findById === "function" &&
+    "findMany" in plugin.bundles &&
+    typeof plugin.bundles.findMany === "function" &&
+    "count" in plugin.bundles &&
+    typeof plugin.bundles.count === "function" &&
+    "bundlePatches" in plugin &&
+    typeof plugin.bundlePatches === "object" &&
+    plugin.bundlePatches !== null &&
+    "findByBundleIds" in plugin.bundlePatches &&
+    typeof plugin.bundlePatches.findByBundleIds === "function" &&
+    "commit" in plugin &&
+    typeof plugin.commit === "function"
   );
 }
 

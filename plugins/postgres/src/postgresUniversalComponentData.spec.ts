@@ -4,11 +4,9 @@ import {
   getUniversalComponentLatestSchema,
   getUniversalComponentSchemaMarkerKey,
   UniversalComponentSchemaNotReadyError,
-  universalComponentDataAdapterCapability,
   type DatabasePlugin,
   type UniversalComponentDataAdapter,
 } from "@hot-updater/plugin-core";
-import { getCapabilityContributions } from "@hot-updater/plugin-core/internal/capabilities";
 import {
   setupUniversalComponentDataAdapterTestSuite,
   syntheticAuditLogSchema,
@@ -370,17 +368,10 @@ const resolveAdapter = async (): Promise<UniversalComponentDataAdapter> => {
     );
   `);
   plugin = postgres({ dialect: new PGliteDialect(client) });
-  const contribution = getCapabilityContributions(plugin).find(
-    ({ token }) => token.id === universalComponentDataAdapterCapability.id,
-  );
-  if (contribution === undefined) {
-    throw new TypeError(
-      "Postgres component data adapter capability is missing",
-    );
+  if (plugin.componentData === undefined) {
+    throw new TypeError("Postgres component data adapter is missing");
   }
-  return universalComponentDataAdapterCapability.parse(
-    contribution.create({ database: plugin, storages: [] }),
-  );
+  return plugin.componentData;
 };
 
 const componentIds = [
