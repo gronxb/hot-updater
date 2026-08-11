@@ -12,6 +12,8 @@ import { buildD1Order, buildD1Where, encodeD1Values } from "./d1Sql";
 export const d1TableNames = {
   bundles: "bundles",
   bundle_patches: "bundle_patches",
+  bundle_events: "bundle_events",
+  client_access_keys: "client_access_keys",
 } as const satisfies Record<DatabaseModel, string>;
 
 export class D1QueryResultError extends Error {
@@ -70,5 +72,9 @@ export const findManyD1Rows = async (
       return rows.map((row) => parseD1Row("bundles", row));
     case "bundle_patches":
       return rows.map((row) => parseD1Row("bundle_patches", row));
+    case "bundle_events":
+      return rows.map((row) => parseD1Row("bundle_events", row));
+    case "client_access_keys":
+      return rows.map((row) => parseD1Row("client_access_keys", row));
   }
 };

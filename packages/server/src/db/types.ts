@@ -106,6 +106,24 @@ export function isDatabasePlugin(plugin: unknown): plugin is DatabasePlugin {
     plugin.bundlePatches !== null &&
     "findByBundleIds" in plugin.bundlePatches &&
     typeof plugin.bundlePatches.findByBundleIds === "function" &&
+    "analytics" in plugin &&
+    typeof plugin.analytics === "object" &&
+    plugin.analytics !== null &&
+    "append" in plugin.analytics &&
+    typeof plugin.analytics.append === "function" &&
+    "scan" in plugin.analytics &&
+    typeof plugin.analytics.scan === "function" &&
+    "clientAccessKeys" in plugin &&
+    typeof plugin.clientAccessKeys === "object" &&
+    plugin.clientAccessKeys !== null &&
+    "create" in plugin.clientAccessKeys &&
+    typeof plugin.clientAccessKeys.create === "function" &&
+    "findByHash" in plugin.clientAccessKeys &&
+    typeof plugin.clientAccessKeys.findByHash === "function" &&
+    "list" in plugin.clientAccessKeys &&
+    typeof plugin.clientAccessKeys.list === "function" &&
+    "revoke" in plugin.clientAccessKeys &&
+    typeof plugin.clientAccessKeys.revoke === "function" &&
     "commit" in plugin &&
     typeof plugin.commit === "function"
   );

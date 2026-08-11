@@ -1,6 +1,8 @@
 import type {
   BundlePatchRow,
   BundleRow,
+  BundleEventRow,
+  ClientAccessKeyRow,
   DatabaseImplementationResult,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
@@ -13,6 +15,8 @@ import {
 export interface MockDatabaseData {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
+  readonly bundleEvents: Map<string, BundleEventRow>;
+  readonly clientAccessKeys: Map<string, ClientAccessKeyRow>;
 }
 
 export class MockDatabaseConstraintError extends Error {
@@ -26,6 +30,8 @@ export class MockDatabaseConstraintError extends Error {
 export const createMockDatabaseData = (): MockDatabaseData => ({
   bundles: new Map(),
   bundlePatches: new Map(),
+  bundleEvents: new Map(),
+  clientAccessKeys: new Map(),
 });
 
 export const cloneMockDatabaseData = (
@@ -33,6 +39,8 @@ export const cloneMockDatabaseData = (
 ): MockDatabaseData => ({
   bundles: new Map(data.bundles),
   bundlePatches: new Map(data.bundlePatches),
+  bundleEvents: new Map(data.bundleEvents),
+  clientAccessKeys: new Map(data.clientAccessKeys),
 });
 
 export const replaceMockDatabaseData = (
@@ -41,9 +49,17 @@ export const replaceMockDatabaseData = (
 ): void => {
   target.bundles.clear();
   target.bundlePatches.clear();
+  target.bundleEvents.clear();
+  target.clientAccessKeys.clear();
   for (const [id, row] of source.bundles) target.bundles.set(id, row);
   for (const [id, row] of source.bundlePatches) {
     target.bundlePatches.set(id, row);
+  }
+  for (const [id, row] of source.bundleEvents) {
+    target.bundleEvents.set(id, row);
+  }
+  for (const [id, row] of source.clientAccessKeys) {
+    target.clientAccessKeys.set(id, row);
   }
 };
 
@@ -93,9 +109,35 @@ export const createMockDatabaseState = (
         }
         data.bundlePatches.set(input.data.id, input.data);
         return input.data;
+      case "bundle_events":
+        requireUnique(data.bundleEvents, input.data.id, input.model);
+        data.bundleEvents.set(input.data.id, input.data);
+        return input.data;
+      case "client_access_keys":
+        requireUnique(data.clientAccessKeys, input.data.id, input.model);
+        if (
+          [...data.clientAccessKeys.values()].some(
+            ({ hash }) => hash === input.data.hash,
+          )
+        ) {
+          throw new MockDatabaseConstraintError(
+            "client_access_keys.hash.unique",
+          );
+        }
+        data.clientAccessKeys.set(input.data.id, input.data);
+        return input.data;
     }
   },
-  async update(input): Promise<Partial<BundleRow> | null> {
+  async update(input): Promise<Partial<BundleRow | ClientAccessKeyRow> | null> {
+    if (input.model === "client_access_keys") {
+      const current = [...data.clientAccessKeys.values()].find((row) =>
+        matchesMockDatabaseWhere<"client_access_keys">(row, input.where),
+      );
+      if (!current) return null;
+      const updated = { ...current, ...input.update };
+      data.clientAccessKeys.set(current.id, updated);
+      return updated;
+    }
     const current = [...data.bundles.values()].find((row) =>
       matchesMockDatabaseWhere(row, input.where),
     );
@@ -154,6 +196,12 @@ export const createMockDatabaseState = (
             matchesMockDatabaseWhere(row, input.where),
           ) ?? null
         );
+      case "client_access_keys":
+        return (
+          [...data.clientAccessKeys.values()].find((row) =>
+            matchesMockDatabaseWhere<"client_access_keys">(row, input.where),
+          ) ?? null
+        );
       case "bundle_patches":
         return (
           [...data.bundlePatches.values()].find((row) =>
@@ -168,6 +216,16 @@ export const createMockDatabaseState = (
         return queryMockDatabaseRows([...data.bundles.values()], input);
       case "bundle_patches":
         return queryMockDatabaseRows([...data.bundlePatches.values()], input);
+      case "bundle_events":
+        return queryMockDatabaseRows<"bundle_events">(
+          [...data.bundleEvents.values()],
+          input,
+        );
+      case "client_access_keys":
+        return queryMockDatabaseRows<"client_access_keys">(
+          [...data.clientAccessKeys.values()],
+          input,
+        );
     }
   },
 });

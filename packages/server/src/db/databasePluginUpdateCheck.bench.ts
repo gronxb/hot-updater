@@ -5,6 +5,7 @@ import {
   createDatabasePlugin,
   type DatabasePlugin,
 } from "../../../../plugins/plugin-core/src";
+import { createDatabasePluginAdapter } from "../../../../plugins/plugin-core/src/internal";
 import type { AppVersionGetBundlesArgs, Bundle } from "../../../core/src";
 import { DEFAULT_ROLLOUT_COHORT_COUNT, NIL_UUID } from "../../../core/src";
 import {
@@ -45,9 +46,10 @@ const createBundle = (index: number): Bundle => ({
 
 const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
   const rows = bundles.map((bundle) => bundleToRow(bundle));
+  const name = "bench-v2-plugin";
   return createDatabasePlugin({
-    name: "bench-v2-plugin",
-    plugin: () => ({
+    name,
+    ...createDatabasePluginAdapter(name, {
       async create() {
         throw new BenchmarkMutationError();
       },
@@ -70,6 +72,7 @@ const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
               null
             );
           case "bundle_patches":
+          case "client_access_keys":
             return null;
         }
       },
@@ -85,6 +88,8 @@ const createBenchPlugin = (bundles: readonly Bundle[]): DatabasePlugin => {
               input.limit,
             );
           case "bundle_patches":
+          case "bundle_events":
+          case "client_access_keys":
             return [];
         }
       },

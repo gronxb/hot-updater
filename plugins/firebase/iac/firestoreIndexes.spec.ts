@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("firebase firestore index template", () => {
-  it("includes required ascending composite indexes", async () => {
+  it("includes ascending indexes for update-check fast paths", async () => {
     const indexFilePath = path.resolve(
       __dirname,
       "../firebase/public/firestore.indexes.json",

@@ -79,6 +79,34 @@ export const findManyPostgresRows = async (
       }
       return query.limit(input.limit).offset(input.offset).execute();
     }
+    case "bundle_events": {
+      let query = db.selectFrom("bundle_events").selectAll();
+      if (where !== undefined) query = query.where(where);
+      if (input.distinctOn !== undefined) {
+        query = query.distinctOn(input.distinctOn.fields);
+      }
+      for (const clause of input.orderBy ??
+        (input.sortBy ? [input.sortBy] : [])) {
+        query = query.orderBy(clause.field, (order) =>
+          applyOrder(order, clause),
+        );
+      }
+      return query.limit(input.limit).offset(input.offset).execute();
+    }
+    case "client_access_keys": {
+      let query = db.selectFrom("client_access_keys").selectAll();
+      if (where !== undefined) query = query.where(where);
+      if (input.distinctOn !== undefined) {
+        query = query.distinctOn(input.distinctOn.fields);
+      }
+      for (const clause of input.orderBy ??
+        (input.sortBy ? [input.sortBy] : [])) {
+        query = query.orderBy(clause.field, (order) =>
+          applyOrder(order, clause),
+        );
+      }
+      return query.limit(input.limit).offset(input.offset).execute();
+    }
     case "bundle_patches": {
       let query = db.selectFrom("bundle_patches").selectAll();
       if (where !== undefined) query = query.where(where);

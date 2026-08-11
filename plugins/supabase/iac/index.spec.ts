@@ -3,11 +3,6 @@ import os from "node:os";
 import path from "node:path";
 
 import { resolvePackageVersion } from "@hot-updater/cli-tools";
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
-import { createHotUpdater } from "@hot-updater/server";
-import { generateUniversalComponentArtifacts } from "@hot-updater/server/db";
-import { defineFirstPartyServerPlugin } from "@hot-updater/server/internal/first-party-plugin";
-import { syntheticAuditLogMigrationSchema } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockExeca } = vi.hoisted(() => ({
@@ -59,13 +54,10 @@ vi.mock("execa", async (importOriginal) => {
   };
 });
 
-import { supabaseDatabase } from "../src/supabaseDatabase";
 import {
-  createSupabaseComponentMigrationVersion,
   createSelectedBucket,
   getSupabaseProjectAccess,
   getLegacySupabaseConfigReference,
-  materializeSupabaseComponentArtifacts,
   resolveEdgeFunctionDenoConfig,
   selectBucket,
   selectProject,
@@ -109,193 +101,6 @@ const collectUserFacingErrorOutput = () => [
   ...mockCli.p.log.error.mock.calls.flat(),
   ...vi.mocked(console.error).mock.calls.flat(),
 ];
-
-const syntheticComponentArtifacts = [
-  {
-    componentId: "security-log",
-    contents: "BEGIN; SELECT 'security'; COMMIT;",
-    path: "component-data/security-log/supabase-4.sql",
-    targetVersion: "4",
-  },
-  {
-    componentId: "audit-log",
-    contents: "BEGIN; SELECT 'audit'; COMMIT;",
-    path: "component-data/audit-log/supabase-2.sql",
-    targetVersion: "2",
-  },
-] as const;
-
-describe("Supabase component migration artifacts", () => {
-  it("produces a synthetic component artifact through the deployment target metadata", async () => {
-    const migrationPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-supabase-components-"),
-    );
-    const componentPlugin = defineFirstPartyServerPlugin({
-      id: "synthetic-audit-log",
-      requires: [],
-      schema: syntheticAuditLogMigrationSchema,
-      setup(context) {
-        context.components.require(syntheticAuditLogMigrationSchema);
-        return Object.freeze({});
-      },
-    });
-    const createDeploymentTarget = vi.fn((database: DatabasePlugin) =>
-      createHotUpdater({ database, plugins: [componentPlugin] }),
-    );
-    const target = createDeploymentTarget(
-      supabaseDatabase({
-        supabaseServiceRoleKey: "test-service-role-key",
-        supabaseUrl: "https://test.supabase.invalid",
-      }),
-    );
-
-    try {
-      const artifacts = generateUniversalComponentArtifacts(target);
-      const files = await materializeSupabaseComponentArtifacts({
-        artifacts,
-        migrationPath,
-      });
-
-      expect(createDeploymentTarget).toHaveBeenCalledOnce();
-      expect(artifacts).toEqual([
-        expect.objectContaining({
-          componentId: syntheticAuditLogMigrationSchema.id,
-          path: expect.stringContaining("supabase-2.sql"),
-          targetVersion: "2",
-        }),
-      ]);
-      expect(path.basename(files[0]!)).toMatch(/^9\d{13}_.+\.sql$/);
-      await expect(fs.readFile(files[0]!, "utf-8")).resolves.toContain(
-        `schema.${syntheticAuditLogMigrationSchema.id}`,
-      );
-    } finally {
-      await fs.rm(migrationPath, { force: true, recursive: true });
-    }
-  });
-
-  it("materializes synthetic components in order-independent Supabase migration files", async () => {
-    const firstDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-supabase-components-"),
-    );
-    const secondDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-supabase-components-"),
-    );
-    try {
-      const first = await materializeSupabaseComponentArtifacts({
-        artifacts: syntheticComponentArtifacts,
-        migrationPath: firstDir,
-      });
-      const second = await materializeSupabaseComponentArtifacts({
-        artifacts: [...syntheticComponentArtifacts].reverse(),
-        migrationPath: secondDir,
-      });
-      const firstNames = first.map((filePath) => path.basename(filePath));
-      const secondNames = second.map((filePath) => path.basename(filePath));
-
-      expect(firstNames).toEqual(secondNames);
-      expect(firstNames).toHaveLength(2);
-      expect(firstNames.every((file) => /^9\d{13}_.+\.sql$/.test(file))).toBe(
-        true,
-      );
-      expect(firstNames[0]).toContain("audit-log-supabase-2.sql");
-      expect(firstNames[1]).toContain("security-log-supabase-4.sql");
-      await expect(fs.readFile(first[0]!, "utf-8")).resolves.toBe(
-        syntheticComponentArtifacts[1].contents,
-      );
-    } finally {
-      await Promise.all([
-        fs.rm(firstDir, { force: true, recursive: true }),
-        fs.rm(secondDir, { force: true, recursive: true }),
-      ]);
-    }
-  });
-
-  it("is an idempotent no-op for identical or inactive artifacts", async () => {
-    const migrationPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-supabase-components-"),
-    );
-    try {
-      const first = await materializeSupabaseComponentArtifacts({
-        artifacts: syntheticComponentArtifacts.slice(0, 1),
-        migrationPath,
-      });
-      await fs.chmod(first[0]!, 0o444);
-
-      await expect(
-        materializeSupabaseComponentArtifacts({
-          artifacts: syntheticComponentArtifacts.slice(0, 1),
-          migrationPath,
-        }),
-      ).resolves.toEqual(first);
-      await expect(
-        materializeSupabaseComponentArtifacts({
-          artifacts: [],
-          migrationPath,
-        }),
-      ).resolves.toEqual([]);
-      await expect(fs.readdir(migrationPath)).resolves.toHaveLength(1);
-    } finally {
-      await fs.rm(migrationPath, { force: true, recursive: true });
-    }
-  });
-
-  it("derives a stable 14-digit version accepted by Supabase migration naming", () => {
-    const artifact = syntheticComponentArtifacts[0];
-    const version = createSupabaseComponentMigrationVersion(artifact);
-
-    expect(version).toMatch(/^9\d{13}$/);
-    expect(createSupabaseComponentMigrationVersion(artifact)).toBe(version);
-    expect(
-      createSupabaseComponentMigrationVersion({
-        ...artifact,
-        targetVersion: "5",
-      }),
-    ).not.toBe(version);
-  });
-
-  it.each(["../escape.sql", "/tmp/escape.sql", "C:\\tmp\\escape.sql"])(
-    "rejects unsafe source path %s",
-    async (artifactPath) => {
-      const migrationPath = await fs.mkdtemp(
-        path.join(os.tmpdir(), "hot-updater-supabase-components-"),
-      );
-      try {
-        await expect(
-          materializeSupabaseComponentArtifacts({
-            artifacts: [
-              { ...syntheticComponentArtifacts[0], path: artifactPath },
-            ],
-            migrationPath,
-          }),
-        ).rejects.toThrow("Deployment artifact path");
-      } finally {
-        await fs.rm(migrationPath, { force: true, recursive: true });
-      }
-    },
-  );
-
-  it("fails closed when a migration version is already occupied", async () => {
-    const migrationPath = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-supabase-components-"),
-    );
-    const artifact = syntheticComponentArtifacts[0];
-    const version = createSupabaseComponentMigrationVersion(artifact);
-    await fs.writeFile(
-      path.join(migrationPath, `${version}_existing.sql`),
-      "SELECT 1;",
-    );
-    try {
-      await expect(
-        materializeSupabaseComponentArtifacts({
-          artifacts: [artifact],
-          migrationPath,
-        }),
-      ).rejects.toThrow(`migration version collision: ${version}`);
-    } finally {
-      await fs.rm(migrationPath, { force: true, recursive: true });
-    }
-  });
-});
 
 describe("getLegacySupabaseConfigReference", () => {
   it("detects legacy Supabase env references", () => {
@@ -1025,26 +830,6 @@ describe("Supabase database password failures", () => {
 });
 
 describe("resolveEdgeFunctionDenoConfig", () => {
-  it("rejects a vendor directory symlink that escapes the target", async () => {
-    const targetDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-supabase-edge-"),
-    );
-    const outsideDir = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-supabase-outside-"),
-    );
-    try {
-      await fs.symlink(outsideDir, path.join(targetDir, "_hot-updater"));
-
-      await expect(resolveEdgeFunctionDenoConfig(targetDir)).rejects.toThrow(
-        "escapes its allowed root",
-      );
-      await expect(fs.readdir(outsideDir)).resolves.toEqual([]);
-    } finally {
-      await fs.rm(targetDir, { recursive: true, force: true });
-      await fs.rm(outsideDir, { recursive: true, force: true });
-    }
-  });
-
   it("vendors package dist files into the edge function directory", async () => {
     const targetDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-supabase-edge-"),
@@ -1061,8 +846,8 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         "@hot-updater/js": "./_hot-updater/hot-updater-js/dist/index.mjs",
         "@hot-updater/plugin-core":
           "./_hot-updater/hot-updater-plugin-core/dist/index.mjs",
-        "@hot-updater/plugin-core/internal/capabilities":
-          "./_hot-updater/hot-updater-plugin-core/dist/internal/capabilities.mjs",
+        "@hot-updater/plugin-core/internal":
+          "./_hot-updater/hot-updater-plugin-core/dist/internal.mjs",
         "@supabase/supabase-js": `npm:@supabase/supabase-js@${resolvePackageVersion(
           "@supabase/supabase-js",
           {

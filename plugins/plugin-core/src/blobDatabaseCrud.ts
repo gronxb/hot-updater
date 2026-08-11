@@ -7,9 +7,14 @@ import {
   assertBlobDatabaseSnapshotCompatible,
   normalizeBlobDatabaseSnapshot,
 } from "./blobDatabaseSnapshot";
-import { parseBundleRow } from "./blobDatabaseSnapshotRows";
+import {
+  parseBundleEventRow,
+  parseBundleRow,
+  parseClientAccessKeyRow,
+} from "./blobDatabaseSnapshotRows";
 import type {
   BundleRow,
+  ClientAccessKeyRow,
   DatabaseImplementationResult,
   TransactionDatabasePluginImplementation,
 } from "./types";
@@ -91,10 +96,64 @@ export const createBlobSnapshotCrud = (
         });
         return input.data;
       }
+      case "bundle_events": {
+        requireUniqueId(snapshot.bundle_events, input.data.id, input.model);
+        const row = parseBundleEventRow(
+          input.data,
+          `bundle_events/${input.data.id}`,
+        );
+        state.snapshot = normalizeBlobDatabaseSnapshot({
+          ...snapshot,
+          bundle_events: [...snapshot.bundle_events, row],
+        });
+        return row;
+      }
+      case "client_access_keys": {
+        requireUniqueId(
+          snapshot.client_access_keys,
+          input.data.id,
+          input.model,
+        );
+        if (
+          snapshot.client_access_keys.some(
+            ({ hash }) => hash === input.data.hash,
+          )
+        ) {
+          throw new BlobDatabaseConstraintError(
+            "client_access_keys.hash.unique",
+          );
+        }
+        const row = parseClientAccessKeyRow(
+          input.data,
+          `client_access_keys/${input.data.id}`,
+        );
+        state.snapshot = normalizeBlobDatabaseSnapshot({
+          ...snapshot,
+          client_access_keys: [...snapshot.client_access_keys, row],
+        });
+        return row;
+      }
     }
   },
-  async update(input): Promise<Partial<BundleRow> | null> {
+  async update(input): Promise<Partial<BundleRow | ClientAccessKeyRow> | null> {
     assertBlobDatabaseSnapshotCompatible(state.snapshot);
+    if (input.model === "client_access_keys") {
+      const match = state.snapshot.client_access_keys.find((row) =>
+        matchesBlobDatabaseWhere(row, input.where),
+      );
+      if (!match) return null;
+      const updatedRow = parseClientAccessKeyRow(
+        { ...match, ...input.update },
+        `client_access_keys/${match.id}`,
+      );
+      state.snapshot = normalizeBlobDatabaseSnapshot({
+        ...state.snapshot,
+        client_access_keys: state.snapshot.client_access_keys.map((row) =>
+          row.id === match.id ? updatedRow : row,
+        ),
+      });
+      return updatedRow;
+    }
     const match = state.snapshot.bundles.find((row) =>
       matchesBlobDatabaseWhere(row, input.where),
     );
@@ -174,6 +233,12 @@ export const createBlobSnapshotCrud = (
             matchesBlobDatabaseWhere(row, input.where),
           ) ?? null
         );
+      case "client_access_keys":
+        return (
+          state.snapshot.client_access_keys.find((row) =>
+            matchesBlobDatabaseWhere(row, input.where),
+          ) ?? null
+        );
     }
   },
   async findMany(input): Promise<readonly DatabaseImplementationResult[]> {
@@ -182,6 +247,10 @@ export const createBlobSnapshotCrud = (
         return queryBlobDatabaseRows(state.snapshot.bundles, input);
       case "bundle_patches":
         return queryBlobDatabaseRows(state.snapshot.bundle_patches, input);
+      case "bundle_events":
+        return queryBlobDatabaseRows(state.snapshot.bundle_events, input);
+      case "client_access_keys":
+        return queryBlobDatabaseRows(state.snapshot.client_access_keys, input);
     }
   },
 });

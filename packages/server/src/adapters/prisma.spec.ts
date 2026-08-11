@@ -59,11 +59,10 @@ describe("prismaAdapter capabilities", () => {
     ).toThrow("Prisma adapter does not support MongoDB");
   });
 
-  it("omits atomic batch commits when callback transactions are unavailable", () => {
+  it("does not expose low-level transactions", () => {
     const { $transaction: _transaction, ...client } = harness.client;
     const plugin = prismaAdapter({ prisma: client, provider: "postgresql" });
 
-    expect(plugin.commitBatch).toBeUndefined();
     expect(Reflect.has(plugin, "transaction")).toBe(false);
   });
 
@@ -90,22 +89,30 @@ describe("prismaAdapter capabilities", () => {
       fingerprint_hash: "fingerprint",
     };
     await plugin.commit({
-      operation: "insert",
-      bundleId: row.id,
-      changes: [{ table: "bundles", operation: "insert", row }],
+      mutations: [
+        {
+          operation: "insert",
+          bundleId: row.id,
+          changes: [{ table: "bundles", operation: "insert", row }],
+        },
+      ],
     });
     harness.clearTargetBeforeNextBundleUpdate(row.id, "fingerprint_hash");
 
     await expect(
       plugin.commit({
-        operation: "update",
-        bundleId: row.id,
-        changes: [
+        mutations: [
           {
-            table: "bundles",
             operation: "update",
-            id: row.id,
-            update: { target_app_version: null },
+            bundleId: row.id,
+            changes: [
+              {
+                table: "bundles",
+                operation: "update",
+                id: row.id,
+                update: { target_app_version: null },
+              },
+            ],
           },
         ],
       }),
@@ -136,22 +143,34 @@ describe("prismaAdapter capabilities", () => {
     };
 
     await plugin.commit({
-      operation: "insert",
-      bundleId: base.id,
-      changes: [{ table: "bundles", operation: "insert", row: base }],
-    });
-    await plugin.commit({
-      operation: "insert",
-      bundleId: owner.id,
-      changes: [
-        { table: "bundles", operation: "insert", row: owner },
-        { table: "bundle_patches", operation: "insert", row: patch },
+      mutations: [
+        {
+          operation: "insert",
+          bundleId: base.id,
+          changes: [{ table: "bundles", operation: "insert", row: base }],
+        },
       ],
     });
     await plugin.commit({
-      operation: "delete",
-      bundleId: owner.id,
-      changes: [{ table: "bundles", operation: "delete", id: owner.id }],
+      mutations: [
+        {
+          operation: "insert",
+          bundleId: owner.id,
+          changes: [
+            { table: "bundles", operation: "insert", row: owner },
+            { table: "bundle_patches", operation: "insert", row: patch },
+          ],
+        },
+      ],
+    });
+    await plugin.commit({
+      mutations: [
+        {
+          operation: "delete",
+          bundleId: owner.id,
+          changes: [{ table: "bundles", operation: "delete", id: owner.id }],
+        },
+      ],
     });
 
     expect(harness.getTransactionOptions()).toEqual(
@@ -176,23 +195,37 @@ describe("prismaAdapter capabilities", () => {
     };
     for (const row of [base, owner]) {
       await plugin.commit({
-        operation: "insert",
-        bundleId: row.id,
-        changes: [{ table: "bundles", operation: "insert", row }],
+        mutations: [
+          {
+            operation: "insert",
+            bundleId: row.id,
+            changes: [{ table: "bundles", operation: "insert", row }],
+          },
+        ],
       });
     }
     await plugin.commit({
-      operation: "update",
-      bundleId: owner.id,
-      changes: [{ table: "bundle_patches", operation: "insert", row: patch }],
+      mutations: [
+        {
+          operation: "update",
+          bundleId: owner.id,
+          changes: [
+            { table: "bundle_patches", operation: "insert", row: patch },
+          ],
+        },
+      ],
     });
 
     harness.failNextBundleDelete();
     await expect(
       plugin.commit({
-        operation: "delete",
-        bundleId: owner.id,
-        changes: [{ table: "bundles", operation: "delete", id: owner.id }],
+        mutations: [
+          {
+            operation: "delete",
+            bundleId: owner.id,
+            changes: [{ table: "bundles", operation: "delete", id: owner.id }],
+          },
+        ],
       }),
     ).rejects.toThrow("injected bundle delete failure");
     await expect(plugin.bundles.findById(owner.id)).resolves.toMatchObject({

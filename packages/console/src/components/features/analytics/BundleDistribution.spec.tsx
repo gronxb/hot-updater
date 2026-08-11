@@ -1,4 +1,4 @@
-import type { ActiveInstallationOverview } from "@hot-updater/analytics";
+import type { ActiveInstallationOverview } from "@hot-updater/server";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 

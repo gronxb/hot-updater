@@ -1,5 +1,5 @@
-import type { ActiveInstallationWindow } from "@hot-updater/analytics";
-import type { BundleEventAnalyticsWindow } from "@hot-updater/analytics";
+import type { ActiveInstallationWindow } from "@hot-updater/server";
+import type { BundleEventAnalyticsWindow } from "@hot-updater/server";
 
 const MAX_ANALYTICS_STRING_LENGTH = 1024;
 const MAX_ANALYTICS_LIMIT = 100;

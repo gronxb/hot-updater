@@ -1,4 +1,7 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabaseBundleMutation,
+  DatabasePlugin,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
@@ -6,11 +9,14 @@ import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type BundleTestState = DatabasePluginTestState<DatabasePlugin>;
 
+const commit = (plugin: DatabasePlugin, mutation: DatabaseBundleMutation) =>
+  plugin.commit({ mutations: [mutation] });
+
 const insertBundle = (plugin: DatabasePlugin, suffix: string) => {
   const row = createBundleRowFixture(suffix);
   return {
     row,
-    result: plugin.commit({
+    result: commit(plugin, {
       operation: "insert",
       bundleId: row.id,
       changes: [{ table: "bundles", operation: "insert", row }],
@@ -36,7 +42,7 @@ export const registerDatabasePluginBundleTests = (
       await result;
 
       await expect(
-        plugin.commit({
+        commit(plugin, {
           operation: "update",
           bundleId: row.id,
           changes: [
@@ -66,7 +72,7 @@ export const registerDatabasePluginBundleTests = (
         createBundleRowFixture("13"),
       ];
       for (const row of rows) {
-        await plugin.commit({
+        await commit(plugin, {
           operation: "insert",
           bundleId: row.id,
           changes: [{ table: "bundles", operation: "insert", row }],
@@ -86,12 +92,15 @@ export const registerDatabasePluginBundleTests = (
 
     it("returns applied false when an update target is missing", async () => {
       await expect(
-        state.getPlugin().commit({
+        commit(state.getPlugin(), {
           operation: "update",
           bundleId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
           changes: [],
         }),
-      ).resolves.toEqual({ applied: false });
+      ).resolves.toEqual({
+        applied: false,
+        missingBundleId: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      });
     });
 
     it("deletes one bundle by id without a generic predicate", async () => {
@@ -100,7 +109,7 @@ export const registerDatabasePluginBundleTests = (
       const second = insertBundle(plugin, "42");
       await Promise.all([first.result, second.result]);
 
-      await plugin.commit({
+      await commit(plugin, {
         operation: "delete",
         bundleId: first.row.id,
         changes: [{ table: "bundles", operation: "delete", id: first.row.id }],
@@ -118,7 +127,7 @@ export const registerDatabasePluginBundleTests = (
       await first.result;
 
       await expect(
-        plugin.commit({
+        commit(plugin, {
           operation: "insert",
           bundleId: first.row.id,
           changes: [{ table: "bundles", operation: "insert", row: first.row }],

@@ -14,6 +14,8 @@ const emptySnapshot = (): BlobDatabaseSnapshot => ({
   version: 2,
   bundles: [],
   bundle_patches: [],
+  bundle_events: [],
+  client_access_keys: [],
 });
 
 export const createDatabasePluginHarness = () => {
@@ -56,7 +58,7 @@ export const createDatabasePluginHarness = () => {
       return true;
     },
   );
-  const onUnmount = vi.fn(async (): Promise<void> => {});
+  const dispose = vi.fn(async (): Promise<void> => {});
   const basePlugin = createBlobDatabasePlugin({
     name: "test-database-v2",
     plugin: () => ({
@@ -68,13 +70,13 @@ export const createDatabasePluginHarness = () => {
       compareAndSwapObject,
     }),
   });
-  const plugin: DatabasePlugin = { ...basePlugin, onUnmount };
+  const plugin: DatabasePlugin = { ...basePlugin, dispose };
 
   return {
     plugin,
     compareAndSwapObject,
     loadObject,
-    onUnmount,
+    dispose,
     uploadObject,
     bundles: async (): Promise<Bundle[]> =>
       (

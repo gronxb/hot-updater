@@ -3,6 +3,7 @@ import {
   selectRow,
   validateBundleTargetUpdate,
   validateBundleUpdateData,
+  validateClientAccessKeyUpdateData,
   validateCreateData,
   validateDistinctFields,
   validateDistinctOn,
@@ -52,15 +53,20 @@ export const createDatabasePluginCrud = (
     input: TInput,
   ): Promise<SelectedDatabaseInputRow<TInput> | null> {
     validateModel(input.model);
-    if (input.model !== "bundles") {
-      throw new DatabasePluginInputError("invalid-operation");
-    }
     validateWhere(input.model, input.where);
     validateMutationWhere(input.where);
     validateUpdateWhere(input.where);
-    validateBundleUpdateData(input.update);
+    if (input.model === "bundles") {
+      validateBundleUpdateData(input.update);
+    } else if (input.model === "client_access_keys") {
+      validateClientAccessKeyUpdateData(input.update);
+    } else {
+      throw new DatabasePluginInputError("invalid-operation");
+    }
     validateSelect(input.model, input.select);
-    await validateBundleTargetUpdate(implementation, input);
+    if (input.model === "bundles") {
+      await validateBundleTargetUpdate(implementation, input);
+    }
     const row = await implementation.update(input);
     if (row === null) return null;
     validateResult(input.model, row, input.select);

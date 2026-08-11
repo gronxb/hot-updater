@@ -17,6 +17,8 @@ import {
 } from "./mongodbCollections";
 import {
   createMongoBundleWhere,
+  createMongoClientAccessKeyWhere,
+  createMongoEventWhere,
   createMongoPatchWhere,
   createMongoSort,
 } from "./mongodbQuery";
@@ -88,6 +90,58 @@ const findMongoRows = async (
         ? cursor.toArray()
         : cursor.sort(sort).toArray();
     }
+    case "bundle_events": {
+      const cursor = collections.bundleEvents
+        .find(createMongoEventWhere(input.where), {
+          projection: WITHOUT_MONGO_ID,
+          ...mongoSessionOptions(session),
+        })
+        .skip(input.offset)
+        .limit(input.limit);
+      if (rawOrderBy === undefined) return cursor.toArray();
+      if (needsInMemoryOrder) {
+        const rows = await collections.bundleEvents
+          .find(createMongoEventWhere(input.where), {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          })
+          .toArray();
+        return sortRowsByOrder(rows, rawOrderBy).slice(
+          input.offset,
+          input.offset + input.limit,
+        );
+      }
+      const sort = createMongoSort(input);
+      return sort === undefined
+        ? cursor.toArray()
+        : cursor.sort(sort).toArray();
+    }
+    case "client_access_keys": {
+      const cursor = collections.clientAccessKeys
+        .find(createMongoClientAccessKeyWhere(input.where), {
+          projection: WITHOUT_MONGO_ID,
+          ...mongoSessionOptions(session),
+        })
+        .skip(input.offset)
+        .limit(input.limit);
+      if (rawOrderBy === undefined) return cursor.toArray();
+      if (needsInMemoryOrder) {
+        const rows = await collections.clientAccessKeys
+          .find(createMongoClientAccessKeyWhere(input.where), {
+            projection: WITHOUT_MONGO_ID,
+            ...mongoSessionOptions(session),
+          })
+          .toArray();
+        return sortRowsByOrder(rows, rawOrderBy).slice(
+          input.offset,
+          input.offset + input.limit,
+        );
+      }
+      const sort = createMongoSort(input);
+      return sort === undefined
+        ? cursor.toArray()
+        : cursor.sort(sort).toArray();
+    }
   }
 };
 
@@ -124,6 +178,14 @@ export const createMongoReads = (
           activeBundleFilter(createMongoBundleWhere(input.where)),
           {
             projection: WITHOUT_INTERNAL_FIELDS,
+            ...mongoSessionOptions(session),
+          },
+        );
+      case "client_access_keys":
+        return collections.clientAccessKeys.findOne(
+          createMongoClientAccessKeyWhere(input.where),
+          {
+            projection: WITHOUT_MONGO_ID,
             ...mongoSessionOptions(session),
           },
         );

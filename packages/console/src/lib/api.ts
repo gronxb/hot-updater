@@ -1,5 +1,5 @@
-import type { BundleEventAnalyticsWindow } from "@hot-updater/analytics";
 import type { Bundle } from "@hot-updater/plugin-core";
+import type { BundleEventAnalyticsWindow } from "@hot-updater/server";
 import {
   type QueryClient,
   type QueryKey,

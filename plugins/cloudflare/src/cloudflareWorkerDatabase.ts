@@ -1,7 +1,7 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 
 import { createD1Implementation } from "./d1Implementation";
-import { createD1UniversalComponentDataAdapter } from "./d1UniversalComponentData";
 
 type D1Result = {
   readonly results?: readonly unknown[];
@@ -11,48 +11,46 @@ type D1BoundStatement = {
   all: () => Promise<D1Result>;
 };
 
-type D1PreparedStatement<TStatement extends D1BoundStatement> = {
-  bind: (...values: readonly unknown[]) => TStatement;
+type D1PreparedStatement = {
+  bind: (...values: readonly unknown[]) => D1BoundStatement;
 };
 
-export type D1Like<TStatement extends D1BoundStatement = D1BoundStatement> = {
-  batch: (statements: TStatement[]) => Promise<readonly D1Result[]>;
-  prepare: (sql: string) => D1PreparedStatement<TStatement>;
+export type D1Like = {
+  prepare(sql: string): D1PreparedStatement;
+  batch(statements: D1BoundStatement[]): Promise<readonly D1Result[]>;
 };
 
 export interface CloudflareWorkerDatabaseEnv {
-  readonly DB: D1Database;
+  readonly DB: D1Like;
 }
 
-export const d1WorkerDatabase = <TStatement extends D1BoundStatement>(
-  db: D1Like<TStatement>,
-) => {
-  const executor = {
-    async batch(
-      statements: readonly {
-        readonly params: readonly string[];
-        readonly sql: string;
-      }[],
-    ) {
-      const results = await db.batch(
-        statements.map(({ params, sql }) => db.prepare(sql).bind(...params)),
-      );
-      return results.map(({ results }) => results ?? []);
-    },
-    async query(sql: string, params: readonly string[]) {
+export const d1WorkerDatabase = (db: D1Like) => {
+  const implementation = createD1Implementation({
+    async query(sql, params) {
       const result = await db
         .prepare(sql)
         .bind(...params)
         .all();
       return result.results ?? [];
     },
-  };
-  const plugin = createDatabasePlugin({
-    name: "d1WorkerDatabase",
-    plugin: () => createD1Implementation(executor),
+    async batch(statements) {
+      const results = await db.batch(
+        statements.map(({ sql, params }) => db.prepare(sql).bind(...params)),
+      );
+      return results.map(({ results }) => results ?? []);
+    },
   });
-  return {
-    ...plugin,
-    componentData: createD1UniversalComponentDataAdapter(executor),
-  };
+  const adapter = createDatabasePluginAdapter(
+    "d1WorkerDatabase",
+    implementation,
+  );
+  return createDatabasePlugin({
+    name: "d1WorkerDatabase",
+    bundles: adapter.bundles,
+    bundlePatches: adapter.bundlePatches,
+    analytics: adapter.analytics,
+    clientAccessKeys: adapter.clientAccessKeys,
+    commit: adapter.commit,
+    getChannels: adapter.getChannels,
+  });
 };

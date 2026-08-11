@@ -5,10 +5,7 @@ import path from "node:path";
 import { copyDirToTmp } from "@hot-updater/cli-tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  materializeFirebaseComponentIndexArtifacts,
-  prepareFirebaseTemplate,
-} from "./prepareTemplate";
+import { prepareFirebaseTemplate } from "./prepareTemplate";
 
 vi.mock("@hot-updater/cli-tools", () => ({
   copyDirToTmp: vi.fn(),
@@ -45,16 +42,7 @@ describe("prepareFirebaseTemplate", () => {
     await writeFile(path.join(publicDir, "firebase.json"), '{"functions":{}}');
     await writeFile(
       path.join(publicDir, "firestore.indexes.json"),
-      JSON.stringify({
-        fieldOverrides: [],
-        indexes: [
-          {
-            collectionGroup: "existing_records",
-            fields: [{ fieldPath: "created_at", order: "DESCENDING" }],
-            queryScope: "COLLECTION",
-          },
-        ],
-      }),
+      '{"indexes":[],"fieldOverrides":[]}',
     );
     await writeFile(
       path.join(publicDir, "functions", "_package.json"),
@@ -78,25 +66,6 @@ describe("prepareFirebaseTemplate", () => {
     });
 
     const staged = await prepareFirebaseTemplate(fixtureRoot);
-    await materializeFirebaseComponentIndexArtifacts(staged.tmpDir, [
-      {
-        contents: JSON.stringify({
-          fieldOverrides: [],
-          indexes: [
-            {
-              collectionGroup: "component_records",
-              fields: [
-                { fieldPath: "recorded_at_ms", order: "ASCENDING" },
-                { fieldPath: "id", order: "ASCENDING" },
-              ],
-              queryScope: "COLLECTION",
-            },
-          ],
-        }),
-        path: "firestore.indexes.audit-log.1.json",
-        targetVersion: "1",
-      },
-    ]);
 
     expect(staged.tmpDir).toBe(outputDir);
     expect(staged.functionsDir).toBe(path.join(outputDir, "functions"));
@@ -104,27 +73,8 @@ describe("prepareFirebaseTemplate", () => {
       '{"functions":{}}',
     );
     expect(
-      JSON.parse(
-        await readFile(path.join(outputDir, "firestore.indexes.json"), "utf8"),
-      ),
-    ).toEqual({
-      fieldOverrides: [],
-      indexes: [
-        {
-          collectionGroup: "component_records",
-          fields: [
-            { fieldPath: "recorded_at_ms", order: "ASCENDING" },
-            { fieldPath: "id", order: "ASCENDING" },
-          ],
-          queryScope: "COLLECTION",
-        },
-        {
-          collectionGroup: "existing_records",
-          fields: [{ fieldPath: "created_at", order: "DESCENDING" }],
-          queryScope: "COLLECTION",
-        },
-      ],
-    });
+      await readFile(path.join(outputDir, "firestore.indexes.json"), "utf8"),
+    ).toBe('{"indexes":[],"fieldOverrides":[]}');
     expect(
       await readFile(path.join(outputDir, "functions", "package.json"), "utf8"),
     ).toBe('{"name":"functions-template"}');

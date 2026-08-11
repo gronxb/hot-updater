@@ -2,6 +2,7 @@ import type { DatabasePlugin } from "@hot-updater/plugin-core";
 
 import { registerDatabasePluginBundleTests } from "./databasePluginBundleTests";
 import { registerDatabasePluginCapabilityTests } from "./databasePluginCapabilityTests";
+import { registerDatabasePluginOfficialDomainTests } from "./databasePluginOfficialDomainTests";
 import { registerDatabasePluginQueryTests } from "./databasePluginQueryTests";
 import { registerDatabasePluginRelationTests } from "./databasePluginRelationTests";
 import type { DatabasePluginTestLifecycle } from "./databasePluginTestRunner";
@@ -18,5 +19,6 @@ export const setupDatabasePluginTestSuite = (
     registerDatabasePluginRelationTests(state);
     registerDatabasePluginQueryTests(state);
     registerDatabasePluginCapabilityTests(state);
+    registerDatabasePluginOfficialDomainTests(state);
   });
 };

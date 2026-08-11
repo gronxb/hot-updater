@@ -1,9 +1,6 @@
 import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
 import { S3Client, type S3ClientConfig } from "@aws-sdk/client-s3";
-import {
-  createBlobDatabasePlugin,
-  type DatabasePluginLifecycleHooks,
-} from "@hot-updater/plugin-core";
+import { createBlobDatabasePlugin } from "@hot-updater/plugin-core";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
 import { applyS3RuntimeAwsConfig } from "./runtimeAwsConfig";
@@ -40,13 +37,9 @@ const createKeyBuilder = (basePath: string | undefined) => {
   };
 };
 
-export const s3Database = (
-  config: S3DatabaseConfig,
-  hooks?: DatabasePluginLifecycleHooks,
-) =>
+export const s3Database = (config: S3DatabaseConfig) =>
   createBlobDatabasePlugin({
     name: "s3Database",
-    onDatabaseUpdated: hooks?.onDatabaseUpdated,
     plugin: () => {
       const {
         apiBasePath = "/api/check-update",
@@ -101,6 +94,10 @@ export const s3Database = (
                 },
               )
             : Promise.resolve(),
+        dispose: async () => {
+          client.destroy();
+          cloudFront?.destroy();
+        },
         onInvalidationError: ({ error, paths }) => {
           const message =
             error instanceof Error

@@ -25,7 +25,8 @@ const createBundle = (id: string): Bundle => ({
 });
 
 const createRuntime = () => ({
-  mode: "dedicated" as const,
+  mode: "bounded" as const,
+  maxMatchingRows: 50_000,
   appendBundleEvent: vi.fn(),
   getActiveInstallationOverview: vi.fn(),
   getBundleEventSummary: vi.fn(),
@@ -36,49 +37,7 @@ const createRuntime = () => ({
 });
 
 describe("getAnalyticsCapabilities", () => {
-  it("uses an internal remote capability probe before exposing Analytics", async () => {
-    // Given
-    const probe = vi.fn().mockResolvedValue({
-      analytics: false as const,
-      analyticsQueries: false,
-      eventIngestion: false,
-    });
-    const runtime = Object.assign(createRuntime(), {
-      resolveAvailability: probe,
-    });
-
-    // When
-    const result = await getAnalyticsCapabilities(runtime);
-
-    // Then
-    expect(result).toEqual({ capabilities: { analytics: false } });
-    expect(probe).toHaveBeenCalledOnce();
-  });
-
-  it("preserves the mode returned by an internal remote capability probe", async () => {
-    // Given
-    const runtime = Object.assign(createRuntime(), {
-      resolveAvailability: () =>
-        Promise.resolve({
-          analytics: true as const,
-          analyticsQueries: true,
-          eventIngestion: true,
-          mode: "bounded" as const,
-          maxMatchingRows: 12_345,
-        }),
-    });
-
-    // When / Then
-    await expect(getAnalyticsCapabilities(runtime)).resolves.toEqual({
-      capabilities: {
-        analytics: true,
-        mode: "bounded",
-        maxMatchingRows: 12_345,
-      },
-    });
-  });
-
-  it("exposes the CRUD-derived Analytics scan boundary", async () => {
+  it("exposes the official database Analytics scan boundary", async () => {
     // Given
     const runtime = {
       ...createRuntime(),
@@ -118,7 +77,11 @@ describe("getAnalyticsCapabilities", () => {
 
     // Then
     expect(complete).toEqual({
-      capabilities: { analytics: true, mode: "dedicated" },
+      capabilities: {
+        analytics: true,
+        mode: "bounded",
+        maxMatchingRows: 50_000,
+      },
     });
     expect(incomplete).toEqual(
       methodNames.map(() => ({ capabilities: { analytics: false } })),

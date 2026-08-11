@@ -3,7 +3,7 @@ import { setTimeout as sleep } from "timers/promises";
 import { loadConfig, p } from "@hot-updater/cli-tools";
 import type {
   Bundle,
-  DatabasePlugin,
+  BundleRepository,
   Platform,
 } from "@hot-updater/plugin-core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
@@ -136,12 +136,12 @@ const refuseNonInteractiveMutation = (action: string): never => {
   process.exit(1);
 };
 
-const safeOnUnmount = async (databasePlugin: DatabasePlugin): Promise<void> => {
+const safeDispose = async (databasePlugin: BundleRepository): Promise<void> => {
   try {
-    await databasePlugin.onUnmount?.();
+    await databasePlugin.dispose?.();
   } catch (err) {
     p.log.warn(
-      `Database plugin onUnmount failed (cleanup-only, original error preserved): ${
+      `Database plugin dispose failed (cleanup-only, original error preserved): ${
         (err as Error)?.message ?? String(err)
       }`,
     );
@@ -173,7 +173,7 @@ export const handleBundleList = async (options: BundleListOptions = {}) => {
       options.json ? JSON.stringify(result, null, 2) : tabulate(result.data),
     );
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 
@@ -202,7 +202,7 @@ export const handleBundleShow = async (
 
     p.log.message(formatBundleSummary(bundle));
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 
@@ -263,7 +263,7 @@ export const handleBundleSetEnabled = async (
       p.log.info(`  ${ui.id(bundleId)}`);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 
@@ -339,7 +339,7 @@ export const handleBundleUpdate = async (
     p.log.success("Updated bundle.");
     p.log.info(`  ${ui.id(bundleId)}`);
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 
@@ -427,7 +427,7 @@ export const handleBundleDelete = async (
       p.log.success(`Deleted ${targets.length} bundle records.`);
     }
   } finally {
-    await safeOnUnmount(databasePlugin);
+    await safeDispose(databasePlugin);
   }
 };
 

@@ -1,5 +1,6 @@
 import type {
   DatabaseDistinctOn,
+  DatabaseModel,
   DatabaseOrderBy,
   DatabaseRow,
   DatabaseSortBy,
@@ -24,7 +25,7 @@ const normalizeStringComparison = (
     : [actual, expected];
 };
 
-const matchesCondition = <TModel extends "bundle_patches" | "bundles">(
+const matchesCondition = <TModel extends DatabaseModel>(
   row: DatabaseRow<TModel>,
   condition: DatabaseWhere<TModel>,
 ): boolean => {
@@ -92,9 +93,7 @@ const matchesCondition = <TModel extends "bundle_patches" | "bundles">(
   }
 };
 
-export const matchesMockDatabaseWhere = <
-  TModel extends "bundle_patches" | "bundles",
->(
+export const matchesMockDatabaseWhere = <TModel extends DatabaseModel>(
   row: DatabaseRow<TModel>,
   where: readonly DatabaseWhere<TModel>[] | undefined,
 ): boolean => {
@@ -109,9 +108,7 @@ export const matchesMockDatabaseWhere = <
   return result;
 };
 
-export const queryMockDatabaseRows = <
-  TModel extends "bundle_patches" | "bundles",
->(
+export const queryMockDatabaseRows = <TModel extends DatabaseModel>(
   rows: readonly DatabaseRow<TModel>[],
   input: {
     readonly where?: readonly DatabaseWhere<TModel>[];

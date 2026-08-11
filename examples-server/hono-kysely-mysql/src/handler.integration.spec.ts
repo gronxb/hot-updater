@@ -171,7 +171,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       });
       await migration.execute();
 
-      expect(await migrator.getVersion()).toBe("0.36.0");
+      expect(await migrator.getVersion()).toBe("0.37.0");
       const migrated = await sql<{ readonly channel: string }>`
         select channel from bundles
       `.execute(db);
@@ -436,9 +436,13 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       for (const id of [baseId, ownerId]) {
         const row = createAdapterBundleRow(id);
         await adapter.commit({
-          operation: "insert",
-          bundleId: id,
-          changes: [{ table: "bundles", operation: "insert", row }],
+          mutations: [
+            {
+              operation: "insert",
+              bundleId: id,
+              changes: [{ table: "bundles", operation: "insert", row }],
+            },
+          ],
         });
       }
       await sql`select get_lock(${gate}, 5)`.execute(control);
@@ -447,21 +451,27 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       );
 
       const patchCreate = adapter.commit({
-        operation: "update",
-        bundleId: ownerId,
-        changes: [{
-          table: "bundle_patches",
-          operation: "insert",
-          row: {
-          id: "fumadb-patch",
-          bundle_id: ownerId,
-          base_bundle_id: baseId,
-          base_file_hash: "base-hash",
-          patch_file_hash: "patch-hash",
-          patch_storage_uri: "storage://fumadb-patch",
-          order_index: 0,
+        mutations: [
+          {
+            operation: "update",
+            bundleId: ownerId,
+            changes: [
+              {
+                table: "bundle_patches",
+                operation: "insert",
+                row: {
+                  id: "fumadb-patch",
+                  bundle_id: ownerId,
+                  base_bundle_id: baseId,
+                  base_file_hash: "base-hash",
+                  patch_file_hash: "patch-hash",
+                  patch_storage_uri: "storage://fumadb-patch",
+                  order_index: 0,
+                },
+              },
+            ],
           },
-        }],
+        ],
       });
       await waitForMySQLUserLock(admin, database);
 
@@ -473,10 +483,12 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       let deleteSettled = false;
       const bundleDelete = deleteAdapter
         .commit({
-          operation: "delete",
-          bundleId: ownerId,
-          changes: [
-            { table: "bundles", operation: "delete", id: ownerId },
+          mutations: [
+            {
+              operation: "delete",
+              bundleId: ownerId,
+              changes: [{ table: "bundles", operation: "delete", id: ownerId }],
+            },
           ],
         })
         .finally(() => {
@@ -488,9 +500,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       await sql`select release_lock(${gate})`.execute(control);
       await Promise.all([patchCreate, bundleDelete]);
 
-      await expect(
-        deleteAdapter.bundles.findById(ownerId),
-      ).resolves.toBeNull();
+      await expect(deleteAdapter.bundles.findById(ownerId)).resolves.toBeNull();
       await expect(
         deleteAdapter.bundlePatches.findByBundleIds([ownerId]),
       ).resolves.toEqual([]);

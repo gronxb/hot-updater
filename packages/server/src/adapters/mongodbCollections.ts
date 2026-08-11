@@ -1,4 +1,9 @@
-import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ClientAccessKeyRow,
+} from "@hot-updater/plugin-core";
 import type { ClientSession, Collection, MongoClient } from "mongodb";
 
 export class MongoAdapterConstraintError extends Error {
@@ -28,6 +33,8 @@ export const activeBundleFilter = (where: object) => ({
 export type MongoCollections = {
   readonly bundles: Collection<MongoBundleDocument>;
   readonly bundlePatches: Collection<BundlePatchRow>;
+  readonly bundleEvents: Collection<BundleEventRow>;
+  readonly clientAccessKeys: Collection<ClientAccessKeyRow>;
 };
 
 export const createMongoCollections = (
@@ -37,6 +44,9 @@ export const createMongoCollections = (
   return {
     bundles: database.collection<MongoBundleDocument>("bundles"),
     bundlePatches: database.collection<BundlePatchRow>("bundle_patches"),
+    bundleEvents: database.collection<BundleEventRow>("bundle_events"),
+    clientAccessKeys:
+      database.collection<ClientAccessKeyRow>("client_access_keys"),
   };
 };
 

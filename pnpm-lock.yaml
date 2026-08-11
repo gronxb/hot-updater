@@ -1335,31 +1335,6 @@ importers:
         specifier: ^4.30.0
         version: 4.99.0(@cloudflare/workers-types@4.20260611.1)
 
-  packages/analytics:
-    dependencies:
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../../plugins/plugin-core
-      '@hot-updater/server':
-        specifier: workspace:*
-        version: link:../server
-    devDependencies:
-      '@electric-sql/pglite':
-        specifier: catalog:db
-        version: 0.4.1
-      '@types/node':
-        specifier: 'catalog:'
-        version: 20.19.43
-      kysely:
-        specifier: catalog:db
-        version: 0.28.17
-      kysely-pglite-dialect:
-        specifier: catalog:db
-        version: 1.2.0(@electric-sql/pglite@0.4.1)(kysely@0.28.17)
-      mongodb:
-        specifier: catalog:db
-        version: 6.20.0(@aws-sdk/credential-providers@3.1066.0)(socks@2.8.9)
-
   packages/android-helper:
     dependencies:
       '@hot-updater/cli-tools':
@@ -1498,12 +1473,6 @@ importers:
 
   packages/console:
     dependencies:
-      '@hot-updater/analytics':
-        specifier: workspace:*
-        version: link:../analytics
-      '@hot-updater/better-auth':
-        specifier: workspace:*
-        version: link:../better-auth
       '@hot-updater/bsdiff':
         specifier: workspace:*
         version: link:../bsdiff
@@ -1670,9 +1639,6 @@ importers:
 
   packages/hot-updater:
     dependencies:
-      '@hot-updater/analytics':
-        specifier: workspace:*
-        version: link:../analytics
       '@hot-updater/android-helper':
         specifier: workspace:*
         version: link:../android-helper
@@ -2198,6 +2164,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      es-toolkit:
+        specifier: ^1.32.0
+        version: 1.47.0
       execa:
         specifier: catalog:tools
         version: 9.5.2

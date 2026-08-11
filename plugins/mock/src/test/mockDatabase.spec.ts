@@ -22,6 +22,8 @@ let data: MockDatabaseData;
 const resetData = (): void => {
   data.bundles.clear();
   data.bundlePatches.clear();
+  data.bundleEvents.clear();
+  data.clientAccessKeys.clear();
 };
 
 const createPlugin = (): DatabasePlugin =>
@@ -84,37 +86,35 @@ describe("mock database provider", () => {
       manifest_file_hash: null,
       asset_base_storage_uri: null,
     };
-    if (plugin.commitBatch === undefined) {
-      throw new Error("mock database must support atomic batches");
-    }
-
     await expect(
-      plugin.commitBatch([
-        {
-          operation: "insert",
-          bundleId: row.id,
-          changes: [{ table: "bundles", operation: "insert", row }],
-        },
-        {
-          operation: "insert",
-          bundleId: "invalid-owner",
-          changes: [
-            {
-              table: "bundle_patches",
-              operation: "insert",
-              row: {
-                id: "invalid-patch",
-                bundle_id: "invalid-owner",
-                base_bundle_id: row.id,
-                base_file_hash: row.file_hash,
-                patch_file_hash: "patch-hash",
-                patch_storage_uri: "storage://patch",
-                order_index: 0,
+      plugin.commit({
+        mutations: [
+          {
+            operation: "insert",
+            bundleId: row.id,
+            changes: [{ table: "bundles", operation: "insert", row }],
+          },
+          {
+            operation: "insert",
+            bundleId: "invalid-owner",
+            changes: [
+              {
+                table: "bundle_patches",
+                operation: "insert",
+                row: {
+                  id: "invalid-patch",
+                  bundle_id: "invalid-owner",
+                  base_bundle_id: row.id,
+                  base_file_hash: row.file_hash,
+                  patch_file_hash: "patch-hash",
+                  patch_storage_uri: "storage://patch",
+                  order_index: 0,
+                },
               },
-            },
-          ],
-        },
-      ]),
+            ],
+          },
+        ],
+      }),
     ).rejects.toThrow("foreign-key");
 
     await expect(plugin.bundles.findById(row.id)).resolves.toBeNull();

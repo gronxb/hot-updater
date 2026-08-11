@@ -2,9 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { copyDirToTmp } from "@hot-updater/cli-tools";
-import type { UniversalComponentArtifact } from "@hot-updater/plugin-core";
-
-import { mergeFirebaseComponentIndexArtifacts } from "../src/firebaseComponentIndexArtifacts";
 
 const ensureExists = async (targetPath: string, description: string) => {
   try {
@@ -27,19 +24,6 @@ const normalizeFunctionsPackage = async (functionsDir: string) => {
 
     await ensureExists(packageJsonPath, "functions package.json");
   }
-};
-
-export const materializeFirebaseComponentIndexArtifacts = async (
-  templateDir: string,
-  componentArtifacts: readonly UniversalComponentArtifact[],
-): Promise<void> => {
-  if (componentArtifacts.length === 0) return;
-  const indexPath = path.join(templateDir, "firestore.indexes.json");
-  const existingIndexes = await fs.readFile(indexPath, "utf8");
-  await fs.writeFile(
-    indexPath,
-    mergeFirebaseComponentIndexArtifacts(existingIndexes, componentArtifacts),
-  );
 };
 
 export const prepareFirebaseTemplate = async (firebaseRootDir: string) => {
