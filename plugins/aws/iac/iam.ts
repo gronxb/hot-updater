@@ -74,11 +74,7 @@ export class IAMManager {
             Resource: [tableArn],
           },
           {
-            Action: [
-              "dynamodb:GetItem",
-              "dynamodb:Query",
-              "dynamodb:TransactWriteItems",
-            ],
+            Action: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"],
             Condition: {
               "ForAllValues:StringLike": {
                 "dynamodb:LeadingKeys": [

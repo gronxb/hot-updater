@@ -95,11 +95,7 @@ describe("IAMManager DynamoDB access", () => {
         ],
       },
       {
-        Action: [
-          "dynamodb:GetItem",
-          "dynamodb:Query",
-          "dynamodb:TransactWriteItems",
-        ],
+        Action: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"],
         Condition: {
           "ForAllValues:StringLike": {
             "dynamodb:LeadingKeys": ["_hot-updater#component-data#*"],
