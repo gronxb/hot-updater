@@ -1,4 +1,3 @@
-import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
@@ -16,7 +15,6 @@ declare global {
     DATABASE_TYPE: string;
     DYNAMODB_REGION: string;
     DYNAMODB_TABLE_NAME: string;
-    MANAGEMENT_BEARER_TOKEN: string;
     SSM_PARAMETER_NAME: string;
     SSM_REGION: string;
     S3_BUCKET_NAME: string;
@@ -40,7 +38,6 @@ const CLOUDFRONT_KEY_PAIR_ID = HotUpdater.CLOUDFRONT_KEY_PAIR_ID;
 const DATABASE_TYPE = HotUpdater.DATABASE_TYPE;
 const DYNAMODB_REGION = HotUpdater.DYNAMODB_REGION;
 const DYNAMODB_TABLE_NAME = HotUpdater.DYNAMODB_TABLE_NAME;
-const MANAGEMENT_BEARER_TOKEN = HotUpdater.MANAGEMENT_BEARER_TOKEN;
 const SSM_PARAMETER_NAME = HotUpdater.SSM_PARAMETER_NAME;
 const SSM_REGION = HotUpdater.SSM_REGION;
 const S3_BUCKET_NAME = HotUpdater.S3_BUCKET_NAME;
@@ -53,7 +50,7 @@ class AwsLambdaDatabaseTypeError extends Error {
   }
 }
 
-const createManagedDatabase = () => {
+const createDatabase = () => {
   switch (DATABASE_TYPE) {
     case "dynamodb":
       return dynamoDB({
@@ -97,17 +94,13 @@ const resolveRequestOrigin = (context?: SignedUrlContext) => {
   return new URL(context.request.url).origin;
 };
 
-const database = createManagedDatabase();
-const plugins =
-  DATABASE_TYPE === "dynamodb"
-    ? createManagedServerPlugins({
-        managementBearerToken: MANAGEMENT_BEARER_TOKEN,
-      })
-    : [];
+const database = createDatabase();
 
 const hotUpdater = createHotUpdater<SignedUrlContext>({
   database,
-  plugins,
+  ...(DATABASE_TYPE === "dynamodb"
+    ? { analytics: {}, clientAccessKeys: true }
+    : {}),
   storages: [
     withCloudFrontSignedUrl(
       s3Storage({

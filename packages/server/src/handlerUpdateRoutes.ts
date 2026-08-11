@@ -1,7 +1,6 @@
 import type { AppUpdateAvailableInfo, AppUpdateInfo } from "@hot-updater/core";
 import { isGreaterOrEqual, normalize } from "verkit";
 
-import type { UpdateRouteHandlerKey } from "./coreRouteDescriptors";
 import {
   decodeMaybe,
   requirePlatformParam,
@@ -37,7 +36,7 @@ const serializeUpdateInfo = (
 };
 
 export const createUpdateRouteHandlers = <TContext>(): Record<
-  UpdateRouteHandlerKey,
+  string,
   RouteHandler<TContext>
 > => ({
   version: async () => {

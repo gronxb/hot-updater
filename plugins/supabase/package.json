@@ -55,7 +55,6 @@
   },
   "dependencies": {
     "@hot-updater/core": "workspace:*",
-    "@hot-updater/managed": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/server": "workspace:*",

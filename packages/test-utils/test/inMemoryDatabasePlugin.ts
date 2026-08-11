@@ -9,6 +9,7 @@ import {
   rowsToBundles,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 
 import { matchesAll, queryRows } from "./inMemoryDatabaseQuery";
 
@@ -30,6 +31,8 @@ class MemoryConstraintError extends Error {
 const createTables = (): Tables => ({
   bundles: { rows: [] },
   bundle_patches: { rows: [] },
+  bundle_events: { rows: [] },
+  client_access_keys: { rows: [] },
 });
 
 const assertReferences = (
@@ -38,6 +41,8 @@ const assertReferences = (
 ): void => {
   switch (input.model) {
     case "bundles":
+    case "bundle_events":
+    case "client_access_keys":
       return;
     case "bundle_patches":
       if (
@@ -80,10 +85,34 @@ const createCrudImplementation = (
           break;
         tables.bundle_patches.rows.push(structuredClone(input.data));
         return input.data;
+      case "bundle_events":
+        if (tables.bundle_events.rows.some(({ id }) => id === input.data.id))
+          break;
+        tables.bundle_events.rows.push(structuredClone(input.data));
+        return input.data;
+      case "client_access_keys":
+        if (
+          tables.client_access_keys.rows.some(
+            ({ id, hash }) => id === input.data.id || hash === input.data.hash,
+          )
+        )
+          break;
+        tables.client_access_keys.rows.push(structuredClone(input.data));
+        return input.data;
     }
     throw new MemoryConstraintError(`Duplicate ${input.model} id`);
   },
   update: async (input) => {
+    if (input.model === "client_access_keys") {
+      const index = tables.client_access_keys.rows.findIndex((row) =>
+        matchesAll(row, input.where),
+      );
+      const current = tables.client_access_keys.rows[index];
+      if (current === undefined) return null;
+      const updated = { ...current, ...input.update };
+      tables.client_access_keys.rows[index] = updated;
+      return structuredClone(updated);
+    }
     const index = tables.bundles.rows.findIndex((row) =>
       matchesAll(row, input.where),
     );
@@ -153,6 +182,12 @@ const createCrudImplementation = (
             matchesAll(row, input.where),
           ) ?? null
         );
+      case "client_access_keys":
+        return (
+          tables.client_access_keys.rows.find((row) =>
+            matchesAll(row, input.where),
+          ) ?? null
+        );
     }
   },
   findMany: async (input) => {
@@ -169,6 +204,24 @@ const createCrudImplementation = (
       case "bundle_patches":
         return queryRows(
           tables.bundle_patches.rows,
+          input.where,
+          input.orderBy,
+          input.distinctOn,
+          input.offset,
+          input.limit,
+        );
+      case "bundle_events":
+        return queryRows(
+          tables.bundle_events.rows,
+          input.where,
+          input.orderBy,
+          input.distinctOn,
+          input.offset,
+          input.limit,
+        );
+      case "client_access_keys":
+        return queryRows(
+          tables.client_access_keys.rows,
           input.where,
           input.orderBy,
           input.distinctOn,
@@ -201,17 +254,30 @@ const createImplementation = (
     const result = await callback(createCrudImplementation(transactionTables));
     tables.bundles.rows = transactionTables.bundles.rows;
     tables.bundle_patches.rows = transactionTables.bundle_patches.rows;
+    tables.bundle_events.rows = transactionTables.bundle_events.rows;
+    tables.client_access_keys.rows = transactionTables.client_access_keys.rows;
     return result;
   },
 });
 
 export const createInMemoryDatabasePlugin = (
   tables: Tables = createTables(),
-): DatabasePlugin =>
-  createDatabasePlugin({
+): DatabasePlugin => {
+  const adapter = createDatabasePluginAdapter(
+    "in-memory-v2",
+    createImplementation(tables),
+  );
+  return createDatabasePlugin({
     name: "in-memory-v2",
-    plugin: () => createImplementation(tables),
+    bundles: adapter.bundles,
+    bundlePatches: adapter.bundlePatches,
+    analytics: adapter.analytics,
+    clientAccessKeys: adapter.clientAccessKeys,
+    commit: adapter.commit,
+    getChannels: adapter.getChannels,
+    getUpdateInfo: adapter.getUpdateInfo,
   });
+};
 
 export const createInMemoryDatabaseHarness = () => {
   const tables = createTables();
@@ -220,6 +286,8 @@ export const createInMemoryDatabaseHarness = () => {
     reset: (): void => {
       tables.bundles.rows = [];
       tables.bundle_patches.rows = [];
+      tables.bundle_events.rows = [];
+      tables.client_access_keys.rows = [];
     },
   };
 };

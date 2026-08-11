@@ -5,9 +5,10 @@ import type {
   DatabaseWhere,
   DeleteDatabaseImplementationInput,
   FindOneDatabaseImplementationInput,
-  UpdateBundleDatabaseImplementationInput,
+  UpdateDatabaseImplementationInput,
 } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import {
   Kysely,
   PostgresDialect,
@@ -19,7 +20,6 @@ import pg, { type PoolConfig } from "pg";
 
 import { getUpdateInfo } from "./getUpdateInfo";
 import { countPostgresRows, findManyPostgresRows } from "./postgresQuery";
-import { createPostgresUniversalComponentDataAdapter } from "./postgresUniversalComponentData";
 import type { Database } from "./types";
 
 const { Pool } = pg;
@@ -147,10 +147,27 @@ const createPostgresImplementation = (
           .values(input.data)
           .returningAll()
           .executeTakeFirstOrThrow();
+      case "bundle_events":
+        return db
+          .insertInto("bundle_events")
+          .values(input.data)
+          .returningAll()
+          .executeTakeFirstOrThrow();
+      case "client_access_keys":
+        return db
+          .insertInto("client_access_keys")
+          .values(input.data)
+          .returningAll()
+          .executeTakeFirstOrThrow();
     }
   },
-  async update(input: UpdateBundleDatabaseImplementationInput) {
+  async update(input: UpdateDatabaseImplementationInput) {
     const where = buildWhere(input.where);
+    if (input.model === "client_access_keys") {
+      let query = db.updateTable("client_access_keys").set(input.update);
+      if (where !== undefined) query = query.where(where);
+      return (await query.returningAll().executeTakeFirst()) ?? null;
+    }
     let query = db.updateTable("bundles").set(input.update);
     if (where !== undefined) {
       query = query.where(where);
@@ -182,6 +199,11 @@ const createPostgresImplementation = (
         if (where !== undefined) query = query.where(where);
         return (await query.executeTakeFirst()) ?? null;
       }
+      case "client_access_keys": {
+        let query = db.selectFrom("client_access_keys").selectAll();
+        if (where !== undefined) query = query.where(where);
+        return (await query.executeTakeFirst()) ?? null;
+      }
       case "bundle_patches": {
         let query = db.selectFrom("bundle_patches").selectAll();
         if (where !== undefined) query = query.where(where);
@@ -205,36 +227,34 @@ const createPostgresImplementation = (
       .execute((transaction) =>
         callback(createPostgresImplementation(transaction)),
       ),
-  onUnmount: () => db.destroy(),
+  dispose: () => db.destroy(),
 });
-
-const createPostgresPlugin = (
-  db: Kysely<Database>,
-  getPostgresUpdateInfo?: DatabasePluginImplementation["getUpdateInfo"],
-) => {
-  const plugin = createDatabasePlugin({
-    name: "postgres",
-    plugin: () => {
-      const implementation = createPostgresImplementation(db);
-      return getPostgresUpdateInfo === undefined
-        ? implementation
-        : { ...implementation, getUpdateInfo: getPostgresUpdateInfo };
-    },
-  });
-  return {
-    ...plugin,
-    componentData: createPostgresUniversalComponentDataAdapter(db),
-  };
-};
 
 export const postgres = (config: PostgresConfig) => {
   const { dialect, ...poolConfig } = config;
-  if (dialect !== undefined) {
-    return createPostgresPlugin(new Kysely<Database>({ dialect }));
-  }
-  const pool = new Pool(poolConfig);
-  return createPostgresPlugin(
-    new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
-    (args) => getUpdateInfo(pool, args),
-  );
+  const implementation =
+    dialect !== undefined
+      ? createPostgresImplementation(new Kysely<Database>({ dialect }))
+      : (() => {
+          const pool = new Pool(poolConfig);
+          return {
+            ...createPostgresImplementation(
+              new Kysely<Database>({ dialect: new PostgresDialect({ pool }) }),
+            ),
+            getUpdateInfo: (args: Parameters<typeof getUpdateInfo>[1]) =>
+              getUpdateInfo(pool, args),
+          };
+        })();
+  const adapter = createDatabasePluginAdapter("postgres", implementation);
+  return createDatabasePlugin({
+    name: "postgres",
+    bundles: adapter.bundles,
+    bundlePatches: adapter.bundlePatches,
+    analytics: adapter.analytics,
+    clientAccessKeys: adapter.clientAccessKeys,
+    commit: adapter.commit,
+    getChannels: adapter.getChannels,
+    getUpdateInfo: adapter.getUpdateInfo,
+    dispose: adapter.dispose,
+  });
 };

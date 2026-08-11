@@ -1344,7 +1344,7 @@ async function withDatabaseClient<T>(
       try {
         return await callback(createDatabaseClient(config.database));
       } finally {
-        await config.database.onUnmount?.();
+        await config.database.dispose?.();
       }
     });
   } finally {

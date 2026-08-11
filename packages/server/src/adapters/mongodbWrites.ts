@@ -1,6 +1,7 @@
 import type {
   BundlePatchRow,
   BundleRow,
+  BundleRowUpdate,
   DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import { createUUIDv7 } from "@hot-updater/plugin-core";
@@ -15,7 +16,11 @@ import {
   mongoSessionOptions,
   WITHOUT_INTERNAL_FIELDS,
 } from "./mongodbCollections";
-import { createMongoBundleWhere, createMongoPatchWhere } from "./mongodbQuery";
+import {
+  createMongoBundleWhere,
+  createMongoClientAccessKeyWhere,
+  createMongoPatchWhere,
+} from "./mongodbQuery";
 
 const assertPatchReferences = async (
   bundles: Collection<MongoBundleDocument>,
@@ -44,9 +49,7 @@ const assertBundleTarget = (
   }
 };
 
-const targetConstraintFilter = (
-  update: Parameters<DatabasePluginImplementation["update"]>[0]["update"],
-): object => {
+const targetConstraintFilter = (update: BundleRowUpdate): object => {
   if (
     update.target_app_version === null &&
     update.fingerprint_hash === undefined
@@ -96,9 +99,32 @@ export const createMongoWrites = (
           throw error;
         }
         return input.data;
+      case "bundle_events":
+        await collections.bundleEvents.insertOne(
+          input.data,
+          mongoSessionOptions(session),
+        );
+        return input.data;
+      case "client_access_keys":
+        await collections.clientAccessKeys.insertOne(
+          input.data,
+          mongoSessionOptions(session),
+        );
+        return input.data;
     }
   },
   update: async (input) => {
+    if (input.model === "client_access_keys") {
+      return collections.clientAccessKeys.findOneAndUpdate(
+        createMongoClientAccessKeyWhere(input.where),
+        { $set: input.update },
+        {
+          projection: WITHOUT_INTERNAL_FIELDS,
+          returnDocument: "after",
+          ...mongoSessionOptions(session),
+        },
+      );
+    }
     if (
       input.update.target_app_version === null &&
       input.update.fingerprint_hash === null

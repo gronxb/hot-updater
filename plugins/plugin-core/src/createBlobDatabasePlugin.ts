@@ -30,10 +30,12 @@ import {
   type BlobDatabaseSnapshot,
 } from "./blobDatabaseSnapshot";
 import { blobArray } from "./blobDatabaseValue";
-import { createDatabasePlugin } from "./createDatabasePlugin";
+import {
+  createDatabasePlugin,
+  createDatabasePluginAdapter,
+} from "./createDatabasePlugin";
 import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
-  DatabasePluginLifecycleHooks,
   DatabasePluginImplementation,
   TransactionDatabasePluginImplementation,
 } from "./types";
@@ -66,6 +68,7 @@ export interface BlobDatabaseOperations {
     failure: BlobInvalidationFailure,
   ) => void | Promise<void>;
   readonly shouldSkipLoadObjectError?: (error: unknown, key: string) => boolean;
+  readonly dispose?: () => Promise<void>;
 }
 
 /**
@@ -151,6 +154,16 @@ const mergeSnapshotMutation = (
           intended.bundle_patches,
           latest.bundle_patches,
         ),
+        bundle_events: mergeChangedRows(
+          base.bundle_events,
+          intended.bundle_events,
+          latest.bundle_events,
+        ),
+        client_access_keys: mergeChangedRows(
+          base.client_access_keys,
+          intended.client_access_keys,
+          latest.client_access_keys,
+        ),
       },
       "merged concurrent blob database snapshot",
     );
@@ -213,6 +226,8 @@ const loadLegacySnapshot = async (
       version: 2,
       bundles: [...bundles.values()],
       bundle_patches: [...patches.values()],
+      bundle_events: [],
+      client_access_keys: [],
     },
     "legacy update.json manifests",
   );
@@ -225,11 +240,9 @@ const loadLegacySnapshot = async (
 export const createBlobDatabasePlugin = ({
   name,
   plugin,
-  onDatabaseUpdated,
 }: {
   readonly name: string;
   readonly plugin: () => BlobDatabaseOperations;
-  readonly onDatabaseUpdated?: DatabasePluginLifecycleHooks["onDatabaseUpdated"];
 }) => {
   const operations = plugin();
   let mutationQueue: Promise<void> = Promise.resolve();
@@ -449,11 +462,19 @@ export const createBlobDatabasePlugin = ({
       });
     },
     transaction: (callback) => mutate(callback),
+    ...(operations.dispose ? { dispose: operations.dispose } : {}),
   };
 
-  const database = createDatabasePlugin({
+  const adapter = createDatabasePluginAdapter(name, implementation);
+  return createDatabasePlugin({
     name,
-    plugin: () => implementation,
+    bundles: adapter.bundles,
+    bundlePatches: adapter.bundlePatches,
+    analytics: adapter.analytics,
+    clientAccessKeys: adapter.clientAccessKeys,
+    commit: adapter.commit,
+    getChannels: adapter.getChannels,
+    getUpdateInfo: adapter.getUpdateInfo,
+    ...(adapter.dispose ? { dispose: adapter.dispose } : {}),
   });
-  return onDatabaseUpdated ? { ...database, onDatabaseUpdated } : database;
 };

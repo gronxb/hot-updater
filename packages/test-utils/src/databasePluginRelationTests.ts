@@ -1,4 +1,7 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabaseBundleMutation,
+  DatabasePlugin,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
@@ -9,15 +12,16 @@ import {
 
 type RelationTestState = DatabasePluginTestState<DatabasePlugin>;
 
+const commit = (plugin: DatabasePlugin, mutation: DatabaseBundleMutation) =>
+  plugin.commit({ mutations: [mutation] });
+
 const insertRow = (plugin: DatabasePlugin, suffix: string) => {
   const row = createBundleRowFixture(suffix);
-  return plugin
-    .commit({
-      operation: "insert",
-      bundleId: row.id,
-      changes: [{ table: "bundles", operation: "insert", row }],
-    })
-    .then(() => row);
+  return commit(plugin, {
+    operation: "insert",
+    bundleId: row.id,
+    changes: [{ table: "bundles", operation: "insert", row }],
+  }).then(() => row);
 };
 
 export const registerDatabasePluginRelationTests = (
@@ -31,7 +35,7 @@ export const registerDatabasePluginRelationTests = (
       const patch = createBundlePatchRowFixture("71", owner.id, base.id, 1);
 
       await expect(
-        plugin.commit({
+        commit(plugin, {
           operation: "insert",
           bundleId: owner.id,
           changes: [
@@ -59,7 +63,7 @@ export const registerDatabasePluginRelationTests = (
       );
 
       await expect(
-        plugin.commit({
+        commit(plugin, {
           operation: "insert",
           bundleId: owner.id,
           changes: [
@@ -76,7 +80,7 @@ export const registerDatabasePluginRelationTests = (
       const base = await insertRow(plugin, "91");
       const owner = createBundleRowFixture("92");
       const patch = createBundlePatchRowFixture("93", owner.id, base.id);
-      await plugin.commit({
+      await commit(plugin, {
         operation: "insert",
         bundleId: owner.id,
         changes: [
@@ -85,7 +89,7 @@ export const registerDatabasePluginRelationTests = (
         ],
       });
 
-      await plugin.commit({
+      await commit(plugin, {
         operation: "delete",
         bundleId: base.id,
         changes: [{ table: "bundles", operation: "delete", id: base.id }],
@@ -110,7 +114,7 @@ export const registerDatabasePluginRelationTests = (
         createBundleRowFixture("52", "production"),
         createBundleRowFixture("53", "staging"),
       ]) {
-        await plugin.commit({
+        await commit(plugin, {
           operation: "insert",
           bundleId: row.id,
           changes: [{ table: "bundles", operation: "insert", row }],

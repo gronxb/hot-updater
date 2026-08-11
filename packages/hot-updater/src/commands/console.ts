@@ -4,7 +4,6 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { type ConfigResponse, loadConfig } from "@hot-updater/cli-tools";
 import { execa } from "execa";
-import isPortReachable from "is-port-reachable";
 
 const CONSOLE_READY_TIMEOUT_MS = 15_000;
 const CONSOLE_READY_POLL_INTERVAL_MS = 200;
@@ -25,18 +24,6 @@ type WaitForConsoleReadyOptions = {
 };
 
 const getConsoleServerUrl = (port: number) => `http://127.0.0.1:${port}`;
-
-export const assertConsolePortAvailable = async (
-  port: number,
-  isPortInUse: (port: number) => Promise<boolean> = (port) =>
-    isPortReachable(port, { host: "localhost" }),
-) => {
-  if (await isPortInUse(port)) {
-    throw new Error(
-      `Console port ${port} is already in use. Stop the existing process or configure a different console.port.`,
-    );
-  }
-};
 
 export const getConsoleServerEnv = (
   port: number,
@@ -112,8 +99,6 @@ export const openConsole = async (
   port: number,
   listeningListener?: ((info: { port: number }) => void) | undefined,
 ) => {
-  await assertConsolePortAvailable(port);
-
   const require = createRequire(import.meta.url);
   const consolePkgPath = require.resolve("@hot-updater/console/package.json");
   const consoleDir = path.dirname(consolePkgPath);

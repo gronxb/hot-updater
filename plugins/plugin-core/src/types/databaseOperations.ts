@@ -10,7 +10,12 @@ import type {
   DatabaseWhere,
   SelectedDatabaseRow,
 } from "./databaseQuery";
-import type { BundleRow, DatabaseModel, DatabaseRow } from "./databaseRows";
+import type {
+  BundleRow,
+  ClientAccessKeyRow,
+  DatabaseModel,
+  DatabaseRow,
+} from "./databaseRows";
 
 export type DatabaseCapability =
   | "create"
@@ -34,6 +39,22 @@ export type DatabaseModelCapabilities = {
     readonly update: false;
     readonly delete: true;
     readonly count: true;
+    readonly findOne: true;
+    readonly findMany: true;
+  };
+  readonly bundle_events: {
+    readonly create: true;
+    readonly update: false;
+    readonly delete: false;
+    readonly count: false;
+    readonly findOne: false;
+    readonly findMany: true;
+  };
+  readonly client_access_keys: {
+    readonly create: true;
+    readonly update: true;
+    readonly delete: false;
+    readonly count: false;
     readonly findOne: true;
     readonly findMany: true;
   };
@@ -66,9 +87,14 @@ export type CreateDatabaseInput<
 };
 
 export type BundleRowUpdate = Partial<Omit<BundleRow, "id">>;
+export type ClientAccessKeyRowUpdate = Pick<
+  ClientAccessKeyRow,
+  "revoked_at_ms"
+>;
 
 export type DatabaseRowUpdate<TModel extends UpdateDatabaseModel> = {
   readonly bundles: BundleRowUpdate;
+  readonly client_access_keys: ClientAccessKeyRowUpdate;
 }[TModel];
 
 export type UpdateDatabaseInput<
@@ -244,12 +270,5 @@ export interface DatabasePluginImplementation {
     ) => Promise<TResult>,
   ) => Promise<TResult>;
   commit?: (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
-  commitBatch?: (
-    inputs: readonly DatabaseCommit[],
-  ) => Promise<readonly DatabaseCommitResult[]>;
-  onUnmount?: () => Promise<void>;
-}
-
-export interface DatabasePluginLifecycleHooks {
-  readonly onDatabaseUpdated?: () => Promise<void>;
+  dispose?: () => Promise<void>;
 }

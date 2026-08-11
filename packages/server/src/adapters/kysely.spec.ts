@@ -72,9 +72,13 @@ describe("kyselyAdapter SQLite JSON storage", () => {
     };
 
     await plugin.commit({
-      operation: "insert",
-      bundleId: row.id,
-      changes: [{ table: "bundles", operation: "insert", row }],
+      mutations: [
+        {
+          operation: "insert",
+          bundleId: row.id,
+          changes: [{ table: "bundles", operation: "insert", row }],
+        },
+      ],
     });
     const stored = await sqliteClient.query<{
       metadata: string;
@@ -118,11 +122,15 @@ describe("kyselyAdapter soft relations", () => {
     try {
       await expect(
         plugin.commit({
-          operation: "insert",
-          bundleId: owner.id,
-          changes: [
-            { table: "bundles", operation: "insert", row: owner },
-            { table: "bundle_patches", operation: "insert", row: patch },
+          mutations: [
+            {
+              operation: "insert",
+              bundleId: owner.id,
+              changes: [
+                { table: "bundles", operation: "insert", row: owner },
+                { table: "bundle_patches", operation: "insert", row: patch },
+              ],
+            },
           ],
         }),
       ).rejects.toThrow("bundle_patches.base_bundle_id.foreign-key");

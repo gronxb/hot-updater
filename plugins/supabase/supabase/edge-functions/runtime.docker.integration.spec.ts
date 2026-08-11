@@ -20,16 +20,8 @@ import {
   NIL_UUID,
   type UpdateInfo,
 } from "@hot-updater/core";
-import {
-  createManagedServerPlugins,
-  registerManagedServerClientKey,
-} from "@hot-updater/managed";
 import { bundleToRow, createDatabaseClient } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  generateUniversalComponentArtifacts,
-  type UniversalComponentGeneratedArtifact,
-} from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -56,8 +48,6 @@ const FUNCTION_NAME = "hot-updater-function";
 const FUNCTION_BASE_PATH = `/${FUNCTION_NAME}`;
 const HOT_UPDATER_BASE_PATH = "/";
 const LEGACY_HOT_UPDATER_BASE_PATH = "/api/check-update";
-const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const WRONG_API_KEY = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 const BUCKET_NAME = "hot-updater-bundles";
 const DENO_DOCKER_IMAGE = "denoland/deno:alpine";
 const DENO_CACHE_VOLUME = "hot-updater-supabase-deno-cache";
@@ -74,24 +64,12 @@ const ANON_KEY = createLegacyJwt("anon");
 const SERVICE_ROLE_KEY = createLegacyJwt("service_role");
 const REQUIRED_BUILD_ARTIFACTS = [
   {
-    command: "pnpm --filter @hot-updater/analytics build",
-    path: path.join(WORKSPACE_ROOT, "packages/analytics/dist/index.mjs"),
-  },
-  {
-    command: "pnpm --filter @hot-updater/better-auth build",
-    path: path.join(WORKSPACE_ROOT, "packages/better-auth/dist/managed.mjs"),
-  },
-  {
     command: "pnpm --filter @hot-updater/core build",
     path: path.join(WORKSPACE_ROOT, "packages/core/dist/index.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/server build",
     path: path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
-  },
-  {
-    command: "pnpm --filter @hot-updater/managed build",
-    path: path.join(WORKSPACE_ROOT, "packages/managed/dist/index.mjs"),
   },
   {
     command: "pnpm --filter @hot-updater/plugin-core build",
@@ -176,10 +154,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
   let gatewayBaseUrl = "";
   let edgeRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
-  let deploymentTarget: ReturnType<typeof createHotUpdater>;
   let databaseClient: ReturnType<typeof createDatabaseClient>;
   let supabaseAdmin: ReturnType<typeof createClient>;
-  let componentArtifacts: readonly UniversalComponentGeneratedArtifact[] = [];
 
   const runDatabaseSql = (statement: string): void => {
     runCheckedCommand({
@@ -219,14 +195,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
     gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
     composeProjectName = `hot-updater-supabase-${process.pid}-${Date.now()}`;
     composeFilePath = path.join(runtimeRoot, "docker-compose.yml");
-    deploymentTarget = createHotUpdater({
-      database: supabaseDatabase({
-        supabaseServiceRoleKey: SERVICE_ROLE_KEY,
-        supabaseUrl: gatewayBaseUrl,
-      }),
-      plugins: createManagedServerPlugins(),
-    });
-    componentArtifacts = generateUniversalComponentArtifacts(deploymentTarget);
 
     runCheckedCommand({
       command: "git",
@@ -241,7 +209,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
 
     await writeSupabaseRuntimeFiles({
-      componentArtifacts,
       runtimeRoot,
       gatewayPort,
       storageRepoPath,
@@ -302,11 +269,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
     supabaseAdmin = createClient(gatewayBaseUrl, SERVICE_ROLE_KEY);
     await ensureBucketExists(supabaseAdmin);
-    await registerManagedServerClientKey({
-      apiKey: RAW_API_KEY,
-      name: "Runtime test",
-      target: deploymentTarget,
-    });
 
     databaseClient = createDatabaseClient(
       supabaseDatabase({
@@ -396,41 +358,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
     if (error) {
       throw error;
     }
-    const events = await supabaseAdmin
-      .from("bundle_events")
-      .delete()
-      .neq("id", NIL_UUID);
-    if (events.error) throw events.error;
-  });
-
-  it("materializes components declared by the managed runtime", () => {
-    expect(componentArtifacts).toEqual([
-      expect.objectContaining({
-        componentId: "analytics",
-        path: "component-data/analytics/supabase-2.sql",
-        targetVersion: "2",
-      }),
-      expect.objectContaining({
-        componentId: "better-auth-managed-access-keys",
-        path: "component-data/better-auth-managed-access-keys/supabase-1.sql",
-        targetVersion: "1",
-      }),
-    ]);
-    runDatabaseSql(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1
-          FROM public.private_hot_updater_settings
-          WHERE key = 'schema.analytics' AND value = '2'
-        ) THEN
-          RAISE EXCEPTION 'Analytics component marker is not ready';
-        END IF;
-        IF to_regclass('public.bundle_events') IS NULL THEN
-          RAISE EXCEPTION 'Analytics component table is missing';
-        END IF;
-      END $$;
-    `);
   });
 
   afterAll(async () => {
@@ -476,7 +403,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
   ): Promise<UpdateInfo | null> => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath(args)}`,
-      { headers: { "x-api-key": RAW_API_KEY } },
     );
 
     if (!response.ok) {
@@ -880,14 +806,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await uploadBundleObject(supabaseAdmin, bundle.id);
     await seedHotUpdater.insertBundle(bundle);
 
-    const unauthorized = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath({
-        appVersion: "1.0",
-        bundleId: NIL_UUID,
-        platform: "ios",
-        _updateStrategy: "appVersion",
-      })}`,
-    );
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${createCanonicalPath({
         appVersion: "1.0",
@@ -895,10 +813,8 @@ describe.sequential("supabase edge runtime acceptance", () => {
         platform: "ios",
         _updateStrategy: "appVersion",
       })}`,
-      { headers: { "x-api-key": RAW_API_KEY } },
     );
 
-    expect(unauthorized.status).toBe(401);
     expect(response.ok).toBe(true);
     await expect(response.json()).resolves.toMatchObject({
       id: "00000000-0000-0000-0000-000000000001",
@@ -923,96 +839,6 @@ describe.sequential("supabase edge runtime acceptance", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Not found",
     });
-  });
-
-  it("keeps version public and requires a client key for OTA and events", async () => {
-    const version = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/version`,
-      { headers: { "x-api-key": WRONG_API_KEY } },
-    );
-    const wrongEvent = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/events`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": WRONG_API_KEY,
-        },
-        body: JSON.stringify({
-          type: "UNCHANGED",
-          installId: "supabase-managed-install",
-          toBundleId: "00000000-0000-0000-0000-000000000001",
-          platform: "ios",
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          fingerprintHash: null,
-          fromBundleId: null,
-          updateStrategy: null,
-        }),
-      },
-    );
-    const event = await fetch(
-      `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/events`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": RAW_API_KEY,
-        },
-        body: JSON.stringify({
-          type: "UNCHANGED",
-          installId: "supabase-managed-install",
-          toBundleId: "00000000-0000-0000-0000-000000000001",
-          platform: "ios",
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          fingerprintHash: null,
-          fromBundleId: null,
-          updateStrategy: null,
-        }),
-      },
-    );
-    const persisted = await supabaseAdmin
-      .from("bundle_events")
-      .select("install_id")
-      .eq("install_id", "supabase-managed-install");
-    if (persisted.error) throw persisted.error;
-
-    expect(version.status).toBe(200);
-    expect(wrongEvent.status).toBe(401);
-    expect(event.status).toBe(204);
-    expect(persisted.data).toEqual([
-      { install_id: "supabase-managed-install" },
-    ]);
-  });
-
-  it("does not grant Analytics read access to client keys", async () => {
-    const queryPaths = [
-      "/api/bundles/bundle-1/events/summary",
-      "/api/bundles/bundle-1/events/analytics",
-      "/api/installations/overview",
-      "/api/installations/active",
-      "/api/installations?query=install",
-      "/api/installations/install-1/events",
-    ];
-
-    for (const path of queryPaths) {
-      for (const apiKey of [undefined, WRONG_API_KEY, RAW_API_KEY]) {
-        const response = await fetch(
-          `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}${path}`,
-          apiKey === undefined
-            ? undefined
-            : { headers: { "x-api-key": apiKey } },
-        );
-        expect(response.status).toBe(401);
-        expect(response.headers.get("cache-control")).toBe("private, no-store");
-        await expect(response.json()).resolves.toEqual({
-          error: "Unauthorized",
-        });
-      }
-    }
   });
 });
 
@@ -1152,10 +978,7 @@ const uploadStorageObject = async (
   }
 };
 
-const loadSupabaseInitSql = async (
-  storageRepoPath: string,
-  componentArtifacts: readonly UniversalComponentGeneratedArtifact[],
-) => {
+const loadSupabaseInitSql = async (storageRepoPath: string) => {
   const storageMigrationsDir = path.join(storageRepoPath, "migrations/tenant");
   const storageMigrationFiles = (await readdir(storageMigrationsDir))
     .filter((file) => file.endsWith(".sql"))
@@ -1250,8 +1073,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
-
-${componentArtifacts.map(({ contents }) => contents).join("\n\n")}
 `.trim();
 };
 
@@ -1388,12 +1209,10 @@ http {
 };
 
 const writeSupabaseRuntimeFiles = async ({
-  componentArtifacts,
   runtimeRoot,
   gatewayPort,
   storageRepoPath,
 }: {
-  componentArtifacts: readonly UniversalComponentGeneratedArtifact[];
   runtimeRoot: string;
   gatewayPort: number;
   storageRepoPath: string;
@@ -1422,28 +1241,12 @@ const writeSupabaseRuntimeFiles = async ({
   );
   const importMap = {
     imports: {
-      "@hot-updater/analytics": pathToFileURL(
-        path.join(WORKSPACE_ROOT, "packages/analytics/dist/index.mjs"),
-      ).href,
-      "@hot-updater/better-auth/managed": pathToFileURL(
-        path.join(WORKSPACE_ROOT, "packages/better-auth/dist/managed.mjs"),
-      ).href,
       "@hot-updater/server": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
-      ).href,
-      "@hot-updater/server/internal/first-party-plugin": pathToFileURL(
-        path.join(
-          WORKSPACE_ROOT,
-          "packages/server/dist/internal/first-party-plugin.mjs",
-        ),
-      ).href,
-      "@hot-updater/managed": pathToFileURL(
-        path.join(WORKSPACE_ROOT, "packages/managed/dist/index.mjs"),
       ).href,
       "@hot-updater/supabase": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,
-      "better-auth/plugins/access": "npm:better-auth@1.6.24/plugins/access",
     },
   };
 
@@ -1464,7 +1267,7 @@ export { supabaseEdgeFunctionStorage } from ${JSON.stringify(pathToFileURL(path.
   );
   await writeFile(
     path.join(runtimeRoot, "db-init/00-init.sql"),
-    await loadSupabaseInitSql(storageRepoPath, componentArtifacts),
+    await loadSupabaseInitSql(storageRepoPath),
   );
   await writeFile(
     path.join(runtimeRoot, "docker-compose.yml"),

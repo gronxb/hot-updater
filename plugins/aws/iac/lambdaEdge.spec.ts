@@ -91,7 +91,6 @@ describe("LambdaEdgeDeployer", () => {
         databaseType: "dynamodb",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
-        managementBearerToken: "management-secret",
         publicKeyId: "public-key-id",
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",
@@ -106,8 +105,8 @@ describe("LambdaEdgeDeployer", () => {
     });
     expect(transformEnvMock).toHaveBeenCalledWith(
       "/tmp/hot-updater-lambda/index.cjs",
-      expect.objectContaining({
-        MANAGEMENT_BEARER_TOKEN: "management-secret",
+      expect.not.objectContaining({
+        MANAGEMENT_BEARER_TOKEN: expect.anything(),
       }),
     );
     expect(lambdaMocks.updateFunctionConfiguration).toHaveBeenCalledWith({
@@ -153,7 +152,6 @@ describe("LambdaEdgeDeployer", () => {
         databaseType: "dynamodb",
         dynamodbRegion: "ap-northeast-2",
         dynamodbTableName: "hot-updater-metadata",
-        managementBearerToken: "management-secret",
         publicKeyId: "public-key-id",
         ssmParameterName: "/hot-updater/hot-updater-storage/keypair",
         ssmRegion: "ap-northeast-2",

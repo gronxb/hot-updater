@@ -8,17 +8,6 @@ const databaseMocks = vi.hoisted(() => ({
   dynamoDB: vi.fn(() => ({ name: "dynamoDB" })),
   s3Database: vi.fn(() => ({ name: "s3Database" })),
 }));
-const managedPluginMocks = vi.hoisted(() => {
-  const plugins = [
-    { id: "managed-plugin-a" },
-    { id: "managed-plugin-b" },
-  ] as const;
-
-  return {
-    createManagedServerPlugins: vi.fn(() => plugins),
-    plugins,
-  };
-});
 const serverMocks = vi.hoisted(() => ({ createHotUpdater: vi.fn() }));
 
 const fakeHotUpdaterHandler = vi.fn(
@@ -35,10 +24,6 @@ vi.mock("../src/s3Database", () => ({
 
 vi.mock("../src/dynamoDB", () => ({
   dynamoDB: databaseMocks.dynamoDB,
-}));
-
-vi.mock("@hot-updater/managed", () => ({
-  createManagedServerPlugins: managedPluginMocks.createManagedServerPlugins,
 }));
 
 vi.mock("../src/s3Storage", () => ({
@@ -140,14 +125,13 @@ describe("aws lambda entrypoint", () => {
       DATABASE_TYPE: "s3",
       DYNAMODB_REGION: "us-east-1",
       DYNAMODB_TABLE_NAME: "hot-updater-metadata",
-      MANAGEMENT_BEARER_TOKEN: "management-secret",
       SSM_PARAMETER_NAME: "/hot-updater/test",
       SSM_REGION: "us-east-1",
       S3_BUCKET_NAME: "hot-updater-test",
     };
   });
 
-  it("uses DynamoDB metadata when init configures the managed runtime", async () => {
+  it("uses DynamoDB metadata with built-in Analytics and client keys", async () => {
     // Given
     globalThis.HotUpdater.DATABASE_TYPE = "dynamodb";
 
@@ -160,25 +144,20 @@ describe("aws lambda entrypoint", () => {
       tableName: "hot-updater-metadata",
     });
     expect(databaseMocks.s3Database).not.toHaveBeenCalled();
-    expect(managedPluginMocks.createManagedServerPlugins).toHaveBeenCalledWith({
-      managementBearerToken: "management-secret",
-    });
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
-        plugins: managedPluginMocks.plugins,
+        analytics: {},
+        clientAccessKeys: true,
       }),
     );
   });
 
-  it("keeps the deprecated S3 runtime free of managed routes", async () => {
+  it("keeps the deprecated S3 runtime free of built-in optional routes", async () => {
     await import("./index");
 
-    expect(
-      managedPluginMocks.createManagedServerPlugins,
-    ).not.toHaveBeenCalled();
-    expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
-      expect.objectContaining({ plugins: [] }),
-    );
+    const options = serverMocks.createHotUpdater.mock.calls[0]?.[0];
+    expect(options).not.toHaveProperty("analytics");
+    expect(options).not.toHaveProperty("clientAccessKeys");
   });
 
   it("serves canonical app-version routes without a cohort segment for origin-request events", async () => {

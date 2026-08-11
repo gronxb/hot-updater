@@ -3,11 +3,11 @@ import { KeyRound } from "lucide-react";
 
 import { AccessKeysPage } from "@/components/features/access-keys/AccessKeysPage";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { ensureManagedAccessKeyRouteAccess } from "@/lib/access-keys-api";
+import { ensureClientAccessKeyRouteAccess } from "@/lib/access-keys-api";
 
 export const Route = createFileRoute("/access-keys")({
   beforeLoad: ({ context }) =>
-    ensureManagedAccessKeyRouteAccess(context.queryClient),
+    ensureClientAccessKeyRouteAccess(context.queryClient),
   component: AccessKeysRoute,
 });
 
@@ -24,7 +24,7 @@ function AccessKeysRoute() {
           <h1 className="text-sm font-medium">Access keys</h1>
         </div>
         <p className="basis-full pl-9 text-xs text-muted-foreground sm:basis-auto sm:pl-0">
-          Control app access to managed OTA and analytics endpoints.
+          Control app access to OTA and analytics ingestion endpoints.
         </p>
       </header>
 

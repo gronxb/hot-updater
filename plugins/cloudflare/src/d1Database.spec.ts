@@ -1,7 +1,3 @@
-import {
-  defineUniversalComponentSchema,
-  type UniversalComponentDataAdapter,
-} from "@hot-updater/plugin-core";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { d1Database } from "./d1Database";
@@ -13,24 +9,8 @@ type RecordedQuery = {
 
 const state = vi.hoisted<{
   queries: RecordedQuery[];
-  responses: unknown[][];
   results: unknown[];
-}>(() => ({ queries: [], responses: [], results: [] }));
-
-const remoteMigrationSchema = defineUniversalComponentSchema({
-  id: "remote-history",
-  versions: [
-    {
-      version: "1",
-      tables: [
-        {
-          name: "remote_records",
-          columns: [{ name: "id", primaryKey: true, type: "string" }],
-        },
-      ],
-    },
-  ],
-});
+}>(() => ({ queries: [], results: [] }));
 
 const bundleD1Row = {
   id: "bundle-1",
@@ -60,14 +40,13 @@ vi.mock("cloudflare", () => ({
           _databaseId: string,
           input: { readonly sql: string; readonly params?: readonly string[] },
         ) => {
-          const results = state.responses.shift() ?? state.results;
           state.queries.push({
             sql: input.sql,
             params: input.params ?? [],
           });
           return {
             async *iterPages() {
-              yield { result: [{ results }] };
+              yield { result: [{ results: state.results }] };
             },
           };
         },
@@ -78,57 +57,7 @@ vi.mock("cloudflare", () => ({
 
 beforeEach(() => {
   state.queries.length = 0;
-  state.responses.length = 0;
   state.results.length = 0;
-});
-
-const remoteAdapter = (): UniversalComponentDataAdapter => {
-  const plugin = d1Database({
-    accountId: "account",
-    cloudflareApiToken: "token",
-    databaseId: "database",
-  });
-  if (plugin.componentData === undefined) {
-    throw new TypeError("Remote D1 component adapter is missing");
-  }
-  return plugin.componentData;
-};
-
-it("sends a fresh component migration as one parameter-free remote batch", async () => {
-  state.responses.push(
-    [],
-    [],
-    [],
-    [{ value: "1" }],
-    [{ name: "id", notnull: 1, pk: 1, type: "TEXT" }],
-    [
-      {
-        sql: "CREATE TABLE remote_records (id TEXT PRIMARY KEY NOT NULL)",
-      },
-    ],
-    [],
-    [],
-  );
-  const adapter = remoteAdapter();
-
-  await expect(adapter.migrate?.(remoteMigrationSchema)).resolves.toEqual({
-    changed: true,
-    version: "1",
-  });
-
-  const batch = state.queries[2];
-  expect(batch?.params).toEqual([]);
-  expect(batch?.sql).toContain(
-    'CREATE TABLE "remote_records" ("id" TEXT PRIMARY KEY NOT NULL);',
-  );
-  expect(
-    batch?.sql.lastIndexOf("'schema.remote-history', '1'"),
-  ).toBeGreaterThan(
-    batch?.sql.lastIndexOf('CREATE TABLE "remote_records"') ?? -1,
-  );
-  expect(state.queries[3]?.sql).toContain(
-    "SELECT value FROM private_hot_updater_settings",
-  );
 });
 
 it("queries bundles through domain filters", async () => {

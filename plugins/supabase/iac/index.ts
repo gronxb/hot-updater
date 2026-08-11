@@ -1,5 +1,4 @@
 import fs from "fs/promises";
-import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "path";
 
@@ -18,34 +17,21 @@ import {
   MissingInitInputsError,
   type ProviderConfig,
   p,
-  planDeploymentArtifacts,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   resolvePackageVersion,
   transformEnv,
   transformTemplate,
-  writeDeploymentArtifacts,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import {
-  generateUniversalComponentArtifacts,
-  type UniversalComponentGeneratedArtifact,
-} from "@hot-updater/server/db";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
-import { supabaseDatabase } from "../src/supabaseDatabase";
 import {
   initProvider as SUPABASE_INIT_PROVIDER,
   isSupabaseFunctionName,
   SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
 } from "./init/index";
-import { collectBareImportSpecifiers } from "./packageImports";
-import {
-  assertPathInside,
-  resolveContainedPath,
-  resolveContainedRegularPath,
-} from "./pathBoundary";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
 import { getSupabaseCliEnv } from "./supabaseAuthentication";
 import { ensureSupabaseBucketPrivate } from "./supabaseBucketPrivacy";
@@ -74,136 +60,10 @@ const SUPABASE_PROJECT_READY_STATUS = "ACTIVE_HEALTHY";
 const SUPABASE_PROJECT_PROVISIONING_STATUS = "COMING_UP";
 const SUPABASE_PROJECT_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_PROJECT_READINESS_POLL_INTERVAL_MS = 1000;
-const SUPABASE_MIGRATION_VERSION_PATTERN = /^\d{14}(?:_|$)/;
-
-const compareArtifactIdentity = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
-
-const sanitizeMigrationName = (value: string): string => {
-  const sanitized = value
-    .normalize("NFKD")
-    .replace(/[^A-Za-z0-9._-]+/g, "-")
-    .replace(/^[.-]+|[.-]+$/g, "");
-  return sanitized || "component";
-};
-
-export const createSupabaseComponentMigrationVersion = ({
-  contents,
-  path: artifactPath,
-  targetVersion,
-}: Pick<
-  UniversalComponentGeneratedArtifact,
-  "contents" | "path" | "targetVersion"
->): string => {
-  const digest = createHash("sha256")
-    .update(artifactPath)
-    .update("\0")
-    .update(targetVersion)
-    .update("\0")
-    .update(contents)
-    .digest("hex");
-  const decimal = (BigInt(`0x${digest}`) % 10_000_000_000_000n)
-    .toString()
-    .padStart(13, "0");
-  return `9${decimal}`;
-};
-
-export const materializeSupabaseComponentArtifacts = async ({
-  artifacts,
-  migrationPath,
-}: {
-  readonly artifacts: readonly UniversalComponentGeneratedArtifact[];
-  readonly migrationPath: string;
-}): Promise<readonly string[]> => {
-  planDeploymentArtifacts(artifacts);
-  const planned = artifacts
-    .map((artifact) => {
-      const normalizedPath = planDeploymentArtifacts([artifact])[0]!.path;
-      if (path.posix.extname(normalizedPath).toLowerCase() !== ".sql") {
-        throw new Error(
-          `Supabase component artifact must be SQL: ${artifact.path}`,
-        );
-      }
-      const version = createSupabaseComponentMigrationVersion({
-        contents: artifact.contents,
-        path: normalizedPath,
-        targetVersion: artifact.targetVersion,
-      });
-      const artifactName = sanitizeMigrationName(
-        path.posix.basename(normalizedPath, path.posix.extname(normalizedPath)),
-      );
-      const componentName = sanitizeMigrationName(artifact.componentId);
-      return {
-        ...artifact,
-        path: `${version}_hot-updater-component-${componentName}-${artifactName}.sql`,
-        sourcePath: normalizedPath,
-        version,
-      };
-    })
-    .sort(
-      (left, right) =>
-        compareArtifactIdentity(left.componentId, right.componentId) ||
-        compareArtifactIdentity(left.sourcePath, right.sourcePath),
-    );
-
-  const versions = new Set<string>();
-  const outputPaths = new Set<string>();
-  for (const artifact of planned) {
-    if (versions.has(artifact.version)) {
-      throw new Error(
-        `Supabase component migration version collision: ${artifact.version}`,
-      );
-    }
-    versions.add(artifact.version);
-    const outputKey = artifact.path.toLowerCase();
-    if (outputPaths.has(outputKey)) {
-      throw new Error(
-        `Supabase component migration path collision: ${artifact.path}`,
-      );
-    }
-    outputPaths.add(outputKey);
-  }
-
-  const existingFiles = await fs.readdir(migrationPath);
-  for (const artifact of planned) {
-    const versionCollision = existingFiles.find(
-      (file) =>
-        file !== artifact.path &&
-        SUPABASE_MIGRATION_VERSION_PATTERN.test(file) &&
-        file.slice(0, 14) === artifact.version,
-    );
-    if (versionCollision !== undefined) {
-      throw new Error(
-        `Supabase component migration version collision: ${artifact.version}`,
-      );
-    }
-    const existingPath = existingFiles.find(
-      (file) => file.toLowerCase() === artifact.path.toLowerCase(),
-    );
-    if (existingPath !== undefined) {
-      if (existingPath !== artifact.path) {
-        throw new Error(
-          `Supabase component migration path collision: ${artifact.path}`,
-        );
-      }
-      const existingContents = await fs.readFile(
-        path.join(migrationPath, existingPath),
-        "utf-8",
-      );
-      if (existingContents !== artifact.contents) {
-        throw new Error(
-          `Supabase component migration path collision: ${artifact.path}`,
-        );
-      }
-    }
-  }
-
-  const results = await writeDeploymentArtifacts({
-    artifacts: planned,
-    outputDir: migrationPath,
-  });
-  return Object.freeze(results.map(({ path: outputPath }) => outputPath));
-};
+const STATIC_IMPORT_SPECIFIER_PATTERN =
+  /^\s*(?:import|export)\s+(?:type\s+)?(?:[^"'`]+?\s+from\s+)?["']([^"']+)["'];?/gm;
+const DYNAMIC_IMPORT_SPECIFIER_PATTERN =
+  /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
 const getConfigScaffold = (build: BuildType): HotUpdaterConfigScaffold => {
   const storageConfig: ProviderConfig = {
@@ -288,61 +148,125 @@ export default HotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
 })(App);`;
 
-type PackageExportTarget =
-  | string
-  | {
-      readonly default?: PackageExportTarget;
-      readonly import?: PackageExportTarget;
-      readonly require?: PackageExportTarget;
-      readonly types?: string;
-    };
-
-type PackageExportName = "." | `./${string}`;
-
-function resolveImportExportTarget(
-  target: PackageExportTarget | undefined,
-): string | undefined {
-  if (typeof target === "string") return target;
-  if (target === undefined) return undefined;
-  return (
-    resolveImportExportTarget(target.import) ??
-    resolveImportExportTarget(target.default) ??
-    resolveImportExportTarget(target.require)
-  );
-}
-
-const resolvePackageExport = async (
+const resolvePackageExportPath = async (
   packageName: string,
-  exportName: PackageExportName,
+  exportName: string,
 ) => {
-  const packageJsonPath = await fs.realpath(
-    require.resolve(`${packageName}/package.json`),
-  );
-  const packageRoot = path.dirname(packageJsonPath);
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageJson = JSON.parse(
     await fs.readFile(packageJsonPath, "utf-8"),
   ) as {
-    exports?: Record<string, PackageExportTarget>;
+    exports?: Record<
+      string,
+      | string
+      | {
+          import?: string;
+          require?: string;
+          default?: string;
+        }
+    >;
   };
   const exportTarget = packageJson.exports?.[exportName];
-  const relativePath = resolveImportExportTarget(exportTarget);
+  const relativePath =
+    typeof exportTarget === "string"
+      ? exportTarget
+      : (exportTarget?.import ??
+        exportTarget?.default ??
+        exportTarget?.require);
 
-  if (!relativePath?.startsWith("./")) {
+  if (!relativePath) {
     throw new Error(
       `Could not resolve ${exportName} export for package ${packageName}`,
     );
   }
 
-  const exportPath = await resolveContainedRegularPath(
-    packageRoot,
-    path.resolve(packageRoot, relativePath),
-  );
-  return { exportPath, packageRoot };
+  return path.resolve(path.dirname(packageJsonPath), relativePath);
 };
 
 const toImportMapPath = (fromDir: string, toPath: string) => {
   const relativePath = path.relative(fromDir, toPath).split(path.sep).join("/");
   return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
+};
+
+const pathExists = async (targetPath: string) => {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const resolveLocalModulePath = async (fromFile: string, specifier: string) => {
+  const basePath = path.resolve(path.dirname(fromFile), specifier);
+  const candidates = [
+    basePath,
+    `${basePath}.mjs`,
+    `${basePath}.js`,
+    path.join(basePath, "index.mjs"),
+    path.join(basePath, "index.js"),
+  ];
+
+  for (const candidate of candidates) {
+    if (await pathExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+};
+
+const collectBareImportSpecifiers = async (entryPath: string) => {
+  const filesToVisit = [entryPath];
+  const visitedFiles = new Set<string>();
+  const specifiers = new Set<string>();
+
+  while (filesToVisit.length > 0) {
+    const currentFile = filesToVisit.pop();
+    if (!currentFile || visitedFiles.has(currentFile)) {
+      continue;
+    }
+
+    visitedFiles.add(currentFile);
+    const source = await fs.readFile(currentFile, "utf8");
+
+    const matches = [
+      ...source.matchAll(STATIC_IMPORT_SPECIFIER_PATTERN),
+      ...source.matchAll(DYNAMIC_IMPORT_SPECIFIER_PATTERN),
+    ];
+
+    for (const match of matches) {
+      const specifier = match[1];
+      if (!specifier) {
+        continue;
+      }
+
+      if (specifier.startsWith("./") || specifier.startsWith("../")) {
+        const resolvedPath = await resolveLocalModulePath(
+          currentFile,
+          specifier,
+        );
+        if (resolvedPath) {
+          filesToVisit.push(resolvedPath);
+        }
+        continue;
+      }
+
+      if (
+        specifier.startsWith("node:") ||
+        specifier.startsWith("npm:") ||
+        specifier.startsWith("jsr:") ||
+        specifier.startsWith("http://") ||
+        specifier.startsWith("https://")
+      ) {
+        continue;
+      }
+
+      specifiers.add(specifier);
+    }
+  }
+
+  return specifiers;
 };
 
 const toVendorDirName = (packageName: string) =>
@@ -355,12 +279,11 @@ const prepareVendoredPackageImport = async ({
 }: {
   targetDir: string;
   packageName: string;
-  exportName: PackageExportName;
+  exportName: string;
 }) => {
-  const { exportPath, packageRoot } = await resolvePackageExport(
-    packageName,
-    exportName,
-  );
+  const packageJsonPath = require.resolve(`${packageName}/package.json`);
+  const packageRoot = path.dirname(packageJsonPath);
+  const exportPath = await resolvePackageExportPath(packageName, exportName);
   const relativeExportPath = path
     .relative(packageRoot, exportPath)
     .split(path.sep);
@@ -373,33 +296,20 @@ const prepareVendoredPackageImport = async ({
   }
 
   const vendorDirName = toVendorDirName(packageName);
-  const sourceRootPath = await resolveContainedRegularPath(
-    packageRoot,
-    path.join(packageRoot, sourceRootDir),
+  const sourceRootPath = path.join(packageRoot, sourceRootDir);
+  const vendoredRootPath = path.join(
+    targetDir,
+    EDGE_VENDOR_DIR,
+    vendorDirName,
+    sourceRootDir,
   );
-  const targetRoot = await fs.realpath(targetDir);
-  const vendorBasePath = path.join(targetRoot, EDGE_VENDOR_DIR);
-  await fs.mkdir(vendorBasePath, { recursive: true });
-  const resolvedVendorBasePath = await resolveContainedPath(
-    targetRoot,
-    vendorBasePath,
-  );
-  const vendoredPackagePath = path.join(resolvedVendorBasePath, vendorDirName);
-  assertPathInside(resolvedVendorBasePath, vendoredPackagePath);
-  const vendoredRootPath = path.join(vendoredPackagePath, sourceRootDir);
-  assertPathInside(vendoredPackagePath, vendoredRootPath);
 
-  await fs.rm(vendoredPackagePath, {
+  await fs.rm(path.join(targetDir, EDGE_VENDOR_DIR, vendorDirName), {
     recursive: true,
     force: true,
   });
   await fs.mkdir(path.dirname(vendoredRootPath), { recursive: true });
   await fs.cp(sourceRootPath, vendoredRootPath, {
-    filter: async (source, destination) => {
-      await resolveContainedRegularPath(packageRoot, source);
-      assertPathInside(vendoredPackagePath, path.resolve(destination));
-      return true;
-    },
     recursive: true,
     force: true,
   });
@@ -407,7 +317,7 @@ const prepareVendoredPackageImport = async ({
   const vendoredEntryPath = path.join(vendoredRootPath, ...restPath);
 
   return {
-    importMapPath: toImportMapPath(targetRoot, vendoredEntryPath),
+    importMapPath: toImportMapPath(targetDir, vendoredEntryPath),
     packageRoot,
     sourceEntryPath: exportPath,
   };
@@ -417,12 +327,8 @@ const resolveBareSpecifierImportTarget = async (
   specifier: string,
   searchFrom: string,
 ) => {
-  const segments = specifier.split("/");
-  const packageSegmentCount = specifier.startsWith("@") ? 2 : 1;
-  const packageName = segments.slice(0, packageSegmentCount).join("/");
-  const subpath = segments.slice(packageSegmentCount).join("/");
-  const version = resolvePackageVersion(packageName, { searchFrom });
-  return `npm:${packageName}@${version}${subpath ? `/${subpath}` : ""}`;
+  const version = resolvePackageVersion(specifier, { searchFrom });
+  return `npm:${specifier}@${version}`;
 };
 
 const buildEdgeFunctionImports = async (targetDir: string) => {
@@ -436,7 +342,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
   }: {
     importSpecifier: string;
     packageName: string;
-    exportName: PackageExportName;
+    exportName: string;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
     if (visitedWorkspacePackages.has(visitKey)) {
@@ -453,7 +359,6 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     imports[importSpecifier] = vendoredPackage.importMapPath;
 
     const nestedSpecifiers = await collectBareImportSpecifiers(
-      vendoredPackage.packageRoot,
       vendoredPackage.sourceEntryPath,
     );
 
@@ -463,13 +368,11 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       }
 
       if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
-        const [packageScope, packageName, ...subpathSegments] =
-          nestedSpecifier.split("/");
-        const subpath = subpathSegments.join("/");
+        const [scope, name, ...subpath] = nestedSpecifier.split("/");
         await addWorkspacePackage({
           importSpecifier: nestedSpecifier,
-          packageName: `${packageScope}/${packageName}`,
-          exportName: subpath.length === 0 ? "." : `./${subpath}`,
+          packageName: `${scope}/${name}`,
+          exportName: subpath.length === 0 ? "." : `./${subpath.join("/")}`,
         });
         continue;
       }
@@ -481,11 +384,6 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     }
   };
 
-  await addWorkspacePackage({
-    importSpecifier: "@hot-updater/managed",
-    packageName: "@hot-updater/managed",
-    exportName: ".",
-  });
   await addWorkspacePackage({
     importSpecifier: "@hot-updater/server",
     packageName: "@hot-updater/server",
@@ -754,7 +652,11 @@ const deployEdgeFunction = async (
   }
   const functionsDir = path.resolve(workdir, "supabase", "functions");
   const targetDir = path.resolve(functionsDir, functionName);
-  assertPathInside(functionsDir, targetDir);
+  if (!targetDir.startsWith(`${functionsDir}${path.sep}`)) {
+    throw new Error(
+      "Supabase Edge Function path escaped its output directory.",
+    );
+  }
   await fs.mkdir(targetDir, { recursive: true });
   const denoConfig = await resolveEdgeFunctionDenoConfig(targetDir);
 
@@ -915,12 +817,7 @@ export const getSupabaseProjectAccess = async ({
   };
 };
 
-export const runInit = async ({
-  build,
-  createDeploymentTarget,
-  envFile,
-  prepareDeployment,
-}: RunInitOptions) => {
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { inputEnv, managedEnv } = initEnvSources;
@@ -1099,19 +996,6 @@ export const runInit = async ({
     }
   }
 
-  const deploymentTarget = createDeploymentTarget?.(
-    supabaseDatabase({
-      supabaseServiceRoleKey: projectAccess.serviceRoleApiKey,
-      supabaseUrl: `https://${project.id}.supabase.co`,
-    }),
-  );
-  if (deploymentTarget !== undefined) {
-    await materializeSupabaseComponentArtifacts({
-      artifacts: generateUniversalComponentArtifacts(deploymentTarget),
-      migrationPath,
-    });
-  }
-
   await linkSupabase(tmpDir, {
     accessToken,
     projectId: project.id,
@@ -1119,13 +1003,6 @@ export const runInit = async ({
   });
 
   await pushDB(tmpDir, { accessToken, dbPassword });
-  if (deploymentTarget !== undefined) {
-    for (const notice of (await prepareDeployment?.(deploymentTarget, {
-      envFile,
-    })) ?? []) {
-      p.note(notice.message, notice.title);
-    }
-  }
   await deployEdgeFunction(accessToken, tmpDir, project.id, functionName);
 
   await removeTmpDir();

@@ -1,10 +1,6 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
-  attachCapabilityContribution,
   createDatabaseClient,
-  defineCapability,
-  defineUniversalComponentSchema,
-  type UniversalComponentDataAdapter,
   type DatabasePlugin,
   type RuntimeStoragePlugin,
   type RuntimeStorageProfile,
@@ -13,7 +9,6 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { createInMemoryDatabasePlugin } from "../../test-utils/test/inMemoryDatabasePlugin";
 import packageJson from "../package.json" with { type: "json" };
-import { getHotUpdaterCoreMetadata } from "./createHotUpdaterCore";
 import { createHotUpdater } from "./index";
 import type {
   CreateHotUpdaterOptions,
@@ -21,7 +16,6 @@ import type {
   HandlerOptions,
   HandlerRoutes,
 } from "./index";
-import { defineFirstPartyServerPlugin } from "./internal/first-party-plugin";
 import {
   createRuntimeDatabase,
   createRuntimeStorage,
@@ -53,12 +47,13 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<keyof HandlerOptions>().toEqualTypeOf<"basePath" | "routes">();
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
       | "database"
+      | "analytics"
+      | "clientAccessKeys"
       | "storages"
       | "storagePlugins"
       | "basePath"
       | "cwd"
       | "routes"
-      | "plugins"
     >();
     expectTypeOf<HandlerRoutes>().toEqualTypeOf<{
       readonly updateCheck: boolean;
@@ -266,294 +261,4 @@ describe("runtime createHotUpdater", () => {
       });
     },
   );
-
-  it("keeps core routes public when an authentication provider is installed", async () => {
-    const authenticate = vi.fn(async () => {
-      throw new Error("public routes must not authenticate");
-    });
-    const authentication = defineFirstPartyServerPlugin({
-      id: "authentication",
-      setup: () => ({
-        authentication: { id: "authentication", authenticate },
-      }),
-    });
-    const hotUpdater = createHotUpdater({
-      database: createRuntimeDatabase(),
-      plugins: [authentication],
-    });
-
-    const response = await hotUpdater.handler(
-      new Request("https://updates.example.com/api/version"),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      version: HOT_UPDATER_SERVER_VERSION,
-    });
-    expect(authenticate).not.toHaveBeenCalled();
-  });
-
-  it("enforces a core-exception policy across denied and authorized bundle requests", async () => {
-    let bodyPulls = 0;
-    let authenticated = false;
-    const authenticate = vi.fn(async () =>
-      authenticated
-        ? ({
-            kind: "authenticated",
-            principal: { issuer: "test", subject: "operator" },
-          } as const)
-        : ({ kind: "anonymous" } as const),
-    );
-    const authentication = defineFirstPartyServerPlugin({
-      id: "authentication",
-      setup: () => ({
-        authentication: { id: "authentication", authenticate },
-      }),
-    });
-    const policy = defineFirstPartyServerPlugin({
-      id: "route-policy",
-      setup: () => ({
-        routePolicy: {
-          kind: "protect-except-core",
-          routeIds: [
-            "core.version",
-            "core.update.fingerprint",
-            "core.update.fingerprint-cohort",
-            "core.update.app-version",
-            "core.update.app-version-cohort",
-          ],
-        },
-      }),
-    });
-    const database = createRuntimeDatabase();
-    const hotUpdater = createHotUpdater({
-      database,
-      plugins: [authentication, policy],
-      routes: { bundles: true, updateCheck: true },
-    });
-
-    const version = await hotUpdater.handler(
-      new Request("https://updates.example.com/api/version"),
-    );
-    const body = new ReadableStream<Uint8Array>(
-      {
-        pull(controller) {
-          bodyPulls += 1;
-          controller.enqueue(new TextEncoder().encode('{"bundles":[]}'));
-          controller.close();
-        },
-      },
-      { highWaterMark: 0 },
-    );
-    const bundle = await hotUpdater.handler(
-      new Request("https://updates.example.com/api/bundles", {
-        body,
-        duplex: "half",
-        method: "POST",
-      }),
-    );
-    authenticated = true;
-    const authorizedRequest = new Request(
-      "https://updates.example.com/api/bundles",
-      {
-        body: JSON.stringify(runtimeBundle),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-      },
-    );
-    const authorizedBundle = await hotUpdater.handler(authorizedRequest);
-
-    expect(version.status).toBe(200);
-    expect(bundle.status).toBe(401);
-    expect(bundle.headers.get("cache-control")).toBe("private, no-store");
-    expect(bodyPulls).toBe(0);
-    expect(authorizedBundle.status).toBe(201);
-    expect(authorizedRequest.bodyUsed).toBe(true);
-    await expect(
-      createDatabaseClient(database).getBundleById(runtimeBundle.id),
-    ).resolves.toMatchObject(runtimeBundle);
-    expect(authenticate).toHaveBeenCalledTimes(2);
-  });
-
-  it("authenticates a protected plugin route before parsing its body", async () => {
-    let bodyPulls = 0;
-    const parse = vi.fn(async (request: Request) => request.json());
-    const handle = vi.fn(async () => Response.json({ accepted: true }));
-    const plugin = defineFirstPartyServerPlugin({
-      id: "protected-route",
-      setup: () => ({
-        authentication: {
-          id: "authentication",
-          authenticate: async () => ({ kind: "anonymous" }),
-        },
-        routes: [
-          {
-            access: { kind: "protected" },
-            id: "feature.create",
-            input: { parse },
-            method: "POST",
-            path: "/feature",
-            handle,
-          },
-        ],
-      }),
-    });
-    const hotUpdater = createHotUpdater({
-      database: createRuntimeDatabase(),
-      plugins: [plugin],
-    });
-    const body = new ReadableStream<Uint8Array>(
-      {
-        pull(controller) {
-          bodyPulls += 1;
-          controller.enqueue(new TextEncoder().encode('{"secret":true}'));
-          controller.close();
-        },
-      },
-      { highWaterMark: 0 },
-    );
-    const request = new Request("https://updates.example.com/api/feature", {
-      body,
-      duplex: "half",
-      method: "POST",
-    });
-
-    const response = await hotUpdater.handler(request);
-
-    expect(response.status).toBe(401);
-    expect(response.headers.get("cache-control")).toBe("private, no-store");
-    await expect(response.json()).resolves.toEqual({ error: "Unauthorized" });
-    expect(bodyPulls).toBe(0);
-    expect(parse).not.toHaveBeenCalled();
-    expect(handle).not.toHaveBeenCalled();
-  });
-
-  it("materializes provider capabilities before plugin setup", async () => {
-    const capability = defineCapability<{ readonly label: string }>({
-      id: "example@1",
-      parse(value) {
-        if (
-          typeof value !== "object" ||
-          value === null ||
-          typeof Reflect.get(value, "label") !== "string"
-        ) {
-          throw new TypeError("Invalid example capability.");
-        }
-        return Object.freeze({ label: Reflect.get(value, "label") });
-      },
-    });
-    const database = attachCapabilityContribution(createRuntimeDatabase(), {
-      token: capability,
-      create: () => ({ label: "database-provider" }),
-    });
-    const plugin = defineFirstPartyServerPlugin({
-      id: "capability-route",
-      requires: [{ missing: "error", token: capability }],
-      setup: ({ capabilities }) => {
-        const service = capabilities.require(capability);
-        return {
-          routes: [
-            {
-              access: { kind: "public" },
-              id: "feature.capability",
-              method: "GET",
-              path: "/feature-capability",
-              async handle() {
-                return Response.json({ label: service.label });
-              },
-            },
-          ],
-        };
-      },
-    });
-    const hotUpdater = createHotUpdater({ database, plugins: [plugin] });
-
-    const response = await hotUpdater.handler(
-      new Request("https://updates.example.com/api/feature-capability"),
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      label: "database-provider",
-    });
-  });
-
-  it("exposes bound component data through maintenance metadata", () => {
-    const schema = defineUniversalComponentSchema({
-      id: "audit-log",
-      versions: [
-        {
-          version: "1",
-          tables: [
-            {
-              columns: [
-                { name: "id", primaryKey: true, type: "string" },
-                { name: "occurred_at_ms", type: "float" },
-              ],
-              name: "audit_records",
-            },
-          ],
-          orderedScans: [
-            {
-              columns: ["occurred_at_ms", "id"],
-              name: "chronological",
-              table: "audit_records",
-            },
-          ],
-        },
-      ],
-    });
-    const source = {
-      schema,
-      append: async () => undefined,
-      assertReady: async () => undefined,
-      create: async () => "created" as const,
-      get: async () => null,
-      orderedScan: async () => [],
-    };
-    const migrate = vi.fn(async () => ({ changed: true, version: "1" }));
-    const artifacts = vi.fn(() => []);
-    const adapter: UniversalComponentDataAdapter = {
-      artifacts,
-      bind: () => source,
-      migrate,
-    };
-    const database = { ...createRuntimeDatabase(), componentData: adapter };
-    const plugin = defineFirstPartyServerPlugin({
-      id: "audit-log",
-      schema,
-      setup: () => ({}),
-    });
-
-    const hotUpdater = createHotUpdater({ database, plugins: [plugin] });
-    const metadata = getHotUpdaterCoreMetadata(hotUpdater);
-
-    expect(metadata?.components?.schemas).toEqual([schema]);
-    expect(metadata?.components?.sources).toHaveLength(1);
-    expect(metadata?.components?.sources[0]?.schema).toBe(schema);
-    expect(metadata?.universalComponentDataAdapter).toBe(adapter);
-    expect(migrate).not.toHaveBeenCalled();
-    expect(artifacts).not.toHaveBeenCalled();
-  });
-
-  it("does not bind component data without a schema declaration", () => {
-    const bind = vi.fn(() => {
-      throw new Error("unused");
-    });
-    const database = {
-      ...createRuntimeDatabase(),
-      componentData: { bind },
-    };
-    const plugin = defineFirstPartyServerPlugin({
-      id: "schema-free",
-      setup: () => ({}),
-    });
-
-    const hotUpdater = createHotUpdater({ database, plugins: [plugin] });
-    const metadata = getHotUpdaterCoreMetadata(hotUpdater);
-
-    expect(metadata?.components).toBeUndefined();
-    expect(metadata?.universalComponentDataAdapter).toBeUndefined();
-    expect(bind).not.toHaveBeenCalled();
-  });
 });

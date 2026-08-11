@@ -1,6 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
@@ -63,19 +60,16 @@ const mocks = vi.hoisted(() => {
     credentialApi,
     confirm: vi.fn(),
     confirmInitInputPersistence: vi.fn(),
-    d1Database: vi.fn(() => ({ adapterName: "d1Database" })),
     createWrangler: vi.fn(),
     execa: vi.fn(),
     getWranglerLoginAuthToken: vi.fn(),
     inputSecrets: vi.fn(),
-    migrateUniversalComponents: vi.fn(),
     log: {
       error: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
     },
     makeEnv: vi.fn(),
-    note: vi.fn(),
     readHotUpdaterInitEnv: vi.fn(),
     select: vi.fn(),
   };
@@ -93,14 +87,6 @@ vi.mock("cloudflare", () => ({
   }),
 }));
 
-vi.mock("@hot-updater/cloudflare", () => ({
-  d1Database: mocks.d1Database,
-}));
-
-vi.mock("@hot-updater/server/db", () => ({
-  migrateUniversalComponents: mocks.migrateUniversalComponents,
-}));
-
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@hot-updater/cli-tools")>();
@@ -113,7 +99,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
       ...actual.p,
       confirm: mocks.confirm,
       log: mocks.log,
-      note: mocks.note,
       select: mocks.select,
       tasks: vi.fn(async (tasks) => {
         for (const task of tasks) {
@@ -155,7 +140,6 @@ describe("Cloudflare init discovery", () => {
       managedEnv: {},
     });
     mocks.confirmInitInputPersistence.mockResolvedValue(false);
-    mocks.migrateUniversalComponents.mockResolvedValue([]);
     mocks.confirm.mockResolvedValue(true);
     mocks.select.mockImplementation(
       async ({ options }: { options: readonly { readonly value: string }[] }) =>
@@ -469,99 +453,6 @@ describe("Cloudflare init discovery", () => {
         accountId: "account-id",
         cloudflareApiToken: "wrangler-oauth-token",
       }),
-    );
-  });
-
-  it("does not ship a reusable API-key digest in Worker variables", async () => {
-    const config: unknown = JSON.parse(
-      await fs.readFile(
-        path.resolve(import.meta.dirname, "../worker/wrangler.json"),
-        "utf8",
-      ),
-    );
-    if (typeof config !== "object" || config === null) {
-      throw new Error("Wrangler config must be an object.");
-    }
-    const vars = Reflect.get(config, "vars");
-    if (typeof vars !== "object" || vars === null) {
-      throw new Error("Wrangler vars must be an object.");
-    }
-    expect(Reflect.has(vars, "API_KEY_SHA256")).toBe(false);
-    expect(Reflect.get(vars, "JWT_SECRET")).toBe("USER_JWT_SECRET");
-  });
-
-  it("configures and migrates before deploying the Worker", async () => {
-    const events: string[] = [];
-    const deploymentError = new Error("stop at worker deploy");
-    const deploymentTarget = { adapterName: "deployment-target" };
-    const createDeploymentTarget = vi.fn(() => deploymentTarget);
-    let workerConfig: unknown;
-    mocks.api.d1.database.list.mockResolvedValue({
-      result: [{ name: "ota", uuid: "database-id" }],
-    });
-    const wrangler = vi.fn(async (...args: string[]) => {
-      if (args[0] === "d1") {
-        events.push("core-migrations");
-        return;
-      }
-      events.push("worker-deploy");
-      throw deploymentError;
-    });
-    mocks.createWrangler.mockImplementation(
-      async ({ cwd }: { readonly cwd: string }) => {
-        workerConfig = JSON.parse(
-          await fs.readFile(path.join(cwd, "wrangler.json"), "utf8"),
-        );
-        return wrangler;
-      },
-    );
-    mocks.migrateUniversalComponents.mockImplementation(async () => {
-      events.push("universal-migrations");
-      return [];
-    });
-    const prepareDeployment = vi.fn(async () => {
-      events.push("prepare-deployment");
-      return [{ message: "secret notice", title: "Deployment notice" }];
-    });
-
-    await expect(
-      runInit({ build: "bare", createDeploymentTarget, prepareDeployment }),
-    ).rejects.toBeInstanceOf(CloudflareDeploymentError);
-
-    expect(events).toEqual([
-      "core-migrations",
-      "universal-migrations",
-      "prepare-deployment",
-      "worker-deploy",
-    ]);
-    expect(workerConfig).toMatchObject({
-      vars: {
-        JWT_SECRET: expect.any(String),
-      },
-    });
-    expect(
-      Reflect.has(
-        Reflect.get(workerConfig as object, "vars") as object,
-        "API_KEY_SHA256",
-      ),
-    ).toBe(false);
-    expect(prepareDeployment).toHaveBeenCalledWith(deploymentTarget, {
-      envFile: ".env.hotupdater",
-    });
-    expect(mocks.note).toHaveBeenCalledWith(
-      "secret notice",
-      "Deployment notice",
-    );
-    expect(mocks.d1Database).toHaveBeenCalledWith({
-      accountId: "account-id",
-      cloudflareApiToken: "api-token",
-      databaseId: "database-id",
-    });
-    expect(createDeploymentTarget).toHaveBeenCalledWith({
-      adapterName: "d1Database",
-    });
-    expect(mocks.migrateUniversalComponents).toHaveBeenCalledWith(
-      deploymentTarget,
     );
   });
 

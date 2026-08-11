@@ -8,7 +8,6 @@ export * from "./createTarGz";
 export * from "./createZip";
 export * from "./crypto";
 export * from "./cwd";
-export * from "./deploymentArtifacts";
 export * from "./ensureInstallPackages";
 export * from "./getAndroidSdkPath";
 export * from "./getPackageManager";

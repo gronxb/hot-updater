@@ -1,7 +1,6 @@
 import {
   access,
   chmod,
-  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -16,17 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import {
-  createManagedServerPlugins,
-  registerManagedServerClientKey,
-} from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  generateUniversalComponentArtifacts,
-  migrateUniversalComponents,
-  type UniversalComponentGeneratedArtifact,
-  type UniversalComponentMigrationSummary,
-} from "@hot-updater/server/db";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -43,7 +32,6 @@ import {
   stopRuntime,
   waitForHttpOk,
 } from "../../../../packages/test-utils/src/runtimeProcess";
-import { mergeFirebaseComponentIndexArtifacts } from "../../src/firebaseComponentIndexArtifacts";
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseFunctionsStorage } from "../../src/firebaseFunctionsStorage";
 
@@ -53,8 +41,6 @@ const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
 const FUNCTION_NAME = "hot-updater";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
-const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const WRONG_API_KEY = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 const FIREBASE_CLI_VERSION_ARGS = [
   "--filter",
   "@hot-updater/firebase",
@@ -142,9 +128,6 @@ describe.sequential("firebase functions runtime acceptance", () => {
   let functionsPort = 0;
   let functionsRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
-  let componentArtifacts: readonly UniversalComponentGeneratedArtifact[] = [];
-  let componentMigrations: readonly UniversalComponentMigrationSummary[] = [];
-  let stagedFirestoreIndexes = "";
   const projectId = process.env.GCLOUD_PROJECT ?? "";
   const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST ?? "";
   const storageEmulatorHost = process.env.FIREBASE_STORAGE_EMULATOR_HOST ?? "";
@@ -188,13 +171,19 @@ describe.sequential("firebase functions runtime acceptance", () => {
       path.join(tempRoot, "firebase.json"),
       JSON.stringify(firebaseConfig),
     );
+    await writeFile(
+      path.join(tempRoot, "firestore.indexes.json"),
+      await readFile(
+        path.join(
+          WORKSPACE_ROOT,
+          "plugins/firebase/dist/firebase/public/firestore.indexes.json",
+        ),
+        "utf8",
+      ),
+    );
+
     const functionsDir = path.join(tempRoot, "functions");
     await mkdir(functionsDir, { recursive: true });
-    await cp(
-      path.join(WORKSPACE_ROOT, "plugins/firebase/dist/firebase/functions"),
-      functionsDir,
-      { recursive: true },
-    );
     await writeFile(
       path.join(functionsDir, "package.json"),
       await readFile(
@@ -248,36 +237,9 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       projectId,
       storageBucket,
     };
-    const database = firebaseDatabase(adminOptions);
-    const deploymentTarget = createHotUpdater({
-      database,
-      plugins: createManagedServerPlugins(),
-    });
-    componentArtifacts = generateUniversalComponentArtifacts(deploymentTarget);
-    stagedFirestoreIndexes = mergeFirebaseComponentIndexArtifacts(
-      await readFile(
-        path.join(
-          WORKSPACE_ROOT,
-          "plugins/firebase/dist/firebase/public/firestore.indexes.json",
-        ),
-        "utf8",
-      ),
-      componentArtifacts,
-    );
-    await writeFile(
-      path.join(tempRoot, "firestore.indexes.json"),
-      stagedFirestoreIndexes,
-    );
-    componentMigrations = await migrateUniversalComponents(deploymentTarget);
-    await registerManagedServerClientKey({
-      apiKey: RAW_API_KEY,
-      createdAt: 1,
-      name: "Runtime test",
-      target: deploymentTarget,
-    });
 
     seedHotUpdater = createHotUpdater({
-      database,
+      database: firebaseDatabase(adminOptions),
       storages: [
         firebaseFunctionsStorage({
           ...adminOptions,
@@ -332,55 +294,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     await clearStorageBucket(storageBucket);
     await clearFirestoreCollection("bundle_patches");
     await clearFirestoreCollection("bundles");
-    await clearFirestoreCollection("bundle_events");
-  });
-
-  it("generates and migrates components declared by the managed runtime", async () => {
-    expect(componentArtifacts).toEqual([
-      expect.objectContaining({
-        componentId: "analytics",
-        path: "firestore.indexes.analytics.2.json",
-        targetVersion: "2",
-      }),
-      expect.objectContaining({
-        componentId: "better-auth-managed-access-keys",
-        path: "firestore.indexes.better-auth-managed-access-keys.1.json",
-        targetVersion: "1",
-      }),
-    ]);
-    expect(componentMigrations).toEqual([
-      {
-        changed: true,
-        componentId: "analytics",
-        version: "2",
-      },
-      {
-        changed: true,
-        componentId: "better-auth-managed-access-keys",
-        version: "1",
-      },
-    ]);
-    expect(
-      (
-        JSON.parse(stagedFirestoreIndexes) as {
-          readonly indexes: readonly unknown[];
-        }
-      ).indexes,
-    ).toContainEqual({
-      collectionGroup: "bundle_events",
-      fields: [
-        { fieldPath: "received_at_ms", order: "ASCENDING" },
-        { fieldPath: "id", order: "ASCENDING" },
-      ],
-      queryScope: "COLLECTION",
-    });
-    await expect(
-      getFirestore()
-        .collection("private_hot_updater_settings")
-        .doc("schema.analytics")
-        .get()
-        .then((snapshot) => snapshot.data()),
-    ).resolves.toEqual({ value: "2" });
   });
 
   afterAll(async () => {
@@ -404,95 +317,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     );
   };
 
-  it("keeps version public and requires the client key for event ingestion", async () => {
-    const version = await invokeHandler(`${HOT_UPDATER_BASE_PATH}/version`, {
-      headers: { "x-api-key": WRONG_API_KEY },
-    });
-    const rejectedEvent = await invokeHandler(
-      `${HOT_UPDATER_BASE_PATH}/events`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": WRONG_API_KEY,
-        },
-        body: JSON.stringify({
-          type: "UNCHANGED",
-          installId: "firebase-managed-install",
-          toBundleId: "bundle-1",
-          platform: "ios",
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          fingerprintHash: null,
-          fromBundleId: null,
-          updateStrategy: null,
-        }),
-      },
-    );
-    const event = await invokeHandler(`${HOT_UPDATER_BASE_PATH}/events`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": RAW_API_KEY,
-      },
-      body: JSON.stringify({
-        type: "UNCHANGED",
-        installId: "firebase-managed-install",
-        toBundleId: "bundle-1",
-        platform: "ios",
-        appVersion: "1.0.0",
-        channel: "production",
-        cohort: "default",
-        fingerprintHash: null,
-        fromBundleId: null,
-        updateStrategy: null,
-      }),
-    });
-    const persisted = await getFirestore()
-      .collection("bundle_events")
-      .where("install_id", "==", "firebase-managed-install")
-      .get();
-
-    expect(version.status).toBe(200);
-    expect(rejectedEvent.status).toBe(401);
-    expect(event.status).toBe(204);
-    expect(persisted.size).toBe(1);
-  });
-
-  it("protects only Analytics query routes", async () => {
-    const queryPaths = [
-      "/api/bundles/bundle-1/events/summary",
-      "/api/bundles/bundle-1/events/analytics",
-      "/api/installations/overview",
-      "/api/installations/active",
-      "/api/installations?query=install",
-      "/api/installations/install-1/events",
-    ];
-
-    for (const path of queryPaths) {
-      for (const apiKey of [undefined, WRONG_API_KEY]) {
-        const response = await invokeHandler(
-          `${HOT_UPDATER_BASE_PATH}${path}`,
-          apiKey === undefined
-            ? undefined
-            : { headers: { "x-api-key": apiKey } },
-        );
-        expect(response.status).toBe(401);
-        expect(response.headers.get("cache-control")).toBe("private, no-store");
-        await expect(response.json()).resolves.toEqual({
-          error: "Unauthorized",
-        });
-      }
-
-      const clientKeyResponse = await invokeHandler(
-        `${HOT_UPDATER_BASE_PATH}${path}`,
-        { headers: { "x-api-key": RAW_API_KEY } },
-      );
-      expect(clientKeyResponse.status).toBe(401);
-    }
-  });
-
   const seedRuntimeBundles = async (bundles: Bundle[]) => {
     for (const bundle of bundles.map((bundle) =>
       toRuntimeBundle(bundle, storageBucket),
@@ -507,9 +331,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
   };
 
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
-    const response = await invokeHandler(createCanonicalPath(args), {
-      headers: { "x-api-key": RAW_API_KEY },
-    });
+    const response = await invokeHandler(createCanonicalPath(args));
 
     return (await response.json()) as any;
   };
@@ -664,7 +486,6 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         platform: "ios",
         _updateStrategy: "appVersion",
       }),
-      { headers: { "x-api-key": RAW_API_KEY } },
     );
 
     await expect(response.json()).resolves.toMatchObject({

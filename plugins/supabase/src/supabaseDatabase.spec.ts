@@ -6,7 +6,11 @@ import { supabaseDatabase } from "./supabaseDatabase";
 // allow: SIZE_OK — hoisted PostgREST query/filter state machine for public plugin conformance.
 const { createMockClient, resetMockClient } = vi.hoisted(() => {
   type Row = Record<string, unknown>;
-  type TableName = "bundle_patches" | "bundles";
+  type TableName =
+    | "bundle_events"
+    | "bundle_patches"
+    | "bundles"
+    | "client_access_keys";
   type QueryError = { readonly message: string };
   type QueryResult = {
     readonly count: number | null;
@@ -15,8 +19,10 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
   };
 
   const rows: Record<TableName, Map<string, Row>> = {
+    bundle_events: new Map(),
     bundle_patches: new Map(),
     bundles: new Map(),
+    client_access_keys: new Map(),
   };
 
   const splitTopLevel = (value: string): readonly string[] => {
@@ -316,6 +322,69 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       },
       rpc: async (name: string, args?: Record<string, unknown>) => {
         const bundles = [...rows.bundles.values()];
+        if (name === "hot_updater_commit") {
+          const staged = {
+            bundle_patches: new Map(rows.bundle_patches),
+            bundles: new Map(rows.bundles),
+          };
+          const mutations = (args?.p_mutations ?? []) as readonly Row[];
+          for (const mutation of mutations) {
+            if (
+              mutation.operation === "update" &&
+              !staged.bundles.has(String(mutation.bundleId))
+            ) {
+              return {
+                data: {
+                  applied: false,
+                  missingBundleId: String(mutation.bundleId),
+                },
+                error: null,
+              };
+            }
+          }
+          for (const mutation of mutations) {
+            for (const change of mutation.changes as readonly Row[]) {
+              if (change.table === "bundles") {
+                const id = String(change.id ?? (change.row as Row).id);
+                if (change.operation === "insert") {
+                  if (staged.bundles.has(id)) {
+                    return { data: null, error: { message: "duplicate id" } };
+                  }
+                  staged.bundles.set(id, change.row as Row);
+                } else if (change.operation === "update") {
+                  Object.assign(staged.bundles.get(id)!, change.update);
+                } else {
+                  staged.bundles.delete(id);
+                  for (const [patchId, patch] of staged.bundle_patches) {
+                    if (patch.bundle_id === id || patch.base_bundle_id === id) {
+                      staged.bundle_patches.delete(patchId);
+                    }
+                  }
+                }
+                continue;
+              }
+              if (change.operation === "delete") {
+                for (const [patchId, patch] of staged.bundle_patches) {
+                  if (patch.bundle_id === change.bundleId) {
+                    staged.bundle_patches.delete(patchId);
+                  }
+                }
+                continue;
+              }
+              const patch = change.row as Row;
+              if (
+                !staged.bundles.has(String(patch.bundle_id)) ||
+                !staged.bundles.has(String(patch.base_bundle_id))
+              ) {
+                return { data: null, error: { message: "foreign key" } };
+              }
+              staged.bundle_patches.set(String(patch.id), patch);
+            }
+          }
+          rows.bundles = staged.bundles;
+          rows.bundle_patches = staged.bundle_patches;
+          return { data: { applied: true }, error: null };
+        }
         if (name === "hot_updater_create_bundle_with_patches") {
           const bundle = args?.p_bundle as Row;
           const patches = (args?.p_patches ?? []) as readonly Row[];
@@ -403,8 +472,10 @@ const { createMockClient, resetMockClient } = vi.hoisted(() => {
       },
     }),
     resetMockClient: () => {
+      rows.bundle_events.clear();
       rows.bundle_patches.clear();
       rows.bundles.clear();
+      rows.client_access_keys.clear();
     },
   };
 });

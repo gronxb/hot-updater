@@ -64,7 +64,6 @@
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/core": "workspace:*",
     "@hot-updater/js": "workspace:*",
-    "@hot-updater/managed": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "cloudflare": "4.2.0",

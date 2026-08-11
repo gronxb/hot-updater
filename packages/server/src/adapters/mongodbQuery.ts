@@ -1,6 +1,8 @@
 import type {
   BundlePatchRow,
   BundleRow,
+  BundleEventRow,
+  ClientAccessKeyRow,
   DatabaseModel,
   DatabaseOrderBy,
   DatabaseWhere,
@@ -142,6 +144,24 @@ export function createMongoPatchWhere(
 ): Filter<BundlePatchRow>;
 export function createMongoPatchWhere(
   where: readonly DatabaseWhere<"bundle_patches">[] | undefined,
+): Document {
+  return createMongoWhereDocument(where);
+}
+
+export function createMongoEventWhere(
+  where: readonly DatabaseWhere<"bundle_events">[] | undefined,
+): Filter<BundleEventRow>;
+export function createMongoEventWhere(
+  where: readonly DatabaseWhere<"bundle_events">[] | undefined,
+): Document {
+  return createMongoWhereDocument(where);
+}
+
+export function createMongoClientAccessKeyWhere(
+  where: readonly DatabaseWhere<"client_access_keys">[] | undefined,
+): Filter<ClientAccessKeyRow>;
+export function createMongoClientAccessKeyWhere(
+  where: readonly DatabaseWhere<"client_access_keys">[] | undefined,
 ): Document {
   return createMongoWhereDocument(where);
 }

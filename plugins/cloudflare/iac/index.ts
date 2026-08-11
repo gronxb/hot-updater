@@ -21,8 +21,6 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { d1Database } from "@hot-updater/cloudflare";
-import { migrateUniversalComponents } from "@hot-updater/server/db";
 import { Cloudflare } from "cloudflare";
 
 import { createWrangler } from "../src/utils/createWrangler";
@@ -95,25 +93,17 @@ const deployWorker = async (
   apiToken: string,
   accountId: string,
   {
-    createDeploymentTarget,
     credentialSource,
-    d1ApiToken,
     d1DatabaseId,
     d1DatabaseName,
-    envFilePath,
     nonInteractive,
-    prepareDeployment,
     r2BucketName,
     workerName,
   }: {
-    createDeploymentTarget: RunInitOptions["createDeploymentTarget"];
     credentialSource: CloudflareCredentialSource;
-    d1ApiToken: string;
     d1DatabaseId: string;
     d1DatabaseName: string;
-    envFilePath: string;
     nonInteractive: boolean;
-    prepareDeployment: RunInitOptions["prepareDeployment"];
     r2BucketName: string;
     workerName: string;
   },
@@ -185,24 +175,8 @@ const deployWorker = async (
 
     await wrangler("d1", "migrations", "apply", d1DatabaseName, "--remote");
 
-    const deploymentTarget = createDeploymentTarget?.(
-      d1Database({
-        accountId,
-        cloudflareApiToken: d1ApiToken,
-        databaseId: d1DatabaseId,
-      }),
-    );
-    if (deploymentTarget !== undefined) {
-      await migrateUniversalComponents(deploymentTarget);
-      for (const notice of (await prepareDeployment?.(deploymentTarget, {
-        envFile: envFilePath,
-      })) ?? []) {
-        p.note(notice.message, notice.title);
-      }
-    }
-
     await wrangler("deploy", "--name", workerName);
-    return { workerName };
+    return workerName;
   } catch (error) {
     if (error instanceof Error) {
       throw toCloudflareDeploymentError(error, credentialSource);
@@ -213,12 +187,7 @@ const deployWorker = async (
   }
 };
 
-export const runInit = async ({
-  build,
-  createDeploymentTarget,
-  envFile,
-  prepareDeployment,
-}: RunInitOptions) => {
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
@@ -672,6 +641,7 @@ export const runInit = async ({
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseId.envKey]: selectedD1DatabaseId,
     [CLOUDFLARE_INIT_PROVIDER.inputs.d1DatabaseName.envKey]: d1DatabaseName,
   });
+
   const subdomains = await runCloudflareApiRequest({
     request: () =>
       cf.workers.subdomains.get({
@@ -681,14 +651,10 @@ export const runInit = async ({
   });
 
   await deployWorker(infrastructureApiToken, accountId, {
-    createDeploymentTarget,
     credentialSource: infrastructureCredentialSource,
-    d1ApiToken: apiToken,
     d1DatabaseId: selectedD1DatabaseId,
     d1DatabaseName,
-    envFilePath: envFile ?? ".env.hotupdater",
     nonInteractive,
-    prepareDeployment,
     r2BucketName: selectedBucketName,
     workerName,
   });

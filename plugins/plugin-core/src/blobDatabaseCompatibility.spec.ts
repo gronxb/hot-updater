@@ -54,9 +54,13 @@ const commonLegacyBundle = {
 
 const insertBundleRow = (plugin: DatabasePlugin, row: BundleRow) =>
   plugin.commit({
-    operation: "insert",
-    bundleId: row.id,
-    changes: [{ table: "bundles", operation: "insert", row }],
+    mutations: [
+      {
+        operation: "insert",
+        bundleId: row.id,
+        changes: [{ table: "bundles", operation: "insert", row }],
+      },
+    ],
   });
 
 const createMemoryBlobDatabase = (entries: readonly [string, unknown][]) => {
@@ -317,7 +321,13 @@ describe("blob snapshot compatibility", () => {
       bundle_patches: [],
     });
 
-    expect(parseBlobDatabaseSnapshot(snapshot)).toEqual(snapshot);
+    expect(parseBlobDatabaseSnapshot(snapshot)).toEqual({
+      version: 2,
+      bundles: [],
+      bundle_patches: [],
+      bundle_events: [],
+      client_access_keys: [],
+    });
   });
 
   it("keeps direct bundle channel strings", () => {
@@ -371,6 +381,8 @@ describe("blob snapshot compatibility", () => {
         },
       ],
       bundle_patches: [],
+      bundle_events: [],
+      client_access_keys: [],
     });
   });
 
@@ -518,14 +530,18 @@ describe("blob snapshot compatibility", () => {
 
     await expect(
       plugin.commit({
-        operation: "update",
-        bundleId,
-        changes: [
+        mutations: [
           {
-            table: "bundles",
             operation: "update",
-            id: bundleId,
-            update: { message: "updated" },
+            bundleId,
+            changes: [
+              {
+                table: "bundles",
+                operation: "update",
+                id: bundleId,
+                update: { message: "updated" },
+              },
+            ],
           },
         ],
       }),
@@ -566,13 +582,17 @@ describe("blob snapshot compatibility", () => {
 
     await expect(
       plugin.commit({
-        operation: "update",
-        bundleId: targetBundleId,
-        changes: [
+        mutations: [
           {
-            table: "bundle_patches",
-            operation: "delete",
+            operation: "update",
             bundleId: targetBundleId,
+            changes: [
+              {
+                table: "bundle_patches",
+                operation: "delete",
+                bundleId: targetBundleId,
+              },
+            ],
           },
         ],
       }),

@@ -2,67 +2,26 @@ import {
   isDatabaseMetadataObject,
   type BundlePatchRow,
   type BundleRow,
+  type BundleEventRow,
+  type ClientAccessKeyRow,
 } from "@hot-updater/plugin-core";
 
-export class FirebaseDatabaseDataError extends Error {
-  readonly name = "FirebaseDatabaseDataError";
-
-  constructor(readonly source: string) {
-    super(`Invalid Firebase database data at "${source}".`);
-  }
-}
-
-const record = (value: unknown, source: string): object => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new FirebaseDatabaseDataError(source);
-  }
-  return value;
-};
-
-export const property = (value: object, key: string): unknown =>
-  Reflect.get(value, key);
-
-export const hasFirebaseProperty = (value: unknown, key: string): boolean =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  key in value;
-
-const string = (value: unknown, source: string): string => {
-  if (typeof value !== "string") throw new FirebaseDatabaseDataError(source);
-  return value;
-};
-
-const nullableString = (value: unknown, source: string): string | null => {
-  if (value === null || value === undefined) return null;
-  return string(value, source);
-};
-
-const boolean = (value: unknown, source: string): boolean => {
-  if (typeof value !== "boolean") throw new FirebaseDatabaseDataError(source);
-  return value;
-};
-
-const number = (value: unknown, source: string): number => {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new FirebaseDatabaseDataError(source);
-  }
-  return value;
-};
-
-const stringArray = (
-  value: unknown,
-  source: string,
-): readonly string[] | null => {
-  if (value === null || value === undefined) return null;
-  if (!Array.isArray(value)) throw new FirebaseDatabaseDataError(source);
-  return value.map((item) => string(item, source));
-};
-
-const platform = (value: unknown, source: string): "android" | "ios" => {
-  if (value === "android" || value === "ios") return value;
-  throw new FirebaseDatabaseDataError(source);
-};
+import {
+  boolean,
+  FirebaseDatabaseDataError,
+  nullableString,
+  number,
+  platform,
+  property,
+  record,
+  string,
+  stringArray,
+} from "./firebaseDatabaseParserShared";
+export {
+  FirebaseDatabaseDataError,
+  hasFirebaseProperty,
+  property,
+} from "./firebaseDatabaseParserShared";
 
 const metadata = (value: unknown, source: string) => {
   const normalized = value === undefined ? {} : value;
@@ -132,6 +91,72 @@ export const parseFirebasePatchRow = (
     patch_file_hash: string(property(input, "patch_file_hash"), source),
     patch_storage_uri: string(property(input, "patch_storage_uri"), source),
     order_index: number(property(input, "order_index"), source),
+  };
+};
+
+export const parseFirebaseBundleEventRow = (
+  value: unknown,
+  source: string,
+): BundleEventRow => {
+  const input = record(value, source);
+  const type = string(property(input, "type"), source);
+  const fromBundleId = nullableString(
+    property(input, "from_bundle_id"),
+    source,
+  );
+  const updateStrategy = nullableString(
+    property(input, "update_strategy"),
+    source,
+  );
+  if (
+    !(
+      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
+        fromBundleId !== null &&
+        (updateStrategy === "fingerprint" ||
+          updateStrategy === "appVersion")) ||
+      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+    )
+  ) {
+    throw new FirebaseDatabaseDataError(source);
+  }
+  return {
+    id: string(property(input, "id"), source),
+    type,
+    install_id: string(property(input, "install_id"), source),
+    user_id: nullableString(property(input, "user_id"), source),
+    username: nullableString(property(input, "username"), source),
+    from_bundle_id: fromBundleId,
+    to_bundle_id: string(property(input, "to_bundle_id"), source),
+    platform: platform(property(input, "platform"), source),
+    app_version: string(property(input, "app_version"), source),
+    channel: string(property(input, "channel"), source),
+    cohort: string(property(input, "cohort"), source),
+    update_strategy: updateStrategy,
+    fingerprint_hash: nullableString(
+      property(input, "fingerprint_hash"),
+      source,
+    ),
+    sdk_version: nullableString(property(input, "sdk_version"), source),
+    received_at_ms: number(property(input, "received_at_ms"), source),
+  } as BundleEventRow;
+};
+
+export const parseFirebaseClientAccessKeyRow = (
+  value: unknown,
+  source: string,
+): ClientAccessKeyRow => {
+  const input = record(value, source);
+  const role = string(property(input, "role"), source);
+  if (role !== "client") throw new FirebaseDatabaseDataError(source);
+  const revokedAt = property(input, "revoked_at_ms");
+  return {
+    id: string(property(input, "id"), source),
+    hash: string(property(input, "hash"), source),
+    name: string(property(input, "name"), source),
+    prefix: string(property(input, "prefix"), source),
+    role,
+    created_at_ms: number(property(input, "created_at_ms"), source),
+    revoked_at_ms: revokedAt === null ? null : number(revokedAt, source),
   };
 };
 

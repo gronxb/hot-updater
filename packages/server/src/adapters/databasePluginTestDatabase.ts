@@ -27,9 +27,37 @@ export const DATABASE_PLUGIN_TEST_SCHEMA_SQL = `
     patch_storage_uri text not null,
     order_index integer not null default 0
   );
+  create table bundle_events (
+    id text primary key,
+    type text not null,
+    install_id text not null,
+    user_id text,
+    username text,
+    from_bundle_id text,
+    to_bundle_id text not null,
+    platform text not null,
+    app_version text not null,
+    channel text not null,
+    cohort text not null,
+    update_strategy text,
+    fingerprint_hash text,
+    sdk_version text,
+    received_at_ms integer not null
+  );
+  create table client_access_keys (
+    id text primary key,
+    hash text not null unique,
+    name text not null,
+    prefix text not null,
+    role text not null,
+    created_at_ms integer not null,
+    revoked_at_ms integer
+  );
 `;
 
 export const DATABASE_PLUGIN_TEST_RESET_SQL = `
+  delete from bundle_events;
+  delete from client_access_keys;
   delete from bundle_patches;
   delete from bundles;
 `;

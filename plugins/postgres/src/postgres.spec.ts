@@ -32,10 +32,12 @@ setupDatabasePluginTestSuite({
   },
   createPlugin: () => postgres({ dialect: new PGliteDialect(getClient()) }),
   reset: async () => {
-    await getClient().exec("DELETE FROM bundle_patches; DELETE FROM bundles;");
+    await getClient().exec(
+      "DELETE FROM bundle_events; DELETE FROM client_access_keys; DELETE FROM bundle_patches; DELETE FROM bundles;",
+    );
   },
   dispose: async (plugin) => {
-    await plugin.onUnmount?.();
+    await plugin.dispose?.();
     client = undefined;
   },
 });

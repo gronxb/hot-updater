@@ -1,14 +1,4 @@
 export * from "./calculatePagination";
-export {
-  attachCapabilityContribution,
-  defineCapability,
-  type CapabilityContribution,
-  type CapabilityToken,
-  type DatabaseCapabilityRuntime,
-  type DefineCapabilityOptions,
-  type HotUpdaterInfrastructureRuntime,
-  type RuntimeStorageAccess,
-} from "./capabilities";
 export * from "./compressionFormat";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
@@ -35,5 +25,4 @@ export * from "./resolveUpdateInfoFromBundles";
 export * from "./semverSatisfies";
 export * from "./storageProfile";
 export * from "./types";
-export * from "./universalComponentData";
 export * from "./uuidv7";

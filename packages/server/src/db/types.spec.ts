@@ -12,18 +12,25 @@ describe("isDatabasePlugin", () => {
     expect(result).toBe(true);
   });
 
-  it("rejects a v1 factory and non-callable domain fields", () => {
+  it("rejects a v1 factory and malformed required domains", () => {
     const plugin = createInMemoryDatabasePlugin();
     const factory = () => plugin;
-    const malformed = {
+    const malformedBundles = {
       ...plugin,
       bundles: { ...plugin.bundles, findMany: null },
     };
+    const missingAnalytics = {
+      ...plugin,
+      analytics: undefined,
+    };
+    const malformedClientAccessKeys = {
+      ...plugin,
+      clientAccessKeys: { ...plugin.clientAccessKeys, revoke: null },
+    };
 
-    const factoryResult = isDatabasePlugin(factory);
-    const malformedResult = isDatabasePlugin(malformed);
-
-    expect(factoryResult).toBe(false);
-    expect(malformedResult).toBe(false);
+    expect(isDatabasePlugin(factory)).toBe(false);
+    expect(isDatabasePlugin(malformedBundles)).toBe(false);
+    expect(isDatabasePlugin(missingAnalytics)).toBe(false);
+    expect(isDatabasePlugin(malformedClientAccessKeys)).toBe(false);
   });
 });

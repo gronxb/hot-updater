@@ -32,11 +32,7 @@ describe("database client", () => {
   });
 
   it("inserts and hydrates an aggregate with ordered patch rows", async () => {
-    const hook = vi.fn(async () => undefined);
-    const client = createDatabaseClient({
-      ...plugin,
-      onDatabaseUpdated: hook,
-    });
+    const client = createDatabaseClient(plugin);
     const firstBase = createBundle("001");
     const secondBase = createBundle("002");
     const target = createBundle("003", {
@@ -57,15 +53,12 @@ describe("database client", () => {
     });
     await client.insertBundle(firstBase);
     await client.insertBundle(secondBase);
-    hook.mockClear();
-
     await client.insertBundle(target);
 
     await expect(client.getBundleById(target.id)).resolves.toMatchObject({
       patches: target.patches,
       patchBaseBundleId: firstBase.id,
     });
-    expect(hook).toHaveBeenCalledOnce();
   });
 
   it("paginates filtered bundle aggregates and lists derived channels", async () => {
@@ -150,8 +143,26 @@ describe("database client", () => {
   });
 
   it("rolls back a failed aggregate mutation when transactions are available", async () => {
-    const hook = vi.fn(async () => undefined);
     const invalid = createBundle("302", {
+      patches: [
+        {
+          baseBundleId: "missing",
+          baseFileHash: "missing",
+          patchFileHash: "patch",
+          patchStorageUri: "storage://patch",
+        },
+      ],
+    });
+    const client = createDatabaseClient(plugin);
+
+    const mutation = client.insertBundle(invalid);
+
+    await expect(mutation).rejects.toThrow("reference");
+    await expect(client.getBundleById(invalid.id)).resolves.toBeNull();
+  });
+
+  it("rejects patch inserts before sequential writes", async () => {
+    const invalid = createBundle("303", {
       patches: [
         {
           baseBundleId: "missing",
@@ -163,40 +174,16 @@ describe("database client", () => {
     });
     const client = createDatabaseClient({
       ...plugin,
-      onDatabaseUpdated: hook,
-    });
-
-    const mutation = client.insertBundle(invalid);
-
-    await expect(mutation).rejects.toThrow("reference");
-    await expect(client.getBundleById(invalid.id)).resolves.toBeNull();
-    expect(hook).not.toHaveBeenCalled();
-  });
-
-  it("rejects patch inserts before sequential writes", async () => {
-    const hook = vi.fn(async () => undefined);
-    const invalid = createBundle("303", {
-      patches: [
-        {
-          baseBundleId: "missing",
-          baseFileHash: "missing",
-          patchFileHash: "patch",
-          patchStorageUri: "storage://patch",
-        },
-      ],
-    });
-    const { commitBatch: ignoredCommitBatch, ...sequentialPlugin } = plugin;
-    void ignoredCommitBatch;
-    const client = createDatabaseClient({
-      ...sequentialPlugin,
       name: plugin.name,
       commit: (input) => {
-        if (input.changes.length > 1) {
+        if (
+          input.mutations.length > 1 ||
+          input.mutations.some(({ changes }) => changes.length > 1)
+        ) {
           throw new DatabaseAtomicCommitUnsupportedError(plugin.name);
         }
         return plugin.commit(input);
       },
-      onDatabaseUpdated: hook,
     });
 
     const mutation = client.insertBundle(invalid);
@@ -206,7 +193,6 @@ describe("database client", () => {
       bundleId: invalid.id,
     });
     await expect(client.getBundleById(invalid.id)).resolves.toBeNull();
-    expect(hook).not.toHaveBeenCalled();
   });
 
   it("delegates the update-info fast path and matches the generic path", async () => {
@@ -233,11 +219,7 @@ describe("database client", () => {
   });
 
   it("runs high-level mutations in one plugin transaction", async () => {
-    const hook = vi.fn(async () => undefined);
-    const client = createDatabaseClient({
-      ...plugin,
-      onDatabaseUpdated: hook,
-    });
+    const client = createDatabaseClient(plugin);
     const base = createBundle("501");
     const invalid = createBundle("502", {
       patches: [
@@ -257,7 +239,6 @@ describe("database client", () => {
 
     await expect(failedBatch).rejects.toThrow("reference");
     await expect(client.getBundleById(base.id)).resolves.toBeNull();
-    expect(hook).not.toHaveBeenCalled();
 
     await expect(
       client.mutate(async (mutation) => {
@@ -268,6 +249,5 @@ describe("database client", () => {
     await expect(client.getBundleById(base.id)).resolves.toMatchObject({
       id: base.id,
     });
-    expect(hook).toHaveBeenCalledOnce();
   });
 });

@@ -14,7 +14,7 @@ import {
 } from "@hot-updater/core";
 import type {
   Bundle,
-  DatabasePlugin,
+  BundleRepository,
   NodeStoragePlugin,
 } from "@hot-updater/plugin-core";
 import {
@@ -33,7 +33,7 @@ export interface CreateBundleDiffInput {
 }
 
 export interface CreateBundleDiffDependencies {
-  databasePlugin: DatabasePlugin;
+  databasePlugin: BundleRepository;
   storagePlugin: NodeStoragePlugin | null;
 }
 

@@ -3,15 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   confirmInitInputPersistence: vi.fn(),
   createBucket: vi.fn(),
-  dynamoDB: vi.fn(),
   ensureTable: vi.fn(),
   execa: vi.fn(),
   listBuckets: vi.fn(),
   logMessage: vi.fn(),
   makeEnv: vi.fn(),
-  migrateUniversalComponents: vi.fn(),
-  note: vi.fn(),
-  prepareDeployment: vi.fn(),
   readHotUpdaterInitEnv: vi.fn(),
   resolveAwsAuth: vi.fn(),
   runMigrations: vi.fn(),
@@ -20,10 +16,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("execa", () => ({
   execa: mocks.execa,
-}));
-
-vi.mock("@hot-updater/server/db", () => ({
-  migrateUniversalComponents: mocks.migrateUniversalComponents,
 }));
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
@@ -40,7 +32,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
         ...actual.p.log,
         message: mocks.logMessage,
       },
-      note: mocks.note,
       tasks: vi.fn(async (tasks) => {
         for (const task of tasks) {
           await task.task();
@@ -53,10 +44,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 
 vi.mock("./awsAuth", () => ({
   resolveAwsAuth: mocks.resolveAwsAuth,
-}));
-
-vi.mock("../src/dynamoDB", () => ({
-  dynamoDB: mocks.dynamoDB,
 }));
 
 vi.mock("./cloudfront", () => ({
@@ -94,81 +81,16 @@ describe("AWS DynamoDB deployment preparation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.ensureTable.mockResolvedValue(undefined);
-    mocks.dynamoDB.mockReturnValue({ name: "dynamoDB" });
-    mocks.migrateUniversalComponents.mockResolvedValue([]);
-    mocks.prepareDeployment.mockResolvedValue([]);
   });
 
-  it("migrates components before delegating feature preparation", async () => {
-    const order: string[] = [];
-    const deploymentTarget = { adapterName: "dynamoDB" };
-    mocks.ensureTable.mockImplementation(async () => {
-      order.push("table");
-    });
-    mocks.dynamoDB.mockImplementation(() => {
-      order.push("provider");
-      return { name: "dynamoDB" };
-    });
-    const createDeploymentTarget = vi.fn(() => {
-      order.push("target");
-      return deploymentTarget;
-    });
-    mocks.migrateUniversalComponents.mockImplementation(async () => {
-      order.push("migration");
-      return [];
-    });
-    mocks.prepareDeployment.mockImplementation(async () => {
-      order.push("prepare");
-      return [{ message: "prepared", title: "Managed deployment" }];
-    });
-
+  it("ensures the official-domain table before deployment", async () => {
     await prepareDynamoDBDeployment({
-      createDeploymentTarget,
-      credentials,
-      envFilePath: ".env.hotupdater",
-      prepareDeployment: mocks.prepareDeployment,
-      region: "ap-northeast-2",
-      tableName: "hot-updater-metadata",
-    });
-
-    expect(order).toEqual([
-      "table",
-      "provider",
-      "target",
-      "migration",
-      "prepare",
-    ]);
-    expect(mocks.dynamoDB).toHaveBeenCalledWith({
       credentials,
       region: "ap-northeast-2",
       tableName: "hot-updater-metadata",
     });
-    expect(mocks.migrateUniversalComponents).toHaveBeenCalledWith(
-      deploymentTarget,
-    );
-    expect(mocks.prepareDeployment).toHaveBeenCalledWith(deploymentTarget, {
-      envFile: ".env.hotupdater",
-    });
-    expect(mocks.note).toHaveBeenCalledWith("prepared", "Managed deployment");
-  });
 
-  it("does not prepare features when component migration fails", async () => {
-    const migrationError = new Error("component schema is incompatible");
-    mocks.migrateUniversalComponents.mockRejectedValue(migrationError);
-
-    await expect(
-      prepareDynamoDBDeployment({
-        createDeploymentTarget: () => ({ adapterName: "dynamoDB" }),
-        credentials,
-        envFilePath: ".env.hotupdater",
-        prepareDeployment: mocks.prepareDeployment,
-        region: "ap-northeast-2",
-        tableName: "hot-updater-metadata",
-      }),
-    ).rejects.toBe(migrationError);
-
-    expect(mocks.ensureTable).toHaveBeenCalledOnce();
-    expect(mocks.prepareDeployment).not.toHaveBeenCalled();
+    expect(mocks.ensureTable).toHaveBeenCalledWith("hot-updater-metadata");
   });
 });
 
@@ -217,7 +139,6 @@ describe("AWS init preflight", () => {
       missingInputs: ["HOT_UPDATER_AWS_MIGRATION_APPROVED"],
     });
     expect(mocks.createBucket).not.toHaveBeenCalled();
-    expect(mocks.migrateUniversalComponents).not.toHaveBeenCalled();
   });
 
   it("recommends the current managed policy when DynamoDB is selected", async () => {

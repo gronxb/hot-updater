@@ -3,12 +3,19 @@ import {
   CreateInvalidationCommand,
   GetInvalidationCommand,
 } from "@aws-sdk/client-cloudfront";
+import {
+  DynamoDBDocumentClient,
+  QueryCommand,
+  TransactWriteCommand,
+} from "@aws-sdk/lib-dynamodb";
+import { bundleToRow } from "@hot-updater/plugin-core";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { dynamoDB } from "./dynamoDB";
 
 const cloudFront = mockClient(CloudFrontClient);
+const documentClient = mockClient(DynamoDBDocumentClient);
 const cloudFrontInvalidation = (status: string) => ({
   Id: "invalidation-id",
   Status: status,
@@ -18,18 +25,46 @@ const cloudFrontInvalidation = (status: string) => ({
     Paths: { Quantity: 0, Items: [] },
   },
 });
+const bundleRow = bundleToRow({
+  id: "00000000-0000-0000-0000-000000000001",
+  platform: "ios",
+  shouldForceUpdate: false,
+  enabled: true,
+  fileHash: "hash",
+  gitCommitHash: null,
+  message: null,
+  channel: "production",
+  storageUri: "storage://bundle",
+  targetAppVersion: "1.0.0",
+  fingerprintHash: null,
+  metadata: {},
+});
+
+const commitBundle = (plugin: ReturnType<typeof dynamoDB>) =>
+  plugin.commit({
+    mutations: [
+      {
+        operation: "insert",
+        bundleId: bundleRow.id,
+        changes: [{ table: "bundles", operation: "insert", row: bundleRow }],
+      },
+    ],
+  });
 
 describe("dynamoDB CloudFront lifecycle", () => {
   beforeEach(() => {
     cloudFront.reset();
+    documentClient.reset();
     cloudFront.on(CreateInvalidationCommand).resolves({});
+    documentClient.on(QueryCommand).resolves({ Items: [] });
+    documentClient.on(TransactWriteCommand).resolves({});
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("invalidates cached update checks after metadata mutations", async () => {
+  it("invalidates cached update checks after a successful commit", async () => {
     // Given
     const plugin = dynamoDB({
       cloudfrontDistributionId: "distribution-id",
@@ -38,7 +73,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
 
     // When
-    await plugin.onDatabaseUpdated?.();
+    await commitBundle(plugin);
 
     // Then
     expect(
@@ -51,7 +86,7 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
     expect(cloudFront.commandCalls(GetInvalidationCommand)).toHaveLength(0);
 
-    await plugin.onUnmount?.();
+    await plugin.dispose?.();
   });
 
   it("waits for invalidation completion when configured", async () => {
@@ -71,14 +106,14 @@ describe("dynamoDB CloudFront lifecycle", () => {
     });
 
     // When
-    const invalidation = plugin.onDatabaseUpdated?.();
+    const mutation = commitBundle(plugin);
     await vi.advanceTimersByTimeAsync(2_000);
-    await invalidation;
+    await mutation;
 
     // Then
     expect(cloudFront.commandCalls(GetInvalidationCommand)).toHaveLength(1);
 
-    await plugin.onUnmount?.();
+    await plugin.dispose?.();
   });
 
   it("uses the database factory naming convention", async () => {
@@ -91,18 +126,27 @@ describe("dynamoDB CloudFront lifecycle", () => {
     // Then
     expect(plugin.name).toBe("dynamoDB");
 
-    await plugin.onUnmount?.();
+    await plugin.dispose?.();
   });
 
-  it("provides provider-neutral component data", () => {
+  it("exposes only the flat official database contract", async () => {
     const plugin = dynamoDB({
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });
 
-    expect(plugin.componentData).toBeDefined();
+    expect(plugin.bundles).toBeDefined();
+    expect(plugin.bundlePatches).toBeDefined();
+    expect(plugin.analytics).toBeDefined();
+    expect(plugin.clientAccessKeys).toBeDefined();
+    expect(plugin.commit).toBeTypeOf("function");
+    expect(plugin).not.toHaveProperty("componentData");
     expect(plugin).not.toHaveProperty("create");
     expect(plugin).not.toHaveProperty("findMany");
     expect(plugin).not.toHaveProperty("transaction");
+    expect(plugin).not.toHaveProperty("onDatabaseUpdated");
+    expect(plugin).not.toHaveProperty("onUnmount");
+
+    await plugin.dispose?.();
   });
 });

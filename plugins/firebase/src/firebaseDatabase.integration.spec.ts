@@ -403,9 +403,13 @@ describe("firebase v1 data migration", () => {
 
     await expect(
       createPlugin().commit({
-        operation: "delete",
-        bundleId: bundle.id,
-        changes: [{ table: "bundles", operation: "delete", id: bundle.id }],
+        mutations: [
+          {
+            operation: "delete",
+            bundleId: bundle.id,
+            changes: [{ table: "bundles", operation: "delete", id: bundle.id }],
+          },
+        ],
       }),
     ).rejects.toThrow("bundles.id.unique");
 
@@ -442,13 +446,17 @@ describe("firebase v1 data migration", () => {
 
     await expect(
       createPlugin().commit({
-        operation: "update",
-        bundleId: target.id,
-        changes: [
+        mutations: [
           {
-            table: "bundle_patches",
-            operation: "delete",
+            operation: "update",
             bundleId: target.id,
+            changes: [
+              {
+                table: "bundle_patches",
+                operation: "delete",
+                bundleId: target.id,
+              },
+            ],
           },
         ],
       }),

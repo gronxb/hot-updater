@@ -53,7 +53,8 @@ describe("analytics capability gating", () => {
         data: {
           capabilities: {
             analytics: true as const,
-            mode: "dedicated" as const,
+            mode: "bounded" as const,
+            maxMatchingRows: 50_000,
           },
         },
       },
@@ -85,7 +86,11 @@ describe("analytics capability gating", () => {
 describe("analytics route access", () => {
   it("allows navigation when the shared capability query reports support", async () => {
     vi.mocked(getAnalyticsCapabilitiesRpc).mockResolvedValueOnce({
-      capabilities: { analytics: true, mode: "dedicated" },
+      capabilities: {
+        analytics: true,
+        mode: "bounded",
+        maxMatchingRows: 50_000,
+      },
     });
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -97,7 +102,11 @@ describe("analytics route access", () => {
     expect(
       queryClient.getQueryData(getAnalyticsCapabilitiesQueryOptions().queryKey),
     ).toEqual({
-      capabilities: { analytics: true, mode: "dedicated" },
+      capabilities: {
+        analytics: true,
+        mode: "bounded",
+        maxMatchingRows: 50_000,
+      },
     });
   });
 
@@ -144,7 +153,8 @@ describe("analytics overview query", () => {
     // Given / When
     const options = getAnalyticsOverviewQueryOptions({
       status: "supported",
-      mode: "dedicated",
+      mode: "bounded",
+      maxMatchingRows: 50_000,
     });
 
     // Then
@@ -153,7 +163,11 @@ describe("analytics overview query", () => {
   });
 
   it("separates active responses by window and normalized exact user ID", () => {
-    const supported = { status: "supported", mode: "dedicated" } as const;
+    const supported = {
+      status: "supported",
+      mode: "bounded",
+      maxMatchingRows: 50_000,
+    } as const;
     const first = getActiveInstallationQueryOptions(supported, {
       window: "7d",
       userId: "  Alias/B  ",

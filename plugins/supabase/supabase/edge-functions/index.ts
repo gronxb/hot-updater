@@ -1,5 +1,4 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import {
   supabaseEdgeFunctionDatabase,
@@ -24,7 +23,6 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  plugins: createManagedServerPlugins(),
   storages: [
     supabaseEdgeFunctionStorage({
       supabaseUrl,

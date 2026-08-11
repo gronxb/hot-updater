@@ -22,21 +22,12 @@ import { PutParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import {
   BatchWriteCommand,
   DynamoDBDocumentClient,
-  GetCommand,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { getSignedUrl as getS3SignedUrl } from "@aws-sdk/s3-request-presigner";
 import { transformEnv } from "@hot-updater/cli-tools";
 import { type Bundle, type GetBundlesArgs, NIL_UUID } from "@hot-updater/core";
-import {
-  createManagedServerPlugins,
-  registerManagedServerClientKey,
-} from "@hot-updater/managed";
-import { createHotUpdater } from "@hot-updater/server";
-import {
-  migrateUniversalComponents,
-  type UniversalComponentMigrationSummary,
-} from "@hot-updater/server/db";
+import { createClientAccessKey, createHotUpdater } from "@hot-updater/server";
 import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
@@ -68,8 +59,6 @@ const S3_BUCKET_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`
 const SSM_PARAMETER_NAME = `/hot-updater/aws/${process.pid}/${Date.now()}`;
 const DYNAMODB_TABLE_NAME = `hot-updater-aws-${process.pid}-${Date.now()}`;
 const CLOUDFRONT_KEY_PAIR_ID = "KTEST";
-const MANAGEMENT_BEARER_TOKEN = "management-secret";
-const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const LOCALSTACK_IMAGE = "localstack/localstack:3";
 const LAMBDA_IMAGE = "public.ecr.aws/lambda/nodejs:22";
 const HOT_UPDATER_BASE_PATH = "/api/check-update";
@@ -262,9 +251,8 @@ describe.sequential("aws lambda runtime acceptance", () => {
   let lambdaRuntime: ReturnType<typeof spawnRuntime> | undefined;
   let runtimeDir: string | undefined;
   let localstackEndpoint = "";
-  let deploymentTarget: ReturnType<typeof createHotUpdater>;
-  let componentMigrations: readonly UniversalComponentMigrationSummary[] = [];
-  let componentMarker: unknown;
+  let database: ReturnType<typeof dynamoDB>;
+  let rawApiKey = "";
   let seedHotUpdater: ReturnType<typeof createHotUpdater>;
   let s3Client: S3Client;
   let dynamodbClient: DynamoDBDocumentClient;
@@ -326,7 +314,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     );
     process.env.AWS_ENDPOINT_URL = localstackEndpoint;
 
-    const database = dynamoDB({
+    database = dynamoDB({
       tableName: DYNAMODB_TABLE_NAME,
       region: REGION,
       endpoint: localstackEndpoint,
@@ -335,22 +323,10 @@ describe.sequential("aws lambda runtime acceptance", () => {
         secretAccessKey: SECRET_ACCESS_KEY,
       },
     });
-    deploymentTarget = createHotUpdater({
-      database,
-      plugins: createManagedServerPlugins(),
-    });
-    componentMigrations = await migrateUniversalComponents(deploymentTarget);
-    componentMarker = (
-      await dynamodbClient.send(
-        new GetCommand({
-          TableName: DYNAMODB_TABLE_NAME,
-          Key: { pk: "_hot-updater", sk: "schema.analytics" },
-        }),
-      )
-    ).Item?.value;
-
     seedHotUpdater = createHotUpdater({
       database,
+      analytics: {},
+      clientAccessKeys: true,
       storages: [
         s3LambdaEdgeStorage({
           bucketName: S3_BUCKET_NAME,
@@ -385,7 +361,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
       DATABASE_TYPE: "dynamodb",
       DYNAMODB_REGION: REGION,
       DYNAMODB_TABLE_NAME,
-      MANAGEMENT_BEARER_TOKEN,
       SSM_PARAMETER_NAME,
       SSM_REGION: REGION,
       S3_BUCKET_NAME,
@@ -411,12 +386,11 @@ describe.sequential("aws lambda runtime acceptance", () => {
       clearBucket(s3Client, S3_BUCKET_NAME),
       clearDynamoDBTable(dynamodbClient),
     ]);
-    await migrateUniversalComponents(deploymentTarget);
-    await registerManagedServerClientKey({
-      apiKey: RAW_API_KEY,
+    const created = await createClientAccessKey({
+      clientAccessKeys: database.clientAccessKeys,
       name: "Runtime test",
-      target: deploymentTarget,
     });
+    rawApiKey = created.apiKey;
   });
 
   afterAll(async () => {
@@ -466,7 +440,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       lambdaPort,
       createCloudFrontEvent({
         path: createCanonicalPath(args),
-        headers: new Headers({ "x-api-key": RAW_API_KEY }),
+        headers: new Headers({ "x-api-key": rawApiKey }),
       }),
     );
     expect(response.ok).toBe(true);
@@ -639,7 +613,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       lambdaPort,
       createCloudFrontEvent({
         path: updatePath,
-        headers: new Headers({ "x-api-key": RAW_API_KEY }),
+        headers: new Headers({ "x-api-key": rawApiKey }),
       }),
     );
     const payload = (await response.json()) as {
@@ -701,21 +675,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
   });
 
-  it("migrates managed components before accepting authenticated events", async () => {
-    expect(componentMigrations).toEqual([
-      {
-        changed: true,
-        componentId: "analytics",
-        version: "2",
-      },
-      {
-        changed: true,
-        componentId: "better-auth-managed-access-keys",
-        version: "1",
-      },
-    ]);
-    expect(componentMarker).toBe("2");
-
+  it("accepts authenticated events through the built-in domains", async () => {
     const event = {
       type: "UNCHANGED",
       installId: "aws-runtime-installation",
@@ -745,7 +705,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
         path: `${HOT_UPDATER_BASE_PATH}/events`,
         headers: new Headers({
           "content-type": "application/json",
-          "x-api-key": RAW_API_KEY,
+          "x-api-key": rawApiKey,
         }),
         method: "POST",
         body: JSON.stringify(event),
@@ -776,7 +736,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
       lambdaPort,
       createCloudFrontEvent({
         path: protectedPath,
-        headers: new Headers({ "x-api-key": RAW_API_KEY }),
+        headers: new Headers({ "x-api-key": rawApiKey }),
       }),
     );
     const authorizedPayload = (await authorizedResponse.json()) as {
@@ -789,20 +749,17 @@ describe.sequential("aws lambda runtime acceptance", () => {
       error: "Unauthorized",
     });
 
-    const managementResponse = await invokeLambda(
-      lambdaPort,
-      createCloudFrontEvent({
-        path: protectedPath,
-        headers: new Headers({
-          authorization: `Bearer ${MANAGEMENT_BEARER_TOKEN}`,
-        }),
+    await expect(
+      database.analytics.scan({
+        beforeReceivedAtMs: Date.now() + 1_000,
+        limit: 10,
       }),
-    );
-    const managementPayload = (await managementResponse.json()) as {
-      status?: string;
-    };
-
-    expect(managementPayload.status).toBe("200");
+    ).resolves.toEqual([
+      expect.objectContaining({
+        install_id: "aws-runtime-installation",
+        type: "UNCHANGED",
+      }),
+    ]);
   });
 
   it("keeps the deprecated S3 metadata runtime usable", async () => {
@@ -861,7 +818,6 @@ describe.sequential("aws lambda runtime acceptance", () => {
       DATABASE_TYPE: "s3",
       DYNAMODB_REGION: REGION,
       DYNAMODB_TABLE_NAME: "",
-      MANAGEMENT_BEARER_TOKEN,
       SSM_PARAMETER_NAME,
       SSM_REGION: REGION,
       S3_BUCKET_NAME,

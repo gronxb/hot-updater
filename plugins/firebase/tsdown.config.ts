@@ -22,9 +22,7 @@ export default defineConfig([
       alwaysBundle: [
         "@hot-updater/core",
         "@hot-updater/js",
-        "@hot-updater/managed",
         "@hot-updater/plugin-core",
-        "@hot-updater/plugin-core/internal/capabilities",
         "@hot-updater/server",
       ],
     },

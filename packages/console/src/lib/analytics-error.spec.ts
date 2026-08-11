@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getAnalyticsErrorCopy } from "./analytics-error";
 
 describe("getAnalyticsErrorCopy", () => {
-  it("returns dedicated guidance for the bounded Analytics scan limit", () => {
+  it("returns narrowing guidance for the bounded Analytics scan limit", () => {
     // Given
     const error = new Error("Bundle event scan exceeded 50000 rows.");
 
@@ -14,7 +14,7 @@ describe("getAnalyticsErrorCopy", () => {
     expect(copy).toEqual({
       title: "Analytics report limit reached",
       description:
-        "This query matched more than 50,000 reports. Narrow the query or configure a dedicated Analytics service.",
+        "This query matched more than 50,000 reports. Narrow the query and try again.",
     });
   });
 

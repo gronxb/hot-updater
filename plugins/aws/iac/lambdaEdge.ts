@@ -55,7 +55,6 @@ export class LambdaEdgeDeployer {
       databaseType: "dynamodb" | "s3";
       dynamodbRegion: string;
       dynamodbTableName: string;
-      managementBearerToken: string;
       publicKeyId: string;
       ssmParameterName: string;
       ssmRegion: string;
@@ -74,7 +73,6 @@ export class LambdaEdgeDeployer {
       DATABASE_TYPE: config.databaseType,
       DYNAMODB_REGION: config.dynamodbRegion,
       DYNAMODB_TABLE_NAME: config.dynamodbTableName,
-      MANAGEMENT_BEARER_TOKEN: config.managementBearerToken,
       SSM_PARAMETER_NAME: config.ssmParameterName,
       SSM_REGION: config.ssmRegion,
       S3_BUCKET_NAME: config.bucketName,

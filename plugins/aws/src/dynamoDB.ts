@@ -5,7 +5,6 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import {
   BatchGetCommand,
-  DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   type NativeAttributeValue,
@@ -16,9 +15,13 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { NIL_UUID } from "@hot-updater/core";
 import {
+  type AnalyticsTable,
+  type BundleEventRow,
   type BundlePatchRow,
   type BundlePatchTable,
   type BundleRow,
+  type ClientAccessKeyRow,
+  type ClientAccessKeyTable,
   createDatabasePlugin,
   type DatabaseChange,
   type DatabaseCommit,
@@ -31,28 +34,11 @@ import {
   type DatabaseRow,
   type DatabaseWhere,
   filterCompatibleAppVersions,
-  getUniversalComponentLatestSchema,
-  getUniversalComponentSchemaMarkerKey,
-  getUniversalComponentTable,
   isDatabaseMetadataObject,
-  resolveUniversalComponentMigrationState,
   resolveUpdateInfoFromBundles,
   rowToBundle,
-  UniversalComponentDataStateNotReadyError,
-  type UniversalComponentDataAdapter,
-  type UniversalComponentAppendInput,
-  type UniversalComponentOrderedScanSchema,
-  type UniversalComponentRow,
-  type UniversalComponentScalar,
-  type UniversalComponentSchema,
-  UniversalComponentSchemaNotReadyError,
-  type UniversalComponentSchemaVersion,
-  type UniversalComponentTableSchema,
-  validateUniversalComponentAppend,
-  validateUniversalComponentGet,
-  validateUniversalComponentOrderedScan,
-  validateUniversalComponentRow,
 } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 
 import { invalidateCloudFront } from "./cloudFrontInvalidation";
 
@@ -467,13 +453,13 @@ export const queryBundleItemsPage = async (
 
 const loadModelItems = (
   store: DynamoDBStore,
-  model: DatabaseModel,
+  model: "bundle_patches" | "bundles",
 ): Promise<DynamoDBItem[]> =>
   queryItems(store, { partition: model, consistentRead: true });
 
 const loadModelItem = async (
   store: DynamoDBStore,
-  model: DatabaseModel,
+  model: "bundle_patches" | "bundles",
   id: string,
 ): Promise<DynamoDBItem | undefined> => {
   const { Item } = await store.client.send(
@@ -1257,6 +1243,9 @@ export const createDynamoDBCrud = (
     throw new DynamoDBUnsupportedModelError();
   },
   async update(input): Promise<DatabaseImplementationResult | null> {
+    if (input.model !== "bundles") {
+      throw new DynamoDBUnsupportedModelError();
+    }
     const id = exactDynamoDBId(input.where);
     const current =
       id === undefined
@@ -1432,11 +1421,12 @@ const putNewBundle = (
   store: DynamoDBStore,
   row: BundleRow,
   relationCount: number,
+  ownedPatchCount = relationCount,
 ): DynamoDBTransactItem => ({
   Put: {
     TableName: store.tableName,
     Item: boundedDynamoDBMetadataItem(
-      toDynamoDBBundleItem(row, 1, relationCount, relationCount),
+      toDynamoDBBundleItem(row, 1, relationCount, ownedPatchCount),
     ),
     ConditionExpression: "attribute_not_exists(#pk)",
     ExpressionAttributeNames: { "#pk": "pk" },
@@ -1614,105 +1604,310 @@ class DynamoDBCommitShapeError extends TypeError {
   }
 }
 
+const rowsEqual = (left: object, right: object): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+const commitSingleDynamoDBMutation = async (
+  store: DynamoDBStore,
+  input: DatabaseCommit,
+): Promise<DatabaseCommitResult> => {
+  const mutation = input.mutations[0];
+  if (mutation === undefined) return { applied: true };
+  const aggregate = createDynamoDBAggregateMutations(store);
+
+  if (mutation.operation === "insert") {
+    let bundle: BundleRow | undefined;
+    const patches: BundlePatchRow[] = [];
+    for (const change of mutation.changes) {
+      if (change.table === "bundles" && change.operation === "insert") {
+        if (bundle !== undefined || change.row.id !== mutation.bundleId) {
+          throw new DynamoDBCommitShapeError(input);
+        }
+        bundle = change.row;
+      } else if (
+        change.table === "bundle_patches" &&
+        change.operation === "insert" &&
+        change.row.bundle_id === mutation.bundleId
+      ) {
+        patches.push(change.row);
+      } else {
+        throw new DynamoDBCommitShapeError(input);
+      }
+    }
+    if (bundle === undefined) throw new DynamoDBCommitShapeError(input);
+    await aggregate.insertBundleWithPatches({ bundle, patches });
+    return { applied: true };
+  }
+
+  if (mutation.operation === "update") {
+    let bundleUpdate: Extract<
+      DatabaseChange,
+      { readonly operation: "update"; readonly table: "bundles" }
+    >["update"] = {};
+    let hasBundleUpdate = false;
+    let replacesPatches = false;
+    const patches: BundlePatchRow[] = [];
+    for (const change of mutation.changes) {
+      if (change.table === "bundles" && change.operation === "update") {
+        if (hasBundleUpdate || change.id !== mutation.bundleId) {
+          throw new DynamoDBCommitShapeError(input);
+        }
+        bundleUpdate = change.update;
+        hasBundleUpdate = true;
+      } else if (
+        change.table === "bundle_patches" &&
+        change.operation === "delete"
+      ) {
+        if (replacesPatches || change.bundleId !== mutation.bundleId) {
+          throw new DynamoDBCommitShapeError(input);
+        }
+        replacesPatches = true;
+      } else if (
+        change.table === "bundle_patches" &&
+        change.operation === "insert" &&
+        change.row.bundle_id === mutation.bundleId
+      ) {
+        patches.push(change.row);
+      } else {
+        throw new DynamoDBCommitShapeError(input);
+      }
+    }
+    if (patches.length > 0 && !replacesPatches) {
+      throw new DynamoDBCommitShapeError(input);
+    }
+    if (replacesPatches) {
+      const applied = await aggregate.updateBundleWithPatches({
+        bundleId: mutation.bundleId,
+        patches,
+        update: bundleUpdate,
+      });
+      return applied
+        ? { applied: true }
+        : { applied: false, missingBundleId: mutation.bundleId };
+    }
+    const current = await loadBundleItem(store, mutation.bundleId);
+    if (current === undefined) {
+      return { applied: false, missingBundleId: mutation.bundleId };
+    }
+    if (hasBundleUpdate) {
+      await replaceDynamoDBBundle(store, current, {
+        ...current.row,
+        ...bundleUpdate,
+      });
+    }
+    return { applied: true };
+  }
+
+  if (
+    mutation.changes.length !== 1 ||
+    mutation.changes[0]?.table !== "bundles" ||
+    mutation.changes[0].operation !== "delete" ||
+    mutation.changes[0].id !== mutation.bundleId
+  ) {
+    throw new DynamoDBCommitShapeError(input);
+  }
+  const bundle = await loadBundleItem(store, mutation.bundleId);
+  if (bundle !== undefined) {
+    await deleteDynamoDBBundles(store, [bundle], await loadPatchItems(store));
+  }
+  return { applied: true };
+};
+
 const createDynamoDBCommit =
   (store: DynamoDBStore) =>
   async (input: DatabaseCommit): Promise<DatabaseCommitResult> => {
-    const aggregate = createDynamoDBAggregateMutations(store);
-    if (input.operation === "insert") {
-      let bundle: BundleRow | undefined;
-      const patches: BundlePatchRow[] = [];
-      for (const change of input.changes) {
-        if (change.table === "bundles" && change.operation === "insert") {
-          if (bundle !== undefined || change.row.id !== input.bundleId) {
-            throw new DynamoDBCommitShapeError(input);
-          }
-          bundle = change.row;
-        } else if (
-          change.table === "bundle_patches" &&
-          change.operation === "insert" &&
-          change.row.bundle_id === input.bundleId
-        ) {
-          patches.push(change.row);
-        } else {
-          throw new DynamoDBCommitShapeError(input);
-        }
-      }
-      if (bundle === undefined) throw new DynamoDBCommitShapeError(input);
-      await aggregate.insertBundleWithPatches({ bundle, patches });
-      return { applied: true };
+    if (input.mutations.length <= 1) {
+      return commitSingleDynamoDBMutation(store, input);
     }
+    const currentBundles = await loadBundleItems(store);
+    const currentPatches = await loadPatchItems(store);
+    const bundles = new Map(
+      currentBundles.map((item) => [item.sk, item.row] as const),
+    );
+    const patches = new Map(
+      currentPatches.map((item) => [item.sk, item.row] as const),
+    );
 
-    if (input.operation === "update") {
-      let bundleUpdate: Extract<
-        DatabaseChange,
-        { readonly operation: "update"; readonly table: "bundles" }
-      >["update"] = {};
-      let hasBundleUpdate = false;
-      let replacesPatches = false;
-      const patches: BundlePatchRow[] = [];
-      for (const change of input.changes) {
-        if (change.table === "bundles" && change.operation === "update") {
-          if (hasBundleUpdate || change.id !== input.bundleId) {
+    for (const mutation of input.mutations) {
+      if (mutation.operation === "insert") {
+        let bundle: BundleRow | undefined;
+        const insertedPatches: BundlePatchRow[] = [];
+        for (const change of mutation.changes) {
+          if (change.table === "bundles" && change.operation === "insert") {
+            if (bundle !== undefined || change.row.id !== mutation.bundleId) {
+              throw new DynamoDBCommitShapeError(input);
+            }
+            bundle = change.row;
+          } else if (
+            change.table === "bundle_patches" &&
+            change.operation === "insert" &&
+            change.row.bundle_id === mutation.bundleId
+          ) {
+            insertedPatches.push(change.row);
+          } else {
             throw new DynamoDBCommitShapeError(input);
           }
-          bundleUpdate = change.update;
-          hasBundleUpdate = true;
-        } else if (
-          change.table === "bundle_patches" &&
-          change.operation === "delete"
-        ) {
-          if (replacesPatches || change.bundleId !== input.bundleId) {
-            throw new DynamoDBCommitShapeError(input);
-          }
-          replacesPatches = true;
-        } else if (
-          change.table === "bundle_patches" &&
-          change.operation === "insert" &&
-          change.row.bundle_id === input.bundleId
-        ) {
-          patches.push(change.row);
-        } else {
+        }
+        if (bundle === undefined || bundles.has(bundle.id)) {
           throw new DynamoDBCommitShapeError(input);
         }
+        assertUniquePatches(insertedPatches);
+        bundles.set(bundle.id, bundle);
+        for (const patch of insertedPatches) {
+          if (patches.has(patch.id)) {
+            throw new DynamoDBDuplicatePatchError(patch.id);
+          }
+          patches.set(patch.id, patch);
+        }
+        continue;
       }
-      if (patches.length > 0 && !replacesPatches) {
+
+      if (mutation.operation === "update") {
+        const current = bundles.get(mutation.bundleId);
+        if (current === undefined) {
+          return {
+            applied: false,
+            missingBundleId: mutation.bundleId,
+          };
+        }
+        let bundleUpdate: Extract<
+          DatabaseChange,
+          { readonly operation: "update"; readonly table: "bundles" }
+        >["update"] = {};
+        let hasBundleUpdate = false;
+        let replacesPatches = false;
+        const insertedPatches: BundlePatchRow[] = [];
+        for (const change of mutation.changes) {
+          if (change.table === "bundles" && change.operation === "update") {
+            if (hasBundleUpdate || change.id !== mutation.bundleId) {
+              throw new DynamoDBCommitShapeError(input);
+            }
+            bundleUpdate = change.update;
+            hasBundleUpdate = true;
+          } else if (
+            change.table === "bundle_patches" &&
+            change.operation === "delete"
+          ) {
+            if (replacesPatches || change.bundleId !== mutation.bundleId) {
+              throw new DynamoDBCommitShapeError(input);
+            }
+            replacesPatches = true;
+          } else if (
+            change.table === "bundle_patches" &&
+            change.operation === "insert" &&
+            change.row.bundle_id === mutation.bundleId
+          ) {
+            insertedPatches.push(change.row);
+          } else {
+            throw new DynamoDBCommitShapeError(input);
+          }
+        }
+        if (insertedPatches.length > 0 && !replacesPatches) {
+          throw new DynamoDBCommitShapeError(input);
+        }
+        if (hasBundleUpdate) {
+          bundles.set(mutation.bundleId, { ...current, ...bundleUpdate });
+        }
+        if (replacesPatches) {
+          for (const [id, patch] of patches) {
+            if (patch.bundle_id === mutation.bundleId) patches.delete(id);
+          }
+          assertUniquePatches(insertedPatches);
+          for (const patch of insertedPatches) {
+            if (patches.has(patch.id)) {
+              throw new DynamoDBDuplicatePatchError(patch.id);
+            }
+            patches.set(patch.id, patch);
+          }
+        }
+        continue;
+      }
+
+      if (
+        mutation.changes.length !== 1 ||
+        mutation.changes[0]?.table !== "bundles" ||
+        mutation.changes[0].operation !== "delete" ||
+        mutation.changes[0].id !== mutation.bundleId
+      ) {
         throw new DynamoDBCommitShapeError(input);
       }
-      if (replacesPatches) {
-        return {
-          applied: await aggregate.updateBundleWithPatches({
-            bundleId: input.bundleId,
-            patches,
-            update: bundleUpdate,
-          }),
-        };
+      bundles.delete(mutation.bundleId);
+      for (const [id, patch] of patches) {
+        if (
+          patch.bundle_id === mutation.bundleId ||
+          patch.base_bundle_id === mutation.bundleId
+        ) {
+          patches.delete(id);
+        }
       }
-      const current = await loadBundleItem(store, input.bundleId);
-      if (current === undefined) return { applied: false };
-      if (hasBundleUpdate) {
-        await replaceDynamoDBBundle(store, current, {
-          ...current.row,
-          ...bundleUpdate,
-        });
-      }
-      return { applied: true };
     }
 
-    if (
-      input.changes.length !== 1 ||
-      input.changes[0]?.table !== "bundles" ||
-      input.changes[0].operation !== "delete" ||
-      input.changes[0].id !== input.bundleId
-    ) {
-      throw new DynamoDBCommitShapeError(input);
+    for (const patch of patches.values()) {
+      if (!bundles.has(patch.bundle_id) || !bundles.has(patch.base_bundle_id)) {
+        throw new DynamoDBCommitShapeError(input);
+      }
     }
-    const bundle = await loadBundleItem(store, input.bundleId);
-    if (bundle !== undefined) {
-      await deleteDynamoDBBundles(store, [bundle], await loadPatchItems(store));
+
+    const relationCounts = new Map<string, number>();
+    const ownedPatchCounts = new Map<string, number>();
+    for (const patch of patches.values()) {
+      for (const bundleId of new Set([patch.bundle_id, patch.base_bundle_id])) {
+        relationCounts.set(bundleId, (relationCounts.get(bundleId) ?? 0) + 1);
+      }
+      ownedPatchCounts.set(
+        patch.bundle_id,
+        (ownedPatchCounts.get(patch.bundle_id) ?? 0) + 1,
+      );
+    }
+
+    const actions: DynamoDBTransactItem[] = [];
+    const counter = metadataUpdate(store, {
+      bundles: bundles.size - currentBundles.length,
+      bundle_patches: patches.size - currentPatches.length,
+    });
+    if (counter !== undefined) actions.push(counter);
+
+    const currentBundleById = new Map(
+      currentBundles.map((item) => [item.sk, item] as const),
+    );
+    for (const current of currentBundles) {
+      if (!bundles.has(current.sk)) actions.push(deleteAction(store, current));
+    }
+    for (const [id, row] of bundles) {
+      const current = currentBundleById.get(id);
+      const relationCount = relationCounts.get(id) ?? 0;
+      const ownedPatchCount = ownedPatchCounts.get(id) ?? 0;
+      if (current === undefined) {
+        actions.push(putNewBundle(store, row, relationCount, ownedPatchCount));
+      } else if (
+        !rowsEqual(current.row, row) ||
+        current.relation_count !== relationCount ||
+        current.owned_patch_count !== ownedPatchCount
+      ) {
+        actions.push(
+          putUpdatedBundle(store, current, row, relationCount, ownedPatchCount),
+        );
+      }
+    }
+
+    const currentPatchById = new Map(
+      currentPatches.map((item) => [item.sk, item] as const),
+    );
+    for (const current of currentPatches) {
+      if (!patches.has(current.sk)) actions.push(deletePatch(store, current));
+    }
+    for (const [id, row] of patches) {
+      const current = currentPatchById.get(id);
+      if (current === undefined || !rowsEqual(current.row, row)) {
+        actions.push(putPatch(store, row, current));
+      }
+    }
+
+    if (actions.length > 0) {
+      await commitDynamoDBTransaction(store, actions);
     }
     return { applied: true };
   };
-
 type GetUpdateInfo = NonNullable<DatabasePluginImplementation["getUpdateInfo"]>;
 
 const compatibleRows = (
@@ -1755,740 +1950,262 @@ export const createDynamoDBGetUpdateInfo =
     });
   };
 
-export const DYNAMODB_COMPONENT_DATA_PARTITION_PREFIX =
-  "_hot-updater#component-data";
+export const DYNAMODB_ANALYTICS_PARTITION = "bundle_events";
+export const DYNAMODB_CLIENT_ACCESS_KEY_PARTITION = "client_access_keys";
+export const DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION =
+  "_hot-updater#client-access-key-hashes";
 
-export const DYNAMODB_COMPONENT_SCHEMA_PARTITION_KEY = "_hot-updater";
+const isBundleEventRow = (value: unknown): value is BundleEventRow =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof field(value, "id") === "string" &&
+  typeof field(value, "install_id") === "string" &&
+  typeof field(value, "to_bundle_id") === "string" &&
+  (field(value, "platform") === "ios" ||
+    field(value, "platform") === "android") &&
+  typeof field(value, "received_at_ms") === "number" &&
+  (field(value, "type") === "UPDATE_APPLIED" ||
+    field(value, "type") === "RECOVERED" ||
+    field(value, "type") === "UNCHANGED");
 
-const catalogSortKey = "catalog";
+const isClientAccessKeyRow = (value: unknown): value is ClientAccessKeyRow =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof field(value, "id") === "string" &&
+  typeof field(value, "hash") === "string" &&
+  typeof field(value, "name") === "string" &&
+  typeof field(value, "prefix") === "string" &&
+  field(value, "role") === "client" &&
+  typeof field(value, "created_at_ms") === "number" &&
+  (field(value, "revoked_at_ms") === null ||
+    typeof field(value, "revoked_at_ms") === "number");
 
-type StoredItem = Record<string, unknown>;
-
-class DynamoDBUniversalComponentSchemaDriftError extends Error {
-  readonly name = "DynamoDBUniversalComponentSchemaDriftError";
-}
-
-class DynamoDBUniversalComponentStoredDataError extends Error {
-  readonly name = "DynamoDBUniversalComponentStoredDataError";
-}
-
-class DynamoDBUniversalComponentIndexError extends Error {
-  readonly name = "DynamoDBUniversalComponentIndexError";
-}
-
-const componentPartition = (schema: UniversalComponentSchema): string =>
-  `${DYNAMODB_COMPONENT_DATA_PARTITION_PREFIX}#${schema.id}`;
-
-const tablePartition = (
-  schema: UniversalComponentSchema,
-  table: string,
-): string => `${componentPartition(schema)}#table#${table}`;
-
-const scanPartition = (
-  schema: UniversalComponentSchema,
-  accessPattern: string,
-): string => `${componentPartition(schema)}#scan#${accessPattern}`;
-
-const catalogKey = (schema: UniversalComponentSchema) => ({
-  pk: componentPartition(schema),
-  sk: catalogSortKey,
-});
-
-const markerKey = (schema: UniversalComponentSchema) => ({
-  pk: DYNAMODB_COMPONENT_SCHEMA_PARTITION_KEY,
-  sk: getUniversalComponentSchemaMarkerKey(schema),
-});
-
-const versionShape = (version: UniversalComponentSchemaVersion): string =>
-  JSON.stringify(version);
-
-const itemString = (item: StoredItem, key: string): string => {
-  const value = item[key];
-  if (typeof value !== "string") {
-    throw new DynamoDBUniversalComponentStoredDataError(
-      `Invalid component item ${key}`,
-    );
-  }
-  return value;
-};
-
-const itemRow = (item: StoredItem): UniversalComponentRow => {
-  const value = item.data;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new DynamoDBUniversalComponentStoredDataError(
-      "Invalid component item data",
-    );
-  }
-  return value as UniversalComponentRow;
-};
-
-const stableRowValue = (value: unknown): string => {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableRowValue).join(",")}]`;
-  }
-  if (typeof value === "object" && value !== null) {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableRowValue(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-};
-
-const stringBytes = (value: string): string =>
-  Array.from(new TextEncoder().encode(value), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-
-const sortableNumber = (input: number): string => {
-  const value = Object.is(input, -0) ? 0 : input;
-  const buffer = new ArrayBuffer(8);
-  const view = new DataView(buffer);
-  view.setFloat64(0, value, false);
-  const bytes = new Uint8Array(buffer);
-  if ((bytes[0]! & 0x80) === 0) {
-    bytes[0]! ^= 0x80;
-  } else {
-    for (let index = 0; index < bytes.length; index += 1) {
-      bytes[index]! ^= 0xff;
-    }
-  }
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
-};
-
-const scalarSortKey = (value: UniversalComponentScalar): string =>
-  `${typeof value === "number" ? sortableNumber(value) : stringBytes(value)}!`;
-
-const tupleSortKey = (values: readonly UniversalComponentScalar[]): string =>
-  values.map(scalarSortKey).join("");
-
-const primaryKeyColumn = (table: UniversalComponentTableSchema): string =>
-  table.columns.find(({ primaryKey }) => primaryKey)?.name ??
-  (() => {
-    throw new DynamoDBUniversalComponentSchemaDriftError(
-      `Component table ${table.name} has no primary key`,
-    );
-  })();
-
-const primaryKeyValue = (
-  table: UniversalComponentTableSchema,
-  row: UniversalComponentRow,
-): string => {
-  const value = row[primaryKeyColumn(table)];
-  if (typeof value !== "string") {
-    throw new DynamoDBUniversalComponentStoredDataError(
-      `Invalid primary key for component table ${table.name}`,
-    );
-  }
-  return value;
-};
-
-const primarySortKey = (
-  table: UniversalComponentTableSchema,
-  row: UniversalComponentRow,
-): string => scalarSortKey(primaryKeyValue(table, row));
-
-const scanValues = (
-  scan: UniversalComponentOrderedScanSchema,
-  row: UniversalComponentRow,
-): readonly UniversalComponentScalar[] =>
-  scan.columns.map((column) => {
-    const value = row[column];
-    if (typeof value !== "number" && typeof value !== "string") {
-      throw new DynamoDBUniversalComponentStoredDataError(
-        `Invalid ordered value for component access pattern ${scan.name}`,
-      );
-    }
-    return value;
-  });
-
-const scanSortKey = (
-  scan: UniversalComponentOrderedScanSchema,
-  table: UniversalComponentTableSchema,
-  row: UniversalComponentRow,
-): string =>
-  `${tupleSortKey(scanValues(scan, row))}~${scalarSortKey(
-    primaryKeyValue(table, row),
-  )}`;
-
-const queryPartition = async (
-  store: DynamoDBStore,
+const parseOfficialRowItem = <TRow>(
+  value: Record<string, unknown>,
   partition: string,
-): Promise<StoredItem[]> => {
-  let exclusiveStartKey: Record<string, unknown> | undefined;
-  const items: StoredItem[] = [];
-  do {
-    const page = await store.client.send(
-      new QueryCommand({
+  isRow: (row: unknown) => row is TRow,
+): { readonly row: TRow; readonly version: number } => {
+  if (
+    value.pk !== partition ||
+    typeof value.sk !== "string" ||
+    typeof value.version !== "number" ||
+    !isRow(value.row)
+  ) {
+    throw new DynamoDBStoredItemError();
+  }
+  return { row: value.row, version: value.version };
+};
+
+const timestampSortKey = (timestampMs: number): string =>
+  Math.trunc(timestampMs).toString().padStart(16, "0");
+
+const analyticsSortKey = (
+  row: Pick<BundleEventRow, "id" | "received_at_ms">,
+): string => `${timestampSortKey(row.received_at_ms)}#${row.id}`;
+
+export const createDynamoDBAnalyticsTable = (
+  store: DynamoDBStore,
+): AnalyticsTable => ({
+  async append(row) {
+    await store.client.send(
+      new PutCommand({
         TableName: store.tableName,
-        ExclusiveStartKey: exclusiveStartKey,
-        KeyConditionExpression: "#pk = :pk",
+        Item: boundedDynamoDBMetadataItem({
+          pk: DYNAMODB_ANALYTICS_PARTITION,
+          sk: analyticsSortKey(row),
+          version: 1,
+          row,
+        }),
+        ConditionExpression: "attribute_not_exists(#pk)",
         ExpressionAttributeNames: { "#pk": "pk" },
-        ExpressionAttributeValues: { ":pk": partition },
       }),
     );
-    items.push(...(page.Items ?? []));
-    exclusiveStartKey = page.LastEvaluatedKey;
-  } while (exclusiveStartKey !== undefined);
-  return items;
-};
-
-const getSetting = async (
-  store: DynamoDBStore,
-  key: { readonly pk: string; readonly sk: string },
-): Promise<string | null> => {
-  const { Item } = await store.client.send(
-    new GetCommand({
-      TableName: store.tableName,
-      Key: key,
-      ProjectionExpression: "#value",
-      ExpressionAttributeNames: { "#value": "value" },
-    }),
-  );
-  if (Item === undefined) return null;
-  if (typeof Item.value !== "string") {
-    throw new DynamoDBUniversalComponentSchemaDriftError(
-      `Invalid component setting ${key.sk}`,
-    );
-  }
-  return Item.value;
-};
-
-const getCatalog = async (
-  store: DynamoDBStore,
-  schema: UniversalComponentSchema,
-): Promise<{ readonly shape: string; readonly version: string } | null> => {
-  const { Item } = await store.client.send(
-    new GetCommand({
-      TableName: store.tableName,
-      Key: catalogKey(schema),
-    }),
-  );
-  if (Item === undefined) return null;
-  if (typeof Item.value !== "string" || typeof Item.shape !== "string") {
-    throw new DynamoDBUniversalComponentSchemaDriftError(
-      `Invalid component catalog ${schema.id}`,
-    );
-  }
-  return { shape: Item.shape, version: Item.value };
-};
-
-const assertCatalogVersion = (
-  schema: UniversalComponentSchema,
-  catalog: { readonly shape: string; readonly version: string } | null,
-  version: UniversalComponentSchemaVersion,
-): void => {
-  if (
-    catalog?.version !== version.version ||
-    catalog.shape !== versionShape(version)
-  ) {
-    throw new DynamoDBUniversalComponentSchemaDriftError(
-      `Component ${schema.id} physical catalog does not match version ${version.version}`,
-    );
-  }
-};
-
-const parsePrimaryItem = (
-  schema: UniversalComponentSchema,
-  version: UniversalComponentSchemaVersion,
-  table: UniversalComponentTableSchema,
-  item: StoredItem,
-): UniversalComponentRow => {
-  const row = itemRow(item);
-  if (
-    itemString(item, "pk") !== tablePartition(schema, table.name) ||
-    itemString(item, "sk") !== primarySortKey(table, row)
-  ) {
-    throw new DynamoDBUniversalComponentStoredDataError(
-      `Invalid stored item for component table ${table.name}`,
-    );
-  }
-  try {
-    validateUniversalComponentRow(schema, {
-      row,
-      table: table.name,
-      version: version.version,
-    });
-  } catch (error) {
-    throw new DynamoDBUniversalComponentStoredDataError(
-      `Invalid stored row for component table ${table.name}`,
-      { cause: error },
-    );
-  }
-  return row;
-};
-
-const loadRows = async (
-  store: DynamoDBStore,
-  schema: UniversalComponentSchema,
-  version: UniversalComponentSchemaVersion,
-): Promise<ReadonlyMap<string, readonly UniversalComponentRow[]>> => {
-  const rows = new Map<string, readonly UniversalComponentRow[]>();
-  for (const table of version.tables) {
-    const items = await queryPartition(
-      store,
-      tablePartition(schema, table.name),
-    );
-    rows.set(
-      table.name,
-      items.map((item) => parsePrimaryItem(schema, version, table, item)),
-    );
-  }
-  return rows;
-};
-
-const assertIndexes = async (
-  store: DynamoDBStore,
-  schema: UniversalComponentSchema,
-  version: UniversalComponentSchemaVersion,
-  rows: ReadonlyMap<string, readonly UniversalComponentRow[]>,
-): Promise<void> => {
-  for (const scan of version.orderedScans ?? []) {
-    const table = getUniversalComponentTable(
-      schema,
-      scan.table,
-      version.version,
-    );
-    const expected = new Map(
-      (rows.get(table.name) ?? []).map((row) => [
-        scanSortKey(scan, table, row),
-        {
-          primary: primaryKeyValue(table, row),
-          row: stableRowValue(row),
-        },
-      ]),
-    );
-    const items = await queryPartition(store, scanPartition(schema, scan.name));
-    if (items.length !== expected.size) {
-      throw new DynamoDBUniversalComponentIndexError(
-        `Component access pattern ${scan.name} is incomplete`,
-      );
+  },
+  async scan(input) {
+    if (input.limit <= 0) return [];
+    if (
+      input.after !== undefined &&
+      input.after.receivedAtMs >= input.beforeReceivedAtMs
+    ) {
+      return [];
     }
-    for (const item of items) {
-      const row = itemRow(item);
-      const sk = itemString(item, "sk");
-      if (
-        itemString(item, "pk") !== scanPartition(schema, scan.name) ||
-        sk !== scanSortKey(scan, table, row) ||
-        itemString(item, "primary") !== primaryKeyValue(table, row) ||
-        expected.get(sk)?.primary !== primaryKeyValue(table, row) ||
-        expected.get(sk)?.row !== stableRowValue(row)
-      ) {
-        throw new DynamoDBUniversalComponentIndexError(
-          `Invalid component access pattern ${scan.name}`,
-        );
-      }
-    }
-  }
-};
-
-const validatePhysicalState = async (
-  store: DynamoDBStore,
-  schema: UniversalComponentSchema,
-  version: UniversalComponentSchemaVersion,
-): Promise<ReadonlyMap<string, readonly UniversalComponentRow[]>> => {
-  assertCatalogVersion(schema, await getCatalog(store, schema), version);
-  const rows = await loadRows(store, schema, version);
-  await assertIndexes(store, schema, version, rows);
-  return rows;
-};
-
-const putCatalog = async (
-  store: DynamoDBStore,
-  schema: UniversalComponentSchema,
-  version: UniversalComponentSchemaVersion,
-): Promise<void> => {
-  await store.client.send(
-    new PutCommand({
-      TableName: store.tableName,
-      Item: {
-        ...catalogKey(schema),
-        shape: versionShape(version),
-        value: version.version,
-      },
-    }),
-  );
-};
-
-const putMarker = async (
-  store: DynamoDBStore,
-  schema: UniversalComponentSchema,
-  version: string,
-): Promise<void> => {
-  await store.client.send(
-    new PutCommand({
-      TableName: store.tableName,
-      Item: { ...markerKey(schema), value: version },
-    }),
-  );
-};
-
-const replaceIndexes = async (
-  store: DynamoDBStore,
-  schema: UniversalComponentSchema,
-  previous: UniversalComponentSchemaVersion,
-  next: UniversalComponentSchemaVersion,
-  rows: ReadonlyMap<string, readonly UniversalComponentRow[]>,
-): Promise<void> => {
-  for (const scan of previous.orderedScans ?? []) {
-    const partition = scanPartition(schema, scan.name);
-    for (const item of await queryPartition(store, partition)) {
-      await store.client.send(
-        new DeleteCommand({
+    const rows: BundleEventRow[] = [];
+    const afterKey =
+      input.after === undefined
+        ? undefined
+        : `${timestampSortKey(input.after.receivedAtMs)}#${input.after.id}`;
+    let exclusiveStartKey: Record<string, unknown> | undefined;
+    do {
+      const page = await store.client.send(
+        new QueryCommand({
           TableName: store.tableName,
-          Key: { pk: partition, sk: itemString(item, "sk") },
-        }),
-      );
-    }
-  }
-  for (const scan of next.orderedScans ?? []) {
-    const table = getUniversalComponentTable(schema, scan.table, next.version);
-    for (const row of rows.get(table.name) ?? []) {
-      await store.client.send(
-        new PutCommand({
-          TableName: store.tableName,
-          Item: {
-            data: row,
-            pk: scanPartition(schema, scan.name),
-            primary: primaryKeyValue(table, row),
-            sk: scanSortKey(scan, table, row),
+          ExclusiveStartKey: exclusiveStartKey,
+          KeyConditionExpression:
+            afterKey === undefined
+              ? "#pk = :pk AND #sk < :before"
+              : "#pk = :pk AND #sk BETWEEN :after AND :before",
+          ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
+          ExpressionAttributeValues: {
+            ":before": `${timestampSortKey(input.beforeReceivedAtMs)}#`,
+            ":pk": DYNAMODB_ANALYTICS_PARTITION,
+            ...(afterKey === undefined ? {} : { ":after": afterKey }),
           },
+          Limit: input.limit - rows.length + (afterKey === undefined ? 0 : 1),
+          ScanIndexForward: true,
         }),
       );
-    }
-  }
+      for (const item of page.Items ?? []) {
+        if (item.sk === afterKey) continue;
+        rows.push(
+          parseOfficialRowItem(
+            item,
+            DYNAMODB_ANALYTICS_PARTITION,
+            isBundleEventRow,
+          ).row,
+        );
+        if (rows.length === input.limit) return rows;
+      }
+      exclusiveStartKey = page.LastEvaluatedKey;
+    } while (exclusiveStartKey !== undefined);
+    return rows;
+  },
+});
+
+const clientAccessKeyItem = (
+  row: ClientAccessKeyRow,
+  version: number,
+): Record<string, unknown> => ({
+  pk: DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+  sk: row.id,
+  version,
+  row,
+});
+
+const loadClientAccessKey = async (
+  store: DynamoDBStore,
+  id: string,
+): Promise<{
+  readonly row: ClientAccessKeyRow;
+  readonly version: number;
+} | null> => {
+  const result = await store.client.send(
+    new GetCommand({
+      TableName: store.tableName,
+      Key: { pk: DYNAMODB_CLIENT_ACCESS_KEY_PARTITION, sk: id },
+      ConsistentRead: true,
+    }),
+  );
+  return result.Item === undefined
+    ? null
+    : parseOfficialRowItem(
+        result.Item,
+        DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+        isClientAccessKeyRow,
+      );
 };
 
-export const createDynamoDBUniversalComponentDataAdapter = (
+export const createDynamoDBClientAccessKeyTable = (
   store: DynamoDBStore,
-): UniversalComponentDataAdapter => {
-  const readinessValidated = new WeakSet<UniversalComponentSchema>();
+): ClientAccessKeyTable => {
+  const findByHash = async (
+    hash: string,
+  ): Promise<ClientAccessKeyRow | null> => {
+    const lookup = await store.client.send(
+      new GetCommand({
+        TableName: store.tableName,
+        Key: { pk: DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION, sk: hash },
+        ConsistentRead: true,
+      }),
+    );
+    const id = lookup.Item?.client_access_key_id;
+    if (lookup.Item === undefined) return null;
+    if (typeof id !== "string") throw new DynamoDBStoredItemError();
+    return (await loadClientAccessKey(store, id))?.row ?? null;
+  };
+
   return {
-    bind(schema) {
-      const latest = getUniversalComponentLatestSchema(schema);
-      const assertReady = async (): Promise<void> => {
-        let actualVersion: string | null;
-        try {
-          actualVersion = await getSetting(store, markerKey(schema));
-        } catch (error) {
-          if (error instanceof DynamoDBUniversalComponentSchemaDriftError) {
-            throw new UniversalComponentDataStateNotReadyError(
-              schema.id,
-              latest.version,
-              "physical-schema",
-              { cause: error },
-            );
-          }
-          throw error;
-        }
-        if (actualVersion !== latest.version) {
-          throw new UniversalComponentSchemaNotReadyError(
-            schema.id,
-            latest.version,
-            actualVersion,
-          );
-        }
-        if (!readinessValidated.has(schema)) {
-          try {
-            await validatePhysicalState(store, schema, latest);
-          } catch (error) {
-            if (error instanceof DynamoDBUniversalComponentIndexError) {
-              throw new UniversalComponentDataStateNotReadyError(
-                schema.id,
-                latest.version,
-                "index",
-                { cause: error },
-              );
-            }
-            if (error instanceof DynamoDBUniversalComponentStoredDataError) {
-              throw new UniversalComponentDataStateNotReadyError(
-                schema.id,
-                latest.version,
-                "stored-data",
-                { cause: error },
-              );
-            }
-            if (error instanceof DynamoDBUniversalComponentSchemaDriftError) {
-              throw new UniversalComponentDataStateNotReadyError(
-                schema.id,
-                latest.version,
-                "physical-schema",
-                { cause: error },
-              );
-            }
-            throw error;
-          }
-          readinessValidated.add(schema);
-        }
-      };
-      const write = async (
-        input: UniversalComponentAppendInput,
-      ): Promise<void> => {
-        const table = validateUniversalComponentAppend(schema, input);
-        const primary = primaryKeyValue(table, input.row);
-        const transactItems = [
+    async create(row) {
+      if ((await findByHash(row.hash)) !== null) return "existing";
+      try {
+        await commitDynamoDBTransaction(store, [
+          {
+            Put: {
+              TableName: store.tableName,
+              Item: boundedDynamoDBMetadataItem(clientAccessKeyItem(row, 1)),
+              ConditionExpression: "attribute_not_exists(#pk)",
+              ExpressionAttributeNames: { "#pk": "pk" },
+            },
+          },
           {
             Put: {
               TableName: store.tableName,
               Item: {
-                data: input.row,
-                pk: tablePartition(schema, table.name),
-                sk: primarySortKey(table, input.row),
+                pk: DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
+                sk: row.hash,
+                client_access_key_id: row.id,
               },
               ConditionExpression: "attribute_not_exists(#pk)",
               ExpressionAttributeNames: { "#pk": "pk" },
             },
           },
-          ...(latest.orderedScans ?? [])
-            .filter(({ table: tableName }) => tableName === table.name)
-            .map((scan) => ({
-              Put: {
-                TableName: store.tableName,
-                Item: {
-                  data: input.row,
-                  pk: scanPartition(schema, scan.name),
-                  primary,
-                  sk: scanSortKey(scan, table, input.row),
-                },
-              },
-            })),
-        ];
-        if (transactItems.length > 100) {
-          throw new TypeError(
-            `Component table ${table.name} exceeds the DynamoDB transaction limit`,
-          );
-        }
-        await store.client.send(
-          new TransactWriteCommand({ TransactItems: transactItems }),
-        );
-      };
-      return {
-        schema,
-        assertReady,
-        async append(input) {
-          await assertReady();
-          await write(input);
-        },
-        async create(input) {
-          await assertReady();
-          try {
-            await write(input);
-            return "created";
-          } catch (error) {
-            if (
-              typeof error !== "object" ||
-              error === null ||
-              Reflect.get(error, "name") !== "TransactionCanceledException"
-            ) {
-              throw error;
-            }
-            const table = validateUniversalComponentAppend(schema, input);
-            const { Item } = await store.client.send(
-              new GetCommand({
-                TableName: store.tableName,
-                Key: {
-                  pk: tablePartition(schema, table.name),
-                  sk: scalarSortKey(primaryKeyValue(table, input.row)),
-                },
-                ConsistentRead: true,
-              }),
-            );
-            if (Item !== undefined) return "existing";
-            throw error;
-          }
-        },
-        async get(input) {
-          await assertReady();
-          const table = validateUniversalComponentGet(schema, input);
-          const { Item } = await store.client.send(
-            new GetCommand({
-              TableName: store.tableName,
-              Key: {
-                pk: tablePartition(schema, table.name),
-                sk: scalarSortKey(input.primaryKey),
-              },
-              ConsistentRead: true,
-            }),
-          );
-          if (Item === undefined) return null;
-          try {
-            return parsePrimaryItem(schema, latest, table, Item);
-          } catch (error) {
-            throw new UniversalComponentDataStateNotReadyError(
-              schema.id,
-              latest.version,
-              "stored-data",
-              { cause: error },
-            );
-          }
-        },
-        async orderedScan(input) {
-          await assertReady();
-          const scan = validateUniversalComponentOrderedScan(schema, input);
-          const table = getUniversalComponentTable(schema, scan.table);
-          const before = tupleSortKey(input.beforePrefixExclusive);
-          const after =
-            input.afterExclusive === undefined
-              ? undefined
-              : `${tupleSortKey(input.afterExclusive)}~\uffff`;
-          if (after !== undefined && after >= before) return [];
-          const parseItem = (item: StoredItem): UniversalComponentRow => {
-            try {
-              const row = itemRow(item);
-              if (
-                itemString(item, "pk") !== scanPartition(schema, scan.name) ||
-                itemString(item, "sk") !== scanSortKey(scan, table, row)
-              ) {
-                throw new DynamoDBUniversalComponentStoredDataError(
-                  `Invalid stored item for component access pattern ${scan.name}`,
-                );
-              }
-              validateUniversalComponentRow(schema, {
-                row,
-                table: table.name,
-                version: latest.version,
-              });
-              return row;
-            } catch (error) {
-              throw new UniversalComponentDataStateNotReadyError(
-                schema.id,
-                latest.version,
-                "stored-data",
-                { cause: error },
-              );
-            }
-          };
-          let exclusiveStartKey: Record<string, unknown> | undefined;
-          const rows: UniversalComponentRow[] = [];
-          do {
-            const page = await store.client.send(
-              new QueryCommand({
-                TableName: store.tableName,
-                ExclusiveStartKey: exclusiveStartKey,
-                KeyConditionExpression:
-                  after === undefined
-                    ? "#pk = :pk AND #sk < :before"
-                    : "#pk = :pk AND #sk BETWEEN :after AND :before",
-                ExpressionAttributeNames: { "#pk": "pk", "#sk": "sk" },
-                ExpressionAttributeValues: {
-                  ":before": before,
-                  ":pk": scanPartition(schema, scan.name),
-                  ...(after === undefined ? {} : { ":after": after }),
-                },
-                Limit: input.limit - rows.length,
-                ScanIndexForward: true,
-              }),
-            );
-            rows.push(...(page.Items ?? []).map(parseItem));
-            exclusiveStartKey = page.LastEvaluatedKey;
-          } while (
-            rows.length < input.limit &&
-            exclusiveStartKey !== undefined
-          );
-          return rows;
-        },
-      };
+        ]);
+        return "created";
+      } catch (error) {
+        if ((await findByHash(row.hash)) !== null) return "existing";
+        throw error;
+      }
     },
-    async migrate(schema) {
-      readinessValidated.delete(schema);
-      const latest = getUniversalComponentLatestSchema(schema);
-      const marker = await getSetting(store, markerKey(schema));
-      const catalog = await getCatalog(store, schema);
-      const physicalVersion = catalog?.version ?? null;
-      if (catalog !== null) {
-        const declared = schema.versions.find(
-          ({ version }) => version === physicalVersion,
+    findByHash,
+    async list() {
+      const rows: ClientAccessKeyRow[] = [];
+      let exclusiveStartKey: Record<string, unknown> | undefined;
+      do {
+        const page = await store.client.send(
+          new QueryCommand({
+            TableName: store.tableName,
+            ExclusiveStartKey: exclusiveStartKey,
+            KeyConditionExpression: "#pk = :pk",
+            ExpressionAttributeNames: { "#pk": "pk" },
+            ExpressionAttributeValues: {
+              ":pk": DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+            },
+            ConsistentRead: true,
+          }),
         );
-        if (
-          declared === undefined ||
-          catalog.shape !== versionShape(declared)
-        ) {
-          throw new DynamoDBUniversalComponentSchemaDriftError(
-            `Component ${schema.id} has an unknown physical catalog`,
-          );
-        }
-      }
-      const discriminatorValue =
-        schema.unmarked === undefined
-          ? null
-          : await getSetting(store, {
-              pk: DYNAMODB_COMPONENT_SCHEMA_PARTITION_KEY,
-              sk: schema.unmarked.discriminatorKey,
-            });
-      const decision = resolveUniversalComponentMigrationState(schema, {
-        discriminatorValue,
-        markerVersion: marker,
-        physicalVersion,
-      });
-      if (decision.kind === "reject") {
-        throw new DynamoDBUniversalComponentSchemaDriftError(
-          `Component ${schema.id} migration state is not adoptable`,
-        );
-      }
-      if (decision.kind === "ready") {
-        await validatePhysicalState(store, schema, latest);
-        readinessValidated.add(schema);
-        return { changed: false, version: latest.version };
-      }
-      if (
-        decision.kind === "adopt" &&
-        decision.fromVersion === latest.version
-      ) {
-        await validatePhysicalState(store, schema, latest);
-        await putMarker(store, schema, latest.version);
-        readinessValidated.add(schema);
-        return { changed: true, version: latest.version };
-      }
-      if (decision.kind === "create") {
-        const partitions = [
-          ...latest.tables.map((table) => tablePartition(schema, table.name)),
-          ...(latest.orderedScans ?? []).map((scan) =>
-            scanPartition(schema, scan.name),
+        rows.push(
+          ...(page.Items ?? []).map(
+            (item) =>
+              parseOfficialRowItem(
+                item,
+                DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+                isClientAccessKeyRow,
+              ).row,
           ),
-        ];
-        for (const partition of partitions) {
-          if ((await queryPartition(store, partition)).length > 0) {
-            throw new DynamoDBUniversalComponentSchemaDriftError(
-              `Component ${schema.id} contains rows without a catalog`,
-            );
-          }
-        }
-        await putCatalog(store, schema, latest);
-      } else {
-        const previous = schema.versions.find(
-          ({ version }) => version === decision.fromVersion,
-        )!;
-        assertCatalogVersion(schema, catalog, previous);
-        const rows = await loadRows(store, schema, previous);
-        for (const target of schema.versions.slice(
-          schema.versions.indexOf(previous) + 1,
-        )) {
-          for (const table of target.tables) {
-            for (const row of rows.get(table.name) ?? []) {
-              try {
-                validateUniversalComponentRow(schema, {
-                  row,
-                  table: table.name,
-                  version: target.version,
-                });
-              } catch (error) {
-                throw new DynamoDBUniversalComponentStoredDataError(
-                  `Invalid stored row for component table ${table.name}`,
-                  { cause: error },
-                );
-              }
-            }
-          }
-        }
-        await replaceIndexes(store, schema, previous, latest, rows);
-        await putCatalog(store, schema, latest);
-      }
-      await validatePhysicalState(store, schema, latest);
-      await putMarker(store, schema, latest.version);
-      readinessValidated.add(schema);
-      return { changed: true, version: latest.version };
+        );
+        exclusiveStartKey = page.LastEvaluatedKey;
+      } while (exclusiveStartKey !== undefined);
+      return rows.sort(
+        (left, right) =>
+          right.created_at_ms - left.created_at_ms ||
+          left.id.localeCompare(right.id),
+      );
+    },
+    async revoke({ id, revokedAtMs }) {
+      const current = await loadClientAccessKey(store, id);
+      if (current === null) return null;
+      const row = { ...current.row, revoked_at_ms: revokedAtMs };
+      await store.client.send(
+        new PutCommand({
+          TableName: store.tableName,
+          Item: boundedDynamoDBMetadataItem(
+            clientAccessKeyItem(row, current.version + 1),
+          ),
+          ConditionExpression: "#version = :currentVersion",
+          ExpressionAttributeNames: { "#version": "version" },
+          ExpressionAttributeValues: { ":currentVersion": current.version },
+        }),
+      );
+      return row;
     },
   };
 };
@@ -2540,34 +2257,36 @@ export const dynamoDB = (config: DynamoDBConfig) => {
       );
     }
   };
-  const plugin = createDatabasePlugin({
+  const adapter = createDatabasePluginAdapter("dynamoDB", {
+    ...crud,
+    commit: createDynamoDBCommit(store),
+    getUpdateInfo: createDynamoDBGetUpdateInfo(
+      store,
+      DYNAMODB_UPDATE_INDEX_NAME,
+    ),
+    dispose: async () => {
+      client.destroy();
+      cloudFront?.destroy();
+    },
+  });
+  return createDatabasePlugin({
     name: "dynamoDB",
+    bundles: adapter.bundles,
     bundlePatches: createDynamoDBBundlePatchTable(
       store,
       DYNAMODB_UPDATE_INDEX_NAME,
     ),
-    plugin: () => ({
-      ...crud,
-      commit: createDynamoDBCommit(store),
-      getUpdateInfo: createDynamoDBGetUpdateInfo(
-        store,
-        DYNAMODB_UPDATE_INDEX_NAME,
-      ),
-      onUnmount: async () => {
-        client.destroy();
-        cloudFront?.destroy();
-      },
-    }),
+    analytics: createDynamoDBAnalyticsTable(store),
+    clientAccessKeys: createDynamoDBClientAccessKeyTable(store),
+    async commit(input) {
+      const result = await adapter.commit(input);
+      if (result.applied && input.mutations.length > 0) {
+        await invalidateUpdateRoutes();
+      }
+      return result;
+    },
+    getChannels: adapter.getChannels,
+    getUpdateInfo: adapter.getUpdateInfo,
+    dispose: adapter.dispose,
   });
-  const pluginWithInvalidation =
-    cloudFront && cloudfrontDistributionId
-      ? {
-          ...plugin,
-          onDatabaseUpdated: invalidateUpdateRoutes,
-        }
-      : plugin;
-  return {
-    ...pluginWithInvalidation,
-    componentData: createDynamoDBUniversalComponentDataAdapter(store),
-  };
 };

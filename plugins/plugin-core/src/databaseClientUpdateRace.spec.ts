@@ -1,7 +1,10 @@
 import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it } from "vitest";
 
-import { createDatabasePlugin } from "./createDatabasePlugin";
+import {
+  createDatabasePlugin,
+  createDatabasePluginAdapter,
+} from "./createDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 import { bundleToRow } from "./databaseRows";
 import type { BundleRow, BundleRowUpdate } from "./types";
@@ -30,14 +33,16 @@ const createFixture = (expectedUpdates: number) => {
   const updateInputs: BundleRowUpdate[] = [];
   let patchDeleteCount = 0;
   let patchCreateCount = 0;
+  const name = "update-race";
   const plugin = createDatabasePlugin({
-    name: "update-race",
-    plugin: () => ({
+    name,
+    ...createDatabasePluginAdapter(name, {
       create: async (input) => {
         if (input.model === "bundle_patches") patchCreateCount += 1;
         return input.data;
       },
       update: async (input) => {
+        if (input.model !== "bundles") return null;
         updateInputs.push(input.update);
         updateCount += 1;
         if (updateCount === expectedUpdates) releaseUpdates();

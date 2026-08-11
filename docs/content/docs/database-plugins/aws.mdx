@@ -13,8 +13,8 @@ npm install @hot-updater/aws --save-dev
 
 ## Create the table
 
-For managed AWS installations, `npx hot-updater init` selects DynamoDB by
-default and creates or validates this table automatically.
+For AWS installations created by `npx hot-updater init`, DynamoDB is selected
+by default and this table is created or validated automatically.
 
 For custom installations, create one on-demand table manually with the
 overloaded index used for update checks and patch relations:
@@ -49,16 +49,14 @@ aws dynamodb create-table \
   ]'
 ```
 
-Universal component data uses the same table under component-derived
-partitions. Do not write component schema markers or configure provider-owned
-retention fields by hand. Compose the component plugin with the database and
-run its provider-neutral migration before serving traffic:
+The same table stores every official database domain: bundles, bundle patches,
+Analytics events, and client access keys. `dynamoDB()` provides all four ports
+directly; there is no component registry or feature migration to compose before
+serving traffic:
 
 ```typescript
 import { dynamoDB } from "@hot-updater/aws";
-import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
-import { migrateUniversalComponents } from "@hot-updater/server/db";
 
 const database = dynamoDB({
   tableName: "hot-updater",
@@ -66,19 +64,14 @@ const database = dynamoDB({
 });
 const hotUpdater = createHotUpdater({
   database,
-  plugins: createManagedServerPlugins(),
+  analytics: {},
+  clientAccessKeys: true,
 });
-
-await migrateUniversalComponents(hotUpdater);
 ```
 
-The migration derives logical markers from each active component schema. For
-example, the current Analytics component owns logical schema version `2`; the
-AWS database plugin does not import or duplicate that contract. Managed AWS
-init runs this migration automatically and enables point-in-time recovery.
-The marker is rechecked on each operation so invalidation is detected, while a
-successful full physical-schema and stored-row inspection is cached for the
-lifetime of the provider.
+`analytics` enables the built-in event and query routes. `clientAccessKeys`
+protects update checks and event ingestion with keys stored through the
+database's official access-key port. Neither option installs a server plugin.
 
 ## Configuration
 
@@ -168,16 +161,17 @@ const hotUpdater = createHotUpdater({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
   }),
+  analytics: {},
+  clientAccessKeys: true,
 });
 ```
 
-The Lambda or server role needs read access for update checks. Active universal
-components also need marker/catalog `GetItem`, `Query`, and
-`TransactWriteItems` access to the provider-neutral component-data namespace.
-Deployment migration additionally needs `PutItem` and `DeleteItem` access plus
-permission to write component markers. The AWS adapter does not impose an
-Analytics retention period; retention belongs to the component contract. CLI
-and Console writers need permission to put, update, and delete metadata items.
+The Lambda or server role needs `Query` access to the update index,
+`BatchGetItem`/`GetItem` access to bundle, patch, and access-key partitions,
+and `PutItem`/`Query` access to the Analytics event partition. CLI and Console
+writers need the transaction and write permissions required to manage bundle
+metadata and client access keys. The AWS adapter does not impose an Analytics
+retention period.
 
 The provider does not impose a total bundle, patch, or patch-relationship count
 limit. Each serialized metadata item is limited to 8 KiB, and counters and
@@ -188,7 +182,7 @@ keys only to discover candidates before strongly reading their base-table rows.
 Unfiltered totals use the transactionally maintained metadata counter. Batch
 reads retry unprocessed keys with bounded exponential backoff.
 
-DynamoDB itself permits at most 100 actions in one transaction, so a single
-atomic aggregate mutation or cascade deletion must fit that service limit.
-Multi-bundle deletes commit one cascade-safe bundle group at a time and can be
-retried after an interruption.
+DynamoDB permits at most 100 actions in one transaction. Every
+`commit({ mutations })` envelope is planned and submitted as one transaction,
+including relation counters and cascade deletions; a commit that exceeds the
+service limit is rejected before it can be partially applied.

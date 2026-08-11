@@ -5,10 +5,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  AtomicDeploymentUnsupportedError,
-  prepareAndCommitBundles,
-} from "./deployTransaction";
+import { prepareAndCommitBundles } from "./deployTransaction";
 
 const createBundle = (id: string, platform: Bundle["platform"]): Bundle => ({
   channel: "production",
@@ -53,7 +50,7 @@ const createTransactionlessClient = () => {
 };
 
 describe("prepareAndCommitBundles", () => {
-  it("rejects multiple bundles before the first write without an atomic mutation capability", async () => {
+  it("commits multiple bundles through one mutation boundary", async () => {
     const { database, insertBundle } = createTransactionlessClient();
     const bundles = [
       createBundle("bundle-ios", "ios"),
@@ -68,13 +65,11 @@ describe("prepareAndCommitBundles", () => {
       },
     });
 
-    await expect(deployment).rejects.toBeInstanceOf(
-      AtomicDeploymentUnsupportedError,
-    );
-    expect(insertBundle).not.toHaveBeenCalled();
+    await expect(deployment).resolves.toEqual(["bundle-ios", "bundle-android"]);
+    expect(insertBundle).toHaveBeenCalledTimes(2);
   });
 
-  it("commits one bundle without an atomic mutation capability", async () => {
+  it("commits one bundle without requiring a multi-bundle transaction", async () => {
     const { database, insertBundle } = createTransactionlessClient();
     const bundle = createBundle("bundle-ios", "ios");
 

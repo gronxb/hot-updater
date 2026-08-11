@@ -1,12 +1,5 @@
-import { InitError, type RunInitOptions } from "@hot-updater/cli-tools";
-import {
-  getUniversalComponentLatestSchema,
-  type UniversalComponentSchema,
-} from "@hot-updater/plugin-core";
-import { generateUniversalComponentArtifacts } from "@hot-updater/server/db";
+import { InitError } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { createDatabasePluginHarness } from "./databasePlugin.testFixtures";
 
 const mocks = vi.hoisted(() => ({
   appendToProjectRootGitignore: vi.fn(() => false),
@@ -15,8 +8,6 @@ const mocks = vi.hoisted(() => ({
   isProjectFileTracked: vi.fn(() => false),
   logError: vi.fn(),
   makeEnv: vi.fn(),
-  createManagedServerPlugins: vi.fn(),
-  prepareManagedServerDeployment: vi.fn(async () => []),
   readHotUpdaterInitEnv: vi.fn(),
   runAwsInit: vi.fn(),
   runSupabaseInit: vi.fn(),
@@ -44,21 +35,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     readHotUpdaterInitEnv: mocks.readHotUpdaterInitEnv,
   };
 });
-
-vi.mock("@hot-updater/managed", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@hot-updater/managed")>();
-  mocks.createManagedServerPlugins.mockImplementation(() =>
-    actual.createManagedServerPlugins(),
-  );
-  return {
-    ...actual,
-    createManagedServerPlugins: mocks.createManagedServerPlugins,
-  };
-});
-
-vi.mock("@hot-updater/managed/deployment", () => ({
-  prepareManagedServerDeployment: mocks.prepareManagedServerDeployment,
-}));
 
 vi.mock("@/utils/ensureInstallPackages", () => ({
   ensureInstallPackages: mocks.ensureInstallPackages,
@@ -130,9 +106,7 @@ describe("init choices", () => {
     );
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
-      createDeploymentTarget: expect.any(Function),
       envFile: undefined,
-      prepareDeployment: expect.any(Function),
     });
   });
 
@@ -157,9 +131,7 @@ describe("init choices", () => {
     });
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "bare",
-      createDeploymentTarget: expect.any(Function),
       envFile: undefined,
-      prepareDeployment: expect.any(Function),
     });
   });
 
@@ -207,9 +179,7 @@ describe("init choices", () => {
     expect(process.exitCode).toBeUndefined();
     expect(mocks.runSupabaseInit).toHaveBeenCalledWith({
       build: "bare",
-      createDeploymentTarget: expect.any(Function),
       envFile: "init.env",
-      prepareDeployment: expect.any(Function),
     });
   });
 
@@ -258,71 +228,7 @@ describe("init choices", () => {
     expect(mocks.group).not.toHaveBeenCalled();
     expect(mocks.runAwsInit).toHaveBeenCalledWith({
       build: "expo",
-      createDeploymentTarget: expect.any(Function),
       envFile: ".env.hotupdater",
-      prepareDeployment: expect.any(Function),
-    });
-  });
-
-  it("gives providers a target whose active Analytics plugin generates its component artifact", async () => {
-    mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
-    const generatedArtifacts: unknown[] = [];
-    mocks.runAwsInit.mockImplementation(async (options: RunInitOptions) => {
-      const database = {
-        ...createDatabasePluginHarness().plugin,
-        componentData: {
-          artifacts(schema: UniversalComponentSchema) {
-            const latest = getUniversalComponentLatestSchema(schema);
-            return [
-              {
-                contents: `-- component ${schema.id}@${latest.version}`,
-                path: `component-data/${schema.id}/synthetic-${latest.version}.sql`,
-                targetVersion: latest.version,
-              },
-            ];
-          },
-          bind: (schema: UniversalComponentSchema) =>
-            Object.freeze({
-              append: async () => {},
-              create: async () => "created" as const,
-              get: async () => null,
-              assertReady: async () => {},
-              orderedScan: async () => [],
-              schema,
-            }),
-        },
-      };
-      const target = options.createDeploymentTarget?.(database);
-      if (target === undefined) {
-        throw new Error("Expected init deployment target callback");
-      }
-      generatedArtifacts.push(...generateUniversalComponentArtifacts(target));
-      await options.prepareDeployment?.(target, {
-        envFile: ".env.hotupdater",
-      });
-    });
-
-    await init({ build: "bare", provider: "aws" });
-
-    expect(generatedArtifacts).toEqual([
-      {
-        componentId: "analytics",
-        contents: "-- component analytics@2",
-        path: "component-data/analytics/synthetic-2.sql",
-        targetVersion: "2",
-      },
-      {
-        componentId: "better-auth-managed-access-keys",
-        contents: "-- component better-auth-managed-access-keys@1",
-        path: "component-data/better-auth-managed-access-keys/synthetic-1.sql",
-        targetVersion: "1",
-      },
-    ]);
-    expect(mocks.createManagedServerPlugins).toHaveBeenCalledOnce();
-    expect(mocks.createManagedServerPlugins.mock.calls[0]).toEqual([]);
-    expect(mocks.prepareManagedServerDeployment).toHaveBeenCalledWith({
-      envFilePath: ".env.hotupdater",
-      target: expect.objectContaining({ adapterName: "test-database-v2" }),
     });
   });
 

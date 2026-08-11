@@ -293,12 +293,12 @@ describe("handleRollback", () => {
     );
   });
 
-  it("calls onUnmount even when getBundles throws", async () => {
+  it("calls dispose even when getBundles throws", async () => {
     databaseHarness.loadObject.mockRejectedValueOnce(new Error("DB down"));
     const { handleRollback } = await import("./rollback");
     await expect(handleRollback("dev", { yes: true })).rejects.toThrow(
       "DB down",
     );
-    expect(databaseHarness.onUnmount).toHaveBeenCalled();
+    expect(databaseHarness.dispose).toHaveBeenCalled();
   });
 });

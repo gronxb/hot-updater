@@ -1,10 +1,16 @@
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+import type {
+  DatabaseBundleMutation,
+  DatabasePlugin,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import type { DatabasePluginTestState } from "./databasePluginTestRunner";
 import { createBundleRowFixture } from "./databaseTestFixtures";
 
 type QueryTestState = DatabasePluginTestState<DatabasePlugin>;
+
+const commit = (plugin: DatabasePlugin, mutation: DatabaseBundleMutation) =>
+  plugin.commit({ mutations: [mutation] });
 
 const seedRows = async (plugin: DatabasePlugin) => {
   const rows = [
@@ -21,7 +27,7 @@ const seedRows = async (plugin: DatabasePlugin) => {
     },
   ];
   for (const row of rows) {
-    await plugin.commit({
+    await commit(plugin, {
       operation: "insert",
       bundleId: row.id,
       changes: [{ table: "bundles", operation: "insert", row }],

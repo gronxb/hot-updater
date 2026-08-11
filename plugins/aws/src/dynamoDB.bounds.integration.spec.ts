@@ -4,6 +4,7 @@ import {
   createDatabaseClient,
   createDatabasePlugin,
 } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -168,9 +169,12 @@ describe("DynamoDB reads beyond the former metadata ceiling", () => {
     batchGets.reset();
     gets.reset();
 
+    const plugin = fixture.createPlugin();
+    const adapter = createDatabasePluginAdapter("tracked-dynamodb", crud);
     const trackedPlugin = createDatabasePlugin({
+      ...plugin,
       name: "tracked-dynamodb",
-      plugin: () => crud,
+      bundles: adapter.bundles,
       bundlePatches: {
         findByBundleIds: (bundleIds) =>
           queryCompleteOwnersPatches(

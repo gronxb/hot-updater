@@ -2,7 +2,10 @@ import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
-import { createDatabasePlugin } from "./createDatabasePlugin";
+import {
+  createDatabasePlugin,
+  createDatabasePluginAdapter,
+} from "./createDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 import { loadBundleRows } from "./databaseClientReads";
 import type { BundleRow } from "./types";
@@ -25,16 +28,17 @@ describe("database client pagination", () => {
   it("loads a finite bundle id set with one domain query", async () => {
     const row = bundlesRow(createBundle("001"));
     const findMany = vi.fn(async () => [row]);
+    const adapter = createDatabasePluginAdapter("finite-id-memory", {
+      create: async () => row,
+      update: async () => row,
+      delete: async () => {},
+      count: async () => 1,
+      findOne: async () => row,
+      findMany,
+    });
     const plugin = createDatabasePlugin({
       name: "finite-id-memory",
-      plugin: () => ({
-        create: async () => row,
-        update: async () => row,
-        delete: async () => {},
-        count: async () => 1,
-        findOne: async () => row,
-        findMany,
-      }),
+      ...adapter,
     });
 
     await expect(
@@ -105,9 +109,10 @@ describe("database client pagination", () => {
       asset_base_storage_uri: null,
     }));
     const ownerQueries: unknown[] = [];
+    const name = "channel-pagination";
     const plugin = createDatabasePlugin({
-      name: "channel-pagination",
-      plugin: () => ({
+      name,
+      ...createDatabasePluginAdapter(name, {
         create: async () => {
           throw new Error("not implemented");
         },
@@ -152,9 +157,10 @@ describe("database client pagination", () => {
       bundlesRow(createBundle(String(index).padStart(3, "0"))),
     );
     let inserted = false;
+    const name = "moving-pagination";
     const plugin = createDatabasePlugin({
-      name: "moving-pagination",
-      plugin: () => ({
+      name,
+      ...createDatabasePluginAdapter(name, {
         create: async () => {
           throw new Error("not implemented");
         },

@@ -129,12 +129,12 @@ describe("handleBundleList", () => {
     expect(output).not.toContain("B2");
   });
 
-  it("calls onUnmount even when getBundles throws", async () => {
+  it("calls dispose even when getBundles throws", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     databaseHarness.loadObject.mockRejectedValueOnce(new Error("DB down"));
     const { handleBundleList } = await import("./bundle");
     await expect(handleBundleList({})).rejects.toThrow("DB down");
-    expect(databaseHarness.onUnmount).toHaveBeenCalled();
+    expect(databaseHarness.dispose).toHaveBeenCalled();
   });
 });
 
@@ -262,14 +262,14 @@ describe("handleBundleSetEnabled", () => {
     );
   });
 
-  it("calls onUnmount even when getBundleById throws", async () => {
+  it("calls dispose even when getBundleById throws", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     databaseHarness.loadObject.mockRejectedValueOnce(new Error("DB error"));
     const { handleBundleSetEnabled } = await import("./bundle");
     await expect(
       handleBundleSetEnabled("B1", false, { yes: true }),
     ).rejects.toThrow("DB error");
-    expect(databaseHarness.onUnmount).toHaveBeenCalled();
+    expect(databaseHarness.dispose).toHaveBeenCalled();
   });
 });
 

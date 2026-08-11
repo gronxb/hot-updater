@@ -1,4 +1,3 @@
-import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { onRequest } from "firebase-functions/v2/https";
@@ -28,7 +27,6 @@ if (!storageBucket) {
 
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase(adminOptions),
-  plugins: createManagedServerPlugins(),
   storages: [
     firebaseFunctionsStorage({
       ...adminOptions,
@@ -63,7 +61,7 @@ const handler = onRequest(
       method: req.method,
       headers: req.headers as Record<string, string>,
       body:
-        req.method !== "GET" && req.method !== "HEAD" ? req.rawBody : undefined,
+        req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
     });
     const honoResponse = await app.fetch(request);
     res.status(honoResponse.status);

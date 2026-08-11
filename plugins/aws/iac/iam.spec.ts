@@ -49,7 +49,7 @@ describe("IAMManager DynamoDB access", () => {
     mocks.deleteRolePolicy.mockResolvedValue({});
   });
 
-  it("grants only update reads and provider-neutral component access", async () => {
+  it("grants only update reads and built-in runtime domain access", async () => {
     // Given
     const manager = new IAMManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
@@ -86,7 +86,12 @@ describe("IAMManager DynamoDB access", () => {
         Action: ["dynamodb:BatchGetItem", "dynamodb:GetItem"],
         Condition: {
           "ForAllValues:StringEquals": {
-            "dynamodb:LeadingKeys": ["bundles", "bundle_patches"],
+            "dynamodb:LeadingKeys": [
+              "bundles",
+              "bundle_patches",
+              "client_access_keys",
+              "_hot-updater#client-access-key-hashes",
+            ],
           },
         },
         Effect: "Allow",
@@ -95,22 +100,10 @@ describe("IAMManager DynamoDB access", () => {
         ],
       },
       {
-        Action: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"],
-        Condition: {
-          "ForAllValues:StringLike": {
-            "dynamodb:LeadingKeys": ["_hot-updater#component-data#*"],
-          },
-        },
-        Effect: "Allow",
-        Resource: [
-          "arn:aws:dynamodb:ap-northeast-2:123456789012:table/hot-updater-metadata",
-        ],
-      },
-      {
-        Action: ["dynamodb:GetItem"],
+        Action: ["dynamodb:PutItem", "dynamodb:Query"],
         Condition: {
           "ForAllValues:StringEquals": {
-            "dynamodb:LeadingKeys": ["_hot-updater"],
+            "dynamodb:LeadingKeys": ["bundle_events"],
           },
         },
         Effect: "Allow",

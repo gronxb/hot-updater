@@ -1,4 +1,3 @@
-import { createManagedServerPlugins } from "@hot-updater/managed";
 import { createHotUpdater } from "@hot-updater/server";
 import { Hono } from "hono";
 
@@ -10,7 +9,10 @@ import {
 } from "../../src/worker";
 
 export type CloudflareWorkerEnv = {
-  DB: D1Database;
+  DB: {
+    batch: D1Database["batch"];
+    prepare: D1Database["prepare"];
+  };
   BUCKET: R2Bucket;
   JWT_SECRET: string;
 };
@@ -33,7 +35,6 @@ const resolveRequestOrigin = (context?: WorkerContext) => {
 
 const hotUpdater = createHotUpdater<WorkerContext>({
   database: d1Database(),
-  plugins: createManagedServerPlugins(),
   storages: [
     r2Storage<WorkerContext>({
       publicBaseUrl: resolveRequestOrigin,

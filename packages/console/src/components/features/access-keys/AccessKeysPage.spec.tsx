@@ -41,9 +41,9 @@ vi.mock("sonner", () => ({
 }));
 
 vi.mock("@/lib/access-keys-api", () => ({
-  useCreateManagedAccessKeyMutation: () => createMutation,
-  useManagedAccessKeysQuery: () => accessKeysQuery,
-  useRevokeManagedAccessKeyMutation: () => revokeMutation,
+  useCreateClientAccessKeyMutation: () => createMutation,
+  useClientAccessKeysQuery: () => accessKeysQuery,
+  useRevokeClientAccessKeyMutation: () => revokeMutation,
 }));
 
 vi.mock("@/components/ui/dialog", async () => {
@@ -194,12 +194,11 @@ describe("AccessKeysPage", () => {
     );
     accessKeysQuery.data = [
       {
-        createdAt: 1_700_000_000_000,
-        enabled: true,
-        id: `managed-client-${"b".repeat(43)}`,
+        created_at_ms: 1_700_000_000_000,
+        id: `client-${"b".repeat(43)}`,
         name: "Production app",
         prefix: "abcdef",
-        revokedAt: null,
+        revoked_at_ms: null,
         role: "client",
       },
     ];
@@ -209,7 +208,7 @@ describe("AccessKeysPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Revoke key" }));
 
     expect(revokeMutation.mutateAsync).toHaveBeenCalledWith(
-      `managed-client-${"b".repeat(43)}`,
+      `client-${"b".repeat(43)}`,
     );
     expect(screen.getByRole("alertdialog")).toBeDefined();
 

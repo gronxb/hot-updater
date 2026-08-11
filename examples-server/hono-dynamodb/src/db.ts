@@ -1,10 +1,8 @@
 import path from "path";
 
 import { dynamoDB, s3Storage } from "@hot-updater/aws";
-import { createManagedServerPlugins } from "@hot-updater/managed";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { migrateUniversalComponents } from "@hot-updater/server/db";
 import { config } from "dotenv";
 
 config({ path: path.resolve(process.cwd(), ".env.hotupdater") });
@@ -25,6 +23,8 @@ export const database = dynamoDB({
 
 export const hotUpdater = createHotUpdater({
   database,
+  analytics: { queryAccess: "public" },
+  clientAccessKeys: true,
   storages: [
     mockStorage({}),
     s3Storage({
@@ -39,14 +39,9 @@ export const hotUpdater = createHotUpdater({
       forcePathStyle: true,
     }),
   ],
-  plugins: createManagedServerPlugins({
-    managementBearerToken: process.env.HOT_UPDATER_AUTH_TOKEN,
-  }),
   basePath: "/hot-updater",
   routes: {
     updateCheck: true,
     bundles: true,
   },
 });
-
-await migrateUniversalComponents(hotUpdater);

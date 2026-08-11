@@ -1,5 +1,10 @@
 import type { Bundle } from "@hot-updater/core";
-import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ClientAccessKeyRow,
+} from "@hot-updater/plugin-core";
 
 const fixtureId = (suffix: string): string =>
   `00000000-0000-0000-0000-${suffix.padStart(12, "0")}`;
@@ -40,6 +45,40 @@ export const createBundlePatchRowFixture = (
   patch_file_hash: `patch-hash-${suffix}`,
   patch_storage_uri: `storage://patches/${suffix}.patch`,
   order_index: orderIndex,
+});
+
+export const createBundleEventRowFixture = (
+  suffix: string,
+  receivedAtMs: number,
+): BundleEventRow => ({
+  id: fixtureId(suffix),
+  type: "UPDATE_APPLIED",
+  install_id: `install-${suffix}`,
+  user_id: null,
+  username: null,
+  from_bundle_id: fixtureId(`${Number(suffix) + 1000}`),
+  to_bundle_id: fixtureId(`${Number(suffix) + 2000}`),
+  platform: "ios",
+  app_version: "1.0.0",
+  channel: "production",
+  cohort: "0",
+  update_strategy: "appVersion",
+  fingerprint_hash: null,
+  sdk_version: null,
+  received_at_ms: receivedAtMs,
+});
+
+export const createClientAccessKeyRowFixture = (
+  suffix: string,
+  createdAtMs: number,
+): ClientAccessKeyRow => ({
+  id: `client-key-${suffix}`,
+  hash: `hash-${suffix}`,
+  name: `Client ${suffix}`,
+  prefix: suffix.padStart(6, "0").slice(0, 6),
+  role: "client",
+  created_at_ms: createdAtMs,
+  revoked_at_ms: null,
 });
 
 export const createBundleFixture = (

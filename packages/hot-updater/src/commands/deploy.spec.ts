@@ -201,7 +201,10 @@ import fs from "fs";
 import path from "path";
 
 import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
-import { BLOB_DATABASE_SNAPSHOT_KEY } from "@hot-updater/plugin-core";
+import {
+  BLOB_DATABASE_SNAPSHOT_KEY,
+  DatabaseAtomicCommitUnsupportedError,
+} from "@hot-updater/plugin-core";
 
 import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
@@ -220,7 +223,6 @@ import {
   normalizePatchMaxBaseBundles,
   normalizeRolloutPercentage,
 } from "./deploy";
-import { AtomicDeploymentUnsupportedError } from "./deployTransaction";
 
 type BundleFixture = Pick<Bundle, "id"> & Partial<Bundle>;
 
@@ -523,9 +525,16 @@ describe("deploy rollout wiring", () => {
     ).toHaveLength(1);
   });
 
-  it("rejects a transactionless two-platform deployment before any database mutation", async () => {
-    const { commitBatch: _commitBatch, ...transactionlessDatabasePlugin } =
-      databasePlugin;
+  it("does not partially persist an unsupported two-platform commit", async () => {
+    const transactionlessDatabasePlugin: DatabasePlugin = {
+      ...databasePlugin,
+      commit: async (input) => {
+        if (input.mutations.length > 1) {
+          throw new DatabaseAtomicCommitUnsupportedError(databasePlugin.name);
+        }
+        return databasePlugin.commit(input);
+      },
+    };
     const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
@@ -554,22 +563,23 @@ describe("deploy rollout wiring", () => {
     });
 
     await expect(deployment).rejects.toBeInstanceOf(
-      AtomicDeploymentUnsupportedError,
+      DatabaseAtomicCommitUnsupportedError,
     );
-    expect(mockBuildPlugin.build).not.toHaveBeenCalled();
-    expect(mockStoragePlugin.profiles.node.upload).not.toHaveBeenCalled();
-    expect(commit).not.toHaveBeenCalled();
-    expect(transactionlessDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
+    expect(mockBuildPlugin.build).toHaveBeenCalledTimes(2);
+    expect(mockStoragePlugin.profiles.node.upload).toHaveBeenCalled();
+    expect(commit).toHaveBeenCalledOnce();
+    expect(await databaseHarness.bundles()).toEqual([]);
+    expect(transactionlessDatabasePlugin.dispose).toHaveBeenCalledOnce();
   });
 
   it("rejects distinct platform databases before building and cleans both up", async () => {
     const iosDatabasePlugin: DatabasePlugin = {
       ...databasePlugin,
-      onUnmount: vi.fn(async (): Promise<void> => {}),
+      dispose: vi.fn(async (): Promise<void> => {}),
     };
     const androidDatabasePlugin: DatabasePlugin = {
       ...databasePlugin,
-      onUnmount: vi.fn(async (): Promise<void> => {}),
+      dispose: vi.fn(async (): Promise<void> => {}),
     };
     mockCli.loadConfig.mockImplementation(async ({ platform }) => ({
       build: async () => mockBuildPlugin,
@@ -597,13 +607,12 @@ describe("deploy rollout wiring", () => {
     );
     expect(mockBuildPlugin.build).not.toHaveBeenCalled();
     expect(mockStoragePlugin.profiles.node.upload).not.toHaveBeenCalled();
-    expect(iosDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
-    expect(androidDatabasePlugin.onUnmount).toHaveBeenCalledOnce();
+    expect(iosDatabasePlugin.dispose).toHaveBeenCalledOnce();
+    expect(androidDatabasePlugin.dispose).toHaveBeenCalledOnce();
   });
 
   it("commits a transactionless single-platform deployment exactly once", async () => {
-    const { commitBatch: _commitBatch, ...transactionlessDatabasePlugin } =
-      databasePlugin;
+    const transactionlessDatabasePlugin = databasePlugin;
     const commit = vi.spyOn(transactionlessDatabasePlugin, "commit");
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildPlugin,
@@ -631,16 +640,10 @@ describe("deploy rollout wiring", () => {
   });
 
   it("does not print deployment success when the database commit fails", async () => {
-    const originalCommitBatch = databasePlugin.commitBatch;
-    if (originalCommitBatch === undefined) {
-      throw new TypeError(
-        "Expected the database fixture to support atomic batches",
-      );
-    }
     const commitError = new Error("commit failed");
     const failingDatabasePlugin: DatabasePlugin = {
       ...databasePlugin,
-      commitBatch: async () => {
+      commit: async () => {
         throw commitError;
       },
     };
@@ -676,18 +679,13 @@ describe("deploy rollout wiring", () => {
   });
 
   it("runs deployment side effects once when a provider retries its commit internally", async () => {
-    const originalCommitBatch = databasePlugin.commitBatch;
-    if (originalCommitBatch === undefined) {
-      throw new TypeError(
-        "Expected the database fixture to support atomic batches",
-      );
-    }
+    const originalCommit = databasePlugin.commit;
     let commitAttemptCount = 0;
     const retryingDatabasePlugin: DatabasePlugin = {
       ...databasePlugin,
-      commitBatch: async (inputs) => {
+      commit: async (input) => {
         commitAttemptCount += 2;
-        return originalCommitBatch(inputs);
+        return originalCommit(input);
       },
     };
     mockCli.loadConfig.mockResolvedValue({

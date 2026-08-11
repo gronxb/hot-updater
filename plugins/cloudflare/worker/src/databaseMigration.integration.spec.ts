@@ -75,9 +75,10 @@ beforeAll(async () => {
   await applyMigration("0006_hot-updater_0.36.0.sql");
   await env.DB.prepare(`
     INSERT INTO private_hot_updater_settings (key, value)
-    VALUES ('version', '0.31.0'), ('schema.extension', '2'), ('extension', 'kept')
+    VALUES ('version', '0.31.0'), ('schema.analytics', '2'), ('extension', 'kept')
   `).run();
   await applyMigration("0006_hot-updater_0.36.0.sql");
+  await applyMigration("0007_hot-updater_0.37.0.sql");
 });
 
 it("preserves bundle channels and patches", async () => {
@@ -113,6 +114,33 @@ it("accepts channels directly on new bundles after migration", async () => {
   ).resolves.toBeDefined();
 });
 
+it("creates the official analytics and client access-key tables", async () => {
+  await env.DB.prepare(`
+    INSERT INTO bundle_events (
+      id, type, install_id, user_id, username, from_bundle_id, to_bundle_id,
+      platform, app_version, channel, cohort, update_strategy,
+      fingerprint_hash, sdk_version, received_at_ms
+    ) VALUES (
+      'event', 'UNCHANGED', 'install', NULL, NULL, NULL, 'target',
+      'ios', '1.0.0', 'production', '0', NULL, NULL, NULL, 1
+    )
+  `).run();
+  await env.DB.prepare(`
+    INSERT INTO client_access_keys (
+      id, hash, name, prefix, role, created_at_ms, revoked_at_ms
+    ) VALUES ('key', 'hash', 'Client', 'prefix', 'client', 1, NULL)
+  `).run();
+
+  await expect(
+    env.DB.prepare("SELECT id FROM bundle_events WHERE id = 'event'").first(),
+  ).resolves.toEqual({ id: "event" });
+  await expect(
+    env.DB.prepare(
+      "SELECT id FROM client_access_keys WHERE id = 'key'",
+    ).first(),
+  ).resolves.toEqual({ id: "key" });
+});
+
 it("records the Core schema without replacing other settings", async () => {
   const settings = await env.DB.prepare(`
     SELECT key, value
@@ -122,13 +150,13 @@ it("records the Core schema without replacing other settings", async () => {
 
   expect(settings.results).toEqual([
     { key: "extension", value: "kept" },
-    { key: "schema.core", value: "0.36.0" },
-    { key: "schema.extension", value: "2" },
+    { key: "schema.analytics", value: "2" },
+    { key: "schema.core", value: "0.37.0" },
     { key: "version", value: "0.31.0" },
   ]);
 });
 
-it("fails closed when a different Core schema marker already exists", async () => {
+it("fails closed for the obsolete preview Core marker", async () => {
   await env.DB.prepare(`
     UPDATE private_hot_updater_settings
     SET value = '0.38.0'
@@ -137,7 +165,7 @@ it("fails closed when a different Core schema marker already exists", async () =
 
   try {
     await expect(
-      applyMigration("0006_hot-updater_0.36.0.sql"),
+      applyMigration("0007_hot-updater_0.37.0.sql"),
     ).rejects.toThrow();
     await expect(
       env.DB.prepare(`
@@ -149,7 +177,34 @@ it("fails closed when a different Core schema marker already exists", async () =
   } finally {
     await env.DB.prepare(`
       UPDATE private_hot_updater_settings
-      SET value = '0.36.0'
+      SET value = '0.37.0'
+      WHERE key = 'schema.core'
+    `).run();
+  }
+});
+
+it("fails closed when a different Core schema marker already exists", async () => {
+  await env.DB.prepare(`
+    UPDATE private_hot_updater_settings
+    SET value = '0.39.0'
+    WHERE key = 'schema.core'
+  `).run();
+
+  try {
+    await expect(
+      applyMigration("0007_hot-updater_0.37.0.sql"),
+    ).rejects.toThrow();
+    await expect(
+      env.DB.prepare(`
+        SELECT value
+        FROM private_hot_updater_settings
+        WHERE key = 'schema.core'
+      `).first("value"),
+    ).resolves.toBe("0.39.0");
+  } finally {
+    await env.DB.prepare(`
+      UPDATE private_hot_updater_settings
+      SET value = '0.37.0'
       WHERE key = 'schema.core'
     `).run();
   }

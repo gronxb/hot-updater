@@ -7,11 +7,6 @@ import {
   type UpdateInfo,
 } from "@hot-updater/core";
 import {
-  createManagedServerPlugins,
-  registerManagedServerClientKey,
-} from "@hot-updater/managed";
-import { createHotUpdater } from "@hot-updater/server";
-import {
   setupBsdiffManifestUpdateInfoTestSuite,
   setupGetUpdateInfoTestSuite,
 } from "@hot-updater/test-utils";
@@ -26,8 +21,6 @@ import {
   vi,
 } from "vitest";
 
-import { getHotUpdaterCoreMetadata } from "../../../../packages/server/src/createHotUpdaterCore";
-import { d1WorkerDatabase } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
@@ -45,8 +38,6 @@ declare module "cloudflare:test" {
 }
 
 const PUBLIC_BASE_URL = "https://updates.example.com";
-const RAW_API_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const WRONG_API_KEY = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 
 const sqlString = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
@@ -170,46 +161,8 @@ const createCanonicalPath = (args: GetBundlesArgs) => {
 };
 
 describe.sequential("cloudflare worker runtime acceptance", () => {
-  let componentMigrations: readonly {
-    readonly changed: boolean;
-    readonly componentId: string;
-    readonly version: string;
-  }[] = [];
-
   beforeAll(async () => {
     await env.DB.prepare(inject("prepareSql")).run();
-    const coreMigration = inject("d1Migrations").find(
-      ({ name }) => name === "0006_hot-updater_0.36.0.sql",
-    );
-    if (coreMigration === undefined) {
-      throw new Error("Cloudflare Core schema migration is missing.");
-    }
-    await env.DB.prepare(coreMigration.sql).run();
-    const database = d1WorkerDatabase(env.DB);
-    const deploymentTarget = createHotUpdater({
-      database,
-      plugins: createManagedServerPlugins(),
-    });
-    const metadata = getHotUpdaterCoreMetadata(deploymentTarget);
-    if (metadata === undefined) {
-      throw new Error("Cloudflare deployment target metadata is missing.");
-    }
-    const migrate = metadata.universalComponentDataAdapter?.migrate;
-    if (migrate === undefined) {
-      throw new Error("Cloudflare universal component migration is missing.");
-    }
-    componentMigrations = await Promise.all(
-      (metadata.components?.schemas ?? []).map(async (schema) => ({
-        ...(await migrate(schema)),
-        componentId: schema.id,
-      })),
-    );
-    await registerManagedServerClientKey({
-      apiKey: RAW_API_KEY,
-      createdAt: 1,
-      name: "Runtime test",
-      target: deploymentTarget,
-    });
   });
 
   beforeEach(async () => {
@@ -217,60 +170,9 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     await env.DB.prepare("DELETE FROM bundles").run();
   });
 
-  it("prepares the component schema consumed by the managed Worker", async () => {
-    expect(componentMigrations).toEqual([
-      expect.objectContaining({
-        changed: true,
-        componentId: "analytics",
-        version: "2",
-      }),
-      expect.objectContaining({
-        changed: true,
-        componentId: "better-auth-managed-access-keys",
-        version: "1",
-      }),
-    ]);
-
-    const event = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/events`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": RAW_API_KEY,
-        },
-        body: JSON.stringify({
-          appVersion: "1.0.0",
-          channel: "production",
-          cohort: "default",
-          fingerprintHash: null,
-          fromBundleId: null,
-          installId: "cloudflare-managed-install",
-          platform: "ios",
-          toBundleId: "bundle-1",
-          type: "UNCHANGED",
-          updateStrategy: null,
-        }),
-      }),
-      env,
-    );
-    const query = await worker.fetch(
-      new Request(
-        `${PUBLIC_BASE_URL}${HOT_UPDATER_BASE_PATH}/api/installations/overview`,
-        { headers: { "x-api-key": RAW_API_KEY } },
-      ),
-      env,
-    );
-
-    expect(event.status).toBe(204);
-    expect(query.status).toBe(401);
-    expect(query.headers.get("cache-control")).toBe("private, no-store");
-  });
-
   const requestUpdateInfo = async (args: GetBundlesArgs) => {
     const response = await worker.fetch(
-      new Request(`${PUBLIC_BASE_URL}${createCanonicalPath(args)}`, {
-        headers: { "x-api-key": RAW_API_KEY },
-      }),
+      new Request(`${PUBLIC_BASE_URL}${createCanonicalPath(args)}`),
       env,
     );
 
@@ -427,7 +329,6 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
           platform: "ios",
           _updateStrategy: "appVersion",
         })}`,
-        { headers: { "x-api-key": RAW_API_KEY } },
       ),
       env,
     );
@@ -436,27 +337,6 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
       id: "00000000-0000-0000-0000-000000000001",
       status: "UPDATE",
     });
-  });
-
-  it("requires a managed client key for update checks", async () => {
-    const url = `${PUBLIC_BASE_URL}${createCanonicalPath({
-      appVersion: "1.0",
-      bundleId: NIL_UUID,
-      platform: "ios",
-      _updateStrategy: "appVersion",
-    })}`;
-
-    for (const headers of [
-      undefined,
-      { "x-api-key": WRONG_API_KEY },
-    ] as const) {
-      const response = await worker.fetch(new Request(url, { headers }), env);
-
-      expect(response.status).toBe(401);
-      await expect(response.json()).resolves.toEqual({
-        error: "Unauthorized",
-      });
-    }
   });
 
   it("does not support the legacy exact path", async () => {

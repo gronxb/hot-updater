@@ -22,8 +22,6 @@
     "@hot-updater/cli-tools": "*"
   },
   "dependencies": {
-    "@hot-updater/analytics": "workspace:*",
-    "@hot-updater/better-auth": "workspace:*",
     "@hot-updater/bsdiff": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "recharts": "3.8.0"

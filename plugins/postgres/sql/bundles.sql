@@ -36,6 +36,41 @@ CREATE TABLE bundle_patches (
     order_index integer NOT NULL DEFAULT 0
 );
 
+CREATE TABLE bundle_events (
+    id uuid PRIMARY KEY,
+    type text NOT NULL,
+    install_id text NOT NULL,
+    user_id text,
+    username text,
+    from_bundle_id uuid,
+    to_bundle_id uuid NOT NULL,
+    platform platforms NOT NULL,
+    app_version text NOT NULL,
+    channel text NOT NULL,
+    cohort text NOT NULL,
+    update_strategy text,
+    fingerprint_hash text,
+    sdk_version text,
+    received_at_ms double precision NOT NULL,
+    CONSTRAINT bundle_events_type_check CHECK (
+      type IN ('UPDATE_APPLIED', 'RECOVERED', 'UNCHANGED')
+    ),
+    CONSTRAINT bundle_events_shape_check CHECK (
+      ((type IN ('UPDATE_APPLIED', 'RECOVERED')) AND from_bundle_id IS NOT NULL AND update_strategy IN ('fingerprint', 'appVersion'))
+      OR (type = 'UNCHANGED' AND from_bundle_id IS NULL AND update_strategy IS NULL)
+    )
+);
+
+CREATE TABLE client_access_keys (
+    id text PRIMARY KEY,
+    hash text NOT NULL UNIQUE,
+    name text NOT NULL,
+    prefix text NOT NULL,
+    role text NOT NULL CHECK (role = 'client'),
+    created_at_ms double precision NOT NULL CHECK (created_at_ms >= 0),
+    revoked_at_ms double precision CHECK (revoked_at_ms IS NULL OR revoked_at_ms >= 0)
+);
+
 CREATE INDEX bundles_target_app_version_idx ON bundles(target_app_version);
 CREATE INDEX bundles_fingerprint_hash_idx ON bundles(fingerprint_hash);
 CREATE INDEX bundles_channel_idx ON bundles(channel);
@@ -43,3 +78,6 @@ CREATE INDEX bundles_rollout_idx ON bundles(rollout_cohort_count);
 CREATE INDEX bundles_target_cohorts_idx ON bundles USING GIN (target_cohorts);
 CREATE INDEX bundle_patches_bundle_id_idx ON bundle_patches(bundle_id);
 CREATE INDEX bundle_patches_base_bundle_id_idx ON bundle_patches(base_bundle_id);
+CREATE INDEX bundle_events_received_at_idx ON bundle_events(received_at_ms, id);
+CREATE INDEX bundle_events_install_idx ON bundle_events(install_id, received_at_ms, id);
+CREATE INDEX client_access_keys_created_at_idx ON client_access_keys(created_at_ms, id);

@@ -1,12 +1,13 @@
-import type { ManagedAccessKeyRecord } from "@hot-updater/better-auth/managed";
+import type { ClientAccessKeyRow } from "@hot-updater/plugin-core";
+import { createClientAccessKey } from "@hot-updater/server";
 import { createServerFn } from "@tanstack/react-start";
 
-export type ManagedAccessKeyView = Omit<ManagedAccessKeyRecord, "hash">;
+export type ClientAccessKeyView = Omit<ClientAccessKeyRow, "hash">;
 
-export const toManagedAccessKeyView = ({
+export const toClientAccessKeyView = ({
   hash: _hash,
   ...record
-}: ManagedAccessKeyRecord): ManagedAccessKeyView => record;
+}: ClientAccessKeyRow): ClientAccessKeyView => record;
 
 const parseName = (input: unknown): { readonly name: string } => {
   const name =
@@ -24,65 +25,63 @@ const parseId = (input: unknown): { readonly id: string } => {
     typeof input === "object" && input !== null
       ? Reflect.get(input, "id")
       : undefined;
-  if (
-    typeof id !== "string" ||
-    !/^managed-client-[A-Za-z0-9_-]{43}$/u.test(id)
-  ) {
-    throw new TypeError("Invalid managed access-key id.");
+  if (typeof id !== "string" || !/^client-[A-Za-z0-9_-]{43}$/u.test(id)) {
+    throw new TypeError("Invalid client access-key id.");
   }
   return { id };
 };
 
 const requireStore = async () => {
   const { prepareConfig } = await import("./server/config.server");
-  const { managedAccessKeyStore } = await prepareConfig();
-  if (managedAccessKeyStore === null) {
+  const { clientAccessKeyStore } = await prepareConfig();
+  if (clientAccessKeyStore === null) {
     throw new Error(
       "Access keys are not supported by the configured database plugin.",
     );
   }
-  return managedAccessKeyStore;
+  return clientAccessKeyStore;
 };
 
-export const getManagedAccessKeyCapabilityRpc = createServerFn({
+export const getClientAccessKeyCapabilityRpc = createServerFn({
   method: "GET",
 }).handler(async () => {
   const { prepareConfig } = await import("./server/config.server");
-  const { managedAccessKeyStore } = await prepareConfig();
-  return { accessKeys: managedAccessKeyStore !== null } as const;
+  const { clientAccessKeyStore } = await prepareConfig();
+  return { accessKeys: clientAccessKeyStore !== null } as const;
 });
 
-export const listManagedAccessKeysRpc = createServerFn({
+export const listClientAccessKeysRpc = createServerFn({
   method: "GET",
 }).handler(async () => {
   const store = await requireStore();
   const records = await store.list();
   return [...records]
-    .sort((left, right) => right.createdAt - left.createdAt)
-    .map(toManagedAccessKeyView);
+    .sort((left, right) => right.created_at_ms - left.created_at_ms)
+    .map(toClientAccessKeyView);
 });
 
-export const createManagedAccessKeyRpc = createServerFn({ method: "POST" })
+export const createClientAccessKeyRpc = createServerFn({ method: "POST" })
   .validator(parseName)
   .handler(async ({ data }) => {
     const store = await requireStore();
-    const { createManagedBetterAuthApiKey } =
-      await import("@hot-updater/better-auth/managed/provisioning");
-    const created = await createManagedBetterAuthApiKey({
+    const created = await createClientAccessKey({
+      clientAccessKeys: store,
       name: data.name,
-      store,
     });
     return {
       apiKey: created.apiKey,
-      record: toManagedAccessKeyView(created.record),
+      record: toClientAccessKeyView(created.record),
     };
   });
 
-export const revokeManagedAccessKeyRpc = createServerFn({ method: "POST" })
+export const revokeClientAccessKeyRpc = createServerFn({ method: "POST" })
   .validator(parseId)
   .handler(async ({ data }) => {
     const store = await requireStore();
-    const revoked = await store.revoke({ id: data.id, revokedAt: Date.now() });
+    const revoked = await store.revoke({
+      id: data.id,
+      revokedAtMs: Date.now(),
+    });
     if (revoked === null) throw new Error("Access key not found.");
-    return toManagedAccessKeyView(revoked);
+    return toClientAccessKeyView(revoked);
   });

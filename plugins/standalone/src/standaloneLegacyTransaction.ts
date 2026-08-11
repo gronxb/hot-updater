@@ -1,11 +1,11 @@
-import type {
-  Bundle,
-  DatabasePluginImplementation,
-} from "@hot-updater/plugin-core";
+import type { Bundle } from "@hot-updater/plugin-core";
 
 import type { StandaloneBundleRemote } from "./standaloneBundleRemote";
 import { StandaloneDatabaseError } from "./standaloneHttp";
-import { createLegacyCompatibilityImplementation } from "./standaloneLegacyImplementation";
+import {
+  createLegacyCompatibilityImplementation,
+  type StandaloneLegacyImplementation,
+} from "./standaloneLegacyImplementation";
 
 const cloneBundle = (bundle: Bundle): Bundle => structuredClone(bundle);
 
@@ -61,7 +61,7 @@ const commitBundle = async (
 
 export const runLegacyAggregateTransaction = async <TResult>(
   remote: StandaloneBundleRemote,
-  callback: (transaction: DatabasePluginImplementation) => Promise<TResult>,
+  callback: (transaction: StandaloneLegacyImplementation) => Promise<TResult>,
 ): Promise<TResult> => {
   const initial = new Map(
     (await remote.loadBundles()).map((bundle) => [

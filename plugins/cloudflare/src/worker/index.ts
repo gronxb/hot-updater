@@ -7,8 +7,6 @@ import {
   type CloudflareWorkerDatabaseEnv,
   d1WorkerDatabase,
 } from "../cloudflareWorkerDatabase";
-
-export { d1WorkerDatabase } from "../cloudflareWorkerDatabase";
 import {
   type CloudflareWorkerStorageConfig,
   type CloudflareWorkerStorageEnv,

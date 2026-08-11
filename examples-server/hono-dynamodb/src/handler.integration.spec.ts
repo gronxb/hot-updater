@@ -19,10 +19,8 @@ import {
   type GetBundlesArgs,
   NIL_UUID,
 } from "@hot-updater/core";
-import { registerManagedServerClientKey } from "@hot-updater/managed";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
-import type { HotUpdaterAPI } from "@hot-updater/server";
-import { migrateUniversalComponents } from "@hot-updater/server/db";
+import { createClientAccessKey, type HotUpdaterAPI } from "@hot-updater/server";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
   setupBundleMethodsTestSuite,
@@ -53,7 +51,6 @@ const tableName = "hot-updater-metadata";
 const bucketName = "hot-updater-bundles";
 const dynamodbEndpoint = `http://localhost:${dynamodbPort}`;
 const s3Endpoint = `http://localhost:${minioPort}`;
-const rawApiKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 assertDockerComposeAvailable(
   "Hono + DynamoDB integration tests require Docker Compose and a running Docker daemon.",
@@ -143,6 +140,7 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
   let serverProcess: ReturnType<typeof execa> | null = null;
   let baseUrl: string;
   let hotUpdater: HotUpdaterAPI;
+  let rawApiKey: string;
 
   beforeAll(async () => {
     await killPort(port);
@@ -183,12 +181,11 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     await waitForServer(baseUrl, 180);
 
     const db = await import("./db.js");
-    await registerManagedServerClientKey({
-      apiKey: rawApiKey,
-      createdAt: 1,
+    const created = await createClientAccessKey({
+      clientAccessKeys: db.database.clientAccessKeys,
       name: "Standalone integration test",
-      target: db.hotUpdater,
     });
+    rawApiKey = created.apiKey;
     hotUpdater = db.hotUpdater;
   }, 120000);
 
@@ -249,22 +246,7 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
       hotUpdater.deleteBundleById(bundleId),
   });
 
-  it("initializes managed components through the neutral lifecycle", async () => {
-    await expect(migrateUniversalComponents(hotUpdater)).resolves.toEqual([
-      {
-        changed: false,
-        componentId: "analytics",
-        version: "2",
-      },
-      {
-        changed: false,
-        componentId: "better-auth-managed-access-keys",
-        version: "1",
-      },
-    ]);
-  });
-
-  it("accepts authenticated events without granting component queries", async () => {
+  it("accepts authenticated events without granting client query access", async () => {
     const event = {
       type: "UNCHANGED",
       installId: "standalone-dynamodb-installation",

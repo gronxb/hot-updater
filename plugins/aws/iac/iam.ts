@@ -4,10 +4,11 @@ import { IAM } from "@aws-sdk/client-iam";
 import { STS } from "@aws-sdk/client-sts";
 import { p } from "@hot-updater/cli-tools";
 
-import { DYNAMODB_UPDATE_INDEX_NAME } from "../src/dynamoDB";
 import {
-  DYNAMODB_COMPONENT_DATA_PARTITION_PREFIX,
-  DYNAMODB_COMPONENT_SCHEMA_PARTITION_KEY,
+  DYNAMODB_ANALYTICS_PARTITION,
+  DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
+  DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+  DYNAMODB_UPDATE_INDEX_NAME,
 } from "../src/dynamoDB";
 
 export class IAMManager {
@@ -67,18 +68,11 @@ export class IAMManager {
             Action: ["dynamodb:BatchGetItem", "dynamodb:GetItem"],
             Condition: {
               "ForAllValues:StringEquals": {
-                "dynamodb:LeadingKeys": ["bundles", "bundle_patches"],
-              },
-            },
-            Effect: "Allow",
-            Resource: [tableArn],
-          },
-          {
-            Action: ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:Query"],
-            Condition: {
-              "ForAllValues:StringLike": {
                 "dynamodb:LeadingKeys": [
-                  `${DYNAMODB_COMPONENT_DATA_PARTITION_PREFIX}#*`,
+                  "bundles",
+                  "bundle_patches",
+                  DYNAMODB_CLIENT_ACCESS_KEY_PARTITION,
+                  DYNAMODB_CLIENT_ACCESS_KEY_HASH_PARTITION,
                 ],
               },
             },
@@ -86,12 +80,10 @@ export class IAMManager {
             Resource: [tableArn],
           },
           {
-            Action: ["dynamodb:GetItem"],
+            Action: ["dynamodb:PutItem", "dynamodb:Query"],
             Condition: {
               "ForAllValues:StringEquals": {
-                "dynamodb:LeadingKeys": [
-                  DYNAMODB_COMPONENT_SCHEMA_PARTITION_KEY,
-                ],
+                "dynamodb:LeadingKeys": [DYNAMODB_ANALYTICS_PARTITION],
               },
             },
             Effect: "Allow",

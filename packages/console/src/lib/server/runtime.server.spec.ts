@@ -1,11 +1,6 @@
 // @vitest-environment node
 
-import { analyticsComponentSchema } from "@hot-updater/analytics";
-import { managedAccessKeyComponentSchema } from "@hot-updater/better-auth/managed";
-import {
-  createDatabasePlugin,
-  type UniversalComponentSchema,
-} from "@hot-updater/plugin-core";
+import { mockDatabase } from "@hot-updater/mock";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -15,53 +10,41 @@ import {
   parseSearchInstallationsInput,
 } from "../analytics-input";
 import {
-  createManagedAccessKeyStore,
+  createClientAccessKeyStore,
+  createRuntimeHotUpdater,
   getActiveInstallationOverview,
+  getAnalyticsCapability,
   getBundleEventAnalytics,
   getBundleEventSummary,
   getInstallationHistory,
-  getAnalyticsCapability,
   searchInstallations,
-  createRuntimeHotUpdater,
 } from "./runtime.server";
 
-const createDatabase = () =>
-  createDatabasePlugin({
-    name: "console-component-test",
-    plugin: () => ({
-      count: vi.fn(async () => 0),
-      create: vi.fn(async ({ data }) => data),
-      delete: vi.fn(async () => undefined),
-      findMany: vi.fn(async () => []),
-      findOne: vi.fn(async () => null),
-      update: vi.fn(async () => null),
-    }),
-  });
+const createDatabase = () => mockDatabase({ latency: { min: 0, max: 0 } });
 
-describe("managed access-key runtime", () => {
-  it("composes the store only from a neutral component adapter", async () => {
-    const bind = vi.fn((schema: UniversalComponentSchema) => ({
-      schema,
-      append: async () => undefined,
-      assertReady: async () => undefined,
-      create: async () => "created" as const,
-      get: async () => null,
-      orderedScan: async () => [],
-    }));
-    const supported = { ...createDatabase(), componentData: { bind } };
+describe("client access-key runtime", () => {
+  it("uses only the official database domain", async () => {
+    const database = createDatabase();
 
+    const store = createClientAccessKeyStore({ database });
+
+    expect(store).toBe(database.clientAccessKeys);
     expect(
-      createManagedAccessKeyStore({ database: createDatabase() }),
+      createClientAccessKeyStore({
+        database: {
+          bundles: database.bundles,
+          bundlePatches: database.bundlePatches,
+          commit: database.commit,
+          name: database.name,
+        },
+      }),
     ).toBeNull();
-    const resolved = createManagedAccessKeyStore({ database: supported });
-    expect(resolved).not.toBeNull();
-    await resolved?.list();
-    expect(bind).toHaveBeenCalledWith(managedAccessKeyComponentSchema);
   });
 });
 
 const createRuntime = () => ({
-  mode: "dedicated" as const,
+  mode: "bounded" as const,
+  maxMatchingRows: 50_000,
   appendBundleEvent: vi.fn(),
   getActiveInstallationOverview: vi.fn(),
   getBundleEventSummary: vi.fn(),
@@ -72,17 +55,10 @@ const createRuntime = () => ({
 });
 
 describe("analytics runtime input validation", () => {
-  it("composes Analytics from the database's neutral component adapter", async () => {
+  it("composes Analytics from the official database domain", async () => {
     // Given
-    const bind = vi.fn((schema) => ({
-      schema,
-      append: vi.fn(async () => undefined),
-      create: vi.fn(async () => "created" as const),
-      get: vi.fn(async () => null),
-      assertReady: vi.fn(async () => undefined),
-      orderedScan: vi.fn(async () => []),
-    }));
-    const database = { ...createDatabase(), componentData: { bind } };
+    const database = createDatabase();
+    const scan = vi.spyOn(database.analytics, "scan");
 
     // When
     const runtime = createRuntimeHotUpdater({
@@ -90,44 +66,30 @@ describe("analytics runtime input validation", () => {
     });
 
     // Then
-    expect(bind).toHaveBeenCalledWith(analyticsComponentSchema);
     expect(runtime).toMatchObject({ mode: "bounded" });
+    expect(runtime).not.toBeNull();
+    if (runtime === null) throw new Error("Expected Analytics runtime");
     await expect(getAnalyticsCapability(runtime)).resolves.toMatchObject({
       analytics: true,
       analyticsQueries: true,
       mode: "bounded",
     });
-    await expect(runtime?.getBundleEventOverview()).resolves.toEqual({
+    await expect(runtime.getBundleEventOverview()).resolves.toEqual({
       bundles: [],
       trackedInstallations: 0,
     });
+    expect(scan).toHaveBeenCalled();
   });
 
-  it("reports Analytics unsupported without a neutral component adapter", () => {
-    expect(
-      createRuntimeHotUpdater({
-        database: createDatabase(),
-      }),
-    ).toBeNull();
-  });
-
-  it("rejects a remote that internally reports Analytics unsupported", async () => {
+  it("rejects an invalid Analytics runtime", async () => {
     // Given
-    const runtime = Object.assign(createRuntime(), {
-      resolveAvailability: () =>
-        Promise.resolve({
-          analytics: false as const,
-          analyticsQueries: false,
-          eventIngestion: false,
-        }),
-    });
+    const runtime = { mode: "bounded", maxMatchingRows: 50_000 };
 
     // When
     const result = getBundleEventSummary(runtime, { bundleId: "bundle-1" });
 
     // Then
     await expect(result).rejects.toThrow(/not supported/i);
-    expect(runtime.getBundleEventSummary).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -10,7 +10,7 @@ import type {
   DatabaseBundleIdFilter,
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
-  DatabasePlugin,
+  BundleRepository,
   PaginatedResult,
 } from "./types";
 
@@ -25,7 +25,7 @@ const mergeIdFilter = (
 });
 
 export const loadBundleRows = async (
-  database: DatabasePlugin,
+  database: BundleRepository,
   where?: DatabaseBundleQueryWhere,
 ): Promise<BundleRow[]> => {
   const finiteIds = where?.id?.in;
@@ -67,7 +67,7 @@ export const loadBundleRows = async (
 };
 
 export const hydrateRows = async (
-  database: DatabasePlugin,
+  database: BundleRepository,
   ownerRows: readonly BundleRow[],
 ): Promise<Bundle[]> => {
   const patchRows = await database.bundlePatches.findByBundleIds(
@@ -102,7 +102,7 @@ const cursorIdFilter = (
 };
 
 export const responsePage = async (
-  database: DatabasePlugin,
+  database: BundleRepository,
   options: DatabaseBundleQueryOptions,
 ): Promise<PaginatedResult> => {
   validateBundlePagination(options);

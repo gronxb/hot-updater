@@ -1,22 +1,16 @@
+import type {
+  AnalyticsTable,
+  BundleRepository,
+  ClientAccessKeyTable,
+} from "@hot-updater/plugin-core";
 import {
-  analyticsComponentSchema,
   type ActiveInstallationInput,
+  type AnalyticsProvider,
+  createAnalyticsProvider,
   type InstallationHistoryRow,
   type InstallationSearchRow,
   type OffsetPaginationResult,
-} from "@hot-updater/analytics";
-import {
-  createUniversalComponentAnalyticsProvider,
-  type AnalyticsProvider,
-  parseAnalyticsProvider,
-  resolveAnalyticsCapability,
-} from "@hot-updater/analytics/provider";
-import {
-  createUniversalComponentManagedAccessKeyStore,
-  managedAccessKeyComponentSchema,
-  type ManagedAccessKeyStore,
-} from "@hot-updater/better-auth/managed";
-import type { DatabasePlugin } from "@hot-updater/plugin-core";
+} from "@hot-updater/server";
 
 import {
   parseActiveInstallationInput,
@@ -32,57 +26,87 @@ export type InstallationHistoryResult =
   OffsetPaginationResult<InstallationHistoryRow>;
 
 export function createRuntimeHotUpdater(config: {
-  readonly database: DatabasePlugin;
+  readonly database: BundleRepository;
 }): AnalyticsProvider | null {
-  const adapter = config.database.componentData;
-  if (adapter === undefined) return null;
-  return createUniversalComponentAnalyticsProvider(
-    adapter.bind(analyticsComponentSchema),
-  );
+  const analytics: unknown = Reflect.get(config.database, "analytics");
+  if (
+    typeof analytics !== "object" ||
+    analytics === null ||
+    typeof Reflect.get(analytics, "append") !== "function" ||
+    typeof Reflect.get(analytics, "scan") !== "function"
+  ) {
+    return null;
+  }
+  return createAnalyticsProvider(analytics as AnalyticsTable);
 }
 
-export function createManagedAccessKeyStore(config: {
-  readonly database: DatabasePlugin;
-}): ManagedAccessKeyStore | null {
-  const adapter = config.database.componentData;
-  if (adapter === undefined) return null;
-  return createUniversalComponentManagedAccessKeyStore(
-    adapter.bind(managedAccessKeyComponentSchema),
-    { onRevoke: config.database.onDatabaseUpdated },
+export function createClientAccessKeyStore(config: {
+  readonly database: BundleRepository;
+}): ClientAccessKeyTable | null {
+  const clientAccessKeys: unknown = Reflect.get(
+    config.database,
+    "clientAccessKeys",
   );
+  if (
+    typeof clientAccessKeys !== "object" ||
+    clientAccessKeys === null ||
+    typeof Reflect.get(clientAccessKeys, "create") !== "function" ||
+    typeof Reflect.get(clientAccessKeys, "findByHash") !== "function" ||
+    typeof Reflect.get(clientAccessKeys, "list") !== "function" ||
+    typeof Reflect.get(clientAccessKeys, "revoke") !== "function"
+  ) {
+    return null;
+  }
+  return clientAccessKeys as ClientAccessKeyTable;
 }
+
+const providerMethods = [
+  "appendBundleEvent",
+  "getBundleEventSummary",
+  "getBundleEventAnalytics",
+  "getBundleEventOverview",
+  "getActiveInstallationOverview",
+  "searchInstallations",
+  "getInstallationHistory",
+] as const;
+
+const parseAnalyticsProvider = (value: unknown): AnalyticsProvider | null => {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Reflect.get(value, "mode") !== "bounded" ||
+    typeof Reflect.get(value, "maxMatchingRows") !== "number" ||
+    !providerMethods.every(
+      (method) => typeof Reflect.get(value, method) === "function",
+    )
+  ) {
+    return null;
+  }
+  return value as AnalyticsProvider;
+};
 
 export const getAnalyticsCapability = async (provider: unknown) => {
-  let parsedProvider: AnalyticsProvider;
-  try {
-    parsedProvider = parseAnalyticsProvider(provider);
-  } catch {
-    return {
-      analytics: false,
-      analyticsQueries: false,
-      eventIngestion: false,
-    } as const;
-  }
-
-  return resolveAnalyticsCapability(
-    parsedProvider,
-    new AbortController().signal,
-  );
+  const parsed = parseAnalyticsProvider(provider);
+  return parsed === null
+    ? ({
+        analytics: false,
+        analyticsQueries: false,
+        eventIngestion: false,
+      } as const)
+    : ({
+        analytics: true,
+        analyticsQueries: true,
+        eventIngestion: true,
+        maxMatchingRows: parsed.maxMatchingRows,
+        mode: "bounded",
+      } as const);
 };
 
 const requireAnalyticsSupport = async (
   provider: unknown,
 ): Promise<AnalyticsProvider> => {
-  let parsedProvider: AnalyticsProvider;
-  try {
-    parsedProvider = parseAnalyticsProvider(provider);
-  } catch {
-    throw new Error(
-      "Analytics are not supported by the configured database plugin.",
-    );
-  }
-  const capability = await getAnalyticsCapability(provider);
-  if (!capability.analytics || !capability.analyticsQueries) {
+  const parsedProvider = parseAnalyticsProvider(provider);
+  if (parsedProvider === null) {
     throw new Error(
       "Analytics are not supported by the configured database plugin.",
     );

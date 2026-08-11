@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 import {
   colors,
   confirmInitInputPersistence,
@@ -16,14 +14,12 @@ import {
   transformTemplate,
   writeHotUpdaterConfig,
 } from "@hot-updater/cli-tools";
-import { migrateUniversalComponents } from "@hot-updater/server/db";
 import { execa } from "execa";
 
 import {
   AWS_DATABASE_TYPES,
   type AwsDatabaseType,
 } from "../src/awsDatabaseType";
-import { dynamoDB } from "../src/dynamoDB";
 import { resolveAwsAuth } from "./awsAuth";
 import {
   assertAwsNonInteractiveInputs,
@@ -41,8 +37,6 @@ import { S3Manager } from "./s3";
 import { SSMKeyPairManager } from "./ssm";
 import { getConfigScaffold, SOURCE_TEMPLATE } from "./templates";
 
-const MANAGEMENT_AUTH_TOKEN_ENV_KEY = "HOT_UPDATER_AUTH_TOKEN";
-
 const checkIfAwsCliInstalled = async () => {
   try {
     await execa("aws", ["--version"]);
@@ -57,44 +51,19 @@ const isAwsRegion = (value: string | undefined): value is AwsRegion => {
 };
 
 export const prepareDynamoDBDeployment = async (input: {
-  readonly createDeploymentTarget: RunInitOptions["createDeploymentTarget"];
   readonly credentials: {
     readonly accessKeyId: string;
     readonly secretAccessKey: string;
     readonly sessionToken?: string;
   };
-  readonly envFilePath: string;
-  readonly prepareDeployment: RunInitOptions["prepareDeployment"];
   readonly region: string;
   readonly tableName: string;
-}) => {
+}): Promise<void> => {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
-  if (input.createDeploymentTarget === undefined) return [];
-  const target = input.createDeploymentTarget(
-    dynamoDB({
-      credentials: input.credentials,
-      region: input.region,
-      tableName: input.tableName,
-    }),
-  );
-  await migrateUniversalComponents(target);
-  const notices =
-    (await input.prepareDeployment?.(target, {
-      envFile: input.envFilePath,
-    })) ?? [];
-  for (const notice of notices) {
-    p.note(notice.message, notice.title);
-  }
-  return notices;
 };
 
-export const runInit = async ({
-  build,
-  createDeploymentTarget,
-  envFile,
-  prepareDeployment,
-}: RunInitOptions) => {
+export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(process.cwd(), envFile);
   const { managedEnv } = initEnvSources;
@@ -350,12 +319,8 @@ export const runInit = async ({
   });
   const accessKeyEnvKey = AWS_INIT_PROVIDER.inputs.accessKeyId.envKey;
   const secretAccessKeyEnvKey = AWS_INIT_PROVIDER.inputs.secretAccessKey.envKey;
-  const managementBearerToken =
-    initEnvSources.env[MANAGEMENT_AUTH_TOKEN_ENV_KEY]?.trim() ||
-    randomBytes(32).toString("base64url");
   await makeEnv({
     ...initEnv,
-    [MANAGEMENT_AUTH_TOKEN_ENV_KEY]: managementBearerToken,
     ...(initEnv[accessKeyEnvKey]
       ? {
           [accessKeyEnvKey]: {
@@ -401,10 +366,7 @@ export const runInit = async ({
 
   if (database === "dynamodb" && resolvedDynamoDBTableName) {
     await prepareDynamoDBDeployment({
-      createDeploymentTarget,
       credentials,
-      envFilePath: envFile ?? ".env.hotupdater",
-      prepareDeployment,
       region: bucketRegion,
       tableName: resolvedDynamoDBTableName,
     });
@@ -444,7 +406,6 @@ export const runInit = async ({
       databaseType: database,
       dynamodbRegion: bucketRegion,
       dynamodbTableName: resolvedDynamoDBTableName ?? "",
-      managementBearerToken,
       publicKeyId: publicKeyId,
       ssmParameterName: ssmParameterName,
       ssmRegion: bucketRegion,

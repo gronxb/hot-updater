@@ -1,12 +1,13 @@
 import type {
   HotUpdaterContext,
   RuntimeStoragePlugin,
-  UniversalComponentDataAdapter,
-  UniversalComponentDataSource,
-  UniversalComponentSchema,
 } from "@hot-updater/plugin-core";
 import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 
+import { createAnalyticsProvider } from "./analytics/bounded/provider";
+import type { AnalyticsQueryAccess } from "./analytics/routes";
+import type { AnalyticsProvider } from "./analytics/types";
+import { authenticateClientAccessKey } from "./clientAccessKeys";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
@@ -16,17 +17,7 @@ import {
   isDatabasePlugin,
   type StoragePluginFactory,
 } from "./db/types";
-import {
-  createHandler,
-  createRuntimeHandler,
-  type HandlerRoutes,
-} from "./handler";
-import type { UniversalComponentRegistry } from "./kernel/componentRegistry";
-import { composeServerKernel } from "./kernel/composer";
-import type { HotUpdaterServerPlugin } from "./kernel/contracts";
-import { createCoreServerRoutes } from "./kernel/coreRoutes";
-import { executeKernelRequest } from "./kernel/execute";
-import { createGuardedInfrastructureRuntime } from "./kernel/guardedRuntime";
+import { createHotUpdaterHandler, type HandlerRoutes } from "./handler";
 import { normalizeBasePath } from "./route";
 import { createStorageAccess } from "./storageAccess";
 
@@ -38,6 +29,7 @@ export type RuntimeHotUpdaterAPI<TContext = undefined> =
       context?: HotUpdaterContext<TContext>,
     ) => Promise<Response>;
     readonly adapterName: string;
+    readonly analytics?: AnalyticsProvider;
   };
 
 export type HotUpdaterAPI<TContext = undefined> =
@@ -45,6 +37,12 @@ export type HotUpdaterAPI<TContext = undefined> =
 
 export interface CreateHotUpdaterOptions<TContext = undefined> {
   readonly database: DatabasePlugin;
+  readonly analytics?: {
+    /** Query routes deny access by default; client access keys never grant query access. */
+    readonly queryAccess?: AnalyticsQueryAccess;
+  };
+  /** Protect update-check and Analytics ingestion routes with `x-api-key`. */
+  readonly clientAccessKeys?: boolean;
   readonly storages?: readonly (
     | RuntimeStoragePlugin<TContext>
     | StoragePluginFactory<TContext>
@@ -59,9 +57,31 @@ export interface CreateHotUpdaterOptions<TContext = undefined> {
   readonly basePath?: string;
   readonly cwd?: string;
   readonly routes?: HandlerRoutes;
-  /** Trusted in-process server code. Plugins are not sandboxed. */
-  readonly plugins?: readonly HotUpdaterServerPlugin[];
 }
+
+const normalizeAnalyticsQueryAccess = (
+  analytics: CreateHotUpdaterOptions["analytics"],
+): AnalyticsQueryAccess | undefined => {
+  if (analytics === undefined) return undefined;
+  if (typeof analytics !== "object" || analytics === null) {
+    throw new TypeError("Analytics options must be an object.");
+  }
+  const queryAccess = analytics.queryAccess ?? "protected";
+  if (queryAccess !== "protected" && queryAccess !== "public") {
+    throw new TypeError("Invalid Analytics queryAccess option.");
+  }
+  return queryAccess;
+};
+
+const normalizeClientAccessKeys = (
+  clientAccessKeys: CreateHotUpdaterOptions["clientAccessKeys"],
+): boolean => {
+  if (clientAccessKeys === undefined) return false;
+  if (typeof clientAccessKeys !== "boolean") {
+    throw new TypeError("Client access-keys option must be a boolean.");
+  }
+  return clientAccessKeys;
+};
 
 type DatabasePluginCore<TContext> = {
   readonly api: DatabaseAPI<TContext>;
@@ -76,17 +96,13 @@ export const hotUpdaterCoreMetadata = Symbol.for(
 
 export type HotUpdaterCoreMetadata<TContext = undefined> = {
   readonly adapterCapabilities: DatabaseAdapterCapabilities;
-  readonly components?: UniversalComponentRegistry;
   readonly core: DatabasePluginCore<TContext>;
-  readonly universalComponentDataAdapter?: UniversalComponentDataAdapter;
 };
 
 export type HotUpdaterCore<TContext = undefined> = {
   readonly api: RuntimeHotUpdaterAPI<TContext>;
   readonly adapterCapabilities: DatabaseAdapterCapabilities;
-  readonly components?: UniversalComponentRegistry;
   readonly core: DatabasePluginCore<TContext>;
-  readonly universalComponentDataAdapter?: UniversalComponentDataAdapter;
 };
 
 export function getHotUpdaterCoreMetadata<TContext = undefined>(
@@ -97,19 +113,6 @@ export function getHotUpdaterCoreMetadata<TContext = undefined>(
       readonly [hotUpdaterCoreMetadata]?: HotUpdaterCoreMetadata<TContext>;
     }
   )[hotUpdaterCoreMetadata];
-}
-
-export function requireUniversalComponentDataSource(
-  hotUpdater: RuntimeHotUpdaterAPI,
-  schema: UniversalComponentSchema,
-): UniversalComponentDataSource {
-  const source = getHotUpdaterCoreMetadata(hotUpdater)?.components?.get(schema);
-  if (source === undefined) {
-    throw new Error(
-      `Universal component data source is not available for ${schema.id}.`,
-    );
-  }
-  return source;
 }
 
 export function createHotUpdaterCore<TContext = undefined>(
@@ -142,54 +145,47 @@ export function createHotUpdaterCore<TContext = undefined>(
     beforeOperation: assertSchemaReady,
     readStorageText,
   });
+  const analyticsQueryAccess = normalizeAnalyticsQueryAccess(options.analytics);
+  const clientAccessKeysEnabled = normalizeClientAccessKeys(
+    options.clientAccessKeys,
+  );
+  const analytics =
+    analyticsQueryAccess === undefined
+      ? undefined
+      : createAnalyticsProvider({
+          async append(row) {
+            await assertSchemaReady();
+            return plugin.analytics.append(row);
+          },
+          async scan(input) {
+            await assertSchemaReady();
+            return plugin.analytics.scan(input);
+          },
+        });
 
-  const plugins = options.plugins ?? [];
-  const usesKernel = plugins.length > 0;
-  const internalHandler = (usesKernel ? createRuntimeHandler : createHandler)(
+  const internalHandler = createHotUpdaterHandler(
     core.api,
     {
       basePath,
       routes: options.routes,
     },
-  );
-  const kernel = (() => {
-    if (!usesKernel) return undefined;
-    const runtime = createGuardedInfrastructureRuntime({
-      beforeDatabaseOperation: assertSchemaReady,
-      database: plugin,
-      storages: storagePlugins,
-    });
-    return composeServerKernel({
-      carriers: [plugin, ...storagePlugins],
-      coreRoutes: createCoreServerRoutes({
-        handler: internalHandler,
-        routes: options.routes,
-      }),
-      plugins,
-      runtime,
-    });
-  })();
-  const requestHandler = (() => {
-    if (kernel === undefined) return internalHandler;
-    return (
-      request: Request,
-      context?: HotUpdaterContext<TContext>,
-    ): Promise<Response> =>
-      executeKernelRequest({
-        authentication: kernel.authentication,
-        basePath,
-        platformContext: context,
-        request,
-        router: kernel.router,
-      });
-  })();
-  const componentMetadata =
-    kernel === undefined || kernel.components.schemas.length === 0
-      ? {}
+    analytics === undefined
+      ? undefined
       : {
-          components: kernel.components,
-          universalComponentDataAdapter: plugin.componentData!,
-        };
+          provider: analytics,
+          queryAccess: analyticsQueryAccess ?? "protected",
+        },
+    clientAccessKeysEnabled
+      ? {
+          authenticate: (request) =>
+            authenticateClientAccessKey({
+              beforeLookup: assertSchemaReady,
+              clientAccessKeys: plugin.clientAccessKeys,
+              request,
+            }),
+        }
+      : undefined,
+  );
 
   // Some framework adapters strip the mounted base path or pass extra
   // bindings/execution context arguments. Ignore those extras here so the
@@ -200,16 +196,17 @@ export function createHotUpdaterCore<TContext = undefined>(
     ...extraArgs: unknown[]
   ) => {
     if (extraArgs.length > 0) {
-      return requestHandler(request);
+      return internalHandler(request);
     }
 
-    return requestHandler(request, context);
+    return internalHandler(request, context);
   };
 
   const api: RuntimeHotUpdaterAPI<TContext> = Object.assign(
     {
       basePath,
       adapterName: adapterCapabilities.adapterName ?? core.adapterName,
+      ...(analytics === undefined ? {} : { analytics }),
       handler,
     },
     core.api,
@@ -218,7 +215,6 @@ export function createHotUpdaterCore<TContext = undefined>(
     enumerable: false,
     value: {
       adapterCapabilities,
-      ...componentMetadata,
       core,
     } satisfies HotUpdaterCoreMetadata<TContext>,
   });
@@ -226,7 +222,6 @@ export function createHotUpdaterCore<TContext = undefined>(
   return {
     api,
     adapterCapabilities,
-    ...componentMetadata,
     core,
   };
 }

@@ -26,7 +26,7 @@ vi.mock("@/components/features/analytics/AnalyticsCapabilityContext", () => ({
 }));
 
 vi.mock("@/lib/access-keys-api", () => ({
-  useManagedAccessKeyCapabilityQuery: () => ({
+  useClientAccessKeyCapabilityQuery: () => ({
     data: { accessKeys: accessKeysSupported },
   }),
 }));
@@ -66,7 +66,7 @@ const capability = (
     case "error":
       return { status, error: new Error("offline") };
     case "supported":
-      return { status, mode: "dedicated" };
+      return { status, mode: "bounded", maxMatchingRows: 50_000 };
     case "unsupported":
     case "unresolved":
       return { status };
@@ -96,7 +96,7 @@ describe("AppSidebar analytics navigation", () => {
     },
   );
 
-  it("shows Access keys only when the managed auth store is available", () => {
+  it("shows Access keys only when the official database domain is available", () => {
     const rendered = renderSidebar(capability("supported"));
     expect(screen.queryByRole("link", { name: /access keys/i })).toBeNull();
 

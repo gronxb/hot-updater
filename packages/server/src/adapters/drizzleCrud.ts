@@ -91,6 +91,8 @@ export const createDrizzleCrud = (
 ): TransactionDatabasePluginImplementation => {
   const bundles = getDrizzleTable(db, "bundles");
   const patches = getDrizzleTable(db, "bundle_patches");
+  const events = getDrizzleTable(db, "bundle_events");
+  const clientAccessKeys = getDrizzleTable(db, "client_access_keys");
   return {
     async create(input) {
       switch (input.model) {
@@ -103,12 +105,34 @@ export const createDrizzleCrud = (
         case "bundle_patches":
           await db.insert(patches).values(input.data).execute();
           return input.data;
+        case "bundle_events":
+          await db.insert(events).values(input.data).execute();
+          return input.data;
+        case "client_access_keys":
+          await db.insert(clientAccessKeys).values(input.data).execute();
+          return input.data;
       }
     },
     async update(input) {
       const selector = input.where[0];
       if (selector === undefined || typeof selector.value !== "string") {
         throw new DrizzleAdapterInvariantError();
+      }
+      if (input.model === "client_access_keys") {
+        const idPredicate = eq(
+          getDrizzleColumn(clientAccessKeys, "id"),
+          selector.value,
+        );
+        await db
+          .update(clientAccessKeys)
+          .set(input.update)
+          .where(idPredicate)
+          .execute();
+        return (
+          (await db.query.client_access_keys.findFirst({
+            where: idPredicate,
+          })) ?? null
+        );
       }
       if (
         input.update.target_app_version === null &&
@@ -195,6 +219,12 @@ export const createDrizzleCrud = (
               where: buildDrizzleWhere(provider, patches, input.where),
             })) ?? null
           );
+        case "client_access_keys":
+          return (
+            (await db.query.client_access_keys.findFirst({
+              where: buildDrizzleWhere(provider, clientAccessKeys, input.where),
+            })) ?? null
+          );
       }
     },
     async findMany(input) {
@@ -211,6 +241,20 @@ export const createDrizzleCrud = (
           });
           return rows.map(fromStoredBundleRow);
         }
+        case "bundle_events":
+          return db.query.bundle_events.findMany({
+            where: buildDrizzleWhere(provider, events, input.where),
+            orderBy: toOrderBy(events, input),
+            limit: input.limit,
+            offset: input.offset,
+          });
+        case "client_access_keys":
+          return db.query.client_access_keys.findMany({
+            where: buildDrizzleWhere(provider, clientAccessKeys, input.where),
+            orderBy: toOrderBy(clientAccessKeys, input),
+            limit: input.limit,
+            offset: input.offset,
+          });
         case "bundle_patches":
           return db.query.bundle_patches.findMany({
             where: buildDrizzleWhere(provider, patches, input.where),

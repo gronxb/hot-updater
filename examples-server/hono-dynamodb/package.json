@@ -14,7 +14,6 @@
   "dependencies": {
     "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
-    "@hot-updater/managed": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "dotenv": "^16.6.1",

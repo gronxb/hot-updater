@@ -1,3 +1,4 @@
+import { BlobDatabaseSnapshotError } from "./blobDatabaseErrors";
 import {
   blobBoolean,
   blobMetadataObject,
@@ -9,7 +10,12 @@ import {
   blobString,
   blobStringArray,
 } from "./blobDatabaseValue";
-import type { BundlePatchRow, BundleRow } from "./types";
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ClientAccessKeyRow,
+} from "./types";
 
 const bundleFields = new Set([
   "id",
@@ -39,6 +45,32 @@ const patchFields = new Set([
   "patch_storage_uri",
   "order_index",
 ]);
+const eventFields = new Set([
+  "id",
+  "type",
+  "install_id",
+  "user_id",
+  "username",
+  "from_bundle_id",
+  "to_bundle_id",
+  "platform",
+  "app_version",
+  "channel",
+  "cohort",
+  "update_strategy",
+  "fingerprint_hash",
+  "sdk_version",
+  "received_at_ms",
+]);
+const clientAccessKeyFields = new Set([
+  "id",
+  "hash",
+  "name",
+  "prefix",
+  "role",
+  "created_at_ms",
+  "revoked_at_ms",
+]);
 const rowUnknownFields = new WeakMap<object, readonly string[]>();
 
 const trackUnknownFields = <TRow extends object>(
@@ -54,7 +86,7 @@ const trackUnknownFields = <TRow extends object>(
 };
 
 export const getBlobDatabaseRowUnknownFields = (
-  row: BundlePatchRow | BundleRow,
+  row: BundleEventRow | BundlePatchRow | BundleRow | ClientAccessKeyRow,
 ): readonly string[] => rowUnknownFields.get(row) ?? [];
 
 export const parseBundleRow = (value: unknown, source: string): BundleRow => {
@@ -126,4 +158,72 @@ export const parsePatchRow = (
     order_index: blobNumber(blobProperty(input, "order_index"), source),
   };
   return trackUnknownFields(row, input, patchFields);
+};
+
+export const parseBundleEventRow = (
+  value: unknown,
+  source: string,
+): BundleEventRow => {
+  const input = blobRecord(value, source);
+  const type = blobString(blobProperty(input, "type"), source);
+  const fromBundleId = blobNullableString(
+    blobProperty(input, "from_bundle_id"),
+    source,
+  );
+  const updateStrategy = blobNullableString(
+    blobProperty(input, "update_strategy"),
+    source,
+  );
+  if (
+    !(
+      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
+        fromBundleId !== null &&
+        (updateStrategy === "fingerprint" ||
+          updateStrategy === "appVersion")) ||
+      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+    )
+  ) {
+    throw new BlobDatabaseSnapshotError(source);
+  }
+  const row = {
+    id: blobString(blobProperty(input, "id"), source),
+    type,
+    install_id: blobString(blobProperty(input, "install_id"), source),
+    user_id: blobNullableString(blobProperty(input, "user_id"), source),
+    username: blobNullableString(blobProperty(input, "username"), source),
+    from_bundle_id: fromBundleId,
+    to_bundle_id: blobString(blobProperty(input, "to_bundle_id"), source),
+    platform: blobPlatform(blobProperty(input, "platform"), source),
+    app_version: blobString(blobProperty(input, "app_version"), source),
+    channel: blobString(blobProperty(input, "channel"), source),
+    cohort: blobString(blobProperty(input, "cohort"), source),
+    update_strategy: updateStrategy,
+    fingerprint_hash: blobNullableString(
+      blobProperty(input, "fingerprint_hash"),
+      source,
+    ),
+    sdk_version: blobNullableString(blobProperty(input, "sdk_version"), source),
+    received_at_ms: blobNumber(blobProperty(input, "received_at_ms"), source),
+  } as BundleEventRow;
+  return trackUnknownFields(row, input, eventFields);
+};
+
+export const parseClientAccessKeyRow = (
+  value: unknown,
+  source: string,
+): ClientAccessKeyRow => {
+  const input = blobRecord(value, source);
+  const role = blobString(blobProperty(input, "role"), source);
+  if (role !== "client") throw new BlobDatabaseSnapshotError(source);
+  const revokedAt = blobProperty(input, "revoked_at_ms");
+  const row: ClientAccessKeyRow = {
+    id: blobString(blobProperty(input, "id"), source),
+    hash: blobString(blobProperty(input, "hash"), source),
+    name: blobString(blobProperty(input, "name"), source),
+    prefix: blobString(blobProperty(input, "prefix"), source),
+    role,
+    created_at_ms: blobNumber(blobProperty(input, "created_at_ms"), source),
+    revoked_at_ms: revokedAt === null ? null : blobNumber(revokedAt, source),
+  };
+  return trackUnknownFields(row, input, clientAccessKeyFields);
 };

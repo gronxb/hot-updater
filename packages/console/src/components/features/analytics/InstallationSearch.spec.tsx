@@ -4,7 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InstallationSearch } from "./InstallationSearch";
 
-const supported = { status: "supported", mode: "dedicated" } as const;
+const supported = {
+  status: "supported",
+  mode: "bounded",
+  maxMatchingRows: 50_000,
+} as const;
 
 const useInstallationSearchQueryMock = vi.fn();
 

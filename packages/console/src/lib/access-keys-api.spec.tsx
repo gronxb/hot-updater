@@ -2,21 +2,21 @@ import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  ensureManagedAccessKeyRouteAccess,
-  getManagedAccessKeyCapabilityQueryOptions,
+  ensureClientAccessKeyRouteAccess,
+  getClientAccessKeyCapabilityQueryOptions,
 } from "./access-keys-api";
-import { getManagedAccessKeyCapabilityRpc } from "./access-keys-rpc";
+import { getClientAccessKeyCapabilityRpc } from "./access-keys-rpc";
 
 vi.mock("./access-keys-rpc", () => ({
-  createManagedAccessKeyRpc: vi.fn(),
-  getManagedAccessKeyCapabilityRpc: vi.fn(),
-  listManagedAccessKeysRpc: vi.fn(),
-  revokeManagedAccessKeyRpc: vi.fn(),
+  createClientAccessKeyRpc: vi.fn(),
+  getClientAccessKeyCapabilityRpc: vi.fn(),
+  listClientAccessKeysRpc: vi.fn(),
+  revokeClientAccessKeyRpc: vi.fn(),
 }));
 
-describe("managed access-key route access", () => {
+describe("client access-key route access", () => {
   it("allows navigation only after provider capability is confirmed", async () => {
-    vi.mocked(getManagedAccessKeyCapabilityRpc).mockResolvedValueOnce({
+    vi.mocked(getClientAccessKeyCapabilityRpc).mockResolvedValueOnce({
       accessKeys: true,
     });
     const queryClient = new QueryClient({
@@ -24,17 +24,17 @@ describe("managed access-key route access", () => {
     });
 
     await expect(
-      ensureManagedAccessKeyRouteAccess(queryClient),
+      ensureClientAccessKeyRouteAccess(queryClient),
     ).resolves.toBeUndefined();
     expect(
       queryClient.getQueryData(
-        getManagedAccessKeyCapabilityQueryOptions().queryKey,
+        getClientAccessKeyCapabilityQueryOptions().queryKey,
       ),
     ).toEqual({ accessKeys: true });
   });
 
   it("redirects when the configured database has no key store", async () => {
-    vi.mocked(getManagedAccessKeyCapabilityRpc).mockResolvedValueOnce({
+    vi.mocked(getClientAccessKeyCapabilityRpc).mockResolvedValueOnce({
       accessKeys: false,
     });
     const queryClient = new QueryClient({
@@ -42,7 +42,7 @@ describe("managed access-key route access", () => {
     });
 
     await expect(
-      ensureManagedAccessKeyRouteAccess(queryClient),
+      ensureClientAccessKeyRouteAccess(queryClient),
     ).rejects.toMatchObject({ options: { to: "/" } });
   });
 });

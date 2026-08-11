@@ -9,6 +9,7 @@ import {
   createDatabasePlugin,
   DatabasePluginInputError,
 } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 
 import {
   getHotUpdaterSchemaVersion,
@@ -25,7 +26,9 @@ import { hasNullOrderOverrides, sortRowsByOrder } from "./databasePluginUtils";
 import { createPrismaOrderBy, createPrismaWhere } from "./prismaQuery";
 import {
   getPrismaDelegate,
+  parsePrismaBundleEventRow,
   parsePrismaBundleRow,
+  parsePrismaClientAccessKeyRow,
   parsePrismaPatchRow,
   parsePrismaRows,
   PrismaAdapterError,
@@ -109,6 +112,10 @@ const findMany = async (
       return parsePrismaRows(rows, parsePrismaBundleRow);
     case "bundle_patches":
       return parsePrismaRows(rows, parsePrismaPatchRow);
+    case "bundle_events":
+      return parsePrismaRows(rows, parsePrismaBundleEventRow);
+    case "client_access_keys":
+      return parsePrismaRows(rows, parsePrismaClientAccessKeyRow);
   }
 };
 
@@ -184,12 +191,24 @@ const createCrudImplementation = (
         return parsePrismaBundleRow(row);
       case "bundle_patches":
         return parsePrismaPatchRow(row);
+      case "bundle_events":
+        return parsePrismaBundleEventRow(row);
+      case "client_access_keys":
+        return parsePrismaClientAccessKeyRow(row);
     }
   },
   update: async (input) => {
     const id = input.where[0]?.value;
     if (typeof id !== "string") {
-      throw new PrismaAdapterError("bundle update requires a string id");
+      throw new PrismaAdapterError(
+        `${input.model} update requires a string id`,
+      );
+    }
+    if (input.model === "client_access_keys") {
+      const delegate = getPrismaDelegate(client, "client_access_keys");
+      await delegate.update({ where: { id }, data: input.update });
+      const stored = await delegate.findFirst({ where: { id } });
+      return stored === null ? null : parsePrismaClientAccessKeyRow(stored);
     }
     const delegate = getPrismaDelegate(client, "bundles");
     if (delegate.updateMany === undefined) {
@@ -251,6 +270,8 @@ const createCrudImplementation = (
         return parsePrismaBundleRow(row);
       case "bundle_patches":
         return parsePrismaPatchRow(row);
+      case "client_access_keys":
+        return parsePrismaClientAccessKeyRow(row);
     }
   },
   findMany: (input) => findMany(client, input, provider),
@@ -325,7 +346,8 @@ const createPrismaImplementation = (
     runPrismaTransaction(
       client,
       relationMode === "prisma" ||
-        (provider === "postgresql" &&
+        (input.model === "bundles" &&
+          provider === "postgresql" &&
           (input.update.target_app_version !== undefined ||
             input.update.fingerprint_hash !== undefined))
         ? "serializable"
@@ -344,8 +366,6 @@ const createPrismaImplementation = (
         client,
         relationMode === "prisma" ? "serializable" : "default",
         async (transactionClient) => {
-          getPrismaDelegate(transactionClient, "bundles");
-          getPrismaDelegate(transactionClient, "bundle_patches");
           return callback(
             createCrudImplementation(transactionClient, provider, relationMode),
           );
@@ -358,15 +378,24 @@ export const prismaAdapter = (
   config: PrismaConfig,
 ): DatabaseAdapterWithCapabilities => {
   assertPrismaProvider(config.provider);
+  const adapter = createDatabasePluginAdapter(
+    "prisma",
+    createPrismaImplementation(
+      config.prisma,
+      config.relationMode ?? "foreign-keys",
+      config.provider,
+    ),
+  );
   return Object.assign(
     createDatabasePlugin({
       name: "prisma",
-      plugin: () =>
-        createPrismaImplementation(
-          config.prisma,
-          config.relationMode ?? "foreign-keys",
-          config.provider,
-        ),
+      bundles: adapter.bundles,
+      bundlePatches: adapter.bundlePatches,
+      analytics: adapter.analytics,
+      clientAccessKeys: adapter.clientAccessKeys,
+      commit: adapter.commit,
+      getChannels: adapter.getChannels,
+      getUpdateInfo: adapter.getUpdateInfo,
     }),
     {
       adapterName: "prisma",

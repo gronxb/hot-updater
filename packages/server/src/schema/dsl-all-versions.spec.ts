@@ -28,9 +28,15 @@ describe("versioned schema DSL", () => {
     }
   });
 
-  it("ends the Database V2 Core registry at v0.36", () => {
+  it("ends the official-domain registry at v0.37", () => {
     const versions = hotUpdaterSchemaVersions.map((item) => item.version);
 
-    expect(versions).toEqual(["0.21.0", "0.29.0", "0.31.0", "0.36.0"]);
+    expect(versions).toEqual([
+      "0.21.0",
+      "0.29.0",
+      "0.31.0",
+      "0.36.0",
+      "0.37.0",
+    ]);
   });
 });
