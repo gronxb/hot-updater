@@ -122,7 +122,7 @@ describe("createKyselyMigrator", () => {
     expect(sql).toContain("bundle_events");
   });
 
-  it.each(["0.36.0", "0.37.0", "0.38.0"])(
+  it.each(["0.36.0", "0.37.0"])(
     "records Core readiness without rewriting legacy version %s",
     async (legacyVersion) => {
       const database = new PGlite();
@@ -195,7 +195,7 @@ describe("createKyselyMigrator", () => {
     {
       name: "Core marker beside a valid legacy marker",
       coreValue: new Uint8Array([0xff]),
-      legacyValue: "0.38.0",
+      legacyValue: "0.37.0",
       invalidKey: "schema.core",
     },
     {
@@ -229,7 +229,7 @@ describe("createKyselyMigrator", () => {
     },
   );
 
-  it.each(["0.21.0", "0.29.0", "0.31.0", "0.36.0", "0.37.0", "0.38.0"])(
+  it.each(["0.21.0", "0.29.0", "0.31.0", "0.36.0", "0.37.0"])(
     "accepts known legacy version %s alongside a current Core marker",
     async (legacyVersion) => {
       const database = new PGlite();
@@ -288,6 +288,11 @@ describe("createKyselyMigrator", () => {
   });
 
   it.each([
+    {
+      name: "obsolete preview version",
+      legacyValue: "0.38.0",
+      error: "Unsupported Hot Updater schema version: 0.38.0",
+    },
     {
       name: "future version",
       legacyValue: "0.39.0",

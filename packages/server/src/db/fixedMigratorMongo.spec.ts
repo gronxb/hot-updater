@@ -33,29 +33,26 @@ function createSettingsMongoClient(
 }
 
 describe("MongoDB migration", () => {
-  it.each(["0.37.0", "0.38.0"])(
-    "adopts legacy composite version %s as Core 0.37",
-    async (legacyVersion) => {
-      const find = vi.fn(({ key }: { readonly key: string }) => ({
-        limit: () => ({
-          toArray: async () =>
-            key === "version" ? [{ key, value: legacyVersion }] : [],
-        }),
-      }));
-      const client = {
-        db: () => ({ collection: () => ({ find }) }),
-      } as unknown as MongoClient;
+  it("adopts legacy composite version 0.37.0 as Core 0.37", async () => {
+    const find = vi.fn(({ key }: { readonly key: string }) => ({
+      limit: () => ({
+        toArray: async () =>
+          key === "version" ? [{ key, value: "0.37.0" }] : [],
+      }),
+    }));
+    const client = {
+      db: () => ({ collection: () => ({ find }) }),
+    } as unknown as MongoClient;
 
-      await expect(createMongoMigrator(client).getVersion()).resolves.toBe(
-        "0.37.0",
-      );
-      expect(find).toHaveBeenCalledWith({ key: "schema.core" });
-      expect(find).toHaveBeenCalledWith({ key: "version" });
-    },
-  );
+    await expect(createMongoMigrator(client).getVersion()).resolves.toBe(
+      "0.37.0",
+    );
+    expect(find).toHaveBeenCalledWith({ key: "schema.core" });
+    expect(find).toHaveBeenCalledWith({ key: "version" });
+  });
 
   it("creates a unique settings key index before recording Core readiness", async () => {
-    const settings = new Map<string, unknown>([["version", "0.38.0"]]);
+    const settings = new Map<string, unknown>([["version", "0.37.0"]]);
     const settingsCollection = {
       find: ({ key }: { readonly key: string }) => ({
         limit: () => ({
@@ -98,7 +95,7 @@ describe("MongoDB migration", () => {
     );
     expect(settings).toEqual(
       new Map([
-        ["version", "0.38.0"],
+        ["version", "0.37.0"],
         ["schema.core", "0.37.0"],
       ]),
     );
@@ -115,7 +112,7 @@ describe("MongoDB migration", () => {
               toArray: async () =>
                 key === "schema.core"
                   ? [{ key, value: "0.37.0" }]
-                  : [{ key, value: "0.38.0" }],
+                  : [{ key, value: "0.37.0" }],
             }),
           }),
           listIndexes: () => ({ toArray: async () => [] }),
@@ -181,7 +178,7 @@ describe("MongoDB migration", () => {
               toArray: async () =>
                 key === "schema.core"
                   ? [{ key, value: "0.37.0" }]
-                  : [{ key, value: "0.38.0" }],
+                  : [{ key, value: "0.37.0" }],
             }),
           }),
           listIndexes: () => ({
@@ -266,7 +263,7 @@ describe("MongoDB migration", () => {
     expect(calls.at(-1)).toBe("marker");
   });
 
-  it.each(["0.21.0", "0.29.0", "0.31.0", "0.36.0", "0.37.0", "0.38.0"])(
+  it.each(["0.21.0", "0.29.0", "0.31.0", "0.36.0", "0.37.0"])(
     "accepts known legacy version %s alongside a current Core marker",
     async (legacyVersion) => {
       const client = createSettingsMongoClient({
@@ -282,7 +279,7 @@ describe("MongoDB migration", () => {
     },
   );
 
-  it.each(["0.39.0", "unknown"])(
+  it.each(["0.38.0", "0.39.0", "unknown"])(
     "rejects legacy MongoDB %s alongside a current Core marker before reading bundle data",
     async (legacyVersion) => {
       const client = createSettingsMongoClient({
@@ -316,15 +313,15 @@ describe("MongoDB migration", () => {
       { "schema.core": { version: "0.37.0" } },
       "schema.core",
     ],
-    ["legacy marker alone", { version: { version: "0.38.0" } }, "version"],
+    ["legacy marker alone", { version: { version: "0.37.0" } }, "version"],
     [
       "Core marker beside a valid legacy marker",
-      { "schema.core": { version: "0.37.0" }, version: "0.38.0" },
+      { "schema.core": { version: "0.37.0" }, version: "0.37.0" },
       "schema.core",
     ],
     [
       "legacy marker beside a current Core marker",
-      { "schema.core": "0.37.0", version: { version: "0.38.0" } },
+      { "schema.core": "0.37.0", version: { version: "0.37.0" } },
       "version",
     ],
   ] as const)("rejects a corrupt %s", async (_case, values, key) => {

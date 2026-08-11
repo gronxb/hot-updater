@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS client_access_keys_created_at_idx
 INSERT INTO private_hot_updater_settings (key, value)
 VALUES ('schema.core', '0.37.0')
 ON CONFLICT(key) DO UPDATE SET value = CASE
-  WHEN private_hot_updater_settings.value IN ('0.36.0', '0.37.0', '0.38.0')
+  WHEN private_hot_updater_settings.value IN ('0.36.0', '0.37.0')
     THEN excluded.value
   ELSE NULL
 END;

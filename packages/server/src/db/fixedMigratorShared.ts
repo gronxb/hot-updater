@@ -33,7 +33,7 @@ export const assertSupportedSchemaVersion = (
 export const inferLegacyCoreSchemaVersion = (
   legacyVersion: string | undefined,
 ): string | undefined => {
-  if (legacyVersion === "0.37.0" || legacyVersion === "0.38.0") {
+  if (legacyVersion === "0.37.0") {
     return HOT_UPDATER_SCHEMA_VERSION;
   }
   return legacyVersion;
