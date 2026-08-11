@@ -2,28 +2,26 @@
 
 import { describe, expect, it } from "vitest";
 
-import { toManagedAccessKeyView } from "./access-keys-rpc";
+import { toClientAccessKeyView } from "./access-keys-rpc";
 
-describe("managed access-key RPC output", () => {
+describe("client access-key RPC output", () => {
   it("never serializes the provider lookup hash", () => {
-    const view = toManagedAccessKeyView({
-      createdAt: 1,
-      enabled: true,
+    const view = toClientAccessKeyView({
+      created_at_ms: 1,
       hash: "provider-lookup-hash",
-      id: `managed-client-${"a".repeat(43)}`,
+      id: `client-${"a".repeat(43)}`,
       name: "Production app",
       prefix: "abcdef",
-      revokedAt: null,
+      revoked_at_ms: null,
       role: "client",
     });
 
     expect(view).toEqual({
-      createdAt: 1,
-      enabled: true,
-      id: `managed-client-${"a".repeat(43)}`,
+      created_at_ms: 1,
+      id: `client-${"a".repeat(43)}`,
       name: "Production app",
       prefix: "abcdef",
-      revokedAt: null,
+      revoked_at_ms: null,
       role: "client",
     });
     expect("hash" in view).toBe(false);

@@ -22,10 +22,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { useManagedAccessKeyCapabilityQuery } from "@/lib/access-keys-api";
+import { useClientAccessKeyCapabilityQuery } from "@/lib/access-keys-api";
 export function AppSidebar() {
   const analyticsCapability = useAnalyticsCapability();
-  const accessKeyCapability = useManagedAccessKeyCapabilityQuery();
+  const accessKeyCapability = useClientAccessKeyCapabilityQuery();
   const { theme, setTheme } = useTheme();
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;

@@ -1,86 +1,50 @@
 ---
-title: "API key authentication"
-description: Protect self-hosted Hot Updater routes with Better Auth.
+title: "Client access-key authentication"
+description: Protect OTA reads and Analytics writes with the built-in client access-key domain.
 ---
 
-Install `@hot-updater/better-auth` when a self-hosted server should authenticate
-protected Hot Updater routes through Better Auth.
-
-```package-install
-npm install @hot-updater/better-auth better-auth @better-auth/api-key
-```
-
-## Use an existing Better Auth instance
-
-`betterAuthPlugin` contributes authentication only. Adding it does not change
-which routes are public or protected.
+Client access-key authentication is built into `createHotUpdater` and uses the
+official `database.clientAccessKeys` domain. No authentication package or server
+plugin is required.
 
 ```ts
-import { apiKey } from "@better-auth/api-key";
-import { betterAuth } from "better-auth";
-import { betterAuthPlugin } from "@hot-updater/better-auth";
-import { createHotUpdater } from "@hot-updater/server";
-
-const auth = betterAuth({
-  database: yourBetterAuthDatabase,
-  plugins: [apiKey({ enableSessionForAPIKeys: true })],
-});
-
-export const hotUpdater = createHotUpdater({
-  database: yourHotUpdaterDatabase,
-  plugins: [betterAuthPlugin({ auth })],
-});
-```
-
-The plugin reads the request session through `auth.api.getSession`. It does not
-mount Better Auth handlers, own Better Auth migrations, or add authorization
-rules.
-
-## Use the managed API key
-
-Managed authentication and route protection are separate opt-ins:
-
-```ts
-import {
-  managedBetterAuthPlugin,
-  managedRoutePolicy,
-} from "@hot-updater/better-auth/managed";
 import { createHotUpdater } from "@hot-updater/server";
 
 export const hotUpdater = createHotUpdater({
   database,
-  plugins: [managedBetterAuthPlugin(), managedRoutePolicy({ scope: "client" })],
-  routes: { bundles: true, updateCheck: true },
+  analytics: {},
+  clientAccessKeys: true,
 });
 ```
 
-The plugin owns its access-key component schema and persists it through the
-database's provider-neutral universal component adapter. The database plugin
-does not know the Better Auth contract. The `client` scope protects OTA
-selectors and Analytics ingestion with `x-api-key`; it does not grant Analytics
-query or bundle-management access. `/api/version` remains public.
+When enabled, `x-api-key` is required for update-check routes and
+`POST /events`. `/version` stays public. Client keys do not grant access to
+Analytics queries, bundle management, or key management.
 
-An API key embedded in a mobile binary can be extracted. Treat this client key
-as an abuse-control boundary, not as a strong application secret.
+## Create a key
 
-Without `managedRoutePolicy`, authentication is available to other policy
-plugins but all existing Hot Updater route defaults stay unchanged.
-
-## Provision a managed key
-
-Provisioning is an explicit Node-only filesystem operation. It does not call a
-cloud provider or change a deployed service.
+The Hot Updater Console creates, lists, and revokes keys through the same
+official database domain. A custom management surface can use the server helper:
 
 ```ts
-import { provisionManagedBetterAuthApiKey } from "@hot-updater/better-auth/managed/provisioning";
+import { createClientAccessKey } from "@hot-updater/server";
 
-const { apiKey } = await provisionManagedBetterAuthApiKey({ store });
+const { apiKey, record } = await createClientAccessKey({
+  clientAccessKeys: database.clientAccessKeys,
+  name: "Production app",
+});
 ```
 
-The function creates or reuses `HOT_UPDATER_API_KEY` in `.env.hotupdater` and,
-when passed the Better Auth-owned component store, records only its SHA-256
-projection and metadata through universal component storage. The raw key is
-returned once for client configuration; it is not injected into the server
-runtime.
-Provisioning requires POSIX ownership and `0600` file guarantees and therefore
-fails on Windows or filesystems where those guarantees cannot be verified.
+The plaintext `apiKey` is returned only once. Persistence receives its SHA-256
+digest, prefix, role, creation time, and revocation time. Store the plaintext in
+your client configuration and send it as `x-api-key`.
+
+## Security boundary
+
+A key embedded in a mobile binary can be extracted. Treat this feature as an
+abuse-control boundary for OTA reads and Analytics writes, not as a management
+credential. Protect bundle management, Analytics reads, Console access, and key
+management with your application or framework authentication.
+
+Missing, malformed, unknown, and revoked keys return `401`. A database failure
+during credential lookup returns `503` and does not fall back to public access.

@@ -4,6 +4,11 @@ export { createAnalyticsProvider } from "./analytics/bounded/provider";
 export type * from "./analytics/domain";
 export type { AnalyticsQueryAccess } from "./analytics/routes";
 export type { AnalyticsProvider } from "./analytics/types";
+export {
+  CLIENT_ACCESS_KEY_HEADER_NAME,
+  createClientAccessKey,
+} from "./clientAccessKeys";
+export type { CreatedClientAccessKey } from "./clientAccessKeys";
 export { createHotUpdater } from "./createHotUpdaterCore";
 export type {
   CreateHotUpdaterOptions,

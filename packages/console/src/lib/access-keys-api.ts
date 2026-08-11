@@ -3,31 +3,31 @@ import type { QueryClient } from "@tanstack/react-query";
 import { redirect } from "@tanstack/react-router";
 
 import {
-  createManagedAccessKeyRpc,
-  getManagedAccessKeyCapabilityRpc,
-  listManagedAccessKeysRpc,
-  revokeManagedAccessKeyRpc,
+  createClientAccessKeyRpc,
+  getClientAccessKeyCapabilityRpc,
+  listClientAccessKeysRpc,
+  revokeClientAccessKeyRpc,
 } from "./access-keys-rpc";
 
-export const managedAccessKeyQueryKeys = {
-  capability: ["managed-access-keys", "capability"] as const,
-  list: ["managed-access-keys", "list"] as const,
+export const clientAccessKeyQueryKeys = {
+  capability: ["client-access-keys", "capability"] as const,
+  list: ["client-access-keys", "list"] as const,
 };
 
-export const getManagedAccessKeyCapabilityQueryOptions = () => ({
-  queryKey: managedAccessKeyQueryKeys.capability,
-  queryFn: () => getManagedAccessKeyCapabilityRpc(),
+export const getClientAccessKeyCapabilityQueryOptions = () => ({
+  queryKey: clientAccessKeyQueryKeys.capability,
+  queryFn: () => getClientAccessKeyCapabilityRpc(),
   staleTime: Infinity,
 });
 
-export const useManagedAccessKeyCapabilityQuery = () =>
-  useQuery(getManagedAccessKeyCapabilityQueryOptions());
+export const useClientAccessKeyCapabilityQuery = () =>
+  useQuery(getClientAccessKeyCapabilityQueryOptions());
 
-export const ensureManagedAccessKeyRouteAccess = async (
+export const ensureClientAccessKeyRouteAccess = async (
   queryClient: QueryClient,
 ): Promise<void> => {
   const capability = await queryClient.ensureQueryData(
-    getManagedAccessKeyCapabilityQueryOptions(),
+    getClientAccessKeyCapabilityQueryOptions(),
   );
   if (!capability.accessKeys) {
     throw redirect({
@@ -46,31 +46,31 @@ export const ensureManagedAccessKeyRouteAccess = async (
   }
 };
 
-export const useManagedAccessKeysQuery = () =>
+export const useClientAccessKeysQuery = () =>
   useQuery({
-    queryKey: managedAccessKeyQueryKeys.list,
-    queryFn: () => listManagedAccessKeysRpc(),
+    queryKey: clientAccessKeyQueryKeys.list,
+    queryFn: () => listClientAccessKeysRpc(),
   });
 
-export const useCreateManagedAccessKeyMutation = () => {
+export const useCreateClientAccessKeyMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (name: string) => createManagedAccessKeyRpc({ data: { name } }),
+    mutationFn: (name: string) => createClientAccessKeyRpc({ data: { name } }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: managedAccessKeyQueryKeys.list,
+        queryKey: clientAccessKeyQueryKeys.list,
       });
     },
   });
 };
 
-export const useRevokeManagedAccessKeyMutation = () => {
+export const useRevokeClientAccessKeyMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => revokeManagedAccessKeyRpc({ data: { id } }),
+    mutationFn: (id: string) => revokeClientAccessKeyRpc({ data: { id } }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: managedAccessKeyQueryKeys.list,
+        queryKey: clientAccessKeyQueryKeys.list,
       });
     },
   });

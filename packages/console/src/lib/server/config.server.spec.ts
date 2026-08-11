@@ -78,6 +78,8 @@ describe("config.server", () => {
     expect(storage).toHaveBeenCalledTimes(1);
     expect(first.databaseClient).toBe(second.databaseClient);
     expect(first.config.database).toBe(database);
+    expect(first.clientAccessKeyStore).toBe(database.clientAccessKeys);
+    expect(second.clientAccessKeyStore).toBe(first.clientAccessKeyStore);
     expect(first.storagePlugin).toBe(storagePlugin);
     expect(second.storagePlugin).toBe(storagePlugin);
     expect(isConfigLoaded()).toBe(true);

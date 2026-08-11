@@ -48,6 +48,7 @@ describe("runtime createHotUpdater", () => {
     expectTypeOf<keyof CreateHotUpdaterOptions>().toEqualTypeOf<
       | "database"
       | "analytics"
+      | "clientAccessKeys"
       | "storages"
       | "storagePlugins"
       | "basePath"

@@ -17,10 +17,11 @@ npm install hono --save-dev
 
 Make sure you've set up your database adapter first (see [Database Adapters](../database/drizzle)).
 
-The Hot Updater handler does not include built-in authentication. Always protect
-bundle management routes with framework middleware before mounting the handler.
-Update-check routes are usually exposed for React Native clients, but that is a
-deployment choice:
+Built-in client access-key authentication is opt-in and protects only
+update-check and Analytics ingestion routes. Always protect bundle management
+routes with framework middleware before mounting the handler. Update-check
+routes are usually exposed for React Native clients, but that is a deployment
+choice:
 
 - Update check: `/hot-updater/app-version/*`, `/hot-updater/fingerprint/*`
 - Optional public diagnostics: `/hot-updater/version`

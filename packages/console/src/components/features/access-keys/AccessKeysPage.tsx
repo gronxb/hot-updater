@@ -56,11 +56,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  useCreateManagedAccessKeyMutation,
-  useManagedAccessKeysQuery,
-  useRevokeManagedAccessKeyMutation,
+  useCreateClientAccessKeyMutation,
+  useClientAccessKeysQuery,
+  useRevokeClientAccessKeyMutation,
 } from "@/lib/access-keys-api";
-import type { ManagedAccessKeyView } from "@/lib/access-keys-rpc";
+import type { ClientAccessKeyView } from "@/lib/access-keys-rpc";
 
 const formatCreatedAt = (createdAt: number): string =>
   new Date(createdAt).toISOString().slice(0, 10);
@@ -69,7 +69,7 @@ function CreateAccessKeyDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const create = useCreateManagedAccessKeyMutation();
+  const create = useCreateClientAccessKeyMutation();
   const normalizedName = name.trim();
   const nameError =
     normalizedName.length > 64 ? "Name must be 64 characters or fewer." : null;
@@ -198,9 +198,9 @@ function CreateAccessKeyDialog() {
   );
 }
 
-function RevokeAccessKeyDialog({ record }: { record: ManagedAccessKeyView }) {
+function RevokeAccessKeyDialog({ record }: { record: ClientAccessKeyView }) {
   const [open, setOpen] = useState(false);
-  const revoke = useRevokeManagedAccessKeyMutation();
+  const revoke = useRevokeClientAccessKeyMutation();
 
   const handleRevoke = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -257,7 +257,7 @@ function RevokeAccessKeyDialog({ record }: { record: ManagedAccessKeyView }) {
 }
 
 export function AccessKeysPage() {
-  const accessKeys = useManagedAccessKeysQuery();
+  const accessKeys = useClientAccessKeysQuery();
 
   return (
     <Card>
@@ -321,13 +321,15 @@ export function AccessKeysPage() {
                     </TableCell>
                     <TableCell>
                       <time
-                        dateTime={new Date(accessKey.createdAt).toISOString()}
+                        dateTime={new Date(
+                          accessKey.created_at_ms,
+                        ).toISOString()}
                       >
-                        {formatCreatedAt(accessKey.createdAt)}
+                        {formatCreatedAt(accessKey.created_at_ms)}
                       </time>
                     </TableCell>
                     <TableCell className="text-right">
-                      {accessKey.enabled && accessKey.revokedAt === null ? (
+                      {accessKey.revoked_at_ms === null ? (
                         <RevokeAccessKeyDialog record={accessKey} />
                       ) : (
                         <Badge variant="outline">Revoked</Badge>

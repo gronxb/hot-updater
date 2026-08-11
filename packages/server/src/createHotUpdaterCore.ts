@@ -7,6 +7,7 @@ import { assertRuntimeStoragePlugin } from "@hot-updater/plugin-core";
 import { createAnalyticsProvider } from "./analytics/bounded/provider";
 import type { AnalyticsQueryAccess } from "./analytics/routes";
 import type { AnalyticsProvider } from "./analytics/types";
+import { authenticateClientAccessKey } from "./clientAccessKeys";
 import { createDatabasePluginCore } from "./db/databasePluginCore";
 import { createSchemaReadinessChecker } from "./db/schemaReadiness";
 import {
@@ -37,9 +38,11 @@ export type HotUpdaterAPI<TContext = undefined> =
 export interface CreateHotUpdaterOptions<TContext = undefined> {
   readonly database: DatabasePlugin;
   readonly analytics?: {
-    /** Query routes deny access until client access-key auth is configured. */
+    /** Query routes deny access by default; client access keys never grant query access. */
     readonly queryAccess?: AnalyticsQueryAccess;
   };
+  /** Protect update-check and Analytics ingestion routes with `x-api-key`. */
+  readonly clientAccessKeys?: boolean;
   readonly storages?: readonly (
     | RuntimeStoragePlugin<TContext>
     | StoragePluginFactory<TContext>
@@ -68,6 +71,16 @@ const normalizeAnalyticsQueryAccess = (
     throw new TypeError("Invalid Analytics queryAccess option.");
   }
   return queryAccess;
+};
+
+const normalizeClientAccessKeys = (
+  clientAccessKeys: CreateHotUpdaterOptions["clientAccessKeys"],
+): boolean => {
+  if (clientAccessKeys === undefined) return false;
+  if (typeof clientAccessKeys !== "boolean") {
+    throw new TypeError("Client access-keys option must be a boolean.");
+  }
+  return clientAccessKeys;
 };
 
 type DatabasePluginCore<TContext> = {
@@ -133,6 +146,9 @@ export function createHotUpdaterCore<TContext = undefined>(
     readStorageText,
   });
   const analyticsQueryAccess = normalizeAnalyticsQueryAccess(options.analytics);
+  const clientAccessKeysEnabled = normalizeClientAccessKeys(
+    options.clientAccessKeys,
+  );
   const analytics =
     analyticsQueryAccess === undefined
       ? undefined
@@ -159,6 +175,16 @@ export function createHotUpdaterCore<TContext = undefined>(
           provider: analytics,
           queryAccess: analyticsQueryAccess ?? "protected",
         },
+    clientAccessKeysEnabled
+      ? {
+          authenticate: (request) =>
+            authenticateClientAccessKey({
+              beforeLookup: assertSchemaReady,
+              clientAccessKeys: plugin.clientAccessKeys,
+              request,
+            }),
+        }
+      : undefined,
   );
 
   // Some framework adapters strip the mounted base path or pass extra
