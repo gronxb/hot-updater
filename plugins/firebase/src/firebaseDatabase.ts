@@ -1,9 +1,13 @@
+import { NIL_UUID, type Bundle, type GetBundlesArgs } from "@hot-updater/core";
 import {
   attachUniversalComponentDataAdapter,
   createDatabasePlugin,
   type DatabasePlugin,
   type DatabasePluginImplementation,
   resolveUpdateInfoFromBundles,
+  rowsToBundles,
+  type BundlePatchRow,
+  type BundleRow,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import {
@@ -14,7 +18,9 @@ import {
 } from "firebase-admin/app";
 import {
   getFirestore as getAdminFirestore,
+  type DocumentData,
   type Firestore,
+  type QuerySnapshot,
 } from "firebase-admin/firestore";
 
 import {
@@ -23,6 +29,7 @@ import {
 } from "./firebaseDatabaseParser";
 import {
   createFirebaseDatabaseCollections,
+  type FirebaseDatabaseCollections,
   loadFirebaseDatabaseSnapshot,
   loadFirebaseTransactionSnapshot,
   migrateFirebaseDatabase,
@@ -33,12 +40,88 @@ import {
   cloneFirebaseDatabaseSnapshot,
   createFirebaseDatabaseState,
 } from "./firebaseDatabaseState";
-import { loadFirebaseUpdateBundles } from "./firebaseDatabaseUpdateInfo";
 import { createFirebaseUniversalComponentDataAdapter } from "./firebaseUniversalComponentData";
 
 type FirebaseMutation<TResult> = (
   database: TransactionDatabasePluginImplementation,
 ) => Promise<TResult>;
+
+const FIRESTORE_IN_LIMIT = 30;
+
+const chunks = <T>(values: readonly T[]): T[][] => {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += FIRESTORE_IN_LIMIT) {
+    result.push(values.slice(index, index + FIRESTORE_IN_LIMIT));
+  }
+  return result;
+};
+
+const parseBundles = (snapshot: QuerySnapshot<DocumentData>): BundleRow[] =>
+  snapshot.docs.map((document) =>
+    requireFirebaseDocumentKey(
+      "bundles",
+      document.id,
+      parseFirebaseBundleRow(document.data(), `bundles/${document.id}`),
+    ),
+  );
+
+const parsePatches = (
+  snapshot: QuerySnapshot<DocumentData>,
+): BundlePatchRow[] =>
+  snapshot.docs.map((document) =>
+    requireFirebaseDocumentKey(
+      "bundle_patches",
+      document.id,
+      parseFirebasePatchRow(document.data(), `bundle_patches/${document.id}`),
+    ),
+  );
+
+const loadFirebaseUpdateBundles = async (
+  collections: FirebaseDatabaseCollections,
+  args: GetBundlesArgs,
+): Promise<Bundle[]> =>
+  collections.bundles.firestore.runTransaction(
+    async (transaction) => {
+      const channel = args.channel ?? "production";
+      const minBundleId = args.minBundleId ?? NIL_UUID;
+      let query = collections.bundles
+        .where("channel", "==", channel)
+        .where("enabled", "==", true)
+        .where("platform", "==", args.platform)
+        .where("id", ">=", minBundleId);
+      if (args._updateStrategy === "fingerprint") {
+        query = query.where("fingerprint_hash", "==", args.fingerprintHash);
+      }
+      const owners = parseBundles(await transaction.get(query));
+      if (owners.length === 0) return [];
+
+      const ownerIds = owners.map(({ id }) => id);
+      const patchSnapshots = await Promise.all(
+        chunks(ownerIds).map((ids) =>
+          transaction.get(
+            collections.bundlePatches.where("bundle_id", "in", ids),
+          ),
+        ),
+      );
+      const patches = patchSnapshots.flatMap(parsePatches);
+      const ownerIdSet = new Set(ownerIds);
+      const baseIds = [
+        ...new Set(
+          patches
+            .map(({ base_bundle_id }) => base_bundle_id)
+            .filter((id) => !ownerIdSet.has(id)),
+        ),
+      ];
+      const baseSnapshots = await Promise.all(
+        chunks(baseIds).map((ids) =>
+          transaction.get(collections.bundles.where("id", "in", ids)),
+        ),
+      );
+      const bases = baseSnapshots.flatMap(parseBundles);
+      return rowsToBundles(owners, patches, bases);
+    },
+    { readOnly: true },
+  );
 
 const exactId = (
   input: Parameters<DatabasePluginImplementation["findOne"]>[0],
