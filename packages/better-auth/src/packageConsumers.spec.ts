@@ -152,9 +152,9 @@ process.stdout.write(JSON.stringify({ ...result, mode }));`;
     },
     {
       file: "managed-require.cts",
-      source: `import { createUniversalComponentManagedAccessKeyStore, managedAccessKeyComponentSchema, managedBetterAuthPlugin, managedRoutePolicy } from ${JSON.stringify(
+      source: `import { createUniversalComponentManagedAccessKeyStore, managedAccessKeyComponentSchema, managedBetterAuthPlugin, managedRoutePolicy, registerManagedAccessKeyForTarget } from ${JSON.stringify(
         `${moduleSpecifier}/managed`,
-      )};\nvoid createUniversalComponentManagedAccessKeyStore;\nvoid managedAccessKeyComponentSchema;\nvoid managedBetterAuthPlugin;\nvoid managedRoutePolicy;`,
+      )};\nvoid createUniversalComponentManagedAccessKeyStore;\nvoid managedAccessKeyComponentSchema;\nvoid managedBetterAuthPlugin;\nvoid managedRoutePolicy;\nvoid registerManagedAccessKeyForTarget;`,
     },
     {
       file: "provisioning-import.mts",

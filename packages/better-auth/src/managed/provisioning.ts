@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 
 import {
   requireUniversalComponentDataSource,
-  type HotUpdaterDBTarget,
-} from "@hot-updater/server/db";
+  type RuntimeHotUpdaterAPI,
+} from "@hot-updater/server";
 
 import { isCanonicalBase64Url32 } from "../base64url";
 import {
@@ -169,7 +169,7 @@ export const createManagedBetterAuthApiKey = async (options: {
 
 export const prepareManagedBetterAuthDeployment = async (options: {
   readonly envFilePath?: string;
-  readonly target: HotUpdaterDBTarget;
+  readonly target: RuntimeHotUpdaterAPI;
 }): Promise<readonly ManagedBetterAuthDeploymentNotice[]> => {
   const source = requireUniversalComponentDataSource(
     options.target,
