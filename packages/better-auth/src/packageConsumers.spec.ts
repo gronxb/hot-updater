@@ -158,9 +158,9 @@ process.stdout.write(JSON.stringify({ ...result, mode }));`;
     },
     {
       file: "provisioning-import.mts",
-      source: `import { createManagedBetterAuthApiKey, provisionManagedBetterAuthApiKey, type CreatedManagedBetterAuthApiKey, type ProvisionedManagedBetterAuthApiKey } from ${JSON.stringify(
+      source: `import { createManagedBetterAuthApiKey, prepareManagedBetterAuthDeployment, provisionManagedBetterAuthApiKey, type CreatedManagedBetterAuthApiKey, type ManagedBetterAuthDeploymentNotice, type ProvisionedManagedBetterAuthApiKey } from ${JSON.stringify(
         `${moduleSpecifier}/managed/provisioning`,
-      )};\nvoid createManagedBetterAuthApiKey;\nvoid provisionManagedBetterAuthApiKey;\nvoid (undefined as CreatedManagedBetterAuthApiKey | ProvisionedManagedBetterAuthApiKey | undefined);`,
+      )};\nvoid createManagedBetterAuthApiKey;\nvoid prepareManagedBetterAuthDeployment;\nvoid provisionManagedBetterAuthApiKey;\nvoid (undefined as CreatedManagedBetterAuthApiKey | ManagedBetterAuthDeploymentNotice | ProvisionedManagedBetterAuthApiKey | undefined);`,
     },
   ])("type-checks $file with NodeNext", async ({ file, source }) => {
     const consumer = path.join(packedPackageDirectory, file);
