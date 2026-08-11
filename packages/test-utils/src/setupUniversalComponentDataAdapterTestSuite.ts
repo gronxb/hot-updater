@@ -193,6 +193,12 @@ export const setupUniversalComponentDataAdapterTestSuite = (
         source.append({ row, table: "audit_records" }),
       ).rejects.toBeInstanceOf(UniversalComponentSchemaNotReadyError);
       await expect(
+        source.create({ row, table: "audit_records" }),
+      ).rejects.toBeInstanceOf(UniversalComponentSchemaNotReadyError);
+      await expect(
+        source.get({ primaryKey: row.id as string, table: "audit_records" }),
+      ).rejects.toBeInstanceOf(UniversalComponentSchemaNotReadyError);
+      await expect(
         scan(getAdapter(), syntheticAuditLogSchema, {
           beforePrefixExclusive: [2],
         }),
@@ -233,6 +239,18 @@ export const setupUniversalComponentDataAdapterTestSuite = (
           }),
         );
         await expectNotReady(
+          source.create({
+            row: auditRow("not-ready", 1),
+            table: "audit_records",
+          }),
+        );
+        await expectNotReady(
+          source.get({
+            primaryKey: "not-ready",
+            table: "audit_records",
+          }),
+        );
+        await expectNotReady(
           source.orderedScan({
             accessPattern: "chronological",
             beforePrefixExclusive: [2],
@@ -253,6 +271,25 @@ export const setupUniversalComponentDataAdapterTestSuite = (
           beforePrefixExclusive: [2],
         }),
       ).resolves.toEqual([row]);
+    });
+
+    it("creates by primary key without overwriting and gets exact rows", async () => {
+      const source = await readySource();
+      const original = auditRow("create-once", 1, "original");
+      const replacement = auditRow("create-once", 2, "replacement");
+
+      await expect(
+        source.create({ row: original, table: "audit_records" }),
+      ).resolves.toBe("created");
+      await expect(
+        source.create({ row: replacement, table: "audit_records" }),
+      ).resolves.toBe("existing");
+      await expect(
+        source.get({ primaryKey: "create-once", table: "audit_records" }),
+      ).resolves.toEqual(original);
+      await expect(
+        source.get({ primaryKey: "missing", table: "audit_records" }),
+      ).resolves.toBeNull();
     });
 
     it("scans in ascending tuple order with a stable id tie-break", async () => {
@@ -344,6 +381,19 @@ export const setupUniversalComponentDataAdapterTestSuite = (
         row: security,
         table: "security_records",
       });
+
+      await expect(
+        auditSource.get({
+          primaryKey: "shared-id",
+          table: "audit_records",
+        }),
+      ).resolves.toEqual(audit);
+      await expect(
+        securitySource.get({
+          primaryKey: "shared-id",
+          table: "security_records",
+        }),
+      ).resolves.toEqual(security);
 
       await expect(
         scan(getAdapter(), syntheticAuditLogSchema, {

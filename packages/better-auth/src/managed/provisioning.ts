@@ -1,9 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
 import { resolve } from "node:path";
 
+import {
+  requireUniversalComponentDataSource,
+  type RuntimeHotUpdaterAPI,
+} from "@hot-updater/server";
+
 import { isCanonicalBase64Url32 } from "../base64url";
 import {
+  createUniversalComponentManagedAccessKeyStore,
   MANAGED_ACCESS_KEY_ENV_NAME,
+  managedAccessKeyComponentSchema,
   registerManagedAccessKey,
   type ManagedAccessKeyRecord,
   type ManagedAccessKeyStore,
@@ -37,6 +44,11 @@ export type ProvisionedManagedBetterAuthApiKey = {
 export type CreatedManagedBetterAuthApiKey = {
   readonly apiKey: string;
   readonly record: ManagedAccessKeyRecord;
+};
+
+export type ManagedBetterAuthDeploymentNotice = {
+  readonly message: string;
+  readonly title: string;
 };
 
 const MAX_ENV_FILE_BYTES = 1_048_576n;
@@ -153,4 +165,27 @@ export const createManagedBetterAuthApiKey = async (options: {
     store: options.store,
   });
   return { apiKey, record };
+};
+
+export const prepareManagedBetterAuthDeployment = async (options: {
+  readonly envFilePath?: string;
+  readonly target: RuntimeHotUpdaterAPI;
+}): Promise<readonly ManagedBetterAuthDeploymentNotice[]> => {
+  const source = requireUniversalComponentDataSource(
+    options.target,
+    managedAccessKeyComponentSchema,
+  );
+  const result = await provisionManagedBetterAuthApiKey({
+    envFilePath: options.envFilePath,
+    name: "Default",
+    store: createUniversalComponentManagedAccessKeyStore(source),
+  });
+  return result.created
+    ? Object.freeze([
+        Object.freeze({
+          message: `${MANAGED_ACCESS_KEY_ENV_NAME}=${result.apiKey}`,
+          title: "Client access key (shown once)",
+        }),
+      ])
+    : Object.freeze([]);
 };

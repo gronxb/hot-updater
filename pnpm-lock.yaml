@@ -2149,9 +2149,6 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: 3.1008.0
         version: 3.1008.0
-      '@hot-updater/better-auth':
-        specifier: workspace:*
-        version: link:../../packages/better-auth
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2275,9 +2272,6 @@ importers:
 
   plugins/firebase:
     dependencies:
-      '@hot-updater/better-auth':
-        specifier: workspace:*
-        version: link:../../packages/better-auth
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
@@ -2499,9 +2493,6 @@ importers:
 
   plugins/supabase:
     dependencies:
-      '@hot-updater/better-auth':
-        specifier: workspace:*
-        version: link:../../packages/better-auth
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools

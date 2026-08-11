@@ -18,6 +18,16 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./deployment": {
+      "import": {
+        "types": "./dist/deployment.d.mts",
+        "default": "./dist/deployment.mjs"
+      },
+      "require": {
+        "types": "./dist/deployment.d.cts",
+        "default": "./dist/deployment.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [

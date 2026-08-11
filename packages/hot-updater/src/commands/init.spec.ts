@@ -1,4 +1,3 @@
-import { attachManagedAccessKeyStore } from "@hot-updater/better-auth/managed";
 import { InitError, type RunInitOptions } from "@hot-updater/cli-tools";
 import {
   attachUniversalComponentDataAdapter,
@@ -17,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   logError: vi.fn(),
   makeEnv: vi.fn(),
   createManagedServerPlugins: vi.fn(),
+  prepareManagedServerDeployment: vi.fn(async () => []),
   readHotUpdaterInitEnv: vi.fn(),
   runAwsInit: vi.fn(),
   runSupabaseInit: vi.fn(),
@@ -55,6 +55,10 @@ vi.mock("@hot-updater/managed", async (importOriginal) => {
     createManagedServerPlugins: mocks.createManagedServerPlugins,
   };
 });
+
+vi.mock("@hot-updater/managed/deployment", () => ({
+  prepareManagedServerDeployment: mocks.prepareManagedServerDeployment,
+}));
 
 vi.mock("@/utils/ensureInstallPackages", () => ({
   ensureInstallPackages: mocks.ensureInstallPackages,
@@ -128,6 +132,7 @@ describe("init choices", () => {
       build: "bare",
       createDeploymentTarget: expect.any(Function),
       envFile: undefined,
+      prepareDeployment: expect.any(Function),
     });
   });
 
@@ -154,6 +159,7 @@ describe("init choices", () => {
       build: "bare",
       createDeploymentTarget: expect.any(Function),
       envFile: undefined,
+      prepareDeployment: expect.any(Function),
     });
   });
 
@@ -203,6 +209,7 @@ describe("init choices", () => {
       build: "bare",
       createDeploymentTarget: expect.any(Function),
       envFile: "init.env",
+      prepareDeployment: expect.any(Function),
     });
   });
 
@@ -253,6 +260,7 @@ describe("init choices", () => {
       build: "expo",
       createDeploymentTarget: expect.any(Function),
       envFile: ".env.hotupdater",
+      prepareDeployment: expect.any(Function),
     });
   });
 
@@ -261,15 +269,7 @@ describe("init choices", () => {
     const generatedArtifacts: unknown[] = [];
     mocks.runAwsInit.mockImplementation(async (options: RunInitOptions) => {
       const database = attachUniversalComponentDataAdapter(
-        attachManagedAccessKeyStore(
-          createDatabasePluginHarness().plugin,
-          () => ({
-            create: async () => "created",
-            findByHash: async () => null,
-            list: async () => [],
-            revoke: async () => null,
-          }),
-        ),
+        createDatabasePluginHarness().plugin,
         () => ({
           artifacts(schema) {
             const latest = getUniversalComponentLatestSchema(schema);
@@ -285,6 +285,8 @@ describe("init choices", () => {
             Object.freeze({
               append: async () => {},
               assertReady: async () => {},
+              create: async () => "created" as const,
+              get: async () => null,
               orderedScan: async () => [],
               schema,
             }),
@@ -295,6 +297,9 @@ describe("init choices", () => {
         throw new Error("Expected init deployment target callback");
       }
       generatedArtifacts.push(...generateUniversalComponentArtifacts(target));
+      await options.prepareDeployment?.(target, {
+        envFile: ".env.hotupdater",
+      });
     });
 
     await init({ build: "bare", provider: "aws" });
@@ -306,9 +311,19 @@ describe("init choices", () => {
         path: "component-data/analytics/synthetic-2.sql",
         targetVersion: "2",
       },
+      {
+        componentId: "better-auth-managed-access-keys",
+        contents: "-- component better-auth-managed-access-keys@1",
+        path: "component-data/better-auth-managed-access-keys/synthetic-1.sql",
+        targetVersion: "1",
+      },
     ]);
     expect(mocks.createManagedServerPlugins).toHaveBeenCalledOnce();
     expect(mocks.createManagedServerPlugins.mock.calls[0]).toEqual([]);
+    expect(mocks.prepareManagedServerDeployment).toHaveBeenCalledWith({
+      envFilePath: ".env.hotupdater",
+      target: expect.objectContaining({ adapterName: "test-database-v2" }),
+    });
   });
 
   it("prints actionable provider init errors without rethrowing", async () => {

@@ -23,6 +23,7 @@ export type DatabaseCapabilityRuntime = Readonly<
     | "count"
     | "findOne"
     | "findMany"
+    | "onDatabaseUpdated"
     | "transaction"
   >
 >;

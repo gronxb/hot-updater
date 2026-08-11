@@ -61,9 +61,33 @@ describe("packed @hot-updater/managed consumers", () => {
 const plugins = runtime.createManagedServerPlugins();
 const ids = plugins.map(({ id }) => id).join(",");
 if (ids !== "better-auth-managed-access-key,managed-auth-route-policy,analytics") throw new Error("invalid managed preset");
-if (plugins[2]?.schema?.id !== "analytics") throw new Error("missing Analytics schema");`,
+if (plugins[0]?.schema?.id !== "better-auth-managed-access-keys") throw new Error("missing Better Auth schema");
+if (plugins[2]?.schema?.id !== "analytics") throw new Error("missing Analytics schema");
+if (typeof runtime.registerManagedServerClientKey !== "function") throw new Error("missing client-key registration");`,
       ],
       { cwd: installedPackageDirectory },
     );
   });
+
+  it.each([
+    { asModule: true, condition: "ESM import" },
+    { asModule: false, condition: "CommonJS require" },
+  ])(
+    "loads managed deployment preparation through $condition",
+    async ({ asModule }) => {
+      const load = asModule
+        ? 'await import("@hot-updater/managed/deployment")'
+        : 'require("@hot-updater/managed/deployment")';
+      await execFileAsync(
+        process.execPath,
+        [
+          ...(asModule ? ["--input-type=module"] : []),
+          "--eval",
+          `const deployment = ${load};
+if (typeof deployment.prepareManagedServerDeployment !== "function") throw new Error("missing managed deployment preparation");`,
+        ],
+        { cwd: installedPackageDirectory },
+      );
+    },
+  );
 });

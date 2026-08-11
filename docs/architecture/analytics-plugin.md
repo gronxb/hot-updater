@@ -189,10 +189,10 @@ the shared managed plugin preset for both their deployment target and runtime.
 The deployment target produces provider-neutral component artifacts or
 migrations before the runtime is deployed. The workflows provision the raw API
 key only in the local `.env.hotupdater` file and persist only its SHA-256
-projection in the provider-owned access-key store. The runtime never receives
-the raw key. The managed client key authorizes OTA selectors and event
-ingestion at `POST /events`; Analytics query routes remain unavailable to that
-client role.
+the Better Auth-owned universal component. Database providers do not know that
+schema or lifecycle. The runtime never receives the raw key.
+The managed client key authorizes OTA selectors and `POST /events`; Analytics
+query routes remain unavailable to that client role.
 
 Removing the plugin stops declaring its schema and exposing Analytics routes.
 It does not drop event data or remove the Analytics marker.

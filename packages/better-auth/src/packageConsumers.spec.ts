@@ -110,6 +110,8 @@ const provisioning = ${load(`${moduleSpecifier}/managed/provisioning`)};
 if (typeof root.betterAuthPlugin !== "function") throw new Error("missing root plugin");
 if (typeof managed.managedBetterAuthPlugin !== "function") throw new Error("missing managed plugin");
 if (typeof managed.managedRoutePolicy !== "function") throw new Error("missing policy plugin");
+if (typeof managed.createUniversalComponentManagedAccessKeyStore !== "function") throw new Error("missing component store");
+if (managed.managedAccessKeyComponentSchema?.id !== "better-auth-managed-access-keys") throw new Error("missing component schema");
 if (typeof provisioning.provisionManagedBetterAuthApiKey !== "function") throw new Error("missing provisioning");
 if (typeof provisioning.createManagedBetterAuthApiKey !== "function") throw new Error("missing key creation");`,
         asModule,
@@ -150,15 +152,15 @@ process.stdout.write(JSON.stringify({ ...result, mode }));`;
     },
     {
       file: "managed-require.cts",
-      source: `import { managedBetterAuthPlugin, managedRoutePolicy } from ${JSON.stringify(
+      source: `import { createUniversalComponentManagedAccessKeyStore, managedAccessKeyComponentSchema, managedBetterAuthPlugin, managedRoutePolicy, registerManagedAccessKeyForTarget } from ${JSON.stringify(
         `${moduleSpecifier}/managed`,
-      )};\nvoid managedBetterAuthPlugin;\nvoid managedRoutePolicy;`,
+      )};\nvoid createUniversalComponentManagedAccessKeyStore;\nvoid managedAccessKeyComponentSchema;\nvoid managedBetterAuthPlugin;\nvoid managedRoutePolicy;\nvoid registerManagedAccessKeyForTarget;`,
     },
     {
       file: "provisioning-import.mts",
-      source: `import { createManagedBetterAuthApiKey, provisionManagedBetterAuthApiKey, type CreatedManagedBetterAuthApiKey, type ProvisionedManagedBetterAuthApiKey } from ${JSON.stringify(
+      source: `import { createManagedBetterAuthApiKey, prepareManagedBetterAuthDeployment, provisionManagedBetterAuthApiKey, type CreatedManagedBetterAuthApiKey, type ManagedBetterAuthDeploymentNotice, type ProvisionedManagedBetterAuthApiKey } from ${JSON.stringify(
         `${moduleSpecifier}/managed/provisioning`,
-      )};\nvoid createManagedBetterAuthApiKey;\nvoid provisionManagedBetterAuthApiKey;\nvoid (undefined as CreatedManagedBetterAuthApiKey | ProvisionedManagedBetterAuthApiKey | undefined);`,
+      )};\nvoid createManagedBetterAuthApiKey;\nvoid prepareManagedBetterAuthDeployment;\nvoid provisionManagedBetterAuthApiKey;\nvoid (undefined as CreatedManagedBetterAuthApiKey | ManagedBetterAuthDeploymentNotice | ProvisionedManagedBetterAuthApiKey | undefined);`,
     },
   ])("type-checks $file with NodeNext", async ({ file, source }) => {
     const consumer = path.join(packedPackageDirectory, file);

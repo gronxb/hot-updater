@@ -63,7 +63,6 @@ const mocks = vi.hoisted(() => {
     credentialApi,
     confirm: vi.fn(),
     confirmInitInputPersistence: vi.fn(),
-    createD1ManagedAccessKeyStore: vi.fn(() => ({ store: "d1" })),
     d1Database: vi.fn(() => ({ adapterName: "d1Database" })),
     createWrangler: vi.fn(),
     execa: vi.fn(),
@@ -78,7 +77,6 @@ const mocks = vi.hoisted(() => {
     makeEnv: vi.fn(),
     note: vi.fn(),
     readHotUpdaterInitEnv: vi.fn(),
-    provisionManagedBetterAuthApiKey: vi.fn(),
     select: vi.fn(),
   };
 });
@@ -95,12 +93,7 @@ vi.mock("cloudflare", () => ({
   }),
 }));
 
-vi.mock("@hot-updater/better-auth/managed/provisioning", () => ({
-  provisionManagedBetterAuthApiKey: mocks.provisionManagedBetterAuthApiKey,
-}));
-
 vi.mock("@hot-updater/cloudflare", () => ({
-  createD1ManagedAccessKeyStore: mocks.createD1ManagedAccessKeyStore,
   d1Database: mocks.d1Database,
 }));
 
@@ -163,11 +156,6 @@ describe("Cloudflare init discovery", () => {
     });
     mocks.confirmInitInputPersistence.mockResolvedValue(false);
     mocks.migrateUniversalComponents.mockResolvedValue([]);
-    mocks.provisionManagedBetterAuthApiKey.mockResolvedValue({
-      apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      created: true,
-      sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
-    });
     mocks.confirm.mockResolvedValue(true);
     mocks.select.mockImplementation(
       async ({ options }: { options: readonly { readonly value: string }[] }) =>
@@ -531,23 +519,19 @@ describe("Cloudflare init discovery", () => {
       events.push("universal-migrations");
       return [];
     });
-    mocks.provisionManagedBetterAuthApiKey.mockImplementation(async () => {
-      events.push("provision-api-key");
-      return {
-        apiKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        created: true,
-        sha256: "DwBzhbb51LfusnSGBa_hqYSgo7-j8BTQnip4TOnlzRo",
-      };
+    const prepareDeployment = vi.fn(async () => {
+      events.push("prepare-deployment");
+      return [{ message: "secret notice", title: "Deployment notice" }];
     });
 
     await expect(
-      runInit({ build: "bare", createDeploymentTarget }),
+      runInit({ build: "bare", createDeploymentTarget, prepareDeployment }),
     ).rejects.toBeInstanceOf(CloudflareDeploymentError);
 
     expect(events).toEqual([
       "core-migrations",
       "universal-migrations",
-      "provision-api-key",
+      "prepare-deployment",
       "worker-deploy",
     ]);
     expect(workerConfig).toMatchObject({
@@ -561,14 +545,12 @@ describe("Cloudflare init discovery", () => {
         "API_KEY_SHA256",
       ),
     ).toBe(false);
-    expect(mocks.provisionManagedBetterAuthApiKey).toHaveBeenCalledWith({
-      envFilePath: ".env.hotupdater",
-      name: "Default",
-      store: { store: "d1" },
+    expect(prepareDeployment).toHaveBeenCalledWith(deploymentTarget, {
+      envFile: ".env.hotupdater",
     });
     expect(mocks.note).toHaveBeenCalledWith(
-      "HOT_UPDATER_API_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-      "Client access key (shown once)",
+      "secret notice",
+      "Deployment notice",
     );
     expect(mocks.d1Database).toHaveBeenCalledWith({
       accountId: "account-id",

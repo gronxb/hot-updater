@@ -8,6 +8,7 @@ import {
   getHotUpdaterCoreMetadata,
   type RuntimeHotUpdaterAPI,
 } from "../createHotUpdaterCore";
+export { requireUniversalComponentDataSource } from "../createHotUpdaterCore";
 import { generateSchemaFromHotUpdaterSchema } from "./schemaGenerators";
 import { type Migrator, type SchemaGenerator } from "./types";
 

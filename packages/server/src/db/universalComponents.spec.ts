@@ -12,6 +12,7 @@ import { defineFirstPartyServerPlugin } from "../kernel/manifest";
 import {
   generateUniversalComponentArtifacts,
   migrateUniversalComponents,
+  requireUniversalComponentDataSource,
   UniversalComponentMigrationUnsupportedError,
 } from "./index";
 
@@ -61,6 +62,8 @@ const adapterWith = (
     schema: componentSchema,
     append: async () => undefined,
     assertReady: async () => undefined,
+    create: async () => "created",
+    get: async () => null,
     orderedScan: async () => [],
   }),
   ...overrides,
@@ -97,6 +100,22 @@ describe("universal component DB tooling", () => {
       "audit-log",
       "zeta-log",
     ]);
+  });
+
+  it("requires a source from the composed target by schema identity", () => {
+    const componentSchema = schema("audit-log");
+    const target = createTarget([componentSchema], adapterWith());
+
+    const source = requireUniversalComponentDataSource(target, componentSchema);
+    expect(source.schema).toBe(componentSchema);
+    expect(requireUniversalComponentDataSource(target, componentSchema)).toBe(
+      source,
+    );
+    expect(() =>
+      requireUniversalComponentDataSource(target, schema("audit-log")),
+    ).toThrow(
+      "Universal component data source is not available for audit-log.",
+    );
   });
 
   it("fails explicitly when the provider has no runtime migration hook", async () => {

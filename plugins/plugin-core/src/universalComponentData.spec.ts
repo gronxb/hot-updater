@@ -17,6 +17,7 @@ import {
   UniversalComponentSchemaNotReadyError,
   universalComponentDataAdapterCapability,
   validateUniversalComponentAppend,
+  validateUniversalComponentGet,
   validateUniversalComponentOrderedScan,
   validateUniversalComponentRow,
 } from "./universalComponentData";
@@ -376,6 +377,12 @@ describe("universal component data", () => {
         limit: 10,
       }).columns,
     ).toEqual(["recorded_at_ms", "id"]);
+    expect(
+      validateUniversalComponentGet(defined, {
+        primaryKey: "record-1",
+        table: "audit_records",
+      }).name,
+    ).toBe("audit_records");
 
     expect(() =>
       validateUniversalComponentAppend(defined, {
@@ -391,6 +398,12 @@ describe("universal component data", () => {
         limit: 10,
       }),
     ).toThrow("Invalid scan input");
+    expect(() =>
+      validateUniversalComponentGet(defined, {
+        primaryKey: "invalid/key",
+        table: "audit_records",
+      }),
+    ).toThrow("Invalid primary key");
   });
 });
 

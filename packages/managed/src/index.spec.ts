@@ -1,15 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 
 const managedPluginMocks = vi.hoisted(() => ({
-  managedBetterAuthPlugin: vi.fn(() => ({
-    id: "better-auth-managed-access-key",
-  })),
+  managedBetterAuthPlugin: vi.fn(),
 }));
 
-vi.mock("@hot-updater/better-auth/managed", async (importOriginal) => ({
-  ...(await importOriginal()),
-  managedBetterAuthPlugin: managedPluginMocks.managedBetterAuthPlugin,
-}));
+vi.mock("@hot-updater/better-auth/managed", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@hot-updater/better-auth/managed")>();
+  managedPluginMocks.managedBetterAuthPlugin.mockImplementation(
+    actual.managedBetterAuthPlugin,
+  );
+  return {
+    ...actual,
+    managedBetterAuthPlugin: managedPluginMocks.managedBetterAuthPlugin,
+  };
+});
 
 import { createManagedServerPlugins } from "./index";
 
@@ -31,7 +36,7 @@ describe("createManagedServerPlugins", () => {
           ? (Reflect.get(schema, "id") as unknown)
           : null;
       }),
-    ).toEqual([null, null, "analytics"]);
+    ).toEqual(["better-auth-managed-access-keys", null, "analytics"]);
     expect(Object.isFrozen(plugins)).toBe(true);
   });
 

@@ -12,7 +12,8 @@ import {
   resolveAnalyticsCapability,
 } from "@hot-updater/analytics/provider";
 import {
-  managedAccessKeyStoreCapability,
+  createUniversalComponentManagedAccessKeyStore,
+  managedAccessKeyComponentSchema,
   type ManagedAccessKeyStore,
 } from "@hot-updater/better-auth/managed";
 import type { ConfigResponse } from "@hot-updater/cli-tools";
@@ -35,9 +36,7 @@ export type InstallationSearchResult =
 export type InstallationHistoryResult =
   OffsetPaginationResult<InstallationHistoryRow>;
 
-export function createRuntimeHotUpdater(
-  config: ConfigResponse,
-): AnalyticsProvider | null {
+const createUniversalComponentAdapter = (config: ConfigResponse) => {
   const contribution = getCapabilityContributions(config.database).find(
     ({ token }) => token === universalComponentDataAdapterCapability,
   );
@@ -47,9 +46,16 @@ export function createRuntimeHotUpdater(
     database: config.database,
     storages: Object.freeze([]),
   });
-  const adapter = universalComponentDataAdapterCapability.parse(
+  return universalComponentDataAdapterCapability.parse(
     Reflect.apply(contribution.create, undefined, [runtime]),
   );
+};
+
+export function createRuntimeHotUpdater(
+  config: ConfigResponse,
+): AnalyticsProvider | null {
+  const adapter = createUniversalComponentAdapter(config);
+  if (adapter === null) return null;
   return createUniversalComponentAnalyticsProvider(
     adapter.bind(analyticsComponentSchema),
   );
@@ -58,13 +64,11 @@ export function createRuntimeHotUpdater(
 export function createManagedAccessKeyStore(
   config: ConfigResponse,
 ): ManagedAccessKeyStore | null {
-  const contribution = getCapabilityContributions(config.database).find(
-    ({ token }) => token.id === managedAccessKeyStoreCapability.id,
-  );
-  if (!contribution) return null;
-
-  return managedAccessKeyStoreCapability.parse(
-    Reflect.apply(contribution.create, undefined, []),
+  const adapter = createUniversalComponentAdapter(config);
+  if (adapter === null) return null;
+  return createUniversalComponentManagedAccessKeyStore(
+    adapter.bind(managedAccessKeyComponentSchema),
+    { onRevoke: config.database.onDatabaseUpdated },
   );
 }
 

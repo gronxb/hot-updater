@@ -28,23 +28,11 @@ type UpdateInfoRow = {
   readonly file_hash: string | null;
 };
 
-export type SupabaseManagedAccessKeyRow = {
-  readonly created_at_ms: number | string;
-  readonly enabled: boolean;
-  readonly hash: string;
-  readonly id: string;
-  readonly name: string;
-  readonly prefix: string;
-  readonly revoked_at_ms: number | string | null;
-  readonly role: "client";
-};
-
 export type Database = {
   public: {
     Tables: {
       bundles: Table<SupabaseBundleRow>;
       bundle_patches: Table<SupabaseBundlePatchRow>;
-      managed_access_keys: Table<SupabaseManagedAccessKeyRow>;
       private_hot_updater_settings: Table<{
         readonly key: string;
         readonly value: string;

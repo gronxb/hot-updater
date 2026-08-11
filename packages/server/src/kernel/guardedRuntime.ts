@@ -51,9 +51,15 @@ function createGuardedDatabase(
   beforeOperation: () => Promise<void>,
 ): DatabaseCapabilityRuntime {
   const transaction = database.transaction;
+  const onDatabaseUpdated = database.onDatabaseUpdated;
   const runtime: DatabaseCapabilityRuntime = {
     ...createGuardedOperations(database, beforeOperation),
     name: database.name,
+    ...(onDatabaseUpdated === undefined
+      ? {}
+      : {
+          onDatabaseUpdated: () => onDatabaseUpdated(),
+        }),
     ...(transaction === undefined
       ? {}
       : {
