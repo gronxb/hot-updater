@@ -4,6 +4,7 @@ import {
   resolveUpdateInfoFromBundles,
   rowsToBundles,
 } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 
 import {
   cloneMockDatabaseData,
@@ -22,70 +23,79 @@ export interface MockDatabaseConfig {
   readonly data?: MockDatabaseData;
 }
 
-export const mockDatabase = (config: MockDatabaseConfig) =>
-  createDatabasePlugin({
-    name: "mockDatabase",
-    plugin: (): DatabasePluginImplementation => {
-      const data = config.data ?? createMockDatabaseData();
-      const state = createMockDatabaseState(data);
-      let operationQueue: Promise<void> = Promise.resolve();
+export const mockDatabase = (config: MockDatabaseConfig) => {
+  const implementation: DatabasePluginImplementation = (() => {
+    const data = config.data ?? createMockDatabaseData();
+    const state = createMockDatabaseState(data);
+    let operationQueue: Promise<void> = Promise.resolve();
 
-      const waitForLatency = (): Promise<void> =>
-        sleep(minMax(config.latency.min, config.latency.max));
+    const waitForLatency = (): Promise<void> =>
+      sleep(minMax(config.latency.min, config.latency.max));
 
-      const mutate = <TResult>(
-        operation: () => Promise<TResult>,
-      ): Promise<TResult> => {
-        const result = operationQueue.then(async () => {
-          await waitForLatency();
-          return operation();
-        });
-        operationQueue = result.then(
-          () => undefined,
-          () => undefined,
-        );
-        return result;
-      };
+    const mutate = <TResult>(
+      operation: () => Promise<TResult>,
+    ): Promise<TResult> => {
+      const result = operationQueue.then(async () => {
+        await waitForLatency();
+        return operation();
+      });
+      operationQueue = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    };
 
-      const read = <TResult>(
-        operation: () => Promise<TResult>,
-      ): Promise<TResult> => mutate(operation);
+    const read = <TResult>(
+      operation: () => Promise<TResult>,
+    ): Promise<TResult> => mutate(operation);
 
-      return {
-        create: (input) => mutate(() => state.create(input)),
-        update: (input) => mutate(() => state.update(input)),
-        delete: (input) => mutate(() => state.delete(input)),
-        count: (input) => read(() => state.count(input)),
-        findOne: (input) => read(() => state.findOne(input)),
-        findMany: (input) => read(() => state.findMany(input)),
-        getChannels: () =>
-          read(async () =>
-            [
-              ...new Set(
-                [...data.bundles.values()].map(({ channel }) => channel),
-              ),
-            ].sort(),
-          ),
-        getUpdateInfo: (args) =>
-          read(() =>
-            resolveUpdateInfoFromBundles({
-              args,
-              bundles: rowsToBundles(
-                [...data.bundles.values()],
-                [...data.bundlePatches.values()],
-                [...data.bundles.values()],
-              ),
-            }),
-          ),
-        transaction: (callback) =>
-          mutate(async () => {
-            const transactionData = cloneMockDatabaseData(data);
-            const result = await callback(
-              createMockDatabaseState(transactionData),
-            );
-            replaceMockDatabaseData(data, transactionData);
-            return result;
+    return {
+      create: (input) => mutate(() => state.create(input)),
+      update: (input) => mutate(() => state.update(input)),
+      delete: (input) => mutate(() => state.delete(input)),
+      count: (input) => read(() => state.count(input)),
+      findOne: (input) => read(() => state.findOne(input)),
+      findMany: (input) => read(() => state.findMany(input)),
+      getChannels: () =>
+        read(async () =>
+          [
+            ...new Set(
+              [...data.bundles.values()].map(({ channel }) => channel),
+            ),
+          ].sort(),
+        ),
+      getUpdateInfo: (args) =>
+        read(() =>
+          resolveUpdateInfoFromBundles({
+            args,
+            bundles: rowsToBundles(
+              [...data.bundles.values()],
+              [...data.bundlePatches.values()],
+              [...data.bundles.values()],
+            ),
           }),
-      };
-    },
+        ),
+      transaction: (callback) =>
+        mutate(async () => {
+          const transactionData = cloneMockDatabaseData(data);
+          const result = await callback(
+            createMockDatabaseState(transactionData),
+          );
+          replaceMockDatabaseData(data, transactionData);
+          return result;
+        }),
+    };
+  })();
+  const adapter = createDatabasePluginAdapter("mockDatabase", implementation);
+  return createDatabasePlugin({
+    name: "mockDatabase",
+    bundles: adapter.bundles,
+    bundlePatches: adapter.bundlePatches,
+    analytics: adapter.analytics,
+    clientAccessKeys: adapter.clientAccessKeys,
+    commit: adapter.commit,
+    getChannels: adapter.getChannels,
+    getUpdateInfo: adapter.getUpdateInfo,
   });
+};

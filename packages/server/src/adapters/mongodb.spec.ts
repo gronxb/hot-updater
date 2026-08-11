@@ -28,7 +28,6 @@ describe("mongoAdapter capabilities", () => {
     expect(plugin.name).toBe("mongodb");
     expect(plugin.adapterName).toBe("mongodb");
     expect(plugin.provider).toBe("mongodb");
-    expect(plugin.commitBatch).toBeUndefined();
     expect(Reflect.has(plugin, "transaction")).toBe(false);
   });
 
@@ -43,11 +42,15 @@ describe("mongoAdapter capabilities", () => {
 
     await expect(
       plugin.commit({
-        operation: "insert",
-        bundleId: owner.id,
-        changes: [
-          { table: "bundles", operation: "insert", row: owner },
-          { table: "bundle_patches", operation: "insert", row: patch },
+        mutations: [
+          {
+            operation: "insert",
+            bundleId: owner.id,
+            changes: [
+              { table: "bundles", operation: "insert", row: owner },
+              { table: "bundle_patches", operation: "insert", row: patch },
+            ],
+          },
         ],
       }),
     ).rejects.toMatchObject({ name: "DatabaseAtomicCommitUnsupportedError" });
@@ -90,9 +93,13 @@ describe("mongoAdapter capabilities", () => {
     const plugin = mongoAdapter({ client: harness.client });
     const row = createBundleRowFixture("972");
     await plugin.commit({
-      operation: "insert",
-      bundleId: row.id,
-      changes: [{ table: "bundles", operation: "insert", row }],
+      mutations: [
+        {
+          operation: "insert",
+          bundleId: row.id,
+          changes: [{ table: "bundles", operation: "insert", row }],
+        },
+      ],
     });
     harness.setBundleField(row.id, "should_force_update", "false");
     const getUpdateInfo = plugin.getUpdateInfo;

@@ -2,6 +2,7 @@ import {
   createDatabasePlugin,
   type DatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import type { Kysely } from "kysely";
 
 import { createKyselyMigrator } from "../db/fixedMigrator";
@@ -87,10 +88,19 @@ const createImplementation = <TDatabase extends object>(
 export const kyselyAdapter = <TDatabase extends object>(
   config: KyselyAdapterConfig<TDatabase>,
 ): DatabaseAdapterWithCapabilities => {
+  const adapter = createDatabasePluginAdapter(
+    "kysely",
+    createImplementation<TDatabase>(config),
+  );
   const plugin = createDatabasePlugin({
     name: "kysely",
-    plugin: (): DatabasePluginImplementation =>
-      createImplementation<TDatabase>(config),
+    bundles: adapter.bundles,
+    bundlePatches: adapter.bundlePatches,
+    analytics: adapter.analytics,
+    clientAccessKeys: adapter.clientAccessKeys,
+    commit: adapter.commit,
+    getChannels: adapter.getChannels,
+    getUpdateInfo: adapter.getUpdateInfo,
   });
   return Object.assign(plugin, {
     adapterName: "kysely",

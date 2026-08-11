@@ -19,26 +19,47 @@ export type HotUpdaterConfigOptions = {
 
 const missingDatabase = createDatabasePlugin({
   name: "missingDatabase",
-  plugin: () => ({
-    create: async () => {
-      throw new Error("database plugin is required");
-    },
-    update: async () => {
-      throw new Error("database plugin is required");
-    },
-    delete: async () => {
-      throw new Error("database plugin is required");
-    },
-    count: async () => {
-      throw new Error("database plugin is required");
-    },
-    findOne: async () => {
+  bundles: {
+    findById: async () => {
       throw new Error("database plugin is required");
     },
     findMany: async () => {
       throw new Error("database plugin is required");
     },
-  }),
+    count: async () => {
+      throw new Error("database plugin is required");
+    },
+  },
+  bundlePatches: {
+    findByBundleIds: async () => {
+      throw new Error("database plugin is required");
+    },
+  },
+  analytics: {
+    append: async () => {
+      throw new Error("database plugin is required");
+    },
+    scan: async () => {
+      throw new Error("database plugin is required");
+    },
+  },
+  clientAccessKeys: {
+    create: async () => {
+      throw new Error("database plugin is required");
+    },
+    findByHash: async () => {
+      throw new Error("database plugin is required");
+    },
+    list: async () => {
+      throw new Error("database plugin is required");
+    },
+    revoke: async () => {
+      throw new Error("database plugin is required");
+    },
+  },
+  commit: async () => {
+    throw new Error("database plugin is required");
+  },
 });
 
 const getDefaultPlatformConfig = (): ConfigInput["platform"] => {

@@ -3,7 +3,6 @@ import type {
   DatabaseDistinctOn,
   DatabaseModel,
   DatabaseOrderBy,
-  DatabasePluginImplementation,
   DatabaseRow,
   DatabaseSortBy,
   DatabaseWhere,
@@ -16,9 +15,10 @@ import {
   queryStandaloneRows,
 } from "./standaloneDatabaseQuery";
 import { loadRows } from "./standaloneLegacyData";
+import type { StandaloneLegacyImplementation } from "./standaloneLegacyImplementation";
 
 type LegacyReads = Pick<
-  DatabasePluginImplementation,
+  StandaloneLegacyImplementation,
   "count" | "findOne" | "findMany"
 >;
 

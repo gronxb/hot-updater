@@ -1,6 +1,8 @@
 import type {
   BundlePatchRow,
   BundleRow,
+  BundleEventRow,
+  ClientAccessKeyRow,
   DatabaseImplementationResult,
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
@@ -13,6 +15,8 @@ import {
 export interface FirebaseDatabaseSnapshot {
   readonly bundles: Map<string, BundleRow>;
   readonly bundlePatches: Map<string, BundlePatchRow>;
+  readonly bundleEvents: Map<string, BundleEventRow>;
+  readonly clientAccessKeys: Map<string, ClientAccessKeyRow>;
 }
 
 export class FirebaseDatabaseConstraintError extends Error {
@@ -28,6 +32,8 @@ export const cloneFirebaseDatabaseSnapshot = (
 ): FirebaseDatabaseSnapshot => ({
   bundles: new Map(snapshot.bundles),
   bundlePatches: new Map(snapshot.bundlePatches),
+  bundleEvents: new Map(snapshot.bundleEvents),
+  clientAccessKeys: new Map(snapshot.clientAccessKeys),
 });
 
 const requireUnique = (
@@ -84,9 +90,35 @@ export const createFirebaseDatabaseState = (
         }
         snapshot.bundlePatches.set(input.data.id, input.data);
         return input.data;
+      case "bundle_events":
+        requireUnique(snapshot.bundleEvents, input.data.id, input.model);
+        snapshot.bundleEvents.set(input.data.id, input.data);
+        return input.data;
+      case "client_access_keys":
+        requireUnique(snapshot.clientAccessKeys, input.data.id, input.model);
+        if (
+          [...snapshot.clientAccessKeys.values()].some(
+            ({ hash }) => hash === input.data.hash,
+          )
+        ) {
+          throw new FirebaseDatabaseConstraintError(
+            "client_access_keys.hash.unique",
+          );
+        }
+        snapshot.clientAccessKeys.set(input.data.id, input.data);
+        return input.data;
     }
   },
-  async update(input): Promise<Partial<BundleRow> | null> {
+  async update(input): Promise<Partial<BundleRow | ClientAccessKeyRow> | null> {
+    if (input.model === "client_access_keys") {
+      const current = [...snapshot.clientAccessKeys.values()].find((row) =>
+        matchesFirebaseDatabaseWhere(row, input.where),
+      );
+      if (!current) return null;
+      const updated = { ...current, ...input.update };
+      snapshot.clientAccessKeys.set(current.id, updated);
+      return updated;
+    }
     const current = [...snapshot.bundles.values()].find((row) =>
       matchesFirebaseDatabaseWhere(row, input.where),
     );
@@ -153,6 +185,12 @@ export const createFirebaseDatabaseState = (
             matchesFirebaseDatabaseWhere(row, input.where),
           ) ?? null
         );
+      case "client_access_keys":
+        return (
+          [...snapshot.clientAccessKeys.values()].find((row) =>
+            matchesFirebaseDatabaseWhere(row, input.where),
+          ) ?? null
+        );
       case "bundle_patches":
         return (
           [...snapshot.bundlePatches.values()].find((row) =>
@@ -168,6 +206,16 @@ export const createFirebaseDatabaseState = (
       case "bundle_patches":
         return queryFirebaseDatabaseRows(
           [...snapshot.bundlePatches.values()],
+          input,
+        );
+      case "bundle_events":
+        return queryFirebaseDatabaseRows(
+          [...snapshot.bundleEvents.values()],
+          input,
+        );
+      case "client_access_keys":
+        return queryFirebaseDatabaseRows(
+          [...snapshot.clientAccessKeys.values()],
           input,
         );
     }

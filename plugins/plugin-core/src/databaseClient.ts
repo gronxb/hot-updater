@@ -18,9 +18,9 @@ import { resolveUpdateInfoFromBundles } from "./resolveUpdateInfoFromBundles";
 import type {
   DatabaseBundleQueryOptions,
   DatabaseBundleQueryWhere,
-  DatabaseCommit,
+  DatabaseBundleMutation,
   DatabaseCommitResult,
-  DatabasePlugin,
+  BundleRepository,
   PaginatedResult,
 } from "./types";
 
@@ -37,15 +37,9 @@ export interface DatabaseClient {
   mutate<TResult>(
     operation: (client: DatabaseMutationClient) => Promise<TResult>,
   ): Promise<TResult>;
-  mutateAtomic?<TResult>(
-    operation: (client: DatabaseMutationClient) => Promise<TResult>,
-  ): Promise<TResult>;
 }
 
-export type DatabaseMutationClient = Omit<
-  DatabaseClient,
-  "mutate" | "mutateAtomic"
->;
+export type DatabaseMutationClient = Omit<DatabaseClient, "mutate">;
 
 export class DatabaseBundleNotFoundError extends Error {
   readonly name = "DatabaseBundleNotFoundError";
@@ -70,9 +64,11 @@ export class DatabasePatchInsertUnsupportedError extends Error {
 
 export { DatabasePatchUpdateUnsupportedError };
 
-type CommitOperation = (input: DatabaseCommit) => Promise<DatabaseCommitResult>;
+type CommitOperation = (
+  input: DatabaseBundleMutation,
+) => Promise<DatabaseCommitResult>;
 
-const insertCommit = (bundle: Bundle): DatabaseCommit => ({
+const insertMutation = (bundle: Bundle): DatabaseBundleMutation => ({
   operation: "insert",
   bundleId: bundle.id,
   changes: [
@@ -85,10 +81,10 @@ const insertCommit = (bundle: Bundle): DatabaseCommit => ({
   ],
 });
 
-const updateCommit = (
+const updateMutation = (
   bundleId: string,
   update: Partial<Bundle>,
-): DatabaseCommit => {
+): DatabaseBundleMutation => {
   const rowUpdate = bundleUpdateToRow(update);
   const patchesPresent = Object.hasOwn(update, "patches");
   return {
@@ -123,14 +119,14 @@ const updateCommit = (
   };
 };
 
-const deleteCommit = (bundleId: string): DatabaseCommit => ({
+const deleteMutation = (bundleId: string): DatabaseBundleMutation => ({
   operation: "delete",
   bundleId,
   changes: [{ table: "bundles", operation: "delete", id: bundleId }],
 });
 
 export const createDatabaseClient = (
-  plugin: DatabasePlugin,
+  plugin: BundleRepository,
 ): DatabaseClient => {
   const getBundleById = async (id: string): Promise<Bundle | null> => {
     const row = await plugin.bundles.findById(id);
@@ -177,7 +173,7 @@ export const createDatabaseClient = (
     },
     async insertBundle(bundle) {
       try {
-        await commit(insertCommit(bundle));
+        await commit(insertMutation(bundle));
       } catch (error) {
         if (
           error instanceof DatabaseAtomicCommitUnsupportedError &&
@@ -190,7 +186,7 @@ export const createDatabaseClient = (
     },
     async updateBundleById(bundleId, update) {
       try {
-        const result = await commit(updateCommit(bundleId, update));
+        const result = await commit(updateMutation(bundleId, update));
         if (!result.applied) throw new DatabaseBundleNotFoundError(bundleId);
       } catch (error) {
         if (
@@ -203,54 +199,40 @@ export const createDatabaseClient = (
       }
     },
     async deleteBundleById(bundleId) {
-      await commit(deleteCommit(bundleId));
+      await commit(deleteMutation(bundleId));
     },
   });
 
   const runMutation = async <TResult>(
     operation: (client: DatabaseMutationClient) => Promise<TResult>,
-    requireAtomic: boolean,
   ): Promise<TResult> => {
-    const commits: DatabaseCommit[] = [];
+    const mutations: DatabaseBundleMutation[] = [];
     const result = await operation(
       createMutationClient(async (input) => {
-        commits.push(input);
+        mutations.push(input);
         return { applied: true };
       }),
     );
-    if (commits.length === 0) return result;
-    if (plugin.commitBatch) {
-      const results = await plugin.commitBatch(commits);
-      const missing = results.findIndex(({ applied }) => !applied);
-      if (missing >= 0) {
-        throw new DatabaseBundleNotFoundError(commits[missing]!.bundleId);
+    if (mutations.length === 0) return result;
+    const commitResult = await plugin.commit({ mutations });
+    if (!commitResult.applied) {
+      const missingBundleId =
+        commitResult.missingBundleId ??
+        mutations.find(({ operation }) => operation === "update")?.bundleId;
+      if (missingBundleId === undefined) {
+        throw new Error(`Database plugin "${plugin.name}" rejected a commit.`);
       }
-    } else {
-      if (requireAtomic && commits.length > 1) {
-        throw new DatabaseAtomicCommitUnsupportedError(plugin.name);
-      }
-      for (const input of commits) {
-        const commitResult = await plugin.commit(input);
-        if (!commitResult.applied) {
-          throw new DatabaseBundleNotFoundError(input.bundleId);
-        }
-      }
+      throw new DatabaseBundleNotFoundError(missingBundleId);
     }
-    await plugin.onDatabaseUpdated?.();
     return result;
   };
 
   const direct = createMutationClient(async (input) => {
-    const result = await plugin.commit(input);
-    if (result.applied) await plugin.onDatabaseUpdated?.();
-    return result;
+    return plugin.commit({ mutations: [input] });
   });
 
   return {
     ...direct,
-    mutate: (operation) => runMutation(operation, false),
-    ...(plugin.commitBatch
-      ? { mutateAtomic: (operation) => runMutation(operation, true) }
-      : {}),
+    mutate: runMutation,
   };
 };

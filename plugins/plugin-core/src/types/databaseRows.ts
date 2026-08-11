@@ -46,9 +46,48 @@ export interface BundlePatchRow {
   readonly order_index: number;
 }
 
+export type BundleEventRowBase = {
+  readonly id: string;
+  readonly install_id: string;
+  readonly user_id: string | null;
+  readonly username: string | null;
+  readonly to_bundle_id: string;
+  readonly platform: Platform;
+  readonly app_version: string;
+  readonly channel: string;
+  readonly cohort: string;
+  readonly fingerprint_hash: string | null;
+  readonly sdk_version: string | null;
+  readonly received_at_ms: number;
+};
+
+export type BundleEventRow =
+  | (BundleEventRowBase & {
+      readonly type: "UPDATE_APPLIED" | "RECOVERED";
+      readonly from_bundle_id: string;
+      readonly update_strategy: "fingerprint" | "appVersion";
+    })
+  | (BundleEventRowBase & {
+      readonly type: "UNCHANGED";
+      readonly from_bundle_id: null;
+      readonly update_strategy: null;
+    });
+
+export interface ClientAccessKeyRow {
+  readonly id: string;
+  readonly hash: string;
+  readonly name: string;
+  readonly prefix: string;
+  readonly role: "client";
+  readonly created_at_ms: number;
+  readonly revoked_at_ms: number | null;
+}
+
 export interface DatabaseModelMap {
   readonly bundles: BundleRow;
   readonly bundle_patches: BundlePatchRow;
+  readonly bundle_events: BundleEventRow;
+  readonly client_access_keys: ClientAccessKeyRow;
 }
 
 export type DatabaseModel = keyof DatabaseModelMap;

@@ -154,6 +154,8 @@ describe("s3Database storage behavior", () => {
       version: 2,
       bundles: [bundleRow("1")],
       bundle_patches: [],
+      bundle_events: [],
+      client_access_keys: [],
     });
     const call = s3Mock.commandCalls(PutObjectCommand).at(-1);
     expect(call?.args[0].input).toMatchObject({
@@ -381,7 +383,11 @@ const bundleRow = (suffix: string) => ({
 
 const insertBundleRow = (plugin: DatabasePlugin, row: BundleRow) =>
   plugin.commit({
-    operation: "insert",
-    bundleId: row.id,
-    changes: [{ table: "bundles", operation: "insert", row }],
+    mutations: [
+      {
+        operation: "insert",
+        bundleId: row.id,
+        changes: [{ table: "bundles", operation: "insert", row }],
+      },
+    ],
   });

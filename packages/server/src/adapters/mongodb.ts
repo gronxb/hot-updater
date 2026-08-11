@@ -3,6 +3,7 @@ import type {
   TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import type { ClientSession, MongoClient } from "mongodb";
 
 import { createMongoMigrator } from "../db/fixedMigrator";
@@ -45,14 +46,23 @@ const createTransactionalMongoImplementation = (
 
 export const mongoAdapter = (
   config: MongoDBConfig,
-): DatabaseAdapterWithCapabilities =>
-  Object.assign(
+): DatabaseAdapterWithCapabilities => {
+  const adapter = createDatabasePluginAdapter(
+    "mongodb",
+    config.transactions === true
+      ? createTransactionalMongoImplementation(config.client)
+      : createMongoImplementation(config.client),
+  );
+  return Object.assign(
     createDatabasePlugin({
       name: "mongodb",
-      plugin: () =>
-        config.transactions === true
-          ? createTransactionalMongoImplementation(config.client)
-          : createMongoImplementation(config.client),
+      bundles: adapter.bundles,
+      bundlePatches: adapter.bundlePatches,
+      analytics: adapter.analytics,
+      clientAccessKeys: adapter.clientAccessKeys,
+      commit: adapter.commit,
+      getChannels: adapter.getChannels,
+      getUpdateInfo: adapter.getUpdateInfo,
     }),
     {
       adapterName: "mongodb",
@@ -60,3 +70,4 @@ export const mongoAdapter = (
       createMigrator: () => createMongoMigrator(config.client),
     },
   );
+};

@@ -3,6 +3,7 @@ import {
   type DatabasePluginImplementation,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import { asc, desc, inArray } from "drizzle-orm";
 
 import {
@@ -102,9 +103,38 @@ const createImplementation = (
 export const drizzleAdapter = (
   config: DrizzleConfig,
 ): DatabaseAdapterWithCapabilities => {
+  let adapter: ReturnType<typeof createDatabasePluginAdapter> | undefined;
+  const getAdapter = () => {
+    adapter ??= createDatabasePluginAdapter(
+      "drizzle",
+      createImplementation(config),
+    );
+    return adapter;
+  };
   const plugin = createDatabasePlugin({
     name: "drizzle",
-    plugin: (): DatabasePluginImplementation => createImplementation(config),
+    bundles: {
+      findById: (id) => getAdapter().bundles.findById(id),
+      findMany: (query) => getAdapter().bundles.findMany(query),
+      count: (where) => getAdapter().bundles.count(where),
+    },
+    bundlePatches: {
+      findByBundleIds: (bundleIds) =>
+        getAdapter().bundlePatches.findByBundleIds(bundleIds),
+    },
+    analytics: {
+      append: (row) => getAdapter().analytics.append(row),
+      scan: (input) => getAdapter().analytics.scan(input),
+    },
+    clientAccessKeys: {
+      create: (row) => getAdapter().clientAccessKeys.create(row),
+      findByHash: (hash) => getAdapter().clientAccessKeys.findByHash(hash),
+      list: () => getAdapter().clientAccessKeys.list(),
+      revoke: (input) => getAdapter().clientAccessKeys.revoke(input),
+    },
+    commit: (input) => getAdapter().commit(input),
+    getChannels: () => getAdapter().getChannels!(),
+    getUpdateInfo: (args) => getAdapter().getUpdateInfo!(args),
   });
   return Object.assign(plugin, {
     adapterName: "drizzle",

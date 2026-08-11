@@ -1,8 +1,8 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import Cloudflare from "cloudflare";
 
 import { createD1Implementation, type D1Statement } from "./d1Implementation";
-import { createD1UniversalComponentDataAdapter } from "./d1UniversalComponentData";
 
 export interface D1DatabaseConfig {
   readonly databaseId: string;
@@ -14,6 +14,7 @@ export const d1Database = (config: D1DatabaseConfig) => {
   const cloudflare = new Cloudflare({
     apiToken: config.cloudflareApiToken,
   });
+
   const execute = async (
     statements: readonly D1Statement[],
   ): Promise<readonly (readonly unknown[])[]> => {
@@ -30,18 +31,23 @@ export const d1Database = (config: D1DatabaseConfig) => {
     }
     return results;
   };
-  const executor = {
-    async query(sql: string, params: readonly string[]) {
-      return (await execute([{ sql, params }])).flat();
-    },
-    batch: execute,
-  };
-  const plugin = createDatabasePlugin({
+
+  const adapter = createDatabasePluginAdapter(
+    "d1Database",
+    createD1Implementation({
+      async query(sql, params) {
+        return (await execute([{ sql, params }])).flat();
+      },
+      batch: execute,
+    }),
+  );
+  return createDatabasePlugin({
     name: "d1Database",
-    plugin: () => createD1Implementation(executor),
+    bundles: adapter.bundles,
+    bundlePatches: adapter.bundlePatches,
+    analytics: adapter.analytics,
+    clientAccessKeys: adapter.clientAccessKeys,
+    commit: adapter.commit,
+    getChannels: adapter.getChannels,
   });
-  return {
-    ...plugin,
-    componentData: createD1UniversalComponentDataAdapter(executor),
-  };
 };

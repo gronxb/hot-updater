@@ -28,6 +28,10 @@
         "default": "./dist/internal/capabilities.cjs"
       }
     },
+    "./internal": {
+      "import": "./dist/internal.mjs",
+      "require": "./dist/internal.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [

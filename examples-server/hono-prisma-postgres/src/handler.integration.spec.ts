@@ -254,33 +254,45 @@ describe(
           asset_base_storage_uri: null,
       };
       await database.commit({
-        operation: "insert",
-        bundleId: id,
-        changes: [{ table: "bundles", operation: "insert", row }],
+        mutations: [
+          {
+            operation: "insert",
+            bundleId: id,
+            changes: [{ table: "bundles", operation: "insert", row }],
+          },
+        ],
       });
 
       const results = await Promise.allSettled([
         database.commit({
-          operation: "update",
-          bundleId: id,
-          changes: [
+          mutations: [
             {
-              table: "bundles",
               operation: "update",
-              id,
-              update: { target_app_version: null },
+              bundleId: id,
+              changes: [
+                {
+                  table: "bundles",
+                  operation: "update",
+                  id,
+                  update: { target_app_version: null },
+                },
+              ],
             },
           ],
         }),
         database.commit({
-          operation: "update",
-          bundleId: id,
-          changes: [
+          mutations: [
             {
-              table: "bundles",
               operation: "update",
-              id,
-              update: { fingerprint_hash: null },
+              bundleId: id,
+              changes: [
+                {
+                  table: "bundles",
+                  operation: "update",
+                  id,
+                  update: { fingerprint_hash: null },
+                },
+              ],
             },
           ],
         }),
@@ -328,9 +340,13 @@ describe(
       for (const id of [baseId, targetId]) {
         const row = { ...bundle, id };
         await database.commit({
-          operation: "insert",
-          bundleId: id,
-          changes: [{ table: "bundles", operation: "insert", row }],
+          mutations: [
+            {
+              operation: "insert",
+              bundleId: id,
+              changes: [{ table: "bundles", operation: "insert", row }],
+            },
+          ],
         });
       }
       const patch = {
@@ -343,9 +359,15 @@ describe(
           order_index: 0,
       };
       await database.commit({
-        operation: "update",
-        bundleId: targetId,
-        changes: [{ table: "bundle_patches", operation: "insert", row: patch }],
+        mutations: [
+          {
+            operation: "update",
+            bundleId: targetId,
+            changes: [
+              { table: "bundle_patches", operation: "insert", row: patch },
+            ],
+          },
+        ],
       });
 
       await prisma.$executeRawUnsafe(`
@@ -364,10 +386,14 @@ describe(
       try {
         await expect(
           database.commit({
-            operation: "delete",
-            bundleId: targetId,
-            changes: [
-              { table: "bundles", operation: "delete", id: targetId },
+            mutations: [
+              {
+                operation: "delete",
+                bundleId: targetId,
+                changes: [
+                  { table: "bundles", operation: "delete", id: targetId },
+                ],
+              },
             ],
           }),
         ).rejects.toThrow("injected Prisma bundle delete failure");

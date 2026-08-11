@@ -396,7 +396,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
       expect(code).toContain('channel String @default("production")');
       expect(code).toContain('metadata Json @default("{}")');
-      expect(code).toContain('value String @default("0.36.0")');
+      expect(code).toContain('value String @default("0.37.0")');
       expect(code).toContain(
         'patches bundle_patches[] @relation("bundle_patches_bundles_patches")',
       );
@@ -470,7 +470,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         'id: varchar("id", { length: 255 }).primaryKey().notNull()',
       );
       expect(generatedCode).toContain(
-        'version: varchar("version", { length: 255 }).notNull().default("0.36.0")',
+        'version: varchar("version", { length: 255 }).notNull().default("0.37.0")',
       );
       expect(generatedCode).not.toContain('key: varchar("key"');
       expect(generatedCode).not.toContain('value: text("value"');
@@ -484,6 +484,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         "0.29.0",
         "0.31.0",
         "0.36.0",
+        "0.37.0",
       ]);
 
       const v029Sql = createSchemaMigrationSql(
@@ -633,7 +634,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           value: string;
         }>("select key, value from private_hot_updater_settings order by key");
         expect(versions.rows).toEqual([
-          { key: "schema.core", value: "0.36.0" },
+          { key: "schema.core", value: "0.37.0" },
           { key: "version", value: "0.21.0" },
         ]);
         await migrationDb.query(
@@ -1083,6 +1084,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const appVersionRow = bundleToRow(appVersionFastPathBundle);
       const fingerprintRow = bundleToRow(fingerprintFastPathBundle);
       const tables = {
+        bundle_events: {
+          id: sql.raw("event_id"),
+        },
         bundle_patches: {
           bundle_id: sql.raw("bundle_id"),
           id: sql.raw("patch_id"),
@@ -1095,6 +1099,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
           id: sql.raw("id"),
           platform: sql.raw("platform"),
           target_app_version: sql.raw("target_app_version"),
+        },
+        client_access_keys: {
+          id: sql.raw("access_key_id"),
         },
       };
       const bundleFindMany = vi
@@ -1113,6 +1120,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         })),
         insert: vi.fn(),
         query: {
+          bundle_events: { findFirst: vi.fn(), findMany: vi.fn() },
           bundle_patches: {
             findFirst: vi.fn(),
             findMany: patchFindMany,
@@ -1121,6 +1129,7 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
             findFirst: vi.fn(),
             findMany: bundleFindMany,
           },
+          client_access_keys: { findFirst: vi.fn(), findMany: vi.fn() },
         },
         select: vi.fn(),
         update: vi.fn(),
@@ -1304,13 +1313,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       await adapter.commit({
-        operation: "insert",
-        bundleId: transactionBundle.id,
-        changes: [
+        mutations: [
           {
-            table: "bundles",
             operation: "insert",
-            row: bundleToRow(transactionBundle),
+            bundleId: transactionBundle.id,
+            changes: [
+              {
+                table: "bundles",
+                operation: "insert",
+                row: bundleToRow(transactionBundle),
+              },
+            ],
           },
         ],
       });
@@ -1322,6 +1335,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
 
     it("commits Drizzle bundle changes inside a transaction when available", async () => {
       const tables = {
+        bundle_events: {
+          id: "event_id",
+        },
         bundle_patches: {
           bundle_id: "bundle_id",
           id: "patch_id",
@@ -1329,6 +1345,9 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         },
         bundles: {
           id: "id",
+        },
+        client_access_keys: {
+          id: "access_key_id",
         },
       };
       const rootInsert = vi.fn(() => ({
@@ -1345,12 +1364,20 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
         })),
         insert,
         query: {
+          bundle_events: {
+            findFirst: vi.fn(),
+            findMany: vi.fn(),
+          },
           bundle_patches: {
             findFirst: vi.fn(),
             findMany: vi.fn(),
           },
           bundles: {
             findFirst: vi.fn(async () => undefined),
+            findMany: vi.fn(),
+          },
+          client_access_keys: {
+            findFirst: vi.fn(),
             findMany: vi.fn(),
           },
         },
@@ -1376,13 +1403,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       });
 
       await adapter.commit({
-        operation: "insert",
-        bundleId: transactionBundle.id,
-        changes: [
+        mutations: [
           {
-            table: "bundles",
             operation: "insert",
-            row: bundleToRow(transactionBundle),
+            bundleId: transactionBundle.id,
+            changes: [
+              {
+                table: "bundles",
+                operation: "insert",
+                row: bundleToRow(transactionBundle),
+              },
+            ],
           },
         ],
       });
@@ -1414,7 +1445,6 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       } as unknown as MongoClient;
       const adapter = mongoAdapter({ client });
 
-      expect(adapter.commitBatch).toBeUndefined();
       expect(Reflect.has(adapter, "transaction")).toBe(false);
     });
 
@@ -1442,13 +1472,17 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       const adapter = mongoAdapter({ client, transactions: true });
 
       await adapter.commit({
-        operation: "insert",
-        bundleId: transactionBundle.id,
-        changes: [
+        mutations: [
           {
-            table: "bundles",
             operation: "insert",
-            row: bundleToRow(transactionBundle),
+            bundleId: transactionBundle.id,
+            changes: [
+              {
+                table: "bundles",
+                operation: "insert",
+                row: bundleToRow(transactionBundle),
+              },
+            ],
           },
         ],
       });

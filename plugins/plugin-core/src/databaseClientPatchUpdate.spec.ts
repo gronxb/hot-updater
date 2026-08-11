@@ -2,7 +2,10 @@ import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
-import { createDatabasePlugin } from "./createDatabasePlugin";
+import {
+  createDatabasePlugin,
+  createDatabasePluginAdapter,
+} from "./createDatabasePlugin";
 import {
   createDatabaseClient,
   DatabaseBundleNotFoundError,
@@ -28,11 +31,11 @@ const createBundle = (id: string): Bundle => ({
 
 const createNativePlugin = (
   commit: NonNullable<DatabasePluginImplementation["commit"]>,
-  onDatabaseUpdated?: () => Promise<void>,
-) => ({
-  ...createDatabasePlugin({
-    name: "native-aggregate",
-    plugin: () => ({
+) => {
+  const name = "native-aggregate";
+  return createDatabasePlugin({
+    name,
+    ...createDatabasePluginAdapter(name, {
       create: async (input) => input.data,
       update: async () => null,
       delete: async () => undefined,
@@ -41,9 +44,8 @@ const createNativePlugin = (
       findMany: async () => [],
       commit,
     }),
-  }),
-  ...(onDatabaseUpdated ? { onDatabaseUpdated } : {}),
-});
+  });
+};
 
 const createBlobFixture = async () => {
   const store = new Map<string, unknown>();
@@ -88,9 +90,10 @@ const createBlobFixture = async () => {
 describe("database client patch updates", () => {
   it("rejects patch insertion before mutating a non-transaction provider", async () => {
     const create = vi.fn(async (input) => input.data);
+    const name = "non-transaction";
     const plugin = createDatabasePlugin({
-      name: "non-transaction",
-      plugin: () => ({
+      name,
+      ...createDatabasePluginAdapter(name, {
         create,
         update: async () => null,
         delete: async () => undefined,
@@ -126,9 +129,10 @@ describe("database client patch updates", () => {
     const row = bundleToRow(createBundle("owner"));
     let scalarUpdateCount = 0;
     let patchDeleteCount = 0;
+    const name = "non-transaction";
     const plugin = createDatabasePlugin({
-      name: "non-transaction",
-      plugin: () => ({
+      name,
+      ...createDatabasePluginAdapter(name, {
         create: async (input) => input.data,
         update: async () => {
           scalarUpdateCount += 1;
@@ -159,8 +163,7 @@ describe("database client patch updates", () => {
 
   it("uses a provider-native atomic aggregate without exposing a transaction", async () => {
     const commit = vi.fn(async () => ({ applied: true }));
-    const onDatabaseUpdated = vi.fn(async () => undefined);
-    const plugin = createNativePlugin(commit, onDatabaseUpdated);
+    const plugin = createNativePlugin(commit);
     const owner = {
       ...createBundle("owner"),
       patches: [
@@ -175,28 +178,34 @@ describe("database client patch updates", () => {
 
     await createDatabaseClient(plugin).insertBundle(owner);
 
-    expect(plugin.commitBatch).toBeUndefined();
     expect(commit).toHaveBeenCalledWith({
-      operation: "insert",
-      bundleId: "owner",
-      changes: [
-        { table: "bundles", operation: "insert", row: bundleToRow(owner) },
+      mutations: [
         {
-          table: "bundle_patches",
           operation: "insert",
-          row: {
-            base_bundle_id: "base",
-            base_file_hash: "base-hash",
-            bundle_id: "owner",
-            id: "owner:base",
-            order_index: 0,
-            patch_file_hash: "patch-hash",
-            patch_storage_uri: "storage://patch",
-          },
+          bundleId: "owner",
+          changes: [
+            {
+              table: "bundles",
+              operation: "insert",
+              row: bundleToRow(owner),
+            },
+            {
+              table: "bundle_patches",
+              operation: "insert",
+              row: {
+                base_bundle_id: "base",
+                base_file_hash: "base-hash",
+                bundle_id: "owner",
+                id: "owner:base",
+                order_index: 0,
+                patch_file_hash: "patch-hash",
+                patch_storage_uri: "storage://patch",
+              },
+            },
+          ],
         },
       ],
     });
-    expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
   });
 
   it("rejects explicit null metadata before a provider-native aggregate update", async () => {
@@ -216,8 +225,7 @@ describe("database client patch updates", () => {
 
   it("preserves provider-native aggregates inside a transactionless batch", async () => {
     const commit = vi.fn(async () => ({ applied: true }));
-    const onDatabaseUpdated = vi.fn(async () => undefined);
-    const plugin = createNativePlugin(commit, onDatabaseUpdated);
+    const plugin = createNativePlugin(commit);
     const owner = {
       ...createBundle("owner"),
       patches: [
@@ -238,34 +246,32 @@ describe("database client patch updates", () => {
       });
     });
 
-    expect(commit).toHaveBeenCalledTimes(2);
-    expect(commit).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        operation: "update",
-        bundleId: "owner",
-        changes: expect.arrayContaining([
-          expect.objectContaining({
-            table: "bundles",
-            operation: "update",
-            update: { enabled: false },
-          }),
-          expect.objectContaining({
-            table: "bundle_patches",
-            operation: "delete",
-            bundleId: "owner",
-          }),
-        ]),
-      }),
-    );
-    expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledOnce();
+    expect(commit).toHaveBeenCalledWith({
+      mutations: [
+        expect.objectContaining({ operation: "insert", bundleId: "owner" }),
+        expect.objectContaining({
+          operation: "update",
+          bundleId: "owner",
+          changes: expect.arrayContaining([
+            expect.objectContaining({
+              table: "bundles",
+              operation: "update",
+              update: { enabled: false },
+            }),
+            expect.objectContaining({
+              table: "bundle_patches",
+              operation: "delete",
+              bundleId: "owner",
+            }),
+          ]),
+        }),
+      ],
+    });
   });
 
   it("does not report a native aggregate failure as a completed update", async () => {
-    const onDatabaseUpdated = vi.fn(async () => undefined);
-    const plugin = createNativePlugin(
-      async () => ({ applied: false }),
-      onDatabaseUpdated,
-    );
+    const plugin = createNativePlugin(async () => ({ applied: false }));
 
     const result = createDatabaseClient(plugin).updateBundleById("missing", {
       enabled: false,
@@ -276,15 +282,13 @@ describe("database client patch updates", () => {
       name: "DatabaseBundleNotFoundError",
       bundleId: "missing",
     } satisfies Partial<DatabaseBundleNotFoundError>);
-    expect(onDatabaseUpdated).not.toHaveBeenCalled();
   });
 
   it("does not report a rejected native aggregate insert as completed", async () => {
-    const onDatabaseUpdated = vi.fn(async () => undefined);
     const failure = new Error("atomic insert failed");
     const plugin = createNativePlugin(async () => {
       throw failure;
-    }, onDatabaseUpdated);
+    });
     const owner = {
       ...createBundle("owner"),
       patches: [
@@ -302,7 +306,6 @@ describe("database client patch updates", () => {
         database.insertBundle(owner),
       ),
     ).rejects.toBe(failure);
-    expect(onDatabaseUpdated).not.toHaveBeenCalled();
   });
 
   it("leaves patch rows untouched when patches are omitted", async () => {

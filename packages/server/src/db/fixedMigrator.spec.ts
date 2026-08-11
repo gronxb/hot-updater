@@ -116,10 +116,10 @@ describe("createKyselyMigrator", () => {
     const sql = migration.getSQL?.();
 
     expect(sql).toContain(
-      "insert into private_hot_updater_settings (key, value) values ('schema.core', '0.36.0')",
+      "insert into private_hot_updater_settings (key, value) values ('schema.core', '0.37.0')",
     );
     expect(sql).not.toContain("values ('version'");
-    expect(sql).not.toContain("bundle_events");
+    expect(sql).toContain("bundle_events");
   });
 
   it.each(["0.36.0", "0.37.0", "0.38.0"])(
@@ -150,7 +150,9 @@ describe("createKyselyMigrator", () => {
         provider: "postgresql",
       });
 
-      await expect(migrator.getVersion()).resolves.toBe("0.36.0");
+      await expect(migrator.getVersion()).resolves.toBe(
+        legacyVersion === "0.36.0" ? "0.36.0" : "0.37.0",
+      );
       await (
         await migrator.migrateToLatest({
           mode: "from-schema",
@@ -163,7 +165,7 @@ describe("createKyselyMigrator", () => {
         readonly value: string;
       }>("select key, value from private_hot_updater_settings order by key");
       expect(settings.rows).toEqual([
-        { key: "schema.core", value: "0.36.0" },
+        { key: "schema.core", value: "0.37.0" },
         { key: "version", value: legacyVersion },
       ]);
       const extensionRows = await database.query<{
@@ -173,7 +175,7 @@ describe("createKyselyMigrator", () => {
       expect(extensionRows.rows).toEqual([
         { id: "extension-1", value: "preserve-me" },
       ]);
-      await expect(migrator.getVersion()).resolves.toBe("0.36.0");
+      await expect(migrator.getVersion()).resolves.toBe("0.37.0");
     },
   );
 
@@ -198,7 +200,7 @@ describe("createKyselyMigrator", () => {
     },
     {
       name: "legacy marker beside a current Core marker",
-      coreValue: "0.36.0",
+      coreValue: "0.37.0",
       legacyValue: new Uint8Array([0xff]),
       invalidKey: "version",
     },
@@ -242,7 +244,7 @@ describe("createKyselyMigrator", () => {
           value text not null
         );
         insert into private_hot_updater_settings (key, value) values
-          ('schema.core', '0.36.0'),
+          ('schema.core', '0.37.0'),
           ('version', '${legacyVersion}');
       `);
       const migrator = createKyselyMigrator({
@@ -250,7 +252,7 @@ describe("createKyselyMigrator", () => {
         provider: "postgresql",
       });
 
-      await expect(migrator.getVersion()).resolves.toBe("0.36.0");
+      await expect(migrator.getVersion()).resolves.toBe("0.37.0");
       await expect(
         migrator.migrateToLatest({ mode: "from-schema" }),
       ).resolves.toMatchObject({ operations: [] });
@@ -314,7 +316,7 @@ describe("createKyselyMigrator", () => {
       const insertSetting = database.prepare(
         "insert into private_hot_updater_settings (key, value) values (?, ?)",
       );
-      insertSetting.run("schema.core", "0.36.0");
+      insertSetting.run("schema.core", "0.37.0");
       insertSetting.run("version", legacyValue);
       const kysely = createNodeSqliteKysely(database);
       kyselyInstances.push(kysely);
