@@ -26,13 +26,9 @@ type MemoryConfig = {
   readonly onSnapshotRead?: () => void;
 };
 
-const createMemoryPlugin = (
-  config: MemoryConfig,
-  onDatabaseUpdated?: () => Promise<void>,
-) =>
+const createMemoryPlugin = (config: MemoryConfig) =>
   createBlobDatabasePlugin({
     name: "memoryBlobDatabase",
-    onDatabaseUpdated,
     plugin: () => ({
       apiBasePath: "/api/check-update",
       listObjects: async (prefix) =>
@@ -69,9 +65,13 @@ const createMemoryPlugin = (
 
 const insertBundleRow = (plugin: DatabasePlugin, row: BundleRow) =>
   plugin.commit({
-    operation: "insert",
-    bundleId: row.id,
-    changes: [{ table: "bundles", operation: "insert", row }],
+    mutations: [
+      {
+        operation: "insert",
+        bundleId: row.id,
+        changes: [{ table: "bundles", operation: "insert", row }],
+      },
+    ],
   });
 
 const updateBundleRow = (
@@ -80,9 +80,13 @@ const updateBundleRow = (
   update: BundleRowUpdate,
 ) =>
   plugin.commit({
-    operation: "update",
-    bundleId: id,
-    changes: [{ table: "bundles", operation: "update", id, update }],
+    mutations: [
+      {
+        operation: "update",
+        bundleId: id,
+        changes: [{ table: "bundles", operation: "update", id, update }],
+      },
+    ],
   });
 
 const store = new Map<string, unknown>();
@@ -171,33 +175,36 @@ describe("blob snapshot persistence", () => {
     const plugin = createMemoryPlugin(config());
     await insertBundleRow(plugin, bundleRow("2"));
     await insertBundleRow(plugin, bundleRow("1"));
-    await plugin.commitBatch?.([
-      {
-        operation: "delete",
-        bundleId: fixtureId("1"),
-        changes: [
-          { table: "bundles", operation: "delete", id: fixtureId("1") },
-        ],
-      },
-      {
-        operation: "delete",
-        bundleId: fixtureId("2"),
-        changes: [
-          { table: "bundles", operation: "delete", id: fixtureId("2") },
-        ],
-      },
-    ]);
+    await plugin.commit({
+      mutations: [
+        {
+          operation: "delete",
+          bundleId: fixtureId("1"),
+          changes: [
+            { table: "bundles", operation: "delete", id: fixtureId("1") },
+          ],
+        },
+        {
+          operation: "delete",
+          bundleId: fixtureId("2"),
+          changes: [
+            { table: "bundles", operation: "delete", id: fixtureId("2") },
+          ],
+        },
+      ],
+    });
 
     expect(activeSnapshot()).toEqual({
       version: 2,
       bundles: [],
       bundle_patches: [],
+      bundle_events: [],
+      client_access_keys: [],
     });
   });
 
-  it("keeps the previous snapshot readable and skips hooks after a failed write", async () => {
-    const onDatabaseUpdated = vi.fn(async () => undefined);
-    const plugin = createMemoryPlugin(config(), onDatabaseUpdated);
+  it("keeps the previous snapshot readable after a failed write", async () => {
+    const plugin = createMemoryPlugin(config());
     const client = createDatabaseClient(plugin);
     await client.insertBundle(legacyBundle("1"));
     const previous = store.get(BLOB_DATABASE_SNAPSHOT_KEY);
@@ -208,7 +215,6 @@ describe("blob snapshot persistence", () => {
     );
 
     expect(store.get(BLOB_DATABASE_SNAPSHOT_KEY)).toEqual(previous);
-    expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
   });
 
   it("commits and reports once when bounded invalidation retries fail", async () => {
@@ -217,15 +223,11 @@ describe("blob snapshot persistence", () => {
       throw invalidationError;
     });
     const onInvalidationError = vi.fn();
-    const onDatabaseUpdated = vi.fn(async () => undefined);
-    const plugin = createMemoryPlugin(
-      {
-        ...config(),
-        invalidatePaths,
-        onInvalidationError,
-      },
-      onDatabaseUpdated,
-    );
+    const plugin = createMemoryPlugin({
+      ...config(),
+      invalidatePaths,
+      onInvalidationError,
+    });
     const client = createDatabaseClient(plugin);
 
     await expect(
@@ -245,11 +247,10 @@ describe("blob snapshot persistence", () => {
         "/api/check-update/app-version/ios/1.0.0/production/*",
       ]),
     });
-    expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
   });
 
   it.each(["throws", "rejects"] as const)(
-    "commits and runs the update hook when the invalidation observer $0",
+    "commits when the invalidation observer $0",
     async (observerBehavior) => {
       const invalidatePaths = vi.fn(async () => {
         throw new Error("fixture invalidation failure");
@@ -263,15 +264,11 @@ describe("blob snapshot persistence", () => {
           : vi.fn(async () => {
               throw observerError;
             });
-      const onDatabaseUpdated = vi.fn(async () => undefined);
-      const plugin = createMemoryPlugin(
-        {
-          ...config(),
-          invalidatePaths,
-          onInvalidationError,
-        },
-        onDatabaseUpdated,
-      );
+      const plugin = createMemoryPlugin({
+        ...config(),
+        invalidatePaths,
+        onInvalidationError,
+      });
       const client = createDatabaseClient(plugin);
 
       await expect(
@@ -279,7 +276,6 @@ describe("blob snapshot persistence", () => {
       ).resolves.toBeUndefined();
       expect(invalidatePaths).toHaveBeenCalledTimes(3);
       expect(onInvalidationError).toHaveBeenCalledTimes(1);
-      expect(onDatabaseUpdated).toHaveBeenCalledTimes(1);
     },
   );
 

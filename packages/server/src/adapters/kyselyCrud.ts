@@ -1,7 +1,9 @@
 import {
   DatabasePluginInputError,
+  type BundleEventRow,
   type BundlePatchRow,
   type BundleRow,
+  type ClientAccessKeyRow,
   type DatabaseWhere,
   type TransactionDatabasePluginImplementation,
 } from "@hot-updater/plugin-core";
@@ -100,6 +102,16 @@ const updateBundle = async (
   )} where ${sql.ref("id")} = ${id}${
     targetPredicate === undefined ? empty : sql` and ${targetPredicate}`
   }`.execute(executor);
+};
+
+const updateClientAccessKey = async (
+  executor: QueryExecutorProvider,
+  id: string,
+  revokedAtMs: number | null,
+): Promise<void> => {
+  await sql`update ${sql.table("client_access_keys")} set ${sql.ref(
+    "revoked_at_ms",
+  )} = ${revokedAtMs} where ${sql.ref("id")} = ${id}`.execute(executor);
 };
 
 const createBundleTargetPredicate = (
@@ -229,12 +241,29 @@ export const createKyselyCrud = (
         );
         await insertRow(executor, "bundle_patches", input.data);
         return input.data;
+      case "bundle_events":
+        await insertRow(executor, "bundle_events", input.data);
+        return input.data;
+      case "client_access_keys":
+        await insertRow(executor, "client_access_keys", input.data);
+        return input.data;
     }
   },
   async update(input) {
     const selector = input.where[0];
     if (selector === undefined || typeof selector.value !== "string") {
-      throw new KyselyAdapterInvariantError("bundles.update.selector");
+      throw new KyselyAdapterInvariantError(`${input.model}.update.selector`);
+    }
+    if (input.model === "client_access_keys") {
+      await updateClientAccessKey(
+        executor,
+        selector.value,
+        input.update.revoked_at_ms,
+      );
+      const result = await sql<ClientAccessKeyRow>`select * from ${sql.table(
+        "client_access_keys",
+      )} where ${sql.ref("id")} = ${selector.value} limit 1`.execute(executor);
+      return result.rows[0] ?? null;
     }
     await updateBundle(
       executor,
@@ -334,6 +363,13 @@ export const createKyselyCrud = (
         )}${where} limit 1`.execute(executor);
         return result.rows[0] ?? null;
       }
+      case "client_access_keys": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const result = await sql<ClientAccessKeyRow>`select * from ${sql.table(
+          "client_access_keys",
+        )}${where} limit 1`.execute(executor);
+        return result.rows[0] ?? null;
+      }
     }
   },
   async findMany(input) {
@@ -355,6 +391,22 @@ export const createKyselyCrud = (
         const order = orderClause(input);
         const result = await sql<BundlePatchRow>`select * from ${sql.table(
           "bundle_patches",
+        )}${where}${order}${pagination}`.execute(executor);
+        return [...result.rows];
+      }
+      case "bundle_events": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const order = orderClause(input);
+        const result = await sql<BundleEventRow>`select * from ${sql.table(
+          "bundle_events",
+        )}${where}${order}${pagination}`.execute(executor);
+        return [...result.rows];
+      }
+      case "client_access_keys": {
+        const where = whereClause(buildKyselyWhere(provider, input.where));
+        const order = orderClause(input);
+        const result = await sql<ClientAccessKeyRow>`select * from ${sql.table(
+          "client_access_keys",
         )}${where}${order}${pagination}`.execute(executor);
         return [...result.rows];
       }

@@ -150,7 +150,7 @@ export default HotUpdater.wrap({
 
 const resolvePackageExportPath = async (
   packageName: string,
-  exportName: "." | "./runtime" | "./edge",
+  exportName: string,
 ) => {
   const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageJson = JSON.parse(
@@ -279,7 +279,7 @@ const prepareVendoredPackageImport = async ({
 }: {
   targetDir: string;
   packageName: string;
-  exportName: "." | "./runtime" | "./edge";
+  exportName: string;
 }) => {
   const packageJsonPath = require.resolve(`${packageName}/package.json`);
   const packageRoot = path.dirname(packageJsonPath);
@@ -342,7 +342,7 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
   }: {
     importSpecifier: string;
     packageName: string;
-    exportName: "." | "./runtime" | "./edge";
+    exportName: string;
   }) => {
     const visitKey = `${packageName}:${exportName}`;
     if (visitedWorkspacePackages.has(visitKey)) {
@@ -368,10 +368,11 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       }
 
       if (nestedSpecifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
+        const [scope, name, ...subpath] = nestedSpecifier.split("/");
         await addWorkspacePackage({
           importSpecifier: nestedSpecifier,
-          packageName: nestedSpecifier,
-          exportName: ".",
+          packageName: `${scope}/${name}`,
+          exportName: subpath.length === 0 ? "." : `./${subpath.join("/")}`,
         });
         continue;
       }

@@ -52,6 +52,19 @@ export const validateBundleUpdateData = (update: unknown): void => {
   }
 };
 
+export const validateClientAccessKeyUpdateData = (update: unknown): void => {
+  if (
+    !isRecord(update) ||
+    Reflect.ownKeys(update).length !== 1 ||
+    !Object.hasOwn(update, "revoked_at_ms") ||
+    !modelValidators.client_access_keys.revoked_at_ms(
+      Reflect.get(update, "revoked_at_ms"),
+    )
+  ) {
+    throw new DatabasePluginInputError("invalid-data");
+  }
+};
+
 export const validateBundleTargetUpdate = async (
   implementation: DatabasePluginImplementation,
   input: UpdateDatabaseInput<"bundles", DatabaseSelect<"bundles"> | undefined>,

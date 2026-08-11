@@ -12,7 +12,9 @@ import { describe, expectTypeOf, it } from "vitest";
 
 describe("database plugin operation matrix", () => {
   it("exposes create and findMany for all fixed models", () => {
-    expectTypeOf<DatabaseModel>().toEqualTypeOf<"bundles" | "bundle_patches">();
+    expectTypeOf<DatabaseModel>().toEqualTypeOf<
+      "bundles" | "bundle_patches" | "bundle_events" | "client_access_keys"
+    >();
   });
 
   it("limits delete to bundles and bundle patches", () => {
@@ -23,7 +25,7 @@ describe("database plugin operation matrix", () => {
 
   it("limits findOne to models with read-by-selector support", () => {
     expectTypeOf<DatabaseFindOneModel>().toEqualTypeOf<
-      "bundles" | "bundle_patches"
+      "bundles" | "bundle_patches" | "client_access_keys"
     >();
   });
 

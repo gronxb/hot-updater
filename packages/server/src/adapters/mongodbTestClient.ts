@@ -11,6 +11,8 @@ import {
 type Tables = {
   bundle_patches: MongoTestRow[];
   bundles: MongoTestRow[];
+  bundle_events: MongoTestRow[];
+  client_access_keys: MongoTestRow[];
 };
 
 type FindOptions = { readonly projection?: unknown };
@@ -143,6 +145,15 @@ const createCollection = (
     if (tables[model].some(({ id }) => id === row.id)) {
       throw new MongoTestConstraintError("duplicate id");
     }
+    if (
+      model === "client_access_keys" &&
+      "hash" in row &&
+      tables.client_access_keys.some(
+        (candidate) => "hash" in candidate && candidate.hash === row.hash,
+      )
+    ) {
+      throw new MongoTestConstraintError("duplicate hash");
+    }
     tables[model].push(structuredClone(row));
   },
   updateMany: async (filter: unknown, update: UpdateInput): Promise<void> => {
@@ -164,6 +175,10 @@ const createDatabase = (tables: Tables, hooks: MongoTestHooks) => ({
         return createCollection(tables, "bundles", hooks);
       case "bundle_patches":
         return createCollection(tables, "bundle_patches", hooks);
+      case "bundle_events":
+        return createCollection(tables, "bundle_events", hooks);
+      case "client_access_keys":
+        return createCollection(tables, "client_access_keys", hooks);
       default:
         throw new MongoTestConstraintError(`unknown collection: ${name}`);
     }
@@ -174,6 +189,8 @@ export const createMongoTestHarness = () => {
   const tables: Tables = {
     bundle_patches: [],
     bundles: [],
+    bundle_events: [],
+    client_access_keys: [],
   };
   const hooks: MongoTestHooks = {
     failNextBundleTombstone: false,
@@ -196,6 +213,8 @@ export const createMongoTestHarness = () => {
             const result = await transaction();
             tables.bundle_patches = staged.bundle_patches;
             tables.bundles = staged.bundles;
+            tables.bundle_events = staged.bundle_events;
+            tables.client_access_keys = staged.client_access_keys;
             return result;
           } finally {
             activeTables = tables;
@@ -213,6 +232,8 @@ export const createMongoTestHarness = () => {
       hooks.operationCount = 0;
       tables.bundle_patches = [];
       tables.bundles = [];
+      tables.bundle_events = [];
+      tables.client_access_keys = [];
     },
     getOperationCount: (): number => hooks.operationCount,
     setBeforeBundlePatchInsert: (

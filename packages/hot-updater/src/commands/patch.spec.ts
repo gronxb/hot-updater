@@ -96,6 +96,6 @@ describe("createPatch", () => {
     expect(mockCli.p.outro).toHaveBeenCalledWith(
       "⚡ Patch Ready (target-bundle)",
     );
-    expect(databaseHarness.onUnmount).toHaveBeenCalledOnce();
+    expect(databaseHarness.dispose).toHaveBeenCalledOnce();
   });
 });

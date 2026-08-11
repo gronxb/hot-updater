@@ -257,7 +257,7 @@ describe("handlePromote", () => {
     }
   });
 
-  it("propagates promoteBundle errors and calls onUnmount", async () => {
+  it("propagates promoteBundle errors and calls dispose", async () => {
     databaseHarness.setBundles([buildBundle({ id: "src-1" })]);
     mockPromoteBundle.mockRejectedValue(new Error("storage plugin failed"));
 
@@ -265,6 +265,6 @@ describe("handlePromote", () => {
     await expect(
       handlePromote("src-1", { target: "beta", yes: true }),
     ).rejects.toThrow("storage plugin failed");
-    expect(databaseHarness.onUnmount).toHaveBeenCalled();
+    expect(databaseHarness.dispose).toHaveBeenCalled();
   });
 });

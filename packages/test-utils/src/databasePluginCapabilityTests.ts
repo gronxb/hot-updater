@@ -1,6 +1,7 @@
 import { NIL_UUID } from "@hot-updater/core";
 import {
   type DatabasePlugin,
+  type DatabaseBundleMutation,
   resolveUpdateInfoFromBundles,
   rowToBundle,
 } from "@hot-updater/plugin-core";
@@ -14,6 +15,9 @@ import {
 
 type CapabilityTestState = DatabasePluginTestState<DatabasePlugin>;
 
+const commit = (plugin: DatabasePlugin, mutation: DatabaseBundleMutation) =>
+  plugin.commit({ mutations: [mutation] });
+
 export const registerDatabasePluginCapabilityTests = (
   state: CapabilityTestState,
 ): void => {
@@ -22,12 +26,8 @@ export const registerDatabasePluginCapabilityTests = (
       expect(Reflect.has(state.getPlugin(), "transaction")).toBe(false);
     });
 
-    it("rolls back an atomic batch when a later commit violates a relation", async (context) => {
+    it("rolls back an atomic commit when a later mutation violates a relation", async () => {
       const plugin = state.getPlugin();
-      if (plugin.commitBatch === undefined) {
-        context.skip();
-        return;
-      }
       const first = createBundleRowFixture("91");
       const second = createBundleRowFixture("92");
       const invalidPatch = createBundlePatchRowFixture(
@@ -37,25 +37,27 @@ export const registerDatabasePluginCapabilityTests = (
       );
 
       await expect(
-        plugin.commitBatch([
-          {
-            operation: "insert",
-            bundleId: first.id,
-            changes: [{ table: "bundles", operation: "insert", row: first }],
-          },
-          {
-            operation: "insert",
-            bundleId: second.id,
-            changes: [
-              { table: "bundles", operation: "insert", row: second },
-              {
-                table: "bundle_patches",
-                operation: "insert",
-                row: invalidPatch,
-              },
-            ],
-          },
-        ]),
+        plugin.commit({
+          mutations: [
+            {
+              operation: "insert",
+              bundleId: first.id,
+              changes: [{ table: "bundles", operation: "insert", row: first }],
+            },
+            {
+              operation: "insert",
+              bundleId: second.id,
+              changes: [
+                { table: "bundles", operation: "insert", row: second },
+                {
+                  table: "bundle_patches",
+                  operation: "insert",
+                  row: invalidPatch,
+                },
+              ],
+            },
+          ],
+        }),
       ).rejects.toThrow();
       await expect(plugin.bundles.findById(first.id)).resolves.toBeNull();
       await expect(plugin.bundles.findById(second.id)).resolves.toBeNull();
@@ -68,7 +70,7 @@ export const registerDatabasePluginCapabilityTests = (
         return;
       }
       const bundle = createBundleRowFixture("99");
-      await plugin.commit({
+      await commit(plugin, {
         operation: "insert",
         bundleId: bundle.id,
         changes: [{ table: "bundles", operation: "insert", row: bundle }],

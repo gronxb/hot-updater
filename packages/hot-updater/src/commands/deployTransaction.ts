@@ -4,16 +4,6 @@ import type {
   DatabaseMutationClient,
 } from "@hot-updater/plugin-core";
 
-export class AtomicDeploymentUnsupportedError extends Error {
-  override readonly name = "AtomicDeploymentUnsupportedError";
-
-  constructor(readonly bundleCount: number) {
-    super(
-      `Deploying ${bundleCount} bundles requires a database provider with transaction support.`,
-    );
-  }
-}
-
 export const prepareAndCommitBundles = async <TResult>({
   database,
   prepare,
@@ -36,14 +26,7 @@ export const prepareAndCommitBundles = async <TResult>({
     }
   };
 
-  if (preparedBundles.length > 1) {
-    if (!database.mutateAtomic) {
-      throw new AtomicDeploymentUnsupportedError(preparedBundles.length);
-    }
-    await database.mutateAtomic(commit);
-  } else {
-    await database.mutate(commit);
-  }
+  await database.mutate(commit);
 
   return results;
 };

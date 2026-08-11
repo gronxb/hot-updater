@@ -1,4 +1,5 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 import Cloudflare from "cloudflare";
 
 import { createD1Implementation, type D1Statement } from "./d1Implementation";
@@ -9,36 +10,44 @@ export interface D1DatabaseConfig {
   readonly cloudflareApiToken: string;
 }
 
-export const d1Database = (config: D1DatabaseConfig) =>
-  createDatabasePlugin({
-    name: "d1Database",
-    plugin: () => {
-      const cloudflare = new Cloudflare({
-        apiToken: config.cloudflareApiToken,
-      });
-
-      const execute = async (
-        statements: readonly D1Statement[],
-      ): Promise<readonly (readonly unknown[])[]> => {
-        const page = await cloudflare.d1.database.query(config.databaseId, {
-          account_id: config.accountId,
-          sql: statements.map(({ sql }) => sql).join("; "),
-          params: statements.flatMap(({ params }) => [...params]),
-        });
-        const results: unknown[][] = [];
-        for await (const resultPage of page.iterPages()) {
-          for (const result of resultPage.result) {
-            results.push(result.results ?? []);
-          }
-        }
-        return results;
-      };
-
-      return createD1Implementation({
-        async query(sql, params) {
-          return (await execute([{ sql, params }])).flat();
-        },
-        batch: execute,
-      });
-    },
+export const d1Database = (config: D1DatabaseConfig) => {
+  const cloudflare = new Cloudflare({
+    apiToken: config.cloudflareApiToken,
   });
+
+  const execute = async (
+    statements: readonly D1Statement[],
+  ): Promise<readonly (readonly unknown[])[]> => {
+    const page = await cloudflare.d1.database.query(config.databaseId, {
+      account_id: config.accountId,
+      sql: statements.map(({ sql }) => sql).join("; "),
+      params: statements.flatMap(({ params }) => [...params]),
+    });
+    const results: unknown[][] = [];
+    for await (const resultPage of page.iterPages()) {
+      for (const result of resultPage.result) {
+        results.push(result.results ?? []);
+      }
+    }
+    return results;
+  };
+
+  const adapter = createDatabasePluginAdapter(
+    "d1Database",
+    createD1Implementation({
+      async query(sql, params) {
+        return (await execute([{ sql, params }])).flat();
+      },
+      batch: execute,
+    }),
+  );
+  return createDatabasePlugin({
+    name: "d1Database",
+    bundles: adapter.bundles,
+    bundlePatches: adapter.bundlePatches,
+    analytics: adapter.analytics,
+    clientAccessKeys: adapter.clientAccessKeys,
+    commit: adapter.commit,
+    getChannels: adapter.getChannels,
+  });
+};

@@ -2,7 +2,10 @@ import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
-import { createDatabasePlugin } from "./createDatabasePlugin";
+import {
+  createDatabasePlugin,
+  createDatabasePluginAdapter,
+} from "./createDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 import { loadBundleRows } from "./databaseClientReads";
 import type { BundleRow } from "./types";
@@ -81,9 +84,10 @@ describe("database client pagination", () => {
       asset_base_storage_uri: null,
     }));
     const ownerQueries: unknown[] = [];
+    const name = "channel-pagination";
     const plugin = createDatabasePlugin({
-      name: "channel-pagination",
-      plugin: () => ({
+      name,
+      ...createDatabasePluginAdapter(name, {
         create: async () => {
           throw new Error("not implemented");
         },
@@ -128,9 +132,10 @@ describe("database client pagination", () => {
       bundlesRow(createBundle(String(index).padStart(3, "0"))),
     );
     let inserted = false;
+    const name = "moving-pagination";
     const plugin = createDatabasePlugin({
-      name: "moving-pagination",
-      plugin: () => ({
+      name,
+      ...createDatabasePluginAdapter(name, {
         create: async () => {
           throw new Error("not implemented");
         },

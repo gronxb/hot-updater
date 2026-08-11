@@ -1,10 +1,17 @@
-import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ClientAccessKeyRow,
+} from "@hot-updater/plugin-core";
 
-type Row = BundlePatchRow | BundleRow;
+type Row = BundleEventRow | BundlePatchRow | BundleRow | ClientAccessKeyRow;
 type Table = Row[];
 type Tables = {
   bundle_patches: Table;
   bundles: Table;
+  bundle_events: Table;
+  client_access_keys: Table;
 };
 
 type Hooks = {
@@ -147,6 +154,15 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
     if (tables[model].some(({ id }) => id === data.id)) {
       throw new PrismaTestConstraintError("duplicate id");
     }
+    if (
+      model === "client_access_keys" &&
+      "hash" in data &&
+      tables.client_access_keys.some(
+        (row) => "hash" in row && row.hash === data.hash,
+      )
+    ) {
+      throw new PrismaTestConstraintError("duplicate hash");
+    }
     assertReferences(tables, model, data);
     tables[model].push(structuredClone(data));
     return structuredClone(data);
@@ -217,14 +233,18 @@ const createDelegate = (tables: Tables, model: keyof Tables, hooks: Hooks) => ({
 });
 
 const createClient = (tables: Tables, hooks: Hooks) => ({
+  bundle_events: createDelegate(tables, "bundle_events", hooks),
   bundle_patches: createDelegate(tables, "bundle_patches", hooks),
   bundles: createDelegate(tables, "bundles", hooks),
+  client_access_keys: createDelegate(tables, "client_access_keys", hooks),
 });
 
 export const createPrismaTestHarness = () => {
   let tables: Tables = {
     bundle_patches: [],
     bundles: [],
+    bundle_events: [],
+    client_access_keys: [],
   };
   const hooks: Hooks = {
     beforeNextBundleUpdateMany: undefined,
@@ -242,6 +262,8 @@ export const createPrismaTestHarness = () => {
       const result = await callback(createClient(transactionTables, hooks));
       tables.bundle_patches = transactionTables.bundle_patches;
       tables.bundles = transactionTables.bundles;
+      tables.bundle_events = transactionTables.bundle_events;
+      tables.client_access_keys = transactionTables.client_access_keys;
       return result;
     },
   };
@@ -273,6 +295,8 @@ export const createPrismaTestHarness = () => {
       hooks.transactionOptions.length = 0;
       tables.bundle_patches = [];
       tables.bundles = [];
+      tables.bundle_events = [];
+      tables.client_access_keys = [];
     },
   };
 };

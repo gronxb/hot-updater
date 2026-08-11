@@ -84,11 +84,7 @@ describe("createBundleDiff", () => {
       message: "target",
     });
     const plugin = await createDatabasePlugin([baseBundle, targetBundle]);
-    const onDatabaseUpdated = vi.fn(async () => {});
-    const databasePlugin: DatabasePlugin = {
-      ...plugin,
-      onDatabaseUpdated,
-    };
+    const databasePlugin: DatabasePlugin = plugin;
     const commit = vi.spyOn(databasePlugin, "commit");
     const upload = vi.fn<NodeStorageProfile["upload"]>(
       async (key, filePath) => ({
@@ -161,7 +157,6 @@ describe("createBundleDiff", () => {
 
       expect(upload).toHaveBeenCalledOnce();
       expect(commit).toHaveBeenCalledOnce();
-      expect(onDatabaseUpdated).toHaveBeenCalledOnce();
       expect(updatedBundle).toMatchObject({
         patchBaseBundleId: baseBundle.id,
         patchBaseFileHash: "hash-old",

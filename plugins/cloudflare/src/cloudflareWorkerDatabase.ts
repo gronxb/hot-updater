@@ -1,4 +1,5 @@
 import { createDatabasePlugin } from "@hot-updater/plugin-core";
+import { createDatabasePluginAdapter } from "@hot-updater/plugin-core/internal";
 
 import { createD1Implementation } from "./d1Implementation";
 
@@ -23,25 +24,33 @@ export interface CloudflareWorkerDatabaseEnv {
   readonly DB: D1Like;
 }
 
-export const d1WorkerDatabase = (db: D1Like) =>
-  createDatabasePlugin({
-    name: "d1WorkerDatabase",
-    plugin: () =>
-      createD1Implementation({
-        async query(sql, params) {
-          const result = await db
-            .prepare(sql)
-            .bind(...params)
-            .all();
-          return result.results ?? [];
-        },
-        async batch(statements) {
-          const results = await db.batch(
-            statements.map(({ sql, params }) =>
-              db.prepare(sql).bind(...params),
-            ),
-          );
-          return results.map(({ results }) => results ?? []);
-        },
-      }),
+export const d1WorkerDatabase = (db: D1Like) => {
+  const implementation = createD1Implementation({
+    async query(sql, params) {
+      const result = await db
+        .prepare(sql)
+        .bind(...params)
+        .all();
+      return result.results ?? [];
+    },
+    async batch(statements) {
+      const results = await db.batch(
+        statements.map(({ sql, params }) => db.prepare(sql).bind(...params)),
+      );
+      return results.map(({ results }) => results ?? []);
+    },
   });
+  const adapter = createDatabasePluginAdapter(
+    "d1WorkerDatabase",
+    implementation,
+  );
+  return createDatabasePlugin({
+    name: "d1WorkerDatabase",
+    bundles: adapter.bundles,
+    bundlePatches: adapter.bundlePatches,
+    analytics: adapter.analytics,
+    clientAccessKeys: adapter.clientAccessKeys,
+    commit: adapter.commit,
+    getChannels: adapter.getChannels,
+  });
+};

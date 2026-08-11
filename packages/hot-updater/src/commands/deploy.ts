@@ -15,7 +15,7 @@ import {
 import type {
   Bundle,
   DatabaseMutationClient,
-  DatabasePlugin,
+  BundleRepository,
   NodeStoragePlugin,
   Platform,
 } from "@hot-updater/plugin-core";
@@ -52,10 +52,7 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
 import { getConsolePort, openConsole } from "./console";
-import {
-  AtomicDeploymentUnsupportedError,
-  prepareAndCommitBundles,
-} from "./deployTransaction";
+import { prepareAndCommitBundles } from "./deployTransaction";
 
 const MANIFEST_ASSET_UPLOAD_CONCURRENCY = 8;
 
@@ -278,7 +275,7 @@ const createAutoPatches = async ({
   bundleId: string;
   channel: string;
   database: DatabaseMutationClient;
-  databasePlugin: DatabasePlugin;
+  databasePlugin: BundleRepository;
   maxBaseBundles: number;
   platform: Platform;
   storagePlugin: NodeStoragePlugin;
@@ -558,7 +555,7 @@ const deployPlatform = async ({
   platformCount,
 }: {
   config: DeployConfig;
-  databasePlugin: DatabasePlugin;
+  databasePlugin: BundleRepository;
   deferAutoPatches: boolean;
   deferredDatabase: DatabaseMutationClient;
   options: DeployOptions;
@@ -1243,10 +1240,6 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
     if (databasePlugins.length > 1) {
       throw new MultiPlatformDatabaseBoundaryError();
     }
-    if (platforms.length > 1 && !database.mutateAtomic) {
-      throw new AtomicDeploymentUnsupportedError(platforms.length);
-    }
-
     const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
 
     if (platforms.length > 1) {
@@ -1285,6 +1278,6 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
       throw error;
     }
   } finally {
-    await Promise.all(databasePlugins.map((plugin) => plugin.onUnmount?.()));
+    await Promise.all(databasePlugins.map((plugin) => plugin.dispose?.()));
   }
 };

@@ -6,6 +6,8 @@ export function createFirestoreMock(projectId: string) {
   const firestore = getFirestore(app);
   const bundlesCollection = firestore.collection("bundles");
   const bundlePatchesCollection = firestore.collection("bundle_patches");
+  const bundleEventsCollection = firestore.collection("bundle_events");
+  const clientAccessKeysCollection = firestore.collection("client_access_keys");
   const settingsCollection = firestore.collection(
     "private_hot_updater_settings",
   );
@@ -14,6 +16,8 @@ export function createFirestoreMock(projectId: string) {
     const collections = [
       bundlesCollection,
       bundlePatchesCollection,
+      bundleEventsCollection,
+      clientAccessKeysCollection,
       settingsCollection,
     ];
     for (const coll of collections) {
@@ -30,6 +34,8 @@ export function createFirestoreMock(projectId: string) {
     firestore,
     bundlesCollection,
     bundlePatchesCollection,
+    bundleEventsCollection,
+    clientAccessKeysCollection,
     settingsCollection,
     clearCollections,
   };

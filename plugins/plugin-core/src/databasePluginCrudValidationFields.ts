@@ -57,6 +57,40 @@ export const modelValidators: ValidatorMap = {
     order_index: (value) =>
       typeof value === "number" && Number.isInteger(value) && value >= 0,
   },
+  bundle_events: {
+    id: (value) => typeof value === "string",
+    type: (value) =>
+      value === "UPDATE_APPLIED" ||
+      value === "RECOVERED" ||
+      value === "UNCHANGED",
+    install_id: (value) => typeof value === "string",
+    user_id: (value) => value === null || typeof value === "string",
+    username: (value) => value === null || typeof value === "string",
+    from_bundle_id: (value) => value === null || typeof value === "string",
+    to_bundle_id: (value) => typeof value === "string",
+    platform: (value) => value === "ios" || value === "android",
+    app_version: (value) => typeof value === "string",
+    channel: (value) => typeof value === "string",
+    cohort: (value) => typeof value === "string",
+    update_strategy: (value) =>
+      value === null || value === "fingerprint" || value === "appVersion",
+    fingerprint_hash: (value) => value === null || typeof value === "string",
+    sdk_version: (value) => value === null || typeof value === "string",
+    received_at_ms: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+  },
+  client_access_keys: {
+    id: (value) => typeof value === "string",
+    hash: (value) => typeof value === "string",
+    name: (value) => typeof value === "string",
+    prefix: (value) => typeof value === "string",
+    role: (value) => value === "client",
+    created_at_ms: (value) =>
+      typeof value === "number" && Number.isSafeInteger(value) && value >= 0,
+    revoked_at_ms: (value) =>
+      value === null ||
+      (typeof value === "number" && Number.isSafeInteger(value) && value >= 0),
+  },
 };
 
 export const stringFields = new Set<string>([
@@ -74,11 +108,28 @@ export const stringFields = new Set<string>([
   "base_file_hash",
   "patch_file_hash",
   "patch_storage_uri",
+  "type",
+  "install_id",
+  "user_id",
+  "username",
+  "from_bundle_id",
+  "to_bundle_id",
+  "app_version",
+  "cohort",
+  "update_strategy",
+  "sdk_version",
+  "hash",
+  "name",
+  "prefix",
+  "role",
 ]);
 
 export const numberFields = new Set<string>([
   "rollout_cohort_count",
   "order_index",
+  "received_at_ms",
+  "created_at_ms",
+  "revoked_at_ms",
 ]);
 
 export const booleanFields = new Set<string>([
@@ -110,6 +161,32 @@ export const sortableFields: Record<DatabaseModel, ReadonlySet<string>> = {
     "patch_file_hash",
     "patch_storage_uri",
     "order_index",
+  ]),
+  bundle_events: new Set([
+    "id",
+    "type",
+    "install_id",
+    "user_id",
+    "username",
+    "from_bundle_id",
+    "to_bundle_id",
+    "platform",
+    "app_version",
+    "channel",
+    "cohort",
+    "update_strategy",
+    "fingerprint_hash",
+    "sdk_version",
+    "received_at_ms",
+  ]),
+  client_access_keys: new Set([
+    "id",
+    "hash",
+    "name",
+    "prefix",
+    "role",
+    "created_at_ms",
+    "revoked_at_ms",
   ]),
 };
 

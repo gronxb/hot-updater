@@ -2,9 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createDatabasePlugin,
+  createDatabasePluginAdapter,
   DatabaseAtomicCommitUnsupportedError,
 } from "./createDatabasePlugin";
-import type { DatabaseCommit, DatabasePluginImplementation } from "./types";
+import type {
+  DatabaseBundleMutation,
+  DatabasePluginImplementation,
+} from "./types";
 
 class UnimplementedPluginMethodError extends Error {}
 
@@ -20,6 +24,15 @@ const createMethods = (): DatabasePluginImplementation => ({
   findOne: unimplemented,
   findMany: unimplemented,
 });
+
+const createTestPlugin = (
+  name: string,
+  implementation: DatabasePluginImplementation,
+) =>
+  createDatabasePlugin({
+    name,
+    ...createDatabasePluginAdapter(name, implementation),
+  });
 
 const bundleRow = {
   id: "bundle-1",
@@ -60,28 +73,38 @@ const insertWithPatch = {
       },
     },
   ],
-} satisfies DatabaseCommit;
+} satisfies DatabaseBundleMutation;
+
+const insertCommit = { mutations: [insertWithPatch] } as const;
 
 describe("createDatabasePlugin", () => {
-  it("exposes named bundle and patch table ports", () => {
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: createMethods,
-    });
+  it("exposes only the fixed one-depth database contract", () => {
+    const plugin = createTestPlugin("memory", createMethods());
 
     expect(plugin.name).toBe("memory");
     expect(plugin.bundles.findById).toBeTypeOf("function");
     expect(plugin.bundlePatches.findByBundleIds).toBeTypeOf("function");
+    expect(plugin.analytics.append).toBeTypeOf("function");
+    expect(plugin.clientAccessKeys.findByHash).toBeTypeOf("function");
     expect(plugin.commit).toBeTypeOf("function");
+    expect(Object.keys(plugin).sort()).toEqual([
+      "analytics",
+      "bundlePatches",
+      "bundles",
+      "clientAccessKeys",
+      "commit",
+      "name",
+    ]);
     expect(Reflect.has(plugin, "findMany")).toBe(false);
+    expect(Reflect.has(plugin, "plugin")).toBe(false);
     expect(Reflect.has(plugin, "transaction")).toBe(false);
   });
 
   it("maps the domain bundle query to the low-level adapter", async () => {
     const findMany = vi.fn(async () => [bundleRow]);
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: () => ({ ...createMethods(), findMany }),
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      findMany,
     });
 
     await expect(
@@ -107,9 +130,9 @@ describe("createDatabasePlugin", () => {
 
   it("loads patch rows only through their owner ids", async () => {
     const findMany = vi.fn(async () => []);
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: () => ({ ...createMethods(), findMany }),
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      findMany,
     });
 
     await plugin.bundlePatches.findByBundleIds(["owner-1", "owner-2"]);
@@ -134,12 +157,12 @@ describe("createDatabasePlugin", () => {
     const transaction = vi.fn(async (callback) =>
       callback({ ...createMethods(), create }),
     );
-    const plugin = createDatabasePlugin({
-      name: "transactional",
-      plugin: () => ({ ...createMethods(), transaction }),
+    const plugin = createTestPlugin("transactional", {
+      ...createMethods(),
+      transaction,
     });
 
-    await expect(plugin.commit(insertWithPatch)).resolves.toEqual({
+    await expect(plugin.commit(insertCommit)).resolves.toEqual({
       applied: true,
     });
     expect(transaction).toHaveBeenCalledOnce();
@@ -151,12 +174,12 @@ describe("createDatabasePlugin", () => {
 
   it("rejects a cross-table commit before a non-atomic adapter mutates", async () => {
     const create = vi.fn(async (input) => input.data);
-    const plugin = createDatabasePlugin({
-      name: "non-atomic",
-      plugin: () => ({ ...createMethods(), create }),
+    const plugin = createTestPlugin("non-atomic", {
+      ...createMethods(),
+      create,
     });
 
-    await expect(plugin.commit(insertWithPatch)).rejects.toEqual(
+    await expect(plugin.commit(insertCommit)).rejects.toEqual(
       new DatabaseAtomicCommitUnsupportedError("non-atomic"),
     );
     expect(create).not.toHaveBeenCalled();
@@ -164,29 +187,30 @@ describe("createDatabasePlugin", () => {
 
   it("uses an explicit provider-native commit without hidden capabilities", async () => {
     const commit = vi.fn(async () => ({ applied: true }));
-    const plugin = createDatabasePlugin({
-      name: "native",
-      plugin: () => ({ ...createMethods(), commit }),
+    const plugin = createTestPlugin("native", {
+      ...createMethods(),
+      commit,
     });
 
-    await plugin.commit(insertWithPatch);
+    await plugin.commit(insertCommit);
 
-    expect(commit).toHaveBeenCalledWith(insertWithPatch);
+    expect(commit).toHaveBeenCalledWith(insertCommit);
   });
 
   it("composes optional lifecycle and fast-path methods", async () => {
     const getChannels = vi.fn(async () => ["preview", "production"]);
-    const onUnmount = vi.fn(async () => undefined);
-    const plugin = createDatabasePlugin({
-      name: "memory",
-      plugin: () => ({ ...createMethods(), getChannels, onUnmount }),
+    const dispose = vi.fn(async () => undefined);
+    const plugin = createTestPlugin("memory", {
+      ...createMethods(),
+      getChannels,
+      dispose,
     });
 
     await expect(plugin.getChannels?.()).resolves.toEqual([
       "preview",
       "production",
     ]);
-    await expect(plugin.onUnmount?.()).resolves.toBeUndefined();
-    expect(onUnmount).toHaveBeenCalledOnce();
+    await expect(plugin.dispose?.()).resolves.toBeUndefined();
+    expect(dispose).toHaveBeenCalledOnce();
   });
 });

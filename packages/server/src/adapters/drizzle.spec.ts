@@ -46,9 +46,37 @@ const bundlePatches = pgTable("bundle_patches", {
   patch_storage_uri: text("patch_storage_uri").notNull(),
   order_index: integer("order_index").notNull(),
 });
+const bundleEvents = pgTable("bundle_events", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  install_id: text("install_id").notNull(),
+  user_id: text("user_id"),
+  username: text("username"),
+  from_bundle_id: text("from_bundle_id"),
+  to_bundle_id: text("to_bundle_id").notNull(),
+  platform: text("platform").notNull(),
+  app_version: text("app_version").notNull(),
+  channel: text("channel").notNull(),
+  cohort: text("cohort").notNull(),
+  update_strategy: text("update_strategy"),
+  fingerprint_hash: text("fingerprint_hash"),
+  sdk_version: text("sdk_version"),
+  received_at_ms: integer("received_at_ms").notNull(),
+});
+const clientAccessKeys = pgTable("client_access_keys", {
+  id: text("id").primaryKey(),
+  hash: text("hash").notNull().unique(),
+  name: text("name").notNull(),
+  prefix: text("prefix").notNull(),
+  role: text("role").notNull(),
+  created_at_ms: integer("created_at_ms").notNull(),
+  revoked_at_ms: integer("revoked_at_ms"),
+});
 const schema = {
+  bundle_events: bundleEvents,
   bundle_patches: bundlePatches,
   bundles,
+  client_access_keys: clientAccessKeys,
 };
 
 class DrizzleTestStateError extends Error {
@@ -124,41 +152,44 @@ describe("drizzleAdapter schema requirements", () => {
     }
   });
 
-  it("rejects a lazy database without a schema before resolving it", () => {
+  it("rejects a lazy database without a schema on first use", () => {
     const getDB = vi.fn(() => {
       throw new DrizzleTestStateError();
     });
+    const plugin = drizzleAdapter({ db: getDB, provider: "postgresql" });
 
-    expect(() => drizzleAdapter({ db: getDB, provider: "postgresql" })).toThrow(
+    expect(() => plugin.getChannels?.()).toThrow(
       "[hot-updater] Drizzle adapter requires schema when db is lazy.",
     );
     expect(getDB).not.toHaveBeenCalled();
   });
 
-  it("rejects an invalid lazy database schema before resolving it", () => {
+  it("rejects an invalid lazy database schema on first use", () => {
     const getDB = vi.fn(() => {
       throw new DrizzleTestStateError();
     });
+    const plugin = drizzleAdapter({
+      db: getDB,
+      provider: "postgresql",
+      schema: { ...schema, bundles: null },
+    });
 
-    expect(() =>
-      drizzleAdapter({
-        db: getDB,
-        provider: "postgresql",
-        schema: { ...schema, bundles: null },
-      }),
-    ).toThrow('[hot-updater] Drizzle schema table "bundles" is invalid.');
+    expect(() => plugin.getChannels?.()).toThrow(
+      '[hot-updater] Drizzle schema table "bundles" is invalid.',
+    );
     expect(getDB).not.toHaveBeenCalled();
   });
 
-  it("requires both fixed table objects", () => {
+  it("requires all fixed table objects on first use", () => {
     const incompleteSchema = { bundles };
+    const plugin = drizzleAdapter({
+      db: () => getDatabase(),
+      provider: "postgresql",
+      schema: incompleteSchema,
+    });
 
-    expect(() =>
-      drizzleAdapter({
-        db: () => getDatabase(),
-        provider: "postgresql",
-        schema: incompleteSchema,
-      }),
-    ).toThrow('Drizzle schema is missing table "bundle_patches".');
+    expect(() => plugin.getChannels?.()).toThrow(
+      'Drizzle schema is missing table "bundle_patches".',
+    );
   });
 });

@@ -1,7 +1,12 @@
 import type { GetBundlesArgs, UpdateInfo } from "@hot-updater/core";
 
 import type { BundleRowUpdate } from "./databaseOperations";
-import type { BundlePatchRow, BundleRow } from "./databaseRows";
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ClientAccessKeyRow,
+} from "./databaseRows";
 import type {
   DatabaseBundleQueryOrder,
   DatabaseBundleQueryWhere,
@@ -24,6 +29,32 @@ export interface BundlePatchTable {
   findByBundleIds(
     bundleIds: readonly string[],
   ): Promise<readonly BundlePatchRow[]>;
+}
+
+export interface AnalyticsScanCursor {
+  readonly receivedAtMs: number;
+  readonly id: string;
+}
+
+export interface AnalyticsScanInput {
+  readonly beforeReceivedAtMs: number;
+  readonly after?: AnalyticsScanCursor;
+  readonly limit: number;
+}
+
+export interface AnalyticsTable {
+  append(row: BundleEventRow): Promise<void>;
+  scan(input: AnalyticsScanInput): Promise<readonly BundleEventRow[]>;
+}
+
+export interface ClientAccessKeyTable {
+  create(row: ClientAccessKeyRow): Promise<"created" | "existing">;
+  findByHash(hash: string): Promise<ClientAccessKeyRow | null>;
+  list(): Promise<readonly ClientAccessKeyRow[]>;
+  revoke(input: {
+    readonly id: string;
+    readonly revokedAtMs: number;
+  }): Promise<ClientAccessKeyRow | null>;
 }
 
 export type DatabaseChange =
@@ -54,29 +85,39 @@ export type DatabaseChange =
       readonly bundleId: string;
     };
 
-export interface DatabaseCommit {
+export interface DatabaseBundleMutation {
   readonly operation: "insert" | "update" | "delete";
   readonly bundleId: string;
   readonly changes: readonly DatabaseChange[];
 }
 
-export interface DatabaseCommitResult {
-  readonly applied: boolean;
+export interface DatabaseCommit {
+  readonly mutations: readonly DatabaseBundleMutation[];
 }
 
-export interface DatabasePluginCore {
+export interface DatabaseCommitResult {
+  readonly applied: boolean;
+  readonly missingBundleId?: string;
+}
+
+export interface BundleRepositoryCore {
   readonly bundles: BundleTable;
   readonly bundlePatches: BundlePatchTable;
   commit(input: DatabaseCommit): Promise<DatabaseCommitResult>;
-  commitBatch?: (
-    inputs: readonly DatabaseCommit[],
-  ) => Promise<readonly DatabaseCommitResult[]>;
   getChannels?: () => Promise<string[]>;
   getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
-  onUnmount?: () => Promise<void>;
+  dispose?: () => Promise<void>;
 }
 
-export interface DatabasePlugin extends DatabasePluginCore {
+export interface BundleRepository extends BundleRepositoryCore {
   readonly name: string;
-  onDatabaseUpdated?: () => Promise<void>;
+}
+
+export interface DatabasePluginCore extends BundleRepositoryCore {
+  readonly analytics: AnalyticsTable;
+  readonly clientAccessKeys: ClientAccessKeyTable;
+}
+
+export interface DatabasePlugin extends BundleRepository, DatabasePluginCore {
+  readonly name: string;
 }

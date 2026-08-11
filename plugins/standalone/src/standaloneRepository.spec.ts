@@ -1,4 +1,4 @@
-import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
+import type { Bundle, BundleRepository } from "@hot-updater/plugin-core";
 import { createDatabaseClient } from "@hot-updater/plugin-core";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
@@ -115,10 +115,20 @@ beforeEach(() => {
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-const createRepository = (): DatabasePlugin =>
+const createRepository = (): BundleRepository =>
   standaloneRepository({ baseUrl: BASE_URL });
 
 describe("standaloneRepository", () => {
+  it("stays a bundle-only remote repository", () => {
+    const repository = createRepository();
+
+    expect(repository.bundles.findMany).toBeTypeOf("function");
+    expect(repository.bundlePatches.findByBundleIds).toBeTypeOf("function");
+    expect(repository.commit).toBeTypeOf("function");
+    expect(Reflect.has(repository, "analytics")).toBe(false);
+    expect(Reflect.has(repository, "clientAccessKeys")).toBe(false);
+  });
+
   it("keeps the existing user config source-compatible", () => {
     type ExistingUserConfig = {
       baseUrl: string;

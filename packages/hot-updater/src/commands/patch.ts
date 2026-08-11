@@ -67,6 +67,6 @@ export const createPatch = async (options: PatchOptions) => {
     console.error(error);
     process.exit(1);
   } finally {
-    await databasePlugin.onUnmount?.();
+    await databasePlugin.dispose?.();
   }
 };

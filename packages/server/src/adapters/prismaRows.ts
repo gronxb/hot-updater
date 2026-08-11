@@ -1,6 +1,8 @@
 import type {
   BundlePatchRow,
   BundleRow,
+  BundleEventRow,
+  ClientAccessKeyRow,
   DatabaseModel,
 } from "@hot-updater/plugin-core";
 import { isDatabaseMetadataObject } from "@hot-updater/plugin-core";
@@ -40,6 +42,8 @@ const hasDelegateMethods = (value: unknown): value is PrismaDelegate =>
 const modelDelegates = {
   bundles: "bundles",
   bundle_patches: "bundle_patches",
+  bundle_events: "bundle_events",
+  client_access_keys: "client_access_keys",
 } as const satisfies Record<DatabaseModel, string>;
 
 export const getPrismaDelegate = (
@@ -140,6 +144,74 @@ export const parsePrismaPatchRow = (value: unknown): BundlePatchRow => {
     patch_file_hash: readString(value, "patch_file_hash"),
     patch_storage_uri: readString(value, "patch_storage_uri"),
     order_index: orderIndex,
+  };
+};
+
+const readNumber = (row: Record<string, unknown>, field: string): number => {
+  const value = row[field];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new PrismaAdapterError(`expected number field "${field}"`);
+  }
+  return value;
+};
+
+export const parsePrismaBundleEventRow = (value: unknown): BundleEventRow => {
+  if (!isRecord(value)) throw new PrismaAdapterError("invalid event row");
+  const type = readString(value, "type");
+  const platform = readString(value, "platform");
+  const fromBundleId = readNullableString(value, "from_bundle_id");
+  const updateStrategy = readNullableString(value, "update_strategy");
+  if (
+    (platform !== "ios" && platform !== "android") ||
+    !(
+      ((type === "UPDATE_APPLIED" || type === "RECOVERED") &&
+        fromBundleId !== null &&
+        (updateStrategy === "fingerprint" ||
+          updateStrategy === "appVersion")) ||
+      (type === "UNCHANGED" && fromBundleId === null && updateStrategy === null)
+    )
+  ) {
+    throw new PrismaAdapterError("invalid event shape");
+  }
+  return {
+    id: readString(value, "id"),
+    type,
+    install_id: readString(value, "install_id"),
+    user_id: readNullableString(value, "user_id"),
+    username: readNullableString(value, "username"),
+    from_bundle_id: fromBundleId,
+    to_bundle_id: readString(value, "to_bundle_id"),
+    platform,
+    app_version: readString(value, "app_version"),
+    channel: readString(value, "channel"),
+    cohort: readString(value, "cohort"),
+    update_strategy: updateStrategy,
+    fingerprint_hash: readNullableString(value, "fingerprint_hash"),
+    sdk_version: readNullableString(value, "sdk_version"),
+    received_at_ms: readNumber(value, "received_at_ms"),
+  } as BundleEventRow;
+};
+
+export const parsePrismaClientAccessKeyRow = (
+  value: unknown,
+): ClientAccessKeyRow => {
+  if (!isRecord(value)) {
+    throw new PrismaAdapterError("invalid client access-key row");
+  }
+  const role = readString(value, "role");
+  if (role !== "client") {
+    throw new PrismaAdapterError("invalid client access-key role");
+  }
+  const revokedAt = value["revoked_at_ms"];
+  return {
+    id: readString(value, "id"),
+    hash: readString(value, "hash"),
+    name: readString(value, "name"),
+    prefix: readString(value, "prefix"),
+    role,
+    created_at_ms: readNumber(value, "created_at_ms"),
+    revoked_at_ms:
+      revokedAt === null ? null : readNumber(value, "revoked_at_ms"),
   };
 };
 

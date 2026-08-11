@@ -1,6 +1,8 @@
 import type {
   BundlePatchRow,
   BundleRow,
+  BundleEventRowBase,
+  ClientAccessKeyRow,
   Platform,
 } from "@hot-updater/plugin-core";
 
@@ -10,6 +12,16 @@ export type SupabaseBundleRow = {
 
 export type SupabaseBundlePatchRow = {
   [TField in keyof BundlePatchRow]: BundlePatchRow[TField];
+};
+
+export type SupabaseBundleEventRow = BundleEventRowBase & {
+  readonly type: "UPDATE_APPLIED" | "RECOVERED" | "UNCHANGED";
+  readonly from_bundle_id: string | null;
+  readonly update_strategy: "fingerprint" | "appVersion" | null;
+};
+
+export type SupabaseClientAccessKeyRow = {
+  [TField in keyof ClientAccessKeyRow]: ClientAccessKeyRow[TField];
 };
 
 type Table<TRow> = {
@@ -33,9 +45,20 @@ export type Database = {
     Tables: {
       bundles: Table<SupabaseBundleRow>;
       bundle_patches: Table<SupabaseBundlePatchRow>;
+      bundle_events: Table<SupabaseBundleEventRow>;
+      client_access_keys: Table<SupabaseClientAccessKeyRow>;
     };
     Views: { [_ in never]: never };
     Functions: {
+      hot_updater_commit: {
+        Args: {
+          p_mutations: readonly unknown[];
+        };
+        Returns: {
+          readonly applied: boolean;
+          readonly missingBundleId?: string;
+        };
+      };
       hot_updater_create_bundle_with_patches: {
         Args: {
           p_bundle: SupabaseBundleRow;

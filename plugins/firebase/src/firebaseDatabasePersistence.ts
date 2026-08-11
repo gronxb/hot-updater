@@ -1,4 +1,9 @@
-import type { BundlePatchRow, BundleRow } from "@hot-updater/plugin-core";
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  BundleRow,
+  ClientAccessKeyRow,
+} from "@hot-updater/plugin-core";
 import {
   type CollectionReference,
   type DocumentData,
@@ -12,6 +17,8 @@ import {
 
 import {
   parseFirebaseBundleRow,
+  parseFirebaseBundleEventRow,
+  parseFirebaseClientAccessKeyRow,
   parseFirebaseLegacyPatchRows,
   parseFirebasePatchRow,
 } from "./firebaseDatabaseParser";
@@ -21,6 +28,8 @@ import { FirebaseDatabaseConstraintError } from "./firebaseDatabaseState";
 export interface FirebaseDatabaseCollections {
   readonly bundles: CollectionReference<DocumentData>;
   readonly bundlePatches: CollectionReference<DocumentData>;
+  readonly bundleEvents: CollectionReference<DocumentData>;
+  readonly clientAccessKeys: CollectionReference<DocumentData>;
   readonly settings: CollectionReference<DocumentData>;
 }
 
@@ -37,10 +46,21 @@ export const createFirebaseDatabaseCollections = (
 ): FirebaseDatabaseCollections => ({
   bundles: db.collection("bundles"),
   bundlePatches: db.collection("bundle_patches"),
+  bundleEvents: db.collection("bundle_events"),
+  clientAccessKeys: db.collection("client_access_keys"),
   settings: db.collection("private_hot_updater_settings"),
 });
 
-type FixedRow = BundlePatchRow | BundleRow;
+type FixedRow =
+  | BundleEventRow
+  | BundlePatchRow
+  | BundleRow
+  | ClientAccessKeyRow;
+type FixedModel =
+  | "bundle_events"
+  | "bundle_patches"
+  | "bundles"
+  | "client_access_keys";
 
 type ParsedDocumentRow<TRow extends FixedRow> = {
   readonly document: { readonly id: string };
@@ -48,7 +68,7 @@ type ParsedDocumentRow<TRow extends FixedRow> = {
 };
 
 export const requireFirebaseDocumentKey = <TRow extends FixedRow>(
-  model: "bundle_patches" | "bundles",
+  model: FixedModel,
   documentId: string,
   row: TRow,
 ): TRow => {
@@ -59,7 +79,7 @@ export const requireFirebaseDocumentKey = <TRow extends FixedRow>(
 };
 
 const documentMap = <TRow extends FixedRow>(
-  model: "bundle_patches" | "bundles",
+  model: FixedModel,
   documents: readonly ParsedDocumentRow<TRow>[],
 ): Map<string, TRow> => {
   const rows = new Map<string, TRow>();
@@ -123,7 +143,37 @@ const patchMap = (
     })),
   );
 
+const eventMap = (
+  snapshot: QuerySnapshot<DocumentData>,
+): Map<string, BundleEventRow> =>
+  documentMap(
+    "bundle_events",
+    snapshot.docs.map((document) => ({
+      document,
+      row: parseFirebaseBundleEventRow(
+        document.data(),
+        `bundle_events/${document.id}`,
+      ),
+    })),
+  );
+
+const clientAccessKeyMap = (
+  snapshot: QuerySnapshot<DocumentData>,
+): Map<string, ClientAccessKeyRow> =>
+  documentMap(
+    "client_access_keys",
+    snapshot.docs.map((document) => ({
+      document,
+      row: parseFirebaseClientAccessKeyRow(
+        document.data(),
+        `client_access_keys/${document.id}`,
+      ),
+    })),
+  );
+
 type CoreSnapshotDocuments = readonly [
+  QuerySnapshot<DocumentData>,
+  QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
   QuerySnapshot<DocumentData>,
 ];
@@ -133,27 +183,33 @@ const toSnapshot = (
 ): FirebaseDatabaseSnapshot => ({
   bundles: bundleMap(documents[0]),
   bundlePatches: patchMap(documents[1]),
+  bundleEvents: eventMap(documents[2]),
+  clientAccessKeys: clientAccessKeyMap(documents[3]),
 });
 
 export const loadFirebaseDatabaseSnapshot = async (
   collections: FirebaseDatabaseCollections,
 ): Promise<FirebaseDatabaseSnapshot> => {
-  const [bundles, patches] = await Promise.all([
+  const [bundles, patches, events, clientAccessKeys] = await Promise.all([
     collections.bundles.get(),
     collections.bundlePatches.get(),
+    collections.bundleEvents.get(),
+    collections.clientAccessKeys.get(),
   ]);
-  return toSnapshot([bundles, patches]);
+  return toSnapshot([bundles, patches, events, clientAccessKeys]);
 };
 
 export const loadFirebaseTransactionSnapshot = async (
   transaction: Transaction,
   collections: FirebaseDatabaseCollections,
 ): Promise<FirebaseDatabaseSnapshot> => {
-  const [bundles, patches] = await Promise.all([
+  const [bundles, patches, events, clientAccessKeys] = await Promise.all([
     transaction.get(collections.bundles),
     transaction.get(collections.bundlePatches),
+    transaction.get(collections.bundleEvents),
+    transaction.get(collections.clientAccessKeys),
   ]);
-  return toSnapshot([bundles, patches]);
+  return toSnapshot([bundles, patches, events, clientAccessKeys]);
 };
 
 type PersistCollectionInput<TRow extends FixedRow> = {
@@ -203,6 +259,18 @@ export const persistFirebaseDatabaseSnapshot = ({
     collection: collections.bundlePatches,
     before: before.bundlePatches,
     after: after.bundlePatches,
+  });
+  persistCollection({
+    transaction,
+    collection: collections.bundleEvents,
+    before: before.bundleEvents,
+    after: after.bundleEvents,
+  });
+  persistCollection({
+    transaction,
+    collection: collections.clientAccessKeys,
+    before: before.clientAccessKeys,
+    after: after.clientAccessKeys,
   });
 };
 

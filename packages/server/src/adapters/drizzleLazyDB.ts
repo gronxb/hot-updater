@@ -1,4 +1,8 @@
-import type { BundlePatchRow } from "@hot-updater/plugin-core";
+import type {
+  BundleEventRow,
+  BundlePatchRow,
+  ClientAccessKeyRow,
+} from "@hot-updater/plugin-core";
 
 import type { StoredBundleRow } from "./databasePluginUtils";
 import type { DrizzleConfig } from "./drizzle";
@@ -26,6 +30,8 @@ export type DrizzleDB = {
   readonly query: {
     readonly bundles: DrizzleQuery<StoredBundleRow>;
     readonly bundle_patches: DrizzleQuery<BundlePatchRow>;
+    readonly bundle_events: DrizzleQuery<BundleEventRow>;
+    readonly client_access_keys: DrizzleQuery<ClientAccessKeyRow>;
   };
   readonly update: (table: DrizzleTable) => {
     set: (values: unknown) => {
@@ -63,8 +69,10 @@ const isDrizzleDB = (value: unknown): value is DrizzleDB => {
   const query = value["query"];
   if (
     !isRecord(query) ||
+    !isDrizzleQuery(query["bundle_events"]) ||
     !isDrizzleQuery(query["bundle_patches"]) ||
-    !isDrizzleQuery(query["bundles"])
+    !isDrizzleQuery(query["bundles"]) ||
+    !isDrizzleQuery(query["client_access_keys"])
   ) {
     return false;
   }
@@ -140,6 +148,12 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
       }),
     }),
     query: {
+      bundle_events: {
+        findFirst: async (args) =>
+          (await getDB()).query.bundle_events.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.bundle_events.findMany(args),
+      },
       bundle_patches: {
         findFirst: async (args) =>
           (await getDB()).query.bundle_patches.findFirst(args),
@@ -150,6 +164,12 @@ export const createLazyDB = (config: DrizzleConfig): DrizzleDB => {
         findFirst: async (args) =>
           (await getDB()).query.bundles.findFirst(args),
         findMany: async (args) => (await getDB()).query.bundles.findMany(args),
+      },
+      client_access_keys: {
+        findFirst: async (args) =>
+          (await getDB()).query.client_access_keys.findFirst(args),
+        findMany: async (args) =>
+          (await getDB()).query.client_access_keys.findMany(args),
       },
     },
     update: (table) => ({

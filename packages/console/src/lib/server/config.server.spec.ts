@@ -13,14 +13,25 @@ vi.mock("@hot-updater/cli-tools", () => ({
 const createTestDatabasePlugin = (name: string) =>
   createDatabasePlugin({
     name,
-    plugin: () => ({
-      create: vi.fn(async ({ data }) => data),
-      update: vi.fn(async () => null),
-      delete: vi.fn(async () => undefined),
-      count: vi.fn(async () => 0),
-      findOne: vi.fn(async () => null),
+    bundles: {
+      findById: vi.fn(async () => null),
       findMany: vi.fn(async () => []),
-    }),
+      count: vi.fn(async () => 0),
+    },
+    bundlePatches: {
+      findByBundleIds: vi.fn(async () => []),
+    },
+    analytics: {
+      append: vi.fn(async () => undefined),
+      scan: vi.fn(async () => []),
+    },
+    clientAccessKeys: {
+      create: vi.fn(async () => "created" as const),
+      findByHash: vi.fn(async () => null),
+      list: vi.fn(async () => []),
+      revoke: vi.fn(async () => null),
+    },
+    commit: vi.fn(async () => ({ applied: true })),
   });
 
 function createStoragePlugin(): NodeStoragePlugin {

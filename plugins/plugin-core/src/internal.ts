@@ -1,0 +1,1 @@
+export { createDatabasePluginAdapter } from "./createDatabasePlugin";
