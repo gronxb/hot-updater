@@ -1,10 +1,10 @@
 import type { Bundle } from "@hot-updater/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
 import { createDatabaseClient } from "./databaseClient";
 import type { DatabaseClient } from "./databaseClient";
 import { DatabasePluginInputError } from "./databasePluginCrud";
+import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
 import type { DatabasePlugin } from "./types";
 
 const createBundle = (id: string): Bundle => ({
@@ -25,27 +25,7 @@ const createFixture = (): {
   readonly client: DatabaseClient;
   readonly plugin: DatabasePlugin;
 } => {
-  const store = new Map<string, unknown>();
-  const plugin = createBlobDatabasePlugin({
-    name: "pagination-semantics",
-    plugin: () => ({
-      apiBasePath: "/api/check-update",
-      listObjects: async (prefix) =>
-        [...store.keys()].filter((key) => key.startsWith(prefix)),
-      loadObject: async (key) => store.get(key) ?? null,
-      uploadObject: async (key, value) => void store.set(key, value),
-      compareAndSwapObject: async (key, expected, value) => {
-        if (
-          JSON.stringify(store.get(key) ?? null) !== JSON.stringify(expected)
-        ) {
-          return false;
-        }
-        store.set(key, value);
-        return true;
-      },
-      invalidatePaths: async () => undefined,
-    }),
-  });
+  const plugin = createMemoryDatabasePlugin();
   return { client: createDatabaseClient(plugin), plugin };
 };
 

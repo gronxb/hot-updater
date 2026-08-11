@@ -78,20 +78,19 @@ npx hot-updater init
 1. **Select a Build Plugin**: Choose a build plugin for your project (e.g., Bare (React Native CLI) for React Native).
 2. **Select a Provider**: Select AWS + Lambda@Edge as the provider for handling updates.
    During the setup, you will be prompted to:
-3. **Select a Database**: Choose DynamoDB (default) or S3 metadata.
-4. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
-5. **Enter AWS Credentials**: Provide your profile name or AWS credentials when the selected mode requires it
-6. **Select Region**: Choose an AWS region for S3 and DynamoDB
-7. **Select S3 Bucket**: Choose an existing bucket or create a new one
-8. **Create DynamoDB Table**: Enter a table name; init creates it or validates its schema
-9. **Create IAM Role**: Create or reuse a resource-scoped role for this Lambda installation
-10. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
-11. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
+3. **Choose AWS Login Method**: Select between current AWS CLI/default session, shared AWS profile, AWS Access Key, or SSO login
+4. **Enter AWS Credentials**: Provide your profile name or AWS credentials when the selected mode requires it
+5. **Select Region**: Choose an AWS region for S3 and DynamoDB
+6. **Select S3 Bucket**: Choose an existing bucket or create a new one
+7. **Create DynamoDB Table**: Enter a table name; init creates it or validates its schema
+8. **Create IAM Role**: Create or reuse a resource-scoped role for this Lambda installation
+9. **Deploy Lambda Function**: Deploy the Lambda@Edge function to handle updates
+10. **Create/Update CloudFront Distribution**: Create or update a CloudFront distribution
 
   </Accordion>
 </Accordions>
 
-Once setup is complete, `.env.hotupdater` contains the selected database, table,
+Once setup is complete, `.env.hotupdater` contains the DynamoDB table, S3
 bucket, region, and CloudFront distribution ID. Client access keys are an
 official database domain rather than init-time provider configuration. Start
 `hot-updater console`, open **Access Keys**, and create a key for protected OTA
@@ -99,7 +98,6 @@ selectors and Analytics event ingestion. Copy the plaintext when it is shown;
 only its SHA-256 digest and metadata are stored in DynamoDB.
 
 ```
-HOT_UPDATER_AWS_DATABASE=dynamodb
 HOT_UPDATER_DYNAMODB_TABLE_NAME=hot-updater
 HOT_UPDATER_S3_BUCKET_NAME=your-s3-bucket-name
 HOT_UPDATER_S3_REGION=your-region

@@ -1,7 +1,6 @@
 import type { Bundle } from "@hot-updater/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { createBlobDatabasePlugin } from "./createBlobDatabasePlugin";
 import {
   createDatabasePlugin,
   createDatabasePluginAdapter,
@@ -12,6 +11,7 @@ import {
   DatabasePatchInsertUnsupportedError,
   DatabasePatchUpdateUnsupportedError,
 } from "./databaseClient";
+import { createMemoryDatabasePlugin } from "./databasePluginMemory.testFixtures";
 import { bundleToRow } from "./databaseRows";
 import type { DatabasePluginImplementation } from "./types";
 
@@ -47,28 +47,8 @@ const createNativePlugin = (
   });
 };
 
-const createBlobFixture = async () => {
-  const store = new Map<string, unknown>();
-  const plugin = createBlobDatabasePlugin({
-    name: "patch-update",
-    plugin: () => ({
-      apiBasePath: "/api/check-update",
-      listObjects: async (prefix) =>
-        [...store.keys()].filter((key) => key.startsWith(prefix)),
-      loadObject: async (key) => store.get(key) ?? null,
-      uploadObject: async (key, value) => void store.set(key, value),
-      compareAndSwapObject: async (key, expected, value) => {
-        if (
-          JSON.stringify(store.get(key) ?? null) !== JSON.stringify(expected)
-        ) {
-          return false;
-        }
-        store.set(key, value);
-        return true;
-      },
-      invalidatePaths: async () => undefined,
-    }),
-  });
+const createMemoryFixture = async () => {
+  const plugin = createMemoryDatabasePlugin();
   const client = createDatabaseClient(plugin);
   const base = createBundle("base");
   const owner = {
@@ -309,7 +289,7 @@ describe("database client patch updates", () => {
   });
 
   it("leaves patch rows untouched when patches are omitted", async () => {
-    const { client, owner } = await createBlobFixture();
+    const { client, owner } = await createMemoryFixture();
 
     await client.updateBundleById(owner.id, { message: "new" });
 
@@ -320,7 +300,7 @@ describe("database client patch updates", () => {
   });
 
   it("clears patch rows when patches are present and empty", async () => {
-    const { client, owner } = await createBlobFixture();
+    const { client, owner } = await createMemoryFixture();
 
     await client.updateBundleById(owner.id, { patches: [] });
 
@@ -330,7 +310,7 @@ describe("database client patch updates", () => {
   });
 
   it("reuses an active aggregate transaction for patch replacement", async () => {
-    const { client, owner } = await createBlobFixture();
+    const { client, owner } = await createMemoryFixture();
 
     await client.mutate((transaction) =>
       transaction.updateBundleById(owner.id, { patches: [] }),

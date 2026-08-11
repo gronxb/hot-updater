@@ -24,6 +24,7 @@ describe("AWS non-interactive init inputs", () => {
     expect(assertInputs).toThrow(
       expect.objectContaining({
         missingInputs: [
+          "HOT_UPDATER_DYNAMODB_TABLE_NAME",
           "HOT_UPDATER_S3_ACCESS_KEY_ID",
           "HOT_UPDATER_S3_SECRET_ACCESS_KEY",
           "HOT_UPDATER_S3_REGION",
@@ -39,6 +40,7 @@ describe("AWS non-interactive init inputs", () => {
       HOT_UPDATER_AWS_AUTH_MODE: "local-session",
       HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
       HOT_UPDATER_AWS_MIGRATION_APPROVED: "true",
+      HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater-metadata",
       HOT_UPDATER_S3_BUCKET_NAME: "bucket-name",
       HOT_UPDATER_S3_REGION: "ap-northeast-2",
     };
@@ -50,18 +52,13 @@ describe("AWS non-interactive init inputs", () => {
     expect(() => assertAwsNonInteractiveInputs(inputs, true)).not.toThrow();
   });
 
-  it("resolves the selected database and DynamoDB table", () => {
-    // Given
+  it("resolves the DynamoDB table", () => {
     const existingEnv = {
-      HOT_UPDATER_AWS_DATABASE: "dynamodb",
       HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater-metadata",
     };
 
-    // When
     const inputs = resolveAwsInitInputs(existingEnv);
 
-    // Then
-    expect(inputs.database).toBe("dynamodb");
     expect(inputs.dynamodbTableName).toBe("hot-updater-metadata");
   });
 });

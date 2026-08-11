@@ -4,7 +4,6 @@ import {
 } from "@hot-updater/cli-tools";
 
 import {
-  isAwsDatabaseType,
   AWS_AUTH_MODES,
   initProvider as AWS_INIT_PROVIDER,
   isAwsAuthMode,
@@ -20,7 +19,6 @@ export type AwsInitInputs = {
   readonly authMode?: AwsAuthMode;
   readonly bucketName?: string;
   readonly bucketRegion?: string;
-  readonly database?: "dynamodb" | "s3";
   readonly distributionId?: string;
   readonly dynamodbTableName?: string;
   readonly lambdaName?: string;
@@ -40,10 +38,6 @@ export const resolveAwsInitInputs = (
     authMode: isAwsAuthMode(savedAuthMode) ? savedAuthMode : undefined,
     bucketName: resolveInitProviderInput(existingEnv, inputs.bucketName),
     bucketRegion: resolveInitProviderInput(existingEnv, inputs.bucketRegion),
-    database: (() => {
-      const database = resolveInitProviderInput(existingEnv, inputs.database);
-      return isAwsDatabaseType(database) ? database : undefined;
-    })(),
     distributionId: resolveInitProviderInput(
       existingEnv,
       inputs.distributionId,

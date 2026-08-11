@@ -152,6 +152,7 @@ describe("AWS init preflight", () => {
       env: {
         HOT_UPDATER_AWS_AUTH_MODE: "local-session",
         HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
+        HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater",
         HOT_UPDATER_S3_BUCKET_NAME: "deleted-bucket",
         HOT_UPDATER_S3_REGION: "ap-northeast-2",
       },
@@ -191,12 +192,11 @@ describe("AWS init preflight", () => {
     expect(mocks.createBucket).not.toHaveBeenCalled();
   });
 
-  it("recommends the current managed policy when DynamoDB is selected", async () => {
+  it("recommends the current managed policy for DynamoDB", async () => {
     // Given
     mocks.readHotUpdaterInitEnv.mockResolvedValue({
       env: {
         HOT_UPDATER_AWS_AUTH_MODE: "local-session",
-        HOT_UPDATER_AWS_DATABASE: "dynamodb",
         HOT_UPDATER_AWS_LAMBDA_NAME: "hot-updater-edge",
         HOT_UPDATER_DYNAMODB_TABLE_NAME: "hot-updater",
         HOT_UPDATER_S3_BUCKET_NAME: "deleted-bucket",

@@ -1,115 +1,85 @@
+import { createMockDatabaseData, mockDatabase } from "@hot-updater/mock";
 import type { Bundle } from "@hot-updater/plugin-core";
 import {
-  BLOB_DATABASE_SNAPSHOT_KEY,
   bundleToPatchRows,
   bundleToRow,
-  createBlobDatabasePlugin,
   createDatabaseClient,
-  type BlobDatabaseSnapshot,
   type DatabasePlugin,
 } from "@hot-updater/plugin-core";
 import { vi } from "vitest";
 
-const emptySnapshot = (): BlobDatabaseSnapshot => ({
-  version: 2,
-  bundles: [],
-  bundle_patches: [],
-  bundle_events: [],
-  client_access_keys: [],
-});
-
 export const createDatabasePluginHarness = () => {
-  let storedSnapshot: unknown = emptySnapshot();
-  const storedObjects = new Map<string, unknown>();
-  let pendingSnapshot: unknown = null;
-  let pendingReadCount = 0;
-  const readObject = async (key: string): Promise<unknown | null> => {
-    if (key !== BLOB_DATABASE_SNAPSHOT_KEY) {
-      return structuredClone(storedObjects.get(key) ?? null);
-    }
-    if (pendingSnapshot !== null) {
-      if (pendingReadCount === 0) {
-        storedSnapshot = pendingSnapshot;
-        pendingSnapshot = null;
-      } else {
-        pendingReadCount -= 1;
-      }
-    }
-    return structuredClone(storedSnapshot);
-  };
-  const writeObject = async (key: string, data: unknown): Promise<void> => {
-    if (key !== BLOB_DATABASE_SNAPSHOT_KEY) {
-      storedObjects.set(key, structuredClone(data));
-      return;
-    }
-    if (pendingReadCount > 0) {
-      pendingSnapshot = structuredClone(data);
-    } else {
-      storedSnapshot = structuredClone(data);
-    }
-  };
-  const loadObject = vi.fn(readObject);
-  const uploadObject = vi.fn(writeObject);
-  const compareAndSwapObject = vi.fn(
-    async (key: string, expected: unknown, data: unknown): Promise<boolean> => {
-      const current = await readObject(key);
-      if (JSON.stringify(current) !== JSON.stringify(expected)) return false;
-      await writeObject(key, data);
-      return true;
-    },
-  );
+  const data = createMockDatabaseData();
+  const basePlugin = mockDatabase({ data, latency: { min: 0, max: 0 } });
+  const read = vi.fn(async (): Promise<void> => {});
+  const commit = vi.fn((input) => basePlugin.commit(input));
   const dispose = vi.fn(async (): Promise<void> => {});
-  const basePlugin = createBlobDatabasePlugin({
+  const plugin: DatabasePlugin = {
     name: "test-database-v2",
-    plugin: () => ({
-      apiBasePath: "/api",
-      invalidatePaths: async () => {},
-      listObjects: async () => [],
-      loadObject,
-      uploadObject,
-      compareAndSwapObject,
-    }),
-  });
-  const plugin: DatabasePlugin = { ...basePlugin, dispose };
+    bundles: {
+      async findById(id) {
+        await read();
+        return basePlugin.bundles.findById(id);
+      },
+      async findMany(query) {
+        await read();
+        return basePlugin.bundles.findMany(query);
+      },
+      async count(where) {
+        await read();
+        return basePlugin.bundles.count(where);
+      },
+    },
+    bundlePatches: {
+      async findByBundleIds(bundleIds) {
+        await read();
+        return basePlugin.bundlePatches.findByBundleIds(bundleIds);
+      },
+    },
+    analytics: basePlugin.analytics,
+    clientAccessKeys: basePlugin.clientAccessKeys,
+    commit,
+    async getChannels() {
+      await read();
+      return basePlugin.getChannels?.() ?? [];
+    },
+    async getUpdateInfo(args) {
+      await read();
+      return basePlugin.getUpdateInfo?.(args) ?? null;
+    },
+    dispose,
+  };
 
   return {
     plugin,
-    compareAndSwapObject,
-    loadObject,
+    commit,
+    read,
     dispose,
-    uploadObject,
     bundles: async (): Promise<Bundle[]> =>
       (
         await createDatabaseClient(plugin).getBundles({
           limit: 100,
         })
       ).data,
-    delayNextSnapshotVisibility: (readCount: number): void => {
-      pendingReadCount = readCount;
-    },
     reset: (): void => {
-      storedSnapshot = emptySnapshot();
-      storedObjects.clear();
-      pendingSnapshot = null;
-      pendingReadCount = 0;
-      loadObject.mockImplementation(readObject);
-      uploadObject.mockImplementation(writeObject);
-      compareAndSwapObject.mockImplementation(async (key, expected, data) => {
-        const current = await readObject(key);
-        if (JSON.stringify(current) !== JSON.stringify(expected)) {
-          return false;
-        }
-        await writeObject(key, data);
-        return true;
-      });
+      data.bundles.clear();
+      data.bundlePatches.clear();
+      data.bundleEvents.clear();
+      data.clientAccessKeys.clear();
+      read.mockReset().mockResolvedValue(undefined);
+      commit
+        .mockReset()
+        .mockImplementation((input) => basePlugin.commit(input));
     },
     setBundles: (bundles: readonly Bundle[]): void => {
-      storedObjects.clear();
-      storedSnapshot = {
-        version: 2,
-        bundles: bundles.map((bundle) => bundleToRow(bundle)),
-        bundle_patches: bundles.flatMap(bundleToPatchRows),
-      };
+      data.bundles.clear();
+      data.bundlePatches.clear();
+      for (const bundle of bundles) {
+        data.bundles.set(bundle.id, bundleToRow(bundle));
+        for (const patch of bundleToPatchRows(bundle)) {
+          data.bundlePatches.set(patch.id, patch);
+        }
+      }
     },
   };
 };

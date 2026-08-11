@@ -688,64 +688,6 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
 
-  examples-server/hono-s3:
-    dependencies:
-      '@hono/node-server':
-        specifier: catalog:hono
-        version: 1.19.11(hono@4.12.9)
-      '@hot-updater/aws':
-        specifier: workspace:*
-        version: link:../../plugins/aws
-      '@hot-updater/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
-      '@hot-updater/server':
-        specifier: workspace:*
-        version: link:../../packages/server
-      '@hot-updater/standalone':
-        specifier: workspace:*
-        version: link:../../plugins/standalone
-      dotenv:
-        specifier: ^16.6.1
-        version: 16.6.1
-      hono:
-        specifier: catalog:hono
-        version: 4.12.9
-    devDependencies:
-      '@aws-sdk/client-s3':
-        specifier: 3.1066.0
-        version: 3.1066.0
-      '@hot-updater/plugin-core':
-        specifier: workspace:*
-        version: link:../../plugins/plugin-core
-      '@hot-updater/test-utils':
-        specifier: workspace:*
-        version: link:../../packages/test-utils
-      '@types/node':
-        specifier: ^20.11.17
-        version: 20.19.43
-      '@typescript/native':
-        specifier: npm:typescript@^7.0.2
-        version: typescript@7.0.2
-      execa:
-        specifier: catalog:tools
-        version: 9.5.2
-      hot-updater:
-        specifier: workspace:*
-        version: link:../../packages/hot-updater
-      tsx:
-        specifier: ^4.20.6
-        version: 4.22.4
-      typescript:
-        specifier: npm:@typescript/typescript6@^6.0.2
-        version: '@typescript/typescript6@6.0.2'
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(@typescript/typescript6@6.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
-
   examples/expo-52:
     devDependencies:
       '@babel/core':
@@ -1722,6 +1664,9 @@ importers:
       '@hot-updater/firebase':
         specifier: workspace:*
         version: link:../../plugins/firebase
+      '@hot-updater/mock':
+        specifier: workspace:*
+        version: link:../../plugins/mock
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase

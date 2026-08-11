@@ -1,5 +1,4 @@
 import type { Bundle } from "@hot-updater/plugin-core";
-import { BLOB_DATABASE_SNAPSHOT_KEY } from "@hot-updater/plugin-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockCli, mockPrintBanner } = vi.hoisted(() => {
@@ -131,7 +130,7 @@ describe("handleBundleList", () => {
 
   it("calls dispose even when getBundles throws", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.loadObject.mockRejectedValueOnce(new Error("DB down"));
+    databaseHarness.read.mockRejectedValueOnce(new Error("DB down"));
     const { handleBundleList } = await import("./bundle");
     await expect(handleBundleList({})).rejects.toThrow("DB down");
     expect(databaseHarness.dispose).toHaveBeenCalled();
@@ -179,7 +178,7 @@ describe("handleBundleSetEnabled", () => {
     databaseHarness.setBundles([buildBundle({ id: "B1", enabled: false })]);
     const { handleBundleSetEnabled } = await import("./bundle");
     await handleBundleSetEnabled("B1", false, { yes: true });
-    expect(databaseHarness.uploadObject).not.toHaveBeenCalled();
+    expect(databaseHarness.commit).not.toHaveBeenCalled();
     expect(mockCli.p.log.info).toHaveBeenCalledWith(
       expect.stringContaining("already disable"),
     );
@@ -239,7 +238,7 @@ describe("handleBundleSetEnabled", () => {
       "process.exit(2)",
     );
     expect(exitSpy).toHaveBeenCalledWith(2);
-    expect(databaseHarness.uploadObject).not.toHaveBeenCalled();
+    expect(databaseHarness.commit).not.toHaveBeenCalled();
 
     if (isTtyDescriptor) {
       Object.defineProperty(process.stdin, "isTTY", isTtyDescriptor);
@@ -249,7 +248,7 @@ describe("handleBundleSetEnabled", () => {
   it("exits 1 when verification reads a state mismatch after commit", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     databaseHarness.setBundles([buildBundle({ id: "B1", enabled: true })]);
-    databaseHarness.compareAndSwapObject.mockResolvedValue(true);
+    databaseHarness.commit.mockResolvedValue({ applied: true });
 
     const { exitSpy } = expectExit(1);
     const { handleBundleSetEnabled } = await import("./bundle");
@@ -264,7 +263,7 @@ describe("handleBundleSetEnabled", () => {
 
   it("calls dispose even when getBundleById throws", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
-    databaseHarness.loadObject.mockRejectedValueOnce(new Error("DB error"));
+    databaseHarness.read.mockRejectedValueOnce(new Error("DB error"));
     const { handleBundleSetEnabled } = await import("./bundle");
     await expect(
       handleBundleSetEnabled("B1", false, { yes: true }),
@@ -337,7 +336,7 @@ describe("handleBundleUpdate", () => {
       "process.exit(1)",
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(databaseHarness.uploadObject).not.toHaveBeenCalled();
+    expect(databaseHarness.commit).not.toHaveBeenCalled();
   });
 });
 
@@ -365,28 +364,6 @@ describe("handleBundleDelete", () => {
     );
   });
 
-  it("waits for delete verification to become visible", async () => {
-    vi.useFakeTimers();
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const bundle = buildBundle({ id: "B1" });
-    databaseHarness.setBundles([bundle]);
-    databaseHarness.delayNextSnapshotVisibility(2);
-
-    try {
-      const { handleBundleDelete } = await import("./bundle");
-      const deletePromise = handleBundleDelete(["B1"], { yes: true });
-      await vi.advanceTimersByTimeAsync(1000);
-      await deletePromise;
-
-      expect(await databaseHarness.bundles()).toEqual([]);
-      expect(mockCli.p.log.success).toHaveBeenCalledWith(
-        "Deleted bundle record.",
-      );
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("deletes multiple ids with a single commit", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const b1 = buildBundle({ id: "B1" });
@@ -397,11 +374,7 @@ describe("handleBundleDelete", () => {
     await handleBundleDelete(["B1", "B2"], { yes: true });
 
     expect(await databaseHarness.bundles()).toEqual([]);
-    expect(
-      databaseHarness.compareAndSwapObject.mock.calls.filter(
-        ([key]) => key === BLOB_DATABASE_SNAPSHOT_KEY,
-      ),
-    ).toHaveLength(1);
+    expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
     expect(mockCli.p.log.success).toHaveBeenCalledWith(
       "Deleted 2 bundle records.",
     );

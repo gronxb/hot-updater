@@ -46,15 +46,6 @@ official provider adapters map those models through their native schema and
 migration mechanisms. Known legacy post-Core `version` values remain
 compatible with Core `0.36.0`; unknown future revisions remain blocked.
 
-Blob database snapshots contain all four official models. Core refuses to read
-or replace a snapshot containing unknown snapshot, row, or revision-pointer
-fields, preventing silent data loss without claiming ownership of those fields.
-Derived manifests use separate app-version and fingerprint namespaces with
-encoded segments, while unsafe cache-route segments fail before commit.
-Mutation success follows the active-pointer commit, and exhausted post-commit
-invalidation reports through `onInvalidationError` without changing the
-committed result.
-
 The mock provider now accepts every official row through `MockDatabaseData`.
 `@hot-updater/test-utils` publishes reusable official-domain plugin and
 aggregate-client conformance suites for custom provider authors.

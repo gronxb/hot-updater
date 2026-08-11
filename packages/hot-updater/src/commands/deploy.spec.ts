@@ -201,10 +201,7 @@ import fs from "fs";
 import path from "path";
 
 import type { Bundle, DatabasePlugin } from "@hot-updater/plugin-core";
-import {
-  BLOB_DATABASE_SNAPSHOT_KEY,
-  DatabaseAtomicCommitUnsupportedError,
-} from "@hot-updater/plugin-core";
+import { DatabaseAtomicCommitUnsupportedError } from "@hot-updater/plugin-core";
 
 import { writeBundleManifest } from "@/utils/bundleManifest";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
@@ -518,11 +515,7 @@ describe("deploy rollout wiring", () => {
     expect(
       (await databaseHarness.bundles()).map(({ id }) => id).sort(),
     ).toEqual(["bundle-android", "bundle-ios"]);
-    expect(
-      databaseHarness.compareAndSwapObject.mock.calls.filter(
-        ([key]) => key === BLOB_DATABASE_SNAPSHOT_KEY,
-      ),
-    ).toHaveLength(1);
+    expect(databaseHarness.commit).toHaveBeenCalledTimes(1);
   });
 
   it("does not partially persist an unsupported two-platform commit", async () => {

@@ -6,7 +6,6 @@ const ORIGIN_HOST = "hot-updater-test.s3.us-east-1.amazonaws.com";
 
 const databaseMocks = vi.hoisted(() => ({
   dynamoDB: vi.fn(() => ({ name: "dynamoDB" })),
-  s3Database: vi.fn(() => ({ name: "s3Database" })),
 }));
 const serverMocks = vi.hoisted(() => ({ createHotUpdater: vi.fn() }));
 
@@ -17,10 +16,6 @@ const fakeHotUpdaterHandler = vi.fn(
       headers: { "Content-Type": "application/json" },
     }),
 );
-
-vi.mock("../src/s3Database", () => ({
-  s3Database: databaseMocks.s3Database,
-}));
 
 vi.mock("../src/dynamoDB", () => ({
   dynamoDB: databaseMocks.dynamoDB,
@@ -122,7 +117,6 @@ describe("aws lambda entrypoint", () => {
     vi.clearAllMocks();
     globalThis.HotUpdater = {
       CLOUDFRONT_KEY_PAIR_ID: "KTEST",
-      DATABASE_TYPE: "s3",
       DYNAMODB_REGION: "us-east-1",
       DYNAMODB_TABLE_NAME: "hot-updater-metadata",
       SSM_PARAMETER_NAME: "/hot-updater/test",
@@ -132,32 +126,18 @@ describe("aws lambda entrypoint", () => {
   });
 
   it("uses DynamoDB metadata with built-in Analytics and client keys", async () => {
-    // Given
-    globalThis.HotUpdater.DATABASE_TYPE = "dynamodb";
-
-    // When
     await import("./index");
 
-    // Then
     expect(databaseMocks.dynamoDB).toHaveBeenCalledWith({
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });
-    expect(databaseMocks.s3Database).not.toHaveBeenCalled();
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
       expect.objectContaining({
         analytics: {},
         clientAccessKeys: true,
       }),
     );
-  });
-
-  it("keeps the deprecated S3 runtime free of built-in optional routes", async () => {
-    await import("./index");
-
-    const options = serverMocks.createHotUpdater.mock.calls[0]?.[0];
-    expect(options).not.toHaveProperty("analytics");
-    expect(options).not.toHaveProperty("clientAccessKeys");
   });
 
   it("serves canonical app-version routes without a cohort segment for origin-request events", async () => {
