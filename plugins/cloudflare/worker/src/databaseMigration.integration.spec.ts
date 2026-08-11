@@ -156,22 +156,31 @@ it("records the Core schema without replacing other settings", async () => {
   ]);
 });
 
-it("adopts the legacy composite Core marker", async () => {
+it("fails closed for the obsolete preview Core marker", async () => {
   await env.DB.prepare(`
     UPDATE private_hot_updater_settings
     SET value = '0.38.0'
     WHERE key = 'schema.core'
   `).run();
 
-  await applyMigration("0007_hot-updater_0.37.0.sql");
-
-  await expect(
-    env.DB.prepare(`
-      SELECT value
-      FROM private_hot_updater_settings
+  try {
+    await expect(
+      applyMigration("0007_hot-updater_0.37.0.sql"),
+    ).rejects.toThrow();
+    await expect(
+      env.DB.prepare(`
+        SELECT value
+        FROM private_hot_updater_settings
+        WHERE key = 'schema.core'
+      `).first("value"),
+    ).resolves.toBe("0.38.0");
+  } finally {
+    await env.DB.prepare(`
+      UPDATE private_hot_updater_settings
+      SET value = '0.37.0'
       WHERE key = 'schema.core'
-    `).first("value"),
-  ).resolves.toBe("0.37.0");
+    `).run();
+  }
 });
 
 it("fails closed when a different Core schema marker already exists", async () => {

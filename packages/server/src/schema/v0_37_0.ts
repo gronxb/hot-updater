@@ -8,6 +8,7 @@ import {
   table,
   uniqueIndex,
   uuid,
+  varchar,
 } from "./dsl";
 import { createSettingsTable } from "./settings";
 import { HOT_UPDATER_SETTINGS_TABLE } from "./types";
@@ -84,7 +85,7 @@ export const bundleEventsV037 = table(
 export const clientAccessKeysV037 = table(
   "client_access_keys",
   {
-    id: idColumn("id", "string"),
+    id: idColumn("id", varchar(255)),
     hash: stringColumn("hash"),
     name: stringColumn("name"),
     prefix: stringColumn("prefix"),

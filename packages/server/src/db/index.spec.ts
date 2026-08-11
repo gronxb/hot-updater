@@ -526,6 +526,12 @@ describe("server/db hotUpdater getUpdateInfo (PGlite + Kysely)", async () => {
       expect(sql).toContain("`key` varchar(255) primary key");
       expect(sql).not.toContain("\nkey varchar(255) primary key");
       expect(sql).toContain(
+        "create table client_access_keys (\nid varchar(255) primary key not null",
+      );
+      expect(sql).not.toContain(
+        "create table client_access_keys (\nid text primary key",
+      );
+      expect(sql).toContain(
         "create index bundle_patches_bundle_id_idx on bundle_patches(bundle_id)",
       );
       expect(sql).not.toContain("bundle_id(255)");

@@ -108,8 +108,9 @@ pnpm db:generate
 This command:
 
 1. Reads your Hot Updater configuration from `src/db.ts`
-2. Merges the fixed `bundles`, `bundle_patches`, and
-   `private_hot_updater_settings` models into `prisma/schema.prisma`
+2. Merges the fixed `bundles`, `bundle_patches`, `bundle_events`,
+   `client_access_keys`, and `private_hot_updater_settings` models into
+   `prisma/schema.prisma`
 3. Preserves application models outside the generated block
 
 **Step 2: Generate Prisma Client**
