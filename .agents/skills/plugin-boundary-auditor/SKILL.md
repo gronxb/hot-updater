@@ -50,6 +50,62 @@ providers feature vocabulary.
 8. In a stack, place the fix in the earliest owning PR and propagate with normal
    merges. Re-run the audit after every forward merge.
 
+## Score loop
+
+Score every database provider out of 100 before changing it. Record evidence,
+not impressions, for each category:
+
+- Factory contract (20): the public database factory is built with
+  `createDatabasePlugin` (directly or through the repository's approved
+  `createBlobDatabasePlugin` wrapper), has one obvious entry point, and exposes
+  only generic database/component-data capabilities.
+- Provider focus (25): source, manifests, IaC, IAM, generated artifacts, and
+  public exports contain only database/provider vocabulary. Analytics, access
+  keys or tokens, auth roles, and other feature contracts belong to their
+  feature plugin or an exact composition root.
+- Co-location and navigation (20): a reviewer can read the implementation from
+  the factory file without chasing helpers split only to satisfy a line limit.
+  Keep a separate file only for a reusable boundary, generated artifact,
+  platform entry point, or independently testable lifecycle.
+- Declarative mapping (15): model/component schema mapping, indexes, physical
+  names, and supported operations are expressed as data or short named
+  primitives instead of repeated imperative branches.
+- Simplicity and database context (10): abstractions are justified by database
+  semantics, nesting is shallow, naming matches the public factory, and no
+  speculative extension points exist.
+- Verification (10): meaningful synthetic provider conformance, boundary
+  checks, typecheck, and focused runtime/migration tests cover the actual
+  contract without importing feature schemas into provider tests.
+
+Apply these hard failures before considering the numeric score:
+
+- The database factory uses neither `createDatabasePlugin` nor the approved
+  `createBlobDatabasePlugin` wrapper around it.
+- Ordinary provider code imports or models Analytics, Better Auth access keys,
+  access tokens, auth roles, or another optional feature contract.
+- Provider IaC seeds a feature schema, marker, row, or migration directly.
+- A provider test passes only by importing a canonical optional-feature schema
+  instead of a synthetic component fixture.
+
+For each hard failure, cap the score at 49 until it is removed. A provider is
+ready only when it has no hard failures, scores at least 85, and the provider
+set averages at least 90.
+
+Iterate deliberately:
+
+1. Produce a baseline table with the six category scores, total, hard failures,
+   and exact file evidence.
+2. Fix the largest ownership or readability deduction with the smallest
+   coherent change. Do not add abstractions merely to gain points.
+3. Run the provider's focused typecheck/tests and the repository boundary test.
+4. Re-score from the changed source. Do not award points for planned work.
+5. Repeat until every provider clears 85 and the average clears 90, or report a
+   concrete blocker that needs a product/API decision.
+
+Prefer co-location over a file-count target. A long cohesive adapter is better
+than many tiny files when reading it top-to-bottom explains one database
+implementation; split only at a genuine ownership or runtime boundary.
+
 ## Required invariants
 
 - A database factory must not know Analytics, Better Auth access keys, or any
