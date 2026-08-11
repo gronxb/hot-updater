@@ -128,7 +128,7 @@ void getCapabilityContributions(carrier);`,
         "server",
         `server-consumer.${extension}`,
         `import { createHotUpdater, type CreateHotUpdaterOptions } from "@hot-updater/server";
-import { generateUniversalComponentArtifacts, migrateUniversalComponents, type UniversalComponentGeneratedArtifact } from "@hot-updater/server/db";
+import { generateUniversalComponentArtifacts, migrateUniversalComponents, requireUniversalComponentDataSource, type UniversalComponentGeneratedArtifact } from "@hot-updater/server/db";
 import { defineUniversalComponentSchema } from "@hot-updater/plugin-core";
 import { defineFirstPartyServerPlugin, type FirstPartyServerPlugin, type HotUpdaterRoutePolicy } from "@hot-updater/server/internal/first-party-plugin";
 const schema = defineUniversalComponentSchema({ id: "consumer", versions: [{ version: "1", tables: [{ name: "consumer_records", columns: [{ name: "id", type: "string", primaryKey: true }] }] }] });
@@ -139,6 +139,7 @@ void acceptOptions;
 void createHotUpdater;
 void generateUniversalComponentArtifacts;
 void migrateUniversalComponents;
+void requireUniversalComponentDataSource;
 void (undefined as unknown as UniversalComponentGeneratedArtifact);
 void plugin;
 void routePolicy;`,

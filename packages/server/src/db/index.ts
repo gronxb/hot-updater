@@ -1,6 +1,8 @@
 import {
   type UniversalComponentArtifact,
+  type UniversalComponentDataSource,
   type UniversalComponentMigrationResult,
+  type UniversalComponentSchema,
   getUniversalComponentLatestSchema,
 } from "@hot-updater/plugin-core";
 
@@ -149,4 +151,17 @@ export function generateUniversalComponentArtifacts(
     }
   }
   return Object.freeze(generated);
+}
+
+export function requireUniversalComponentDataSource(
+  hotUpdater: HotUpdaterDBTarget,
+  schema: UniversalComponentSchema,
+): UniversalComponentDataSource {
+  const source = getDBMetadata(hotUpdater).components?.get(schema);
+  if (source === undefined) {
+    throw new Error(
+      `Universal component data source is not available for ${schema.id}.`,
+    );
+  }
+  return source;
 }
