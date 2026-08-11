@@ -234,11 +234,9 @@ describe(
     it("rejects exactly one concurrent opposing target clear", async () => {
       const database = prismaAdapter({ prisma, provider: "postgresql" });
       const id = "141ee03e-7599-4e29-a827-0c4732bc4f10";
-      await database.create({
-        model: "bundles",
-        data: {
+      const row = {
           id,
-          platform: "ios",
+          platform: "ios" as const,
           should_force_update: false,
           enabled: true,
           file_hash: "concurrent-target-hash",
@@ -254,19 +252,37 @@ describe(
           manifest_storage_uri: null,
           manifest_file_hash: null,
           asset_base_storage_uri: null,
-        },
+      };
+      await database.commit({
+        operation: "insert",
+        bundleId: id,
+        changes: [{ table: "bundles", operation: "insert", row }],
       });
 
       const results = await Promise.allSettled([
-        database.update({
-          model: "bundles",
-          where: [{ field: "id", value: id }],
-          update: { target_app_version: null },
+        database.commit({
+          operation: "update",
+          bundleId: id,
+          changes: [
+            {
+              table: "bundles",
+              operation: "update",
+              id,
+              update: { target_app_version: null },
+            },
+          ],
         }),
-        database.update({
-          model: "bundles",
-          where: [{ field: "id", value: id }],
-          update: { fingerprint_hash: null },
+        database.commit({
+          operation: "update",
+          bundleId: id,
+          changes: [
+            {
+              table: "bundles",
+              operation: "update",
+              id,
+              update: { fingerprint_hash: null },
+            },
+          ],
         }),
       ]);
 
@@ -274,10 +290,7 @@ describe(
         "fulfilled",
         "rejected",
       ]);
-      const stored = await database.findOne({
-        model: "bundles",
-        where: [{ field: "id", value: id }],
-      });
+      const stored = await database.bundles.findById(id);
       expect(
         [stored?.target_app_version, stored?.fingerprint_hash].filter(
           (target) => target !== null,
@@ -313,11 +326,14 @@ describe(
         asset_base_storage_uri: null,
       };
       for (const id of [baseId, targetId]) {
-        await database.create({ model: "bundles", data: { ...bundle, id } });
+        const row = { ...bundle, id };
+        await database.commit({
+          operation: "insert",
+          bundleId: id,
+          changes: [{ table: "bundles", operation: "insert", row }],
+        });
       }
-      await database.create({
-        model: "bundle_patches",
-        data: {
+      const patch = {
           id: patchId,
           bundle_id: targetId,
           base_bundle_id: baseId,
@@ -325,7 +341,11 @@ describe(
           patch_file_hash: "rollback-patch-hash",
           patch_storage_uri: "storage://rollback-patch",
           order_index: 0,
-        },
+      };
+      await database.commit({
+        operation: "update",
+        bundleId: targetId,
+        changes: [{ table: "bundle_patches", operation: "insert", row: patch }],
       });
 
       await prisma.$executeRawUnsafe(`
@@ -343,24 +363,21 @@ describe(
 
       try {
         await expect(
-          database.delete({
-            model: "bundles",
-            where: [{ field: "id", value: targetId }],
+          database.commit({
+            operation: "delete",
+            bundleId: targetId,
+            changes: [
+              { table: "bundles", operation: "delete", id: targetId },
+            ],
           }),
         ).rejects.toThrow("injected Prisma bundle delete failure");
 
         await expect(
-          database.findOne({
-            model: "bundles",
-            where: [{ field: "id", value: targetId }],
-          }),
+          database.bundles.findById(targetId),
         ).resolves.toMatchObject({ id: targetId });
         await expect(
-          database.findOne({
-            model: "bundle_patches",
-            where: [{ field: "id", value: patchId }],
-          }),
-        ).resolves.toMatchObject({ id: patchId });
+          database.bundlePatches.findByBundleIds([targetId]),
+        ).resolves.toContainEqual(expect.objectContaining({ id: patchId }));
       } finally {
         await prisma.$executeRawUnsafe(
           "DROP TRIGGER IF EXISTS fail_prisma_bundle_delete ON bundles;",

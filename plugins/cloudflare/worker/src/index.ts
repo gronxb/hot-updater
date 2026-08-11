@@ -10,6 +10,7 @@ import {
 
 export type CloudflareWorkerEnv = {
   DB: {
+    batch: D1Database["batch"];
     prepare: D1Database["prepare"];
   };
   BUCKET: R2Bucket;

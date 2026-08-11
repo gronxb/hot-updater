@@ -15,7 +15,8 @@ type D1PreparedStatement = {
 };
 
 export type D1Like = {
-  prepare: (sql: string) => D1PreparedStatement;
+  prepare(sql: string): D1PreparedStatement;
+  batch(statements: D1BoundStatement[]): Promise<readonly D1Result[]>;
 };
 
 export interface CloudflareWorkerDatabaseEnv {
@@ -33,6 +34,14 @@ export const d1WorkerDatabase = (db: D1Like) =>
             .bind(...params)
             .all();
           return result.results ?? [];
+        },
+        async batch(statements) {
+          const results = await db.batch(
+            statements.map(({ sql, params }) =>
+              db.prepare(sql).bind(...params),
+            ),
+          );
+          return results.map(({ results }) => results ?? []);
         },
       }),
   });

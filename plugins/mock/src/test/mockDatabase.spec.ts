@@ -63,42 +63,60 @@ setupGetUpdateInfoTestSuite({
 });
 
 describe("mock database provider", () => {
-  it("rolls back all fixed-model changes when a transaction rejects", async () => {
+  it("rolls back all table changes when an atomic batch rejects", async () => {
     const plugin = createPlugin();
+    const row = {
+      id: "bundle-rollback",
+      platform: "ios" as const,
+      should_force_update: false,
+      enabled: true,
+      file_hash: "hash",
+      git_commit_hash: null,
+      message: null,
+      channel: "rollback",
+      storage_uri: "storage://bundle.zip",
+      target_app_version: "1.0.0",
+      fingerprint_hash: null,
+      metadata: {},
+      rollout_cohort_count: 1000,
+      target_cohorts: null,
+      manifest_storage_uri: null,
+      manifest_file_hash: null,
+      asset_base_storage_uri: null,
+    };
+    if (plugin.commitBatch === undefined) {
+      throw new Error("mock database must support atomic batches");
+    }
 
     await expect(
-      plugin.transaction?.(async (transaction) => {
-        await transaction.create({
-          model: "bundles",
-          data: {
-            id: "bundle-rollback",
-            platform: "ios",
-            should_force_update: false,
-            enabled: true,
-            file_hash: "hash",
-            git_commit_hash: null,
-            message: null,
-            channel: "rollback",
-            storage_uri: "storage://bundle.zip",
-            target_app_version: "1.0.0",
-            fingerprint_hash: null,
-            metadata: {},
-            rollout_cohort_count: 1000,
-            target_cohorts: null,
-            manifest_storage_uri: null,
-            manifest_file_hash: null,
-            asset_base_storage_uri: null,
-          },
-        });
-        throw new Error("rollback fixture");
-      }),
-    ).rejects.toThrow("rollback fixture");
+      plugin.commitBatch([
+        {
+          operation: "insert",
+          bundleId: row.id,
+          changes: [{ table: "bundles", operation: "insert", row }],
+        },
+        {
+          operation: "insert",
+          bundleId: "invalid-owner",
+          changes: [
+            {
+              table: "bundle_patches",
+              operation: "insert",
+              row: {
+                id: "invalid-patch",
+                bundle_id: "invalid-owner",
+                base_bundle_id: row.id,
+                base_file_hash: row.file_hash,
+                patch_file_hash: "patch-hash",
+                patch_storage_uri: "storage://patch",
+                order_index: 0,
+              },
+            },
+          ],
+        },
+      ]),
+    ).rejects.toThrow("foreign-key");
 
-    await expect(
-      plugin.findOne({
-        model: "bundles",
-        where: [{ field: "id", value: "bundle-rollback" }],
-      }),
-    ).resolves.toBeNull();
+    await expect(plugin.bundles.findById(row.id)).resolves.toBeNull();
   });
 });

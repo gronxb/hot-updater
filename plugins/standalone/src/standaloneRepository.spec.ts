@@ -278,10 +278,7 @@ describe("standaloneRepository", () => {
     channels.add("preview");
 
     await expect(
-      createRepository().findOne({
-        model: "bundles",
-        where: [{ field: "id", value: value.id }],
-      }),
+      createRepository().bundles.findById(value.id),
     ).resolves.toMatchObject({
       id: value.id,
       channel: "preview",
@@ -304,12 +301,10 @@ describe("standaloneRepository", () => {
       },
     });
 
-    await expect(
-      repository.findOne({
-        model: "bundles",
-        where: [{ field: "id", value: value.id }],
-      }),
-    ).resolves.toMatchObject({ id: value.id, channel: "production" });
+    await expect(repository.bundles.findById(value.id)).resolves.toMatchObject({
+      id: value.id,
+      channel: "production",
+    });
     expect(retrieveCalls).toBe(1);
   });
 
@@ -331,15 +326,14 @@ describe("standaloneRepository", () => {
       }),
     );
 
-    await createRepository().findMany({
-      model: "bundles",
-      where: [
-        { field: "channel", value: "preview" },
-        { field: "platform", value: "ios" },
-        { field: "enabled", value: true },
-        { field: "id", operator: "gte", value: "bundle-20" },
-      ],
-      sortBy: { field: "id", direction: "desc" },
+    await createRepository().bundles.findMany({
+      where: {
+        channel: "preview",
+        platform: "ios",
+        enabled: true,
+        id: { gte: "bundle-20" },
+      },
+      orderBy: { field: "id", direction: "desc" },
       limit: 10,
       offset: 20,
     });
@@ -371,9 +365,8 @@ describe("standaloneRepository", () => {
       }),
     );
 
-    const result = await createRepository().findMany({
-      model: "bundles",
-      orderBy: [{ field: "id", direction: "asc" }],
+    const result = await createRepository().bundles.findMany({
+      orderBy: { field: "id", direction: "asc" },
       limit: 1,
       offset: 0,
     });
@@ -386,7 +379,7 @@ describe("standaloneRepository", () => {
     expect(requestedUrl?.searchParams.get("orderDirection")).toBe("asc");
   });
 
-  it("counts distinct bundle values through the local compatibility view", async () => {
+  it("counts filtered bundle values through the compatibility view", async () => {
     const first = bundle("00000000-0000-0000-0000-000000000041");
     const second = bundle("00000000-0000-0000-0000-000000000042");
     const preview = bundle("00000000-0000-0000-0000-000000000043", {
@@ -395,16 +388,32 @@ describe("standaloneRepository", () => {
     bundles.set(first.id, first);
     bundles.set(second.id, second);
     bundles.set(preview.id, preview);
+    let requestedUrl: URL | undefined;
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [first],
+          pagination: {
+            total: 2,
+            hasNextPage: true,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 2,
+          },
+        });
+      }),
+    );
 
-    const result = await createRepository().count({
-      model: "bundles",
-      distinct: ["channel"],
+    const result = await createRepository().bundles.count({
+      channel: "production",
     });
 
     expect(result).toBe(2);
+    expect(requestedUrl?.searchParams.get("channel")).toBe("production");
   });
 
-  it("counts compound distinct bundle tuples", async () => {
+  it("counts all bundle rows", async () => {
     const productionIos = bundle("00000000-0000-0000-0000-000000000044");
     const productionAndroid = bundle("00000000-0000-0000-0000-000000000045", {
       platform: "android",
@@ -416,10 +425,7 @@ describe("standaloneRepository", () => {
     bundles.set(productionAndroid.id, productionAndroid);
     bundles.set(previewIos.id, previewIos);
 
-    const result = await createRepository().count({
-      model: "bundles",
-      distinct: ["channel", "platform"],
-    });
+    const result = await createRepository().bundles.count();
 
     expect(result).toBe(3);
   });
@@ -439,14 +445,14 @@ describe("standaloneRepository", () => {
     bundles.set(base.id, base);
     bundles.set(target.id, target);
 
-    const result = await createRepository().count({
-      model: "bundle_patches",
-    });
+    const result = await createRepository().bundlePatches.findByBundleIds([
+      target.id,
+    ]);
 
-    expect(result).toBe(1);
+    expect(result).toHaveLength(1);
   });
 
-  it("keeps the highest id per channel for ordered distinct bundle rows", async () => {
+  it("returns the highest id for a filtered channel", async () => {
     const production = bundle("00000000-0000-0000-0000-000000000051");
     const previewLow = bundle("00000000-0000-0000-0000-000000000052", {
       channel: "preview",
@@ -457,17 +463,33 @@ describe("standaloneRepository", () => {
     bundles.set(production.id, production);
     bundles.set(previewLow.id, previewLow);
     bundles.set(previewHigh.id, previewHigh);
+    let requestedUrl: URL | undefined;
+    server.use(
+      http.get(`${BASE_URL}/api/bundles`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [previewHigh],
+          pagination: {
+            total: 2,
+            hasNextPage: true,
+            hasPreviousPage: false,
+            currentPage: 1,
+            totalPages: 2,
+          },
+        });
+      }),
+    );
 
-    const result = await createRepository().findMany({
-      model: "bundles",
-      distinctOn: { fields: ["channel"] },
-      orderBy: [
-        { field: "channel", direction: "asc" },
-        { field: "id", direction: "desc" },
-      ],
+    const result = await createRepository().bundles.findMany({
+      where: { channel: "preview" },
+      orderBy: { field: "id", direction: "desc" },
+      limit: 1,
+      offset: 0,
     });
 
-    expect(result.map(({ id }) => id)).toEqual([previewHigh.id, production.id]);
+    expect(result.map(({ id }) => id)).toEqual([previewHigh.id]);
+    expect(requestedUrl?.searchParams.get("channel")).toBe("preview");
+    expect(requestedUrl?.searchParams.get("orderDirection")).toBe("desc");
   });
 
   it("returns an empty bundle window without sending an invalid zero limit", async () => {
@@ -475,12 +497,16 @@ describe("standaloneRepository", () => {
     bundles.set(value.id, value);
 
     await expect(
-      createRepository().findMany({ model: "bundles", limit: 0 }),
+      createRepository().bundles.findMany({
+        limit: 0,
+        offset: 0,
+        orderBy: { field: "id", direction: "asc" },
+      }),
     ).resolves.toEqual([]);
     expect(requestPaths).toEqual([]);
   });
 
-  it("preserves repeated filter semantics through the local fallback", async () => {
+  it("keeps an empty id set local", async () => {
     const value = bundle("00000000-0000-0000-0000-000000000024");
     bundles.set(value.id, value);
     let requestedUrl: URL | undefined;
@@ -501,12 +527,11 @@ describe("standaloneRepository", () => {
     );
 
     await expect(
-      createRepository().findMany({
-        model: "bundles",
-        where: [
-          { field: "channel", value: "production" },
-          { field: "channel", value: "preview" },
-        ],
+      createRepository().bundles.findMany({
+        where: { id: { in: [] } },
+        limit: 100,
+        offset: 0,
+        orderBy: { field: "id", direction: "asc" },
       }),
     ).resolves.toEqual([]);
     expect(requestedUrl?.searchParams.has("channel")).toBe(false);
@@ -562,11 +587,9 @@ describe("standaloneRepository", () => {
     bundles.set(target.id, target);
     channels.add("production");
 
-    const rows = await createRepository().findMany({
-      model: "bundle_patches",
-      where: [{ field: "bundle_id", value: target.id }],
-      sortBy: { field: "order_index", direction: "asc" },
-    });
+    const rows = await createRepository().bundlePatches.findByBundleIds([
+      target.id,
+    ]);
 
     expect(rows).toEqual([
       expect.objectContaining({
@@ -607,7 +630,11 @@ describe("standaloneRepository", () => {
     );
 
     await expect(
-      createRepository().findMany({ model: "bundles" }),
+      createRepository().bundles.findMany({
+        limit: 100,
+        offset: 0,
+        orderBy: { field: "id", direction: "asc" },
+      }),
     ).rejects.toEqual(
       new StandaloneDatabaseError(
         "invalid-response",
@@ -625,7 +652,11 @@ describe("standaloneRepository", () => {
     );
 
     await expect(
-      createRepository().findMany({ model: "bundles" }),
+      createRepository().bundles.findMany({
+        limit: 100,
+        offset: 0,
+        orderBy: { field: "id", direction: "asc" },
+      }),
     ).rejects.toEqual(
       new StandaloneDatabaseError(
         "invalid-response",

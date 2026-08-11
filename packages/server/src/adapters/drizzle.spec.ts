@@ -1,5 +1,4 @@
 import { PGlite } from "@electric-sql/pglite";
-import { DatabasePluginInputError } from "@hot-updater/plugin-core";
 import {
   boolean,
   integer,
@@ -89,51 +88,6 @@ setupDatabasePluginTestSuite({
 });
 
 describe("drizzleAdapter schema requirements", () => {
-  it("rejects count distinct before resolving a lazy database", async () => {
-    const getDB = vi.fn(() => {
-      throw new DrizzleTestStateError();
-    });
-    const plugin = drizzleAdapter({
-      db: getDB,
-      provider: "postgresql",
-      schema,
-    });
-
-    const operation = plugin.count({
-      model: "bundles",
-      distinct: ["channel"],
-    });
-
-    await expect(operation).rejects.toBeInstanceOf(DatabasePluginInputError);
-    await expect(operation).rejects.toMatchObject({
-      code: "invalid-operation",
-    });
-    expect(getDB).not.toHaveBeenCalled();
-  });
-
-  it("rejects findMany distinctOn before resolving a lazy database", async () => {
-    const getDB = vi.fn(() => {
-      throw new DrizzleTestStateError();
-    });
-    const plugin = drizzleAdapter({
-      db: getDB,
-      provider: "postgresql",
-      schema,
-    });
-
-    const operation = plugin.findMany({
-      model: "bundles",
-      orderBy: [{ field: "channel", direction: "asc" }],
-      distinctOn: { fields: ["channel"] },
-    });
-
-    await expect(operation).rejects.toBeInstanceOf(DatabasePluginInputError);
-    await expect(operation).rejects.toMatchObject({
-      code: "invalid-operation",
-    });
-    expect(getDB).not.toHaveBeenCalled();
-  });
-
   it("does not resolve a lazy database while generating a schema", () => {
     const getDB = vi.fn(() => {
       throw new DrizzleTestStateError();

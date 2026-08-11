@@ -28,6 +28,13 @@ const createPlugin = (): DatabasePlugin =>
     storageBucket: `${PROJECT_ID}.appspot.com`,
   });
 
+const findAllBundles = (plugin: DatabasePlugin) =>
+  plugin.bundles.findMany({
+    limit: 100,
+    offset: 0,
+    orderBy: { field: "id", direction: "asc" },
+  });
+
 setupDatabasePluginTestSuite({
   name: "firebase fixed-model database plugin",
   createPlugin,
@@ -125,7 +132,7 @@ describe("firebase v1 data migration", () => {
     const patchesRead = vi.spyOn(bundlePatchesCollection, "get");
     const plugin = createPlugin();
 
-    await expect(plugin.findMany({ model: "bundles" })).rejects.toThrow(
+    await expect(findAllBundles(plugin)).rejects.toThrow(
       "Unsupported Firebase database adapter version: 3",
     );
     expect(bundlesRead).not.toHaveBeenCalled();
@@ -159,7 +166,7 @@ describe("firebase v1 data migration", () => {
     });
 
     const plugin = createPlugin();
-    const patches = await plugin.findMany({ model: "bundle_patches" });
+    const patches = await plugin.bundlePatches.findByBundleIds([target.id]);
 
     expect(patches).toEqual([
       {
@@ -197,9 +204,9 @@ describe("firebase v1 data migration", () => {
       patch_storage_uri: "gs://bucket/scalar-patch.bin",
     });
 
-    const patches = await createPlugin().findMany({
-      model: "bundle_patches",
-    });
+    const patches = await createPlugin().bundlePatches.findByBundleIds([
+      target.id,
+    ]);
 
     expect(patches).toEqual([
       {
@@ -271,9 +278,9 @@ describe("firebase v1 data migration", () => {
       });
       await bundlePatchesCollection.doc(patchId).set(conflictingPatch);
 
-      await expect(
-        createPlugin().findMany({ model: "bundles" }),
-      ).rejects.toThrow("bundle_patches.id.conflict");
+      await expect(findAllBundles(createPlugin())).rejects.toThrow(
+        "bundle_patches.id.conflict",
+      );
 
       const [storedTarget, storedPatch, storedVersion] = await Promise.all([
         bundlesCollection.doc(target.id).get(),
@@ -316,7 +323,7 @@ describe("firebase v1 data migration", () => {
     await bundlePatchesCollection.doc(patch.id).set(patch);
 
     await expect(
-      createPlugin().findMany({ model: "bundle_patches" }),
+      createPlugin().bundlePatches.findByBundleIds([target.id]),
     ).resolves.toContainEqual(patch);
 
     const [storedTarget, storedVersion] = await Promise.all([
@@ -353,7 +360,7 @@ describe("firebase v1 data migration", () => {
       order_index: 0,
     });
 
-    await expect(createPlugin().findMany({ model: "bundles" })).rejects.toThrow(
+    await expect(findAllBundles(createPlugin())).rejects.toThrow(
       "bundle_patches.id.document-key",
     );
 
@@ -372,7 +379,7 @@ describe("firebase v1 data migration", () => {
     const bundle = legacyRow("legacy-miskeyed-bundle");
     await bundlesCollection.doc("wrong-document-key").set(bundle);
 
-    await expect(createPlugin().findMany({ model: "bundles" })).rejects.toThrow(
+    await expect(findAllBundles(createPlugin())).rejects.toThrow(
       "bundles.id.document-key",
     );
 
@@ -395,9 +402,10 @@ describe("firebase v1 data migration", () => {
     await bundlesCollection.doc("duplicate-document-key").set(bundle);
 
     await expect(
-      createPlugin().delete({
-        model: "bundles",
-        where: [{ field: "id", value: bundle.id }],
+      createPlugin().commit({
+        operation: "delete",
+        bundleId: bundle.id,
+        changes: [{ table: "bundles", operation: "delete", id: bundle.id }],
       }),
     ).rejects.toThrow("bundles.id.unique");
 
@@ -433,9 +441,16 @@ describe("firebase v1 data migration", () => {
     await bundlePatchesCollection.doc("wrong-document-key").set(patch);
 
     await expect(
-      createPlugin().delete({
-        model: "bundle_patches",
-        where: [{ field: "id", value: patch.id }],
+      createPlugin().commit({
+        operation: "update",
+        bundleId: target.id,
+        changes: [
+          {
+            table: "bundle_patches",
+            operation: "delete",
+            bundleId: target.id,
+          },
+        ],
       }),
     ).rejects.toThrow("bundle_patches.id.document-key");
 
@@ -454,7 +469,7 @@ describe("firebase v1 data migration", () => {
     await bundlesCollection.doc(bundle.id).set(bundle);
     const runTransaction = vi.spyOn(firestore, "runTransaction");
 
-    await createPlugin().findMany({ model: "bundles" });
+    await findAllBundles(createPlugin());
 
     expect(runTransaction).not.toHaveBeenCalled();
     await expect(
@@ -468,8 +483,8 @@ describe("firebase v1 data migration", () => {
     await bundlesCollection.doc(bundle.id).set(bundle);
 
     await Promise.all([
-      createPlugin().findMany({ model: "bundles" }),
-      createPlugin().findMany({ model: "bundles" }),
+      findAllBundles(createPlugin()),
+      findAllBundles(createPlugin()),
     ]);
 
     const migrated = await bundlesCollection.doc(bundle.id).get();
@@ -491,9 +506,9 @@ describe("firebase v1 data migration", () => {
 
     const plugin = createPlugin();
 
-    await expect(plugin.findMany({ model: "bundle_patches" })).rejects.toThrow(
-      "bundle_patches.bundle_id.foreign-key",
-    );
+    await expect(
+      plugin.bundlePatches.findByBundleIds(["missing-owner"]),
+    ).rejects.toThrow("bundle_patches.bundle_id.foreign-key");
   });
 });
 
@@ -537,10 +552,7 @@ describe("firebase bounded reads", () => {
     });
 
     await expect(
-      createPlugin().findOne({
-        model: "bundles",
-        where: [{ field: "id", value: value.id }],
-      }),
+      createPlugin().bundles.findById(value.id),
     ).resolves.toMatchObject({ id: value.id, channel: "production" });
   });
 
@@ -553,12 +565,9 @@ describe("firebase bounded reads", () => {
       .doc(documentKey)
       .set(legacyRow("different-embedded-id"));
 
-    await expect(
-      createPlugin().findOne({
-        model: "bundles",
-        where: [{ field: "id", value: documentKey }],
-      }),
-    ).rejects.toThrow("bundles.id.document-key");
+    await expect(createPlugin().bundles.findById(documentKey)).rejects.toThrow(
+      "bundles.id.document-key",
+    );
   });
 
   it("rejects a matching update-check row whose key differs from its id", async () => {
