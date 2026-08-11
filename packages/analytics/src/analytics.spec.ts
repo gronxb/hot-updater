@@ -152,6 +152,8 @@ describe("analytics", () => {
       schema: analyticsComponentSchema,
       append: async () => undefined,
       assertReady: async () => undefined,
+      create: async () => "created",
+      get: async () => null,
       orderedScan: async () => [],
     };
     const contribution = analytics().setup(setupContext(source));

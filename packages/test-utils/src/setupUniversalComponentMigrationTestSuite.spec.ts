@@ -193,6 +193,40 @@ const createHarness = (): UniversalComponentMigrationTestHarness => {
           mutations.rowWrites += 1;
         },
         assertReady,
+        async create(input) {
+          await assertReady();
+          validateUniversalComponentRow(schema, {
+            ...input,
+            version: syntheticMigrationVersions.latest,
+          });
+          const existing = state.rows.some(
+            (row) =>
+              typeof row === "object" &&
+              row !== null &&
+              !Array.isArray(row) &&
+              Reflect.get(row, "id") === input.row.id,
+          );
+          if (existing) return "existing";
+          state = {
+            ...state,
+            rows: [...state.rows, structuredClone(input.row)],
+          };
+          mutations.rowWrites += 1;
+          return "created";
+        },
+        async get(input) {
+          await assertReady();
+          const row = state.rows.find(
+            (candidate) =>
+              typeof candidate === "object" &&
+              candidate !== null &&
+              !Array.isArray(candidate) &&
+              Reflect.get(candidate, "id") === input.primaryKey,
+          );
+          return row === undefined
+            ? null
+            : (structuredClone(row) as UniversalComponentRow);
+        },
         async orderedScan() {
           await assertReady();
           return structuredClone(

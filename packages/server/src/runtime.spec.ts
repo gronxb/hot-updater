@@ -506,6 +506,8 @@ describe("runtime createHotUpdater", () => {
       schema,
       append: async () => undefined,
       assertReady: async () => undefined,
+      create: async () => "created" as const,
+      get: async () => null,
       orderedScan: async () => [],
     };
     const migrate = vi.fn(async () => ({ changed: true, version: "1" }));

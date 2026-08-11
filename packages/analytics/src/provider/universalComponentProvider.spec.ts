@@ -10,6 +10,8 @@ const createSource = (
   schema: analyticsComponentSchema,
   append: async () => undefined,
   assertReady,
+  create: async () => "created",
+  get: async () => null,
   orderedScan: async () => [],
 });
 

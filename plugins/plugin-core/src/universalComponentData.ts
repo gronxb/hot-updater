@@ -174,6 +174,11 @@ export interface UniversalComponentAppendInput {
   readonly table: string;
 }
 
+export interface UniversalComponentGetInput {
+  readonly primaryKey: string;
+  readonly table: string;
+}
+
 export interface UniversalComponentRowValidationInput extends UniversalComponentAppendInput {
   readonly version: string;
 }
@@ -195,6 +200,17 @@ export interface UniversalComponentDataSource {
    * ready. Operational backend errors must remain distinguishable.
    */
   append(input: UniversalComponentAppendInput): Promise<void>;
+  /**
+   * Creates a row only when its declared primary key is absent. Existing rows
+   * must remain unchanged. Readiness and operational-error semantics match
+   * append().
+   */
+  create(input: UniversalComponentAppendInput): Promise<"created" | "existing">;
+  /**
+   * Reads one row by the declared primary key. Missing rows resolve to null.
+   * Readiness and operational-error semantics match orderedScan().
+   */
+  get(input: UniversalComponentGetInput): Promise<UniversalComponentRow | null>;
   /**
    * A latest-marker mismatch or a failed physical-schema, index, or stored-data
    * readiness validation must reject with UniversalComponentDataNotReadyError.
@@ -1015,6 +1031,23 @@ export const validateUniversalComponentAppend = (
     ...input,
     version: getUniversalComponentLatestSchema(schema).version,
   });
+
+export const validateUniversalComponentGet = (
+  schema: UniversalComponentSchema,
+  input: UniversalComponentGetInput,
+): UniversalComponentTableSchema => {
+  const table = getUniversalComponentTable(schema, input.table);
+  if (
+    typeof input.primaryKey !== "string" ||
+    input.primaryKey.length === 0 ||
+    input.primaryKey.includes("/")
+  ) {
+    return contractError(
+      `Invalid primary key for component table: ${input.table}`,
+    );
+  }
+  return table;
+};
 
 export const validateUniversalComponentOrderedScan = (
   schema: UniversalComponentSchema,
