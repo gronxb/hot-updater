@@ -20,8 +20,9 @@ and `bundle_patches`. Providers now return a direct plugin object, while the
 shared database client supplies aggregate bundle operations. The public
 contract exposes separate `bundles` and `bundlePatches` read ports plus an
 explicit atomic `commit` change-set. Provider callback transactions remain an
-implementation detail; `commitBatch` is the optional public capability for
-atomically committing multiple bundle change-sets. The v1 factory,
+implementation detail; `commit({ mutations })` is the single required public
+write boundary and atomically applies any number of bundle change-sets. The v1
+factory,
 request-context, staged mutation, unit-of-work, and `commitBundle` contracts
 have been removed.
 
@@ -66,7 +67,7 @@ plugin and aggregate-client conformance suites for custom provider authors.
 
 Multi-platform deploy performs build, archive, and content-addressed upload
 work before preparing database change-sets. Providers receive the prepared
-change-sets once through `commitBatch`, so provider retries cannot rerun build
+change-sets once through `commit`, so provider retries cannot rerun build
 or upload side effects. Uploaded objects remain reusable when the database
 commit fails. Multi-platform bundle creation uses one atomic array request;
 servers reject the request before insertion when they cannot guarantee
