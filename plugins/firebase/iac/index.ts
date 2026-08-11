@@ -23,7 +23,13 @@ import {
   migrateUniversalComponents,
 } from "@hot-updater/server/db";
 import { ExecaError, execa } from "execa";
-import admin from "firebase-admin";
+import {
+  applicationDefault,
+  cert,
+  deleteApp,
+  initializeApp,
+} from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 
 import { mergeFirebaseComponentIndexArtifacts } from "../src/firebaseComponentIndexArtifacts";
 import { firebaseDatabase } from "../src/firebaseDatabase";
@@ -225,24 +231,24 @@ const provisionManagedAccessKey = async (
   applicationCredentials?: string,
   envFilePath = ".env.hotupdater",
 ): ReturnType<typeof provisionManagedBetterAuthApiKey> => {
-  const app = admin.initializeApp(
+  const app = initializeApp(
     {
       credential: applicationCredentials
-        ? admin.credential.cert(path.resolve(applicationCredentials))
-        : admin.credential.applicationDefault(),
+        ? cert(path.resolve(applicationCredentials))
+        : applicationDefault(),
       projectId,
     },
     "hot-updater-managed-access-key-provisioning",
   );
   try {
-    const firestore = admin.firestore(app);
+    const firestore = getFirestore(app);
     return await provisionManagedBetterAuthApiKey({
       envFilePath,
       name: "Default",
       store: createFirebaseManagedAccessKeyStore(firestore),
     });
   } finally {
-    await app.delete();
+    await deleteApp(app);
   }
 };
 
@@ -385,7 +391,7 @@ export const runInit = async ({
   const deploymentTarget = createDeploymentTarget?.(
     firebaseDatabase({
       ...(applicationCredentialsPath
-        ? { credential: admin.credential.cert(applicationCredentialsPath) }
+        ? { credential: cert(applicationCredentialsPath) }
         : {}),
       projectId: initializeVariable.projectId,
       storageBucket: initializeVariable.storageBucket,

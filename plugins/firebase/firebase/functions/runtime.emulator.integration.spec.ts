@@ -273,7 +273,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       createdAt: 1,
       name: "Runtime test",
       store: createFirebaseManagedAccessKeyStore(
-        admin.firestore(firebaseAdminApp),
+        getFirestore(firebaseAdminApp),
       ),
     });
 
@@ -366,8 +366,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       queryScope: "COLLECTION",
     });
     await expect(
-      admin
-        .firestore()
+      getFirestore()
         .collection("private_hot_updater_settings")
         .doc("schema.analytics")
         .get()
@@ -441,8 +440,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         updateStrategy: null,
       }),
     });
-    const persisted = await admin
-      .firestore()
+    const persisted = await getFirestore()
       .collection("bundle_events")
       .where("install_id", "==", "firebase-managed-install")
       .get();
