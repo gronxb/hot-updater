@@ -39,12 +39,13 @@ const runtimeEntrypoints: readonly RuntimeEntrypoint[] = [
 
 const databaseFixture = `const database = {
   name: "packed-consumer-database",
-  create: async () => undefined,
-  update: async () => undefined,
-  delete: async () => undefined,
-  count: async () => 0,
-  findOne: async () => null,
-  findMany: async () => [],
+  bundles: {
+    count: async () => 0,
+    findById: async () => null,
+    findMany: async () => [],
+  },
+  bundlePatches: { findByBundleIds: async () => [] },
+  commit: async () => ({ applied: true }),
 };`;
 
 beforeAll(preparePackedKernelPackages);

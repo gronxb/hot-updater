@@ -17,13 +17,12 @@ export type DatabaseCapabilityRuntime = Readonly<
   Pick<
     DatabasePlugin,
     | "name"
-    | "create"
-    | "update"
-    | "delete"
-    | "count"
-    | "findOne"
-    | "findMany"
-    | "transaction"
+    | "bundles"
+    | "bundlePatches"
+    | "commit"
+    | "commitBatch"
+    | "getChannels"
+    | "getUpdateInfo"
   >
 >;
 

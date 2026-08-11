@@ -1,10 +1,11 @@
 import type {
+  BundlePatchTable,
+  BundleTable,
   DatabaseCapabilityRuntime,
   DatabasePlugin,
   HotUpdaterInfrastructureRuntime,
   RuntimeStorageAccess,
   RuntimeStoragePlugin,
-  TransactionDatabasePlugin,
 } from "@hot-updater/plugin-core";
 
 export type CreateGuardedInfrastructureRuntimeOptions<TContext> = {
@@ -13,57 +14,60 @@ export type CreateGuardedInfrastructureRuntimeOptions<TContext> = {
   readonly storages: readonly RuntimeStoragePlugin<TContext>[];
 };
 
-function createGuardedOperations(
-  database: TransactionDatabasePlugin,
-  beforeOperation: () => Promise<void>,
-): TransactionDatabasePlugin {
-  const operations: TransactionDatabasePlugin = {
-    async count(input) {
-      await beforeOperation();
-      return database.count(input);
-    },
-    async create(input) {
-      await beforeOperation();
-      return database.create(input);
-    },
-    async delete(input) {
-      await beforeOperation();
-      return database.delete(input);
-    },
-    async findMany(input) {
-      await beforeOperation();
-      return database.findMany(input);
-    },
-    async findOne(input) {
-      await beforeOperation();
-      return database.findOne(input);
-    },
-    async update(input) {
-      await beforeOperation();
-      return database.update(input);
-    },
-  };
-  return Object.freeze(operations);
-}
-
 function createGuardedDatabase(
   database: DatabasePlugin,
   beforeOperation: () => Promise<void>,
 ): DatabaseCapabilityRuntime {
-  const transaction = database.transaction;
+  const bundlePatches: BundlePatchTable = {
+    async findByBundleIds(bundleIds) {
+      await beforeOperation();
+      return database.bundlePatches.findByBundleIds(bundleIds);
+    },
+  };
+  const bundles: BundleTable = {
+    async count(where) {
+      await beforeOperation();
+      return database.bundles.count(where);
+    },
+    async findById(id) {
+      await beforeOperation();
+      return database.bundles.findById(id);
+    },
+    async findMany(query) {
+      await beforeOperation();
+      return database.bundles.findMany(query);
+    },
+  };
   const runtime: DatabaseCapabilityRuntime = {
-    ...createGuardedOperations(database, beforeOperation),
+    bundlePatches: Object.freeze(bundlePatches),
+    bundles: Object.freeze(bundles),
+    async commit(input) {
+      await beforeOperation();
+      return database.commit(input);
+    },
     name: database.name,
-    ...(transaction === undefined
+    ...(database.commitBatch === undefined
       ? {}
       : {
-          async transaction(callback) {
+          async commitBatch(inputs) {
             await beforeOperation();
-            return transaction((databaseTransaction) =>
-              callback(
-                createGuardedOperations(databaseTransaction, beforeOperation),
-              ),
-            );
+            return database.commitBatch?.(inputs) ?? [];
+          },
+        }),
+    ...(database.getChannels === undefined
+      ? {}
+      : {
+          async getChannels() {
+            await beforeOperation();
+            return database.getChannels?.() ?? [];
+          },
+        }),
+    ...(database.getUpdateInfo === undefined
+      ? {}
+      : {
+          async getUpdateInfo(args) {
+            await beforeOperation();
+            return database.getUpdateInfo?.(args) ?? null;
           },
         }),
   };

@@ -7,9 +7,8 @@ import {
 import { createGuardedInfrastructureRuntime } from "./guardedRuntime";
 
 describe("createGuardedInfrastructureRuntime", () => {
-  it("runs readiness before database operations and transaction operations", async () => {
+  it("runs readiness before domain reads and commits", async () => {
     const database = createRuntimeDatabase();
-    database.transaction = async (callback) => callback(database);
     const beforeDatabaseOperation = vi.fn(async () => undefined);
     const runtime = createGuardedInfrastructureRuntime({
       beforeDatabaseOperation,
@@ -17,15 +16,17 @@ describe("createGuardedInfrastructureRuntime", () => {
       storages: [],
     });
 
-    await runtime.database.count({ model: "bundles" });
-    await runtime.database.transaction?.((transaction) =>
-      transaction.count({ model: "bundles" }),
-    );
+    await runtime.database.bundles.count();
+    await runtime.database.commit({
+      operation: "update",
+      bundleId: "missing-bundle",
+      changes: [],
+    });
 
-    expect(beforeDatabaseOperation).toHaveBeenCalledTimes(3);
+    expect(beforeDatabaseOperation).toHaveBeenCalledTimes(2);
   });
 
-  it("exposes only frozen generic database and storage access", () => {
+  it("exposes only frozen domain database and storage access", () => {
     const database = Object.assign(createRuntimeDatabase(), {
       createMigrator: () => "secret",
     });
@@ -41,6 +42,8 @@ describe("createGuardedInfrastructureRuntime", () => {
 
     expect(Object.isFrozen(runtime)).toBe(true);
     expect(Object.isFrozen(runtime.database)).toBe(true);
+    expect(Object.isFrozen(runtime.database.bundles)).toBe(true);
+    expect(Object.isFrozen(runtime.database.bundlePatches)).toBe(true);
     expect(Object.isFrozen(runtime.storages)).toBe(true);
     expect(Reflect.has(runtime.database, "createMigrator")).toBe(false);
     expect(Reflect.has(runtime.storages[0] ?? {}, "credentials")).toBe(false);
