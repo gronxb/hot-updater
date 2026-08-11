@@ -83,6 +83,8 @@ describe("analytics runtime input validation", () => {
     const bind = vi.fn((schema) => ({
       schema,
       append: vi.fn(async () => undefined),
+      create: vi.fn(async () => "created" as const),
+      get: vi.fn(async () => null),
       assertReady: vi.fn(async () => undefined),
       create: vi.fn(async () => "created" as const),
       get: vi.fn(async () => null),

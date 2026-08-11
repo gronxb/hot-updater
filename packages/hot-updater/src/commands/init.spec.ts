@@ -284,6 +284,8 @@ describe("init choices", () => {
           bind: (schema) =>
             Object.freeze({
               append: async () => {},
+              create: async () => "created" as const,
+              get: async () => null,
               assertReady: async () => {},
               create: async () => "created" as const,
               get: async () => null,
