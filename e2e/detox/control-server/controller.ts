@@ -17,12 +17,15 @@ import {
 } from "../../../packages/core/src/bundleArtifacts.ts";
 import { getRolledOutNumericCohorts } from "../../../packages/core/src/rollout.ts";
 import type { Bundle } from "../../../packages/core/src/types.ts";
+import { createAnalyticsProvider } from "../../../packages/server/dist/index.mjs";
 import {
+  type AnalyticsTable,
+  type BundleRepository,
   createDatabaseClient,
   type DatabaseClient,
 } from "../../../plugins/plugin-core/dist/index.mjs";
-import type { DatabasePlugin } from "../../../plugins/plugin-core/src/types/index.ts";
 import { createConsoleAnalyticsHttpClient } from "../analytics-http-client.ts";
+import { createConsoleAnalyticsProviderClient } from "../analytics-provider-client.ts";
 import {
   ConsoleAnalyticsQaError,
   readObservedAnalyticsEvent,
@@ -1328,12 +1331,12 @@ async function runHotUpdaterCliLogged(args: string[], logName: string) {
   });
 }
 
-async function withDatabaseClient<T>(
-  callback: (databaseClient: DatabaseClient) => Promise<T>,
+async function withConfiguredDatabase<T>(
+  callback: (database: BundleRepository) => Promise<T>,
 ): Promise<T> {
   const { loadConfig } =
     (await import("../../../packages/cli-tools/dist/index.mjs")) as {
-      loadConfig: (options: null) => Promise<{ database: DatabasePlugin }>;
+      loadConfig: (options: null) => Promise<{ database: BundleRepository }>;
     };
   const originalCwd = process.cwd();
 
@@ -1342,7 +1345,7 @@ async function withDatabaseClient<T>(
     return await withHotUpdaterControlEnv(async () => {
       const config = await loadConfig(null);
       try {
-        return await callback(createDatabaseClient(config.database));
+        return await callback(config.database);
       } finally {
         await config.database.dispose?.();
       }
@@ -1352,33 +1355,56 @@ async function withDatabaseClient<T>(
   }
 }
 
+async function withDatabaseClient<T>(
+  callback: (databaseClient: DatabaseClient) => Promise<T>,
+): Promise<T> {
+  return withConfiguredDatabase((database) =>
+    callback(createDatabaseClient(database)),
+  );
+}
+
+function readAnalyticsTable(database: BundleRepository): AnalyticsTable | null {
+  const analytics: unknown = Reflect.get(database, "analytics");
+  return typeof analytics === "object" &&
+    analytics !== null &&
+    typeof Reflect.get(analytics, "append") === "function" &&
+    typeof Reflect.get(analytics, "scan") === "function"
+    ? (analytics as AnalyticsTable)
+    : null;
+}
+
 async function verifyConfiguredConsoleAnalytics(args: {
   bundleIds: readonly string[];
   sinceMs: number;
 }) {
-  const client = createConsoleAnalyticsHttpClient({
-    baseUrl: getControllerReachableAppBaseUrl(),
-    headers: getHotUpdaterManagementHeaders(),
-  });
-  for (let attempt = 1; attempt <= 30; attempt += 1) {
-    try {
-      const evidence = await verifyConsoleAnalytics(client, args.bundleIds, {
-        observedEvents: fixtureSession.observedAnalyticsEvents,
-        sinceMs: args.sinceMs,
-      });
-      return { skipped: false, ...evidence };
-    } catch (error) {
-      if (
-        !(error instanceof ConsoleAnalyticsQaError) ||
-        error.code === "unsupported" ||
-        attempt === 30
-      ) {
-        throw error;
+  return withConfiguredDatabase(async (database) => {
+    const analytics = readAnalyticsTable(database);
+    const client = analytics
+      ? createConsoleAnalyticsProviderClient(createAnalyticsProvider(analytics))
+      : createConsoleAnalyticsHttpClient({
+          baseUrl: getControllerReachableAppBaseUrl(),
+          headers: getHotUpdaterManagementHeaders(),
+        });
+    for (let attempt = 1; attempt <= 30; attempt += 1) {
+      try {
+        const evidence = await verifyConsoleAnalytics(client, args.bundleIds, {
+          observedEvents: fixtureSession.observedAnalyticsEvents,
+          sinceMs: args.sinceMs,
+        });
+        return { skipped: false, ...evidence };
+      } catch (error) {
+        if (
+          !(error instanceof ConsoleAnalyticsQaError) ||
+          error.code === "unsupported" ||
+          attempt === 30
+        ) {
+          throw error;
+        }
+        await sleep(1_000);
       }
-      await sleep(1_000);
     }
-  }
-  throw new Error("Console Analytics verification exhausted its retries.");
+    throw new Error("Console Analytics verification exhausted its retries.");
+  });
 }
 
 async function fetchProviderBundlesPage(args: {
